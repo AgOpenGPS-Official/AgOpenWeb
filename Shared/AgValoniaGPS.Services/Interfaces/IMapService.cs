@@ -62,9 +62,19 @@ public interface IMapService
     // Grid
     bool IsGridVisible { get; set; }
 
+    // Vehicle state
+    void SetReversing(bool isReversing);
+    void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive);
+
     // View settings
     void SetNorthUp(bool isNorthUp);
+    void SetAutoPan(bool enabled);
+    void SetCameraFollowMode(int mode);
+    (double X, double Y) GetCameraCenter();
     void SetDayMode(bool isDayMode);
+
+    // Flag markers
+    void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags);
 
     // Boundary recording visualization
     void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points);

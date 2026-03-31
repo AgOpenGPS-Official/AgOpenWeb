@@ -121,11 +121,41 @@ sealed class Program
             config.Tool.SetSectionWidth(i, 200.0); // 200cm = 2m per section
         Console.WriteLine($"[Setup] Tool: {config.Tool.Width}m, {config.NumSections} sections, actual={config.ActualToolWidth}m");
 
-        // Step 1: App startup
+        // Enable grid to verify coverage bitmap transparency
+        vm.IsGridOn = true;
+        config.Display.GridVisible = true;
+
+        // Step 1: App startup -- verify simulator enabled and panel visible by default
         Console.Write("[Step 1] App startup... ");
-        vm.State.UI.CloseDialog(); // Close any first-run dialogs
-        await Delay(500);
+        Console.Write($"[simEnabled={vm.IsSimulatorEnabled}, panelVisible={vm.IsSimulatorPanelVisible}] ");
+        if (!vm.IsSimulatorEnabled)
+        {
+            Console.WriteLine("FAIL: simulator not enabled by default");
+            _scenarioFailed = true;
+        }
+        // Close all dialogs and wait for clean state
+        vm.State.UI.CloseDialog();
+        if (vm.ConfigurationViewModel != null)
+            vm.ConfigurationViewModel.IsDialogVisible = false;
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
         CaptureScreenshot(window, "01_app_startup");
+        Console.WriteLine("OK");
+
+        // Step 1b: Verify disabling simulator stops GPS updates
+        Console.Write("[Step 1b] Simulator disable/enable... ");
+        var simService = App.Services!.GetRequiredService<IGpsSimulationService>();
+        double posBefore = vm.Latitude;
+        vm.IsSimulatorEnabled = false;
+        simService.Tick(0); // should be ignored when disabled
+        await Delay(100);
+        double posAfterDisable = vm.Latitude;
+        bool posUnchanged = Math.Abs(posAfterDisable - posBefore) < 0.0001;
+        Console.Write($"[posUnchanged={posUnchanged}] ");
+        vm.IsSimulatorEnabled = true; // re-enable for rest of test
+        await Delay(200);
         Console.WriteLine("OK");
 
         // Step 2: Open field selection dialog
@@ -160,7 +190,6 @@ sealed class Program
         Console.Write("[Step 4] Simulator drive... ");
         vm.SimulatorForwardCommand?.Execute(null);
         await Delay(100);
-        var simService = App.Services!.GetRequiredService<IGpsSimulationService>();
         for (int i = 0; i < 60; i++)
         {
             simService.Tick(0);
@@ -178,6 +207,100 @@ sealed class Program
         vm.State.UI.CloseDialog();
         Console.WriteLine("OK");
 
+        // Step 5a: Coverage painting test
+        Console.Write("[Step 5a] Coverage: sections ON + drive... ");
+        // Turn sections master ON (Auto mode)
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        await Delay(100);
+        Console.Write($"[master={vm.IsSectionMasterOn}] ");
+        // Drive forward to paint coverage
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(100);
+        for (int i = 0; i < 80; i++)
+        {
+            simService.Tick(0);
+            await Delay(33);
+        }
+        // Check coverage stats
+        Console.Write($"[workedArea={vm.WorkedAreaDisplay}] ");
+        CaptureScreenshot(window, "05a_coverage_painting");
+        // Turn sections off
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        Console.WriteLine("OK");
+
+        // Step 5b: Drive in reverse to show reverse indicator
+        Console.Write("[Step 5b] Reverse indicator... ");
+        vm.SimulatorReverseCommand?.Execute(null);
+        await Delay(100);
+        for (int i = 0; i < 30; i++)
+        {
+            simService.Tick(0);
+            await Delay(33);
+        }
+        Console.Write($"[isReversing={vm.IsReversing}] ");
+        CaptureScreenshot(window, "05b_reverse_indicator");
+        // Return to forward
+        vm.SimulatorForwardCommand?.Execute(null);
+        for (int i = 0; i < 20; i++)
+        {
+            simService.Tick(0);
+            await Delay(33);
+        }
+        Console.WriteLine("OK");
+
+        // Step 5c: Test compass button camera modes
+        Console.Write("[Step 5c] Compass modes... ");
+        Console.Write($"[mode={vm.CameraMode}] ");
+        vm.ToggleCameraModeCommand?.Execute(null); // NorthUp -> HeadingUp
+        await Delay(200);
+        if (vm.CameraMode != AgValoniaGPS.Models.CameraMode.HeadingUp)
+            throw new Exception($"Expected HeadingUp after toggle, got {vm.CameraMode}");
+        Console.Write($"[after1={vm.CameraMode}] ");
+
+        vm.ToggleCameraModeCommand?.Execute(null); // HeadingUp -> NorthUp
+        await Delay(200);
+        if (vm.CameraMode != AgValoniaGPS.Models.CameraMode.NorthUp)
+            throw new Exception($"Expected NorthUp after toggle, got {vm.CameraMode}");
+        Console.Write($"[after2={vm.CameraMode}] ");
+
+        // Switch to HeadingUp then pan -> Free should remember HeadingUp
+        vm.ToggleCameraModeCommand?.Execute(null); // NorthUp -> HeadingUp
+        await Delay(100);
+
+        // Simulate user pan -> Free mode (via OnUserPan, simulating real drag)
+        vm.OnUserPan();
+        await Delay(200);
+        if (vm.CameraMode != AgValoniaGPS.Models.CameraMode.Free)
+            throw new Exception($"Expected Free after pan, got {vm.CameraMode}");
+        if (vm.CameraModeLabel != "C")
+            throw new Exception($"Expected label 'C' in Free mode, got '{vm.CameraModeLabel}'");
+        Console.Write($"[afterPan={vm.CameraMode},{vm.CameraModeLabel}] ");
+
+        // Record camera position before driving
+        var mapService = App.Services!.GetRequiredService<IMapService>();
+        var camBefore = mapService.GetCameraCenter();
+
+        // Drive tractor and verify camera stays still in Free mode
+        for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(33); }
+        // Camera mode should still be Free after driving
+        if (vm.CameraMode != AgValoniaGPS.Models.CameraMode.Free)
+            throw new Exception($"Camera mode changed from Free during drive: {vm.CameraMode}");
+        // Camera position should not have moved
+        var camAfter = mapService.GetCameraCenter();
+        double camDelta = Math.Sqrt(Math.Pow(camAfter.X - camBefore.X, 2) + Math.Pow(camAfter.Y - camBefore.Y, 2));
+        Console.Write($"[camDelta={camDelta:F3}m] ");
+        if (camDelta > 0.01)
+            throw new Exception($"Camera moved {camDelta:F3}m in Free mode -- should stay still");
+
+        CaptureScreenshot(window, "05c_compass_free");
+
+        // Press compass button -> should restore HeadingUp (previous mode)
+        vm.ToggleCameraModeCommand?.Execute(null); // Free -> HeadingUp (previous)
+        if (vm.CameraMode != AgValoniaGPS.Models.CameraMode.HeadingUp)
+            throw new Exception($"Expected HeadingUp (previous mode) after recenter, got {vm.CameraMode}");
+        Console.Write($"[restored={vm.CameraMode}] ");
+        Console.WriteLine("OK");
+
         // Step 6: Open configuration dialog
         Console.Write("[Step 6] Configuration dialog... ");
         vm.ShowConfigurationDialogCommand?.Execute(null);
@@ -188,14 +311,160 @@ sealed class Program
             vm.ConfigurationViewModel.IsDialogVisible = false;
         Console.WriteLine("OK");
 
+        // Step 6b: Test zoom buttons (#98 fix) -- after all dialogs closed
+        Console.Write("[Step 6b] Zoom test... ");
+        vm.State.UI.CloseDialog();
+        if (vm.ConfigurationViewModel != null)
+            vm.ConfigurationViewModel.IsDialogVisible = false;
+        await Delay(500);
+        Dispatcher.UIThread.RunJobs();
+        CaptureScreenshot(window, "06b_zoom_before");
+        vm.ZoomInCommand?.Execute(null);
+        vm.ZoomInCommand?.Execute(null);
+        vm.ZoomInCommand?.Execute(null);
+        await Delay(500);
+        Dispatcher.UIThread.RunJobs();
+        CaptureScreenshot(window, "06b_zoom_after");
+        vm.ZoomOutCommand?.Execute(null);
+        vm.ZoomOutCommand?.Execute(null);
+        vm.ZoomOutCommand?.Execute(null);
+        await Delay(200);
+        Console.WriteLine("OK");
+
+        // --- Compass Camera Modes (#97) ---
+        await RunCompassScenario(window, vm, simService);
+
         // Step 7+: Theme switching and new dialogs (PR #81)
         await RunThemeAndDialogsScenario(window, vm);
+
+        // --- Flag Placement Scenarios (#108) ---
+        await RunFlagScenario(window, vm, simService);
 
         // --- Track Management Scenarios (PR #80) ---
         await RunTrackManagementScenario(window, vm);
 
         // --- Charts Scenarios (PR #79) ---
         await RunChartsScenario(window, vm, simService);
+    }
+
+    static async Task RunCompassScenario(
+        Window window, MainViewModel vm, IGpsSimulationService simService)
+    {
+        // North-Up mode
+        Console.Write("[Compass 1] North-Up follow... ");
+        vm.CameraMode = AgValoniaGPS.Models.CameraMode.NorthUp;
+        vm.SimulatorForwardCommand?.Execute(null);
+        for (int i = 0; i < 30; i++)
+        {
+            simService.Tick(0);
+            await Delay(33);
+        }
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
+        Console.Write($"[mode={vm.CameraMode}] ");
+        CaptureScreenshot(window, "compass_01_northup");
+        Console.WriteLine("OK");
+
+        // Heading-Up mode
+        Console.Write("[Compass 2] Heading-Up follow... ");
+        vm.CameraMode = AgValoniaGPS.Models.CameraMode.HeadingUp;
+        for (int i = 0; i < 30; i++)
+        {
+            simService.Tick(5.0); // steer right to change heading
+            await Delay(33);
+        }
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
+        Console.Write($"[mode={vm.CameraMode}] ");
+        CaptureScreenshot(window, "compass_02_headingup");
+        Console.WriteLine("OK");
+
+        // Free mode (simulate pan)
+        Console.Write("[Compass 3] Free mode (panned)... ");
+        vm.CameraMode = AgValoniaGPS.Models.CameraMode.Free;
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
+        Console.Write($"[mode={vm.CameraMode}] ");
+        CaptureScreenshot(window, "compass_03_free");
+        Console.WriteLine("OK");
+
+        // Recenter
+        Console.Write("[Compass 4] Recenter from free... ");
+        vm.ToggleCameraModeCommand?.Execute(null);
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
+        Console.Write($"[mode={vm.CameraMode}] ");
+        CaptureScreenshot(window, "compass_04_recentered");
+        Console.WriteLine("OK");
+    }
+
+    static async Task RunFlagScenario(
+        Window window, MainViewModel vm, IGpsSimulationService simService)
+    {
+        // Drive to get a position, then place flags
+        Console.Write("[Step 14] Flags: place red flag at vehicle position... ");
+        vm.SimulatorForwardCommand?.Execute(null);
+        for (int i = 0; i < 20; i++)
+        {
+            simService.Tick(0);
+            await Delay(33);
+        }
+        vm.PlaceRedFlagCommand?.Execute(null);
+        await Delay(300);
+        Console.Write($"[status={vm.StatusMessage}] ");
+        CaptureScreenshot(window, "14_flag_red");
+        Console.WriteLine("OK");
+
+        // Place green flag after driving a bit more
+        Console.Write("[Step 15] Flags: place green flag... ");
+        for (int i = 0; i < 20; i++)
+        {
+            simService.Tick(5.0); // steer right
+            await Delay(33);
+        }
+        vm.PlaceGreenFlagCommand?.Execute(null);
+        await Delay(300);
+        CaptureScreenshot(window, "15_flag_green");
+        Console.WriteLine("OK");
+
+        // Place yellow flag
+        Console.Write("[Step 16] Flags: place yellow flag... ");
+        for (int i = 0; i < 20; i++)
+        {
+            simService.Tick(-5.0); // steer left
+            await Delay(33);
+        }
+        vm.PlaceYellowFlagCommand?.Execute(null);
+        await Delay(300);
+        CaptureScreenshot(window, "16_flags_all");
+        Console.WriteLine("OK");
+
+        // Place flag by world position (simulating map click)
+        Console.Write("[Step 16b] Flags: place flag at world position (map click)... ");
+        vm.PlaceFlagAtWorldPosition(20.0, 30.0, AgValoniaGPS.Models.FlagColor.Green);
+        await Delay(300);
+        Console.Write($"[mode={vm.IsPlaceFlagOnClickMode}] ");
+        CaptureScreenshot(window, "16b_flag_mapclick");
+        Console.WriteLine("OK");
+
+        // Open flag list dialog (close any existing dialog first)
+        Console.Write("[Step 16c] Flags: flag list dialog... ");
+        vm.State.UI.CloseDialog();
+        await Delay(100);
+        vm.ShowFlagListCommand?.Execute(null);
+        await Delay(500);
+        Console.Write($"[flagCount={vm.Flags.Count}] ");
+        CaptureScreenshot(window, "16c_flag_list_dialog");
+        vm.CloseFlagListCommand?.Execute(null);
+        Console.WriteLine("OK");
+
+        // Delete all flags
+        Console.Write("[Step 17] Flags: delete all... ");
+        vm.DeleteAllFlagsCommand?.Execute(null);
+        await Delay(300);
+        CaptureScreenshot(window, "17_flags_deleted");
+        Console.Write($"[status={vm.StatusMessage}] ");
+        Console.WriteLine("OK");
     }
 
     static async Task RunThemeAndDialogsScenario(Window window, MainViewModel vm)

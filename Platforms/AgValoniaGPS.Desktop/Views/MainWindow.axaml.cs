@@ -69,6 +69,10 @@ public partial class MainWindow : Window
         {
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
             ViewModel.SavedTracks.CollectionChanged += SavedTracks_CollectionChanged;
+
+            // Wire zoom commands to map control
+            ViewModel.ZoomInRequested += () => MapControl?.Zoom(1.2);
+            ViewModel.ZoomOutRequested += () => MapControl?.Zoom(1.0 / 1.2);
         }
 
         // Subscribe to FPS updates from map control (instance-based)
@@ -190,11 +194,21 @@ public partial class MainWindow : Window
 
         // Wire up MapClicked event for AB line creation
         mapControl.MapClicked += OnMapClicked;
+
+        // Wire UserPanned event for camera Free mode
+        mapControl.UserPanned += () => ViewModel?.OnUserPan();
     }
 
     private void OnMapClicked(object? sender, MapClickEventArgs e)
     {
         if (ViewModel == null) return;
+
+        // Flag placement mode takes priority
+        if (ViewModel.IsPlaceFlagOnClickMode)
+        {
+            ViewModel.PlaceFlagAtWorldPosition(e.Easting, e.Northing);
+            return;
+        }
 
         System.Diagnostics.Debug.WriteLine($"[OnMapClicked] Mode={ViewModel.CurrentABCreationMode}, Step={ViewModel.CurrentABPointStep}, Easting={e.Easting:F2}, Northing={e.Northing:F2}");
 
@@ -517,7 +531,8 @@ public partial class MainWindow : Window
             }
         }
         else if (e.PropertyName == nameof(MainViewModel.ToolEasting) ||
-                 e.PropertyName == nameof(MainViewModel.ToolNorthing))
+                 e.PropertyName == nameof(MainViewModel.ToolNorthing) ||
+                 e.PropertyName == nameof(MainViewModel.ToolWidth))
         {
             // Tool position updated - update map control
             if (ViewModel != null && MapControl != null)

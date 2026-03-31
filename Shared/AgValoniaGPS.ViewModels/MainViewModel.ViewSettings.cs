@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
 using Avalonia.Threading;
 using ReactiveUI;
@@ -102,6 +103,91 @@ public partial class MainViewModel
     {
         get => _isXTEChartPanelVisible;
         set => this.RaiseAndSetIfChanged(ref _isXTEChartPanelVisible, value);
+    }
+
+    #endregion
+
+    #region Clock
+
+    private string _currentTime = "";
+    public string CurrentTime
+    {
+        get => _currentTime;
+        private set => this.RaiseAndSetIfChanged(ref _currentTime, value);
+    }
+
+    private void InitializeClock()
+    {
+        CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        var clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        clockTimer.Start();
+    }
+
+    #endregion
+
+    #region Camera Mode
+
+    private CameraMode _cameraMode = CameraMode.NorthUp;
+    private CameraMode _previousCameraMode = CameraMode.NorthUp;
+    public CameraMode CameraMode
+    {
+        get => _cameraMode;
+        set
+        {
+            var old = _cameraMode;
+            this.RaiseAndSetIfChanged(ref _cameraMode, value);
+            if (old != value)
+            {
+                this.RaisePropertyChanged(nameof(CameraModeLabel));
+                ApplyCameraMode();
+            }
+        }
+    }
+
+    public string CameraModeLabel => _cameraMode switch
+    {
+        CameraMode.NorthUp => "N",
+        CameraMode.HeadingUp => "H",
+        CameraMode.Free => "C",  // "Center" -- tap to recenter on vehicle
+        _ => "?"
+    };
+
+    private void ApplyCameraMode()
+    {
+        // Set camera follow mode directly on map control: 0=NorthUp, 1=HeadingUp, 2=Free
+        int mapMode = _cameraMode switch
+        {
+            CameraMode.NorthUp => 0,
+            CameraMode.HeadingUp => 1,
+            CameraMode.Free => 2,
+            _ => 0
+        };
+        var camPos = _mapService.GetCameraCenter();
+        Console.WriteLine($"[Camera] ApplyCameraMode: {_cameraMode} (mapMode={mapMode}) cam=({camPos.X:F1},{camPos.Y:F1}) vehicle=({Easting:F1},{Northing:F1})");
+        _mapService.SetCameraFollowMode(mapMode);
+
+        // When switching FROM Free to a follow mode, immediately center on vehicle
+        if (_cameraMode != CameraMode.Free)
+        {
+            _mapService.PanTo(Easting, Northing);
+            Console.WriteLine($"[Camera] Recentered to ({Easting:F1},{Northing:F1})");
+        }
+
+        IsNorthUp = _cameraMode == CameraMode.NorthUp;
+    }
+
+    /// <summary>
+    /// Called when user manually pans the map -- enters Free mode.
+    /// </summary>
+    public void OnUserPan()
+    {
+        if (_cameraMode != CameraMode.Free)
+        {
+            _previousCameraMode = _cameraMode;
+            Console.WriteLine($"[Camera] OnUserPan: {_cameraMode} -> Free (prev={_previousCameraMode})");
+            CameraMode = CameraMode.Free; // Use property setter to trigger ApplyCameraMode
+        }
     }
 
     #endregion

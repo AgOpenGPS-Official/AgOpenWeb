@@ -61,7 +61,7 @@ public class MapService : IMapService
 
     public void Pan(double deltaX, double deltaY) => GetMapControl().Pan(deltaX, deltaY);
 
-    public void PanTo(double x, double y) => GetMapControl().Pan(x, y);
+    public void PanTo(double x, double y) => GetMapControl().PanTo(x, y);
 
     public void Zoom(double factor) => GetMapControl().Zoom(factor);
 
@@ -109,9 +109,18 @@ public class MapService : IMapService
         }
     }
 
+    public void SetReversing(bool isReversing) => GetMapControl().IsReversing = isReversing;
+    public void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive) => GetMapControl().SetGuidancePoints(goalEasting, goalNorthing, isActive);
+
     public void SetNorthUp(bool isNorthUp) => GetMapControl().SetNorthUp(isNorthUp);
+    public void SetAutoPan(bool enabled) => GetMapControl().AutoPanEnabled = enabled;
+    public void SetCameraFollowMode(int mode) => GetMapControl().CameraFollowMode = mode;
+    public (double X, double Y) GetCameraCenter() => GetMapControl().GetCameraCenter();
 
     public void SetDayMode(bool isDayMode) => GetMapControl().SetDayMode(isDayMode);
+
+    public void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags) =>
+        GetMapControl().SetFlags(flags);
 
     public void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points) =>
         GetMapControl().SetRecordingPoints(points);

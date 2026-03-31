@@ -53,6 +53,7 @@ public interface ISharedMapControl
     void Pan(double deltaX, double deltaY);
     void Zoom(double factor);
     double GetZoom();
+    (double X, double Y) GetCameraCenter();
     void SetCamera(double x, double y, double zoom, double rotation);
     void Rotate(double deltaRadians);
 
@@ -129,6 +130,21 @@ public interface ISharedMapControl
     // Grid visibility property
     bool IsGridVisible { get; set; }
 
+    // Flag markers on the map
+    void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags);
+
+    // Camera follow mode (0=NorthUp, 1=HeadingUp, 2=Free)
+    int CameraFollowMode { get; set; }
+
+    // Fired when user manually pans/drags the map
+    event Action? UserPanned;
+
+    // Reverse indicator
+    bool IsReversing { get; set; }
+
+    // Guidance look-ahead points
+    void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive);
+
     // Auto-pan: keeps vehicle visible by panning map when vehicle nears edge
     bool AutoPanEnabled { get; set; }
 
@@ -142,7 +158,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 {
     // Avalonia styled property for grid visibility
     public static readonly StyledProperty<bool> IsGridVisibleProperty =
-        AvaloniaProperty.Register<DrawingContextMapControl, bool>(nameof(IsGridVisible), defaultValue: false);
+        AvaloniaProperty.Register<DrawingContextMapControl, bool>(nameof(IsGridVisible), defaultValue: true);
 
     public bool IsGridVisible
     {
@@ -199,6 +215,20 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private bool _isNorthUp = false;
     private bool _isDayMode = true;
 
+    // Camera follow mode: 0=NorthUp, 1=HeadingUp, 2=Free
+    private int _cameraFollowMode = 0;
+    public event Action? UserPanned;
+
+    // Reverse indicator
+    private bool _isReversing;
+
+    // Heading validity (set after first GPS position update with movement)
+    private bool _hasValidHeading;
+
+    // Guidance look-ahead
+    private double _goalEasting, _goalNorthing;
+    private bool _guidanceActive;
+
     // Auto-pan settings
     private bool _autoPanEnabled = true;
     private const double AutoPanSafeZone = 0.65; // Vehicle must stay within inner 65% of screen
@@ -229,6 +259,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private bool _isPanning = false;
     private bool _isRotating = false;
     private Point _lastMousePosition;
+    private Point _panStartPosition;
+    private bool _hasDraggedPastThreshold = false;
+    private double _rotationOnPanStart = 0;
+    private const double DragThreshold = 5.0; // pixels before triggering Free mode
 
     // Boundary data
     private Boundary? _boundary;
@@ -282,6 +316,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // Coverage bitmap cache - renders all coverage to a single bitmap for O(1) drawing
     private RenderTargetBitmap? _coverageBitmap;
     private bool _coverageBitmapDirty = true;
+    private bool _bitmapHasContent; // true when bitmap has background image or painted coverage
     private double _coverageBoundsMinX, _coverageBoundsMinY, _coverageBoundsMaxX, _coverageBoundsMaxY;
     private const double COVERAGE_PIXELS_PER_METER = 0.5; // 0.5 pixels per meter = 2m resolution
 
@@ -298,7 +333,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     // WriteableBitmap for bitmap-based coverage rendering
     // O(1) render time - blit pre-rendered bitmap each frame
+    // Data bitmap (Rgb565) -- compact storage for save/load and pixel API
+    // Display bitmap (Bgra8888) -- for rendering with black=transparent
     private WriteableBitmap? _coverageWriteableBitmap;
+    private WriteableBitmap? _coverageDisplayBitmap;
     private const double MIN_BITMAP_CELL_SIZE = 0.1; // Preferred resolution (matches RTK precision)
     private const int MAX_BITMAP_DIMENSION = 16384; // Max pixels per dimension (~1GB at 4 bytes/pixel)
     private double _actualBitmapCellSize = MIN_BITMAP_CELL_SIZE; // Dynamically adjusted for large fields
@@ -367,6 +405,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // Render timer
     private readonly DispatcherTimer _renderTimer;
 
+    // Flag markers
+    private IReadOnlyList<(double Easting, double Northing, string Color, string Name)> _flags = Array.Empty<(double, double, string, string)>();
+
     // FPS tracking (instance-based to avoid double-counting when multiple controls exist)
     private DateTime _lastFpsUpdate = DateTime.UtcNow;
     private int _frameCount;
@@ -411,10 +452,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         // Initialize pens and brushes
         _backgroundBrush = new SolidColorBrush(Color.FromRgb(26, 26, 26));
-        _gridPenMinor = new Pen(new SolidColorBrush(Color.FromArgb(77, 77, 77, 77)), 0.5);
-        _gridPenMajor = new Pen(new SolidColorBrush(Color.FromArgb(128, 77, 77, 77)), 0.5);
-        _gridPenAxisX = new Pen(new SolidColorBrush(Color.FromArgb(204, 204, 51, 51)), 1);
-        _gridPenAxisY = new Pen(new SolidColorBrush(Color.FromArgb(204, 51, 204, 51)), 1);
+        _gridPenMinor = new Pen(new SolidColorBrush(Color.FromArgb(120, 100, 100, 100)), 0.5);
+        _gridPenMajor = new Pen(new SolidColorBrush(Color.FromArgb(180, 120, 120, 120)), 0.5);
+        _gridPenAxisX = new Pen(new SolidColorBrush(Color.FromArgb(70, 204, 51, 51)), 0.5);
+        _gridPenAxisY = new Pen(new SolidColorBrush(Color.FromArgb(70, 51, 204, 51)), 0.5);
         _boundaryPenOuter = new Pen(Brushes.Yellow, 1);
         _boundaryPenInner = new Pen(Brushes.Red, 1);
         _recordingPen = new Pen(Brushes.Cyan, 0.5); // Thinner line than dot markers
@@ -550,8 +591,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawGrid(context, viewWidth, viewHeight);
             }
 
-            // Draw coverage FIRST (bottom layer) - Rgb565 has no alpha, so it's opaque
-            // Everything else draws on top of coverage
+            // Draw coverage FIRST (bottom layer)
+            // Bitmap uses Rgb565 (no alpha) - only drawn when it has actual content
+            // (background image or painted coverage cells) to avoid black rectangle over grid
             var covSw = System.Diagnostics.Stopwatch.StartNew();
             if (_coveragePatches.Count > 0 || _coverageBoundsProvider != null || _bitmapExplicitlyInitialized)
             {
@@ -647,6 +689,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawSvennArrow(context);
             }
 
+            // Draw flags
+            if (_flags.Count > 0)
+            {
+                DrawFlags(context);
+            }
+
+            // Draw look-ahead guidance line
+            if (_guidanceActive && ShowVehicle)
+            {
+                DrawGuidanceLookAhead(context);
+            }
+
             // Draw boundary offset indicator
             if (_showBoundaryOffsetIndicator)
             {
@@ -710,8 +764,25 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     private void DrawGrid(DrawingContext context, double viewWidth, double viewHeight)
     {
-        double gridSize = 500.0; // 500m grid
-        double spacing = 10.0;   // 10m spacing
+        double gridSize = 2000.0;
+
+        // Grid spacing based on implement width so lines show pass boundaries
+        double toolW = _toolWidth > 0.5 ? _toolWidth : 6.0; // fallback 6m
+        double viewSpan = Math.Max(viewWidth, viewHeight);
+
+        // At normal zoom use tool width, at far zoom use multiples
+        double spacing, majorEvery;
+        if (viewSpan < toolW * 30)      { spacing = toolW;      majorEvery = toolW * 10; }
+        else if (viewSpan < toolW * 100) { spacing = toolW * 5;  majorEvery = toolW * 50; }
+        else                             { spacing = toolW * 10; majorEvery = toolW * 100; }
+
+        // Scale grid line thickness with zoom
+        double screenHeight = Bounds.Height > 0 ? Bounds.Height : 600;
+        double worldPerPixel = viewHeight / screenHeight;
+        double minorThickness = Math.Max(0.3 * worldPerPixel, 0.05);
+        double majorThickness = Math.Max(0.6 * worldPerPixel, 0.1);
+        _gridPenMinor = new Pen(_gridPenMinor.Brush, minorThickness);
+        _gridPenMajor = new Pen(_gridPenMajor.Brush, majorThickness);
 
         // Calculate visible range (with some padding)
         double minX = _cameraX - viewWidth;
@@ -734,7 +805,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             if (x < -gridSize || x > gridSize) continue;
 
-            bool isMajor = Math.Abs(x % 50.0) < 0.1;
+            bool isMajor = Math.Abs(x % majorEvery) < 0.1;
             bool isAxis = Math.Abs(x) < 0.1;
 
             Pen pen = isAxis ? _gridPenAxisY : (isMajor ? _gridPenMajor : _gridPenMinor);
@@ -746,7 +817,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             if (y < -gridSize || y > gridSize) continue;
 
-            bool isMajor = Math.Abs(y % 50.0) < 0.1;
+            bool isMajor = Math.Abs(y % majorEvery) < 0.1;
             bool isAxis = Math.Abs(y) < 0.1;
 
             Pen pen = isAxis ? _gridPenAxisX : (isMajor ? _gridPenMajor : _gridPenMinor);
@@ -954,20 +1025,36 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             return;
         }
 
-        // Dispose old bitmap
+        // Dispose old bitmaps
         _coverageWriteableBitmap?.Dispose();
+        _coverageDisplayBitmap?.Dispose();
 
-        // Create new bitmap - always use Rgb565 for consistency
+        // Data bitmap: Rgb565 for compact storage and pixel API
         _coverageWriteableBitmap = new WriteableBitmap(
             new PixelSize(_bitmapWidth, _bitmapHeight),
             new Vector(96, 96),
             Avalonia.Platform.PixelFormat.Rgb565);
 
-        long memMB = (long)_bitmapWidth * _bitmapHeight * 2 / 1024 / 1024;
-        Console.WriteLine($"[CreateCoverageBitmap] Created {_bitmapWidth}x{_bitmapHeight} Rgb565 bitmap (~{memMB}MB)");
+        // Display bitmap: Bgra8888 for rendering with transparency (black = alpha 0)
+        _coverageDisplayBitmap = new WriteableBitmap(
+            new PixelSize(_bitmapWidth, _bitmapHeight),
+            new Vector(96, 96),
+            Avalonia.Platform.PixelFormat.Bgra8888);
 
-        // Clear bitmap to black first
+        long memMB = (long)_bitmapWidth * _bitmapHeight * 6 / 1024 / 1024; // 2 + 4 bytes per pixel
+        Console.WriteLine($"[CreateCoverageBitmap] Created {_bitmapWidth}x{_bitmapHeight} Rgb565+Bgra8888 bitmaps (~{memMB}MB)");
+
+        // Clear data bitmap to black (0x0000)
         using (var framebuffer = _coverageWriteableBitmap.Lock())
+        {
+            int stride = framebuffer.RowBytes;
+            byte* ptr = (byte*)framebuffer.Address;
+            int bufferSize = stride * _bitmapHeight;
+            new Span<byte>(ptr, bufferSize).Clear();
+        }
+
+        // Clear display bitmap to transparent (alpha=0)
+        using (var framebuffer = _coverageDisplayBitmap.Lock())
         {
             int stride = framebuffer.RowBytes;
             byte* ptr = (byte*)framebuffer.Address;
@@ -980,11 +1067,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             Console.WriteLine($"[CreateCoverageBitmap] Compositing background from {_backgroundImagePath}");
             CompositeBackgroundIntoBitmap();
+            _bitmapHasContent = true;
         }
         else
         {
-            Console.WriteLine($"[CreateCoverageBitmap] No background, initialized to black");
+            Console.WriteLine($"[CreateCoverageBitmap] No background, initialized to black (transparent until coverage painted)");
             _backgroundComposited = false;
+            _bitmapHasContent = false;
         }
 
         // Set state flags
@@ -1146,7 +1235,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             _coverageThumbnail = new WriteableBitmap(
                 new PixelSize(_thumbnailWidth, _thumbnailHeight),
                 new Vector(96, 96),
-                Avalonia.Platform.PixelFormat.Rgb565);
+                Avalonia.Platform.PixelFormat.Bgra8888);
         }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -1157,9 +1246,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         using var dstBuffer = _coverageThumbnail.Lock();
 
         ushort* src = (ushort*)srcBuffer.Address;
-        ushort* dst = (ushort*)dstBuffer.Address;
+        uint* dst = (uint*)dstBuffer.Address; // Bgra8888
         int srcStride = srcBuffer.RowBytes / 2; // ushort stride
-        int dstStride = dstBuffer.RowBytes / 2;
+        int dstStride = dstBuffer.RowBytes / 4; // uint stride
 
         for (int ty = 0; ty < _thumbnailHeight; ty++)
         {
@@ -1194,7 +1283,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     }
                 }
 
-                dst[ty * dstStride + tx] = result;
+                dst[ty * dstStride + tx] = Rgb565ToBgra8888(result);
             }
         }
 
@@ -1394,6 +1483,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         Debug.WriteLine($"[Background] Composited {pixelsWritten} pixels into coverage bitmap in {sw.ElapsedMilliseconds}ms");
         _backgroundComposited = true;
 
+        // Sync display bitmap so background shows with proper transparency
+        SyncDisplayBitmap();
+
         // Rebuild thumbnail immediately so zoomed-out view shows correct background
         UpdateCoverageThumbnail();
         _thumbnailNeedsRebuild = false;
@@ -1497,9 +1589,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Use LowQuality when moderately zoomed out, HighQuality when zoomed in
         var renderOptions = _zoom < 0.5 ? _lowQualityRenderOptions : _highQualityRenderOptions;
 
+        // Draw the Bgra8888 display bitmap (black pixels are transparent)
+        var drawBitmap = _coverageDisplayBitmap ?? _coverageWriteableBitmap;
         using (context.PushRenderOptions(renderOptions))
         {
-            context.DrawImage(_coverageWriteableBitmap, fullSrcRect, destRect);
+            context.DrawImage(drawBitmap!, fullSrcRect, destRect);
         }
 
         return _bitmapWidth * _bitmapHeight;
@@ -1572,26 +1666,39 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         if (_coverageWriteableBitmap == null || _coverageNewCellsProvider == null)
             return 0;
 
-        using var framebuffer = _coverageWriteableBitmap.Lock();
-        int stride = framebuffer.RowBytes;
-        byte* ptr = (byte*)framebuffer.Address;
+        using var dataFb = _coverageWriteableBitmap.Lock();
+        byte* dataPtr = (byte*)dataFb.Address;
+        int dataStride = dataFb.RowBytes;
+
+        // Also update display bitmap (Bgra8888) for transparent rendering
+        var dispFb = _coverageDisplayBitmap?.Lock();
+        uint* dispPtr = dispFb != null ? (uint*)dispFb.Address : null;
 
         int cellCount = 0;
         foreach (var (cellX, cellY, color) in _coverageNewCellsProvider(_actualBitmapCellSize))
         {
             if (cellX >= 0 && cellX < _bitmapWidth && cellY >= 0 && cellY < _bitmapHeight)
             {
-                // Bitmap is always Rgb565 format: 2 bytes per pixel
-                ushort* pixel = (ushort*)(ptr + cellY * stride + cellX * 2);
+                // Write to Rgb565 data bitmap
+                ushort* pixel = (ushort*)(dataPtr + cellY * dataStride + cellX * 2);
                 ushort rgb565 = (ushort)(
-                    ((color.R >> 3) << 11) |  // 5 bits red
-                    ((color.G >> 2) << 5) |   // 6 bits green
-                    (color.B >> 3));          // 5 bits blue
+                    ((color.R >> 3) << 11) |
+                    ((color.G >> 2) << 5) |
+                    (color.B >> 3));
                 *pixel = rgb565;
+
+                // Write to Bgra8888 display bitmap (with alpha=255 for opaque)
+                if (dispPtr != null)
+                {
+                    dispPtr[cellY * _bitmapWidth + cellX] = Rgb565ToBgra8888(rgb565);
+                }
+
+                _bitmapHasContent = true;
                 cellCount++;
             }
         }
 
+        dispFb?.Dispose();
         return cellCount;
     }
 
@@ -1622,18 +1729,64 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// </summary>
     public void SetCoveragePixel(int localX, int localY, ushort rgb565)
     {
-        if (_coverageWriteableBitmap == null ||
+        if (_coverageWriteableBitmap == null || _coverageDisplayBitmap == null ||
             localX < 0 || localX >= _bitmapWidth ||
             localY < 0 || localY >= _bitmapHeight)
             return;
 
-        using var framebuffer = _coverageWriteableBitmap.Lock();
-        unsafe
+        if (rgb565 != 0) _bitmapHasContent = true;
+
+        // Write to Rgb565 data bitmap
+        using (var framebuffer = _coverageWriteableBitmap.Lock())
         {
-            // Bitmap is always Rgb565 format
-            ushort* ptr = (ushort*)framebuffer.Address;
-            ptr[localY * _bitmapWidth + localX] = rgb565;
+            unsafe
+            {
+                ushort* ptr = (ushort*)framebuffer.Address;
+                ptr[localY * _bitmapWidth + localX] = rgb565;
+            }
         }
+
+        // Write to Bgra8888 display bitmap (black = transparent)
+        using (var framebuffer = _coverageDisplayBitmap.Lock())
+        {
+            unsafe
+            {
+                uint* ptr = (uint*)framebuffer.Address;
+                ptr[localY * _bitmapWidth + localX] = Rgb565ToBgra8888(rgb565);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rebuild the Bgra8888 display bitmap from the Rgb565 data bitmap.
+    /// Called after bulk operations (background composite, pixel buffer load).
+    /// </summary>
+    private unsafe void SyncDisplayBitmap()
+    {
+        if (_coverageWriteableBitmap == null || _coverageDisplayBitmap == null) return;
+
+        using var dataFb = _coverageWriteableBitmap.Lock();
+        using var dispFb = _coverageDisplayBitmap.Lock();
+
+        ushort* src = (ushort*)dataFb.Address;
+        uint* dst = (uint*)dispFb.Address;
+        int count = _bitmapWidth * _bitmapHeight;
+        for (int i = 0; i < count; i++)
+            dst[i] = Rgb565ToBgra8888(src[i]);
+    }
+
+    /// <summary>
+    /// Convert Rgb565 to Bgra8888. Black (0x0000) maps to transparent (alpha=0),
+    /// all other colors get full opacity (alpha=255).
+    /// </summary>
+    private static uint Rgb565ToBgra8888(ushort rgb565)
+    {
+        if (rgb565 == 0) return 0; // transparent
+
+        byte r = (byte)((rgb565 >> 11) << 3);
+        byte g = (byte)(((rgb565 >> 5) & 0x3F) << 2);
+        byte b = (byte)((rgb565 & 0x1F) << 3);
+        return (uint)(b | (g << 8) | (r << 16) | (0xFF << 24));
     }
 
     /// <summary>
@@ -1716,18 +1869,37 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             CreateCoverageBitmap();
         }
 
-        using var framebuffer = _coverageWriteableBitmap.Lock();
-        unsafe
+        // Write to Rgb565 data bitmap
+        using (var framebuffer = _coverageWriteableBitmap!.Lock())
         {
-            // Bitmap is always Rgb565 - only copy non-black pixels to preserve background
-            ushort* dst = (ushort*)framebuffer.Address;
-            int count = Math.Min(pixels.Length, _bitmapWidth * _bitmapHeight);
-            for (int i = 0; i < count; i++)
+            unsafe
             {
-                if (pixels[i] != 0)  // Only copy coverage, not black (no-coverage)
-                    dst[i] = pixels[i];
+                ushort* dst = (ushort*)framebuffer.Address;
+                int count = Math.Min(pixels.Length, _bitmapWidth * _bitmapHeight);
+                for (int i = 0; i < count; i++)
+                {
+                    if (pixels[i] != 0)
+                        dst[i] = pixels[i];
+                }
             }
         }
+
+        // Sync to Bgra8888 display bitmap
+        if (_coverageDisplayBitmap != null)
+        {
+            using var dispFb = _coverageDisplayBitmap.Lock();
+            using var dataFb = _coverageWriteableBitmap.Lock();
+            unsafe
+            {
+                ushort* src = (ushort*)dataFb.Address;
+                uint* dst = (uint*)dispFb.Address;
+                int count = _bitmapWidth * _bitmapHeight;
+                for (int i = 0; i < count; i++)
+                    dst[i] = Rgb565ToBgra8888(src[i]);
+            }
+        }
+
+        _bitmapHasContent = true;
 
         // Rebuild thumbnail so zoomed-out view shows loaded coverage
         UpdateCoverageThumbnail();
@@ -2036,8 +2208,27 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         double toolDepth = 2.0; // Tool depth in meters (front to back)
 
-        // Draw hitch line from vehicle to tool center
-        context.DrawLine(_hitchPen, new Point(_vehicleX, _vehicleY), new Point(_toolX, _toolY));
+        // Draw tractor-side hitch bar (from rear of tractor to hitch point)
+        var rearPen = new Pen(Brushes.Black, 0.3);
+        context.DrawLine(rearPen, new Point(_vehicleX, _vehicleY), new Point(_hitchX, _hitchY));
+
+        // Draw V-shape hitch triangle: apex at fixed drawbar position relative to tool
+        double hitchHalfW = _toolWidth / 2.0;
+        double cosH = Math.Cos(-_toolHeading);
+        double sinH = Math.Sin(-_toolHeading);
+
+        // Implement left and right ends (perpendicular to tool heading)
+        var leftEnd = new Point(
+            _toolX + (-hitchHalfW) * cosH,
+            _toolY + (-hitchHalfW) * sinH);
+        var rightEnd = new Point(
+            _toolX + hitchHalfW * cosH,
+            _toolY + hitchHalfW * sinH);
+
+        // Apex at the hitch point (computed by ToolPositionService)
+        var apexPoint = new Point(_hitchX, _hitchY);
+        context.DrawLine(_hitchPen, apexPoint, leftEnd);
+        context.DrawLine(_hitchPen, apexPoint, rightEnd);
 
         // Draw individual sections centered at tool position, rotated to tool heading
         using (context.PushTransform(Matrix.CreateTranslation(_toolX, _toolY)))
@@ -2124,6 +2315,54 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 }
                 context.DrawGeometry(_vehicleBrush, _vehiclePen, geometry);
             }
+
+            // Draw heading unknown indicator (red "?")
+            if (!_hasValidHeading)
+            {
+                double worldPerPx = (200.0 / _zoom) / (Bounds.Height > 0 ? Bounds.Height : 600);
+                // Counter-rotate and flip Y so text stays upright
+                // Parent transforms: map Rotate(-_rotation), then Translate, then Rotate(-_vehicleHeading)
+                // To undo: Rotate(+vehicleHeading + rotation) then ScaleY(-1) for text Y-axis
+                using (context.PushTransform(
+                    Matrix.CreateRotation(_vehicleHeading + _rotation) *
+                    Matrix.CreateScale(1, -1)))
+                {
+                    var redBrush = Brushes.Red;
+                    var typeface = new Typeface("Arial", FontStyle.Normal, FontWeight.Bold);
+                    double fontSize = 40 * worldPerPx;
+                    var text = new FormattedText("?", System.Globalization.CultureInfo.InvariantCulture,
+                        FlowDirection.LeftToRight, typeface, fontSize, redBrush);
+                    context.DrawText(text, new Point(size / 2 + worldPerPx * 2, -fontSize / 2));
+                }
+            }
+
+            // Draw reverse indicator (yellow downward arrow behind vehicle)
+            if (_isReversing)
+            {
+                double arrowSize = 2.0;
+                var arrowBrush = new SolidColorBrush(Color.FromArgb(200, 255, 220, 0));
+                var arrowGeometry = new StreamGeometry();
+                using (var ctx = arrowGeometry.Open())
+                {
+                    // Downward-pointing triangle behind vehicle (negative Y = behind)
+                    ctx.BeginFigure(new Point(0, -arrowSize * 2.5), true);
+                    ctx.LineTo(new Point(-arrowSize * 0.7, -arrowSize * 1.2));
+                    ctx.LineTo(new Point(arrowSize * 0.7, -arrowSize * 1.2));
+                    ctx.EndFigure(true);
+                }
+                context.DrawGeometry(arrowBrush, null, arrowGeometry);
+            }
+
+            // Draw antenna position as small blue dot
+            var vehicleConfig = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Vehicle;
+            double antPivot = vehicleConfig.AntennaPivot;
+            double antOffset = vehicleConfig.AntennaOffset;
+            {
+                // Antenna GPS position (blue dot at center when no offset configured)
+                var antennaBrush = new SolidColorBrush(Color.FromRgb(40, 120, 255));
+                var antennaPos = new Point(antOffset, antPivot);
+                context.DrawEllipse(antennaBrush, null, antennaPos, 0.25, 0.25);
+            }
         }
     }
 
@@ -2203,6 +2442,25 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             context.DrawEllipse(_directionMarkerTipBrush, null,
                 new Point(tipX, tipY), tipSize, tipSize);
         }
+    }
+
+    private void DrawGuidanceLookAhead(DrawingContext context)
+    {
+        double viewHeight = 200.0 / _zoom;
+        double screenHeight = Bounds.Height > 0 ? Bounds.Height : 600;
+        double worldPerPixel = viewHeight / screenHeight;
+
+        var vehiclePos = new Point(_vehicleX, _vehicleY);
+        var goalPos = new Point(_goalEasting, _goalNorthing);
+
+        // Line from vehicle to goal point
+        var linePen = new Pen(new SolidColorBrush(Color.FromArgb(160, 0, 200, 255)), 1.0 * worldPerPixel);
+        context.DrawLine(linePen, vehiclePos, goalPos);
+
+        // Small circle at goal point
+        var goalBrush = new SolidColorBrush(Color.FromArgb(200, 0, 200, 255));
+        double dotRadius = 3 * worldPerPixel;
+        context.DrawEllipse(goalBrush, null, goalPos, dotRadius, dotRadius);
     }
 
     private void DrawBoundaryOffsetIndicator(DrawingContext context)
@@ -2629,10 +2887,66 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         }
     }
 
+    private void DrawFlags(DrawingContext context)
+    {
+        double viewHeight = 200.0 / _zoom;
+        double screenHeight = Bounds.Height > 0 ? Bounds.Height : 600;
+        double worldPerPixel = viewHeight / screenHeight;
+        double flagRadius = 10 * worldPerPixel;
+        double poleHeight = 28 * worldPerPixel;
+        double poleWidth = 2 * worldPerPixel;
+
+        var polePen = new Pen(Brushes.White, poleWidth);
+
+        for (int i = 0; i < _flags.Count; i++)
+        {
+            var flag = _flags[i];
+            var center = new Point(flag.Easting, flag.Northing);
+
+            // Flag color (matches FlagColor enum names)
+            IBrush fillBrush = flag.Color switch
+            {
+                "Red" => Brushes.Red,
+                "Green" => new SolidColorBrush(Color.FromRgb(0, 204, 0)),
+                "Yellow" => new SolidColorBrush(Color.FromRgb(255, 204, 0)),
+                "Blue" => new SolidColorBrush(Color.FromRgb(32, 128, 224)),
+                "Orange" => new SolidColorBrush(Color.FromRgb(255, 136, 0)),
+                "Purple" => new SolidColorBrush(Color.FromRgb(153, 51, 204)),
+                "Cyan" => new SolidColorBrush(Color.FromRgb(0, 187, 204)),
+                "Pink" => new SolidColorBrush(Color.FromRgb(255, 102, 170)),
+                "White" => Brushes.White,
+                "Black" => new SolidColorBrush(Color.FromRgb(51, 51, 51)),
+                _ => Brushes.Red
+            };
+
+            // Counter-rotate to keep flag upright regardless of map rotation
+            using (context.PushTransform(
+                Matrix.CreateTranslation(-center.X, -center.Y) *
+                Matrix.CreateRotation(_rotation) *
+                Matrix.CreateTranslation(center.X, center.Y)))
+            {
+                // Draw pole (line from ground to flag top)
+                var poleTop = new Point(center.X, center.Y + poleHeight);
+                context.DrawLine(polePen, center, poleTop);
+
+                // Draw flag marker (filled circle at top of pole)
+                var outlinePen = new Pen(Brushes.White, worldPerPixel * 0.5);
+                context.DrawEllipse(fillBrush, outlinePen, poleTop, flagRadius, flagRadius);
+
+                // Draw flag name
+                if (!string.IsNullOrEmpty(flag.Name))
+                {
+                    DrawLabel(context, flag.Name, poleTop.X + flagRadius + worldPerPixel * 2,
+                        poleTop.Y, worldPerPixel, Brushes.White);
+                }
+            }
+        }
+    }
+
     private void DrawLabel(DrawingContext context, string text, double x, double y, double worldPerPixel, IBrush brush)
     {
-        // Scale font size based on zoom (target ~12 pixels on screen)
-        double fontSize = 12 * worldPerPixel;
+        // Scale font size based on zoom (target ~16 pixels on screen)
+        double fontSize = 16 * worldPerPixel;
 
         var typeface = new Typeface("Arial", FontStyle.Normal, FontWeight.Bold);
         var formattedText = new FormattedText(
@@ -2669,6 +2983,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
 
             _isPanning = true;
+            _panStartPosition = point.Position;
+            _hasDraggedPastThreshold = false;
+            _rotationOnPanStart = _rotation; // Save rotation to prevent GPS tick from changing it during drag
             _lastMousePosition = point.Position;
             e.Pointer.Capture(this);
             e.Handled = true;
@@ -2689,6 +3006,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         if (_isPanning)
         {
+            // Preserve rotation from pan start -- prevent GPS tick from
+            // changing rotation between PointerMoved events
+            _rotation = _rotationOnPanStart;
+
             double deltaX = currentPos.X - _lastMousePosition.X;
             double deltaY = currentPos.Y - _lastMousePosition.Y;
 
@@ -2709,6 +3030,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             _cameraX += rotatedDeltaX;
             _cameraY += rotatedDeltaY;
 
+            // Check if drag exceeds threshold before entering Free mode
+            if (!_hasDraggedPastThreshold)
+            {
+                double dist = Math.Sqrt(Math.Pow(currentPos.X - _panStartPosition.X, 2) +
+                                        Math.Pow(currentPos.Y - _panStartPosition.Y, 2));
+                if (dist > DragThreshold)
+                    _hasDraggedPastThreshold = true;
+            }
+            if (_hasDraggedPastThreshold)
+            {
+                _cameraFollowMode = 2;
+                UserPanned?.Invoke();
+            }
             _lastMousePosition = currentPos;
             e.Handled = true;
         }
@@ -2716,7 +3050,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             double deltaX = currentPos.X - _lastMousePosition.X;
             _rotation += deltaX * 0.01;
+            _cameraFollowMode = 2;
             _lastMousePosition = currentPos;
+            UserPanned?.Invoke();
             e.Handled = true;
         }
     }
@@ -2753,6 +3089,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     {
         _cameraX += deltaX;
         _cameraY += deltaY;
+        // Notify ViewModel to enter Free mode (single source of truth)
+        UserPanned?.Invoke();
     }
 
     public void PanTo(double x, double y)
@@ -2777,9 +3115,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     public double GetZoom() => _zoom;
 
+    public (double X, double Y) GetCameraCenter() => (_cameraX, _cameraY);
+
     public void Rotate(double deltaRadians)
     {
         _rotation += deltaRadians;
+        UserPanned?.Invoke();
     }
 
     public void SetGridVisible(bool visible)
@@ -2849,8 +3190,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         if (_isDayMode)
         {
             _backgroundBrush = new SolidColorBrush(Color.FromRgb(26, 26, 26));
-            _gridPenMinor = new Pen(new SolidColorBrush(Color.FromArgb(77, 77, 77, 77)), 0.5);
-            _gridPenMajor = new Pen(new SolidColorBrush(Color.FromArgb(128, 77, 77, 77)), 0.5);
+            _gridPenMinor = new Pen(new SolidColorBrush(Color.FromArgb(120, 100, 100, 100)), 0.5);
+            _gridPenMajor = new Pen(new SolidColorBrush(Color.FromArgb(180, 120, 120, 120)), 0.5);
         }
         else
         {
@@ -2863,20 +3204,29 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     public void SetVehiclePosition(double x, double y, double heading)
     {
+        // Mark heading as valid once vehicle has moved from origin
+        if (!_hasValidHeading && (Math.Abs(x) > 0.1 || Math.Abs(y) > 0.1))
+            _hasValidHeading = true;
+
         _vehicleX = x;
         _vehicleY = y;
         _vehicleHeading = heading;
 
-        // Track-up rotation: rotate map so vehicle heading is always "up"
-        if (!_isNorthUp)
+        // Camera follow based on mode
+        switch (_cameraFollowMode)
         {
-            _rotation = -heading;
-        }
-
-        // Auto-pan to keep vehicle visible
-        if (_autoPanEnabled && Bounds.Width > 0 && Bounds.Height > 0)
-        {
-            ApplyAutoPan();
+            case 0: // NorthUp: center on vehicle, no rotation
+                _cameraX = x;
+                _cameraY = y;
+                _rotation = 0;
+                break;
+            case 1: // HeadingUp: center on vehicle, rotate with heading
+                _cameraX = x;
+                _cameraY = y;
+                _rotation = -heading;
+                break;
+            case 2: // Free: don't move camera at all
+                break;
         }
     }
 
@@ -2976,10 +3326,35 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// <summary>
     /// Enable or disable auto-pan feature
     /// </summary>
+    public int CameraFollowMode
+    {
+        get => _cameraFollowMode;
+        set => _cameraFollowMode = value;
+    }
+
+    public bool IsReversing
+    {
+        get => _isReversing;
+        set => _isReversing = value;
+    }
+
+    public void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive)
+    {
+        _goalEasting = goalEasting;
+        _goalNorthing = goalNorthing;
+        _guidanceActive = isActive;
+    }
+
     public bool AutoPanEnabled
     {
         get => _autoPanEnabled;
         set => _autoPanEnabled = value;
+    }
+
+    public void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags)
+    {
+        _flags = flags;
+        InvalidateVisual();
     }
 
     public void SetBoundary(Boundary? boundary)
@@ -3544,6 +3919,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Convert to world offset from camera center
         double worldOffsetX = normalizedX * viewWidth;
         double worldOffsetY = normalizedY * viewHeight;
+
+        // Reverse pitch compression (pitch compresses Y in the render transform)
+        if (_is3DMode && _cameraPitch > 0.01)
+        {
+            double pitchFactor = Math.Max(0.3, Math.Cos(_cameraPitch));
+            worldOffsetY /= pitchFactor;
+        }
 
         // Apply rotation
         double cos = Math.Cos(_rotation);

@@ -147,9 +147,18 @@ public class MapService : IMapService
         _mapControl?.SetVehiclePosition(easting, northing, headingRadians);
     }
 
+    public void SetReversing(bool isReversing) { if (_mapControl != null) _mapControl.IsReversing = isReversing; }
+    public void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive) { _mapControl?.SetGuidancePoints(goalEasting, goalNorthing, isActive); }
+
     public void SetNorthUp(bool isNorthUp) => _mapControl?.SetNorthUp(isNorthUp);
+    public void SetAutoPan(bool enabled) { if (_mapControl != null) _mapControl.AutoPanEnabled = enabled; }
+    public void SetCameraFollowMode(int mode) { if (_mapControl != null) _mapControl.CameraFollowMode = mode; }
+    public (double X, double Y) GetCameraCenter() => _mapControl?.GetCameraCenter() ?? (0, 0);
 
     public void SetDayMode(bool isDayMode) => _mapControl?.SetDayMode(isDayMode);
+
+    public void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags) =>
+        _mapControl?.SetFlags(flags);
 
     public void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points)
     {

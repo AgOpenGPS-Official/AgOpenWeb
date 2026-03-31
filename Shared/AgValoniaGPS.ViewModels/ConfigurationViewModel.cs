@@ -137,8 +137,8 @@ public partial class ConfigurationViewModel : ReactiveObject
         this.RaisePropertyChanged(nameof(NumericInputValue));
 
         NumericInputDisplayText = integerOnly
-            ? ((int)currentValue).ToString()
-            : currentValue.ToString("F2");
+            ? ((int)currentValue).ToString(CultureInfo.InvariantCulture)
+            : currentValue.ToString("F2", CultureInfo.InvariantCulture);
 
         IsNumericInputVisible = true;
     }
@@ -208,7 +208,7 @@ public partial class ConfigurationViewModel : ReactiveObject
             }
 
             // Update the backing value
-            if (decimal.TryParse(NumericInputDisplayText, out var parsed))
+            if (decimal.TryParse(NumericInputDisplayText, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
             {
                 _numericInputValue = parsed;
                 this.RaisePropertyChanged(nameof(NumericInputValue));
@@ -233,7 +233,7 @@ public partial class ConfigurationViewModel : ReactiveObject
                 NumericInputDisplayText = "0";
             }
 
-            if (decimal.TryParse(NumericInputDisplayText, out var parsed))
+            if (decimal.TryParse(NumericInputDisplayText, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
             {
                 _numericInputValue = parsed;
                 this.RaisePropertyChanged(nameof(NumericInputValue));
@@ -252,7 +252,8 @@ public partial class ConfigurationViewModel : ReactiveObject
         {
             if (!NumericInputAllowNegative) return;
 
-            _isFirstDigitEntry = false; // User is editing
+            // Do NOT change _isFirstDigitEntry -- negate toggles sign without
+            // affecting whether the next digit replaces or appends
 
             if (NumericInputDisplayText.StartsWith("-"))
             {
@@ -263,7 +264,7 @@ public partial class ConfigurationViewModel : ReactiveObject
                 NumericInputDisplayText = "-" + NumericInputDisplayText;
             }
 
-            if (decimal.TryParse(NumericInputDisplayText, out var parsed))
+            if (decimal.TryParse(NumericInputDisplayText, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
             {
                 _numericInputValue = parsed;
                 this.RaisePropertyChanged(nameof(NumericInputValue));

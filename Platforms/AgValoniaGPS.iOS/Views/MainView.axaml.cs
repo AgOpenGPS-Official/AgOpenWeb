@@ -208,6 +208,7 @@ public partial class MainView : UserControl
 
             // Wire up MapClicked event for AB line creation
             _mapControl.MapClicked += OnMapClicked;
+            _mapControl.UserPanned += () => _viewModel?.OnUserPan();
 
 
             // Wire up coverage updates
@@ -282,6 +283,12 @@ public partial class MainView : UserControl
     private void OnMapClicked(object? sender, MapClickEventArgs e)
     {
         if (_viewModel == null) return;
+
+        if (_viewModel.IsPlaceFlagOnClickMode)
+        {
+            _viewModel.PlaceFlagAtWorldPosition(e.Easting, e.Northing);
+            return;
+        }
 
         // For DriveAB mode, we use current GPS position (not the clicked position)
         // For DrawAB mode, we use the clicked map position

@@ -268,7 +268,8 @@ public partial class MainViewModel : ReactiveObject
         // Apply theme variant based on saved day/night mode
         ApplyThemeVariant(IsDayMode);
 
-        // Initialize auto day/night timer
+        // Initialize clock and auto day/night timer
+        InitializeClock();
         InitializeAutoDayNight();
 
         // Start UDP communication (fire-and-forget but explicit)
@@ -317,6 +318,18 @@ public partial class MainViewModel : ReactiveObject
         Longitude = settings.SimulatorLongitude;
 
         _logger.LogDebug("Restored simulator: {Lat},{Lon}", settings.SimulatorLatitude, settings.SimulatorLongitude);
+
+        // Restore simulator enabled state and panel visibility
+        IsSimulatorEnabled = settings.SimulatorEnabled;
+        IsSimulatorPanelVisible = settings.SimulatorEnabled;
+
+        // Initialize tool width from config so implement renders before GPS data flows
+        var config = Models.Configuration.ConfigurationStore.Instance;
+        double initialToolWidth = 0;
+        for (int i = 0; i < config.NumSections && i < 16; i++)
+            initialToolWidth += config.Tool.GetSectionWidth(i) / 100.0;
+        if (initialToolWidth > 0.1)
+            ToolWidth = initialToolWidth;
     }
 
     private void LoadDefaultVehicleProfile()
@@ -1314,7 +1327,35 @@ public partial class MainViewModel : ReactiveObject
     public bool EnableABClickSelection => CurrentABCreationMode == ABCreationMode.DrawAB ||
                                           CurrentABCreationMode == ABCreationMode.DriveAB ||
                                           CurrentABCreationMode == ABCreationMode.Curve ||
-                                          CurrentABCreationMode == ABCreationMode.DrawCurve;
+                                          CurrentABCreationMode == ABCreationMode.DrawCurve ||
+                                          _isPlaceFlagOnClickMode;
+
+    private bool _isPlaceFlagOnClickMode;
+    public bool IsPlaceFlagOnClickMode
+    {
+        get => _isPlaceFlagOnClickMode;
+        set
+        {
+            this.RaiseAndSetIfChanged(ref _isPlaceFlagOnClickMode, value);
+            this.RaisePropertyChanged(nameof(EnableABClickSelection));
+        }
+    }
+
+    /// <summary>
+    /// Place a flag at the given world coordinates (from map click).
+    /// </summary>
+    public void PlaceFlagAtWorldPosition(double easting, double northing, FlagColor? color = null)
+    {
+        var actualColor = color ?? NextAutoColor();
+        var id = _nextFlagId++;
+        var flag = new Flag(easting, northing, actualColor, id, $"Flag {id}");
+        Flags.Add(flag);
+        UpdateFlagsOnMap();
+        StatusMessage = $"{actualColor} flag '{flag.Name}' at E:{easting:F1} N:{northing:F1}";
+
+        // Exit flag click mode after placing
+        IsPlaceFlagOnClickMode = false;
+    }
 
     public string ABCreationInstructions
     {
@@ -1399,8 +1440,9 @@ public partial class MainViewModel : ReactiveObject
                 else
                 {
                     State.Field.ActiveTrack = null;
-                    // Clear the track from the map when deactivated
+                    // Clear the track and guidance from the map when deactivated
                     _mapService.SetActiveTrack(null);
+                    _mapService.SetGuidancePoints(0, 0, false);
                     _isSelectedTrackOnBoundary = false;
                     // Clear any U-turn state associated with the deactivated track
                     ClearYouTurnState();
@@ -1415,10 +1457,20 @@ public partial class MainViewModel : ReactiveObject
         }
     }
 
-    // Flag points (simple Vec3 list for basic flag placement)
-    private readonly List<(Vec3 Position, string Color)> _flagPoints = new();
+    // Flag markers
+    private int _nextFlagId = 1;
+    public ObservableCollection<Flag> Flags { get; } = new();
 
-    private void PlaceFlag(string color)
+    private FlagColor NextAutoColor()
+    {
+        var allColors = Enum.GetValues<FlagColor>();
+        var usedColors = Flags.Select(f => f.FlagColor).ToHashSet();
+        foreach (var c in allColors)
+            if (!usedColors.Contains(c)) return c;
+        return allColors[Flags.Count % allColors.Length];
+    }
+
+    private void PlaceFlag(FlagColor color)
     {
         if (Easting == 0 && Northing == 0)
         {
@@ -1426,10 +1478,18 @@ public partial class MainViewModel : ReactiveObject
             return;
         }
 
-        var headingRadians = Heading * Math.PI / 180.0;
-        var point = new Vec3(Easting, Northing, headingRadians);
-        _flagPoints.Add((point, color));
-        StatusMessage = $"{color} flag #{_flagPoints.Count} placed at E:{Easting:F1} N:{Northing:F1}";
+        var id = _nextFlagId++;
+        var flag = new Flag(Easting, Northing, color, id, $"Flag {id}");
+        Flags.Add(flag);
+        UpdateFlagsOnMap();
+        StatusMessage = $"{color} flag '{flag.Name}' at E:{Easting:F1} N:{Northing:F1}";
+    }
+
+    public void UpdateFlagsOnMap()
+    {
+        var flags = Flags.Select(f =>
+            (f.Easting, f.Northing, f.FlagColor.ToString(), f.Name)).ToList();
+        _mapService.SetFlags(flags);
     }
 
     // Track management commands
@@ -2455,6 +2515,7 @@ public partial class MainViewModel : ReactiveObject
     public ICommand? ToggleDayNightCommand { get; private set; }
     public ICommand? Toggle2D3DCommand { get; private set; }
     public ICommand? ToggleNorthUpCommand { get; private set; }
+    public ICommand? ToggleCameraModeCommand { get; private set; }
     public ICommand? IncreaseCameraPitchCommand { get; private set; }
     public ICommand? DecreaseCameraPitchCommand { get; private set; }
     public ICommand? IncreaseBrightnessCommand { get; private set; }
@@ -2597,6 +2658,11 @@ public partial class MainViewModel : ReactiveObject
     public ICommand? PlaceGreenFlagCommand { get; private set; }
     public ICommand? PlaceYellowFlagCommand { get; private set; }
     public ICommand? DeleteAllFlagsCommand { get; private set; }
+    public ICommand? DeleteFlagCommand { get; private set; }
+    public ICommand? PlaceFlagOnClickCommand { get; private set; }
+    public ICommand? PlaceFlagHereCommand { get; private set; }
+    public ICommand? ShowFlagListCommand { get; private set; }
+    public ICommand? CloseFlagListCommand { get; private set; }
 
     // Right Navigation Panel Commands
     public ICommand? ToggleContourModeCommand { get; private set; }

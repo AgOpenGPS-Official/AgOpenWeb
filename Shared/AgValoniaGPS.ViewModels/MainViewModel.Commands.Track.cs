@@ -196,7 +196,28 @@ public partial class MainViewModel
         StartAPlusLineCommand = ReactiveCommand.Create(() =>
         {
             State.UI.CloseDialog();
-            StatusMessage = "A+ Line mode: Line created from current position and heading";
+
+            if (Easting == 0 && Northing == 0)
+            {
+                StatusMessage = "No GPS position - cannot create A+ line";
+                return;
+            }
+
+            double headingRad = Heading * Math.PI / 180.0;
+            var pointA = new Vec3(Easting, Northing, headingRad);
+            // Project Point B 100m ahead along current heading
+            var pointB = new Vec3(
+                Easting + Math.Sin(headingRad) * 100.0,
+                Northing + Math.Cos(headingRad) * 100.0,
+                headingRad);
+
+            var track = Track.FromABLine($"A+ {DateTime.Now:HH:mm}", pointA, pointB);
+            SavedTracks.Add(track);
+            SelectedTrack = track;
+            _mapService.SetActiveTrack(track);
+
+            CurrentABCreationMode = ABCreationMode.None;
+            StatusMessage = $"A+ line '{track.Name}' created at heading {Heading:F1}";
         });
 
         StartDriveABCommand = ReactiveCommand.Create(() =>
@@ -645,26 +666,50 @@ public partial class MainViewModel
         });
 
         // Flags Commands
-        PlaceRedFlagCommand = ReactiveCommand.Create(() =>
-        {
-            PlaceFlag("Red");
-        });
+        PlaceRedFlagCommand = ReactiveCommand.Create(() => PlaceFlag(FlagColor.Red));
+        PlaceGreenFlagCommand = ReactiveCommand.Create(() => PlaceFlag(FlagColor.Green));
+        PlaceYellowFlagCommand = ReactiveCommand.Create(() => PlaceFlag(FlagColor.Yellow));
 
-        PlaceGreenFlagCommand = ReactiveCommand.Create(() =>
-        {
-            PlaceFlag("Green");
-        });
-
-        PlaceYellowFlagCommand = ReactiveCommand.Create(() =>
-        {
-            PlaceFlag("Yellow");
-        });
+        PlaceFlagHereCommand = ReactiveCommand.Create(() => PlaceFlag(NextAutoColor()));
 
         DeleteAllFlagsCommand = ReactiveCommand.Create(() =>
         {
-            int count = _flagPoints.Count;
-            _flagPoints.Clear();
+            int count = Flags.Count;
+            Flags.Clear();
+            _nextFlagId = 1;
+            UpdateFlagsOnMap();
             StatusMessage = count > 0 ? $"Deleted {count} flags" : "No flags to delete";
+        });
+
+        DeleteFlagCommand = ReactiveCommand.Create<object>(param =>
+        {
+            if (param is Flag flag)
+            {
+                Flags.Remove(flag);
+                UpdateFlagsOnMap();
+                StatusMessage = $"Deleted flag '{flag.Name}'";
+            }
+        });
+
+        ShowFlagListCommand = ReactiveCommand.Create(() =>
+        {
+            State.UI.ShowDialog(Models.State.DialogType.FlagList);
+        });
+
+        CloseFlagListCommand = ReactiveCommand.Create(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        PlaceFlagOnClickCommand = ReactiveCommand.Create(() =>
+        {
+            IsPlaceFlagOnClickMode = !IsPlaceFlagOnClickMode;
+            StatusMessage = IsPlaceFlagOnClickMode
+                ? "Tap on map to place a flag (tap again to cancel)"
+                : "Flag placement cancelled";
+            // Close any open dialog so the map is visible for tapping
+            if (IsPlaceFlagOnClickMode)
+                State.UI.CloseDialog();
         });
 
         // Section control commands
