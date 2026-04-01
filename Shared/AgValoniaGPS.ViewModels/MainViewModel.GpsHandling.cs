@@ -169,6 +169,48 @@ public partial class MainViewModel
         {
             AddContourPoint(data.CurrentPosition.Easting, data.CurrentPosition.Northing, data.CurrentPosition.Heading);
         }
+
+        // Update headland proximity distance for HUD readout
+        UpdateHeadlandProximity(data.CurrentPosition);
+    }
+
+    private static readonly AgValoniaGPS.Services.Headland.HeadlandDetectionService _headlandDetector = new();
+
+    /// <summary>
+    /// Calculate distance from tool pivot to nearest headland boundary line.
+    /// Uses HeadlandDetectionService with direction-aware warnings, matching legacy AgOpenGPS.
+    /// </summary>
+    private void UpdateHeadlandProximity(AgValoniaGPS.Models.Position position)
+    {
+        var headlandLine = State.Field.HeadlandLine;
+        if (headlandLine == null || headlandLine.Count < 3)
+        {
+            State.Field.HeadlandProximityDistance = null;
+            State.Field.HeadlandProximityWarning = false;
+            return;
+        }
+
+        // Use tool pivot position (implement hitch point), matching legacy mf.toolPivotPos
+        var toolPivot = _toolPositionService.ToolPivotPosition;
+
+        // Build minimal input for proximity calculation
+        var input = new AgValoniaGPS.Models.Headland.HeadlandDetectionInput
+        {
+            IsHeadlandOn = true,
+            VehiclePosition = toolPivot,
+            Boundaries = new System.Collections.Generic.List<AgValoniaGPS.Models.Headland.BoundaryData>
+            {
+                new AgValoniaGPS.Models.Headland.BoundaryData
+                {
+                    HeadlandLine = new System.Collections.Generic.List<Models.Base.Vec3>(headlandLine)
+                }
+            }
+        };
+
+        var output = _headlandDetector.DetectHeadland(input);
+
+        State.Field.HeadlandProximityDistance = output.HeadlandDistance;
+        State.Field.HeadlandProximityWarning = output.ShouldTriggerWarning;
     }
 
     /// <summary>

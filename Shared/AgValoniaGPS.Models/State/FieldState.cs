@@ -100,6 +100,27 @@ public class FieldState : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _headlandDistance, value);
     }
 
+    /// <summary>
+    /// Distance from tool pivot to nearest headland boundary (meters).
+    /// null when no headland exists or distance not computed.
+    /// </summary>
+    private double? _headlandProximityDistance;
+    public double? HeadlandProximityDistance
+    {
+        get => _headlandProximityDistance;
+        set => this.RaiseAndSetIfChanged(ref _headlandProximityDistance, value);
+    }
+
+    /// <summary>
+    /// Whether headland proximity warning is active (heading toward boundary within threshold).
+    /// </summary>
+    private bool _headlandProximityWarning;
+    public bool HeadlandProximityWarning
+    {
+        get => _headlandProximityWarning;
+        set => this.RaiseAndSetIfChanged(ref _headlandProximityWarning, value);
+    }
+
     public bool HasHeadland => HeadlandLine != null && HeadlandLine.Count > 0;
 
     // Field origin (local plane reference)
@@ -135,6 +156,8 @@ public class FieldState : ReactiveObject
         SelectedTrack = null;
         HeadlandLine = null;
         HeadlandDistance = 0;
+        HeadlandProximityDistance = null;
+        HeadlandProximityWarning = false;
         OriginLatitude = OriginLongitude = 0;
         LocalPlane = null;
     }
