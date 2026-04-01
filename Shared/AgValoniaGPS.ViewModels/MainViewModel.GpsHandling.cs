@@ -34,6 +34,7 @@ public partial class MainViewModel
     private double _speed;
     private int _satelliteCount;
     private string _fixQuality = "No Fix";
+    private int _previousFixQuality;
 
     private double _easting;
     private double _northing;
@@ -139,6 +140,18 @@ public partial class MainViewModel
         FixQuality = GetFixQualityString(data.FixQuality);
         StatusMessage = data.IsValid ? "GPS Active" : "Waiting for GPS";
 
+        // RTK quality change sounds
+        if (data.FixQuality != _previousFixQuality)
+        {
+            bool wasRtk = _previousFixQuality >= 4;
+            bool isRtk = data.FixQuality >= 4;
+            if (wasRtk && !isRtk)
+                _audioService.Play(Services.Interfaces.SoundEffect.RtkLost);
+            else if (!wasRtk && isRtk)
+                _audioService.Play(Services.Interfaces.SoundEffect.RtkRecovered);
+            _previousFixQuality = data.FixQuality;
+        }
+
         // Update UTM coordinates and heading for map rendering
         Easting = data.CurrentPosition.Easting;
         Northing = data.CurrentPosition.Northing;
@@ -209,8 +222,15 @@ public partial class MainViewModel
 
         var output = _headlandDetector.DetectHeadland(input);
 
+        bool wasWarning = State.Field.HeadlandProximityWarning;
         State.Field.HeadlandProximityDistance = output.HeadlandDistance;
         State.Field.HeadlandProximityWarning = output.ShouldTriggerWarning;
+
+        // Play headland alarm on warning transition (not every frame)
+        if (output.ShouldTriggerWarning && !wasWarning)
+        {
+            _audioService.Play(AgValoniaGPS.Services.Interfaces.SoundEffect.Headland);
+        }
     }
 
     /// <summary>
