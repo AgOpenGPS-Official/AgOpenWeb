@@ -332,6 +332,16 @@ Platforms/*/DependencyInjection/ServiceCollectionExtensions.cs
 
 - Generate route for test field, simulate driving with `GpsSimulationService`, verify all segments traversed
 - White-cane mode regression test (unaffected by route code)
+- Route following convergence test: vehicle starts 5m off planned swath, must converge within 1m
+
+### CI Pipeline
+
+All route planning tests run in the existing CI `test` job (gates all builds). No workflow changes needed — tests in `Tests/AgValoniaGPS.Services.Tests/RoutePlanning/` are automatically discovered.
+
+Critical regression guards:
+- **Route generation round-trip**: generate plan → serialize → deserialize → verify identical
+- **Full route simulation**: generate plan for test field → simulate driving all segments → verify 100% coverage
+- **White-cane isolation**: verify no route planning code executes when `GuidanceMode.WhiteCane` is active
 
 ---
 
