@@ -152,9 +152,48 @@ public partial class MainViewModel
             _previousFixQuality = data.FixQuality;
         }
 
-        // Update UTM coordinates and heading for map rendering
-        Easting = data.CurrentPosition.Easting;
-        Northing = data.CurrentPosition.Northing;
+        // Convert WGS84 to local coordinates for display
+        // In simulator mode, this is already done. In real GPS mode, GpsData only has lat/lon.
+        double posEasting = data.CurrentPosition.Easting;
+        double posNorthing = data.CurrentPosition.Northing;
+
+        // If easting/northing are zero (real GPS path), convert from lat/lon
+        if (Math.Abs(posEasting) < 0.001 && Math.Abs(posNorthing) < 0.001
+            && Math.Abs(data.CurrentPosition.Latitude) > 0.001)
+        {
+            var localPlane = State.Field.LocalPlane;
+            if (localPlane != null)
+            {
+                var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
+                    new Models.Wgs84(data.CurrentPosition.Latitude, data.CurrentPosition.Longitude));
+                posEasting = geoCoord.Easting;
+                posNorthing = geoCoord.Northing;
+            }
+        }
+
+        // Apply GPS drift compensation
+        double driftedEasting = posEasting + State.Field.DriftEasting;
+        double driftedNorthing = posNorthing + State.Field.DriftNorthing;
+        double headingRad = data.CurrentPosition.Heading * Math.PI / 180.0;
+
+        // Update tool/implement position from drifted vehicle position
+        _toolPositionService.Update(
+            new Models.Base.Vec3(driftedEasting, driftedNorthing, headingRad),
+            headingRad);
+
+        // Atomic map update: vehicle + tool + hitch in one call
+        // Prevents rendering mismatches between vehicle and tool positions
+        var hitchPos = _toolPositionService.HitchPosition;
+        var toolPos = _toolPositionService.ToolPosition;
+        _mapService.SetAllPositions(
+            driftedEasting, driftedNorthing, headingRad,
+            toolPos.Easting, toolPos.Northing, _toolPositionService.ToolHeading,
+            ToolWidth, hitchPos.Easting, hitchPos.Northing,
+            _toolPositionService.IsToolPositionReady);
+
+        // Update properties for bindings (but map already updated atomically above)
+        Easting = driftedEasting;
+        Northing = driftedNorthing;
         Heading = data.CurrentPosition.Heading;
 
         // Update reverse indicator on map

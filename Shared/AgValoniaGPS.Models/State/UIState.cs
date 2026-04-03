@@ -138,6 +138,13 @@ public class UIState : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _isSectionControlPanelVisible, value);
     }
 
+    private bool _isOffsetFixPanelVisible;
+    public bool IsOffsetFixPanelVisible
+    {
+        get => _isOffsetFixPanelVisible;
+        set => this.RaiseAndSetIfChanged(ref _isOffsetFixPanelVisible, value);
+    }
+
     // Busy overlay state (for blocking operations like file save/load)
     private bool _isBusy;
     public bool IsBusy

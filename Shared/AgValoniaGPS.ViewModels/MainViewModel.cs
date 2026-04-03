@@ -216,6 +216,15 @@ public partial class MainViewModel : ReactiveObject
         _sectionControlService.SectionStateChanged += OnSectionStateChanged;
         _coverageMapService.BoundsExpanded += OnCoverageBoundsExpanded;
 
+        // Sync drift compensation to AutoSteerService when edited via TextBox
+        State.Field.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName is nameof(State.Field.DriftEasting) or nameof(State.Field.DriftNorthing))
+            {
+                _autoSteerService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
+            }
+        };
+
         // Subscribe to ConfigurationStore changes to update NumSections
         _numSections = Models.Configuration.ConfigurationStore.Instance.NumSections;
         Models.Configuration.ConfigurationStore.Instance.PropertyChanged += (s, e) =>
@@ -671,6 +680,8 @@ public partial class MainViewModel : ReactiveObject
         get => _hitchNorthing;
         set => this.RaiseAndSetIfChanged(ref _hitchNorthing, value);
     }
+
+    public bool IsToolPositionReady => _toolPositionService.IsToolPositionReady;
 
     // OnAutoSteerStateUpdated is now in MainViewModel.Guidance.cs
 

@@ -66,7 +66,15 @@ public interface ISharedMapControl
     // Content
     void SetBoundary(Boundary? boundary);
     void SetVehiclePosition(double x, double y, double heading);
-    void SetToolPosition(double x, double y, double heading, double width, double hitchX, double hitchY);
+    void SetToolPosition(double x, double y, double heading, double width, double hitchX, double hitchY, bool isReady = true);
+
+    /// <summary>
+    /// Atomic update of vehicle + tool positions in a single call.
+    /// Prevents rendering mismatches between vehicle and tool.
+    /// </summary>
+    void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
+        double toolX, double toolY, double toolHeading, double toolWidth,
+        double hitchX, double hitchY, bool toolReady);
     void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[]? buttonStates = null);
     void SetGridVisible(bool visible);
     void SetNorthUp(bool isNorthUp);
@@ -246,6 +254,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private double _toolWidth = 0.0;
     private double _hitchX = 0.0;
     private double _hitchY = 0.0;
+    private bool _toolPositionReady;
 
     // Section state for individual section rendering
     private bool[] _sectionOn = new bool[16];
@@ -2231,9 +2240,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         double toolDepth = 2.0; // Tool depth in meters (front to back)
 
-        // Draw tractor-side hitch bar (from rear of tractor to hitch point)
+        // Draw tractor-side hitch bar from hitch point toward vehicle
+        // Use tool-relative positions to avoid frame sync issues between vehicle and tool updates
+        var hitchLength = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tool.HitchLength;
+        double barEndX = _hitchX + Math.Sin(_vehicleHeading) * hitchLength;
+        double barEndY = _hitchY + Math.Cos(_vehicleHeading) * hitchLength;
         var rearPen = new Pen(Brushes.Black, 0.3);
-        context.DrawLine(rearPen, new Point(_vehicleX, _vehicleY), new Point(_hitchX, _hitchY));
+        context.DrawLine(rearPen, new Point(barEndX, barEndY), new Point(_hitchX, _hitchY));
 
         // Draw V-shape hitch triangle: apex at fixed drawbar position relative to tool
         double hitchHalfW = _toolWidth / 2.0;
@@ -3345,7 +3358,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         }
     }
 
-    public void SetToolPosition(double x, double y, double heading, double width, double hitchX, double hitchY)
+    public void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
+        double toolX, double toolY, double toolHeading, double toolWidth,
+        double hitchX, double hitchY, bool toolReady)
+    {
+        _vehicleX = vehicleX;
+        _vehicleY = vehicleY;
+        _vehicleHeading = vehicleHeading;
+        _toolX = toolX;
+        _toolY = toolY;
+        _toolHeading = toolHeading;
+        _toolWidth = toolWidth;
+        _hitchX = hitchX;
+        _hitchY = hitchY;
+        _toolPositionReady = toolReady;
+    }
+
+    public void SetToolPosition(double x, double y, double heading, double width, double hitchX, double hitchY, bool isReady = true)
     {
         _toolX = x;
         _toolY = y;
@@ -3353,6 +3382,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _toolWidth = width;
         _hitchX = hitchX;
         _hitchY = hitchY;
+        _toolPositionReady = isReady;
     }
 
     public void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[]? buttonStates = null)

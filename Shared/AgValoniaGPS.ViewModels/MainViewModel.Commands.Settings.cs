@@ -146,9 +146,52 @@ public partial class MainViewModel
                 _logger.LogError(ex, "Debug dump failed");
             }
         });
+
+        // Offset Fix (#36) - GPS drift compensation
+        const double OFFSET_STEP = 0.01; // 1cm per click
+
+        ShowOffsetFixDialogCommand = ReactiveCommand.Create(() =>
+        {
+            State.UI.IsOffsetFixPanelVisible = !State.UI.IsOffsetFixPanelVisible;
+        });
+
+        CloseOffsetFixDialogCommand = ReactiveCommand.Create(() =>
+        {
+            State.UI.IsOffsetFixPanelVisible = false;
+        });
+
+        OffsetFixNorthCommand = ReactiveCommand.Create(() => ApplyDrift(0, OFFSET_STEP));
+        OffsetFixSouthCommand = ReactiveCommand.Create(() => ApplyDrift(0, -OFFSET_STEP));
+        OffsetFixEastCommand = ReactiveCommand.Create(() => ApplyDrift(OFFSET_STEP, 0));
+        OffsetFixWestCommand = ReactiveCommand.Create(() => ApplyDrift(-OFFSET_STEP, 0));
+        OffsetFixZeroCommand = ReactiveCommand.Create(() =>
+        {
+            State.Field.DriftEasting = 0;
+            State.Field.DriftNorthing = 0;
+            _autoSteerService.SetDriftCompensation(0, 0);
+            double headingRad = Heading * Math.PI / 180.0;
+            _toolPositionService.ResetTrailingState(
+                new Models.Base.Vec3(Easting, Northing, headingRad), headingRad);
+        });
     }
 
     public ICommand? CreateDebugDumpCommand { get; private set; }
+
+    private void ApplyDrift(double deltaEasting, double deltaNorthing)
+    {
+        State.Field.DriftEasting += deltaEasting;
+        State.Field.DriftNorthing += deltaNorthing;
+        _autoSteerService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
+
+        // Reset trailing tool at the NEW drifted position.
+        // Easting/Northing still reflect the OLD drift (pre-delta), so add the delta.
+        double headingRad = Heading * Math.PI / 180.0;
+        var driftedPos = new Models.Base.Vec3(
+            Easting + deltaEasting,
+            Northing + deltaNorthing,
+            headingRad);
+        _toolPositionService.ResetTrailingState(driftedPos, headingRad);
+    }
 
     private void RefreshAppDirectories()
     {
@@ -198,6 +241,15 @@ public partial class MainViewModel
     public ICommand? CloseLogViewerDialogCommand { get; private set; }
     public ICommand? ClearLogEntriesCommand { get; private set; }
     public ICommand? SetLogFilterCommand { get; private set; }
+
+    // Offset Fix (#36)
+    public ICommand? ShowOffsetFixDialogCommand { get; private set; }
+    public ICommand? CloseOffsetFixDialogCommand { get; private set; }
+    public ICommand? OffsetFixNorthCommand { get; private set; }
+    public ICommand? OffsetFixSouthCommand { get; private set; }
+    public ICommand? OffsetFixEastCommand { get; private set; }
+    public ICommand? OffsetFixWestCommand { get; private set; }
+    public ICommand? OffsetFixZeroCommand { get; private set; }
 }
 
 // --- Flag By Lat/Lon (#23) ---
