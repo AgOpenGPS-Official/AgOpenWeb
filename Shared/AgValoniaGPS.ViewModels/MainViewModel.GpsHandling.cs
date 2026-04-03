@@ -248,7 +248,22 @@ public partial class MainViewModel
                 Easting = driftedEasting,
                 Northing = driftedNorthing
             };
-            CalculateAutoSteerGuidance(guidancePos);
+
+            // Check for YouTurn creation/trigger (mirrors simulator path)
+            if (IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
+            {
+                ProcessYouTurn(guidancePos);
+            }
+
+            // If in a U-turn, use U-turn path guidance; otherwise use AB line guidance.
+            if (_isYouTurnTriggered && _youTurnPath != null && _youTurnPath.Count > 0)
+            {
+                CalculateYouTurnGuidance(guidancePos);
+            }
+            else
+            {
+                CalculateAutoSteerGuidance(guidancePos);
+            }
         }
     }
 

@@ -935,14 +935,48 @@ public partial class MainViewModel : ReactiveObject
     // Field statistics properties for UI binding
     public string WorkedAreaDisplay => FormatArea(_coverageMapService.TotalWorkedArea);
 
-    public string BoundaryAreaDisplay
+    /// <summary>
+    /// Workable area in m²: boundary area minus headland area.
+    /// </summary>
+    private double WorkableAreaSqM
     {
         get
         {
             var boundary = State.Field.CurrentBoundary;
-            if (boundary != null && boundary.IsValid)
+            double totalSqM = (boundary?.AreaHectares ?? 0) * 10000;
+            if (totalSqM <= 0) return 0;
+
+            // Subtract headland area if headland exists
+            var headland = State.Field.HeadlandLine;
+            if (headland != null && headland.Count >= 3)
             {
-                return FormatArea(boundary.AreaHectares * 10000); // Convert ha back to m²
+                double headlandArea = Math.Abs(PolygonArea(headland));
+                return headlandArea; // Headland polygon IS the cultivated area
+            }
+            return totalSqM;
+        }
+    }
+
+    private static double PolygonArea(System.Collections.Generic.List<Models.Base.Vec3> polygon)
+    {
+        double area = 0;
+        for (int i = 0; i < polygon.Count; i++)
+        {
+            int j = (i + 1) % polygon.Count;
+            area += polygon[i].Easting * polygon[j].Northing;
+            area -= polygon[j].Easting * polygon[i].Northing;
+        }
+        return area / 2.0;
+    }
+
+    public string BoundaryAreaDisplay
+    {
+        get
+        {
+            double areaSqM = WorkableAreaSqM;
+            if (areaSqM > 0)
+            {
+                return FormatArea(areaSqM);
             }
             return ConfigStore.IsMetric ? "0.00 ha" : "0.00 ac";
         }
@@ -952,13 +986,11 @@ public partial class MainViewModel : ReactiveObject
     {
         get
         {
-            var boundary = State.Field.CurrentBoundary;
-            double boundaryArea = boundary?.AreaHectares ?? 0;
-            double boundaryAreaSqM = boundaryArea * 10000; // Convert back to sq meters for comparison
-            if (boundaryAreaSqM > 0)
+            double workableArea = WorkableAreaSqM;
+            if (workableArea > 0)
             {
                 double workedArea = _coverageMapService.TotalWorkedArea;
-                return ((boundaryAreaSqM - workedArea) * 100 / boundaryAreaSqM);
+                return ((workableArea - workedArea) * 100 / workableArea);
             }
             return 100;
         }
@@ -2991,6 +3023,14 @@ public partial class MainViewModel : ReactiveObject
         // Sync to FieldState for section control boundary/headland detection
         State.Field.CurrentBoundary = boundary;
 
+        // Update area display
+        this.RaisePropertyChanged(nameof(BoundaryAreaDisplay));
+        if (boundary != null && boundary.IsValid)
+        {
+            var boundaryAreas = new System.Collections.Generic.List<double> { boundary.AreaHectares * 10000 };
+            _fieldStatistics.UpdateBoundaryAreas(boundaryAreas);
+        }
+
         // Populate HeadlandLine from HeadlandPolygon for section control IsPointInHeadland check
         _logger.LogDebug($"[Headland] SetCurrentBoundary: HeadlandPolygon={boundary?.HeadlandPolygon != null}, IsValid={boundary?.HeadlandPolygon?.IsValid}, PointCount={boundary?.HeadlandPolygon?.Points?.Count ?? 0}");
         if (boundary?.HeadlandPolygon != null && boundary.HeadlandPolygon.IsValid)
@@ -3311,6 +3351,15 @@ public partial class MainViewModel : ReactiveObject
         HasHeadland = true;
         IsHeadlandOn = true;
         State.UI.CloseDialog();
+
+        // Update _currentHeadlandLine for YouTurn zone detection (same as SetCurrentBoundary does on field load)
+        if (result.OuterHeadlandLine != null && result.OuterHeadlandLine.Count >= 3)
+        {
+            _currentHeadlandLine = result.OuterHeadlandLine;
+            State.Field.HeadlandLine = result.OuterHeadlandLine;
+            _mapService.SetHeadlandLine(result.OuterHeadlandLine);
+            _mapService.SetHeadlandVisible(true);
+        }
 
         StatusMessage = $"Headland built at {HeadlandDistance:F1}m ({result.OuterHeadlandLine?.Count ?? 0} pts from {boundary.OuterBoundary.Points.Count} boundary pts)";
     }
