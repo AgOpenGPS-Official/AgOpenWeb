@@ -159,11 +159,8 @@ public partial class MainWindow : Window
         // Set the map control as the content of the container
         MapControlContainer.Content = mapControl;
 
-        // Apply initial grid visibility from ViewModel binding
-        if (ViewModel != null)
-        {
-            MapControl.IsGridVisible = ViewModel.IsGridOn;
-        }
+        // Note: ViewModel is null here (DataContext set after CreateMapControl).
+        // Initial view state applied in MainWindow_Opened after settings load.
 
         // Wire up the MapService with the MapControl
         if (App.Services != null && MapControl != null)
@@ -297,6 +294,20 @@ public partial class MainWindow : Window
     {
         // Load settings after window is opened
         LoadWindowSettings();
+
+        // Apply initial camera state to map (ViewModel is available now)
+        if (ViewModel != null && MapControl != null)
+        {
+            MapControl.IsGridVisible = ViewModel.IsGridOn;
+
+            // Sync Is2DMode with saved pitch to avoid state mismatch
+            if (ViewModel.CameraPitch <= -89.0)
+                ViewModel.Is2DMode = true;
+
+            MapControl.Set3DMode(!ViewModel.Is2DMode);
+            double pitchRadians = (90.0 + ViewModel.CameraPitch) * Math.PI / 180.0;
+            MapControl.SetPitchAbsolute(pitchRadians);
+        }
     }
 
     private void LoadWindowSettings()
@@ -620,9 +631,9 @@ public partial class MainWindow : Window
             if (ViewModel != null && MapControl != null)
             {
                 // Camera pitch from service is negative degrees (-90 to -10)
-                // OpenGL expects positive radians (0 = overhead, PI/2 = horizontal)
-                // So we negate the degrees and convert: -90° -> 0 rad, -10° -> ~1.4 rad
-                double pitchRadians = -ViewModel.CameraPitch * Math.PI / 180.0;
+                // Map expects positive radians (0 = overhead, PI/2.5 = horizontal)
+                // Convert: -90 -> 0 rad (overhead), -10 -> 1.4 rad (horizontal)
+                double pitchRadians = (90.0 + ViewModel.CameraPitch) * Math.PI / 180.0;
                 MapControl.SetPitchAbsolute(pitchRadians);
             }
         }

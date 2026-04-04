@@ -55,11 +55,11 @@ public class DisplayConfig : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _cameraZoom, value);
     }
 
-    private double _cameraPitch = -62.0;
+    private double _cameraPitch = -60.0;
     public double CameraPitch
     {
         get => _cameraPitch;
-        set => this.RaiseAndSetIfChanged(ref _cameraPitch, Math.Clamp(value, -90, -10));
+        set => this.RaiseAndSetIfChanged(ref _cameraPitch, Math.Clamp(value, -90, -20));
     }
 
     private bool _is2DMode;
@@ -69,7 +69,7 @@ public class DisplayConfig : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _is2DMode, value);
     }
 
-    private bool _isNorthUp = true;
+    private bool _isNorthUp = false;
     public bool IsNorthUp
     {
         get => _isNorthUp;
