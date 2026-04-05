@@ -70,6 +70,9 @@ public partial class App : Avalonia.Application
             Console.WriteLine($"[App] Error syncing settings: {ex.Message}");
         }
 
+        // Extract sound files from Avalonia resources
+        ExtractSoundFiles(Services);
+
         if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewLifetime)
         {
             Console.WriteLine("[App] Creating MainView...");
@@ -98,5 +101,45 @@ public partial class App : Avalonia.Application
 
         base.OnFrameworkInitializationCompleted();
         Console.WriteLine("[App] Framework initialization completed.");
+    }
+
+    private static void ExtractSoundFiles(IServiceProvider services)
+    {
+        try
+        {
+            var audioService = services.GetService<IAudioService>() as AgValoniaGPS.Services.Audio.AudioServiceBase;
+            if (audioService == null) return;
+
+            var cacheDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Sounds");
+            System.IO.Directory.CreateDirectory(cacheDir);
+
+            var soundFiles = AgValoniaGPS.Services.Audio.AudioServiceBase.GetSoundFileNames();
+
+            foreach (var fileName in soundFiles)
+            {
+                var destPath = System.IO.Path.Combine(cacheDir, fileName);
+                if (System.IO.File.Exists(destPath)) continue;
+
+                try
+                {
+                    var uri = new Uri($"avares://AgValoniaGPS.Views/Assets/Sounds/{fileName}");
+                    using var stream = Avalonia.Platform.AssetLoader.Open(uri);
+                    using var fileStream = System.IO.File.Create(destPath);
+                    stream.CopyTo(fileStream);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Audio] Failed to extract {fileName}: {ex.Message}");
+                }
+            }
+
+            audioService.SetSoundDirectory(cacheDir);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Audio] Sound extraction failed: {ex.Message}");
+        }
     }
 }

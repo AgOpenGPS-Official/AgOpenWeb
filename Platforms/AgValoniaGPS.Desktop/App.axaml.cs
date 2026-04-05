@@ -156,15 +156,13 @@ public partial class App : Application
     {
         try
         {
-            var audioService = services.GetService<IAudioService>() as AgValoniaGPS.Services.Audio.AudioService;
+            var audioService = services.GetService<IAudioService>() as AgValoniaGPS.Services.Audio.AudioServiceBase;
             if (audioService == null) return;
 
             var tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AgValoniaGPS", "Sounds");
             System.IO.Directory.CreateDirectory(tempDir);
 
-            string[] soundFiles = { "Alarm10.wav", "SteerOn.wav", "SteerOff.wav", "HydUp.wav",
-                "HydDown.wav", "rtk_lost.wav", "rtk_back.wav", "SectionOn.wav",
-                "SectionOff.wav", "Headland.wav" };
+            var soundFiles = AgValoniaGPS.Services.Audio.AudioServiceBase.GetSoundFileNames();
 
             foreach (var fileName in soundFiles)
             {

@@ -6,21 +6,20 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
+using System.Linq;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
-using NetCoreAudio;
 
 namespace AgValoniaGPS.Services.Audio;
 
 /// <summary>
-/// Cross-platform audio service using NetCoreAudio.
-/// Extracts embedded .wav files to temp directory and plays via platform player.
+/// Abstract base class for platform-specific audio services.
+/// Contains shared business logic: per-sound config toggles, file mapping, sound directory management.
+/// Each platform implements PlayFile() using its native audio API.
 /// </summary>
-public class AudioService : IAudioService
+public abstract class AudioServiceBase : IAudioService
 {
     private readonly Dictionary<SoundEffect, string> _soundPaths = new();
-    private readonly Player _player = new();
     private bool _isEnabled = true;
 
     public bool IsEnabled
@@ -29,7 +28,7 @@ public class AudioService : IAudioService
         set => _isEnabled = value;
     }
 
-    public AudioService()
+    public AudioServiceBase()
     {
         ExtractSoundFiles();
     }
@@ -63,8 +62,7 @@ public class AudioService : IAudioService
         {
             try
             {
-                // Fire and forget - don't await, don't block
-                _ = _player.Play(path);
+                PlayFile(path);
             }
             catch (Exception ex)
             {
@@ -73,21 +71,23 @@ public class AudioService : IAudioService
         }
     }
 
+    /// <summary>
+    /// Platform-specific audio playback. Implementations should be non-blocking (fire-and-forget).
+    /// </summary>
+    protected abstract void PlayFile(string filePath);
+
     private void ExtractSoundFiles()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS", "Sounds");
         Directory.CreateDirectory(tempDir);
 
         var mapping = GetFileMapping();
-
-        // Try to find sound files from the Assets directory or extract from assembly
         var assetsDir = FindAssetsDirectory();
 
         foreach (var (effect, fileName) in mapping)
         {
             var destPath = Path.Combine(tempDir, fileName);
 
-            // Only extract if not already there
             if (!File.Exists(destPath))
             {
                 var sourcePath = assetsDir != null
@@ -111,11 +111,9 @@ public class AudioService : IAudioService
 
     private static string? FindAssetsDirectory()
     {
-        // Walk up from assembly location to find Assets/Sounds
-        var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        var assemblyDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
         if (assemblyDir == null) return null;
 
-        // Check common relative paths
         string[] searchPaths =
         {
             Path.Combine(assemblyDir, "Assets"),
@@ -154,7 +152,7 @@ public class AudioService : IAudioService
         System.Diagnostics.Debug.WriteLine($"[Audio] Reloaded from {directory}: {_soundPaths.Count} sounds");
     }
 
-    private static Dictionary<SoundEffect, string> GetFileMapping() => new()
+    public static Dictionary<SoundEffect, string> GetFileMapping() => new()
     {
         { SoundEffect.BoundaryAlarm, "Alarm10.wav" },
         { SoundEffect.UTurnTooClose, "Alarm10.wav" },
@@ -168,4 +166,10 @@ public class AudioService : IAudioService
         { SoundEffect.SectionOff, "SectionOff.wav" },
         { SoundEffect.Headland, "Headland.wav" },
     };
+
+    /// <summary>
+    /// Get distinct sound file names for platform extraction.
+    /// </summary>
+    public static string[] GetSoundFileNames() =>
+        GetFileMapping().Values.Distinct().ToArray();
 }

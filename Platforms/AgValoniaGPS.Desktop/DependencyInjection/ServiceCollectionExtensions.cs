@@ -92,7 +92,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChartDataService, ChartDataService>();
 
         // Audio service (cross-platform sound effects)
-        services.AddSingleton<IAudioService, AgValoniaGPS.Services.Audio.AudioService>();
+        services.AddSingleton<IAudioService, AgValoniaGPS.Desktop.Services.AudioService>();
 
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
