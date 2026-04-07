@@ -120,51 +120,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Canvas>
     </Grid>
 
-    <!-- Flag Placement Banner -->
-    <Border Background="#CC2980B9" CornerRadius="8" Padding="16,8"
-            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,80,0,0"
-            IsVisible="{Binding IsPlaceFlagOnClickMode}" ZIndex="20">
-        <StackPanel Orientation="Horizontal" Spacing="16">
-            <TextBlock Text="Tap on map to place a flag"
-                       Foreground="White" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
-            <Button Content="Cancel"
-                    Command="{Binding PlaceFlagOnClickCommand}"
-                    Background="#DD3333" Foreground="White"
-                    Padding="12,4"/>
-        </StackPanel>
-    </Border>
-
-    <!-- AB Creation Instruction Banner -->
-    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="8" Padding="16,8"
-            HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,80,0,0"
-            IsVisible="{Binding IsCreatingABLine}">
-        <StackPanel Orientation="Horizontal" Spacing="16">
-            <TextBlock Text="{Binding ABCreationInstructions}"
-                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="16" VerticalAlignment="Center"/>
-            <!-- Finish button for drive-recording Curve mode -->
-            <Button Content="Finish"
-                    Command="{Binding FinishCurveRecordingCommand}"
-                    Background="#27AE60" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                    Padding="12,4"
-                    IsVisible="{Binding IsRecordingCurve}"/>
-            <!-- Finish button for DrawCurve mode -->
-            <Button Content="Finish"
-                    Command="{Binding FinishDrawCurveCommand}"
-                    Background="#27AE60" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                    Padding="12,4"
-                    IsVisible="{Binding IsDrawingCurve}"/>
-            <!-- Undo button for DrawCurve mode -->
-            <Button Content="Undo"
-                    Command="{Binding UndoLastDrawnPointCommand}"
-                    Background="#E67E22" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                    Padding="12,4"
-                    IsVisible="{Binding IsDrawingCurve}"/>
-            <Button Content="Cancel"
-                    Command="{Binding CancelABCreationCommand}"
-                    Background="#DD3333" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                    Padding="12,4"/>
-        </StackPanel>
-    </Border>
+    <!-- Map Banners (Flag Placement, AB Creation) -->
+    <panels:MapBannersPanel DataContext="{Binding}" ZIndex="20"/>
 
     <!-- Modal Dialog Overlays (shared across platforms) -->
     <controls:DialogOverlayHost DataContext="{Binding}" ZIndex="100"/>

@@ -73,6 +73,18 @@ public partial class App : Avalonia.Application
         // Extract sound files from Avalonia resources
         ExtractSoundFiles(Services);
 
+        // Apply saved language (#40)
+        var savedLang = settingsService.Settings.Language;
+        if (!string.IsNullOrEmpty(savedLang) && savedLang != "en")
+        {
+            try
+            {
+                AgValoniaGPS.Views.Localization.TranslationSource.Instance.CurrentCulture =
+                    new System.Globalization.CultureInfo(savedLang);
+            }
+            catch { /* fall back to English */ }
+        }
+
         if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewLifetime)
         {
             Console.WriteLine("[App] Creating MainView...");
@@ -91,6 +103,17 @@ public partial class App : Avalonia.Application
                 singleViewLifetime.MainView = mainView;
                 MainView = mainView;
                 Console.WriteLine("[App] MainView created and assigned.");
+
+                // Wire language change to TranslationSource (#40)
+                viewModel.LanguageChanged += code =>
+                {
+                    try
+                    {
+                        AgValoniaGPS.Views.Localization.TranslationSource.Instance.CurrentCulture =
+                            new System.Globalization.CultureInfo(code);
+                    }
+                    catch { }
+                };
             }
             catch (Exception ex)
             {

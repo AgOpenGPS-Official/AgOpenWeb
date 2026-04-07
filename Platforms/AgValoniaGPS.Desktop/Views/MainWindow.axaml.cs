@@ -162,7 +162,7 @@ public partial class MainWindow : Window
         if (App.Services != null && MapControl != null)
         {
             var mapService = App.Services.GetRequiredService<AgValoniaGPS.Desktop.Services.MapService>();
-            mapService.SetMapControl(MapControl);
+            mapService.RegisterMapControl(MapControl);
 
             // Wire up coverage updates
             var coverageService = App.Services.GetRequiredService<ICoverageMapService>();
@@ -266,25 +266,8 @@ public partial class MainWindow : Window
         }
     }
 
-    private byte[]? CaptureScreenshotPng()
-    {
-        try
-        {
-            var w = Math.Max((int)Bounds.Width, 1);
-            var h = Math.Max((int)Bounds.Height, 1);
-            var bmp = new Avalonia.Media.Imaging.RenderTargetBitmap(
-                new PixelSize(w, h), new Vector(96, 96));
-            bmp.Render(this);
-
-            using var ms = new System.IO.MemoryStream();
-            bmp.Save(ms);
-            return ms.ToArray();
-        }
-        catch
-        {
-            return null;
-        }
-    }
+    private byte[]? CaptureScreenshotPng() =>
+        AgValoniaGPS.Views.ScreenshotHelper.CaptureScreenshotPng(this);
 
     private void MainWindow_Opened(object? sender, EventArgs e)
     {

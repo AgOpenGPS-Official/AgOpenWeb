@@ -203,22 +203,7 @@ public partial class MainView : UserControl
 
             // Wire screenshot provider for debug dump (#127)
             viewModel.ScreenshotProvider = () =>
-            {
-                try
-                {
-                    var topLevel = TopLevel.GetTopLevel(this);
-                    if (topLevel == null) return null;
-                    var w = Math.Max((int)topLevel.Bounds.Width, 1);
-                    var h = Math.Max((int)topLevel.Bounds.Height, 1);
-                    var bmp = new Avalonia.Media.Imaging.RenderTargetBitmap(
-                        new Avalonia.PixelSize(w, h), new Avalonia.Vector(96, 96));
-                    bmp.Render(topLevel);
-                    using var ms = new System.IO.MemoryStream();
-                    bmp.Save(ms);
-                    return ms.ToArray();
-                }
-                catch { return null; }
-            };
+                AgValoniaGPS.Views.ScreenshotHelper.CaptureScreenshotPng(this);
 
             // Wire up MapClicked event for AB line creation
             _mapControl.MapClicked += OnMapClicked;

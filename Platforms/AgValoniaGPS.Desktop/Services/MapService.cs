@@ -33,9 +33,9 @@ public class MapService : IMapService
     private ISharedMapControl? _mapControl;
 
     /// <summary>
-    /// Set the underlying map control. Must be called after the control is created.
+    /// Register the map control to receive service calls.
     /// </summary>
-    public void SetMapControl(ISharedMapControl mapControl)
+    public void RegisterMapControl(ISharedMapControl mapControl)
     {
         _mapControl = mapControl;
     }
@@ -43,7 +43,7 @@ public class MapService : IMapService
     private ISharedMapControl GetMapControl()
     {
         if (_mapControl == null)
-            throw new System.InvalidOperationException("Map control not set. Call SetMapControl first.");
+            throw new System.InvalidOperationException("Map control not set. Call RegisterMapControl first.");
         return _mapControl;
     }
 

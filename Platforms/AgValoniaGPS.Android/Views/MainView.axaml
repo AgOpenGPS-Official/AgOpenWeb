@@ -92,41 +92,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             ZIndex="15" Margin="0,0,20,20" Spacing="10">
                     <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"/>
                     <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"/>
+                    <!-- Compass / Camera Mode Button -->
+                    <Button Command="{Binding ToggleCameraModeCommand}"
+                            Width="50" Height="50"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            CornerRadius="25" Background="#4A90D9">
+                        <TextBlock Text="{Binding CameraModeLabel}" FontSize="20" FontWeight="Bold"
+                                   Foreground="White" HorizontalAlignment="Center"/>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Grid>
 
-        <!-- AB Creation Instruction Banner -->
-        <Border Background="#CC000000" CornerRadius="8" Padding="16,8"
-                HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,80,0,0"
-                IsVisible="{Binding IsCreatingABLine}">
-            <StackPanel Orientation="Horizontal" Spacing="16">
-                <TextBlock Text="{Binding ABCreationInstructions}"
-                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="16" VerticalAlignment="Center"/>
-                <!-- Finish button for drive-recording Curve mode -->
-                <Button Content="Finish"
-                        Command="{Binding FinishCurveRecordingCommand}"
-                        Background="#27AE60" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        Padding="12,4"
-                        IsVisible="{Binding IsRecordingCurve}"/>
-                <!-- Finish button for DrawCurve mode -->
-                <Button Content="Finish"
-                        Command="{Binding FinishDrawCurveCommand}"
-                        Background="#27AE60" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        Padding="12,4"
-                        IsVisible="{Binding IsDrawingCurve}"/>
-                <!-- Undo button for DrawCurve mode -->
-                <Button Content="Undo"
-                        Command="{Binding UndoLastDrawnPointCommand}"
-                        Background="#E67E22" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        Padding="12,4"
-                        IsVisible="{Binding IsDrawingCurve}"/>
-                <Button Content="Cancel"
-                        Command="{Binding CancelABCreationCommand}"
-                        Background="#DD3333" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        Padding="12,4"/>
-            </StackPanel>
-        </Border>
+        <!-- Map Banners (Flag Placement, AB Creation) -->
+        <panels:MapBannersPanel DataContext="{Binding}"/>
 
         <!-- Modal Dialog Overlays (shared across platforms) -->
         <controls:DialogOverlayHost DataContext="{Binding}"/>
