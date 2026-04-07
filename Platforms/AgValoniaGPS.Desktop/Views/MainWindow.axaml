@@ -117,6 +117,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <panels:XTEChartPanel x:Name="XTEChartPanel"
                                   Canvas.Left="400" Canvas.Top="480"
                                   DataContext="{Binding}"/>
+
+            <!-- Recorded Path Panel (Draggable) -->
+            <dialogs:RecordedPathDialogPanel x:Name="RecordedPathPanel"
+                                              Canvas.Left="200" Canvas.Top="20"
+                                              Cursor="Hand"
+                                              DataContext="{Binding}"
+                                              PointerPressed="RecordedPath_PointerPressed"
+                                              PointerMoved="RecordedPath_PointerMoved"
+                                              PointerReleased="RecordedPath_PointerReleased"/>
         </Canvas>
     </Grid>
 
