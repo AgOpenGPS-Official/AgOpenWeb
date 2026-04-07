@@ -76,12 +76,16 @@ namespace AgValoniaGPS.Services
 
                 var json = File.ReadAllText(_settingsFilePath);
 
-                // Use same options as Save to match camelCase property names and handle NaN/Infinity
+                // Use same options as Save to match camelCase property names and handle NaN/Infinity.
+                // PreferredObjectCreationHandling = Populate ensures that properties missing from
+                // the JSON file keep their C# default initializer values (e.g. FieldTextureVisible = true)
+                // rather than being reset to CLR defaults (false for bool, 0 for int, etc.).
                 var options = new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                     PropertyNameCaseInsensitive = true,
-                    NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals
+                    NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals,
+                    PreferredObjectCreationHandling = System.Text.Json.Serialization.JsonObjectCreationHandling.Populate
                 };
 
                 var loadedSettings = JsonSerializer.Deserialize<AppSettings>(json, options);

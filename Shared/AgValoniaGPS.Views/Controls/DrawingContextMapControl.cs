@@ -2546,8 +2546,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             {
                 double worldX = tx * TILE_SIZE;
                 double worldY = ty * TILE_SIZE;
-                // Draw at world coordinates - camera transform handles Y-flip
-                var destRect = new Rect(worldX, worldY, TILE_SIZE, TILE_SIZE);
+                var destRect = new Rect(worldX, -(worldY + TILE_SIZE), TILE_SIZE, TILE_SIZE);
                 context.DrawImage(_groundTexture!, destRect);
             }
         }
