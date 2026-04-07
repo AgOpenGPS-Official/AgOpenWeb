@@ -36,29 +36,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- Top Status Bar -->
             <Border Grid.Row="0" Background="#2d2d2d" Padding="10">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <!-- Left: Status and GPS info - use MinWidth to prevent layout shifts -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="15">
-                        <TextBlock Text="{Binding StatusMessage}" Foreground="#2ECC71" FontSize="14"
-                                   TextTrimming="CharacterEllipsis" Width="180"/>
-                        <TextBlock Text="{Binding State.Vehicle.FixQualityText}" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontSize="12"
-                                   MinWidth="70"/>
-                        <TextBlock Text="{Binding CurrentFps, StringFormat='FPS: {0:F0}'}" Foreground="#F1C40F" FontSize="12"
-                                   MinWidth="55"/>
-                        <TextBlock Text="{Binding GpsToPgnLatencyMs, StringFormat='Lat: {0:F1}ms'}" Foreground="#F39C12" FontSize="12"
-                                   MinWidth="75"/>
-                    </StackPanel>
+                    <!-- Left: RTK Status and Diagnostics -->
+                    <panels:StatusBarPanel Grid.Column="0" DataContext="{Binding}"/>
 
                     <!-- Right: Field Statistics (when field is active) -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10"
-                                IsVisible="{Binding HasActiveField}">
-                        <TextBlock Text="{Binding BoundaryAreaDisplay}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12" MinWidth="60"/>
-                        <TextBlock Text="|" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="12"/>
-                        <TextBlock Text="{Binding WorkedAreaDisplay}" Foreground="#2ECC71" FontSize="12" FontWeight="Bold" MinWidth="60"/>
-                        <TextBlock Text="|" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="12"/>
-                        <TextBlock Text="{Binding RemainingPercent, StringFormat='{}{0:F0}%'}" Foreground="#F39C12" FontSize="12" MinWidth="35"/>
-                        <TextBlock Text="|" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="12"/>
-                        <TextBlock Text="{Binding WorkRateDisplay}" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontSize="12" MinWidth="65"/>
-                    </StackPanel>
+                    <panels:FieldStatsPanel Grid.Column="2" DataContext="{Binding}"/>
                 </Grid>
             </Border>
 
