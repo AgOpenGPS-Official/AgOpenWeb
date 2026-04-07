@@ -272,6 +272,12 @@ public class AutoSteerService : IAutoSteerService
         _currentTrack = track;
     }
 
+    public void UpdateGuidanceResults(double steerAngle, double crossTrackError)
+    {
+        _state.SteerAngle = steerAngle;
+        _state.CrossTrackError = crossTrackError;
+    }
+
     /// <summary>
     /// Process incoming GPS buffer - entry point for zero-copy pipeline.
     /// Called directly from UDP receive handler.

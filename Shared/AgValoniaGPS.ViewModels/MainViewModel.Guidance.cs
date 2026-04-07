@@ -205,8 +205,12 @@ public partial class MainViewModel
         // Update centralized guidance state
         State.Guidance.UpdateFromGuidance(output);
 
-        // Apply calculated steering to simulator
-        SimulatorSteerAngle = output.SteerAngle;
+        // Apply calculated steering to simulator (only when engaged)
+        if (IsAutoSteerEngaged)
+            SimulatorSteerAngle = output.SteerAngle;
+
+        // Feed guidance results to AutoSteerService so charts get real data
+        _autoSteerService.UpdateGuidanceResults(output.SteerAngle, output.CrossTrackError);
 
         // Send look-ahead point to map for rendering
         _mapService.SetGuidancePoints(
@@ -265,6 +269,9 @@ public partial class MainViewModel
         // Update XTE display (distance from nearest pass)
         double xte = perpDist - (nearestPass * widthMinusOverlap);
         CrossTrackError = xte * 100; // cm
+
+        // Feed XTE to charts (steer angle is 0 when not engaged)
+        _autoSteerService.UpdateGuidanceResults(0, xte);
     }
 
     /// <summary>

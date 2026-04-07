@@ -114,6 +114,11 @@ public partial class App : Avalonia.Application
                     }
                     catch { }
                 };
+
+                // Provide DI to chart panels for auto-configuration
+                AgValoniaGPS.Views.Controls.Panels.SteerChartPanel.ServiceProvider = Services;
+                AgValoniaGPS.Views.Controls.Panels.HeadingChartPanel.ServiceProvider = Services;
+                AgValoniaGPS.Views.Controls.Panels.XTEChartPanel.ServiceProvider = Services;
             }
             catch (Exception ex)
             {

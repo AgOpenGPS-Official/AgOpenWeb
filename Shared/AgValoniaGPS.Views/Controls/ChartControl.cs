@@ -123,6 +123,10 @@ public class ChartControl : Control
         _series.Add(series);
         var color = Color.FromUInt32(series.Color);
         _seriesPens[series.Color] = new Pen(new SolidColorBrush(color), 1.5);
+
+        // Start rendering as soon as we have data to show
+        if (!_renderTimer.IsEnabled)
+            _renderTimer.Start();
     }
 
     /// <summary>

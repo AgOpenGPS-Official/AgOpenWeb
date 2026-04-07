@@ -70,6 +70,12 @@ public interface IAutoSteerService
         double easting, double northing);
 
     /// <summary>
+    /// Update guidance results from external calculation (e.g. ViewModel guidance).
+    /// Used so chart data reflects the actual steering behavior.
+    /// </summary>
+    void UpdateGuidanceResults(double steerAngle, double crossTrackError);
+
+    /// <summary>
     /// Engage auto-steer (start sending steering commands to hardware).
     /// </summary>
     void Engage();
