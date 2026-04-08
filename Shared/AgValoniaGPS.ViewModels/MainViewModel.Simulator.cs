@@ -15,10 +15,12 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using ReactiveUI;
+
 using Microsoft.Extensions.Logging;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Services.Interfaces;
+
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -173,7 +175,7 @@ public partial class MainViewModel
         get => _isSimulatorEnabled;
         set
         {
-            if (this.RaiseAndSetIfChanged(ref _isSimulatorEnabled, value))
+            if (SetProperty(ref _isSimulatorEnabled, value))
             {
                 // Update centralized state
                 State.Simulator.IsEnabled = value;
@@ -210,9 +212,9 @@ public partial class MainViewModel
         get => _simulatorSteerAngle;
         set
         {
-            this.RaiseAndSetIfChanged(ref _simulatorSteerAngle, value);
+            SetProperty(ref _simulatorSteerAngle, value);
             State.Simulator.SteerAngle = value;
-            this.RaisePropertyChanged(nameof(SimulatorSteerAngleDisplay)); // Notify display property
+            OnPropertyChanged(nameof(SimulatorSteerAngleDisplay)); // Notify display property
             if (_isSimulatorEnabled)
             {
                 _simulatorService.SteerAngle = value;
@@ -233,7 +235,7 @@ public partial class MainViewModel
         {
             // Clamp to valid range
             value = Math.Max(-10, Math.Min(25, value));
-            this.RaiseAndSetIfChanged(ref _simulatorSpeedKph, value);
+            SetProperty(ref _simulatorSpeedKph, value);
             UpdateSimulatorSpeed();
         }
     }
@@ -246,9 +248,9 @@ public partial class MainViewModel
         get => _isSimulatorSpeed10x;
         set
         {
-            this.RaiseAndSetIfChanged(ref _isSimulatorSpeed10x, value);
+            SetProperty(ref _isSimulatorSpeed10x, value);
             UpdateSimulatorSpeed();
-            this.RaisePropertyChanged(nameof(SimulatorSpeedDisplay));
+            OnPropertyChanged(nameof(SimulatorSpeedDisplay));
         }
     }
 
@@ -257,7 +259,7 @@ public partial class MainViewModel
         double effectiveSpeed = _isSimulatorSpeed10x ? _simulatorSpeedKph * 10 : _simulatorSpeedKph;
         State.Simulator.Speed = effectiveSpeed;
         State.Simulator.TargetSpeed = effectiveSpeed;
-        this.RaisePropertyChanged(nameof(SimulatorSpeedDisplay));
+        OnPropertyChanged(nameof(SimulatorSpeedDisplay));
         if (_isSimulatorEnabled)
         {
             // Convert kph to stepDistance: stepDistance = speedKph / 40

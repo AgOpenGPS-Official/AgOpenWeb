@@ -16,8 +16,10 @@
 
 using System;
 using System.Linq;
-using ReactiveUI;
+
 using AgValoniaGPS.Models;
+
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -48,13 +50,13 @@ public partial class MainViewModel
     public double Latitude
     {
         get => _latitude;
-        set => this.RaiseAndSetIfChanged(ref _latitude, value);
+        set => SetProperty(ref _latitude, value);
     }
 
     public double Longitude
     {
         get => _longitude;
-        set => this.RaiseAndSetIfChanged(ref _longitude, value);
+        set => SetProperty(ref _longitude, value);
     }
 
     public double Speed
@@ -62,9 +64,9 @@ public partial class MainViewModel
         get => _speed;
         set
         {
-            this.RaiseAndSetIfChanged(ref _speed, value);
-            this.RaisePropertyChanged(nameof(SpeedKmh));
-            this.RaisePropertyChanged(nameof(IsReversing));
+            SetProperty(ref _speed, value);
+            OnPropertyChanged(nameof(SpeedKmh));
+            OnPropertyChanged(nameof(IsReversing));
         }
     }
 
@@ -77,37 +79,37 @@ public partial class MainViewModel
     public int SatelliteCount
     {
         get => _satelliteCount;
-        set => this.RaiseAndSetIfChanged(ref _satelliteCount, value);
+        set => SetProperty(ref _satelliteCount, value);
     }
 
     public string FixQuality
     {
         get => _fixQuality;
-        set => this.RaiseAndSetIfChanged(ref _fixQuality, value);
+        set => SetProperty(ref _fixQuality, value);
     }
 
     public double Easting
     {
         get => _easting;
-        set => this.RaiseAndSetIfChanged(ref _easting, value);
+        set => SetProperty(ref _easting, value);
     }
 
     public double Northing
     {
         get => _northing;
-        set => this.RaiseAndSetIfChanged(ref _northing, value);
+        set => SetProperty(ref _northing, value);
     }
 
     public double Heading
     {
         get => _heading;
-        set => this.RaiseAndSetIfChanged(ref _heading, value);
+        set => SetProperty(ref _heading, value);
     }
 
     public double RollDegrees
     {
         get => _rollDegrees;
-        set => this.RaiseAndSetIfChanged(ref _rollDegrees, value);
+        set => SetProperty(ref _rollDegrees, value);
     }
 
     #endregion
@@ -295,7 +297,7 @@ public partial class MainViewModel
     public bool IsAutoTrackEnabled
     {
         get => _isAutoTrackEnabled;
-        set => this.RaiseAndSetIfChanged(ref _isAutoTrackEnabled, value);
+        set => SetProperty(ref _isAutoTrackEnabled, value);
     }
 
     private DateTime _lastAutoTrackTime = DateTime.MinValue;
@@ -440,8 +442,8 @@ public partial class MainViewModel
         // Update UI periodically (every 5 points to avoid excessive updates)
         if (_recordedCurvePoints.Count % 5 == 0)
         {
-            this.RaisePropertyChanged(nameof(RecordedCurvePointCount));
-            this.RaisePropertyChanged(nameof(ABCreationInstructions)); // Update instruction text with point count
+            OnPropertyChanged(nameof(RecordedCurvePointCount));
+            OnPropertyChanged(nameof(ABCreationInstructions)); // Update instruction text with point count
             StatusMessage = $"Recording curve: {_recordedCurvePoints.Count} points";
         }
     }

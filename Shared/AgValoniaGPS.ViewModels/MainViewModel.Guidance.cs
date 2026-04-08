@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using ReactiveUI;
+
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
@@ -23,6 +23,8 @@ using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Services.AutoSteer;
 using AgValoniaGPS.Services.Interfaces;
 using Microsoft.Extensions.Logging;
+
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgValoniaGPS.ViewModels;
 

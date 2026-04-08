@@ -17,7 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using ReactiveUI;
+
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
@@ -25,6 +25,8 @@ using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services.YouTurn;
 using Microsoft.Extensions.Logging;
+
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -85,7 +87,7 @@ public partial class MainViewModel
     public bool IsYouTurnEnabled
     {
         get => _isYouTurnEnabled;
-        set => this.RaiseAndSetIfChanged(ref _isYouTurnEnabled, value);
+        set => SetProperty(ref _isYouTurnEnabled, value);
     }
 
     private int _uTurnSkipRows;
@@ -96,7 +98,7 @@ public partial class MainViewModel
     public int UTurnSkipRows
     {
         get => _uTurnSkipRows;
-        set => this.RaiseAndSetIfChanged(ref _uTurnSkipRows, Math.Max(0, Math.Min(9, value)));
+        set => SetProperty(ref _uTurnSkipRows, Math.Max(0, Math.Min(9, value)));
     }
 
     private bool _isUTurnSkipRowsEnabled;
@@ -107,7 +109,7 @@ public partial class MainViewModel
     public bool IsUTurnSkipRowsEnabled
     {
         get => _isUTurnSkipRowsEnabled;
-        set => this.RaiseAndSetIfChanged(ref _isUTurnSkipRowsEnabled, value);
+        set => SetProperty(ref _isUTurnSkipRowsEnabled, value);
     }
 
     private bool _isSkipWorkedMode;
@@ -118,7 +120,7 @@ public partial class MainViewModel
     public bool IsSkipWorkedMode
     {
         get => _isSkipWorkedMode;
-        set => this.RaiseAndSetIfChanged(ref _isSkipWorkedMode, value);
+        set => SetProperty(ref _isSkipWorkedMode, value);
     }
 
     #endregion
