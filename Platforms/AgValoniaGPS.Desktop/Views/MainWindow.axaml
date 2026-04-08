@@ -34,43 +34,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <!-- Main content with dialog overlays -->
     <Panel>
-    <!-- Main Grid with OpenGL as background -->
-    <Grid>
-        <!-- Map Render Area (fills entire window) with pointer events -->
-        <!-- Platform-specific map control is created at runtime in code-behind -->
+    <!-- Main layout: status bar row + content area -->
+    <Grid RowDefinitions="Auto,*">
+        <!-- Map Render Area (fills entire window behind everything) -->
         <ContentControl x:Name="MapControlContainer" ZIndex="0"
+                        Grid.Row="0" Grid.RowSpan="2"
                         PointerPressed="MapOverlay_PointerPressed"
                         PointerMoved="MapOverlay_PointerMoved"
                         PointerReleased="MapOverlay_PointerReleased"
                         PointerWheelChanged="MapOverlay_PointerWheelChanged" />
 
-        <!-- TOP STATUS BAR: RTK Status and Diagnostics (ZIndex 20 = above side panels) -->
-        <Border Classes="FloatingPanel"
-                ZIndex="20"
-                Margin="20"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                IsHitTestVisible="True">
-            <panels:StatusBarPanel DataContext="{Binding}"/>
-        </Border>
+        <!-- Row 0: Top status bar area -->
+        <Grid Grid.Row="0" ZIndex="20" Margin="8,8,8,4" ColumnDefinitions="Auto,*,Auto">
+            <Border Classes="FloatingPanel" Grid.Column="0" IsHitTestVisible="True">
+                <panels:StatusBarPanel DataContext="{Binding}"/>
+            </Border>
+            <Border Classes="FloatingPanel" Grid.Column="2" IsHitTestVisible="True"
+                    IsVisible="{Binding HasActiveField}">
+                <panels:FieldStatsPanel DataContext="{Binding}"/>
+            </Border>
+        </Grid>
 
-        <!-- TOP RIGHT: Field Statistics Panel (ZIndex 20 = above side panels) -->
-        <Border Classes="FloatingPanel"
-                ZIndex="20"
-                Margin="20"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                IsHitTestVisible="True"
-                IsVisible="{Binding HasActiveField}">
-            <panels:FieldStatsPanel DataContext="{Binding}"/>
-        </Border>
-
-        <!-- LEFT SIDEBAR: Anchored to left edge, below status bar -->
+        <!-- Row 1: All panels live here, below the status bar -->
+        <Grid Grid.Row="1">
+        <!-- LEFT SIDEBAR: Anchored to left edge -->
         <panels:LeftNavigationPanel x:Name="LeftNavPanel"
                                     ZIndex="9"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Top"
-                                    Margin="8,80,0,0"
+                                    Margin="8,8,0,0"
                                     DataContext="{Binding}"/>
 
         <!-- RIGHT SIDEBAR + Zoom/Compass stacked vertically on right edge -->
@@ -130,6 +122,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                               PointerMoved="RecordedPath_PointerMoved"
                                               PointerReleased="RecordedPath_PointerReleased"/>
         </Canvas>
+        </Grid>
     </Grid>
 
     <!-- Map Banners (Flag Placement, AB Creation) -->
