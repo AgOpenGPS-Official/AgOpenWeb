@@ -202,9 +202,9 @@ public partial class LightBarPanel : UserControl
         double cmPerDot = Math.Max(config.CmPerPixel, 1);
 
         // Convert to mm for EWMA (legacy uses mm internally)
-        // Negate: positive XTE in our system = right of track, but legacy convention
-        // is negative = right of track. Green arrows should point toward the track.
-        double errorMm = -errorMeters * 1000.0;
+        // Sign convention: negative = left of track (green arrows on right = steer right)
+        //                  positive = right of track (red arrows on left = steer left)
+        double errorMm = errorMeters * 1000.0;
 
         // Fast EWMA (50/50) for visual display
         _avgPivDistance = _avgPivDistance * 0.5 + errorMm * 0.5;
