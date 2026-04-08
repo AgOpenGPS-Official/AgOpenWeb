@@ -47,16 +47,6 @@ namespace AgValoniaGPS.Models
         public double SimulatorPanelY { get; set; } = double.NaN;
         public bool SimulatorPanelVisible { get; set; } = false;
 
-        // Navigation panel positions
-        public double LeftNavPanelX { get; set; } = double.NaN;
-        public double LeftNavPanelY { get; set; } = double.NaN;
-        public double RightNavPanelX { get; set; } = double.NaN;
-        public double RightNavPanelY { get; set; } = double.NaN;
-        public double BottomNavPanelX { get; set; } = double.NaN;
-        public double BottomNavPanelY { get; set; } = double.NaN;
-        public double SectionPanelX { get; set; } = double.NaN;
-        public double SectionPanelY { get; set; } = double.NaN;
-
         // Localization
         public string Language { get; set; } = "en";
 
