@@ -926,10 +926,10 @@ public class CoverageMapService : ICoverageMapService
 
                     if (hasPrev)
                     {
-                        // Rasterize quad (prev pair -> current pair) into coverage cells
+                        // Rasterize quad: prevLeft -> prevRight -> currRight -> currLeft (CW winding)
                         totalCells += RasterizeQuad(
                             prevLeftE, prevLeftN, prevRightE, prevRightN,
-                            leftE, leftN, rightE, rightN);
+                            rightE, rightN, leftE, leftN);
                     }
 
                     prevLeftE = leftE; prevLeftN = leftN;
@@ -987,8 +987,6 @@ public class CoverageMapService : ICoverageMapService
                 {
                     if (MarkCellCovered(ce, cn, 0))
                     {
-                        _newCells.Add((ce, cn, 0));
-                        UpdateBounds(ce, cn);
                         count++;
                     }
                 }
