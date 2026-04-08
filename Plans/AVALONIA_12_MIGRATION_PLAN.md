@@ -14,6 +14,20 @@ Avalonia 12 released April 7, 2026 with 3x Android performance improvement. Our 
 - `Avalonia.Labs.Gif` — replaced by static Image (3 usages)
 - `Avalonia.Diagnostics` — replaced by `AvaloniaUI.DiagnosticsSupport`
 
+### Why CommunityToolkit.MVVM Over ReactiveUI
+
+| Factor | ReactiveUI | CommunityToolkit.MVVM |
+|--------|-----------|----------------------|
+| **Avalonia 12 compat** | Ongoing pain — namespace changes, dispatcher crashes, package renamed twice | No Avalonia-specific package — framework agnostic |
+| **Boilerplate** | Manual `RaiseAndSetIfChanged` for every property (614 instances) | `[ObservableProperty]` attribute — source generator writes it |
+| **Commands** | `ReactiveCommand.Create(() => { })` in constructor | `[RelayCommand]` attribute on method — no constructor wiring |
+| **Threading** | Complex Rx scheduler model, multi-dispatcher crashes on Android | Standard `ICommand` — no threading assumptions |
+| **Dependencies** | Pulls in System.Reactive, ReactiveUI, ReactiveUI.Avalonia | Single NuGet package, no Rx dependency |
+| **Learning curve** | Steep (Rx concepts even when unused) | Minimal — standard MVVM patterns |
+| **Maintenance** | ReactiveUI.Avalonia team must track each Avalonia release | Microsoft maintained, no Avalonia coupling |
+| **Performance** | Rx overhead for simple property changes | Source-generated, zero reflection |
+| **Contributor impact** | Must understand Rx to modify commands/properties | Standard C# patterns — lower barrier |
+
 ### ReactiveUI Usage Audit (April 7, 2026)
 
 | Feature | Count | Replacement |
