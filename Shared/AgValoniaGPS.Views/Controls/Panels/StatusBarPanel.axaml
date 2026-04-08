@@ -26,7 +26,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <StackPanel Spacing="6">
         <StackPanel Orientation="Horizontal" Spacing="10">
-            <TextBlock Text="RTK Status" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontSize="14" FontWeight="Bold"/>
             <Ellipse Width="12" Height="12"
                      Fill="{Binding State.Vehicle.FixQualityText, Converter={StaticResource FixQualityToColorConverter}}"/>
             <TextBlock Text="{Binding State.Vehicle.FixQualityText}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="14" FontWeight="Bold"/>

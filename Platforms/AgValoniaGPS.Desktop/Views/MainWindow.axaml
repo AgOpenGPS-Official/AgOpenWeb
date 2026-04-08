@@ -67,26 +67,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
         <!-- Zoom Controls - Bottom Right (for touch/tablet users) -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    ZIndex="15" Margin="0,0,20,20" Spacing="10">
+                    ZIndex="15" Margin="0,0,8,8" Spacing="8">
             <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"/>
             <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"/>
             <!-- Compass / Camera Mode Button -->
             <Button Command="{Binding ToggleCameraModeCommand}"
-                    Width="50" Height="50"
+                    Width="64" Height="64"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    CornerRadius="25" Background="#4A90D9"
+                    CornerRadius="32" Background="#4A90D9"
                     ToolTip.Tip="Camera mode: North-Up / Heading-Up / Free">
                 <TextBlock Text="{Binding CameraModeLabel}" FontSize="20" FontWeight="Bold"
                            Foreground="White" HorizontalAlignment="Center"/>
             </Button>
         </StackPanel>
 
-        <!-- LEFT SIDEBAR: Anchored to left edge -->
+        <!-- LEFT SIDEBAR: Anchored to left edge, below status bar -->
         <panels:LeftNavigationPanel x:Name="LeftNavPanel"
                                     ZIndex="10"
                                     HorizontalAlignment="Left"
-                                    VerticalAlignment="Center"
-                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Top"
+                                    Margin="8,60,0,0"
                                     DataContext="{Binding}"/>
 
         <!-- RIGHT SIDEBAR: Anchored to right edge, grows upward from above zoom buttons -->
