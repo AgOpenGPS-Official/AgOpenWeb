@@ -367,6 +367,16 @@ public partial class MainView : UserControl
                 // Update map with pending Point A marker
                 _mapControl.SetPendingPointA(_viewModel.PendingPointA);
             }
+            else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))
+            {
+                bool hasGuidance = _viewModel.HasActiveTrack
+                    || _viewModel.IsContourModeOn
+                    || _viewModel.State.RecordedPath.IsDrivingRecordedPath;
+                LightBarPanel?.Update(
+                    _viewModel.CrossTrackError / 100.0,
+                    _viewModel.SimulatorSteerAngle,
+                    hasGuidance, false);
+            }
         }
     }
 
