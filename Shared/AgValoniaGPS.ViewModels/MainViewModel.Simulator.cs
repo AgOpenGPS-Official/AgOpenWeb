@@ -102,7 +102,7 @@ public partial class MainViewModel
             SatellitesInUse = simulatedData.SatellitesTracked,
             Hdop = simulatedData.Hdop,
             DifferentialAge = 0.0,
-            Timestamp = DateTime.Now
+            Timestamp = Models.Timing.Clock.Current.Now
         };
 
         // Directly update GPS service (bypasses NMEA parsing like WinForms version does)

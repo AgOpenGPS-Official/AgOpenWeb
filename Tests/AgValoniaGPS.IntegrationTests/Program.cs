@@ -24,6 +24,7 @@ using AgValoniaGPS.Desktop.Views;
 using AgValoniaGPS.IntegrationTests;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.Timing;
 using AgValoniaGPS.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -41,6 +42,7 @@ sealed class Program
     static bool _uturnTestMode = false;
     static bool _tileTestMode = false;
     static bool _recPathTestMode = false;
+    static double _timeScale = 1.0;
 
     [STAThread]
     public static int Main(string[] args)
@@ -51,6 +53,19 @@ sealed class Program
         _uturnTestMode = args.Contains("--uturn-test");
         _tileTestMode = args.Contains("--tile-test");
         _recPathTestMode = args.Contains("--recpath-test");
+
+        // Parse --fast flag for accelerated time (e.g. --fast or --fast=10)
+        var fastArg = args.FirstOrDefault(a => a.StartsWith("--fast"));
+        if (fastArg != null)
+        {
+            if (fastArg.Contains('='))
+                _timeScale = double.Parse(fastArg.Split('=')[1]);
+            else
+                _timeScale = 10.0;
+
+            Clock.Set(new SystemClock { TimeScale = _timeScale });
+            Console.WriteLine($"[IntTest] Fast mode: {_timeScale}x time scale");
+        }
 
         // Set up isolated test data
         var testDataDir = Path.Combine(AppContext.BaseDirectory, "TestData");
@@ -94,7 +109,7 @@ sealed class Program
             builder.WithInterFont()
                 .UseReactiveUI()
                 .StartWithClassicDesktopLifetime(
-                    args.Where(a => a != "--headless").ToArray());
+                    args.Where(a => a != "--headless" && !a.StartsWith("--fast")).ToArray());
         }
         catch (Exception ex)
         {
@@ -105,6 +120,7 @@ sealed class Program
         {
             App.ConfigureTestServices = null;
             App.OnAppReady = null;
+            Clock.Reset();
             try { Directory.Delete(_tempDir, true); } catch { }
         }
 
@@ -1239,10 +1255,12 @@ if frames:
 
     /// <summary>
     /// Delay that also pumps the UI dispatcher.
+    /// When --fast is active, delays are scaled down proportionally.
     /// </summary>
     static async Task Delay(int ms)
     {
-        await Task.Delay(ms);
+        int scaledMs = Math.Max(1, (int)(ms / _timeScale));
+        await Task.Delay(scaledMs);
         Dispatcher.UIThread.RunJobs();
     }
 
