@@ -49,33 +49,38 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <controls:DrawingContextMapControl x:Name="MapControl" Margin="5"
                                                    IsGridVisible="{Binding IsGridOn}"/>
 
-                <!-- All Draggable Panels in single Canvas (must be in same Canvas for consistent drag bounds) -->
-                <Canvas ZIndex="10">
-                    <!-- Left Navigation Panel (Draggable & Rotatable) -->
-                    <panels:LeftNavigationPanel x:Name="LeftNavPanel"
-                                                Canvas.Left="20" Canvas.Top="50"
-                                                DataContext="{Binding}"/>
+                <!-- LEFT SIDEBAR: Anchored to left edge -->
+                <panels:LeftNavigationPanel x:Name="LeftNavPanel"
+                                            ZIndex="10"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            Margin="8,0,0,0"
+                                            DataContext="{Binding}"/>
 
-                    <!-- Right Navigation Panel (Draggable & Rotatable) -->
-                    <panels:RightNavigationPanel x:Name="RightNavPanel"
-                                                 Canvas.Left="600" Canvas.Top="50"
-                                                 DataContext="{Binding}"/>
+                <!-- RIGHT SIDEBAR: Anchored to right edge -->
+                <panels:RightNavigationPanel x:Name="RightNavPanel"
+                                             ZIndex="10"
+                                             HorizontalAlignment="Right"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0"
+                                             DataContext="{Binding}"/>
 
-                    <!-- Section Control Panel (Draggable) -->
+                <!-- BOTTOM: Section control stacked above bottom navigation -->
+                <StackPanel ZIndex="10"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,8"
+                            Spacing="4">
                     <panels:SectionControlPanel x:Name="SectionControlPanel"
-                                                Canvas.Left="200" Canvas.Top="500"
-                                                Cursor="Hand"
-                                                DataContext="{Binding}"
-                                                PointerPressed="SectionControl_PointerPressed"
-                                                PointerMoved="SectionControl_PointerMoved"
-                                                PointerReleased="SectionControl_PointerReleased"/>
-
-                    <!-- Bottom Navigation Panel (Draggable & Rotatable) -->
+                                                HorizontalAlignment="Center"
+                                                DataContext="{Binding}"/>
                     <panels:BottomNavigationPanel x:Name="BottomNavPanel"
-                                                  Canvas.Left="200" Canvas.Top="420"
+                                                  HorizontalAlignment="Center"
                                                   DataContext="{Binding}"/>
+                </StackPanel>
 
-                    <!-- Chart Panels (Draggable) -->
+                <!-- Floating/Draggable Panels (charts, recorded path) -->
+                <Canvas ZIndex="10">
                     <panels:SteerChartPanel x:Name="SteerChartPanel"
                                             Canvas.Left="300" Canvas.Top="20"
                                             DataContext="{Binding}"/>

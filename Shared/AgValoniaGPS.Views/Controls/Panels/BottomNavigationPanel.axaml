@@ -104,8 +104,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <!-- Main container -->
     <Canvas ClipToBounds="False" Background="{x:Null}">
-        <!-- Main bottom bar - negative Top positions above bottom edge -->
-        <Border x:Name="MainPanel" Classes="FloatingPanel" Canvas.Left="0" Canvas.Top="-78">
+        <!-- Main bottom bar -->
+        <Border x:Name="MainPanel" Classes="FloatingPanel" Canvas.Left="0" Canvas.Top="0">
             <StackPanel x:Name="ButtonStack" Spacing="4" Orientation="Horizontal">
 
                 <!-- Touch Handle: Tap to rotate, Hold to drag -->

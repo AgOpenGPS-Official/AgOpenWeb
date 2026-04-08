@@ -41,10 +41,8 @@ public partial class MainWindow : Window
 {
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     private ISharedMapControl? MapControl;
-    private bool _isDraggingSection = false;
     private bool _isDraggingRecPath = false;
     private Avalonia.Point _dragStartPoint;
-    private const double TapDistanceThreshold = 5.0;
 
     public MainWindow()
     {
@@ -110,22 +108,7 @@ public partial class MainWindow : Window
         // Save window settings on close
         this.Closing += MainWindow_Closing;
 
-        // Wire up shared LeftNavigationPanel drag events
-        // All sub-panels are now children of LeftNavPanel, so only one drag handler is needed
-        if (LeftNavPanel != null)
-        {
-            LeftNavPanel.DragMoved += LeftNavPanel_DragMoved;
-        }
-
-        // Wire up RightNavigationPanel drag events
-        if (RightNavPanel != null)
-        {
-            RightNavPanel.DragMoved += RightNavPanel_DragMoved;
-        }
-
-        // Note: BottomNavigationPanel is now a fixed-position panel without drag support
-
-        // Wire up chart panel drag events
+        // Wire up chart panel drag events (charts remain draggable)
         if (SteerChartPanel != null)
             SteerChartPanel.DragMoved += (_, delta) => MovePanel(SteerChartPanel, delta);
         if (HeadingChartPanel != null)
@@ -316,33 +299,7 @@ public partial class MainWindow : Window
             WindowState = WindowState.Maximized;
         }
 
-        // Restore panel positions
-
-        if (!double.IsNaN(display.LeftNavPanelX) && !double.IsNaN(display.LeftNavPanelY) && LeftNavPanel != null)
-        {
-            Canvas.SetLeft(LeftNavPanel, display.LeftNavPanelX);
-            Canvas.SetTop(LeftNavPanel, display.LeftNavPanelY);
-        }
-
-        if (!double.IsNaN(display.RightNavPanelX) && !double.IsNaN(display.RightNavPanelY) && RightNavPanel != null)
-        {
-            // Clear Canvas.Right (set in XAML) when restoring to Canvas.Left position
-            RightNavPanel.ClearValue(Canvas.RightProperty);
-            Canvas.SetLeft(RightNavPanel, display.RightNavPanelX);
-            Canvas.SetTop(RightNavPanel, display.RightNavPanelY);
-        }
-
-        if (!double.IsNaN(display.BottomNavPanelX) && !double.IsNaN(display.BottomNavPanelY) && BottomNavPanel != null)
-        {
-            Canvas.SetLeft(BottomNavPanel, display.BottomNavPanelX);
-            Canvas.SetTop(BottomNavPanel, display.BottomNavPanelY);
-        }
-
-        if (!double.IsNaN(display.SectionPanelX) && !double.IsNaN(display.SectionPanelY) && SectionControlPanel != null)
-        {
-            Canvas.SetLeft(SectionControlPanel, display.SectionPanelX);
-            Canvas.SetTop(SectionControlPanel, display.SectionPanelY);
-        }
+        // Panel positions are now anchored (no saved positions needed)
     }
 
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -361,31 +318,6 @@ public partial class MainWindow : Window
             display.WindowHeight = Height;
             display.WindowX = Position.X;
             display.WindowY = Position.Y;
-        }
-
-        // Save panel positions
-        if (LeftNavPanel != null)
-        {
-            display.LeftNavPanelX = Canvas.GetLeft(LeftNavPanel);
-            display.LeftNavPanelY = Canvas.GetTop(LeftNavPanel);
-        }
-
-        if (RightNavPanel != null)
-        {
-            display.RightNavPanelX = Canvas.GetLeft(RightNavPanel);
-            display.RightNavPanelY = Canvas.GetTop(RightNavPanel);
-        }
-
-        if (BottomNavPanel != null)
-        {
-            display.BottomNavPanelX = Canvas.GetLeft(BottomNavPanel);
-            display.BottomNavPanelY = Canvas.GetTop(BottomNavPanel);
-        }
-
-        if (SectionControlPanel != null)
-        {
-            display.SectionPanelX = Canvas.GetLeft(SectionControlPanel);
-            display.SectionPanelY = Canvas.GetTop(SectionControlPanel);
         }
 
         // Save UI state to ConfigurationStore
@@ -458,37 +390,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_PropertyChanged(object? sender, Avalonia.AvaloniaPropertyChangedEventArgs e)
     {
-        if (e.Property.Name == nameof(Bounds))
-        {
-            // Constrain section control to new window bounds
-            if (SectionControlPanel != null)
-            {
-                double currentLeft = Canvas.GetLeft(SectionControlPanel);
-                double currentTop = Canvas.GetTop(SectionControlPanel);
-
-                if (double.IsNaN(currentLeft)) currentLeft = 900; // Default initial position
-                if (double.IsNaN(currentTop)) currentTop = 600;
-
-                double maxLeft = Bounds.Width - SectionControlPanel.Bounds.Width;
-                double maxTop = Bounds.Height - SectionControlPanel.Bounds.Height;
-
-                double newLeft = Math.Clamp(currentLeft, 0, Math.Max(0, maxLeft));
-                double newTop = Math.Clamp(currentTop, 0, Math.Max(0, maxTop));
-
-                Canvas.SetLeft(SectionControlPanel, newLeft);
-                Canvas.SetTop(SectionControlPanel, newTop);
-            }
-
-            // Constrain all panels using shared helper
-            PanelConstraintHelper.ConstrainPanelWithExtent(LeftNavPanel, Bounds.Width, Bounds.Height,
-                subPanelExtent: 410, defaultLeft: 20, defaultTop: 100);
-            PanelConstraintHelper.ConstrainLeftTopPanel(BottomNavPanel, Bounds.Width, Bounds.Height,
-                defaultLeft: 200, defaultTop: 600);
-            PanelConstraintHelper.ConstrainRightTopPanel(RightNavPanel, Bounds.Width, Bounds.Height,
-                defaultTop: 100);
-            PanelConstraintHelper.ConstrainSubPanels(LeftNavPanel, Bounds.Width, Bounds.Height,
-                PanelConstraintHelper.LeftNavSubPanelNames);
-        }
+        // Panels are now anchored via alignment - no constraint logic needed
     }
 
     // Removed: BtnNtripConnect_Click, BtnNtripDisconnect_Click, BtnDataIO_Click
@@ -503,51 +405,7 @@ public partial class MainWindow : Window
     // Removed: BtnIsoXml_Click, BtnKml_Click, BtnDriveIn_Click, BtnResumeField_Click
     // These are now handled by ViewModel commands
 
-    // Drag functionality for Section Control
-    private void SectionControl_PointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (sender is Control control)
-        {
-            _isDraggingSection = true;
-            _dragStartPoint = e.GetPosition(this);
-            e.Pointer.Capture(control);
-        }
-    }
-
-    private void SectionControl_PointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (_isDraggingSection && sender is Control control)
-        {
-            var currentPoint = e.GetPosition(this);
-            var delta = currentPoint - _dragStartPoint;
-
-            // Calculate new position
-            double newLeft = Canvas.GetLeft(control) + delta.X;
-            double newTop = Canvas.GetTop(control) + delta.Y;
-
-            // Constrain to window bounds
-            double maxLeft = Bounds.Width - control.Bounds.Width;
-            double maxTop = Bounds.Height - control.Bounds.Height;
-
-            newLeft = Math.Clamp(newLeft, 0, maxLeft);
-            newTop = Math.Clamp(newTop, 0, maxTop);
-
-            // Update position
-            Canvas.SetLeft(control, newLeft);
-            Canvas.SetTop(control, newTop);
-
-            _dragStartPoint = currentPoint;
-        }
-    }
-
-    private void SectionControl_PointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        if (_isDraggingSection)
-        {
-            _isDraggingSection = false;
-            e.Pointer.Capture(null);
-        }
-    }
+    // Section control is now anchored (no drag needed)
 
     // --- Recorded Path Panel Drag ---
     private void RecordedPath_PointerPressed(object? sender, PointerPressedEventArgs e)
@@ -795,111 +653,29 @@ public partial class MainWindow : Window
         }
     }
 
-    // Handler for shared LeftNavigationPanel drag events
-    private void LeftNavPanel_DragMoved(object? sender, Point newPosition)
-    {
-        if (LeftNavPanel == null) return;
-
-        // Constrain to window bounds
-        // Account for sub-panels that extend ~410px to the right (offset 90 + width ~320)
-        const double subPanelExtent = 410;
-        double maxLeft = Bounds.Width - LeftNavPanel.Bounds.Width - subPanelExtent;
-        double maxTop = Bounds.Height - LeftNavPanel.Bounds.Height;
-
-        double newLeft = Math.Clamp(newPosition.X, 0, Math.Max(0, maxLeft));
-        double newTop = Math.Clamp(newPosition.Y, 0, Math.Max(0, maxTop));
-
-        // Update position
-        Canvas.SetLeft(LeftNavPanel, newLeft);
-        Canvas.SetTop(LeftNavPanel, newTop);
-    }
-
-    // Handler for shared RightNavigationPanel drag events
-    private void RightNavPanel_DragMoved(object? sender, Point newPosition)
-    {
-        if (RightNavPanel == null) return;
-
-        // Clear the Right property on first drag since we're switching to Left
-        if (!double.IsNaN(Canvas.GetRight(RightNavPanel)))
-        {
-            RightNavPanel.ClearValue(Canvas.RightProperty);
-        }
-
-        // Constrain to window bounds
-        double maxLeft = Bounds.Width - RightNavPanel.Bounds.Width;
-        double maxTop = Bounds.Height - RightNavPanel.Bounds.Height;
-
-        double newLeft = Math.Clamp(newPosition.X, 0, Math.Max(0, maxLeft));
-        double newTop = Math.Clamp(newPosition.Y, 0, Math.Max(0, maxTop));
-
-        // Update position
-        Canvas.SetLeft(RightNavPanel, newLeft);
-        Canvas.SetTop(RightNavPanel, newTop);
-    }
-
-    // NOTE: BottomNavigationPanel is now a fixed-position panel with flyout menu
-    // (no longer draggable - follows AgOpenGPS pattern)
+    // Left, Right, Bottom panels are now anchored (no drag handlers needed)
 
     // Helper method to check if pointer is over any UI panel
     private bool IsPointerOverUIPanel(PointerEventArgs e)
     {
         var position = e.GetPosition(this);
 
-        // Check left navigation panel
-        if (LeftNavPanel != null && LeftNavPanel.IsVisible && LeftNavPanel.Bounds.Width > 0 && LeftNavPanel.Bounds.Height > 0)
+        // Check anchored panels using their actual rendered bounds
+        Control[] panels = { LeftNavPanel, RightNavPanel, SectionControlPanel, BottomNavPanel };
+        foreach (var panel in panels)
         {
-            double left = Canvas.GetLeft(LeftNavPanel);
-            double top = Canvas.GetTop(LeftNavPanel);
-
-            if (double.IsNaN(left)) left = 20;
-            if (double.IsNaN(top)) top = 100;
-
-            var panelBounds = new Rect(left, top, LeftNavPanel.Bounds.Width, LeftNavPanel.Bounds.Height);
-
-            if (panelBounds.Contains(position))
+            if (panel?.IsVisible == true && panel.Bounds.Width > 0)
             {
-                return true;
+                // TranslatePoint converts from panel-local to window coordinates
+                var topLeft = panel.TranslatePoint(new Point(0, 0), this);
+                if (topLeft.HasValue)
+                {
+                    var rect = new Rect(topLeft.Value, panel.Bounds.Size);
+                    if (rect.Contains(position))
+                        return true;
+                }
             }
         }
-
-        // Check section control panel
-        if (SectionControlPanel != null && SectionControlPanel.IsVisible && SectionControlPanel.Bounds.Width > 0 && SectionControlPanel.Bounds.Height > 0)
-        {
-            double left = Canvas.GetLeft(SectionControlPanel);
-            double top = Canvas.GetTop(SectionControlPanel);
-
-            if (double.IsNaN(left)) left = 900;
-            if (double.IsNaN(top)) top = 600;
-
-            var panelBounds = new Rect(left, top, SectionControlPanel.Bounds.Width, SectionControlPanel.Bounds.Height);
-
-            if (panelBounds.Contains(position))
-            {
-                return true;
-            }
-        }
-
-        // Check bottom navigation panel
-        if (BottomNavPanel != null && BottomNavPanel.IsVisible && BottomNavPanel.Bounds.Width > 0 && BottomNavPanel.Bounds.Height > 0)
-        {
-            double left = Canvas.GetLeft(BottomNavPanel);
-            double top = Canvas.GetTop(BottomNavPanel);
-
-            if (double.IsNaN(left)) left = 400;
-            if (double.IsNaN(top)) top = 650;
-
-            var panelBounds = new Rect(left, top, BottomNavPanel.Bounds.Width, BottomNavPanel.Bounds.Height);
-
-            if (panelBounds.Contains(position))
-            {
-                return true;
-            }
-        }
-
-        // NOTE: All sub-panels (FileMenu, ViewSettings, Tools, Configuration,
-        // JobMenu, FieldTools, Simulator, BoundaryRecording, BoundaryPlayer)
-        // are now children of LeftNavPanel, so checking LeftNavPanel bounds
-        // above is sufficient to cover all of them.
 
         return false;
     }
