@@ -62,7 +62,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                              ZIndex="10"
                                              HorizontalAlignment="Right"
                                              VerticalAlignment="Bottom"
-                                             Margin="0,0,8,200"
+                                             Margin="0,0,8,224"
                                              DataContext="{Binding}"/>
 
                 <!-- BOTTOM: Section control stacked above bottom navigation -->
