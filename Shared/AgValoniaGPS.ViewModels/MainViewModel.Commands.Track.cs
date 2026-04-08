@@ -847,11 +847,11 @@ public partial class MainViewModel
                     return;
                 }
 
-                // Check for headland
-                if (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3)
+                // Headland is only required when U-turns are enabled
+                if (IsYouTurnEnabled && (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3))
                 {
                     ShowErrorDialog("Missing Headland",
-                        "AutoSteer requires a headland boundary for U-turn detection.\n\nPlease create a headland using the Headland button in the boundary panel.");
+                        "U-Turn guidance requires a headland boundary.\n\nPlease create a headland using the Headland button in the boundary panel, or disable U-turns.");
                     return;
                 }
             }
