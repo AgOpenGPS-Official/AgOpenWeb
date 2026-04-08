@@ -2,40 +2,155 @@
 
 ## Context
 
-Avalonia 12 released April 7, 2026 with 3x Android performance improvement. Our test confirmed Android idle FPS jumps from 18 → 29-30. However, the upgrade exposed three blocking issues:
+Avalonia 12 released April 7, 2026 with 3x Android performance improvement. Our test confirmed Android idle FPS jumps from 18 → 29-30. However, the upgrade exposed blocking issues with ReactiveUI's threading model under Avalonia 12's multi-dispatcher architecture.
 
-1. **ReactiveUI threading crash** — `CanExecuteChanged` fires on non-UI thread, crashes on button tap
-2. **FPS drops with field loaded** — 29 → 14 → 8 FPS as coverage painting starts
-3. **ANR dialogs** — heavy bitmap work on UI thread blocks Android message queue
+**Decision**: Replace ReactiveUI with CommunityToolkit.MVVM as part of this migration. This eliminates the threading crash, removes the Avalonia-ReactiveUI version coupling, and reduces the dependency stack.
 
-Branch `feature/avalonia-12-upgrade` has the package updates done but these issues remain.
+### Dependencies Being Removed
+- `Avalonia.ReactiveUI` / `ReactiveUI.Avalonia` — replaced by `CommunityToolkit.Mvvm`
+- `ReactiveUI` (transitive) — no longer needed
+- `System.Reactive` (transitive) — no longer needed
+- `Avalonia.Labs.Controls` — unused
+- `Avalonia.Labs.Gif` — replaced by static Image (3 usages)
+- `Avalonia.Diagnostics` — replaced by `AvaloniaUI.DiagnosticsSupport`
+
+### ReactiveUI Usage Audit (April 7, 2026)
+
+| Feature | Count | Replacement |
+|---------|-------|-------------|
+| `ReactiveCommand.Create` | 469 | `[RelayCommand]` attribute |
+| `RaiseAndSetIfChanged` | 614 | `[ObservableProperty]` or `SetProperty()` |
+| `: ReactiveObject` | 31 classes | `: ObservableObject` |
+| `WhenAnyValue` | 4 (WizardViewModel only) | `[RelayCommand(CanExecute=...)]` |
+| `WhenActivated` | 0 | N/A |
+| Complex Rx pipelines | 0 | N/A |
+| Subjects/BehaviorSubjects | 0 | N/A |
+
+Usage is shallow — ReactiveUI is serving as a fancy INotifyPropertyChanged + ICommand library.
 
 ## Root Cause Analysis
 
-### Threading Crash
-The ViewModel is created inside Android's `MainViewFactory` callback. In Avalonia 12's multi-dispatcher model, `DispatcherTimer` and `SynchronizationContext` bind to the **current thread's dispatcher**, not the UI thread. If the factory runs on a different thread, all `ReactiveCommand` canExecute observables fire on that thread, then try to access UI controls → crash.
+### Threading Crash (Eliminated by CommunityToolkit switch)
+ReactiveUI's `ReactiveCommand` uses Rx schedulers for `CanExecuteChanged` notifications. In Avalonia 12's multi-dispatcher model, these fire on the wrong thread → crash. CommunityToolkit's `RelayCommand` uses standard `ICommand` with no scheduler dependency — no threading issue.
 
-**Fix**: Ensure ViewModel creation happens on the UI thread. Use `ReactiveWindow`/`ReactiveUserControl` base classes which handle dispatcher binding properly via `WhenActivated`.
+### FPS Drops with Field Loaded
+Coverage bitmap updates (`UpdateCoverageBitmapIncremental`, LOD rebuilds) run synchronously inside `Render()`. On Avalonia 12's new compositor, this blocks the render pipeline.
 
-### FPS Drops
-Our `DrawingContextMapControl` uses a `DispatcherTimer` (33ms) calling `InvalidateVisual()` every frame. Coverage bitmap updates (`UpdateCoverageBitmapIncremental`, LOD rebuilds) happen synchronously inside the `Render()` method. On Avalonia 12's new compositor, this blocks the render pipeline more aggressively than Avalonia 11.
-
-**Fix**: Move bitmap updates to background, use `Dispatcher.UIThread.Post` for dirty flagging, throttle LOD rebuilds further.
+**Fix**: Move bitmap updates to background thread, post dirty flag to UI thread.
 
 ### ANR Dialogs
-Android's Activity watchdog triggers ANR when the UI thread is blocked for >5 seconds. Our coverage bitmap full rebuilds and LOD regeneration can take hundreds of milliseconds, accumulating with other render work.
-
-**Fix**: Same as FPS — move heavy work off UI thread.
+Same root cause as FPS — heavy work on UI thread blocks Android's message queue.
 
 ## Phased Approach
 
-### Phase 1: Prep Work on Avalonia 11 (Safe, No Risk)
+### Phase 1: CommunityToolkit.MVVM Migration (On Avalonia 11)
 
-These changes work on both Avalonia 11 and 12. Do them on `develop` first.
+Do this first on `develop`. It works on Avalonia 11 and eliminates the ReactiveUI blocker for Avalonia 12.
 
-#### 1A: Fix Compiled Bindings in Views Project
+#### 1A: Add CommunityToolkit.MVVM Package
 
-Enable `AvaloniaUseCompiledBindingsByDefault` in `Shared/AgValoniaGPS.Views/AgValoniaGPS.Views.csproj`. Fix the ~8 AXAML files that need `x:DataType`:
+Add `CommunityToolkit.Mvvm` to ViewModels and Models projects. Keep ReactiveUI temporarily — migrate incrementally.
+
+```xml
+<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+```
+
+#### 1B: Migrate Model Classes (24 classes)
+
+Convert `ReactiveObject` → `ObservableObject`, `RaiseAndSetIfChanged` → `SetProperty` or `[ObservableProperty]`.
+
+**Files** in `Shared/AgValoniaGPS.Models/Configuration/` and `Shared/AgValoniaGPS.Models/State/`:
+- VehicleConfig, ToolConfig, GuidanceConfig, AutoSteerConfig, DisplayConfig
+- HotkeyConfig, NtripConfig, UDPConfig
+- GuidanceState, FieldState, VehicleState, UIState, RecordedPathState
+- ConfigurationStore
+
+**Pattern**:
+```csharp
+// Before (ReactiveUI)
+public class VehicleConfig : ReactiveObject
+{
+    private double _antennaHeight;
+    public double AntennaHeight
+    {
+        get => _antennaHeight;
+        set => this.RaiseAndSetIfChanged(ref _antennaHeight, value);
+    }
+}
+
+// After (CommunityToolkit — source generator)
+public partial class VehicleConfig : ObservableObject
+{
+    [ObservableProperty]
+    private double _antennaHeight;
+}
+```
+
+Note: `[ObservableProperty]` generates the public property, PropertyChanged, and PropertyChanging automatically. The class must be `partial`.
+
+#### 1C: Migrate ViewModel Commands (7 ViewModel classes)
+
+Convert `ReactiveCommand` → `[RelayCommand]` attributes.
+
+**Files** in `Shared/AgValoniaGPS.ViewModels/`:
+- `MainViewModel.cs` + all `MainViewModel.Commands.*.cs` partials (~469 commands)
+- `ConfigurationViewModel.cs`
+- `AutoSteerConfigViewModel.cs`
+- `Wizards/WizardViewModel.cs` (most complex — has canExecute)
+
+**Pattern for simple commands** (vast majority):
+```csharp
+// Before
+public ReactiveCommand<Unit, Unit> OpenFieldCommand { get; private set; }
+// In constructor:
+OpenFieldCommand = ReactiveCommand.Create(() => State.UI.ShowDialog(DialogType.FieldSelection));
+
+// After
+[RelayCommand]
+private void OpenField() => State.UI.ShowDialog(DialogType.FieldSelection);
+```
+
+**Pattern for async commands**:
+```csharp
+// Before
+SaveCommand = ReactiveCommand.CreateFromTask(async () => { ... });
+
+// After
+[RelayCommand]
+private async Task Save() { ... }
+```
+
+**Pattern for commands with canExecute** (4 in WizardViewModel):
+```csharp
+// Before
+var canGoNext = this.WhenAnyValue(x => x.CanGoNext).ObserveOn(RxApp.MainThreadScheduler);
+NextCommand = ReactiveCommand.CreateFromTask(GoNextAsync, canGoNext);
+
+// After
+[RelayCommand(CanExecute = nameof(CanGoNext))]
+private async Task GoNext() { ... }
+// Call NotifyCanExecuteChanged() when CanGoNext changes
+```
+
+#### 1D: Update AXAML Command Bindings
+
+AXAML bindings change slightly — ReactiveCommand properties are typically named `SomeCommand`, while `[RelayCommand]` generates `SomeCommand` from a method named `Some`. Verify naming matches.
+
+If the method is `OpenField()`, the generated command is `OpenFieldCommand` — same convention we already use. **Most AXAML should need zero changes.**
+
+#### 1E: Remove ReactiveUI Packages
+
+After all classes are migrated:
+- Remove `ReactiveUI` from ViewModels csproj
+- Remove `Avalonia.ReactiveUI` from all platform csprojs
+- Remove `using ReactiveUI` from all files
+- Remove `.UseReactiveUI()` from Program.cs and AppDelegate.cs
+
+### Phase 2: Compiled Bindings & Rendering (On Avalonia 11)
+
+#### 2A: Fix Compiled Bindings in Views Project
+
+Enable `AvaloniaUseCompiledBindingsByDefault` in Views csproj. Fix ~8 AXAML files missing `x:DataType`:
 
 | File | Issue |
 |------|-------|
@@ -48,106 +163,46 @@ Enable `AvaloniaUseCompiledBindingsByDefault` in `Shared/AgValoniaGPS.Views/AgVa
 | `HelpDialogPanel.axaml` | Missing x:DataType |
 | `LanguageDialogPanel.axaml` | Missing x:DataType |
 
-**Benefit**: Performance improvement on Avalonia 11, required for Avalonia 12.
-
-#### 1B: Move Coverage Bitmap Updates Off UI Thread
+#### 2B: Move Coverage Bitmap Updates Off UI Thread
 
 Current: `UpdateCoverageBitmapIfNeeded()` runs inside `Render()` → blocks render.
 
 Change to:
 1. `MarkCoverageDirty()` sets a flag
 2. Background task picks up the flag, does the bitmap update
-3. When done, `Dispatcher.UIThread.Post(() => InvalidateVisual())` to trigger re-render
+3. When done, `Dispatcher.UIThread.Post(() => InvalidateVisual())`
 4. LOD rebuilds also move to background
 
-**Files**: `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs`
+**File**: `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs`
 
-**Benefit**: Eliminates ANR on both Avalonia 11 and 12. Improves FPS on all platforms.
+### Phase 3: Avalonia 12 Package Swap
 
-#### 1C: Audit DispatcherTimer Creation
-
-Ensure all `DispatcherTimer` instances are created on the UI thread. In Avalonia 12, timers bind to the creating thread's dispatcher.
-
-**Locations to audit**:
-- `DrawingContextMapControl.cs` — render timer (line 534)
-- `ChartControl.cs` — chart render timer (line 81)
-- `MainViewModel.ViewSettings.cs` — CurrentTime timer
-
-All are currently created in constructors which should be on the UI thread, but verify for Android's `MainViewFactory` path.
-
-### Phase 2: ReactiveUI Modernization (Safe on Avalonia 11)
-
-#### 2A: Switch View Base Classes
-
-| Platform | Current | Target |
-|----------|---------|--------|
-| Desktop MainWindow | `Window` | `ReactiveWindow<MainViewModel>` |
-| iOS MainView | `UserControl` | `ReactiveUserControl<MainViewModel>` |
-| Android MainView | `UserControl` | `ReactiveUserControl<MainViewModel>` |
-
-**Impact**: `ReactiveWindow<T>` adds a `ViewModel` property synced to `DataContext`. All existing `DataContext` binding still works — `ViewModel` is just a typed accessor.
-
-**Key change**: Add `WhenActivated` blocks in code-behind for proper subscription lifecycle:
-```csharp
-public MainWindow()
-{
-    InitializeComponent();
-    this.WhenActivated(disposables =>
-    {
-        // Subscriptions that need cleanup go here
-        // They auto-dispose when the view deactivates
-    });
-}
-```
-
-#### 2B: Ensure ViewModel Creation on UI Thread
-
-For Android's `IActivityApplicationLifetime` pattern, create the ViewModel in `OnFrameworkInitializationCompleted` (guaranteed UI thread), not inside `MainViewFactory`:
-
-```csharp
-// In App.axaml.cs OnFrameworkInitializationCompleted:
-var viewModel = _serviceProvider.GetRequiredService<MainViewModel>(); // UI thread
-
-if (ApplicationLifetime is IActivityApplicationLifetime activityLifetime)
-{
-    activityLifetime.MainViewFactory = () =>
-    {
-        // Factory only creates the View, ViewModel already exists
-        return new MainView(viewModel, mapService, coverageService);
-    };
-}
-```
-
-**Files**: `Platforms/AgValoniaGPS.Android/App.axaml.cs`
-
-### Phase 3: Package Upgrade (The Actual Switch)
-
-Most of this is already done on `feature/avalonia-12-upgrade`. Cherry-pick or re-apply:
+With ReactiveUI gone and compiled bindings working, this phase is mechanical.
 
 #### 3A: Package Updates
 - All Avalonia packages: 11.3.x → 12.0.0
-- `Avalonia.ReactiveUI` → `ReactiveUI.Avalonia` 11.4.12
 - `Avalonia.Diagnostics` → `AvaloniaUI.DiagnosticsSupport` 2.2.0
 - NUnit: 4.3.2 → 4.5.1
 - Remove `Avalonia.Labs.Controls` and `Avalonia.Labs.Gif`
 - Remove explicit SkiaSharp reference from iOS
 
-#### 3B: Code Changes (already done on branch)
-- Remove `DisableAvaloniaDataAnnotationValidation()` from Desktop and iOS
-- `new Binding(...)` → `new ReflectionBinding(...)` in LocalizeExtension
-- `using Avalonia.ReactiveUI` → `using ReactiveUI.Avalonia`
-- `.UseReactiveUI()` → `.UseReactiveUI(_ => { })`
-- GifImage → static Image in ToolTimingSubTab
+#### 3B: Code Changes
+- Remove `DisableAvaloniaDataAnnotationValidation()` from Desktop and iOS (binding plugins removed in Av12)
+- `new Binding(...)` → `new ReflectionBinding(...)` in LocalizeExtension.cs
+- GifImage → static Image in ToolTimingSubTab.axaml
 
-#### 3C: Android Init Migration (already done on branch)
+#### 3C: Android Init Migration
 - `AvaloniaMainActivity<App>` → `AvaloniaMainActivity` (non-generic)
 - New `AndroidApp.cs` with `AvaloniaAndroidApplication<App>`
 - `ISingleViewApplicationLifetime` → `IActivityApplicationLifetime` + `MainViewFactory`
-- Remove `CustomizeAppBuilder` from `MainActivity`, add to `AndroidApp`
+- ViewModel creation stays in `OnFrameworkInitializationCompleted` (UI thread), factory just wraps it
 
-### Phase 4: Validation & Optimization
+#### 3D: DispatcherTimer Audit
+Verify all timers created on UI thread. In Avalonia 12, `DispatcherTimer` binds to creating thread's dispatcher.
 
-#### 4A: Platform Testing Matrix
+### Phase 4: Validation
+
+#### Platform Testing Matrix
 
 | Test | Desktop | iPad | Android |
 |------|---------|------|---------|
@@ -160,37 +215,32 @@ Most of this is already done on `feature/avalonia-12-upgrade`. Cherry-pick or re
 | AutoSteer guidance | | | |
 | Day/Night toggle | | | |
 | Zoom all levels | | | |
-| FPS idle (no field) | | | |
-| FPS with field painting | | | |
 
-#### 4B: Android FPS Benchmarks
+#### Android FPS Benchmarks
 
 | Scenario | Avalonia 11 | Avalonia 12 Target |
 |----------|-------------|-------------------|
 | Idle, no field | 18-19 | 28-30 |
-| Field loaded, no painting | 14-15 | 24+ |
-| Actively painting coverage | 14-15 | 20+ |
-| Zoomed out (LOD active) | 14-15 | 24+ |
-
-#### 4C: Future Optimizations (Post-Migration)
-- Use `AvaloniaObject.Dispatcher` instead of `Dispatcher.UIThread` for control-level code
-- Investigate Avalonia 12 composition API for async bitmap rendering
-- Consider `ReactiveUI.SourceGenerators` for command/property boilerplate
-- Re-evaluate coverage bitmap approach with Avalonia 12's new Skia pipeline
+| Field loaded | 14-15 | 24+ |
+| Painting coverage | 14-15 | 20+ |
+| Zoomed out (LOD) | 14-15 | 24+ |
 
 ## File Change Summary
 
-| Phase | Files | Risk |
-|-------|-------|------|
-| 1A | ~8 AXAML files + 1 csproj | Low — adding x:DataType |
-| 1B | DrawingContextMapControl.cs | Medium — async bitmap updates |
-| 1C | 3 files — verify only | None |
-| 2A | MainWindow.axaml.cs, MainView.axaml.cs (×2) | Medium — base class change |
-| 2B | Android App.axaml.cs | Low — move ViewModel creation |
-| 3A | 7 csproj files | Low — version bumps |
-| 3B | 5 C# files | Low — already done on branch |
-| 3C | 3 Android files | Low — already done on branch |
+| Phase | Files | Risk | Can Revert |
+|-------|-------|------|-----------|
+| 1A | 2 csproj | None | Yes |
+| 1B | ~24 model classes | Low — mechanical | Yes |
+| 1C | ~7 ViewModel files | Medium — many commands | Yes |
+| 1D | Verify AXAML only | None | N/A |
+| 1E | ~10 csproj + cs files | Low — remove packages | Yes |
+| 2A | ~8 AXAML + 1 csproj | Low | Yes |
+| 2B | DrawingContextMapControl.cs | Medium | Yes |
+| 3A-D | ~15 files | Low — mostly done on branch | Yes |
 
-## Key Principle
+## Key Principles
 
-**Phases 1-2 are safe to do on Avalonia 11 now.** They improve performance and code quality regardless of the upgrade. Phase 3 is the actual switch — by then, most of the hard work is done and the switch becomes a package version bump + namespace renames.
+1. **Phase 1 (CommunityToolkit migration) is the critical path.** It eliminates the ReactiveUI threading blocker and can be done safely on Avalonia 11.
+2. **Migrate incrementally** — one ViewModel at a time, test after each.
+3. **Phase 3 becomes trivial** — just package versions + namespace cleanup.
+4. **No Rx knowledge needed going forward** — simpler onboarding for contributors.
