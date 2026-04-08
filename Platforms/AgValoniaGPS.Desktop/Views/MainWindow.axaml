@@ -44,9 +44,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         PointerReleased="MapOverlay_PointerReleased"
                         PointerWheelChanged="MapOverlay_PointerWheelChanged" />
 
-        <!-- TOP STATUS BAR: RTK Status and Diagnostics -->
+        <!-- TOP STATUS BAR: RTK Status and Diagnostics (ZIndex 20 = above side panels) -->
         <Border Classes="FloatingPanel"
-                ZIndex="10"
+                ZIndex="20"
                 Margin="20"
                 HorizontalAlignment="Left"
                 VerticalAlignment="Top"
@@ -54,9 +54,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <panels:StatusBarPanel DataContext="{Binding}"/>
         </Border>
 
-        <!-- TOP RIGHT: Field Statistics Panel -->
+        <!-- TOP RIGHT: Field Statistics Panel (ZIndex 20 = above side panels) -->
         <Border Classes="FloatingPanel"
-                ZIndex="10"
+                ZIndex="20"
                 Margin="20"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
@@ -79,6 +79,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- Right navigation buttons -->
             <panels:RightNavigationPanel x:Name="RightNavPanel"
                                          DataContext="{Binding}"/>
+            <!-- Spacer before zoom controls -->
+            <Border Height="12"/>
             <!-- Zoom and compass controls -->
             <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"
                     HorizontalAlignment="Center"/>
