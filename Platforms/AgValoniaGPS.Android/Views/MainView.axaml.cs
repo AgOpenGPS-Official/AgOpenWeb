@@ -26,7 +26,6 @@ using Avalonia.Interactivity;
 using Microsoft.Extensions.DependencyInjection;
 using AgValoniaGPS.ViewModels;
 using AgValoniaGPS.Views.Controls;
-using AgValoniaGPS.Views.Behaviors;
 using AgValoniaGPS.Android.Services;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Services;

@@ -141,66 +141,6 @@ public class DisplayConfig : ReactiveObject
         set => this.RaiseAndSetIfChanged(ref _simulatorPanelVisible, value);
     }
 
-    // Left Navigation Panel position
-    private double _leftNavPanelX = double.NaN;
-    public double LeftNavPanelX
-    {
-        get => _leftNavPanelX;
-        set => this.RaiseAndSetIfChanged(ref _leftNavPanelX, value);
-    }
-
-    private double _leftNavPanelY = double.NaN;
-    public double LeftNavPanelY
-    {
-        get => _leftNavPanelY;
-        set => this.RaiseAndSetIfChanged(ref _leftNavPanelY, value);
-    }
-
-    // Right Navigation Panel position
-    private double _rightNavPanelX = double.NaN;
-    public double RightNavPanelX
-    {
-        get => _rightNavPanelX;
-        set => this.RaiseAndSetIfChanged(ref _rightNavPanelX, value);
-    }
-
-    private double _rightNavPanelY = double.NaN;
-    public double RightNavPanelY
-    {
-        get => _rightNavPanelY;
-        set => this.RaiseAndSetIfChanged(ref _rightNavPanelY, value);
-    }
-
-    // Bottom Navigation Panel position
-    private double _bottomNavPanelX = double.NaN;
-    public double BottomNavPanelX
-    {
-        get => _bottomNavPanelX;
-        set => this.RaiseAndSetIfChanged(ref _bottomNavPanelX, value);
-    }
-
-    private double _bottomNavPanelY = double.NaN;
-    public double BottomNavPanelY
-    {
-        get => _bottomNavPanelY;
-        set => this.RaiseAndSetIfChanged(ref _bottomNavPanelY, value);
-    }
-
-    // Section Control Panel position
-    private double _sectionPanelX = double.NaN;
-    public double SectionPanelX
-    {
-        get => _sectionPanelX;
-        set => this.RaiseAndSetIfChanged(ref _sectionPanelX, value);
-    }
-
-    private double _sectionPanelY = double.NaN;
-    public double SectionPanelY
-    {
-        get => _sectionPanelY;
-        set => this.RaiseAndSetIfChanged(ref _sectionPanelY, value);
-    }
-
     // Display Options (toggle buttons)
     private bool _polygonsVisible = true;
     public bool PolygonsVisible

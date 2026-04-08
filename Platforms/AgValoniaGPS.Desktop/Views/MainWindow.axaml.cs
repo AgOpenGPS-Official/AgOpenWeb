@@ -33,7 +33,6 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Views.Controls;
 using AgValoniaGPS.Views.Controls.Panels;
-using AgValoniaGPS.Views.Behaviors;
 
 namespace AgValoniaGPS.Desktop.Views;
 
