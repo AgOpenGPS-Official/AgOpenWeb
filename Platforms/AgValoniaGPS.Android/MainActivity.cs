@@ -70,7 +70,7 @@ public class MainActivity : AvaloniaMainActivity<App>
         try
         {
             // Save panel positions from MainView
-            App.MainView?.SavePanelPositions();
+            // Panels are now anchored — no position save needed
 
             // Save settings to ConfigurationStore and disk
             if (App.Services != null)

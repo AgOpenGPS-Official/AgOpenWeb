@@ -72,13 +72,9 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
         {
             if (App.Services == null) return;
 
-            // Save panel positions from MainView
-            if (App.MainView != null)
-            {
-                App.MainView.SavePanelPositions();
-            }
+            // Panels are now anchored — no position save needed
 
-            // Save configuration (includes panel positions)
+            // Save configuration
             var configService = App.Services.GetRequiredService<IConfigurationService>();
             configService.SaveAppSettings();
             Console.WriteLine("[AppDelegate] Saved configuration on app background/terminate");
