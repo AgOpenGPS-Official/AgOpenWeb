@@ -58,13 +58,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Row 1: All panels live here, below the status bar -->
         <Grid Grid.Row="1">
 
-        <!-- LIGHT BAR: Centered below status bar (#144), hidden when dialogs open -->
+        <!-- LIGHT BAR: Centered below status bar (#144) -->
         <panels:LightBarPanel x:Name="LightBarPanel"
                               ZIndex="5"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Top"
-                              Margin="0,4,0,0"
-                              IsVisible="{Binding !State.UI.IsDialogOpen}"/>
+                              Margin="0,4,0,0"/>
 
         <!-- LEFT SIDEBAR: Anchored to left edge -->
         <panels:LeftNavigationPanel x:Name="LeftNavPanel"

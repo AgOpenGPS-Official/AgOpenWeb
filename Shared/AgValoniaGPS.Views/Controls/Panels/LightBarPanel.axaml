@@ -6,7 +6,8 @@ Licensed under GNU GPL v3.
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="AgValoniaGPS.Views.Controls.Panels.LightBarPanel"
-             IsHitTestVisible="False">
+             IsHitTestVisible="False"
+             IsVisible="False">
 
     <!-- Light Bar: arrow indicators showing cross-track error.
          Green arrows (right) = steer right to correct.
