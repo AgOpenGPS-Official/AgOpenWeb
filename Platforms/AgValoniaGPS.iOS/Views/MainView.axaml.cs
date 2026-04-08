@@ -42,11 +42,7 @@ public partial class MainView : UserControl
     private DrawingContextMapControl? _mapControl;
     private MainViewModel? _viewModel;
 
-    // Panel references for position save/restore
-    private Control? _leftNavPanel;
-    private Control? _rightNavPanel;
-    private Control? _bottomNavPanel;
-    private Control? _sectionControlPanel;
+    // Panels are now anchored (no position save/restore needed)
 
     public MainView()
     {
@@ -56,15 +52,6 @@ public partial class MainView : UserControl
 
         // Get reference to map control
         _mapControl = this.FindControl<DrawingContextMapControl>("MapControl");
-
-        // Get references to panels for position save/restore
-        _leftNavPanel = this.FindControl<Control>("LeftNavPanel");
-        _rightNavPanel = this.FindControl<Control>("RightNavPanel");
-        _bottomNavPanel = this.FindControl<Control>("BottomNavPanel");
-        _sectionControlPanel = this.FindControl<Control>("SectionControlPanel");
-
-        // Restore panel positions from ConfigurationStore
-        RestorePanelPositions();
 
         // Wire up chart panel drag events
         WireChartPanelDrag("SteerChartPanel");
@@ -81,8 +68,6 @@ public partial class MainView : UserControl
     private void MainView_Unloaded(object? sender, RoutedEventArgs e)
     {
         if (App.Services == null) return;
-
-        SavePanelPositions();
 
         if (_viewModel != null)
         {
@@ -111,84 +96,7 @@ public partial class MainView : UserControl
 
     private void MainView_PropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (e.Property.Name == nameof(Bounds))
-        {
-            ConstrainPanelsToView();
-        }
-    }
-
-    private void ConstrainPanelsToView()
-    {
-        // Constrain all panels using shared helper
-        // iOS uses Canvas.Left for RightNavPanel (not Canvas.Right like Desktop)
-        PanelConstraintHelper.ConstrainPanelWithExtent(_leftNavPanel, Bounds.Width, Bounds.Height,
-            subPanelExtent: 410, defaultLeft: 20, defaultTop: 50);
-        PanelConstraintHelper.ConstrainLeftTopPanel(_rightNavPanel, Bounds.Width, Bounds.Height,
-            defaultLeft: 600, defaultTop: 50);
-        PanelConstraintHelper.ConstrainLeftTopPanel(_bottomNavPanel, Bounds.Width, Bounds.Height,
-            defaultLeft: 200, defaultTop: 420);
-        PanelConstraintHelper.ConstrainLeftTopPanel(_sectionControlPanel, Bounds.Width, Bounds.Height,
-            defaultLeft: 200, defaultTop: 500);
-        PanelConstraintHelper.ConstrainSubPanels(_leftNavPanel, Bounds.Width, Bounds.Height,
-            PanelConstraintHelper.LeftNavSubPanelNames, defaultRelativeTop: 0);
-    }
-
-    private void RestorePanelPositions()
-    {
-        var display = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display;
-
-        if (!double.IsNaN(display.LeftNavPanelX) && !double.IsNaN(display.LeftNavPanelY) && _leftNavPanel != null)
-        {
-            Canvas.SetLeft(_leftNavPanel, display.LeftNavPanelX);
-            Canvas.SetTop(_leftNavPanel, display.LeftNavPanelY);
-        }
-
-        if (!double.IsNaN(display.RightNavPanelX) && !double.IsNaN(display.RightNavPanelY) && _rightNavPanel != null)
-        {
-            Canvas.SetLeft(_rightNavPanel, display.RightNavPanelX);
-            Canvas.SetTop(_rightNavPanel, display.RightNavPanelY);
-        }
-
-        if (!double.IsNaN(display.BottomNavPanelX) && !double.IsNaN(display.BottomNavPanelY) && _bottomNavPanel != null)
-        {
-            Canvas.SetLeft(_bottomNavPanel, display.BottomNavPanelX);
-            Canvas.SetTop(_bottomNavPanel, display.BottomNavPanelY);
-        }
-
-        if (!double.IsNaN(display.SectionPanelX) && !double.IsNaN(display.SectionPanelY) && _sectionControlPanel != null)
-        {
-            Canvas.SetLeft(_sectionControlPanel, display.SectionPanelX);
-            Canvas.SetTop(_sectionControlPanel, display.SectionPanelY);
-        }
-    }
-
-    public void SavePanelPositions()
-    {
-        var display = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display;
-
-        if (_leftNavPanel != null)
-        {
-            display.LeftNavPanelX = Canvas.GetLeft(_leftNavPanel);
-            display.LeftNavPanelY = Canvas.GetTop(_leftNavPanel);
-        }
-
-        if (_rightNavPanel != null)
-        {
-            display.RightNavPanelX = Canvas.GetLeft(_rightNavPanel);
-            display.RightNavPanelY = Canvas.GetTop(_rightNavPanel);
-        }
-
-        if (_bottomNavPanel != null)
-        {
-            display.BottomNavPanelX = Canvas.GetLeft(_bottomNavPanel);
-            display.BottomNavPanelY = Canvas.GetTop(_bottomNavPanel);
-        }
-
-        if (_sectionControlPanel != null)
-        {
-            display.SectionPanelX = Canvas.GetLeft(_sectionControlPanel);
-            display.SectionPanelY = Canvas.GetTop(_sectionControlPanel);
-        }
+        // Panels are now anchored via alignment - no constraint logic needed
     }
 
     public MainView(MainViewModel viewModel, MapService mapService, ICoverageMapService coverageService) : this()
@@ -486,22 +394,6 @@ public partial class MainView : UserControl
         }
     }
 
-    // Section Control drag handlers - use shared DragBehavior
-    private void SectionControl_PointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (sender is Control control)
-            DragBehavior.OnPointerPressed(control, e);
-    }
-
-    private void SectionControl_PointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (sender is Control control)
-            DragBehavior.OnPointerMoved(control, this, e);
-    }
-
-    private void SectionControl_PointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        DragBehavior.OnPointerReleased(e);
-    }
+    // Section control is now anchored (no drag needed)
 
 }

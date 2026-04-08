@@ -34,80 +34,77 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <!-- Main content with dialog overlays -->
     <Panel>
-    <!-- Main Grid with OpenGL as background -->
-    <Grid>
-        <!-- Map Render Area (fills entire window) with pointer events -->
-        <!-- Platform-specific map control is created at runtime in code-behind -->
+    <!-- Main layout: status bar row + content area -->
+    <Grid RowDefinitions="Auto,*">
+        <!-- Map Render Area (fills entire window behind everything) -->
         <ContentControl x:Name="MapControlContainer" ZIndex="0"
+                        Grid.Row="0" Grid.RowSpan="2"
                         PointerPressed="MapOverlay_PointerPressed"
                         PointerMoved="MapOverlay_PointerMoved"
                         PointerReleased="MapOverlay_PointerReleased"
                         PointerWheelChanged="MapOverlay_PointerWheelChanged" />
 
-        <!-- TOP STATUS BAR: RTK Status and Diagnostics -->
-        <Border Classes="FloatingPanel"
-                ZIndex="10"
-                Margin="20"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                IsHitTestVisible="True">
-            <panels:StatusBarPanel DataContext="{Binding}"/>
-        </Border>
+        <!-- Row 0: Top status bar area -->
+        <Grid Grid.Row="0" ZIndex="20" Margin="8,8,8,4" ColumnDefinitions="Auto,*,Auto">
+            <Border Classes="FloatingPanel" Grid.Column="0" IsHitTestVisible="True">
+                <panels:StatusBarPanel DataContext="{Binding}"/>
+            </Border>
+            <Border Classes="FloatingPanel" Grid.Column="2" IsHitTestVisible="True"
+                    IsVisible="{Binding HasActiveField}">
+                <panels:FieldStatsPanel DataContext="{Binding}"/>
+            </Border>
+        </Grid>
 
-        <!-- TOP RIGHT: Field Statistics Panel -->
-        <Border Classes="FloatingPanel"
-                ZIndex="10"
-                Margin="20"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                IsHitTestVisible="True"
-                IsVisible="{Binding HasActiveField}">
-            <panels:FieldStatsPanel DataContext="{Binding}"/>
-        </Border>
+        <!-- Row 1: All panels live here, below the status bar -->
+        <Grid Grid.Row="1">
+        <!-- LEFT SIDEBAR: Anchored to left edge -->
+        <panels:LeftNavigationPanel x:Name="LeftNavPanel"
+                                    ZIndex="9"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Top"
+                                    Margin="8,8,0,0"
+                                    DataContext="{Binding}"/>
 
-        <!-- Zoom Controls - Bottom Right (for touch/tablet users) -->
+        <!-- RIGHT SIDEBAR + Zoom/Compass stacked vertically on right edge -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    ZIndex="15" Margin="0,0,20,20" Spacing="10">
-            <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"/>
-            <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"/>
-            <!-- Compass / Camera Mode Button -->
+                    ZIndex="10" Margin="0,0,8,8" Spacing="4">
+            <!-- Right navigation buttons -->
+            <panels:RightNavigationPanel x:Name="RightNavPanel"
+                                         DataContext="{Binding}"/>
+            <!-- Spacer before zoom controls -->
+            <Border Height="12"/>
+            <!-- Zoom and compass controls -->
+            <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"
+                    HorizontalAlignment="Center"/>
+            <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"
+                    HorizontalAlignment="Center"/>
             <Button Command="{Binding ToggleCameraModeCommand}"
-                    Width="50" Height="50"
+                    Width="64" Height="64"
+                    HorizontalAlignment="Center"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    CornerRadius="25" Background="#4A90D9"
+                    CornerRadius="32" Background="#4A90D9"
                     ToolTip.Tip="Camera mode: North-Up / Heading-Up / Free">
                 <TextBlock Text="{Binding CameraModeLabel}" FontSize="20" FontWeight="Bold"
                            Foreground="White" HorizontalAlignment="Center"/>
             </Button>
         </StackPanel>
 
-        <!-- All Draggable Panels in single Canvas (must be in same Canvas for consistent drag bounds) -->
-        <Canvas ZIndex="10">
-            <!-- LEFT SIDEBAR: Main Navigation Panel (Draggable & Rotatable) -->
-            <panels:LeftNavigationPanel x:Name="LeftNavPanel"
-                                        Canvas.Left="20" Canvas.Top="100"
-                                        DataContext="{Binding}"/>
-
-            <!-- RIGHT SIDEBAR: Guidance Control Panel (Draggable & Rotatable) -->
-            <panels:RightNavigationPanel x:Name="RightNavPanel"
-                                         Canvas.Right="20" Canvas.Top="100"
-                                         DataContext="{Binding}"/>
-
-            <!-- Section Control Panel (Draggable) -->
+        <!-- BOTTOM: Section control stacked above bottom navigation -->
+        <StackPanel ZIndex="10"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,0,8"
+                    Spacing="4">
             <panels:SectionControlPanel x:Name="SectionControlPanel"
-                                        Canvas.Left="900" Canvas.Top="600"
-                                        Cursor="Hand"
-                                        DataContext="{Binding}"
-                                        PointerPressed="SectionControl_PointerPressed"
-                                        PointerMoved="SectionControl_PointerMoved"
-                                        PointerReleased="SectionControl_PointerReleased"/>
-
-            <!-- Bottom Navigation Panel (Draggable & Rotatable) -->
+                                        HorizontalAlignment="Center"
+                                        DataContext="{Binding}"/>
             <panels:BottomNavigationPanel x:Name="BottomNavPanel"
-                                          Canvas.Left="200" Canvas.Top="600"
+                                          HorizontalAlignment="Center"
                                           DataContext="{Binding}"/>
+        </StackPanel>
 
-            <!-- Chart Panels (Draggable) -->
+        <!-- Floating/Draggable Panels (charts, recorded path) -->
+        <Canvas ZIndex="10">
             <panels:SteerChartPanel x:Name="SteerChartPanel"
                                     Canvas.Left="400" Canvas.Top="20"
                                     DataContext="{Binding}"/>
@@ -117,8 +114,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <panels:XTEChartPanel x:Name="XTEChartPanel"
                                   Canvas.Left="400" Canvas.Top="480"
                                   DataContext="{Binding}"/>
-
-            <!-- Recorded Path Panel (Draggable) -->
             <dialogs:RecordedPathDialogPanel x:Name="RecordedPathPanel"
                                               Canvas.Left="200" Canvas.Top="20"
                                               Cursor="Hand"
@@ -127,6 +122,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                               PointerMoved="RecordedPath_PointerMoved"
                                               PointerReleased="RecordedPath_PointerReleased"/>
         </Canvas>
+        </Grid>
     </Grid>
 
     <!-- Map Banners (Flag Placement, AB Creation) -->
