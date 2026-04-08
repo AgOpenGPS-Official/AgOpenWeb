@@ -16,7 +16,6 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.3.9" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.9" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.6" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="11.3.0" />
     <PackageReference Include="Avalonia.Skia" Version="11.3.9" />
     <PackageReference Include="Avalonia.Headless" Version="11.3.9" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />

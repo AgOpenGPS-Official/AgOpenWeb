@@ -11,7 +11,6 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="ReactiveUI" Version="20.1.1" />
   </ItemGroup>
 
 </Project>
