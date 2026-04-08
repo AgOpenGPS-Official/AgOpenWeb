@@ -24,7 +24,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              x:Class="AgValoniaGPS.Views.Controls.Panels.StatusBarPanel"
              x:DataType="vm:MainViewModel">
 
-    <StackPanel Spacing="2">
+    <StackPanel Spacing="6">
         <StackPanel Orientation="Horizontal" Spacing="10">
             <TextBlock Text="RTK Status" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontSize="14" FontWeight="Bold"/>
             <Ellipse Width="12" Height="12"
@@ -39,6 +39,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Rectangle Width="1" Height="16" Fill="#555" Margin="5,0"/>
             <TextBlock Text="{Binding CurrentTime}" Foreground="#95A5A6" FontSize="14"/>
         </StackPanel>
+        <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,2"/>
         <StackPanel Orientation="Horizontal" Spacing="10">
             <TextBlock Text="{Binding CurrentFps, StringFormat='FPS: {0:F0}'}" Foreground="#2ECC71" FontSize="14" FontWeight="Bold"/>
             <Rectangle Width="1" Height="16" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="5,0"/>
