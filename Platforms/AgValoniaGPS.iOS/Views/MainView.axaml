@@ -49,12 +49,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <controls:DrawingContextMapControl x:Name="MapControl" Margin="5"
                                                    IsGridVisible="{Binding IsGridOn}"/>
 
-                <!-- LIGHT BAR: Centered at top (#144) -->
+                <!-- LIGHT BAR: Centered at top (#144), hidden when dialogs open -->
                 <panels:LightBarPanel x:Name="LightBarPanel"
-                                      ZIndex="12"
+                                      ZIndex="5"
                                       HorizontalAlignment="Center"
                                       VerticalAlignment="Top"
-                                      Margin="0,4,0,0"/>
+                                      Margin="0,4,0,0"
+                                      IsVisible="{Binding !State.UI.IsDialogOpen}"/>
 
                 <!-- LEFT SIDEBAR: Anchored to left edge -->
                 <panels:LeftNavigationPanel x:Name="LeftNavPanel"

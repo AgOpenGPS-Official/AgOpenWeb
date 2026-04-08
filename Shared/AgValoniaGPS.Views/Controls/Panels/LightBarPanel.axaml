@@ -14,7 +14,7 @@ Licensed under GNU GPL v3.
          Matches legacy AgOpenGPS DrawLightBar + DrawLightBarText rendering.
          Positioned below status bar, centered horizontally. -->
 
-    <Border Background="#60000000" CornerRadius="6" Padding="8,4"
+    <Border Background="#40000000" CornerRadius="6" Padding="6,3"
             HorizontalAlignment="Center">
         <StackPanel Orientation="Vertical" Spacing="2"
                     HorizontalAlignment="Center">
