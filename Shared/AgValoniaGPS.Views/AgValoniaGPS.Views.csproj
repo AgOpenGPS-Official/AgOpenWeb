@@ -16,6 +16,8 @@
          - NewFieldDialogPanel.axaml (missing x:DataType)
          - NumericStepView.axaml (missing x:DataType)
     -->
+    <!-- TODO: Enable compiled bindings after fixing ~30 AVLN2000/AVLN2100 errors
+         across AgShare, AutoSteer, Configuration, Help, Language, NewField, NumericStep panels -->
     <!-- <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault> -->
   </PropertyGroup>
 
