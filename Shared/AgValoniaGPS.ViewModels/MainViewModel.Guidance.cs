@@ -268,6 +268,20 @@ public partial class MainViewModel
 
         // Update XTE display (distance from nearest pass)
         double xte = perpDist - (nearestPass * widthMinusOverlap);
+
+        // Flip sign when driving opposite to A→B direction so light bar
+        // arrows always point toward the track relative to vehicle heading
+        if (track.Points.Count >= 2)
+        {
+            var a = track.Points[0];
+            var b = track.Points[track.Points.Count - 1];
+            double trackHeading = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing);
+            double vehicleHeading = currentPosition.Heading * Math.PI / 180.0;
+            double headingDiff = Math.Abs(vehicleHeading - trackHeading);
+            if (headingDiff > Math.PI) headingDiff = 2 * Math.PI - headingDiff;
+            if (headingDiff > Math.PI / 2) xte = -xte;
+        }
+
         CrossTrackError = xte * 100; // cm
 
         // Feed XTE to charts (steer angle is 0 when not engaged)

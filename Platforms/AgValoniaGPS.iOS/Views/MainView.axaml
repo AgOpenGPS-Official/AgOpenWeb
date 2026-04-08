@@ -49,6 +49,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <controls:DrawingContextMapControl x:Name="MapControl" Margin="5"
                                                    IsGridVisible="{Binding IsGridOn}"/>
 
+                <!-- LIGHT BAR: Centered at top (#144) -->
+                <panels:LightBarPanel x:Name="LightBarPanel"
+                                      ZIndex="5"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Top"
+                                      Margin="0,4,0,0"/>
+
                 <!-- LEFT SIDEBAR: Anchored to left edge -->
                 <panels:LeftNavigationPanel x:Name="LeftNavPanel"
                                             ZIndex="9"

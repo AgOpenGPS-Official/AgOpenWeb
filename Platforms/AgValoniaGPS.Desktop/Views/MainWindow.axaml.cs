@@ -551,6 +551,20 @@ public partial class MainWindow : Window
                 dcMapControl.SetPendingPointA(ViewModel?.PendingPointA);
             }
         }
+        else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))
+        {
+            // Update light bar with cross-track error
+            if (ViewModel != null && LightBarPanel != null)
+            {
+                bool hasGuidance = ViewModel.HasActiveTrack
+                    || ViewModel.IsContourModeOn
+                    || ViewModel.State.RecordedPath.IsDrivingRecordedPath;
+                LightBarPanel.Update(
+                    ViewModel.CrossTrackError / 100.0, // cm -> meters
+                    ViewModel.SimulatorSteerAngle,
+                    hasGuidance, false);
+            }
+        }
     }
 
     private void SavedTracks_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
