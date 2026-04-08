@@ -65,14 +65,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <panels:FieldStatsPanel DataContext="{Binding}"/>
         </Border>
 
-        <!-- Zoom Controls - Bottom Right (for touch/tablet users) -->
+        <!-- LEFT SIDEBAR: Anchored to left edge, below status bar -->
+        <panels:LeftNavigationPanel x:Name="LeftNavPanel"
+                                    ZIndex="9"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Top"
+                                    Margin="8,80,0,0"
+                                    DataContext="{Binding}"/>
+
+        <!-- RIGHT SIDEBAR + Zoom/Compass stacked vertically on right edge -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    ZIndex="15" Margin="0,0,8,8" Spacing="8">
-            <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"/>
-            <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"/>
-            <!-- Compass / Camera Mode Button -->
+                    ZIndex="10" Margin="0,0,8,8" Spacing="4">
+            <!-- Right navigation buttons -->
+            <panels:RightNavigationPanel x:Name="RightNavPanel"
+                                         DataContext="{Binding}"/>
+            <!-- Zoom and compass controls -->
+            <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"
+                    HorizontalAlignment="Center"/>
+            <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"
+                    HorizontalAlignment="Center"/>
             <Button Command="{Binding ToggleCameraModeCommand}"
                     Width="64" Height="64"
+                    HorizontalAlignment="Center"
                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                     CornerRadius="32" Background="#4A90D9"
                     ToolTip.Tip="Camera mode: North-Up / Heading-Up / Free">
@@ -80,22 +94,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                            Foreground="White" HorizontalAlignment="Center"/>
             </Button>
         </StackPanel>
-
-        <!-- LEFT SIDEBAR: Anchored to left edge, below status bar -->
-        <panels:LeftNavigationPanel x:Name="LeftNavPanel"
-                                    ZIndex="10"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="Top"
-                                    Margin="8,80,0,0"
-                                    DataContext="{Binding}"/>
-
-        <!-- RIGHT SIDEBAR: Anchored to right edge, grows upward from above zoom buttons -->
-        <panels:RightNavigationPanel x:Name="RightNavPanel"
-                                     ZIndex="10"
-                                     HorizontalAlignment="Right"
-                                     VerticalAlignment="Bottom"
-                                     Margin="0,0,8,224"
-                                     DataContext="{Binding}"/>
 
         <!-- BOTTOM: Section control stacked above bottom navigation -->
         <StackPanel ZIndex="10"
