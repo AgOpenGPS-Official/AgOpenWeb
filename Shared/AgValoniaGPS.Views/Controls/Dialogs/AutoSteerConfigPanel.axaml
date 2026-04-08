@@ -1057,17 +1057,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                                         </Border>
                                                         <TextBlock Text="{loc:Localize SteerBar}" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="10" HorizontalAlignment="Center"/>
                                                     </StackPanel>
-                                                    <!-- On/Off (Guidance Bar) -->
+                                                    <!-- On/Off (toggles active bar on/off) -->
                                                     <StackPanel Grid.Column="2" HorizontalAlignment="Center">
                                                         <Button Command="{Binding ToggleGuidanceBarCommand}"
                                                                 Background="Transparent" BorderThickness="0" Padding="4" Cursor="Hand">
                                                             <Grid>
                                                                 <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/SwitchOn.png"
                                                                        Width="48" Height="48" Stretch="Uniform"
-                                                                       IsVisible="{Binding AutoSteer.GuidanceBarOn}"/>
+                                                                       IsVisible="{Binding IsBarEnabled}"/>
                                                                 <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/SwitchOff.png"
                                                                        Width="48" Height="48" Stretch="Uniform"
-                                                                       IsVisible="{Binding !AutoSteer.GuidanceBarOn}"/>
+                                                                       IsVisible="{Binding !IsBarEnabled}"/>
                                                             </Grid>
                                                         </Button>
                                                         <TextBlock Text="{loc:Localize OnOff}" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="10" HorizontalAlignment="Center"/>

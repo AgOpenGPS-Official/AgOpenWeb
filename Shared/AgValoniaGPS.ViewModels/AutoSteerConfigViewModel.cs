@@ -683,6 +683,9 @@ public partial class AutoSteerConfigViewModel : ReactiveObject
     public ICommand ToggleSteerBarCommand { get; private set; } = null!;
     public ICommand ToggleGuidanceBarCommand { get; private set; } = null!;
 
+    /// <summary>Whether any bar mode (lightbar or steerbar) is enabled.</summary>
+    public bool IsBarEnabled => AutoSteer.LightbarEnabled || AutoSteer.SteerBarEnabled;
+
     private void InitializeTab9Commands()
     {
         EditLineWidthCommand = ReactiveCommand.Create(() =>
@@ -708,19 +711,30 @@ public partial class AutoSteerConfigViewModel : ReactiveObject
         ToggleLightbarCommand = ReactiveCommand.Create(() =>
         {
             AutoSteer.LightbarEnabled = !AutoSteer.LightbarEnabled;
+            if (AutoSteer.LightbarEnabled) AutoSteer.SteerBarEnabled = false;
             Config.MarkChanged();
+            this.RaisePropertyChanged(nameof(IsBarEnabled));
         });
 
         ToggleSteerBarCommand = ReactiveCommand.Create(() =>
         {
             AutoSteer.SteerBarEnabled = !AutoSteer.SteerBarEnabled;
+            if (AutoSteer.SteerBarEnabled) AutoSteer.LightbarEnabled = false;
             Config.MarkChanged();
+            this.RaisePropertyChanged(nameof(IsBarEnabled));
         });
 
         ToggleGuidanceBarCommand = ReactiveCommand.Create(() =>
         {
-            AutoSteer.GuidanceBarOn = !AutoSteer.GuidanceBarOn;
+            // On/Off toggles the active bar mode (lightbar or steerbar)
+            if (AutoSteer.LightbarEnabled)
+                AutoSteer.LightbarEnabled = false;
+            else if (AutoSteer.SteerBarEnabled)
+                AutoSteer.SteerBarEnabled = false;
+            else
+                AutoSteer.LightbarEnabled = true; // Default to lightbar when turning on
             Config.MarkChanged();
+            this.RaisePropertyChanged(nameof(IsBarEnabled));
         });
     }
 
