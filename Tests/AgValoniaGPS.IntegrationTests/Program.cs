@@ -61,7 +61,7 @@ sealed class Program
             if (fastArg.Contains('='))
                 _timeScale = double.Parse(fastArg.Split('=')[1]);
             else
-                _timeScale = 10.0;
+                _timeScale = 50.0;
 
             Clock.Set(new SystemClock { TimeScale = _timeScale });
             Console.WriteLine($"[IntTest] Fast mode: {_timeScale}x time scale");
