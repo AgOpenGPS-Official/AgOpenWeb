@@ -83,6 +83,10 @@ public class CoverageMapService : ICoverageMapService
     private bool _fieldBoundsSet;
 
     // ========== TRACKING STATE ==========
+    // Thread-safety lock — coverage methods may be called from background thread
+    // (simulator tick) while UI thread reads state via events
+    private readonly object _coverageLock = new();
+
     // Track which sections are actively mapping
     private readonly HashSet<int> _activeSections = new();
 
@@ -131,31 +135,36 @@ public class CoverageMapService : ICoverageMapService
 
     public void StartMapping(int zoneIndex, Vec2 leftEdge, Vec2 rightEdge, CoverageColor? color = null)
     {
-        // If already mapping this zone, just continue
-        if (_activeSections.Contains(zoneIndex))
-            return;
+        lock (_coverageLock)
+        {
+            if (_activeSections.Contains(zoneIndex))
+                return;
 
-        _activeSections.Add(zoneIndex);
-
-        // Store initial edge for area calculation and bitmap rasterization
-        _lastEdgesPerSection[zoneIndex] = (
-            (leftEdge.Easting, leftEdge.Northing),
-            (rightEdge.Easting, rightEdge.Northing));
+            _activeSections.Add(zoneIndex);
+            _lastEdgesPerSection[zoneIndex] = (
+                (leftEdge.Easting, leftEdge.Northing),
+                (rightEdge.Easting, rightEdge.Northing));
+        }
     }
 
     public void StopMapping(int zoneIndex)
     {
-        if (!_activeSections.Contains(zoneIndex))
-            return;
+        lock (_coverageLock)
+        {
+            if (!_activeSections.Contains(zoneIndex))
+                return;
 
-        _activeSections.Remove(zoneIndex);
-        _lastEdgesPerSection.Remove(zoneIndex);
+            _activeSections.Remove(zoneIndex);
+            _lastEdgesPerSection.Remove(zoneIndex);
+        }
     }
 
     public event EventHandler<BoundsExpandedEventArgs>? BoundsExpanded;
 
     public void AddCoveragePoint(int zoneIndex, Vec2 leftEdge, Vec2 rightEdge)
     {
+        lock (_coverageLock)
+        {
         if (!_activeSections.Contains(zoneIndex))
             return;
 
@@ -193,6 +202,7 @@ public class CoverageMapService : ICoverageMapService
         _lastEdgesPerSection[zoneIndex] = (
             (leftEdge.Easting, leftEdge.Northing),
             (rightEdge.Easting, rightEdge.Northing));
+        } // lock
     }
 
     /// <summary>
@@ -309,22 +319,29 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     public void FlushCoverageUpdate()
     {
-        if (!_coverageDirty) return;
-
-        CoverageUpdated?.Invoke(this, new CoverageUpdatedEventArgs
+        CoverageUpdatedEventArgs? args = null;
+        lock (_coverageLock)
         {
-            TotalArea = _totalWorkedArea,
-            PatchCount = (int)GetTotalCellCount(),
-            AreaAdded = _pendingAreaAdded
-        });
+            if (!_coverageDirty) return;
+            args = new CoverageUpdatedEventArgs
+            {
+                TotalArea = _totalWorkedArea,
+                PatchCount = (int)GetTotalCellCount(),
+                AreaAdded = _pendingAreaAdded
+            };
+            _coverageDirty = false;
+            _pendingAreaAdded = 0;
+        } // lock
 
-        _coverageDirty = false;
-        _pendingAreaAdded = 0;
+        // Fire event outside lock to avoid deadlocks
+        if (args != null)
+            CoverageUpdated?.Invoke(this, args);
     }
 
     public bool IsZoneMapping(int zoneIndex)
     {
-        return _activeSections.Contains(zoneIndex);
+        lock (_coverageLock)
+            return _activeSections.Contains(zoneIndex);
     }
 
     public bool IsPointCovered(double easting, double northing)

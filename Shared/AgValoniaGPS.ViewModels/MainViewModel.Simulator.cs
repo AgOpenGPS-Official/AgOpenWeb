@@ -200,13 +200,13 @@ public partial class MainViewModel
                         settings.SimulatorLongitude));
 
                     State.Simulator.IsRunning = true;
-                    _simulatorTimer?.Change(0, 100); // Start: 0ms delay, 100ms period
+                    _simulatorTimer.Start();
                     StatusMessage = $"Simulator ON at {settings.SimulatorLatitude:F8}, {settings.SimulatorLongitude:F8}";
                 }
                 else
                 {
                     State.Simulator.IsRunning = false;
-                    _simulatorTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite); // Stop
+                    _simulatorTimer.Stop();
                     StatusMessage = "Simulator OFF";
                 }
             }

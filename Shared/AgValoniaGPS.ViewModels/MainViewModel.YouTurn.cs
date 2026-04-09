@@ -1840,5 +1840,46 @@ public partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// Calculate YouTurn guidance and return results without setting any ViewModel properties.
+    /// Used by the background-thread simulator path to build a GpsCycleResult.
+    /// Returns null if no path or turn completed (caller should check YouTurnCompleted separately).
+    /// </summary>
+    private (double steerAngle, double xte, bool turnComplete)? CalculateYouTurnGuidanceForResult(
+        AgValoniaGPS.Models.Position currentPosition)
+    {
+        if (_youTurnPath == null || _youTurnPath.Count == 0) return null;
+
+        double headingRadians = currentPosition.Heading * Math.PI / 180.0;
+        double speed = currentPosition.Speed * 3.6; // km/h
+
+        var input = new YouTurnGuidanceInput
+        {
+            TurnPath = _youTurnPath,
+            PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
+            SteerPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
+            Wheelbase = Vehicle.Wheelbase,
+            MaxSteerAngle = Vehicle.MaxSteerAngle,
+            UseStanley = false,
+            GoalPointDistance = Guidance.GoalPointLookAheadHold,
+            UTurnCompensation = Guidance.UTurnCompensation,
+            FixHeading = headingRadians,
+            AvgSpeed = speed,
+            IsReverse = false,
+            UTurnStyle = 0
+        };
+
+        var output = _youTurnGuidanceService.CalculateGuidance(input);
+
+        if (output.IsTurnComplete)
+        {
+            _logger.LogDebug("[YouTurn] Guidance[bg] detected turn complete, calling CompleteYouTurn");
+            CompleteYouTurn();
+            return (0, 0, true);
+        }
+
+        return (output.SteerAngle, output.DistanceFromCurrentLine, false);
+    }
+
     #endregion
 }

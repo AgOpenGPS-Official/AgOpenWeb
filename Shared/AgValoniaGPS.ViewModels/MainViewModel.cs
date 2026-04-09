@@ -75,7 +75,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IElevationLogService _elevationLogService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
-    private System.Threading.Timer? _simulatorTimer;
+    private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
 
     /// <summary>
     /// Centralized application state - single source of truth for all runtime state.
@@ -256,12 +256,11 @@ public partial class MainViewModel : ObservableObject
         // Note: Simulator coordinates are restored in RestoreSettings() from saved app settings
         // Default values only used if no settings exist (first run)
 
-        // Simulator timer runs on thread pool — GPS processing, guidance, and coverage
-        // detection happen on background threads, not the UI thread.
-        // Only property updates are posted to UI thread.
-        _simulatorTimer = new System.Threading.Timer(
-            _ => OnSimulatorTick(null, EventArgs.Empty),
-            null, System.Threading.Timeout.Infinite, 100);
+        _simulatorTimer = new Avalonia.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _simulatorTimer.Tick += OnSimulatorTick;
 
         // Initialize commands (split into partial class files for organization)
         InitializeNavigationCommands();
