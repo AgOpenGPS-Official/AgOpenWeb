@@ -743,6 +743,11 @@ if frames:
     {
         LogState(vm, "Compass start");
         Console.WriteLine();
+
+        // Reset to field origin for consistent starting position
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        await ResetTractorPosition(vm, simService, settingsService);
+
         // North-Up mode
         Console.Write("[Compass 1] North-Up follow... ");
         vm.CameraMode = AgValoniaGPS.Models.CameraMode.NorthUp;
@@ -796,6 +801,11 @@ if frames:
     {
         LogState(vm, "Flags start");
         Console.WriteLine();
+
+        // Reset to field origin
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        await ResetTractorPosition(vm, simService, settingsService);
+
         // Drive to get a position, then place flags
         Console.Write("[Step 14] Flags: place red flag at vehicle position... ");
         vm.SimulatorForwardCommand?.Execute(null);
@@ -995,6 +1005,11 @@ if frames:
     {
         LogState(vm, "Charts start");
         Console.WriteLine();
+
+        // Reset to field origin
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        await ResetTractorPosition(vm, simService, settingsService);
+
         // Step 8: Activate track and drive off-course to generate real chart data.
         // ChartDataService now collects continuously in the background, so data
         // accumulates even before charts are opened.
