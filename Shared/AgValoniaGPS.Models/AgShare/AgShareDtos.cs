@@ -52,9 +52,9 @@ namespace AgValoniaGPS.Models.AgShare
     /// </summary>
     public class AbLineUploadDto
     {
-        public string Name { get; set; }
+        public string? Name { get; set; }
         public string Type { get; set; }
-        public List<CoordinateDto> Coords { get; set; }
+        public List<CoordinateDto>? Coords { get; set; }
     }
 
     /// <summary>

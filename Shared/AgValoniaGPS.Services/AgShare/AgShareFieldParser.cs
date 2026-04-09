@@ -17,7 +17,6 @@
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.AgShare;
 using AgValoniaGPS.Models.Base;
-using System.Collections.Generic;
 
 namespace AgValoniaGPS.Services.AgShare
 {
