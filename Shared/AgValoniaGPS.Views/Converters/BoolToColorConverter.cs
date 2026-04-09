@@ -49,13 +49,13 @@ public class BoolToToggleBackgroundConverter : IValueConverter
 {
     public static readonly BoolToToggleBackgroundConverter Instance = new();
 
-    // Light mode: darker colors for contrast against light backgrounds
+    // Light mode: original green active, lighter gray inactive
     private static readonly IBrush ActiveLightBrush = new SolidColorBrush(Color.Parse("#DD1E8449"));
-    private static readonly IBrush InactiveLightBrush = new SolidColorBrush(Color.Parse("#DD7B8D9E"));
+    private static readonly IBrush InactiveLightBrush = new SolidColorBrush(Color.Parse("#DDA0B0C0"));
 
-    // Dark mode: brighter colors for visibility on dark backgrounds
-    private static readonly IBrush ActiveDarkBrush = new SolidColorBrush(Color.Parse("#DD2ECC71"));
-    private static readonly IBrush InactiveDarkBrush = new SolidColorBrush(Color.Parse("#DD4A5A6A"));
+    // Dark mode: original colors
+    private static readonly IBrush ActiveDarkBrush = new SolidColorBrush(Color.Parse("#DD1E8449"));
+    private static readonly IBrush InactiveDarkBrush = new SolidColorBrush(Color.Parse("#DD34495E"));
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
