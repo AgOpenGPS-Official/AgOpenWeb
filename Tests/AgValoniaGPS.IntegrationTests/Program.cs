@@ -1406,6 +1406,64 @@ if frames:
 
         // Turn off sections
         vm.ToggleSectionMasterCommand?.Execute(null);
+        double straightArea = workedArea;
+        Console.WriteLine("OK");
+
+        // === DIAGONAL DRIVE: Clear and drive 100m at 45 degrees ===
+        Console.Write("[Cov 2b] Diagonal drive 100m at 45deg... ");
+        coverageService.ClearAll();
+        for (int i = 0; i < 5; i++) { await Delay(100); Dispatcher.UIThread.RunJobs(); }
+
+        // Position at (-30,-30) heading NE (45 degrees = ~0.785 rad)
+        vm.SetSimulatorCoordinates(originLat - 0.00027, originLon - 0.00042);
+        simService.SetHeading(Math.PI / 4); // 45 degrees = NE
+        vm.SimulatorSteerAngle = 0;
+        await Delay(100);
+        for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(10); }
+        Console.Write($"[pos=({vm.Easting:F1},{vm.Northing:F1}) H={vm.Heading:F0}] ");
+
+        if (!vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(50);
+
+        CaptureScreenshot(window, "cov_04_diagonal_before");
+
+        double startE2 = vm.Easting;
+        double startN2 = vm.Northing;
+        int ticks2 = 0;
+        while (ticks2 < 500)
+        {
+            simService.Tick(0);
+            await Delay(5);
+            ticks2++;
+            double dx = vm.Easting - startE2;
+            double dy = vm.Northing - startN2;
+            if (Math.Sqrt(dx * dx + dy * dy) >= 100.0) break;
+        }
+        double diagDist = Math.Sqrt(
+            Math.Pow(vm.Easting - startE2, 2) + Math.Pow(vm.Northing - startN2, 2));
+
+        await Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        double diagArea = coverageService.TotalWorkedArea;
+        double diagExpected = diagDist * 10.0;
+        Console.Write($"[dist={diagDist:F1}m area={diagArea:F0}m2 expected={diagExpected:F0}m2] ");
+
+        double diagError = Math.Abs(diagArea - diagExpected) / diagExpected * 100;
+        Console.Write($"[error={diagError:F1}%] ");
+
+        if (diagArea < 1.0)
+            throw new Exception($"No diagonal coverage painted");
+
+        // Compare straight vs diagonal accuracy
+        double straightError = Math.Abs(straightArea - (distDriven * 10.0)) / (distDriven * 10.0) * 100;
+        Console.Write($"[straight={straightError:F1}% diagonal={diagError:F1}%] ");
+
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        CaptureScreenshot(window, "cov_05_diagonal_after");
         Console.WriteLine("OK");
 
         // === SAVE/LOAD ROUND-TRIP ===
