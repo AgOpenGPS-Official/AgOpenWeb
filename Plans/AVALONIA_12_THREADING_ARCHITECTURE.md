@@ -312,10 +312,48 @@ GPS data → GpsService (background)
 
 The GPS pipeline runs entirely on a background thread. The UI thread only receives pre-computed results 10 times per second. The render thread only reads shared data structures.
 
+## MVVM Done Right
+
+```
+┌───────────┐  Data Binding   ┌────────────┐  Updates model  ┌───────────┐
+│           │  and Commands   │            │                 │           │
+│   View    │ ───────────────>│  ViewModel │ ───────────────>│   Model   │
+│           │                 │            │                 │           │
+└───────────┘                 └────────────┘                 └───────────┘
+      ▲    Send notifications       ▲    Send notifications       │
+      └─────────────────────────────┴─────────────────────────────┘
+```
+
+### View (UI thread — Avalonia controls)
+- **User input**: touch, tap, drag, keyboard
+- **Data visualization**: render map, display values, show dialogs
+- **NEVER**: compute, do I/O, process GPS, detect coverage
+
+### ViewModel (UI thread — thin arbitrator)
+- **Arbitrates** between View and Models
+- **Exposes** properties for data binding (position, speed, heading, stats)
+- **Dispatches** commands to models (toggle autosteer, open field, start simulator)
+- **Receives** notifications from models, updates bound properties
+- **NEVER**: calculate guidance, detect coverage, parse GPS, do file I/O
+
+### Model / Services (background threads — async, event-driven)
+- **Do the heavy lifting**: GPS parsing, guidance math, coverage detection, section control
+- **Are asynchronous**: respond to input, produce output via events/notifications
+- **Own their state**: each service manages its own data on its own thread
+- **Know nothing about Avalonia**: pure C#, no Dispatcher, no UI dependencies
+- **Communicate**: via events, shared thread-safe data structures, and batched notifications to ViewModel
+
+### Where We Went Wrong
+
+The ViewModel became the Model. The `MainViewModel.Guidance.cs`, `.YouTurn.cs`, `.SectionControl.cs`, `.GpsHandling.cs`, `.Simulator.cs` partial files ARE models — they compute, process, and manage state. But because they live in the ViewModel, they execute on the UI thread. This worked on Avalonia 11's cooperative scheduler. Avalonia 12's compositor exposes that the UI thread is overloaded.
+
+The fix: move the computation back to where it belongs — the Model layer (services). The ViewModel becomes what it was always supposed to be: a thin arbitrator that translates between user interaction and application logic.
+
 ## Key Principles
 
-1. **Single concern**: Each service does one thing. No service knows about Avalonia.
-2. **UI thread is sacred**: Only property changes and command dispatch. Zero computation, zero I/O.
-3. **Services own their threads**: GPS pipeline runs on background. File I/O on Task.Run. NTRIP on its own thread.
-4. **Data flows one direction**: Services → ViewModel → UI. Never UI → compute → UI.
-5. **Shared data is lock-free**: SKBitmap for coverage, atomic values for position. No WriteableBitmap.Lock in the hot path.
+1. **MVVM boundaries are real**: View displays, ViewModel arbitrates, Model computes. No layer does another's job.
+2. **Models are async**: Services respond to inputs and produce outputs on their own threads. They don't wait for the UI.
+3. **UI thread is sacred**: Only property changes, command dispatch, and rendering. Zero computation, zero I/O.
+4. **Services own their threads**: GPS pipeline runs on background. File I/O on Task.Run. NTRIP on its own thread.
+5. **Data flows via notifications**: Services notify ViewModel of changes. ViewModel notifies View via binding. Never synchronous cross-thread calls.
+6. **Shared data is lock-free**: SKBitmap for coverage, atomic values for position. No WriteableBitmap.Lock in the hot path.
