@@ -205,11 +205,36 @@ After extraction, the ViewModel partials become thin:
 | `MainViewModel.SectionControl.cs` | Processing + properties | Properties only |
 | `MainViewModel.Simulator.cs` | 200+ lines of orchestration | ~50 lines: build GpsData, call GpsService |
 
-**Test**: All 530 tests pass. Simulator runs smoothly on all platforms. Coverage paints without stutter. No ANR on Android.
+**Phase B test criteria (focused — do NOT test rendering):**
+- All 530+ automated tests pass
+- GpsPipelineService.ProcessCycle runs on background thread (verify with breakpoint or log)
+- ViewModel receives GpsCycleResult (position properties update on screen)
+- Simulator simplified to ~50 lines (just builds GpsData and calls GpsService)
+- No thread-safety crashes (HashSet, collections)
+- Coverage rendering FPS is NOT a Phase B concern — that's Phase C
 
-### Phase C: CompositionCustomVisualHandler for map rendering (future)
+### Phase C: CompositionCustomVisualHandler for map rendering
 
-Move the entire map rendering to the render thread using Avalonia 12's composition API.
+Move the entire map rendering to the render thread using Avalonia 12's `CompositionCustomVisualHandler`. This is the Avalonia 12 way to render dynamic content — no bitmaps, no SKImage snapshots, no compositor cache issues.
+
+The `OnRender` callback runs on the render thread with a direct `SKCanvas`. The coverage SKBitmap is drawn directly from pixel memory — no upload, no copy, no scene graph.
+
+| Task | Change |
+|------|--------|
+| C1 | Create `MapRenderHandler : CompositionCustomVisualHandler` |
+| C2 | Move ALL drawing code from `DrawingContextMapControl.Render()` to `OnRender(SKCanvas, RenderBounds)` |
+| C3 | Data passed from UI thread via `SendHandlerMessage(MapRenderState)` |
+| C4 | Coverage: `canvas.DrawBitmap(_coverageSkBitmap, ...)` — direct, no SKImage snapshot |
+| C5 | Vehicle/boundary/track: draw from shared state snapshots |
+| C6 | Remove DispatcherTimer — use `RequestNextFrameRendering()` instead |
+| C7 | Remove all ICustomDrawOperation code — replaced by composition handler |
+
+**Phase C test criteria (focused):**
+- Coverage renders smoothly at all zoom levels during painting
+- FPS stays at 25+ on all platforms including Android
+- No ANR dialogs
+- Vehicle position updates at 30 FPS
+- Automated tests still pass
 
 ### Phase D: Compiled bindings (anytime)
 
