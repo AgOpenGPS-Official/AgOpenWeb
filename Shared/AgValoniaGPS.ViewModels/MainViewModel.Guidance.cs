@@ -204,23 +204,22 @@ public partial class MainViewModel
             _trackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
         }
 
-        // Update centralized guidance state
-        State.Guidance.UpdateFromGuidance(output);
-
-        // Apply calculated steering to simulator (only when engaged)
-        if (IsAutoSteerEngaged)
-            SimulatorSteerAngle = output.SteerAngle;
-
-        // Feed guidance results to AutoSteerService so charts get real data
+        // Feed guidance results to AutoSteerService so charts get real data (thread-safe)
         _autoSteerService.UpdateGuidanceResults(output.SteerAngle, output.CrossTrackError);
 
-        // Send look-ahead point to map for rendering
-        _mapService.SetGuidancePoints(
-            output.GoalPoint.Easting, output.GoalPoint.Northing,
-            isActive: true);
-
-        // Update cross-track error for display (convert from meters to cm) - legacy property
-        CrossTrackError = output.CrossTrackError * 100;
+        // Post property updates to UI thread (these trigger AXAML binding notifications)
+        var steerAngle = output.SteerAngle;
+        var xte = output.CrossTrackError;
+        var goalE = output.GoalPoint.Easting;
+        var goalN = output.GoalPoint.Northing;
+        var engaged = IsAutoSteerEngaged;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            State.Guidance.UpdateFromGuidance(output);
+            if (engaged) SimulatorSteerAngle = steerAngle;
+            _mapService.SetGuidancePoints(goalE, goalN, isActive: true);
+            CrossTrackError = xte * 100;
+        });
     }
 
     /// <summary>
@@ -284,10 +283,12 @@ public partial class MainViewModel
             if (headingDiff > Math.PI / 2) xte = -xte;
         }
 
-        CrossTrackError = xte * 100; // cm
-
-        // Feed XTE to charts (steer angle is 0 when not engaged)
+        // Feed XTE to charts (thread-safe)
         _autoSteerService.UpdateGuidanceResults(0, xte);
+
+        // Post property update to UI thread
+        var xteVal = xte * 100;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => CrossTrackError = xteVal);
     }
 
     /// <summary>

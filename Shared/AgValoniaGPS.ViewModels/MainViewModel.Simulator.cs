@@ -56,6 +56,9 @@ public partial class MainViewModel
         // Ignore GPS data when simulator is disabled
         if (!_isSimulatorEnabled) return;
 
+        // This runs on a background thread (simulator timer is System.Threading.Timer).
+        // Computation (guidance, coverage) runs here. Property updates are posted to UI thread.
+
         var simulatedData = e.Data;
 
         // Create LocalPlane if not yet created
@@ -133,8 +136,11 @@ public partial class MainViewModel
         bool skipBoundaryCheck = (_isSelectedTrackOnBoundary && _howManyPathsAway == 0) || _isInYouTurn;
         if (IsAutoSteerEngaged && !skipBoundaryCheck && !IsPointInsideBoundary(transformedPosition.Easting, transformedPosition.Northing))
         {
-            IsAutoSteerEngaged = false;
-            StatusMessage = "AutoSteer disengaged - outside boundary";
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                IsAutoSteerEngaged = false;
+                StatusMessage = "AutoSteer disengaged - outside boundary";
+            });
         }
 
         // Calculate autosteer guidance if engaged and we have an active track
@@ -194,13 +200,13 @@ public partial class MainViewModel
                         settings.SimulatorLongitude));
 
                     State.Simulator.IsRunning = true;
-                    _simulatorTimer.Start();
+                    _simulatorTimer?.Change(0, 100); // Start: 0ms delay, 100ms period
                     StatusMessage = $"Simulator ON at {settings.SimulatorLatitude:F8}, {settings.SimulatorLongitude:F8}";
                 }
                 else
                 {
                     State.Simulator.IsRunning = false;
-                    _simulatorTimer.Stop();
+                    _simulatorTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite); // Stop
                     StatusMessage = "Simulator OFF";
                 }
             }
