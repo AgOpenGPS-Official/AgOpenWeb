@@ -73,6 +73,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IChartDataService _chartDataService;
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
+    private readonly IGpsPipelineService _gpsPipelineService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
     private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
@@ -165,6 +166,7 @@ public partial class MainViewModel : ObservableObject
         IChartDataService chartDataService,
         IAudioService audioService,
         IElevationLogService elevationLogService,
+        IGpsPipelineService gpsPipelineService,
         ILogger<MainViewModel> logger,
         ApplicationState appState)
     {
@@ -197,6 +199,7 @@ public partial class MainViewModel : ObservableObject
         _chartDataService = chartDataService;
         _audioService = audioService;
         _elevationLogService = elevationLogService;
+        _gpsPipelineService = gpsPipelineService;
         _appState = appState;
         _nmeaParser = new NmeaParserService(gpsService);
         _fieldPlaneFileService = new FieldPlaneFileService();
@@ -206,6 +209,10 @@ public partial class MainViewModel : ObservableObject
         _udpService.DataReceived += OnUdpDataReceived;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
+
+        // Start the background GPS processing pipeline
+        _gpsPipelineService.CycleCompleted += OnGpsCycleCompleted;
+        _gpsPipelineService.Start();
         _udpService.ModuleConnectionChanged += OnModuleConnectionChanged;
         _ntripService.ConnectionStatusChanged += OnNtripConnectionChanged;
         _ntripService.RtcmDataReceived += OnRtcmDataReceived;

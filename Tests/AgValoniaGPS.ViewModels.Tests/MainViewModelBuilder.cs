@@ -26,6 +26,7 @@ public class MainViewModelBuilder
     public ICoverageMapService CoverageMapService { get; } = Substitute.For<ICoverageMapService>();
     public ISectionControlService SectionControlService { get; } = Substitute.For<ISectionControlService>();
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
+    public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
 
     public MainViewModelBuilder()
     {
@@ -71,6 +72,7 @@ public class MainViewModelBuilder
             chartDataService: Substitute.For<IChartDataService>(),
             audioService: Substitute.For<IAudioService>(),
             elevationLogService: Substitute.For<IElevationLogService>(),
+            gpsPipelineService: GpsPipelineService,
             logger: NullLogger<MainViewModel>.Instance,
             appState: new ApplicationState());
     }

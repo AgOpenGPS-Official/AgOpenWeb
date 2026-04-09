@@ -56,8 +56,10 @@ public partial class MainViewModel
         // Ignore GPS data when simulator is disabled
         if (!_isSimulatorEnabled) return;
 
-        // This runs on a background thread (simulator timer is System.Threading.Timer).
-        // Computation (guidance, coverage) runs here. Property updates are posted to UI thread.
+        // The simulator builds GpsData and feeds it to the GpsService.
+        // The GpsPipelineService (subscribed to GpsService.GpsDataUpdated)
+        // handles all heavy processing: tool position, guidance, section control,
+        // coverage painting, and boundary checks on a background thread.
 
         var simulatedData = e.Data;
 
@@ -110,66 +112,8 @@ public partial class MainViewModel
             Timestamp = Models.Timing.Clock.Current.Now
         };
 
-        // Directly update GPS service (bypasses NMEA parsing like WinForms version does)
-        // This applies antenna-to-pivot transformation to gpsData.CurrentPosition
+        // Feed into GpsService — this fires GpsDataUpdated which the pipeline picks up
         _gpsService.UpdateGpsData(gpsData);
-
-        // Use the TRANSFORMED position (pivot/tractor center) for all guidance calculations
-        var transformedPosition = gpsData.CurrentPosition;
-
-        // NOTE: _toolPositionService.Update() is NOT called here.
-        // GpsHandling.UpdateGpsProperties (triggered by _gpsService.UpdateGpsData above)
-        // already calls it with drift-compensated coordinates. Calling it again here
-        // with undrifted coords would overwrite the correct drifted tool position.
-
-        // Process through AutoSteer pipeline for latency measurement
-        _autoSteerService.ProcessSimulatedPosition(
-            transformedPosition.Latitude, transformedPosition.Longitude, transformedPosition.Altitude,
-            transformedPosition.Heading, transformedPosition.Speed, gpsData.FixQuality,
-            gpsData.SatellitesInUse, gpsData.Hdop,
-            transformedPosition.Easting, transformedPosition.Northing);
-
-        // Auto-disengage autosteer if vehicle is outside the outer boundary
-        // BUT skip this check:
-        // - On first pass (howManyPathsAway == 0) if track runs along boundary
-        // - During U-turn execution (arc extends into headland which may be outside outer boundary)
-        bool skipBoundaryCheck = (_isSelectedTrackOnBoundary && _howManyPathsAway == 0) || _isInYouTurn;
-        if (IsAutoSteerEngaged && !skipBoundaryCheck && !IsPointInsideBoundary(transformedPosition.Easting, transformedPosition.Northing))
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                IsAutoSteerEngaged = false;
-                StatusMessage = "AutoSteer disengaged - outside boundary";
-            });
-        }
-
-        // Calculate autosteer guidance if engaged and we have an active track
-        if (IsAutoSteerEngaged && HasActiveTrack && SelectedTrack != null)
-        {
-            // Increment YouTurn counter (used for throttling)
-            _youTurnCounter++;
-
-            // Check for YouTurn execution or create path if approaching headland
-            if (IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
-            {
-                ProcessYouTurn(transformedPosition);
-            }
-
-            // If we're in a YouTurn, use YouTurn guidance; otherwise use AB line guidance
-            if (_isYouTurnTriggered && _youTurnPath != null && _youTurnPath.Count > 0)
-            {
-                CalculateYouTurnGuidance(transformedPosition);
-            }
-            else
-            {
-                CalculateAutoSteerGuidance(transformedPosition);
-            }
-        }
-        else if (HasActiveTrack && SelectedTrack != null)
-        {
-            // Display-only: update pass offset visualization without steering
-            UpdateDisplayTrack(transformedPosition);
-        }
     }
 
     #endregion

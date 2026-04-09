@@ -118,22 +118,27 @@ public partial class MainViewModel
 
     private void OnGpsDataUpdated(object? sender, AgValoniaGPS.Models.GpsData data)
     {
-        // Marshal to UI thread (use Invoke for synchronous execution to avoid modal dialog issues)
+        // The GpsPipelineService handles all heavy processing (tool position, guidance,
+        // section control, coverage, boundary checks) on a background thread.
+        // This handler only does lightweight UI-only work and user-action-driven recording.
+
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
         {
-            // Already on UI thread, execute directly
-            UpdateGpsProperties(data);
+            HandleGpsUiUpdates(data);
         }
         else
         {
-            // Not on UI thread — post asynchronously (never block the calling thread)
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateGpsProperties(data));
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => HandleGpsUiUpdates(data));
         }
     }
 
-    private void UpdateGpsProperties(AgValoniaGPS.Models.GpsData data)
+    /// <summary>
+    /// Lightweight GPS handler for UI-only work.
+    /// Heavy processing (guidance, sections, coverage) is done by GpsPipelineService.
+    /// </summary>
+    private void HandleGpsUiUpdates(AgValoniaGPS.Models.GpsData data)
     {
-        // Update centralized state (single source of truth)
+        // Update centralized vehicle state (for AXAML bindings that read directly from State.Vehicle)
         State.Vehicle.UpdateFromGps(
             data.CurrentPosition,
             data.FixQuality,
@@ -141,32 +146,10 @@ public partial class MainViewModel
             data.Hdop,
             data.DifferentialAge);
 
-        // Legacy property updates (for existing bindings - will be removed in Phase 5)
-        Latitude = data.CurrentPosition.Latitude;
-        Longitude = data.CurrentPosition.Longitude;
-        Speed = data.CurrentPosition.Speed;
-        SatelliteCount = data.SatellitesInUse;
-        FixQuality = GetFixQualityString(data.FixQuality);
-        StatusMessage = data.IsValid ? "GPS Active" : "Waiting for GPS";
-
-        // RTK quality change sounds
-        if (data.FixQuality != _previousFixQuality)
-        {
-            bool wasRtk = _previousFixQuality >= 4;
-            bool isRtk = data.FixQuality >= 4;
-            if (wasRtk && !isRtk)
-                _audioService.Play(Services.Interfaces.SoundEffect.RtkLost);
-            else if (!wasRtk && isRtk)
-                _audioService.Play(Services.Interfaces.SoundEffect.RtkRecovered);
-            _previousFixQuality = data.FixQuality;
-        }
-
-        // Convert WGS84 to local coordinates for display
-        // In simulator mode, this is already done. In real GPS mode, GpsData only has lat/lon.
+        // Compute local coordinates for recording operations
         double posEasting = data.CurrentPosition.Easting;
         double posNorthing = data.CurrentPosition.Northing;
 
-        // If easting/northing are zero (real GPS path), convert from lat/lon
         if (Math.Abs(posEasting) < 0.001 && Math.Abs(posNorthing) < 0.001
             && Math.Abs(data.CurrentPosition.Latitude) > 0.001)
         {
@@ -180,41 +163,14 @@ public partial class MainViewModel
             }
         }
 
-        // Apply GPS drift compensation
-        double driftedEasting = posEasting + State.Field.DriftEasting;
-        double driftedNorthing = posNorthing + State.Field.DriftNorthing;
         double headingRad = data.CurrentPosition.Heading * Math.PI / 180.0;
 
-        // Update tool/implement position from drifted vehicle position
-        _toolPositionService.Update(
-            new Models.Base.Vec3(driftedEasting, driftedNorthing, headingRad),
-            headingRad);
-
-        // Atomic map update: vehicle + tool + hitch in one call
-        // Prevents rendering mismatches between vehicle and tool positions
-        var hitchPos = _toolPositionService.HitchPosition;
-        var toolPos = _toolPositionService.ToolPosition;
-        _mapService.SetAllPositions(
-            driftedEasting, driftedNorthing, headingRad,
-            toolPos.Easting, toolPos.Northing, _toolPositionService.ToolHeading,
-            ToolWidth, hitchPos.Easting, hitchPos.Northing,
-            _toolPositionService.IsToolPositionReady);
-
-        // Update properties for bindings (but map already updated atomically above)
-        Easting = driftedEasting;
-        Northing = driftedNorthing;
-        Heading = data.CurrentPosition.Heading;
-        RollDegrees = Models.Configuration.SensorState.Instance.ImuRoll;
-
-        // Update reverse indicator on map
-        _mapService.SetReversing(IsReversing);
-
         // Auto-initialize coverage bounds from GPS if no boundary exists (#138)
-        // Use posEasting/posNorthing (un-drifted local coords, works for both simulator and real GPS)
         EnsureCoverageBoundsInitialized(posEasting, posNorthing);
 
+        // ── User-action-driven recording (stays in ViewModel) ───────────
+
         // Add boundary point if recording is active
-        // Use un-drifted local coords so boundary is in field-fixed coordinates
         if (_boundaryRecordingService.IsRecording)
         {
             var (offsetEasting, offsetNorthing) = CalculateOffsetPosition(
@@ -259,15 +215,16 @@ public partial class MainViewModel
             UpdateRecordedPathPlayback();
         }
 
-        // Update headland proximity distance for HUD readout
-        UpdateHeadlandProximity(data.CurrentPosition);
-
         // Auto-select closest track when autosteer is not engaged (#143)
         UpdateAutoTrackSelection(data.CurrentPosition);
 
-        // Run guidance when using real GPS (simulator path has its own guidance call).
-        // Must use drifted local coordinates, not raw NMEA (which has easting=0).
-        if (!IsSimulatorEnabled && IsAutoSteerEngaged && HasActiveTrack)
+        // YouTurn creation/trigger logic stays in ViewModel for now (user-command driven,
+        // needs access to SelectedTrack, _howManyPathsAway, etc.)
+        // The pipeline handles YouTurn *guidance* once a path is set.
+        double driftedEasting = posEasting + State.Field.DriftEasting;
+        double driftedNorthing = posNorthing + State.Field.DriftNorthing;
+
+        if (IsAutoSteerEngaged && HasActiveTrack)
         {
             var guidancePos = data.CurrentPosition with
             {
@@ -275,21 +232,17 @@ public partial class MainViewModel
                 Northing = driftedNorthing
             };
 
-            // Check for YouTurn creation/trigger (mirrors simulator path)
+            _youTurnCounter++;
+
+            // YouTurn state machine: create paths, trigger turns, detect completion
             if (IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
             {
                 ProcessYouTurn(guidancePos);
             }
 
-            // If in a U-turn, use U-turn path guidance; otherwise use AB line guidance.
-            if (_isYouTurnTriggered && _youTurnPath != null && _youTurnPath.Count > 0)
-            {
-                CalculateYouTurnGuidance(guidancePos);
-            }
-            else
-            {
-                CalculateAutoSteerGuidance(guidancePos);
-            }
+            // Sync YouTurn state to pipeline so it knows whether to use YouTurn guidance
+            _gpsPipelineService.SetYouTurnState(
+                _isYouTurnTriggered, _isInYouTurn, _youTurnPath);
         }
     }
 

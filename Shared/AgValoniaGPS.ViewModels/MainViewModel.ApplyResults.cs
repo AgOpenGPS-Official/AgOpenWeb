@@ -10,6 +10,15 @@ namespace AgValoniaGPS.ViewModels;
 public partial class MainViewModel
 {
     /// <summary>
+    /// Handler for <see cref="Services.Interfaces.IGpsPipelineService.CycleCompleted"/>.
+    /// Marshals the result from the background thread to the UI thread for property updates.
+    /// </summary>
+    private void OnGpsCycleCompleted(GpsCycleResult result)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => ApplyGpsCycleResult(result));
+    }
+
+    /// <summary>
     /// Apply a GPS cycle result snapshot to all bound ViewModel properties.
     /// Called on the UI thread after the service pipeline computes results on a background thread.
     /// This is the ONLY place where GPS-derived properties are set during normal operation.
