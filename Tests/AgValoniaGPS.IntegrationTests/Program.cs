@@ -1293,13 +1293,15 @@ if frames:
         for (int i = 0; i < 5; i++)
             config.Tool.SetSectionWidth(i, 200); // 200cm = 2m each
 
-        // Clear any pre-existing coverage
+        // Clear any pre-existing coverage and force full display refresh
         coverageService.ClearAll();
-        // Force display bitmap refresh by pumping UI
-        await Delay(300);
-        Dispatcher.UIThread.RunJobs();
-        await Delay(100);
-        Dispatcher.UIThread.RunJobs();
+        // Multiple UI pumps to ensure render cycle picks up the cleared bitmap
+        for (int i = 0; i < 5; i++)
+        {
+            await Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+        }
         Console.WriteLine("OK");
 
         // === POSITION: Reset tractor to N=-50 (well inside boundary), heading north ===
