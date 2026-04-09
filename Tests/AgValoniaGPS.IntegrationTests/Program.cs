@@ -1307,6 +1307,8 @@ if frames:
         vm.SimulatorForwardCommand?.Execute(null);
         await Delay(50);
 
+        CaptureScreenshot(window, "cov_01_before_drive");
+
         // Drive ~100m
         double startNorthing = vm.Northing;
         int ticks = 0;
@@ -1330,6 +1332,7 @@ if frames:
             throw new Exception($"No coverage painted after driving {distanceDriven:F0}m with sections on");
         }
         Console.Write("[PASS] ");
+        CaptureScreenshot(window, "cov_02_after_drive");
 
         // Turn off sections
         vm.ToggleSectionMasterCommand?.Execute(null);
