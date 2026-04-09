@@ -124,8 +124,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         Classes.Selected="{Binding Connections.IsDualGps}"
                         PointerPressed="OnDualGpsCardPressed">
                     <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesGPSDual.png"
-                               Width="80" Height="50" Stretch="Uniform"/>
+                        <Border Width="80" Height="50" Background="{DynamicResource IconGPSDual}"/>
                         <TextBlock Text="Dual" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
@@ -135,8 +134,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         Classes.Selected="{Binding !Connections.IsDualGps}"
                         PointerPressed="OnSingleGpsCardPressed">
                     <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesGPSSingle.png"
-                               Width="80" Height="50" Stretch="Uniform"/>
+                        <Border Width="80" Height="50" Background="{DynamicResource IconGPSSingle}"/>
                         <TextBlock Text="Fix" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Border>
@@ -154,8 +152,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         <!-- Dual Antenna Graphic -->
                         <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="4" Padding="4" Height="80" HorizontalAlignment="Center"
                                 IsEnabled="{Binding Connections.IsDualGps}">
-                            <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesHead.png" Stretch="Uniform"
-                                   Opacity="{Binding Connections.IsDualGps, Converter={x:Static conv:BoolToOpacityConverter.Instance}, ConverterParameter=1|0.3}"/>
+                            <Border Background="{DynamicResource IconSourcesHead}"
+                                    Opacity="{Binding Connections.IsDualGps, Converter={x:Static conv:BoolToOpacityConverter.Instance}, ConverterParameter=1|0.3}"/>
                         </Border>
 
                         <!-- Heading Offset -->
@@ -268,7 +266,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         BorderBrush="{Binding Connections.RtkLostAlarm, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
                         Command="{Binding ToggleRtkAlarmCommand}" HorizontalAlignment="Stretch" Height="70">
                     <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesRTKAlarm.png" Width="32" Height="32"/>
+                        <Border Width="32" Height="32" Background="{DynamicResource IconRTKAlarm}"/>
                         <TextBlock Text="RTK Fix Alarm" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </Button>

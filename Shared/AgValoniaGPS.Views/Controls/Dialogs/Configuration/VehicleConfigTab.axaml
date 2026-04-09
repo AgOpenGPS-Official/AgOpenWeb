@@ -140,8 +140,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Vehicle Type Tab -->
         <TabItem ToolTip.Tip="Vehicle Type">
             <TabItem.Header>
-                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_VehicleConfig.png"
-                       Width="40" Height="40" Stretch="Uniform"/>
+                <Border Width="40" Height="40" Background="{DynamicResource IconVehicleConfig}"/>
             </TabItem.Header>
             <ScrollViewer>
                 <StackPanel Spacing="16" Margin="16">
@@ -232,8 +231,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Hitch/Wheelbase/Track Tab -->
         <TabItem ToolTip.Tip="Hitch, Wheelbase, Track">
             <TabItem.Header>
-                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ImplementHitch.png"
-                       Width="40" Height="40" Stretch="Uniform"/>
+                <Border Width="40" Height="40" Background="{DynamicResource IconHitch}"/>
             </TabItem.Header>
             <Grid RowDefinitions="*,Auto" Margin="16">
                 <Image Grid.Row="0"
@@ -275,8 +273,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Antenna Position Tab -->
         <TabItem ToolTip.Tip="Antenna Position">
             <TabItem.Header>
-                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ImplementAntenna.png"
-                       Width="40" Height="40" Stretch="Uniform"/>
+                <Border Width="40" Height="40" Background="{DynamicResource IconAntenna}"/>
             </TabItem.Header>
             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,*,Auto" Margin="16">
                 <!-- Pivot Distance -->

@@ -32,6 +32,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <!-- Main tab icons -->
                     <ImageBrush x:Key="IconVehicle" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_VehicleMenu.png"/>
                     <ImageBrush x:Key="IconTool" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_ImplementMenu.png"/>
                     <ImageBrush x:Key="IconUTurn" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_UTurnMenu.png"/>
@@ -40,8 +41,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     <ImageBrush x:Key="IconSources" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesMenu.png"/>
                     <ImageBrush x:Key="IconDisplay" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_Display.png"/>
                     <ImageBrush x:Key="IconFeatures" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_FeatureMenu.png"/>
+                    <!-- Sub-tab icons -->
+                    <ImageBrush x:Key="IconVehicleConfig" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_VehicleConfig.png"/>
+                    <ImageBrush x:Key="IconHitch" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ImplementHitch.png"/>
+                    <ImageBrush x:Key="IconAntenna" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ImplementAntenna.png"/>
+                    <ImageBrush x:Key="IconModulesMachine" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ModulesMachine.png"/>
+                    <ImageBrush x:Key="IconGPSDual" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesGPSDual.png"/>
+                    <ImageBrush x:Key="IconGPSSingle" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesGPSSingle.png"/>
+                    <ImageBrush x:Key="IconSourcesHead" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesHead.png"/>
+                    <ImageBrush x:Key="IconRTKAlarm" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_SourcesRTKAlarm.png"/>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <!-- Main tab icons -->
                     <ImageBrush x:Key="IconVehicle" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_VehicleMenu.png"/>
                     <ImageBrush x:Key="IconTool" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_ImplementMenu.png"/>
                     <ImageBrush x:Key="IconUTurn" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_UTurnMenu.png"/>
@@ -50,6 +61,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     <ImageBrush x:Key="IconSources" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_SourcesMenu.png"/>
                     <ImageBrush x:Key="IconDisplay" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_Display.png"/>
                     <ImageBrush x:Key="IconFeatures" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_FeatureMenu.png"/>
+                    <!-- Sub-tab icons -->
+                    <ImageBrush x:Key="IconVehicleConfig" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/ConS_VehicleConfig.png"/>
+                    <ImageBrush x:Key="IconHitch" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/ConS_ImplementHitch.png"/>
+                    <ImageBrush x:Key="IconAntenna" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/ConS_ImplementAntenna.png"/>
+                    <ImageBrush x:Key="IconModulesMachine" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/ConS_ModulesMachine.png"/>
+                    <ImageBrush x:Key="IconGPSDual" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_SourcesGPSDual.png"/>
+                    <ImageBrush x:Key="IconGPSSingle" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_SourcesGPSSingle.png"/>
+                    <ImageBrush x:Key="IconSourcesHead" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_SourcesHead.png"/>
+                    <ImageBrush x:Key="IconRTKAlarm" Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Dark/Con_SourcesRTKAlarm.png"/>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
