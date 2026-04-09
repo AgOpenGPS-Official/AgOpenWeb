@@ -203,6 +203,119 @@ The `MainViewModel` partial classes are actually **services in disguise**:
 
 Many of these services already exist in `Shared/AgValoniaGPS.Services/` — the ViewModel just duplicates their work or orchestrates them synchronously on the UI thread.
 
-## Key Principle
+## Service Pipeline Architecture
 
-**The UI thread should only handle quick state updates and input. ALL heavy work (GPS processing, coverage detection, file I/O, bitmap manipulation) runs on background threads. Data flows to the UI thread via `Post()`, never `Invoke()`. The ViewModel is thin. Services own computation.**
+The application is fundamentally a **data pipeline**, not a UI app that happens to process GPS. Each stage is a single-concern service running on its own thread:
+
+```
+Hardware/Simulator
+       │
+       ▼
+┌──────────────┐
+│  GPS Service │  Pure C#, background thread. Parses NMEA or simulator data.
+│              │  Produces: Position, Heading, Speed, Fix Quality
+└──────┬───────┘
+       │ position event
+       ▼
+┌──────────────────┐     ┌─────────────────────┐
+│ Guidance Service │     │  Section Control     │
+│                  │     │  Service             │
+│ Consumes: pos,   │     │                      │
+│   track, config  │     │ Consumes: tool pos,  │
+│ Produces: steer  │     │   boundary, coverage │
+│   angle, XTE,    │     │ Produces: section    │
+│   goal point     │     │   on/off states      │
+└──────┬───────────┘     └──────────┬───────────┘
+       │                            │
+       ▼                            ▼
+┌──────────────────┐     ┌─────────────────────┐
+│ AutoSteer Service│     │ Coverage Map Service │
+│                  │     │                      │
+│ Consumes: steer  │     │ Consumes: tool pos,  │
+│   angle, config  │     │   section states     │
+│ Produces: PGN    │     │ Produces: pixel      │
+│   to hardware    │     │   writes to SKBitmap │
+└──────────────────┘     └──────────────────────┘
+
+       All services run on background threads.
+       None of them know about Avalonia, AXAML, or the UI.
+
+                    │ batched updates (max 10 Hz)
+                    ▼
+            ┌──────────────┐
+            │  ViewModel   │  UI thread. Thin property bag.
+            │              │  Receives: position, stats, states
+            │              │  Exposes: bound properties for AXAML
+            │              │  Handles: user commands → dispatches to services
+            └──────┬───────┘
+                   │ data binding
+                   ▼
+            ┌──────────────┐
+            │  Map Control │  Render thread (ICustomDrawOperation).
+            │              │  Reads: SKBitmap, position, boundary
+            │              │  Draws: coverage, vehicle, tracks, grid
+            │              │  Writes: nothing
+            └──────────────┘
+```
+
+### Single Concern Per Service
+
+| Service | Single Concern | Thread | Knows About UI? |
+|---------|---------------|--------|-----------------|
+| GpsService | Parse GPS data, produce position | Own thread | No |
+| SimulatorService | Generate fake GPS positions | Own timer thread | No |
+| TrackGuidanceService | Calculate steer angle from position + track | Called by GPS pipeline | No |
+| AutoSteerService | Build PGNs, send to hardware | GPS pipeline thread | No |
+| SectionControlService | Decide section on/off | GPS pipeline thread | No |
+| CoverageMapService | Detect coverage, write SKBitmap pixels | GPS pipeline thread | No |
+| YouTurnService | Generate U-turn paths | On demand | No |
+| NtripService | Manage RTK connection | Own thread | No |
+| UdpService | Send/receive UDP packets | Own thread | No |
+| FieldService | Load/save field files | Task.Run | No |
+| SettingsService | Load/save settings | Task.Run | No |
+| **ViewModel** | **Property bag + command dispatch** | **UI thread** | **Yes — only thing that does** |
+| **Map Control** | **Read-only rendering** | **Render thread** | **Render only** |
+
+### What's Wrong Today
+
+The ViewModel is the hub of everything:
+
+```
+Today (broken):
+
+GPS data → ViewModel.GpsHandling (UI thread)
+         → ViewModel.Guidance (UI thread)
+         → ViewModel.SectionControl (UI thread)  
+         → ViewModel.YouTurn (UI thread)
+         → CoverageService.SetPixel (UI thread via callback)
+         → ViewModel property updates (UI thread)
+         → InvalidateVisual (UI thread)
+
+Everything serialized on one thread. 10 Hz × all that work = ANR on Android.
+```
+
+### What It Should Be
+
+```
+Target (correct):
+
+GPS data → GpsService (background)
+         → AutoSteerService.ProcessPosition (background)
+           ├── TrackGuidanceService.Calculate (background)
+           ├── SectionControlService.Update (background)  
+           ├── CoverageMapService.Paint (background, writes SKBitmap directly)
+           └── YouTurnService.Check (background)
+         → Batch results → Post to ViewModel (UI thread, 10 Hz)
+         → ViewModel sets properties (fast, no computation)
+         → Map control renders on next frame (render thread, reads SKBitmap)
+```
+
+The GPS pipeline runs entirely on a background thread. The UI thread only receives pre-computed results 10 times per second. The render thread only reads shared data structures.
+
+## Key Principles
+
+1. **Single concern**: Each service does one thing. No service knows about Avalonia.
+2. **UI thread is sacred**: Only property changes and command dispatch. Zero computation, zero I/O.
+3. **Services own their threads**: GPS pipeline runs on background. File I/O on Task.Run. NTRIP on its own thread.
+4. **Data flows one direction**: Services → ViewModel → UI. Never UI → compute → UI.
+5. **Shared data is lock-free**: SKBitmap for coverage, atomic values for position. No WriteableBitmap.Lock in the hot path.
