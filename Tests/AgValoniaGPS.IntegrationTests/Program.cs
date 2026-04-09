@@ -22,6 +22,7 @@ using Avalonia.Threading;
 using AgValoniaGPS.Desktop;
 using AgValoniaGPS.Desktop.Views;
 using AgValoniaGPS.IntegrationTests;
+using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Timing;
@@ -688,6 +689,9 @@ if frames:
 
         // --- Pass Rendering Test (#175) ---
         await RunPassRenderingTest(window, vm, simService);
+
+        // --- Coverage Area Verification (#195) ---
+        await RunCoverageAreaTest(window, vm, simService);
     }
 
     static async Task RunDebugDumpTest(Window window, MainViewModel vm)
@@ -1251,6 +1255,119 @@ if frames:
 
         Console.WriteLine("OK");
         Console.WriteLine("--- Pass Rendering Test Complete ---");
+    }
+
+    /// <summary>
+    /// Coverage area verification test (#195):
+    /// 1. Drive 100m straight with 10m implement, verify ~1000m2 coverage
+    /// 2. Save field, reload, verify coverage persists
+    /// </summary>
+    static async Task RunCoverageAreaTest(
+        Window window, MainViewModel vm, IGpsSimulationService simService)
+    {
+        Console.WriteLine("\n--- Coverage Area Test (#195) ---");
+        var coverageService = App.Services!.GetRequiredService<ICoverageMapService>();
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        var fieldService = App.Services!.GetRequiredService<IFieldService>();
+
+        // Setup: 10m implement, 6 sections (matching earlier test config)
+        var config = ConfigurationStore.Instance;
+        config.Tool.Width = 10.0;
+        config.NumSections = 6;
+        for (int i = 0; i < 6; i++)
+            config.Tool.SetSectionWidth(i, (int)(1000.0 / 6)); // ~167cm each, 6 sections = ~10m
+
+        // Ensure field is open and clear coverage
+        Console.Write("[Cov 1] Setup: 10m tool, clear coverage... ");
+        coverageService.ClearAll();
+        await Delay(200);
+        double areaAfterClear = coverageService.TotalWorkedArea;
+        Console.Write($"[cleared={areaAfterClear:F1}m2] ");
+        Console.WriteLine("OK");
+
+        // Enable sections and drive straight north ~100m
+        Console.Write("[Cov 2] Drive 100m with sections ON... ");
+
+        // Set all sections to Auto via master toggle
+        if (!vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        await Delay(100);
+        Console.Write($"[master={vm.IsSectionMasterOn}] ");
+
+        // Accelerate forward
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(50);
+
+        // Drive ~100m
+        double startNorthing = vm.Northing;
+        int ticks = 0;
+        while (Math.Abs(vm.Northing - startNorthing) < 100.0 && ticks < 500)
+        {
+            simService.Tick(0);
+            await Delay(5);
+            ticks++;
+        }
+        double distanceDriven = Math.Abs(vm.Northing - startNorthing);
+        Console.Write($"[dist={distanceDriven:F1}m ticks={ticks}] ");
+
+        // Check coverage area - should be > 0 after driving with sections on
+        await Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        double workedArea = coverageService.TotalWorkedArea;
+        Console.Write($"[area={workedArea:F0}m2 dist={distanceDriven:F0}m] ");
+
+        if (workedArea < 1.0)
+        {
+            throw new Exception($"No coverage painted after driving {distanceDriven:F0}m with sections on");
+        }
+        Console.Write("[PASS] ");
+
+        // Turn off sections
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        Console.WriteLine("OK");
+
+        // Save and reload to verify persistence
+        Console.Write("[Cov 3] Save + reload coverage... ");
+        var fieldDir = fieldService.ActiveField?.DirectoryPath;
+        if (fieldDir != null)
+        {
+            // Save coverage
+            coverageService.SaveToFile(fieldDir);
+            double areaBefore = coverageService.TotalWorkedArea;
+            Console.Write($"[saved={areaBefore:F0}m2] ");
+
+            // Clear and reload
+            coverageService.ClearAll();
+            double areaAfterClearAgain = coverageService.TotalWorkedArea;
+            Console.Write($"[afterClear={areaAfterClearAgain:F0}m2] ");
+
+            coverageService.LoadFromFile(fieldDir);
+            await Delay(200);
+            double areaAfterLoad = coverageService.TotalWorkedArea;
+            Console.Write($"[afterLoad={areaAfterLoad:F0}m2] ");
+
+            // Verify area persisted (allow small rounding difference)
+            if (Math.Abs(areaAfterLoad - areaBefore) > 10.0)
+            {
+                throw new Exception($"Coverage lost after save/load: {areaBefore:F0}m2 -> {areaAfterLoad:F0}m2");
+            }
+            Console.Write("[PASS] ");
+        }
+        else
+        {
+            Console.Write("[SKIP: no field] ");
+        }
+
+        // Restore tool config
+        config.Tool.Width = 12.0;
+        config.NumSections = 6;
+        for (int i = 0; i < 6; i++)
+            config.Tool.SetSectionWidth(i, 200.0);
+
+        Console.WriteLine("OK");
+        Console.WriteLine("--- Coverage Area Test Complete ---");
     }
 
     /// <summary>

@@ -856,6 +856,12 @@ public class CoverageMapService : ICoverageMapService
         // Load section display (colors with palette, resolution-independent)
         bool hasSectionDisplay = LoadSectionDisplay(fieldDirectory);
 
+        // Fallback: try legacy AgOpenGPS Sections.txt format
+        if (!hasDetectionBits && !hasSectionDisplay)
+        {
+            hasDetectionBits = LoadLegacySections(fieldDirectory);
+        }
+
         if (hasSectionDisplay || hasDetectionBits)
         {
             Console.WriteLine($"[Coverage] Loaded: detectionBits={hasDetectionBits}, sectionDisplay={hasSectionDisplay}");
@@ -868,6 +874,125 @@ public class CoverageMapService : ICoverageMapService
                 PixelsAlreadyLoaded = hasSectionDisplay  // Only skip repaint if we loaded display data
             });
         }
+    }
+
+    /// <summary>
+    /// Load legacy AgOpenGPS Sections.txt coverage data.
+    /// Format: quad strips with vertex pairs (easting, northing, 0).
+    /// Rasterizes the quads into our coverage cell grid.
+    /// </summary>
+    private bool LoadLegacySections(string fieldDirectory)
+    {
+        var path = Path.Combine(fieldDirectory, "Sections.txt");
+        if (!File.Exists(path)) return false;
+
+        try
+        {
+            var lines = File.ReadAllLines(path);
+            int lineIdx = 0;
+            int totalCells = 0;
+
+            while (lineIdx < lines.Length)
+            {
+                // Read count (number of lines in this strip: 1 color + pairs*2)
+                var countLine = lines[lineIdx++].Trim();
+                if (string.IsNullOrEmpty(countLine)) continue;
+                if (!int.TryParse(countLine, out int n) || n < 3) continue;
+
+                int nPairs = (n - 1) / 2;
+
+                // Read RGB color line (R,G,B format)
+                if (lineIdx >= lines.Length) break;
+                var colorParts = lines[lineIdx++].Split(',');
+                // We ignore the color and use default coverage color
+
+                // Read vertex pairs and rasterize each quad
+                double prevLeftE = 0, prevLeftN = 0, prevRightE = 0, prevRightN = 0;
+                bool hasPrev = false;
+
+                for (int i = 0; i < nPairs; i++)
+                {
+                    if (lineIdx + 1 >= lines.Length) break;
+
+                    var leftParts = lines[lineIdx++].Split(',');
+                    var rightParts = lines[lineIdx++].Split(',');
+
+                    if (leftParts.Length < 2 || rightParts.Length < 2) continue;
+
+                    double leftE = double.Parse(leftParts[0].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+                    double leftN = double.Parse(leftParts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+                    double rightE = double.Parse(rightParts[0].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+                    double rightN = double.Parse(rightParts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture);
+
+                    if (hasPrev)
+                    {
+                        // Rasterize quad: prevLeft -> prevRight -> currRight -> currLeft (CW winding)
+                        totalCells += RasterizeQuad(
+                            prevLeftE, prevLeftN, prevRightE, prevRightN,
+                            rightE, rightN, leftE, leftN);
+                    }
+
+                    prevLeftE = leftE; prevLeftN = leftN;
+                    prevRightE = rightE; prevRightN = rightN;
+                    hasPrev = true;
+                }
+            }
+
+            if (totalCells > 0)
+            {
+                Console.WriteLine($"[Coverage] Loaded legacy Sections.txt: {totalCells} cells rasterized");
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Coverage] Error loading legacy Sections.txt: {ex.Message}");
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Rasterize a quad (4 vertices) into coverage cells.
+    /// Uses the same cell grid and point-in-quad test as RasterizeQuadToBitmap.
+    /// </summary>
+    private int RasterizeQuad(
+        double e0, double n0, double e1, double n1,
+        double e2, double n2, double e3, double n3)
+    {
+        var p0 = (E: e0, N: n0);
+        var p1 = (E: e1, N: n1);
+        var p2 = (E: e2, N: n2);
+        var p3 = (E: e3, N: n3);
+
+        double minE = Math.Min(Math.Min(e0, e1), Math.Min(e2, e3));
+        double maxE = Math.Max(Math.Max(e0, e1), Math.Max(e2, e3));
+        double minN = Math.Min(Math.Min(n0, n1), Math.Min(n2, n3));
+        double maxN = Math.Max(Math.Max(n0, n1), Math.Max(n2, n3));
+
+        int cellMinE = (int)Math.Floor(minE / BITMAP_CELL_SIZE);
+        int cellMaxE = (int)Math.Floor(maxE / BITMAP_CELL_SIZE);
+        int cellMinN = (int)Math.Floor(minN / BITMAP_CELL_SIZE);
+        int cellMaxN = (int)Math.Floor(maxN / BITMAP_CELL_SIZE);
+
+        int count = 0;
+        for (int ce = cellMinE; ce <= cellMaxE; ce++)
+        {
+            for (int cn = cellMinN; cn <= cellMaxN; cn++)
+            {
+                double cellCenterE = (ce + 0.5) * BITMAP_CELL_SIZE;
+                double cellCenterN = (cn + 0.5) * BITMAP_CELL_SIZE;
+
+                if (IsPointInQuad(cellCenterE, cellCenterN, p0, p1, p2, p3))
+                {
+                    if (MarkCellCovered(ce, cn, 0))
+                    {
+                        count++;
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     /// <summary>
