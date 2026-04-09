@@ -1466,6 +1466,106 @@ if frames:
         CaptureScreenshot(window, "cov_05_diagonal_after");
         Console.WriteLine("OK");
 
+        // === 30 DEGREE DRIVE ===
+        Console.Write("[Cov 2c] 30deg drive 100m... ");
+        coverageService.ClearAll();
+        for (int i = 0; i < 5; i++) { await Delay(100); Dispatcher.UIThread.RunJobs(); }
+
+        vm.SetSimulatorCoordinates(originLat - 0.00040, originLon - 0.00020);
+        simService.SetHeading(Math.PI / 6); // 30 degrees
+        vm.SimulatorSteerAngle = 0;
+        await Delay(100);
+        for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(10); }
+        Console.Write($"[pos=({vm.Easting:F1},{vm.Northing:F1}) H={vm.Heading:F0}] ");
+
+        if (!vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(50);
+
+        double startE3 = vm.Easting;
+        double startN3 = vm.Northing;
+        int ticks3 = 0;
+        while (ticks3 < 500)
+        {
+            simService.Tick(0);
+            await Delay(5);
+            ticks3++;
+            double dx = vm.Easting - startE3;
+            double dy = vm.Northing - startN3;
+            if (Math.Sqrt(dx * dx + dy * dy) >= 100.0) break;
+        }
+        double dist30 = Math.Sqrt(
+            Math.Pow(vm.Easting - startE3, 2) + Math.Pow(vm.Northing - startN3, 2));
+
+        await Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        double area30 = coverageService.TotalWorkedArea;
+        double expected30 = dist30 * 10.0;
+        double error30 = Math.Abs(area30 - expected30) / expected30 * 100;
+        Console.Write($"[dist={dist30:F1}m area={area30:F0}m2 expected={expected30:F0}m2 error={error30:F1}%] ");
+
+        if (area30 < 1.0)
+            throw new Exception("No 30deg coverage painted");
+
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        CaptureScreenshot(window, "cov_06_30deg_after");
+        Console.WriteLine("OK");
+
+        // === DIFFERENT TOOL WIDTHS ===
+        double[] toolWidths = { 3.0, 6.0, 12.0, 24.0 };
+        foreach (double tw in toolWidths)
+        {
+            Console.Write($"[Cov 2d] Tool {tw:F0}m north 50m... ");
+            coverageService.ClearAll();
+            for (int i = 0; i < 3; i++) { await Delay(50); Dispatcher.UIThread.RunJobs(); }
+
+            config.Tool.Width = tw;
+            int nSec = Math.Max(1, (int)(tw / 2));
+            config.NumSections = nSec;
+            for (int i = 0; i < nSec; i++)
+                config.Tool.SetSectionWidth(i, (int)(tw / nSec * 100));
+
+            vm.SetSimulatorCoordinates(originLat - 0.00023, originLon);
+            simService.SetHeading(0);
+            vm.SimulatorSteerAngle = 0;
+            await Delay(50);
+            for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(5); }
+
+            if (!vm.IsSectionMasterOn)
+                vm.ToggleSectionMasterCommand?.Execute(null);
+            vm.SimulatorForwardCommand?.Execute(null);
+            vm.SimulatorForwardCommand?.Execute(null);
+            vm.SimulatorForwardCommand?.Execute(null);
+            await Delay(30);
+
+            double sN = vm.Northing;
+            int t = 0;
+            while (Math.Abs(vm.Northing - sN) < 50.0 && t < 300)
+            {
+                simService.Tick(0);
+                await Delay(3);
+                t++;
+            }
+            double d = Math.Abs(vm.Northing - sN);
+            await Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            double a = coverageService.TotalWorkedArea;
+            double exp = d * tw;
+            double err = exp > 0 ? Math.Abs(a - exp) / exp * 100 : 0;
+            Console.Write($"[dist={d:F0}m area={a:F0}m2 expected={exp:F0}m2 error={err:F1}%] ");
+            vm.ToggleSectionMasterCommand?.Execute(null);
+            Console.WriteLine("OK");
+        }
+
+        // Restore 10m tool for save/load test
+        config.Tool.Width = 10.0;
+        config.NumSections = 5;
+        for (int i = 0; i < 5; i++)
+            config.Tool.SetSectionWidth(i, 200);
+
         // === SAVE/LOAD ROUND-TRIP ===
         Console.Write("[Cov 3] Save + reload coverage... ");
         var fieldDir = fieldService.ActiveField?.DirectoryPath;
