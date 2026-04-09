@@ -126,8 +126,8 @@ public partial class MainViewModel
         }
         else
         {
-            // Not on UI thread, invoke synchronously
-            Avalonia.Threading.Dispatcher.UIThread.Invoke(() => UpdateGpsProperties(data));
+            // Not on UI thread — post asynchronously (never block the calling thread)
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => UpdateGpsProperties(data));
         }
     }
 

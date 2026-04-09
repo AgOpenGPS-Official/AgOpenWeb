@@ -1189,7 +1189,7 @@ public partial class MainViewModel : ObservableObject
             // Load recorded path from RecPath.txt
             LoadRecPathFromField(fieldPath);
 
-            // Load coverage
+            // Load coverage (shows busy overlay — pixel buffer callback needs UI thread for bitmap access)
             State.UI.BusyMessage = "Loading coverage...";
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
@@ -1261,9 +1261,10 @@ public partial class MainViewModel : ObservableObject
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             await Task.Delay(50);
 
-            // Save coverage
-            _coverageMapService.SaveToFile(ActiveField.DirectoryPath);
-            _logger.LogDebug($"[Coverage] Saved coverage to {ActiveField.DirectoryPath}");
+            // Save coverage on background thread (RLE compression can take seconds)
+            var savePath = ActiveField.DirectoryPath;
+            await Task.Run(() => _coverageMapService.SaveToFile(savePath));
+            _logger.LogDebug($"[Coverage] Saved coverage to {savePath}");
 
             // Flush elevation log
             _elevationLogService.Flush(ActiveField.DirectoryPath);
