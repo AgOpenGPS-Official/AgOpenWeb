@@ -49,16 +49,25 @@ public class BoolToToggleBackgroundConverter : IValueConverter
 {
     public static readonly BoolToToggleBackgroundConverter Instance = new();
 
-    private static readonly IBrush ActiveBrush = new SolidColorBrush(Color.Parse("#DD2ECC71"));
-    private static readonly IBrush InactiveBrush = new SolidColorBrush(Color.Parse("#DD8899AA"));
+    // Light mode: darker colors for contrast against light backgrounds
+    private static readonly IBrush ActiveLightBrush = new SolidColorBrush(Color.Parse("#DD1E8449"));
+    private static readonly IBrush InactiveLightBrush = new SolidColorBrush(Color.Parse("#DD7B8D9E"));
+
+    // Dark mode: brighter colors for visibility on dark backgrounds
+    private static readonly IBrush ActiveDarkBrush = new SolidColorBrush(Color.Parse("#DD2ECC71"));
+    private static readonly IBrush InactiveDarkBrush = new SolidColorBrush(Color.Parse("#DD4A5A6A"));
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
+        bool isDark = Avalonia.Application.Current?.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark;
         if (value is bool isActive)
         {
-            return isActive ? ActiveBrush : InactiveBrush;
+            if (isDark)
+                return isActive ? ActiveDarkBrush : InactiveDarkBrush;
+            else
+                return isActive ? ActiveLightBrush : InactiveLightBrush;
         }
-        return InactiveBrush;
+        return isDark ? InactiveDarkBrush : InactiveLightBrush;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
