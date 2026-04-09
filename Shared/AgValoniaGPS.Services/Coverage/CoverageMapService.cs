@@ -620,53 +620,52 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCells(double cellSize)
     {
-        if (_newCells.Count == 0)
-            return Array.Empty<(int, int, CoverageColor)>();
-
-        // Determine origin for coordinate calculations
-        double minE, minN;
-        if (_fieldBoundsSet)
+        lock (_coverageLock)
         {
-            // Use fixed field bounds (stable coordinate system)
-            minE = _fieldMinE;
-            minN = _fieldMinN;
-        }
-        else
-        {
-            // Fall back to coverage bounds (can drift)
-            if (!_boundsValid)
-            {
-                _newCells.Clear();
+            if (_newCells.Count == 0)
                 return Array.Empty<(int, int, CoverageColor)>();
-            }
-            minE = _minCellE * BITMAP_CELL_SIZE;
-            minN = _minCellN * BITMAP_CELL_SIZE;
-        }
 
-        // Reuse buffers to avoid allocations (clear first)
-        _newCellsDedup.Clear();
-        _newCellsResult.Clear();
-
-        // Convert each new cell to the requested cell size
-        foreach (var (cellE, cellN, zone) in _newCells)
-        {
-            double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
-            double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
-
-            int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
-            int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
-
-            if (_newCellsDedup.Add((outCellX, outCellY)))
+            // Determine origin for coordinate calculations
+            double minE, minN;
+            if (_fieldBoundsSet)
             {
-                var color = GetZoneColor(zone);
-                _newCellsResult.Add((outCellX, outCellY, color));
+                minE = _fieldMinE;
+                minN = _fieldMinN;
             }
+            else
+            {
+                if (!_boundsValid)
+                {
+                    _newCells.Clear();
+                    return Array.Empty<(int, int, CoverageColor)>();
+                }
+                minE = _minCellE * BITMAP_CELL_SIZE;
+                minN = _minCellN * BITMAP_CELL_SIZE;
+            }
+
+            _newCellsDedup.Clear();
+            _newCellsResult.Clear();
+
+            foreach (var (cellE, cellN, zone) in _newCells)
+            {
+                double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
+                double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
+
+                int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
+                int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
+
+                if (_newCellsDedup.Add((outCellX, outCellY)))
+                {
+                    var color = GetZoneColor(zone);
+                    _newCellsResult.Add((outCellX, outCellY, color));
+                }
+            }
+
+            _newCells.Clear();
+
+            // Return a copy since _newCellsResult is reused
+            return _newCellsResult.ToArray();
         }
-
-        // Clear source cells
-        _newCells.Clear();
-
-        return _newCellsResult;
     }
 
     public IReadOnlyList<CoveragePatch> GetPatches()

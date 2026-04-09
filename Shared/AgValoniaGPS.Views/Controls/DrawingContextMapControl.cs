@@ -341,6 +341,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     // Camera follow mode: 0=NorthUp, 1=HeadingUp, 2=Free
     private int _cameraFollowMode = 0;
+    private int _setAllPosCallCount = 0;
     public event Action? UserPanned;
 
     // Reverse indicator
@@ -619,6 +620,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// <summary>
     /// Setup composition visual when control is attached to visual tree.
     /// </summary>
+    /// <summary>
+    /// Draw a transparent fill so the control is hit-testable for pointer events.
+    /// The composition visual handles all actual rendering.
+    /// </summary>
+    public override void Render(Avalonia.Media.DrawingContext context)
+    {
+        context.DrawRectangle(Brushes.Transparent, null, new Rect(Bounds.Size));
+    }
+
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
@@ -673,7 +683,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// </summary>
     internal void SendStateToHandler()
     {
-        if (_customVisual == null || _handler == null) return;
+        if (_customVisual == null || _handler == null)
+            return;
 
         // Ensure coverage bitmap is ready before snapshotting state
         EnsureCoverageBitmapReady();
@@ -2130,6 +2141,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 UserPanned?.Invoke();
             }
             _lastMousePosition = currentPos;
+            SendStateToHandler();
             e.Handled = true;
         }
         else if (_isRotating)
@@ -2139,6 +2151,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             _cameraFollowMode = 2;
             _lastMousePosition = currentPos;
             UserPanned?.Invoke();
+            SendStateToHandler();
             e.Handled = true;
         }
     }
@@ -2175,8 +2188,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     {
         _cameraX += deltaX;
         _cameraY += deltaY;
-        // Notify ViewModel to enter Free mode (single source of truth)
         UserPanned?.Invoke();
+        SendStateToHandler();
     }
 
     public void PanTo(double x, double y)
@@ -2195,8 +2208,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         else
         {
             _zoom *= factor;
-            _zoom = Math.Clamp(_zoom, 0.02, 100.0);  // Min zoom 0.02 = 10km view height for large fields
+            _zoom = Math.Clamp(_zoom, 0.02, 100.0);
         }
+        SendStateToHandler();
     }
 
     public double GetZoom() => _zoom;
@@ -2207,11 +2221,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     {
         _rotation += deltaRadians;
         UserPanned?.Invoke();
+        SendStateToHandler();
     }
 
     public void SetGridVisible(bool visible)
     {
         IsGridVisible = visible;
+        SendStateToHandler();
     }
 
     public void Toggle3DMode()
@@ -2260,6 +2276,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             _rotation = -_vehicleHeading;
         }
+        SendStateToHandler();
     }
 
     public void SetDayMode(bool isDayMode)
@@ -2268,6 +2285,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             _isDayMode = isDayMode;
             UpdateDayNightColors();
+            SendStateToHandler();
         }
     }
 
@@ -2313,6 +2331,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady)
     {
+        // Mark heading as valid once vehicle has moved from origin
+        if (!_hasValidHeading && (Math.Abs(vehicleX) > 0.1 || Math.Abs(vehicleY) > 0.1))
+            _hasValidHeading = true;
+
         _vehicleX = vehicleX;
         _vehicleY = vehicleY;
         _vehicleHeading = vehicleHeading;
@@ -2323,6 +2345,26 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _hitchX = hitchX;
         _hitchY = hitchY;
         _toolPositionReady = toolReady;
+
+        // Camera follow based on mode
+        switch (_cameraFollowMode)
+        {
+            case 0: // NorthUp
+                _cameraX = vehicleX;
+                _cameraY = vehicleY;
+                _rotation = 0;
+                break;
+            case 1: // HeadingUp
+                _cameraX = vehicleX;
+                _cameraY = vehicleY;
+                _rotation = -vehicleHeading;
+                break;
+            case 2: // Free
+                break;
+        }
+
+        // Detect reversing
+        _isReversing = vehicleHeading < 0;
 
         SendStateToHandler();
     }
@@ -2970,6 +3012,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     {
         _isPanning = true;
         _lastMousePosition = position;
+        _panStartPosition = position;
+        _hasDraggedPastThreshold = false;
+        _rotationOnPanStart = _rotation;
     }
 
     public void StartRotate(Point position)
@@ -2980,9 +3025,48 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     public void UpdateMouse(Point position)
     {
-        if (_isPanning || _isRotating)
+        if (_isPanning)
         {
-            // Handled by OnPointerMoved
+            _rotation = _rotationOnPanStart;
+
+            double deltaX = position.X - _lastMousePosition.X;
+            double deltaY = position.Y - _lastMousePosition.Y;
+
+            double aspect = Bounds.Width / Bounds.Height;
+            double viewWidth = 200.0 * aspect / _zoom;
+            double viewHeight = 200.0 / _zoom;
+
+            double worldDeltaX = -deltaX * viewWidth / Bounds.Width;
+            double worldDeltaY = deltaY * viewHeight / Bounds.Height;
+
+            double cos = Math.Cos(_rotation);
+            double sin = Math.Sin(_rotation);
+            _cameraX += worldDeltaX * cos - worldDeltaY * sin;
+            _cameraY += worldDeltaX * sin + worldDeltaY * cos;
+
+            if (!_hasDraggedPastThreshold)
+            {
+                double dist = Math.Sqrt(Math.Pow(position.X - _panStartPosition.X, 2) +
+                                        Math.Pow(position.Y - _panStartPosition.Y, 2));
+                if (dist > DragThreshold)
+                    _hasDraggedPastThreshold = true;
+            }
+            if (_hasDraggedPastThreshold)
+            {
+                _cameraFollowMode = 2;
+                UserPanned?.Invoke();
+            }
+            _lastMousePosition = position;
+            SendStateToHandler();
+        }
+        else if (_isRotating)
+        {
+            double deltaX = position.X - _lastMousePosition.X;
+            _rotation += deltaX * 0.01;
+            _cameraFollowMode = 2;
+            _lastMousePosition = position;
+            UserPanned?.Invoke();
+            SendStateToHandler();
         }
     }
 
@@ -3152,44 +3236,47 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             };
         }
 
+        public override Rect GetRenderBounds()
+        {
+            var s = _state;
+            if (s != null && s.BoundsWidth > 0 && s.BoundsHeight > 0)
+                return new Rect(0, 0, s.BoundsWidth, s.BoundsHeight);
+            return new Rect(0, 0, 4000, 4000); // Large default until state arrives
+        }
+
         public override void OnMessage(object message)
         {
             if (message is MapRenderState state)
             {
                 _state = state;
+                // Invalidate triggers OnRender on the next compositor pass
+                Invalidate();
             }
         }
 
         public override void OnAnimationFrameUpdate()
         {
-            // Nothing — we render on demand when state changes
+            // Not used — we invalidate directly when new state arrives via OnMessage
         }
 
         public override void OnRender(ImmediateDrawingContext drawingContext)
         {
+            _renderCounter++;
             var s = _state;
             if (s == null) return;
             if (s.BoundsWidth <= 0 || s.BoundsHeight <= 0) return;
 
-            // Get SkiaSharp canvas for geometry/text drawing
-            var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
-            ISkiaSharpApiLease? skiaLease = null;
-            SKCanvas? canvas = null;
-            if (skiaFeature != null)
-            {
-                skiaLease = skiaFeature.Lease();
-                canvas = skiaLease.SkCanvas;
-            }
 
             try
             {
-                // Background fill (screen space)
+                // Background fill (screen space) — ImmediateDrawingContext only, no SKCanvas lease
                 var bgColor = s.IsDayMode
                     ? Color.FromRgb(69, 102, 179)
                     : Color.FromRgb(10, 10, 10);
                 drawingContext.FillRectangle(
                     new ImmutableSolidColorBrush(bgColor),
                     new Rect(0, 0, s.BoundsWidth, s.BoundsHeight));
+
 
                 // Calculate view transform
                 double aspect = s.BoundsWidth / s.BoundsHeight;
@@ -3221,107 +3308,56 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 if ((s.CoverageSkImage != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized))
                     && s.BitmapWidth > 0 && s.BitmapHeight > 0)
                 {
-                    DrawCoverageBitmap(drawingContext, canvas, s);
+                    DrawCoverageBitmap(drawingContext, null, s);
                 }
 
-                // Boundary
-                if (s.Boundary != null && canvas != null)
-                {
-                    DrawBoundary(canvas, s);
-                }
+                // === ALL ImmediateDrawingContext drawing FIRST (before SKCanvas lease) ===
 
-                // Headland line
-                if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2 && canvas != null)
-                {
-                    DrawHeadlandLine(canvas, s);
-                }
-
-                // Headland preview
-                if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2 && canvas != null)
-                {
-                    DrawHeadlandPreview(canvas, s);
-                }
-
-                // Recording points
-                if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
-                {
-                    DrawRecordingPoints(drawingContext, canvas, s);
-                }
-
-                // Selection markers
                 if (s.SelectionMarkers != null && s.SelectionMarkers.Count > 0)
-                {
                     DrawSelectionMarkers(drawingContext, s);
-                }
-
-                // Clip line/path
-                if (s.ClipLine.HasValue || (s.ClipPath != null && s.ClipPath.Count >= 2))
-                {
-                    DrawClipLine(drawingContext, canvas, s);
-                }
-
-                // Extra guidelines
                 if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
-                {
                     DrawExtraGuidelines(drawingContext, s);
-                }
-
-                // Tracks
                 if (s.ActiveTrack != null || s.PendingPointA != null
                     || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
-                {
                     DrawTrack(drawingContext, s);
-                }
-
-                // YouTurn path
-                if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
-                {
-                    DrawYouTurnPath(drawingContext, canvas, s);
-                }
-
-                // Tool
                 if (s.ShowVehicle && s.ToolWidth > 0.1)
-                {
                     DrawTool(drawingContext, s);
-                }
-
-                // Vehicle
                 if (s.ShowVehicle)
-                {
-                    DrawVehicle(drawingContext, canvas, s);
-                }
-
-                // Svenn arrow
+                    DrawVehicle(drawingContext, null, s);
                 if (s.ShowVehicle && s.SvennArrowVisible)
-                {
                     DrawSvennArrow(drawingContext, s);
-                }
-
-                // Flags
-                if (s.Flags.Count > 0)
-                {
-                    DrawFlags(drawingContext, canvas, s);
-                }
-
-                // Guidance look-ahead
                 if (s.GuidanceActive && s.ShowVehicle)
-                {
                     DrawGuidanceLookAhead(drawingContext, s);
+
+                // === SKCanvas lease LAST (for path-based drawing only) ===
+                var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                if (skiaFeature != null)
+                {
+                    using var skiaLease = skiaFeature.Lease();
+                    var canvas = skiaLease.SkCanvas;
+
+                    if (s.Boundary != null)
+                        DrawBoundary(canvas, s);
+                    if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
+                        DrawHeadlandLine(canvas, s);
+                    if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
+                        DrawHeadlandPreview(canvas, s);
+                    if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
+                        DrawRecordingPoints(drawingContext, canvas, s);
+                    if (s.ClipLine.HasValue || (s.ClipPath != null && s.ClipPath.Count >= 2))
+                        DrawClipLine(drawingContext, canvas, s);
+                    if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
+                        DrawYouTurnPath(drawingContext, canvas, s);
+                    if (s.Flags.Count > 0)
+                        DrawFlags(drawingContext, canvas, s);
+                    if (s.ShowBoundaryOffsetIndicator)
+                        DrawBoundaryOffsetIndicator(drawingContext, canvas, s);
                 }
 
-                // Boundary offset indicator
-                if (s.ShowBoundaryOffsetIndicator)
-                {
-                    DrawBoundaryOffsetIndicator(drawingContext, canvas, s);
-                }
             }
-            finally
-            {
-                skiaLease?.Dispose();
-            }
+            finally { }
 
             // Draw HUD elements in screen space (outside camera transform)
-            // Headland proximity HUD uses SkiaSharp for text
             if (s.HeadlandDistanceVisible && s.HasHeadland && s.HeadlandProximityDistance < 999)
             {
                 DrawHeadlandProximityHud(drawingContext, s);
@@ -3329,9 +3365,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
             // FPS tracking
             UpdateFpsCounter();
-
-            // Request next frame for continuous rendering
-            RegisterForNextAnimationFrameUpdate();
         }
 
         private static Matrix GetCameraTransform(MapRenderState s, double viewWidth, double viewHeight)
@@ -3952,37 +3985,27 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 }
                 else
                 {
-                    // Fallback triangle via SkiaSharp
-                    if (canvas != null)
-                    {
-                        using var path = new SKPath();
-                        path.MoveTo(0, (float)(size / 2));
-                        path.LineTo((float)(-size / 3), (float)(-size / 2));
-                        path.LineTo((float)(size / 3), (float)(-size / 2));
-                        path.Close();
-                        using var paint = new SKPaint
-                        {
-                            Color = new SKColor(0, 200, 0),
-                            Style = SKPaintStyle.Fill
-                        };
-                        canvas.DrawPath(path, paint);
-                    }
+                    // Fallback triangle using ImmediateDrawingContext (DrawLine)
+                    var vehiclePen = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromRgb(0, 200, 0)), 0.3);
+                    var vehicleBrush = new ImmutableSolidColorBrush(Color.FromArgb(180, 0, 200, 0));
+                    // Triangle: tip at top (0, size/2), base at (-size/3, -size/2) and (size/3, -size/2)
+                    var p1 = new Point(0, size / 2);
+                    var p2 = new Point(-size / 3, -size / 2);
+                    var p3 = new Point(size / 3, -size / 2);
+                    dc.DrawLine(vehiclePen, p1, p2);
+                    dc.DrawLine(vehiclePen, p2, p3);
+                    dc.DrawLine(vehiclePen, p3, p1);
+                    // Fill center with ellipse approximation
+                    dc.DrawEllipse(vehicleBrush, null, new Point(0, -size / 6), size / 3, size / 3);
                 }
 
-                // Heading unknown indicator
-                if (!s.HasValidHeading && canvas != null)
+                // Heading unknown indicator — draw "?" using dc (skip if no canvas)
+                if (!s.HasValidHeading)
                 {
-                    double worldPerPx = (200.0 / s.Zoom) / (s.BoundsHeight > 0 ? s.BoundsHeight : 600);
-                    float fontSize = (float)(40 * worldPerPx);
-                    using var font = new SKFont(SKTypeface.Default, fontSize);
-                    using var paint = new SKPaint(font) { Color = SKColors.Red };
-                    // Counter-rotate so text is readable
-                    canvas.Save();
-                    var m = SKMatrix.CreateRotation((float)(s.VehicleHeading + s.Rotation));
-                    m = m.PostConcat(SKMatrix.CreateScale(1, -1));
-                    canvas.Concat(ref m);
-                    canvas.DrawText("?", (float)(size / 2 + worldPerPx * 2), fontSize / 2, font, paint);
-                    canvas.Restore();
+                    var questionPen = new ImmutablePen(new ImmutableSolidColorBrush(Colors.Red), 0.3);
+                    dc.DrawLine(questionPen, new Point(size / 2 + 1, size / 2), new Point(size / 2 + 1, -size / 4));
+                    dc.DrawEllipse(new ImmutableSolidColorBrush(Colors.Red), null,
+                        new Point(size / 2 + 1, -size / 2), 0.2, 0.2);
                 }
 
                 // Reverse indicator
@@ -3990,7 +4013,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 {
                     double arrowSize = 2.0;
                     var arrowBrush = new ImmutableSolidColorBrush(Color.FromArgb(200, 255, 220, 0));
-                    // Simple rectangle indicator instead of triangle (no DrawGeometry available)
                     dc.FillRectangle(arrowBrush, new Rect(-arrowSize * 0.7, -arrowSize * 2.5, arrowSize * 1.4, arrowSize * 1.3));
                 }
 

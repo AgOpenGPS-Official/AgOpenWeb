@@ -36,7 +36,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly ICoverageMapService _coverageMapService;
     private readonly IAutoSteerService _autoSteerService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
-    private readonly IMapService _mapService;
     private readonly IAudioService _audioService;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
@@ -94,7 +93,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         ICoverageMapService coverageMapService,
         IAutoSteerService autoSteerService,
         YouTurnGuidanceService youTurnGuidanceService,
-        IMapService mapService,
         IAudioService audioService,
         ILogger<GpsPipelineService> logger,
         ApplicationState appState)
@@ -106,7 +104,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _coverageMapService = coverageMapService;
         _autoSteerService = autoSteerService;
         _youTurnGuidanceService = youTurnGuidanceService;
-        _mapService = mapService;
         _audioService = audioService;
         _logger = logger;
         _appState = appState;
@@ -304,12 +301,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool isToolReady = _toolPositionService.IsToolPositionReady;
         double toolWidth = config.ActualToolWidth;
 
-        // ── (4) Update map positions (atomic) ───────────────────────────
-        _mapService.SetAllPositions(
-            driftedEasting, driftedNorthing, headingRad,
-            toolPos.Easting, toolPos.Northing, toolHeading,
-            toolWidth, hitchPos.Easting, hitchPos.Northing, isToolReady);
-        _mapService.SetReversing(pos.Speed < -0.1);
+        // Map positions are now sent via GpsCycleResult → ViewModel → MapRenderState.
+        // The pipeline does NOT call _mapService directly.
 
         // ── (5) Boundary check — auto-disengage if outside ──────────────
         bool autoSteerDisengaged = false;
@@ -552,10 +545,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             };
         }
 
-        // Update map visualization
-        _mapService.SetBaseTrack(Math.Abs(distAway) > 0.01 ? track : null);
-        _mapService.SetActiveTrack(currentTrack);
-
         // Calculate heading alignment using the offset track we're actually following
         double trackHeading = FindNearestSegmentHeading(currentTrack.Points, driftedEasting, driftedNorthing);
         double headingDiff = headingRad - trackHeading;
@@ -594,8 +583,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (_trackGuidanceState != null)
             _trackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
 
-        _mapService.SetGuidancePoints(output.GoalPoint.Easting, output.GoalPoint.Northing, isActive: true);
-
         return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing, statusMessage);
     }
 
@@ -616,8 +603,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         if (Math.Abs(distAway) < 0.01)
         {
-            _mapService.SetBaseTrack(null);
-            _mapService.SetActiveTrack(track);
+            // Base track — no offset needed, map will use it directly
         }
         else
         {
@@ -630,8 +616,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 IsVisible = true,
                 IsActive = true
             };
-            _mapService.SetBaseTrack(track);
-            _mapService.SetActiveTrack(displayTrack);
         }
 
         // Update XTE display

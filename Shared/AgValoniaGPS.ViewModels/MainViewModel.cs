@@ -265,7 +265,7 @@ public partial class MainViewModel : ObservableObject
 
         _simulatorTimer = new Avalonia.Threading.DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(100)
+            Interval = TimeSpan.FromMilliseconds(33) // ~30Hz — pipeline back-pressure skips if processing is slow
         };
         _simulatorTimer.Tick += OnSimulatorTick;
 
