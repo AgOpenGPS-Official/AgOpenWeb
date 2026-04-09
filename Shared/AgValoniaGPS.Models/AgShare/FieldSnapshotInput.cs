@@ -49,7 +49,7 @@ namespace AgValoniaGPS.Models.AgShare
         /// List of boundaries in local NE coordinates
         /// First boundary is outer, rest are holes
         /// </summary>
-        public List<List<Vec3>> Boundaries { get; set; } = new List<List<Vec3>>();
+        public List<List<Vec3>>? Boundaries { get; set; } = new List<List<Vec3>>();
 
         /// <summary>
         /// List of AB lines/curves in local coordinates
