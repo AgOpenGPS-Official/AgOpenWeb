@@ -192,7 +192,8 @@ internal class MapRenderState
     public int NumSections;
 
     // Coverage bitmap (SKBitmap reference — render thread reads directly)
-    public SKImage? CoverageSkImage;
+    public SKImage? CoverageSkImage;  // Legacy — kept for field load/save
+    public SKBitmap? CoverageSkBitmap; // Direct reference for render-thread drawing
     public double BitmapMinE, BitmapMinN, BitmapMaxE, BitmapMaxN;
     public int BitmapWidth, BitmapHeight;
     public bool BitmapHasContent;
@@ -341,7 +342,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     // Camera follow mode: 0=NorthUp, 1=HeadingUp, 2=Free
     private int _cameraFollowMode = 0;
-    private int _setAllPosCallCount = 0;
     public event Action? UserPanned;
 
     // Reverse indicator
@@ -465,6 +465,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // SKImage is an immutable snapshot — GPU caches the texture.
     // Only recreated when pixels actually change.
     private SKBitmap? _coverageSkBitmap;
+    private SKBitmap? _previousCoverageSkBitmap; // Keeps old bitmap alive while render thread may still reference it
     private SKImage? _coverageSkImage;          // Cached GPU texture — recreated on pixel change
     private SKImage? _previousSkImage;          // Keeps previous image alive while render thread may use it
     private volatile bool _coverageSkImageDirty; // True when SKBitmap has new pixels not in SKImage
@@ -694,13 +695,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         var toolCfg = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tool;
         var fieldState = AgValoniaGPS.Models.State.ApplicationState.Instance.Field;
 
-        // Recreate SKImage snapshot if pixels have changed
-        if (_coverageSkBitmap != null && (_coverageSkImageDirty || _coverageSkImage == null))
-        {
-            _previousSkImage = _coverageSkImage;
-            _coverageSkImage = SKImage.FromBitmap(_coverageSkBitmap);
-            _coverageSkImageDirty = false;
-        }
+        // No SKImage snapshot needed — render thread draws SKBitmap directly
+        // via canvas.DrawBitmap (lock-free, atomic pixel reads)
 
         var state = new MapRenderState
         {
@@ -739,7 +735,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             SectionButtonState = (int[])_sectionButtonState.Clone(),
             NumSections = _numSections,
 
-            CoverageSkImage = _coverageSkImage,
+            CoverageSkImage = _coverageSkImage, // Legacy
+            CoverageSkBitmap = _coverageSkBitmap,
             BitmapMinE = _bitmapMinE,
             BitmapMinN = _bitmapMinN,
             BitmapMaxE = _bitmapMaxE,
@@ -838,10 +835,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             return;
         }
 
-        // Dispose old bitmaps
+        // Dispose old bitmaps — keep SKBitmap alive until render thread moves on
         _coverageWriteableBitmap?.Dispose();
         _coverageDisplayBitmap?.Dispose();
-        _coverageSkBitmap?.Dispose();
+        _previousCoverageSkBitmap?.Dispose(); // Dispose the one from TWO recreations ago (render thread is done with it)
+        _previousCoverageSkBitmap = _coverageSkBitmap; // Keep current one alive for render thread
+        _coverageSkBitmap = null; // Clear so SendStateToHandler sends null until new one is ready
         _coverageMedium?.Dispose();
         _coverageMedium = null;
 
@@ -3304,38 +3303,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     DrawGrid(drawingContext, s, viewWidth, viewHeight);
                 }
 
-                // Coverage bitmap
-                if ((s.CoverageSkImage != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized))
-                    && s.BitmapWidth > 0 && s.BitmapHeight > 0)
-                {
-                    DrawCoverageBitmap(drawingContext, null, s);
-                }
-
-                // === ALL ImmediateDrawingContext drawing FIRST (before SKCanvas lease) ===
-
-                if (s.SelectionMarkers != null && s.SelectionMarkers.Count > 0)
-                    DrawSelectionMarkers(drawingContext, s);
-                if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
-                    DrawExtraGuidelines(drawingContext, s);
-                if (s.ActiveTrack != null || s.PendingPointA != null
-                    || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
-                    DrawTrack(drawingContext, s);
-                if (s.ShowVehicle && s.ToolWidth > 0.1)
-                    DrawTool(drawingContext, s);
-                if (s.ShowVehicle)
-                    DrawVehicle(drawingContext, null, s);
-                if (s.ShowVehicle && s.SvennArrowVisible)
-                    DrawSvennArrow(drawingContext, s);
-                if (s.GuidanceActive && s.ShowVehicle)
-                    DrawGuidanceLookAhead(drawingContext, s);
-
-                // === SKCanvas lease LAST (for path-based drawing only) ===
+                // === ALL remaining drawing via SKCanvas ===
+                // dc drawing after SKCanvas lease is unreliable, so everything
+                // after grid/texture goes through SKCanvas.
                 var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
                 if (skiaFeature != null)
                 {
                     using var skiaLease = skiaFeature.Lease();
                     var canvas = skiaLease.SkCanvas;
 
+                    // Coverage bitmap
+                    if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
+                        && s.BitmapWidth > 0 && s.BitmapHeight > 0)
+                    {
+                        DrawCoverageBitmap(drawingContext, canvas, s);
+                    }
+
+                    // Boundary, headland, paths
                     if (s.Boundary != null)
                         DrawBoundary(canvas, s);
                     if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
@@ -3348,6 +3332,20 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                         DrawClipLine(drawingContext, canvas, s);
                     if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
                         DrawYouTurnPath(drawingContext, canvas, s);
+
+                    // Tracks (SKCanvas version)
+                    if (s.ActiveTrack != null || s.PendingPointA != null
+                        || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
+                        DrawTrackSk(canvas, s);
+
+                    // Tool + Vehicle + guidance (SKCanvas versions)
+                    if (s.ShowVehicle && s.ToolWidth > 0.1)
+                        DrawToolSk(canvas, s);
+                    if (s.ShowVehicle)
+                        DrawVehicleSk(canvas, s);
+                    if (s.GuidanceActive && s.ShowVehicle)
+                        DrawGuidanceLookAheadSk(canvas, s);
+
                     if (s.Flags.Count > 0)
                         DrawFlags(drawingContext, canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
@@ -3502,25 +3500,27 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         private void DrawCoverageBitmap(ImmediateDrawingContext dc, SKCanvas? canvas, MapRenderState s)
         {
-            if (s.CoverageSkImage == null || s.BitmapWidth == 0 || s.BitmapHeight == 0)
+            if (s.CoverageSkBitmap == null || s.BitmapWidth == 0 || s.BitmapHeight == 0)
                 return;
+            if (canvas == null) return;
 
             double worldWidth = s.BitmapMaxE - s.BitmapMinE;
             double worldHeight = s.BitmapMaxN - s.BitmapMinN;
-            var destRect = new Rect(s.BitmapMinE, s.BitmapMinN, worldWidth, worldHeight);
 
-            // Draw via SkiaSharp for SKImage
-            if (canvas != null)
+            var src = new SKRect(0, 0, s.CoverageSkBitmap.Width, s.CoverageSkBitmap.Height);
+            var dst = new SKRect(
+                (float)s.BitmapMinE, (float)s.BitmapMinN,
+                (float)(s.BitmapMinE + worldWidth), (float)(s.BitmapMinN + worldHeight));
+
+            using var paint = new SKPaint
             {
-                var src = new SKRect(0, 0, s.CoverageSkImage.Width, s.CoverageSkImage.Height);
-                var dst = new SKRect((float)destRect.X, (float)destRect.Y,
-                                     (float)destRect.Right, (float)destRect.Bottom);
-                using var paint = new SKPaint
-                {
-                    FilterQuality = s.Zoom < 0.5 ? SKFilterQuality.Low : SKFilterQuality.High
-                };
-                canvas.DrawImage(s.CoverageSkImage, src, dst, paint);
-            }
+                FilterQuality = s.Zoom < 0.5 ? SKFilterQuality.Low : SKFilterQuality.High
+            };
+
+            // Draw SKBitmap directly — no SKImage.FromBitmap copy needed.
+            // Pipeline writes pixels on bg thread, we read on render thread.
+            // Atomic 4-byte pixel reads mean worst case is a partially-updated frame.
+            canvas.DrawBitmap(s.CoverageSkBitmap, src, dst, paint);
         }
 
         private void DrawBoundary(SKCanvas canvas, MapRenderState s)
@@ -4187,6 +4187,136 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 // Post FPS update to UI thread
                 Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
             }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SKCanvas-only drawing methods (no ImmediateDrawingContext)
+        // Used because dc drawing after SKCanvas lease is unreliable.
+        // ═══════════════════════════════════════════════════════════════
+
+        private void DrawVehicleSk(SKCanvas canvas, MapRenderState s)
+        {
+            float size = 5.0f;
+            float vx = (float)s.VehicleX, vy = (float)s.VehicleY;
+
+            canvas.Save();
+            canvas.Translate(vx, vy);
+            canvas.RotateRadians(-(float)s.VehicleHeading);
+
+            // Triangle
+            using var vehiclePaint = new SKPaint { Color = new SKColor(0, 200, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
+            using var path = new SKPath();
+            path.MoveTo(0, size / 2);
+            path.LineTo(-size / 3, -size / 2);
+            path.LineTo(size / 3, -size / 2);
+            path.Close();
+            canvas.DrawPath(path, vehiclePaint);
+
+            // Antenna dot
+            using var antennaPaint = new SKPaint { Color = new SKColor(40, 120, 255), Style = SKPaintStyle.Fill };
+            canvas.DrawCircle((float)s.AntennaOffset, (float)s.AntennaPivot, 0.25f, antennaPaint);
+
+            canvas.Restore();
+        }
+
+        private void DrawToolSk(SKCanvas canvas, MapRenderState s)
+        {
+            float tx = (float)s.ToolX, ty = (float)s.ToolY;
+            float halfWidth = (float)(s.ToolWidth / 2);
+            float toolDepth = 1.2f;
+
+            canvas.Save();
+            canvas.Translate(tx, ty);
+            canvas.RotateRadians(-(float)s.ToolHeading);
+
+            // Draw each section
+            float runPos = -halfWidth;
+            for (int i = 0; i < s.NumSections; i++)
+            {
+                float secW = (float)s.SectionWidths[i];
+                SKColor secColor;
+                if (s.SectionButtonState[i] == 0) // Off
+                    secColor = new SKColor(242, 51, 51);
+                else if (s.SectionButtonState[i] == 1) // On/Manual
+                    secColor = new SKColor(247, 247, 0);
+                else // Auto
+                    secColor = s.SectionOn[i] ? new SKColor(0, 242, 0) : new SKColor(242, 51, 51);
+
+                using var secPaint = new SKPaint { Color = secColor, Style = SKPaintStyle.Fill };
+                canvas.DrawRect(runPos, -toolDepth / 2, secW, toolDepth, secPaint);
+
+                using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+                canvas.DrawRect(runPos, -toolDepth / 2, secW, toolDepth, outlinePaint);
+
+                runPos += secW;
+            }
+
+            // Center line
+            using var centerPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+            canvas.DrawLine(0, -toolDepth / 2, 0, toolDepth / 2, centerPaint);
+
+            canvas.Restore();
+        }
+
+        private void DrawTrackSk(SKCanvas canvas, MapRenderState s)
+        {
+            // Active track
+            if (s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
+            {
+                using var trackPaint = new SKPaint
+                {
+                    Color = new SKColor(252, 86, 186),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.5f,
+                    IsAntialias = true
+                };
+                DrawTrackPointsSk(canvas, s.ActiveTrack.Points, trackPaint);
+            }
+
+            // Base track
+            if (s.BaseTrack != null && s.BaseTrack.Points.Count >= 2)
+            {
+                using var basePaint = new SKPaint
+                {
+                    Color = new SKColor(180, 100, 255),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.3f,
+                    IsAntialias = true
+                };
+                DrawTrackPointsSk(canvas, s.BaseTrack.Points, basePaint);
+            }
+
+            // Pending point A
+            if (s.PendingPointA != null)
+            {
+                using var pointPaint = new SKPaint { Color = new SKColor(0, 255, 0), Style = SKPaintStyle.Fill };
+                canvas.DrawCircle((float)s.PendingPointA.Easting, (float)s.PendingPointA.Northing, 1.0f, pointPaint);
+            }
+        }
+
+        private static void DrawTrackPointsSk(SKCanvas canvas, IReadOnlyList<AgValoniaGPS.Models.Base.Vec3> points, SKPaint paint)
+        {
+            if (points.Count < 2) return;
+            using var path = new SKPath();
+            path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
+            for (int i = 1; i < points.Count; i++)
+                path.LineTo((float)points[i].Easting, (float)points[i].Northing);
+            canvas.DrawPath(path, paint);
+        }
+
+        private void DrawGuidanceLookAheadSk(SKCanvas canvas, MapRenderState s)
+        {
+            using var goalPaint = new SKPaint { Color = new SKColor(255, 100, 100), Style = SKPaintStyle.Fill };
+            canvas.DrawCircle((float)s.GoalEasting, (float)s.GoalNorthing, 0.5f, goalPaint);
+
+            using var linePaint = new SKPaint
+            {
+                Color = new SKColor(255, 255, 0, 150),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.2f
+            };
+            canvas.DrawLine((float)s.VehicleX, (float)s.VehicleY,
+                           (float)s.GoalEasting, (float)s.GoalNorthing, linePaint);
         }
     }
 }
