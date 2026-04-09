@@ -49,9 +49,9 @@ public class BoolToToggleBackgroundConverter : IValueConverter
 {
     public static readonly BoolToToggleBackgroundConverter Instance = new();
 
-    // Light mode: original green active, subtle gray inactive (matches BaseLow)
+    // Light mode: original green active, opaque light gray inactive
     private static readonly IBrush ActiveLightBrush = new SolidColorBrush(Color.Parse("#DD1E8449"));
-    private static readonly IBrush InactiveLightBrush = new SolidColorBrush(Color.Parse("#33000000"));
+    private static readonly IBrush InactiveLightBrush = new SolidColorBrush(Color.Parse("#DDC8D0D8"));
 
     // Dark mode: original colors
     private static readonly IBrush ActiveDarkBrush = new SolidColorBrush(Color.Parse("#DD1E8449"));
