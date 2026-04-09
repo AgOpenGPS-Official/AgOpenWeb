@@ -1285,8 +1285,15 @@ if frames:
         Console.Write($"[cleared={areaAfterClear:F1}m2] ");
         Console.WriteLine("OK");
 
-        // Enable sections and drive straight north ~100m
-        Console.Write("[Cov 2] Drive 100m with sections ON... ");
+        // Reset tractor to field origin (center of boundary), heading north
+        Console.Write("[Cov 2] Reset position + drive 100m with sections ON... ");
+        var settings = settingsService.Settings;
+        vm.SetSimulatorCoordinates(settings.SimulatorLatitude, settings.SimulatorLongitude);
+        simService.SetHeading(0); // Face north
+        await Delay(100);
+        // Tick a few times to establish position
+        for (int i = 0; i < 5; i++) { simService.Tick(0); await Delay(10); }
+        Console.Write($"[pos=({vm.Easting:F0},{vm.Northing:F0})] ");
 
         // Set all sections to Auto via master toggle
         if (!vm.IsSectionMasterOn)
