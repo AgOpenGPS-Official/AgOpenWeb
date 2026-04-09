@@ -159,6 +159,60 @@ Move the entire map rendering to the render thread using Avalonia 12's compositi
 
 Fix the ~8 AXAML files that need `x:DataType` and enable `AvaloniaUseCompiledBindingsByDefault` in the Views project. Performance win on binding evaluation.
 
+### Phase 0: Test harness for ViewModel behavior (BEFORE refactoring)
+
+We need tests that validate the current behavior BEFORE we extract computation to services. These tests become the safety net for the refactor and the regression suite going forward.
+
+#### 0A: Create `Tests/AgValoniaGPS.ViewModels.Tests/` project
+
+A pure C# test project — no Avalonia headless dependency. Uses `MainViewModelBuilder` (moved from UI.Tests) with NSubstitute mocks.
+
+```xml
+<PackageReference Include="NUnit" Version="4.5.1" />
+<PackageReference Include="NSubstitute" Version="5.3.0" />
+<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+<!-- NO Avalonia packages -->
+```
+
+#### 0B: Test current ViewModel computation (the code that's about to move)
+
+| Test Area | ViewModel Partial | What to test |
+|-----------|------------------|-------------|
+| Guidance | `MainViewModel.Guidance.cs` | Given position off-track → steer angle is non-zero and toward track |
+| Guidance | `MainViewModel.Guidance.cs` | Given position on-track → steer angle is near zero |
+| Guidance | `MainViewModel.Guidance.cs` | Offset pass calculation produces correct offset |
+| YouTurn | `MainViewModel.YouTurn.cs` | Approaching headland → U-turn path is generated |
+| YouTurn | `MainViewModel.YouTurn.cs` | U-turn path has correct arc radius for implement width |
+| Section Control | `MainViewModel.SectionControl.cs` | Sections turn on inside boundary |
+| Section Control | `MainViewModel.SectionControl.cs` | Sections turn off outside boundary |
+| Section Control | `MainViewModel.SectionControl.cs` | Sections turn off on already-covered area |
+| GPS Handling | `MainViewModel.GpsHandling.cs` | GPS update triggers property changes (Lat, Lon, Speed, Heading) |
+| GPS Handling | `MainViewModel.GpsHandling.cs` | Drift compensation applies correctly |
+| Simulator | `MainViewModel.Simulator.cs` | Simulator tick advances position |
+| Simulator | `MainViewModel.Simulator.cs` | Autosteer engaged → tractor follows track |
+| Boundary Recording | `MainViewModel.BoundaryRecording.cs` | Recording accumulates points |
+| Commands | Various | All commands execute without exceptions |
+| Track Management | `MainViewModel.Commands.Track.cs` | Track selection updates active track |
+
+#### 0C: Move `MainViewModelBuilder` to shared test utility
+
+Currently in `UI.Tests`. Copy to `ViewModels.Tests` (or extract to a shared test helpers project) so both projects can build ViewModels with mocks.
+
+#### 0D: Test services in isolation (already partly done)
+
+Verify existing `Services.Tests` cover the service methods that will receive the extracted computation. Add tests for any gaps:
+
+| Service | Existing Tests? | Gaps |
+|---------|----------------|------|
+| TrackGuidanceService | ✅ Yes (21 tests) | May need offset pass tests |
+| YouTurnCreationService | ✅ Yes | May need headland approach tests |
+| SectionControlService | ✅ Yes | May need coverage overlap tests |
+| CoverageMapService | ✅ Yes | May need pixel write verification |
+| GpsService | ✅ Yes | May need drift compensation tests |
+| SimulatorService | ⬜ No | Need tick + position advance tests |
+
+**After Phase 0**: We have a test suite that validates the current behavior. When we extract code in Phase B, we run these tests to prove nothing broke. Going forward, every ViewModel and service change is tested.
+
 ## Completion Checklist
 
 | Phase | Status | Blocks |
@@ -167,8 +221,9 @@ Fix the ~8 AXAML files that need `x:DataType` and enable `AvaloniaUseCompiledBin
 | Avalonia 12 packages | ✅ Done | — |
 | ICustomDrawOperation + SKBitmap | ✅ Done | — |
 | Console.WriteLine → Debug.WriteLine | ✅ Done | — |
-| **Phase A: Stop blocking UI thread** | ⬜ Next | — |
-| **Phase B: Extract ViewModel → services** | ⬜ | Phase A |
+| **Phase 0: Test harness** | ⬜ Next | — |
+| **Phase A: Stop blocking UI thread** | ⬜ | — |
+| **Phase B: Extract ViewModel → services** | ⬜ | Phase 0, Phase A |
 | **Phase C: Batch property updates** | ⬜ | Phase B |
 | **Phase D: CompositionCustomVisualHandler** | ⬜ Future | Phase B |
 | **Phase E: Compiled bindings** | ⬜ Anytime | — |
