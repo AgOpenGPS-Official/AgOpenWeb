@@ -348,9 +348,14 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // Display bitmap (Bgra8888) -- for rendering with black=transparent
     private WriteableBitmap? _coverageWriteableBitmap;
     private WriteableBitmap? _coverageDisplayBitmap;
-    // SKBitmap shadow for lock-free rendering — written by SetCoveragePixel,
-    // read by CoverageBitmapDrawOp. No WriteableBitmap.Lock contention.
+    // SKBitmap for pixel writes (SetCoveragePixel), SKImage for GPU rendering.
+    // SKImage is an immutable snapshot — GPU caches the texture.
+    // Only recreated when pixels actually change.
     private SKBitmap? _coverageSkBitmap;
+    private SKImage? _coverageSkImage;          // Cached GPU texture — recreated on pixel change
+    private SKImage? _previousSkImage;          // Keeps previous image alive while render thread may use it
+    private volatile bool _coverageSkImageDirty; // True when SKBitmap has new pixels not in SKImage
+    private DateTime _lastSkImageRecreateTime;  // Throttle snapshot creation (100MB copy)
     private volatile bool _writeableBitmapsDirty; // SKBitmap has pixels not yet synced to WriteableBitmaps
     private const double MIN_BITMAP_CELL_SIZE = 0.1; // Preferred resolution (matches RTK precision)
     private const int MAX_BITMAP_DIMENSION = 16384; // Max pixels per dimension (~1GB at 4 bytes/pixel)
@@ -1663,13 +1668,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// </summary>
     private class CoverageBitmapDrawOp : ICustomDrawOperation
     {
-        private readonly SKBitmap _skBitmap;
+        private readonly SKImage _skImage;
         private readonly Rect _destRect;
         private readonly SKFilterQuality _quality;
 
-        public CoverageBitmapDrawOp(SKBitmap skBitmap, Rect destRect, bool lowQuality)
+        public CoverageBitmapDrawOp(SKImage skImage, Rect destRect, bool lowQuality)
         {
-            _skBitmap = skBitmap;
+            _skImage = skImage;
             _destRect = destRect;
             _quality = lowQuality ? SKFilterQuality.Low : SKFilterQuality.High;
         }
@@ -1684,13 +1689,14 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             using var lease = feature.Lease();
             var canvas = lease.SkCanvas;
 
-            // Draw directly from SKBitmap — no WriteableBitmap.Lock, zero contention
-            var src = new SKRect(0, 0, _skBitmap.Width, _skBitmap.Height);
+            // Draw from cached SKImage — GPU texture is reused between frames
+            // when pixels haven't changed. Only re-uploaded when SKImage is recreated.
+            var src = new SKRect(0, 0, _skImage.Width, _skImage.Height);
             var dst = new SKRect((float)_destRect.X, (float)_destRect.Y,
                                  (float)_destRect.Right, (float)_destRect.Bottom);
 
             using var paint = new SKPaint { FilterQuality = _quality };
-            canvas.DrawBitmap(_skBitmap, src, dst, paint);
+            canvas.DrawImage(_skImage, src, dst, paint);
         }
 
         public bool HitTest(Point p) => _destRect.Contains(p);
@@ -1742,51 +1748,26 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             Debug.WriteLine($"[DrawCovBitmap] destRect: ({_bitmapMinE:F2}, {_bitmapMinN:F2}) size ({worldWidth:F2}, {worldHeight:F2})");
         }
 
-        // Adaptive 3-level LOD selection based on world-meters-per-pixel + FPS bias
-        double screenHeight = Bounds.Height > 0 ? Bounds.Height : 600;
-        double worldPerPixel = (200.0 / _zoom) / screenHeight;
-        double mediumThreshold = BASE_WPP_MEDIUM * (1.0 - _lodBias);
-        double thumbnailThreshold = BASE_WPP_THUMBNAIL * (1.0 - _lodBias);
-
-        // Throttle LOD rebuilds to at most once per second while coverage is updating
-        bool allowLodRebuild = (DateTime.UtcNow - _lastLodRebuildTime).TotalSeconds >= 1.0;
-
-        if (worldPerPixel > thumbnailThreshold)
+        // Recreate SKImage snapshot only when pixels changed.
+        // SKImage is immutable — GPU caches the texture between frames.
+        // ICustomDrawOperation bypasses compositor scene graph cache (needed for Av12)
+        // but SKImage provides GPU-level texture caching (fast repeated draws).
+        if (_coverageSkBitmap != null)
         {
-            if (_thumbnailNeedsRebuild && allowLodRebuild && _coverageWriteableBitmap != null)
+            if (_coverageSkImageDirty || _coverageSkImage == null)
             {
-                UpdateCoverageThumbnail();
-                _thumbnailNeedsRebuild = false;
-                _mediumNeedsRebuild = false; // also refresh medium while we're at it
-                UpdateCoverageMedium();
-                _lastLodRebuildTime = DateTime.UtcNow;
+                // Don't dispose old image — render thread may still be drawing it.
+                // Keep previous image alive until replaced; GC handles the rest.
+                _previousSkImage = _coverageSkImage;
+                _coverageSkImage = SKImage.FromBitmap(_coverageSkBitmap);
+                _coverageSkImageDirty = false;
             }
-            if (_coverageThumbnail != null)
-            {
-                var srcRect = new Rect(0, 0, _thumbnailWidth, _thumbnailHeight);
-                using (context.PushRenderOptions(_lowQualityRenderOptions))
-                    context.DrawImage(_coverageThumbnail, srcRect, destRect);
-                return _thumbnailWidth * _thumbnailHeight;
-            }
-        }
-        if (worldPerPixel > mediumThreshold)
-        {
-            if (_mediumNeedsRebuild && allowLodRebuild && _coverageWriteableBitmap != null)
-            {
-                UpdateCoverageMedium();
-                _mediumNeedsRebuild = false;
-                _lastLodRebuildTime = DateTime.UtcNow;
-            }
-            if (_coverageMedium != null)
-            {
-                var srcRect = new Rect(0, 0, _mediumWidth, _mediumHeight);
-                using (context.PushRenderOptions(_lowQualityRenderOptions))
-                    context.DrawImage(_coverageMedium, srcRect, destRect);
-                return _mediumWidth * _mediumHeight;
-            }
+
+            context.Custom(new CoverageBitmapDrawOp(
+                _coverageSkImage, destRect, lowQuality: _zoom < 0.5));
+            return _coverageSkBitmap.Width * _coverageSkBitmap.Height;
         }
 
-        // Full-resolution bitmap when zoomed in close
         var fullSrcRect = new Rect(0, 0, _bitmapWidth, _bitmapHeight);
 
         // Composite background into bitmap on first draw
@@ -1816,12 +1797,16 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
-        // Draw from SKBitmap shadow via ICustomDrawOperation — bypasses
-        // Avalonia 12's scene graph caching AND avoids WriteableBitmap.Lock contention
-        if (_coverageSkBitmap != null)
+        // Fallback: draw via cached SKImage (same as main path above)
+        if (_coverageSkBitmap != null && _coverageSkImage == null)
+        {
+            _coverageSkImage = SKImage.FromBitmap(_coverageSkBitmap);
+            _coverageSkImageDirty = false;
+        }
+        if (_coverageSkImage != null)
         {
             context.Custom(new CoverageBitmapDrawOp(
-                _coverageSkBitmap, destRect, lowQuality: _zoom < 0.5));
+                _coverageSkImage, destRect, lowQuality: _zoom < 0.5));
         }
 
         return _bitmapWidth * _bitmapHeight;
@@ -1925,6 +1910,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 // Write to SKBitmap shadow (lock-free rendering)
                 _coverageSkBitmap?.SetPixel(cellX, cellY,
                     rgb565 == 0 ? SKColor.Empty : Rgb565ToSKColor(rgb565));
+                _coverageSkImageDirty = true;
 
                 _bitmapHasContent = true;
                 cellCount++;
@@ -1982,6 +1968,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _coverageSkBitmap?.SetPixel(localX, localY,
             rgb565 == 0 ? SKColor.Empty : Rgb565ToSKColor(rgb565));
         _writeableBitmapsDirty = true;
+        _coverageSkImageDirty = true;
     }
 
     /// <summary>
@@ -2031,6 +2018,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         var dst = (uint*)_coverageSkBitmap.GetPixels();
         int count = _bitmapWidth * _bitmapHeight;
         Buffer.MemoryCopy(src, dst, count * 4, count * 4);
+        _coverageSkImageDirty = true;
     }
 
     private static SKColor Rgb565ToSKColor(ushort rgb565)
