@@ -1295,13 +1295,22 @@ if frames:
 
         // Clear any pre-existing coverage
         coverageService.ClearAll();
-        await Delay(200);
+        // Force display bitmap refresh by pumping UI
+        await Delay(300);
+        Dispatcher.UIThread.RunJobs();
+        await Delay(100);
+        Dispatcher.UIThread.RunJobs();
         Console.WriteLine("OK");
 
-        // === POSITION: Reset tractor to field origin, heading north ===
-        Console.Write("[Cov 1] Position tractor at origin heading north... ");
-        vm.SetSimulatorCoordinates(settingsService.Settings.SimulatorLatitude,
-                                    settingsService.Settings.SimulatorLongitude);
+        // === POSITION: Reset tractor to N=-50 (well inside boundary), heading north ===
+        // Boundary is N=-80 to N=80, headland is ~7m inside = N=-73 to N=73
+        // Starting at N=-50 and driving 100m to N=50 stays fully within headland
+        Console.Write("[Cov 1] Position tractor at (0,-50) heading north... ");
+        // Use field origin lat/lon but offset south by ~50m
+        double originLat = settingsService.Settings.SimulatorLatitude;
+        double originLon = settingsService.Settings.SimulatorLongitude;
+        // 50m south: ~0.00045 degrees latitude
+        vm.SetSimulatorCoordinates(originLat - 0.00045, originLon);
         simService.SetHeading(0); // Face north
         vm.SimulatorSteerAngle = 0;
         await Delay(100);
