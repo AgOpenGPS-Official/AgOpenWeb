@@ -1329,11 +1329,22 @@ if frames:
 
         CaptureScreenshot(window, "cov_01_before_drive");
 
-        // Drive and log position every 10m
+        // Drive and log position every 10 ticks
         double startN = vm.Northing;
         int ticks = 0;
         var pathLog = new System.Text.StringBuilder();
         pathLog.AppendLine("tick,easting,northing,heading,toolE,toolN,speed,area,sectionsOn");
+
+        // Log tick 0 (initial state)
+        {
+            int s0 = 0;
+            var st0 = vm.GetSectionStates();
+            if (st0 != null) for (int i = 0; i < Math.Min(st0.Length, config.NumSections); i++) if (st0[i]) s0++;
+            pathLog.AppendLine($"0,{vm.Easting:F2},{vm.Northing:F2},{vm.Heading:F1}," +
+                $"{vm.ToolEasting:F2},{vm.ToolNorthing:F2},{vm.SpeedKmh:F1}," +
+                $"{coverageService.TotalWorkedArea:F1},{s0}");
+            Console.Write($"[tick0: area={coverageService.TotalWorkedArea:F1} pos=({vm.Easting:F1},{vm.Northing:F1})] ");
+        }
 
         while (Math.Abs(vm.Northing - startN) < 100.0 && ticks < 500)
         {
