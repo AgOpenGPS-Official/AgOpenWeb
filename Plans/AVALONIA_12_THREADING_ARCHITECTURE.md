@@ -76,39 +76,102 @@ Render Thread (via ICustomDrawOperation / CompositionCustomVisualHandler):
 
 ## Implementation Phases
 
-### Phase A: Fix blocking calls (immediate)
-- Replace `Dispatcher.UIThread.Invoke()` with `Post()` in GpsHandling.cs and Ntrip.cs
-- Make `MainView_Unloaded` save async (don't block the UI thread on app background)
-- Make field load/save async
+### Phase A: Stop blocking the UI thread (immediate, low risk)
 
-### Phase B: Move GPS processing off UI thread
-- Simulator tick runs on background thread
-- GPS data processing (guidance, coverage detection) on background thread
-- Only property updates posted to UI thread
+Eliminate all synchronous blocking on the UI thread. This doesn't restructure the architecture but stops the ANR bleeding.
 
-### Phase C: Batch property updates
-- Collect GPS-derived property changes
-- Post batch update to UI thread at max 10 Hz
-- Reduces UI thread wakeups from ~30/sec to ~10/sec
+| Task | File | Change |
+|------|------|--------|
+| A1 | `MainViewModel.GpsHandling.cs` | `Dispatcher.UIThread.Invoke()` → `Post()` |
+| A2 | `MainViewModel.Ntrip.cs` | `Dispatcher.UIThread.Invoke()` → `Post()` (2 calls) |
+| A3 | `Android/Views/MainView.axaml.cs` | `MainView_Unloaded` → wrap saves in `Task.Run()` |
+| A4 | `iOS/Views/MainView.axaml.cs` | Same as A3 |
+| A5 | `Desktop/Views/MainWindow.axaml.cs` | `MainWindow_Closing` → async saves |
+| A6 | `CoverageMapService.cs` | `LoadFromFile()` → `LoadFromFileAsync()` |
+| A7 | `CoverageMapService.cs` | `SaveToFile()` → `SaveToFileAsync()` |
+| A8 | `MainViewModel.cs` | Field open/close → `await Task.Run(() => loadOrSave)` |
 
-### Phase D: CompositionCustomVisualHandler for map (future)
-- Move entire map rendering to render thread
-- Data passed via `SendHandlerMessage()`
-- UI thread completely free for input and layout
+**Test**: ANR dialogs should stop on Android. Field load/save should not freeze UI.
 
-## Files Affected
+### Phase B: Extract ViewModel computation to services (the real fix)
 
-| File | Change |
+Move the GPS processing pipeline out of the ViewModel and into background services. Each ViewModel partial becomes a service method call.
+
+| Task | From (ViewModel) | To (Service) | What moves |
+|------|-----------------|-------------|-----------|
+| B1 | `MainViewModel.GpsHandling.cs` | `GpsService` (already exists) | `UpdateGpsProperties()` processing logic |
+| B2 | `MainViewModel.Guidance.cs` | `TrackGuidanceService` (already exists) | `CalculateAutoSteerGuidance()` |
+| B3 | `MainViewModel.YouTurn.cs` | `YouTurnGuidanceService` (already exists) | `ProcessYouTurn()`, `CreateSimpleUTurnPath()` |
+| B4 | `MainViewModel.SectionControl.cs` | `SectionControlService` (already exists) | `UpdateSectionStates()` |
+| B5 | `MainViewModel.Simulator.cs` | `SimulatorService` (already exists) | `OnSimulatorTick()` computation |
+| B6 | `MainViewModel.BoundaryRecording.cs` | `BoundaryRecordingService` (already exists) | Recording logic |
+
+**For each extraction:**
+1. Move the computation code from the ViewModel partial into the existing service
+2. The service runs the computation on a background thread (its own timer or event-driven)
+3. The service exposes results via events or observable state
+4. The ViewModel subscribes and updates bound properties via `Post()`
+5. The ViewModel partial becomes a thin subscription + command dispatch file
+
+**The GPS pipeline after Phase B:**
+```
+SimulatorService.Tick (background timer)
+  → GpsService.ProcessPosition (background)
+    → AutoSteerService.ProcessPosition (background)
+      → TrackGuidanceService.Calculate (background)
+      → SectionControlService.Update (background)
+      → CoverageMapService.RasterizeQuad (background, writes SKBitmap)
+    → YouTurnService.Check (background)
+  → Batch results → Post to ViewModel (UI thread, throttled)
+```
+
+**Test**: Simulator runs smoothly on Android. Coverage paints without stutter. No ANR.
+
+### Phase C: Batch property updates to ViewModel (performance)
+
+Instead of posting individual property changes from services, collect them into a state snapshot and post once per GPS cycle (10 Hz max).
+
+| Task | Change |
 |------|--------|
-| `MainViewModel.GpsHandling.cs` | `Invoke()` → `Post()`, move processing to background |
-| `MainViewModel.Ntrip.cs` | `Invoke()` → `Post()` |
-| `MainViewModel.Simulator.cs` | Run tick on background thread |
-| `MainViewModel.cs` | Batch property update pattern |
-| `Android/Views/MainView.axaml.cs` | Async `MainView_Unloaded` |
-| `iOS/Views/MainView.axaml.cs` | Async close handlers |
-| `Desktop/Views/MainWindow.axaml.cs` | Async `MainWindow_Closing` |
-| `CoverageMapService.cs` | Async `LoadFromFile`, `SaveToFile` |
-| `DrawingContextMapControl.cs` | Already using ICustomDrawOperation + SKBitmap |
+| C1 | Create `GpsStateSnapshot` record — position, heading, speed, fix quality, steer angle, XTE, section states, coverage stats |
+| C2 | Services populate the snapshot on the background thread |
+| C3 | One `Dispatcher.UIThread.Post()` per GPS cycle delivers the snapshot |
+| C4 | ViewModel's `ApplySnapshot()` sets all bound properties in one batch |
+| C5 | Throttle: if UI thread is busy, skip the oldest snapshot (drop frames, not lag) |
+
+**Result**: UI thread processes ~10 property-batch updates per second instead of ~300 individual property changes.
+
+### Phase D: CompositionCustomVisualHandler for map rendering (future)
+
+Move the entire map rendering to the render thread using Avalonia 12's composition API.
+
+| Task | Change |
+|------|--------|
+| D1 | Create `MapRenderHandler : CompositionCustomVisualHandler` |
+| D2 | Move all drawing code from `DrawingContextMapControl.Render()` to `OnRender(SKCanvas)` |
+| D3 | Data passed from UI thread via `SendHandlerMessage()` |
+| D4 | Map control becomes a thin host for the composition visual |
+| D5 | Remove DispatcherTimer — use `RequestNextFrameRendering()` instead |
+
+**Result**: UI thread is completely free for input and layout. Map renders at GPU native rate.
+
+### Phase E: Compiled bindings (cleanup)
+
+Fix the ~8 AXAML files that need `x:DataType` and enable `AvaloniaUseCompiledBindingsByDefault` in the Views project. Performance win on binding evaluation.
+
+## Completion Checklist
+
+| Phase | Status | Blocks |
+|-------|--------|--------|
+| CommunityToolkit.MVVM migration | ✅ Done | — |
+| Avalonia 12 packages | ✅ Done | — |
+| ICustomDrawOperation + SKBitmap | ✅ Done | — |
+| Console.WriteLine → Debug.WriteLine | ✅ Done | — |
+| **Phase A: Stop blocking UI thread** | ⬜ Next | — |
+| **Phase B: Extract ViewModel → services** | ⬜ | Phase A |
+| **Phase C: Batch property updates** | ⬜ | Phase B |
+| **Phase D: CompositionCustomVisualHandler** | ⬜ Future | Phase B |
+| **Phase E: Compiled bindings** | ⬜ Anytime | — |
 
 ## What Actually Needs the UI Thread
 
