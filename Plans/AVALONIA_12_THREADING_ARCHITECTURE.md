@@ -76,88 +76,144 @@ Render Thread (via ICustomDrawOperation / CompositionCustomVisualHandler):
 
 ## Implementation Phases
 
-### Phase A: Stop blocking the UI thread (immediate, low risk)
+### Phase A: Stop blocking the UI thread ✅ DONE
 
-Eliminate all synchronous blocking on the UI thread. This doesn't restructure the architecture but stops the ANR bleeding.
+- Replaced all `Dispatcher.UIThread.Invoke()` with `Post()` (5 calls)
+- Async saves on app close/background for all 3 platforms (`Task.Run`)
+- Zero `Invoke()` calls remaining in codebase
 
-| Task | File | Change |
-|------|------|--------|
-| A1 | `MainViewModel.GpsHandling.cs` | `Dispatcher.UIThread.Invoke()` → `Post()` |
-| A2 | `MainViewModel.Ntrip.cs` | `Dispatcher.UIThread.Invoke()` → `Post()` (2 calls) |
-| A3 | `Android/Views/MainView.axaml.cs` | `MainView_Unloaded` → wrap saves in `Task.Run()` |
-| A4 | `iOS/Views/MainView.axaml.cs` | Same as A3 |
-| A5 | `Desktop/Views/MainWindow.axaml.cs` | `MainWindow_Closing` → async saves |
-| A6 | `CoverageMapService.cs` | `LoadFromFile()` → `LoadFromFileAsync()` |
-| A7 | `CoverageMapService.cs` | `SaveToFile()` → `SaveToFileAsync()` |
-| A8 | `MainViewModel.cs` | Field open/close → `await Task.Run(() => loadOrSave)` |
+### Phase B: Create GpsPipelineService (the real fix)
 
-**Test**: ANR dialogs should stop on Android. Field load/save should not freeze UI.
+**Lesson learned from failed attempts:** You cannot half-move the pipeline. Moving just the timer creates dual paths. Wrapping individual property setters with `Post()` is whack-a-mole. The services have thread-safety issues (HashSet crash). The simulator must not have its own processing path — it's just another GPS data source.
 
-### Phase B: Extract ViewModel computation to services (the real fix)
+**The correct approach:** Create a single `GpsPipelineService` that orchestrates the entire GPS processing chain on a background thread. The simulator and real GPS both feed `GpsService.UpdateGpsData()`. The pipeline produces a `GpsCycleResult`. The ViewModel receives it and applies properties.
 
-Move the GPS processing pipeline out of the ViewModel and into background services. Each ViewModel partial becomes a service method call.
+#### B1: Create `GpsPipelineService`
 
-| Task | From (ViewModel) | To (Service) | What moves |
-|------|-----------------|-------------|-----------|
-| B1 | `MainViewModel.GpsHandling.cs` | `GpsService` (already exists) | `UpdateGpsProperties()` processing logic |
-| B2 | `MainViewModel.Guidance.cs` | `TrackGuidanceService` (already exists) | `CalculateAutoSteerGuidance()` |
-| B3 | `MainViewModel.YouTurn.cs` | `YouTurnGuidanceService` (already exists) | `ProcessYouTurn()`, `CreateSimpleUTurnPath()` |
-| B4 | `MainViewModel.SectionControl.cs` | `SectionControlService` (already exists) | `UpdateSectionStates()` |
-| B5 | `MainViewModel.Simulator.cs` | `SimulatorService` (already exists) | `OnSimulatorTick()` computation |
-| B6 | `MainViewModel.BoundaryRecording.cs` | `BoundaryRecordingService` (already exists) | Recording logic |
+New service in `Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs`:
 
-**For each extraction:**
-1. Move the computation code from the ViewModel partial into the existing service
-2. The service runs the computation on a background thread (its own timer or event-driven)
-3. The service exposes results via events or observable state
-4. The ViewModel subscribes and updates bound properties via `Post()`
-5. The ViewModel partial becomes a thin subscription + command dispatch file
+```csharp
+public class GpsPipelineService : IGpsPipelineService
+{
+    // Injected services
+    private readonly IGpsService _gpsService;
+    private readonly IToolPositionService _toolPositionService;
+    private readonly ITrackGuidanceService _guidanceService;
+    private readonly ISectionControlService _sectionControlService;
+    private readonly ICoverageMapService _coverageMapService;
+    private readonly IAutoSteerService _autoSteerService;
+    private readonly IYouTurnGuidanceService _youTurnService;
 
-**The GPS pipeline after Phase B:**
+    // Event: fires on background thread with computed results
+    public event Action<GpsCycleResult>? CycleCompleted;
+
+    // Called by GpsService.GpsDataUpdated on whatever thread GPS arrives on
+    public void ProcessGpsCycle(GpsData data)
+    {
+        // ALL heavy work runs HERE (background thread):
+        // 1. Apply drift compensation
+        // 2. Update tool position
+        // 3. Calculate guidance (Pure Pursuit / Stanley)
+        // 4. Check YouTurn approach / execution
+        // 5. Update section control
+        // 6. Paint coverage (RasterizeQuadToBitmap → writes SKBitmap)
+        // 7. Update AutoSteer PGNs
+        // 8. Build GpsCycleResult with ALL computed values
+        // 9. Fire CycleCompleted event
+
+        var result = new GpsCycleResult { ... };
+        CycleCompleted?.Invoke(result);
+    }
+}
 ```
-SimulatorService.Tick (background timer)
-  → GpsService.ProcessPosition (background)
-    → AutoSteerService.ProcessPosition (background)
-      → TrackGuidanceService.Calculate (background)
-      → SectionControlService.Update (background)
-      → CoverageMapService.RasterizeQuad (background, writes SKBitmap)
-    → YouTurnService.Check (background)
-  → Batch results → Post to ViewModel (UI thread, throttled)
+
+**What moves INTO GpsPipelineService (from ViewModel partials):**
+
+| From | Method | What it does |
+|------|--------|-------------|
+| `MainViewModel.GpsHandling.cs` | `UpdateGpsProperties()` | Drift compensation, tool position update, GPS property prep |
+| `MainViewModel.Guidance.cs` | `CalculateAutoSteerGuidance()` | Pure Pursuit/Stanley guidance |
+| `MainViewModel.Guidance.cs` | `UpdateDisplayTrack()` | Display-only pass offset |
+| `MainViewModel.YouTurn.cs` | `ProcessYouTurn()` | YouTurn approach detection |
+| `MainViewModel.YouTurn.cs` | `CalculateYouTurnGuidance()` | YouTurn path following |
+| `MainViewModel.cs` | `UpdateToolPositionProperties()` | Tool position + section control |
+| `MainViewModel.cs` | `UpdateCoveragePainting()` | Coverage point addition |
+
+**What stays in ViewModel:**
+- Track selection (`SelectedTrack` setter) — user command
+- Autosteer engage/disengage — user command
+- YouTurn enable/disable — user command
+- All UI commands (open field, toggle panels, etc.)
+- `ApplyGpsCycleResult()` — apply snapshot to bound properties
+
+#### B2: Wire `GpsPipelineService` into DI
+
+Add to all platform DI registrations. The pipeline subscribes to `GpsService.GpsDataUpdated` in its constructor and runs `ProcessGpsCycle` on `Task.Run`.
+
+#### B3: Simplify simulator to just a GPS data source
+
+`OnSimulatorGpsDataUpdated` becomes:
+```csharp
+private void OnSimulatorGpsDataUpdated(object? sender, GpsSimulationEventArgs e)
+{
+    if (!_isSimulatorEnabled) return;
+
+    // Build GpsData (same as now — LocalPlane conversion)
+    var gpsData = BuildGpsDataFromSimulation(e.Data);
+
+    // Feed into the SAME pipeline as real GPS hardware
+    _gpsService.UpdateGpsData(gpsData);
+    // That's it. GpsPipelineService handles everything else.
+}
 ```
 
-**Test**: Simulator runs smoothly on Android. Coverage paints without stutter. No ANR.
+Delete ~200 lines of orchestration code from `MainViewModel.Simulator.cs`.
 
-### Phase C: Batch property updates to ViewModel (performance)
+#### B4: ViewModel receives results via `ApplyGpsCycleResult`
 
-Instead of posting individual property changes from services, collect them into a state snapshot and post once per GPS cycle (10 Hz max).
+`OnGpsDataUpdated` handler in GpsHandling.cs becomes:
+```csharp
+// Already have this — GpsPipelineService fires CycleCompleted
+// ViewModel subscribes in constructor:
+_gpsPipelineService.CycleCompleted += result =>
+    Dispatcher.UIThread.Post(() => ApplyGpsCycleResult(result));
+```
 
-| Task | Change |
-|------|--------|
-| C1 | Create `GpsStateSnapshot` record — position, heading, speed, fix quality, steer angle, XTE, section states, coverage stats |
-| C2 | Services populate the snapshot on the background thread |
-| C3 | One `Dispatcher.UIThread.Post()` per GPS cycle delivers the snapshot |
-| C4 | ViewModel's `ApplySnapshot()` sets all bound properties in one batch |
-| C5 | Throttle: if UI thread is busy, skip the oldest snapshot (drop frames, not lag) |
+`UpdateGpsProperties` is deleted — replaced entirely by `ApplyGpsCycleResult`.
 
-**Result**: UI thread processes ~10 property-batch updates per second instead of ~300 individual property changes.
+#### B5: Thread-safe services
 
-### Phase D: CompositionCustomVisualHandler for map rendering (future)
+Services called by the pipeline must be thread-safe since they now run on a background thread:
+
+| Service | Thread-safety needed |
+|---------|---------------------|
+| `CoverageMapService` | Lock on `_activeSections`, `_newCells`, `_lastEdgesPerSection` |
+| `SectionControlService` | Lock on section state arrays |
+| `ToolPositionService` | Lock on position state (or make immutable snapshots) |
+| `TrackGuidanceService` | Already stateless (takes input, returns output) ✅ |
+| `YouTurnGuidanceService` | Already stateless ✅ |
+
+#### B6: Clean up ViewModel partials
+
+After extraction, the ViewModel partials become thin:
+
+| File | Before | After |
+|------|--------|-------|
+| `MainViewModel.GpsHandling.cs` | 294 lines of processing | ~20 lines: subscribe to pipeline, no processing |
+| `MainViewModel.Guidance.cs` | 300+ lines of guidance math | ~50 lines: commands only (nudge, snap, track offset) |
+| `MainViewModel.YouTurn.cs` | 1800+ lines | ~100 lines: commands + state flags for UI |
+| `MainViewModel.SectionControl.cs` | Processing + properties | Properties only |
+| `MainViewModel.Simulator.cs` | 200+ lines of orchestration | ~50 lines: build GpsData, call GpsService |
+
+**Test**: All 530 tests pass. Simulator runs smoothly on all platforms. Coverage paints without stutter. No ANR on Android.
+
+### Phase C: CompositionCustomVisualHandler for map rendering (future)
 
 Move the entire map rendering to the render thread using Avalonia 12's composition API.
 
-| Task | Change |
-|------|--------|
-| D1 | Create `MapRenderHandler : CompositionCustomVisualHandler` |
-| D2 | Move all drawing code from `DrawingContextMapControl.Render()` to `OnRender(SKCanvas)` |
-| D3 | Data passed from UI thread via `SendHandlerMessage()` |
-| D4 | Map control becomes a thin host for the composition visual |
-| D5 | Remove DispatcherTimer — use `RequestNextFrameRendering()` instead |
+### Phase D: Compiled bindings (anytime)
 
-**Result**: UI thread is completely free for input and layout. Map renders at GPU native rate.
-
-### Phase E: Compiled bindings (cleanup)
-
-Fix the ~8 AXAML files that need `x:DataType` and enable `AvaloniaUseCompiledBindingsByDefault` in the Views project. Performance win on binding evaluation.
+Fix the ~8 AXAML files that need `x:DataType` and enable compiled bindings.
 
 ### Phase 0: Test harness for ViewModel behavior (BEFORE refactoring)
 
@@ -215,18 +271,26 @@ Verify existing `Services.Tests` cover the service methods that will receive the
 
 ## Completion Checklist
 
-| Phase | Status | Blocks |
-|-------|--------|--------|
-| CommunityToolkit.MVVM migration | ✅ Done | — |
-| Avalonia 12 packages | ✅ Done | — |
-| ICustomDrawOperation + SKBitmap | ✅ Done | — |
-| Console.WriteLine → Debug.WriteLine | ✅ Done | — |
-| **Phase 0: Test harness** | ⬜ Next | — |
-| **Phase A: Stop blocking UI thread** | ⬜ | — |
-| **Phase B: Extract ViewModel → services** | ⬜ | Phase 0, Phase A |
-| **Phase C: Batch property updates** | ⬜ | Phase B |
-| **Phase D: CompositionCustomVisualHandler** | ⬜ Future | Phase B |
-| **Phase E: Compiled bindings** | ⬜ Anytime | — |
+| Phase | Status | Notes |
+|-------|--------|-------|
+| CommunityToolkit.MVVM migration | ✅ Done | 61 classes, 530 tests pass |
+| Avalonia 12 packages | ✅ Done | All platforms build and run |
+| ICustomDrawOperation + SKBitmap | ✅ Done | Bypasses compositor cache, lock-free rendering |
+| Console.WriteLine → Debug.WriteLine | ✅ Done | Eliminates I/O on render path |
+| Phase 0: Test harness | ✅ Done | 24 pure C# ViewModel tests |
+| Phase A: Stop blocking UI thread | ✅ Done | Invoke→Post, async saves |
+| **Phase B: GpsPipelineService** | ⬜ **NEXT** | The real fix — one pipeline, two data sources |
+| Phase C: CompositionCustomVisualHandler | ⬜ Future | Render thread rendering |
+| Phase D: Compiled bindings | ⬜ Anytime | ~8 AXAML files need x:DataType |
+
+## Lessons Learned (from failed Phase B attempts)
+
+1. **Can't half-move the pipeline.** Moving just the timer to a background thread creates dual-path processing — the old UI-thread chain still runs via the GPS event.
+2. **Can't wrap individual property setters.** They're scattered across dozens of methods in 6 ViewModel partials. Wrapping each with `Post()` is whack-a-mole.
+3. **Services aren't thread-safe.** `CoverageMapService._activeSections` HashSet crashed from concurrent access. All services in the pipeline need locks.
+4. **The simulator should not be special.** It should inject data into `GpsService.UpdateGpsData()` just like real hardware. One pipeline handles both.
+5. **`GpsCycleResult` is the right pattern.** Immutable snapshot produced on background thread, applied on UI thread by `ApplyGpsCycleResult()`. Already implemented and ready to use.
+6. **The ViewModel partials ARE the problem.** They contain service-layer computation disguised as ViewModel code. The fix is extraction, not threading tricks.
 
 ## What Actually Needs the UI Thread
 
