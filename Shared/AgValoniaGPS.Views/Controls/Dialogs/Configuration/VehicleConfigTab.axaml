@@ -89,40 +89,40 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     <!-- Summary grid -->
                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
                           HorizontalAlignment="Center" Width="400">
-                        <TextBlock Grid.Row="0" Text="Units:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="0" Text="Units:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center"/>
                         <TextBlock Grid.Row="0" Grid.Column="1"
                                    Text="{Binding Config.IsMetric, Converter={x:Static conv:BoolToStringConverter.Instance}, ConverterParameter='Metric|Imperial'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16"/>
 
-                        <TextBlock Grid.Row="1" Text="Width:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="1" Text="Width:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Tool.Width, StringFormat='{}{0:F2} m'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="2" Text="Sections:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="2" Text="Sections:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Config.NumSections}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="3" Text="Offset:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="3" Text="Offset:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Tool.Offset, StringFormat='{}{0:F2} m'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="4" Text="Overlap:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="4" Text="Overlap:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Tool.Overlap, StringFormat='{}{0:F2} m'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="5" Text="Look Ahead:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="5" Text="Look Ahead:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Tool.LookAheadOnSetting, StringFormat='{}{0:F1} s'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="6" Text="Nudge:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="6" Text="Nudge:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="6" Grid.Column="1" Text="7.9 in"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="7" Text="Tram Width:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="7" Text="Tram Width:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding Vehicle.TrackWidth, StringFormat='{}{0:F2} m'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
 
-                        <TextBlock Grid.Row="8" Text="Wheelbase:" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                        <TextBlock Grid.Row="8" Text="Wheelbase:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
                         <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding Vehicle.Wheelbase, StringFormat='{}{0:F2} m'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
                     </Grid>
