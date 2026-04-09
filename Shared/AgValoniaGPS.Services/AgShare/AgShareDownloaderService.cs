@@ -14,11 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Globalization;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.AgShare;
@@ -29,15 +25,8 @@ namespace AgValoniaGPS.Services.AgShare
     /// <summary>
     /// Service for downloading field data from AgShare cloud service.
     /// </summary>
-    public class AgShareDownloaderService
+    public class AgShareDownloaderService(AgShareClient agShareClient)
     {
-        private readonly AgShareClient client;
-
-        public AgShareDownloaderService(AgShareClient agShareClient)
-        {
-            client = agShareClient;
-        }
-
         /// <summary>
         /// Downloads a field and saves it to disk
         /// </summary>
@@ -45,11 +34,11 @@ namespace AgValoniaGPS.Services.AgShare
         {
             try
             {
-                string json = await client.DownloadFieldAsync(fieldId);
+                string json = await agShareClient.DownloadFieldAsync(fieldId);
                 var dto = JsonConvert.DeserializeObject<AgShareFieldDto>(json);
-                var model = AgShareFieldParser.Parse(dto);
+                var model = AgShareFieldParser.Parse(dto!);
                 string fieldDir = Path.Combine(fieldsDirectory, model.Name);
-                FieldFileWriter.WriteAllFiles(model, fieldDir);
+                await FieldFileWriter.WriteAllFilesAsync(model, fieldDir);
                 return (true, "Download successful");
             }
             catch (Exception ex)
@@ -63,15 +52,15 @@ namespace AgValoniaGPS.Services.AgShare
         /// </summary>
         public async Task<List<AgShareGetOwnFieldDto>> GetOwnFieldsAsync()
         {
-            return await client.GetOwnFieldsAsync();
+            return await agShareClient.GetOwnFieldsAsync();
         }
 
         /// <summary>
         /// Downloads a field DTO for preview only
         /// </summary>
-        public async Task<AgShareFieldDto> DownloadFieldPreviewAsync(Guid fieldId)
+        public async Task<AgShareFieldDto?> DownloadFieldPreviewAsync(Guid fieldId)
         {
-            string json = await client.DownloadFieldAsync(fieldId);
+            string json = await agShareClient.DownloadFieldAsync(fieldId);
             return JsonConvert.DeserializeObject<AgShareFieldDto>(json);
         }
 
@@ -81,7 +70,7 @@ namespace AgValoniaGPS.Services.AgShare
         public async Task<(int Downloaded, int Skipped)> DownloadAllAsync(
             string fieldsDirectory,
             bool forceOverwrite = false,
-            IProgress<int> progress = null)
+            IProgress<int>? progress = null)
         {
             var fields = await GetOwnFieldsAsync();
             int skipped = 0, downloaded = 0;
@@ -96,10 +85,13 @@ namespace AgValoniaGPS.Services.AgShare
                 {
                     try
                     {
-                        var id = File.ReadAllText(agsharePath).Trim();
+                        var id = (await File.ReadAllTextAsync(agsharePath)).Trim();
                         alreadyExists = Guid.TryParse(id, out Guid guid) && guid == field.Id;
                     }
-                    catch { }
+                    catch
+                    {
+                        //If the ID file is unreadable, treat it as non-existent
+                    }
                 }
 
                 if (alreadyExists && !forceOverwrite)
@@ -112,7 +104,7 @@ namespace AgValoniaGPS.Services.AgShare
                     if (preview != null)
                     {
                         var model = AgShareFieldParser.Parse(preview);
-                        FieldFileWriter.WriteAllFiles(model, dir);
+                        await FieldFileWriter.WriteAllFilesAsync(model, dir);
                         downloaded++;
                     }
                 }
@@ -132,30 +124,30 @@ namespace AgValoniaGPS.Services.AgShare
         /// <summary>
         /// Writes all files required for a field
         /// </summary>
-        public static void WriteAllFiles(LocalFieldModel field, string fieldDir)
+        public static async Task WriteAllFilesAsync(LocalFieldModel field, string fieldDir)
         {
             if (!Directory.Exists(fieldDir))
                 Directory.CreateDirectory(fieldDir);
 
-            WriteAgShareId(fieldDir, field.FieldId);
-            WriteFieldTxt(fieldDir, field.Origin);
-            WriteBoundaryTxt(fieldDir, field.Boundaries);
-            WriteTrackLinesTxt(fieldDir, field.AbLines);
-            WriteStaticFiles(fieldDir); // Flags, Headland
+            await WriteAgShareIdAsync(fieldDir, field.FieldId);
+            await WriteFieldTxtAsync(fieldDir, field.Origin);
+            await WriteBoundaryTxtAsync(fieldDir, field.Boundaries);
+            await WriteTrackLinesTxtAsync(fieldDir, field.AbLines);
+            await WriteStaticFilesAsync(fieldDir); // Flags, Headland
         }
 
         /// <summary>
         /// Writes agshare.txt with the field ID
         /// </summary>
-        private static void WriteAgShareId(string fieldDir, Guid fieldId)
+        private static async Task WriteAgShareIdAsync(string fieldDir, Guid fieldId)
         {
-            File.WriteAllText(Path.Combine(fieldDir, "agshare.txt"), fieldId.ToString());
+            await File.WriteAllTextAsync(Path.Combine(fieldDir, "agshare.txt"), fieldId.ToString());
         }
 
         /// <summary>
         /// Writes origin and metadata to Field.txt
         /// </summary>
-        private static void WriteFieldTxt(string fieldDir, Wgs84 origin)
+        private static async Task WriteFieldTxtAsync(string fieldDir, Wgs84 origin)
         {
             var fieldTxt = new List<string>
             {
@@ -170,13 +162,13 @@ namespace AgValoniaGPS.Services.AgShare
                 origin.Latitude.ToString(CultureInfo.InvariantCulture) + "," + origin.Longitude.ToString(CultureInfo.InvariantCulture)
             };
 
-            File.WriteAllLines(Path.Combine(fieldDir, "Field.txt"), fieldTxt);
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Field.txt"), fieldTxt);
         }
 
         /// <summary>
         /// Writes outer and inner boundary rings to Boundary.txt
         /// </summary>
-        private static void WriteBoundaryTxt(string fieldDir, List<List<LocalPoint>> boundaries)
+        private static async Task WriteBoundaryTxtAsync(string fieldDir, List<List<LocalPoint>>? boundaries)
         {
             if (boundaries == null || boundaries.Count == 0) return;
 
@@ -202,13 +194,13 @@ namespace AgValoniaGPS.Services.AgShare
                 }
             }
 
-            File.WriteAllLines(Path.Combine(fieldDir, "Boundary.txt"), lines);
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Boundary.txt"), lines);
         }
 
         /// <summary>
         /// Writes AB-lines and optional curve points to TrackLines.txt
         /// </summary>
-        private static void WriteTrackLinesTxt(string fieldDir, List<AbLineLocal> abLines)
+        private static async Task WriteTrackLinesTxtAsync(string fieldDir, List<AbLineLocal> abLines)
         {
             var lines = new List<string> { "$TrackLines" };
 
@@ -216,7 +208,7 @@ namespace AgValoniaGPS.Services.AgShare
             {
                 lines.Add(ab.Name ?? "Unnamed");
 
-                bool isCurve = ab.CurvePoints != null && ab.CurvePoints.Count > 1;
+                bool isCurve = ab.CurvePoints is { Count: > 1 };
 
                 LocalPoint ptA = ab.PtA;
                 LocalPoint ptB = ab.PtB;
@@ -224,8 +216,8 @@ namespace AgValoniaGPS.Services.AgShare
 
                 if (isCurve)
                 {
-                    ptA = ab.CurvePoints[0];
-                    ptB = ab.CurvePoints[ab.CurvePoints.Count - 1];
+                    ptA = ab.CurvePoints![0];
+                    ptB = ab.CurvePoints[ab.CurvePoints!.Count - 1];
                     heading = GeoConversion.HeadingFromPoints(
                         new Vec2(ptA.Easting, ptA.Northing),
                         new Vec2(ptB.Easting, ptB.Northing)
@@ -241,7 +233,7 @@ namespace AgValoniaGPS.Services.AgShare
                 {
                     lines.Add("4"); // Curve mode
                     lines.Add("True");
-                    lines.Add(ab.CurvePoints.Count.ToString());
+                    lines.Add(ab.CurvePoints!.Count.ToString());
 
                     foreach (var pt in ab.CurvePoints)
                     {
@@ -260,18 +252,18 @@ namespace AgValoniaGPS.Services.AgShare
                 }
             }
 
-            File.WriteAllLines(Path.Combine(fieldDir, "TrackLines.txt"), lines);
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "TrackLines.txt"), lines);
         }
 
         /// <summary>
         /// Writes default placeholder files like Flags.txt and Headland.txt
         /// </summary>
-        private static void WriteStaticFiles(string fieldDir)
+        private static async Task WriteStaticFilesAsync(string fieldDir)
         {
-            File.WriteAllLines(Path.Combine(fieldDir, "Flags.txt"), new[] { "$Flags", "0" });
-            File.WriteAllLines(Path.Combine(fieldDir, "Headland.txt"), new[] { "$Headland", "0" });
-            File.WriteAllLines(Path.Combine(fieldDir, "Contour.txt"), new[] { "$Contour", "0" });
-            File.WriteAllLines(Path.Combine(fieldDir, "Sections.txt"), new[] { "Sections", "0" });
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Flags.txt"), ["$Flags", "0"]);
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Headland.txt"), ["$Headland", "0"]);
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Contour.txt"), ["$Contour", "0"]);
+            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Sections.txt"), ["Sections", "0"]);
         }
 
         /// <summary>
@@ -282,7 +274,7 @@ namespace AgValoniaGPS.Services.AgShare
             var result = new List<Vec3>();
             foreach (var pt in points)
             {
-                result.Add((Vec3)pt);
+                result.Add(pt);
             }
             return result;
         }
