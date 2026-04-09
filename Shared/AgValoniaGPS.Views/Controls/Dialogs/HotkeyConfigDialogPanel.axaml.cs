@@ -126,11 +126,12 @@ public partial class HotkeyConfigDialogPanel : UserControl
             var textBlock = new TextBlock
             {
                 Text = label,
-                Foreground = Brushes.White,
                 FontSize = 14,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0),
             };
+            textBlock[!TextBlock.ForegroundProperty] = textBlock.GetResourceObservable("SystemControlForegroundBaseHighBrush")
+                .ToBinding();
             Grid.SetColumn(textBlock, 0);
             row.Children.Add(textBlock);
 
