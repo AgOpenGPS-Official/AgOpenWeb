@@ -110,6 +110,99 @@ Render Thread (via ICustomDrawOperation / CompositionCustomVisualHandler):
 | `CoverageMapService.cs` | Async `LoadFromFile`, `SaveToFile` |
 | `DrawingContextMapControl.cs` | Already using ICustomDrawOperation + SKBitmap |
 
+## What Actually Needs the UI Thread
+
+The UI thread exists for one purpose: keep the screen responsive to the user. Anything that doesn't directly involve user interaction or screen updates should NOT be there.
+
+### MUST be UI thread (Avalonia requires it)
+- Property change notifications that trigger AXAML binding updates
+- `InvalidateVisual()` calls
+- Control creation/destruction
+- Input event handling (touch, tap, drag)
+- Reading control layout properties (Bounds, IsVisible)
+
+### Currently on UI thread but SHOULD NOT be
+These are computational or I/O tasks masquerading as UI work because the ViewModel does them:
+
+| Currently in ViewModel | Should be | Why it's wrong |
+|----------------------|-----------|---------------|
+| `MainViewModel.Guidance.cs` — Pure Pursuit/Stanley calculation | Background service | Math-heavy, runs every GPS tick |
+| `MainViewModel.YouTurn.cs` — U-turn path generation | Background service | Geometry computation |
+| `MainViewModel.SectionControl.cs` — section on/off logic | Background service | Coverage detection, point-in-polygon |
+| `MainViewModel.Simulator.cs` — simulator tick + position calc | Background service | Drives everything else, should be its own loop |
+| `MainViewModel.GpsHandling.cs` — GPS data processing | Background service | Triggers all guidance/coverage work |
+| `MainViewModel.BoundaryRecording.cs` — boundary point collection | Background service | Can accumulate work |
+| `CoverageMapService.RasterizeQuadToBitmap` — per-cell coverage detection | Background thread | Tight loop with cross-product math |
+| `CoverageMapService.LoadFromFile/SaveToFile` — RLE compression/decompression | Background thread | File I/O + CPU-heavy compression |
+| `SettingsService.Save/Load` — JSON serialization + file I/O | Background thread | File I/O |
+| `FieldService` — field loading, boundary parsing | Background thread | File I/O |
+
+### The ViewModel's actual job
+
+The ViewModel should be a **thin adapter** between services and the UI:
+
+```
+Services (background) ──batch update──> ViewModel (UI thread) ──binding──> AXAML
+     ↑                                       │
+     └──── commands (quick state changes) ───┘
+```
+
+1. **Receive** batched state updates from services (position, guidance, coverage stats)
+2. **Expose** properties for AXAML bindings
+3. **Dispatch** commands to services (toggle autosteer, open field, etc.)
+4. **Never compute**, never do I/O, never iterate large collections
+
+### The Map Control's actual job
+
+The map control should be a **read-only renderer**:
+
+```
+Services (background) ──write pixels──> SKBitmap (shared memory)
+                                              │
+Map Control (render thread) ──read──> SKBitmap ──draw──> Screen
+```
+
+1. **Read** position, boundary, track data from shared state
+2. **Read** coverage from SKBitmap (lock-free)
+3. **Draw** everything via `ICustomDrawOperation` or `CompositionCustomVisualHandler`
+4. **Never** modify bitmaps, compute guidance, or do file I/O
+
+### The Service Layer's actual job
+
+Services own the data and the computation. They run on their own threads:
+
+```
+GPS/Simulator ──position──> AutoSteerService ──steer angle──> UDP (hardware)
+                    │
+                    ├──> TrackGuidanceService ──XTE, heading error──> batch to ViewModel
+                    │
+                    ├──> CoverageMapService ──pixel writes──> SKBitmap (direct)
+                    │                       ──stats──> batch to ViewModel
+                    │
+                    └──> YouTurnService ──path──> shared state
+```
+
+Services communicate via:
+- Direct method calls (same thread)
+- Shared thread-safe data structures (SKBitmap, atomic values)
+- Batched `Dispatcher.UIThread.Post()` for ViewModel property updates (max 10 Hz)
+
+## What This Means for the Refactor
+
+The `MainViewModel` partial classes are actually **services in disguise**:
+
+| Partial File | Real Identity | Refactor |
+|-------------|--------------|---------|
+| `MainViewModel.Guidance.cs` | GuidanceOrchestrationService | Extract, run on background |
+| `MainViewModel.YouTurn.cs` | YouTurnService (already exists) | Move logic to service |
+| `MainViewModel.SectionControl.cs` | SectionControlService (already exists) | Move logic to service |
+| `MainViewModel.Simulator.cs` | SimulatorService (already exists) | Run tick on own timer/thread |
+| `MainViewModel.GpsHandling.cs` | GpsProcessingService | Extract, background thread |
+| `MainViewModel.BoundaryRecording.cs` | BoundaryRecordingService (already exists) | Move logic to service |
+| `MainViewModel.Ntrip.cs` | NtripClientService (already exists) | Already background, fix Invoke→Post |
+
+Many of these services already exist in `Shared/AgValoniaGPS.Services/` — the ViewModel just duplicates their work or orchestrates them synchronously on the UI thread.
+
 ## Key Principle
 
-**The UI thread should only handle quick state updates and input. ALL heavy work (GPS processing, coverage detection, file I/O, bitmap manipulation) runs on background threads. Data flows to the UI thread via `Post()`, never `Invoke()`.**
+**The UI thread should only handle quick state updates and input. ALL heavy work (GPS processing, coverage detection, file I/O, bitmap manipulation) runs on background threads. Data flows to the UI thread via `Post()`, never `Invoke()`. The ViewModel is thin. Services own computation.**
