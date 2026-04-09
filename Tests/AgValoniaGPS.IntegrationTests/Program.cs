@@ -741,6 +741,8 @@ if frames:
     static async Task RunCompassScenario(
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
+        LogState(vm, "Compass start");
+        Console.WriteLine();
         // North-Up mode
         Console.Write("[Compass 1] North-Up follow... ");
         vm.CameraMode = AgValoniaGPS.Models.CameraMode.NorthUp;
@@ -792,6 +794,8 @@ if frames:
     static async Task RunFlagScenario(
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
+        LogState(vm, "Flags start");
+        Console.WriteLine();
         // Drive to get a position, then place flags
         Console.Write("[Step 14] Flags: place red flag at vehicle position... ");
         vm.SimulatorForwardCommand?.Execute(null);
@@ -914,6 +918,8 @@ if frames:
     static async Task RunTrackManagementScenario(Window window, MainViewModel vm)
     {
         Console.WriteLine("\n--- Track Management Scenarios ---");
+        LogState(vm, "Tracks start");
+        Console.WriteLine();
 
         // Track 1: Open tracks dialog showing the loaded AB line
         Console.Write("[Tracks 1] Tracks dialog with AB line listed... ");
@@ -987,6 +993,8 @@ if frames:
     static async Task RunChartsScenario(
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
+        LogState(vm, "Charts start");
+        Console.WriteLine();
         // Step 8: Activate track and drive off-course to generate real chart data.
         // ChartDataService now collects continuously in the background, so data
         // accumulates even before charts are opened.
@@ -1119,6 +1127,8 @@ if frames:
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
         Console.WriteLine("\n--- Pass Rendering Test (#175) ---");
+        LogState(vm, "Pass start");
+        Console.WriteLine();
 
         // Set 2D north-up, fixed camera, day mode, clean view
         Console.Write("[Pass 0] Set 2D north-up, clean view... ");
@@ -1379,6 +1389,31 @@ if frames:
         int scaledMs = Math.Max(1, (int)(ms / _timeScale));
         await Task.Delay(scaledMs);
         Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>
+    /// Log current test state for debugging. Call at start/end of scenarios.
+    /// </summary>
+    static void LogState(MainViewModel vm, string label)
+    {
+        Console.Write($"[{label}: E={vm.Easting:F1} N={vm.Northing:F1} H={vm.Heading:F0} " +
+            $"spd={vm.SpeedKmh:F1} field={vm.IsFieldOpen} track={vm.HasActiveTrack} " +
+            $"steer={vm.IsAutoSteerEngaged} sect={vm.IsSectionMasterOn}] ");
+    }
+
+    /// <summary>
+    /// Reset tractor to field origin heading north. Call before driving scenarios.
+    /// </summary>
+    static async Task ResetTractorPosition(MainViewModel vm, IGpsSimulationService simService,
+        ISettingsService settingsService, double latOffset = 0, double lonOffset = 0)
+    {
+        var settings = settingsService.Settings;
+        vm.SetSimulatorCoordinates(settings.SimulatorLatitude + latOffset,
+                                    settings.SimulatorLongitude + lonOffset);
+        simService.SetHeading(0);
+        vm.SimulatorSteerAngle = 0;
+        await Delay(50);
+        for (int i = 0; i < 5; i++) { simService.Tick(0); await Delay(5); }
     }
 
     static void CaptureScreenshot(Window window, string name)
