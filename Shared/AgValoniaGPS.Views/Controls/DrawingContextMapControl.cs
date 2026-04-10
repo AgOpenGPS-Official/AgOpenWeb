@@ -3268,8 +3268,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         public override void OnAnimationFrameUpdate()
         {
-            // Count compositor frames for accurate FPS display.
-            // This fires every compositor tick regardless of whether we re-rendered.
+            // Invalidate to re-render on every compositor tick — keeps FPS accurate
+            // and ensures the latest state is always displayed
+            Invalidate();
+            // Keep the animation frame loop running
+            RegisterForNextAnimationFrameUpdate();
+        }
+
+        public override void OnRender(ImmediateDrawingContext drawingContext)
+        {
+            _renderCounter++;
+            var s = _state;
+            if (s == null) return;
+            if (s.BoundsWidth <= 0 || s.BoundsHeight <= 0) return;
+
+            // FPS tracking — count actual rendered frames
             _compositorFrameCount++;
             var now = DateTime.UtcNow;
             var elapsed = (now - _lastFpsUpdate).TotalSeconds;
@@ -3281,16 +3294,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 var fps = _currentFps;
                 Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
             }
-            // Keep the animation frame loop running
-            RegisterForNextAnimationFrameUpdate();
-        }
-
-        public override void OnRender(ImmediateDrawingContext drawingContext)
-        {
-            _renderCounter++;
-            var s = _state;
-            if (s == null) return;
-            if (s.BoundsWidth <= 0 || s.BoundsHeight <= 0) return;
 
 
             try
