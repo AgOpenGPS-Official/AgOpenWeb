@@ -1,6 +1,6 @@
 # Avalonia 12 Threading Architecture Redesign
 
-## Status: Planning
+## Status: Complete (all phases done)
 
 ## Problem
 
@@ -304,9 +304,9 @@ Verify existing `Services.Tests` cover the service methods that will receive the
 | Console.WriteLine → Debug.WriteLine | ✅ Done | Eliminates I/O on render path |
 | Phase 0: Test harness | ✅ Done | 24 pure C# ViewModel tests |
 | Phase A: Stop blocking UI thread | ✅ Done | Invoke→Post, async saves |
-| **Phase B: GpsPipelineService** | ⬜ **NEXT** | The real fix — one pipeline, two data sources |
-| Phase C: CompositionCustomVisualHandler | ⬜ Future | Render thread rendering |
-| Phase D: Compiled bindings | ⬜ Anytime | ~8 AXAML files need x:DataType |
+| Phase B: GpsPipelineService | ✅ Done | Background thread pipeline, MVVM state sync |
+| Phase C: CompositionCustomVisualHandler | ✅ Done | SKCanvas render thread, 60 FPS desktop, 20+ iPad |
+| Phase D: Compiled bindings | ✅ Done | Project-wide, build-time validated |
 
 ## Lessons Learned (from failed Phase B attempts)
 
