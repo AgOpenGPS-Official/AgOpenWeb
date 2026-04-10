@@ -1695,7 +1695,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         if (_coverageWriteableBitmap == null)
             return;
 
-        // Clear to black first
+        // Clear data bitmap (Rgb565)
         using (var framebuffer = _coverageWriteableBitmap.Lock())
         {
             int bufferSize = framebuffer.RowBytes * _bitmapHeight;
@@ -1705,8 +1705,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
-        // Clear SKBitmap shadow
+        // Clear SKBitmap shadow (used by render thread)
         _coverageSkBitmap?.Erase(SKColor.Empty);
+
+        // Clear display bitmap (Bgra8888) so stale pixels don't show on save
+        if (_coverageDisplayBitmap != null)
+        {
+            using (var framebuffer = _coverageDisplayBitmap.Lock())
+            {
+                int bufferSize = framebuffer.RowBytes * _bitmapHeight;
+                unsafe
+                {
+                    new Span<byte>((byte*)framebuffer.Address, bufferSize).Clear();
+                }
+            }
+        }
 
         // Re-composite background if available (uses its own lock)
         if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))

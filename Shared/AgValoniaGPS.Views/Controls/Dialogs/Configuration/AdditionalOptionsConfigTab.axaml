@@ -169,8 +169,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                         Background="{Binding Display.HardwareMessagesEnabled, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
                                         BorderBrush="{Binding Display.HardwareMessagesEnabled, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
                                         Command="{Binding ToggleHardwareMessagesCommand}">
-                                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ModulesMachine.png"
-                                           Width="60" Height="60" Stretch="Uniform"/>
+                                    <Border Width="60" Height="60" Background="{DynamicResource IconModulesMachine}"/>
                                 </Button>
                                 <TextBlock Text="Messages" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
                             </StackPanel>

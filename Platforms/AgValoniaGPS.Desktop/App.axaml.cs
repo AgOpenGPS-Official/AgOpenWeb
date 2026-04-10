@@ -126,7 +126,7 @@ public partial class App : Application
                 {
                     try
                     {
-                        await Task.Delay(1000); // Let window fully render
+                        await Task.Delay(100); // Let window render initial frame
                         await callback(desktop);
                     }
                     catch (Exception ex)

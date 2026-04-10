@@ -61,7 +61,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" HorizontalAlignment="Center"/>
 
                 <TextBlock Text="{loc:Localize ClickAKeyButtonThenPressANewKeyToReassign}"
-                           FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" HorizontalAlignment="Center"
+                           FontSize="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" HorizontalAlignment="Center"
                            TextWrapping="Wrap" TextAlignment="Center"/>
 
                 <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>

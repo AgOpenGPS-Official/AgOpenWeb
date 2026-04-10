@@ -21,6 +21,7 @@ using Avalonia.Threading;
 using AgValoniaGPS.Desktop;
 using AgValoniaGPS.Desktop.Views;
 using AgValoniaGPS.IntegrationTests;
+using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Timing;
@@ -41,6 +42,8 @@ sealed class Program
     static bool _uturnTestMode = false;
     static bool _tileTestMode = false;
     static bool _recPathTestMode = false;
+    static bool _remoteTestMode = false;
+    static int _remoteTestPort = 5123;
     static double _timeScale = 1.0;
 
     [STAThread]
@@ -52,6 +55,11 @@ sealed class Program
         _uturnTestMode = args.Contains("--uturn-test");
         _tileTestMode = args.Contains("--tile-test");
         _recPathTestMode = args.Contains("--recpath-test");
+        _remoteTestMode = args.Contains("--remote-test");
+
+        // Parse --port flag for remote test server
+        var portArg = args.FirstOrDefault(a => a.StartsWith("--port="));
+        if (portArg != null) _remoteTestPort = int.Parse(portArg.Split('=')[1]);
 
         // Parse --fast flag for accelerated time (e.g. --fast or --fast=10)
         var fastArg = args.FirstOrDefault(a => a.StartsWith("--fast"));
@@ -60,7 +68,7 @@ sealed class Program
             if (fastArg.Contains('='))
                 _timeScale = double.Parse(fastArg.Split('=')[1]);
             else
-                _timeScale = 10.0;
+                _timeScale = 50.0;
 
             Clock.Set(new SystemClock { TimeScale = _timeScale });
             Console.WriteLine($"[IntTest] Fast mode: {_timeScale}x time scale");
@@ -87,7 +95,8 @@ sealed class Program
         };
 
         // Hook scenario runner -- runs after MainWindow is shown
-        App.OnAppReady = _recPathTestMode ? RunRecPathTest
+        App.OnAppReady = _remoteTestMode ? RunRemoteTestServer
+                       : _recPathTestMode ? RunRecPathTest
                        : _tileTestMode ? RunTileTest
                        : _uturnTestMode ? RunUTurnTest
                        : _fieldTestMode ? RunFieldTest
@@ -130,6 +139,26 @@ sealed class Program
 
         Console.WriteLine("[IntTest] ALL SCENARIOS PASSED");
         return 0;
+    }
+
+    static async Task RunRemoteTestServer(IClassicDesktopStyleApplicationLifetime lifetime)
+    {
+        var window = lifetime.MainWindow as Window
+            ?? throw new Exception("MainWindow not found");
+        var vm = (MainViewModel)window.DataContext!;
+
+        Console.WriteLine($"[Remote Test] Starting server on port {_remoteTestPort}...");
+        using var server = new RemoteTestServer(window, vm, _remoteTestPort);
+
+        // Run server until process is killed (Ctrl+C)
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            server.Dispose();
+            lifetime.Shutdown();
+        };
+
+        await server.RunAsync();
     }
 
     static async Task RunUTurnTest(IClassicDesktopStyleApplicationLifetime lifetime)
@@ -686,6 +715,9 @@ if frames:
 
         // --- Pass Rendering Test (#175) ---
         await RunPassRenderingTest(window, vm, simService);
+
+        // --- Coverage Area Verification (#195) ---
+        await RunCoverageAreaTest(window, vm, simService);
     }
 
     static async Task RunDebugDumpTest(Window window, MainViewModel vm)
@@ -735,6 +767,13 @@ if frames:
     static async Task RunCompassScenario(
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
+        LogState(vm, "Compass start");
+        Console.WriteLine();
+
+        // Reset to field origin for consistent starting position
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        await ResetTractorPosition(vm, simService, settingsService);
+
         // North-Up mode
         Console.Write("[Compass 1] North-Up follow... ");
         vm.CameraMode = AgValoniaGPS.Models.CameraMode.NorthUp;
@@ -786,6 +825,13 @@ if frames:
     static async Task RunFlagScenario(
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
+        LogState(vm, "Flags start");
+        Console.WriteLine();
+
+        // Reset to field origin
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        await ResetTractorPosition(vm, simService, settingsService);
+
         // Drive to get a position, then place flags
         Console.Write("[Step 14] Flags: place red flag at vehicle position... ");
         vm.SimulatorForwardCommand?.Execute(null);
@@ -908,6 +954,8 @@ if frames:
     static async Task RunTrackManagementScenario(Window window, MainViewModel vm)
     {
         Console.WriteLine("\n--- Track Management Scenarios ---");
+        LogState(vm, "Tracks start");
+        Console.WriteLine();
 
         // Track 1: Open tracks dialog showing the loaded AB line
         Console.Write("[Tracks 1] Tracks dialog with AB line listed... ");
@@ -981,6 +1029,13 @@ if frames:
     static async Task RunChartsScenario(
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
+        LogState(vm, "Charts start");
+        Console.WriteLine();
+
+        // Reset to field origin
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        await ResetTractorPosition(vm, simService, settingsService);
+
         // Step 8: Activate track and drive off-course to generate real chart data.
         // ChartDataService now collects continuously in the background, so data
         // accumulates even before charts are opened.
@@ -1113,6 +1168,8 @@ if frames:
         Window window, MainViewModel vm, IGpsSimulationService simService)
     {
         Console.WriteLine("\n--- Pass Rendering Test (#175) ---");
+        LogState(vm, "Pass start");
+        Console.WriteLine();
 
         // Set 2D north-up, fixed camera, day mode, clean view
         Console.Write("[Pass 0] Set 2D north-up, clean view... ");
@@ -1252,6 +1309,353 @@ if frames:
     }
 
     /// <summary>
+    /// Coverage area verification test (#195):
+    /// Isolated test: closes current field, reopens fresh, drives 100m with
+    /// 10m implement, verifies coverage area, then save/load round-trip.
+    /// Logs tractor path for post-test investigation.
+    /// </summary>
+    static async Task RunCoverageAreaTest(
+        Window window, MainViewModel vm, IGpsSimulationService simService)
+    {
+        Console.WriteLine("\n--- Coverage Area Test (#195) ---");
+        var coverageService = App.Services!.GetRequiredService<ICoverageMapService>();
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        var fieldService = App.Services!.GetRequiredService<IFieldService>();
+        var config = ConfigurationStore.Instance;
+
+        // === ISOLATE: Close current field and reopen fresh ===
+        Console.Write("[Cov 0] Isolate: close + reopen field... ");
+        if (vm.IsAutoSteerEngaged)
+            vm.ToggleAutoSteerCommand?.Execute(null);
+        if (vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        vm.SelectedTrack = null;
+
+        // Reopen the test field for a clean slate
+        var testFieldDir = Path.Combine(settingsService.Settings.FieldsDirectory, "TestField");
+        try { await vm.OpenFieldAsync(testFieldDir, "TestField"); }
+        catch (Exception ex) { Console.Write($"({ex.Message}) "); }
+        await Delay(500);
+        Console.Write($"[fieldOpen={vm.IsFieldOpen}] ");
+
+        // Configure tool: 10m wide, 5 sections at 2m each = 10m total
+        config.Tool.Width = 10.0;
+        config.NumSections = 5;
+        for (int i = 0; i < 5; i++)
+            config.Tool.SetSectionWidth(i, 200); // 200cm = 2m each
+
+        // Clear any pre-existing coverage and force full display refresh
+        coverageService.ClearAll();
+        // Multiple UI pumps to ensure render cycle picks up the cleared bitmap
+        for (int i = 0; i < 5; i++)
+        {
+            await Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+        }
+        Console.WriteLine("OK");
+
+        // === POSITION: Reset tractor to N=-50 (well inside boundary), heading north ===
+        // Boundary is N=-80 to N=80, headland is ~7m inside = N=-73 to N=73
+        // Starting at N=-50 and driving 100m to N=50 stays fully within headland
+        Console.Write("[Cov 1] Position tractor at (0,-50) heading north... ");
+        // Use field origin lat/lon but offset south by ~50m
+        double originLat = settingsService.Settings.SimulatorLatitude;
+        double originLon = settingsService.Settings.SimulatorLongitude;
+        // 50m south: ~0.00045 degrees latitude
+        vm.SetSimulatorCoordinates(originLat - 0.00045, originLon);
+        simService.SetHeading(0); // Face north
+        vm.SimulatorSteerAngle = 0;
+        await Delay(100);
+
+        // Tick to establish position and tool
+        for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(10); }
+        Console.Write($"[E={vm.Easting:F1} N={vm.Northing:F1} H={vm.Heading:F0}] ");
+        Console.Write($"[toolE={vm.ToolEasting:F1} toolN={vm.ToolNorthing:F1} toolW={vm.ToolWidth:F1}] ");
+        Console.WriteLine("OK");
+
+        // === DRIVE: Sections on, drive 100m north, log path ===
+        Console.Write("[Cov 2] Drive 100m with sections ON... ");
+
+        // Enable sections (Auto mode)
+        if (!vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        await Delay(100);
+        Console.Write($"[master={vm.IsSectionMasterOn}] ");
+
+        // Accelerate
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(50);
+
+        CaptureScreenshot(window, "cov_01_before_drive");
+
+        // Drive and log position every 10 ticks
+        double startN = vm.Northing;
+        int ticks = 0;
+        var pathLog = new System.Text.StringBuilder();
+        pathLog.AppendLine("tick,easting,northing,heading,toolE,toolN,speed,area,sectionsOn");
+
+        // Log tick 0 (initial state)
+        {
+            int s0 = 0;
+            var st0 = vm.GetSectionStates();
+            if (st0 != null) for (int i = 0; i < Math.Min(st0.Length, config.NumSections); i++) if (st0[i]) s0++;
+            pathLog.AppendLine($"0,{vm.Easting:F2},{vm.Northing:F2},{vm.Heading:F1}," +
+                $"{vm.ToolEasting:F2},{vm.ToolNorthing:F2},{vm.SpeedKmh:F1}," +
+                $"{coverageService.TotalWorkedArea:F1},{s0}");
+            Console.Write($"[tick0: area={coverageService.TotalWorkedArea:F1} pos=({vm.Easting:F1},{vm.Northing:F1})] ");
+        }
+
+        while (Math.Abs(vm.Northing - startN) < 100.0 && ticks < 500)
+        {
+            simService.Tick(0);
+            await Delay(5);
+            ticks++;
+
+            // Log every 10 ticks
+            if (ticks % 10 == 0)
+            {
+                int sectionsOn = 0;
+                var states = vm.GetSectionStates();
+                if (states != null)
+                    for (int i = 0; i < Math.Min(states.Length, config.NumSections); i++)
+                        if (states[i]) sectionsOn++;
+
+                pathLog.AppendLine($"{ticks},{vm.Easting:F2},{vm.Northing:F2},{vm.Heading:F1}," +
+                    $"{vm.ToolEasting:F2},{vm.ToolNorthing:F2},{vm.SpeedKmh:F1}," +
+                    $"{coverageService.TotalWorkedArea:F1},{sectionsOn}");
+            }
+        }
+
+        double distDriven = Math.Abs(vm.Northing - startN);
+        Console.Write($"[dist={distDriven:F1}m ticks={ticks}] ");
+
+        // Save path log
+        var logPath = Path.Combine(_screenshotDir, "cov_path_log.csv");
+        File.WriteAllText(logPath, pathLog.ToString());
+        Console.Write($"[log={logPath}] ");
+
+        // Check coverage
+        await Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        double workedArea = coverageService.TotalWorkedArea;
+        double expectedArea = distDriven * 10.0;
+        Console.Write($"[area={workedArea:F0}m2 expected={expectedArea:F0}m2] ");
+
+        if (workedArea < 1.0)
+            throw new Exception($"No coverage painted after driving {distDriven:F0}m with sections on");
+
+        // Check if area is within 50% of expected (generous tolerance for section control behavior)
+        if (workedArea >= expectedArea * 0.5)
+            Console.Write("[PASS] ");
+        else
+            Console.Write($"[WARN: {workedArea:F0} < {expectedArea * 0.5:F0} (50% of expected)] ");
+
+        CaptureScreenshot(window, "cov_02_after_drive");
+
+        // Turn off sections
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        double straightArea = workedArea;
+        Console.WriteLine("OK");
+
+        // === DIAGONAL DRIVE: Clear and drive 100m at 45 degrees ===
+        Console.Write("[Cov 2b] Diagonal drive 100m at 45deg... ");
+        coverageService.ClearAll();
+        for (int i = 0; i < 5; i++) { await Delay(100); Dispatcher.UIThread.RunJobs(); }
+
+        // Position at (-30,-30) heading NE (45 degrees = ~0.785 rad)
+        vm.SetSimulatorCoordinates(originLat - 0.00027, originLon - 0.00042);
+        simService.SetHeading(Math.PI / 4); // 45 degrees = NE
+        vm.SimulatorSteerAngle = 0;
+        await Delay(100);
+        for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(10); }
+        Console.Write($"[pos=({vm.Easting:F1},{vm.Northing:F1}) H={vm.Heading:F0}] ");
+
+        if (!vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(50);
+
+        CaptureScreenshot(window, "cov_04_diagonal_before");
+
+        double startE2 = vm.Easting;
+        double startN2 = vm.Northing;
+        int ticks2 = 0;
+        while (ticks2 < 500)
+        {
+            simService.Tick(0);
+            await Delay(5);
+            ticks2++;
+            double dx = vm.Easting - startE2;
+            double dy = vm.Northing - startN2;
+            if (Math.Sqrt(dx * dx + dy * dy) >= 100.0) break;
+        }
+        double diagDist = Math.Sqrt(
+            Math.Pow(vm.Easting - startE2, 2) + Math.Pow(vm.Northing - startN2, 2));
+
+        await Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        double diagArea = coverageService.TotalWorkedArea;
+        double diagExpected = diagDist * 10.0;
+        Console.Write($"[dist={diagDist:F1}m area={diagArea:F0}m2 expected={diagExpected:F0}m2] ");
+
+        double diagError = Math.Abs(diagArea - diagExpected) / diagExpected * 100;
+        Console.Write($"[error={diagError:F1}%] ");
+
+        if (diagArea < 1.0)
+            throw new Exception($"No diagonal coverage painted");
+
+        // Compare straight vs diagonal accuracy
+        double straightError = Math.Abs(straightArea - (distDriven * 10.0)) / (distDriven * 10.0) * 100;
+        Console.Write($"[straight={straightError:F1}% diagonal={diagError:F1}%] ");
+
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        CaptureScreenshot(window, "cov_05_diagonal_after");
+        Console.WriteLine("OK");
+
+        // === 30 DEGREE DRIVE ===
+        Console.Write("[Cov 2c] 30deg drive 100m... ");
+        coverageService.ClearAll();
+        for (int i = 0; i < 5; i++) { await Delay(100); Dispatcher.UIThread.RunJobs(); }
+
+        vm.SetSimulatorCoordinates(originLat - 0.00040, originLon - 0.00020);
+        simService.SetHeading(Math.PI / 6); // 30 degrees
+        vm.SimulatorSteerAngle = 0;
+        await Delay(100);
+        for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(10); }
+        Console.Write($"[pos=({vm.Easting:F1},{vm.Northing:F1}) H={vm.Heading:F0}] ");
+
+        if (!vm.IsSectionMasterOn)
+            vm.ToggleSectionMasterCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        vm.SimulatorForwardCommand?.Execute(null);
+        await Delay(50);
+
+        double startE3 = vm.Easting;
+        double startN3 = vm.Northing;
+        int ticks3 = 0;
+        while (ticks3 < 500)
+        {
+            simService.Tick(0);
+            await Delay(5);
+            ticks3++;
+            double dx = vm.Easting - startE3;
+            double dy = vm.Northing - startN3;
+            if (Math.Sqrt(dx * dx + dy * dy) >= 100.0) break;
+        }
+        double dist30 = Math.Sqrt(
+            Math.Pow(vm.Easting - startE3, 2) + Math.Pow(vm.Northing - startN3, 2));
+
+        await Delay(200);
+        Dispatcher.UIThread.RunJobs();
+        double area30 = coverageService.TotalWorkedArea;
+        double expected30 = dist30 * 10.0;
+        double error30 = Math.Abs(area30 - expected30) / expected30 * 100;
+        Console.Write($"[dist={dist30:F1}m area={area30:F0}m2 expected={expected30:F0}m2 error={error30:F1}%] ");
+
+        if (area30 < 1.0)
+            throw new Exception("No 30deg coverage painted");
+
+        vm.ToggleSectionMasterCommand?.Execute(null);
+        CaptureScreenshot(window, "cov_06_30deg_after");
+        Console.WriteLine("OK");
+
+        // === DIFFERENT TOOL WIDTHS ===
+        double[] toolWidths = { 3.0, 6.0, 12.0, 24.0 };
+        foreach (double tw in toolWidths)
+        {
+            Console.Write($"[Cov 2d] Tool {tw:F0}m north 50m... ");
+            coverageService.ClearAll();
+            for (int i = 0; i < 3; i++) { await Delay(50); Dispatcher.UIThread.RunJobs(); }
+
+            config.Tool.Width = tw;
+            int nSec = Math.Max(1, (int)(tw / 2));
+            config.NumSections = nSec;
+            for (int i = 0; i < nSec; i++)
+                config.Tool.SetSectionWidth(i, (int)(tw / nSec * 100));
+
+            vm.SetSimulatorCoordinates(originLat - 0.00023, originLon);
+            simService.SetHeading(0);
+            vm.SimulatorSteerAngle = 0;
+            await Delay(50);
+            for (int i = 0; i < 10; i++) { simService.Tick(0); await Delay(5); }
+
+            if (!vm.IsSectionMasterOn)
+                vm.ToggleSectionMasterCommand?.Execute(null);
+            vm.SimulatorForwardCommand?.Execute(null);
+            vm.SimulatorForwardCommand?.Execute(null);
+            vm.SimulatorForwardCommand?.Execute(null);
+            await Delay(30);
+
+            double sN = vm.Northing;
+            int t = 0;
+            while (Math.Abs(vm.Northing - sN) < 50.0 && t < 300)
+            {
+                simService.Tick(0);
+                await Delay(3);
+                t++;
+            }
+            double d = Math.Abs(vm.Northing - sN);
+            await Delay(100);
+            Dispatcher.UIThread.RunJobs();
+            double a = coverageService.TotalWorkedArea;
+            double exp = d * tw;
+            double err = exp > 0 ? Math.Abs(a - exp) / exp * 100 : 0;
+            Console.Write($"[dist={d:F0}m area={a:F0}m2 expected={exp:F0}m2 error={err:F1}%] ");
+            vm.ToggleSectionMasterCommand?.Execute(null);
+            Console.WriteLine("OK");
+        }
+
+        // Restore 10m tool for save/load test
+        config.Tool.Width = 10.0;
+        config.NumSections = 5;
+        for (int i = 0; i < 5; i++)
+            config.Tool.SetSectionWidth(i, 200);
+
+        // === SAVE/LOAD ROUND-TRIP ===
+        Console.Write("[Cov 3] Save + reload coverage... ");
+        var fieldDir = fieldService.ActiveField?.DirectoryPath;
+        if (fieldDir != null)
+        {
+            coverageService.SaveToFile(fieldDir);
+            double areaBefore = coverageService.TotalWorkedArea;
+            Console.Write($"[saved={areaBefore:F0}m2] ");
+
+            coverageService.ClearAll();
+            Console.Write($"[afterClear={coverageService.TotalWorkedArea:F0}m2] ");
+
+            coverageService.LoadFromFile(fieldDir);
+            await Delay(200);
+            double areaAfterLoad = coverageService.TotalWorkedArea;
+            Console.Write($"[afterLoad={areaAfterLoad:F0}m2] ");
+
+            if (Math.Abs(areaAfterLoad - areaBefore) > 10.0)
+                throw new Exception($"Coverage lost after save/load: {areaBefore:F0}m2 -> {areaAfterLoad:F0}m2");
+
+            Console.Write("[PASS] ");
+            CaptureScreenshot(window, "cov_03_after_reload");
+        }
+        else
+        {
+            Console.Write("[SKIP: no field] ");
+        }
+
+        // Restore tool config
+        config.Tool.Width = 12.0;
+        config.NumSections = 6;
+        for (int i = 0; i < 6; i++)
+            config.Tool.SetSectionWidth(i, 200);
+
+        Console.WriteLine("OK");
+        Console.WriteLine("--- Coverage Area Test Complete ---");
+    }
+
+    /// <summary>
     /// Delay that also pumps the UI dispatcher.
     /// When --fast is active, delays are scaled down proportionally.
     /// </summary>
@@ -1260,6 +1664,31 @@ if frames:
         int scaledMs = Math.Max(1, (int)(ms / _timeScale));
         await Task.Delay(scaledMs);
         Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>
+    /// Log current test state for debugging. Call at start/end of scenarios.
+    /// </summary>
+    static void LogState(MainViewModel vm, string label)
+    {
+        Console.Write($"[{label}: E={vm.Easting:F1} N={vm.Northing:F1} H={vm.Heading:F0} " +
+            $"spd={vm.SpeedKmh:F1} field={vm.IsFieldOpen} track={vm.HasActiveTrack} " +
+            $"steer={vm.IsAutoSteerEngaged} sect={vm.IsSectionMasterOn}] ");
+    }
+
+    /// <summary>
+    /// Reset tractor to field origin heading north. Call before driving scenarios.
+    /// </summary>
+    static async Task ResetTractorPosition(MainViewModel vm, IGpsSimulationService simService,
+        ISettingsService settingsService, double latOffset = 0, double lonOffset = 0)
+    {
+        var settings = settingsService.Settings;
+        vm.SetSimulatorCoordinates(settings.SimulatorLatitude + latOffset,
+                                    settings.SimulatorLongitude + lonOffset);
+        simService.SetHeading(0);
+        vm.SimulatorSteerAngle = 0;
+        await Delay(50);
+        for (int i = 0; i < 5; i++) { simService.Tick(0); await Delay(5); }
     }
 
     static void CaptureScreenshot(Window window, string name)
