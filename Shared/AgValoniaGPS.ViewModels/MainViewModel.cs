@@ -2682,6 +2682,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? DecreaseCameraPitchCommand { get; private set; }
     public ICommand? IncreaseBrightnessCommand { get; private set; }
     public ICommand? DecreaseBrightnessCommand { get; private set; }
+    public ICommand? CycleDisplayResolutionCommand { get; private set; }
 
     // iOS Sheet Toggle Commands
     public ICommand? ToggleFileMenuCommand { get; private set; }

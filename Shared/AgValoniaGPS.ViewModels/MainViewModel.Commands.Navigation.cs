@@ -160,6 +160,19 @@ public partial class MainViewModel
             Brightness -= 5;
         });
 
+        // Display resolution: cycle High (1.0) → Medium (1.5) → Low (2.0) → High
+        CycleDisplayResolutionCommand = new RelayCommand(() =>
+        {
+            var display = ConfigStore.Display;
+            display.DisplayResolutionMultiplier = display.DisplayResolutionMultiplier switch
+            {
+                < 1.25 => 1.5,  // High → Medium
+                < 1.75 => 2.0,  // Medium → Low
+                _ => 1.0,       // Low → High
+            };
+            OnPropertyChanged(nameof(DisplayResolutionLabel));
+        });
+
         // iOS Sheet toggle commands
         ToggleFileMenuCommand = new RelayCommand(() =>
         {

@@ -305,4 +305,14 @@ public class DisplayConfig : ObservableObject
         get => _hardwareMessagesEnabled;
         set => SetProperty(ref _hardwareMessagesEnabled, value);
     }
+
+    // Coverage display resolution multiplier
+    // 1.0 = High (full detail), 1.5 = Medium (~44% memory), 2.0 = Low (~25% memory)
+    // Applied to coverage bitmap cell size — detection always stays at 0.1m
+    private double _displayResolutionMultiplier = 1.0;
+    public double DisplayResolutionMultiplier
+    {
+        get => _displayResolutionMultiplier;
+        set => SetProperty(ref _displayResolutionMultiplier, Math.Clamp(value, 1.0, 2.0));
+    }
 }

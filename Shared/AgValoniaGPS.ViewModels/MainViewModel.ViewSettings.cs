@@ -285,6 +285,13 @@ public partial class MainViewModel
         ? $"{_displaySettings.Brightness}%"
         : "??";
 
+    public string DisplayResolutionLabel => ConfigStore.Display.DisplayResolutionMultiplier switch
+    {
+        < 1.25 => "High",
+        < 1.75 => "Med",
+        _ => "Low",
+    };
+
     #endregion
 
     #region Auto Day/Night

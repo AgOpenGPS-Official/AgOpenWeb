@@ -475,30 +475,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private const int MAX_BITMAP_DIMENSION = 16384; // Max pixels per dimension (~1GB at 4 bytes/pixel)
     private double _actualBitmapCellSize = MIN_BITMAP_CELL_SIZE; // Dynamically adjusted for large fields
 
-    // Medium-resolution bitmap for mid-zoom views (4x downsampled from full)
-    private WriteableBitmap? _coverageMedium;
-    private const double MEDIUM_CELL_SIZE = 0.4;
-    private int _mediumWidth, _mediumHeight;
-    private bool _mediumNeedsRebuild = true;
-
-    // Thumbnail bitmap for zoomed-out views (10x downsampled from full)
-    private WriteableBitmap? _coverageThumbnail;
-    private const double THUMBNAIL_CELL_SIZE = 1.0;
-    private int _thumbnailWidth, _thumbnailHeight;
-    private bool _thumbnailNeedsRebuild = true;
-
-    // Adaptive LOD selection — picks LOD based on world-meters-per-pixel + FPS feedback
-    private const double BASE_WPP_MEDIUM = 0.15;      // below this: use full bitmap
-    private const double BASE_WPP_THUMBNAIL = 0.7;    // above this: use thumbnail; between: medium
-    private double _lodBias = 0.0;                     // 0 = best quality, 0.5 = max coarsening
-    private const double LOD_BIAS_MAX = 0.5;
-    private const double LOD_BIAS_STEP_UP = 0.15;     // degrade speed (reaches max in ~2s)
-    private const double LOD_BIAS_STEP_DOWN = 0.03;   // recover speed (reaches 0 in ~8s)
-    private const double FPS_TARGET = 24.0;
-    private const double FPS_HEADROOM = 28.0;          // only recover when clearly above target
-    private int _lodUpdateFrameCounter;
-    private DateTime _lastLodRebuildTime;
-
     // Background compositing - background image is composited into coverage bitmap
     private bool _backgroundComposited = false;
     // Flag to preserve bitmap when explicitly initialized (don't dispose when no coverage)
@@ -616,6 +592,22 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;
         PointerWheelChanged += OnPointerWheelChanged;
+
+        // Rebuild coverage bitmap when display resolution changes
+        AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.PropertyChanged += OnDisplayConfigChanged;
+    }
+
+    private void OnDisplayConfigChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AgValoniaGPS.Models.Configuration.DisplayConfig.DisplayResolutionMultiplier))
+        {
+            // Rebuild bitmap at new resolution using stored bounds.
+            // Can't use UpdateCoverageBitmapIfNeeded — providers may be null on this instance.
+            if (_coverageWriteableBitmap != null && _bitmapWidth > 0)
+            {
+                InitializeCoverageBitmapWithBounds(_bitmapMinE, _bitmapMaxE, _bitmapMinN, _bitmapMaxN);
+            }
+        }
     }
 
     /// <summary>
@@ -694,9 +686,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         var vehicleCfg = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Vehicle;
         var toolCfg = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tool;
         var fieldState = AgValoniaGPS.Models.State.ApplicationState.Instance.Field;
-
-        // No SKImage snapshot needed — render thread draws SKBitmap directly
-        // via canvas.DrawBitmap (lock-free, atomic pixel reads)
 
         var state = new MapRenderState
         {
@@ -841,8 +830,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _previousCoverageSkBitmap?.Dispose(); // Dispose the one from TWO recreations ago (render thread is done with it)
         _previousCoverageSkBitmap = _coverageSkBitmap; // Keep current one alive for render thread
         _coverageSkBitmap = null; // Clear so SendStateToHandler sends null until new one is ready
-        _coverageMedium?.Dispose();
-        _coverageMedium = null;
 
         // Data bitmap: Rgb565 for compact storage and pixel API
         _coverageWriteableBitmap = new WriteableBitmap(
@@ -897,9 +884,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             _bitmapHasContent = false;
         }
 
-        // Set state flags
-        _mediumNeedsRebuild = true;
-        _thumbnailNeedsRebuild = true;
         _bitmapExplicitlyInitialized = true;
     }
 
@@ -973,6 +957,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
+        // Apply user resolution multiplier (1.0=High, 1.5=Medium, 2.0=Low)
+        cellSize = ApplyResolutionMultiplier(cellSize);
+
         _actualBitmapCellSize = cellSize;
 
         int requiredWidth = (int)Math.Ceiling(worldWidth / cellSize);
@@ -1013,8 +1000,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             Debug.WriteLine($"[Timing] CovBitmap: Full rebuild {cellCount} cells in {sw.ElapsedMilliseconds}ms");
             _bitmapNeedsFullRebuild = false;
             _bitmapNeedsIncrementalUpdate = false;
-            _mediumNeedsRebuild = true;
-            _thumbnailNeedsRebuild = true;
         }
         else if (_bitmapNeedsIncrementalUpdate)
         {
@@ -1023,157 +1008,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             if (cellCount > 0)
             {
                 Debug.WriteLine($"[Timing] CovBitmap: Incremental {cellCount} cells");
-                _mediumNeedsRebuild = true;
-                _thumbnailNeedsRebuild = true;
             }
             _bitmapNeedsIncrementalUpdate = false;
         }
-
-        // LOD bitmaps are rebuilt lazily in DrawCoverageBitmap() only when
-        // the current zoom level actually selects that LOD. This avoids
-        // expensive rebuilds every GPS tick when zoomed in using the full bitmap.
     }
 
     /// <summary>
     /// Generate a medium-resolution bitmap (4x downsampled) for mid-zoom rendering.
-    /// </summary>
-    private unsafe void UpdateCoverageMedium()
-    {
-        if (_coverageWriteableBitmap == null || _bitmapWidth == 0 || _bitmapHeight == 0)
-            return;
-
-        int scale = (int)(MEDIUM_CELL_SIZE / MIN_BITMAP_CELL_SIZE);
-        _mediumWidth = (_bitmapWidth + scale - 1) / scale;
-        _mediumHeight = (_bitmapHeight + scale - 1) / scale;
-
-        if (_coverageMedium == null ||
-            _coverageMedium.PixelSize.Width != _mediumWidth ||
-            _coverageMedium.PixelSize.Height != _mediumHeight)
-        {
-            _coverageMedium?.Dispose();
-            _coverageMedium = new WriteableBitmap(
-                new PixelSize(_mediumWidth, _mediumHeight),
-                new Vector(96, 96),
-                Avalonia.Platform.PixelFormat.Bgra8888);
-        }
-
-        using var srcBuffer = _coverageWriteableBitmap.Lock();
-        using var dstBuffer = _coverageMedium.Lock();
-
-        ushort* src = (ushort*)srcBuffer.Address;
-        uint* dst = (uint*)dstBuffer.Address;
-        int srcStride = srcBuffer.RowBytes / 2;
-        int dstStride = dstBuffer.RowBytes / 4;
-
-        for (int ty = 0; ty < _mediumHeight; ty++)
-        {
-            int syStart = ty * scale;
-            int syCenter = Math.Min(syStart + scale / 2, _bitmapHeight - 1);
-
-            for (int tx = 0; tx < _mediumWidth; tx++)
-            {
-                int sxStart = tx * scale;
-                int sxCenter = Math.Min(sxStart + scale / 2, _bitmapWidth - 1);
-
-                ushort result = src[syCenter * srcStride + sxCenter];
-
-                if (result == 0)
-                {
-                    int syEnd = Math.Min(syStart + scale, _bitmapHeight);
-                    int sxEnd = Math.Min(sxStart + scale, _bitmapWidth);
-                    for (int sy = syStart; sy < syEnd && result == 0; sy++)
-                    {
-                        for (int sx = sxStart; sx < sxEnd; sx++)
-                        {
-                            ushort pixel = src[sy * srcStride + sx];
-                            if (pixel != 0) { result = pixel; break; }
-                        }
-                    }
-                }
-
-                dst[ty * dstStride + tx] = Rgb565ToBgra8888(result);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Generate a low-resolution thumbnail from the full bitmap for fast zoomed-out rendering.
-    /// </summary>
-    private unsafe void UpdateCoverageThumbnail()
-    {
-        if (_coverageWriteableBitmap == null || _bitmapWidth == 0 || _bitmapHeight == 0)
-            return;
-
-        // Calculate thumbnail dimensions (10x smaller)
-        int scale = (int)(THUMBNAIL_CELL_SIZE / MIN_BITMAP_CELL_SIZE);
-        _thumbnailWidth = (_bitmapWidth + scale - 1) / scale;
-        _thumbnailHeight = (_bitmapHeight + scale - 1) / scale;
-
-        // Create or recreate thumbnail bitmap
-        if (_coverageThumbnail == null ||
-            _coverageThumbnail.PixelSize.Width != _thumbnailWidth ||
-            _coverageThumbnail.PixelSize.Height != _thumbnailHeight)
-        {
-            _coverageThumbnail?.Dispose();
-            _coverageThumbnail = new WriteableBitmap(
-                new PixelSize(_thumbnailWidth, _thumbnailHeight),
-                new Vector(96, 96),
-                Avalonia.Platform.PixelFormat.Bgra8888);
-        }
-
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        // Downsample from full bitmap to thumbnail
-        // Center-biased: sample center first, scan block only if center is black
-        using var srcBuffer = _coverageWriteableBitmap.Lock();
-        using var dstBuffer = _coverageThumbnail.Lock();
-
-        ushort* src = (ushort*)srcBuffer.Address;
-        uint* dst = (uint*)dstBuffer.Address; // Bgra8888
-        int srcStride = srcBuffer.RowBytes / 2; // ushort stride
-        int dstStride = dstBuffer.RowBytes / 4; // uint stride
-
-        for (int ty = 0; ty < _thumbnailHeight; ty++)
-        {
-            int syStart = ty * scale;
-            int syCenter = Math.Min(syStart + scale / 2, _bitmapHeight - 1);
-
-            for (int tx = 0; tx < _thumbnailWidth; tx++)
-            {
-                int sxStart = tx * scale;
-                int sxCenter = Math.Min(sxStart + scale / 2, _bitmapWidth - 1);
-
-                // Sample center pixel first (preserves natural look)
-                ushort result = src[syCenter * srcStride + sxCenter];
-
-                // If center is black, scan block for any coverage (catches thin strips)
-                if (result == 0)
-                {
-                    int syEnd = Math.Min(syStart + scale, _bitmapHeight);
-                    int sxEnd = Math.Min(sxStart + scale, _bitmapWidth);
-
-                    for (int sy = syStart; sy < syEnd && result == 0; sy++)
-                    {
-                        for (int sx = sxStart; sx < sxEnd; sx++)
-                        {
-                            ushort pixel = src[sy * srcStride + sx];
-                            if (pixel != 0)
-                            {
-                                result = pixel;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                dst[ty * dstStride + tx] = Rgb565ToBgra8888(result);
-            }
-        }
-
-        sw.Stop();
-        Debug.WriteLine($"[Timing] Thumbnail: Created {_thumbnailWidth}x{_thumbnailHeight} in {sw.ElapsedMilliseconds}ms");
-    }
-
     /// <summary>
     /// Composite the background image into the coverage bitmap.
     /// This allows us to draw a single bitmap instead of background + coverage separately.
@@ -1369,12 +1210,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Sync display bitmap so background shows with proper transparency
         SyncDisplayBitmap();
         SyncSkBitmapFromDisplay();
-
-        // Rebuild LOD bitmaps immediately so zoomed-out view shows correct background
-        UpdateCoverageMedium();
-        _mediumNeedsRebuild = false;
-        UpdateCoverageThumbnail();
-        _thumbnailNeedsRebuild = false;
     }
 
     /// <summary>
@@ -1687,6 +1522,14 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         return (uint)(b | (g << 8) | (r << 16) | (0xFF << 24));
     }
 
+    private static double ApplyResolutionMultiplier(double cellSize)
+    {
+        var multiplier = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.DisplayResolutionMultiplier;
+        if (multiplier <= 1.0) return cellSize;
+
+        return cellSize * multiplier;
+    }
+
     /// <summary>
     /// Clear all coverage pixels - resets to background image or black.
     /// </summary>
@@ -1729,11 +1572,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             SyncSkBitmapFromDisplay();
         }
 
-        // Rebuild LOD bitmaps immediately (otherwise zoomed-out view shows stale data)
-        UpdateCoverageMedium();
-        _mediumNeedsRebuild = false;
-        UpdateCoverageThumbnail();
-        _thumbnailNeedsRebuild = false;
         SendStateToHandler();
     }
 
@@ -1835,11 +1673,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
-        // Rebuild LOD bitmaps so zoomed-out view shows loaded coverage
-        UpdateCoverageMedium();
-        _mediumNeedsRebuild = false;
-        UpdateCoverageThumbnail();
-        _thumbnailNeedsRebuild = false;
         SendStateToHandler();
     }
 
@@ -2837,6 +2670,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 else cellSize = Math.Ceiling(cellSize);
             }
         }
+
+        // Apply user resolution multiplier (1.0=High, 1.5=Medium, 2.0=Low)
+        cellSize = ApplyResolutionMultiplier(cellSize);
 
         int requiredWidth = (int)Math.Ceiling(worldWidth / cellSize);
         int requiredHeight = (int)Math.Ceiling(worldHeight / cellSize);
