@@ -866,10 +866,10 @@ public partial class MainViewModel : ObservableObject
 
 
 
-    // AutoSteer guidance methods (CalculateAutoSteerGuidance)
+    // AutoSteer guidance state and event handlers
     // are now in MainViewModel.Guidance.cs
 
-    // YouTurn methods (ProcessYouTurn, CreateYouTurnPath, CalculateYouTurnGuidance, etc.)
+    // YouTurn methods (ProcessYouTurn, CreateYouTurnPath, CompleteYouTurn, etc.)
     // are now in MainViewModel.YouTurn.cs
 
 

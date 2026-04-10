@@ -803,7 +803,7 @@ public partial class MainViewModel
         _trackGuidanceState = null;
 
         // Update map visualization - clear the old turn path and next line
-        // The active track will be updated by CalculateAutoSteerGuidance
+        // The display track will be updated by the pipeline via GpsCycleResult
         _mapService.SetYouTurnPath(null);
         _mapService.SetNextTrack(null);
         _mapService.SetIsInYouTurn(false);
@@ -1790,99 +1790,6 @@ public partial class MainViewModel
         }
 
         return path;
-    }
-
-    #endregion
-
-    #region YouTurn Guidance
-
-    /// <summary>
-    /// Calculate steering guidance while following the YouTurn path.
-    /// </summary>
-    private void CalculateYouTurnGuidance(AgValoniaGPS.Models.Position currentPosition)
-    {
-        if (_youTurnPath == null || _youTurnPath.Count == 0) return;
-
-        double headingRadians = currentPosition.Heading * Math.PI / 180.0;
-        double speed = currentPosition.Speed * 3.6; // km/h
-
-        var input = new YouTurnGuidanceInput
-        {
-            TurnPath = _youTurnPath,
-            PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
-            SteerPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
-            Wheelbase = Vehicle.Wheelbase,
-            MaxSteerAngle = Vehicle.MaxSteerAngle,
-            UseStanley = false, // Use Pure Pursuit for smoother turns
-            GoalPointDistance = Guidance.GoalPointLookAheadHold,
-            UTurnCompensation = Guidance.UTurnCompensation,
-            FixHeading = headingRadians,
-            AvgSpeed = speed,
-            IsReverse = false,
-            UTurnStyle = 0 // Albin style
-        };
-
-        var output = _youTurnGuidanceService.CalculateGuidance(input);
-
-        if (output.IsTurnComplete)
-        {
-            // Turn complete - switch to next line and reset state
-            _logger.LogDebug("[YouTurn] Guidance detected turn complete, calling CompleteYouTurn");
-            CompleteYouTurn();
-        }
-        else
-        {
-            // Apply steering from YouTurn guidance (service already applies UTurnCompensation)
-            SimulatorSteerAngle = output.SteerAngle;
-
-            // Update centralized guidance state
-            State.Guidance.CrossTrackError = output.DistanceFromCurrentLine;
-            State.Guidance.SteerAngle = output.SteerAngle;
-
-            // Legacy property (for existing bindings - display in cm)
-            CrossTrackError = output.DistanceFromCurrentLine * 100;
-        }
-    }
-
-    /// <summary>
-    /// Calculate YouTurn guidance and return results without setting any ViewModel properties.
-    /// Used by the background-thread simulator path to build a GpsCycleResult.
-    /// Returns null if no path or turn completed (caller should check YouTurnCompleted separately).
-    /// </summary>
-    private (double steerAngle, double xte, bool turnComplete)? CalculateYouTurnGuidanceForResult(
-        AgValoniaGPS.Models.Position currentPosition)
-    {
-        if (_youTurnPath == null || _youTurnPath.Count == 0) return null;
-
-        double headingRadians = currentPosition.Heading * Math.PI / 180.0;
-        double speed = currentPosition.Speed * 3.6; // km/h
-
-        var input = new YouTurnGuidanceInput
-        {
-            TurnPath = _youTurnPath,
-            PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
-            SteerPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
-            Wheelbase = Vehicle.Wheelbase,
-            MaxSteerAngle = Vehicle.MaxSteerAngle,
-            UseStanley = false,
-            GoalPointDistance = Guidance.GoalPointLookAheadHold,
-            UTurnCompensation = Guidance.UTurnCompensation,
-            FixHeading = headingRadians,
-            AvgSpeed = speed,
-            IsReverse = false,
-            UTurnStyle = 0
-        };
-
-        var output = _youTurnGuidanceService.CalculateGuidance(input);
-
-        if (output.IsTurnComplete)
-        {
-            _logger.LogDebug("[YouTurn] Guidance[bg] detected turn complete, calling CompleteYouTurn");
-            CompleteYouTurn();
-            return (0, 0, true);
-        }
-
-        return (output.SteerAngle, output.DistanceFromCurrentLine, false);
     }
 
     #endregion

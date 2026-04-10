@@ -135,15 +135,6 @@ public partial class MainViewModel
         }
     }
 
-    // Font weight converter for tab buttons (Bold for active tab)
-    public static Avalonia.Data.Converters.FuncValueConverter<int, Avalonia.Media.FontWeight> TabFontWeightConverter { get; }
-        = new(tabIndex =>
-        {
-            // ConverterParameter is passed as string, but this is the bound value
-            // We'll handle this differently in XAML
-            return Avalonia.Media.FontWeight.Normal;
-        });
-
     private void InitializeRecordedPathCommands()
     {
         // Refresh rec panel when a field is loaded
