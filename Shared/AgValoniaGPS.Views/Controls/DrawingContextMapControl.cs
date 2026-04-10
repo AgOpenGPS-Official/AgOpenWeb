@@ -3126,9 +3126,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private readonly DrawingContextMapControl _owner;
         private MapRenderState? _state;
 
-        // FPS tracking
+        // FPS tracking (compositor frames, not content updates)
         private DateTime _lastFpsUpdate = DateTime.UtcNow;
-        private int _frameCount;
+        private int _compositorFrameCount;
         private double _currentFps;
         private int _renderCounter;
 
@@ -3247,15 +3247,32 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         {
             if (message is MapRenderState state)
             {
+                bool firstState = _state == null;
                 _state = state;
-                // Invalidate triggers OnRender on the next compositor pass
                 Invalidate();
+                // Start the compositor frame counter on first state
+                if (firstState)
+                    RegisterForNextAnimationFrameUpdate();
             }
         }
 
         public override void OnAnimationFrameUpdate()
         {
-            // Not used — we invalidate directly when new state arrives via OnMessage
+            // Count compositor frames for accurate FPS display.
+            // This fires every compositor tick regardless of whether we re-rendered.
+            _compositorFrameCount++;
+            var now = DateTime.UtcNow;
+            var elapsed = (now - _lastFpsUpdate).TotalSeconds;
+            if (elapsed >= 1.0)
+            {
+                _currentFps = _compositorFrameCount / elapsed;
+                _compositorFrameCount = 0;
+                _lastFpsUpdate = now;
+                var fps = _currentFps;
+                Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
+            }
+            // Keep the animation frame loop running
+            RegisterForNextAnimationFrameUpdate();
         }
 
         public override void OnRender(ImmediateDrawingContext drawingContext)
@@ -3361,8 +3378,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawHeadlandProximityHud(drawingContext, s);
             }
 
-            // FPS tracking
-            UpdateFpsCounter();
         }
 
         private static Matrix GetCameraTransform(MapRenderState s, double viewWidth, double viewHeight)
@@ -4173,21 +4188,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Full text rendering would require a separate SkiaSharp lease.
         }
 
-        private void UpdateFpsCounter()
-        {
-            _frameCount++;
-            var now = DateTime.UtcNow;
-            var elapsed = (now - _lastFpsUpdate).TotalSeconds;
-            if (elapsed >= 1.0)
-            {
-                _currentFps = _frameCount / elapsed;
-                _frameCount = 0;
-                _lastFpsUpdate = now;
-                var fps = _currentFps;
-                // Post FPS update to UI thread
-                Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
-            }
-        }
 
         // ═══════════════════════════════════════════════════════════════
         // SKCanvas-only drawing methods (no ImmediateDrawingContext)
