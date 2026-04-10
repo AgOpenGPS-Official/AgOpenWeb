@@ -2674,10 +2674,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
     public void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track)
     {
-        bool changed = !ReferenceEquals(_activeTrack, track);
         _activeTrack = track;
-        if (changed)
-            Console.WriteLine($"[MapControl] SetActiveTrack: {(track != null ? $"'{track.Name}' ({track.Points.Count} pts)" : "null")}");
         SendStateToHandler();
     }
 
@@ -3376,12 +3373,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     }
 
                     // Vehicle/tool always draws even if above fails
+                    if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
+                        DrawExtraGuidelinesSk(canvas, s);
                     if (s.ShowVehicle && s.ToolWidth > 0.1)
                         DrawToolSk(canvas, s);
                     if (s.ShowVehicle)
                         DrawVehicleSk(canvas, s);
+                    if (s.ShowVehicle && s.SvennArrowVisible)
+                        DrawSvennArrowSk(canvas, s);
                     if (s.GuidanceActive && s.ShowVehicle)
                         DrawGuidanceLookAheadSk(canvas, s);
+                    if (s.SelectionMarkers != null && s.SelectionMarkers.Count > 0)
+                        DrawSelectionMarkersSk(canvas, s);
                     if (s.Flags.Count > 0)
                         DrawFlagsSk(canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
@@ -3392,7 +3395,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             finally { }
 
             // Draw HUD elements in screen space (outside camera transform)
-            if (s.HeadlandDistanceVisible && s.HasHeadland && s.HeadlandProximityDistance < 999)
+            if (s.HeadlandDistanceVisible && s.HasHeadland && s.HeadlandProximityDistance < double.MaxValue)
             {
                 DrawHeadlandProximityHud(drawingContext, s);
             }
@@ -4470,6 +4473,94 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 canvas.DrawCircle((float)easting, (float)northing, 0.8f, paint);
                 using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
                 canvas.DrawCircle((float)easting, (float)northing, 0.8f, outlinePaint);
+            }
+        }
+
+        private void DrawSvennArrowSk(SKCanvas canvas, MapRenderState s)
+        {
+            float aheadDistance = 8.0f;
+            float wingSpan = 3.0f;
+            float wingDepth = 3.0f;
+
+            canvas.Save();
+            canvas.Translate((float)s.VehicleX, (float)s.VehicleY);
+            canvas.RotateRadians(-(float)s.VehicleHeading);
+
+            using var paint = new SKPaint
+            {
+                Color = new SKColor(255, 220, 0, 200),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.4f,
+                IsAntialias = true
+            };
+            canvas.DrawLine(0, aheadDistance, -wingSpan, aheadDistance - wingDepth, paint);
+            canvas.DrawLine(0, aheadDistance, wingSpan, aheadDistance - wingDepth, paint);
+
+            canvas.Restore();
+        }
+
+        private void DrawExtraGuidelinesSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.ActiveTrack == null || s.ActiveTrack.Points.Count < 2) return;
+            int count = s.ExtraGuidelinesCount;
+            double spacing = s.ToolWidth > 0.1 ? s.ToolWidth : 6.0;
+
+            using var paint = new SKPaint
+            {
+                Color = new SKColor(255, 165, 0, 60),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.3f,
+                IsAntialias = true
+            };
+
+            var track = s.ActiveTrack;
+            if (track.Points.Count == 2)
+            {
+                var pA = track.Points[0];
+                var pB = track.Points[track.Points.Count - 1];
+                double dx = pB.Easting - pA.Easting;
+                double dy = pB.Northing - pA.Northing;
+                double length = Math.Sqrt(dx * dx + dy * dy);
+                if (length < 0.01) return;
+                double px = -dy / length, py = dx / length;
+                double nx = dx / length, ny = dy / length;
+                double ext = 500.0;
+
+                for (int i = 1; i <= count; i++)
+                {
+                    double offset = i * spacing;
+                    canvas.DrawLine(
+                        (float)(pA.Easting + px * offset - nx * ext), (float)(pA.Northing + py * offset - ny * ext),
+                        (float)(pB.Easting + px * offset + nx * ext), (float)(pB.Northing + py * offset + ny * ext), paint);
+                    canvas.DrawLine(
+                        (float)(pA.Easting - px * offset - nx * ext), (float)(pA.Northing - py * offset - ny * ext),
+                        (float)(pB.Easting - px * offset + nx * ext), (float)(pB.Northing - py * offset + ny * ext), paint);
+                }
+            }
+            else
+            {
+                for (int i = 1; i <= count; i++)
+                {
+                    double offset = i * spacing;
+                    var posPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(track.Points, offset);
+                    var negPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(track.Points, -offset);
+                    if (posPoints.Count >= 2) DrawTrackPointsSk(canvas, posPoints, paint);
+                    if (negPoints.Count >= 2) DrawTrackPointsSk(canvas, negPoints, paint);
+                }
+            }
+        }
+
+        private void DrawSelectionMarkersSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.SelectionMarkers == null) return;
+            for (int i = 0; i < s.SelectionMarkers.Count; i++)
+            {
+                var marker = s.SelectionMarkers[i];
+                var color = i == 0 ? new SKColor(255, 165, 0) : new SKColor(0, 150, 255);
+                using var fillPaint = new SKPaint { Color = color, Style = SKPaintStyle.Fill };
+                using var outlinePaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
+                canvas.DrawCircle((float)marker.Easting, (float)marker.Northing, 4.0f, fillPaint);
+                canvas.DrawCircle((float)marker.Easting, (float)marker.Northing, 4.0f, outlinePaint);
             }
         }
 

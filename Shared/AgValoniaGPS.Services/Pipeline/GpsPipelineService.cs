@@ -80,6 +80,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Curve limit warning throttling ──────────────────────────────────
     private DateTime _lastCurveLimitWarning = DateTime.MinValue;
+    private double? _lastHeadlandDistance;
+    private bool _lastHeadlandWarning;
     private int _lastWarnedPathsAway = int.MinValue;
 
     // ── Logging throttle ────────────────────────────────────────────────
@@ -434,6 +436,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool headlandWarning = false;
         ComputeHeadlandProximity(headlandLine, _toolPositionService.ToolPivotPosition,
             out headlandDist, out headlandWarning);
+
+        // Hold last valid distance so the HUD doesn't disappear in gaps
+        // (e.g., between crossing the headland line and entering the U-turn arc)
+        if (headlandDist != null)
+        {
+            _lastHeadlandDistance = headlandDist;
+            _lastHeadlandWarning = headlandWarning;
+        }
+        else if (_lastHeadlandDistance != null && headlandLine != null)
+        {
+            headlandDist = _lastHeadlandDistance;
+            headlandWarning = _lastHeadlandWarning;
+        }
 
         // ── (11) RTK quality sounds ─────────────────────────────────────
         CheckRtkQualityChange(data.FixQuality);
