@@ -4272,6 +4272,37 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawTrackPointsSk(canvas, s.NextTrack.Points, nextPaint);
             }
 
+            // Planned swaths (route planning preview — cyan)
+            if (s.PlannedSwaths.Count > 0)
+            {
+                using var swathPaint = new SKPaint
+                {
+                    Color = new SKColor(0, 180, 255, 200),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.4f,
+                    IsAntialias = true
+                };
+                using var endpointPaint = new SKPaint
+                {
+                    Color = new SKColor(0, 180, 255, 160),
+                    Style = SKPaintStyle.Fill
+                };
+
+                foreach (var swath in s.PlannedSwaths)
+                {
+                    if (swath.Points.Count < 2) continue;
+                    DrawTrackPointsSk(canvas, swath.Points, swathPaint);
+
+                    // Endpoint markers
+                    canvas.DrawCircle(
+                        (float)swath.Points[0].Easting, (float)swath.Points[0].Northing,
+                        0.8f, endpointPaint);
+                    canvas.DrawCircle(
+                        (float)swath.Points[^1].Easting, (float)swath.Points[^1].Northing,
+                        0.8f, endpointPaint);
+                }
+            }
+
             // Pending point A
             if (s.PendingPointA != null)
             {

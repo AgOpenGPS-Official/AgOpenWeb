@@ -1039,7 +1039,7 @@ public partial class MainViewModel
         {
             ReferenceTrack = track,
             ClipBoundary = clipBoundary,
-            ToolWidth = ConfigStore.Tool.Width,
+            ToolWidth = ConfigStore.ActualToolWidth,
             Overlap = ConfigStore.Tool.Overlap,
             Pattern = _routePlanPattern,
             MaxTracks = _routePlanMaxTracks,
@@ -1050,7 +1050,6 @@ public partial class MainViewModel
 
         var plan = swathService.GenerateSwaths(input);
         _mapService.SetPlannedSwaths(plan.Swaths);
-
         RoutePlanStatus = $"{plan.Swaths.Count} swaths ({plan.TotalPossibleTracks} total) | {plan.TotalWorkingDistance:F0}m";
     }
 
