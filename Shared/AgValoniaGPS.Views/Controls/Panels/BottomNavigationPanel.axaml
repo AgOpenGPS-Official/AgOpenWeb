@@ -138,6 +138,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     </Panel>
                 </Button>
 
+                <!-- Plan Route - hidden when no AB line -->
+                <Button Classes="BottomPanelButton" ToolTip.Tip="Plan Route"
+                        Command="{Binding ShowRoutePlanDialogCommand}"
+                        IsVisible="{Binding HasActiveTrack}">
+                    <TextBlock Text="&#x1F5FA;" FontSize="32" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+
                 <!-- === ALWAYS VISIBLE BUTTONS === -->
 
                 <!-- Color Picker / Section Mapping - always visible -->
