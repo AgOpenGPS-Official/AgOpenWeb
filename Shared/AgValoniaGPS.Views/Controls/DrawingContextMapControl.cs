@@ -105,9 +105,10 @@ public interface ISharedMapControl
     void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track);
     void SetBaseTrack(AgValoniaGPS.Models.Track.Track? track);
 
-    // Recorded path / contour strip visualization
+    // Recorded path / contour strip / planned swath visualization
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
+    void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
 
     // Coverage visualization
     void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches);
@@ -218,6 +219,7 @@ internal class MapRenderState
     public AgValoniaGPS.Models.Position? PendingPointA;
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> RecordedPaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> ContourStrips = Array.Empty<AgValoniaGPS.Models.Track.Track>();
+    public IReadOnlyList<AgValoniaGPS.Models.Track.Track> PlannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
 
     // Recording
     public List<(double Easting, double Northing)>? RecordingPoints;
@@ -503,6 +505,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private AgValoniaGPS.Models.Position? _pendingPointA; // Point A while waiting for Point B
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _recordedPaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _contourStrips = Array.Empty<AgValoniaGPS.Models.Track.Track>();
+    private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _plannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
 
     // Ground texture bitmaps (passed to render thread via state snapshot)
     private Bitmap? _groundTexture;
@@ -750,6 +753,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             PendingPointA = _pendingPointA,
             RecordedPaths = _recordedPaths,
             ContourStrips = _contourStrips,
+            PlannedSwaths = _plannedSwaths,
 
             RecordingPoints = _recordingPoints != null
                 ? new List<(double, double)>(_recordingPoints) : null,
@@ -2560,6 +2564,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
+    public void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths)
+    {
+        _plannedSwaths = swaths;
+        SendStateToHandler();
+    }
+
     // Coverage visualization
     public void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches)
     {
@@ -3216,7 +3226,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
                         // Tracks
                         if (s.ActiveTrack != null || s.PendingPointA != null
-                            || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
+                            || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0
+                            || s.PlannedSwaths.Count > 0)
                             DrawTrackSk(canvas, s);
                     }
                     catch (Exception ex)
@@ -3656,6 +3667,35 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                             new Point(strip.Points[i].Easting, strip.Points[i].Northing),
                             new Point(strip.Points[i + 1].Easting, strip.Points[i + 1].Northing));
                     }
+                }
+            }
+
+            // Planned swaths (route planning preview)
+            if (s.PlannedSwaths.Count > 0)
+            {
+                var plannedPen = new ImmutablePen(
+                    new ImmutableSolidColorBrush(Color.FromArgb(180, 0, 180, 255)), lineThickness * 0.75);
+                var plannedEndBrush = new ImmutableSolidColorBrush(Color.FromArgb(140, 0, 180, 255));
+
+                for (int si = 0; si < s.PlannedSwaths.Count; si++)
+                {
+                    var swath = s.PlannedSwaths[si];
+                    if (swath.Points.Count < 2) continue;
+
+                    for (int i = 0; i < swath.Points.Count - 1; i++)
+                    {
+                        dc.DrawLine(plannedPen,
+                            new Point(swath.Points[i].Easting, swath.Points[i].Northing),
+                            new Point(swath.Points[i + 1].Easting, swath.Points[i + 1].Northing));
+                    }
+
+                    // Endpoint markers
+                    dc.DrawEllipse(plannedEndBrush, pointOutlinePen,
+                        new Point(swath.Points[0].Easting, swath.Points[0].Northing),
+                        markerRadius * 0.7, markerRadius * 0.7);
+                    dc.DrawEllipse(plannedEndBrush, pointOutlinePen,
+                        new Point(swath.Points[^1].Easting, swath.Points[^1].Northing),
+                        markerRadius * 0.7, markerRadius * 0.7);
                 }
             }
 

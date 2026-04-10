@@ -973,6 +973,85 @@ public partial class MainViewModel
         {
             _mapService.Zoom(0.8);
         });
+
+        // Route Planning Commands
+        ShowRoutePlanDialogCommand = new RelayCommand(() =>
+            State.UI.ShowDialog(DialogType.RoutePlan));
+
+        CloseRoutePlanDialogCommand = new RelayCommand(() =>
+            State.UI.CloseDialog());
+
+        SetRoutePlanPatternCommand = new RelayCommand<string>(pattern =>
+        {
+            if (Enum.TryParse<Services.Track.SwathPattern>(pattern, out var p))
+            {
+                _routePlanPattern = p;
+                GenerateRoutePlan();
+            }
+        });
+
+        SetRoutePlanCountCommand = new RelayCommand<string>(count =>
+        {
+            if (int.TryParse(count, out var n))
+            {
+                _routePlanMaxTracks = n == 0 ? null : (int?)n;
+                GenerateRoutePlan();
+            }
+        });
+
+        ClearPlannedSwathsCommand = new RelayCommand(() =>
+        {
+            _mapService.SetPlannedSwaths(Array.Empty<Models.Track.Track>());
+            RoutePlanStatus = "";
+        });
+    }
+
+    private Services.Track.SwathPattern _routePlanPattern = Services.Track.SwathPattern.Boustrophedon;
+    private int? _routePlanMaxTracks = 10;
+
+    private string _routePlanStatus = "";
+    public string RoutePlanStatus
+    {
+        get => _routePlanStatus;
+        set => SetProperty(ref _routePlanStatus, value);
+    }
+
+    private void GenerateRoutePlan()
+    {
+        var track = State.Field.ActiveTrack;
+        var boundary = State.Field.CurrentBoundary;
+        if (track == null || boundary == null)
+        {
+            RoutePlanStatus = "Need an active track and boundary";
+            return;
+        }
+
+        // Clip to headland if available, otherwise outer boundary
+        var clipBoundary = boundary.HeadlandPolygon ?? boundary.OuterBoundary;
+        if (clipBoundary == null || clipBoundary.Points.Count < 3)
+        {
+            RoutePlanStatus = "Need a valid boundary";
+            return;
+        }
+
+        var swathService = new Services.Track.SwathGenerationService();
+        var input = new Services.Interfaces.SwathPlanInput
+        {
+            ReferenceTrack = track,
+            ClipBoundary = clipBoundary,
+            ToolWidth = ConfigStore.Tool.Width,
+            Overlap = ConfigStore.Tool.Overlap,
+            Pattern = _routePlanPattern,
+            MaxTracks = _routePlanMaxTracks,
+            VehiclePosition = State.Vehicle.HasValidFix
+                ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, 0)
+                : null,
+        };
+
+        var plan = swathService.GenerateSwaths(input);
+        _mapService.SetPlannedSwaths(plan.Swaths);
+
+        RoutePlanStatus = $"{plan.Swaths.Count} swaths ({plan.TotalPossibleTracks} total) | {plan.TotalWorkingDistance:F0}m";
     }
 
     /// <summary>

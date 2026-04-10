@@ -111,9 +111,10 @@ public interface IMapService
     void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track);
     void SetBaseTrack(AgValoniaGPS.Models.Track.Track? track);
 
-    // Recorded path / contour strip visualization
+    // Recorded path / contour strip / planned swath visualization
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
+    void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
 
     // Coverage bitmap initialization
     // Initialize coverage bitmap with field bounds on field load

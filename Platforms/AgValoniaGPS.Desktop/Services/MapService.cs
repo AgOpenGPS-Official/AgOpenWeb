@@ -182,6 +182,9 @@ public class MapService : IMapService
     public void SetContourStrips(System.Collections.Generic.IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips) =>
         GetMapControl().SetContourStrips(strips);
 
+    public void SetPlannedSwaths(System.Collections.Generic.IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths) =>
+        GetMapControl().SetPlannedSwaths(swaths);
+
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>
         GetMapControl().InitializeCoverageBitmapWithBounds(minE, maxE, minN, maxN);

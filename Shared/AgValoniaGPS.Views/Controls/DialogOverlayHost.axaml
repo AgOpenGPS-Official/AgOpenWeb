@@ -63,6 +63,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <dialogs:FlagListDialogPanel/>
         <dialogs:ViewSettingsDialogPanel/>
         <dialogs:HelpDialogPanel/>
+        <dialogs:RoutePlanDialogPanel/>
         <dialogs:OffsetFixDialogPanel/>
         <dialogs:ConfigurationDialog DataContext="{Binding ConfigurationViewModel}"/>
         <dialogs:AutoSteerConfigPanel DataContext="{Binding AutoSteerConfigViewModel}"/>

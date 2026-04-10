@@ -1,0 +1,109 @@
+<!--
+AgValoniaGPS
+Copyright (C) 2024-2026 AgValoniaGPS Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="500"
+             x:Class="AgValoniaGPS.Views.Controls.Dialogs.RoutePlanDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsRoutePlanDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsRoutePlanDialogVisible}">
+
+    <Grid>
+        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="0"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Width="400" MinHeight="350">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Header -->
+                <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="12,12,0,0" Padding="16,12">
+                    <TextBlock Text="Route Plan" FontSize="18" FontWeight="Bold"
+                               Foreground="{DynamicResource SystemControlHighlightAccentBrush}" HorizontalAlignment="Center"/>
+                </Border>
+
+                <!-- Settings -->
+                <StackPanel Grid.Row="1" Spacing="12" Margin="16,12">
+                    <!-- Pattern -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Pattern" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+                        <Grid ColumnDefinitions="*,*,*">
+                            <Button Grid.Column="0" Content="Sequential" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanPatternCommand}" CommandParameter="Boustrophedon"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            <Button Grid.Column="1" Content="Snake" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanPatternCommand}" CommandParameter="Snake"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            <Button Grid.Column="2" Content="Spiral" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanPatternCommand}" CommandParameter="Spiral"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Track Count -->
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Tracks" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+                        <Grid ColumnDefinitions="*,*,*,*">
+                            <Button Grid.Column="0" Content="Next 5" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanCountCommand}" CommandParameter="5"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            <Button Grid.Column="1" Content="Next 10" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanCountCommand}" CommandParameter="10"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            <Button Grid.Column="2" Content="Next 20" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanCountCommand}" CommandParameter="20"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                            <Button Grid.Column="3" Content="All" Margin="2" Height="36" FontSize="12"
+                                    HorizontalContentAlignment="Center" CornerRadius="6"
+                                    Command="{Binding SetRoutePlanCountCommand}" CommandParameter="0"
+                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Info -->
+                    <TextBlock Text="{Binding RoutePlanStatus}" FontSize="12"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               HorizontalAlignment="Center" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <!-- Buttons -->
+                <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="16,4,16,12">
+                    <Button Grid.Column="0" Content="Clear" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
+                            HorizontalContentAlignment="Center" CornerRadius="6"
+                            Command="{Binding ClearPlannedSwathsCommand}"
+                            Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                    <Button Grid.Column="1" Content="Close" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
+                            HorizontalContentAlignment="Center" CornerRadius="6"
+                            Command="{Binding CloseRoutePlanDialogCommand}"
+                            Background="{DynamicResource SystemControlHighlightAccentBrush}"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

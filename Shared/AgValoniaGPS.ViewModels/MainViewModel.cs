@@ -2684,6 +2684,13 @@ public partial class MainViewModel : ObservableObject
     public ICommand? DecreaseBrightnessCommand { get; private set; }
     public ICommand? CycleDisplayResolutionCommand { get; private set; }
 
+    // Route Planning Commands
+    public ICommand? ShowRoutePlanDialogCommand { get; private set; }
+    public ICommand? CloseRoutePlanDialogCommand { get; private set; }
+    public ICommand? SetRoutePlanPatternCommand { get; private set; }
+    public ICommand? SetRoutePlanCountCommand { get; private set; }
+    public ICommand? ClearPlannedSwathsCommand { get; private set; }
+
     // iOS Sheet Toggle Commands
     public ICommand? ToggleFileMenuCommand { get; private set; }
     public ICommand? ToggleFieldToolsCommand { get; private set; }
