@@ -8,11 +8,7 @@
     <Nullable>enable</Nullable>
     <LangVersion>14</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- TODO: Enable compiled bindings after fixing x:DataType in ~8 AXAML files:
-         AgShareDownloadDialogPanel, AgShareUploadDialogPanel, AutoSteerConfigPanel,
-         ConfigurationDialog, NewFieldDialogPanel, NumericStepView, and others.
-         For now, Avalonia 12 defaults Binding to CompiledBinding, so we opt out. -->
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
   <!-- Avalonia is needed for avares:// resource compilation -->
