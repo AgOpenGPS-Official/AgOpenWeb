@@ -1002,6 +1002,7 @@ public partial class MainViewModel
         ClearPlannedSwathsCommand = new RelayCommand(() =>
         {
             _mapService.SetPlannedSwaths(Array.Empty<Models.Track.Track>());
+            _mapService.SetPlannedTurnPaths(Array.Empty<System.Collections.Generic.List<Models.Base.Vec3>>());
             RoutePlanStatus = "";
         });
     }
@@ -1026,8 +1027,34 @@ public partial class MainViewModel
             return;
         }
 
-        // Clip to headland if available, otherwise outer boundary
-        var clipBoundary = boundary.HeadlandPolygon ?? boundary.OuterBoundary;
+        // Clip swaths to the cultivated area (inside headland), so turns
+        // happen in the headland zone rather than outside the field.
+        BoundaryPolygon? clipBoundary = boundary.HeadlandPolygon;
+
+        // If no HeadlandPolygon on the boundary, create one by offsetting
+        // the outer boundary inward by the headland distance.
+        if ((clipBoundary == null || clipBoundary.Points.Count < 3) && boundary.OuterBoundary != null)
+        {
+            double headlandDist = State.Field.HeadlandDistance;
+            if (headlandDist > 0)
+            {
+                var offsetService = new Services.Geometry.PolygonOffsetService();
+                var outerPts = boundary.OuterBoundary.Points
+                    .Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
+                var offsetPts = offsetService.CreateInwardOffset(outerPts, headlandDist);
+                if (offsetPts != null && offsetPts.Count >= 3)
+                {
+                    clipBoundary = new BoundaryPolygon();
+                    foreach (var pt in offsetPts)
+                        clipBoundary.Points.Add(new BoundaryPoint { Easting = pt.Easting, Northing = pt.Northing });
+                    clipBoundary.UpdateBounds();
+                }
+            }
+
+            // Fall back to outer boundary if no headland distance set
+            clipBoundary ??= boundary.OuterBoundary;
+        }
+
         if (clipBoundary == null || clipBoundary.Points.Count < 3)
         {
             RoutePlanStatus = "Need a valid boundary";
@@ -1046,11 +1073,14 @@ public partial class MainViewModel
             VehiclePosition = State.Vehicle.HasValidFix
                 ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, 0)
                 : null,
+            TurningRadius = ConfigStore.Guidance.UTurnRadius,
+            HeadlandWidth = State.Field.HeadlandDistance,
         };
 
         var plan = swathService.GenerateSwaths(input);
         _mapService.SetPlannedSwaths(plan.Swaths);
-        RoutePlanStatus = $"{plan.Swaths.Count} swaths ({plan.TotalPossibleTracks} total) | {plan.TotalWorkingDistance:F0}m";
+        _mapService.SetPlannedTurnPaths(plan.TurnPaths);
+        RoutePlanStatus = $"{plan.Swaths.Count} swaths | {plan.TurnPaths.Count} turns | {plan.TotalWorkingDistance + plan.TotalTurningDistance:F0}m total";
     }
 
     /// <summary>

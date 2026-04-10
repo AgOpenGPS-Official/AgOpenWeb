@@ -54,6 +54,16 @@ public class SwathPlanInput
 
     /// <summary>Skip width: 1 = every track, 2 = skip one, etc.</summary>
     public int SkipWidth { get; set; } = 1;
+
+    /// <summary>Minimum turning radius in meters (for Dubins turn paths).</summary>
+    public double TurningRadius { get; set; } = 8.0;
+
+    /// <summary>Generate Dubins turn paths connecting consecutive swaths.</summary>
+    public bool GenerateTurnPaths { get; set; } = true;
+
+    /// <summary>Distance from headland boundary to outer boundary (headland zone width).
+    /// Turn legs extend into this zone so the arc apex sits near the outer boundary.</summary>
+    public double HeadlandWidth { get; set; }
 }
 
 /// <summary>
@@ -69,4 +79,10 @@ public class SwathPlan
 
     /// <summary>Sum of all swath lengths in meters.</summary>
     public double TotalWorkingDistance { get; set; }
+
+    /// <summary>Dubins turn paths connecting consecutive swaths.</summary>
+    public List<List<Models.Base.Vec3>> TurnPaths { get; set; } = new();
+
+    /// <summary>Sum of all turn path lengths in meters.</summary>
+    public double TotalTurningDistance { get; set; }
 }

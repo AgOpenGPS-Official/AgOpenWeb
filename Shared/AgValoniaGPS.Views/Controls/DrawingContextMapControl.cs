@@ -109,6 +109,7 @@ public interface ISharedMapControl
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
     void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
+    void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths);
 
     // Coverage visualization
     void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches);
@@ -220,6 +221,7 @@ internal class MapRenderState
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> RecordedPaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> ContourStrips = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> PlannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
+    public IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> PlannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
 
     // Recording
     public List<(double Easting, double Northing)>? RecordingPoints;
@@ -506,6 +508,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _recordedPaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _contourStrips = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _plannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
+    private IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> _plannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
 
     // Ground texture bitmaps (passed to render thread via state snapshot)
     private Bitmap? _groundTexture;
@@ -754,6 +757,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             RecordedPaths = _recordedPaths,
             ContourStrips = _contourStrips,
             PlannedSwaths = _plannedSwaths,
+            PlannedTurnPaths = _plannedTurnPaths,
 
             RecordingPoints = _recordingPoints != null
                 ? new List<(double, double)>(_recordingPoints) : null,
@@ -2570,6 +2574,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
+    public void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths)
+    {
+        _plannedTurnPaths = turnPaths;
+        SendStateToHandler();
+    }
+
     // Coverage visualization
     public void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches)
     {
@@ -4300,6 +4310,28 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     canvas.DrawCircle(
                         (float)swath.Points[^1].Easting, (float)swath.Points[^1].Northing,
                         0.8f, endpointPaint);
+                }
+            }
+
+            // Planned turn paths (route planning — orange)
+            if (s.PlannedTurnPaths.Count > 0)
+            {
+                using var turnPaint = new SKPaint
+                {
+                    Color = new SKColor(255, 165, 0, 180),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.3f,
+                    IsAntialias = true
+                };
+
+                foreach (var turnPath in s.PlannedTurnPaths)
+                {
+                    if (turnPath.Count < 2) continue;
+                    using var path = new SKPath();
+                    path.MoveTo((float)turnPath[0].Easting, (float)turnPath[0].Northing);
+                    for (int i = 1; i < turnPath.Count; i++)
+                        path.LineTo((float)turnPath[i].Easting, (float)turnPath[i].Northing);
+                    canvas.DrawPath(path, turnPaint);
                 }
             }
 

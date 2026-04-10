@@ -261,6 +261,11 @@ public class MapService : IMapService
         _mapControl?.SetPlannedSwaths(swaths);
     }
 
+    public void SetPlannedTurnPaths(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>> turnPaths)
+    {
+        _mapControl?.SetPlannedTurnPaths(turnPaths);
+    }
+
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN)
     {

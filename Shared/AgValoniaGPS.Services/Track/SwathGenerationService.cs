@@ -162,11 +162,93 @@ public class SwathGenerationService : ISwathGenerationService
             }
         }
 
+        // Generate Dubins turn paths connecting consecutive swaths
+        var turnPaths = new List<List<Vec3>>();
+        double totalTurningDistance = 0;
+
+        if (input.GenerateTurnPaths && swaths.Count >= 2)
+        {
+            var dubins = new PathPlanning.DubinsPathService(input.TurningRadius);
+
+            // Track alternating direction: odd-indexed swaths are driven in reverse
+            for (int i = 0; i < swaths.Count - 1; i++)
+            {
+                var current = swaths[i];
+                var next = swaths[i + 1];
+                if (current.Points.Count < 2 || next.Points.Count < 2) continue;
+
+                // Determine exit/entry points based on alternating direction.
+                // Even swaths: drive from Points[0] to Points[^1] (forward)
+                // Odd swaths: drive from Points[^1] to Points[0] (reverse)
+                Vec3 exitPoint, entryPoint;
+                if (i % 2 == 0)
+                {
+                    // Exiting forward end of current swath
+                    exitPoint = current.Points[^1];
+                    // Entering reverse end of next swath (next is odd, starts from end)
+                    entryPoint = next.Points[^1];
+                }
+                else
+                {
+                    // Exiting reverse end of current swath
+                    exitPoint = current.Points[0];
+                    // Entering forward end of next swath (next is even, starts from beginning)
+                    entryPoint = next.Points[0];
+                }
+
+                // Exit heading: direction we're traveling when we leave the swath
+                double exitHeading = i % 2 == 0 ? heading : heading + Math.PI;
+                // Entry heading: direction we need to be traveling when we enter the next swath
+                double entryHeading = (i + 1) % 2 == 0 ? heading : heading + Math.PI;
+
+                // Extend start/goal outward along heading into the headland zone.
+                // This creates straight "legs" so the Dubins arc apex sits near the outer boundary.
+                double legLength = Math.Max(input.HeadlandWidth - 1.5 * input.TurningRadius, 2.0);
+                double exitDirE = Math.Sin(exitHeading);
+                double exitDirN = Math.Cos(exitHeading);
+                double entryDirE = Math.Sin(entryHeading + Math.PI); // Approach from opposite direction
+                double entryDirN = Math.Cos(entryHeading + Math.PI);
+
+                var start = new Vec3(
+                    exitPoint.Easting + exitDirE * legLength,
+                    exitPoint.Northing + exitDirN * legLength,
+                    exitHeading);
+                var goal = new Vec3(
+                    entryPoint.Easting + entryDirE * legLength,
+                    entryPoint.Northing + entryDirN * legLength,
+                    entryHeading);
+
+                var dubinsPath = dubins.GeneratePath(start, goal);
+                if (dubinsPath.Count > 0)
+                {
+                    // Build full turn path: exit leg + Dubins arc + entry leg
+                    var turnPath = new List<Vec3>();
+                    // Exit leg: from swath endpoint to Dubins start
+                    turnPath.Add(new Vec3(exitPoint.Easting, exitPoint.Northing, exitHeading));
+                    // Dubins arc (copy — DubinsPathService reuses internal list)
+                    turnPath.AddRange(dubinsPath.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)));
+                    // Entry leg: from Dubins end to next swath endpoint
+                    turnPath.Add(new Vec3(entryPoint.Easting, entryPoint.Northing, entryHeading));
+                    turnPaths.Add(turnPath);
+
+                    // Calculate turn distance
+                    for (int j = 1; j < turnPath.Count; j++)
+                    {
+                        double dx = turnPath[j].Easting - turnPath[j - 1].Easting;
+                        double dy = turnPath[j].Northing - turnPath[j - 1].Northing;
+                        totalTurningDistance += Math.Sqrt(dx * dx + dy * dy);
+                    }
+                }
+            }
+        }
+
         return new SwathPlan
         {
             Swaths = swaths,
             TotalPossibleTracks = totalTracks,
-            TotalWorkingDistance = totalDistance
+            TotalWorkingDistance = totalDistance,
+            TurnPaths = turnPaths,
+            TotalTurningDistance = totalTurningDistance
         };
     }
 

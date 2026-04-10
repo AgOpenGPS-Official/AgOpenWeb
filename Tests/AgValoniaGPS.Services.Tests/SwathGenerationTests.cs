@@ -266,4 +266,50 @@ public class SwathGenerationTests
         Assert.That(result.Swaths, Is.Empty);
     }
 
+    [Test]
+    public void TurnPaths_GeneratedBetweenConsecutiveSwaths()
+    {
+        var input = new SwathPlanInput
+        {
+            ReferenceTrack = MakeNorthABLine(),
+            ClipBoundary = MakeRectBoundary(-50, 50, -200, 200),
+            ToolWidth = 10.0,
+            Overlap = 0,
+            TurningRadius = 8.0,
+            GenerateTurnPaths = true,
+            MaxTracks = 5,
+            Pattern = SwathPattern.Boustrophedon
+        };
+
+        var result = _service.GenerateSwaths(input);
+
+        Assert.That(result.Swaths.Count, Is.EqualTo(5));
+        Assert.That(result.TurnPaths.Count, Is.EqualTo(4), "Should have N-1 turn paths for N swaths");
+        Assert.That(result.TotalTurningDistance, Is.GreaterThan(0));
+
+        // Each turn path should have multiple waypoints
+        foreach (var turnPath in result.TurnPaths)
+        {
+            Assert.That(turnPath.Count, Is.GreaterThan(2),
+                $"Turn path should have multiple waypoints, got {turnPath.Count}");
+            Console.WriteLine($"Turn path: {turnPath.Count} waypoints");
+        }
+    }
+
+    [Test]
+    public void TurnPaths_DisabledWhenFlagFalse()
+    {
+        var input = new SwathPlanInput
+        {
+            ReferenceTrack = MakeNorthABLine(),
+            ClipBoundary = MakeRectBoundary(-50, 50, -200, 200),
+            ToolWidth = 10.0,
+            GenerateTurnPaths = false,
+            MaxTracks = 5,
+        };
+
+        var result = _service.GenerateSwaths(input);
+
+        Assert.That(result.TurnPaths, Is.Empty);
+    }
 }
