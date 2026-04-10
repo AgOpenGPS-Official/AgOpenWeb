@@ -4183,28 +4183,34 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 : $"{(distance * 39.3700787):F0} in";
 
             bool warning = s.HeadlandProximityWarning;
-            var color = warning
-                ? Color.FromRgb(255, 60, 60)
-                : Color.FromRgb(255, 242, 64);
+            float fontSize = (float)Math.Clamp(s.BoundsHeight / 20.0, 14, 36);
 
-            double fontSize = Math.Clamp(s.BoundsHeight / 20.0, 14, 36);
+            // Acquire SKCanvas lease for HUD drawing (screen space, no camera transform)
+            var skiaFeature = dc.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+            if (skiaFeature == null) return;
+            using var skiaLease = skiaFeature.Lease();
+            var canvas = skiaLease.SkCanvas;
 
-            // Draw background box
-            double textWidth = text.Length * fontSize * 0.6; // Approximate
-            double textHeight = fontSize * 1.2;
-            double x = (s.BoundsWidth - textWidth) / 2;
-            double y = 8;
+            // Measure text
+            using var font = new SKFont(SKTypeface.Default, fontSize);
+            using var textPaint = new SKPaint(font)
+            {
+                Color = warning ? new SKColor(255, 60, 60) : new SKColor(255, 242, 64),
+                IsAntialias = true
+            };
+            float textWidth = textPaint.MeasureText(text);
+            float textHeight = fontSize * 1.2f;
+            float x = (float)(s.BoundsWidth - textWidth) / 2;
+            float y = 8;
 
-            var bgColor = warning
-                ? Color.FromArgb(180, 80, 0, 0)
-                : Color.FromArgb(180, 40, 40, 0);
-            dc.FillRectangle(new ImmutableSolidColorBrush(bgColor),
-                new Rect(x - 12, y - 4, textWidth + 24, textHeight + 8), 6);
+            // Background box
+            var bgColor = warning ? new SKColor(80, 0, 0, 180) : new SKColor(40, 40, 0, 180);
+            using var bgPaint = new SKPaint { Color = bgColor, Style = SKPaintStyle.Fill };
+            var bgRect = new SKRoundRect(new SKRect(x - 12, y - 4, x + textWidth + 12, y + textHeight + 4), 6);
+            canvas.DrawRoundRect(bgRect, bgPaint);
 
-            // Draw text via SkiaSharp (ImmediateDrawingContext has no DrawText)
-            // Note: We can't get the canvas here since we popped the camera transform,
-            // but the HUD feature already works as a simple box indicator.
-            // Full text rendering would require a separate SkiaSharp lease.
+            // Text
+            canvas.DrawText(text, x, y + fontSize, font, textPaint);
         }
 
 
