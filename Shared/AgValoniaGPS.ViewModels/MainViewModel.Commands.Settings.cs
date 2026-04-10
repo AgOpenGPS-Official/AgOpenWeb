@@ -222,6 +222,7 @@ public partial class MainViewModel
             double headingRad = Heading * Math.PI / 180.0;
             _toolPositionService.ResetTrailingState(
                 new Models.Base.Vec3(Easting, Northing, headingRad), headingRad);
+            SyncGuidanceStateToPipeline();
         });
     }
 
@@ -241,6 +242,7 @@ public partial class MainViewModel
             Northing + deltaNorthing,
             headingRad);
         _toolPositionService.ResetTrailingState(driftedPos, headingRad);
+        SyncGuidanceStateToPipeline();
     }
 
     private void RefreshAppDirectories()

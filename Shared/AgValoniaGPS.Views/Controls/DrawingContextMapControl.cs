@@ -2408,6 +2408,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             _sectionRight[i] = runningPosition + _sectionWidths[i];
             runningPosition += _sectionWidths[i];
         }
+        SendStateToHandler();
     }
 
     /// <summary>
@@ -2482,6 +2483,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _goalEasting = goalEasting;
         _goalNorthing = goalNorthing;
         _guidanceActive = isActive;
+        SendStateToHandler();
     }
 
     public bool AutoPanEnabled
@@ -2515,16 +2517,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _boundary = boundary;
         _boundaryPointsWhenSet = newOuterPoints;
         InitializeCoverageBitmap();
+        SendStateToHandler();
     }
 
     public void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points)
     {
         _recordingPoints = new List<(double, double)>(points);
+        SendStateToHandler();
     }
 
     public void ClearRecordingPoints()
     {
         _recordingPoints = null;
+        SendStateToHandler();
     }
 
     public void SetBackgroundImage(string imagePath, double minX, double maxY, double maxX, double minY)
@@ -2622,86 +2627,94 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     {
         _showBoundaryOffsetIndicator = show;
         _boundaryOffsetMeters = offsetMeters;
+        SendStateToHandler();
     }
 
-    // Headland visualization
     public void SetHeadlandLine(IReadOnlyList<AgValoniaGPS.Models.Base.Vec3>? headlandPoints)
     {
         _headlandLine = headlandPoints;
+        SendStateToHandler();
     }
 
     public void SetHeadlandPreview(IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? previewPoints)
     {
         _headlandPreview = previewPoints;
+        SendStateToHandler();
     }
 
     public void SetHeadlandVisible(bool visible)
     {
         _isHeadlandVisible = visible;
+        SendStateToHandler();
     }
 
-    // YouTurn path visualization
     public void SetYouTurnPath(IReadOnlyList<(double Easting, double Northing)>? turnPath)
     {
         _youTurnPath = turnPath;
+        SendStateToHandler();
     }
 
     public void SetSelectionMarkers(IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? markers)
     {
         _selectionMarkers = markers;
+        SendStateToHandler();
     }
 
     public void SetClipLine(AgValoniaGPS.Models.Base.Vec2? start, AgValoniaGPS.Models.Base.Vec2? end)
     {
-        if (start.HasValue && end.HasValue)
-        {
-            _clipLine = (start.Value, end.Value);
-        }
-        else
-        {
-            _clipLine = null;
-        }
+        _clipLine = (start.HasValue && end.HasValue) ? (start.Value, end.Value) : null;
+        SendStateToHandler();
     }
 
     public void SetClipPath(IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? path)
     {
         _clipPath = path;
+        SendStateToHandler();
     }
 
-    // Track visualization
     public void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track)
     {
+        bool changed = !ReferenceEquals(_activeTrack, track);
         _activeTrack = track;
+        if (changed)
+            Console.WriteLine($"[MapControl] SetActiveTrack: {(track != null ? $"'{track.Name}' ({track.Points.Count} pts)" : "null")}");
+        SendStateToHandler();
     }
 
     public void SetBaseTrack(AgValoniaGPS.Models.Track.Track? track)
     {
         _baseTrack = track;
+        SendStateToHandler();
     }
 
     public void SetNextTrack(AgValoniaGPS.Models.Track.Track? track)
     {
         _nextTrack = track;
+        SendStateToHandler();
     }
 
     public void SetIsInYouTurn(bool isInTurn)
     {
         _isInYouTurn = isInTurn;
+        SendStateToHandler();
     }
 
     public void SetPendingPointA(AgValoniaGPS.Models.Position? pointA)
     {
         _pendingPointA = pointA;
+        SendStateToHandler();
     }
 
     public void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths)
     {
         _recordedPaths = paths;
+        SendStateToHandler();
     }
 
     public void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips)
     {
         _contourStrips = strips;
+        SendStateToHandler();
     }
 
     // Coverage visualization
@@ -3329,44 +3342,50 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     using var skiaLease = skiaFeature.Lease();
                     var canvas = skiaLease.SkCanvas;
 
-                    // Coverage bitmap
-                    if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
-                        && s.BitmapWidth > 0 && s.BitmapHeight > 0)
+                    // Each draw section is wrapped so a failure in one
+                    // doesn't prevent vehicle/tool from rendering.
+                    try
                     {
-                        DrawCoverageBitmap(drawingContext, canvas, s);
+                        // Coverage bitmap
+                        if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
+                            && s.BitmapWidth > 0 && s.BitmapHeight > 0)
+                            DrawCoverageBitmap(drawingContext, canvas, s);
+
+                        // Boundary, headland, paths
+                        if (s.Boundary != null)
+                            DrawBoundary(canvas, s);
+                        if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
+                            DrawHeadlandLine(canvas, s);
+                        if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
+                            DrawHeadlandPreview(canvas, s);
+                        if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
+                            DrawRecordingPointsSk(canvas, s);
+                        if (s.ClipLine.HasValue || (s.ClipPath != null && s.ClipPath.Count >= 2))
+                            DrawClipLineSk(canvas, s);
+                        if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
+                            DrawYouTurnPathSk(canvas, s);
+
+                        // Tracks
+                        if (s.ActiveTrack != null || s.PendingPointA != null
+                            || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
+                            DrawTrackSk(canvas, s);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[OnRender] Draw error (non-fatal): {ex.Message}");
                     }
 
-                    // Boundary, headland, paths
-                    if (s.Boundary != null)
-                        DrawBoundary(canvas, s);
-                    if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
-                        DrawHeadlandLine(canvas, s);
-                    if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
-                        DrawHeadlandPreview(canvas, s);
-                    if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
-                        DrawRecordingPoints(drawingContext, canvas, s);
-                    if (s.ClipLine.HasValue || (s.ClipPath != null && s.ClipPath.Count >= 2))
-                        DrawClipLine(drawingContext, canvas, s);
-                    if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
-                        DrawYouTurnPath(drawingContext, canvas, s);
-
-                    // Tracks (SKCanvas version)
-                    if (s.ActiveTrack != null || s.PendingPointA != null
-                        || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
-                        DrawTrackSk(canvas, s);
-
-                    // Tool + Vehicle + guidance (SKCanvas versions)
+                    // Vehicle/tool always draws even if above fails
                     if (s.ShowVehicle && s.ToolWidth > 0.1)
                         DrawToolSk(canvas, s);
                     if (s.ShowVehicle)
                         DrawVehicleSk(canvas, s);
                     if (s.GuidanceActive && s.ShowVehicle)
                         DrawGuidanceLookAheadSk(canvas, s);
-
                     if (s.Flags.Count > 0)
-                        DrawFlags(drawingContext, canvas, s);
+                        DrawFlagsSk(canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
-                        DrawBoundaryOffsetIndicator(drawingContext, canvas, s);
+                        DrawBoundaryOffsetIndicatorSk(canvas, s);
                 }
 
             }
@@ -4194,6 +4213,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Used because dc drawing after SKCanvas lease is unreliable.
         // ═══════════════════════════════════════════════════════════════
 
+        private SKBitmap? _vehicleSkBitmap; // Cached SKBitmap version of vehicle image
+
         private void DrawVehicleSk(SKCanvas canvas, MapRenderState s)
         {
             float size = 5.0f;
@@ -4203,14 +4224,39 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             canvas.Translate(vx, vy);
             canvas.RotateRadians(-(float)s.VehicleHeading);
 
-            // Triangle
-            using var vehiclePaint = new SKPaint { Color = new SKColor(0, 200, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
-            using var path = new SKPath();
-            path.MoveTo(0, size / 2);
-            path.LineTo(-size / 3, -size / 2);
-            path.LineTo(size / 3, -size / 2);
-            path.Close();
-            canvas.DrawPath(path, vehiclePaint);
+            // Try to draw vehicle image, fall back to triangle
+            if (_vehicleSkBitmap == null && s.VehicleImage is Avalonia.Media.Imaging.Bitmap avBitmap)
+            {
+                // Convert Avalonia Bitmap to SKBitmap once
+                try
+                {
+                    using var ms = new System.IO.MemoryStream();
+                    avBitmap.Save(ms);
+                    ms.Position = 0;
+                    _vehicleSkBitmap = SKBitmap.Decode(ms);
+                }
+                catch { /* Fall back to triangle */ }
+            }
+
+            if (_vehicleSkBitmap != null)
+            {
+                // Y-flip because world coordinates have Y-up but bitmap is Y-down
+                canvas.Scale(1, -1);
+                var dst = new SKRect(-size / 2, -size / 2, size / 2, size / 2);
+                canvas.DrawBitmap(_vehicleSkBitmap, dst);
+                canvas.Scale(1, -1); // Restore for antenna dot
+            }
+            else
+            {
+                // Fallback triangle
+                using var vehiclePaint = new SKPaint { Color = new SKColor(0, 200, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
+                using var path = new SKPath();
+                path.MoveTo(0, size / 2);
+                path.LineTo(-size / 3, -size / 2);
+                path.LineTo(size / 3, -size / 2);
+                path.Close();
+                canvas.DrawPath(path, vehiclePaint);
+            }
 
             // Antenna dot
             using var antennaPaint = new SKPaint { Color = new SKColor(40, 120, 255), Style = SKPaintStyle.Fill };
@@ -4222,33 +4268,59 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private void DrawToolSk(SKCanvas canvas, MapRenderState s)
         {
             float tx = (float)s.ToolX, ty = (float)s.ToolY;
-            float halfWidth = (float)(s.ToolWidth / 2);
-            float toolDepth = 1.2f;
+            float toolDepth = 2.0f;
+
+            // Hitch bar (rear axle to hitch point)
+            float barEndX = (float)(s.HitchX + Math.Sin(s.VehicleHeading) * s.HitchLength);
+            float barEndY = (float)(s.HitchY + Math.Cos(s.VehicleHeading) * s.HitchLength);
+            using var rearPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
+            canvas.DrawLine(barEndX, barEndY, (float)s.HitchX, (float)s.HitchY, rearPaint);
+
+            // V-shape hitch (hitch point to tool ends)
+            float hitchHalfW = (float)(s.ToolWidth / 2.0);
+            float cosH = (float)Math.Cos(-s.ToolHeading);
+            float sinH = (float)Math.Sin(-s.ToolHeading);
+            using var hitchPaint = new SKPaint { Color = new SKColor(255, 255, 0), Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f };
+            canvas.DrawLine((float)s.HitchX, (float)s.HitchY,
+                tx + (-hitchHalfW) * cosH, ty + (-hitchHalfW) * sinH, hitchPaint);
+            canvas.DrawLine((float)s.HitchX, (float)s.HitchY,
+                tx + hitchHalfW * cosH, ty + hitchHalfW * sinH, hitchPaint);
 
             canvas.Save();
             canvas.Translate(tx, ty);
             canvas.RotateRadians(-(float)s.ToolHeading);
 
-            // Draw each section
-            float runPos = -halfWidth;
-            for (int i = 0; i < s.NumSections; i++)
+            if (s.NumSections > 0)
             {
-                float secW = (float)s.SectionWidths[i];
-                SKColor secColor;
-                if (s.SectionButtonState[i] == 0) // Off
-                    secColor = new SKColor(242, 51, 51);
-                else if (s.SectionButtonState[i] == 1) // On/Manual
-                    secColor = new SKColor(247, 247, 0);
-                else // Auto
-                    secColor = s.SectionOn[i] ? new SKColor(0, 242, 0) : new SKColor(242, 51, 51);
+                // Section colors: 0=Off(red), 2=ManualOn(yellow), default=AutoOn(green)
+                float sectionGap = 0.05f;
+                for (int i = 0; i < s.NumSections; i++)
+                {
+                    float left = (float)s.SectionLeft[i] + sectionGap / 2;
+                    float right = (float)s.SectionRight[i] - sectionGap / 2;
+                    float width = right - left;
+                    if (width < 0.01f) continue;
 
-                using var secPaint = new SKPaint { Color = secColor, Style = SKPaintStyle.Fill };
-                canvas.DrawRect(runPos, -toolDepth / 2, secW, toolDepth, secPaint);
+                    SKColor secColor = s.SectionButtonState[i] switch
+                    {
+                        0 => new SKColor(242, 51, 51),   // Off = red
+                        2 => new SKColor(247, 247, 0),    // ManualOn = yellow
+                        _ => new SKColor(0, 242, 0)       // AutoOn = green
+                    };
 
-                using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
-                canvas.DrawRect(runPos, -toolDepth / 2, secW, toolDepth, outlinePaint);
+                    using var secPaint = new SKPaint { Color = secColor, Style = SKPaintStyle.Fill };
+                    canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, secPaint);
 
-                runPos += secW;
+                    using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+                    canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, outlinePaint);
+                }
+            }
+            else
+            {
+                // No sections — draw single tool bar
+                float halfWidth = (float)(s.ToolWidth / 2);
+                using var toolPaint = new SKPaint { Color = new SKColor(0, 242, 0, 191), Style = SKPaintStyle.Fill };
+                canvas.DrawRect(-halfWidth, -toolDepth / 2, (float)s.ToolWidth, toolDepth, toolPaint);
             }
 
             // Center line
@@ -4260,7 +4332,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         private void DrawTrackSk(SKCanvas canvas, MapRenderState s)
         {
-            // Active track
+            // Active track (magenta)
             if (s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
             {
                 using var trackPaint = new SKPaint
@@ -4273,7 +4345,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawTrackPointsSk(canvas, s.ActiveTrack.Points, trackPaint);
             }
 
-            // Base track
+            // Base track (purple)
             if (s.BaseTrack != null && s.BaseTrack.Points.Count >= 2)
             {
                 using var basePaint = new SKPaint
@@ -4284,6 +4356,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     IsAntialias = true
                 };
                 DrawTrackPointsSk(canvas, s.BaseTrack.Points, basePaint);
+            }
+
+            // Next track for U-turn (cyan)
+            if (s.IsInYouTurn && s.NextTrack != null && s.NextTrack.Points.Count >= 2)
+            {
+                using var nextPaint = new SKPaint
+                {
+                    Color = new SKColor(0, 200, 200),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.4f,
+                    IsAntialias = true
+                };
+                DrawTrackPointsSk(canvas, s.NextTrack.Points, nextPaint);
             }
 
             // Pending point A
@@ -4317,6 +4402,84 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             };
             canvas.DrawLine((float)s.VehicleX, (float)s.VehicleY,
                            (float)s.GoalEasting, (float)s.GoalNorthing, linePaint);
+        }
+
+        private void DrawRecordingPointsSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.RecordingPoints == null) return;
+            using var linePaint = new SKPaint { Color = new SKColor(0, 255, 255), Style = SKPaintStyle.Stroke, StrokeWidth = 0.5f, IsAntialias = true };
+            using var pointPaint = new SKPaint { Color = new SKColor(255, 128, 0), Style = SKPaintStyle.Fill };
+            for (int i = 1; i < s.RecordingPoints.Count; i++)
+            {
+                var (e1, n1) = s.RecordingPoints[i - 1];
+                var (e2, n2) = s.RecordingPoints[i];
+                canvas.DrawLine((float)e1, (float)n1, (float)e2, (float)n2, linePaint);
+            }
+            if (s.RecordingPoints.Count > 0)
+            {
+                var (e, n) = s.RecordingPoints[s.RecordingPoints.Count - 1];
+                canvas.DrawCircle((float)e, (float)n, 0.3f, pointPaint);
+            }
+        }
+
+        private void DrawClipLineSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.ClipLine.HasValue)
+            {
+                var (start, end) = s.ClipLine.Value;
+                canvas.DrawLine((float)start.Easting, (float)start.Northing,
+                    (float)end.Easting, (float)end.Northing, _clipLinePaint);
+            }
+            if (s.ClipPath != null && s.ClipPath.Count >= 2)
+            {
+                for (int i = 1; i < s.ClipPath.Count; i++)
+                    canvas.DrawLine((float)s.ClipPath[i-1].Easting, (float)s.ClipPath[i-1].Northing,
+                        (float)s.ClipPath[i].Easting, (float)s.ClipPath[i].Northing, _clipLinePaint);
+            }
+        }
+
+        private void DrawYouTurnPathSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.YouTurnPath == null || s.YouTurnPath.Count < 2) return;
+            using var path = new SKPath();
+            path.MoveTo((float)s.YouTurnPath[0].Easting, (float)s.YouTurnPath[0].Northing);
+            for (int i = 1; i < s.YouTurnPath.Count; i++)
+                path.LineTo((float)s.YouTurnPath[i].Easting, (float)s.YouTurnPath[i].Northing);
+            canvas.DrawPath(path, _youTurnPaint);
+        }
+
+        private void DrawFlagsSk(SKCanvas canvas, MapRenderState s)
+        {
+            foreach (var (easting, northing, color, name) in s.Flags)
+            {
+                var skColor = color switch
+                {
+                    "Red" => SKColors.Red,
+                    "Green" => SKColors.Green,
+                    "Blue" => SKColors.Blue,
+                    "Yellow" => SKColors.Yellow,
+                    _ => SKColors.White
+                };
+                using var paint = new SKPaint { Color = skColor, Style = SKPaintStyle.Fill };
+                canvas.DrawCircle((float)easting, (float)northing, 0.8f, paint);
+                using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+                canvas.DrawCircle((float)easting, (float)northing, 0.8f, outlinePaint);
+            }
+        }
+
+        private void DrawBoundaryOffsetIndicatorSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (!s.ShowBoundaryOffsetIndicator) return;
+            // Simple indicator at vehicle position
+            using var paint = new SKPaint
+            {
+                Color = new SKColor(255, 165, 0, 180),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.3f
+            };
+            float radius = (float)Math.Abs(s.BoundaryOffsetMeters);
+            if (radius > 0.1f)
+                canvas.DrawCircle((float)s.VehicleX, (float)s.VehicleY, radius, paint);
         }
     }
 }

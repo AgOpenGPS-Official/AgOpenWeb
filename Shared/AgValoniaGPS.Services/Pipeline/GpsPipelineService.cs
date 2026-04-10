@@ -325,12 +325,40 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool hasGuidance = false;
         bool youTurnCompleted = false;
         string? statusMessage = null;
+        Models.Track.Track? displayTrack = null;
+        Models.Track.Track? baseTrack = null;
+
+        // Always compute the display track when we have a track (for map visualization)
+        if (hasTrack)
+        {
+            var config2 = ConfigurationStore.Instance;
+            double widthMinusOverlap = config2.ActualToolWidth - config2.Tool.Overlap;
+            double distAway = widthMinusOverlap * passNumber + nudgeOffset;
+
+            if (Math.Abs(distAway) < 0.01)
+            {
+                displayTrack = track;
+            }
+            else
+            {
+                var offsetPoints = CurveProcessing.CreateOffsetCurve(track!.Points, distAway);
+                displayTrack = new Models.Track.Track
+                {
+                    Name = $"{track.Name} (path {passNumber})",
+                    Points = offsetPoints,
+                    Type = track.Type,
+                    IsVisible = true,
+                    IsActive = true
+                };
+                baseTrack = track;
+            }
+        }
 
         if (autoSteerEngaged && hasTrack)
         {
             if (isYouTurnTriggered && youTurnPath != null && youTurnPath.Count > 0)
             {
-                // YouTurn guidance
+                // YouTurn guidance — steer along turn path
                 var ytResult = CalculateYouTurnGuidance(pos, youTurnPath);
                 if (ytResult != null)
                 {
@@ -454,6 +482,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             GoalPointEasting = goalE,
             GoalPointNorthing = goalN,
             HasGuidance = hasGuidance,
+            DisplayTrack = displayTrack,
+            BaseTrack = baseTrack,
 
             // Autosteer
             IsAutoSteerEngaged = autoSteerEngaged,
@@ -583,7 +613,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (_trackGuidanceState != null)
             _trackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
 
-        return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing, statusMessage);
+        return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing,
+                statusMessage);
     }
 
     /// <summary>

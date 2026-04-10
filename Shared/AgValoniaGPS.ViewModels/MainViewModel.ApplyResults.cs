@@ -60,6 +60,15 @@ public partial class MainViewModel
                 isActive: true);
         }
 
+        // Update display track from pipeline (the offset line being followed)
+        if (result.DisplayTrack != null)
+        {
+            _mapService.SetActiveTrack(result.DisplayTrack);
+            // Base track (original reference line) not shown during guidance —
+            // it looks like a leftover path and confuses the display
+            _mapService.SetBaseTrack(null);
+        }
+
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
         {

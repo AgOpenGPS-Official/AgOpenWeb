@@ -46,7 +46,8 @@ public partial class MainViewModel
             }
             _howManyPathsAway -= _isHeadingSameWay ? 1 : -1;
             _nudgeOffset = 0;
-            _trackGuidanceState = null; // Force global search for nearest segment
+            _trackGuidanceState = null;
+            SyncGuidanceStateToPipeline();
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
             StatusMessage = $"Snapped left to path {_howManyPathsAway} ({Math.Abs(widthMinusOverlap * _howManyPathsAway):F1}m offset)";
         });
@@ -60,7 +61,8 @@ public partial class MainViewModel
             }
             _howManyPathsAway += _isHeadingSameWay ? 1 : -1;
             _nudgeOffset = 0;
-            _trackGuidanceState = null; // Force global search for nearest segment
+            _trackGuidanceState = null;
+            SyncGuidanceStateToPipeline();
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
             StatusMessage = $"Snapped right to path {_howManyPathsAway} ({Math.Abs(widthMinusOverlap * _howManyPathsAway):F1}m offset)";
         });
@@ -636,7 +638,8 @@ public partial class MainViewModel
             if (SelectedTrack == null) return;
             _nudgeOffset = 0;
             SelectedTrack.NudgeDistance = 0;
-            _trackGuidanceState = null; // Force recalculation
+            _trackGuidanceState = null;
+            SyncGuidanceStateToPipeline();
             StatusMessage = "Nudge reset to zero";
         });
 
@@ -867,6 +870,7 @@ public partial class MainViewModel
                 double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
                 _logger.LogDebug($"[NUDGE] AutoSteer ENGAGED: _howManyPathsAway={_howManyPathsAway}, offset={_howManyPathsAway * widthMinusOverlap:F2}m");
             }
+            SyncGuidanceStateToPipeline();
             StatusMessage = IsAutoSteerEngaged ? "AutoSteer ENGAGED" : "AutoSteer disengaged";
         });
 
@@ -1181,6 +1185,7 @@ public partial class MainViewModel
 
         // Invalidate guidance state to force recalculation
         _trackGuidanceState = null;
+        SyncGuidanceStateToPipeline();
 
         double totalOffset = (ConfigStore.ActualToolWidth - Tool.Overlap) * _howManyPathsAway + _nudgeOffset;
         _logger.LogDebug("[NUDGE] NudgeTrack: dist={Dist:F3}m (adjusted={Adj:F3}m), nudgeOffset={Offset:F3}m, totalOffset={Total:F3}m",

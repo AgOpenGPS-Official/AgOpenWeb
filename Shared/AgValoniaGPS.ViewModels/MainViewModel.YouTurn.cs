@@ -284,7 +284,8 @@ public partial class MainViewModel
             double abDx = trackPointB.Easting - trackPointA.Easting;
             double abDy = trackPointB.Northing - trackPointA.Northing;
             abHeading = Math.Atan2(abDx, abDy);
-            _logger.LogDebug($"[YouTurn] AB Line: abHeading={abHeading * 180 / Math.PI:F1}°");
+            if (_youTurnCounter % 30 == 0)
+                _logger.LogDebug($"[YouTurn] AB Line: abHeading={abHeading * 180 / Math.PI:F1}°");
         }
 
         // Determine if vehicle is heading the same way as the AB line
@@ -806,6 +807,9 @@ public partial class MainViewModel
         _mapService.SetYouTurnPath(null);
         _mapService.SetNextTrack(null);
         _mapService.SetIsInYouTurn(false);
+
+        // Sync updated pass number to pipeline so guidance targets the new track
+        SyncGuidanceStateToPipeline();
 
         StatusMessage = $"Following path {_howManyPathsAway} ({(ConfigStore.ActualToolWidth - Tool.Overlap) * Math.Abs(_howManyPathsAway):F1}m offset)";
     }

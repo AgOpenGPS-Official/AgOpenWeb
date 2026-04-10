@@ -1610,6 +1610,9 @@ public partial class MainViewModel : ObservableObject
                 HasActiveTrack = value != null;
                 IsAutoSteerAvailable = value != null;
 
+                // Sync to pipeline so guidance computes on background thread
+                SyncGuidanceStateToPipeline();
+
                 _logger.LogDebug($"[SelectedTrack] Changed to: {value?.Name ?? "None"}");
             }
         }
@@ -3170,6 +3173,9 @@ public partial class MainViewModel : ObservableObject
             IsHeadlandOn = false;
             _logger.LogDebug($"[Headland] No valid HeadlandPolygon - YouTurn headland detection disabled");
         }
+
+        // Sync boundary + headland to pipeline for guidance computations
+        SyncGuidanceStateToPipeline();
     }
 
     /// <summary>

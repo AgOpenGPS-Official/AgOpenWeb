@@ -412,4 +412,27 @@ public partial class MainViewModel
     };
 
     #endregion
+
+    #region Pipeline State Sync
+
+    /// <summary>
+    /// Sync all guidance-relevant state to the pipeline service.
+    /// Call this from commands that change autosteer, track, boundary, headland, or drift state.
+    /// The pipeline runs on a background thread and needs its own copy of this state.
+    /// </summary>
+    private void SyncGuidanceStateToPipeline()
+    {
+        var track = SelectedTrack;
+        bool isOnBoundary = track != null && State.Field.Tracks.IndexOf(track) == 0
+            && CurrentBoundary?.OuterBoundary != null;
+
+        _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
+        _gpsPipelineService.SetActiveTrack(track, _howManyPathsAway, _nudgeOffset, isOnBoundary);
+        _gpsPipelineService.SetBoundary(CurrentBoundary);
+        _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
+        _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
+        _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled);
+    }
+
+    #endregion
 }
