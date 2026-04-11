@@ -3478,7 +3478,6 @@ public partial class MainViewModel : ObservableObject
         HeadlandPreviewLine = null;
         HasHeadland = true;
         IsHeadlandOn = true;
-        State.UI.CloseDialog();
 
         // Update _currentHeadlandLine for YouTurn zone detection (same as SetCurrentBoundary does on field load)
         if (result.OuterHeadlandLine != null && result.OuterHeadlandLine.Count >= 3)

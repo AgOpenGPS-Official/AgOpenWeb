@@ -638,6 +638,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private void SetupCompositionVisual()
     {
         var compositionVisual = ElementComposition.GetElementVisual(this);
+        Debug.WriteLine($"[MapControl] SetupCompositionVisual: compositionVisual={compositionVisual != null}, Bounds={Bounds.Width:F0}x{Bounds.Height:F0}, Name={Name}");
         if (compositionVisual == null) return;
 
         var compositor = compositionVisual.Compositor;
@@ -645,6 +646,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _customVisual = compositor.CreateCustomVisual(_handler);
         _customVisual.Size = new Vector(Bounds.Width, Bounds.Height);
         ElementComposition.SetElementChildVisual(this, _customVisual);
+        Debug.WriteLine($"[MapControl] SetupCompositionVisual: custom visual created, size={Bounds.Width:F0}x{Bounds.Height:F0}");
 
         // Send initial state
         SendStateToHandler();
@@ -3010,6 +3012,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private int _compositorFrameCount;
         private double _currentFps;
         private int _renderCounter;
+        private bool _loggedSkiaStatus;
 
         // Immutable pens/brushes for render thread (created once, reused)
         // Background
@@ -3206,6 +3209,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 // dc drawing after SKCanvas lease is unreliable, so everything
                 // after grid/texture goes through SKCanvas.
                 var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                if (!_loggedSkiaStatus)
+                {
+                    _loggedSkiaStatus = true;
+                    Debug.WriteLine($"[MapControl:OnRender] SkiaFeature={skiaFeature != null}, owner={_owner.Name}, boundary={s.Boundary != null}");
+                }
                 if (skiaFeature != null)
                 {
                     using var skiaLease = skiaFeature.Lease();
