@@ -132,6 +132,9 @@ public partial class HeadlandDialogPanel : UserControl
         _mapControl.SetSelectionMarkers(selectionMarkers);
         _mapControl.SetHeadlandVisible(true);
 
+        // Center camera on the boundary so the field is visible
+        CenterViewOnBoundary(vm);
+
         // Set clip visualization - either curved path or straight line
         var clipPath = vm.HeadlandClipPath;
         var clipLine = vm.HeadlandClipLine;
