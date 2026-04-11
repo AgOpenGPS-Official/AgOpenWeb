@@ -88,8 +88,11 @@ public class SwathGenerationService : ISwathGenerationService
                 .ToList();
         }
 
-        // For "next N from vehicle": find nearest track and take next N in sequence
-        if (input.MaxTracks.HasValue && input.VehiclePosition.HasValue)
+        // For "next N from vehicle": find nearest track and take next N in sequence.
+        // Only applies to Boustrophedon — snake and spiral patterns have intentional
+        // ordering that shouldn't be overridden by vehicle position.
+        if (input.MaxTracks.HasValue && input.VehiclePosition.HasValue
+            && input.Pattern == SwathPattern.Boustrophedon)
         {
             var vPos = input.VehiclePosition.Value;
             double vehiclePerp = (vPos.Easting - refEasting) * perpE +

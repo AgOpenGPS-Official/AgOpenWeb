@@ -4289,7 +4289,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 {
                     Color = new SKColor(0, 180, 255, 200),
                     Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 0.4f,
+                    StrokeWidth = 1.2f,
                     IsAntialias = true
                 };
                 using var endpointPaint = new SKPaint
@@ -4297,19 +4297,33 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     Color = new SKColor(0, 180, 255, 160),
                     Style = SKPaintStyle.Fill
                 };
-
-                foreach (var swath in s.PlannedSwaths)
+                using var startPaint = new SKPaint
                 {
+                    Color = new SKColor(0, 255, 0),
+                    Style = SKPaintStyle.Fill
+                };
+
+                for (int si = 0; si < s.PlannedSwaths.Count; si++)
+                {
+                    var swath = s.PlannedSwaths[si];
                     if (swath.Points.Count < 2) continue;
                     DrawTrackPointsSk(canvas, swath.Points, swathPaint);
 
                     // Endpoint markers
                     canvas.DrawCircle(
                         (float)swath.Points[0].Easting, (float)swath.Points[0].Northing,
-                        0.8f, endpointPaint);
+                        1.2f, endpointPaint);
                     canvas.DrawCircle(
                         (float)swath.Points[^1].Easting, (float)swath.Points[^1].Northing,
-                        0.8f, endpointPaint);
+                        1.2f, endpointPaint);
+
+                    // Green start marker on first swath
+                    if (si == 0)
+                    {
+                        canvas.DrawCircle(
+                            (float)swath.Points[0].Easting, (float)swath.Points[0].Northing,
+                            2.0f, startPaint);
+                    }
                 }
             }
 
@@ -4318,9 +4332,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             {
                 using var turnPaint = new SKPaint
                 {
-                    Color = new SKColor(255, 165, 0, 180),
+                    Color = new SKColor(255, 165, 0, 200),
                     Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 0.3f,
+                    StrokeWidth = 1.0f,
                     IsAntialias = true
                 };
 
