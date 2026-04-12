@@ -117,6 +117,25 @@ public partial class MainViewModel
             }
         });
 
+        DeleteAllTracksCommand = new RelayCommand(() =>
+        {
+            if (SavedTracks.Count == 0)
+            {
+                StatusMessage = "No tracks to delete";
+                return;
+            }
+            ShowConfirmationDialog(
+                "Delete All Tracks",
+                $"Delete all {SavedTracks.Count} tracks? This cannot be undone.",
+                () =>
+                {
+                    SavedTracks.Clear();
+                    SelectedTrack = null;
+                    SaveTracksToFile();
+                    StatusMessage = "All tracks deleted";
+                });
+        });
+
         SwapABPointsCommand = new RelayCommand(() =>
         {
             if (SelectedTrack != null && SelectedTrack.Points.Count >= 2)
@@ -727,11 +746,22 @@ public partial class MainViewModel
 
         DeleteAllFlagsCommand = new RelayCommand(() =>
         {
-            int count = Flags.Count;
-            Flags.Clear();
-            _nextFlagId = 1;
-            UpdateFlagsOnMap();
-            StatusMessage = count > 0 ? $"Deleted {count} flags" : "No flags to delete";
+            if (Flags.Count == 0)
+            {
+                StatusMessage = "No flags to delete";
+                return;
+            }
+            ShowConfirmationDialog(
+                "Delete All Flags",
+                $"Delete all {Flags.Count} flags? This cannot be undone.",
+                () =>
+                {
+                    int count = Flags.Count;
+                    Flags.Clear();
+                    _nextFlagId = 1;
+                    UpdateFlagsOnMap();
+                    StatusMessage = $"Deleted {count} flags";
+                });
         });
 
         DeleteFlagCommand = new RelayCommand<object>(param =>
@@ -955,6 +985,280 @@ public partial class MainViewModel
                     RefreshCoverageStatistics();
                     StatusMessage = "Applied area deleted";
                 });
+        });
+
+        // Tram line commands
+        ToggleTramDisplayCommand = new RelayCommand(() =>
+        {
+            var tram = ConfigStore.Tram;
+
+            // Cycle through modes like legacy: if only parallel lines, toggle on/off
+            // Otherwise cycle Off -> All -> Lines -> Outer -> Off
+            if (_tramLineService.ParallelTramLines.Count > 0 &&
+                _tramLineService.OuterBoundaryTrack.Count == 0)
+            {
+                tram.DisplayMode = tram.DisplayMode != Models.Configuration.TramDisplayMode.Off
+                    ? Models.Configuration.TramDisplayMode.Off
+                    : Models.Configuration.TramDisplayMode.LinesOnly;
+            }
+            else
+            {
+                tram.DisplayMode = tram.DisplayMode switch
+                {
+                    Models.Configuration.TramDisplayMode.Off => Models.Configuration.TramDisplayMode.All,
+                    Models.Configuration.TramDisplayMode.All => Models.Configuration.TramDisplayMode.LinesOnly,
+                    Models.Configuration.TramDisplayMode.LinesOnly => Models.Configuration.TramDisplayMode.OuterOnly,
+                    _ => Models.Configuration.TramDisplayMode.Off,
+                };
+            }
+
+            ConfigStore.Guidance.TramDisplay = tram.DisplayMode != Models.Configuration.TramDisplayMode.Off;
+            UpdateTramLines(SelectedTrack);
+            StatusMessage = tram.DisplayMode switch
+            {
+                Models.Configuration.TramDisplayMode.Off => "Tram lines OFF",
+                Models.Configuration.TramDisplayMode.All => "Tram lines: All",
+                Models.Configuration.TramDisplayMode.LinesOnly => "Tram lines: Lines only",
+                Models.Configuration.TramDisplayMode.OuterOnly => "Tram lines: Outer only",
+                _ => "Tram lines"
+            };
+        });
+
+        BuildTramLinesCommand = new RelayCommand(() =>
+        {
+            if (SelectedTrack == null || SelectedTrack.Points.Count < 2)
+            {
+                ShowErrorDialog("No Track Selected",
+                    "Select an AB line or curve track before building tram lines.");
+                return;
+            }
+
+            ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.All;
+            ConfigStore.Guidance.TramDisplay = true;
+            UpdateTramLines(SelectedTrack);
+            StatusMessage = $"Tram lines built from '{SelectedTrack.Name}'";
+        });
+
+        ShowTramSettingsCommand = new RelayCommand(() =>
+        {
+            if (SelectedTrack == null)
+            {
+                ShowErrorDialog("No Track Selected", "Select an AB line or curve track first.");
+                return;
+            }
+            State.UI.ShowDialog(Models.State.DialogType.TramSettings);
+        });
+
+        CloseTramSettingsCommand = new RelayCommand(() => State.UI.CloseDialog());
+
+        IncreaseTramPassesCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Tram.Passes = Math.Min(20, ConfigStore.Tram.Passes + 1);
+            ConfigStore.Guidance.TramPasses = ConfigStore.Tram.Passes;
+            UpdateTramLines(SelectedTrack);
+            OnPropertyChanged(nameof(TramPasses));
+            OnPropertyChanged(nameof(TramWidthDisplay));
+            OnPropertyChanged(nameof(TramLineCountDisplay));
+        });
+
+        DecreaseTramPassesCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Tram.Passes = Math.Max(1, ConfigStore.Tram.Passes - 1);
+            ConfigStore.Guidance.TramPasses = ConfigStore.Tram.Passes;
+            UpdateTramLines(SelectedTrack);
+            OnPropertyChanged(nameof(TramPasses));
+            OnPropertyChanged(nameof(TramWidthDisplay));
+            OnPropertyChanged(nameof(TramLineCountDisplay));
+        });
+
+        void SetTramMode(Models.Configuration.TramDisplayMode mode)
+        {
+            ConfigStore.Tram.DisplayMode = mode;
+            ConfigStore.Guidance.TramDisplay = mode != Models.Configuration.TramDisplayMode.Off;
+            UpdateTramLines(SelectedTrack);
+        }
+
+        SetTramModeOffCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.Off));
+        SetTramModeAllCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.All));
+        SetTramModeLinesCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.LinesOnly));
+        SetTramModeOuterCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.OuterOnly));
+
+        CreateTrackFromBoundaryCommand = new RelayCommand(() =>
+        {
+            var boundary = _currentBoundary?.OuterBoundary;
+            if (boundary?.Points == null || boundary.Points.Count < 3)
+            {
+                ShowErrorDialog("No Boundary", "Load a field with a boundary first.");
+                return;
+            }
+
+            // Find the longest edge of the boundary polygon
+            var pts = boundary.Points;
+            double maxDist = 0;
+            int bestIdx = 0;
+
+            for (int i = 0; i < pts.Count; i++)
+            {
+                int next = (i + 1) % pts.Count;
+                double dx = pts[next].Easting - pts[i].Easting;
+                double dy = pts[next].Northing - pts[i].Northing;
+                double dist = Math.Sqrt(dx * dx + dy * dy);
+                if (dist > maxDist)
+                {
+                    maxDist = dist;
+                    bestIdx = i;
+                }
+            }
+
+            var p1 = pts[bestIdx];
+            var p2 = pts[(bestIdx + 1) % pts.Count];
+            double heading = Math.Atan2(p2.Easting - p1.Easting, p2.Northing - p1.Northing);
+
+            // Extend 50m past both ends for full field coverage
+            var a = new Models.Base.Vec3(
+                p1.Easting - Math.Sin(heading) * 50,
+                p1.Northing - Math.Cos(heading) * 50,
+                heading);
+            var b = new Models.Base.Vec3(
+                p2.Easting + Math.Sin(heading) * 50,
+                p2.Northing + Math.Cos(heading) * 50,
+                heading);
+
+            var track = new Models.Track.Track
+            {
+                Name = $"Boundary Edge {bestIdx + 1}",
+                Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
+                Type = Models.Track.TrackType.ABLine,
+                IsVisible = true
+            };
+
+            SavedTracks.Add(track);
+            SelectedTrack = track;
+            StatusMessage = $"Created AB line from longest boundary edge ({maxDist:F0}m)";
+        });
+
+        // A Line: create AB line from current position + heading
+        CreateALineFromPositionCommand = new RelayCommand(() =>
+        {
+            double heading = State.Vehicle.Heading * Math.PI / 180.0;
+            double e = Easting;
+            double n = Northing;
+
+            // Extend 200m in both directions from current position
+            var a = new Models.Base.Vec3(
+                e - Math.Sin(heading) * 200,
+                n - Math.Cos(heading) * 200,
+                heading);
+            var b = new Models.Base.Vec3(
+                e + Math.Sin(heading) * 200,
+                n + Math.Cos(heading) * 200,
+                heading);
+
+            var track = new Models.Track.Track
+            {
+                Name = $"A+ {Math.Round(State.Vehicle.Heading, 1)}\u00B0",
+                Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
+                Type = Models.Track.TrackType.ABLine,
+                IsVisible = true
+            };
+
+            SavedTracks.Add(track);
+            SelectedTrack = track;
+            StatusMessage = $"Created A+ line at {State.Vehicle.Heading:F0}\u00B0";
+        });
+
+        // Field Builder dialog
+        ShowFieldBuilderCommand = new RelayCommand(() =>
+            State.UI.ShowDialog(Models.State.DialogType.FieldBuilder));
+
+        CloseFieldBuilderCommand = new RelayCommand(() =>
+            State.UI.CloseDialog());
+
+        IncreaseHeadlandDistanceCommand = new RelayCommand(() =>
+        {
+            HeadlandDistance = Math.Min(100, HeadlandDistance + 1.0);
+            OnPropertyChanged(nameof(HeadlandDistance));
+        });
+
+        DecreaseHeadlandDistanceCommand = new RelayCommand(() =>
+        {
+            HeadlandDistance = Math.Max(1, HeadlandDistance - 1.0);
+            OnPropertyChanged(nameof(HeadlandDistance));
+        });
+
+        CreateCurveFromBoundaryCommand = new RelayCommand(() =>
+        {
+            var boundary = _currentBoundary?.OuterBoundary;
+            if (boundary?.Points == null || boundary.Points.Count < 3)
+            {
+                ShowErrorDialog("No Boundary", "Load a field with a boundary first.");
+                return;
+            }
+
+            var pts = boundary.Points;
+            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>();
+            for (int i = 0; i < pts.Count; i++)
+            {
+                curvePoints.Add(new Models.Base.Vec3(pts[i].Easting, pts[i].Northing, pts[i].Heading));
+            }
+            // Close the loop
+            curvePoints.Add(new Models.Base.Vec3(pts[0].Easting, pts[0].Northing, pts[0].Heading));
+
+            var track = new Models.Track.Track
+            {
+                Name = "Boundary Curve",
+                Points = curvePoints,
+                Type = Models.Track.TrackType.Curve,
+                IsVisible = true
+            };
+
+            SavedTracks.Add(track);
+            SelectedTrack = track;
+            StatusMessage = $"Created boundary curve ({curvePoints.Count} points)";
+        });
+
+        CreateTracksFromAllEdgesCommand = new RelayCommand(() =>
+        {
+            var boundary = _currentBoundary?.OuterBoundary;
+            if (boundary?.Points == null || boundary.Points.Count < 3)
+            {
+                ShowErrorDialog("No Boundary", "Load a field with a boundary first.");
+                return;
+            }
+
+            var pts = boundary.Points;
+            int created = 0;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                int next = (i + 1) % pts.Count;
+                double dx = pts[next].Easting - pts[i].Easting;
+                double dy = pts[next].Northing - pts[i].Northing;
+                double dist = Math.Sqrt(dx * dx + dy * dy);
+
+                if (dist < 5.0) continue; // Skip tiny edges
+
+                double heading = Math.Atan2(dx, dy);
+                var a = new Models.Base.Vec3(
+                    pts[i].Easting - Math.Sin(heading) * 50,
+                    pts[i].Northing - Math.Cos(heading) * 50, heading);
+                var b = new Models.Base.Vec3(
+                    pts[next].Easting + Math.Sin(heading) * 50,
+                    pts[next].Northing + Math.Cos(heading) * 50, heading);
+
+                var track = new Models.Track.Track
+                {
+                    Name = $"Edge {i + 1} ({dist:F0}m)",
+                    Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
+                    Type = Models.Track.TrackType.ABLine,
+                    IsVisible = true
+                };
+                SavedTracks.Add(track);
+                created++;
+            }
+
+            if (created > 0)
+                SelectedTrack = SavedTracks[SavedTracks.Count - 1];
+            StatusMessage = $"Created {created} AB lines from boundary edges";
         });
 
         // Map zoom commands

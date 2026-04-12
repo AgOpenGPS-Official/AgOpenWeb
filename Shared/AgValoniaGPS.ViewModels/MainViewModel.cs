@@ -73,6 +73,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IChartDataService _chartDataService;
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
+    private readonly ITramLineService _tramLineService;
     private readonly IGpsPipelineService _gpsPipelineService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
@@ -166,11 +167,30 @@ public partial class MainViewModel : ObservableObject
         IChartDataService chartDataService,
         IAudioService audioService,
         IElevationLogService elevationLogService,
+        ITramLineService tramLineService,
         IGpsPipelineService gpsPipelineService,
         ILogger<MainViewModel> logger,
         ApplicationState appState)
     {
         _logger = logger;
+        _tramLineService = tramLineService;
+
+        // Sync GuidanceConfig.TramDisplay -> TramConfig.DisplayMode and regenerate
+        ConfigStore.Guidance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Models.Configuration.GuidanceConfig.TramDisplay))
+            {
+                ConfigStore.Tram.DisplayMode = ConfigStore.Guidance.TramDisplay
+                    ? Models.Configuration.TramDisplayMode.All
+                    : Models.Configuration.TramDisplayMode.Off;
+                UpdateTramLines(SelectedTrack);
+            }
+            else if (e.PropertyName == nameof(Models.Configuration.GuidanceConfig.TramPasses))
+            {
+                ConfigStore.Tram.Passes = ConfigStore.Guidance.TramPasses;
+                UpdateTramLines(SelectedTrack);
+            }
+        };
         _udpService = udpService;
         _gpsService = gpsService;
         _fieldService = fieldService;
@@ -1203,6 +1223,24 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath}");
             RefreshCoverageStatistics();
 
+            // Load tram lines
+            try
+            {
+                _tramLineService.LoadFromFile(fieldPath);
+                if (_tramLineService.HasTramLines)
+                {
+                    _mapService.SetTramLines(
+                        _tramLineService.OuterBoundaryTrack,
+                        _tramLineService.InnerBoundaryTrack,
+                        _tramLineService.ParallelTramLines);
+                    _logger.LogDebug($"[Tram] Loaded tram lines from {fieldPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load tram lines");
+            }
+
             // Handle NTRIP profile
             _ = HandleNtripProfileForFieldAsync(fieldName);
 
@@ -1271,6 +1309,13 @@ public partial class MainViewModel : ObservableObject
             var savePath = ActiveField.DirectoryPath;
             await Task.Run(() => _coverageMapService.SaveToFile(savePath));
             _logger.LogDebug($"[Coverage] Saved coverage to {savePath}");
+
+            // Save tram lines
+            if (_tramLineService.HasTramLines)
+            {
+                _tramLineService.SaveToFile(ActiveField.DirectoryPath);
+                _logger.LogDebug($"[Tram] Saved tram lines to {ActiveField.DirectoryPath}");
+            }
 
             // Flush elevation log
             _elevationLogService.Flush(ActiveField.DirectoryPath);
@@ -1386,6 +1431,21 @@ public partial class MainViewModel : ObservableObject
             _mapService.SetHeadlandLine(null);
             HasHeadland = false;
             IsHeadlandOn = false;
+        }
+
+        // Load headland segments
+        try
+        {
+            var segments = Services.Headland.HeadlandSegmentFileService.Load(field.DirectoryPath);
+            HeadlandSegments.Clear();
+            foreach (var seg in segments)
+                HeadlandSegments.Add(seg);
+            if (HeadlandSegments.Count > 0)
+                BuildHeadlandFromSegments();
+        }
+        catch (System.Exception ex)
+        {
+            _logger.LogDebug($"[Headland] Failed to load headland segments: {ex.Message}");
         }
     }
 
@@ -1556,6 +1616,9 @@ public partial class MainViewModel : ObservableObject
                     // Show the track on the map when activated
                     _mapService.SetActiveTrack(value);
 
+                    // Generate tram lines from the selected track
+                    UpdateTramLines(value);
+
                     // Initialize pass number and nudge offset from saved NudgeDistance
                     // NudgeDistance = widthMinusOverlap * howManyPathsAway + nudgeOffset
                     double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
@@ -1618,6 +1681,45 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Generate tram lines from a track and update the map.
+    /// </summary>
+    private void UpdateTramLines(Track? track)
+    {
+        var config = ConfigurationStore.Instance.Tram;
+        if (config.DisplayMode == Models.Configuration.TramDisplayMode.Off || track == null || track.Points.Count < 2)
+        {
+            _tramLineService.Clear();
+            _mapService.SetTramLines(null, null, null);
+            return;
+        }
+
+        // Generate parallel tram lines from the track
+        // Use a reasonable field width estimate (boundary size or default 500m)
+        double fieldWidth = 500;
+        if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count > 0)
+        {
+            var pts = _currentBoundary.OuterBoundary.Points;
+            double maxE = pts.Max(p => p.Easting), minE = pts.Min(p => p.Easting);
+            double maxN = pts.Max(p => p.Northing), minN = pts.Min(p => p.Northing);
+            fieldWidth = Math.Max(maxE - minE, maxN - minN) * 1.2;
+        }
+
+        _tramLineService.GenerateParallelTramLines(track, fieldWidth);
+
+        // Also generate boundary tram tracks if headland exists
+        if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
+        {
+            _tramLineService.GenerateBoundaryTramTracks(_currentHeadlandLine);
+        }
+
+        // Update map
+        _mapService.SetTramLines(
+            _tramLineService.OuterBoundaryTrack,
+            _tramLineService.InnerBoundaryTrack,
+            _tramLineService.ParallelTramLines);
+    }
+
     // Flag markers
     private int _nextFlagId = 1;
     public ObservableCollection<Flag> Flags { get; } = new();
@@ -1655,6 +1757,7 @@ public partial class MainViewModel : ObservableObject
 
     // Track management commands
     public ICommand? DeleteSelectedTrackCommand { get; private set; }
+    public ICommand? DeleteAllTracksCommand { get; private set; }
     public ICommand? SwapABPointsCommand { get; private set; }
     public ICommand? SelectTrackAsActiveCommand { get; private set; }
 
@@ -2010,6 +2113,7 @@ public partial class MainViewModel : ObservableObject
 
     // Callback to run when confirmation dialog is confirmed
     private Action? _confirmationDialogCallback;
+    private Models.State.DialogType _previousDialogBeforeConfirmation;
 
     public ICommand? CancelConfirmationDialogCommand { get; private set; }
     public ICommand? ConfirmConfirmationDialogCommand { get; private set; }
@@ -2017,12 +2121,14 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Shows a confirmation dialog with the specified title and message.
     /// When the user confirms, the callback is executed.
+    /// Restores the previous dialog on cancel.
     /// </summary>
     public void ShowConfirmationDialog(string title, string message, Action onConfirm)
     {
         ConfirmationDialogTitle = title;
         ConfirmationDialogMessage = message;
         _confirmationDialogCallback = onConfirm;
+        _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -2420,6 +2526,10 @@ public partial class MainViewModel : ObservableObject
         private set => SetProperty(ref _currentBoundary, value);
     }
 
+    // Headland undo state
+    private List<Vec3>? _previousHeadlandLine;
+    private bool _previousHasHeadland;
+
     // Headland Dialog properties (visibility managed by State.UI)
     private bool _isHeadlandCurveMode = true;
     public bool IsHeadlandCurveMode
@@ -2432,7 +2542,7 @@ public partial class MainViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsHeadlandLineMode));
                 // Update preview when track type changes
-                if (State.UI.IsHeadlandDialogVisible || State.UI.IsHeadlandBuilderDialogVisible)
+                if (State.UI.IsFieldBuilderDialogVisible)
                 {
                     UpdateHeadlandPreview();
                 }
@@ -2845,6 +2955,433 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleContourModeCommand { get; private set; }
     public ICommand? DeleteContoursCommand { get; private set; }
     public ICommand? DeleteAppliedAreaCommand { get; private set; }
+    public ICommand? ToggleTramDisplayCommand { get; private set; }
+    public ICommand? BuildTramLinesCommand { get; private set; }
+    public ICommand? CreateTrackFromBoundaryCommand { get; private set; }
+    public ICommand? CreateCurveFromBoundaryCommand { get; private set; }
+    public ICommand? CreateTracksFromAllEdgesCommand { get; private set; }
+    public ICommand? CreateALineFromPositionCommand { get; private set; }
+    public ICommand? ShowFieldBuilderCommand { get; private set; }
+    public ICommand? CloseFieldBuilderCommand { get; private set; }
+    public ICommand? IncreaseHeadlandDistanceCommand { get; private set; }
+    public ICommand? DecreaseHeadlandDistanceCommand { get; private set; }
+
+    public System.Collections.Generic.IReadOnlyList<Models.Base.Vec3>? CurrentHeadlandLineForPreview => _currentHeadlandLine;
+
+    public string HeadlandStatusText
+    {
+        get
+        {
+            if (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3)
+                return HeadlandSegments.Count > 0 ? $"{HeadlandSegments.Count} lines (no intersections)" : "No headland lines";
+
+            double area = System.Math.Abs(CalculateSignedArea(_currentHeadlandLine)) / 10000.0; // m2 -> hectares
+            return $"{area:F2} ha ({HeadlandSegments.Count} lines)";
+        }
+    }
+
+    /// <summary>
+    /// List of headland segments that form the headland polygon.
+    /// </summary>
+    public ObservableCollection<Models.Headland.HeadlandSegment> HeadlandSegments { get; } = new();
+
+    private Models.Headland.HeadlandSegment? _selectedHeadlandSegment;
+    public Models.Headland.HeadlandSegment? SelectedHeadlandSegment
+    {
+        get => _selectedHeadlandSegment;
+        set => SetProperty(ref _selectedHeadlandSegment, value);
+    }
+
+    /// <summary>
+    /// Compute offset points for a headland segment by offsetting boundary points inward.
+    /// </summary>
+    public void ComputeSegmentOffset(Models.Headland.HeadlandSegment segment)
+    {
+        if (segment.BoundaryPoints.Count < 2)
+        {
+            segment.OffsetPoints.Clear();
+            return;
+        }
+
+        double offset = segment.Offset;
+
+        // Determine offset direction (inward toward field center)
+        double sign = 1.0;
+        if (segment.Type == Models.Headland.HeadlandSegmentType.Boundary && segment.BoundaryPoints.Count >= 3)
+        {
+            // Closed polygon: use winding order
+            double signedArea = 0;
+            for (int j = 0; j < segment.BoundaryPoints.Count; j++)
+            {
+                var p1 = segment.BoundaryPoints[j];
+                var p2 = segment.BoundaryPoints[(j + 1) % segment.BoundaryPoints.Count];
+                signedArea += (p2.Easting - p1.Easting) * (p2.Northing + p1.Northing);
+            }
+            sign = signedArea > 0 ? 1.0 : -1.0;
+        }
+        else if (segment.BoundaryPoints.Count >= 2)
+        {
+            // Open segment: determine which side faces the field center
+            var boundary = _currentBoundary?.OuterBoundary;
+            if (boundary?.Points != null && boundary.Points.Count >= 3)
+            {
+                // Calculate boundary centroid
+                double cx = 0, cy = 0;
+                foreach (var bp in boundary.Points) { cx += bp.Easting; cy += bp.Northing; }
+                cx /= boundary.Points.Count;
+                cy /= boundary.Points.Count;
+
+                // Test offset direction at midpoint
+                int mid = segment.BoundaryPoints.Count / 2;
+                var midPt = segment.BoundaryPoints[mid];
+                var prevPt = mid > 0 ? segment.BoundaryPoints[mid - 1] : segment.BoundaryPoints[mid];
+                var nextPt = mid < segment.BoundaryPoints.Count - 1 ? segment.BoundaryPoints[mid + 1] : segment.BoundaryPoints[mid];
+
+                double dx = nextPt.Easting - prevPt.Easting;
+                double dy = nextPt.Northing - prevPt.Northing;
+                double len = System.Math.Sqrt(dx * dx + dy * dy);
+                if (len > 0.001)
+                {
+                    double nx = dy / len, ny = -dx / len;
+                    // Check if offset toward centroid or away
+                    double testE = midPt.Easting + nx;
+                    double testN = midPt.Northing + ny;
+                    double distToCenterOrig = System.Math.Pow(midPt.Easting - cx, 2) + System.Math.Pow(midPt.Northing - cy, 2);
+                    double distToCenterTest = System.Math.Pow(testE - cx, 2) + System.Math.Pow(testN - cy, 2);
+                    sign = distToCenterTest < distToCenterOrig ? 1.0 : -1.0;
+                }
+            }
+        }
+
+        var result = new List<Vec3>();
+
+        for (int i = 0; i < segment.BoundaryPoints.Count; i++)
+        {
+            var pt = segment.BoundaryPoints[i];
+
+            // Calculate normal from boundary direction
+            Vec3 prev = i > 0 ? segment.BoundaryPoints[i - 1] : segment.BoundaryPoints[i];
+            Vec3 next = i < segment.BoundaryPoints.Count - 1 ? segment.BoundaryPoints[i + 1] : segment.BoundaryPoints[i];
+
+            double dx = next.Easting - prev.Easting;
+            double dy = next.Northing - prev.Northing;
+            double len = System.Math.Sqrt(dx * dx + dy * dy);
+            if (len < 0.001) len = 1;
+
+            // Perpendicular normal, adjusted for winding
+            double nx = sign * dy / len;
+            double ny = sign * -dx / len;
+
+            result.Add(new Vec3(pt.Easting + nx * offset, pt.Northing + ny * offset, pt.Heading));
+        }
+
+        segment.OffsetPoints = result;
+    }
+
+    /// <summary>
+    /// Build the headland polygon from segments. If a single Boundary segment exists,
+    /// use its offset points directly. Otherwise, concatenate all segment offset points
+    /// and check if they form a loop.
+    /// </summary>
+    public void BuildHeadlandFromSegments()
+    {
+        if (HeadlandSegments.Count == 0)
+        {
+            // Default: headland = boundary
+            var boundary = _currentBoundary?.OuterBoundary;
+            if (boundary?.Points != null && boundary.Points.Count >= 3)
+            {
+                var bndPoints = new List<Vec3>();
+                foreach (var pt in boundary.Points)
+                    bndPoints.Add(new Vec3(pt.Easting, pt.Northing, pt.Heading));
+                bndPoints.Add(new Vec3(boundary.Points[0].Easting, boundary.Points[0].Northing, boundary.Points[0].Heading));
+
+                _currentHeadlandLine = bndPoints;
+                CurrentHeadlandLine = bndPoints;
+                State.Field.HeadlandLine = bndPoints;
+                HasHeadland = true;
+                IsHeadlandOn = true;
+                _mapService.SetHeadlandLine(bndPoints);
+                _mapService.SetHeadlandVisible(true);
+            }
+            else
+            {
+                HasHeadland = false;
+                IsHeadlandOn = false;
+                _currentHeadlandLine = null;
+                CurrentHeadlandLine = null;
+                State.Field.HeadlandLine = null;
+                _mapService.SetHeadlandVisible(false);
+            }
+            OnPropertyChanged(nameof(HeadlandStatusText));
+            OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
+            return;
+        }
+
+        // Start with headland = boundary
+        var bnd = _currentBoundary?.OuterBoundary;
+        if (bnd?.Points == null || bnd.Points.Count < 3)
+        {
+            StatusMessage = "No boundary for headland";
+            return;
+        }
+
+        var headland = new List<Vec3>();
+        foreach (var pt in bnd.Points)
+            headland.Add(new Vec3(pt.Easting, pt.Northing, pt.Heading));
+        headland.Add(new Vec3(bnd.Points[0].Easting, bnd.Points[0].Northing, bnd.Points[0].Heading));
+
+        int cutsApplied = 0;
+
+        // For each segment, check if the extended offset line intersects the headland at both ends
+        foreach (var seg in HeadlandSegments)
+        {
+            if (seg.OffsetPoints.Count < 2) continue;
+
+            // Build the full offset line with extensions
+            var offsetLine = new List<Vec3>();
+
+            // Start extension
+            if (seg.StartExtension > 0)
+            {
+                var s0 = seg.OffsetPoints[0];
+                var s1 = seg.OffsetPoints[1];
+                double sdx = s0.Easting - s1.Easting, sdy = s0.Northing - s1.Northing;
+                double slen = System.Math.Sqrt(sdx * sdx + sdy * sdy);
+                if (slen > 0.01)
+                    offsetLine.Add(new Vec3(s0.Easting + sdx / slen * seg.StartExtension, s0.Northing + sdy / slen * seg.StartExtension, s0.Heading));
+            }
+            offsetLine.AddRange(seg.OffsetPoints);
+            // End extension
+            if (seg.EndExtension > 0)
+            {
+                var e0 = seg.OffsetPoints[^2];
+                var e1 = seg.OffsetPoints[^1];
+                double edx = e1.Easting - e0.Easting, edy = e1.Northing - e0.Northing;
+                double elen = System.Math.Sqrt(edx * edx + edy * edy);
+                if (elen > 0.01)
+                    offsetLine.Add(new Vec3(e1.Easting + edx / elen * seg.EndExtension, e1.Northing + edy / elen * seg.EndExtension, e1.Heading));
+            }
+
+            // Find intersection of offset line start with headland polygon
+            int startIntersectIdx = FindLineHeadlandIntersection(offsetLine[0], offsetLine[1], headland, out Vec3 startIntersectPt);
+            // Find intersection of offset line end with headland polygon
+            int endIntersectIdx = FindLineHeadlandIntersection(offsetLine[^1], offsetLine[^2], headland, out Vec3 endIntersectPt);
+
+            _logger.LogDebug($"[Headland] Segment '{seg.Name}': start intersect={startIntersectIdx}, end intersect={endIntersectIdx}, offsetLine pts={offsetLine.Count}, headland pts={headland.Count}");
+
+            if (startIntersectIdx >= 0 && endIntersectIdx >= 0 && startIntersectIdx != endIntersectIdx)
+            {
+                // Both ends intersect - split the polygon into two halves
+                int count = headland.Count - 1; // exclude closing duplicate
+
+                // The dividing line goes from startIntersectPt to endIntersectPt
+                // For curves, include interior offset points between the intersections
+                var divLine = new List<Vec3> { startIntersectPt };
+                if (seg.OffsetPoints.Count > 2)
+                {
+                    for (int j = 1; j < seg.OffsetPoints.Count - 1; j++)
+                        divLine.Add(seg.OffsetPoints[j]);
+                }
+                divLine.Add(endIntersectPt);
+
+                var divLineReverse = new List<Vec3>(divLine);
+                divLineReverse.Reverse();
+
+                // Path A: start at startIntersectPt, walk headland forward to endIntersectPt, then divLine back
+                var pathA = new List<Vec3>();
+                int idx = (startIntersectIdx + 1) % count;
+                pathA.Add(startIntersectPt);
+                while (idx != (endIntersectIdx + 1) % count)
+                {
+                    pathA.Add(headland[idx]);
+                    idx = (idx + 1) % count;
+                    if (pathA.Count > count + 2) break;
+                }
+                pathA.Add(endIntersectPt);
+
+                // Path B: start at endIntersectPt, walk headland forward to startIntersectPt, then divLine back
+                var pathB = new List<Vec3>();
+                idx = (endIntersectIdx + 1) % count;
+                pathB.Add(endIntersectPt);
+                while (idx != (startIntersectIdx + 1) % count)
+                {
+                    pathB.Add(headland[idx]);
+                    idx = (idx + 1) % count;
+                    if (pathB.Count > count + 2) break;
+                }
+                pathB.Add(startIntersectPt);
+
+                // Complete each polygon by adding the dividing line
+                // pathA + divLineReverse forms polygon A
+                // pathB + divLine forms polygon B
+                var polyA = new List<Vec3>(pathA);
+                polyA.AddRange(divLineReverse);
+                var polyB = new List<Vec3>(pathB);
+                polyB.AddRange(divLine);
+
+                // Pick the polygon that contains the field centroid (= working area)
+                double cx = 0, cy = 0;
+                var bndPts = bnd.Points;
+                foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
+                cx /= bndPts.Count; cy /= bndPts.Count;
+
+                bool aContains = IsPointInPolygon(cx, cy, polyA);
+                bool bContains = IsPointInPolygon(cx, cy, polyB);
+
+                _logger.LogDebug($"[Headland] PathA: {polyA.Count} pts, PathB: {polyB.Count} pts, centroid: ({cx:F1},{cy:F1}), aContains={aContains}, bContains={bContains}");
+
+                List<Vec3> chosen;
+                if (aContains && !bContains) chosen = polyA;
+                else if (bContains && !aContains) chosen = polyB;
+                else chosen = System.Math.Abs(CalculateSignedArea(polyA)) >= System.Math.Abs(CalculateSignedArea(polyB)) ? polyA : polyB;
+                if (chosen.Count > 0)
+                    chosen.Add(chosen[0]); // close loop
+
+                headland = chosen;
+                cutsApplied++;
+            }
+        }
+
+        // Apply headland
+        _currentHeadlandLine = headland;
+        CurrentHeadlandLine = headland;
+        State.Field.HeadlandLine = headland;
+        HasHeadland = true;
+        IsHeadlandOn = true;
+        _mapService.SetHeadlandLine(headland);
+        _mapService.SetHeadlandVisible(true);
+
+        OnPropertyChanged(nameof(HeadlandStatusText));
+        OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
+        // Log headland points for debugging
+        for (int p = 0; p < headland.Count; p++)
+            _logger.LogDebug($"[Headland] Point {p}: E={headland[p].Easting:F1} N={headland[p].Northing:F1}");
+
+        StatusMessage = cutsApplied > 0
+            ? $"Headland modified ({cutsApplied} cuts, {headland.Count} points)"
+            : $"Headland = boundary ({headland.Count} points, no offset lines intersect)";
+
+        SaveHeadlandSegments();
+    }
+
+    private static bool IsPointInPolygon(double px, double py, List<Vec3> polygon)
+    {
+        bool inside = false;
+        int count = polygon.Count;
+        for (int i = 0, j = count - 1; i < count; j = i++)
+        {
+            double yi = polygon[i].Northing, yj = polygon[j].Northing;
+            double xi = polygon[i].Easting, xj = polygon[j].Easting;
+            if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    private static double CalculateSignedArea(List<Vec3> polygon)
+    {
+        double area = 0;
+        for (int i = 0; i < polygon.Count; i++)
+        {
+            var p1 = polygon[i];
+            var p2 = polygon[(i + 1) % polygon.Count];
+            area += (p2.Easting - p1.Easting) * (p2.Northing + p1.Northing);
+        }
+        return area / 2.0;
+    }
+
+    /// <summary>
+    /// Find where a line segment (from lineStart toward lineDir) intersects the headland polygon.
+    /// Returns the index of the headland segment where intersection occurs, or -1 if no intersection.
+    /// </summary>
+    private static int FindLineHeadlandIntersection(Vec3 lineStart, Vec3 lineDir, List<Vec3> headland, out Vec3 intersectionPoint)
+    {
+        double bestDist = double.MaxValue;
+        int bestIdx = -1;
+        intersectionPoint = default;
+
+        for (int i = 0; i < headland.Count - 1; i++)
+        {
+            var p1 = headland[i];
+            var p2 = headland[i + 1];
+
+            if (LineSegmentIntersection(
+                lineStart.Easting, lineStart.Northing, lineDir.Easting, lineDir.Northing,
+                p1.Easting, p1.Northing, p2.Easting, p2.Northing,
+                out double t, out double u))
+            {
+                if (t >= 0) // Ray from lineStart through lineDir
+                {
+                    // Distance from lineStart to intersection
+                    double dx = lineDir.Easting - lineStart.Easting;
+                    double dy = lineDir.Northing - lineStart.Northing;
+                    double dist = System.Math.Sqrt(dx * dx + dy * dy) * t;
+                    if (dist < bestDist)
+                    {
+                        bestDist = dist;
+                        bestIdx = i;
+                        // Compute actual intersection point on the headland segment
+                        var hp1 = headland[i];
+                        var hp2 = headland[i + 1];
+                        intersectionPoint = new Vec3(
+                            hp1.Easting + u * (hp2.Easting - hp1.Easting),
+                            hp1.Northing + u * (hp2.Northing - hp1.Northing),
+                            hp1.Heading);
+                    }
+                }
+            }
+        }
+
+        return bestIdx;
+    }
+
+    private static bool LineSegmentIntersection(
+        double ax, double ay, double bx, double by,
+        double cx, double cy, double dx, double dy,
+        out double t, out double u)
+    {
+        double denom = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+        t = u = 0;
+        if (System.Math.Abs(denom) < 1e-10) return false;
+
+        t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / denom;
+        u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / denom;
+
+        return u >= 0 && u <= 1; // u is the parameter on the headland segment
+    }
+
+    private void SaveHeadlandSegments()
+    {
+        if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName)) return;
+        try
+        {
+            var fieldsDir = _settingsService.Settings.FieldsDirectory;
+            if (string.IsNullOrEmpty(fieldsDir))
+                fieldsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AgValoniaGPS", "Fields");
+            var fieldPath = Path.Combine(fieldsDir, CurrentFieldName);
+            Services.Headland.HeadlandSegmentFileService.Save(fieldPath, HeadlandSegments);
+        }
+        catch (System.Exception ex)
+        {
+            _logger.LogDebug($"[Headland] Failed to save headland segments: {ex.Message}");
+        }
+    }
+
+    public ICommand? ShowTramSettingsCommand { get; private set; }
+    public ICommand? CloseTramSettingsCommand { get; private set; }
+    public ICommand? IncreaseTramPassesCommand { get; private set; }
+    public ICommand? DecreaseTramPassesCommand { get; private set; }
+    public ICommand? SetTramModeOffCommand { get; private set; }
+    public ICommand? SetTramModeAllCommand { get; private set; }
+    public ICommand? SetTramModeLinesCommand { get; private set; }
+    public ICommand? SetTramModeOuterCommand { get; private set; }
+
+    public int TramPasses => ConfigStore.Tram.Passes;
+    public string TramToolWidthDisplay => $"{ConfigStore.ActualToolWidth:F2} m";
+    public string TramWidthDisplay => $"{ConfigStore.ActualToolWidth * ConfigStore.Tram.Passes:F2} m";
+    public string TramTrackWidthDisplay => $"{ConfigStore.Vehicle.TrackWidth:F2} m";
+    public string TramLineCountDisplay => $"{_tramLineService.ParallelTramLines.Count}";
     public ICommand? ToggleRecordedPathsCommand { get; private set; }
     public ICommand? StartRecordedPathCommand { get; private set; }
     public ICommand? StopRecordedPathCommand { get; private set; }
@@ -3467,6 +4004,10 @@ public partial class MainViewModel : ObservableObject
 
         System.Diagnostics.Debug.WriteLine($"[Headland] Result points: {result.OuterHeadlandLine?.Count ?? 0}");
 
+        // Save undo state before applying
+        _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+        _previousHasHeadland = HasHeadland;
+
         CurrentHeadlandLine = result.OuterHeadlandLine;
         HeadlandPreviewLine = null;
         HasHeadland = true;
@@ -3482,6 +4023,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         StatusMessage = $"Headland built at {HeadlandDistance:F1}m ({result.OuterHeadlandLine?.Count ?? 0} pts from {boundary.OuterBoundary.Points.Count} boundary pts)";
+        OnPropertyChanged(nameof(HeadlandStatusText));
     }
 
     /// <summary>

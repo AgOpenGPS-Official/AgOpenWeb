@@ -204,7 +204,7 @@ public partial class MainViewModel
                 StatusMessage = "Open a field first";
                 return;
             }
-            State.UI.ShowDialog(DialogType.HeadlandBuilder);
+            State.UI.ShowDialog(DialogType.FieldBuilder);
             UpdateHeadlandPreview();
         });
 
@@ -238,7 +238,17 @@ public partial class MainViewModel
 
         BuildHeadlandCommand = new RelayCommand(() =>
         {
-            BuildHeadlandFromBoundary();
+            // If segments exist, rebuild from segments; otherwise fall back to Clipper2
+            if (HeadlandSegments.Count > 0)
+            {
+                foreach (var seg in HeadlandSegments)
+                    ComputeSegmentOffset(seg);
+                BuildHeadlandFromSegments();
+            }
+            else
+            {
+                BuildHeadlandFromBoundary();
+            }
         });
 
         ClearHeadlandCommand = new RelayCommand(() =>
@@ -292,10 +302,10 @@ public partial class MainViewModel
             UpdateHeadlandPreview();
         });
 
-        // Headland Dialog (FormHeadLine) commands
+        // Headland Dialog - now opens Field Builder
         ShowHeadlandDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.Headland);
+            State.UI.ShowDialog(DialogType.FieldBuilder);
             UpdateHeadlandPreview();
         });
 
@@ -327,7 +337,13 @@ public partial class MainViewModel
 
         ResetHeadlandCommand = new RelayCommand(() =>
         {
+            // Save for undo
+            _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+            _previousHasHeadland = HasHeadland;
+
             ClearHeadlandCommand?.Execute(null);
+            OnPropertyChanged(nameof(HeadlandStatusText));
+            OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
             StatusMessage = "Headland reset";
         });
 
@@ -351,15 +367,54 @@ public partial class MainViewModel
 
         UndoHeadlandCommand = new RelayCommand(() =>
         {
-            StatusMessage = "Undo - not yet implemented";
+            if (_previousHeadlandLine == null && !_previousHasHeadland)
+            {
+                StatusMessage = "Nothing to undo";
+                return;
+            }
+
+            // Restore previous state
+            CurrentHeadlandLine = _previousHeadlandLine;
+            HasHeadland = _previousHasHeadland;
+            IsHeadlandOn = _previousHasHeadland;
+
+            if (_previousHeadlandLine != null && _previousHeadlandLine.Count >= 3)
+            {
+                _currentHeadlandLine = _previousHeadlandLine;
+                State.Field.HeadlandLine = _previousHeadlandLine;
+                _mapService.SetHeadlandLine(_previousHeadlandLine);
+                _mapService.SetHeadlandVisible(true);
+            }
+            else
+            {
+                _currentHeadlandLine = null;
+                State.Field.HeadlandLine = null;
+                _mapService.SetHeadlandVisible(false);
+            }
+
+            _previousHeadlandLine = null;
+            _previousHasHeadland = false;
+
+            OnPropertyChanged(nameof(HeadlandStatusText));
+            OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
+            StatusMessage = "Headland undone";
         });
 
         TurnOffHeadlandCommand = new RelayCommand(() =>
         {
+            // Save for undo
+            _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+            _previousHasHeadland = HasHeadland;
+
             IsHeadlandOn = false;
             HasHeadland = false;
             CurrentHeadlandLine = null;
             HeadlandPreviewLine = null;
+            _currentHeadlandLine = null;
+            State.Field.HeadlandLine = null;
+            _mapService.SetHeadlandVisible(false);
+            OnPropertyChanged(nameof(HeadlandStatusText));
+            OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
             StatusMessage = "Headland turned off";
         });
 
@@ -491,15 +546,25 @@ public partial class MainViewModel
         // Confirmation Dialog Commands
         CancelConfirmationDialogCommand = new RelayCommand(() =>
         {
-            State.UI.CloseDialog();
+            var prev = _previousDialogBeforeConfirmation;
             _confirmationDialogCallback = null;
+            _previousDialogBeforeConfirmation = Models.State.DialogType.None;
+            if (prev != Models.State.DialogType.None && prev != Models.State.DialogType.Confirmation)
+                State.UI.ShowDialog(prev);
+            else
+                State.UI.CloseDialog();
         });
 
         ConfirmConfirmationDialogCommand = new RelayCommand(() =>
         {
             var callback = _confirmationDialogCallback;
-            State.UI.CloseDialog();
+            var prev = _previousDialogBeforeConfirmation;
             _confirmationDialogCallback = null;
+            _previousDialogBeforeConfirmation = Models.State.DialogType.None;
+            if (prev != Models.State.DialogType.None && prev != Models.State.DialogType.Confirmation)
+                State.UI.ShowDialog(prev);
+            else
+                State.UI.CloseDialog();
             callback?.Invoke();
         });
 

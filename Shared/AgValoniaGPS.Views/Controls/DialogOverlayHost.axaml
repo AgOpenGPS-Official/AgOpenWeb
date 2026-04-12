@@ -46,8 +46,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <dialogs:AgShareUploadDialogPanel/>
         <dialogs:AgShareDownloadDialogPanel/>
         <dialogs:DataIODialogPanel/>
-        <dialogs:HeadlandBuilderDialogPanel/>
-        <dialogs:HeadlandDialogPanel/>
         <dialogs:QuickABSelectorPanel/>
         <dialogs:TracksDialogPanel/>
         <dialogs:ImportTracksDialogPanel/>
@@ -64,6 +62,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <dialogs:ViewSettingsDialogPanel/>
         <dialogs:HelpDialogPanel/>
         <dialogs:OffsetFixDialogPanel/>
+        <dialogs:TramSettingsDialogPanel/>
+        <dialogs:FieldBuilderDialogPanel/>
         <dialogs:ConfigurationDialog DataContext="{Binding ConfigurationViewModel}"/>
         <dialogs:AutoSteerConfigPanel DataContext="{Binding AutoSteerConfigViewModel}"/>
 

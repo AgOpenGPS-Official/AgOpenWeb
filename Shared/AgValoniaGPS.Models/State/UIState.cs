@@ -52,8 +52,6 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsAgShareUploadDialogVisible));
                 OnPropertyChanged(nameof(IsAgShareDownloadDialogVisible));
                 OnPropertyChanged(nameof(IsDataIODialogVisible));
-                OnPropertyChanged(nameof(IsHeadlandDialogVisible));
-                OnPropertyChanged(nameof(IsHeadlandBuilderDialogVisible));
                 OnPropertyChanged(nameof(IsSimCoordsDialogVisible));
                 OnPropertyChanged(nameof(IsQuickABSelectorVisible));
                 OnPropertyChanged(nameof(IsDrawABDialogVisible));
@@ -72,6 +70,8 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsHelpDialogVisible));
                 OnPropertyChanged(nameof(IsLanguageDialogVisible));
                 OnPropertyChanged(nameof(IsRecordedPathDialogVisible));
+                OnPropertyChanged(nameof(IsTramSettingsDialogVisible));
+                OnPropertyChanged(nameof(IsFieldBuilderDialogVisible));
 
                 DialogChanged?.Invoke(this, new DialogChangedEventArgs(previous, value));
             }
@@ -94,8 +94,6 @@ public class UIState : ObservableObject
     public bool IsAgShareUploadDialogVisible => ActiveDialog == DialogType.AgShareUpload;
     public bool IsAgShareDownloadDialogVisible => ActiveDialog == DialogType.AgShareDownload;
     public bool IsDataIODialogVisible => ActiveDialog == DialogType.DataIO;
-    public bool IsHeadlandDialogVisible => ActiveDialog == DialogType.Headland;
-    public bool IsHeadlandBuilderDialogVisible => ActiveDialog == DialogType.HeadlandBuilder;
     public bool IsSimCoordsDialogVisible => ActiveDialog == DialogType.SimCoords;
     public bool IsQuickABSelectorVisible => ActiveDialog == DialogType.QuickABSelector;
     public bool IsDrawABDialogVisible => ActiveDialog == DialogType.DrawAB;
@@ -114,6 +112,8 @@ public class UIState : ObservableObject
     public bool IsHelpDialogVisible => ActiveDialog == DialogType.Help;
     public bool IsLanguageDialogVisible => ActiveDialog == DialogType.Language;
     public bool IsRecordedPathDialogVisible => ActiveDialog == DialogType.RecordedPath;
+    public bool IsTramSettingsDialogVisible => ActiveDialog == DialogType.TramSettings;
+    public bool IsFieldBuilderDialogVisible => ActiveDialog == DialogType.FieldBuilder;
 
     // Panel visibility (non-modal, can have multiple open)
     private bool _isSimulatorPanelVisible;
@@ -242,7 +242,9 @@ public enum DialogType
     ImportTracks,
     Help,
     Language,
-    RecordedPath
+    RecordedPath,
+    TramSettings,
+    FieldBuilder
 }
 
 /// <summary>
