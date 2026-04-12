@@ -52,6 +52,7 @@ public class ApplicationState : ObservableObject
     public BoundaryRecState BoundaryRec { get; } = new();
     public SimulatorState Simulator { get; } = new();
     public UIState UI { get; } = new();
+    public RoutePlanState RoutePlan { get; } = new();
 
     // Global events
     public event EventHandler? StateReset;
@@ -68,6 +69,7 @@ public class ApplicationState : ObservableObject
         RecordedPath.Reset();
         BoundaryRec.Reset();
         Simulator.Reset();
+        RoutePlan.Reset();
         // Field and Connections typically persist across field changes
         StateReset?.Invoke(this, EventArgs.Empty);
     }

@@ -70,6 +70,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
+    private Models.Track.TrackGuidanceState? _routeTrackGuidanceState; // Separate state for route following
     private double _simulatorSteerAngle;
 
     // ── Headland proximity ──────────────────────────────────────────────
@@ -356,7 +357,30 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
-        if (autoSteerEngaged && hasTrack)
+        // Check for pre-computed route following mode
+        var routePlanState = _appState.RoutePlan;
+        bool isRouteActive = routePlanState.IsRouteActive;
+
+        if (autoSteerEngaged && isRouteActive)
+        {
+            // Route following — follow pre-computed segments
+            var routeResult = CalculateRouteGuidance(pos, driftedEasting, driftedNorthing, headingRad);
+            if (routeResult != null)
+            {
+                steerAngle = routeResult.Value.steerAngle;
+                crossTrackError = routeResult.Value.xte;
+                goalE = routeResult.Value.goalE;
+                goalN = routeResult.Value.goalN;
+                hasGuidance = true;
+            }
+
+            if (hasGuidance)
+            {
+                Volatile.Write(ref _simulatorSteerAngle, steerAngle);
+                _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+            }
+        }
+        else if (autoSteerEngaged && hasTrack)
         {
             if (isYouTurnTriggered && youTurnPath != null && youTurnPath.Count > 0)
             {
@@ -714,6 +738,185 @@ public sealed class GpsPipelineService : IGpsPipelineService
             return (0, 0, true);
 
         return (output.SteerAngle, output.DistanceFromCurrentLine, false);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Route following guidance (Phase 3)
+    // ══════════════════════════════════════════════════════════════════════
+
+    private int _lastRouteSegmentIndex = -1;
+
+    private (double steerAngle, double xte, double goalE, double goalN)?
+        CalculateRouteGuidance(Position currentPosition, double driftedEasting, double driftedNorthing, double headingRad)
+    {
+        var routePlanState = _appState.RoutePlan;
+        var plan = routePlanState.ActivePlan;
+        if (plan == null) return null;
+
+        int segIdx = routePlanState.CurrentSegmentIndex;
+        if (segIdx >= plan.Segments.Count)
+        {
+            routePlanState.IsRouteComplete = true;
+            routePlanState.Mode = Models.RoutePlanning.GuidanceMode.WhiteCane;
+            return null;
+        }
+
+        var segment = plan.Segments[segIdx];
+
+        // Reset guidance state on segment transition
+        if (segIdx != _lastRouteSegmentIndex)
+        {
+            _routeTrackGuidanceState = null;
+            _lastRouteSegmentIndex = segIdx;
+        }
+
+        if (segment.Type == Models.RoutePlanning.RouteSegmentType.Swath)
+        {
+            return CalculateRouteSwathGuidance(currentPosition, segment, plan,
+                driftedEasting, driftedNorthing, headingRad);
+        }
+        else
+        {
+            return CalculateRouteTurnGuidance(currentPosition, segment, plan,
+                driftedEasting, driftedNorthing, headingRad);
+        }
+    }
+
+    private (double steerAngle, double xte, double goalE, double goalN)?
+        CalculateRouteSwathGuidance(Position pos, Models.RoutePlanning.RouteSegment segment,
+            Models.RoutePlanning.RoutePlan plan,
+            double driftedEasting, double driftedNorthing, double headingRad)
+    {
+        var config = ConfigurationStore.Instance;
+
+        // Build a Track from the segment waypoints
+        var swathTrack = new Models.Track.Track
+        {
+            Name = $"Route Swath {segment.SwathIndex + 1}",
+            Points = segment.Waypoints,
+            Type = Models.Track.TrackType.Curve,
+            IsVisible = true,
+            IsActive = true
+        };
+
+        // Dynamic look-ahead
+        double speedKmh = pos.Speed * 3.6;
+        double lookAhead = config.Guidance.GoalPointLookAheadHold;
+        if (speedKmh > 1)
+        {
+            lookAhead = Math.Max(
+                config.Guidance.MinLookAheadDistance,
+                config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
+        }
+
+        // Steer axle position
+        double steerE = driftedEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase;
+        double steerN = driftedNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase;
+
+        // Heading alignment
+        double trackHeading = FindNearestSegmentHeading(swathTrack.Points, driftedEasting, driftedNorthing);
+        double headingDiff = headingRad - trackHeading;
+        while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
+        while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
+        bool isHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
+
+        var input = new Models.Track.TrackGuidanceInput
+        {
+            Track = swathTrack,
+            PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
+            SteerPosition = new Vec3(steerE, steerN, headingRad),
+            UseStanley = false,
+            IsHeadingSameWay = isHeadingSameWay,
+            Wheelbase = config.Vehicle.Wheelbase,
+            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
+            GoalPointDistance = lookAhead,
+            SideHillCompFactor = 0,
+            PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
+            FixHeading = headingRad,
+            AvgSpeed = speedKmh,
+            IsReverse = segment.IsReverse,
+            IsAutoSteerOn = true,
+            IsYouTurnTriggered = false,
+            ImuRoll = 88888,
+            PreviousState = _routeTrackGuidanceState,
+            FindGlobalNearest = _routeTrackGuidanceState == null,
+            CurrentLocationIndex = _routeTrackGuidanceState?.CurrentLocationIndex ?? 0
+        };
+
+        var output = _trackGuidanceService.CalculateGuidance(input);
+        _routeTrackGuidanceState = output.State;
+        if (_routeTrackGuidanceState != null)
+            _routeTrackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
+
+        // Check for segment transition: distance to endpoint
+        var endpoint = segment.IsReverse ? segment.Waypoints[0] : segment.Waypoints[^1];
+        double distToEnd = Math.Sqrt(
+            (driftedEasting - endpoint.Easting) * (driftedEasting - endpoint.Easting) +
+            (driftedNorthing - endpoint.Northing) * (driftedNorthing - endpoint.Northing));
+
+        if (distToEnd < 3.0 || output.IsAtEndOfTrack)
+        {
+            AdvanceRouteSegment();
+        }
+
+        return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing);
+    }
+
+    private (double steerAngle, double xte, double goalE, double goalN)?
+        CalculateRouteTurnGuidance(Position pos, Models.RoutePlanning.RouteSegment segment,
+            Models.RoutePlanning.RoutePlan plan,
+            double driftedEasting, double driftedNorthing, double headingRad)
+    {
+        if (segment.Waypoints.Count == 0) { AdvanceRouteSegment(); return null; }
+
+        var config = ConfigurationStore.Instance;
+        double speedKmh = pos.Speed * 3.6;
+
+        var input = new YouTurnGuidanceInput
+        {
+            TurnPath = segment.Waypoints,
+            PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
+            SteerPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
+            Wheelbase = config.Vehicle.Wheelbase,
+            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
+            UseStanley = false,
+            GoalPointDistance = config.Guidance.GoalPointLookAheadHold,
+            UTurnCompensation = config.Guidance.UTurnCompensation,
+            FixHeading = headingRad,
+            AvgSpeed = speedKmh,
+            IsReverse = false,
+            UTurnStyle = 0
+        };
+
+        var output = _youTurnGuidanceService.CalculateGuidance(input);
+
+        if (output.IsTurnComplete)
+        {
+            AdvanceRouteSegment();
+        }
+
+        // Use the turn endpoint as the goal point for visualization
+        var lastPt = segment.Waypoints[^1];
+        return (output.SteerAngle, output.DistanceFromCurrentLine, lastPt.Easting, lastPt.Northing);
+    }
+
+    private void AdvanceRouteSegment()
+    {
+        var routePlanState = _appState.RoutePlan;
+        var plan = routePlanState.ActivePlan;
+        if (plan == null) return;
+
+        int nextIndex = routePlanState.CurrentSegmentIndex + 1;
+        if (nextIndex >= plan.Segments.Count)
+        {
+            routePlanState.IsRouteComplete = true;
+            routePlanState.Mode = Models.RoutePlanning.GuidanceMode.WhiteCane;
+        }
+        else
+        {
+            routePlanState.CurrentSegmentIndex = nextIndex;
+            _routeTrackGuidanceState = null; // Reset for new segment
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════════

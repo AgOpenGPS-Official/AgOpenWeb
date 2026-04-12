@@ -1101,6 +1101,11 @@ public partial class MainViewModel
         _mapService.SetPlannedSwaths(swathPlan.Swaths);
         _mapService.SetPlannedTurnPaths(turnPaths, turnValidity);
 
+        // Store route plan in application state for Phase 3 route following
+        State.RoutePlan.ActivePlan = routePlan;
+        State.RoutePlan.CurrentSegmentIndex = 0;
+        State.RoutePlan.IsRouteComplete = false;
+
         // Build status with invalid turn warning
         var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns | {routePlan.TotalDistance:F0}m total";
         if (routePlan.InvalidTurnCount > 0)

@@ -83,21 +83,42 @@ the Free Software Foundation, either version 3 of the License, or
                     <TextBlock Text="{Binding RoutePlanStatus}" FontSize="12"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                HorizontalAlignment="Center" TextWrapping="Wrap"/>
+
+                    <!-- Route Progress (visible when route active) -->
+                    <TextBlock Text="{Binding RouteProgressText}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlHighlightAccentBrush}"
+                               HorizontalAlignment="Center"
+                               IsVisible="{Binding IsRouteActive}"/>
                 </StackPanel>
 
                 <!-- Buttons -->
-                <Grid Grid.Row="2" ColumnDefinitions="*,*" Margin="16,4,16,12">
-                    <Button Grid.Column="0" Content="Clear" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
-                            HorizontalContentAlignment="Center" CornerRadius="6"
-                            Command="{Binding ClearPlannedSwathsCommand}"
-                            Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
-                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                    <Button Grid.Column="1" Content="Close" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
-                            HorizontalContentAlignment="Center" CornerRadius="6"
-                            Command="{Binding CloseRoutePlanDialogCommand}"
-                            Background="{DynamicResource SystemControlHighlightAccentBrush}"
-                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                </Grid>
+                <StackPanel Grid.Row="2" Spacing="4" Margin="16,4,16,12">
+                    <!-- Start/Stop Route -->
+                    <Grid ColumnDefinitions="*,*,*">
+                        <Button Grid.Column="0" Content="Start Route" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
+                                HorizontalContentAlignment="Center" CornerRadius="6"
+                                Command="{Binding StartRouteCommand}"
+                                IsVisible="{Binding !IsRouteActive}"
+                                Background="#2E7D32"
+                                Foreground="White"/>
+                        <Button Grid.Column="0" Content="Stop Route" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
+                                HorizontalContentAlignment="Center" CornerRadius="6"
+                                Command="{Binding StopRouteCommand}"
+                                IsVisible="{Binding IsRouteActive}"
+                                Background="#C62828"
+                                Foreground="White"/>
+                        <Button Grid.Column="1" Content="Clear" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
+                                HorizontalContentAlignment="Center" CornerRadius="6"
+                                Command="{Binding ClearPlannedSwathsCommand}"
+                                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        <Button Grid.Column="2" Content="Close" Margin="2" Height="40" FontSize="14" FontWeight="Bold"
+                                HorizontalContentAlignment="Center" CornerRadius="6"
+                                Command="{Binding CloseRoutePlanDialogCommand}"
+                                Background="{DynamicResource SystemControlHighlightAccentBrush}"
+                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                    </Grid>
+                </StackPanel>
             </Grid>
         </Border>
     </Grid>

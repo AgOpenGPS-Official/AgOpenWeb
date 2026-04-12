@@ -282,6 +282,7 @@ public partial class MainViewModel : ObservableObject
         InitializeWizardCommands();
         InitializeSettingsCommands();
         InitializeHotkeyCommands();
+        InitializeRouteFollowingCommands();
         InitializeChartCommands();
 
         // Load display settings first, then restore our app settings on top
@@ -2690,6 +2691,11 @@ public partial class MainViewModel : ObservableObject
     public ICommand? SetRoutePlanPatternCommand { get; private set; }
     public ICommand? SetRoutePlanCountCommand { get; private set; }
     public ICommand? ClearPlannedSwathsCommand { get; private set; }
+
+    // Route Following Commands
+    public ICommand? StartRouteCommand { get; private set; }
+    public ICommand? StopRouteCommand { get; private set; }
+    public ICommand? SkipSegmentCommand { get; private set; }
 
     // iOS Sheet Toggle Commands
     public ICommand? ToggleFileMenuCommand { get; private set; }
