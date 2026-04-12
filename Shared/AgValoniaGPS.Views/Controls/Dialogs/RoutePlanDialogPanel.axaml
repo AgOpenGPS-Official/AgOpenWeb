@@ -37,7 +37,7 @@ the Free Software Foundation, either version 3 of the License, or
                     <StackPanel Spacing="4">
                         <TextBlock Text="Pattern" FontSize="13" FontWeight="SemiBold"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
-                        <Grid ColumnDefinitions="*,*,*">
+                        <Grid ColumnDefinitions="*,*">
                             <Button Grid.Column="0" Content="Sequential" Margin="2" Height="36" FontSize="12"
                                     HorizontalContentAlignment="Center" CornerRadius="6"
                                     Command="{Binding SetRoutePlanPatternCommand}" CommandParameter="Boustrophedon"
@@ -46,11 +46,6 @@ the Free Software Foundation, either version 3 of the License, or
                             <Button Grid.Column="1" Content="Snake" Margin="2" Height="36" FontSize="12"
                                     HorizontalContentAlignment="Center" CornerRadius="6"
                                     Command="{Binding SetRoutePlanPatternCommand}" CommandParameter="Snake"
-                                    Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
-                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                            <Button Grid.Column="2" Content="Spiral" Margin="2" Height="36" FontSize="12"
-                                    HorizontalContentAlignment="Center" CornerRadius="6"
-                                    Command="{Binding SetRoutePlanPatternCommand}" CommandParameter="Spiral"
                                     Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
                                     Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                         </Grid>

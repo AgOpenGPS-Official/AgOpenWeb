@@ -27,7 +27,8 @@ public enum SwathPattern
     /// <summary>Skip-and-fill: 0, 2, 4, 6, 8, 7, 5, 3, 1 (wide turns)</summary>
     Snake,
 
-    /// <summary>Grouped spiral: works clusters of N tracks from outside in</summary>
+    /// <summary>True spiral: continuous inward offset following the boundary shape.
+    /// Not yet implemented — requires boundary offset geometry (future phase).</summary>
     Spiral
 }
 
@@ -60,7 +61,8 @@ public static class SwathOrderingService
                 return SnakeOrder(indices);
 
             case SwathPattern.Spiral:
-                return SpiralOrder(indices, Math.Max(2, spiralSize));
+                // True spiral not yet implemented — falls back to sequential
+                return indices;
 
             default:
                 return indices;
@@ -116,42 +118,6 @@ public static class SwathOrderingService
         if (n % 2 == 1)
         {
             RotateLeft(result, i, n);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Spiral ordering: alternates taking clusters of tracks from the left and right
-    /// edges, working inward toward the center. This distributes compaction evenly
-    /// across the headland and avoids concentrating turns on one end.
-    ///
-    /// spiralSize=2, N=10: 0, 1, 9, 8, 2, 3, 7, 6, 4, 5
-    /// spiralSize=3, N=9:  0, 1, 2, 8, 7, 6, 3, 4, 5
-    /// </summary>
-    private static List<int> SpiralOrder(List<int> swaths, int spiralSize)
-    {
-        int n = swaths.Count;
-        var result = new List<int>(n);
-        int left = 0;
-        int right = n - 1;
-        bool takeFromLeft = true;
-
-        while (left <= right)
-        {
-            if (takeFromLeft)
-            {
-                // Take up to spiralSize from the left edge
-                for (int i = 0; i < spiralSize && left <= right; i++)
-                    result.Add(swaths[left++]);
-            }
-            else
-            {
-                // Take up to spiralSize from the right edge (in descending order)
-                for (int i = 0; i < spiralSize && left <= right; i++)
-                    result.Add(swaths[right--]);
-            }
-            takeFromLeft = !takeFromLeft;
         }
 
         return result;
