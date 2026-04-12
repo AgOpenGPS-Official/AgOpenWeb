@@ -122,48 +122,45 @@ public static class SwathOrderingService
     }
 
     /// <summary>
-    /// Spiral ordering: works tracks in clusters, spiraling from outside to inside.
-    /// With spiralSize=2: pairs of tracks worked from edges inward.
-    /// With spiralSize=3: triples of tracks.
+    /// Spiral ordering: alternates taking clusters of tracks from the left and right
+    /// edges, working inward toward the center. This distributes compaction evenly
+    /// across the headland and avoids concentrating turns on one end.
     ///
-    /// Ported from Fields2Cover SpiralOrder::sortSwaths()
+    /// spiralSize=2, N=10: 0, 1, 9, 8, 2, 3, 7, 6, 4, 5
+    /// spiralSize=3, N=9:  0, 1, 2, 8, 7, 6, 3, 4, 5
     /// </summary>
     private static List<int> SpiralOrder(List<int> swaths, int spiralSize)
     {
-        var result = new List<int>(swaths);
-        int n = result.Count;
-        int spiralCount = n / spiralSize;
+        int n = swaths.Count;
+        var result = new List<int>(n);
+        int left = 0;
+        int right = n - 1;
+        bool takeFromLeft = true;
 
-        for (int i = 0; i < spiralCount; i++)
+        while (left <= right)
         {
-            SpiralGroup(result, i * spiralSize, spiralSize);
-        }
-
-        int remaining = n - spiralCount * spiralSize;
-        if (remaining > 1)
-        {
-            SpiralGroup(result, spiralCount * spiralSize, remaining);
+            if (takeFromLeft)
+            {
+                // Take up to spiralSize from the left edge
+                for (int i = 0; i < spiralSize && left <= right; i++)
+                    result.Add(swaths[left++]);
+            }
+            else
+            {
+                // Take up to spiralSize from the right edge (in descending order)
+                for (int i = 0; i < spiralSize && left <= right; i++)
+                    result.Add(swaths[right--]);
+            }
+            takeFromLeft = !takeFromLeft;
         }
 
         return result;
     }
 
     /// <summary>
-    /// Spiral a single group by moving alternate elements to create
-    /// an outside-in pattern within the group.
-    /// </summary>
-    private static void SpiralGroup(List<int> swaths, int offset, int size)
-    {
-        for (int j = (offset + 1) % 2; j < size; j += 2)
-        {
-            RotateLeft(swaths, offset + j, offset + size);
-        }
-    }
-
-    /// <summary>
     /// Rotate elements left: moves element at 'start' to 'end-1',
     /// shifting everything between left by one position.
-    /// Equivalent to std::rotate(begin+start, begin+start+1, begin+end)
+    /// Used by SnakeOrder.
     /// </summary>
     private static void RotateLeft(List<int> list, int start, int end)
     {
