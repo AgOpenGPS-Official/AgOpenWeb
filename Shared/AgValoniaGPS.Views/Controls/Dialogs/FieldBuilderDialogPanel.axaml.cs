@@ -41,6 +41,10 @@ public partial class FieldBuilderDialogPanel : UserControl
     private double _headlandStartExt = 50;
     private double _headlandEndExt = 50;
 
+    // Edit backup (restored on cancel)
+    private Models.Headland.HeadlandSegment? _editBackupSegment;
+    private Models.Track.Track? _editBackupTrack;
+
     // Inline confirmation/input
     private Action? _inlineConfirmAction;
     private MainViewModel? _viewModel;
@@ -63,6 +67,31 @@ public partial class FieldBuilderDialogPanel : UserControl
         var headingInput = this.FindControl<TextBox>("HeadingInput");
         if (headingInput != null)
             headingInput.TextChanged += HeadingInput_TextChanged;
+
+        // Deselect tracks/headland segments when switching tabs
+        var mainTabs = this.FindControl<TabControl>("MainTabs");
+        if (mainTabs != null)
+            mainTabs.SelectionChanged += MainTabs_SelectionChanged;
+    }
+
+    private void MainTabs_SelectionChanged(object? sender, Avalonia.Controls.SelectionChangedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var mainTabs = this.FindControl<TabControl>("MainTabs");
+        if (mainTabs == null) return;
+
+        if (mainTabs.SelectedIndex == 1) // Headland tab
+        {
+            // Deselect headland segment if there's only one (allow re-select)
+            // Clear track visual highlight handled by isDrawing/onHeadlandTab
+        }
+        else // Tracks or Tram tab
+        {
+            // Deselect headland segments
+            vm.SelectedHeadlandSegment = null;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(UpdatePreview, Avalonia.Threading.DispatcherPriority.Render);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -375,6 +404,7 @@ public partial class FieldBuilderDialogPanel : UserControl
         if (DataContext is not MainViewModel vm || vm.SelectedHeadlandSegment == null) return;
 
         var seg = vm.SelectedHeadlandSegment;
+        _editBackupSegment = seg; // Save for cancel restore
 
         // Load segment into draw mode for editing
         _drawMode = DrawMode.HeadlandPreview;
@@ -427,6 +457,7 @@ public partial class FieldBuilderDialogPanel : UserControl
         if (DataContext is not MainViewModel vm || vm.SelectedTrack == null) return;
 
         var track = vm.SelectedTrack;
+        _editBackupTrack = track; // Save for cancel restore
 
         // Load track into AB line preview for editing
         _drawMode = track.Points.Count == 2 ? DrawMode.ABLinePreview : DrawMode.Curve;
@@ -1203,14 +1234,40 @@ public partial class FieldBuilderDialogPanel : UserControl
     private void CancelDraw_Click(object? sender, RoutedEventArgs e)
     {
         bool wasHeadland = _drawMode == DrawMode.HeadlandLine || _drawMode == DrawMode.HeadlandCurve || _drawMode == DrawMode.HeadlandPreview;
+        bool wasTrackEdit = _editBackupTrack != null;
+        bool wasHeadlandEdit = _editBackupSegment != null;
+
+        // Restore backup if editing was cancelled
+        if (DataContext is MainViewModel vm)
+        {
+            if (_editBackupSegment != null)
+            {
+                vm.HeadlandSegments.Add(_editBackupSegment);
+                vm.SelectedHeadlandSegment = _editBackupSegment;
+                vm.BuildHeadlandFromSegments();
+                _editBackupSegment = null;
+            }
+            if (_editBackupTrack != null)
+            {
+                vm.SavedTracks.Add(_editBackupTrack);
+                vm.SelectedTrack = _editBackupTrack;
+                _editBackupTrack = null;
+            }
+        }
+
         ExitDrawMode();
 
-        if (wasHeadland)
+        if (wasHeadland || wasHeadlandEdit)
         {
             // Return to headland tab
             ShowMainTabs();
             var mainTabs = this.FindControl<TabControl>("MainTabs");
             if (mainTabs != null) mainTabs.SelectedIndex = 1;
+        }
+        else if (wasTrackEdit)
+        {
+            // Return to tracks tab
+            ShowMainTabs();
         }
         else
         {
@@ -1229,6 +1286,9 @@ public partial class FieldBuilderDialogPanel : UserControl
         _drawPoints.Clear();
         _isDragging = false;
         _dragPointIndex = -1;
+        // Clear edit backups (successful create clears them; cancel restores before calling this)
+        _editBackupSegment = null;
+        _editBackupTrack = null;
         var drawPanel = this.FindControl<Border>("DrawModePanel");
         if (drawPanel != null) drawPanel.IsVisible = false;
         var extPanel = this.FindControl<StackPanel>("ExtendShrinkPanel");
@@ -1596,11 +1656,12 @@ public partial class FieldBuilderDialogPanel : UserControl
             bool isLinearMode = _drawMode == DrawMode.ABLine || _drawMode == DrawMode.ABLinePreview
                                 || _drawMode == DrawMode.BoundaryLine || _drawMode == DrawMode.BoundaryLinePreview
                                 || _drawMode == DrawMode.APlus || _drawMode == DrawMode.APlusPreview;
-            bool isCurvePreview = _drawMode == DrawMode.BoundaryCurvePreview;
+            bool isCurvePreview = _drawMode == DrawMode.BoundaryCurvePreview
+                || (_drawMode == DrawMode.HeadlandPreview && _drawPoints.Count > 2);
 
             for (int i = 0; i < _drawPoints.Count; i++)
             {
-                // For boundary curve preview, only show first and last markers
+                // For curve previews, only show first and last markers
                 if (isCurvePreview && i > 0 && i < _drawPoints.Count - 1) continue;
 
                 var pt = ToCanvas(_drawPoints[i].Easting, _drawPoints[i].Northing);
