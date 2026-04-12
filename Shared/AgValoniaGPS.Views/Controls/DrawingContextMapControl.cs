@@ -109,7 +109,8 @@ public interface ISharedMapControl
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
     void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
-    void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths);
+    void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
+        IReadOnlyList<bool>? turnValidity = null);
 
     // Coverage visualization
     void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches);
@@ -222,6 +223,7 @@ internal class MapRenderState
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> ContourStrips = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> PlannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     public IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> PlannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
+    public IReadOnlyList<bool> PlannedTurnValidity = Array.Empty<bool>();
 
     // Recording
     public List<(double Easting, double Northing)>? RecordingPoints;
@@ -509,6 +511,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _contourStrips = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _plannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     private IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> _plannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
+    private IReadOnlyList<bool> _plannedTurnValidity = Array.Empty<bool>();
 
     // Ground texture bitmaps (passed to render thread via state snapshot)
     private Bitmap? _groundTexture;
@@ -760,6 +763,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             ContourStrips = _contourStrips,
             PlannedSwaths = _plannedSwaths,
             PlannedTurnPaths = _plannedTurnPaths,
+            PlannedTurnValidity = _plannedTurnValidity,
 
             RecordingPoints = _recordingPoints != null
                 ? new List<(double, double)>(_recordingPoints) : null,
@@ -2576,9 +2580,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
-    public void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths)
+    public void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
+        IReadOnlyList<bool>? turnValidity = null)
     {
         _plannedTurnPaths = turnPaths;
+        _plannedTurnValidity = turnValidity ?? Array.Empty<bool>();
         SendStateToHandler();
     }
 
@@ -3692,7 +3698,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             if (s.PlannedSwaths.Count > 0)
             {
                 var plannedPen = new ImmutablePen(
-                    new ImmutableSolidColorBrush(Color.FromArgb(180, 0, 180, 255)), lineThickness * 0.75);
+                    new ImmutableSolidColorBrush(Color.FromArgb(180, 0, 180, 255)), lineThickness * 1.0);
                 var plannedEndBrush = new ImmutableSolidColorBrush(Color.FromArgb(140, 0, 180, 255));
 
                 for (int si = 0; si < s.PlannedSwaths.Count; si++)
@@ -4290,14 +4296,14 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawTrackPointsSk(canvas, s.NextTrack.Points, nextPaint);
             }
 
-            // Planned swaths (route planning preview — cyan)
+            // Planned swaths (route planning preview — cyan lines)
             if (s.PlannedSwaths.Count > 0)
             {
                 using var swathPaint = new SKPaint
                 {
                     Color = new SKColor(0, 180, 255, 200),
                     Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 1.2f,
+                    StrokeWidth = 1.5f,
                     IsAntialias = true
                 };
                 using var endpointPaint = new SKPaint
@@ -4335,25 +4341,111 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 }
             }
 
-            // Planned turn paths (route planning — orange)
+            // Planned turn paths (route planning — orange valid, red invalid)
             if (s.PlannedTurnPaths.Count > 0)
             {
-                using var turnPaint = new SKPaint
+                using var validTurnPaint = new SKPaint
                 {
                     Color = new SKColor(255, 165, 0, 200),
                     Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 1.0f,
+                    StrokeWidth = 1.5f,
                     IsAntialias = true
                 };
-
-                foreach (var turnPath in s.PlannedTurnPaths)
+                using var invalidTurnPaint = new SKPaint
                 {
+                    Color = new SKColor(255, 50, 50, 220),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1.5f,
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new float[] { 4f, 3f }, 0)
+                };
+
+                for (int ti = 0; ti < s.PlannedTurnPaths.Count; ti++)
+                {
+                    var turnPath = s.PlannedTurnPaths[ti];
                     if (turnPath.Count < 2) continue;
+
+                    bool isValid = ti < s.PlannedTurnValidity.Count ? s.PlannedTurnValidity[ti] : true;
+                    var paint = isValid ? validTurnPaint : invalidTurnPaint;
+
                     using var path = new SKPath();
                     path.MoveTo((float)turnPath[0].Easting, (float)turnPath[0].Northing);
                     for (int i = 1; i < turnPath.Count; i++)
                         path.LineTo((float)turnPath[i].Easting, (float)turnPath[i].Northing);
-                    canvas.DrawPath(path, turnPaint);
+                    canvas.DrawPath(path, paint);
+                }
+            }
+
+            // Directional number markers on swaths (rendered last so they're on top)
+            if (s.PlannedSwaths.Count > 0)
+            {
+                using var triPaint = new SKPaint
+                {
+                    Color = new SKColor(0, 140, 220, 200),
+                    Style = SKPaintStyle.Fill,
+                    IsAntialias = true
+                };
+                using var triOutlinePaint = new SKPaint
+                {
+                    Color = new SKColor(255, 255, 255, 200),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.3f,
+                    IsAntialias = true
+                };
+                using var numPaint = new SKPaint
+                {
+                    Color = new SKColor(255, 255, 255, 240),
+                    TextSize = 3.5f,
+                    IsAntialias = true,
+                    Typeface = SKTypeface.Default,
+                    TextAlign = SKTextAlign.Center
+                };
+
+                for (int si = 0; si < s.PlannedSwaths.Count; si++)
+                {
+                    var swath = s.PlannedSwaths[si];
+                    if (swath.Points.Count < 2) continue;
+
+                    // Get travel direction from first to last point
+                    bool isReverse = si % 2 != 0;
+                    float dx = (float)(swath.Points[^1].Easting - swath.Points[0].Easting);
+                    float dy = (float)(swath.Points[^1].Northing - swath.Points[0].Northing);
+                    if (isReverse) { dx = -dx; dy = -dy; }
+                    float len = MathF.Sqrt(dx * dx + dy * dy);
+                    if (len < 0.001f) continue;
+                    dx /= len; dy /= len;
+
+                    // Place at midpoint of the swath
+                    float cx = (float)((swath.Points[0].Easting + swath.Points[^1].Easting) / 2);
+                    float cy = (float)((swath.Points[0].Northing + swath.Points[^1].Northing) / 2);
+                    float size = 4.0f;
+
+                    // Perpendicular
+                    float px = -dy, py = dx;
+
+                    // Triangle pointing in travel direction
+                    float tipX = cx + dx * size * 0.7f;
+                    float tipY = cy + dy * size * 0.7f;
+                    float baseL_X = cx - dx * size * 0.5f + px * size * 0.5f;
+                    float baseL_Y = cy - dy * size * 0.5f + py * size * 0.5f;
+                    float baseR_X = cx - dx * size * 0.5f - px * size * 0.5f;
+                    float baseR_Y = cy - dy * size * 0.5f - py * size * 0.5f;
+
+                    using var triPath = new SKPath();
+                    triPath.MoveTo(tipX, tipY);
+                    triPath.LineTo(baseL_X, baseL_Y);
+                    triPath.LineTo(baseR_X, baseR_Y);
+                    triPath.Close();
+                    canvas.DrawPath(triPath, triPaint);
+                    canvas.DrawPath(triPath, triOutlinePaint);
+
+                    // Number inside the triangle (slightly behind center toward base)
+                    float textX = cx - dx * size * 0.05f;
+                    float textY = cy - dy * size * 0.05f;
+                    canvas.Save();
+                    canvas.Scale(1, -1, textX, textY);
+                    canvas.DrawText((si + 1).ToString(), textX, textY + 1.2f, numPaint);
+                    canvas.Restore();
                 }
             }
 

@@ -185,8 +185,9 @@ public class MapService : IMapService
     public void SetPlannedSwaths(System.Collections.Generic.IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths) =>
         GetMapControl().SetPlannedSwaths(swaths);
 
-    public void SetPlannedTurnPaths(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>> turnPaths) =>
-        GetMapControl().SetPlannedTurnPaths(turnPaths);
+    public void SetPlannedTurnPaths(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
+        System.Collections.Generic.IReadOnlyList<bool>? turnValidity = null) =>
+        GetMapControl().SetPlannedTurnPaths(turnPaths, turnValidity);
 
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>

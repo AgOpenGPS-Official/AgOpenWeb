@@ -1091,14 +1091,15 @@ public partial class MainViewModel
             Pattern = _routePlanPattern,
         });
 
-        // Extract turn paths for map rendering
-        var turnPaths = routePlan.Segments
+        // Extract turn paths and validity for map rendering
+        var turnSegments = routePlan.Segments
             .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Turn)
-            .Select(s => s.Waypoints)
             .ToList();
+        var turnPaths = turnSegments.Select(s => s.Waypoints).ToList();
+        var turnValidity = turnSegments.Select(s => s.IsTurnValid).ToList();
 
         _mapService.SetPlannedSwaths(swathPlan.Swaths);
-        _mapService.SetPlannedTurnPaths(turnPaths);
+        _mapService.SetPlannedTurnPaths(turnPaths, turnValidity);
 
         // Build status with invalid turn warning
         var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns | {routePlan.TotalDistance:F0}m total";
