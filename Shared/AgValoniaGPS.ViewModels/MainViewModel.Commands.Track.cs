@@ -1073,14 +1073,38 @@ public partial class MainViewModel
             VehiclePosition = State.Vehicle.HasValidFix
                 ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, 0)
                 : null,
-            TurningRadius = ConfigStore.Guidance.UTurnRadius,
             HeadlandWidth = State.Field.HeadlandDistance,
         };
 
-        var plan = swathService.GenerateSwaths(input);
-        _mapService.SetPlannedSwaths(plan.Swaths);
-        _mapService.SetPlannedTurnPaths(plan.TurnPaths);
-        RoutePlanStatus = $"{plan.Swaths.Count} swaths | {plan.TurnPaths.Count} turns | {plan.TotalWorkingDistance + plan.TotalTurningDistance:F0}m total";
+        var swathPlan = swathService.GenerateSwaths(input);
+
+        // Stitch swaths + boundary-validated turns into a RoutePlan
+        var outerBoundary = boundary.OuterBoundary ?? clipBoundary;
+        var turnService = new Services.RoutePlanning.TurnPathService();
+        var stitchService = new Services.RoutePlanning.RouteStitchingService(turnService);
+        var routePlan = stitchService.StitchRoute(swathPlan.Swaths, new Services.Interfaces.RouteStitchConfig
+        {
+            TurningRadius = ConfigStore.Guidance.UTurnRadius,
+            HeadlandWidth = State.Field.HeadlandDistance,
+            Boundary = outerBoundary,
+            ReferenceHeading = track.Heading,
+            Pattern = _routePlanPattern,
+        });
+
+        // Extract turn paths for map rendering
+        var turnPaths = routePlan.Segments
+            .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Turn)
+            .Select(s => s.Waypoints)
+            .ToList();
+
+        _mapService.SetPlannedSwaths(swathPlan.Swaths);
+        _mapService.SetPlannedTurnPaths(turnPaths);
+
+        // Build status with invalid turn warning
+        var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns | {routePlan.TotalDistance:F0}m total";
+        if (routePlan.InvalidTurnCount > 0)
+            status += $" | {routePlan.InvalidTurnCount} turn(s) clip boundary";
+        RoutePlanStatus = status;
     }
 
     /// <summary>

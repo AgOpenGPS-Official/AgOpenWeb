@@ -55,6 +55,45 @@ namespace AgValoniaGPS.Services.PathPlanning
             TurningRadius = turningRadius;
         }
 
+        /// <summary>
+        /// Generate all valid Dubins paths between two poses, sorted shortest first.
+        /// Each result includes the path waypoints, path type name, and total length.
+        /// </summary>
+        public List<(List<Vec3> Path, string Type, double Length)> GenerateAllPaths(Vec3 start, Vec3 goal)
+        {
+            startPos.Easting = start.Easting;
+            startPos.Northing = start.Northing;
+            startHeading = start.Heading;
+
+            goalPos.Easting = goal.Easting;
+            goalPos.Northing = goal.Northing;
+            goalHeading = goal.Heading;
+
+            var allPathData = GetAllDubinsPaths();
+            var results = new List<(List<Vec3> Path, string Type, double Length)>();
+
+            foreach (var pd in allPathData)
+            {
+                var path = new List<Vec3>();
+                int cnt = pd.PathCoordinates.Count;
+                if (cnt > 1)
+                {
+                    for (int i = 0; i < cnt - 1; i += 5)
+                    {
+                        Vec3 pt = new Vec3(pd.PathCoordinates[i].Easting, pd.PathCoordinates[i].Northing, 0)
+                        {
+                            Heading = Math.Atan2(pd.PathCoordinates[i + 1].Easting - pd.PathCoordinates[i].Easting,
+                                pd.PathCoordinates[i + 1].Northing - pd.PathCoordinates[i].Northing)
+                        };
+                        path.Add(pt);
+                    }
+                }
+                results.Add((path, pd.PathType.ToString(), pd.TotalLength));
+            }
+
+            return results;
+        }
+
         //takes 2 points and headings to create a path - returns list of vec3 points and headings
         public List<Vec3> GeneratePath(Vec3 start, Vec3 goal)
         {
