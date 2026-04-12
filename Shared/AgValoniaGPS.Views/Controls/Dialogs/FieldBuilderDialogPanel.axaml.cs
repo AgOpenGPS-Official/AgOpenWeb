@@ -353,14 +353,12 @@ public partial class FieldBuilderDialogPanel : UserControl
         var finishPanel = this.FindControl<StackPanel>("FinishDrawBtnPanel");
         var headingPanel = this.FindControl<StackPanel>("HeadingInputPanel");
         var headingInput = this.FindControl<TextBox>("HeadingInput");
-        var extPanel = this.FindControl<StackPanel>("ExtendShrinkPanel");
 
         if (drawPanel != null) drawPanel.IsVisible = true;
         if (instrText != null) instrText.Text = "Edit headland line - adjust offset and endpoints";
         if (pointCountText != null) pointCountText.Text = "";
         if (createPanel != null) createPanel.IsVisible = true;
         if (finishPanel != null) finishPanel.IsVisible = false;
-        if (extPanel != null) extPanel.IsVisible = true;
 
         if (headingPanel != null) headingPanel.IsVisible = true;
         if (headingInput != null)
@@ -387,15 +385,73 @@ public partial class FieldBuilderDialogPanel : UserControl
         _session.BoundaryPoly = vm.CurrentBoundary?.OuterBoundary;
         _session.Points.AddRange(track.Points);
 
-        if (track.Points.Count == 2)
+        bool isAPlus = track.Name?.StartsWith("A+") == true;
+
+        if (isAPlus && track.Points.Count == 2)
         {
-            _session.Target = DrawTarget.TrackABLine;
+            _session.Target = DrawTarget.TrackAPlus;
             _session.Phase = DrawPhase.Preview;
+            // Compute heading from the two track points
+            double headingRad = Math.Atan2(
+                track.Points[1].Easting - track.Points[0].Easting,
+                track.Points[1].Northing - track.Points[0].Northing);
+            _session.Heading = headingRad * 180.0 / Math.PI;
+            if (_session.Heading < 0) _session.Heading += 360;
+            // Set origin at midpoint
+            var mid = new Vec3(
+                (track.Points[0].Easting + track.Points[1].Easting) / 2,
+                (track.Points[0].Northing + track.Points[1].Northing) / 2,
+                headingRad);
+            _session.Points.Clear();
+            _session.Points.Add(mid);
+        }
+        else if (track.Points.Count == 2)
+        {
+            // Check if both points are on the boundary (boundary-derived track)
+            bool isBoundaryLine = false;
+            var bndPoly = vm.CurrentBoundary?.OuterBoundary;
+            if (bndPoly?.Points != null)
+            {
+                bool aOnBnd = false, bOnBnd = false;
+                foreach (var bp in bndPoly.Points)
+                {
+                    double dA = Math.Pow(bp.Easting - track.Points[0].Easting, 2) + Math.Pow(bp.Northing - track.Points[0].Northing, 2);
+                    double dB = Math.Pow(bp.Easting - track.Points[1].Easting, 2) + Math.Pow(bp.Northing - track.Points[1].Northing, 2);
+                    if (dA < 1.0) aOnBnd = true;
+                    if (dB < 1.0) bOnBnd = true;
+                    if (aOnBnd && bOnBnd) break;
+                }
+                isBoundaryLine = aOnBnd && bOnBnd;
+            }
+
+            _session.Target = isBoundaryLine ? DrawTarget.TrackBoundaryLine : DrawTarget.TrackABLine;
+            _session.Phase = DrawPhase.Preview;
+
+            if (isBoundaryLine && bndPoly != null)
+            {
+                _session.BoundaryPoly = bndPoly;
+                // Find boundary indices for the two points
+                _session.BoundaryStartIndex = _session.FindNearestBoundaryPoint(track.Points[0].Easting, track.Points[0].Northing);
+                _session.BoundaryEndIndex = _session.FindNearestBoundaryPoint(track.Points[1].Easting, track.Points[1].Northing);
+            }
         }
         else
         {
-            _session.Target = DrawTarget.TrackCurve;
-            _session.Phase = DrawPhase.PickingMore;
+            // Curves with many points are likely boundary-derived, use boundary curve mode
+            // for proper snapping and endpoint-only display
+            _session.Target = DrawTarget.TrackBoundaryCurve;
+            _session.Phase = DrawPhase.Preview;
+
+            // Set up boundary info for drag snapping and re-extraction
+            var bndPoly2 = vm.CurrentBoundary?.OuterBoundary;
+            if (bndPoly2?.Points != null)
+            {
+                _session.BoundaryPoly = bndPoly2;
+                _session.BoundaryStartIndex = _session.FindNearestBoundaryPoint(
+                    track.Points[0].Easting, track.Points[0].Northing);
+                _session.BoundaryEndIndex = _session.FindNearestBoundaryPoint(
+                    track.Points[^1].Easting, track.Points[^1].Northing);
+            }
         }
 
         // Remove the track (will be re-added when Create is clicked)
@@ -416,7 +472,22 @@ public partial class FieldBuilderDialogPanel : UserControl
         var tabs = this.FindControl<TabControl>("MainTabs");
         if (tabs != null) tabs.IsVisible = false;
 
-        if (track.Points.Count == 2)
+        if (isAPlus)
+        {
+            if (instrText != null) instrText.Text = "Edit A+ line - adjust heading";
+            if (pointCountText != null) pointCountText.Text = "Point set";
+            var headingPanel = this.FindControl<StackPanel>("HeadingInputPanel");
+            var headingInput = this.FindControl<TextBox>("HeadingInput");
+            if (headingPanel != null) headingPanel.IsVisible = true;
+            if (headingInput != null)
+            {
+                headingInput.Text = _session.Heading.ToString("F1");
+                headingInput.Focus();
+                headingInput.SelectAll();
+            }
+            UpdateAPlusPreview();
+        }
+        else if (track.Points.Count == 2)
         {
             if (instrText != null) instrText.Text = "Edit AB line - drag points or Create";
             if (pointCountText != null) pointCountText.Text = "A and B set";
@@ -438,60 +509,6 @@ public partial class FieldBuilderDialogPanel : UserControl
         vm.HeadlandSegments.Remove(vm.SelectedHeadlandSegment);
         vm.SelectedHeadlandSegment = null;
         vm.BuildHeadlandFromSegments();
-        UpdatePreview();
-    }
-
-    private void ExtendStart_Click(object? sender, RoutedEventArgs e)
-    {
-        if (!_session.IsHeadland || !_session.IsPreview || _session.BoundaryPoly == null) return;
-        if (_session.BoundaryStartIndex < 0) return;
-
-        var pts = _session.BoundaryPoly.Points;
-        int count = pts.Count;
-        // Move start index one step backward along boundary
-        _session.BoundaryStartIndex = (_session.BoundaryStartIndex - 1 + count) % count;
-
-        var newPt = pts[_session.BoundaryStartIndex];
-        _session.Points.Insert(0, new Vec3(newPt.Easting, newPt.Northing, newPt.Heading));
-        UpdatePreview();
-    }
-
-    private void ShrinkStart_Click(object? sender, RoutedEventArgs e)
-    {
-        if (!_session.IsHeadland || !_session.IsPreview || _session.Points.Count <= 2) return;
-        _session.Points.RemoveAt(0);
-        if (_session.BoundaryPoly != null)
-        {
-            int count = _session.BoundaryPoly.Points.Count;
-            _session.BoundaryStartIndex = (_session.BoundaryStartIndex + 1) % count;
-        }
-        UpdatePreview();
-    }
-
-    private void ExtendEnd_Click(object? sender, RoutedEventArgs e)
-    {
-        if (!_session.IsHeadland || !_session.IsPreview || _session.BoundaryPoly == null) return;
-        if (_session.BoundaryEndIndex < 0) return;
-
-        var pts = _session.BoundaryPoly.Points;
-        int count = pts.Count;
-        // Move end index one step forward along boundary
-        _session.BoundaryEndIndex = (_session.BoundaryEndIndex + 1) % count;
-
-        var newPt = pts[_session.BoundaryEndIndex];
-        _session.Points.Add(new Vec3(newPt.Easting, newPt.Northing, newPt.Heading));
-        UpdatePreview();
-    }
-
-    private void ShrinkEnd_Click(object? sender, RoutedEventArgs e)
-    {
-        if (!_session.IsHeadland || !_session.IsPreview || _session.Points.Count <= 2) return;
-        _session.Points.RemoveAt(_session.Points.Count - 1);
-        if (_session.BoundaryPoly != null)
-        {
-            int count = _session.BoundaryPoly.Points.Count;
-            _session.BoundaryEndIndex = (_session.BoundaryEndIndex - 1 + count) % count;
-        }
         UpdatePreview();
     }
 
@@ -636,8 +653,10 @@ public partial class FieldBuilderDialogPanel : UserControl
 
                 var createPanel = this.FindControl<StackPanel>("CreateABBtnPanel");
                 var finishPanel = this.FindControl<StackPanel>("FinishDrawBtnPanel");
+                var headingPanel = this.FindControl<StackPanel>("HeadingInputPanel");
                 if (createPanel != null) createPanel.IsVisible = true;
                 if (finishPanel != null) finishPanel.IsVisible = false;
+                if (headingPanel != null) headingPanel.IsVisible = false;
             }
         }
         else if (_session.Target == DrawTarget.TrackCurve)
@@ -712,8 +731,13 @@ public partial class FieldBuilderDialogPanel : UserControl
                 }
 
                 // Show extend/shrink for headland preview
-                var extPanel = this.FindControl<StackPanel>("ExtendShrinkPanel");
-                if (extPanel != null) extPanel.IsVisible = _session.IsHeadland && _session.IsPreview;
+
+                // Hide heading/offset input for non-headland, non-APlus modes
+                if (!_session.IsHeadland && _session.Target != DrawTarget.TrackAPlus)
+                {
+                    var hp = this.FindControl<StackPanel>("HeadingInputPanel");
+                    if (hp != null) hp.IsVisible = false;
+                }
 
                 UpdateDrawModeInfo();
                 var createPanel2 = this.FindControl<StackPanel>("CreateABBtnPanel");
@@ -805,7 +829,7 @@ public partial class FieldBuilderDialogPanel : UserControl
             var posB = _session.Points[^1];
             var track = new Models.Track.Track
             {
-                Name = $"A+ {headingDeg:F1}",
+                Name = _session.BackupTrack?.Name ?? $"A+ {headingDeg:F1}",
                 Points = new List<Vec3> { posA, posB },
                 Type = TrackType.ABLine,
                 IsVisible = true
@@ -828,9 +852,11 @@ public partial class FieldBuilderDialogPanel : UserControl
             if (headingInput != null) double.TryParse(headingInput.Text, out offset);
 
             bool isCurve = _session.Points.Count > 2;
+            string segName = _session.BackupSegment?.Name
+                ?? $"{(isCurve ? "Curve" : "Line")} {vm.HeadlandSegments.Count + 1}";
             var segment = new Models.Headland.HeadlandSegment
             {
-                Name = $"{(isCurve ? "Curve" : "Line")} {vm.HeadlandSegments.Count + 1}",
+                Name = segName,
                 Type = isCurve ? Models.Headland.HeadlandSegmentType.Curve : Models.Headland.HeadlandSegmentType.Line,
                 Offset = offset,
                 BoundaryStartIndex = _session.BoundaryStartIndex,
@@ -857,32 +883,12 @@ public partial class FieldBuilderDialogPanel : UserControl
 
         if (_session.Target == DrawTarget.TrackBoundaryCurve && _session.IsPreview)
         {
-            // Extend curve straight past endpoints
+            // Store the actual boundary segment points (A/B at selected positions)
             var points = new List<Vec3>(_session.Points);
-            double ext = 200; // 200m extension
-
-            if (points.Count >= 2)
-            {
-                var s0 = points[0];
-                var s1 = points[1];
-                double sdx = s0.Easting - s1.Easting;
-                double sdy = s0.Northing - s1.Northing;
-                double slen = Math.Sqrt(sdx * sdx + sdy * sdy);
-                if (slen > 0.01)
-                    points.Insert(0, new Vec3(s0.Easting + sdx / slen * ext, s0.Northing + sdy / slen * ext, s0.Heading));
-
-                var e0 = points[^2];
-                var e1 = points[^1];
-                double edx = e1.Easting - e0.Easting;
-                double edy = e1.Northing - e0.Northing;
-                double elen = Math.Sqrt(edx * edx + edy * edy);
-                if (elen > 0.01)
-                    points.Add(new Vec3(e1.Easting + edx / elen * ext, e1.Northing + edy / elen * ext, e1.Heading));
-            }
 
             var track = new Models.Track.Track
             {
-                Name = $"BndCurve {DateTime.Now:HH:mm:ss}",
+                Name = _session.BackupTrack?.Name ?? $"BndCurve {DateTime.Now:HH:mm:ss}",
                 Points = points,
                 Type = TrackType.Curve,
                 IsVisible = true
@@ -910,13 +916,24 @@ public partial class FieldBuilderDialogPanel : UserControl
         var a = _session.Points[0];
         var b = _session.Points[1];
 
-        var posA = new Position { Easting = a.Easting, Northing = a.Northing };
-        var posB = new Position { Easting = b.Easting, Northing = b.Northing };
+        double heading = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing);
+        double headingDeg = heading * 180.0 / Math.PI;
+        if (headingDeg < 0) headingDeg += 360;
 
-        vm.CurrentABCreationMode = ABCreationMode.DrawAB;
-        vm.CurrentABPointStep = ABPointStep.SettingPointA;
-        vm.SetABPointCommand?.Execute(posA);
-        vm.SetABPointCommand?.Execute(posB);
+        // Store the actual clicked A/B points (not extended past boundary)
+        var track = new Models.Track.Track
+        {
+            Name = _session.BackupTrack?.Name ?? $"AB_{headingDeg:F1} {DateTime.Now:HH:mm:ss}",
+            Points = new List<Vec3> { new Vec3(a.Easting, a.Northing, heading), new Vec3(b.Easting, b.Northing, heading) },
+            Type = Models.Track.TrackType.ABLine,
+            IsVisible = true
+        };
+
+        foreach (var existing in vm.SavedTracks)
+            existing.IsActive = false;
+
+        vm.SavedTracks.Add(track);
+        vm.SelectedTrack = track;
 
         ExitDrawMode();
         ShowMainTabs();
@@ -964,8 +981,6 @@ public partial class FieldBuilderDialogPanel : UserControl
                 // Reset back to picking mode
                 _session.Phase = DrawPhase.PickingA;
                 if (createPanel != null) createPanel.IsVisible = false;
-                var extPanel = this.FindControl<StackPanel>("ExtendShrinkPanel");
-                if (extPanel != null) extPanel.IsVisible = false;
                 var headingPanel = this.FindControl<StackPanel>("HeadingInputPanel");
                 if (headingPanel != null) headingPanel.IsVisible = false;
                 SetCanvasStatus("Click point on boundary");
@@ -1226,8 +1241,6 @@ public partial class FieldBuilderDialogPanel : UserControl
         _session.Reset();
         var drawPanel = this.FindControl<Border>("DrawModePanel");
         if (drawPanel != null) drawPanel.IsVisible = false;
-        var extPanel = this.FindControl<StackPanel>("ExtendShrinkPanel");
-        if (extPanel != null) extPanel.IsVisible = false;
         SetCanvasStatus(null);
     }
 
@@ -1403,31 +1416,38 @@ public partial class FieldBuilderDialogPanel : UserControl
         bool onHeadlandTab = mainTabs is { IsVisible: true, SelectedIndex: 1 };
         bool isDrawing = _session.IsActive || onHeadlandTab;
 
-        // Draw output headland path (yellow dashed, distinct from boundary)
+        // Draw output headland path (reduced on non-headland tabs)
         if (vm.HasHeadland && vm.CurrentHeadlandLineForPreview != null)
         {
             var headPts = vm.CurrentHeadlandLineForPreview;
             if (headPts.Count >= 3)
             {
-                var headlandColor = light ? Color.FromRgb(200, 180, 0) : Color.FromRgb(255, 230, 50);
+                var headlandColor = onHeadlandTab
+                    ? (light ? Color.FromRgb(200, 180, 0) : Color.FromRgb(255, 230, 50))
+                    : (light ? Color.FromArgb(120, 180, 160, 0) : Color.FromArgb(120, 200, 180, 40));
                 var headlandPoly = new Polygon
                 {
                     Stroke = new SolidColorBrush(headlandColor),
-                    StrokeThickness = 4,
+                    StrokeThickness = onHeadlandTab ? 4 : 2,
                     Points = headPts.Select(p => ToCanvas(p.Easting, p.Northing)).ToList()
                 };
                 canvas.Children.Add(headlandPoly);
             }
         }
 
-        // Draw headland segments (offset lines with extensions, ON TOP of headland path)
+        // Draw headland segments (only on headland tab)
+        if (!onHeadlandTab) goto SkipSegments;
         foreach (var seg in vm.HeadlandSegments)
         {
             if (seg.OffsetPoints.Count < 2) continue;
             bool segSelected = seg == vm.SelectedHeadlandSegment && !_session.IsActive;
-            var segColor = new SolidColorBrush(segSelected
-                ? (light ? Color.FromRgb(0, 140, 0) : Color.FromRgb(80, 255, 80))
-                : (light ? Color.FromRgb(30, 160, 30) : Color.FromRgb(50, 200, 50)));
+            IBrush segColor;
+            if (!seg.IsEffective)
+                segColor = new SolidColorBrush(light ? Color.FromRgb(200, 60, 60) : Color.FromRgb(255, 80, 80)); // Red = doesn't form loop
+            else if (segSelected)
+                segColor = new SolidColorBrush(light ? Color.FromRgb(0, 140, 0) : Color.FromRgb(80, 255, 80));
+            else
+                segColor = new SolidColorBrush(light ? Color.FromRgb(30, 160, 30) : Color.FromRgb(50, 200, 50));
 
             // Build full line with extensions
             var segPts = new List<Point>();
@@ -1466,6 +1486,7 @@ public partial class FieldBuilderDialogPanel : UserControl
             }
         }
 
+        SkipSegments:
         // Draw tracks
         foreach (var track in vm.SavedTracks)
         {
@@ -1597,6 +1618,15 @@ public partial class FieldBuilderDialogPanel : UserControl
             {
                 // For curve previews, only show first and last markers
                 if (isCurvePreview && i > 0 && i < _session.Points.Count - 1) continue;
+
+                // For A+ preview (3 points: A_ext, origin, B_ext), only show origin marker
+                if (_session.Target == DrawTarget.TrackAPlus && _session.IsPreview && _session.Points.Count == 3)
+                {
+                    if (i != 1) continue; // Only show origin (middle point)
+                    var aPt = ToCanvas(_session.Points[1].Easting, _session.Points[1].Northing);
+                    AddMarker(canvas, aPt, new SolidColorBrush(Color.FromRgb(218, 165, 32)), "A+", light);
+                    continue;
+                }
 
                 var pt = ToCanvas(_session.Points[i].Easting, _session.Points[i].Northing);
                 string? label = null;
