@@ -70,7 +70,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
-    private Models.Track.TrackGuidanceState? _routeTrackGuidanceState; // Separate state for route following
     private double _simulatorSteerAngle;
 
     // ── Headland proximity ──────────────────────────────────────────────
@@ -744,7 +743,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Route following guidance (Phase 3)
     // ══════════════════════════════════════════════════════════════════════
 
-    private int _lastRouteSegmentIndex = -1;
+    private List<Vec3>? _routeWaypoints; // All segments stitched into one waypoint list
+    private Models.RoutePlanning.RoutePlan? _routeWaypointsPlan; // Which plan we built from
+    private int _routeWaypointIndex; // Current position — only advances forward
+    private bool _routeAcquired; // True once vehicle has reached the route start
 
     private (double steerAngle, double xte, double goalE, double goalN)?
         CalculateRouteGuidance(Position currentPosition, double driftedEasting, double driftedNorthing, double headingRad)
@@ -753,54 +755,27 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var plan = routePlanState.ActivePlan;
         if (plan == null) return null;
 
-        int segIdx = routePlanState.CurrentSegmentIndex;
-        if (segIdx >= plan.Segments.Count)
+        if (routePlanState.IsRouteComplete)
         {
-            routePlanState.IsRouteComplete = true;
             routePlanState.Mode = Models.RoutePlanning.GuidanceMode.WhiteCane;
             return null;
         }
 
-        var segment = plan.Segments[segIdx];
-
-        // Reset guidance state on segment transition
-        if (segIdx != _lastRouteSegmentIndex)
+        // Build stitched waypoint list once (or rebuild if plan changed)
+        if (_routeWaypoints == null || _routeWaypointsPlan != plan)
         {
-            _routeTrackGuidanceState = null;
-            _lastRouteSegmentIndex = segIdx;
+            _routeWaypoints = BuildStitchedWaypoints(plan);
+            _routeWaypointsPlan = plan;
+            _routeWaypointIndex = 0;
+            _routeAcquired = false;
         }
 
-        if (segment.Type == Models.RoutePlanning.RouteSegmentType.Swath)
-        {
-            return CalculateRouteSwathGuidance(currentPosition, segment, plan,
-                driftedEasting, driftedNorthing, headingRad);
-        }
-        else
-        {
-            return CalculateRouteTurnGuidance(currentPosition, segment, plan,
-                driftedEasting, driftedNorthing, headingRad);
-        }
-    }
+        if (_routeWaypoints.Count < 2) return null;
 
-    private (double steerAngle, double xte, double goalE, double goalN)?
-        CalculateRouteSwathGuidance(Position pos, Models.RoutePlanning.RouteSegment segment,
-            Models.RoutePlanning.RoutePlan plan,
-            double driftedEasting, double driftedNorthing, double headingRad)
-    {
         var config = ConfigurationStore.Instance;
+        double speedKmh = currentPosition.Speed * 3.6;
 
-        // Build a Track from the segment waypoints
-        var swathTrack = new Models.Track.Track
-        {
-            Name = $"Route Swath {segment.SwathIndex + 1}",
-            Points = segment.Waypoints,
-            Type = Models.Track.TrackType.Curve,
-            IsVisible = true,
-            IsActive = true
-        };
-
-        // Dynamic look-ahead
-        double speedKmh = pos.Speed * 3.6;
+        // Dynamic look-ahead distance
         double lookAhead = config.Guidance.GoalPointLookAheadHold;
         if (speedKmh > 1)
         {
@@ -809,114 +784,250 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
         }
 
-        // Steer axle position
-        double steerE = driftedEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase;
-        double steerN = driftedNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase;
-
-        // Heading alignment
-        double trackHeading = FindNearestSegmentHeading(swathTrack.Points, driftedEasting, driftedNorthing);
-        double headingDiff = headingRad - trackHeading;
-        while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
-        while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
-        bool isHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
-
-        var input = new Models.Track.TrackGuidanceInput
+        // Phase 1: Navigate to the route start (green dot).
+        // Steer toward waypoint 0 until we're close enough to begin.
+        if (!_routeAcquired)
         {
-            Track = swathTrack,
-            PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
-            SteerPosition = new Vec3(steerE, steerN, headingRad),
-            UseStanley = false,
-            IsHeadingSameWay = isHeadingSameWay,
-            Wheelbase = config.Vehicle.Wheelbase,
-            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            GoalPointDistance = lookAhead,
-            SideHillCompFactor = 0,
-            PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
-            FixHeading = headingRad,
-            AvgSpeed = speedKmh,
-            IsReverse = segment.IsReverse,
-            IsAutoSteerOn = true,
-            IsYouTurnTriggered = false,
-            ImuRoll = 88888,
-            PreviousState = _routeTrackGuidanceState,
-            FindGlobalNearest = _routeTrackGuidanceState == null,
-            CurrentLocationIndex = _routeTrackGuidanceState?.CurrentLocationIndex ?? 0
-        };
+            var startPt = _routeWaypoints[0];
+            double distToStart = Math.Sqrt(
+                (driftedEasting - startPt.Easting) * (driftedEasting - startPt.Easting) +
+                (driftedNorthing - startPt.Northing) * (driftedNorthing - startPt.Northing));
 
-        var output = _trackGuidanceService.CalculateGuidance(input);
-        _routeTrackGuidanceState = output.State;
-        if (_routeTrackGuidanceState != null)
-            _routeTrackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
-
-        // Check for segment transition: distance to endpoint
-        var endpoint = segment.IsReverse ? segment.Waypoints[0] : segment.Waypoints[^1];
-        double distToEnd = Math.Sqrt(
-            (driftedEasting - endpoint.Easting) * (driftedEasting - endpoint.Easting) +
-            (driftedNorthing - endpoint.Northing) * (driftedNorthing - endpoint.Northing));
-
-        if (distToEnd < 3.0 || output.IsAtEndOfTrack)
-        {
-            AdvanceRouteSegment();
+            if (distToStart < 3.0)
+            {
+                _routeAcquired = true;
+                // Fall through to Phase 2
+            }
+            else
+            {
+                // Pure Pursuit to the start point
+                return PurePursuitToPoint(startPt, driftedEasting, driftedNorthing, headingRad, config);
+            }
         }
 
-        return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing);
+        // Phase 2: Pac-Man — advance forward only, consuming waypoints we've passed.
+        while (_routeWaypointIndex < _routeWaypoints.Count - 2)
+        {
+            var curr = _routeWaypoints[_routeWaypointIndex];
+            var next = _routeWaypoints[_routeWaypointIndex + 1];
+            double segDx = next.Easting - curr.Easting;
+            double segDy = next.Northing - curr.Northing;
+
+            // Dot product of (vehicle - next) with segment direction.
+            // Positive means vehicle has passed beyond the next waypoint.
+            double dot = (driftedEasting - next.Easting) * segDx +
+                        (driftedNorthing - next.Northing) * segDy;
+
+            if (dot > 0)
+                _routeWaypointIndex++;
+            else
+                break;
+        }
+
+        // Find the goal point by walking forward from current position by lookAhead distance
+        double accumulated = 0;
+        int goalIdx = _routeWaypointIndex;
+        for (int i = _routeWaypointIndex; i < _routeWaypoints.Count - 1; i++)
+        {
+            double dx = _routeWaypoints[i + 1].Easting - _routeWaypoints[i].Easting;
+            double dy = _routeWaypoints[i + 1].Northing - _routeWaypoints[i].Northing;
+            accumulated += Math.Sqrt(dx * dx + dy * dy);
+            goalIdx = i + 1;
+            if (accumulated >= lookAhead) break;
+        }
+
+        var goalPt = _routeWaypoints[goalIdx];
+
+        // Pure Pursuit: compute steering angle from pivot to goal point
+        double goalDx = goalPt.Easting - driftedEasting;
+        double goalDy = goalPt.Northing - driftedNorthing;
+
+        // Transform goal into vehicle-local coordinates
+        double sinH = Math.Sin(headingRad);
+        double cosH = Math.Cos(headingRad);
+        // Local X = lateral (positive right), Local Y = forward
+        double localX = goalDx * cosH - goalDy * sinH;
+        double localY = goalDx * sinH + goalDy * cosH;
+
+        double L2 = localX * localX + localY * localY;
+        double steerAngle = 0;
+        if (L2 > 0.01)
+        {
+            // Pure Pursuit: radius = L² / (2 * localX), steerAngle = atan(wheelbase / radius)
+            double radius = L2 / (2.0 * localX);
+            steerAngle = Math.Atan(config.Vehicle.Wheelbase / radius) * (180.0 / Math.PI);
+            steerAngle = Math.Clamp(steerAngle, -config.Vehicle.MaxSteerAngle, config.Vehicle.MaxSteerAngle);
+        }
+
+        // Cross-track error: distance from vehicle to the line between current and next waypoint
+        double xte = 0;
+        if (_routeWaypointIndex < _routeWaypoints.Count - 1)
+        {
+            var pA = _routeWaypoints[_routeWaypointIndex];
+            var pB = _routeWaypoints[Math.Min(_routeWaypointIndex + 1, _routeWaypoints.Count - 1)];
+            double segDx = pB.Easting - pA.Easting;
+            double segDy = pB.Northing - pA.Northing;
+            double segLen = Math.Sqrt(segDx * segDx + segDy * segDy);
+            if (segLen > 0.01)
+            {
+                // Signed distance: positive = right of line
+                xte = ((driftedEasting - pA.Easting) * segDy - (driftedNorthing - pA.Northing) * segDx) / segLen;
+            }
+        }
+
+        // Check route completion
+        if (_routeWaypointIndex >= _routeWaypoints.Count - 2)
+        {
+            var lastPt = _routeWaypoints[^1];
+            double distToEnd = Math.Sqrt(
+                (driftedEasting - lastPt.Easting) * (driftedEasting - lastPt.Easting) +
+                (driftedNorthing - lastPt.Northing) * (driftedNorthing - lastPt.Northing));
+            if (distToEnd < 3.0)
+            {
+                routePlanState.IsRouteComplete = true;
+                routePlanState.Mode = Models.RoutePlanning.GuidanceMode.WhiteCane;
+                _routeWaypoints = null;
+            }
+        }
+
+        // Update progress tracking
+        UpdateRouteProgress(plan, _routeWaypointIndex);
+
+        return (steerAngle, xte, goalPt.Easting, goalPt.Northing);
     }
 
-    private (double steerAngle, double xte, double goalE, double goalN)?
-        CalculateRouteTurnGuidance(Position pos, Models.RoutePlanning.RouteSegment segment,
-            Models.RoutePlanning.RoutePlan plan,
-            double driftedEasting, double driftedNorthing, double headingRad)
+    /// <summary>
+    /// Concatenate all route segments into one waypoint list in travel order.
+    /// Reverse swaths get their waypoints flipped. Duplicate junction points removed.
+    /// </summary>
+    private const double WAYPOINT_SPACING = 1.0; // meters between densified waypoints
+
+    private static List<Vec3> BuildStitchedWaypoints(Models.RoutePlanning.RoutePlan plan)
     {
-        if (segment.Waypoints.Count == 0) { AdvanceRouteSegment(); return null; }
+        var allPoints = new List<Vec3>();
 
-        var config = ConfigurationStore.Instance;
-        double speedKmh = pos.Speed * 3.6;
-
-        var input = new YouTurnGuidanceInput
+        foreach (var segment in plan.Segments)
         {
-            TurnPath = segment.Waypoints,
-            PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
-            SteerPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
-            Wheelbase = config.Vehicle.Wheelbase,
-            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            UseStanley = false,
-            GoalPointDistance = config.Guidance.GoalPointLookAheadHold,
-            UTurnCompensation = config.Guidance.UTurnCompensation,
-            FixHeading = headingRad,
-            AvgSpeed = speedKmh,
-            IsReverse = false,
-            UTurnStyle = 0
-        };
+            var waypoints = segment.Waypoints;
+            if (waypoints.Count == 0) continue;
 
-        var output = _youTurnGuidanceService.CalculateGuidance(input);
+            // Build segment waypoints in travel order
+            List<Vec3> ordered;
+            if (segment.IsReverse)
+            {
+                ordered = new List<Vec3>(waypoints.Count);
+                for (int i = waypoints.Count - 1; i >= 0; i--)
+                {
+                    var wp = waypoints[i];
+                    ordered.Add(new Vec3(wp.Easting, wp.Northing, wp.Heading + Math.PI));
+                }
+            }
+            else
+            {
+                ordered = waypoints;
+            }
 
-        if (output.IsTurnComplete)
-        {
-            AdvanceRouteSegment();
+            // Densify: add intermediate points so no gap exceeds WAYPOINT_SPACING
+            for (int i = 0; i < ordered.Count - 1; i++)
+            {
+                var pA = ordered[i];
+                var pB = ordered[i + 1];
+
+                // Skip if duplicate of last added
+                if (allPoints.Count > 0)
+                {
+                    var last = allPoints[^1];
+                    double d2 = (last.Easting - pA.Easting) * (last.Easting - pA.Easting) +
+                               (last.Northing - pA.Northing) * (last.Northing - pA.Northing);
+                    if (d2 < 0.25) goto skipA;
+                }
+                allPoints.Add(pA);
+                skipA:
+
+                // Interpolate between pA and pB if they're far apart
+                double dx = pB.Easting - pA.Easting;
+                double dy = pB.Northing - pA.Northing;
+                double segLen = Math.Sqrt(dx * dx + dy * dy);
+                if (segLen > WAYPOINT_SPACING * 1.5)
+                {
+                    int numInterp = (int)(segLen / WAYPOINT_SPACING);
+                    double heading = Math.Atan2(dx, dy);
+                    for (int j = 1; j < numInterp; j++)
+                    {
+                        double t = (double)j / numInterp;
+                        allPoints.Add(new Vec3(
+                            pA.Easting + dx * t,
+                            pA.Northing + dy * t,
+                            heading));
+                    }
+                }
+            }
+
+            // Add last point of segment
+            var lastPt = ordered[^1];
+            if (allPoints.Count > 0)
+            {
+                var prev = allPoints[^1];
+                double d2 = (prev.Easting - lastPt.Easting) * (prev.Easting - lastPt.Easting) +
+                           (prev.Northing - lastPt.Northing) * (prev.Northing - lastPt.Northing);
+                if (d2 >= 0.25)
+                    allPoints.Add(lastPt);
+            }
+            else
+            {
+                allPoints.Add(lastPt);
+            }
         }
 
-        // Use the turn endpoint as the goal point for visualization
-        var lastPt = segment.Waypoints[^1];
-        return (output.SteerAngle, output.DistanceFromCurrentLine, lastPt.Easting, lastPt.Northing);
+        return allPoints;
     }
 
-    private void AdvanceRouteSegment()
+    /// <summary>
+    /// Update which segment we're on based on the waypoint index.
+    /// </summary>
+    private void UpdateRouteProgress(Models.RoutePlanning.RoutePlan plan, int waypointIndex)
     {
-        var routePlanState = _appState.RoutePlan;
-        var plan = routePlanState.ActivePlan;
-        if (plan == null) return;
+        int cumulative = 0;
+        for (int i = 0; i < plan.Segments.Count; i++)
+        {
+            cumulative += plan.Segments[i].Waypoints.Count;
+            if (waypointIndex < cumulative)
+            {
+                _appState.RoutePlan.CurrentSegmentIndex = i;
+                return;
+            }
+        }
+        _appState.RoutePlan.CurrentSegmentIndex = plan.Segments.Count - 1;
+    }
 
-        int nextIndex = routePlanState.CurrentSegmentIndex + 1;
-        if (nextIndex >= plan.Segments.Count)
+
+    /// <summary>
+    /// Pure Pursuit steering toward a single target point.
+    /// Used to navigate to the route start before following begins.
+    /// </summary>
+    private static (double steerAngle, double xte, double goalE, double goalN)?
+        PurePursuitToPoint(Vec3 target, double easting, double northing, double headingRad,
+            ConfigurationStore config)
+    {
+        double goalDx = target.Easting - easting;
+        double goalDy = target.Northing - northing;
+
+        double sinH = Math.Sin(headingRad);
+        double cosH = Math.Cos(headingRad);
+        double localX = goalDx * cosH - goalDy * sinH;
+        double localY = goalDx * sinH + goalDy * cosH;
+
+        double L2 = localX * localX + localY * localY;
+        double steerAngle = 0;
+        if (L2 > 0.01)
         {
-            routePlanState.IsRouteComplete = true;
-            routePlanState.Mode = Models.RoutePlanning.GuidanceMode.WhiteCane;
+            double radius = L2 / (2.0 * localX);
+            steerAngle = Math.Atan(config.Vehicle.Wheelbase / radius) * (180.0 / Math.PI);
+            steerAngle = Math.Clamp(steerAngle, -config.Vehicle.MaxSteerAngle, config.Vehicle.MaxSteerAngle);
         }
-        else
-        {
-            routePlanState.CurrentSegmentIndex = nextIndex;
-            _routeTrackGuidanceState = null; // Reset for new segment
-        }
+
+        double dist = Math.Sqrt(goalDx * goalDx + goalDy * goalDy);
+        return (steerAngle, dist, target.Easting, target.Northing);
     }
 
     // ══════════════════════════════════════════════════════════════════════
