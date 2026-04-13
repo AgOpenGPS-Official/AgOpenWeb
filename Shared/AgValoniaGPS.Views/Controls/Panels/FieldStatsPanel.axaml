@@ -49,6 +49,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <TextBlock Text="Rate:" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="13"/>
             <TextBlock Text="{Binding WorkRateDisplay}" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontSize="13" FontWeight="Bold"/>
         </StackPanel>
+        <!-- Route progress (only visible when following a pre-computed route) -->
+        <Rectangle Width="1" Height="16" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                   IsVisible="{Binding IsRouteActive}"/>
+        <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsRouteActive}">
+            <TextBlock Text="Route:" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="13"/>
+            <TextBlock Text="{Binding RouteProgressText}" Foreground="#00E676" FontSize="13" FontWeight="Bold"/>
+        </StackPanel>
     </StackPanel>
 
 </UserControl>

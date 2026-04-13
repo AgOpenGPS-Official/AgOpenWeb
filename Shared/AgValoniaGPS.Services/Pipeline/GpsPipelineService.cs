@@ -744,6 +744,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
 
     private List<Vec3>? _routeWaypoints; // All segments stitched into one waypoint list
+    private List<int>? _routeSegmentBoundaries; // Waypoint index where each segment starts
     private Models.RoutePlanning.RoutePlan? _routeWaypointsPlan; // Which plan we built from
     private int _routeWaypointIndex; // Current position — only advances forward
     private bool _routeAcquired; // True once vehicle has reached the route start
@@ -764,7 +765,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Build stitched waypoint list once (or rebuild if plan changed)
         if (_routeWaypoints == null || _routeWaypointsPlan != plan)
         {
-            _routeWaypoints = BuildStitchedWaypoints(plan);
+            _routeSegmentBoundaries = new List<int>();
+            _routeWaypoints = BuildStitchedWaypoints(plan, _routeSegmentBoundaries);
             _routeWaypointsPlan = plan;
             _routeWaypointIndex = 0;
             _routeAcquired = false;
@@ -784,59 +786,67 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
         }
 
-        // Phase 1: Navigate to the route start (green dot).
-        // Steer toward waypoint 0 until we're close enough to begin.
+        // Phase 1: Wait for vehicle to be near the route start and heading the right way.
+        // The driver manually positions near the green dot. Auto-approach is Phase 4.
         if (!_routeAcquired)
         {
-            var startPt = _routeWaypoints[0];
-            double distToStart = Math.Sqrt(
-                (driftedEasting - startPt.Easting) * (driftedEasting - startPt.Easting) +
-                (driftedNorthing - startPt.Northing) * (driftedNorthing - startPt.Northing));
+            var wp0 = _routeWaypoints[0];
+            var wp5 = _routeWaypoints[Math.Min(5, _routeWaypoints.Count - 1)];
 
-            if (distToStart < 3.0)
+            double distToStart = Math.Sqrt(
+                (driftedEasting - wp0.Easting) * (driftedEasting - wp0.Easting) +
+                (driftedNorthing - wp0.Northing) * (driftedNorthing - wp0.Northing));
+
+            // Check heading alignment with first segment direction
+            double trackDx = wp5.Easting - wp0.Easting;
+            double trackDy = wp5.Northing - wp0.Northing;
+            double trackLen = Math.Sqrt(trackDx * trackDx + trackDy * trackDy);
+            bool headingOk = true;
+            if (trackLen > 0.1)
+            {
+                double dotHeading = Math.Sin(headingRad) * (trackDx / trackLen) +
+                                   Math.Cos(headingRad) * (trackDy / trackLen);
+                headingOk = dotHeading > 0.5; // Within ~60°
+            }
+
+            if (distToStart < 5.0 && headingOk)
             {
                 _routeAcquired = true;
                 // Fall through to Phase 2
             }
             else
             {
-                // Pure Pursuit to the start point
-                return PurePursuitToPoint(startPt, driftedEasting, driftedNorthing, headingRad, config);
+                // Not ready — return zero steer, let driver position manually
+                return (0, distToStart, wp0.Easting, wp0.Northing);
             }
         }
 
-        // Handle skip segment request — jump waypoint index to next segment boundary
-        if (routePlanState.SkipSegmentRequested)
+        // Handle skip segment request — jump waypoint index to next swath segment boundary
+        if (routePlanState.SkipSegmentRequested && _routeSegmentBoundaries != null)
         {
             routePlanState.SkipSegmentRequested = false;
             int currentSeg = routePlanState.CurrentSegmentIndex;
-            // Find waypoint index at the start of the next swath segment
-            int cumulative = 0;
-            for (int s = 0; s < plan.Segments.Count; s++)
+            for (int s = currentSeg + 1; s < plan.Segments.Count; s++)
             {
-                if (s > currentSeg && plan.Segments[s].Type == Models.RoutePlanning.RouteSegmentType.Swath)
+                if (plan.Segments[s].Type == Models.RoutePlanning.RouteSegmentType.Swath
+                    && s < _routeSegmentBoundaries.Count)
                 {
-                    _routeWaypointIndex = Math.Min(cumulative, _routeWaypoints.Count - 2);
+                    _routeWaypointIndex = _routeSegmentBoundaries[s];
                     break;
                 }
-                cumulative += plan.Segments[s].Waypoints.Count;
             }
         }
 
-        // Phase 2: Pac-Man — advance forward only, consuming waypoints we've passed.
+        // Phase 2: Pac-Man — eat the next point when you're close to it.
+        // Only the immediate next point is a candidate. No skipping.
+        // Points are 1m apart, so 1.5m threshold gives margin for speed/GPS jitter.
+        const double EAT_DIST_SQ = 1.5 * 1.5;
         while (_routeWaypointIndex < _routeWaypoints.Count - 2)
         {
-            var curr = _routeWaypoints[_routeWaypointIndex];
             var next = _routeWaypoints[_routeWaypointIndex + 1];
-            double segDx = next.Easting - curr.Easting;
-            double segDy = next.Northing - curr.Northing;
-
-            // Dot product of (vehicle - next) with segment direction.
-            // Positive means vehicle has passed beyond the next waypoint.
-            double dot = (driftedEasting - next.Easting) * segDx +
-                        (driftedNorthing - next.Northing) * segDy;
-
-            if (dot > 0)
+            double dx = driftedEasting - next.Easting;
+            double dy = driftedNorthing - next.Northing;
+            if (dx * dx + dy * dy < EAT_DIST_SQ)
                 _routeWaypointIndex++;
             else
                 break;
@@ -920,7 +930,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// </summary>
     private const double WAYPOINT_SPACING = 1.0; // meters between densified waypoints
 
-    private static List<Vec3> BuildStitchedWaypoints(Models.RoutePlanning.RoutePlan plan)
+    private static List<Vec3> BuildStitchedWaypoints(Models.RoutePlanning.RoutePlan plan,
+        List<int> segmentBoundaries)
     {
         var allPoints = new List<Vec3>();
 
@@ -928,6 +939,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             var waypoints = segment.Waypoints;
             if (waypoints.Count == 0) continue;
+
+            // Record where this segment starts in the stitched list
+            segmentBoundaries.Add(allPoints.Count);
 
             // Build segment waypoints in travel order
             List<Vec3> ordered;
@@ -1001,21 +1015,27 @@ public sealed class GpsPipelineService : IGpsPipelineService
     }
 
     /// <summary>
-    /// Update which segment we're on based on the waypoint index.
+    /// Update which segment we're on based on the waypoint index
+    /// and the recorded segment boundaries in the stitched list.
     /// </summary>
     private void UpdateRouteProgress(Models.RoutePlanning.RoutePlan plan, int waypointIndex)
     {
-        int cumulative = 0;
-        for (int i = 0; i < plan.Segments.Count; i++)
+        if (_routeSegmentBoundaries == null || _routeSegmentBoundaries.Count == 0)
         {
-            cumulative += plan.Segments[i].Waypoints.Count;
-            if (waypointIndex < cumulative)
+            _appState.RoutePlan.CurrentSegmentIndex = 0;
+            return;
+        }
+
+        // Find which segment this waypoint index falls in
+        for (int i = _routeSegmentBoundaries.Count - 1; i >= 0; i--)
+        {
+            if (waypointIndex >= _routeSegmentBoundaries[i])
             {
                 _appState.RoutePlan.CurrentSegmentIndex = i;
                 return;
             }
         }
-        _appState.RoutePlan.CurrentSegmentIndex = plan.Segments.Count - 1;
+        _appState.RoutePlan.CurrentSegmentIndex = 0;
     }
 
 
