@@ -9,6 +9,8 @@ namespace AgValoniaGPS.ViewModels;
 
 public partial class MainViewModel
 {
+    private bool _lastRouteActiveState;
+
     /// <summary>
     /// Handler for <see cref="Services.Interfaces.IGpsPipelineService.CycleCompleted"/>.
     /// Marshals the result from the background thread to the UI thread for property updates.
@@ -89,6 +91,24 @@ public partial class MainViewModel
         // Status message (only if set — don't overwrite existing)
         if (result.StatusMessage != null)
             StatusMessage = result.StatusMessage;
+
+        // Route following progress — pipeline updates RoutePlanState on background thread,
+        // notify UI properties here on the UI thread.
+        if (State.RoutePlan.IsRouteActive)
+        {
+            OnPropertyChanged(nameof(RouteProgressText));
+            OnPropertyChanged(nameof(IsRouteActive));
+        }
+        else if (_lastRouteActiveState)
+        {
+            // Route just completed or was stopped — update UI one more time
+            OnPropertyChanged(nameof(RouteProgressText));
+            OnPropertyChanged(nameof(IsRouteActive));
+            RoutePlanStatus = State.RoutePlan.IsRouteComplete
+                ? "Route complete"
+                : RoutePlanStatus;
+        }
+        _lastRouteActiveState = State.RoutePlan.IsRouteActive;
 
         // Map service position update (single atomic call)
         _mapService.SetAllPositions(

@@ -45,6 +45,9 @@ public class RoutePlanState : ObservableObject
         set => SetProperty(ref _isRouteComplete, value);
     }
 
+    /// <summary>Set by UI to request skipping to the next segment. Pipeline reads and clears.</summary>
+    public volatile bool SkipSegmentRequested;
+
     /// <summary>True when a route plan is loaded and guidance mode is PreComputedRoute.</summary>
     public bool IsRouteActive => ActivePlan != null && Mode == GuidanceMode.PreComputedRoute && !IsRouteComplete;
 

@@ -4296,14 +4296,35 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 DrawTrackPointsSk(canvas, s.NextTrack.Points, nextPaint);
             }
 
-            // Planned swaths (route planning preview — cyan lines)
+            // Planned swaths (route planning preview — cyan lines with progress)
             if (s.PlannedSwaths.Count > 0)
             {
-                using var swathPaint = new SKPaint
+                // Check route progress to dim completed segments
+                var routeState = AgValoniaGPS.Models.State.ApplicationState.Instance.RoutePlan;
+                bool routeActive = routeState.IsRouteActive;
+                int currentSegIdx = routeState.CurrentSegmentIndex;
+                // Map swath index to segment index: segment 0=swath0, 1=turn, 2=swath1, 3=turn, 4=swath2...
+                // Swath si corresponds to segment si*2
+
+                using var futurePaint = new SKPaint
                 {
                     Color = new SKColor(0, 180, 255, 200),
                     Style = SKPaintStyle.Stroke,
                     StrokeWidth = 1.5f,
+                    IsAntialias = true
+                };
+                using var currentPaint = new SKPaint
+                {
+                    Color = new SKColor(0, 255, 100, 255),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 2.0f,
+                    IsAntialias = true
+                };
+                using var completedPaint = new SKPaint
+                {
+                    Color = new SKColor(0, 180, 255, 60),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1.0f,
                     IsAntialias = true
                 };
                 using var endpointPaint = new SKPaint
@@ -4321,7 +4342,25 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 {
                     var swath = s.PlannedSwaths[si];
                     if (swath.Points.Count < 2) continue;
-                    DrawTrackPointsSk(canvas, swath.Points, swathPaint);
+
+                    // Pick paint based on progress
+                    SKPaint paint;
+                    if (routeActive)
+                    {
+                        int swathSegIdx = si * 2; // swath i is at segment index i*2
+                        if (swathSegIdx < currentSegIdx)
+                            paint = completedPaint;
+                        else if (swathSegIdx == currentSegIdx)
+                            paint = currentPaint;
+                        else
+                            paint = futurePaint;
+                    }
+                    else
+                    {
+                        paint = futurePaint;
+                    }
+
+                    DrawTrackPointsSk(canvas, swath.Points, paint);
 
                     // Endpoint markers
                     canvas.DrawCircle(
@@ -4341,9 +4380,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 }
             }
 
-            // Planned turn paths (route planning — orange valid, red invalid)
+            // Planned turn paths (route planning — orange valid, red invalid, dim completed)
             if (s.PlannedTurnPaths.Count > 0)
             {
+                var routeState2 = AgValoniaGPS.Models.State.ApplicationState.Instance.RoutePlan;
+                bool routeActive2 = routeState2.IsRouteActive;
+                int currentSegIdx2 = routeState2.CurrentSegmentIndex;
+
                 using var validTurnPaint = new SKPaint
                 {
                     Color = new SKColor(255, 165, 0, 200),
@@ -4359,6 +4402,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     IsAntialias = true,
                     PathEffect = SKPathEffect.CreateDash(new float[] { 4f, 3f }, 0)
                 };
+                using var completedTurnPaint = new SKPaint
+                {
+                    Color = new SKColor(255, 165, 0, 60),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1.0f,
+                    IsAntialias = true
+                };
 
                 for (int ti = 0; ti < s.PlannedTurnPaths.Count; ti++)
                 {
@@ -4366,7 +4416,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     if (turnPath.Count < 2) continue;
 
                     bool isValid = ti < s.PlannedTurnValidity.Count ? s.PlannedTurnValidity[ti] : true;
-                    var paint = isValid ? validTurnPaint : invalidTurnPaint;
+
+                    // Turn ti is between swath ti and swath ti+1, at segment index ti*2+1
+                    SKPaint paint;
+                    if (routeActive2)
+                    {
+                        int turnSegIdx = ti * 2 + 1;
+                        if (turnSegIdx < currentSegIdx2)
+                            paint = completedTurnPaint;
+                        else
+                            paint = isValid ? validTurnPaint : invalidTurnPaint;
+                    }
+                    else
+                    {
+                        paint = isValid ? validTurnPaint : invalidTurnPaint;
+                    }
 
                     using var path = new SKPath();
                     path.MoveTo((float)turnPath[0].Easting, (float)turnPath[0].Northing);

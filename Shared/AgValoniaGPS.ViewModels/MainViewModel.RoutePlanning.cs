@@ -20,17 +20,27 @@ public partial class MainViewModel
         StartRouteCommand = new RelayCommand(() =>
         {
             if (State.RoutePlan.ActivePlan == null) return;
+            // Force pipeline to rebuild stitched waypoints from index 0
+            // by bumping the plan reference (create a shallow copy)
+            var plan = State.RoutePlan.ActivePlan;
+            State.RoutePlan.ActivePlan = new Models.RoutePlanning.RoutePlan
+            {
+                Segments = plan.Segments,
+                Pattern = plan.Pattern,
+                CreatedAt = plan.CreatedAt,
+            };
             State.RoutePlan.Mode = GuidanceMode.PreComputedRoute;
             State.RoutePlan.CurrentSegmentIndex = 0;
             State.RoutePlan.IsRouteComplete = false;
             OnPropertyChanged(nameof(IsRouteActive));
             OnPropertyChanged(nameof(RouteProgressText));
-            RoutePlanStatus = "Route started — follow the planned path";
+            RoutePlanStatus = "Route started — navigate to the green dot";
         });
 
         StopRouteCommand = new RelayCommand(() =>
         {
             State.RoutePlan.Mode = GuidanceMode.WhiteCane;
+            State.RoutePlan.CurrentSegmentIndex = 0;
             OnPropertyChanged(nameof(IsRouteActive));
             OnPropertyChanged(nameof(RouteProgressText));
             RoutePlanStatus = "Route stopped — white-cane guidance active";
@@ -38,23 +48,8 @@ public partial class MainViewModel
 
         SkipSegmentCommand = new RelayCommand(() =>
         {
-            var plan = State.RoutePlan.ActivePlan;
-            if (plan == null || !State.RoutePlan.IsRouteActive) return;
-
-            int nextIndex = State.RoutePlan.CurrentSegmentIndex + 1;
-            if (nextIndex >= plan.Segments.Count)
-            {
-                State.RoutePlan.IsRouteComplete = true;
-                State.RoutePlan.Mode = GuidanceMode.WhiteCane;
-                RoutePlanStatus = "Route complete";
-            }
-            else
-            {
-                State.RoutePlan.CurrentSegmentIndex = nextIndex;
-                RoutePlanStatus = RouteProgressText;
-            }
-            OnPropertyChanged(nameof(IsRouteActive));
-            OnPropertyChanged(nameof(RouteProgressText));
+            if (!State.RoutePlan.IsRouteActive) return;
+            State.RoutePlan.SkipSegmentRequested = true;
         });
     }
 

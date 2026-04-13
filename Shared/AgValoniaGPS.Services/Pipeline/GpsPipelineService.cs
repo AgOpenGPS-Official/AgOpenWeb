@@ -805,6 +805,24 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
+        // Handle skip segment request — jump waypoint index to next segment boundary
+        if (routePlanState.SkipSegmentRequested)
+        {
+            routePlanState.SkipSegmentRequested = false;
+            int currentSeg = routePlanState.CurrentSegmentIndex;
+            // Find waypoint index at the start of the next swath segment
+            int cumulative = 0;
+            for (int s = 0; s < plan.Segments.Count; s++)
+            {
+                if (s > currentSeg && plan.Segments[s].Type == Models.RoutePlanning.RouteSegmentType.Swath)
+                {
+                    _routeWaypointIndex = Math.Min(cumulative, _routeWaypoints.Count - 2);
+                    break;
+                }
+                cumulative += plan.Segments[s].Waypoints.Count;
+            }
+        }
+
         // Phase 2: Pac-Man — advance forward only, consuming waypoints we've passed.
         while (_routeWaypointIndex < _routeWaypoints.Count - 2)
         {
