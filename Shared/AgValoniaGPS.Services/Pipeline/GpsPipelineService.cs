@@ -748,6 +748,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private Models.RoutePlanning.RoutePlan? _routeWaypointsPlan; // Which plan we built from
     private int _routeWaypointIndex; // Current position — only advances forward
     private bool _routeAcquired; // True once vehicle has reached the route start
+    private int _routeAcquireTargetIdx = -1; // Locked target during acquisition — don't recalculate
 
     private (double steerAngle, double xte, double goalE, double goalN)?
         CalculateRouteGuidance(Position currentPosition, double driftedEasting, double driftedNorthing, double headingRad)
@@ -770,6 +771,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _routeWaypointsPlan = plan;
             _routeWaypointIndex = 0;
             _routeAcquired = false;
+            _routeAcquireTargetIdx = -1;
         }
 
         if (_routeWaypoints.Count < 2) return null;
@@ -810,48 +812,58 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     : Math.Min(500, _routeWaypoints.Count);
             }
 
-            // Find nearest waypoint on the first swath
-            double minDistSq = double.MaxValue;
-            int nearestIdx = 0;
-            for (int i = 0; i < searchEnd; i++)
+            // Calculate target once and lock it — don't recalculate every cycle.
+            if (_routeAcquireTargetIdx < 0)
             {
-                double dx = driftedEasting - _routeWaypoints[i].Easting;
-                double dy = driftedNorthing - _routeWaypoints[i].Northing;
-                double d2 = dx * dx + dy * dy;
-                if (d2 < minDistSq)
+                // Find nearest waypoint
+                double minDistSq = double.MaxValue;
+                int nearestIdx = 0;
+                for (int i = 0; i < searchEnd; i++)
                 {
-                    minDistSq = d2;
-                    nearestIdx = i;
+                    double dx = driftedEasting - _routeWaypoints[i].Easting;
+                    double dy = driftedNorthing - _routeWaypoints[i].Northing;
+                    double d2 = dx * dx + dy * dy;
+                    if (d2 < minDistSq)
+                    {
+                        minDistSq = d2;
+                        nearestIdx = i;
+                    }
+                }
+
+                // Scan forward to find a waypoint well ahead of the vehicle.
+                // 15m gives enough lead for the vehicle to turn and settle on the line.
+                _routeAcquireTargetIdx = nearestIdx;
+                for (int i = nearestIdx; i < Math.Min(nearestIdx + 50, _routeWaypoints.Count); i++)
+                {
+                    double aheadDx = _routeWaypoints[i].Easting - driftedEasting;
+                    double aheadDy = _routeWaypoints[i].Northing - driftedNorthing;
+                    double dotAhead = aheadDx * Math.Sin(headingRad) + aheadDy * Math.Cos(headingRad);
+                    if (dotAhead > 15.0)
+                    {
+                        _routeAcquireTargetIdx = i;
+                        break;
+                    }
                 }
             }
 
-            double nearestDist = Math.Sqrt(minDistSq);
+            // Check distance to the locked target
+            var targetPt = _routeWaypoints[_routeAcquireTargetIdx];
+            double distToTarget = Math.Sqrt(
+                (driftedEasting - targetPt.Easting) * (driftedEasting - targetPt.Easting) +
+                (driftedNorthing - targetPt.Northing) * (driftedNorthing - targetPt.Northing));
 
-            // Check heading alignment with the track at the nearest point
-            int nextIdx = Math.Min(nearestIdx + 5, _routeWaypoints.Count - 1);
-            double trackDx = _routeWaypoints[nextIdx].Easting - _routeWaypoints[nearestIdx].Easting;
-            double trackDy = _routeWaypoints[nextIdx].Northing - _routeWaypoints[nearestIdx].Northing;
-            double trackLen = Math.Sqrt(trackDx * trackDx + trackDy * trackDy);
-            bool headingAligned = true;
-            if (trackLen > 0.1)
+            if (distToTarget < 3.0)
             {
-                double dotHeading = Math.Sin(headingRad) * (trackDx / trackLen) +
-                                   Math.Cos(headingRad) * (trackDy / trackLen);
-                headingAligned = dotHeading > 0.3; // Within ~73°
-            }
-
-            if (nearestDist < 5.0 && headingAligned)
-            {
-                // Close enough and heading right — acquire at this waypoint
-                _routeWaypointIndex = nearestIdx;
+                // Reached the target — acquire and start Pac-Man from here
+                _routeWaypointIndex = _routeAcquireTargetIdx;
+                _routeAcquireTargetIdx = -1;
                 _routeAcquired = true;
                 // Fall through to Phase 2
             }
             else
             {
-                // Not close enough — steer toward the nearest point on the first swath
-                var target = _routeWaypoints[nearestIdx];
-                return PurePursuitToPoint(target, driftedEasting, driftedNorthing, headingRad, config);
+                // Steer toward the locked target
+                return PurePursuitToPoint(targetPt, driftedEasting, driftedNorthing, headingRad, config);
             }
         }
 
