@@ -145,6 +145,18 @@ public class SwathGenerationService : ISwathGenerationService
             // Clip this infinite line to the boundary polygon
             var segments = ClipLineToBoundary(lineE, lineN, dirE, dirN, boundaryPoints);
 
+            // Subtract inner boundaries (obstacles) — split segments that cross holes
+            if (input.InnerBoundaries.Count > 0)
+            {
+                foreach (var inner in input.InnerBoundaries)
+                {
+                    var innerPts = inner.Points
+                        .Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+                    if (innerPts.Count < 3) continue;
+                    segments = SubtractInnerBoundary(segments, lineE, lineN, dirE, dirN, innerPts);
+                }
+            }
+
             foreach (var (startE, startN, endE, endN) in segments)
             {
                 double length = Math.Sqrt((endE - startE) * (endE - startE) +
@@ -217,11 +229,22 @@ public class SwathGenerationService : ISwathGenerationService
         intersections.Sort();
 
         // Pair up: entry at index 0, exit at index 1, entry at 2, exit at 3, etc.
+        // For concave boundaries (4+ intersections), verify midpoint is inside the polygon
+        // to reject incorrect pairings. For simple cases (2 intersections), trust the pairing.
         var segments = new List<(double, double, double, double)>();
+        bool needsValidation = intersections.Count > 2;
         for (int i = 0; i + 1 < intersections.Count; i += 2)
         {
             double t0 = intersections[i];
             double t1 = intersections[i + 1];
+
+            if (needsValidation)
+            {
+                double midE = lineE + (t0 + t1) / 2 * dirE;
+                double midN = lineN + (t0 + t1) / 2 * dirN;
+                if (!GeometryMath.IsPointInPolygon(boundary, new Vec2(midE, midN)))
+                    continue;
+            }
 
             segments.Add((
                 lineE + t0 * dirE, lineN + t0 * dirN,
@@ -229,5 +252,99 @@ public class SwathGenerationService : ISwathGenerationService
         }
 
         return segments;
+    }
+
+    /// <summary>
+    /// Subtract an inner boundary (obstacle) from a set of line segments.
+    /// Segments that cross the inner boundary are split; portions inside the hole are removed.
+    /// </summary>
+    internal static List<(double StartE, double StartN, double EndE, double EndN)> SubtractInnerBoundary(
+        List<(double StartE, double StartN, double EndE, double EndN)> segments,
+        double lineE, double lineN, double dirE, double dirN,
+        List<Vec2> innerBoundary)
+    {
+        // Find intersections of the infinite line with the inner boundary
+        var holeIntersections = new List<double>();
+        for (int i = 0; i < innerBoundary.Count; i++)
+        {
+            var segA = innerBoundary[i];
+            var segB = innerBoundary[(i + 1) % innerBoundary.Count];
+            double dxSeg = segB.Easting - segA.Easting;
+            double dySeg = segB.Northing - segA.Northing;
+            double det = dirE * dySeg - dirN * dxSeg;
+            if (Math.Abs(det) < 1e-10) continue;
+            double dx = segA.Easting - lineE;
+            double dy = segA.Northing - lineN;
+            double t = (dx * dySeg - dy * dxSeg) / det;
+            double s = (dx * dirN - dy * dirE) / det;
+            if (s >= 0 && s <= 1)
+                holeIntersections.Add(t);
+        }
+
+        if (holeIntersections.Count < 2) return segments;
+        holeIntersections.Sort();
+
+        // Build hole ranges (pairs of t values where line is inside the hole)
+        var holeRanges = new List<(double t0, double t1)>();
+        for (int i = 0; i + 1 < holeIntersections.Count; i += 2)
+        {
+            double t0 = holeIntersections[i];
+            double t1 = holeIntersections[i + 1];
+            double midE = lineE + (t0 + t1) / 2 * dirE;
+            double midN = lineN + (t0 + t1) / 2 * dirN;
+            if (GeometryMath.IsPointInPolygon(innerBoundary, new Vec2(midE, midN)))
+                holeRanges.Add((t0, t1));
+        }
+
+        if (holeRanges.Count == 0) return segments;
+
+        // For each segment, subtract hole ranges
+        var result = new List<(double, double, double, double)>();
+        foreach (var (startE, startN, endE, endN) in segments)
+        {
+            // Convert segment endpoints to t-parameter space
+            double segLen = Math.Sqrt((endE - startE) * (endE - startE) + (endN - startN) * (endN - startN));
+            if (segLen < 0.01) continue;
+
+            double tStart = ((startE - lineE) * dirE + (startN - lineN) * dirN) / (dirE * dirE + dirN * dirN);
+            double tEnd = ((endE - lineE) * dirE + (endN - lineN) * dirN) / (dirE * dirE + dirN * dirN);
+            if (tStart > tEnd) (tStart, tEnd) = (tEnd, tStart);
+
+            // Subtract each hole range from [tStart, tEnd]
+            var ranges = new List<(double, double)> { (tStart, tEnd) };
+            foreach (var (ht0, ht1) in holeRanges)
+            {
+                var newRanges = new List<(double, double)>();
+                foreach (var (r0, r1) in ranges)
+                {
+                    if (ht1 <= r0 || ht0 >= r1)
+                    {
+                        newRanges.Add((r0, r1)); // No overlap
+                    }
+                    else
+                    {
+                        if (ht0 > r0) newRanges.Add((r0, ht0)); // Left portion
+                        if (ht1 < r1) newRanges.Add((ht1, r1)); // Right portion
+                    }
+                }
+                ranges = newRanges;
+            }
+
+            // Convert remaining ranges back to coordinates
+            foreach (var (r0, r1) in ranges)
+            {
+                double len = Math.Sqrt(
+                    (lineE + r1 * dirE - lineE - r0 * dirE) * (lineE + r1 * dirE - lineE - r0 * dirE) +
+                    (lineN + r1 * dirN - lineN - r0 * dirN) * (lineN + r1 * dirN - lineN - r0 * dirN));
+                if (len > 0.5) // Skip tiny remnants
+                {
+                    result.Add((
+                        lineE + r0 * dirE, lineN + r0 * dirN,
+                        lineE + r1 * dirE, lineN + r1 * dirN));
+                }
+            }
+        }
+
+        return result;
     }
 }

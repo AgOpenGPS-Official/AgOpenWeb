@@ -57,6 +57,9 @@ public class SwathPlanInput
 
     /// <summary>Distance from headland boundary to outer boundary (headland zone width).</summary>
     public double HeadlandWidth { get; set; }
+
+    /// <summary>Inner boundaries (obstacles/holes) to exclude from swaths. May be empty.</summary>
+    public List<BoundaryPolygon> InnerBoundaries { get; set; } = new();
 }
 
 /// <summary>

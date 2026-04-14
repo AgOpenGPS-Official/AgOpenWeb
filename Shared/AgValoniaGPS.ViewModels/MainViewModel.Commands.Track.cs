@@ -1074,7 +1074,10 @@ public partial class MainViewModel
                 ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, 0)
                 : null,
             HeadlandWidth = State.Field.HeadlandDistance,
+            InnerBoundaries = boundary.InnerBoundaries ?? new(),
         };
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         var swathPlan = swathService.GenerateSwaths(input);
 
@@ -1106,8 +1109,10 @@ public partial class MainViewModel
         State.RoutePlan.CurrentSegmentIndex = 0;
         State.RoutePlan.IsRouteComplete = false;
 
-        // Build status with invalid turn warning
-        var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns | {routePlan.TotalDistance:F0}m total";
+        sw.Stop();
+
+        // Build status with timing and invalid turn warning
+        var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns | {routePlan.TotalDistance:F0}m | {sw.ElapsedMilliseconds}ms";
         if (routePlan.InvalidTurnCount > 0)
             status += $" | {routePlan.InvalidTurnCount} turn(s) clip boundary";
         RoutePlanStatus = status;

@@ -371,6 +371,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 goalE = routeResult.Value.goalE;
                 goalN = routeResult.Value.goalN;
                 hasGuidance = true;
+
+                // Off-route deviation warning
+                double absXte = Math.Abs(crossTrackError);
+                if (absXte > 10.0)
+                    statusMessage = $"Off-route! {absXte:F1}m from planned path";
+                else if (absXte > 5.0)
+                    statusMessage = $"Drifting: {absXte:F1}m from planned path";
             }
 
             if (hasGuidance)
