@@ -2696,6 +2696,9 @@ public partial class MainViewModel : ObservableObject
     public ICommand? StartRouteCommand { get; private set; }
     public ICommand? StopRouteCommand { get; private set; }
     public ICommand? SkipSegmentCommand { get; private set; }
+    public ICommand? StartFromHereCommand { get; private set; }
+    public ICommand? SaveRouteCommand { get; private set; }
+    public ICommand? LoadRouteCommand { get; private set; }
 
     // iOS Sheet Toggle Commands
     public ICommand? ToggleFileMenuCommand { get; private set; }

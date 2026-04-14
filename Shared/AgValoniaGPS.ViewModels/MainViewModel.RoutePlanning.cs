@@ -6,8 +6,11 @@
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
 
+using System.IO;
+using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using AgValoniaGPS.Models.RoutePlanning;
+using AgValoniaGPS.Services.RoutePlanning;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -50,6 +53,68 @@ public partial class MainViewModel
         {
             if (!State.RoutePlan.IsRouteActive) return;
             State.RoutePlan.SkipSegmentRequested = true;
+        });
+
+        SaveRouteCommand = new RelayCommand(() =>
+        {
+            var plan = State.RoutePlan.ActivePlan;
+            if (plan == null || string.IsNullOrEmpty(CurrentFieldName)) return;
+            var fieldDir = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+            RoutePlanPersistence.Save(plan, fieldDir);
+            RoutePlanStatus = "Route saved";
+        });
+
+        LoadRouteCommand = new RelayCommand(() =>
+        {
+            if (string.IsNullOrEmpty(CurrentFieldName)) return;
+            var fieldDir = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+            var plan = RoutePlanPersistence.Load(fieldDir);
+            if (plan != null)
+            {
+                State.RoutePlan.ActivePlan = plan;
+                State.RoutePlan.CurrentSegmentIndex = 0;
+                State.RoutePlan.IsRouteComplete = false;
+
+                // Update map display
+                var turnSegments = plan.Segments
+                    .Where(s => s.Type == RouteSegmentType.Turn).ToList();
+                var swathTracks = plan.Segments
+                    .Where(s => s.Type == RouteSegmentType.Swath)
+                    .Select(s => Models.Track.Track.FromCurve(
+                        $"Swath {s.SwathIndex + 1}", s.Waypoints))
+                    .ToList();
+                _mapService.SetPlannedSwaths(swathTracks);
+                _mapService.SetPlannedTurnPaths(
+                    turnSegments.Select(s => s.Waypoints).ToList(),
+                    turnSegments.Select(s => s.IsTurnValid).ToList());
+
+                RoutePlanStatus = $"Loaded: {plan.SwathCount} swaths | {plan.TurnCount} turns";
+            }
+            else
+            {
+                RoutePlanStatus = "No saved route found";
+            }
+        });
+
+        StartFromHereCommand = new RelayCommand(() =>
+        {
+            if (State.RoutePlan.ActivePlan == null) return;
+            // Flag tells the pipeline to search ALL swaths for nearest point, not just first
+            State.RoutePlan.StartFromHere = true;
+            // Force rebuild by bumping plan reference
+            var plan = State.RoutePlan.ActivePlan;
+            State.RoutePlan.ActivePlan = new Models.RoutePlanning.RoutePlan
+            {
+                Segments = plan.Segments,
+                Pattern = plan.Pattern,
+                CreatedAt = plan.CreatedAt,
+            };
+            State.RoutePlan.Mode = GuidanceMode.PreComputedRoute;
+            State.RoutePlan.CurrentSegmentIndex = 0;
+            State.RoutePlan.IsRouteComplete = false;
+            OnPropertyChanged(nameof(IsRouteActive));
+            OnPropertyChanged(nameof(RouteProgressText));
+            RoutePlanStatus = "Route started from nearest swath";
         });
     }
 

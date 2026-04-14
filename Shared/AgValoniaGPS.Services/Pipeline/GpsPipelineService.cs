@@ -786,15 +786,29 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
         }
 
-        // Phase 1: Auto-acquire — find the nearest waypoint on the first swath
-        // and start from there. No need to navigate to the exact start point.
-        // The vehicle just needs to be close to the route and heading the right way.
+        // Phase 1: Auto-acquire — find the nearest waypoint on a swath and start from there.
+        // Normal start: search first swath only.
+        // "Start from here": search ALL swath segments to find the nearest.
         if (!_routeAcquired)
         {
-            // Search the first swath's worth of waypoints (up to the first segment boundary)
-            int searchEnd = _routeSegmentBoundaries != null && _routeSegmentBoundaries.Count > 1
-                ? _routeSegmentBoundaries[1]
-                : Math.Min(500, _routeWaypoints.Count);
+            bool startFromHere = routePlanState.StartFromHere;
+            if (startFromHere)
+                routePlanState.StartFromHere = false;
+
+            // Determine search range — first swath only, or all swath waypoints
+            int searchEnd;
+            if (startFromHere)
+            {
+                // Search entire stitched waypoint list
+                searchEnd = _routeWaypoints.Count;
+            }
+            else
+            {
+                // Search first swath only (up to first segment boundary)
+                searchEnd = _routeSegmentBoundaries != null && _routeSegmentBoundaries.Count > 1
+                    ? _routeSegmentBoundaries[1]
+                    : Math.Min(500, _routeWaypoints.Count);
+            }
 
             // Find nearest waypoint on the first swath
             double minDistSq = double.MaxValue;

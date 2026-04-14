@@ -48,6 +48,9 @@ public class RoutePlanState : ObservableObject
     /// <summary>Set by UI to request skipping to the next segment. Pipeline reads and clears.</summary>
     public volatile bool SkipSegmentRequested;
 
+    /// <summary>Set by UI to start from nearest swath instead of first swath. Pipeline reads and clears.</summary>
+    public volatile bool StartFromHere;
+
     /// <summary>True when a route plan is loaded and guidance mode is PreComputedRoute.</summary>
     public bool IsRouteActive => ActivePlan != null && Mode == GuidanceMode.PreComputedRoute && !IsRouteComplete;
 
