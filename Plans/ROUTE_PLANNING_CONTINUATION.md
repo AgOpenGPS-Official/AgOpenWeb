@@ -15,45 +15,35 @@
 - `RoutePlan`/`RouteSegment` models in `Models/RoutePlanning/`
 - Invalid turns render as red dashed lines, valid as orange solid
 - Directional numbered triangles at swath midpoints showing traversal order
-- Spiral pattern removed from UI (was fake — real spiral is future phase)
 
 ### Phase 3 — Route Following Guidance (Complete)
-- `RoutePlanState` in `ApplicationState` tracks active plan and progress
-- Start/Stop Route buttons in Route Plan dialog
-- **Pac-Man guidance**: all segments stitched into one dense waypoint list (swaths densified at 1m spacing), Pure Pursuit follows forward-only
-- Waypoint eating: simple proximity check — eat next point when within 1.5m. No dot products, no skipping. Sequential only.
-- Acquire phase: driver manually positions near green dot heading the right way (within 5m, heading within 60°). Auto-approach deferred to Phase 4.
-- Segment boundary tracking: recorded during stitching for accurate progress mapping
-- Visual progress: completed segments dimmed, current swath green/thick, future cyan
-- Status bar HUD: "Route: Swath 3/10 | 45%" in FieldStatsPanel (all platforms)
-- Route progress updates live via `ApplyGpsCycleResult` on UI thread
-- Skip Segment jumps waypoint index to next swath boundary
-- Stop Route resets cleanly, Start Route forces fresh waypoint build
-- Tested on 577ha field with 215 tracks — works and scales
+- Pac-Man guidance: dense waypoint list, Pure Pursuit, forward-only consumption
+- Waypoint eating: proximity check within 3m, sequential only
+- Smooth merge acquisition with locked 15m-ahead target
+- Segment boundary tracking for accurate progress mapping
+- Visual progress: completed=dim, current=green, future=cyan
+- Status bar HUD: "Route: Swath 3/10 | 45%" in FieldStatsPanel
+- Start/Stop/Skip commands
 
-### Key Architectural Decision
-White-cane guidance uses nearest-point search on infinite lines. Route following uses forward-only waypoint consumption ("breadcrumb trail"). This eliminates:
-- Nearest-point ambiguity when path doubles back (parallel swaths)
-- Segment transition wobble
-- Algorithm switching between TrackGuidanceService and YouTurnGuidanceService
+### Phase 4 — UI/UX Polish (Complete)
+- Non-modal draggable Route Plan panel (bottom-right, 95% opacity)
+- Auto-approach: finds nearest point on first swath, locks target 15m ahead
+- "From Here" button: searches all swaths for nearest, acquires ahead
+- Save/Load Route to JSON in field directory (RoutePlan.json)
+- Cancel/restart via Stop + Start (forces fresh waypoint build)
 
-The route guidance is entirely in `GpsPipelineService.CalculateRouteGuidance()` — direct Pure Pursuit math, no dependency on existing guidance services.
+### Phase 5 — Robustness (Partial)
+- Off-route deviation warnings at 5m (drifting) and 10m (off-route)
+- Inner boundary subtraction from swath clipping (code ready, no UI to create inner boundaries yet)
+- Concave boundary fix: midpoint-in-polygon validation for multi-intersection clipping
+- Route generation timing in status display
+- **Not done**: Headland circuit passes (needs boundary-offset curves — Phase 6 territory)
+- **Not done**: Inner boundary creation UI (separate feature, not route-planning specific)
 
 ## What's Left
 
-### Phase 4 — UI/UX Polish (from master plan)
-- Auto-approach to route start (navigate to green dot from any position/heading)
-- "Start from here" — begin mid-route from nearest swath
-- Route plan save/load to JSON
-- Cancel/restart mid-field
-- Make Route Plan dialog non-modal / movable so it doesn't cover the map
-
-### Phase 5 — Robustness (from master plan)
-- Off-route recovery (>10m deviation warning)
-- Obstacle avoidance (inner boundaries)
-- Headland circuit passes
-- Multi-segment swaths for concave fields (currently broken — see screenshots)
-- Performance validation (<500ms for 100ha)
+### Phase 5 Remaining
+- Headland circuit passes (work the perimeter before interior swaths)
 
 ### Phase 6 — Advanced (from master plan)
 - True spiral pattern (continuous inward offset following boundary)
@@ -63,22 +53,21 @@ The route guidance is entirely in `GpsPipelineService.CalculateRouteGuidance()` 
 - Cost function optimization (time, fuel, off-target application)
 
 ## Known Issues
-- Concave fields: swaths don't split into multiple segments properly, turns get wild legs
-- Route planning is on `feature/route-planning`, NOT merged to develop yet — stays until fully working
-- Bing Maps + 5-level resolution already merged to develop separately
+- Concave fields: turns still get wild legs crossing the concave gap (needs decomposition)
+- Inner boundary creation UI does not exist — model supports it, swath clipping supports it, but no way to draw one
+- Route planning is on `feature/route-planning`, NOT merged to develop yet
 
 ## Key Files
-- `Services/Pipeline/GpsPipelineService.cs` — route guidance (CalculateRouteGuidance, BuildStitchedWaypoints, PurePursuitToPoint)
+- `Services/Pipeline/GpsPipelineService.cs` — route guidance, Pac-Man, acquire, off-route warning
 - `Services/RoutePlanning/TurnPathService.cs` — boundary-validated turns
 - `Services/RoutePlanning/RouteStitchingService.cs` — assembles RoutePlan
-- `Services/Track/SwathGenerationService.cs` — parallel swath generation
+- `Services/RoutePlanning/RoutePlanPersistence.cs` — JSON save/load
+- `Services/Track/SwathGenerationService.cs` — parallel swath generation + inner boundary subtraction
 - `Models/RoutePlanning/` — RoutePlan, RouteSegment, GuidanceMode, RouteSegmentType
-- `Models/State/RoutePlanState.cs` — runtime route state (includes SkipSegmentRequested flag)
-- `ViewModels/MainViewModel.RoutePlanning.cs` — Start/Stop/Skip commands, RouteProgressText
-- `ViewModels/MainViewModel.ApplyResults.cs` — route progress UI updates from pipeline
+- `Models/State/RoutePlanState.cs` — runtime route state
+- `ViewModels/MainViewModel.RoutePlanning.cs` — Start/Stop/Skip/FromHere/Save/Load commands
 - `ViewModels/MainViewModel.Commands.Track.cs` — GenerateRoutePlan()
-- `Views/Controls/Dialogs/RoutePlanDialogPanel.axaml` — Route Plan dialog (Start/Stop buttons)
-- `Views/Controls/Panels/FieldStatsPanel.axaml` — Route progress HUD in status bar
-- `Views/Controls/DrawingContextMapControl.cs` — swath/turn/triangle rendering with progress colors
-- `Plans/ROUTE_PLANNING_PHASE2.md`, `Plans/ROUTE_PLANNING_PHASE3.md` — detailed plans
-- `Plans/PRE_COMPUTED_ROUTE_PLANNING.md` — 6-phase master plan
+- `ViewModels/MainViewModel.ApplyResults.cs` — route progress UI updates
+- `Views/Controls/Dialogs/RoutePlanDialogPanel.axaml(.cs)` — draggable non-modal panel
+- `Views/Controls/Panels/FieldStatsPanel.axaml` — Route progress HUD
+- `Views/Controls/DrawingContextMapControl.cs` — progress-colored rendering
