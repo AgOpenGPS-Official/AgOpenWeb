@@ -786,38 +786,58 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
         }
 
-        // Phase 1: Wait for vehicle to be near the route start and heading the right way.
-        // The driver manually positions near the green dot. Auto-approach is Phase 4.
+        // Phase 1: Auto-acquire — find the nearest waypoint on the first swath
+        // and start from there. No need to navigate to the exact start point.
+        // The vehicle just needs to be close to the route and heading the right way.
         if (!_routeAcquired)
         {
-            var wp0 = _routeWaypoints[0];
-            var wp5 = _routeWaypoints[Math.Min(5, _routeWaypoints.Count - 1)];
+            // Search the first swath's worth of waypoints (up to the first segment boundary)
+            int searchEnd = _routeSegmentBoundaries != null && _routeSegmentBoundaries.Count > 1
+                ? _routeSegmentBoundaries[1]
+                : Math.Min(500, _routeWaypoints.Count);
 
-            double distToStart = Math.Sqrt(
-                (driftedEasting - wp0.Easting) * (driftedEasting - wp0.Easting) +
-                (driftedNorthing - wp0.Northing) * (driftedNorthing - wp0.Northing));
+            // Find nearest waypoint on the first swath
+            double minDistSq = double.MaxValue;
+            int nearestIdx = 0;
+            for (int i = 0; i < searchEnd; i++)
+            {
+                double dx = driftedEasting - _routeWaypoints[i].Easting;
+                double dy = driftedNorthing - _routeWaypoints[i].Northing;
+                double d2 = dx * dx + dy * dy;
+                if (d2 < minDistSq)
+                {
+                    minDistSq = d2;
+                    nearestIdx = i;
+                }
+            }
 
-            // Check heading alignment with first segment direction
-            double trackDx = wp5.Easting - wp0.Easting;
-            double trackDy = wp5.Northing - wp0.Northing;
+            double nearestDist = Math.Sqrt(minDistSq);
+
+            // Check heading alignment with the track at the nearest point
+            int nextIdx = Math.Min(nearestIdx + 5, _routeWaypoints.Count - 1);
+            double trackDx = _routeWaypoints[nextIdx].Easting - _routeWaypoints[nearestIdx].Easting;
+            double trackDy = _routeWaypoints[nextIdx].Northing - _routeWaypoints[nearestIdx].Northing;
             double trackLen = Math.Sqrt(trackDx * trackDx + trackDy * trackDy);
-            bool headingOk = true;
+            bool headingAligned = true;
             if (trackLen > 0.1)
             {
                 double dotHeading = Math.Sin(headingRad) * (trackDx / trackLen) +
                                    Math.Cos(headingRad) * (trackDy / trackLen);
-                headingOk = dotHeading > 0.5; // Within ~60°
+                headingAligned = dotHeading > 0.3; // Within ~73°
             }
 
-            if (distToStart < 5.0 && headingOk)
+            if (nearestDist < 5.0 && headingAligned)
             {
+                // Close enough and heading right — acquire at this waypoint
+                _routeWaypointIndex = nearestIdx;
                 _routeAcquired = true;
                 // Fall through to Phase 2
             }
             else
             {
-                // Not ready — return zero steer, let driver position manually
-                return (0, distToStart, wp0.Easting, wp0.Northing);
+                // Not close enough — steer toward the nearest point on the first swath
+                var target = _routeWaypoints[nearestIdx];
+                return PurePursuitToPoint(target, driftedEasting, driftedNorthing, headingRad, config);
             }
         }
 
@@ -839,8 +859,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         // Phase 2: Pac-Man — eat the next point when you're close to it.
         // Only the immediate next point is a candidate. No skipping.
-        // Points are 1m apart, so 1.5m threshold gives margin for speed/GPS jitter.
-        const double EAT_DIST_SQ = 1.5 * 1.5;
+        // 3m threshold: generous enough to acquire from slightly off-line,
+        // safe because we only ever eat the next sequential point.
+        const double EAT_DIST_SQ = 3.0 * 3.0;
         while (_routeWaypointIndex < _routeWaypoints.Count - 2)
         {
             var next = _routeWaypoints[_routeWaypointIndex + 1];
