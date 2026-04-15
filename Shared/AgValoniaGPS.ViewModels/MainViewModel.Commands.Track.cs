@@ -1014,6 +1014,8 @@ public partial class MainViewModel
 
             ConfigStore.Guidance.TramDisplay = tram.DisplayMode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
+            OnPropertyChanged(nameof(TramDisplayIcon));
+            OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = tram.DisplayMode switch
             {
                 Models.Configuration.TramDisplayMode.Off => "Tram lines OFF",
@@ -1026,7 +1028,9 @@ public partial class MainViewModel
 
         BuildTramLinesCommand = new RelayCommand(() =>
         {
-            if (SelectedTrack == null || SelectedTrack.Points.Count < 2)
+            // Systems resolve their own references; only require selected track for legacy mode
+            if (ConfigStore.Tram.Systems.Count == 0 &&
+                (SelectedTrack == null || SelectedTrack.Points.Count < 2))
             {
                 ShowErrorDialog("No Track Selected",
                     "Select an AB line or curve track before building tram lines.");
@@ -1036,7 +1040,11 @@ public partial class MainViewModel
             ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.All;
             ConfigStore.Guidance.TramDisplay = true;
             UpdateTramLines(SelectedTrack);
-            StatusMessage = $"Tram lines built from '{SelectedTrack.Name}'";
+            OnPropertyChanged(nameof(TramDisplayIcon));
+            OnPropertyChanged(nameof(TramDisplayLabel));
+            StatusMessage = ConfigStore.Tram.Systems.Count > 0
+                ? $"Tram lines built from {ConfigStore.Tram.Systems.Count} system(s)"
+                : $"Tram lines built from '{SelectedTrack!.Name}'";
         });
 
         ShowTramSettingsCommand = new RelayCommand(() =>
@@ -1076,12 +1084,78 @@ public partial class MainViewModel
             ConfigStore.Tram.DisplayMode = mode;
             ConfigStore.Guidance.TramDisplay = mode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
+            OnPropertyChanged(nameof(TramDisplayIcon));
+            OnPropertyChanged(nameof(TramDisplayLabel));
         }
 
         SetTramModeOffCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.Off));
         SetTramModeAllCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.All));
         SetTramModeLinesCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.LinesOnly));
         SetTramModeOuterCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.OuterOnly));
+
+        IncreaseTramStartPassCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Tram.StartPass++;
+            UpdateTramLines(SelectedTrack);
+            OnPropertyChanged(nameof(TramStartPass));
+            OnPropertyChanged(nameof(TramLineCountDisplay));
+        });
+
+        DecreaseTramStartPassCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Tram.StartPass = Math.Max(0, ConfigStore.Tram.StartPass - 1);
+            UpdateTramLines(SelectedTrack);
+            OnPropertyChanged(nameof(TramStartPass));
+            OnPropertyChanged(nameof(TramLineCountDisplay));
+        });
+
+        SwapTramSideCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Tram.IsOuterInverted = !ConfigStore.Tram.IsOuterInverted;
+            UpdateTramLines(SelectedTrack);
+            StatusMessage = $"Tram side: {(ConfigStore.Tram.IsOuterInverted ? "Inverted" : "Normal")}";
+        });
+
+        ClearTramLinesCommand = new RelayCommand(() =>
+        {
+            ShowConfirmationDialog("Clear Tram Lines",
+                "Delete all tram lines? This cannot be undone.",
+                () =>
+                {
+                    _tramLineService.Clear();
+                    ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.Off;
+                    _mapService.SetTramLines(
+                        _tramLineService.OuterBoundaryTrack,
+                        _tramLineService.InnerBoundaryTrack,
+                        _tramLineService.ParallelTramLines);
+                    OnPropertyChanged(nameof(TramLineCountDisplay));
+                    StatusMessage = "Tram lines cleared";
+                });
+        });
+
+        IncreaseTramLineCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Guidance.TramLine++;
+            OnPropertyChanged(nameof(TramLineNumber));
+        });
+
+        DecreaseTramLineCommand = new RelayCommand(() =>
+        {
+            ConfigStore.Guidance.TramLine = Math.Max(1, ConfigStore.Guidance.TramLine - 1);
+            OnPropertyChanged(nameof(TramLineNumber));
+        });
+
+        ToggleTramLeftManualCommand = new RelayCommand(() =>
+        {
+            _tramLineService.IsLeftManualOn = !_tramLineService.IsLeftManualOn;
+            OnPropertyChanged(nameof(TramLeftManualOn));
+        });
+
+        ToggleTramRightManualCommand = new RelayCommand(() =>
+        {
+            _tramLineService.IsRightManualOn = !_tramLineService.IsRightManualOn;
+            OnPropertyChanged(nameof(TramRightManualOn));
+        });
 
         CreateTrackFromBoundaryCommand = new RelayCommand(() =>
         {

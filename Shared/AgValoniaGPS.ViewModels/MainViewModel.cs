@@ -74,6 +74,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
     private readonly ITramLineService _tramLineService;
+    private bool _hasTramSystemsEverUsed;
+    private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
@@ -228,6 +230,7 @@ public partial class MainViewModel : ObservableObject
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
         _udpService.DataReceived += OnUdpDataReceived;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
+        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
 
         // Start the background GPS processing pipeline
@@ -1241,6 +1244,22 @@ public partial class MainViewModel : ObservableObject
                 _logger.LogWarning(ex, "Failed to load tram lines");
             }
 
+            // Load tram systems
+            try
+            {
+                var systems = Services.Tram.TramSystemFileService.Load(fieldPath);
+                ConfigStore.Tram.Systems.Clear();
+                foreach (var sys in systems)
+                    ConfigStore.Tram.Systems.Add(sys);
+                _hasTramSystemsEverUsed = systems.Count > 0;
+                if (systems.Count > 0)
+                    _logger.LogDebug($"[Tram] Loaded {systems.Count} tram systems");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load tram systems");
+            }
+
             // Handle NTRIP profile
             _ = HandleNtripProfileForFieldAsync(fieldName);
 
@@ -1315,6 +1334,13 @@ public partial class MainViewModel : ObservableObject
             {
                 _tramLineService.SaveToFile(ActiveField.DirectoryPath);
                 _logger.LogDebug($"[Tram] Saved tram lines to {ActiveField.DirectoryPath}");
+            }
+
+            // Save tram systems
+            if (ConfigStore.Tram.Systems.Count > 0)
+            {
+                Services.Tram.TramSystemFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram.Systems);
+                _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
             }
 
             // Flush elevation log
@@ -1691,15 +1717,15 @@ public partial class MainViewModel : ObservableObject
     private void UpdateTramLines(Track? track)
     {
         var config = ConfigurationStore.Instance.Tram;
-        if (config.DisplayMode == Models.Configuration.TramDisplayMode.Off || track == null || track.Points.Count < 2)
+
+        // Set boundary fence for clipping tram lines
+        if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count >= 3)
         {
-            _tramLineService.Clear();
-            _mapService.SetTramLines(null, null, null);
-            return;
+            var fencePts = _currentBoundary.OuterBoundary.Points
+                .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+            _tramLineService.SetBoundaryFence(fencePts);
         }
 
-        // Generate parallel tram lines from the track
-        // Use a reasonable field width estimate (boundary size or default 500m)
         double fieldWidth = 500;
         if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count > 0)
         {
@@ -1709,19 +1735,72 @@ public partial class MainViewModel : ObservableObject
             fieldWidth = Math.Max(maxE - minE, maxN - minN) * 1.2;
         }
 
-        _tramLineService.GenerateParallelTramLines(track, fieldWidth);
+        _tramLineService.Clear();
 
-        // Also generate boundary tram tracks if headland exists
-        if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
+        // Track if systems have ever been used (disables legacy fallback)
+        if (config.Systems.Count > 0)
+            _hasTramSystemsEverUsed = true;
+
+        // If TramSystems exist, generate per-system; otherwise use legacy single-track mode
+        _tramSystemLineRanges.Clear();
+        if (config.Systems.Count > 0)
         {
-            _tramLineService.GenerateBoundaryTramTracks(_currentHeadlandLine);
+            bool hasBoundarySystem = false;
+            foreach (var sys in config.Systems)
+            {
+                if (!sys.IsEnabled) continue;
+
+                // Boundary reference system: generate boundary tram tracks from field boundary
+                if (sys.ReferenceBoundaryIndex >= 0)
+                {
+                    hasBoundarySystem = true;
+                    int passes = sys.PassCount > 0 ? sys.PassCount : 1;
+                    int bndStartIdx = _tramLineService.ParallelTramLines.Count;
+                    if (_currentBoundary?.OuterBoundary?.Points != null &&
+                        _currentBoundary.OuterBoundary.Points.Count >= 3)
+                    {
+                        var bndPts = _currentBoundary.OuterBoundary.Points
+                            .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+                        _tramLineService.GenerateBoundaryTramTracks(bndPts, passes, sys.Mode, sys.TramWidth);
+                    }
+                    int bndLineCount = _tramLineService.ParallelTramLines.Count - bndStartIdx;
+                    _tramSystemLineRanges[sys.Name] = (bndStartIdx, bndLineCount, true);
+                    continue;
+                }
+
+                // Track reference system: resolve by name only, skip if missing
+                if (string.IsNullOrEmpty(sys.ReferenceTrackName)) continue;
+                var refTrack = SavedTracks.FirstOrDefault(t => t.Name == sys.ReferenceTrackName);
+                if (refTrack == null || refTrack.Points.Count < 2) continue;
+
+                int startIdx = _tramLineService.ParallelTramLines.Count;
+                var lines = _tramLineService.GenerateForSystem(sys, refTrack, fieldWidth);
+                foreach (var line in lines)
+                    _tramLineService.AddTramLine(line);
+                _tramSystemLineRanges[sys.Name] = (startIdx, lines.Count, false);
+            }
+        }
+        else if (!_hasTramSystemsEverUsed && track != null && track.Points.Count >= 2)
+        {
+            // Legacy: single track mode (only if systems have never been used in this field)
+            _tramLineService.GenerateParallelTramLines(track, fieldWidth);
+
+            // Legacy: also generate boundary tram tracks from headland
+            if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
+                _tramLineService.GenerateBoundaryTramTracks(_currentHeadlandLine);
         }
 
-        // Update map
-        _mapService.SetTramLines(
-            _tramLineService.OuterBoundaryTrack,
-            _tramLineService.InnerBoundaryTrack,
-            _tramLineService.ParallelTramLines);
+        // Snapshot collections for thread-safe rendering
+        var outerSnap = _tramLineService.OuterBoundaryTrack.ToList();
+        var innerSnap = _tramLineService.InnerBoundaryTrack.ToList();
+        var parallelSnap = _tramLineService.ParallelTramLines
+            .Select(l => (IReadOnlyList<Models.Base.Vec2>)l.ToList()).ToList();
+        var bndExtraSnap = _tramLineService.BoundaryExtraLines
+            .Select(l => (IReadOnlyList<Models.Base.Vec2>)l.ToList()).ToList();
+
+        _mapService.SetTramLines(outerSnap, innerSnap, parallelSnap, bndExtraSnap);
+
+        OnPropertyChanged(nameof(TramLineCountDisplay));
     }
 
     // Flag markers
@@ -3007,10 +3086,63 @@ public partial class MainViewModel : ObservableObject
     public ICommand? SetTramModeOuterCommand { get; private set; }
 
     public int TramPasses => ConfigStore.Tram.Passes;
+    public int TramStartPass => ConfigStore.Tram.StartPass;
+    public double TramWidth => ConfigStore.Tram.TramWidth;
+    public System.Collections.ObjectModel.ObservableCollection<Models.Tram.TramSystem> TramSystems => ConfigStore.Tram.Systems;
     public string TramToolWidthDisplay => $"{ConfigStore.ActualToolWidth:F2} m";
-    public string TramWidthDisplay => $"{ConfigStore.ActualToolWidth * ConfigStore.Tram.Passes:F2} m";
+    public string TramWidthDisplay => $"{ConfigStore.Tram.TramWidth:F2} m";
     public string TramTrackWidthDisplay => $"{ConfigStore.Vehicle.TrackWidth:F2} m";
     public string TramLineCountDisplay => $"{_tramLineService.ParallelTramLines.Count}";
+    public ICommand? IncreaseTramStartPassCommand { get; private set; }
+    public ICommand? DecreaseTramStartPassCommand { get; private set; }
+    public ICommand? SwapTramSideCommand { get; private set; }
+    public ICommand? ClearTramLinesCommand { get; private set; }
+    public ICommand? ToggleTramLeftManualCommand { get; private set; }
+    public ICommand? ToggleTramRightManualCommand { get; private set; }
+    public bool TramLeftManualOn => _tramLineService.IsLeftManualOn;
+    public bool TramRightManualOn => _tramLineService.IsRightManualOn;
+    /// <summary>Runtime tram detection byte: bit 0=right wheel, bit 1=left wheel.</summary>
+    public byte TramControlByte { get; set; }
+    public double TramTrackWidthValue => ConfigStore.Vehicle.TrackWidth;
+    public int TramLineNumber => ConfigStore.Guidance.TramLine;
+    public ICommand? IncreaseTramLineCommand { get; private set; }
+    public ICommand? DecreaseTramLineCommand { get; private set; }
+
+    public string TramDisplayIcon => ConfigStore.Tram.DisplayMode switch
+    {
+        Models.Configuration.TramDisplayMode.All => "avares://AgValoniaGPS.Views/Assets/Icons/TramAll.png",
+        Models.Configuration.TramDisplayMode.LinesOnly => "avares://AgValoniaGPS.Views/Assets/Icons/TramLines.png",
+        Models.Configuration.TramDisplayMode.OuterOnly => "avares://AgValoniaGPS.Views/Assets/Icons/TramOuter.png",
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/TramOff.png"
+    };
+
+    public string TramDisplayLabel => ConfigStore.Tram.DisplayMode switch
+    {
+        Models.Configuration.TramDisplayMode.All => "All",
+        Models.Configuration.TramDisplayMode.LinesOnly => "Lines",
+        Models.Configuration.TramDisplayMode.OuterOnly => "Outer",
+        _ => "Off"
+    };
+
+    /// <summary>
+    /// Get tram line geometry for canvas preview rendering.
+    /// </summary>
+    public (IReadOnlyList<Models.Base.Vec2> outer, IReadOnlyList<Models.Base.Vec2> inner,
+            IReadOnlyList<IReadOnlyList<Models.Base.Vec2>> parallel,
+            IReadOnlyList<IReadOnlyList<Models.Base.Vec2>> boundaryExtra)? GetTramLineData()
+    {
+        if (!_tramLineService.HasTramLines) return null;
+        return (_tramLineService.OuterBoundaryTrack, _tramLineService.InnerBoundaryTrack,
+                _tramLineService.ParallelTramLines, _tramLineService.BoundaryExtraLines);
+    }
+
+    /// <summary>
+    /// Get the line index range for a named tram system. Returns (-1,0) for boundary systems.
+    /// </summary>
+    public (int start, int count, bool isBoundary) GetTramSystemLineRange(string systemName)
+    {
+        return _tramSystemLineRanges.TryGetValue(systemName, out var range) ? range : (-1, 0, false);
+    }
     public ICommand? ToggleRecordedPathsCommand { get; private set; }
     public ICommand? StartRecordedPathCommand { get; private set; }
     public ICommand? StopRecordedPathCommand { get; private set; }
@@ -4537,7 +4669,7 @@ public partial class MainViewModel : ObservableObject
     /// Save tracks to TrackLines.txt in the active field directory.
     /// Uses WinForms-compatible format via TrackFilesService.
     /// </summary>
-    private void SaveTracksToFile()
+    public void SaveTracksToFile()
     {
         var activeField = _fieldService.ActiveField;
         if (activeField == null || string.IsNullOrEmpty(activeField.DirectoryPath))

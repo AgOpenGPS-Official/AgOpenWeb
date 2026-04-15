@@ -109,7 +109,9 @@ public interface ISharedMapControl
     void SetTramLines(
         IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? outerTrack,
         IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? innerTrack,
-        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines);
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? boundaryExtraLines = null);
+    void SetTramControlByte(byte controlByte);
 
     // Recorded path / contour strip visualization
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
@@ -279,8 +281,12 @@ internal class MapRenderState
     public IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? TramOuterTrack;
     public IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? TramInnerTrack;
     public IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? TramParallelLines;
+    public IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? TramBoundaryExtraLines;
     public AgValoniaGPS.Models.Configuration.TramDisplayMode TramDisplayMode;
     public float TramAlpha;
+    public byte TramControlByte; // bit 0=right wheel, bit 1=left wheel
+    public double HalfWheelTrack;
+    public bool IsDisplayTramControl;
 
     // Vehicle config
     public double AntennaPivot, AntennaOffset;
@@ -442,6 +448,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? _tramOuterTrack;
     private IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? _tramInnerTrack;
     private IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? _tramParallelLines;
+    private IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? _tramBoundaryExtraLines;
+    private byte _tramControlByte;
 
     // Coverage patches for worked area display
     private IReadOnlyList<CoveragePatch> _coveragePatches = Array.Empty<CoveragePatch>();
@@ -816,8 +824,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             TramOuterTrack = _tramOuterTrack,
             TramInnerTrack = _tramInnerTrack,
             TramParallelLines = _tramParallelLines,
+            TramBoundaryExtraLines = _tramBoundaryExtraLines,
             TramDisplayMode = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tram.DisplayMode,
             TramAlpha = (float)AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tram.Alpha,
+            TramControlByte = _tramControlByte,
+            HalfWheelTrack = vehicleCfg.TrackWidth / 2.0,
+            IsDisplayTramControl = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tram.IsDisplayTramControl,
 
             AntennaPivot = vehicleCfg.AntennaPivot,
             AntennaOffset = vehicleCfg.AntennaOffset,
@@ -2539,12 +2551,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     public void SetTramLines(
         IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? outerTrack,
         IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? innerTrack,
-        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines)
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? boundaryExtraLines = null)
     {
         _tramOuterTrack = outerTrack;
         _tramInnerTrack = innerTrack;
         _tramParallelLines = parallelLines;
+        _tramBoundaryExtraLines = boundaryExtraLines;
         SendStateToHandler();
+    }
+
+    public void SetTramControlByte(byte controlByte)
+    {
+        _tramControlByte = controlByte;
     }
 
     public void SetClipLine(AgValoniaGPS.Models.Base.Vec2? start, AgValoniaGPS.Models.Base.Vec2? end)
@@ -4265,6 +4284,31 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             using var centerPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
             canvas.DrawLine(0, -toolDepth / 2, 0, toolDepth / 2, centerPaint);
 
+            // Tram wheel indicators (colored dots at wheel track positions)
+            if (s.IsDisplayTramControl && s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off)
+            {
+                float dotRadius = 0.3f;
+                float halfTrack = (float)s.HalfWheelTrack;
+
+                // Right wheel: bit 0
+                bool rightOn = (s.TramControlByte & 1) != 0;
+                using var rightPaint = new SKPaint
+                {
+                    Color = rightOn ? new SKColor(0, 230, 0) : new SKColor(40, 40, 40),
+                    Style = SKPaintStyle.Fill
+                };
+                canvas.DrawCircle(halfTrack, 0, dotRadius, rightPaint);
+
+                // Left wheel: bit 1
+                bool leftOn = (s.TramControlByte & 2) != 0;
+                using var leftPaint = new SKPaint
+                {
+                    Color = leftOn ? new SKColor(0, 230, 0) : new SKColor(40, 40, 40),
+                    Style = SKPaintStyle.Fill
+                };
+                canvas.DrawCircle(-halfTrack, 0, dotRadius, leftPaint);
+            }
+
             canvas.Restore();
         }
 
@@ -4398,24 +4442,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             bool hasLines = s.TramParallelLines?.Count > 0;
             if (!hasBoundary && !hasLines) return;
 
-            byte alpha = (byte)(s.TramAlpha * 255);
+            byte alpha = (byte)(s.TramAlpha * 160); // semi-transparent
 
-            using var outlinePaint = new SKPaint
+            using var tramPaint = new SKPaint
             {
-                Color = new SKColor(0, 0, 0, alpha),
+                Color = new SKColor(237, 140, 150, alpha),
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 2.0f,
-                IsAntialias = true
-            };
-            using var fillPaint = new SKPaint
-            {
-                Color = new SKColor(237, 184, 187, alpha),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1.0f,
+                StrokeWidth = 0.6f,
                 IsAntialias = true
             };
 
-            // Mode All or LinesOnly: draw parallel tram lines
+            bool hasBoundaryExtra = s.TramBoundaryExtraLines?.Count > 0;
+
+            // Mode All or LinesOnly: draw parallel tram lines (track-referenced only)
             if ((s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.All
                 || s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.LinesOnly) && hasLines)
             {
@@ -4426,8 +4465,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     path.MoveTo((float)line[0].Easting, (float)line[0].Northing);
                     for (int i = 1; i < line.Count; i++)
                         path.LineTo((float)line[i].Easting, (float)line[i].Northing);
-                    canvas.DrawPath(path, outlinePaint);
-                    canvas.DrawPath(path, fillPaint);
+                    canvas.DrawPath(path, tramPaint);
                 }
             }
 
@@ -4442,12 +4480,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     path.MoveTo((float)track[0].Easting, (float)track[0].Northing);
                     for (int i = 1; i < track.Count; i++)
                         path.LineTo((float)track[i].Easting, (float)track[i].Northing);
-                    canvas.DrawPath(path, outlinePaint);
-                    canvas.DrawPath(path, fillPaint);
+                    canvas.DrawPath(path, tramPaint);
                 }
 
                 if (s.TramOuterTrack != null) DrawTramTrack(s.TramOuterTrack);
                 if (s.TramInnerTrack != null) DrawTramTrack(s.TramInnerTrack);
+
+                // Additional boundary passes
+                if (hasBoundaryExtra)
+                {
+                    foreach (var line in s.TramBoundaryExtraLines!)
+                        DrawTramTrack(line);
+                }
             }
         }
 

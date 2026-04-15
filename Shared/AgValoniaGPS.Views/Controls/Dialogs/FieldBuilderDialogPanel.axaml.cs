@@ -14,6 +14,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.ViewModels;
 
@@ -97,7 +98,8 @@ public partial class FieldBuilderDialogPanel : UserControl
             || e.PropertyName == nameof(MainViewModel.HasHeadland)
             || e.PropertyName == nameof(MainViewModel.CurrentHeadlandLineForPreview)
             || e.PropertyName == nameof(MainViewModel.HeadlandStatusText)
-            || e.PropertyName == nameof(MainViewModel.SelectedHeadlandSegment)))
+            || e.PropertyName == nameof(MainViewModel.SelectedHeadlandSegment)
+            || e.PropertyName == nameof(MainViewModel.TramLineCountDisplay)))
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(UpdatePreview, Avalonia.Threading.DispatcherPriority.Render);
         }
@@ -249,6 +251,7 @@ public partial class FieldBuilderDialogPanel : UserControl
 
         vm.SavedTracks.Add(track);
         vm.SelectedTrack = track;
+        vm.SaveTracksToFile();
         vm.StatusMessage = $"Created curve from {name} ({curvePoints.Count} points)";
 
         ExitDrawMode();
@@ -825,6 +828,27 @@ public partial class FieldBuilderDialogPanel : UserControl
         }
     }
 
+    private void TramWidthInput_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var input = sender as TextBox;
+        if (input != null && double.TryParse(input.Text, out double width) && width > 0)
+        {
+            ConfigurationStore.Instance.Tram.TramWidth = width;
+        }
+    }
+
+    private void WheelTrackInput_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        var input = sender as TextBox;
+        if (input != null && double.TryParse(input.Text, out double width) && width > 0)
+        {
+            ConfigurationStore.Instance.Vehicle.TrackWidth = width;
+            RebuildTramLines(vm);
+        }
+    }
+
     private void ToolWidthMinus_Click(object? sender, RoutedEventArgs e)
     {
         if (_toolWidthMultiplier > 1)
@@ -879,6 +903,7 @@ public partial class FieldBuilderDialogPanel : UserControl
             };
             vm.SavedTracks.Add(track);
             vm.SelectedTrack = track;
+            vm.SaveTracksToFile();
             vm.StatusMessage = $"Created A+ line at {headingDeg:F1}";
 
             ExitDrawMode();
@@ -938,6 +963,7 @@ public partial class FieldBuilderDialogPanel : UserControl
             };
             vm.SavedTracks.Add(track);
             vm.SelectedTrack = track;
+            vm.SaveTracksToFile();
             vm.StatusMessage = "Created boundary curve";
         }
         else
@@ -977,6 +1003,7 @@ public partial class FieldBuilderDialogPanel : UserControl
 
         vm.SavedTracks.Add(track);
         vm.SelectedTrack = track;
+        vm.SaveTracksToFile();
 
         ExitDrawMode();
         ShowMainTabs();
@@ -1251,6 +1278,7 @@ public partial class FieldBuilderDialogPanel : UserControl
             {
                 vm.SavedTracks.Add(_session.BackupTrack);
                 vm.SelectedTrack = _session.BackupTrack;
+                vm.SaveTracksToFile();
             }
         }
 
@@ -1394,6 +1422,343 @@ public partial class FieldBuilderDialogPanel : UserControl
         if (renameOverlay != null) renameOverlay.IsVisible = false;
     }
 
+    // --- Tram System CRUD ---
+
+    private void AddTramSystem_Click(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+        string refName = vm.SelectedTrack?.Name ?? "Boundary";
+        var sys = new AgValoniaGPS.Models.Tram.TramSystem
+        {
+            Name = $"Tram {vm.TramSystems.Count + 1} ({refName})",
+            TramWidth = 24.0,
+            PassCount = 1,
+            Direction = AgValoniaGPS.Models.Tram.TramDirection.Symmetric,
+            Mode = AgValoniaGPS.Models.Tram.TramSystemMode.TrackLine,
+            ReferenceTrackName = vm.SelectedTrack?.Name
+        };
+        // Add temporarily for preview; removed on Back, kept on Done
+        vm.TramSystems.Add(sys);
+        _isCreatingNewSystem = true;
+        RebuildTramLines(vm);
+        OpenTramSystemEditPanel(sys);
+    }
+
+    private AgValoniaGPS.Models.Tram.TramSystem? _editingTramSystem;
+    private bool _isCreatingNewSystem;
+    private bool _isPopulatingTramEdit;
+    private (string? RefTrack, int RefBndIdx, double Width, AgValoniaGPS.Models.Tram.TramSystemMode Mode,
+             double Offset, AgValoniaGPS.Models.Tram.TramDirection Dir, int Passes, bool Enabled) _editSnapshot;
+
+    private void TramSystemList_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        // Refresh preview to highlight selected system's lines
+        Avalonia.Threading.Dispatcher.UIThread.Post(UpdatePreview, Avalonia.Threading.DispatcherPriority.Render);
+    }
+
+    private void EditTramSystem_Click(object? sender, RoutedEventArgs e)
+    {
+        var list = this.FindControl<ListBox>("TramSystemList");
+        if (list?.SelectedItem is AgValoniaGPS.Models.Tram.TramSystem sys)
+            OpenTramSystemEditPanel(sys);
+    }
+
+    private void OpenTramSystemEditPanel(AgValoniaGPS.Models.Tram.TramSystem sys)
+    {
+        _editingTramSystem = sys;
+        _editSnapshot = (sys.ReferenceTrackName, sys.ReferenceBoundaryIndex, sys.TramWidth,
+                         sys.Mode, sys.Offset, sys.Direction, sys.PassCount, sys.IsEnabled);
+        var mainPanel = this.FindControl<StackPanel>("TramMainPanel");
+        var editPanel = this.FindControl<StackPanel>("TramSystemEditPanel");
+        if (editPanel == null) return;
+
+        // Swap panels - must be visible before populating controls
+        if (mainPanel != null) mainPanel.IsVisible = false;
+        editPanel.IsVisible = true;
+
+        // Populate after visibility change takes effect
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => PopulateTramEditPanel(sys),
+            Avalonia.Threading.DispatcherPriority.Render);
+    }
+
+    private void PopulateTramEditPanel(AgValoniaGPS.Models.Tram.TramSystem sys)
+    {
+        var title = this.FindControl<TextBlock>("TramEditTitle");
+        if (title != null) title.Text = $"Edit: {sys.Name}";
+
+        // Populate reference combo (exclude recorded paths and contours)
+        // Suppress SelectionChanged during population to prevent overwriting system values
+        var combo = this.FindControl<ComboBox>("TramRefCombo");
+        if (combo != null && DataContext is MainViewModel vm)
+        {
+            _isPopulatingTramEdit = true;
+            var items = new System.Collections.Generic.List<string> { "(Boundary)" };
+            foreach (var t in vm.SavedTracks)
+            {
+                if (t.Type == AgValoniaGPS.Models.Track.TrackType.RecordedPath ||
+                    t.Type == AgValoniaGPS.Models.Track.TrackType.Contour)
+                    continue;
+                items.Add(t.Name);
+            }
+            combo.ItemsSource = items;
+            combo.SelectedItem = sys.ReferenceTrackName ?? "(Boundary)";
+            _isPopulatingTramEdit = false;
+        }
+
+        // Populate fields
+        var widthInput = this.FindControl<TextBox>("TramSysWidthInput");
+        if (widthInput != null) widthInput.Text = sys.TramWidth.ToString("F1");
+        var offsetInput = this.FindControl<TextBox>("TramSysOffsetInput");
+        if (offsetInput != null) offsetInput.Text = sys.Offset.ToString("F1");
+        var passInput = this.FindControl<TextBox>("TramSysPassInput");
+        if (passInput != null) passInput.Text = sys.PassCount.ToString();
+        var enabledCheck = this.FindControl<CheckBox>("TramSysEnabledCheck");
+        if (enabledCheck != null) enabledCheck.IsChecked = sys.IsEnabled;
+
+        UpdateTramEditHighlights();
+        UpdateTramEditSectionVisibility();
+    }
+
+    private void UpdateTramEditSectionVisibility()
+    {
+        if (_editingTramSystem == null) return;
+        bool isBoundary = _editingTramSystem.ReferenceBoundaryIndex >= 0;
+
+        // Hide direction and offset for boundary systems (mode still applies)
+        var dirLabel = this.FindControl<TextBlock>("TramDirSectionLabel");
+        var dirSection = this.FindControl<StackPanel>("TramDirSection");
+        var offsetSection = this.FindControl<Grid>("TramOffsetSection");
+
+        if (dirLabel != null) dirLabel.IsVisible = !isBoundary;
+        if (dirSection != null) dirSection.IsVisible = !isBoundary;
+        if (offsetSection != null) offsetSection.IsVisible = !isBoundary;
+    }
+
+    private void TramRefCombo_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_isPopulatingTramEdit) return;
+        if (_editingTramSystem == null || sender is not ComboBox combo) return;
+        var sel = combo.SelectedItem as string;
+        if (sel == "(Boundary)")
+        {
+            _editingTramSystem.ReferenceTrackName = null;
+            _editingTramSystem.ReferenceBoundaryIndex = 0;
+        }
+        else
+        {
+            _editingTramSystem.ReferenceTrackName = sel;
+            _editingTramSystem.ReferenceBoundaryIndex = -1;
+        }
+
+        // Auto-update name to reflect reference
+        string refLabel = sel == "(Boundary)" ? "Boundary" : (sel ?? "");
+        int sysIdx = DataContext is MainViewModel vmIdx
+            ? vmIdx.TramSystems.IndexOf(_editingTramSystem) + 1 : 0;
+        _editingTramSystem.Name = $"Tram {sysIdx} ({refLabel})";
+        var title = this.FindControl<TextBlock>("TramEditTitle");
+        if (title != null) title.Text = $"Edit: {_editingTramSystem.Name}";
+
+        UpdateTramEditSectionVisibility();
+        if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+    }
+
+    private void TramSysWidthInput_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null || sender is not TextBox tb) return;
+        if (double.TryParse(tb.Text, out double v) && v > 0)
+        {
+            _editingTramSystem.TramWidth = v;
+            if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+        }
+    }
+
+    private void TramSysOffsetInput_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null || sender is not TextBox tb) return;
+        if (double.TryParse(tb.Text, out double v))
+        {
+            _editingTramSystem.Offset = v;
+            if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+        }
+    }
+
+    private void TramSysPassInput_LostFocus(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null || sender is not TextBox tb) return;
+        if (int.TryParse(tb.Text, out int v))
+        {
+            _editingTramSystem.PassCount = Math.Max(0, v);
+            if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+        }
+    }
+
+    private void TramSysEnabled_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem != null && sender is CheckBox cb)
+        {
+            _editingTramSystem.IsEnabled = cb.IsChecked == true;
+            if (DataContext is MainViewModel vm)
+                RebuildTramLines(vm);
+        }
+    }
+
+    private void TramModeTrackLine_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null) return;
+        _editingTramSystem.Mode = AgValoniaGPS.Models.Tram.TramSystemMode.TrackLine;
+        UpdateTramEditHighlights();
+        if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+    }
+
+    private void TramModeEdge_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null) return;
+        _editingTramSystem.Mode = AgValoniaGPS.Models.Tram.TramSystemMode.Edge;
+        UpdateTramEditHighlights();
+        if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+    }
+
+    private void TramDirLeft_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null) return;
+        _editingTramSystem.Direction = AgValoniaGPS.Models.Tram.TramDirection.Left;
+        UpdateTramEditHighlights();
+        if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+    }
+
+    private void TramDirSymm_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null) return;
+        _editingTramSystem.Direction = AgValoniaGPS.Models.Tram.TramDirection.Symmetric;
+        UpdateTramEditHighlights();
+        if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+    }
+
+    private void TramDirRight_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem == null) return;
+        _editingTramSystem.Direction = AgValoniaGPS.Models.Tram.TramDirection.Right;
+        UpdateTramEditHighlights();
+        if (DataContext is MainViewModel vm) RebuildTramLines(vm);
+    }
+
+    private void UpdateTramEditHighlights()
+    {
+        if (_editingTramSystem == null) return;
+
+        var accentBrush = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(0, 120, 215));
+        var normalBrush = Avalonia.Application.Current?.FindResource("SystemControlBackgroundBaseLowBrush") as Avalonia.Media.IBrush
+            ?? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(80, 80, 80));
+
+        // Mode highlights
+        var btnTrackLine = this.FindControl<Avalonia.Controls.Button>("BtnModeTrackLine");
+        var btnEdge = this.FindControl<Avalonia.Controls.Button>("BtnModeEdge");
+        if (btnTrackLine != null)
+            btnTrackLine.Background = _editingTramSystem.Mode == AgValoniaGPS.Models.Tram.TramSystemMode.TrackLine
+                ? accentBrush : normalBrush;
+        if (btnEdge != null)
+            btnEdge.Background = _editingTramSystem.Mode == AgValoniaGPS.Models.Tram.TramSystemMode.Edge
+                ? accentBrush : normalBrush;
+
+        // Direction highlights
+        var btnLeft = this.FindControl<Avalonia.Controls.Button>("BtnDirLeft");
+        var btnSymm = this.FindControl<Avalonia.Controls.Button>("BtnDirSymm");
+        var btnRight = this.FindControl<Avalonia.Controls.Button>("BtnDirRight");
+        if (btnLeft != null)
+            btnLeft.Background = _editingTramSystem.Direction == AgValoniaGPS.Models.Tram.TramDirection.Left
+                ? accentBrush : normalBrush;
+        if (btnSymm != null)
+            btnSymm.Background = _editingTramSystem.Direction == AgValoniaGPS.Models.Tram.TramDirection.Symmetric
+                ? accentBrush : normalBrush;
+        if (btnRight != null)
+            btnRight.Background = _editingTramSystem.Direction == AgValoniaGPS.Models.Tram.TramDirection.Right
+                ? accentBrush : normalBrush;
+    }
+
+    private void TramSystemEditBack_Click(object? sender, RoutedEventArgs e)
+    {
+        if (_editingTramSystem != null)
+        {
+            if (_isCreatingNewSystem && DataContext is MainViewModel vm)
+            {
+                // Remove the new system that was added temporarily
+                vm.TramSystems.Remove(_editingTramSystem);
+            }
+            else
+            {
+                // Revert existing system to snapshot
+                _editingTramSystem.ReferenceTrackName = _editSnapshot.RefTrack;
+                _editingTramSystem.ReferenceBoundaryIndex = _editSnapshot.RefBndIdx;
+                _editingTramSystem.TramWidth = _editSnapshot.Width;
+                _editingTramSystem.Mode = _editSnapshot.Mode;
+                _editingTramSystem.Offset = _editSnapshot.Offset;
+                _editingTramSystem.Direction = _editSnapshot.Dir;
+                _editingTramSystem.PassCount = _editSnapshot.Passes;
+                _editingTramSystem.IsEnabled = _editSnapshot.Enabled;
+            }
+        }
+        _isCreatingNewSystem = false;
+        CloseTramEditPanel();
+    }
+
+    private void TramSystemEditDone_Click(object? sender, RoutedEventArgs e)
+    {
+        _isCreatingNewSystem = false;
+        CloseTramEditPanel();
+    }
+
+    private void CloseTramEditPanel()
+    {
+        _editingTramSystem = null;
+        var mainPanel = this.FindControl<StackPanel>("TramMainPanel");
+        var editPanel = this.FindControl<StackPanel>("TramSystemEditPanel");
+        if (editPanel != null) editPanel.IsVisible = false;
+        if (mainPanel != null) mainPanel.IsVisible = true;
+
+        // Rebuild tram lines with final state
+        if (DataContext is MainViewModel vm)
+            RebuildTramLines(vm);
+    }
+
+    private void DeleteTramSystem_Click(object? sender, RoutedEventArgs e)
+    {
+        var list = this.FindControl<ListBox>("TramSystemList");
+        if (list?.SelectedItem is AgValoniaGPS.Models.Tram.TramSystem sys)
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                vm.TramSystems.Remove(sys);
+                RebuildTramLines(vm);
+            }
+        }
+    }
+
+    private void RebuildTramLines(MainViewModel vm)
+    {
+        vm.BuildTramLinesCommand?.Execute(null);
+
+        // Auto-save tram systems to field directory
+        if (vm.ActiveField != null)
+        {
+            try
+            {
+                if (vm.TramSystems.Count > 0)
+                {
+                    AgValoniaGPS.Services.Tram.TramSystemFileService.Save(
+                        vm.ActiveField.DirectoryPath, vm.TramSystems);
+                }
+                else
+                {
+                    // Clean up file when all systems deleted
+                    var path = System.IO.Path.Combine(vm.ActiveField.DirectoryPath, "TramSystems.json");
+                    if (System.IO.File.Exists(path))
+                        System.IO.File.Delete(path);
+                }
+            }
+            catch { /* save failure is non-critical */ }
+        }
+    }
+
     // --- Preview Rendering ---
 
     private void UpdatePreview()
@@ -1533,14 +1898,28 @@ public partial class FieldBuilderDialogPanel : UserControl
 
         SkipSegments:
         // Draw tracks
+        bool onTramTab = mainTabs is { IsVisible: true, SelectedIndex: 2 };
+        string? editingRefTrack = _editingTramSystem?.ReferenceTrackName;
+
         foreach (var track in vm.SavedTracks)
         {
             if (track.Points.Count < 2) continue;
 
-            bool isSelected = !isDrawing && track == vm.SelectedTrack;
-            var color = new SolidColorBrush(isSelected
-                ? (light ? Color.FromRgb(30, 60, 200) : Color.FromRgb(220, 220, 255))
-                : (light ? Color.FromRgb(140, 140, 160) : Color.FromRgb(120, 120, 140)));
+            bool isSelected;
+            if (onTramTab)
+            {
+                // On tram tab: only highlight the reference track of the system being edited
+                isSelected = _editingTramSystem != null && track.Name == editingRefTrack;
+            }
+            else
+            {
+                isSelected = !isDrawing && track == vm.SelectedTrack;
+            }
+
+            var dimColor = new SolidColorBrush(light ? Color.FromRgb(180, 180, 190) : Color.FromRgb(80, 80, 90));
+            var color = isSelected
+                ? new SolidColorBrush(light ? Color.FromRgb(30, 60, 200) : Color.FromRgb(220, 220, 255))
+                : (onTramTab ? dimColor : new SolidColorBrush(light ? Color.FromRgb(140, 140, 160) : Color.FromRgb(120, 120, 140)));
 
             List<Point> linePoints;
             if (track.Points.Count == 2)
@@ -1577,15 +1956,79 @@ public partial class FieldBuilderDialogPanel : UserControl
             if (isSelected && track.Points.Count >= 2)
             {
                 var first = ToCanvas(track.Points[0].Easting, track.Points[0].Northing);
-                AddMarker(canvas, first, new SolidColorBrush(Color.FromRgb(218, 165, 32)), "A", light);
+                var last = ToCanvas(track.Points[^1].Easting, track.Points[^1].Northing);
 
-                // Only show B marker if track is not a closed loop
-                double closeDist = Math.Pow(track.Points[0].Easting - track.Points[^1].Easting, 2) +
-                                   Math.Pow(track.Points[0].Northing - track.Points[^1].Northing, 2);
-                if (closeDist > 1.0)
+                AddMarker(canvas, first, new SolidColorBrush(Color.FromRgb(218, 165, 32)), "A", light);
+                AddMarker(canvas, last, new SolidColorBrush(Color.FromRgb(65, 105, 225)), "B", light);
+            }
+        }
+
+        // Draw tram lines on tram tab
+        if (onTramTab && vm.TramLineCountDisplay != "0")
+        {
+            var tramColor = new SolidColorBrush(light ? Color.FromRgb(180, 100, 110) : Color.FromRgb(237, 184, 187));
+            var tramHighlight = new SolidColorBrush(light ? Color.FromRgb(220, 60, 80) : Color.FromRgb(255, 130, 150));
+            var bndColor = new SolidColorBrush(light ? Color.FromRgb(60, 150, 130) : Color.FromRgb(100, 200, 180));
+
+            // Highlight only the system being edited (not just selected in list)
+            string? selName = _editingTramSystem?.Name;
+            var selRange = selName != null ? vm.GetTramSystemLineRange(selName) : (-1, 0, false);
+            int selStart = selRange.Item1, selCount = selRange.Item2;
+            bool selIsBoundary = selRange.Item3;
+
+            var tramDataN = vm.GetTramLineData();
+            if (tramDataN != null)
+            {
+                var tramData = tramDataN.Value;
+
+                // Draw parallel tram lines (track-referenced only) with highlight
+                for (int li = 0; li < tramData.parallel.Count; li++)
                 {
-                    var last = ToCanvas(track.Points[^1].Easting, track.Points[^1].Northing);
-                    AddMarker(canvas, last, new SolidColorBrush(Color.FromRgb(65, 105, 225)), "B", light);
+                    var tramLine = tramData.parallel[li];
+                    if (tramLine.Count < 2) continue;
+                    bool isHighlighted = selStart >= 0 && li >= selStart && li < selStart + selCount;
+                    var tramPts = new List<Point>();
+                    foreach (var p in tramLine)
+                        tramPts.Add(ToCanvas(p.Easting, p.Northing));
+                    var lineColor = isHighlighted ? tramHighlight : tramColor;
+                    var lineWidth = isHighlighted ? 1.5 : 1.0;
+                    canvas.Children.Add(new Polyline
+                    {
+                        Stroke = lineColor,
+                        StrokeThickness = lineWidth,
+                        Points = tramPts
+                    });
+                }
+
+                // Draw boundary tracks (first pass)
+                var bndStroke = selIsBoundary ? tramHighlight : bndColor;
+                double bndWidth = selIsBoundary ? 1.5 : 1;
+                if (tramData.outer.Count >= 2)
+                {
+                    var outerPts = tramData.outer.Select(p => ToCanvas(p.Easting, p.Northing)).ToList();
+                    canvas.Children.Add(new Polyline
+                    {
+                        Stroke = bndStroke, StrokeThickness = bndWidth, Points = outerPts
+                    });
+                }
+                if (tramData.inner.Count >= 2)
+                {
+                    var innerPts = tramData.inner.Select(p => ToCanvas(p.Easting, p.Northing)).ToList();
+                    canvas.Children.Add(new Polyline
+                    {
+                        Stroke = bndStroke, StrokeThickness = bndWidth, Points = innerPts
+                    });
+                }
+
+                // Draw boundary extra passes
+                foreach (var line in tramData.boundaryExtra)
+                {
+                    if (line.Count < 2) continue;
+                    var bndExtraPts = line.Select(p => ToCanvas(p.Easting, p.Northing)).ToList();
+                    canvas.Children.Add(new Polyline
+                    {
+                        Stroke = bndStroke, StrokeThickness = bndWidth, Points = bndExtraPts
+                    });
                 }
             }
         }
