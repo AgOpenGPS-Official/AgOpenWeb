@@ -434,6 +434,242 @@ public class HeadlandOffsetTests
             "Lines forming a closed loop should create effective headland even without boundary contact");
     }
 
+    [Test]
+    public void BoundaryHeadland_PlusABLine_BothEffective()
+    {
+        // Regression: boundary headland + AB line should both work.
+        // The boundary headland becomes the working area, then the AB line
+        // should further cut it.
+        var vm = CreateVm();
+
+        var boundary = new Models.Boundary
+        {
+            OuterBoundary = new Models.BoundaryPolygon
+            {
+                Points = new()
+                {
+                    new Models.BoundaryPoint(0, 0, 0),
+                    new Models.BoundaryPoint(200, 0, Math.PI / 2),
+                    new Models.BoundaryPoint(200, 200, Math.PI),
+                    new Models.BoundaryPoint(0, 200, -Math.PI / 2)
+                }
+            }
+        };
+        boundary.OuterBoundary.UpdateBounds();
+        typeof(MainViewModel).GetField("_currentBoundary",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(vm, boundary);
+
+        // Segment 1: full boundary headland at 20m offset
+        var bndSeg = new HeadlandSegment
+        {
+            Name = "Boundary",
+            Type = HeadlandSegmentType.Boundary,
+            Offset = 20,
+            BoundaryPoints = new()
+            {
+                new Vec3(0, 0, 0), new Vec3(200, 0, Math.PI / 2),
+                new Vec3(200, 200, Math.PI), new Vec3(0, 200, -Math.PI / 2),
+                new Vec3(0, 0, 0)
+            }
+        };
+        vm.ComputeSegmentOffset(bndSeg);
+        vm.HeadlandSegments.Add(bndSeg);
+
+        // Segment 2: AB line across the middle
+        var abSeg = new HeadlandSegment
+        {
+            Name = "AB Line",
+            Type = HeadlandSegmentType.Line,
+            Offset = 15,
+            BoundaryPoints = new()
+            {
+                new Vec3(20, 100, Math.PI / 2),
+                new Vec3(180, 100, Math.PI / 2)
+            },
+            StartExtension = 50,
+            EndExtension = 50
+        };
+        vm.ComputeSegmentOffset(abSeg);
+        vm.HeadlandSegments.Add(abSeg);
+
+        vm.BuildHeadlandFromSegments();
+
+        Assert.That(bndSeg.IsEffective, Is.True,
+            "Boundary headland should be effective");
+        Assert.That(abSeg.IsEffective, Is.True,
+            $"AB line should be effective after boundary headland. " +
+            $"Headland has {vm.HasHeadland} with headland segments: " +
+            $"bnd={bndSeg.IsEffective}, ab={abSeg.IsEffective}");
+        Assert.That(vm.HasHeadland, Is.True);
+    }
+
+    [Test]
+    public void BoundaryHeadland_PlusABLine_OnClipper2Polygon_4PointOffset()
+    {
+        // Exact reproduction: Clipper2 headland (many points) + AB line with 4 offset points.
+        // Use a dense circular boundary (260 pts) like the user's real field.
+        // The Clipper2 offset produces a polygon with many short edges.
+        // The AB line's 4-point offset must find 2 different intersection points.
+        var vm = CreateVm();
+
+        // Create a dense circular boundary (simulates GPS-recorded field)
+        var bndPts = new System.Collections.Generic.List<Models.BoundaryPoint>();
+        int n = 260;
+        for (int i = 0; i < n; i++)
+        {
+            double angle = 2 * Math.PI * i / n;
+            double radius = 200 + 30 * Math.Sin(3 * angle); // Slightly irregular
+            bndPts.Add(new Models.BoundaryPoint(
+                radius * Math.Cos(angle),
+                radius * Math.Sin(angle),
+                angle + Math.PI / 2));
+        }
+
+        var boundary = new Models.Boundary
+        {
+            OuterBoundary = new Models.BoundaryPolygon { Points = bndPts }
+        };
+        boundary.OuterBoundary.UpdateBounds();
+        typeof(MainViewModel).GetField("_currentBoundary",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(vm, boundary);
+
+        // Segment 1: full boundary headland (closed curve, Clipper2 offset)
+        var bndVec3 = bndPts.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+        bndVec3.Add(bndVec3[0]); // close
+        var bndSeg = new HeadlandSegment
+        {
+            Name = "Boundary",
+            Type = HeadlandSegmentType.Curve,
+            Offset = 20,
+            BoundaryPoints = bndVec3
+        };
+        vm.ComputeSegmentOffset(bndSeg);
+        vm.HeadlandSegments.Add(bndSeg);
+
+        Assert.That(bndSeg.OffsetPoints.Count, Is.GreaterThan(50),
+            $"Clipper2 should produce many offset points, got {bndSeg.OffsetPoints.Count}");
+
+        // Segment 2: AB line cutting across the field (2 offset pts -> 4 with extensions)
+        var abSeg = new HeadlandSegment
+        {
+            Name = "AB Line",
+            Type = HeadlandSegmentType.Line,
+            Offset = 15,
+            BoundaryPoints = new()
+            {
+                new Vec3(-150, 0, Math.PI / 2),
+                new Vec3(150, 0, Math.PI / 2)
+            },
+            StartExtension = 50,
+            EndExtension = 50
+        };
+        vm.ComputeSegmentOffset(abSeg);
+        vm.HeadlandSegments.Add(abSeg);
+
+        Assert.That(abSeg.OffsetPoints.Count, Is.EqualTo(2),
+            "AB line should have exactly 2 offset points");
+
+        vm.BuildHeadlandFromSegments();
+
+        Assert.That(bndSeg.IsEffective, Is.True, "Boundary headland effective");
+        Assert.That(abSeg.IsEffective, Is.True,
+            $"AB line must be effective on Clipper2 polygon ({bndSeg.OffsetPoints.Count} pts). " +
+            "4-point offset search must find 2 different intersections on the headland polygon.");
+    }
+
+    [Test]
+    public void BoundaryHeadland_PlusABLine_UserFieldExactData()
+    {
+        // Uses actual headland polygon from user's field dump (350 pts).
+        // Regression: AB line (4 offset pts) found same intersection for both start/end
+        // on the Clipper2 headland polygon, making the line not effective.
+        var headlinePath = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "TestData", "Fields", "UserField", "Headlines.txt"),
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "TestData", "Fields", "UserField", "Headlines.txt"),
+        }.FirstOrDefault(System.IO.File.Exists);
+
+        if (headlinePath == null)
+        {
+            Assert.Pass("UserField Headlines.txt not found - skipping");
+            return;
+        }
+
+        // Load headland polygon
+        var headland = new System.Collections.Generic.List<Vec3>();
+        foreach (var line in System.IO.File.ReadAllLines(headlinePath))
+        {
+            var parts = line.Trim().Split(',');
+            if (parts.Length >= 3 && double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double e))
+            {
+                double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double n);
+                double.TryParse(parts[2], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double h);
+                headland.Add(new Vec3(e, n, h));
+            }
+        }
+
+        Assert.That(headland.Count, Is.GreaterThan(100), $"Need headland data, got {headland.Count} pts");
+
+        var vm = CreateVm();
+        var boundary = new Models.Boundary
+        {
+            OuterBoundary = new Models.BoundaryPolygon
+            {
+                Points = new()
+                {
+                    new Models.BoundaryPoint(-500, -200, 0),
+                    new Models.BoundaryPoint(50, -200, Math.PI / 2),
+                    new Models.BoundaryPoint(50, 500, Math.PI),
+                    new Models.BoundaryPoint(-500, 500, -Math.PI / 2)
+                }
+            }
+        };
+        boundary.OuterBoundary.UpdateBounds();
+        typeof(MainViewModel).GetField("_currentBoundary",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(vm, boundary);
+
+        // Boundary headland segment (closed, uses headland polygon directly)
+        var bndSeg = new HeadlandSegment
+        {
+            Name = "Boundary",
+            Type = HeadlandSegmentType.Curve,
+            Offset = 12,
+            BoundaryPoints = new(headland),
+            OffsetPoints = headland.GetRange(0, headland.Count - 1)
+        };
+
+        // AB line from user's dump
+        var abSeg = new HeadlandSegment
+        {
+            Name = "Line 2",
+            Type = HeadlandSegmentType.Line,
+            Offset = 12,
+            BoundaryPoints = new()
+            {
+                new Vec3(-313.505, 317.742, -1.726),
+                new Vec3(-469.237, 293.361, -1.726)
+            },
+            StartExtension = 50,
+            EndExtension = 50
+        };
+        vm.ComputeSegmentOffset(abSeg);
+
+        vm.HeadlandSegments.Add(bndSeg);
+        vm.HeadlandSegments.Add(abSeg);
+        vm.BuildHeadlandFromSegments();
+
+        Assert.That(bndSeg.IsEffective, Is.True, "Boundary headland effective");
+        Assert.That(abSeg.IsEffective, Is.True,
+            "AB line must be effective on user's Clipper2 headland polygon " +
+            $"({headland.Count} pts). End search must find farthest intersection.");
+    }
+
     private static bool SegmentsIntersect(Vec3 a1, Vec3 a2, Vec3 b1, Vec3 b2)
     {
         double d = (a2.Easting - a1.Easting) * (b2.Northing - b1.Northing) -
