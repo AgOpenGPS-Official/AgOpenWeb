@@ -60,6 +60,11 @@ public class SwathPlanInput
 
     /// <summary>Inner boundaries (obstacles/holes) to exclude from swaths. May be empty.</summary>
     public List<BoundaryPolygon> InnerBoundaries { get; set; } = new();
+
+    /// <summary>Number of tool-widths of buffer around inner boundaries.
+    /// Swaths terminate at the buffer edge instead of the raw obstacle, leaving
+    /// room for turns. 0 = no buffer (swaths hit the obstacle directly).</summary>
+    public int InnerBoundaryBufferPasses { get; set; } = 1;
 }
 
 /// <summary>

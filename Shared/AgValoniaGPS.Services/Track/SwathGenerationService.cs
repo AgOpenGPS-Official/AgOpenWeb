@@ -146,14 +146,16 @@ public class SwathGenerationService : ISwathGenerationService
             // Clip this infinite line to the boundary polygon
             var segments = ClipLineToBoundary(lineE, lineN, dirE, dirN, boundaryPoints);
 
-            // Subtract inner boundaries (obstacles) — split segments that cross holes
+            // Subtract inner boundaries (obstacles) — split segments that cross holes.
+            // Expand each inner boundary by N tool-widths so swaths terminate at the
+            // buffer edge, leaving room for turns in the headland circuit.
             if (input.InnerBoundaries.Count > 0)
             {
                 foreach (var inner in input.InnerBoundaries)
                 {
-                    var innerPts = inner.Points
-                        .Select(p => new Vec2(p.Easting, p.Northing)).ToList();
-                    if (innerPts.Count < 3) continue;
+                    if (inner.Points.Count < 3) continue;
+                    var innerPts = GetInnerBoundaryExclusion(inner, input);
+                    if (innerPts == null || innerPts.Count < 3) continue;
                     segments = SubtractInnerBoundary(segments, lineE, lineN, dirE, dirN, innerPts);
                 }
             }
@@ -186,6 +188,28 @@ public class SwathGenerationService : ISwathGenerationService
             TotalPossibleTracks = totalTracks,
             TotalWorkingDistance = totalDistance,
         };
+    }
+
+    /// <summary>
+    /// Get the exclusion polygon for an inner boundary — expanded outward by the
+    /// configured buffer so swaths terminate short of the raw obstacle, leaving
+    /// room for turns at the inner headland edge.
+    /// </summary>
+    private static List<Vec2>? GetInnerBoundaryExclusion(BoundaryPolygon inner, SwathPlanInput input)
+    {
+        var rawPts = inner.Points
+            .Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+
+        if (input.InnerBoundaryBufferPasses <= 0)
+            return rawPts;
+
+        double swathWidth = input.ToolWidth - input.Overlap;
+        if (swathWidth <= 0) return rawPts;
+
+        double bufferDist = input.InnerBoundaryBufferPasses * swathWidth;
+        var offsetService = new Services.Geometry.PolygonOffsetService();
+        var expanded = offsetService.CreateOutwardOffset(rawPts, bufferDist);
+        return expanded ?? rawPts;
     }
 
     /// <summary>

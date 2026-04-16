@@ -1454,6 +1454,7 @@ public partial class MainViewModel
                 : null,
             HeadlandWidth = State.Field.HeadlandDistance,
             InnerBoundaries = boundary.InnerBoundaries ?? new(),
+            InnerBoundaryBufferPasses = _routePlanHeadlandPasses,
         };
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
