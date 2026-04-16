@@ -116,6 +116,7 @@ public class RouteStitchingService : IRouteStitchingService
                     TurningRadius = config.TurningRadius,
                     HeadlandWidth = config.HeadlandWidth,
                     Boundary = config.Boundary,
+                    InnerBoundaries = config.InnerBoundaries,
                 };
 
                 var turnResult = _turnPathService.GenerateTurn(turnInput);

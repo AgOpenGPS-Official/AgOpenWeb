@@ -44,6 +44,9 @@ public class RouteStitchConfig
     /// <summary>Outer boundary for turn containment checking.</summary>
     public required BoundaryPolygon Boundary { get; set; }
 
+    /// <summary>Inner boundaries (expanded by buffer) — turns must not cross these.</summary>
+    public List<BoundaryPolygon> InnerBoundaries { get; set; } = new();
+
     /// <summary>Reference heading from the AB line (radians).</summary>
     public double ReferenceHeading { get; set; }
 

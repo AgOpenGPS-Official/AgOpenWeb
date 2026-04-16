@@ -1465,11 +1465,36 @@ public partial class MainViewModel
         var outerBoundary = boundary.OuterBoundary ?? clipBoundary;
         var turnService = new Services.RoutePlanning.TurnPathService();
         var stitchService = new Services.RoutePlanning.RouteStitchingService(turnService);
+        // Build expanded inner boundaries (one tool-width buffer) so turns also avoid the buffer zone
+        var expandedInnerBoundaries = new List<BoundaryPolygon>();
+        if (boundary.InnerBoundaries != null && _routePlanHeadlandPasses > 0)
+        {
+            double swathWidthEff = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
+            if (swathWidthEff <= 0) swathWidthEff = 1.0;
+            double bufferDist = _routePlanHeadlandPasses * swathWidthEff;
+            var expandOffsetSvc = new Services.Geometry.PolygonOffsetService();
+            foreach (var inner in boundary.InnerBoundaries)
+            {
+                if (inner.Points.Count < 3) continue;
+                var innerVec2 = inner.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
+                var expanded = expandOffsetSvc.CreateOutwardOffset(innerVec2, bufferDist);
+                if (expanded != null && expanded.Count >= 3)
+                {
+                    var bp = new BoundaryPolygon();
+                    foreach (var pt in expanded)
+                        bp.Points.Add(new BoundaryPoint { Easting = pt.Easting, Northing = pt.Northing });
+                    bp.UpdateBounds();
+                    expandedInnerBoundaries.Add(bp);
+                }
+            }
+        }
+
         var routePlan = stitchService.StitchRoute(swathPlan.Swaths, new Services.Interfaces.RouteStitchConfig
         {
             TurningRadius = ConfigStore.Guidance.UTurnRadius,
             HeadlandWidth = State.Field.HeadlandDistance,
             Boundary = outerBoundary,
+            InnerBoundaries = expandedInnerBoundaries,
             ReferenceHeading = track.Heading,
             Pattern = _routePlanPattern,
         }, swathPlan.SourceSwathIndex);

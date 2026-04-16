@@ -36,6 +36,11 @@ public class TurnPathService : ITurnPathService
             .Select(p => new Vec2(p.Easting, p.Northing))
             .ToList();
 
+        var innerBoundariesVec2 = input.InnerBoundaries
+            .Where(b => b.Points.Count >= 3)
+            .Select(b => b.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList())
+            .ToList();
+
         // Try with progressively shorter leg lengths.
         // Start with full headland-based leg, shrink by 25% each attempt, min 2m.
         double baseLeg = Math.Max(input.HeadlandWidth - 1.5 * input.TurningRadius, 2.0);
@@ -44,7 +49,7 @@ public class TurnPathService : ITurnPathService
         for (double legScale = 1.0; legScale >= 0.25; legScale -= 0.25)
         {
             double legLength = Math.Max(baseLeg * legScale, 2.0);
-            var result = TryGenerateTurn(input, legLength, boundaryVec2);
+            var result = TryGenerateTurn(input, legLength, boundaryVec2, innerBoundariesVec2);
 
             if (result.IsValid)
                 return result;
@@ -59,7 +64,8 @@ public class TurnPathService : ITurnPathService
     }
 
     private static TurnPathResult TryGenerateTurn(
-        TurnPathInput input, double legLength, List<Vec2> boundaryVec2)
+        TurnPathInput input, double legLength, List<Vec2> boundaryVec2,
+        List<List<Vec2>> innerBoundariesVec2)
     {
         // Extend exit point outward along exit heading
         double exitDirE = Math.Sin(input.ExitHeading);
@@ -107,12 +113,15 @@ public class TurnPathService : ITurnPathService
                 totalLength += Math.Sqrt(dx * dx + dy * dy);
             }
 
+            bool insideOuter = AllPointsInsideBoundary(fullPath, boundaryVec2);
+            bool crossesInner = AnyPointsInsideAnyInner(fullPath, innerBoundariesVec2);
+
             var result = new TurnPathResult
             {
                 Waypoints = fullPath,
                 Length = totalLength,
                 PathType = pathType,
-                IsValid = AllPointsInsideBoundary(fullPath, boundaryVec2)
+                IsValid = insideOuter && !crossesInner
             };
 
             if (result.IsValid)
@@ -140,5 +149,20 @@ public class TurnPathService : ITurnPathService
                 return false;
         }
         return true;
+    }
+
+    private static bool AnyPointsInsideAnyInner(List<Vec3> path, List<List<Vec2>> innerBoundaries)
+    {
+        if (innerBoundaries.Count == 0) return false;
+        foreach (var pt in path)
+        {
+            var test = new Vec2(pt.Easting, pt.Northing);
+            foreach (var inner in innerBoundaries)
+            {
+                if (GeometryMath.IsPointInPolygon(inner, test))
+                    return true;
+            }
+        }
+        return false;
     }
 }

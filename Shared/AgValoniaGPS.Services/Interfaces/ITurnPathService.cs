@@ -51,6 +51,9 @@ public class TurnPathInput
 
     /// <summary>Outer boundary polygon for containment checking.</summary>
     public required BoundaryPolygon Boundary { get; set; }
+
+    /// <summary>Inner boundaries (obstacles) the turn path must NOT cross. May be empty.</summary>
+    public List<BoundaryPolygon> InnerBoundaries { get; set; } = new();
 }
 
 /// <summary>
