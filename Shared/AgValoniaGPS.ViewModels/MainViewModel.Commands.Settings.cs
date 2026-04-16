@@ -175,12 +175,11 @@ public partial class MainViewModel
             }
             State.UI.CloseDialog();
         });
-        // Debug Dump (#127)
+        // Debug Dump (#127) - silent dump for integration tests
         CreateDebugDumpCommand = new RelayCommand(() =>
         {
             try
             {
-                // Capture screenshot before creating dump (runs on UI thread)
                 byte[]? screenshot = null;
                 try { screenshot = ScreenshotProvider?.Invoke(); }
                 catch { /* screenshot is optional */ }
@@ -194,6 +193,95 @@ public partial class MainViewModel
             {
                 StatusMessage = $"Debug dump failed: {ex.Message}";
                 _logger.LogError(ex, "Debug dump failed");
+            }
+        });
+
+        // Bug Report Dialog (#249)
+        ShowBugReportDialogCommand = new RelayCommand(() =>
+        {
+            // Capture screenshot BEFORE dialog opens (so it shows the actual state)
+            _bugReportScreenshot = null;
+            try { _bugReportScreenshot = ScreenshotProvider?.Invoke(); }
+            catch { /* screenshot is optional */ }
+
+            BugReportTitle = string.Empty;
+            BugReportDescription = string.Empty;
+            BugReportAttachments.Clear();
+            State.UI.ShowDialog(Models.State.DialogType.BugReport);
+        });
+
+        CloseBugReportDialogCommand = new RelayCommand(() =>
+        {
+            _bugReportScreenshot = null;
+            BugReportAttachments.Clear();
+            State.UI.CloseDialog();
+        });
+
+        RemoveBugReportAttachmentCommand = new RelayCommand<BugReportAttachment>(attachment =>
+        {
+            if (attachment != null)
+                BugReportAttachments.Remove(attachment);
+        });
+
+        SubmitBugReportCommand = new AsyncRelayCommand(async () =>
+        {
+            try
+            {
+                State.UI.CloseDialog();
+                State.UI.BusyMessage = "Creating bug report...";
+                State.UI.IsBusy = true;
+
+                // Force UI to render busy overlay
+                await Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Render);
+                await System.Threading.Tasks.Task.Delay(50);
+
+                var bugReportsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "AgValoniaGPS", "BugReports");
+
+                // Build filename from title: sanitize, replace spaces with hyphens
+                var titleSlug = string.IsNullOrWhiteSpace(BugReportTitle)
+                    ? "untitled"
+                    : string.Join("-", BugReportTitle.Trim().Split(
+                        Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
+                        .Replace(' ', '-').ToLowerInvariant();
+                if (titleSlug.Length > 60) titleSlug = titleSlug[..60];
+
+                var attachmentPaths = BugReportAttachments.Count > 0
+                    ? BugReportAttachments.Select(a => a.FilePath).ToList()
+                    : null;
+
+                // Combine title + description for the notes file
+                var notes = string.IsNullOrWhiteSpace(BugReportTitle)
+                    ? BugReportDescription
+                    : $"# {BugReportTitle}\n\n{BugReportDescription}";
+
+                var zipPath = Services.DebugDumpService.CreateDump(
+                    _settingsService,
+                    _appState,
+                    additionalNotes: notes,
+                    screenshotPng: _bugReportScreenshot,
+                    outputDirectory: bugReportsDir,
+                    filePrefix: $"bugreport_{titleSlug}",
+                    userAttachments: attachmentPaths);
+
+                _bugReportScreenshot = null;
+                BugReportAttachments.Clear();
+
+                _logger.LogInformation("Bug report created: {ZipPath}", zipPath);
+                ShowConfirmationDialog(
+                    "Bug Report Saved",
+                    $"Your bug report has been saved to:\n\n{zipPath}\n\nAttach this file to a GitHub issue.",
+                    () => { });
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Bug report failed: {ex.Message}";
+                _logger.LogError(ex, "Bug report creation failed");
+            }
+            finally
+            {
+                State.UI.IsBusy = false;
             }
         });
 
@@ -227,6 +315,45 @@ public partial class MainViewModel
     }
 
     public ICommand? CreateDebugDumpCommand { get; private set; }
+    public ICommand? ShowBugReportDialogCommand { get; private set; }
+    public ICommand? CloseBugReportDialogCommand { get; private set; }
+    public ICommand? SubmitBugReportCommand { get; private set; }
+    public ICommand? RemoveBugReportAttachmentCommand { get; private set; }
+
+    private byte[]? _bugReportScreenshot;
+
+    private string _bugReportTitle = string.Empty;
+    public string BugReportTitle
+    {
+        get => _bugReportTitle;
+        set { _bugReportTitle = value; OnPropertyChanged(); }
+    }
+
+    private string _bugReportDescription = string.Empty;
+    public string BugReportDescription
+    {
+        get => _bugReportDescription;
+        set { _bugReportDescription = value; OnPropertyChanged(); }
+    }
+
+    public ObservableCollection<BugReportAttachment> BugReportAttachments { get; } = new();
+
+    public void AddBugReportAttachment(string filePath)
+    {
+        if (!File.Exists(filePath)) return;
+        // Avoid duplicates
+        if (BugReportAttachments.Any(a => a.FilePath == filePath)) return;
+        var info = new FileInfo(filePath);
+        BugReportAttachments.Add(new BugReportAttachment(
+            info.Name, filePath, FormatFileSize(info.Length)));
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
 
     private void ApplyDrift(double deltaEasting, double deltaNorthing)
     {
@@ -472,3 +599,5 @@ public class AppDirectoryInfo
         Exists = Directory.Exists(path);
     }
 }
+
+public record BugReportAttachment(string FileName, string FilePath, string FileSize);

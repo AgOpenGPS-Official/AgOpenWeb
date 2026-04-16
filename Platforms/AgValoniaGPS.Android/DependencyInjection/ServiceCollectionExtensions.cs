@@ -33,6 +33,7 @@ using AgValoniaGPS.ViewModels;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Android.Services;
+using AgValoniaGPS.Services.Logging;
 
 namespace AgValoniaGPS.Android.DependencyInjection;
 
@@ -45,6 +46,7 @@ public static class ServiceCollectionExtensions
         {
             builder.AddConsole();
             builder.AddDebug();
+            builder.AddProvider(new InMemoryLoggerProvider());
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 

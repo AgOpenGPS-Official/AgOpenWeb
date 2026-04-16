@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AgValoniaGPS.ViewModels"
+             x:Class="AgValoniaGPS.Views.Controls.Dialogs.BugReportDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsBugReportDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsBugReportDialogVisible}">
+
+    <!-- Semi-transparent backdrop -->
+    <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed">
+        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                CornerRadius="12" Padding="24"
+                MaxWidth="520" MaxHeight="680"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                BoxShadow="0 4 16 #40000000">
+
+            <StackPanel Spacing="12">
+                <TextBlock Text="Report a Bug" FontSize="22" FontWeight="Bold"
+                           HorizontalAlignment="Center"/>
+
+                <!-- What gets captured -->
+                <TextBlock TextWrapping="Wrap" FontSize="12"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Text="The report will include: screenshot, system info, app settings, GPS state, field data, and recent logs."/>
+                <TextBlock TextWrapping="Wrap" FontSize="11"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                           Text="Saved to: Documents/AgValoniaGPS/BugReports/"/>
+
+                <!-- Title -->
+                <TextBlock Text="Title" FontSize="14" FontWeight="SemiBold"/>
+                <TextBox Text="{Binding BugReportTitle, Mode=TwoWay}"
+                         PlaceholderText="Brief summary, e.g. 'Boundary not closing'"
+                         MaxLength="80"/>
+
+                <!-- Description -->
+                <TextBlock Text="What happened?" FontSize="14" FontWeight="SemiBold"/>
+                <TextBox x:Name="DescriptionBox"
+                         Text="{Binding BugReportDescription, Mode=TwoWay}"
+                         PlaceholderText="Describe the issue. What did you expect to happen?"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         MinHeight="100" MaxHeight="180"/>
+
+                <!-- File drop area -->
+                <TextBlock Text="Attachments (optional)" FontSize="14" FontWeight="SemiBold"/>
+                <Border x:Name="DropZone"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderThickness="2" CornerRadius="8"
+                        MinHeight="60" Padding="12"
+                        Background="Transparent"
+                        DragDrop.AllowDrop="True">
+                    <StackPanel Spacing="4" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="Drop files here or"
+                                   HorizontalAlignment="Center" FontSize="13"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                        <Button Content="Browse Files" Classes="ModernButton"
+                                HorizontalAlignment="Center" MinHeight="32"
+                                Click="OnBrowseFilesClick"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Attached file list -->
+                <ItemsControl ItemsSource="{Binding BugReportAttachments}"
+                              IsVisible="{Binding BugReportAttachments.Count}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                    CornerRadius="4" Padding="8,4" Margin="0,2">
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding FileName}"
+                                               VerticalAlignment="Center" FontSize="13"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding FileSize}"
+                                               VerticalAlignment="Center" FontSize="12" Margin="8,0"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                    <Button Grid.Column="2" Content="X" FontSize="11"
+                                            MinWidth="24" MinHeight="24" Padding="4,2"
+                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).RemoveBugReportAttachmentCommand}"
+                                            CommandParameter="{Binding}"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Buttons -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12" Margin="0,8,0,0">
+                    <Button Content="Submit Report" Classes="ModernButton"
+                            MinWidth="140" MinHeight="40"
+                            Command="{Binding SubmitBugReportCommand}"
+                            IsEnabled="{Binding BugReportTitle.Length}"/>
+                    <Button Content="Cancel" Classes="ModernButton"
+                            MinWidth="100" MinHeight="40"
+                            Command="{Binding CloseBugReportDialogCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Border>
+</UserControl>

@@ -104,7 +104,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Button Classes="ModernButton" Content="{loc:Localize About}" HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press"
                     Command="{Binding ShowAboutDialogCommand}"/>
             <Button Classes="ModernButton" Content="{loc:Localize BugReportDump}" HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press"
-                    Command="{Binding CreateDebugDumpCommand}"/>
+                    Command="{Binding ShowBugReportDialogCommand}"/>
         </StackPanel>
     </Border>
 </UserControl>
