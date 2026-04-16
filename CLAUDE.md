@@ -70,7 +70,7 @@ AgValoniaGPS3/
 | Windows | AgValoniaGPS.Desktop | Same codebase as macOS/Linux |
 | macOS | AgValoniaGPS.Desktop | Same codebase as Windows/Linux |
 | Linux | AgValoniaGPS.Desktop | Same codebase as Windows/macOS |
-| iOS/iPadOS | AgValoniaGPS.iOS | Requires Xcode 26.2+, runs on ARM64 simulator |
+| iOS/iPadOS | AgValoniaGPS.iOS | Requires Xcode 26.3+, runs on ARM64 simulator |
 | Android | AgValoniaGPS.Android | APK build, sideload install |
 
 ## Build Commands
@@ -80,7 +80,7 @@ AgValoniaGPS3/
 dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
 dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
 
-# Build iOS (requires macOS with Xcode 26.2+)
+# Build iOS (requires macOS with Xcode 26.3+)
 dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
 
 # Deploy and run iOS on simulator
