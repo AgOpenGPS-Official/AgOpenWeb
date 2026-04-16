@@ -37,24 +37,30 @@
 - Inner boundary subtraction from swath clipping (code ready, no UI to create inner boundaries yet)
 - Concave boundary fix: midpoint-in-polygon validation for multi-intersection clipping
 - Route generation timing in status display
-- **Not done**: Headland circuit passes (needs boundary-offset curves — Phase 6 territory)
-- **Not done**: Inner boundary creation UI (separate feature, not route-planning specific)
+- Inner boundary creation UI — merged to develop in PR #243
+- Headland circuit passes — HeadlandCircuitService generates outer + inner perimeter loops (displayed on map)
+- Inner boundary buffer zone — swaths terminate at expanded inner boundary, leaving room for turns
+- Turn validation against inner boundaries — turns crossing obstacles flagged red/dashed
 
 ## What's Left
 
-### Phase 5 Remaining
-- Headland circuit passes (work the perimeter before interior swaths)
-
 ### Phase 6 — Advanced (from master plan)
+
+**Zone decomposition** (covers three related problems with one solution):
+- Inner boundaries splitting swaths → needs zone grouping + cross-zone transit
+- Concave outer boundaries splitting swaths → same problem (notch in field)
+- Non-convex headland splitting swaths → same problem (narrow neck)
+
+All three are connected-component detection: identify which swath segments are reachable from each other without crossing an obstacle, then plan the order to visit each zone plus transit paths between zones.
+
+**Other Phase 6 items:**
 - True spiral pattern (continuous inward offset following boundary)
 - Optimal swath angle (brute-force sweep at 1-degree)
-- Trapezoidal decomposition for concave fields
 - Reeds-Shepp turns (reversing for tight headlands)
 - Cost function optimization (time, fuel, off-target application)
 
-## Known Issues
-- Concave fields: turns still get wild legs crossing the concave gap (needs decomposition)
-- Inner boundary creation UI does not exist — model supports it, swath clipping supports it, but no way to draw one
+## Known Issues / MVP Behavior
+- Cross-zone turns (swath splits by inner boundary or concavity) flagged red/dashed; user manually drives around obstacles to rejoin route
 - Route planning is on `feature/route-planning`, NOT merged to develop yet
 
 ## Key Files
