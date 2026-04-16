@@ -1387,6 +1387,7 @@ public partial class MainViewModel
 
     private Services.Track.SwathPattern _routePlanPattern = Services.Track.SwathPattern.Boustrophedon;
     private int? _routePlanMaxTracks = 10;
+    private int _routePlanHeadlandPasses = 1;
 
     private string _routePlanStatus = "";
     public string RoutePlanStatus
@@ -1472,6 +1473,34 @@ public partial class MainViewModel
             Pattern = _routePlanPattern,
         }, swathPlan.SourceSwathIndex);
 
+        // Generate headland circuit passes (outer + inner boundary buffers) for display
+        var circuitOffsetService = new Services.Geometry.PolygonOffsetService();
+        var circuitService = new Services.RoutePlanning.HeadlandCircuitService(circuitOffsetService);
+        double toolEffective = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
+        if (toolEffective <= 0) toolEffective = 1.0;
+
+        var circuitTracks = new List<Models.Track.Track>();
+        if (outerBoundary != null && outerBoundary.Points.Count >= 3)
+        {
+            var outerPasses = circuitService.GenerateOuterPasses(outerBoundary, toolEffective, _routePlanHeadlandPasses);
+            foreach (var pass in outerPasses)
+            {
+                circuitTracks.Add(Models.Track.Track.FromCurve($"Circuit pass {pass.PassNumber + 1}", pass.Points));
+            }
+        }
+        if (boundary.InnerBoundaries != null)
+        {
+            foreach (var inner in boundary.InnerBoundaries)
+            {
+                if (inner.Points.Count < 3) continue;
+                var innerPasses = circuitService.GenerateInnerPasses(inner, toolEffective, _routePlanHeadlandPasses);
+                foreach (var pass in innerPasses)
+                {
+                    circuitTracks.Add(Models.Track.Track.FromCurve($"Inner circuit {pass.PassNumber + 1}", pass.Points));
+                }
+            }
+        }
+
         // Extract turn paths and validity for map rendering
         var turnSegments = routePlan.Segments
             .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Turn)
@@ -1479,7 +1508,10 @@ public partial class MainViewModel
         var turnPaths = turnSegments.Select(s => s.Waypoints).ToList();
         var turnValidity = turnSegments.Select(s => s.IsTurnValid).ToList();
 
-        _mapService.SetPlannedSwaths(swathPlan.Swaths);
+        // Combine interior swaths + headland circuit passes in the displayed swath list
+        var displaySwaths = new List<Models.Track.Track>(swathPlan.Swaths);
+        displaySwaths.AddRange(circuitTracks);
+        _mapService.SetPlannedSwaths(displaySwaths);
         _mapService.SetPlannedTurnPaths(turnPaths, turnValidity);
 
         // Store route plan in application state for Phase 3 route following
