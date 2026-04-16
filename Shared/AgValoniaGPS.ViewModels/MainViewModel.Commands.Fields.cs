@@ -694,6 +694,26 @@ public partial class MainViewModel
                 return;
             }
 
+            // Check if this is a legacy field that will be auto-converted
+            bool isLegacy = !File.Exists(Path.Combine(fieldPath, "field.geojson")) &&
+                            File.Exists(Path.Combine(fieldPath, "Field.txt"));
+
+            if (isLegacy)
+            {
+                ShowConfirmationDialog(
+                    "Import Legacy Field",
+                    $"'{lastField}' uses the legacy AgOpenGPS format. " +
+                    "It will be imported and converted to the new format. " +
+                    "The original files will be kept. Continue?",
+                    () =>
+                    {
+                        _ = OpenFieldAsync(fieldPath, lastField).ContinueWith(_ =>
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                                IsJobMenuPanelVisible = false));
+                    });
+                return;
+            }
+
             await OpenFieldAsync(fieldPath, lastField);
             IsJobMenuPanelVisible = false;
         });

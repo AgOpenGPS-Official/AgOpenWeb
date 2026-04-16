@@ -226,9 +226,10 @@ public class MapService : IMapService
     public void SetTramLines(
         IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? outerTrack,
         IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? innerTrack,
-        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines)
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? boundaryExtraLines = null)
     {
-        _mapControl?.SetTramLines(outerTrack, innerTrack, parallelLines);
+        _mapControl?.SetTramLines(outerTrack, innerTrack, parallelLines, boundaryExtraLines);
     }
 
     public void SetTramControlByte(byte controlByte)
