@@ -373,12 +373,14 @@ public partial class MainViewModel
         // KML Import Dialog
         ShowKmlImportDialogCommand = new RelayCommand(() =>
         {
+            _kmlImportToExistingField = false;
             PopulateAvailableKmlFiles();
             KmlImportFieldName = string.Empty;
             KmlBoundaryPointCount = 0;
             KmlCenterLatitude = 0;
             KmlCenterLongitude = 0;
             _kmlBoundaryPoints.Clear();
+            _kmlParsedPolygons.Clear();
             SelectedKmlFile = null;
 
             if (AvailableKmlFiles.Count > 0)
@@ -404,16 +406,24 @@ public partial class MainViewModel
                 return;
             }
 
+            if (_kmlParsedPolygons.Count == 0 || _kmlBoundaryPoints.Count < 3)
+            {
+                StatusMessage = "KML file must contain at least 3 boundary points";
+                return;
+            }
+
+            // Import to existing field mode (opened from boundary panel)
+            if (_kmlImportToExistingField)
+            {
+                ImportKmlToExistingField();
+                return;
+            }
+
+            // Create new field mode (opened from field creation)
             var newFieldName = KmlImportFieldName.Trim();
             if (string.IsNullOrWhiteSpace(newFieldName))
             {
                 StatusMessage = "Please enter a field name";
-                return;
-            }
-
-            if (_kmlBoundaryPoints.Count < 3)
-            {
-                StatusMessage = "KML file must contain at least 3 boundary points";
                 return;
             }
 
@@ -443,27 +453,56 @@ public partial class MainViewModel
                 var sharedProps = new SharedFieldProperties();
                 var localPlane = new LocalPlane(origin, sharedProps);
 
-                var outerPolygon = new BoundaryPolygon();
-                foreach (var (lat, lon) in _kmlBoundaryPoints)
+                var boundary = new Boundary();
+
+                // First polygon = outer boundary
+                for (int polyIdx = 0; polyIdx < _kmlParsedPolygons.Count; polyIdx++)
                 {
-                    var wgs84 = new Wgs84(lat, lon);
-                    var geoCoord = localPlane.ConvertWgs84ToGeoCoord(wgs84);
-                    outerPolygon.Points.Add(new BoundaryPoint(geoCoord.Easting, geoCoord.Northing, 0));
+                    var polygon = new BoundaryPolygon();
+                    foreach (var (lat, lon) in _kmlParsedPolygons[polyIdx])
+                    {
+                        var wgs84 = new Wgs84(lat, lon);
+                        var geoCoord = localPlane.ConvertWgs84ToGeoCoord(wgs84);
+                        polygon.Points.Add(new BoundaryPoint(geoCoord.Easting, geoCoord.Northing, 0));
+                    }
+
+                    if (polyIdx == 0)
+                        boundary.OuterBoundary = polygon;
+                    else
+                        boundary.InnerBoundaries.Add(polygon);
                 }
 
-                var boundary = new Boundary { OuterBoundary = outerPolygon };
                 _boundaryFileService.SaveBoundary(boundary, newFieldPath);
+
+                // Set field origin so coordinate conversions work
+                _fieldOriginLatitude = KmlCenterLatitude;
+                _fieldOriginLongitude = KmlCenterLongitude;
+                _simulatorLocalPlane = null;
 
                 CurrentFieldName = newFieldName;
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
 
+                // Load boundary into map renderer
+                SetCurrentBoundary(boundary);
+                CenterMapOnBoundary(boundary);
+
+                // Update boundary area stats
+                var boundaryAreas = new List<double> { boundary.AreaHectares * 10000 };
+                _fieldStatistics.UpdateBoundaryAreas(boundaryAreas);
+                OnPropertyChanged(nameof(BoundaryAreaDisplay));
+
                 _settingsService.Settings.LastOpenedField = newFieldName;
                 _settingsService.Save();
 
+                RefreshBoundaryList();
+                SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
+
                 State.UI.CloseDialog();
                 IsJobMenuPanelVisible = false;
-                StatusMessage = $"Imported KML: {newFieldName}";
+                var innerCount = _kmlParsedPolygons.Count - 1;
+                var innerMsg = innerCount > 0 ? $" ({innerCount} inner boundaries)" : "";
+                StatusMessage = $"Imported KML: {newFieldName}{innerMsg}";
             }
             catch (Exception ex)
             {

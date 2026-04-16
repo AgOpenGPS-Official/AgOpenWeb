@@ -100,6 +100,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Boundary.png" Width="24" Height="24"/>
                                 <TextBlock Text="{loc:Localize DrawFieldBoundary}" Foreground="#1ABC9C" FontWeight="Bold" FontSize="18"/>
+                                <Border Background="#F5F54D" CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsInnerBoundaryMode}">
+                                    <TextBlock Text="INNER" FontSize="12" FontWeight="Bold" Foreground="#333333"/>
+                                </Border>
                             </StackPanel>
                             <TextBlock Text="{loc:Localize TapOnTheMapToAddBoundaryPointsPanWithDragPinchToZoom}"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="13" Margin="0,5,0,0"/>

@@ -98,6 +98,9 @@ public partial class MainViewModel
             BoundaryPointCount = e.PointCount;
             BoundaryAreaHectares = e.AreaHectares;
 
+            // Update header text when recording state changes
+            OnPropertyChanged(nameof(BoundaryRecordingHeaderText));
+
             // Clear recording points from map when recording becomes idle
             if (e.State == BoundaryRecordingState.Idle)
             {

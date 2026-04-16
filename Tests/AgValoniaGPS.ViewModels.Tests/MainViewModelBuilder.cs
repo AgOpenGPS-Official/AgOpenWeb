@@ -54,6 +54,7 @@ public class MainViewModelBuilder
             settingsService: SettingsService,
             mapService: MapService,
             boundaryRecordingService: Substitute.For<IBoundaryRecordingService>(),
+            boundaryBuilderService: Substitute.For<IBoundaryBuilderService>(),
             boundaryFileService: new BoundaryFileService(),
             headlandBuilderService: Substitute.For<AgValoniaGPS.Services.Headland.IHeadlandBuilderService>(),
             trackGuidanceService: TrackGuidanceService,
