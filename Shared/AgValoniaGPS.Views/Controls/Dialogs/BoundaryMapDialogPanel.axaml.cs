@@ -46,6 +46,7 @@ public partial class BoundaryMapDialogPanel : UserControl
 {
     private WritableLayer? _pointsLayer;
     private WritableLayer? _polygonLayer;
+    private WritableLayer? _existingBoundaryLayer;
     private bool _isDrawingMode;
     private bool _mapInitialized;
     private readonly List<(double Lat, double Lon)> _boundaryPoints = new();
@@ -60,10 +61,14 @@ public partial class BoundaryMapDialogPanel : UserControl
 
     private void OnPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
-        if (e.Property.Name == nameof(IsVisible) && IsVisible && !_mapInitialized)
+        if (e.Property.Name == nameof(IsVisible) && IsVisible)
         {
-            SetupMap();
-            _mapInitialized = true;
+            if (!_mapInitialized)
+            {
+                SetupMap();
+                _mapInitialized = true;
+            }
+            UpdateExistingBoundaryLayer();
         }
     }
 
@@ -83,6 +88,11 @@ public partial class BoundaryMapDialogPanel : UserControl
             name: "Bing Satellite");
         map.Layers.Add(new TileLayer(bingTileSource) { Name = "Satellite" });
         Debug.WriteLine("[BoundaryMap] Using Bing Satellite tiles");
+
+        // Create layer for existing boundary reference (below active drawing layers)
+        // Style = null so per-feature styles are used instead of a layer default
+        _existingBoundaryLayer = new WritableLayer { Name = "ExistingBoundaries", Style = null };
+        map.Layers.Add(_existingBoundaryLayer);
 
         // Create layer for polygon (drawn below points)
         _polygonLayer = new WritableLayer
@@ -144,6 +154,56 @@ public partial class BoundaryMapDialogPanel : UserControl
 
         // Handle pointer movement for coordinate display
         MapControl.PointerMoved += OnPointerMoved;
+    }
+
+    /// <summary>
+    /// Renders existing boundary polygons (outer + inner) as reference on the satellite map.
+    /// </summary>
+    private void UpdateExistingBoundaryLayer()
+    {
+        if (_existingBoundaryLayer == null) return;
+        _existingBoundaryLayer.Clear();
+
+        if (DataContext is not AgValoniaGPS.ViewModels.MainViewModel vm) return;
+        if (vm.BoundaryMapExistingPolygons.Count == 0) return;
+
+        var factory = new GeometryFactory();
+
+        for (int polyIdx = 0; polyIdx < vm.BoundaryMapExistingPolygons.Count; polyIdx++)
+        {
+            var wgs84Points = vm.BoundaryMapExistingPolygons[polyIdx];
+            if (wgs84Points.Count < 3) continue;
+
+            // Convert to Mercator coordinates and close the ring
+            var coords = new Coordinate[wgs84Points.Count + 1];
+            for (int i = 0; i < wgs84Points.Count; i++)
+            {
+                var merc = SphericalMercator.FromLonLat(wgs84Points[i].Longitude, wgs84Points[i].Latitude);
+                coords[i] = new Coordinate(merc.x, merc.y);
+            }
+            coords[^1] = coords[0]; // Close ring
+
+            var ring = factory.CreateLinearRing(coords);
+            var polygon = factory.CreatePolygon(ring);
+            var feature = new GeometryFeature(polygon);
+
+            // Outer boundary = orange, inner boundaries = yellow
+            bool isOuter = polyIdx == 0;
+            feature.Styles.Add(new VectorStyle
+            {
+                Fill = new Mapsui.Styles.Brush(isOuter
+                    ? new Mapsui.Styles.Color(242, 112, 89, 40)   // Semi-transparent orange
+                    : new Mapsui.Styles.Color(245, 245, 77, 40)), // Semi-transparent yellow
+                Line = new Mapsui.Styles.Pen(isOuter
+                    ? new Mapsui.Styles.Color(242, 112, 89, 200)  // Orange outline
+                    : new Mapsui.Styles.Color(245, 245, 77, 200), // Yellow outline
+                    2)
+            });
+
+            _existingBoundaryLayer.Add(feature);
+        }
+
+        _existingBoundaryLayer.DataHasChanged();
     }
 
     private void OnMapPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -399,9 +459,10 @@ public partial class BoundaryMapDialogPanel : UserControl
             Directory.CreateDirectory(tempDir);
             var savedBackgroundPath = Path.Combine(tempDir, "BackPic.png");
 
-            // Hide drawing layers before capture
+            // Hide drawing and reference layers before capture
             if (_pointsLayer != null) _pointsLayer.Enabled = false;
             if (_polygonLayer != null) _polygonLayer.Enabled = false;
+            if (_existingBoundaryLayer != null) _existingBoundaryLayer.Enabled = false;
             MapControl.Refresh();
 
             // Wait for tile layer to finish loading
@@ -449,9 +510,10 @@ public partial class BoundaryMapDialogPanel : UserControl
                 renderTarget.Save(savedBackgroundPath);
             }
 
-            // Re-enable drawing layers
+            // Re-enable drawing and reference layers
             if (_pointsLayer != null) _pointsLayer.Enabled = true;
             if (_polygonLayer != null) _polygonLayer.Enabled = true;
+            if (_existingBoundaryLayer != null) _existingBoundaryLayer.Enabled = true;
             MapControl.Refresh();
 
             // Create geo-reference file content (includes Mercator bounds)
@@ -465,9 +527,10 @@ public partial class BoundaryMapDialogPanel : UserControl
         {
             Debug.WriteLine($"Error capturing background: {ex.Message}");
 
-            // Re-enable drawing layers on error
+            // Re-enable drawing and reference layers on error
             if (_pointsLayer != null) _pointsLayer.Enabled = true;
             if (_polygonLayer != null) _polygonLayer.Enabled = true;
+            if (_existingBoundaryLayer != null) _existingBoundaryLayer.Enabled = true;
             MapControl.Refresh();
 
             return null;

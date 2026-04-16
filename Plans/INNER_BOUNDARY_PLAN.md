@@ -1,6 +1,7 @@
 # Inner Boundary (Obstacle) Creation — Implementation Plan
 
 ## Issue #238
+## Status: In Progress (feature/inner-boundary-ui branch)
 
 ## Context
 

@@ -53,6 +53,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly IMapService _mapService;
     private readonly IBoundaryRecordingService _boundaryRecordingService;
+    private readonly IBoundaryBuilderService _boundaryBuilderService;
     private readonly BoundaryFileService _boundaryFileService;
     private readonly NmeaParserService _nmeaParser;
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
@@ -151,6 +152,7 @@ public partial class MainViewModel : ObservableObject
         ISettingsService settingsService,
         IMapService mapService,
         IBoundaryRecordingService boundaryRecordingService,
+        IBoundaryBuilderService boundaryBuilderService,
         BoundaryFileService boundaryFileService,
         Services.Headland.IHeadlandBuilderService headlandBuilderService,
         ITrackGuidanceService trackGuidanceService,
@@ -203,6 +205,7 @@ public partial class MainViewModel : ObservableObject
         _settingsService = settingsService;
         _mapService = mapService;
         _boundaryRecordingService = boundaryRecordingService;
+        _boundaryBuilderService = boundaryBuilderService;
         _boundaryFileService = boundaryFileService;
         _headlandBuilderService = headlandBuilderService;
         _trackGuidanceService = trackGuidanceService;
@@ -2040,6 +2043,13 @@ public partial class MainViewModel : ObservableObject
     }
 
     private List<(double Latitude, double Longitude)> _kmlBoundaryPoints = new();
+    private List<List<(double Latitude, double Longitude)>> _kmlParsedPolygons = new();
+
+    /// <summary>
+    /// When true, KML import adds boundaries to the current open field.
+    /// When false (default), KML import creates a new field.
+    /// </summary>
+    private bool _kmlImportToExistingField;
 
     public ICommand? CancelKmlImportDialogCommand { get; private set; }
     public ICommand? ConfirmKmlImportDialogCommand { get; private set; }
@@ -2119,6 +2129,9 @@ public partial class MainViewModel : ObservableObject
         get => _boundaryMapCanSave;
         set => SetProperty(ref _boundaryMapCanSave, value);
     }
+
+    // Existing boundary polygons for reference display in the map dialog (WGS84 coordinates)
+    public List<List<(double Latitude, double Longitude)>> BoundaryMapExistingPolygons { get; } = new();
 
     // Result properties for boundary map dialog
     public List<(double Latitude, double Longitude)> BoundaryMapResultPoints { get; } = new();
@@ -2338,6 +2351,37 @@ public partial class MainViewModel : ObservableObject
             {
                 RefreshBoundaryList();
             }
+        }
+    }
+
+    // Boundary mode: tracks whether next boundary operation targets inner or outer
+    private BoundaryType _pendingBoundaryType = BoundaryType.Outer;
+    public BoundaryType PendingBoundaryType
+    {
+        get => _pendingBoundaryType;
+        set
+        {
+            if (SetProperty(ref _pendingBoundaryType, value))
+            {
+                OnPropertyChanged(nameof(BoundaryRecordingHeaderText));
+                OnPropertyChanged(nameof(IsInnerBoundaryMode));
+            }
+        }
+    }
+
+    public bool IsInnerBoundaryMode => PendingBoundaryType == BoundaryType.Inner;
+
+    public string BoundaryRecordingHeaderText
+    {
+        get
+        {
+            if (_boundaryRecordingService.IsRecording || _boundaryRecordingService.State == BoundaryRecordingState.Paused)
+            {
+                return _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner
+                    ? "Recording Inner Boundary"
+                    : "Recording Outer Boundary";
+            }
+            return "Start or Delete Boundary";
         }
     }
 
@@ -2949,6 +2993,10 @@ public partial class MainViewModel : ObservableObject
     public ICommand? DrawMapBoundaryCommand { get; private set; }
     public ICommand? BuildFromTracksCommand { get; private set; }
     public ICommand? DriveAroundFieldCommand { get; private set; }
+    public ICommand? RecordInnerBoundaryCommand { get; private set; }
+    public ICommand? DriveAroundInnerBoundaryCommand { get; private set; }
+    public ICommand? DrawMapInnerBoundaryCommand { get; private set; }
+    public ICommand? ToggleDriveThroughCommand { get; private set; }
     public ICommand? ToggleRecordingCommand { get; private set; }
     public ICommand? ToggleBoundaryLeftRightCommand { get; private set; }
     public ICommand? ToggleBoundaryAntennaToolCommand { get; private set; }
@@ -3562,29 +3610,35 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Parses a KML file to extract boundary coordinates.
+    /// Parses ALL coordinate blocks: first = outer boundary, subsequent = inner boundaries.
+    /// Results stored in both _kmlBoundaryPoints (first polygon, for field-creation flow)
+    /// and _kmlParsedPolygons (all polygons, for import-to-existing flow).
     /// </summary>
     private void ParseKmlFile(string filePath)
     {
         _kmlBoundaryPoints.Clear();
+        _kmlParsedPolygons.Clear();
         KmlBoundaryPointCount = 0;
         KmlCenterLatitude = 0;
         KmlCenterLongitude = 0;
 
         try
         {
-            string? coordinates = null;
-            int startIndex;
-
             using var reader = new StreamReader(filePath);
+            double sumLat = 0, sumLon = 0;
+            int totalValidPoints = 0;
+
             while (!reader.EndOfStream)
             {
                 string? line = reader.ReadLine();
                 if (line == null) continue;
 
-                startIndex = line.IndexOf("<coordinates>");
+                int startIndex = line.IndexOf("<coordinates>");
 
                 if (startIndex != -1)
                 {
+                    string? coordinates = null;
+
                     // Found start of coordinates block
                     while (true)
                     {
@@ -3620,8 +3674,7 @@ public partial class MainViewModel : ObservableObject
 
                     if (numberSets.Length >= 3)
                     {
-                        double sumLat = 0, sumLon = 0;
-                        int validPoints = 0;
+                        var polygonPoints = new List<(double Latitude, double Longitude)>();
 
                         foreach (string item in numberSets)
                         {
@@ -3632,30 +3685,157 @@ public partial class MainViewModel : ObservableObject
                                 double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lon) &&
                                 double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lat))
                             {
-                                _kmlBoundaryPoints.Add((lat, lon));
+                                polygonPoints.Add((lat, lon));
                                 sumLat += lat;
                                 sumLon += lon;
-                                validPoints++;
+                                totalValidPoints++;
                             }
                         }
 
-                        if (validPoints > 0)
+                        if (polygonPoints.Count >= 3)
                         {
-                            KmlCenterLatitude = sumLat / validPoints;
-                            KmlCenterLongitude = sumLon / validPoints;
+                            _kmlParsedPolygons.Add(polygonPoints);
+
+                            // First polygon also populates _kmlBoundaryPoints for backwards compatibility
+                            if (_kmlParsedPolygons.Count == 1)
+                            {
+                                _kmlBoundaryPoints.AddRange(polygonPoints);
+                            }
                         }
-
-                        KmlBoundaryPointCount = validPoints;
                     }
+                    // Continue to parse additional coordinate blocks (inner boundaries)
+                }
+            }
 
-                    // Only parse first coordinate block (outer boundary)
-                    break;
+            if (totalValidPoints > 0)
+            {
+                KmlCenterLatitude = sumLat / totalValidPoints;
+                KmlCenterLongitude = sumLon / totalValidPoints;
+            }
+
+            KmlBoundaryPointCount = totalValidPoints;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error parsing KML: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Imports KML boundaries into the currently open field.
+    /// First polygon becomes outer (or inner if PendingBoundaryType is Inner),
+    /// subsequent polygons are added as inner boundaries.
+    /// </summary>
+    /// <summary>
+    /// Converts existing boundary polygons from local coordinates to WGS84
+    /// for display as reference layers in the boundary map dialog.
+    /// </summary>
+    private void PopulateBoundaryMapExistingPolygons()
+    {
+        BoundaryMapExistingPolygons.Clear();
+
+        if (_currentBoundary == null || (_fieldOriginLatitude == 0 && _fieldOriginLongitude == 0))
+            return;
+
+        try
+        {
+            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var sharedProps = new SharedFieldProperties();
+            var localPlane = new LocalPlane(origin, sharedProps);
+
+            // Add outer boundary
+            if (_currentBoundary.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count >= 3)
+            {
+                var wgs84Points = new List<(double Latitude, double Longitude)>();
+                foreach (var pt in _currentBoundary.OuterBoundary.Points)
+                {
+                    var geoCoord = new GeoCoord(pt.Northing, pt.Easting);
+                    var wgs84 = localPlane.ConvertGeoCoordToWgs84(geoCoord);
+                    wgs84Points.Add((wgs84.Latitude, wgs84.Longitude));
+                }
+                BoundaryMapExistingPolygons.Add(wgs84Points);
+            }
+
+            // Add inner boundaries
+            foreach (var inner in _currentBoundary.InnerBoundaries)
+            {
+                if (inner.Points.Count >= 3)
+                {
+                    var wgs84Points = new List<(double Latitude, double Longitude)>();
+                    foreach (var pt in inner.Points)
+                    {
+                        var geoCoord = new GeoCoord(pt.Northing, pt.Easting);
+                        var wgs84 = localPlane.ConvertGeoCoordToWgs84(geoCoord);
+                        wgs84Points.Add((wgs84.Latitude, wgs84.Longitude));
+                    }
+                    BoundaryMapExistingPolygons.Add(wgs84Points);
                 }
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error parsing KML: {ex.Message}";
+            _logger.LogDebug($"[BoundaryMap] Failed to populate existing polygons: {ex.Message}");
+        }
+    }
+
+    private void ImportKmlToExistingField()
+    {
+        if (string.IsNullOrEmpty(CurrentFieldName) || _kmlParsedPolygons.Count == 0)
+        {
+            StatusMessage = "No field open or no KML polygons parsed";
+            return;
+        }
+
+        try
+        {
+            var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+            var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+
+            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var sharedProps = new SharedFieldProperties();
+            var localPlane = new LocalPlane(origin, sharedProps);
+
+            for (int polyIdx = 0; polyIdx < _kmlParsedPolygons.Count; polyIdx++)
+            {
+                var polygon = new BoundaryPolygon();
+                foreach (var (lat, lon) in _kmlParsedPolygons[polyIdx])
+                {
+                    var wgs84 = new Wgs84(lat, lon);
+                    var geoCoord = localPlane.ConvertWgs84ToGeoCoord(wgs84);
+                    polygon.Points.Add(new BoundaryPoint(geoCoord.Easting, geoCoord.Northing, 0));
+                }
+
+                // First polygon: respects PendingBoundaryType
+                // Subsequent polygons: always inner
+                if (polyIdx == 0 && PendingBoundaryType == BoundaryType.Outer)
+                    boundary.OuterBoundary = polygon;
+                else
+                    boundary.InnerBoundaries.Add(polygon);
+            }
+
+            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SetCurrentBoundary(boundary);
+            CenterMapOnBoundary(boundary);
+            RefreshBoundaryList();
+
+            // Update boundary area stats
+            if (boundary.OuterBoundary != null)
+            {
+                var boundaryAreas = new List<double> { boundary.AreaHectares * 10000 };
+                _fieldStatistics.UpdateBoundaryAreas(boundaryAreas);
+                OnPropertyChanged(nameof(BoundaryAreaDisplay));
+            }
+
+            State.UI.CloseDialog();
+            PendingBoundaryType = BoundaryType.Outer;
+
+            var innerCount = _kmlParsedPolygons.Count > 1 ? _kmlParsedPolygons.Count - 1 : 0;
+            var innerMsg = innerCount > 0 ? $" + {innerCount} inner" : "";
+            StatusMessage = $"KML boundary imported{innerMsg}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error importing KML boundary: {ex.Message}";
         }
     }
 
