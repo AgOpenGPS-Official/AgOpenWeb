@@ -22,7 +22,12 @@ public interface IRouteStitchingService
     /// <summary>
     /// Stitch ordered swaths into a complete route plan with validated turns.
     /// </summary>
-    RoutePlan StitchRoute(List<Models.Track.Track> swaths, RouteStitchConfig config);
+    /// <param name="sourceSwathIndex">Parallel list identifying which original swath each
+    /// track came from. Tracks with the same source index are segments of a swath split
+    /// by an inner boundary — no turn is generated between them. If null, all tracks are
+    /// treated as independent swaths.</param>
+    RoutePlan StitchRoute(List<Models.Track.Track> swaths, RouteStitchConfig config,
+        List<int>? sourceSwathIndex = null);
 }
 
 /// <summary>

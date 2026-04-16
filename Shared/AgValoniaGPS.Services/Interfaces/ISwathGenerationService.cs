@@ -70,6 +70,11 @@ public class SwathPlan
     /// <summary>Ordered, finite-endpoint tracks clipped to boundary.</summary>
     public List<Models.Track.Track> Swaths { get; set; } = new();
 
+    /// <summary>Source swath index for each track (parallel to Swaths).
+    /// When a swath is split by an inner boundary, multiple tracks share the same index.
+    /// Used by RouteStitchingService to avoid generating turns between split segments.</summary>
+    public List<int> SourceSwathIndex { get; set; } = new();
+
     /// <summary>Total number of parallel tracks that fit across the field.</summary>
     public int TotalPossibleTracks { get; set; }
 

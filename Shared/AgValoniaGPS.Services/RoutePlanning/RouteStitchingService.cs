@@ -29,7 +29,8 @@ public class RouteStitchingService : IRouteStitchingService
         _turnPathService = turnPathService;
     }
 
-    public RoutePlan StitchRoute(List<Models.Track.Track> swaths, RouteStitchConfig config)
+    public RoutePlan StitchRoute(List<Models.Track.Track> swaths, RouteStitchConfig config,
+        List<int>? sourceSwathIndex = null)
     {
         var plan = new RoutePlan
         {
@@ -69,8 +70,16 @@ public class RouteStitchingService : IRouteStitchingService
                 IsTurnValid = true,
             });
 
-            // Generate turn to next swath (if not the last swath)
-            if (i < swaths.Count - 1)
+            // Generate turn to next swath (if not the last swath).
+            // Skip if the next track is a sibling segment of the same original swath
+            // (split by an inner boundary) — no turn between pieces of the same line.
+            bool skipTurn = sourceSwathIndex != null
+                && i + 1 < swaths.Count
+                && i < sourceSwathIndex.Count
+                && i + 1 < sourceSwathIndex.Count
+                && sourceSwathIndex[i] == sourceSwathIndex[i + 1];
+
+            if (i < swaths.Count - 1 && !skipTurn)
             {
                 var next = swaths[i + 1];
                 if (next.Points.Count < 2) continue;

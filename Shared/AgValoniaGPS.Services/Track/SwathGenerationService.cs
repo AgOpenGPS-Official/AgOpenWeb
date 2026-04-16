@@ -127,6 +127,7 @@ public class SwathGenerationService : ISwathGenerationService
 
         // Generate finite tracks by clipping each offset line to the boundary
         var swaths = new List<Models.Track.Track>();
+        var sourceIndices = new List<int>();
         double totalDistance = 0;
 
         for (int i = 0; i < orderedIndices.Count; i++)
@@ -173,6 +174,7 @@ public class SwathGenerationService : ISwathGenerationService
                 track.Type = TrackType.Curve; // Finite, not infinite AB line
 
                 swaths.Add(track);
+                sourceIndices.Add(i);
                 totalDistance += length;
             }
         }
@@ -180,6 +182,7 @@ public class SwathGenerationService : ISwathGenerationService
         return new SwathPlan
         {
             Swaths = swaths,
+            SourceSwathIndex = sourceIndices,
             TotalPossibleTracks = totalTracks,
             TotalWorkingDistance = totalDistance,
         };

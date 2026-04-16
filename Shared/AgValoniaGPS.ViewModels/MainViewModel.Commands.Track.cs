@@ -1470,7 +1470,7 @@ public partial class MainViewModel
             Boundary = outerBoundary,
             ReferenceHeading = track.Heading,
             Pattern = _routePlanPattern,
-        });
+        }, swathPlan.SourceSwathIndex);
 
         // Extract turn paths and validity for map rendering
         var turnSegments = routePlan.Segments
