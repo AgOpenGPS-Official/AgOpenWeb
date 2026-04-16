@@ -1352,6 +1352,9 @@ public partial class MainViewModel : ObservableObject
 
             // Save tracks
             SaveTracksToFile();
+
+            // Save field (writes geojson + legacy formats)
+            _fieldService.SaveField(ActiveField);
         }
         catch (Exception ex)
         {
