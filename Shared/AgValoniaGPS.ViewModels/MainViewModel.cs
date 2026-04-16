@@ -53,6 +53,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly IMapService _mapService;
     private readonly IBoundaryRecordingService _boundaryRecordingService;
+    private readonly IBoundaryBuilderService _boundaryBuilderService;
     private readonly BoundaryFileService _boundaryFileService;
     private readonly NmeaParserService _nmeaParser;
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
@@ -73,6 +74,9 @@ public partial class MainViewModel : ObservableObject
     private readonly IChartDataService _chartDataService;
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
+    private readonly ITramLineService _tramLineService;
+    private bool _hasTramSystemsEverUsed;
+    private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
@@ -148,6 +152,7 @@ public partial class MainViewModel : ObservableObject
         ISettingsService settingsService,
         IMapService mapService,
         IBoundaryRecordingService boundaryRecordingService,
+        IBoundaryBuilderService boundaryBuilderService,
         BoundaryFileService boundaryFileService,
         Services.Headland.IHeadlandBuilderService headlandBuilderService,
         ITrackGuidanceService trackGuidanceService,
@@ -166,11 +171,30 @@ public partial class MainViewModel : ObservableObject
         IChartDataService chartDataService,
         IAudioService audioService,
         IElevationLogService elevationLogService,
+        ITramLineService tramLineService,
         IGpsPipelineService gpsPipelineService,
         ILogger<MainViewModel> logger,
         ApplicationState appState)
     {
         _logger = logger;
+        _tramLineService = tramLineService;
+
+        // Sync GuidanceConfig.TramDisplay -> TramConfig.DisplayMode and regenerate
+        ConfigStore.Guidance.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Models.Configuration.GuidanceConfig.TramDisplay))
+            {
+                ConfigStore.Tram.DisplayMode = ConfigStore.Guidance.TramDisplay
+                    ? Models.Configuration.TramDisplayMode.All
+                    : Models.Configuration.TramDisplayMode.Off;
+                UpdateTramLines(SelectedTrack);
+            }
+            else if (e.PropertyName == nameof(Models.Configuration.GuidanceConfig.TramPasses))
+            {
+                ConfigStore.Tram.Passes = ConfigStore.Guidance.TramPasses;
+                UpdateTramLines(SelectedTrack);
+            }
+        };
         _udpService = udpService;
         _gpsService = gpsService;
         _fieldService = fieldService;
@@ -181,6 +205,7 @@ public partial class MainViewModel : ObservableObject
         _settingsService = settingsService;
         _mapService = mapService;
         _boundaryRecordingService = boundaryRecordingService;
+        _boundaryBuilderService = boundaryBuilderService;
         _boundaryFileService = boundaryFileService;
         _headlandBuilderService = headlandBuilderService;
         _trackGuidanceService = trackGuidanceService;
@@ -208,6 +233,7 @@ public partial class MainViewModel : ObservableObject
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
         _udpService.DataReceived += OnUdpDataReceived;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
+        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
 
         // Start the background GPS processing pipeline
@@ -1204,6 +1230,40 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath}");
             RefreshCoverageStatistics();
 
+            // Load tram lines
+            try
+            {
+                _tramLineService.LoadFromFile(fieldPath);
+                if (_tramLineService.HasTramLines)
+                {
+                    _mapService.SetTramLines(
+                        _tramLineService.OuterBoundaryTrack,
+                        _tramLineService.InnerBoundaryTrack,
+                        _tramLineService.ParallelTramLines);
+                    _logger.LogDebug($"[Tram] Loaded tram lines from {fieldPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load tram lines");
+            }
+
+            // Load tram systems
+            try
+            {
+                var systems = Services.Tram.TramSystemFileService.Load(fieldPath);
+                ConfigStore.Tram.Systems.Clear();
+                foreach (var sys in systems)
+                    ConfigStore.Tram.Systems.Add(sys);
+                _hasTramSystemsEverUsed = systems.Count > 0;
+                if (systems.Count > 0)
+                    _logger.LogDebug($"[Tram] Loaded {systems.Count} tram systems");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load tram systems");
+            }
+
             // Handle NTRIP profile
             _ = HandleNtripProfileForFieldAsync(fieldName);
 
@@ -1273,12 +1333,29 @@ public partial class MainViewModel : ObservableObject
             await Task.Run(() => _coverageMapService.SaveToFile(savePath));
             _logger.LogDebug($"[Coverage] Saved coverage to {savePath}");
 
+            // Save tram lines
+            if (_tramLineService.HasTramLines)
+            {
+                _tramLineService.SaveToFile(ActiveField.DirectoryPath);
+                _logger.LogDebug($"[Tram] Saved tram lines to {ActiveField.DirectoryPath}");
+            }
+
+            // Save tram systems
+            if (ConfigStore.Tram.Systems.Count > 0)
+            {
+                Services.Tram.TramSystemFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram.Systems);
+                _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
+            }
+
             // Flush elevation log
             _elevationLogService.Flush(ActiveField.DirectoryPath);
             _elevationLogService.Clear();
 
             // Save tracks
             SaveTracksToFile();
+
+            // Save field (writes geojson + legacy formats)
+            _fieldService.SaveField(ActiveField);
         }
         catch (Exception ex)
         {
@@ -1387,6 +1464,25 @@ public partial class MainViewModel : ObservableObject
             _mapService.SetHeadlandLine(null);
             HasHeadland = false;
             IsHeadlandOn = false;
+        }
+
+        // Load headland segments
+        try
+        {
+            var segments = Services.Headland.HeadlandSegmentFileService.Load(field.DirectoryPath);
+            HeadlandSegments.Clear();
+            foreach (var seg in segments)
+            {
+                // Recompute offsets with current algorithm (may differ from saved)
+                ComputeSegmentOffset(seg);
+                HeadlandSegments.Add(seg);
+            }
+            if (HeadlandSegments.Count > 0)
+                BuildHeadlandFromSegments();
+        }
+        catch (System.Exception ex)
+        {
+            _logger.LogDebug($"[Headland] Failed to load headland segments: {ex.Message}");
         }
     }
 
@@ -1557,6 +1653,9 @@ public partial class MainViewModel : ObservableObject
                     // Show the track on the map when activated
                     _mapService.SetActiveTrack(value);
 
+                    // Generate tram lines from the selected track
+                    UpdateTramLines(value);
+
                     // Initialize pass number and nudge offset from saved NudgeDistance
                     // NudgeDistance = widthMinusOverlap * howManyPathsAway + nudgeOffset
                     double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
@@ -1619,6 +1718,98 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Generate tram lines from a track and update the map.
+    /// </summary>
+    private void UpdateTramLines(Track? track)
+    {
+        var config = ConfigurationStore.Instance.Tram;
+
+        // Set boundary fence for clipping tram lines
+        if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count >= 3)
+        {
+            var fencePts = _currentBoundary.OuterBoundary.Points
+                .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+            _tramLineService.SetBoundaryFence(fencePts);
+        }
+
+        double fieldWidth = 500;
+        if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count > 0)
+        {
+            var pts = _currentBoundary.OuterBoundary.Points;
+            double maxE = pts.Max(p => p.Easting), minE = pts.Min(p => p.Easting);
+            double maxN = pts.Max(p => p.Northing), minN = pts.Min(p => p.Northing);
+            fieldWidth = Math.Max(maxE - minE, maxN - minN) * 1.2;
+        }
+
+        _tramLineService.Clear();
+
+        // Track if systems have ever been used (disables legacy fallback)
+        if (config.Systems.Count > 0)
+            _hasTramSystemsEverUsed = true;
+
+        // If TramSystems exist, generate per-system; otherwise use legacy single-track mode
+        _tramSystemLineRanges.Clear();
+        if (config.Systems.Count > 0)
+        {
+            bool hasBoundarySystem = false;
+            foreach (var sys in config.Systems)
+            {
+                if (!sys.IsEnabled) continue;
+
+                // Boundary reference system: generate boundary tram tracks from field boundary
+                if (sys.ReferenceBoundaryIndex >= 0)
+                {
+                    hasBoundarySystem = true;
+                    int passes = sys.PassCount > 0 ? sys.PassCount : 1;
+                    int bndStartIdx = _tramLineService.ParallelTramLines.Count;
+                    if (_currentBoundary?.OuterBoundary?.Points != null &&
+                        _currentBoundary.OuterBoundary.Points.Count >= 3)
+                    {
+                        var bndPts = _currentBoundary.OuterBoundary.Points
+                            .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+                        _tramLineService.GenerateBoundaryTramTracks(bndPts, passes, sys.Mode, sys.TramWidth);
+                    }
+                    int bndLineCount = _tramLineService.ParallelTramLines.Count - bndStartIdx;
+                    _tramSystemLineRanges[sys.Name] = (bndStartIdx, bndLineCount, true);
+                    continue;
+                }
+
+                // Track reference system: resolve by name only, skip if missing
+                if (string.IsNullOrEmpty(sys.ReferenceTrackName)) continue;
+                var refTrack = SavedTracks.FirstOrDefault(t => t.Name == sys.ReferenceTrackName);
+                if (refTrack == null || refTrack.Points.Count < 2) continue;
+
+                int startIdx = _tramLineService.ParallelTramLines.Count;
+                var lines = _tramLineService.GenerateForSystem(sys, refTrack, fieldWidth);
+                foreach (var line in lines)
+                    _tramLineService.AddTramLine(line);
+                _tramSystemLineRanges[sys.Name] = (startIdx, lines.Count, false);
+            }
+        }
+        else if (!_hasTramSystemsEverUsed && track != null && track.Points.Count >= 2)
+        {
+            // Legacy: single track mode (only if systems have never been used in this field)
+            _tramLineService.GenerateParallelTramLines(track, fieldWidth);
+
+            // Legacy: also generate boundary tram tracks from headland
+            if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
+                _tramLineService.GenerateBoundaryTramTracks(_currentHeadlandLine);
+        }
+
+        // Snapshot collections for thread-safe rendering
+        var outerSnap = _tramLineService.OuterBoundaryTrack.ToList();
+        var innerSnap = _tramLineService.InnerBoundaryTrack.ToList();
+        var parallelSnap = _tramLineService.ParallelTramLines
+            .Select(l => (IReadOnlyList<Models.Base.Vec2>)l.ToList()).ToList();
+        var bndExtraSnap = _tramLineService.BoundaryExtraLines
+            .Select(l => (IReadOnlyList<Models.Base.Vec2>)l.ToList()).ToList();
+
+        _mapService.SetTramLines(outerSnap, innerSnap, parallelSnap, bndExtraSnap);
+
+        OnPropertyChanged(nameof(TramLineCountDisplay));
+    }
+
     // Flag markers
     private int _nextFlagId = 1;
     public ObservableCollection<Flag> Flags { get; } = new();
@@ -1656,6 +1847,7 @@ public partial class MainViewModel : ObservableObject
 
     // Track management commands
     public ICommand? DeleteSelectedTrackCommand { get; private set; }
+    public ICommand? DeleteAllTracksCommand { get; private set; }
     public ICommand? SwapABPointsCommand { get; private set; }
     public ICommand? SelectTrackAsActiveCommand { get; private set; }
 
@@ -1855,6 +2047,13 @@ public partial class MainViewModel : ObservableObject
     }
 
     private List<(double Latitude, double Longitude)> _kmlBoundaryPoints = new();
+    private List<List<(double Latitude, double Longitude)>> _kmlParsedPolygons = new();
+
+    /// <summary>
+    /// When true, KML import adds boundaries to the current open field.
+    /// When false (default), KML import creates a new field.
+    /// </summary>
+    private bool _kmlImportToExistingField;
 
     public ICommand? CancelKmlImportDialogCommand { get; private set; }
     public ICommand? ConfirmKmlImportDialogCommand { get; private set; }
@@ -1935,6 +2134,9 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _boundaryMapCanSave, value);
     }
 
+    // Existing boundary polygons for reference display in the map dialog (WGS84 coordinates)
+    public List<List<(double Latitude, double Longitude)>> BoundaryMapExistingPolygons { get; } = new();
+
     // Result properties for boundary map dialog
     public List<(double Latitude, double Longitude)> BoundaryMapResultPoints { get; } = new();
     public string? BoundaryMapResultBackgroundPath { get; set; }
@@ -2011,6 +2213,7 @@ public partial class MainViewModel : ObservableObject
 
     // Callback to run when confirmation dialog is confirmed
     private Action? _confirmationDialogCallback;
+    private Models.State.DialogType _previousDialogBeforeConfirmation;
 
     public ICommand? CancelConfirmationDialogCommand { get; private set; }
     public ICommand? ConfirmConfirmationDialogCommand { get; private set; }
@@ -2018,12 +2221,14 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Shows a confirmation dialog with the specified title and message.
     /// When the user confirms, the callback is executed.
+    /// Restores the previous dialog on cancel.
     /// </summary>
     public void ShowConfirmationDialog(string title, string message, Action onConfirm)
     {
         ConfirmationDialogTitle = title;
         ConfirmationDialogMessage = message;
         _confirmationDialogCallback = onConfirm;
+        _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -2150,6 +2355,37 @@ public partial class MainViewModel : ObservableObject
             {
                 RefreshBoundaryList();
             }
+        }
+    }
+
+    // Boundary mode: tracks whether next boundary operation targets inner or outer
+    private BoundaryType _pendingBoundaryType = BoundaryType.Outer;
+    public BoundaryType PendingBoundaryType
+    {
+        get => _pendingBoundaryType;
+        set
+        {
+            if (SetProperty(ref _pendingBoundaryType, value))
+            {
+                OnPropertyChanged(nameof(BoundaryRecordingHeaderText));
+                OnPropertyChanged(nameof(IsInnerBoundaryMode));
+            }
+        }
+    }
+
+    public bool IsInnerBoundaryMode => PendingBoundaryType == BoundaryType.Inner;
+
+    public string BoundaryRecordingHeaderText
+    {
+        get
+        {
+            if (_boundaryRecordingService.IsRecording || _boundaryRecordingService.State == BoundaryRecordingState.Paused)
+            {
+                return _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner
+                    ? "Recording Inner Boundary"
+                    : "Recording Outer Boundary";
+            }
+            return "Start or Delete Boundary";
         }
     }
 
@@ -2421,6 +2657,10 @@ public partial class MainViewModel : ObservableObject
         private set => SetProperty(ref _currentBoundary, value);
     }
 
+    // Headland undo state
+    private List<Vec3>? _previousHeadlandLine;
+    private bool _previousHasHeadland;
+
     // Headland Dialog properties (visibility managed by State.UI)
     private bool _isHeadlandCurveMode = true;
     public bool IsHeadlandCurveMode
@@ -2433,7 +2673,7 @@ public partial class MainViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(IsHeadlandLineMode));
                 // Update preview when track type changes
-                if (State.UI.IsHeadlandDialogVisible || State.UI.IsHeadlandBuilderDialogVisible)
+                if (State.UI.IsFieldBuilderDialogVisible)
                 {
                     UpdateHeadlandPreview();
                 }
@@ -2772,6 +3012,10 @@ public partial class MainViewModel : ObservableObject
     public ICommand? DrawMapBoundaryCommand { get; private set; }
     public ICommand? BuildFromTracksCommand { get; private set; }
     public ICommand? DriveAroundFieldCommand { get; private set; }
+    public ICommand? RecordInnerBoundaryCommand { get; private set; }
+    public ICommand? DriveAroundInnerBoundaryCommand { get; private set; }
+    public ICommand? DrawMapInnerBoundaryCommand { get; private set; }
+    public ICommand? ToggleDriveThroughCommand { get; private set; }
     public ICommand? ToggleRecordingCommand { get; private set; }
     public ICommand? ToggleBoundaryLeftRightCommand { get; private set; }
     public ICommand? ToggleBoundaryAntennaToolCommand { get; private set; }
@@ -2861,6 +3105,111 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleContourModeCommand { get; private set; }
     public ICommand? DeleteContoursCommand { get; private set; }
     public ICommand? DeleteAppliedAreaCommand { get; private set; }
+    public ICommand? ToggleTramDisplayCommand { get; private set; }
+    public ICommand? BuildTramLinesCommand { get; private set; }
+    public ICommand? CreateTrackFromBoundaryCommand { get; private set; }
+    public ICommand? CreateCurveFromBoundaryCommand { get; private set; }
+    public ICommand? CreateTracksFromAllEdgesCommand { get; private set; }
+    public ICommand? CreateALineFromPositionCommand { get; private set; }
+    public ICommand? ShowFieldBuilderCommand { get; private set; }
+    public ICommand? CloseFieldBuilderCommand { get; private set; }
+    public ICommand? IncreaseHeadlandDistanceCommand { get; private set; }
+    public ICommand? DecreaseHeadlandDistanceCommand { get; private set; }
+
+    public System.Collections.Generic.IReadOnlyList<Models.Base.Vec3>? CurrentHeadlandLineForPreview => _currentHeadlandLine;
+
+    public string HeadlandStatusText
+    {
+        get
+        {
+            if (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3)
+                return HeadlandSegments.Count > 0 ? $"{HeadlandSegments.Count} lines (no intersections)" : "No headland lines";
+
+            double area = System.Math.Abs(CalculateSignedArea(_currentHeadlandLine)) / 10000.0; // m2 -> hectares
+            return $"{area:F2} ha ({HeadlandSegments.Count} lines)";
+        }
+    }
+
+    /// <summary>
+    /// List of headland segments that form the headland polygon.
+    /// </summary>
+    public ObservableCollection<Models.Headland.HeadlandSegment> HeadlandSegments { get; } = new();
+
+    private Models.Headland.HeadlandSegment? _selectedHeadlandSegment;
+    public Models.Headland.HeadlandSegment? SelectedHeadlandSegment
+    {
+        get => _selectedHeadlandSegment;
+        set => SetProperty(ref _selectedHeadlandSegment, value);
+    }
+
+
+    public ICommand? ShowTramSettingsCommand { get; private set; }
+    public ICommand? CloseTramSettingsCommand { get; private set; }
+    public ICommand? IncreaseTramPassesCommand { get; private set; }
+    public ICommand? DecreaseTramPassesCommand { get; private set; }
+    public ICommand? SetTramModeOffCommand { get; private set; }
+    public ICommand? SetTramModeAllCommand { get; private set; }
+    public ICommand? SetTramModeLinesCommand { get; private set; }
+    public ICommand? SetTramModeOuterCommand { get; private set; }
+
+    public int TramPasses => ConfigStore.Tram.Passes;
+    public int TramStartPass => ConfigStore.Tram.StartPass;
+    public double TramWidth => ConfigStore.Tram.TramWidth;
+    public System.Collections.ObjectModel.ObservableCollection<Models.Tram.TramSystem> TramSystems => ConfigStore.Tram.Systems;
+    public string TramToolWidthDisplay => $"{ConfigStore.ActualToolWidth:F2} m";
+    public string TramWidthDisplay => $"{ConfigStore.Tram.TramWidth:F2} m";
+    public string TramTrackWidthDisplay => $"{ConfigStore.Vehicle.TrackWidth:F2} m";
+    public string TramLineCountDisplay => $"{_tramLineService.ParallelTramLines.Count}";
+    public ICommand? IncreaseTramStartPassCommand { get; private set; }
+    public ICommand? DecreaseTramStartPassCommand { get; private set; }
+    public ICommand? SwapTramSideCommand { get; private set; }
+    public ICommand? ClearTramLinesCommand { get; private set; }
+    public ICommand? ToggleTramLeftManualCommand { get; private set; }
+    public ICommand? ToggleTramRightManualCommand { get; private set; }
+    public bool TramLeftManualOn => _tramLineService.IsLeftManualOn;
+    public bool TramRightManualOn => _tramLineService.IsRightManualOn;
+    /// <summary>Runtime tram detection byte: bit 0=right wheel, bit 1=left wheel.</summary>
+    public byte TramControlByte { get; set; }
+    public double TramTrackWidthValue => ConfigStore.Vehicle.TrackWidth;
+    public int TramLineNumber => ConfigStore.Guidance.TramLine;
+    public ICommand? IncreaseTramLineCommand { get; private set; }
+    public ICommand? DecreaseTramLineCommand { get; private set; }
+
+    public string TramDisplayIcon => ConfigStore.Tram.DisplayMode switch
+    {
+        Models.Configuration.TramDisplayMode.All => "avares://AgValoniaGPS.Views/Assets/Icons/TramAll.png",
+        Models.Configuration.TramDisplayMode.LinesOnly => "avares://AgValoniaGPS.Views/Assets/Icons/TramLines.png",
+        Models.Configuration.TramDisplayMode.OuterOnly => "avares://AgValoniaGPS.Views/Assets/Icons/TramOuter.png",
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/TramOff.png"
+    };
+
+    public string TramDisplayLabel => ConfigStore.Tram.DisplayMode switch
+    {
+        Models.Configuration.TramDisplayMode.All => "All",
+        Models.Configuration.TramDisplayMode.LinesOnly => "Lines",
+        Models.Configuration.TramDisplayMode.OuterOnly => "Outer",
+        _ => "Off"
+    };
+
+    /// <summary>
+    /// Get tram line geometry for canvas preview rendering.
+    /// </summary>
+    public (IReadOnlyList<Models.Base.Vec2> outer, IReadOnlyList<Models.Base.Vec2> inner,
+            IReadOnlyList<IReadOnlyList<Models.Base.Vec2>> parallel,
+            IReadOnlyList<IReadOnlyList<Models.Base.Vec2>> boundaryExtra)? GetTramLineData()
+    {
+        if (!_tramLineService.HasTramLines) return null;
+        return (_tramLineService.OuterBoundaryTrack, _tramLineService.InnerBoundaryTrack,
+                _tramLineService.ParallelTramLines, _tramLineService.BoundaryExtraLines);
+    }
+
+    /// <summary>
+    /// Get the line index range for a named tram system. Returns (-1,0) for boundary systems.
+    /// </summary>
+    public (int start, int count, bool isBoundary) GetTramSystemLineRange(string systemName)
+    {
+        return _tramSystemLineRanges.TryGetValue(systemName, out var range) ? range : (-1, 0, false);
+    }
     public ICommand? ToggleRecordedPathsCommand { get; private set; }
     public ICommand? StartRecordedPathCommand { get; private set; }
     public ICommand? StopRecordedPathCommand { get; private set; }
@@ -3280,29 +3629,35 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>
     /// Parses a KML file to extract boundary coordinates.
+    /// Parses ALL coordinate blocks: first = outer boundary, subsequent = inner boundaries.
+    /// Results stored in both _kmlBoundaryPoints (first polygon, for field-creation flow)
+    /// and _kmlParsedPolygons (all polygons, for import-to-existing flow).
     /// </summary>
     private void ParseKmlFile(string filePath)
     {
         _kmlBoundaryPoints.Clear();
+        _kmlParsedPolygons.Clear();
         KmlBoundaryPointCount = 0;
         KmlCenterLatitude = 0;
         KmlCenterLongitude = 0;
 
         try
         {
-            string? coordinates = null;
-            int startIndex;
-
             using var reader = new StreamReader(filePath);
+            double sumLat = 0, sumLon = 0;
+            int totalValidPoints = 0;
+
             while (!reader.EndOfStream)
             {
                 string? line = reader.ReadLine();
                 if (line == null) continue;
 
-                startIndex = line.IndexOf("<coordinates>");
+                int startIndex = line.IndexOf("<coordinates>");
 
                 if (startIndex != -1)
                 {
+                    string? coordinates = null;
+
                     // Found start of coordinates block
                     while (true)
                     {
@@ -3338,8 +3693,7 @@ public partial class MainViewModel : ObservableObject
 
                     if (numberSets.Length >= 3)
                     {
-                        double sumLat = 0, sumLon = 0;
-                        int validPoints = 0;
+                        var polygonPoints = new List<(double Latitude, double Longitude)>();
 
                         foreach (string item in numberSets)
                         {
@@ -3350,30 +3704,157 @@ public partial class MainViewModel : ObservableObject
                                 double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lon) &&
                                 double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lat))
                             {
-                                _kmlBoundaryPoints.Add((lat, lon));
+                                polygonPoints.Add((lat, lon));
                                 sumLat += lat;
                                 sumLon += lon;
-                                validPoints++;
+                                totalValidPoints++;
                             }
                         }
 
-                        if (validPoints > 0)
+                        if (polygonPoints.Count >= 3)
                         {
-                            KmlCenterLatitude = sumLat / validPoints;
-                            KmlCenterLongitude = sumLon / validPoints;
+                            _kmlParsedPolygons.Add(polygonPoints);
+
+                            // First polygon also populates _kmlBoundaryPoints for backwards compatibility
+                            if (_kmlParsedPolygons.Count == 1)
+                            {
+                                _kmlBoundaryPoints.AddRange(polygonPoints);
+                            }
                         }
-
-                        KmlBoundaryPointCount = validPoints;
                     }
+                    // Continue to parse additional coordinate blocks (inner boundaries)
+                }
+            }
 
-                    // Only parse first coordinate block (outer boundary)
-                    break;
+            if (totalValidPoints > 0)
+            {
+                KmlCenterLatitude = sumLat / totalValidPoints;
+                KmlCenterLongitude = sumLon / totalValidPoints;
+            }
+
+            KmlBoundaryPointCount = totalValidPoints;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error parsing KML: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Imports KML boundaries into the currently open field.
+    /// First polygon becomes outer (or inner if PendingBoundaryType is Inner),
+    /// subsequent polygons are added as inner boundaries.
+    /// </summary>
+    /// <summary>
+    /// Converts existing boundary polygons from local coordinates to WGS84
+    /// for display as reference layers in the boundary map dialog.
+    /// </summary>
+    private void PopulateBoundaryMapExistingPolygons()
+    {
+        BoundaryMapExistingPolygons.Clear();
+
+        if (_currentBoundary == null || (_fieldOriginLatitude == 0 && _fieldOriginLongitude == 0))
+            return;
+
+        try
+        {
+            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var sharedProps = new SharedFieldProperties();
+            var localPlane = new LocalPlane(origin, sharedProps);
+
+            // Add outer boundary
+            if (_currentBoundary.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count >= 3)
+            {
+                var wgs84Points = new List<(double Latitude, double Longitude)>();
+                foreach (var pt in _currentBoundary.OuterBoundary.Points)
+                {
+                    var geoCoord = new GeoCoord(pt.Northing, pt.Easting);
+                    var wgs84 = localPlane.ConvertGeoCoordToWgs84(geoCoord);
+                    wgs84Points.Add((wgs84.Latitude, wgs84.Longitude));
+                }
+                BoundaryMapExistingPolygons.Add(wgs84Points);
+            }
+
+            // Add inner boundaries
+            foreach (var inner in _currentBoundary.InnerBoundaries)
+            {
+                if (inner.Points.Count >= 3)
+                {
+                    var wgs84Points = new List<(double Latitude, double Longitude)>();
+                    foreach (var pt in inner.Points)
+                    {
+                        var geoCoord = new GeoCoord(pt.Northing, pt.Easting);
+                        var wgs84 = localPlane.ConvertGeoCoordToWgs84(geoCoord);
+                        wgs84Points.Add((wgs84.Latitude, wgs84.Longitude));
+                    }
+                    BoundaryMapExistingPolygons.Add(wgs84Points);
                 }
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error parsing KML: {ex.Message}";
+            _logger.LogDebug($"[BoundaryMap] Failed to populate existing polygons: {ex.Message}");
+        }
+    }
+
+    private void ImportKmlToExistingField()
+    {
+        if (string.IsNullOrEmpty(CurrentFieldName) || _kmlParsedPolygons.Count == 0)
+        {
+            StatusMessage = "No field open or no KML polygons parsed";
+            return;
+        }
+
+        try
+        {
+            var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+            var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+
+            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var sharedProps = new SharedFieldProperties();
+            var localPlane = new LocalPlane(origin, sharedProps);
+
+            for (int polyIdx = 0; polyIdx < _kmlParsedPolygons.Count; polyIdx++)
+            {
+                var polygon = new BoundaryPolygon();
+                foreach (var (lat, lon) in _kmlParsedPolygons[polyIdx])
+                {
+                    var wgs84 = new Wgs84(lat, lon);
+                    var geoCoord = localPlane.ConvertWgs84ToGeoCoord(wgs84);
+                    polygon.Points.Add(new BoundaryPoint(geoCoord.Easting, geoCoord.Northing, 0));
+                }
+
+                // First polygon: respects PendingBoundaryType
+                // Subsequent polygons: always inner
+                if (polyIdx == 0 && PendingBoundaryType == BoundaryType.Outer)
+                    boundary.OuterBoundary = polygon;
+                else
+                    boundary.InnerBoundaries.Add(polygon);
+            }
+
+            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SetCurrentBoundary(boundary);
+            CenterMapOnBoundary(boundary);
+            RefreshBoundaryList();
+
+            // Update boundary area stats
+            if (boundary.OuterBoundary != null)
+            {
+                var boundaryAreas = new List<double> { boundary.AreaHectares * 10000 };
+                _fieldStatistics.UpdateBoundaryAreas(boundaryAreas);
+                OnPropertyChanged(nameof(BoundaryAreaDisplay));
+            }
+
+            State.UI.CloseDialog();
+            PendingBoundaryType = BoundaryType.Outer;
+
+            var innerCount = _kmlParsedPolygons.Count > 1 ? _kmlParsedPolygons.Count - 1 : 0;
+            var innerMsg = innerCount > 0 ? $" + {innerCount} inner" : "";
+            StatusMessage = $"KML boundary imported{innerMsg}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error importing KML boundary: {ex.Message}";
         }
     }
 
@@ -3483,6 +3964,10 @@ public partial class MainViewModel : ObservableObject
 
         System.Diagnostics.Debug.WriteLine($"[Headland] Result points: {result.OuterHeadlandLine?.Count ?? 0}");
 
+        // Save undo state before applying
+        _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+        _previousHasHeadland = HasHeadland;
+
         CurrentHeadlandLine = result.OuterHeadlandLine;
         HeadlandPreviewLine = null;
         HasHeadland = true;
@@ -3498,6 +3983,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         StatusMessage = $"Headland built at {HeadlandDistance:F1}m ({result.OuterHeadlandLine?.Count ?? 0} pts from {boundary.OuterBoundary.Points.Count} boundary pts)";
+        OnPropertyChanged(nameof(HeadlandStatusText));
     }
 
     /// <summary>
@@ -4382,7 +4868,7 @@ public partial class MainViewModel : ObservableObject
     /// Save tracks to TrackLines.txt in the active field directory.
     /// Uses WinForms-compatible format via TrackFilesService.
     /// </summary>
-    private void SaveTracksToFile()
+    public void SaveTracksToFile()
     {
         var activeField = _fieldService.ActiveField;
         if (activeField == null || string.IsNullOrEmpty(activeField.DirectoryPath))
@@ -4406,7 +4892,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            Services.TrackFilesService.SaveTracks(activeField.DirectoryPath, SavedTracks.ToList());
+            Services.TrackFilesService.Save(activeField.DirectoryPath, SavedTracks.ToList());
             _logger.LogDebug("[NUDGE] SaveTracksToFile: Saved {TrackCount} tracks", SavedTracks.Count);
         }
         catch (System.Exception ex)
@@ -4466,7 +4952,7 @@ public partial class MainViewModel : ObservableObject
             // Try TrackLines.txt first (WinForms format)
             if (Services.TrackFilesService.Exists(field.DirectoryPath))
             {
-                var tracks = Services.TrackFilesService.LoadTracks(field.DirectoryPath);
+                var tracks = Services.TrackFilesService.Load(field.DirectoryPath);
                 int loadedCount = 0;
                 Track? firstTrack = null;
 

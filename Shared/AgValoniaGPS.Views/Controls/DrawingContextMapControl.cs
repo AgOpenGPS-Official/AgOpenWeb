@@ -105,6 +105,14 @@ public interface ISharedMapControl
     void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track);
     void SetBaseTrack(AgValoniaGPS.Models.Track.Track? track);
 
+    // Tram line visualization
+    void SetTramLines(
+        IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? outerTrack,
+        IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? innerTrack,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? boundaryExtraLines = null);
+    void SetTramControlByte(byte controlByte);
+
     // Recorded path / contour strip / planned swath visualization
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
@@ -275,6 +283,17 @@ internal class MapRenderState
     public List<(Geometry Geometry, IBrush Brush, int VertexCount, bool IsFinalized,
         double MinX, double MinY, double MaxX, double MaxY)>? CachedCoverageGeometry;
 
+    // Tram lines
+    public IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? TramOuterTrack;
+    public IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? TramInnerTrack;
+    public IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? TramParallelLines;
+    public IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? TramBoundaryExtraLines;
+    public AgValoniaGPS.Models.Configuration.TramDisplayMode TramDisplayMode;
+    public float TramAlpha;
+    public byte TramControlByte; // bit 0=right wheel, bit 1=left wheel
+    public double HalfWheelTrack;
+    public bool IsDisplayTramControl;
+
     // Vehicle config
     public double AntennaPivot, AntennaOffset;
     public bool IsMetric;
@@ -431,6 +450,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // YouTurn path
     private IReadOnlyList<(double Easting, double Northing)>? _youTurnPath;
 
+    // Tram lines
+    private IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? _tramOuterTrack;
+    private IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? _tramInnerTrack;
+    private IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? _tramParallelLines;
+    private IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? _tramBoundaryExtraLines;
+    private byte _tramControlByte;
+
     // Coverage patches for worked area display
     private IReadOnlyList<CoveragePatch> _coveragePatches = Array.Empty<CoveragePatch>();
 
@@ -472,6 +498,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // Only recreated when pixels actually change.
     private SKBitmap? _coverageSkBitmap;
     private SKBitmap? _previousCoverageSkBitmap; // Keeps old bitmap alive while render thread may still reference it
+    private SKBitmap? _retiredCoverageSkBitmap;  // Two-deep buffer: survives two recreation cycles before disposal
     private SKImage? _coverageSkImage;          // Cached GPU texture — recreated on pixel change
     private SKImage? _previousSkImage;          // Keeps previous image alive while render thread may use it
     private volatile bool _coverageSkImageDirty; // True when SKBitmap has new pixels not in SKImage
@@ -806,6 +833,16 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             CoveragePatches = _coveragePatches,
             CachedCoverageGeometry = _cachedCoverageGeometry,
 
+            TramOuterTrack = _tramOuterTrack,
+            TramInnerTrack = _tramInnerTrack,
+            TramParallelLines = _tramParallelLines,
+            TramBoundaryExtraLines = _tramBoundaryExtraLines,
+            TramDisplayMode = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tram.DisplayMode,
+            TramAlpha = (float)AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tram.Alpha,
+            TramControlByte = _tramControlByte,
+            HalfWheelTrack = vehicleCfg.TrackWidth / 2.0,
+            IsDisplayTramControl = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Tram.IsDisplayTramControl,
+
             AntennaPivot = vehicleCfg.AntennaPivot,
             AntennaOffset = vehicleCfg.AntennaOffset,
             IsMetric = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.IsMetric,
@@ -841,8 +878,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Dispose old bitmaps — keep SKBitmap alive until render thread moves on
         _coverageWriteableBitmap?.Dispose();
         _coverageDisplayBitmap?.Dispose();
-        _previousCoverageSkBitmap?.Dispose(); // Dispose the one from TWO recreations ago (render thread is done with it)
-        _previousCoverageSkBitmap = _coverageSkBitmap; // Keep current one alive for render thread
+        // Two-deep disposal buffer: retire -> previous -> current -> null
+        // Gives render thread two full recreation cycles before bitmap is disposed
+        _retiredCoverageSkBitmap?.Dispose();
+        _retiredCoverageSkBitmap = _previousCoverageSkBitmap;
+        _previousCoverageSkBitmap = _coverageSkBitmap;
         _coverageSkBitmap = null; // Clear so SendStateToHandler sends null until new one is ready
 
         // Data bitmap: Rgb565 for compact storage and pixel API
@@ -2520,6 +2560,24 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
+    public void SetTramLines(
+        IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? outerTrack,
+        IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? innerTrack,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? boundaryExtraLines = null)
+    {
+        _tramOuterTrack = outerTrack;
+        _tramInnerTrack = innerTrack;
+        _tramParallelLines = parallelLines;
+        _tramBoundaryExtraLines = boundaryExtraLines;
+        SendStateToHandler();
+    }
+
+    public void SetTramControlByte(byte controlByte)
+    {
+        _tramControlByte = controlByte;
+    }
+
     public void SetClipLine(AgValoniaGPS.Models.Base.Vec2? start, AgValoniaGPS.Models.Base.Vec2? end)
     {
         _clipLine = (start.HasValue && end.HasValue) ? (start.Value, end.Value) : null;
@@ -3248,6 +3306,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                         if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
                             DrawYouTurnPathSk(canvas, s);
 
+                        // Tram lines
+                        if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off)
+                            DrawTramLinesSk(canvas, s);
+
                         // Tracks
                         if (s.ActiveTrack != null || s.PendingPointA != null
                             || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0
@@ -3424,14 +3486,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         private void DrawCoverageBitmap(ImmediateDrawingContext dc, SKCanvas? canvas, MapRenderState s)
         {
-            if (s.CoverageSkBitmap == null || s.BitmapWidth == 0 || s.BitmapHeight == 0)
+            // Capture to local to avoid race with UI thread disposal
+            var bitmap = s.CoverageSkBitmap;
+            if (bitmap == null || s.BitmapWidth == 0 || s.BitmapHeight == 0)
                 return;
             if (canvas == null) return;
+
+            // Guard against disposed native SKBitmap (race with CreateCoverageBitmap on UI thread)
+            if (bitmap.Handle == IntPtr.Zero) return;
 
             double worldWidth = s.BitmapMaxE - s.BitmapMinE;
             double worldHeight = s.BitmapMaxN - s.BitmapMinN;
 
-            var src = new SKRect(0, 0, s.CoverageSkBitmap.Width, s.CoverageSkBitmap.Height);
+            var src = new SKRect(0, 0, bitmap.Width, bitmap.Height);
             var dst = new SKRect(
                 (float)s.BitmapMinE, (float)s.BitmapMinN,
                 (float)(s.BitmapMinE + worldWidth), (float)(s.BitmapMinN + worldHeight));
@@ -3444,7 +3511,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Draw SKBitmap directly — no SKImage.FromBitmap copy needed.
             // Pipeline writes pixels on bg thread, we read on render thread.
             // Atomic 4-byte pixel reads mean worst case is a partially-updated frame.
-            canvas.DrawBitmap(s.CoverageSkBitmap, src, dst, paint);
+            canvas.DrawBitmap(bitmap, src, dst, paint);
         }
 
         private void DrawBoundary(SKCanvas canvas, MapRenderState s)
@@ -4187,6 +4254,27 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             using var antennaPaint = new SKPaint { Color = new SKColor(40, 120, 255), Style = SKPaintStyle.Fill };
             canvas.DrawCircle((float)s.AntennaOffset, (float)s.AntennaPivot, 0.25f, antennaPaint);
 
+            // Heading unknown "?" indicator
+            if (!s.HasValidHeading)
+            {
+                using var qPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f, IsAntialias = true };
+                canvas.DrawLine(size / 2 + 1, size / 2, size / 2 + 1, -size / 4, qPaint);
+                using var dotPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill };
+                canvas.DrawCircle(size / 2 + 1, -size / 2, 0.2f, dotPaint);
+            }
+
+            // Reverse indicator
+            if (s.IsReversing)
+            {
+                using var revPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill, IsAntialias = true };
+                using var revPath = new SKPath();
+                revPath.MoveTo(0, -size / 2 - 1);
+                revPath.LineTo(-size / 4, -size / 2 - 2.5f);
+                revPath.LineTo(size / 4, -size / 2 - 2.5f);
+                revPath.Close();
+                canvas.DrawPath(revPath, revPaint);
+            }
+
             canvas.Restore();
         }
 
@@ -4251,6 +4339,31 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Center line
             using var centerPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
             canvas.DrawLine(0, -toolDepth / 2, 0, toolDepth / 2, centerPaint);
+
+            // Tram wheel indicators (colored dots at wheel track positions)
+            if (s.IsDisplayTramControl && s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off)
+            {
+                float dotRadius = 0.3f;
+                float halfTrack = (float)s.HalfWheelTrack;
+
+                // Right wheel: bit 0
+                bool rightOn = (s.TramControlByte & 1) != 0;
+                using var rightPaint = new SKPaint
+                {
+                    Color = rightOn ? new SKColor(0, 230, 0) : new SKColor(40, 40, 40),
+                    Style = SKPaintStyle.Fill
+                };
+                canvas.DrawCircle(halfTrack, 0, dotRadius, rightPaint);
+
+                // Left wheel: bit 1
+                bool leftOn = (s.TramControlByte & 2) != 0;
+                using var leftPaint = new SKPaint
+                {
+                    Color = leftOn ? new SKColor(0, 230, 0) : new SKColor(40, 40, 40),
+                    Style = SKPaintStyle.Fill
+                };
+                canvas.DrawCircle(-halfTrack, 0, dotRadius, leftPaint);
+            }
 
             canvas.Restore();
         }
@@ -4588,6 +4701,71 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             for (int i = 1; i < s.YouTurnPath.Count; i++)
                 path.LineTo((float)s.YouTurnPath[i].Easting, (float)s.YouTurnPath[i].Northing);
             canvas.DrawPath(path, _youTurnPaint);
+        }
+
+        /// <summary>
+        /// Draw tram lines: two-pass rendering matching legacy AgOpenGPS.
+        /// Pass 1: black outline, Pass 2: pink/salmon fill.
+        /// </summary>
+        private void DrawTramLinesSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.Off) return;
+
+            bool hasBoundary = (s.TramOuterTrack?.Count > 1 || s.TramInnerTrack?.Count > 1);
+            bool hasLines = s.TramParallelLines?.Count > 0;
+            if (!hasBoundary && !hasLines) return;
+
+            byte alpha = (byte)(s.TramAlpha * 160); // semi-transparent
+
+            using var tramPaint = new SKPaint
+            {
+                Color = new SKColor(237, 140, 150, alpha),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.6f,
+                IsAntialias = true
+            };
+
+            bool hasBoundaryExtra = s.TramBoundaryExtraLines?.Count > 0;
+
+            // Mode All or LinesOnly: draw parallel tram lines (track-referenced only)
+            if ((s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.All
+                || s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.LinesOnly) && hasLines)
+            {
+                foreach (var line in s.TramParallelLines!)
+                {
+                    if (line.Count < 2) continue;
+                    using var path = new SKPath();
+                    path.MoveTo((float)line[0].Easting, (float)line[0].Northing);
+                    for (int i = 1; i < line.Count; i++)
+                        path.LineTo((float)line[i].Easting, (float)line[i].Northing);
+                    canvas.DrawPath(path, tramPaint);
+                }
+            }
+
+            // Mode All or OuterOnly: draw boundary tracks
+            if ((s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.All
+                || s.TramDisplayMode == AgValoniaGPS.Models.Configuration.TramDisplayMode.OuterOnly) && hasBoundary)
+            {
+                void DrawTramTrack(IReadOnlyList<AgValoniaGPS.Models.Base.Vec2> track)
+                {
+                    if (track.Count < 2) return;
+                    using var path = new SKPath();
+                    path.MoveTo((float)track[0].Easting, (float)track[0].Northing);
+                    for (int i = 1; i < track.Count; i++)
+                        path.LineTo((float)track[i].Easting, (float)track[i].Northing);
+                    canvas.DrawPath(path, tramPaint);
+                }
+
+                if (s.TramOuterTrack != null) DrawTramTrack(s.TramOuterTrack);
+                if (s.TramInnerTrack != null) DrawTramTrack(s.TramInnerTrack);
+
+                // Additional boundary passes
+                if (hasBoundaryExtra)
+                {
+                    foreach (var line in s.TramBoundaryExtraLines!)
+                        DrawTramTrack(line);
+                }
+            }
         }
 
         private void DrawFlagsSk(SKCanvas canvas, MapRenderState s)

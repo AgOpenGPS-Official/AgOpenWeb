@@ -160,15 +160,17 @@ public partial class MainViewModel
             Brightness -= 5;
         });
 
-        // Display resolution: cycle High (1.0) → Medium (1.5) → Low (2.0) → High
+        // Display resolution: cycle Ultra → High → Medium → Low → Min → Ultra
         CycleDisplayResolutionCommand = new RelayCommand(() =>
         {
             var display = ConfigStore.Display;
             display.DisplayResolutionMultiplier = display.DisplayResolutionMultiplier switch
             {
-                < 1.25 => 1.5,  // High → Medium
-                < 1.75 => 2.0,  // Medium → Low
-                _ => 1.0,       // Low → High
+                < 1.25 => 1.5,  // Ultra → High
+                < 2.0  => 2.5,  // High → Medium
+                < 3.25 => 4.0,  // Medium → Low
+                < 5.0  => 6.0,  // Low → Min
+                _ => 1.0,       // Min → Ultra
             };
             OnPropertyChanged(nameof(DisplayResolutionLabel));
         });

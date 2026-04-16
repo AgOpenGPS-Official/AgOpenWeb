@@ -14,24 +14,21 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-using Avalonia.Controls;
-using Avalonia.Input;
+namespace AgValoniaGPS.Models;
 
-namespace AgValoniaGPS.Views.Controls.Dialogs;
-
-public partial class HeadlandBuilderDialogPanel : UserControl
+/// <summary>
+/// Track mode matching WinForms TrackMode enum for file compatibility.
+/// Integer values must be preserved for file format backwards compatibility.
+/// </summary>
+public enum TrackMode
 {
-    public HeadlandBuilderDialogPanel()
-    {
-        InitializeComponent();
-    }
-
-    private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        // Clicking the backdrop closes the dialog
-        if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
-        {
-            vm.CloseHeadlandBuilderCommand?.Execute(null);
-        }
-    }
+    None = 0,
+    AB = 2,
+    Curve = 4,
+    BndTrackOuter = 8,
+    BndTrackInner = 16,
+    BndCurve = 32,
+    WaterPivot = 64,
+    RecordedPath = 128,
+    Contour = 256
 }

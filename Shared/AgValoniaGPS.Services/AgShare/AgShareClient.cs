@@ -14,12 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using AgValoniaGPS.Models.AgShare;
 
@@ -31,30 +27,22 @@ namespace AgValoniaGPS.Services.AgShare
     /// </summary>
     public class AgShareClient
     {
-        private HttpClient client;
-        private string baseUrl;
-        private string apiKey;
+        private readonly HttpClient _client;
+        private string _baseUrl;
+        private string _apiKey;
 
         /// <summary>
         /// Constructs client with base URL and API key
         /// </summary>
         public AgShareClient(string serverUrl, string key)
         {
-            baseUrl = serverUrl.TrimEnd('/');
-            apiKey = key;
-            BuildClient();
-        }
-
-        /// <summary>
-        /// Rebuilds the HttpClient with updated headers
-        /// </summary>
-        private void BuildClient()
-        {
-            client = new HttpClient();
-            client.DefaultRequestHeaders.Accept.Clear();
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", apiKey);
-            client.Timeout = TimeSpan.FromSeconds(5);
+            _baseUrl = serverUrl.TrimEnd('/');
+            _apiKey = key;
+            _client = new HttpClient();
+            _client.DefaultRequestHeaders.Accept.Clear();
+            _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", _apiKey);
+            _client.Timeout = TimeSpan.FromSeconds(5);
         }
 
         /// <summary>
@@ -62,8 +50,8 @@ namespace AgValoniaGPS.Services.AgShare
         /// </summary>
         public void SetApiKey(string key)
         {
-            apiKey = key;
-            BuildClient();
+            _apiKey = key;
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", _apiKey);
         }
 
         /// <summary>
@@ -71,8 +59,7 @@ namespace AgValoniaGPS.Services.AgShare
         /// </summary>
         public void SetBaseUrl(string url)
         {
-            baseUrl = url.TrimEnd('/');
-            BuildClient();
+            _baseUrl = url.TrimEnd('/');
         }
 
         /// <summary>
@@ -82,22 +69,20 @@ namespace AgValoniaGPS.Services.AgShare
         {
             try
             {
-                using (var tempClient = new HttpClient())
-                {
-                    tempClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                    tempClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", apiKey);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("ApiKey", _apiKey);
 
-                    string requestUrl = $"{baseUrl}/api/fields";
-                    var response = await tempClient.GetAsync(requestUrl);
-                    string responseBody = await response.Content.ReadAsStringAsync();
+                string requestUrl = $"{_baseUrl}/api/fields";
+                var response = await _client.GetAsync(requestUrl, cts.Token);
+                string responseBody = await response.Content.ReadAsStringAsync(cts.Token);
 
-                    if (response.IsSuccessStatusCode)
-                        return (true, "Connection OK");
-                    else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                        return (false, "Invalid API key");
-                    else
-                        return (false, $"Status {response.StatusCode}: {responseBody}");
-                }
+                if (response.IsSuccessStatusCode)
+                    return (true, "Connection OK");
+                else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    return (false, "Invalid API key");
+                else
+                    return (false, $"Status {response.StatusCode}: {responseBody}");
+
             }
             catch (Exception ex)
             {
@@ -112,9 +97,10 @@ namespace AgValoniaGPS.Services.AgShare
         {
             try
             {
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
                 var json = JsonConvert.SerializeObject(fieldPayload, Formatting.Indented);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var response = await client.PutAsync($"{baseUrl}/api/fields/{fieldId}", content);
+                var response = await _client.PutAsync($"{_baseUrl}/api/fields/{fieldId}", content, cts.Token);
 
                 if (response.IsSuccessStatusCode)
                     return (true, "Upload successful");
@@ -132,12 +118,20 @@ namespace AgValoniaGPS.Services.AgShare
         /// </summary>
         public async Task<List<AgShareGetOwnFieldDto>> GetOwnFieldsAsync()
         {
-            var url = $"{baseUrl}/api/fields/";
-            var response = await client.GetAsync(url);
-            response.EnsureSuccessStatusCode();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var url = $"{_baseUrl}/api/fields/";
+                var response = await _client.GetAsync(url, cts.Token);
+                response.EnsureSuccessStatusCode();
+                string json = await response.Content.ReadAsStringAsync(cts.Token);
+                return JsonConvert.DeserializeObject<List<AgShareGetOwnFieldDto>>(json) ?? [];
+            }
+            catch
+            {
+                return [];
+            }
 
-            string json = await response.Content.ReadAsStringAsync();
-            return JsonConvert.DeserializeObject<List<AgShareGetOwnFieldDto>>(json);
         }
 
         /// <summary>
@@ -145,9 +139,18 @@ namespace AgValoniaGPS.Services.AgShare
         /// </summary>
         public async Task<string> DownloadFieldAsync(Guid fieldId)
         {
-            var response = await client.GetAsync($"{baseUrl}/api/fields/{fieldId}");
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+                var response = await _client.GetAsync($"{_baseUrl}/api/fields/{fieldId}", cts.Token);
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync(cts.Token);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+
         }
 
         /// <summary>
@@ -155,10 +158,19 @@ namespace AgValoniaGPS.Services.AgShare
         /// </summary>
         public async Task<string> GetPublicFieldsAsync(double lat, double lon, double radius = 50)
         {
-            var url = $"{baseUrl}/api/fields/public?lat={lat}&lon={lon}&radius={radius}";
-            var response = await client.GetAsync(url);
-            response.EnsureSuccessStatusCode();
-            return await response.Content.ReadAsStringAsync();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var url = $"{_baseUrl}/api/fields/public?lat={lat}&lon={lon}&radius={radius}";
+                var response = await _client.GetAsync(url, cts.Token);
+                response.EnsureSuccessStatusCode();
+                return await response.Content.ReadAsStringAsync(cts.Token);
+            }
+            catch
+            {
+                return string.Empty;
+            }
+
         }
     }
 }

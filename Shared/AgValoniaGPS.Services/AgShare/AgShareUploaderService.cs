@@ -14,11 +14,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.AgShare;
@@ -38,7 +33,7 @@ namespace AgValoniaGPS.Services.AgShare
         public async Task<(bool success, string message, Guid fieldId)> UploadFieldAsync(
             FieldSnapshotInput input,
             AgShareClient client,
-            string fieldDirectory = null)
+            string? fieldDirectory = null)
         {
             try
             {
@@ -50,7 +45,7 @@ namespace AgValoniaGPS.Services.AgShare
 
                 // Convert outer boundary
                 List<CoordinateDto> outer = ConvertBoundary(input.Boundaries[0], plane);
-                if (outer == null || outer.Count < 3)
+                if (outer.Count < 3)
                     return (false, "Invalid outer boundary", Guid.Empty);
 
                 // Convert holes (inner boundaries)
@@ -72,8 +67,8 @@ namespace AgValoniaGPS.Services.AgShare
                 try
                 {
                     string json = await client.DownloadFieldAsync(fieldId);
-                    AgShareFieldDto field = JsonConvert.DeserializeObject<AgShareFieldDto>(json);
-                    if (field != null) isPublic = field.IsPublic;
+                    AgShareFieldDto field = JsonConvert.DeserializeObject<AgShareFieldDto>(json)!;
+                    isPublic = field.IsPublic;
                 }
                 catch (Exception)
                 {
@@ -83,19 +78,19 @@ namespace AgValoniaGPS.Services.AgShare
                 // Build upload payload
                 var boundary = new
                 {
-                    outer = outer,
-                    holes = holes
+                    outer,
+                    holes
                 };
 
                 var payload = new
                 {
                     name = input.FieldName,
-                    isPublic = isPublic,
+                    isPublic,
                     origin = new { latitude = input.Origin.Latitude, longitude = input.Origin.Longitude },
-                    boundary = boundary,
-                    abLines = abLines,
+                    boundary,
+                    abLines,
                     convergence = input.Convergence,
-                    sourceId = (string)null
+                    sourceId = (string?)null
                 };
 
                 // Upload to AgShare
@@ -108,7 +103,7 @@ namespace AgValoniaGPS.Services.AgShare
                         Directory.CreateDirectory(fieldDirectory);
 
                     string txtPath = Path.Combine(fieldDirectory, "agshare.txt");
-                    File.WriteAllText(txtPath, fieldId.ToString());
+                    await File.WriteAllTextAsync(txtPath, fieldId.ToString());
                 }
 
                 return (uploadResult.ok, uploadResult.message, fieldId);
@@ -125,9 +120,9 @@ namespace AgValoniaGPS.Services.AgShare
         private List<CoordinateDto> ConvertBoundary(List<Vec3> localFence, LocalPlane converter)
         {
             List<CoordinateDto> coords = new List<CoordinateDto>();
-            for (int i = 0; i < localFence.Count; i++)
+            foreach (var point in localFence)
             {
-                GeoCoord geo = new GeoCoord(localFence[i].Northing, localFence[i].Easting);
+                GeoCoord geo = new GeoCoord(point.Northing, point.Easting);
                 Wgs84 wgs = converter.ConvertGeoCoordToWgs84(geo);
                 coords.Add(new CoordinateDto { Latitude = wgs.Latitude, Longitude = wgs.Longitude });
             }
@@ -136,8 +131,9 @@ namespace AgValoniaGPS.Services.AgShare
             if (coords.Count > 1)
             {
                 CoordinateDto first = coords[0];
-                CoordinateDto last = coords[coords.Count - 1];
-                if (first.Latitude != last.Latitude || first.Longitude != last.Longitude)
+                CoordinateDto last = coords[^1];
+                if (Math.Abs(first.Latitude - last.Latitude) > 1e-6 ||
+                    Math.Abs(first.Longitude - last.Longitude) > 1e-6)
                 {
                     coords.Add(first);
                 }
@@ -166,14 +162,14 @@ namespace AgValoniaGPS.Services.AgShare
                     {
                         Name = track.Name,
                         Type = "AB",
-                        Coords = new List<CoordinateDto>
-                        {
+                        Coords =
+                        [
                             new CoordinateDto { Latitude = wgsA.Latitude, Longitude = wgsA.Longitude },
                             new CoordinateDto { Latitude = wgsB.Latitude, Longitude = wgsB.Longitude }
-                        }
+                        ]
                     });
                 }
-                else if (track.Mode == TrackMode.Curve && track.CurvePoints.Count >= 2)
+                else if (track is { Mode: TrackMode.Curve, CurvePoints.Count: >= 2 })
                 {
                     List<CoordinateDto> coords = new List<CoordinateDto>();
                     foreach (Vec3 pt in track.CurvePoints)

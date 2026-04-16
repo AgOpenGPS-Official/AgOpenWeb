@@ -75,6 +75,7 @@ public static class ServiceCollectionExtensions
 
         // Boundary recording service
         services.AddSingleton<IBoundaryRecordingService, BoundaryRecordingService>();
+        services.AddSingleton<IBoundaryBuilderService, BoundaryBuilderService>();
 
         // Headland builder services
         services.AddSingleton<IPolygonOffsetService, PolygonOffsetService>();

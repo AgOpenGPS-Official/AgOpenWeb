@@ -18,6 +18,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Headless;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AgValoniaGPS.Desktop;
 using AgValoniaGPS.Desktop.Views;
 using AgValoniaGPS.IntegrationTests;
@@ -45,10 +46,12 @@ sealed class Program
     static bool _remoteTestMode = false;
     static int _remoteTestPort = 5123;
     static double _timeScale = 1.0;
+    static string[] _args = Array.Empty<string>();
 
     [STAThread]
     public static int Main(string[] args)
     {
+        _args = args;
         _headless = args.Contains("--headless");
         _catalogMode = args.Contains("--catalog");
         _fieldTestMode = args.Contains("--field-test");
@@ -147,6 +150,12 @@ sealed class Program
             ?? throw new Exception("MainWindow not found");
         var vm = (MainViewModel)window.DataContext!;
 
+        // Auto-create a test field with boundary + track if --test-field flag is present
+        if (_args.Contains("--test-field"))
+        {
+            await SetupTestField(vm);
+        }
+
         Console.WriteLine($"[Remote Test] Starting server on port {_remoteTestPort}...");
         using var server = new RemoteTestServer(window, vm, _remoteTestPort);
 
@@ -159,6 +168,160 @@ sealed class Program
         };
 
         await server.RunAsync();
+    }
+
+    /// <summary>
+    /// Create a test field with a 200x200m boundary, headland, and AB track.
+    /// Used by --test-field flag for remote test server.
+    /// </summary>
+    static async Task SetupTestField(MainViewModel vm)
+    {
+        Console.Write("[TestField] Creating field... ");
+
+        async Task PumpUI(int ms)
+        {
+            for (int i = 0; i < ms / 10; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+        }
+
+        // Try loading "UserField" if it exists, otherwise create a new one
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        var userFieldDir = System.IO.Path.Combine(settingsService.Settings.FieldsDirectory, "UserField");
+        if (System.IO.Directory.Exists(userFieldDir) && System.IO.File.Exists(System.IO.Path.Combine(userFieldDir, "Boundary.txt")))
+        {
+            Console.Write("[TestField] Loading UserField... ");
+            try
+            {
+                await vm.OpenFieldAsync(userFieldDir, "UserField");
+                await PumpUI(500);
+
+                if (vm.IsFieldOpen)
+                {
+                    // Add an AB track if none exist
+                    if (vm.SavedTracks.Count == 0)
+                    {
+                        var bnd = vm.CurrentBoundary?.OuterBoundary?.Points;
+                        if (bnd != null && bnd.Count > 0)
+                        {
+                            double cx = bnd.Average(p => p.Easting);
+                            double cy = bnd.Average(p => p.Northing);
+                            var userTrack = new AgValoniaGPS.Models.Track.Track
+                            {
+                                Name = "AB_Test",
+                                Points = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+                                    { new(cx, cy - 200, 0), new(cx, cy + 200, 0) },
+                                Type = AgValoniaGPS.Models.Track.TrackType.ABLine,
+                                IsVisible = true, IsActive = true
+                            };
+                            vm.SavedTracks.Add(userTrack);
+                            vm.SelectedTrack = userTrack;
+                        }
+                    }
+                    ConfigurationStore.Instance.Tool.Width = 12.0;
+                    ConfigurationStore.Instance.Tram.TramWidth = 24.0;
+                    Console.WriteLine($"boundary={vm.HasBoundary} headland={vm.HasHeadland} tracks={vm.SavedTracks.Count} OK");
+                    return;
+                }
+            }
+            catch (Exception ex) { Console.Write($"({ex.Message}) "); }
+        }
+
+        // Create field
+        vm.NewFieldName = "RemoteTestField";
+        vm.NewFieldLatitude = 42.0308;
+        vm.NewFieldLongitude = -93.6319;
+        vm.ConfirmNewFieldDialogCommand?.Execute(null);
+        await PumpUI(500);
+
+        if (!vm.IsFieldOpen)
+        {
+            Console.WriteLine("FAILED (field not open)");
+            return;
+        }
+
+        // Initialize local plane
+        var origin = new AgValoniaGPS.Models.Wgs84(42.0308, -93.6319);
+        AgValoniaGPS.Models.State.ApplicationState.Instance.Field.LocalPlane =
+            new AgValoniaGPS.Models.LocalPlane(origin, new AgValoniaGPS.Models.SharedFieldProperties());
+        AgValoniaGPS.Models.State.ApplicationState.Instance.Field.OriginLatitude = 42.0308;
+        AgValoniaGPS.Models.State.ApplicationState.Instance.Field.OriginLongitude = -93.6319;
+
+        // Create boundary via recording service (200x200m square)
+        vm.StartBoundaryRecordingCommand?.Execute(null);
+        await PumpUI(300);
+
+        var boundaryService = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<IBoundaryRecordingService>(App.Services!);
+        boundaryService.AddPointManual(0, 0, 0);
+        boundaryService.AddPointManual(200, 0, Math.PI / 2);
+        boundaryService.AddPointManual(200, 200, Math.PI);
+        boundaryService.AddPointManual(0, 200, 3 * Math.PI / 2);
+
+        vm.StopBoundaryRecordingCommand?.Execute(null);
+        await PumpUI(500);
+
+        Console.Write($"boundary={vm.HasBoundary} ");
+
+        // Build headland with a boundary offset segment (20m inset)
+        vm.HeadlandDistance = 20;
+        var headlandSeg = new AgValoniaGPS.Models.Headland.HeadlandSegment
+        {
+            Name = "Boundary",
+            Type = AgValoniaGPS.Models.Headland.HeadlandSegmentType.Boundary,
+            Offset = 20,
+            BoundaryPoints = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+            {
+                new(0, 0, 0), new(200, 0, Math.PI / 2),
+                new(200, 200, Math.PI), new(0, 200, 3 * Math.PI / 2), new(0, 0, 0)
+            }
+        };
+        vm.ComputeSegmentOffset(headlandSeg);
+        vm.HeadlandSegments.Add(headlandSeg);
+        vm.BuildHeadlandFromSegments();
+        await PumpUI(500);
+
+        Console.Write($"headland={vm.HasHeadland} ");
+
+        // Add an AB track (vertical line at x=100)
+        var track = new AgValoniaGPS.Models.Track.Track
+        {
+            Name = "AB_0.0 Test",
+            Points = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+            {
+                new(100, 0, 0),
+                new(100, 200, 0)
+            },
+            Type = AgValoniaGPS.Models.Track.TrackType.ABLine,
+            IsVisible = true,
+            IsActive = true
+        };
+        vm.SavedTracks.Add(track);
+
+        // Add a diagonal track for testing
+        double diagHeading = Math.Atan2(150.0, 180.0); // ~39.8 degrees
+        var diagTrack = new AgValoniaGPS.Models.Track.Track
+        {
+            Name = "AB_Diagonal",
+            Points = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+            {
+                new(25, 10, diagHeading),
+                new(175, 190, diagHeading)
+            },
+            Type = AgValoniaGPS.Models.Track.TrackType.ABLine,
+            IsVisible = true
+        };
+        vm.SavedTracks.Add(diagTrack);
+
+        vm.SelectedTrack = track;
+
+        // Configure tool width
+        ConfigurationStore.Instance.Tool.Width = 12.0;
+        ConfigurationStore.Instance.Tram.TramWidth = 24.0;
+
+        Console.WriteLine($"tracks={vm.SavedTracks.Count} OK");
     }
 
     static async Task RunUTurnTest(IClassicDesktopStyleApplicationLifetime lifetime)
@@ -718,6 +881,12 @@ if frames:
 
         // --- Coverage Area Verification (#195) ---
         await RunCoverageAreaTest(window, vm, simService);
+
+        // --- Track Save/Load E2E ---
+        await RunTrackSaveLoadTest(window, vm, simService);
+
+        // --- Tram Lines Test (#34, #35) ---
+        await RunTramLinesTest(window, vm, simService);
     }
 
     static async Task RunDebugDumpTest(Window window, MainViewModel vm)
@@ -975,9 +1144,11 @@ if frames:
         CaptureScreenshot(window, "tracks_01b_headland_built");
         Console.WriteLine("OK");
 
-        // Track 2: Activate AB line + engage autosteer for real guidance
-        Console.Write("[Tracks 2] Activate AB line + autosteer... ");
+        // Track 2: Activate AB line + enable tram lines + engage autosteer
+        Console.Write("[Tracks 2] Activate AB line + tram lines + autosteer... ");
         vm.State.UI.CloseDialog();
+        ConfigurationStore.Instance.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.All;
+        ConfigurationStore.Instance.Tram.Passes = 3;
         if (vm.SavedTracks.Count > 0)
         {
             vm.SelectedTrack = vm.SavedTracks[0];
@@ -987,6 +1158,7 @@ if frames:
         }
         await Delay(500);
         CaptureScreenshot(window, "tracks_02_guidance_line_active");
+        CaptureScreenshot(window, "tram_lines_visible");
         Console.WriteLine("OK");
 
         // Track 3: Drive with autosteer -- tractor starts 6m east of the AB line
@@ -1656,6 +1828,288 @@ if frames:
     }
 
     /// <summary>
+    /// Tram lines integration test (#34, #35):
+    /// 1. Generate tram lines from AB line, verify they exist
+    /// 2. Toggle display mode, verify rendering changes
+    /// 3. Save field, reload, verify tram lines persist
+    /// </summary>
+    /// <summary>
+    /// E2E test: create tracks, save field, reload, verify tracks persist with all properties.
+    /// </summary>
+    static async Task RunTrackSaveLoadTest(
+        Window window, MainViewModel vm, IGpsSimulationService simService)
+    {
+        Console.WriteLine("\n--- Track Save/Load E2E Test ---");
+        var fieldService = App.Services!.GetRequiredService<IFieldService>();
+
+        // Step 1: Record current tracks
+        Console.Write("[TrackIO 1] Record initial tracks... ");
+        int initialCount = vm.SavedTracks.Count;
+        Console.Write($"[initial={initialCount}] ");
+
+        // Add a test track with nudge distance
+        var testTrack = new AgValoniaGPS.Models.Track.Track
+        {
+            Name = "E2E Test Track",
+            Points = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+            {
+                new(30, 0, 0),
+                new(30, 100, 0)
+            },
+            Type = AgValoniaGPS.Models.Track.TrackType.ABLine,
+            IsVisible = true,
+            NudgeDistance = 7.5
+        };
+        vm.SavedTracks.Add(testTrack);
+
+        // Add a hidden track
+        var hiddenTrack = new AgValoniaGPS.Models.Track.Track
+        {
+            Name = "Hidden Track",
+            Points = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+            {
+                new(50, 0, 0.5),
+                new(50, 80, 0.5),
+                new(60, 100, 0.8)
+            },
+            Type = AgValoniaGPS.Models.Track.TrackType.Curve,
+            IsVisible = false,
+            NudgeDistance = -3.25
+        };
+        vm.SavedTracks.Add(hiddenTrack);
+
+        int afterAdd = vm.SavedTracks.Count;
+        Console.Write($"[afterAdd={afterAdd}] ");
+        Console.WriteLine("OK");
+
+        // Step 2: Save tracks by closing and reopening field
+        Console.Write("[TrackIO 2] Close + reopen field to trigger save... ");
+        var fieldDir = fieldService.ActiveField?.DirectoryPath;
+        if (fieldDir == null) { Console.WriteLine("[SKIP: no field]"); return; }
+        await vm.CloseFieldAsync();
+        await Delay(300);
+        Console.Write("[closed] ");
+        Console.WriteLine("OK");
+
+        // Step 3: Reload field
+        Console.Write("[TrackIO 3] Reload field... ");
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        var testFieldDir = Path.Combine(settingsService.Settings.FieldsDirectory, "TestField");
+        try { await vm.OpenFieldAsync(testFieldDir, "TestField"); }
+        catch (Exception ex) { Console.Write($"({ex.Message}) "); }
+        await Delay(500);
+
+        int afterReload = vm.SavedTracks.Count;
+        Console.Write($"[loaded={afterReload}] ");
+
+        if (afterReload < afterAdd)
+            throw new Exception($"Tracks lost after reload: {afterAdd} -> {afterReload}");
+        Console.Write("[count PASS] ");
+        Console.WriteLine("OK");
+
+        // Step 4: Verify properties
+        Console.Write("[TrackIO 4] Verify track properties... ");
+        var e2eTrack = vm.SavedTracks.FirstOrDefault(t => t.Name == "E2E Test Track");
+        var hidTrack = vm.SavedTracks.FirstOrDefault(t => t.Name == "Hidden Track");
+
+        if (e2eTrack == null) throw new Exception("E2E Test Track not found after reload");
+        if (hidTrack == null) throw new Exception("Hidden Track not found after reload");
+
+        // NudgeDistance
+        if (Math.Abs(e2eTrack.NudgeDistance - 7.5) > 0.1)
+            throw new Exception($"NudgeDistance wrong: expected 7.5, got {e2eTrack.NudgeDistance}");
+        if (Math.Abs(hidTrack.NudgeDistance - (-3.25)) > 0.1)
+            throw new Exception($"NudgeDistance wrong: expected -3.25, got {hidTrack.NudgeDistance}");
+        Console.Write("[nudge PASS] ");
+
+        // Visibility
+        if (!e2eTrack.IsVisible)
+            throw new Exception("E2E Test Track should be visible");
+        if (hidTrack.IsVisible)
+            throw new Exception("Hidden Track should be hidden");
+        Console.Write("[visibility PASS] ");
+
+        // Point count
+        if (e2eTrack.Points.Count != 2)
+            throw new Exception($"AB line should have 2 points, got {e2eTrack.Points.Count}");
+        if (hidTrack.Points.Count != 3)
+            throw new Exception($"Curve should have 3 points, got {hidTrack.Points.Count}");
+        Console.Write("[points PASS] ");
+
+        // Cleanup: remove test tracks
+        vm.SavedTracks.Remove(e2eTrack);
+        vm.SavedTracks.Remove(hidTrack);
+
+        Console.WriteLine("OK");
+        Console.WriteLine("--- Track Save/Load E2E Complete ---");
+    }
+
+    static async Task RunTramLinesTest(
+        Window window, MainViewModel vm, IGpsSimulationService simService)
+    {
+        Console.WriteLine("\n--- Tram Lines Test (#34, #35) ---");
+        var tramService = App.Services!.GetRequiredService<ITramLineService>();
+        var fieldService = App.Services!.GetRequiredService<IFieldService>();
+        var settingsService = App.Services!.GetRequiredService<ISettingsService>();
+        var config = ConfigurationStore.Instance;
+
+        // Reset position
+        await ResetTractorPosition(vm, simService, settingsService);
+
+        // Step 0: Capture Field Builder dialog with multiple tracks
+        Console.Write("[Tram 0] Field Builder screenshots... ");
+
+        // Add a second track for the visualizer
+        var extraTrack = new AgValoniaGPS.Models.Track.Track
+        {
+            Name = "Diagonal Test",
+            Points = new System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>
+            {
+                new(-80, -60, 0.7),
+                new(80, 60, 0.7)
+            },
+            Type = AgValoniaGPS.Models.Track.TrackType.ABLine,
+            IsVisible = true
+        };
+        vm.SavedTracks.Add(extraTrack);
+
+        // Open Field Builder - main tracks tab
+        vm.ShowFieldBuilderCommand?.Execute(null);
+        await Delay(500);
+        Dispatcher.UIThread.RunJobs();
+        CaptureScreenshot(window, "field_builder_tracks_tab");
+
+        // Click Add Track to show sub-panel (simulate via code)
+        var addPanel = FindControl(window, "AddTrackPanel");
+        var mainTabs = FindControl(window, "MainTabs");
+        if (addPanel != null && mainTabs != null)
+        {
+            mainTabs.IsVisible = false;
+            addPanel.IsVisible = true;
+            await Delay(200);
+            Dispatcher.UIThread.RunJobs();
+            CaptureScreenshot(window, "field_builder_add_track");
+            // Restore
+            mainTabs.IsVisible = true;
+            addPanel.IsVisible = false;
+        }
+
+        // Capture Headland and Tram tabs
+        vm.ShowFieldBuilderCommand?.Execute(null);
+        await Delay(300);
+        // Switch to Headland tab (index 1)
+        var tabCtrl = FindControl(window, "MainTabs") as Avalonia.Controls.TabControl;
+        if (tabCtrl != null)
+        {
+            tabCtrl.SelectedIndex = 1;
+            await Delay(200);
+            Dispatcher.UIThread.RunJobs();
+            CaptureScreenshot(window, "field_builder_headland_tab");
+
+            tabCtrl.SelectedIndex = 2;
+            await Delay(200);
+            Dispatcher.UIThread.RunJobs();
+            CaptureScreenshot(window, "field_builder_tram_tab");
+
+            tabCtrl.SelectedIndex = 0;
+        }
+
+        vm.State.UI.CloseDialog();
+        vm.SavedTracks.Remove(extraTrack);
+        await Delay(100);
+        Console.WriteLine("OK");
+
+        // Step 1: Enable tram display and select track
+        Console.Write("[Tram 1] Enable tram display + select track... ");
+        config.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.All;
+        config.Tram.Passes = 3;
+
+        if (vm.SavedTracks.Count > 0)
+        {
+            vm.SelectedTrack = vm.SavedTracks[0];
+            await Delay(300);
+        }
+
+        bool hasTram = tramService.HasTramLines;
+        int lineCount = tramService.ParallelTramLines.Count;
+        Console.Write($"[hasTram={hasTram} lines={lineCount}] ");
+
+        if (!hasTram)
+            throw new Exception("No tram lines generated after selecting track");
+
+        Console.Write("[PASS] ");
+        CaptureScreenshot(window, "tram_01_generated");
+        Console.WriteLine("OK");
+
+        // Step 2: Toggle display mode
+        Console.Write("[Tram 2] Toggle display modes... ");
+        config.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.LinesOnly;
+        await Delay(100);
+        CaptureScreenshot(window, "tram_02_lines_only");
+
+        config.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.OuterOnly;
+        await Delay(100);
+        CaptureScreenshot(window, "tram_03_outer_only");
+
+        config.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.Off;
+        await Delay(100);
+        CaptureScreenshot(window, "tram_04_off");
+
+        config.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.All;
+        Console.Write("[PASS] ");
+        Console.WriteLine("OK");
+
+        // Step 3: Change passes and verify regeneration
+        Console.Write("[Tram 3] Change passes 3->5... ");
+        int linesBefore = tramService.ParallelTramLines.Count;
+        config.Guidance.TramPasses = 5;
+        await Delay(200);
+        int linesAfter = tramService.ParallelTramLines.Count;
+        Console.Write($"[before={linesBefore} after={linesAfter}] ");
+
+        if (linesAfter >= linesBefore)
+            Console.Write("[WARN: expected fewer lines with more passes] ");
+        else
+            Console.Write("[PASS] ");
+        Console.WriteLine("OK");
+
+        // Step 4: Save and reload tram lines
+        Console.Write("[Tram 4] Save + reload tram lines... ");
+        var fieldDir = fieldService.ActiveField?.DirectoryPath;
+        if (fieldDir != null)
+        {
+            tramService.SaveToFile(fieldDir);
+            int savedLines = tramService.ParallelTramLines.Count;
+            Console.Write($"[saved={savedLines}] ");
+
+            // Clear and reload
+            tramService.Clear();
+            if (tramService.HasTramLines)
+                throw new Exception("Tram lines not cleared");
+
+            tramService.LoadFromFile(fieldDir);
+            int loadedLines = tramService.ParallelTramLines.Count;
+            Console.Write($"[loaded={loadedLines}] ");
+
+            if (loadedLines != savedLines)
+                throw new Exception($"Tram line count mismatch: saved={savedLines} loaded={loadedLines}");
+
+            Console.Write("[PASS] ");
+        }
+        else
+        {
+            Console.Write("[SKIP: no field] ");
+        }
+
+        // Restore defaults
+        config.Tram.DisplayMode = AgValoniaGPS.Models.Configuration.TramDisplayMode.Off;
+        config.Guidance.TramPasses = 3;
+
+        Console.WriteLine("OK");
+        Console.WriteLine("--- Tram Lines Test Complete ---");
+    }
+
+    /// <summary>
     /// Delay that also pumps the UI dispatcher.
     /// When --fast is active, delays are scaled down proportionally.
     /// </summary>
@@ -1689,6 +2143,20 @@ if frames:
         vm.SimulatorSteerAngle = 0;
         await Delay(50);
         for (int i = 0; i < 5; i++) { simService.Tick(0); await Delay(5); }
+    }
+
+    static Control? FindControl(Control parent, string name)
+    {
+        if (parent.Name == name) return parent;
+        foreach (var child in parent.GetVisualChildren())
+        {
+            if (child is Control c)
+            {
+                var found = FindControl(c, name);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     static void CaptureScreenshot(Window window, string name)

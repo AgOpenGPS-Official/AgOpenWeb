@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using AgValoniaGPS.Models.Tram;
 
 namespace AgValoniaGPS.Models.Configuration;
 
@@ -93,6 +95,32 @@ public class TramConfig : ObservableObject
         get => _currentPass;
         set => SetProperty(ref _currentPass, value);
     }
+
+    /// <summary>
+    /// Start pass offset (which pass number to begin tram lines from).
+    /// 0 = start from first pass, 1 = skip first pass, etc.
+    /// </summary>
+    private int _startPass;
+    public int StartPass
+    {
+        get => _startPass;
+        set => SetProperty(ref _startPass, System.Math.Max(0, value));
+    }
+
+    /// <summary>
+    /// Show left/right tram detection indicators on the map display.
+    /// </summary>
+    private bool _isDisplayTramControl = true;
+    public bool IsDisplayTramControl
+    {
+        get => _isDisplayTramControl;
+        set => SetProperty(ref _isDisplayTramControl, value);
+    }
+
+    /// <summary>
+    /// Collection of tram systems. Each system generates its own set of tram lines.
+    /// </summary>
+    public ObservableCollection<TramSystem> Systems { get; } = new();
 }
 
 /// <summary>

@@ -103,6 +103,14 @@ public interface IMapService
     // YouTurn path visualization
     void SetYouTurnPath(IReadOnlyList<(double Easting, double Northing)>? turnPath);
 
+    // Tram line visualization
+    void SetTramLines(
+        IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? outerTrack,
+        IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>? innerTrack,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgValoniaGPS.Models.Base.Vec2>>? boundaryExtraLines = null);
+    void SetTramControlByte(byte controlByte);
+
     // Track visualization for U-turns
     void SetNextTrack(AgValoniaGPS.Models.Track.Track? track);
     void SetIsInYouTurn(bool isInTurn);

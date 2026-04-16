@@ -54,6 +54,7 @@ public class MainViewModelBuilder
             settingsService: SettingsService,
             mapService: MapService,
             boundaryRecordingService: Substitute.For<IBoundaryRecordingService>(),
+            boundaryBuilderService: Substitute.For<IBoundaryBuilderService>(),
             boundaryFileService: new BoundaryFileService(),
             headlandBuilderService: Substitute.For<AgValoniaGPS.Services.Headland.IHeadlandBuilderService>(),
             trackGuidanceService: TrackGuidanceService,
@@ -72,6 +73,7 @@ public class MainViewModelBuilder
             chartDataService: Substitute.For<IChartDataService>(),
             audioService: Substitute.For<IAudioService>(),
             elevationLogService: Substitute.For<IElevationLogService>(),
+            tramLineService: Substitute.For<AgValoniaGPS.Services.Interfaces.ITramLineService>(),
             gpsPipelineService: GpsPipelineService,
             logger: NullLogger<MainViewModel>.Instance,
             appState: new ApplicationState());

@@ -122,7 +122,7 @@ namespace AgValoniaGPS.Models.AgShare
         /// <summary>
         /// Line name
         /// </summary>
-        public string Name { get; set; } = string.Empty;
+        public string? Name { get; set; } = string.Empty;
 
         /// <summary>
         /// Point A in local coordinates
@@ -142,6 +142,6 @@ namespace AgValoniaGPS.Models.AgShare
         /// <summary>
         /// Optional curve points (only populated for curved AB lines)
         /// </summary>
-        public List<LocalPoint> CurvePoints { get; set; } = new List<LocalPoint>();
+        public List<LocalPoint>? CurvePoints { get; set; } = new List<LocalPoint>();
     }
 }

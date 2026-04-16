@@ -42,15 +42,35 @@ public interface ITramLineService
     IReadOnlyList<IReadOnlyList<Vec2>> ParallelTramLines { get; }
 
     /// <summary>
+    /// Additional boundary tram passes (beyond pass 0 which is in OuterBoundaryTrack/InnerBoundaryTrack)
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<Vec2>> BoundaryExtraLines { get; }
+
+    /// <summary>
     /// Whether any tram lines exist
     /// </summary>
     bool HasTramLines { get; }
 
     /// <summary>
+    /// Set boundary fence for clipping parallel tram lines to the field area.
+    /// </summary>
+    void SetBoundaryFence(IReadOnlyList<Vec3>? fence);
+
+    /// <summary>
+    /// Generate tram lines for a specific TramSystem with full options.
+    /// </summary>
+    List<List<Vec2>> GenerateForSystem(
+        Models.Tram.TramSystem system,
+        Models.Track.Track referenceTrack,
+        double fieldWidth);
+
+    /// <summary>
     /// Generate boundary tram tracks from a fence line (headland or outer boundary)
     /// </summary>
     /// <param name="fenceLine">Boundary fence line points with headings</param>
-    void GenerateBoundaryTramTracks(IReadOnlyList<Vec3> fenceLine);
+    void GenerateBoundaryTramTracks(IReadOnlyList<Vec3> fenceLine, int passCount = 1,
+        AgValoniaGPS.Models.Tram.TramSystemMode mode = AgValoniaGPS.Models.Tram.TramSystemMode.Edge,
+        double tramWidthOverride = 0);
 
     /// <summary>
     /// Generate parallel tram lines from a guidance track
@@ -79,6 +99,13 @@ public interface ITramLineService
     /// <param name="position">Position to check</param>
     /// <returns>Distance in meters, or double.MaxValue if no tram lines</returns>
     double DistanceToNearestTramLine(Vec3 position);
+
+    /// <summary>
+    /// Detect which wheels are on tram lines.
+    /// Returns a byte: bit 0 = right wheel, bit 1 = left wheel.
+    /// Includes manual override flags.
+    /// </summary>
+    byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance);
 
     /// <summary>
     /// Left wheel manual override - force recording left wheel track
@@ -138,4 +165,9 @@ public interface ITramLineOffsetService
     /// <param name="halfWheelTrack">Half of vehicle wheel track width</param>
     /// <returns>List of outer tramline points</returns>
     List<Vec2> GenerateOuterTramline(List<Vec3> fenceLine, double tramWidth, double halfWheelTrack);
+
+    /// <summary>
+    /// Generate inward offset at a specific distance from fence line.
+    /// </summary>
+    List<Vec2> GenerateClipperOffsetPublic(List<Vec3> fenceLine, double offset);
 }
