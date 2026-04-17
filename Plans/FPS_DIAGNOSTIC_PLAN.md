@@ -27,6 +27,22 @@ The diagnostic's job is to reveal which contributors are pushing us below
 the 24 FPS floor in which scenarios, ranked by urgency. "Nice to have" fixes
 that don't lift any scenario from below-floor to above-floor are deferred.
 
+### Three different ceilings
+
+Measurement revealed "the 30 FPS ceiling" is not a hardware property. Three
+distinct ceilings exist:
+
+| Ceiling | FPS | What it is |
+|---|---|---|
+| Tablet hardware | ~58 | Physical limit, measured with simulator off |
+| Simulator-driven testing | ~30 | Self-imposed cap from 30 Hz state pushes |
+| Real-world GPS (10 Hz NMEA) | ~40-50 (estimated) | 3× fewer state pushes than simulator |
+
+**Implication:** simulator-based testing is pessimistic. Real-world field
+scenarios likely have more headroom than simulator numbers suggest. Fixes that
+barely cross the 24 FPS floor in simulator may comfortably exceed it in
+production. Measurements stay valid as *lower bounds* on recovery.
+
 ## Scope
 
 ### In scope
