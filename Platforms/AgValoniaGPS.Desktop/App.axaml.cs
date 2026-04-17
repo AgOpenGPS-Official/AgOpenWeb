@@ -51,7 +51,7 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        AgValoniaGPS.Views.Diagnostics.DiagFlags.ApplyAtStartup(this);
+        AgValoniaGPS.Views.Diagnostics.DiagFlagsBootstrap.ApplyAtStartup(this);
 
         // Build DI container
         _host = Host.CreateDefaultBuilder()

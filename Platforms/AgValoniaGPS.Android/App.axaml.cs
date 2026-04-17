@@ -46,7 +46,7 @@ public partial class App : Avalonia.Application
     {
         Console.WriteLine("[App] Framework initialization starting...");
 
-        AgValoniaGPS.Views.Diagnostics.DiagFlags.ApplyAtStartup(this);
+        AgValoniaGPS.Views.Diagnostics.DiagFlagsBootstrap.ApplyAtStartup(this);
 
         // Set up dependency injection
         var services = new ServiceCollection();

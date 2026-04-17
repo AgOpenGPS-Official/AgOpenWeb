@@ -36,6 +36,7 @@ using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Communication;
 using AgValoniaGPS.Models.Ntrip;
+using AgValoniaGPS.Models.Diagnostics;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 
@@ -342,6 +343,20 @@ public partial class MainViewModel : ObservableObject
 
         // Start UDP communication (fire-and-forget but explicit)
         _ = InitializeAsync();
+
+        // Diagnostic auto-resume field — lets the FPS test harness run field-open
+        // scenarios across force-stop restarts without manual taps.
+        if (DiagFlags.AutoResumeField)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (ResumeFieldCommand?.CanExecute(null) == true)
+                {
+                    _logger.LogInformation("[DiagFlags] auto_resume_field: invoking ResumeFieldCommand");
+                    ResumeFieldCommand.Execute(null);
+                }
+            }, Avalonia.Threading.DispatcherPriority.Background);
+        }
     }
 
     private void RestoreSettings()
@@ -387,9 +402,11 @@ public partial class MainViewModel : ObservableObject
 
         _logger.LogDebug("Restored simulator: {Lat},{Lon}", settings.SimulatorLatitude, settings.SimulatorLongitude);
 
-        // Restore simulator enabled state and panel visibility
+        // Restore simulator enabled state and panel visibility.
+        // hide_all_panels diagnostic flag suppresses the auto-open so baseline
+        // perf measurements aren't contaminated by the sim panel.
         IsSimulatorEnabled = settings.SimulatorEnabled;
-        IsSimulatorPanelVisible = settings.SimulatorEnabled;
+        IsSimulatorPanelVisible = settings.SimulatorEnabled && !DiagFlags.HideAllPanels;
 
         // Initialize tool width from config so implement renders before GPS data flows
         var config = Models.Configuration.ConfigurationStore.Instance;

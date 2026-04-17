@@ -5,10 +5,8 @@
 
 using System;
 using System.IO;
-using Avalonia;
-using Avalonia.Media;
 
-namespace AgValoniaGPS.Views.Diagnostics;
+namespace AgValoniaGPS.Models.Diagnostics;
 
 /// <summary>
 /// FPS diagnostic flags. File-presence based so each test scenario is a single
@@ -17,9 +15,6 @@ namespace AgValoniaGPS.Views.Diagnostics;
 /// All flags are read ONCE at process startup from
 /// <c>Documents/AgValoniaGPS/&lt;flag-name&gt;</c>. The flag is set if the file
 /// exists, regardless of contents. Restart the app to pick up changes.
-///
-/// Flag state is logged once at init via <c>LogInitState</c> so every test run
-/// is self-documenting in logcat.
 ///
 /// See <c>Plans/FPS_DIAGNOSTIC_PLAN.md</c> for methodology.
 /// </summary>
@@ -41,7 +36,9 @@ public static class DiagFlags
     public static readonly bool DisableAnimationFrameUpdate;
     public static readonly bool LogSendStateFrequency;
 
-    // Any flag set?
+    // Test-harness flags
+    public static readonly bool AutoResumeField;
+
     public static readonly bool AnySet;
 
     static DiagFlags()
@@ -56,37 +53,13 @@ public static class DiagFlags
         HideAllPanels              = MarkerPresent(".hide_all_panels");
         DisableAnimationFrameUpdate = MarkerPresent(".disable_animation_frame_update");
         LogSendStateFrequency      = MarkerPresent(".log_send_state_frequency");
+        AutoResumeField            = MarkerPresent(".auto_resume_field");
 
-        AnySet = SkipCoverageDraw
-               || SkipBoundaryDraw
-               || SkipTracks
-               || SkipGroundTexture
-               || SkipGrid
-               || SkipVehicle
-               || PanelsOpaque
-               || HideAllPanels
-               || DisableAnimationFrameUpdate
-               || LogSendStateFrequency;
-    }
-
-    /// <summary>
-    /// Call from each platform's App.OnFrameworkInitializationCompleted after
-    /// Application.Current is available. Logs flag state and applies any
-    /// resource-level overrides (e.g. panels_opaque replaces the system chrome
-    /// brush with an opaque version).
-    /// </summary>
-    public static void ApplyAtStartup(Application app)
-    {
-        LogInitState();
-
-        if (PanelsOpaque)
-        {
-            // Replace the DynamicResource used by all FloatingPanel styles so
-            // every panel background becomes opaque without per-panel edits.
-            var opaque = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x2A));
-            app.Resources["SystemControlBackgroundChromeMediumBrush"] = opaque;
-            Console.WriteLine("[DiagFlags] panels_opaque: overrode SystemControlBackgroundChromeMediumBrush with solid #2A2A2A");
-        }
+        AnySet = SkipCoverageDraw || SkipBoundaryDraw || SkipTracks
+               || SkipGroundTexture || SkipGrid || SkipVehicle
+               || PanelsOpaque || HideAllPanels
+               || DisableAnimationFrameUpdate || LogSendStateFrequency
+               || AutoResumeField;
     }
 
     /// <summary>
@@ -106,7 +79,8 @@ public static class DiagFlags
             + $" opaquePanels={PanelsOpaque}"
             + $" hidePanels={HideAllPanels}"
             + $" disableAnimFrame={DisableAnimationFrameUpdate}"
-            + $" logSendState={LogSendStateFrequency}");
+            + $" logSendState={LogSendStateFrequency}"
+            + $" autoResumeField={AutoResumeField}");
     }
 
     private static string? ResolveDiagDir()

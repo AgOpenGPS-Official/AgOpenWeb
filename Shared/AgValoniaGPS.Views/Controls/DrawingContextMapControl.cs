@@ -32,7 +32,7 @@ using SkiaSharp;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.Track;
-using AgValoniaGPS.Views.Diagnostics;
+using AgValoniaGPS.Models.Diagnostics;
 
 // For loading embedded resources
 using AssetLoader = Avalonia.Platform.AssetLoader;
