@@ -3076,6 +3076,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private DateTime _fpsSinkLastFrame = DateTime.UtcNow;
         private readonly List<double> _fpsSinkFrameMs = new(capacity: 256);
 
+        // Per-category render timing (only accumulates when DiagFlags.LogRenderTiming is true)
+        private long _rtGround, _rtGrid, _rtCoverage, _rtBoundary, _rtTracks, _rtVehicle;
+        private int _rtFrameCount;
+        private DateTime _rtWindowStart = DateTime.UtcNow;
+
+        // SKPaints for grid rendering via SKCanvas (batched). Rebuilt when day/night
+        // mode or thickness changes; tracked by cached state to avoid per-frame alloc.
+        private SKPaint? _gridMinorPaintSk;
+        private SKPaint? _gridMajorPaintSk;
+        private SKPaint? _gridAxisXPaintSk;
+        private SKPaint? _gridAxisYPaintSk;
+        private bool _gridPaintIsDayMode;
+        private double _gridPaintMinorThickness;
+        private double _gridPaintMajorThickness;
+
         // Immutable pens/brushes for render thread (created once, reused)
         // Background
         private ImmutablePen? _gridPenMinorImm;
@@ -3104,11 +3119,16 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Coverage SKImage snapshot cache. The pipeline writes to SKBitmap every GPS
         // tick; Skia cannot cache a mutating bitmap on the GPU, so DrawBitmap re-uploads
         // the full 50 MB texture every frame. We snapshot the bitmap to an immutable
-        // SKImage at a throttled cadence — GPU caches the snapshot between renders,
-        // trading ~100 ms of visual coverage lag for a large FPS win.
-        private SKImage? _coverageSnapshot;
-        private SKBitmap? _coverageSnapshotSource;
+        // SKImage at a throttled cadence — GPU caches the snapshot between renders.
+        //
+        // The ~25 ms pixel copy runs on a background task so the render thread never
+        // blocks on it. Render draws the latest completed snapshot; a new one becomes
+        // available by atomic reference swap when its copy finishes.
+        private SKImage? _coverageSnapshot;           // currently-drawn snapshot
+        private SKImage? _coverageSnapshotPending;    // handed off from bg task, swapped in on next render
+        private SKBitmap? _coverageSnapshotSource;    // last source reference (for identity checks)
         private DateTime _coverageSnapshotTime = DateTime.MinValue;
+        private int _coverageSnapshotInFlight;        // 0 = idle, 1 = bg task running
         private const double CoverageSnapshotIntervalMs = 200.0;
         private static readonly SKSamplingOptions _coverageSampling =
             new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None);
@@ -3274,6 +3294,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
 
 
+            bool rt = DiagFlags.LogRenderTiming;
+            long t0;
+
             try
             {
                 // Background fill (screen space) — ImmediateDrawingContext only, no SKCanvas lease
@@ -3293,6 +3316,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 var cameraMatrix = GetCameraTransform(s, viewWidth, viewHeight);
                 using var cameraScope = drawingContext.PushPreTransform(cameraMatrix);
 
+                t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 // Ground texture
                 if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
                 {
@@ -3305,12 +3329,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 {
                     DrawBackgroundImage(drawingContext, s);
                 }
+                if (rt) _rtGround += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
-                // Grid
-                if (s.IsGridVisible && !DiagFlags.SkipGrid)
-                {
-                    DrawGrid(drawingContext, s, viewWidth, viewHeight);
-                }
+                // Grid drawing moved into SKCanvas block below so all line segments
+                // batch into 2-3 DrawPath calls instead of hundreds of DrawLine calls.
 
                 // === ALL remaining drawing via SKCanvas ===
                 // dc drawing after SKCanvas lease is unreliable, so everything
@@ -3330,13 +3352,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     // doesn't prevent vehicle/tool from rendering.
                     try
                     {
+                        // Grid (batched SKPath — was dominating zoom-out perf with
+                        // hundreds of per-line DrawLine calls on ImmediateDrawingContext)
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        if (s.IsGridVisible && !DiagFlags.SkipGrid)
+                            DrawGridSk(canvas, s, viewWidth, viewHeight);
+                        if (rt) _rtGrid += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+
                         // Coverage bitmap
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                         if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
                             && s.BitmapWidth > 0 && s.BitmapHeight > 0
                             && !DiagFlags.SkipCoverageDraw)
                             DrawCoverageBitmap(drawingContext, canvas, s);
+                        if (rt) _rtCoverage += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
                         // Boundary, headland, paths
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                         if (!DiagFlags.SkipBoundaryDraw)
                         {
                             if (s.Boundary != null)
@@ -3352,17 +3384,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                             DrawClipLineSk(canvas, s);
                         if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
                             DrawYouTurnPathSk(canvas, s);
+                        if (rt) _rtBoundary += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
-                        // Tram lines
+                        // Tram lines + Tracks
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                         if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off
                             && !DiagFlags.SkipTracks)
                             DrawTramLinesSk(canvas, s);
 
-                        // Tracks
                         if ((s.ActiveTrack != null || s.PendingPointA != null
                             || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
                             && !DiagFlags.SkipTracks)
                             DrawTrackSk(canvas, s);
+                        if (rt) _rtTracks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
                     }
                     catch (Exception ex)
                     {
@@ -3370,6 +3404,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     }
 
                     // Vehicle/tool always draws even if above fails
+                    t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                     if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2
                         && !DiagFlags.SkipTracks)
                         DrawExtraGuidelinesSk(canvas, s);
@@ -3390,6 +3425,30 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                         DrawSelectionMarkersSk(canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
                         DrawBoundaryOffsetIndicatorSk(canvas, s);
+                    if (rt) _rtVehicle += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                }
+
+                if (rt)
+                {
+                    _rtFrameCount++;
+                    var rtElapsed = (now - _rtWindowStart).TotalSeconds;
+                    if (rtElapsed >= 1.0 && _rtFrameCount > 0)
+                    {
+                        double toMsPerFrame(long t) =>
+                            t * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _rtFrameCount;
+                        Console.WriteLine(
+                            $"[RenderBudget] frames={_rtFrameCount}"
+                            + $" ground={toMsPerFrame(_rtGround):F2}ms"
+                            + $" grid={toMsPerFrame(_rtGrid):F2}ms"
+                            + $" cov={toMsPerFrame(_rtCoverage):F2}ms"
+                            + $" bnd={toMsPerFrame(_rtBoundary):F2}ms"
+                            + $" trk={toMsPerFrame(_rtTracks):F2}ms"
+                            + $" veh={toMsPerFrame(_rtVehicle):F2}ms"
+                            + $" zoom={s.Zoom:F2}");
+                        _rtGround = _rtGrid = _rtCoverage = _rtBoundary = _rtTracks = _rtVehicle = 0;
+                        _rtFrameCount = 0;
+                        _rtWindowStart = now;
+                    }
                 }
 
             }
@@ -3439,7 +3498,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             int startTileY = (int)Math.Floor((centerY - diagonal) / TILE_SIZE);
             int endTileY = (int)Math.Ceiling((centerY + diagonal) / TILE_SIZE);
 
-            int maxTiles = 50;
+            // Keep tile-per-axis count modest. Each tile is an individual DrawBitmap
+            // call; at wide zoom we easily hit hundreds of calls which dominates
+            // frame time. Fall back to a single stretched bitmap once the view
+            // spans more than ~8 tiles per axis — the pattern is effectively
+            // indistinguishable at that point anyway.
+            const int maxTiles = 8;
             if (endTileX - startTileX > maxTiles || endTileY - startTileY > maxTiles)
             {
                 var viewRect = new Rect(centerX - diagonal, -(centerY + diagonal), diagonal * 2, diagonal * 2);
@@ -3536,6 +3600,133 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
+        /// <summary>
+        /// SKCanvas-batched grid renderer. Builds one SKPath per pen class and
+        /// issues a single DrawPath call per class, vs. the DrawingContext version
+        /// that fired one DrawLine per segment (hundreds at wide zoom).
+        /// Caches SKPaint objects; rebuilds only when day/night or thickness changes.
+        /// </summary>
+        private void DrawGridSk(SKCanvas canvas, MapRenderState s, double viewWidth, double viewHeight)
+        {
+            const double gridSize = 2000.0;
+            double toolW = s.ToolWidth > 0.5 ? s.ToolWidth : 6.0;
+            double viewSpan = Math.Max(viewWidth, viewHeight);
+
+            double spacing, majorEvery;
+            if (viewSpan < toolW * 30) { spacing = toolW; majorEvery = toolW * 10; }
+            else if (viewSpan < toolW * 100) { spacing = toolW * 5; majorEvery = toolW * 50; }
+            else { spacing = toolW * 10; majorEvery = toolW * 100; }
+
+            double screenHeight = s.BoundsHeight > 0 ? s.BoundsHeight : 600;
+            double worldPerPixel = viewHeight / screenHeight;
+            double minorThickness = Math.Max(0.3 * worldPerPixel, 0.05);
+            double majorThickness = Math.Max(0.6 * worldPerPixel, 0.1);
+
+            EnsureGridPaintsSk(s.IsDayMode, minorThickness, majorThickness);
+
+            double minX = Math.Max(s.CameraX - viewWidth, -gridSize);
+            double maxX = Math.Min(s.CameraX + viewWidth, gridSize);
+            double minY = Math.Max(s.CameraY - viewHeight, -gridSize);
+            double maxY = Math.Min(s.CameraY + viewHeight, gridSize);
+
+            double startX = Math.Floor(minX / spacing) * spacing;
+            double startY = Math.Floor(minY / spacing) * spacing;
+
+            float lineXStart = (float)Math.Max(minX, -gridSize);
+            float lineXEnd = (float)Math.Min(maxX, gridSize);
+            float lineYStart = (float)Math.Max(minY, -gridSize);
+            float lineYEnd = (float)Math.Min(maxY, gridSize);
+
+            using var minorPath = new SKPath();
+            using var majorPath = new SKPath();
+            bool hasAxisY = false, hasAxisX = false;
+
+            for (double x = startX; x <= maxX; x += spacing)
+            {
+                if (x < -gridSize || x > gridSize) continue;
+                if (Math.Abs(x) < 0.1) { hasAxisY = true; continue; }
+                bool isMajor = Math.Abs(x % majorEvery) < 0.1;
+                var path = isMajor ? majorPath : minorPath;
+                path.MoveTo((float)x, lineYStart);
+                path.LineTo((float)x, lineYEnd);
+            }
+            for (double y = startY; y <= maxY; y += spacing)
+            {
+                if (y < -gridSize || y > gridSize) continue;
+                if (Math.Abs(y) < 0.1) { hasAxisX = true; continue; }
+                bool isMajor = Math.Abs(y % majorEvery) < 0.1;
+                var path = isMajor ? majorPath : minorPath;
+                path.MoveTo(lineXStart, (float)y);
+                path.LineTo(lineXEnd, (float)y);
+            }
+
+            canvas.DrawPath(minorPath, _gridMinorPaintSk!);
+            canvas.DrawPath(majorPath, _gridMajorPaintSk!);
+            if (hasAxisY)
+                canvas.DrawLine(0, lineYStart, 0, lineYEnd, _gridAxisYPaintSk!);
+            if (hasAxisX)
+                canvas.DrawLine(lineXStart, 0, lineXEnd, 0, _gridAxisXPaintSk!);
+        }
+
+        private void EnsureGridPaintsSk(bool isDayMode, double minorThickness, double majorThickness)
+        {
+            if (_gridMinorPaintSk != null
+                && _gridPaintIsDayMode == isDayMode
+                && Math.Abs(_gridPaintMinorThickness - minorThickness) < 1e-4
+                && Math.Abs(_gridPaintMajorThickness - majorThickness) < 1e-4)
+                return;
+
+            _gridMinorPaintSk?.Dispose();
+            _gridMajorPaintSk?.Dispose();
+            _gridAxisXPaintSk?.Dispose();
+            _gridAxisYPaintSk?.Dispose();
+
+            SKColor minorColor, majorColor;
+            if (isDayMode)
+            {
+                minorColor = new SKColor(40, 40, 40, 120);
+                majorColor = new SKColor(30, 30, 30, 180);
+            }
+            else
+            {
+                minorColor = new SKColor(180, 180, 180, 80);
+                majorColor = new SKColor(200, 200, 200, 120);
+            }
+
+            _gridMinorPaintSk = new SKPaint
+            {
+                Color = minorColor,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)minorThickness,
+                IsAntialias = false,
+            };
+            _gridMajorPaintSk = new SKPaint
+            {
+                Color = majorColor,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)majorThickness,
+                IsAntialias = false,
+            };
+            _gridAxisXPaintSk = new SKPaint
+            {
+                Color = new SKColor(204, 51, 51, 70),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.5f,
+                IsAntialias = false,
+            };
+            _gridAxisYPaintSk = new SKPaint
+            {
+                Color = new SKColor(51, 204, 51, 70),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.5f,
+                IsAntialias = false,
+            };
+
+            _gridPaintIsDayMode = isDayMode;
+            _gridPaintMinorThickness = minorThickness;
+            _gridPaintMajorThickness = majorThickness;
+        }
+
         private void DrawCoverageBitmap(ImmediateDrawingContext dc, SKCanvas? canvas, MapRenderState s)
         {
             // Capture to local to avoid race with UI thread disposal
@@ -3547,32 +3738,53 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Guard against disposed native SKBitmap (race with CreateCoverageBitmap on UI thread)
             if (bitmap.Handle == IntPtr.Zero) return;
 
-            // Snapshot the bitmap to an immutable SKImage so the GPU can cache it
-            // between frames. Refresh the snapshot periodically (throttled) rather
-            // than re-uploading every frame.
+            // Pick up any pending snapshot produced by a background task.
+            var pending = System.Threading.Interlocked.Exchange(ref _coverageSnapshotPending, null);
+            if (pending != null)
+            {
+                var old = _coverageSnapshot;
+                _coverageSnapshot = pending;
+                old?.Dispose();
+            }
+
+            // Kick off a new background snapshot if one isn't in flight and we're due.
             var now = DateTime.UtcNow;
-            bool needsRefresh = _coverageSnapshot == null
-                || !ReferenceEquals(_coverageSnapshotSource, bitmap)
+            bool bitmapChanged = !ReferenceEquals(_coverageSnapshotSource, bitmap);
+            bool dueForRefresh = _coverageSnapshot == null
+                || bitmapChanged
                 || (now - _coverageSnapshotTime).TotalMilliseconds >= CoverageSnapshotIntervalMs;
 
-            if (needsRefresh)
+            if (dueForRefresh
+                && System.Threading.Interlocked.CompareExchange(ref _coverageSnapshotInFlight, 1, 0) == 0)
             {
-                var oldSnapshot = _coverageSnapshot;
-                try
+                _coverageSnapshotSource = bitmap;
+                _coverageSnapshotTime = now;
+                var capturedBitmap = bitmap;
+                System.Threading.Tasks.Task.Run(() =>
                 {
-                    using var pixmap = bitmap.PeekPixels();
-                    if (pixmap != null)
+                    try
                     {
-                        _coverageSnapshot = SKImage.FromPixelCopy(pixmap);
-                        _coverageSnapshotSource = bitmap;
-                        _coverageSnapshotTime = now;
-                        oldSnapshot?.Dispose();
+                        if (capturedBitmap.Handle == IntPtr.Zero) return;
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        using var pixmap = capturedBitmap.PeekPixels();
+                        if (pixmap == null) return;
+                        var newImage = SKImage.FromPixelCopy(pixmap);
+                        sw.Stop();
+                        // Hand off via atomic swap. If a previous pending snapshot
+                        // wasn't picked up yet, dispose it (render thread hasn't used it).
+                        var displaced = System.Threading.Interlocked.Exchange(ref _coverageSnapshotPending, newImage);
+                        displaced?.Dispose();
+                        Console.WriteLine($"[CoverageSnapshot] bg refresh took {sw.ElapsedMilliseconds} ms");
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[CoverageSnapshot] refresh failed: {ex.Message}");
-                }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[CoverageSnapshot] bg refresh failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        System.Threading.Volatile.Write(ref _coverageSnapshotInFlight, 0);
+                    }
+                });
             }
 
             if (_coverageSnapshot == null) return;

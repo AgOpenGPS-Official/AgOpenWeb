@@ -35,6 +35,7 @@ public static class DiagFlags
     // Compositor/binding behaviour flags
     public static readonly bool DisableAnimationFrameUpdate;
     public static readonly bool LogSendStateFrequency;
+    public static readonly bool LogRenderTiming;
 
     // Test-harness flags
     public static readonly bool AutoResumeField;
@@ -53,13 +54,14 @@ public static class DiagFlags
         HideAllPanels              = MarkerPresent(".hide_all_panels");
         DisableAnimationFrameUpdate = MarkerPresent(".disable_animation_frame_update");
         LogSendStateFrequency      = MarkerPresent(".log_send_state_frequency");
+        LogRenderTiming            = MarkerPresent(".log_render_timing");
         AutoResumeField            = MarkerPresent(".auto_resume_field");
 
         AnySet = SkipCoverageDraw || SkipBoundaryDraw || SkipTracks
                || SkipGroundTexture || SkipGrid || SkipVehicle
                || PanelsOpaque || HideAllPanels
                || DisableAnimationFrameUpdate || LogSendStateFrequency
-               || AutoResumeField;
+               || LogRenderTiming || AutoResumeField;
     }
 
     /// <summary>
@@ -80,6 +82,7 @@ public static class DiagFlags
             + $" hidePanels={HideAllPanels}"
             + $" disableAnimFrame={DisableAnimationFrameUpdate}"
             + $" logSendState={LogSendStateFrequency}"
+            + $" logRenderTiming={LogRenderTiming}"
             + $" autoResumeField={AutoResumeField}");
     }
 
