@@ -55,6 +55,7 @@ averaged, variance-aware measurements before any of them are treated as facts.
 
 ### Test environment
 - Primary device: Samsung Android tablet (model `R52TB090VAK`).
+- **Laptop fan cooler** under the tablet to control thermal throttling as a variable. Record this in field notes — real-world users won't have one, so warm-state measurements still matter.
 - Fixed orientation and screen brightness per session.
 - NTRIP connection disabled during measurement (background work variable).
 - Simulator-driven GPS only; no real GPS receiver.
@@ -175,7 +176,18 @@ The plan is complete when we have, in a spreadsheet:
 
 1. Mean ± stddev FPS for every scenario above, twice (cold and warm).
 2. A decomposition table answering: "for Scenario X, coverage contributes A FPS, panel transparency B FPS, draw-op Y C FPS, other D FPS."
-3. A ranked list of FPS-recovery opportunities, largest first, with confidence intervals.
+3. A ranked list of FPS-recovery opportunities, **ranked by percentage of ceiling, not absolute FPS**, with confidence intervals.
+
+### Why rank by percentage of ceiling, not absolute FPS
+
+The tablet's ceiling is ~30 FPS. At that budget, a 3 FPS recovery is 10% of
+ceiling — comparable to a 6 FPS recovery on a device sitting at 55 FPS. Absolute
+FPS deltas systematically undervalue fixes on slower devices, which is exactly
+where we need fixes most.
+
+Always report recovery as `delta_fps / ceiling_fps`. Fixes below 5% of ceiling
+are probably noise or not worth the effort; fixes above 10% are material; fixes
+above 25% are the rewrite-justifying tier.
 
 Only then do we start designing fixes.
 
