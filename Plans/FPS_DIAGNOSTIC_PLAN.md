@@ -30,18 +30,21 @@ that don't lift any scenario from below-floor to above-floor are deferred.
 ### Three different ceilings
 
 Measurement revealed "the 30 FPS ceiling" is not a hardware property. Three
-distinct ceilings exist:
+distinct ceilings exist, all measured on Android tablet:
 
 | Ceiling | FPS | What it is |
 |---|---|---|
-| Tablet hardware | ~58 | Physical limit, measured with simulator off |
-| Simulator-driven testing | ~30 | Self-imposed cap from 30 Hz state pushes |
-| Real-world GPS (10 Hz NMEA) | ~40-50 (estimated) | 3× fewer state pushes than simulator |
+| No-input idle | ~58 | Sim off AND no real GPS — unrealistic (nobody uses the app like this) |
+| Simulator (30 Hz) | ~40 | Field open, all draws off, with simulator running |
+| **Real GPS attached** | **~47.6** | Field open, all draws off, with real AiO streaming PGNs |
 
-**Implication:** simulator-based testing is pessimistic. Real-world field
-scenarios likely have more headroom than simulator numbers suggest. Fixes that
-barely cross the 24 FPS floor in simulator may comfortably exceed it in
-production. Measurements stay valid as *lower bounds* on recovery.
+**The real-world practical ceiling is ~47 FPS, not 58.** The GPS-driven state-push
+pipeline costs ~10 FPS off the top regardless of what's drawn, and there's no
+workaround without restructuring how state marshals from the UI thread to the
+render thread. 60 FPS is architecturally out of reach with the current design.
+
+Simulator-based testing is slightly pessimistic vs real-world but the difference
+is ~7 FPS (40 vs 47 ceiling) — not the 20+ FPS my earlier extrapolation suggested.
 
 ## Scope
 
