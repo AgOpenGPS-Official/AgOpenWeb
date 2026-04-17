@@ -17,6 +17,7 @@
 using System;
 using Avalonia;
 using Avalonia.iOS;
+using Avalonia.Skia;
 using Foundation;
 using UIKit;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,10 +34,17 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
         try
         {
             Console.WriteLine("[AppDelegate] CustomizeAppBuilder starting...");
-            // Explicitly configure for iOS - this ensures no desktop window chrome
+            // Explicitly configure for iOS - this ensures no desktop window chrome.
+            // Skia's default GPU cache is ~28 MB; our coverage bitmap alone is ~50 MB,
+            // so without a bump the texture is re-uploaded every frame (~20+ FPS cost
+            // on iPad). 128 MB comfortably fits coverage + other textures.
             var result = base.CustomizeAppBuilder(builder)
                 .UseiOS()
-                .LogToTrace();
+                .LogToTrace()
+                .With(new SkiaOptions
+                {
+                    MaxGpuResourceSizeBytes = 128L * 1024 * 1024
+                });
             Console.WriteLine("[AppDelegate] CustomizeAppBuilder completed.");
             return result;
         }

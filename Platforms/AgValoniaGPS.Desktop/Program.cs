@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 ﻿using Avalonia;
+using Avalonia.Skia;
 using HotAvalonia;
 using System;
 
@@ -35,5 +36,13 @@ sealed class Program
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace()
-            .UseHotReload();
+            .UseHotReload()
+            // Matches Android/iOS: prevent the 50 MB coverage texture from being
+            // re-uploaded every frame when the default 28 MB Skia GPU cache is
+            // exceeded. Desktop has plenty of headroom here anyway, included
+            // mainly for cross-platform parity.
+            .With(new SkiaOptions
+            {
+                MaxGpuResourceSizeBytes = 128L * 1024 * 1024
+            });
 }
