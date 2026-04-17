@@ -32,6 +32,7 @@ using SkiaSharp;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.Track;
+using AgValoniaGPS.Views.Diagnostics;
 
 // For loading embedded resources
 using AssetLoader = Avalonia.Platform.AssetLoader;
@@ -703,10 +704,28 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// Build a MapRenderState snapshot and send it to the composition handler.
     /// Call this whenever data changes that affects rendering.
     /// </summary>
+    // Diagnostic: count SendStateToHandler calls, emit to logcat each 1s window
+    private int _sendStateCount;
+    private DateTime _sendStateWindowStart = DateTime.UtcNow;
+
     internal void SendStateToHandler()
     {
         if (_customVisual == null || _handler == null)
             return;
+
+        if (DiagFlags.LogSendStateFrequency)
+        {
+            _sendStateCount++;
+            var now = DateTime.UtcNow;
+            var windowS = (now - _sendStateWindowStart).TotalSeconds;
+            if (windowS >= 1.0)
+            {
+                Console.WriteLine(
+                    $"[SendState] {_sendStateCount} calls in {windowS:F2}s ({_sendStateCount / windowS:F1}/s)");
+                _sendStateCount = 0;
+                _sendStateWindowStart = now;
+            }
+        }
 
         // Ensure coverage bitmap is ready before snapshotting state
         EnsureCoverageBitmapReady();
@@ -3052,6 +3071,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private int _renderCounter;
         private bool _loggedSkiaStatus;
 
+        // FPS logcat sink: windowed stats every 2s
+        private DateTime _fpsSinkWindowStart = DateTime.UtcNow;
+        private DateTime _fpsSinkLastFrame = DateTime.UtcNow;
+        private readonly List<double> _fpsSinkFrameMs = new(capacity: 256);
+
         // Immutable pens/brushes for render thread (created once, reused)
         // Background
         private ImmutablePen? _gridPenMinorImm;
@@ -3181,8 +3205,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Invalidate to re-render on every compositor tick — keeps FPS accurate
             // and ensures the latest state is always displayed
             Invalidate();
-            // Keep the animation frame loop running
-            RegisterForNextAnimationFrameUpdate();
+            // Keep the animation frame loop running — unless diagnostic flag is set,
+            // in which case we rely on SendStateToHandler → Invalidate to redraw
+            if (!DiagFlags.DisableAnimationFrameUpdate)
+                RegisterForNextAnimationFrameUpdate();
         }
 
         public override void OnRender(ImmediateDrawingContext drawingContext)
@@ -3203,6 +3229,36 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 _lastFpsUpdate = now;
                 var fps = _currentFps;
                 Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
+            }
+
+            // FPS logcat sink — windowed stats for diagnostic runs
+            {
+                var frameMs = (now - _fpsSinkLastFrame).TotalMilliseconds;
+                _fpsSinkLastFrame = now;
+                if (frameMs > 0.1 && frameMs < 1000) _fpsSinkFrameMs.Add(frameMs);
+
+                var windowElapsed = (now - _fpsSinkWindowStart).TotalSeconds;
+                if (windowElapsed >= 2.0 && _fpsSinkFrameMs.Count > 1)
+                {
+                    double sum = 0, min = double.MaxValue, max = double.MinValue;
+                    foreach (var ms in _fpsSinkFrameMs)
+                    {
+                        sum += ms;
+                        if (ms < min) min = ms;
+                        if (ms > max) max = ms;
+                    }
+                    double mean = sum / _fpsSinkFrameMs.Count;
+                    double sqSum = 0;
+                    foreach (var ms in _fpsSinkFrameMs) sqSum += (ms - mean) * (ms - mean);
+                    double stddev = Math.Sqrt(sqSum / _fpsSinkFrameMs.Count);
+                    double avgFps = 1000.0 / mean;
+                    double minFps = 1000.0 / max;
+                    double maxFps = 1000.0 / min;
+                    Console.WriteLine(
+                        $"[FPS] avg={avgFps:F1} min={minFps:F1} max={maxFps:F1} meanMs={mean:F1} stddevMs={stddev:F1} n={_fpsSinkFrameMs.Count} over {windowElapsed:F1}s");
+                    _fpsSinkFrameMs.Clear();
+                    _fpsSinkWindowStart = now;
+                }
             }
 
 
@@ -3226,19 +3282,20 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 using var cameraScope = drawingContext.PushPreTransform(cameraMatrix);
 
                 // Ground texture
-                if (s.GroundTexture != null && s.FieldTextureVisible)
+                if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
                 {
                     DrawGroundTexture(drawingContext, s, viewWidth, viewHeight);
                 }
 
                 // Background image (if not composited into coverage)
-                if (s.BackgroundImage != null && !s.BackgroundComposited && s.FieldTextureVisible)
+                if (s.BackgroundImage != null && !s.BackgroundComposited && s.FieldTextureVisible
+                    && !DiagFlags.SkipGroundTexture)
                 {
                     DrawBackgroundImage(drawingContext, s);
                 }
 
                 // Grid
-                if (s.IsGridVisible)
+                if (s.IsGridVisible && !DiagFlags.SkipGrid)
                 {
                     DrawGrid(drawingContext, s, viewWidth, viewHeight);
                 }
@@ -3263,16 +3320,20 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     {
                         // Coverage bitmap
                         if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
-                            && s.BitmapWidth > 0 && s.BitmapHeight > 0)
+                            && s.BitmapWidth > 0 && s.BitmapHeight > 0
+                            && !DiagFlags.SkipCoverageDraw)
                             DrawCoverageBitmap(drawingContext, canvas, s);
 
                         // Boundary, headland, paths
-                        if (s.Boundary != null)
-                            DrawBoundary(canvas, s);
-                        if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
-                            DrawHeadlandLine(canvas, s);
-                        if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
-                            DrawHeadlandPreview(canvas, s);
+                        if (!DiagFlags.SkipBoundaryDraw)
+                        {
+                            if (s.Boundary != null)
+                                DrawBoundary(canvas, s);
+                            if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
+                                DrawHeadlandLine(canvas, s);
+                            if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
+                                DrawHeadlandPreview(canvas, s);
+                        }
                         if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
                             DrawRecordingPointsSk(canvas, s);
                         if (s.ClipLine.HasValue || (s.ClipPath != null && s.ClipPath.Count >= 2))
@@ -3281,12 +3342,14 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                             DrawYouTurnPathSk(canvas, s);
 
                         // Tram lines
-                        if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off)
+                        if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off
+                            && !DiagFlags.SkipTracks)
                             DrawTramLinesSk(canvas, s);
 
                         // Tracks
-                        if (s.ActiveTrack != null || s.PendingPointA != null
+                        if ((s.ActiveTrack != null || s.PendingPointA != null
                             || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
+                            && !DiagFlags.SkipTracks)
                             DrawTrackSk(canvas, s);
                     }
                     catch (Exception ex)
@@ -3295,20 +3358,24 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     }
 
                     // Vehicle/tool always draws even if above fails
-                    if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
+                    if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2
+                        && !DiagFlags.SkipTracks)
                         DrawExtraGuidelinesSk(canvas, s);
-                    if (s.ShowVehicle && s.ToolWidth > 0.1)
-                        DrawToolSk(canvas, s);
-                    if (s.ShowVehicle)
-                        DrawVehicleSk(canvas, s);
-                    if (s.ShowVehicle && s.SvennArrowVisible)
-                        DrawSvennArrowSk(canvas, s);
-                    if (s.GuidanceActive && s.ShowVehicle)
-                        DrawGuidanceLookAheadSk(canvas, s);
+                    if (!DiagFlags.SkipVehicle)
+                    {
+                        if (s.ShowVehicle && s.ToolWidth > 0.1)
+                            DrawToolSk(canvas, s);
+                        if (s.ShowVehicle)
+                            DrawVehicleSk(canvas, s);
+                        if (s.ShowVehicle && s.SvennArrowVisible)
+                            DrawSvennArrowSk(canvas, s);
+                        if (s.GuidanceActive && s.ShowVehicle)
+                            DrawGuidanceLookAheadSk(canvas, s);
+                        if (s.Flags.Count > 0)
+                            DrawFlagsSk(canvas, s);
+                    }
                     if (s.SelectionMarkers != null && s.SelectionMarkers.Count > 0)
                         DrawSelectionMarkersSk(canvas, s);
-                    if (s.Flags.Count > 0)
-                        DrawFlagsSk(canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
                         DrawBoundaryOffsetIndicatorSk(canvas, s);
                 }
