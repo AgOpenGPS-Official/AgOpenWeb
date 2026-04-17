@@ -292,14 +292,45 @@ state 2-second windows after discarding the warmup window.
 
 ### Real-world acceptance test (real GPS via AiO, simulator OFF)
 
-| Scenario | FPS | vs 24 floor |
-|---|---|---|
-| Field open, coverage ON, real GPS | 10.3 | −14 (broken) |
-| Field open, coverage OFF, real GPS | 34.5 | +10 (comfortable) |
+Measured on Samsung Android tablet (R52TB090VAK) with real AiO board streaming
+PGNs, field "test" open, simulator disabled, laptop fan cooler in use.
+Each number is mean of ~18 steady-state 2-second windows after discarding warmup.
 
-Real-world coverage fix recovers **+24.2 FPS** — larger than the simulator delta
-(+14.8 FPS). The simulator understates the benefit. Without a coverage fix, real-world
-product is below the floor; with it, comfortably above.
+**Isolation matrix — no panel:**
+
+| Scenario | FPS | Cost isolated |
+|---|---|---|
+| Baseline (field open, all draws on) | 14.50 | — |
+| +skip_boundary | 14.45 | noise |
+| +skip_tracks | 14.53 | noise |
+| +skip_grid | 14.67 | noise |
+| +skip_vehicle | 14.93 | ~0.4 noise |
+| +skip_ground_texture | 15.68 | ~1 (masked by coverage) |
+| **+skip_coverage** | **36.52** | **coverage = 22 FPS** |
+| all 6 skips | 45.71 | real-GPS ceiling |
+
+**Panel matrix (Field Tools panel open):**
+
+| Scenario | FPS | Cost |
+|---|---|---|
+| Panel + coverage on | 13.57 | panel = 1 FPS (masked by coverage) |
+| Panel + coverage on, opaque bg | 13.37 | transparency = noise |
+| Panel + coverage off | 28.98 | panel = 7.5 FPS (visible) |
+| Panel + coverage off, opaque bg | 29.20 | transparency = noise |
+
+**Decomposition:**
+- Real-GPS ceiling: 45.7 FPS (all draws off, no panel)
+- Coverage blit: −22 FPS
+- Ground texture tiling: −9 FPS (masked in baseline, emerges post-coverage-fix)
+- Other small draws combined: ~0 FPS (noise-band individually)
+- Panel overhead: 1–7.5 FPS, scales inversely with render weight underneath
+
+### Debunked hypotheses
+
+- **"Panel transparency causes major perf loss"** — false. Measured 0.2 FPS delta between default (transparent) and opaque panel backgrounds. The earlier spike's "13 FPS from opaque panels" was measurement noise. No action needed on panel brushes.
+- **"58 FPS is the hardware ceiling"** — misleading. That number was measured with simulator OFF AND no real GPS — a no-input state nobody uses. Real-world ceiling with GPS attached is ~47 FPS.
+- **"Ground texture is only an idle-scenario cost"** — false. Ground tiling is masked by coverage in the baseline scenario, but emerges as ~9 FPS of cost once coverage is fixed. It's the clear #2 priority.
+- **"Simulator overhead in extrapolation = +12 FPS for real-world"** — false. Real-world ceiling is ~47 vs simulator ~40 ceiling. Only ~7 FPS difference between them.
 
 ### Conclusions
 
