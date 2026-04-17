@@ -3090,6 +3090,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private bool _gridPaintIsDayMode;
         private double _gridPaintMinorThickness;
         private double _gridPaintMajorThickness;
+        private double _gridPaintAxisThickness;
 
         // Immutable pens/brushes for render thread (created once, reused)
         // Background
@@ -3621,8 +3622,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             double worldPerPixel = viewHeight / screenHeight;
             double minorThickness = Math.Max(0.3 * worldPerPixel, 0.05);
             double majorThickness = Math.Max(0.6 * worldPerPixel, 0.1);
+            // Axis lines scale with pixel size like minor/major; keep them slightly
+            // thicker than major so they still read as axis. Previously fixed at
+            // 0.5 world units, which went sub-pixel at wide zoom and caused
+            // rasterization flicker frame-to-frame.
+            double axisThickness = Math.Max(0.9 * worldPerPixel, 0.15);
 
-            EnsureGridPaintsSk(s.IsDayMode, minorThickness, majorThickness);
+            EnsureGridPaintsSk(s.IsDayMode, minorThickness, majorThickness, axisThickness);
 
             double minX = Math.Max(s.CameraX - viewWidth, -gridSize);
             double maxX = Math.Min(s.CameraX + viewWidth, gridSize);
@@ -3668,12 +3674,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 canvas.DrawLine(lineXStart, 0, lineXEnd, 0, _gridAxisXPaintSk!);
         }
 
-        private void EnsureGridPaintsSk(bool isDayMode, double minorThickness, double majorThickness)
+        private void EnsureGridPaintsSk(bool isDayMode, double minorThickness, double majorThickness, double axisThickness)
         {
             if (_gridMinorPaintSk != null
                 && _gridPaintIsDayMode == isDayMode
                 && Math.Abs(_gridPaintMinorThickness - minorThickness) < 1e-4
-                && Math.Abs(_gridPaintMajorThickness - majorThickness) < 1e-4)
+                && Math.Abs(_gridPaintMajorThickness - majorThickness) < 1e-4
+                && Math.Abs(_gridPaintAxisThickness - axisThickness) < 1e-4)
                 return;
 
             _gridMinorPaintSk?.Dispose();
@@ -3711,20 +3718,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             {
                 Color = new SKColor(204, 51, 51, 70),
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 0.5f,
+                StrokeWidth = (float)axisThickness,
                 IsAntialias = false,
             };
             _gridAxisYPaintSk = new SKPaint
             {
                 Color = new SKColor(51, 204, 51, 70),
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 0.5f,
+                StrokeWidth = (float)axisThickness,
                 IsAntialias = false,
             };
 
             _gridPaintIsDayMode = isDayMode;
             _gridPaintMinorThickness = minorThickness;
             _gridPaintMajorThickness = majorThickness;
+            _gridPaintAxisThickness = axisThickness;
         }
 
         private void DrawCoverageBitmap(ImmediateDrawingContext dc, SKCanvas? canvas, MapRenderState s)
