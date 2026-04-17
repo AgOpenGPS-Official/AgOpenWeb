@@ -11,6 +11,22 @@ invalidation, binding churn} consumes.
 **This plan does not design fixes.** Design comes after measurement. Every
 experiment here answers one question; no experiment anticipates a solution.
 
+## Product requirement
+
+**Floor: 24 FPS** — the lowest frame rate where humans perceive motion as
+smooth (cinema standard). Below 24 FPS the app is visibly jerky; the tractor
+appears to teleport between positions; guidance feels broken.
+
+**Current state relative to floor:**
+- Empty map, no panels, cold: ~30 FPS — 6 FPS above floor
+- Field open, no panels: ~27 FPS (prelim) — 3 FPS above floor
+- Field open, sim panel open: ~11 FPS — **13 FPS below floor**
+
+The field+panel case isn't an optimization target, it's a broken scenario.
+The diagnostic's job is to reveal which contributors are pushing us below
+the 24 FPS floor in which scenarios, ranked by urgency. "Nice to have" fixes
+that don't lift any scenario from below-floor to above-floor are deferred.
+
 ## Scope
 
 ### In scope
@@ -176,18 +192,31 @@ The plan is complete when we have, in a spreadsheet:
 
 1. Mean ± stddev FPS for every scenario above, twice (cold and warm).
 2. A decomposition table answering: "for Scenario X, coverage contributes A FPS, panel transparency B FPS, draw-op Y C FPS, other D FPS."
-3. A ranked list of FPS-recovery opportunities, **ranked by percentage of ceiling, not absolute FPS**, with confidence intervals.
+3. For every scenario currently below 24 FPS, a set of candidate fixes whose combined recovery would lift it to ≥24 FPS with headroom.
 
-### Why rank by percentage of ceiling, not absolute FPS
+### Ranking: distance-to-floor, not absolute FPS
 
-The tablet's ceiling is ~30 FPS. At that budget, a 3 FPS recovery is 10% of
-ceiling — comparable to a 6 FPS recovery on a device sitting at 55 FPS. Absolute
-FPS deltas systematically undervalue fixes on slower devices, which is exactly
-where we need fixes most.
+Percentage-of-ceiling is closer than absolute FPS, but the real decision lens
+is **distance to the 24 FPS floor**. Fixes matter in direct proportion to how
+much they close the gap in a below-floor scenario.
 
-Always report recovery as `delta_fps / ceiling_fps`. Fixes below 5% of ceiling
-are probably noise or not worth the effort; fixes above 10% are material; fixes
-above 25% are the rewrite-justifying tier.
+Rank fixes by:
+
+1. **Scenario urgency** — how far below 24 FPS is it?
+2. **Fix yield** — how many FPS does the fix recover in that scenario?
+3. **Sufficiency** — does the fix alone cross the floor, or does it need to
+   combine with others?
+
+A 3 FPS recovery that lifts a scenario from 22 → 25 is far more valuable than
+a 6 FPS recovery that moves 45 → 51. The first fixes a broken product; the
+second polishes something already working.
+
+Roughly:
+- Fixes under ~1.5 FPS are usually measurement noise unless variance is tight.
+- A fix that moves a below-floor scenario across 24 is always worth doing.
+- A fix in an above-floor scenario is worth doing only if it either (a) lifts
+  headroom against thermal throttling, or (b) enables a later fix to cross a
+  threshold somewhere else.
 
 Only then do we start designing fixes.
 
