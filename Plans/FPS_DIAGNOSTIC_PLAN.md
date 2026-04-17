@@ -228,3 +228,66 @@ Once we have clean data, the follow-up work falls into two tracks:
 2. **Coverage representation track** — if coverage blit is confirmed as the biggest single cost, design the replacement (thick strokes, swath polygons, retained geometry). This is the larger redesign.
 
 Both may be warranted; data tells us the order.
+
+## Results (2026-04-17)
+
+Measured on Samsung Android tablet (R52TB090VAK), simulator driving at 30 Hz,
+laptop fan cooler maintaining thermal state. Each number is mean of ~20 steady-
+state 2-second windows after discarding the warmup window.
+
+### No-field baseline matrix
+
+| Scenario | FPS | Δ vs B1 |
+|---|---|---|
+| B1 baseline (no field, no panels) | 28.9 | — |
+| +skip_coverage | 28.5 | noise |
+| +skip_boundary | 30.2 | noise |
+| +skip_tracks | 29.7 | noise |
+| +skip_grid | 29.4 | noise |
+| +skip_vehicle | 29.2 | noise |
+| **+skip_ground_texture** | **40.0** | **+11.1** |
+| all 6 skips | 43.0 | +14.1 |
+| *(simulator off)* | 58.5 | +29.6 |
+
+### Field-open baseline matrix
+
+| Scenario | FPS | Δ vs B4 |
+|---|---|---|
+| **B4 (field open, no panels)** | **12.0** | — |
+| +skip_ground_texture | 12.4 | noise |
+| +skip_boundary | 12.0 | noise |
+| +skip_tracks | 12.0 | noise |
+| +skip_vehicle | 12.4 | noise |
+| +skip_grid | 11.6 | noise |
+| **+skip_coverage_draw** | **26.9** | **+14.8** (crosses 24 floor) |
+| all 6 skips | 39.7 | +27.7 |
+
+### Panel matrix (with field open)
+
+| Scenario | FPS | Note |
+|---|---|---|
+| Field + sim panel default | 10.1 | ~2 FPS panel cost when coverage on |
+| Field + sim panel opaque | 10.1 | Transparency = noise, not a cost |
+| Field + skip_cov + panel default | 20.5 | ~6 FPS panel cost when coverage off |
+| Field + skip_cov + panel opaque | 20.6 | Transparency still noise |
+
+### Conclusions
+
+1. **Coverage bitmap blit is THE dominant cost with field open.** Skipping it alone recovers +14.8 FPS and crosses the 24 FPS floor. Single biggest lever.
+
+2. **State-push cadence (sim tick 30 Hz) caps the ceiling around 30 FPS.** Simulator off yields 58.5 FPS, confirming the tablet can render 60 FPS when not fighting 30 Hz `SendStateToHandler` allocations + state marshalling. This is the second-biggest lever but requires restructuring the state-push pipeline.
+
+3. **Ground texture tiling dominates at idle (+11 FPS) but becomes noise with a field open.** Coverage blit overlaps/masks the ground-texture cost. Fix only matters for empty-map perf, which is not a product-critical scenario.
+
+4. **Panel transparency is NOT a real cost.** Earlier spike claim of 13 FPS recovery from opaque panels did not reproduce under controlled measurement. Transparency is measurement noise across all scenarios tested.
+
+5. **All other individual draw ops (boundary, tracks, vehicle, grid, headland) are individually noise (<5% of ceiling).** Combined they total ~13 FPS only after coverage is already fixed.
+
+### Priority ranking (by distance-to-floor, 24 FPS target)
+
+1. **Coverage representation rewrite** — +14.8 FPS, crosses floor alone, moderate effort
+2. **State-push overhead / SendStateToHandler cost** — +18 FPS potential, large effort (pipeline refactor)
+3. Aggregated small draw ops — +13 FPS total, only matters after #1 & #2, low priority
+4. Ground texture — don't bother for field-open scenarios; noise
+
+Design the coverage fix first. It's the only single-change lever that crosses the product floor.
