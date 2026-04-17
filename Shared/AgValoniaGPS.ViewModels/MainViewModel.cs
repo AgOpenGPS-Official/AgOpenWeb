@@ -99,6 +99,23 @@ public partial class MainViewModel : ObservableObject
     private double _fieldOriginLatitude;
     private double _fieldOriginLongitude;
 
+    /// <summary>
+    /// Sets the field origin and propagates it into centralized FieldState so
+    /// non-ViewModel consumers (map control, services) can read the LocalPlane.
+    /// </summary>
+    private void SetFieldOrigin(double latitude, double longitude)
+    {
+        _fieldOriginLatitude = latitude;
+        _fieldOriginLongitude = longitude;
+        _simulatorLocalPlane = null;
+
+        State.Field.OriginLatitude = latitude;
+        State.Field.OriginLongitude = longitude;
+        State.Field.LocalPlane = new LocalPlane(
+            new Wgs84(latitude, longitude),
+            new SharedFieldProperties());
+    }
+
     // Track-on-boundary detection: skip boundary disengage on first pass
     private bool _isSelectedTrackOnBoundary;
 
@@ -1174,9 +1191,7 @@ public partial class MainViewModel : ObservableObject
                 var fieldInfo = _fieldPlaneFileService.LoadField(fieldPath);
                 if (fieldInfo.Origin != null)
                 {
-                    _fieldOriginLatitude = fieldInfo.Origin.Latitude;
-                    _fieldOriginLongitude = fieldInfo.Origin.Longitude;
-                    _simulatorLocalPlane = null;
+                    SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
                     _logger.LogDebug($"[Field] Set origin: {_fieldOriginLatitude}, {_fieldOriginLongitude}");
                     SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
                 }
