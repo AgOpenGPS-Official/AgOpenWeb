@@ -287,9 +287,20 @@ state 2-second windows after discarding the warmup window.
 | Field + skip_cov + panel default | 20.5 | ~6 FPS panel cost when coverage off |
 | Field + skip_cov + panel opaque | 20.6 | Transparency still noise |
 
+### Real-world acceptance test (real GPS via AiO, simulator OFF)
+
+| Scenario | FPS | vs 24 floor |
+|---|---|---|
+| Field open, coverage ON, real GPS | 10.3 | −14 (broken) |
+| Field open, coverage OFF, real GPS | 34.5 | +10 (comfortable) |
+
+Real-world coverage fix recovers **+24.2 FPS** — larger than the simulator delta
+(+14.8 FPS). The simulator understates the benefit. Without a coverage fix, real-world
+product is below the floor; with it, comfortably above.
+
 ### Conclusions
 
-1. **Coverage bitmap blit is THE dominant cost with field open.** Skipping it alone recovers +14.8 FPS and crosses the 24 FPS floor. Single biggest lever.
+1. **Coverage bitmap blit is THE dominant cost with field open.** Skipping it in real-world recovers +24.2 FPS and lifts the product from 10 FPS (broken) to 34.5 FPS (comfortable). Single biggest lever and the only required fix.
 
 2. **State-push cadence (sim tick 30 Hz) caps the ceiling around 30 FPS.** Simulator off yields 58.5 FPS, confirming the tablet can render 60 FPS when not fighting 30 Hz `SendStateToHandler` allocations + state marshalling. This is the second-biggest lever but requires restructuring the state-push pipeline.
 
