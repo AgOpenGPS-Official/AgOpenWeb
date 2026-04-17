@@ -3101,6 +3101,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private readonly SKPaint _clipLinePaint;
         private readonly SKPaint _youTurnPaint;
 
+        // Coverage SKImage snapshot cache. The pipeline writes to SKBitmap every GPS
+        // tick; Skia cannot cache a mutating bitmap on the GPU, so DrawBitmap re-uploads
+        // the full 50 MB texture every frame. We snapshot the bitmap to an immutable
+        // SKImage at a throttled cadence — GPU caches the snapshot between renders,
+        // trading ~100 ms of visual coverage lag for a large FPS win.
+        private SKImage? _coverageSnapshot;
+        private SKBitmap? _coverageSnapshotSource;
+        private DateTime _coverageSnapshotTime = DateTime.MinValue;
+        private const double CoverageSnapshotIntervalMs = 200.0;
+        private static readonly SKSamplingOptions _coverageSampling =
+            new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None);
+
         // Immutable brushes
         private static readonly IImmutableBrush _vehicleBrushImm = new ImmutableSolidColorBrush(Color.FromRgb(0, 200, 0));
         private static readonly IImmutableBrush _recordingPointBrushImm = new ImmutableSolidColorBrush(Color.FromRgb(255, 128, 0));
@@ -3535,6 +3547,36 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Guard against disposed native SKBitmap (race with CreateCoverageBitmap on UI thread)
             if (bitmap.Handle == IntPtr.Zero) return;
 
+            // Snapshot the bitmap to an immutable SKImage so the GPU can cache it
+            // between frames. Refresh the snapshot periodically (throttled) rather
+            // than re-uploading every frame.
+            var now = DateTime.UtcNow;
+            bool needsRefresh = _coverageSnapshot == null
+                || !ReferenceEquals(_coverageSnapshotSource, bitmap)
+                || (now - _coverageSnapshotTime).TotalMilliseconds >= CoverageSnapshotIntervalMs;
+
+            if (needsRefresh)
+            {
+                var oldSnapshot = _coverageSnapshot;
+                try
+                {
+                    using var pixmap = bitmap.PeekPixels();
+                    if (pixmap != null)
+                    {
+                        _coverageSnapshot = SKImage.FromPixelCopy(pixmap);
+                        _coverageSnapshotSource = bitmap;
+                        _coverageSnapshotTime = now;
+                        oldSnapshot?.Dispose();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[CoverageSnapshot] refresh failed: {ex.Message}");
+                }
+            }
+
+            if (_coverageSnapshot == null) return;
+
             double worldWidth = s.BitmapMaxE - s.BitmapMinE;
             double worldHeight = s.BitmapMaxN - s.BitmapMinN;
 
@@ -3543,15 +3585,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 (float)s.BitmapMinE, (float)s.BitmapMinN,
                 (float)(s.BitmapMinE + worldWidth), (float)(s.BitmapMinN + worldHeight));
 
-            using var paint = new SKPaint
-            {
-                FilterQuality = s.Zoom < 0.5 ? SKFilterQuality.Low : SKFilterQuality.High
-            };
-
-            // Draw SKBitmap directly — no SKImage.FromBitmap copy needed.
-            // Pipeline writes pixels on bg thread, we read on render thread.
-            // Atomic 4-byte pixel reads mean worst case is a partially-updated frame.
-            canvas.DrawBitmap(bitmap, src, dst, paint);
+            canvas.DrawImage(_coverageSnapshot, src, dst, _coverageSampling);
         }
 
         private void DrawBoundary(SKCanvas canvas, MapRenderState s)
