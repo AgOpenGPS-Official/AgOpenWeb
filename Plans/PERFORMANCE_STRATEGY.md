@@ -10,10 +10,20 @@ begins. See "Linked implementation plans" at the end.
 
 ## Current state
 
-- **Real-world field-open FPS on Android tablet: 14.5 FPS** (measured 2026-04-17 with real AiO board, field loaded, no panels open)
+- **Real-world field-open FPS on Android tablet: 19.2 FPS** (measured 2026-04-17 with real AiO board, field loaded, no panels open, after Skia GPU cache bump)
 - **24 FPS floor required** for smooth perceived motion (cinema threshold)
-- **Current state is 10 FPS below floor → broken product on this hardware**
-- **Coverage bitmap blit alone costs 22 FPS** — fixing it lifts us to 36 FPS (comfortable above floor)
+- **Current state is 5 FPS below floor** — close to usable, not quite there
+- **Coverage bitmap re-upload costs 34 ms per frame.** The texture is written to every GPS tick, invalidating GPU cache regardless of cache size. Fixing this is the last blocking issue.
+
+### Easy win already banked: Skia GPU cache
+
+Committed `9454cbe` bumps Android's Skia GPU cache from the 28 MB default to 128 MB.
+Recovery on the Android tablet:
+- Baseline (coverage on): 14.5 → 19.2 FPS (+5)
+- skip_coverage (no coverage blit): 36.5 → 57.1 FPS (+21)
+- Ceiling (all draws off): 47.6 → 57.9 FPS (+12)
+
+This revealed that what we'd attributed to "ground texture cost" and "state-push overhead" in earlier measurements was largely GPU cache thrashing. Only coverage remains a material cost because it's a mutating texture — cache invalidates whenever we write new pixels.
 
 ## Product requirement
 
@@ -81,28 +91,17 @@ Ranked by: (a) closes gap to 24 FPS floor, (b) addresses scenario that matters m
 - **Product impact:** keeps UI responsive during the moment that matters most. Also fixes the MVVM violation flagged in the threading plan carve-out.
 - **Status:** Not started. Needs own plan + test harness + turn-scenario benchmark.
 
-### 3. Ground texture rendering fix — **high-value polish**
+### 3. ~~Ground texture rendering fix~~ — **done via GPU cache bump**
 
-- **Impact:** +9 FPS after #1 (36.5 → ~44)
-- **Scenario:** everywhere a field is open
-- **Effort:** small. Current implementation does 50+ `DrawBitmap` tile calls per frame. Options: render to cached surface once, use a tiled brush the compositor can cache, or skip tiling entirely at high zoom.
-- **Product impact:** lifts typical FPS from "comfortable above floor" to "near the ceiling." Nice-to-have, not required.
-- **Status:** Not started.
+Was +9 FPS cost; the 128 MB cache bump eliminated it for free. Ground texture now fits in cache and renders essentially free. No further work needed.
 
-### 4. State-push pipeline refactor — **optional ceiling lift**
+### 4. ~~State-push pipeline refactor~~ — **largely eliminated by GPU cache bump**
 
-- **Impact:** ~10 FPS more headroom (would lift ceiling from 47 toward hardware maximum)
-- **Scenario:** everywhere
-- **Effort:** large. Restructure `MapRenderState` and `SendStateToHandler` to avoid per-tick array cloning and object allocation. Pooling, diff-only updates, or shared immutable snapshots.
-- **Product impact:** polish. Current ceiling is fine for real use after #1 and #3; this is future-proofing.
-- **Status:** Deferred indefinitely unless a future scenario demands it.
+Earlier decomposition attributed ~10 FPS to "state-push overhead." Post-cache-bump, real-GPS ceiling is 57.9 FPS vs. the no-input 58 FPS hardware ceiling — the "state-push overhead" is now essentially zero. The cost was cache thrash, not the pipeline itself. Deferred indefinitely.
 
-### 5. Aggregated small-draw optimizations — **deprioritize**
+### 5. Aggregated small-draw optimizations — **deprioritize, likely eliminated too**
 
-- **Impact:** ~4 FPS combined across boundary, tracks, vehicle, grid
-- **Effort:** small per item, cumulative effort large for modest yield
-- **Product impact:** diminishing returns against the 47 FPS ceiling
-- **Status:** Not recommended unless we find a reason to care. Document as "measured, not worth pursuing."
+Post-cache-bump ceiling equals all-skips ceiling (within 1 FPS). Draw ops are effectively free now that their textures stay cached. Not recommended unless a specific scenario reopens this.
 
 ## What we are NOT doing
 
