@@ -10,20 +10,27 @@ begins. See "Linked implementation plans" at the end.
 
 ## Current state
 
-- **Real-world field-open FPS on Android tablet: 19.2 FPS** (measured 2026-04-17 with real AiO board, field loaded, no panels open, after Skia GPU cache bump)
+- **Real-world field-open FPS on Android tablet: 47.2 FPS** (measured 2026-04-17 with real AiO board, field loaded, no panels open, after GPU cache bump + coverage snapshot fix)
 - **24 FPS floor required** for smooth perceived motion (cinema threshold)
-- **Current state is 5 FPS below floor** — close to usable, not quite there
-- **Coverage bitmap re-upload costs 34 ms per frame.** The texture is written to every GPS tick, invalidating GPU cache regardless of cache size. Fixing this is the last blocking issue.
+- **23 FPS above floor — product is shippable on this hardware.**
+- Real-GPS ceiling is ~57 FPS; remaining 10 FPS gap is the fundamental cost of sampling a 50 MB texture each frame. Diminishing returns from here.
 
-### Easy win already banked: Skia GPU cache
+### Journey
 
-Committed `9454cbe` bumps Android's Skia GPU cache from the 28 MB default to 128 MB.
-Recovery on the Android tablet:
-- Baseline (coverage on): 14.5 → 19.2 FPS (+5)
-- skip_coverage (no coverage blit): 36.5 → 57.1 FPS (+21)
-- Ceiling (all draws off): 47.6 → 57.9 FPS (+12)
+| Stage | Real-GPS field-open FPS | Recovery |
+|---|---|---|
+| Original (before any fixes) | 14.5 | — |
+| + 128 MB Skia GPU cache (commit `9454cbe`) | 19.2 | +4.7 |
+| + Coverage SKImage snapshot + SKSamplingOptions (commit `8a70eb1`) | **47.2** | **+28.0** |
+| *Total* | | **+32.7** |
 
-This revealed that what we'd attributed to "ground texture cost" and "state-push overhead" in earlier measurements was largely GPU cache thrashing. Only coverage remains a material cost because it's a mutating texture — cache invalidates whenever we write new pixels.
+Both fixes were small: the cache bump was one line; the snapshot was ~30 lines. No architectural rewrites.
+
+### What each fix did
+
+**Skia GPU cache (128 MB)**: Avalonia's Skia default is 28 MB. Our coverage bitmap alone is ~50 MB. Non-coverage textures (ground tiling, vehicle, tool image) got evicted and re-uploaded every frame. Bumping the cache so everything fits eliminates that thrash. Helped non-coverage scenarios dramatically (+21 FPS for skip_coverage), less so baseline (coverage itself kept re-uploading for a different reason).
+
+**Coverage SKImage snapshot**: The coverage bitmap is written to at GPS tick rate (10 Hz). Skia cannot GPU-cache a mutating bitmap — the cache slot is invalidated every write, so `DrawBitmap` re-uploaded the full 50 MB every frame regardless of cache size. Fix: snapshot the bitmap to an immutable `SKImage` at throttled cadence (every 200 ms). Between snapshots, the GPU caches the texture and `DrawImage` is effectively free. Trade-off: ~100 ms of visual lag on freshly-sprayed coverage, imperceptible in field work. Detection bitmap stays live (no lag for section control).
 
 ## Product requirement
 
@@ -75,13 +82,11 @@ These looked promising but measurement ruled them out. Don't re-chase:
 
 Ranked by: (a) closes gap to 24 FPS floor, (b) addresses scenario that matters most, (c) effort.
 
-### 1. Coverage representation rewrite — **required to ship**
+### 1. ~~Coverage representation rewrite~~ — **DONE via snapshot approach**
 
-- **Impact:** +22 FPS real-world (14.5 → 36.5), crosses 24 FPS floor alone
-- **Scenario:** steady-state field-open driving (the common case)
-- **Effort:** moderate — redesign, not a tweak. Options include swath polygons, thick-stroke polylines, or dual-store (bitmap for detection, geometry for display).
-- **Product impact:** product becomes shippable on current hardware. Without this, Android tablet is below floor at all times.
-- **Status:** Not started. Design phase next.
+- **Impact:** +28 FPS real-world (19.2 → 47.2), well above 24 floor
+- **Approach:** SKImage snapshot at 200 ms cadence (commit `8a70eb1`). Didn't need a full representation rewrite — just a caching layer between the live bitmap and the render thread.
+- **Status:** Done. Product is now shippable on this hardware.
 
 ### 2. YouTurn compute → background service — **UX-critical during turns**
 
