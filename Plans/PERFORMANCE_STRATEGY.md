@@ -15,6 +15,24 @@ begins. See "Linked implementation plans" at the end.
 - **23 FPS above floor — product is shippable on this hardware.**
 - Real-GPS ceiling is ~57 FPS; remaining 10 FPS gap is the fundamental cost of sampling a 50 MB texture each frame. Diminishing returns from here.
 
+### User-facing perf knobs
+
+Two existing `DisplayConfig` settings let the user trade visual fidelity for FPS
+on slower devices — these are the right lever for hardware we can't make
+faster, and the fixes below exist to make these controls actually useful:
+
+- **`DisplayResolutionMultiplier`** (1.0 Ultra → 6.0 Minimum): scales the
+  coverage display-bitmap cell size. At 1.5 "High" the bitmap is ~44% of Ultra;
+  at 2.5 "Medium" it's ~16%. Detection grid stays at 0.1 m, so section-control
+  semantics are unaffected. Lower = dramatically less per-frame sampling cost
+  at wide zoom.
+- **`FieldTextureVisible`** (bool): drops the ground texture entirely. Minimal
+  cost after the single-draw fix, but one fewer texture in the cache.
+
+iPad Pro 2nd gen test 2026-04-17: large 104 ha field at Ultra was ~17 FPS at
+wide zoom. High + texture off → 30-37 FPS at the same zoom. Same app, same
+code, user's choice.
+
 ### Journey
 
 | Stage | Real-GPS field-open FPS | Recovery |

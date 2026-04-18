@@ -3489,38 +3489,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         private void DrawGroundTexture(ImmediateDrawingContext dc, MapRenderState s, double viewWidth, double viewHeight)
         {
-            const double TILE_SIZE = 100.0;
+            // Always draw the texture as a single stretched bitmap covering the
+            // viewport. A tile loop produced a hard FPS discontinuity at zoom
+            // levels that crossed the tile-count threshold (e.g. 19 FPS on one
+            // side, 51 on the other). The texture pattern is intentionally
+            // non-distinct so the stretched version is visually indistinguishable
+            // from the tiled version in practice. One draw call at any zoom,
+            // constant cost.
             double centerX = s.CameraX;
             double centerY = s.CameraY;
-            double diagonal = Math.Sqrt(viewWidth * viewWidth + viewHeight * viewHeight) / 2 + TILE_SIZE;
-
-            int startTileX = (int)Math.Floor((centerX - diagonal) / TILE_SIZE);
-            int endTileX = (int)Math.Ceiling((centerX + diagonal) / TILE_SIZE);
-            int startTileY = (int)Math.Floor((centerY - diagonal) / TILE_SIZE);
-            int endTileY = (int)Math.Ceiling((centerY + diagonal) / TILE_SIZE);
-
-            // Keep tile-per-axis count modest. Each tile is an individual DrawBitmap
-            // call; at wide zoom we easily hit hundreds of calls which dominates
-            // frame time. Fall back to a single stretched bitmap once the view
-            // spans more than ~8 tiles per axis — the pattern is effectively
-            // indistinguishable at that point anyway.
-            const int maxTiles = 8;
-            if (endTileX - startTileX > maxTiles || endTileY - startTileY > maxTiles)
-            {
-                var viewRect = new Rect(centerX - diagonal, -(centerY + diagonal), diagonal * 2, diagonal * 2);
-                dc.DrawBitmap(s.GroundTexture!, viewRect);
-                return;
-            }
-
-            for (int tx = startTileX; tx < endTileX; tx++)
-            {
-                for (int ty = startTileY; ty < endTileY; ty++)
-                {
-                    double worldX = tx * TILE_SIZE;
-                    double worldY = ty * TILE_SIZE;
-                    dc.DrawBitmap(s.GroundTexture!, new Rect(worldX, worldY, TILE_SIZE, TILE_SIZE));
-                }
-            }
+            double diagonal = Math.Sqrt(viewWidth * viewWidth + viewHeight * viewHeight) / 2 + 100.0;
+            var viewRect = new Rect(centerX - diagonal, -(centerY + diagonal), diagonal * 2, diagonal * 2);
+            dc.DrawBitmap(s.GroundTexture!, viewRect);
         }
 
         private void DrawBackgroundImage(ImmediateDrawingContext dc, MapRenderState s)
