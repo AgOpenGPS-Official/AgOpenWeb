@@ -32,6 +32,7 @@ using SkiaSharp;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.Track;
+using AgValoniaGPS.Models.Diagnostics;
 
 // For loading embedded resources
 using AssetLoader = Avalonia.Platform.AssetLoader;
@@ -703,10 +704,28 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     /// Build a MapRenderState snapshot and send it to the composition handler.
     /// Call this whenever data changes that affects rendering.
     /// </summary>
+    // Diagnostic: count SendStateToHandler calls, emit to logcat each 1s window
+    private int _sendStateCount;
+    private DateTime _sendStateWindowStart = DateTime.UtcNow;
+
     internal void SendStateToHandler()
     {
         if (_customVisual == null || _handler == null)
             return;
+
+        if (DiagFlags.LogSendStateFrequency)
+        {
+            _sendStateCount++;
+            var now = DateTime.UtcNow;
+            var windowS = (now - _sendStateWindowStart).TotalSeconds;
+            if (windowS >= 1.0)
+            {
+                Console.WriteLine(
+                    $"[SendState] {_sendStateCount} calls in {windowS:F2}s ({_sendStateCount / windowS:F1}/s)");
+                _sendStateCount = 0;
+                _sendStateWindowStart = now;
+            }
+        }
 
         // Ensure coverage bitmap is ready before snapshotting state
         EnsureCoverageBitmapReady();
@@ -3052,6 +3071,27 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private int _renderCounter;
         private bool _loggedSkiaStatus;
 
+        // FPS logcat sink: windowed stats every 2s
+        private DateTime _fpsSinkWindowStart = DateTime.UtcNow;
+        private DateTime _fpsSinkLastFrame = DateTime.UtcNow;
+        private readonly List<double> _fpsSinkFrameMs = new(capacity: 256);
+
+        // Per-category render timing (only accumulates when DiagFlags.LogRenderTiming is true)
+        private long _rtGround, _rtGrid, _rtCoverage, _rtBoundary, _rtTracks, _rtVehicle;
+        private int _rtFrameCount;
+        private DateTime _rtWindowStart = DateTime.UtcNow;
+
+        // SKPaints for grid rendering via SKCanvas (batched). Rebuilt when day/night
+        // mode or thickness changes; tracked by cached state to avoid per-frame alloc.
+        private SKPaint? _gridMinorPaintSk;
+        private SKPaint? _gridMajorPaintSk;
+        private SKPaint? _gridAxisXPaintSk;
+        private SKPaint? _gridAxisYPaintSk;
+        private bool _gridPaintIsDayMode;
+        private double _gridPaintMinorThickness;
+        private double _gridPaintMajorThickness;
+        private double _gridPaintAxisThickness;
+
         // Immutable pens/brushes for render thread (created once, reused)
         // Background
         private ImmutablePen? _gridPenMinorImm;
@@ -3076,6 +3116,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private readonly SKPaint _recordingLinePaint;
         private readonly SKPaint _clipLinePaint;
         private readonly SKPaint _youTurnPaint;
+
+        // Coverage SKImage snapshot cache. The pipeline writes to SKBitmap every GPS
+        // tick; Skia cannot cache a mutating bitmap on the GPU, so DrawBitmap re-uploads
+        // the full 50 MB texture every frame. We snapshot the bitmap to an immutable
+        // SKImage at a throttled cadence — GPU caches the snapshot between renders.
+        //
+        // The ~25 ms pixel copy runs on a background task so the render thread never
+        // blocks on it. Render draws the latest completed snapshot; a new one becomes
+        // available by atomic reference swap when its copy finishes.
+        private SKImage? _coverageSnapshot;           // currently-drawn snapshot
+        private SKImage? _coverageSnapshotPending;    // handed off from bg task, swapped in on next render
+        private SKBitmap? _coverageSnapshotSource;    // last source reference (for identity checks)
+        private DateTime _coverageSnapshotTime = DateTime.MinValue;
+        private int _coverageSnapshotInFlight;        // 0 = idle, 1 = bg task running
+        private const double CoverageSnapshotIntervalMs = 200.0;
+        private static readonly SKSamplingOptions _coverageSampling =
+            new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None);
 
         // Immutable brushes
         private static readonly IImmutableBrush _vehicleBrushImm = new ImmutableSolidColorBrush(Color.FromRgb(0, 200, 0));
@@ -3181,8 +3238,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Invalidate to re-render on every compositor tick — keeps FPS accurate
             // and ensures the latest state is always displayed
             Invalidate();
-            // Keep the animation frame loop running
-            RegisterForNextAnimationFrameUpdate();
+            // Keep the animation frame loop running — unless diagnostic flag is set,
+            // in which case we rely on SendStateToHandler → Invalidate to redraw
+            if (!DiagFlags.DisableAnimationFrameUpdate)
+                RegisterForNextAnimationFrameUpdate();
         }
 
         public override void OnRender(ImmediateDrawingContext drawingContext)
@@ -3205,6 +3264,39 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
             }
 
+            // FPS logcat sink — windowed stats for diagnostic runs
+            {
+                var frameMs = (now - _fpsSinkLastFrame).TotalMilliseconds;
+                _fpsSinkLastFrame = now;
+                if (frameMs > 0.1 && frameMs < 1000) _fpsSinkFrameMs.Add(frameMs);
+
+                var windowElapsed = (now - _fpsSinkWindowStart).TotalSeconds;
+                if (windowElapsed >= 2.0 && _fpsSinkFrameMs.Count > 1)
+                {
+                    double sum = 0, min = double.MaxValue, max = double.MinValue;
+                    foreach (var ms in _fpsSinkFrameMs)
+                    {
+                        sum += ms;
+                        if (ms < min) min = ms;
+                        if (ms > max) max = ms;
+                    }
+                    double mean = sum / _fpsSinkFrameMs.Count;
+                    double sqSum = 0;
+                    foreach (var ms in _fpsSinkFrameMs) sqSum += (ms - mean) * (ms - mean);
+                    double stddev = Math.Sqrt(sqSum / _fpsSinkFrameMs.Count);
+                    double avgFps = 1000.0 / mean;
+                    double minFps = 1000.0 / max;
+                    double maxFps = 1000.0 / min;
+                    Console.WriteLine(
+                        $"[FPS] avg={avgFps:F1} min={minFps:F1} max={maxFps:F1} meanMs={mean:F1} stddevMs={stddev:F1} n={_fpsSinkFrameMs.Count} over {windowElapsed:F1}s");
+                    _fpsSinkFrameMs.Clear();
+                    _fpsSinkWindowStart = now;
+                }
+            }
+
+
+            bool rt = DiagFlags.LogRenderTiming;
+            long t0;
 
             try
             {
@@ -3225,23 +3317,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 var cameraMatrix = GetCameraTransform(s, viewWidth, viewHeight);
                 using var cameraScope = drawingContext.PushPreTransform(cameraMatrix);
 
+                t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                 // Ground texture
-                if (s.GroundTexture != null && s.FieldTextureVisible)
+                if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
                 {
                     DrawGroundTexture(drawingContext, s, viewWidth, viewHeight);
                 }
 
                 // Background image (if not composited into coverage)
-                if (s.BackgroundImage != null && !s.BackgroundComposited && s.FieldTextureVisible)
+                if (s.BackgroundImage != null && !s.BackgroundComposited && s.FieldTextureVisible
+                    && !DiagFlags.SkipGroundTexture)
                 {
                     DrawBackgroundImage(drawingContext, s);
                 }
+                if (rt) _rtGround += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
-                // Grid
-                if (s.IsGridVisible)
-                {
-                    DrawGrid(drawingContext, s, viewWidth, viewHeight);
-                }
+                // Grid drawing moved into SKCanvas block below so all line segments
+                // batch into 2-3 DrawPath calls instead of hundreds of DrawLine calls.
 
                 // === ALL remaining drawing via SKCanvas ===
                 // dc drawing after SKCanvas lease is unreliable, so everything
@@ -3261,33 +3353,51 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     // doesn't prevent vehicle/tool from rendering.
                     try
                     {
+                        // Grid (batched SKPath — was dominating zoom-out perf with
+                        // hundreds of per-line DrawLine calls on ImmediateDrawingContext)
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        if (s.IsGridVisible && !DiagFlags.SkipGrid)
+                            DrawGridSk(canvas, s, viewWidth, viewHeight);
+                        if (rt) _rtGrid += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+
                         // Coverage bitmap
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                         if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
-                            && s.BitmapWidth > 0 && s.BitmapHeight > 0)
+                            && s.BitmapWidth > 0 && s.BitmapHeight > 0
+                            && !DiagFlags.SkipCoverageDraw)
                             DrawCoverageBitmap(drawingContext, canvas, s);
+                        if (rt) _rtCoverage += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
                         // Boundary, headland, paths
-                        if (s.Boundary != null)
-                            DrawBoundary(canvas, s);
-                        if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
-                            DrawHeadlandLine(canvas, s);
-                        if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
-                            DrawHeadlandPreview(canvas, s);
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        if (!DiagFlags.SkipBoundaryDraw)
+                        {
+                            if (s.Boundary != null)
+                                DrawBoundary(canvas, s);
+                            if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
+                                DrawHeadlandLine(canvas, s);
+                            if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
+                                DrawHeadlandPreview(canvas, s);
+                        }
                         if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
                             DrawRecordingPointsSk(canvas, s);
                         if (s.ClipLine.HasValue || (s.ClipPath != null && s.ClipPath.Count >= 2))
                             DrawClipLineSk(canvas, s);
                         if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
                             DrawYouTurnPathSk(canvas, s);
+                        if (rt) _rtBoundary += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
 
-                        // Tram lines
-                        if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off)
+                        // Tram lines + Tracks
+                        t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off
+                            && !DiagFlags.SkipTracks)
                             DrawTramLinesSk(canvas, s);
 
-                        // Tracks
-                        if (s.ActiveTrack != null || s.PendingPointA != null
+                        if ((s.ActiveTrack != null || s.PendingPointA != null
                             || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
+                            && !DiagFlags.SkipTracks)
                             DrawTrackSk(canvas, s);
+                        if (rt) _rtTracks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
                     }
                     catch (Exception ex)
                     {
@@ -3295,22 +3405,51 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     }
 
                     // Vehicle/tool always draws even if above fails
-                    if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
+                    t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                    if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2
+                        && !DiagFlags.SkipTracks)
                         DrawExtraGuidelinesSk(canvas, s);
-                    if (s.ShowVehicle && s.ToolWidth > 0.1)
-                        DrawToolSk(canvas, s);
-                    if (s.ShowVehicle)
-                        DrawVehicleSk(canvas, s);
-                    if (s.ShowVehicle && s.SvennArrowVisible)
-                        DrawSvennArrowSk(canvas, s);
-                    if (s.GuidanceActive && s.ShowVehicle)
-                        DrawGuidanceLookAheadSk(canvas, s);
+                    if (!DiagFlags.SkipVehicle)
+                    {
+                        if (s.ShowVehicle && s.ToolWidth > 0.1)
+                            DrawToolSk(canvas, s);
+                        if (s.ShowVehicle)
+                            DrawVehicleSk(canvas, s);
+                        if (s.ShowVehicle && s.SvennArrowVisible)
+                            DrawSvennArrowSk(canvas, s);
+                        if (s.GuidanceActive && s.ShowVehicle)
+                            DrawGuidanceLookAheadSk(canvas, s);
+                        if (s.Flags.Count > 0)
+                            DrawFlagsSk(canvas, s);
+                    }
                     if (s.SelectionMarkers != null && s.SelectionMarkers.Count > 0)
                         DrawSelectionMarkersSk(canvas, s);
-                    if (s.Flags.Count > 0)
-                        DrawFlagsSk(canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
                         DrawBoundaryOffsetIndicatorSk(canvas, s);
+                    if (rt) _rtVehicle += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                }
+
+                if (rt)
+                {
+                    _rtFrameCount++;
+                    var rtElapsed = (now - _rtWindowStart).TotalSeconds;
+                    if (rtElapsed >= 1.0 && _rtFrameCount > 0)
+                    {
+                        double toMsPerFrame(long t) =>
+                            t * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _rtFrameCount;
+                        Console.WriteLine(
+                            $"[RenderBudget] frames={_rtFrameCount}"
+                            + $" ground={toMsPerFrame(_rtGround):F2}ms"
+                            + $" grid={toMsPerFrame(_rtGrid):F2}ms"
+                            + $" cov={toMsPerFrame(_rtCoverage):F2}ms"
+                            + $" bnd={toMsPerFrame(_rtBoundary):F2}ms"
+                            + $" trk={toMsPerFrame(_rtTracks):F2}ms"
+                            + $" veh={toMsPerFrame(_rtVehicle):F2}ms"
+                            + $" zoom={s.Zoom:F2}");
+                        _rtGround = _rtGrid = _rtCoverage = _rtBoundary = _rtTracks = _rtVehicle = 0;
+                        _rtFrameCount = 0;
+                        _rtWindowStart = now;
+                    }
                 }
 
             }
@@ -3350,33 +3489,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         private void DrawGroundTexture(ImmediateDrawingContext dc, MapRenderState s, double viewWidth, double viewHeight)
         {
-            const double TILE_SIZE = 100.0;
+            // Always draw the texture as a single stretched bitmap covering the
+            // viewport. A tile loop produced a hard FPS discontinuity at zoom
+            // levels that crossed the tile-count threshold (e.g. 19 FPS on one
+            // side, 51 on the other). The texture pattern is intentionally
+            // non-distinct so the stretched version is visually indistinguishable
+            // from the tiled version in practice. One draw call at any zoom,
+            // constant cost.
             double centerX = s.CameraX;
             double centerY = s.CameraY;
-            double diagonal = Math.Sqrt(viewWidth * viewWidth + viewHeight * viewHeight) / 2 + TILE_SIZE;
-
-            int startTileX = (int)Math.Floor((centerX - diagonal) / TILE_SIZE);
-            int endTileX = (int)Math.Ceiling((centerX + diagonal) / TILE_SIZE);
-            int startTileY = (int)Math.Floor((centerY - diagonal) / TILE_SIZE);
-            int endTileY = (int)Math.Ceiling((centerY + diagonal) / TILE_SIZE);
-
-            int maxTiles = 50;
-            if (endTileX - startTileX > maxTiles || endTileY - startTileY > maxTiles)
-            {
-                var viewRect = new Rect(centerX - diagonal, -(centerY + diagonal), diagonal * 2, diagonal * 2);
-                dc.DrawBitmap(s.GroundTexture!, viewRect);
-                return;
-            }
-
-            for (int tx = startTileX; tx < endTileX; tx++)
-            {
-                for (int ty = startTileY; ty < endTileY; ty++)
-                {
-                    double worldX = tx * TILE_SIZE;
-                    double worldY = ty * TILE_SIZE;
-                    dc.DrawBitmap(s.GroundTexture!, new Rect(worldX, worldY, TILE_SIZE, TILE_SIZE));
-                }
-            }
+            double diagonal = Math.Sqrt(viewWidth * viewWidth + viewHeight * viewHeight) / 2 + 100.0;
+            var viewRect = new Rect(centerX - diagonal, -(centerY + diagonal), diagonal * 2, diagonal * 2);
+            dc.DrawBitmap(s.GroundTexture!, viewRect);
         }
 
         private void DrawBackgroundImage(ImmediateDrawingContext dc, MapRenderState s)
@@ -3457,6 +3581,140 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
+        /// <summary>
+        /// SKCanvas-batched grid renderer. Builds one SKPath per pen class and
+        /// issues a single DrawPath call per class, vs. the DrawingContext version
+        /// that fired one DrawLine per segment (hundreds at wide zoom).
+        /// Caches SKPaint objects; rebuilds only when day/night or thickness changes.
+        /// </summary>
+        private void DrawGridSk(SKCanvas canvas, MapRenderState s, double viewWidth, double viewHeight)
+        {
+            const double gridSize = 2000.0;
+            double toolW = s.ToolWidth > 0.5 ? s.ToolWidth : 6.0;
+            double viewSpan = Math.Max(viewWidth, viewHeight);
+
+            double spacing, majorEvery;
+            if (viewSpan < toolW * 30) { spacing = toolW; majorEvery = toolW * 10; }
+            else if (viewSpan < toolW * 100) { spacing = toolW * 5; majorEvery = toolW * 50; }
+            else { spacing = toolW * 10; majorEvery = toolW * 100; }
+
+            double screenHeight = s.BoundsHeight > 0 ? s.BoundsHeight : 600;
+            double worldPerPixel = viewHeight / screenHeight;
+            double minorThickness = Math.Max(0.3 * worldPerPixel, 0.05);
+            double majorThickness = Math.Max(0.6 * worldPerPixel, 0.1);
+            // Axis lines scale with pixel size like minor/major; keep them slightly
+            // thicker than major so they still read as axis. Previously fixed at
+            // 0.5 world units, which went sub-pixel at wide zoom and caused
+            // rasterization flicker frame-to-frame.
+            double axisThickness = Math.Max(0.9 * worldPerPixel, 0.15);
+
+            EnsureGridPaintsSk(s.IsDayMode, minorThickness, majorThickness, axisThickness);
+
+            double minX = Math.Max(s.CameraX - viewWidth, -gridSize);
+            double maxX = Math.Min(s.CameraX + viewWidth, gridSize);
+            double minY = Math.Max(s.CameraY - viewHeight, -gridSize);
+            double maxY = Math.Min(s.CameraY + viewHeight, gridSize);
+
+            double startX = Math.Floor(minX / spacing) * spacing;
+            double startY = Math.Floor(minY / spacing) * spacing;
+
+            float lineXStart = (float)Math.Max(minX, -gridSize);
+            float lineXEnd = (float)Math.Min(maxX, gridSize);
+            float lineYStart = (float)Math.Max(minY, -gridSize);
+            float lineYEnd = (float)Math.Min(maxY, gridSize);
+
+            using var minorPath = new SKPath();
+            using var majorPath = new SKPath();
+            bool hasAxisY = false, hasAxisX = false;
+
+            for (double x = startX; x <= maxX; x += spacing)
+            {
+                if (x < -gridSize || x > gridSize) continue;
+                if (Math.Abs(x) < 0.1) { hasAxisY = true; continue; }
+                bool isMajor = Math.Abs(x % majorEvery) < 0.1;
+                var path = isMajor ? majorPath : minorPath;
+                path.MoveTo((float)x, lineYStart);
+                path.LineTo((float)x, lineYEnd);
+            }
+            for (double y = startY; y <= maxY; y += spacing)
+            {
+                if (y < -gridSize || y > gridSize) continue;
+                if (Math.Abs(y) < 0.1) { hasAxisX = true; continue; }
+                bool isMajor = Math.Abs(y % majorEvery) < 0.1;
+                var path = isMajor ? majorPath : minorPath;
+                path.MoveTo(lineXStart, (float)y);
+                path.LineTo(lineXEnd, (float)y);
+            }
+
+            canvas.DrawPath(minorPath, _gridMinorPaintSk!);
+            canvas.DrawPath(majorPath, _gridMajorPaintSk!);
+            if (hasAxisY)
+                canvas.DrawLine(0, lineYStart, 0, lineYEnd, _gridAxisYPaintSk!);
+            if (hasAxisX)
+                canvas.DrawLine(lineXStart, 0, lineXEnd, 0, _gridAxisXPaintSk!);
+        }
+
+        private void EnsureGridPaintsSk(bool isDayMode, double minorThickness, double majorThickness, double axisThickness)
+        {
+            if (_gridMinorPaintSk != null
+                && _gridPaintIsDayMode == isDayMode
+                && Math.Abs(_gridPaintMinorThickness - minorThickness) < 1e-4
+                && Math.Abs(_gridPaintMajorThickness - majorThickness) < 1e-4
+                && Math.Abs(_gridPaintAxisThickness - axisThickness) < 1e-4)
+                return;
+
+            _gridMinorPaintSk?.Dispose();
+            _gridMajorPaintSk?.Dispose();
+            _gridAxisXPaintSk?.Dispose();
+            _gridAxisYPaintSk?.Dispose();
+
+            SKColor minorColor, majorColor;
+            if (isDayMode)
+            {
+                minorColor = new SKColor(40, 40, 40, 120);
+                majorColor = new SKColor(30, 30, 30, 180);
+            }
+            else
+            {
+                minorColor = new SKColor(180, 180, 180, 80);
+                majorColor = new SKColor(200, 200, 200, 120);
+            }
+
+            _gridMinorPaintSk = new SKPaint
+            {
+                Color = minorColor,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)minorThickness,
+                IsAntialias = false,
+            };
+            _gridMajorPaintSk = new SKPaint
+            {
+                Color = majorColor,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)majorThickness,
+                IsAntialias = false,
+            };
+            _gridAxisXPaintSk = new SKPaint
+            {
+                Color = new SKColor(204, 51, 51, 70),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)axisThickness,
+                IsAntialias = false,
+            };
+            _gridAxisYPaintSk = new SKPaint
+            {
+                Color = new SKColor(51, 204, 51, 70),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)axisThickness,
+                IsAntialias = false,
+            };
+
+            _gridPaintIsDayMode = isDayMode;
+            _gridPaintMinorThickness = minorThickness;
+            _gridPaintMajorThickness = majorThickness;
+            _gridPaintAxisThickness = axisThickness;
+        }
+
         private void DrawCoverageBitmap(ImmediateDrawingContext dc, SKCanvas? canvas, MapRenderState s)
         {
             // Capture to local to avoid race with UI thread disposal
@@ -3468,6 +3726,57 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Guard against disposed native SKBitmap (race with CreateCoverageBitmap on UI thread)
             if (bitmap.Handle == IntPtr.Zero) return;
 
+            // Pick up any pending snapshot produced by a background task.
+            var pending = System.Threading.Interlocked.Exchange(ref _coverageSnapshotPending, null);
+            if (pending != null)
+            {
+                var old = _coverageSnapshot;
+                _coverageSnapshot = pending;
+                old?.Dispose();
+            }
+
+            // Kick off a new background snapshot if one isn't in flight and we're due.
+            var now = DateTime.UtcNow;
+            bool bitmapChanged = !ReferenceEquals(_coverageSnapshotSource, bitmap);
+            bool dueForRefresh = _coverageSnapshot == null
+                || bitmapChanged
+                || (now - _coverageSnapshotTime).TotalMilliseconds >= CoverageSnapshotIntervalMs;
+
+            if (dueForRefresh
+                && System.Threading.Interlocked.CompareExchange(ref _coverageSnapshotInFlight, 1, 0) == 0)
+            {
+                _coverageSnapshotSource = bitmap;
+                _coverageSnapshotTime = now;
+                var capturedBitmap = bitmap;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        if (capturedBitmap.Handle == IntPtr.Zero) return;
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        using var pixmap = capturedBitmap.PeekPixels();
+                        if (pixmap == null) return;
+                        var newImage = SKImage.FromPixelCopy(pixmap);
+                        sw.Stop();
+                        // Hand off via atomic swap. If a previous pending snapshot
+                        // wasn't picked up yet, dispose it (render thread hasn't used it).
+                        var displaced = System.Threading.Interlocked.Exchange(ref _coverageSnapshotPending, newImage);
+                        displaced?.Dispose();
+                        Console.WriteLine($"[CoverageSnapshot] bg refresh took {sw.ElapsedMilliseconds} ms");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[CoverageSnapshot] bg refresh failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        System.Threading.Volatile.Write(ref _coverageSnapshotInFlight, 0);
+                    }
+                });
+            }
+
+            if (_coverageSnapshot == null) return;
+
             double worldWidth = s.BitmapMaxE - s.BitmapMinE;
             double worldHeight = s.BitmapMaxN - s.BitmapMinN;
 
@@ -3476,15 +3785,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 (float)s.BitmapMinE, (float)s.BitmapMinN,
                 (float)(s.BitmapMinE + worldWidth), (float)(s.BitmapMinN + worldHeight));
 
-            using var paint = new SKPaint
-            {
-                FilterQuality = s.Zoom < 0.5 ? SKFilterQuality.Low : SKFilterQuality.High
-            };
-
-            // Draw SKBitmap directly — no SKImage.FromBitmap copy needed.
-            // Pipeline writes pixels on bg thread, we read on render thread.
-            // Atomic 4-byte pixel reads mean worst case is a partially-updated frame.
-            canvas.DrawBitmap(bitmap, src, dst, paint);
+            canvas.DrawImage(_coverageSnapshot, src, dst, _coverageSampling);
         }
 
         private void DrawBoundary(SKCanvas canvas, MapRenderState s)

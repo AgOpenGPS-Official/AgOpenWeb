@@ -36,6 +36,7 @@ using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Communication;
 using AgValoniaGPS.Models.Ntrip;
+using AgValoniaGPS.Models.Diagnostics;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 
@@ -98,6 +99,23 @@ public partial class MainViewModel : ObservableObject
     // Current field origin (for map centering when GPS not active)
     private double _fieldOriginLatitude;
     private double _fieldOriginLongitude;
+
+    /// <summary>
+    /// Sets the field origin and propagates it into centralized FieldState so
+    /// non-ViewModel consumers (map control, services) can read the LocalPlane.
+    /// </summary>
+    private void SetFieldOrigin(double latitude, double longitude)
+    {
+        _fieldOriginLatitude = latitude;
+        _fieldOriginLongitude = longitude;
+        _simulatorLocalPlane = null;
+
+        State.Field.OriginLatitude = latitude;
+        State.Field.OriginLongitude = longitude;
+        State.Field.LocalPlane = new LocalPlane(
+            new Wgs84(latitude, longitude),
+            new SharedFieldProperties());
+    }
 
     // Track-on-boundary detection: skip boundary disengage on first pass
     private bool _isSelectedTrackOnBoundary;
@@ -325,6 +343,20 @@ public partial class MainViewModel : ObservableObject
 
         // Start UDP communication (fire-and-forget but explicit)
         _ = InitializeAsync();
+
+        // Diagnostic auto-resume field — lets the FPS test harness run field-open
+        // scenarios across force-stop restarts without manual taps.
+        if (DiagFlags.AutoResumeField)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (ResumeFieldCommand?.CanExecute(null) == true)
+                {
+                    _logger.LogInformation("[DiagFlags] auto_resume_field: invoking ResumeFieldCommand");
+                    ResumeFieldCommand.Execute(null);
+                }
+            }, Avalonia.Threading.DispatcherPriority.Background);
+        }
     }
 
     private void RestoreSettings()
@@ -370,9 +402,11 @@ public partial class MainViewModel : ObservableObject
 
         _logger.LogDebug("Restored simulator: {Lat},{Lon}", settings.SimulatorLatitude, settings.SimulatorLongitude);
 
-        // Restore simulator enabled state and panel visibility
+        // Restore simulator enabled state and panel visibility.
+        // hide_all_panels diagnostic flag suppresses the auto-open so baseline
+        // perf measurements aren't contaminated by the sim panel.
         IsSimulatorEnabled = settings.SimulatorEnabled;
-        IsSimulatorPanelVisible = settings.SimulatorEnabled;
+        IsSimulatorPanelVisible = settings.SimulatorEnabled && !DiagFlags.HideAllPanels;
 
         // Initialize tool width from config so implement renders before GPS data flows
         var config = Models.Configuration.ConfigurationStore.Instance;
@@ -1174,9 +1208,7 @@ public partial class MainViewModel : ObservableObject
                 var fieldInfo = _fieldPlaneFileService.LoadField(fieldPath);
                 if (fieldInfo.Origin != null)
                 {
-                    _fieldOriginLatitude = fieldInfo.Origin.Latitude;
-                    _fieldOriginLongitude = fieldInfo.Origin.Longitude;
-                    _simulatorLocalPlane = null;
+                    SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
                     _logger.LogDebug($"[Field] Set origin: {_fieldOriginLatitude}, {_fieldOriginLongitude}");
                     SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
                 }

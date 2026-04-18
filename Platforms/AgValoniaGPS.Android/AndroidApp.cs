@@ -31,7 +31,15 @@ public class AndroidApp : AvaloniaAndroidApplication<App>
 
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
     {
+        // Skia's default GPU resource cache is ~28 MB. Our coverage bitmap
+        // alone is ~50 MB (5000x5000 Rgb565). At the default, the texture is
+        // re-uploaded every frame, burning 20+ FPS on mobile. Bump to 128 MB
+        // so the coverage bitmap + other textures fit comfortably.
         return base.CustomizeAppBuilder(builder)
-            .LogToTrace();
+            .LogToTrace()
+            .With(new SkiaOptions
+            {
+                MaxGpuResourceSizeBytes = 128L * 1024 * 1024
+            });
     }
 }
