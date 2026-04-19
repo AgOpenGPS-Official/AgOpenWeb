@@ -40,30 +40,39 @@ Addresses current-state problems **2, 3, and 6** from
 
 At the end of Phase B:
 
-1. **One NMEA parser.** `NmeaParserServiceFast` is the only parser.
-   `NmeaParserService` (string-based) is deleted.
-2. **One `LocalPlane`.** Owned by `ApplicationState.Field.LocalPlane`,
+1. **One NMEA parser, pure.** `NmeaParserServiceFast` is the only
+   parser. `NmeaParserService` (string-based) is deleted. The parser
+   does bytes → state and nothing else — no heading fusion, no
+   fix-quality filtering, no IMU side-effects.
+2. **Heading fusion and fix-quality filtering live in the cycle
+   worker.** Extracted from `NmeaParserService` into
+   `GpsHeadingFusionService` and `GpsFixQualityValidator`. Called by
+   `GpsPipelineService.ProcessCycle` as its first post-handoff stages,
+   so every cycle gets validated-and-fused data regardless of which
+   parser produced it.
+3. **One `LocalPlane`.** Owned by `ApplicationState.Field.LocalPlane`,
    initialized in exactly one place (the cycle worker on first valid
    fix, or the field-open command — never on the receive thread).
    `AutoSteerService._localPlane` no longer exists.
-3. **Receive thread does parse-and-return only.** `AutoSteerService.ProcessGpsBuffer`
+4. **Receive thread does parse-and-return only.** `AutoSteerService.ProcessGpsBuffer`
    reduces to: parse NMEA into a `Position`, hand off, return. No
    coordinate conversion, no guidance, no PGN build, no `SendPgns`
    call — none of that work executes on the UDP receive callback.
-4. **One cycle owner.** `GpsPipelineService.ProcessCycle` runs tool
-   position, guidance, section control, coverage, AutoSteer guidance,
-   and PGN build — all of it, once per tick, on the background `Task.Run`
-   worker that already exists.
-5. **PGN cadence is cycle-driven.** PGNs (253 / 254 / 239) build inside
+5. **One cycle owner.** `GpsPipelineService.ProcessCycle` runs
+   fusion, fix-quality validation, tool position, guidance, section
+   control, coverage, AutoSteer guidance, and PGN build — all of it,
+   once per tick, on the background `Task.Run` worker that already
+   exists.
+6. **PGN cadence is cycle-driven.** PGNs (253 / 254 / 239) build inside
    the cycle at end-of-cycle and get handed to the UDP send path. No
    "send per packet arrival".
-6. Solution builds green on Desktop/iOS/Android. All existing tests
+7. Solution builds green on Desktop/iOS/Android. All existing tests
    pass plus new integration coverage for the unified path. Smoke test
    drives a full field cycle including auto U-turn without regression.
 
-Phase B ends with a coherent runtime: one parser, one coordinate
-frame, one cycle worker, one PGN emitter. Phase C lands cleanly on
-top of it.
+Phase B ends with a coherent runtime: pure parser, one coordinate
+frame, one cycle worker, fusion/filtering in the right place, one
+PGN emitter. Phase C lands cleanly on top of it.
 
 ---
 
@@ -177,8 +186,18 @@ Verified before this plan was drafted.
 
 ## 5. Commit-by-commit plan
 
-Five commits. Each is independently reviewable, builds cleanly, and
+Six commits. Each is independently reviewable, builds cleanly, and
 leaves the app in a working state (smoke-testable after every commit).
+
+**Revision note (2026-04-19, post-C1):** The original Commit 2 assumed
+the two parsers were drop-in equivalents. They're not — `NmeaParserService`
+does load-bearing work the fast parser doesn't: heading fusion
+(`ProcessHeading`), fix-quality filtering (`MinFixQuality` / `MaxHdop` /
+`MaxDifferentialAge`), and IMU data mirroring into `SensorState.Instance`.
+Dropping the string parser without relocating that logic would delete
+real features. The commit plan now has **six** commits instead of five,
+with a new Commit 2 that extracts fusion and filtering into
+cycle-worker-callable services before any parser deletion.
 
 ### Commit 1 — Share `LocalPlane` via `ApplicationState.Field`
 
@@ -218,45 +237,118 @@ differently from any other missed-fix tick.
 
 ---
 
-### Commit 2 — Consolidate UDP NMEA dispatch
+### Commit 2 — Extract fusion and fix-quality filtering from the string parser
+
+**Goal:** Move `NmeaParserService.ProcessHeading` and the fix-quality
+guard into cycle-worker-callable services. Also mirror parsed IMU
+fields (Roll/Pitch/YawRate) into `SensorState.Instance` from the
+cycle so existing consumers keep working after the string parser
+retires. The string parser continues to exist and run in the MVM path
+— we're *not* touching parser callsites yet. This commit only adds
+the relocation targets.
+
+**Adds:**
+- `Shared/AgValoniaGPS.Services/Gps/GpsHeadingFusionService.cs`
+  implementing `IGpsHeadingFusionService`. Owns `_previousEasting`,
+  `_previousNorthing`, `_previousHeading`, `_hasPreviousPosition`.
+  Single public method `FuseHeading(double gpsHeading, double speedMs,
+  double easting, double northing) → double` with the exact logic from
+  `NmeaParserService.ProcessHeading`.
+- `Shared/AgValoniaGPS.Services/Gps/GpsFixQualityValidator.cs`. Static
+  helper: `bool IsAcceptable(int fixQuality, double hdop, double
+  differentialAge, out string? rejectionReason)`. Reads the same
+  `ConfigurationStore.Instance.Connections` fields the string parser
+  reads today.
+- Interface `IGpsHeadingFusionService`.
+- Unit tests for both: fusion covers dual-GPS mode, single-GPS mode,
+  IMU fusion, low-speed fix-to-fix; validator covers each rejection
+  reason.
+
+**Modifies:**
+- `GpsPipelineService.ProcessCycle` — wire fusion + validator as new
+  first stages (right after intent drain, before LocalPlane check):
+  1. Validate fix quality; if rejected, set a status-message field on
+     `GpsCycleResult`, emit, abort the cycle.
+  2. Apply fusion — replace the heading on a local GpsData copy before
+     downstream stages use it.
+  3. Mirror Roll/Pitch/YawRate into `SensorState.Instance` (until
+     `SensorState` itself is retired, out of scope).
+- DI registration across all three platforms for `IGpsHeadingFusionService`.
+
+**Does not modify:** `NmeaParserService.ProcessHeading` stays in place
+(still runs in the MVM path). Commit 3 removes the MVM path; Commit 5
+deletes the old parser. Running both fusion paths in the interim is
+acceptable — the MVM path's fused heading is consumed by the cycle
+via `GpsDataUpdated`, and the cycle's own fusion then re-fuses (a
+no-op since the state is already fused). Slightly wasted work for one
+commit. Safe.
+
+**Verification:**
+- Solution builds green.
+- All existing tests pass.
+- Unit tests for the new fusion service match `ProcessHeading`'s
+  behavior numerically (parity tests pick representative inputs,
+  run both the old method and the new service, assert equality to
+  1e-9).
+- Smoke test: field open, drive a pass, no regression in heading
+  behavior on screen.
+
+**Risk:**
+- Fusion-state divergence between the string parser's instance state
+  and the new service's instance state during the interim (Commits 2–4).
+  Both track `_previousEasting/Northing/Heading`. In the interim, they
+  diverge by one cycle. When the string parser retires in Commit 5,
+  only the new service remains, so the divergence goes away. During
+  the interim, the second fusion pass in the cycle may compute a
+  slightly different fix-to-fix heading. Accept; flag if the smoke
+  test shows it.
+
+---
+
+### Commit 3 — Consolidate UDP NMEA dispatch
 
 **Goal:** One parser callsite per packet. After this commit, incoming
 UDP NMEA bytes hit `NmeaParserServiceFast` exactly once per packet;
 `NmeaParserService` is no longer invoked (still exists — deleted in
-Commit 4).
+Commit 5).
 
 **Modifies:**
-- `MainViewModel.cs:985` (`OnUdpDataReceived`) — stop converting bytes
-  to string and calling `_nmeaParser.ParseSentence`. Either remove the
-  handler entirely or route through the same path `AutoSteerService`
-  uses (the `UdpCommunicationService.SetAutoSteerService` dispatch).
-- `Platforms/*/*` DI — remove `NmeaParserService` registration if
-  it's registered (field-dependent; confirm during implementation).
+- `MainViewModel.cs:985` (`OnUdpDataReceived`) — remove the
+  `if (e.PGN == 0)` NMEA-parse branch. Keep the rest of the handler
+  for non-NMEA PGNs.
+- `MainViewModel.cs:59, 253` — remove the `_nmeaParser` field and its
+  `new NmeaParserService(...)` construction.
+- `AutoSteerService.ProcessGpsBuffer` — add a call to
+  `_gpsService.UpdateGpsData(gpsData)` where `gpsData` is built from
+  the parsed `VehicleState`. This fires `GpsDataUpdated`, which kicks
+  the cycle. Without this, removing MVM's parse breaks the cycle.
+- `AutoSteerService` constructor — inject `IGpsService`.
 
-**Does not modify:** `NmeaParserServiceFast` itself; any of the cycle /
-guidance paths.
+**Does not modify:** `NmeaParserServiceFast`; `NmeaParserService` (still
+alive, unused now); the cycle path; guidance/PGN work.
 
 **Verification:**
 - Solution builds green.
-- All tests pass (including `NmeaParserServiceTests` which tests the
-  string parser in isolation — unchanged; those tests keep working
-  until Commit 4 deletes the file).
-- Smoke test: open a field, verify GPS fix quality / position updates
-  (exact same UI as pre-commit — the parser used is different but the
-  UI binding is the same).
-- `grep -r "NmeaParserService[^F]" Shared/ Platforms/` shows only the
-  still-present class definition and its test, no invocation sites.
+- All tests pass.
+- **Parity test (risk mitigation):** a new test in
+  `Tests/AgValoniaGPS.Services.Tests/Pipeline/NmeaParserParityTests.cs`
+  that parses a representative PANDA corpus through both
+  `NmeaParserService.ParseSentence` and
+  `NmeaParserServiceFast.ParseIntoState`, maps the resulting
+  `VehicleState` to a `GpsData`, and asserts field-for-field equality
+  (within 1e-9 for doubles). Headings compared raw — fusion is a
+  cycle-worker concern after Commit 2.
+- `grep -r "_nmeaParser" Shared/` returns zero matches.
+- Smoke test: full field open → pass → close with no regression.
 
-**Risk:** Any subtle behavior difference between the two parsers gets
-surfaced now. Write a parity test in Commit 2 (in Services.Tests):
-parse a representative NMEA corpus through both parsers and assert the
-resulting `GpsData` / `VehicleState` is bit-for-bit equal. If they're
-not equivalent, the pre-existing bug is worth investigating before
-Phase B continues.
+**Risk:** Parity failures. If the corpus surfaces real divergence,
+decide per-case — fix the fast parser, or park the divergence as a
+TMP-0NN item and proceed only if the divergence doesn't touch the
+smoke-test path.
 
 ---
 
-### Commit 3 — Move guidance + PGN work off the receive thread
+### Commit 4 — Move guidance + PGN work off the receive thread
 
 **Goal:** `AutoSteerService.ProcessGpsBuffer` shrinks to parse + state
 update + signal. Everything else moves to the cycle worker.
@@ -264,8 +356,7 @@ update + signal. Everything else moves to the cycle worker.
 **Modifies:**
 - `AutoSteerService.ProcessGpsBuffer` — reduces to:
   1. `NmeaParserServiceFast.ParseIntoState(buffer, ref _state)`
-  2. Fire `_gpsService.UpdateGpsData(...)` (which fires `GpsDataUpdated`
-     and kicks off the cycle)
+  2. `_gpsService.UpdateGpsData(...)` (already added in Commit 3)
   3. Return
 - Methods `CalculateGuidance`, `SendPgns`, coordinate conversion, tram
   update, latency recording — these become methods that the cycle
@@ -273,44 +364,32 @@ update + signal. Everything else moves to the cycle worker.
 - `GpsPipelineService.ProcessCycle` — add the moved calls at the
   appropriate stages. Guidance computation sits alongside existing
   `_trackGuidanceService.CalculateGuidance`; PGN build+send becomes
-  the new "stage 4" at end of cycle (before `CycleCompleted` fires).
-- If AutoSteer needs its own `LocalPlane` auto-create logic removed
-  (already done in Commit 1), confirm the pipeline's auto-create
-  covers the first-fix case.
+  the new end-of-cycle stage (before `CycleCompleted` fires).
 
 **Does not modify:** `NmeaParserServiceFast`; the Phase A scaffolding;
 any UI binding; `YouTurnStateMachine`.
 
 **Verification:**
 - Solution builds green.
-- All tests pass (some may need updating — see Commit 5).
+- All tests pass (some may need updating).
 - Smoke test: full field cycle including auto U-turn. Critical check:
   the tractor follows guidance correctly (proves guidance calls from
   the cycle work); PGNs emit at the expected cadence (proves PGN work
   from cycle reaches the hardware).
-- Log inspection: receive-thread timing should drop (it now does less
-  work). Cycle-thread timing may rise (it now does more). Neither
-  should trigger the 24 FPS floor.
+- Log inspection: receive-thread timing should drop. Cycle-thread
+  timing may rise. Neither should trigger the 24 FPS floor.
 
-**Risk — highest in Phase B:**
-- **PGN cadence shift.** Hardware may expect PGNs at packet-arrival
-  rate (~10 Hz). Cycle rate is also ~10 Hz (one cycle per GPS packet
-  via `GpsDataUpdated`). Should be equivalent, but *timing* within the
-  tick differs: pre-Phase-B, PGN sent before cycle starts; post-Phase-B,
-  PGN sent at end of cycle. Net additional latency ≈ the cycle's
-  duration (typically <20 ms on the test hardware). Monitor hardware
-  behavior in the smoke test.
-- **Guidance now computes 1× per cycle.** Pre-Phase-B, AutoSteer
-  computes guidance on receive thread (per packet) AND the pipeline
-  computes guidance in its cycle. Post-Phase-B, only the cycle computes
-  it. The AutoSteer-on-receive computation is redundant and its output
-  was never used for steering output downstream of the cycle, so this
-  should be a pure deletion. Confirm by tracing `_state.SteerAngle`
-  writes before deleting.
+**Risk — highest in Phase B (unchanged from original C3):**
+- **PGN cadence shift.** PGN sent at end of cycle instead of per
+  packet. Net additional latency ≈ cycle duration (typically <20 ms
+  on the test hardware). Monitor hardware behavior.
+- **Guidance now computes once per cycle.** The AutoSteer-on-receive
+  computation is redundant today and its output was never used
+  downstream of the cycle for steering.
 
 ---
 
-### Commit 4 — Delete `NmeaParserService`
+### Commit 5 — Delete `NmeaParserService`
 
 **Goal:** The string-based parser is gone. Only `NmeaParserServiceFast`
 remains.
@@ -330,13 +409,13 @@ remains.
 - `grep -r "NmeaParserService[^F]" .` returns zero matches outside
   the commit's own deletion.
 
-**Risk:** Low. If Commit 2 did its job, this is pure cleanup. If
+**Risk:** Low. If Commit 3 did its job, this is pure cleanup. If
 something outside the grep caught still references the string parser,
 the build breaks — fix and move on.
 
 ---
 
-### Commit 5 — Integration tests + acceptance
+### Commit 6 — Integration tests + acceptance
 
 **Goal:** Lock the Phase B invariants with tests that will fail loudly
 if any phase regresses them.
@@ -384,8 +463,10 @@ on the same branch):
 
 - [ ] `dotnet build AgValoniaGPS.sln -p:DesktopOnly=true` green; same
       for the native multi-target build on macOS.
-- [ ] `dotnet test Tests/` passes. Count increases by the three tests
-      from Commit 5 (minus whatever was deleted in Commit 4).
+- [ ] `dotnet test Tests/` passes. Count increases by Commit 2's
+      fusion/validator unit tests, Commit 3's parity test, and Commit 6's
+      integration tests (minus whatever Commit 5 deletes with
+      `NmeaParserServiceTests.cs`).
 - [ ] `grep -r "NmeaParserService[^F]" .` returns zero matches in the
       working tree (outside of git history).
 - [ ] `grep -r "new LocalPlane" Shared/ Platforms/` returns at most
@@ -456,23 +537,30 @@ Avalonia throws.
 **Who verifies.** The debug-build assertion; grep for
 `Field.LocalPlane =`; smoke test.
 
-### 7.3 Parser divergence surfaces a latent bug (MEDIUM)
+### 7.3 Parser divergence surfaces a latent bug (LOW after Commit 2 lands)
 
-**What could go wrong.** The two parsers may produce slightly different
-outputs for edge-case NMEA inputs — unusual character encodings,
-unusual sentence lengths, trailing CRLF differences. When the string
-parser retires, its behavior disappears.
+**What could go wrong.** The two parsers differ beyond edge-case field
+parsing — `NmeaParserService` also does heading fusion (`ProcessHeading`),
+fix-quality filtering, and IMU mirroring into `SensorState.Instance`.
+`NmeaParserServiceFast` does not. Removing the string parser without
+relocating these drops real behavior.
 
 **Mitigation.**
-- Commit 2 includes a parity test that runs a representative NMEA
-  corpus through both parsers and asserts equality. If the test finds
-  a divergence, it's a real pre-existing bug — decide per-case whether
-  to fix the fast parser before proceeding or park the divergence.
-- Keep the string parser file around for one extra commit (Commit 3
-  doesn't delete it). Deletion is Commit 4. Gives a window to revert
-  if anything odd surfaces during Commit 3 smoke testing.
+- Commit 2 extracts fusion + filtering into cycle-worker-callable
+  services (`GpsHeadingFusionService`, `GpsFixQualityValidator`)
+  *before* any parser callsites change. Unit tests verify numerical
+  parity with `ProcessHeading` on representative inputs.
+- Commit 3's parity test compares the raw per-field parse output
+  (lat/lon/altitude/speed/heading/sats/hdop/diff-age). Fusion is
+  explicitly out of scope of the parity test — it's a cycle concern
+  post-Commit 2.
+- `NmeaParserService` stays alive through Commits 2, 3, and 4; only
+  Commit 5 deletes it. That leaves a three-commit window to revert if
+  smoke testing surfaces unexpected divergence.
 
-**Who verifies.** The parity test in Commit 2.
+**Who verifies.** Unit tests for the extracted services (Commit 2);
+the field-level parity test (Commit 3); smoke tests after Commits 3
+and 4.
 
 ### 7.4 AutoSteerService callbacks on wrong thread (LOW-MEDIUM)
 
@@ -497,9 +585,9 @@ that one call produces a parsed-updated-guided-transmitted cycle.
 Post-Phase-B, that one call is parse-only.
 
 **Mitigation.**
-- Commit 5 explicitly covers updating these tests.
+- Commit 6 explicitly covers updating these tests.
 - If updates prove substantial, split them into a separate commit
-  before Commit 5 rather than lumping in.
+  before Commit 6 rather than lumping in.
 
 **Who verifies.** `dotnet test` failure surfaces the breaks;
 mechanical test fix.
