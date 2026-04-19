@@ -22,9 +22,10 @@ using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
 
-// Alias to disambiguate from Track namespace
+// Aliases to disambiguate from colliding namespaces.
 using TrackModel = AgValoniaGPS.Models.Track.Track;
 using TrackInput = AgValoniaGPS.Models.Track.TrackGuidanceInput;
+using ApplicationState = AgValoniaGPS.Models.State.ApplicationState;
 
 namespace AgValoniaGPS.Services.AutoSteer;
 
@@ -41,11 +42,13 @@ public class AutoSteerService : IAutoSteerService
     // Dependencies
     private readonly ITrackGuidanceService _guidanceService;
     private readonly IUdpCommunicationService _udpService;
+    private readonly ApplicationState _appState;
     private ITramLineService? _tramLineService;
 
-    // Local coordinate system reference
-    private LocalPlane? _localPlane;
-    private SharedFieldProperties _sharedFieldProperties;
+    // Drift compensation applied after LocalPlane → local coordinate conversion.
+    // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
+    // across AutoSteer and the cycle worker. Created by field-open (UI thread) or by the
+    // cycle worker on first valid fix; never written here (receive thread).
     private double _driftEasting;
     private double _driftNorthing;
 
@@ -72,14 +75,15 @@ public class AutoSteerService : IAutoSteerService
 
     public AutoSteerService(
         ITrackGuidanceService guidanceService,
-        IUdpCommunicationService udpService)
+        IUdpCommunicationService udpService,
+        ApplicationState appState)
     {
         _guidanceService = guidanceService;
         _udpService = udpService;
+        _appState = appState;
 
         // Initialize state
         _state = new VehicleState();
-        _sharedFieldProperties = new SharedFieldProperties();
         _guidanceInput = new TrackInput();
     }
 
@@ -235,16 +239,6 @@ public class AutoSteerService : IAutoSteerService
     }
 
     /// <summary>
-    /// Set the local coordinate system for GPS→local conversion.
-    /// Called by MainViewModel when field is loaded or first GPS position received.
-    /// </summary>
-    public void SetLocalPlane(LocalPlane localPlane, SharedFieldProperties sharedFieldProperties)
-    {
-        _localPlane = localPlane;
-        _sharedFieldProperties = sharedFieldProperties;
-    }
-
-    /// <summary>
     /// Set GPS drift compensation (offset fix). Applied to local coordinates
     /// before guidance and tool position calculations, so tractor + implement
     /// move together. Values in meters.
@@ -311,19 +305,13 @@ public class AutoSteerService : IAutoSteerService
             return;
         }
 
-        // Auto-create a temporary local plane from first GPS fix
-        // so the tractor moves on screen without opening a field
-        if (_localPlane == null && _state.FixQuality > 0)
+        // Read the shared LocalPlane. Creation is owned by field-open (UI thread) or
+        // the cycle worker on first valid fix — never here. If still null (pre-first-fix
+        // or simulator edge case), skip conversion; Easting/Northing keep prior values.
+        var localPlane = _appState.Field.LocalPlane;
+        if (localPlane != null)
         {
-            _localPlane = new LocalPlane(
-                new Wgs84(_state.Latitude, _state.Longitude),
-                new SharedFieldProperties());
-        }
-
-        // Convert to local coordinates if we have a plane
-        if (_localPlane != null)
-        {
-            var geoCoord = _localPlane.ConvertWgs84ToGeoCoord(
+            var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
                 new Wgs84(_state.Latitude, _state.Longitude));
             // Apply GPS drift compensation (offset fix) before any calculations
             // This shifts tractor + implement together, matching legacy behavior

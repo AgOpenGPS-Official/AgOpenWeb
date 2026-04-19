@@ -107,7 +107,8 @@ public class OffsetFixTests
         // Verify drift is applied in the zero-copy pipeline
         var autoSteer = new AgValoniaGPS.Services.AutoSteer.AutoSteerService(
             Substitute.For<ITrackGuidanceService>(),
-            Substitute.For<IUdpCommunicationService>());
+            Substitute.For<IUdpCommunicationService>(),
+            new AgValoniaGPS.Models.State.ApplicationState());
 
         autoSteer.SetDriftCompensation(5.0, -10.0);
 

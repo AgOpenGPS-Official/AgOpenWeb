@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading.Tasks;
 using AgValoniaGPS.IntegrationTests.VirtualModules;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.AutoSteer;
 using AgValoniaGPS.Services.Interfaces;
@@ -30,6 +31,7 @@ public class SimulatorDataFlowTests
 {
     private ITrackGuidanceService _mockGuidance = null!;
     private IUdpCommunicationService _mockUdp = null!;
+    private ApplicationState _appState = null!;
     private AutoSteerService _autoSteer = null!;
 
     [SetUp]
@@ -37,8 +39,16 @@ public class SimulatorDataFlowTests
     {
         _mockGuidance = Substitute.For<ITrackGuidanceService>();
         _mockUdp = Substitute.For<IUdpCommunicationService>();
-        _autoSteer = new AutoSteerService(_mockGuidance, _mockUdp);
+        _appState = new ApplicationState();
+        _autoSteer = new AutoSteerService(_mockGuidance, _mockUdp, _appState);
         _autoSteer.Start();
+    }
+
+    private void PresetLocalPlane(double originLat, double originLon)
+    {
+        _appState.Field.LocalPlane = new LocalPlane(
+            new Wgs84(originLat, originLon),
+            new SharedFieldProperties());
     }
 
     [TearDown]
@@ -145,9 +155,15 @@ public class SimulatorDataFlowTests
     }
 
     [Test]
-    public void AutoLocalPlane_CreatedFromFirstGpsFix()
+    public void LocalPlaneConversion_ProducesConsistentOffsets()
     {
-        // Position 1: First GPS fix at a known location
+        // Phase B: LocalPlane creation moves to the cycle worker / field-open.
+        // AutoSteerService reads from ApplicationState.Field.LocalPlane.
+        // Preseed the plane at the first-fix location to mimic what the cycle
+        // worker would do, then verify a subsequent fix produces the expected offset.
+        PresetLocalPlane(43.712800, -74.006000);
+
+        // Position 1: First GPS fix at the plane origin
         using var listener1 = new UdpClient(0);
         int port1 = ((IPEndPoint)listener1.Client.LocalEndPoint!).Port;
 
@@ -156,7 +172,7 @@ public class SimulatorDataFlowTests
         gps.Longitude = -74.006000;
         gps.HeadingDegrees = 0.0;
         gps.SpeedKnots = 0.0;
-        gps.FixQuality = 4; // RTK Fixed - triggers local plane creation
+        gps.FixQuality = 4; // RTK Fixed
         gps.Satellites = 12;
 
         gps.SendOnce();
@@ -168,10 +184,8 @@ public class SimulatorDataFlowTests
         EventHandler<VehicleStateSnapshot> handler1 = (_, s) => snapshot1 = s;
         _autoSteer.StateUpdated += handler1;
 
-        // Process first fix - should auto-create local plane
         _autoSteer.ProcessGpsBuffer(bytes1, bytes1.Length);
 
-        // Unsubscribe first handler before second fix
         _autoSteer.StateUpdated -= handler1;
 
         Assert.That(snapshot1, Is.Not.Null, "Should get snapshot from first fix");
@@ -343,9 +357,36 @@ public class SimulatorDataFlowTests
     }
 
     [Test]
-    public void TractorMoves_WithoutField_AutoCreatedPlane()
+    public void TractorSkipsLocalCoords_WithoutLocalPlane()
     {
-        // First GPS fix at origin -- auto-creates local plane, so Easting/Northing near 0
+        // New Phase B contract: AutoSteerService no longer auto-creates a LocalPlane.
+        // Without a preset plane (from field-open or the cycle worker), ProcessGpsBuffer
+        // parses lat/lon into state but leaves Easting/Northing at their initialized zeros.
+        var bytes = BuildPandaBytes(lat: 42.0, lon: -93.0, heading: 0, speedKnots: 5);
+
+        VehicleStateSnapshot? snap = null;
+        EventHandler<VehicleStateSnapshot> h = (_, s) => snap = s;
+        _autoSteer.StateUpdated += h;
+        _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
+        _autoSteer.StateUpdated -= h;
+
+        Assert.That(snap, Is.Not.Null, "Parse still runs; snapshot still fires");
+        Assert.That(snap!.Value.Latitude, Is.EqualTo(42.0).Within(1e-4),
+            "Latitude parsed from NMEA");
+        Assert.That(snap.Value.Easting, Is.EqualTo(0.0),
+            "No LocalPlane → Easting unchanged from default zero");
+        Assert.That(snap.Value.Northing, Is.EqualTo(0.0),
+            "No LocalPlane → Northing unchanged from default zero");
+    }
+
+    [Test]
+    public void TractorMoves_WithPresetPlane_AtGpsOrigin()
+    {
+        // Preset a LocalPlane at the GPS origin — mimics what the cycle worker
+        // (GpsPipelineService) would auto-create on first valid fix.
+        PresetLocalPlane(42.0, -93.0);
+
+        // First GPS fix at origin -- Easting/Northing near 0
         var bytes1 = BuildPandaBytes(lat: 42.0, lon: -93.0, heading: 0, speedKnots: 5);
 
         VehicleStateSnapshot? snap1 = null;
@@ -378,10 +419,7 @@ public class SimulatorDataFlowTests
     public void TractorMoves_WithField_FieldOriginPlane()
     {
         // Set up a field local plane at lat=42.0, lon=-93.0 BEFORE sending GPS
-        var fieldOrigin = new Wgs84(42.0, -93.0);
-        var sharedProps = new SharedFieldProperties();
-        var fieldPlane = new LocalPlane(fieldOrigin, sharedProps);
-        _autoSteer.SetLocalPlane(fieldPlane, sharedProps);
+        PresetLocalPlane(42.0, -93.0);
 
         // First GPS fix at origin -- should be near (0,0)
         var bytes1 = BuildPandaBytes(lat: 42.0, lon: -93.0, heading: 0, speedKnots: 5);
@@ -416,10 +454,7 @@ public class SimulatorDataFlowTests
     public void TractorMoves_FieldOriginDifferentFromGps_CorrectOffset()
     {
         // Field origin at lat=42.0, lon=-93.0
-        var fieldOrigin = new Wgs84(42.0, -93.0);
-        var sharedProps = new SharedFieldProperties();
-        var fieldPlane = new LocalPlane(fieldOrigin, sharedProps);
-        _autoSteer.SetLocalPlane(fieldPlane, sharedProps);
+        PresetLocalPlane(42.0, -93.0);
 
         // GPS fix at lat=42.001 (0.001 degrees north of field origin ~ 111m)
         var bytes = BuildPandaBytes(lat: 42.001, lon: -93.0, heading: 0, speedKnots: 5);
@@ -445,8 +480,13 @@ public class SimulatorDataFlowTests
     }
 
     [Test]
-    public void TractorMoves_AtEquator_LatZeroLonZero()
+    public void TractorMoves_WithPresetPlane_AtEquator()
     {
+        // Preset a LocalPlane at (0,0) so coordinate conversion runs.
+        // Previously this test relied on AutoSteer's auto-create; post-Phase-B that
+        // creation moves to the cycle worker, so tests set up the plane explicitly.
+        PresetLocalPlane(0.0, 0.0);
+
         // First GPS fix at lat=0, lon=0 (equator) -- must not be skipped
         var bytes1 = BuildPandaBytes(lat: 0.0, lon: 0.0, heading: 90, speedKnots: 5);
 
@@ -483,9 +523,7 @@ public class SimulatorDataFlowTests
     public void TractorMoves_AtEquator_WithField()
     {
         // Set field origin at equator
-        var fieldOrigin = new Wgs84(0.0, 0.0);
-        var sharedProps = new SharedFieldProperties();
-        _autoSteer.SetLocalPlane(new LocalPlane(fieldOrigin, sharedProps), sharedProps);
+        PresetLocalPlane(0.0, 0.0);
 
         // GPS fix slightly north of equator
         var bytes = BuildPandaBytes(lat: 0.001, lon: 0.0, heading: 0, speedKnots: 5);
