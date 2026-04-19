@@ -249,20 +249,22 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // discarded until then to prove the pipe without changing behavior.
         _ = _intents.Drain();
 
-        // Stage 2: Fix-quality gate. Phase B C2 moved this out of NmeaParserService
-        // so the cycle — not the parser — decides whether a fix is acceptable.
-        if (!GpsFixQualityValidator.IsAcceptable(data.FixQuality, data.Hdop, data.DifferentialAge, out var rejectionReason))
+        // Stage 2: Fix-quality status. The validator labels the fix; it does not
+        // abort the cycle. Pre-Phase-B, NmeaParserService ran the same checks and
+        // still fired GpsDataUpdated on rejection (with IsValid = false) so the
+        // pipeline kept ticking and the UI — including latency display, PGN
+        // heartbeat to modules, and fix-quality indicator — stayed live. An
+        // earlier version of this gate early-returned here, which froze the
+        // latency display and stopped PGN output whenever a real hardware fix
+        // fell below MinFixQuality (default 4 = RTK Fixed). The rejection reason
+        // propagates into the final GpsCycleResult's StatusMessage; downstream
+        // consumers decide what to do with a low-quality fix by checking
+        // data.IsValid or result.FixQuality.
+        string? fixRejectionReason = null;
+        if (!GpsFixQualityValidator.IsAcceptable(
+                data.FixQuality, data.Hdop, data.DifferentialAge, out fixRejectionReason))
         {
-            CycleCompleted?.Invoke(new GpsCycleResult
-            {
-                Latitude = data.CurrentPosition.Latitude,
-                Longitude = data.CurrentPosition.Longitude,
-                FixQuality = data.FixQuality,
-                SatelliteCount = data.SatellitesInUse,
-                GpsValid = false,
-                StatusMessage = rejectionReason,
-            });
-            return;
+            data.IsValid = false;
         }
 
         // ── Snapshot operational state under lock ────────────────────────
@@ -571,7 +573,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             HeadlandProximityWarning = headlandWarning,
 
             // Status
-            StatusMessage = statusMessage
+            StatusMessage = statusMessage ?? fixRejectionReason
         };
 
         CycleCompleted?.Invoke(result);
