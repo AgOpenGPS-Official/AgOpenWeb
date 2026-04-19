@@ -123,6 +123,9 @@ the UI thread.
 - 2026-04-19 (Phase A close) — Phase A ships `YouTurnSnapshot` and
   `GuidanceSnapshot` as records with `IReadOnlyList<T>?` for list fields,
   which supports either future approach. Still parked; Phase C owns.
+- 2026-04-19 (Phase B close) — Phase B didn't populate snapshots; the
+  `null`-valued fields on `GpsCycleResult` continue untouched. Still
+  parked for Phase C C1.
 
 ---
 
@@ -155,36 +158,8 @@ Carve-outs are the only sanctioned bypass of the one-way flow.
 - 2026-04-19 (Phase A close) — Still nothing migrated; no commands
   touched in Phase A. Phase C's plan must open with the carve-out
   inventory for `TriggerManualYouTurnLeft/Right` and `ClearYouTurnState`.
-
----
-
-### TMP-003 — Phase B unified service name
-
-- **Status:** Open
-- **Raised in:** Phase A
-- **Decide by:** Phase B (first decision of Phase B's plan)
-- **Source:** parent plan §6.6; Phase A plan §8
-
-**Why parked.** The name depends on what Phase B's consolidated cycle
-owner actually does. If it stays a thin orchestrator around the
-existing services, `GpsPipelineService` is the right keep-name. If it
-absorbs tool-position / section / coverage logic, a new name may
-reflect reality better (e.g., `CycleWorker`, `GpsCycle`). The
-implementation diff makes the choice obvious; speculating before
-writing it is bike-shedding.
-
-**What the decision is.** Name for the single class that hosts
-`ProcessCycle`, subscribes to `UdpGpsQueue` (TMP-004), and emits
-`GpsCycleResult`.
-
-**Review log.**
-- 2026-04-19 — Parked during Phase A planning. The §0 invariant (cycle
-  runs on `Task.Run` with `Interlocked` back-pressure) governs
-  regardless of name.
-- 2026-04-19 (Phase A close) — Phase A added `IPipelineIntents` and a
-  `Drain()` call inside `GpsPipelineService`, i.e. the existing service
-  accepted a new responsibility cleanly. Weak signal that the name can
-  stay, but Phase B's implementation still decides.
+- 2026-04-19 (Phase B close) — Phase B migrated no UI commands.
+  Still parked for Phase C (YouTurn commands) and D (guidance commands).
 
 ---
 
@@ -213,6 +188,12 @@ last-wins vs FIFO), the producer/consumer wiring, whether it's a
   existing event wiring; no behavior change.
 - 2026-04-19 (Phase A close) — I/O wiring untouched by Phase A, event
   path intact. Still parked for Phase B.
+- 2026-04-19 (Phase B close) — Phase B kept the event handoff per plan
+  §2.2. No formal cycle-rate measurement on hardware yet. Smoke test on
+  Mac mini M4 showed the cycle comfortably keeps up at ~10 Hz GPS rate
+  (FPS 36–48, well above floor). Still open pending real-hardware
+  cadence check — if cycle ever can't keep up, upgrade to an explicit
+  bounded `Channel<Position>`. Reopen in Phase F or sooner if needed.
 
 ---
 
@@ -246,6 +227,10 @@ dead fields in the snapshot).
   `HasGuidance`). New `YouTurn` / `Guidance` snapshot fields sit
   alongside them as `null` placeholders. No removal in Phase A; still
   parked.
+- 2026-04-19 (Phase B close) — Flat fields still in place; `null`
+  placeholders still unused. Phase C populates the YouTurn snapshot and
+  removes the three flat YouTurn fields. Phase D does the same for
+  Guidance.
 
 ---
 
@@ -275,6 +260,11 @@ can miss aliased writes). Or both.
 - 2026-04-19 (Phase A close) — No services migrated in Phase A; the
   invariant has nothing to enforce yet. Still parked — revisit at the
   end of Phase C when the first migrated service exists.
+- 2026-04-19 (Phase B close) — Phase B established more invariants to
+  enforce: receive thread is parse-only, AutoSteerService holds no
+  `_localPlane`, `NmeaParserService` deleted. The `UnifiedPipelineTests`
+  (C6) enforce the first two at unit-test level but an analyzer or CI
+  grep would catch structural drift earlier. Still parked.
 
 ---
 
@@ -308,6 +298,11 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
   - `MainViewModel.GpsHandling.cs` = 436 lines (Phase C removes the
     `YouTurnStateMachine.Tick` call from this file).
   Phase C's final commit compares against this baseline.
+- 2026-04-19 (Phase B close) — Post-Phase-B snapshot: `MainViewModel.cs`
+  = 5,139 lines (−9 from A; C3 removed `_nmeaParser` field,
+  construction, and the NMEA-parse branch in `OnUdpDataReceived`).
+  Total across 23 partials: 14,127 lines (−9). Phase C's reduction
+  target is still measured against the 14,136 Phase-A baseline.
 
 ---
 
@@ -353,6 +348,8 @@ determine which of the two causes applies. Then either (a) confirm
   the issue. Parked because Phase A had no mandate to fix pre-existing
   YouTurn bugs, and because Phase C needs to inherit a working manual
   U-turn to verify its migration doesn't regress it.
+- 2026-04-19 (Phase B close) — Phase B touched no YouTurn code. Still
+  parked for Phase C — investigation is Phase C's first task.
 
 ---
 
@@ -398,13 +395,26 @@ imperceptible. If regression, options:
   Parker decided to port `ProcessHeading` faithfully (with correct
   inputs) rather than preserve the 0,0 bug. The cycle worker passes
   real local easting/northing. Smoke test reveals behavior impact.
+- 2026-04-19 (Phase B close) — Phase B smoke test on simulated GPS
+  driving showed no visible regression. **Real-hardware verification
+  pending.** Open until a user drives with real GPS and confirms
+  heading behavior. If regression, switch `Connections.MinGpsStep`
+  default to effectively-disabled or refactor `GpsHeadingFusionService`
+  to gate fix-to-fix behind a config toggle.
 
 ---
 
 ## 5. Resolved items
 
-Empty. Items move here on resolution with their final review log
-entry and the PR that closed them.
+### TMP-003 — Phase B unified service name
+
+- **Status:** Resolved (Phase B close, 2026-04-19)
+- **Resolution:** Keeps the name `GpsPipelineService`. Phase B expanded
+  its responsibilities (absorbed AutoSteer cycle work, fusion, and
+  fix-quality validation) but "pipeline orchestration" still fits. Any
+  cosmetic rename deferred until post-Phase-F if still desired.
+- **Decided in:** Phase B plan §2.1
+- **Closing PR:** #259 (Phase B commit range `5d6bccd..d04bfc6`)
 
 ---
 
