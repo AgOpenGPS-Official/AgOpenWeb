@@ -356,6 +356,51 @@ determine which of the two causes applies. Then either (a) confirm
 
 ---
 
+### TMP-009 — Fix-to-fix heading behavior change activates in Phase B
+
+- **Status:** Open
+- **Raised in:** Phase B C2 planning
+- **Decide by:** Phase B C6 (acceptance smoke test) — if the behavior
+  change is noticeable on real hardware, decide whether to keep,
+  temporarily disable, or back out.
+- **Source:** `Shared/AgValoniaGPS.Services/NmeaParserService.cs:209` —
+  `ProcessHeading(gpsHeading, speedMs, gpsData.CurrentPosition.Easting, gpsData.CurrentPosition.Northing)`
+
+**Why parked.** Today `NmeaParserService.ProcessHeading` is called with
+`gpsData.CurrentPosition.Easting` / `Northing` that are both **0.0** at
+that moment — UTM conversion runs later in `GpsService.TransformAntennaToPivot`,
+after `ParsePANDA` returns. That means `CalculateFixToFixHeading` has
+always computed `distance = sqrt(0² + 0²) = 0 < Connections.FixToFixDistance`
+and returned `-1`, i.e. the fix-to-fix branch never fired in production.
+
+When Phase B C2 moves `ProcessHeading` into the cycle worker, it will
+be called with real local easting/northing from the post-conversion
+stage. Fix-to-fix heading starts actually working. Users in single-GPS
+mode (or dual-GPS below the switch speed) will see a heading source
+they've never seen before:
+- Single-GPS users: now get fix-to-fix heading above `Connections.MinGpsStep`
+  instead of the raw NMEA heading. Likely more stable for most cases.
+- Dual-GPS users at low speed: now get fix-to-fix instead of dual-antenna
+  heading. Could swing the tractor if dual-antenna was more accurate.
+
+**What the decision is.** After Phase B C6 smoke test, confirm whether
+the activated fix-to-fix behavior is an improvement, a regression, or
+imperceptible. If regression, options:
+1. Disable fix-to-fix by defaulting `Connections.MinGpsStep` to a
+   value that never triggers (matches current dead-code behavior).
+2. Leave dual-GPS dominant at all speeds (remove the DualSwitchSpeed
+   branch) — tracks legacy behavior.
+3. Keep as-is — the code did what the config said it should, which
+   is now honored.
+
+**Review log.**
+- 2026-04-19 — Discovered while planning Phase B C2's fusion extraction.
+  Parker decided to port `ProcessHeading` faithfully (with correct
+  inputs) rather than preserve the 0,0 bug. The cycle worker passes
+  real local easting/northing. Smoke test reveals behavior impact.
+
+---
+
 ## 5. Resolved items
 
 Empty. Items move here on resolution with their final review log

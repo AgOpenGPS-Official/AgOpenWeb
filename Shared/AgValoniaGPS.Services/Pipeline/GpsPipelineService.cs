@@ -15,6 +15,7 @@ using AgValoniaGPS.Models.Guidance;
 using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.YouTurn;
+using AgValoniaGPS.Services.Gps;
 using AgValoniaGPS.Services.Headland;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Services.YouTurn;
@@ -39,6 +40,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
+    private readonly IGpsHeadingFusionService _headingFusion;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
 
@@ -99,6 +101,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         YouTurnGuidanceService youTurnGuidanceService,
         IAudioService audioService,
         IPipelineIntents intents,
+        IGpsHeadingFusionService headingFusion,
         ILogger<GpsPipelineService> logger,
         ApplicationState appState)
     {
@@ -111,6 +114,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _youTurnGuidanceService = youTurnGuidanceService;
         _audioService = audioService;
         _intents = intents;
+        _headingFusion = headingFusion;
         _logger = logger;
         _appState = appState;
     }
@@ -245,6 +249,22 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // discarded until then to prove the pipe without changing behavior.
         _ = _intents.Drain();
 
+        // Stage 2: Fix-quality gate. Phase B C2 moved this out of NmeaParserService
+        // so the cycle — not the parser — decides whether a fix is acceptable.
+        if (!GpsFixQualityValidator.IsAcceptable(data.FixQuality, data.Hdop, data.DifferentialAge, out var rejectionReason))
+        {
+            CycleCompleted?.Invoke(new GpsCycleResult
+            {
+                Latitude = data.CurrentPosition.Latitude,
+                Longitude = data.CurrentPosition.Longitude,
+                FixQuality = data.FixQuality,
+                SatelliteCount = data.SatellitesInUse,
+                GpsValid = false,
+                StatusMessage = rejectionReason,
+            });
+            return;
+        }
+
         // ── Snapshot operational state under lock ────────────────────────
         bool autoSteerEngaged;
         Models.Track.Track? track;
@@ -303,6 +323,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 posNorthing = geoCoord.Northing;
             }
         }
+
+        // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
+        // with the dual-antenna-aware / fix-to-fix / IMU-blended value.
+        // Receives real local easting/northing — see TMP-009 in the parking lot.
+        double fusedHeading = _headingFusion.FuseHeading(pos.Heading, pos.Speed, posEasting, posNorthing);
+        pos = pos with { Heading = fusedHeading };
 
         // ── (2) Apply drift compensation ────────────────────────────────
         double driftedEasting = posEasting + driftE;

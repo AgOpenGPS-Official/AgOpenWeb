@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.AutoSteer;
 using AgValoniaGPS.Services.Coverage;
+using AgValoniaGPS.Services.Gps;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Services.Pipeline;
 using AgValoniaGPS.Services.Geometry;
@@ -137,6 +138,8 @@ public static class ServiceCollectionExtensions
         // GPS processing pipeline (background-thread orchestration)
         // Singleton: UI commands and the cycle worker must share one intent instance.
         services.AddSingleton<IPipelineIntents, PipelineIntents>();
+        // Fusion service holds fix-to-fix state between cycles; singleton required.
+        services.AddSingleton<IGpsHeadingFusionService, GpsHeadingFusionService>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
         // Android-specific services
