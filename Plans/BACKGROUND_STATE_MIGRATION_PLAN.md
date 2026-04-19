@@ -24,6 +24,16 @@ one-way data flow driven by a dedicated background cycle worker.
 
 ![Ideal threading model](threading_model.svg)
 
+Three diagrams, meant to be read together:
+
+| Diagram | Shows |
+|---|---|
+| [`threading_model.svg`](threading_model.svg) | The target — ideal threading with the one-way data flow and non-negotiables |
+| [`threading_model_current.svg`](threading_model_current.svg) | What's running today, with six numbered problems in red |
+| [`threading_model_migration.svg`](threading_model_migration.svg) | The phased migration from current → ideal, showing where each red problem moves and why |
+
+Problem numbers are consistent across the three diagrams so a reviewer can trace "Problem 1" from today's broken location to its Phase B move to its ideal home.
+
 > **Strategic, not tactical.** Each phase below describes *what* and *why*.
 > Each phase becomes its own implementation branch with its own
 > commit-by-commit plan when the work begins.
@@ -384,7 +394,9 @@ Whole-effort:
 
 ## 10. Linked plans / memory references
 
-- `Plans/threading_model.svg` — the diagram referenced at the top.
+- `Plans/threading_model.svg` — target threading model.
+- `Plans/threading_model_current.svg` — current reality with numbered problems.
+- `Plans/threading_model_migration.svg` — phased migration.
 - `Plans/PERFORMANCE_STRATEGY.md` — overall perf umbrella;
   turn-creation cost is one of the items this plan unblocks.
 - `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md` — the other
