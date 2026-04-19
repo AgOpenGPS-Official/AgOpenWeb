@@ -819,7 +819,7 @@ public partial class MainViewModel : ObservableObject
         byte hydLiftState = CalculateHydLiftState(e.ToolPosition, Speed);
 
         // Push section bits + u-turn state + hydraulic lift to AutoSteerService for PGN 239
-        _autoSteerService.SetMachineState(_sectionControlService.GetSectionBits(), _isInYouTurn, hydLiftState);
+        _autoSteerService.SetMachineState(_sectionControlService.GetSectionBits(), State.YouTurn.IsExecuting, hydLiftState);
 
         // Update coverage painting - paint when sections are active and moving
         _updateSw.Restart();
@@ -920,7 +920,7 @@ public partial class MainViewModel : ObservableObject
         // Record worked path for skip-and-fill mode (any section painting = path is worked)
         if (states.Any(s => s.IsOn) && SelectedTrack != null)
         {
-            SelectedTrack.MarkPathWorked(_howManyPathsAway);
+            SelectedTrack.MarkPathWorked(State.Guidance.HowManyPathsAway);
         }
     }
 
@@ -1692,15 +1692,15 @@ public partial class MainViewModel : ObservableObject
                     double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
                     if (widthMinusOverlap > 0.1)
                     {
-                        _howManyPathsAway = (int)Math.Round(value.NudgeDistance / widthMinusOverlap);
-                        _nudgeOffset = value.NudgeDistance - (_howManyPathsAway * widthMinusOverlap);
-                        _logger.LogDebug($"[NUDGE] SelectedTrack setter: '{value.Name}' NudgeDistance={value.NudgeDistance:F2}m -> _howManyPathsAway={_howManyPathsAway}, _nudgeOffset={_nudgeOffset:F3}m");
+                        State.Guidance.HowManyPathsAway = (int)Math.Round(value.NudgeDistance / widthMinusOverlap);
+                        State.Guidance.NudgeOffset = value.NudgeDistance - (State.Guidance.HowManyPathsAway * widthMinusOverlap);
+                        _logger.LogDebug($"[NUDGE] SelectedTrack setter: '{value.Name}' NudgeDistance={value.NudgeDistance:F2}m -> State.Guidance.HowManyPathsAway={State.Guidance.HowManyPathsAway}, State.Guidance.NudgeOffset={State.Guidance.NudgeOffset:F3}m");
                     }
                     else
                     {
-                        _howManyPathsAway = 0;
-                        _nudgeOffset = 0;
-                        _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, _howManyPathsAway=0", value.Name);
+                        State.Guidance.HowManyPathsAway = 0;
+                        State.Guidance.NudgeOffset = 0;
+                        _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, State.Guidance.HowManyPathsAway=0", value.Name);
                     }
 
                     // Check if track runs along boundary (skip disengage on first pass)
@@ -4896,8 +4896,8 @@ public partial class MainViewModel : ObservableObject
         if (SelectedTrack != null)
         {
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            SelectedTrack.NudgeDistance = _howManyPathsAway * widthMinusOverlap + _nudgeOffset;
-            _logger.LogDebug($"[NUDGE] SaveTracksToFile: SelectedTrack '{SelectedTrack.Name}' NudgeDistance = {_howManyPathsAway} * {widthMinusOverlap:F2} + {_nudgeOffset:F3} = {SelectedTrack.NudgeDistance:F2}m");
+            SelectedTrack.NudgeDistance = State.Guidance.HowManyPathsAway * widthMinusOverlap + State.Guidance.NudgeOffset;
+            _logger.LogDebug($"[NUDGE] SaveTracksToFile: SelectedTrack '{SelectedTrack.Name}' NudgeDistance = {State.Guidance.HowManyPathsAway} * {widthMinusOverlap:F2} + {State.Guidance.NudgeOffset:F3} = {SelectedTrack.NudgeDistance:F2}m");
         }
 
         // Debug: Log all tracks' NudgeDistance before saving

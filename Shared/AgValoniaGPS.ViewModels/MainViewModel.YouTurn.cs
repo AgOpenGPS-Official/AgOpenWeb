@@ -21,6 +21,7 @@ using System.Linq;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services.YouTurn;
@@ -36,49 +37,9 @@ namespace AgValoniaGPS.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
-    #region YouTurn Fields
-
-    // YouTurn state
-    private bool _isYouTurnTriggered;
-    private bool _isInYouTurn; // True when executing the U-turn
-    private List<Vec3>? _youTurnPath;
-    private int _youTurnCounter;
-    private double _distanceToHeadland;
-    private bool _isHeadingSameWay;
-    private bool _isTurnLeft; // Direction of the current/pending U-turn
-    private bool _wasHeadingSameWayAtTurnStart; // Heading direction when turn was created (for offset calc)
-    private bool _lastTurnWasLeft; // Track last turn direction to alternate
-    private Track? _nextTrack; // The next track to switch to after U-turn completes
-
-    /// <summary>
-    /// Pre-calculated perpendicular offset to next track (always positive, in meters).
-    /// This is the authoritative value for U-turn arc width - use this instead of recalculating.
-    /// </summary>
-    public double NextTrackTurnOffset { get; private set; }
-
-    private int _howManyPathsAway; // Which parallel offset line we're on (like AgOpenGPS)
-    private double _nudgeOffset; // Fine nudge offset in meters (added on top of pass offset)
-    private int? _returnPassTargetPath; // When set, CompleteYouTurn jumps directly to this path instead of using skip logic
-
-    // Pre-computed snake/spiral sequence for skip-and-fill pattern
-    private List<int>? _snakeSequence;
-    private int _snakeIndex = -1;
-
-    // Zone tracking - single state for tractor location
-    public enum TractorZone { OutsideBoundary = 0, InHeadland = 1, InCultivatedArea = 2 }
-    private TractorZone _currentZone = TractorZone.OutsideBoundary;
-
-    // Debug: expose zone for UI display
-    public TractorZone CurrentZone => _currentZone;
-    public string CurrentZoneDisplay => _currentZone switch
-    {
-        TractorZone.OutsideBoundary => "Outside",
-        TractorZone.InHeadland => "Headland",
-        TractorZone.InCultivatedArea => "Cultivated",
-        _ => "Unknown"
-    };
-
-    #endregion
+    // YouTurn state, turn direction, zone tracking, snake sequence, pass offsets:
+    // All live on State.YouTurn and State.Guidance. See YouTurnState.cs / GuidanceState.cs.
+    // TractorZone enum is in AgValoniaGPS.Models.State.TractorZone.
 
     #region YouTurn Properties
 
@@ -132,12 +93,12 @@ public partial class MainViewModel
     /// </summary>
     public void ClearYouTurnState()
     {
-        _youTurnPath = null;
-        _nextTrack = null;
-        _isYouTurnTriggered = false;
-        _isInYouTurn = false;
-        _youTurnCounter = 0;
-        _currentZone = TractorZone.OutsideBoundary;
+        State.YouTurn.TurnPath = null;
+        State.YouTurn.NextTrack = null;
+        State.YouTurn.IsTriggered = false;
+        State.YouTurn.IsExecuting = false;
+        State.YouTurn.YouTurnCounter = 0;
+        State.YouTurn.CurrentZone = TractorZone.OutsideBoundary;
 
         _mapService.SetYouTurnPath(null);
         _mapService.SetNextTrack(null);
@@ -180,7 +141,7 @@ public partial class MainViewModel
         }
 
         // Don't create a new turn if already in one
-        if (_isInYouTurn || _youTurnPath != null)
+        if (State.YouTurn.IsExecuting || State.YouTurn.TurnPath != null)
         {
             StatusMessage = "U-turn already in progress";
             return;
@@ -214,25 +175,25 @@ public partial class MainViewModel
         double headingDiff = headingRadians - abHeading;
         while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
         while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
-        _isHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
+        State.Guidance.IsHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
 
         // Set turn direction and save heading state for offset calculation
-        _isTurnLeft = turnLeft;
-        _wasHeadingSameWayAtTurnStart = _isHeadingSameWay;
+        State.YouTurn.IsTurnLeft = turnLeft;
+        State.YouTurn.WasHeadingSameWayAtTurnStart = State.Guidance.IsHeadingSameWay;
 
-        _logger.LogDebug($"[ManualYouTurn] Triggering {(turnLeft ? "LEFT" : "RIGHT")} turn, isHeadingSameWay={_isHeadingSameWay}");
+        _logger.LogDebug($"[ManualYouTurn] Triggering {(turnLeft ? "LEFT" : "RIGHT")} turn, isHeadingSameWay={State.Guidance.IsHeadingSameWay}");
 
         // Compute next track and create turn path
         ComputeNextTrack(track, abHeading);
         CreateYouTurnPath(currentPosition, headingRadians, abHeading);
 
-        if (_youTurnPath != null && _youTurnPath.Count > 2)
+        if (State.YouTurn.TurnPath != null && State.YouTurn.TurnPath.Count > 2)
         {
             // Immediately trigger the turn (don't wait for proximity to start point)
             State.YouTurn.IsTriggered = true;
             State.YouTurn.IsExecuting = true;
-            _isYouTurnTriggered = true;
-            _isInYouTurn = true;
+            State.YouTurn.IsTriggered = true;
+            State.YouTurn.IsExecuting = true;
             StatusMessage = $"Manual {(turnLeft ? "left" : "right")} U-turn started";
         }
         else
@@ -284,7 +245,7 @@ public partial class MainViewModel
             double abDx = trackPointB.Easting - trackPointA.Easting;
             double abDy = trackPointB.Northing - trackPointA.Northing;
             abHeading = Math.Atan2(abDx, abDy);
-            if (_youTurnCounter % 30 == 0)
+            if (State.YouTurn.YouTurnCounter % 30 == 0)
                 _logger.LogDebug($"[YouTurn] AB Line: abHeading={abHeading * 180 / Math.PI:F1}°");
         }
 
@@ -292,7 +253,7 @@ public partial class MainViewModel
         double headingDiff = headingRadians - abHeading;
         while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
         while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
-        _isHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
+        State.Guidance.IsHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
 
         // Check if vehicle is aligned with AB line (not mid-turn)
         // We need to be within ~20 degrees of the AB line direction (either forward or reverse)
@@ -306,7 +267,7 @@ public partial class MainViewModel
         // Only calculate distance to headland when aligned with the AB line
         // This prevents creating turns while mid-turn when heading changes rapidly
         double travelHeading = abHeading;
-        if (!_isHeadingSameWay)
+        if (!State.Guidance.IsHeadingSameWay)
         {
             travelHeading += Math.PI;
             if (travelHeading >= Math.PI * 2) travelHeading -= Math.PI * 2;
@@ -316,49 +277,49 @@ public partial class MainViewModel
         {
             // Calculate distance to headland using raycast
             // Only triggers automatic U-turns when there's a headland line defined
-            _distanceToHeadland = CalculateDistanceToHeadland(currentPosition, travelHeading);
+            State.YouTurn.DistanceToHeadland = CalculateDistanceToHeadland(currentPosition, travelHeading);
         }
         else
         {
-            _distanceToHeadland = double.MaxValue;  // Don't detect headland if not aligned
+            State.YouTurn.DistanceToHeadland = double.MaxValue;  // Don't detect headland if not aligned
         }
 
         // Update zone tracking
-        _currentZone = DetermineCurrentZone(currentPosition.Easting, currentPosition.Northing);
+        State.YouTurn.CurrentZone = DetermineCurrentZone(currentPosition.Easting, currentPosition.Northing);
 
-        bool isInCultivatedArea = _currentZone == TractorZone.InCultivatedArea;
-        bool isInHeadlandZone = _currentZone == TractorZone.InHeadland;
+        bool isInCultivatedArea = State.YouTurn.CurrentZone == TractorZone.InCultivatedArea;
+        bool isInHeadlandZone = State.YouTurn.CurrentZone == TractorZone.InHeadland;
 
         // AgOpenGPS creates turns while in CULTIVATED AREA approaching headland
         // The turn path has a leg that extends back into the cultivated area
         // Distance-based creation window: 10-60m from headland
         double minDistanceToCreate = 10.0;
         double maxDistanceToCreate = 60.0;
-        bool headlandInRange = _distanceToHeadland > minDistanceToCreate &&
-                               _distanceToHeadland < maxDistanceToCreate;
+        bool headlandInRange = State.YouTurn.DistanceToHeadland > minDistanceToCreate &&
+                               State.YouTurn.DistanceToHeadland < maxDistanceToCreate;
 
         // Debug logging
-        if (_youTurnPath == null && !_isInYouTurn && _distanceToHeadland < 100)
+        if (State.YouTurn.TurnPath == null && !State.YouTurn.IsExecuting && State.YouTurn.DistanceToHeadland < 100)
         {
-            _logger.LogDebug($"[YouTurn] Zone={_currentZone}, dist={_distanceToHeadland:F1}m, aligned={isAlignedWithABLine}, inRange={headlandInRange}");
+            _logger.LogDebug($"[YouTurn] Zone={State.YouTurn.CurrentZone}, dist={State.YouTurn.DistanceToHeadland:F1}m, aligned={isAlignedWithABLine}, inRange={headlandInRange}");
         }
 
         // TURN CREATION: Approaching headland, aligned with track
         // In snake mode, also trigger from headland zone (tractor may be in headland at far end of field)
         bool canCreateTurn = isInCultivatedArea && headlandInRange;
         if (!canCreateTurn && _isSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
-            && _snakeSequence != null && _youTurnPath == null && !_isInYouTurn)
+            && State.YouTurn.SnakeSequence != null && State.YouTurn.TurnPath == null && !State.YouTurn.IsExecuting)
         {
             // In headland at far end: check if we have more paths in the sequence
             canCreateTurn = GetNextSnakePath().HasValue;
         }
-        if (_youTurnPath == null && !_isInYouTurn && canCreateTurn && isAlignedWithABLine)
+        if (State.YouTurn.TurnPath == null && !State.YouTurn.IsExecuting && canCreateTurn && isAlignedWithABLine)
         {
             // SNAKE MODE: Use pre-computed sequence for skip-and-fill
             if (_isSkipWorkedMode)
             {
                 // Build snake sequence on first turn
-                if (_snakeSequence == null)
+                if (State.YouTurn.SnakeSequence == null)
                 {
                     BuildSnakeSequence(track, abHeading);
                 }
@@ -368,13 +329,13 @@ public partial class MainViewModel
                 {
                     double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
                     double nextDistAway = widthMinusOverlap * nextPath.Value;
-                    int pathDiff = nextPath.Value - _howManyPathsAway;
+                    int pathDiff = nextPath.Value - State.Guidance.HowManyPathsAway;
 
                     // Determine turn direction from path difference
                     bool positiveOffset = pathDiff > 0;
-                    _isTurnLeft = positiveOffset ^ _isHeadingSameWay;
-                    _wasHeadingSameWayAtTurnStart = _isHeadingSameWay;
-                    NextTrackTurnOffset = Math.Abs(pathDiff) * widthMinusOverlap;
+                    State.YouTurn.IsTurnLeft = positiveOffset ^ State.Guidance.IsHeadingSameWay;
+                    State.YouTurn.WasHeadingSameWayAtTurnStart = State.Guidance.IsHeadingSameWay;
+                    State.YouTurn.NextTrackTurnOffset = Math.Abs(pathDiff) * widthMinusOverlap;
 
                     // Build next track at exact offset
                     var refA = track.Points[0];
@@ -385,22 +346,22 @@ public partial class MainViewModel
                     {
                         double offsetE = Math.Sin(perpAngle) * nextDistAway;
                         double offsetN = Math.Cos(perpAngle) * nextDistAway;
-                        _nextTrack = Track.FromABLine($"Path {nextPath.Value}",
+                        State.YouTurn.NextTrack = Track.FromABLine($"Path {nextPath.Value}",
                             new Vec3(refA.Easting + offsetE, refA.Northing + offsetN, abHeading),
                             new Vec3(refB.Easting + offsetE, refB.Northing + offsetN, abHeading));
                     }
                     else
                     {
                         var offsetPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(track.Points, nextDistAway);
-                        _nextTrack = Track.FromCurve($"Path {nextPath.Value}", offsetPoints, track.IsClosed);
+                        State.YouTurn.NextTrack = Track.FromCurve($"Path {nextPath.Value}", offsetPoints, track.IsClosed);
                     }
-                    _nextTrack.IsActive = false;
+                    State.YouTurn.NextTrack.IsActive = false;
 
                     // Store target for CompleteYouTurn
-                    _returnPassTargetPath = nextPath.Value;
+                    State.YouTurn.ReturnPassTargetPath = nextPath.Value;
 
-                    _logger.LogDebug($"[YouTurn] Snake: path {_howManyPathsAway} -> {nextPath.Value} (diff={pathDiff}, offset={nextDistAway:F1}m, turnLeft={_isTurnLeft})");
-                    _mapService.SetNextTrack(_nextTrack);
+                    _logger.LogDebug($"[YouTurn] Snake: path {State.Guidance.HowManyPathsAway} -> {nextPath.Value} (diff={pathDiff}, offset={nextDistAway:F1}m, turnLeft={State.YouTurn.IsTurnLeft})");
+                    _mapService.SetNextTrack(State.YouTurn.NextTrack);
                     _mapService.SetIsInYouTurn(true);
                     CreateYouTurnPath(currentPosition, headingRadians, abHeading);
                 }
@@ -417,9 +378,9 @@ public partial class MainViewModel
                 _logger.LogDebug($"[YouTurn] Creating turn? nextLineInside={nextLineInside}");
                 if (nextLineInside)
                 {
-                    _logger.LogDebug($"[YouTurn] Creating turn path at {_distanceToHeadland:F1}m from headland");
-                    _isTurnLeft = _isHeadingSameWay;
-                    _wasHeadingSameWayAtTurnStart = _isHeadingSameWay;
+                    _logger.LogDebug($"[YouTurn] Creating turn path at {State.YouTurn.DistanceToHeadland:F1}m from headland");
+                    State.YouTurn.IsTurnLeft = State.Guidance.IsHeadingSameWay;
+                    State.YouTurn.WasHeadingSameWayAtTurnStart = State.Guidance.IsHeadingSameWay;
                     ComputeNextTrack(track, abHeading);
                     CreateYouTurnPath(currentPosition, headingRadians, abHeading);
                 }
@@ -431,9 +392,9 @@ public partial class MainViewModel
             }
         }
         // TURN TRIGGER: When path is ready, trigger when close to turn start point
-        else if (_youTurnPath != null && _youTurnPath.Count > 2 && !_isYouTurnTriggered && !_isInYouTurn)
+        else if (State.YouTurn.TurnPath != null && State.YouTurn.TurnPath.Count > 2 && !State.YouTurn.IsTriggered && !State.YouTurn.IsExecuting)
         {
-            var turnStart = _youTurnPath[0];
+            var turnStart = State.YouTurn.TurnPath[0];
             double distToTurnStart = Math.Sqrt(
                 Math.Pow(currentPosition.Easting - turnStart.Easting, 2) +
                 Math.Pow(currentPosition.Northing - turnStart.Northing, 2));
@@ -443,27 +404,27 @@ public partial class MainViewModel
             {
                 State.YouTurn.IsTriggered = true;
                 State.YouTurn.IsExecuting = true;
-                _isYouTurnTriggered = true;
-                _isInYouTurn = true;
+                State.YouTurn.IsTriggered = true;
+                State.YouTurn.IsExecuting = true;
                 StatusMessage = "YouTurn triggered!";
                 _logger.LogDebug($"[YouTurn] Triggered at {distToTurnStart:F2}m from turn start");
             }
         }
         // RESET: If entered headland with untriggered turn, reset (drove past turn start)
-        else if (_youTurnPath != null && !_isYouTurnTriggered && isInHeadlandZone)
+        else if (State.YouTurn.TurnPath != null && !State.YouTurn.IsTriggered && isInHeadlandZone)
         {
             _logger.LogDebug("[YouTurn] Entered headland without triggering - resetting turn");
-            _youTurnPath = null;
-            _nextTrack = null;
+            State.YouTurn.TurnPath = null;
+            State.YouTurn.NextTrack = null;
             _mapService.SetYouTurnPath(null);
             _mapService.SetNextTrack(null);
         }
 
         // Check if U-turn is complete (vehicle reached end of turn path)
-        if (_isInYouTurn && _youTurnPath != null && _youTurnPath.Count > 2)
+        if (State.YouTurn.IsExecuting && State.YouTurn.TurnPath != null && State.YouTurn.TurnPath.Count > 2)
         {
-            var startPoint = _youTurnPath[0];
-            var endPoint = _youTurnPath[_youTurnPath.Count - 1];
+            var startPoint = State.YouTurn.TurnPath[0];
+            var endPoint = State.YouTurn.TurnPath[State.YouTurn.TurnPath.Count - 1];
 
             double distToTurnStart = Math.Sqrt(
                 Math.Pow(currentPosition.Easting - startPoint.Easting, 2) +
@@ -495,18 +456,18 @@ public partial class MainViewModel
             return true; // Invalid track, assume OK
 
         // Calculate next path offset using SAME logic as ComputeNextTrack
-        // Normal turn: _isTurnLeft = _isHeadingSameWay, so positiveOffset = false (always negative)
-        // This matches ComputeNextTrack's XOR: _isTurnLeft ^ _isHeadingSameWay
+        // Normal turn: State.YouTurn.IsTurnLeft = State.Guidance.IsHeadingSameWay, so positiveOffset = false (always negative)
+        // This matches ComputeNextTrack's XOR: State.YouTurn.IsTurnLeft ^ State.Guidance.IsHeadingSameWay
         int rowSkipWidth = UTurnSkipRows;
         int pathsToMove = rowSkipWidth + 1;
-        bool positiveOffset = false; // _isHeadingSameWay ^ _isHeadingSameWay = false
+        bool positiveOffset = false; // State.Guidance.IsHeadingSameWay ^ State.Guidance.IsHeadingSameWay = false
         int offsetChange = positiveOffset ? pathsToMove : -pathsToMove;
-        int nextPathsAway = _howManyPathsAway + offsetChange;
+        int nextPathsAway = State.Guidance.HowManyPathsAway + offsetChange;
 
         double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
         double nextDistAway = widthMinusOverlap * nextPathsAway;
 
-        _logger.LogDebug($"[NextTrack] currentPath={_howManyPathsAway}, nextPath={nextPathsAway}, dist={nextDistAway:F1}m");
+        _logger.LogDebug($"[NextTrack] currentPath={State.Guidance.HowManyPathsAway}, nextPath={nextPathsAway}, dist={nextDistAway:F1}m");
 
         // Use same perpAngle as ComputeNextTrack (always + PI/2, sign in distance)
         var pointA = currentTrack.Points[0];
@@ -539,7 +500,7 @@ public partial class MainViewModel
         var pointB = currentTrack.Points[currentTrack.Points.Count - 1];
 
         double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-        int targetPath = _howManyPathsAway + (positiveDirection ? pathsToMove : -pathsToMove);
+        int targetPath = State.Guidance.HowManyPathsAway + (positiveDirection ? pathsToMove : -pathsToMove);
         double offsetDistance = widthMinusOverlap * targetPath;
 
         // Perpendicular offset from reference track
@@ -683,23 +644,23 @@ public partial class MainViewModel
         int pathsToMove = rowSkipWidth + 1;  // skip=0 moves 1 path, skip=1 moves 2 paths, etc.
 
         // Calculate offset direction using XOR
-        bool positiveOffset = _isTurnLeft ^ _isHeadingSameWay;
+        bool positiveOffset = State.YouTurn.IsTurnLeft ^ State.Guidance.IsHeadingSameWay;
 
         // Skip-worked mode: find next unworked path instead of fixed skip
         if (_isSkipWorkedMode && SelectedTrack != null)
         {
-            pathsToMove = GetNextUnworkedPathSkip(_howManyPathsAway, positiveOffset, pathsToMove);
+            pathsToMove = GetNextUnworkedPathSkip(State.Guidance.HowManyPathsAway, positiveOffset, pathsToMove);
         }
 
         int offsetChange = positiveOffset ? pathsToMove : -pathsToMove;
-        int nextPathsAway = _howManyPathsAway + offsetChange;
+        int nextPathsAway = State.Guidance.HowManyPathsAway + offsetChange;
 
         // Calculate the total offset for the next line
         double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
         double nextDistAway = widthMinusOverlap * nextPathsAway;
 
         // Save the perpendicular turn offset (always positive - direction handled by IsTurnLeft)
-        NextTrackTurnOffset = Math.Abs(pathsToMove * widthMinusOverlap);
+        State.YouTurn.NextTrackTurnOffset = Math.Abs(pathsToMove * widthMinusOverlap);
 
         // Check if this is an AB line (2 points) or a curve (>2 points)
         if (referenceTrack.Points.Count == 2)
@@ -709,7 +670,7 @@ public partial class MainViewModel
             double offsetEasting = Math.Sin(perpAngle) * nextDistAway;
             double offsetNorthing = Math.Cos(perpAngle) * nextDistAway;
 
-            _nextTrack = Track.FromABLine(
+            State.YouTurn.NextTrack = Track.FromABLine(
                 $"Path {nextPathsAway}",
                 new Vec3(refPointA.Easting + offsetEasting, refPointA.Northing + offsetNorthing, abHeading),
                 new Vec3(refPointB.Easting + offsetEasting, refPointB.Northing + offsetNorthing, abHeading));
@@ -719,19 +680,19 @@ public partial class MainViewModel
             // Curve: Create clean offset curve that handles self-intersections on tight curves
             var offsetPoints = CurveProcessing.CreateOffsetCurve(referenceTrack.Points, nextDistAway);
 
-            _nextTrack = Track.FromCurve(
+            State.YouTurn.NextTrack = Track.FromCurve(
                 $"Path {nextPathsAway}",
                 offsetPoints,
                 referenceTrack.IsClosed);
         }
-        _nextTrack.IsActive = false;
+        State.YouTurn.NextTrack.IsActive = false;
 
-        _logger.LogDebug($"[YouTurn] Turn {(_isTurnLeft ? "LEFT" : "RIGHT")}, heading {(_isHeadingSameWay ? "SAME" : "OPPOSITE")} way");
-        _logger.LogDebug($"[YouTurn] Offset {(positiveOffset ? "positive" : "negative")}: path {_howManyPathsAway} -> {nextPathsAway} ({nextDistAway:F1}m)");
+        _logger.LogDebug($"[YouTurn] Turn {(State.YouTurn.IsTurnLeft ? "LEFT" : "RIGHT")}, heading {(State.Guidance.IsHeadingSameWay ? "SAME" : "OPPOSITE")} way");
+        _logger.LogDebug($"[YouTurn] Offset {(positiveOffset ? "positive" : "negative")}: path {State.Guidance.HowManyPathsAway} -> {nextPathsAway} ({nextDistAway:F1}m)");
         _logger.LogDebug($"[YouTurn] Next track type: {(referenceTrack.Points.Count == 2 ? "AB Line" : $"Curve with {referenceTrack.Points.Count} points")}");
 
         // Update map visualization
-        _mapService.SetNextTrack(_nextTrack);
+        _mapService.SetNextTrack(State.YouTurn.NextTrack);
         _mapService.SetIsInYouTurn(true);
     }
 
@@ -741,18 +702,18 @@ public partial class MainViewModel
     private void CompleteYouTurn()
     {
         // Guard against double-calling (can be triggered from both ProcessYouTurn and CalculateYouTurnGuidance)
-        if (!_isInYouTurn)
+        if (!State.YouTurn.IsExecuting)
         {
             _logger.LogDebug("[YouTurn] CompleteYouTurn called but not in turn - ignoring");
             return;
         }
 
         // If target path was set (by snake sequence or boundary-hit block), jump directly to it
-        if (_returnPassTargetPath.HasValue)
+        if (State.YouTurn.ReturnPassTargetPath.HasValue)
         {
-            _logger.LogDebug($"[YouTurn] Turn complete! Jumping to path {_returnPassTargetPath.Value} (was {_howManyPathsAway})");
-            _howManyPathsAway = _returnPassTargetPath.Value;
-            _returnPassTargetPath = null;
+            _logger.LogDebug($"[YouTurn] Turn complete! Jumping to path {State.YouTurn.ReturnPassTargetPath.Value} (was {State.Guidance.HowManyPathsAway})");
+            State.Guidance.HowManyPathsAway = State.YouTurn.ReturnPassTargetPath.Value;
+            State.YouTurn.ReturnPassTargetPath = null;
             AdvanceSnakeSequence();
         }
         else
@@ -761,41 +722,41 @@ public partial class MainViewModel
             int rowSkipWidth = UTurnSkipRows;
             int pathsToMove = rowSkipWidth + 1;
 
-            // IMPORTANT: Use _wasHeadingSameWayAtTurnStart (saved at turn creation), NOT _isHeadingSameWay
+            // IMPORTANT: Use State.YouTurn.WasHeadingSameWayAtTurnStart (saved at turn creation), NOT State.Guidance.IsHeadingSameWay
             // (which has now flipped because we completed a 180° turn)
-            bool positiveOffset = _isTurnLeft ^ _wasHeadingSameWayAtTurnStart;
+            bool positiveOffset = State.YouTurn.IsTurnLeft ^ State.YouTurn.WasHeadingSameWayAtTurnStart;
 
             // Skip-worked mode: find next unworked path
             if (_isSkipWorkedMode && SelectedTrack != null)
             {
-                pathsToMove = GetNextUnworkedPathSkip(_howManyPathsAway, positiveOffset, pathsToMove);
+                pathsToMove = GetNextUnworkedPathSkip(State.Guidance.HowManyPathsAway, positiveOffset, pathsToMove);
             }
 
             int offsetChange = positiveOffset ? pathsToMove : -pathsToMove;
-            _howManyPathsAway += offsetChange;
+            State.Guidance.HowManyPathsAway += offsetChange;
 
             _logger.LogDebug($"[YouTurn] Turn complete! Normal: offset {(positiveOffset ? "positive" : "negative")} by {offsetChange}");
         }
 
-        _logger.LogDebug($"[YouTurn] Now on path {_howManyPathsAway} ({(ConfigStore.ActualToolWidth - Tool.Overlap) * _howManyPathsAway:F1}m from reference)");
-        _logger.LogDebug($"[YouTurn] Total offset: {(ConfigStore.ActualToolWidth - Tool.Overlap) * _howManyPathsAway:F1}m from reference line");
+        _logger.LogDebug($"[YouTurn] Now on path {State.Guidance.HowManyPathsAway} ({(ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway:F1}m from reference)");
+        _logger.LogDebug($"[YouTurn] Total offset: {(ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway:F1}m from reference line");
 
         // Remember this turn direction for alternating pattern
-        _lastTurnWasLeft = _isTurnLeft;
+        State.YouTurn.LastTurnWasLeft = State.YouTurn.IsTurnLeft;
 
         // Update centralized state
-        State.YouTurn.LastTurnWasLeft = _isTurnLeft;
+        State.YouTurn.LastTurnWasLeft = State.YouTurn.IsTurnLeft;
         State.YouTurn.HasCompletedFirstTurn = true;
         State.YouTurn.IsTriggered = false;
         State.YouTurn.IsExecuting = false;
         State.YouTurn.TurnPath = null;
 
         // Clear the U-turn state
-        _isYouTurnTriggered = false;
-        _isInYouTurn = false;
-        _youTurnPath = null;
-        _nextTrack = null;
-        _youTurnCounter = 10; // Keep high so next U-turn path is created when conditions are met
+        State.YouTurn.IsTriggered = false;
+        State.YouTurn.IsExecuting = false;
+        State.YouTurn.TurnPath = null;
+        State.YouTurn.NextTrack = null;
+        State.YouTurn.YouTurnCounter = 10; // Keep high so next U-turn path is created when conditions are met
 
         // CRITICAL: Reset guidance state to force global search on new offset track
         // Without this, the guidance uses the old CurrentLocationIndex which points to
@@ -811,7 +772,7 @@ public partial class MainViewModel
         // Sync updated pass number to pipeline so guidance targets the new track
         SyncGuidanceStateToPipeline();
 
-        StatusMessage = $"Following path {_howManyPathsAway} ({(ConfigStore.ActualToolWidth - Tool.Overlap) * Math.Abs(_howManyPathsAway):F1}m offset)";
+        StatusMessage = $"Following path {State.Guidance.HowManyPathsAway} ({(ConfigStore.ActualToolWidth - Tool.Overlap) * Math.Abs(State.Guidance.HowManyPathsAway):F1}m offset)";
     }
 
     /// <summary>
@@ -886,19 +847,19 @@ public partial class MainViewModel
 
         // Rotate the sequence so it starts from the current path.
         // The tractor may start anywhere in the field, not necessarily at path 0.
-        int currentIdx = fullSequence.IndexOf(_howManyPathsAway);
+        int currentIdx = fullSequence.IndexOf(State.Guidance.HowManyPathsAway);
         if (currentIdx > 0)
         {
             // Take everything from currentIdx onward, then wrap the beginning
-            _snakeSequence = fullSequence.Skip(currentIdx).Concat(fullSequence.Take(currentIdx)).ToList();
+            State.YouTurn.SnakeSequence = fullSequence.Skip(currentIdx).Concat(fullSequence.Take(currentIdx)).ToList();
         }
         else
         {
-            _snakeSequence = fullSequence;
+            State.YouTurn.SnakeSequence = fullSequence;
         }
-        _snakeIndex = 0; // Always start at the beginning of the rotated sequence
+        State.YouTurn.SnakeIndex = 0; // Always start at the beginning of the rotated sequence
 
-        _logger.LogDebug($"[YouTurn] Built snake sequence (rotated from path {_howManyPathsAway}): [{string.Join(", ", _snakeSequence)}]");
+        _logger.LogDebug($"[YouTurn] Built snake sequence (rotated from path {State.Guidance.HowManyPathsAway}): [{string.Join(", ", State.YouTurn.SnakeSequence)}]");
     }
 
     /// <summary>
@@ -907,12 +868,12 @@ public partial class MainViewModel
     /// </summary>
     private int? GetNextSnakePath()
     {
-        if (_snakeSequence == null || _snakeIndex < 0) return null;
+        if (State.YouTurn.SnakeSequence == null || State.YouTurn.SnakeIndex < 0) return null;
 
-        int nextIndex = _snakeIndex + 1;
-        if (nextIndex >= _snakeSequence.Count) return null; // Field complete
+        int nextIndex = State.YouTurn.SnakeIndex + 1;
+        if (nextIndex >= State.YouTurn.SnakeSequence.Count) return null; // Field complete
 
-        return _snakeSequence[nextIndex];
+        return State.YouTurn.SnakeSequence[nextIndex];
     }
 
     /// <summary>
@@ -920,10 +881,10 @@ public partial class MainViewModel
     /// </summary>
     private void AdvanceSnakeSequence()
     {
-        if (_snakeSequence != null && _snakeIndex < _snakeSequence.Count - 1)
+        if (State.YouTurn.SnakeSequence != null && State.YouTurn.SnakeIndex < State.YouTurn.SnakeSequence.Count - 1)
         {
-            _snakeIndex++;
-            _logger.LogDebug($"[YouTurn] Snake advanced to index {_snakeIndex}: path {_snakeSequence[_snakeIndex]}");
+            State.YouTurn.SnakeIndex++;
+            _logger.LogDebug($"[YouTurn] Snake advanced to index {State.YouTurn.SnakeIndex}: path {State.YouTurn.SnakeSequence[State.YouTurn.SnakeIndex]}");
         }
     }
 
@@ -966,10 +927,10 @@ public partial class MainViewModel
         }
 
         // Debug: Log periodically to see what's happening
-        if (_youTurnCounter % 120 == 0)
+        if (State.YouTurn.YouTurnCounter % 120 == 0)
         {
             double headingDeg = headingRadians * 180.0 / Math.PI;
-            _logger.LogDebug($"[Headland] Raycast: pos=({pos.Easting:F1},{pos.Northing:F1}), heading={headingDeg:F0}°, intersections={intersectionCount}, minDist={minDistance:F1}m, isHeadingSameWay={_isHeadingSameWay}");
+            _logger.LogDebug($"[Headland] Raycast: pos=({pos.Easting:F1},{pos.Northing:F1}), heading={headingDeg:F0}°, intersections={intersectionCount}, minDist={minDistance:F1}m, isHeadingSameWay={State.Guidance.IsHeadingSameWay}");
         }
 
         return minDistance;
@@ -1036,9 +997,9 @@ public partial class MainViewModel
         if (track == null || _currentHeadlandLine == null) return;
 
         // Turn direction was already set before ComputeNextTrack was called
-        bool turnLeft = _isTurnLeft;
+        bool turnLeft = State.YouTurn.IsTurnLeft;
 
-        _logger.LogDebug($"[YouTurn] Creating turn with YouTurnCreationService: direction={(_isTurnLeft ? "LEFT" : "RIGHT")}, isHeadingSameWay={_isHeadingSameWay}, pathsAway={_howManyPathsAway}");
+        _logger.LogDebug($"[YouTurn] Creating turn with YouTurnCreationService: direction={(State.YouTurn.IsTurnLeft ? "LEFT" : "RIGHT")}, isHeadingSameWay={State.Guidance.IsHeadingSameWay}, pathsAway={State.Guidance.HowManyPathsAway}");
 
         // Build the YouTurnCreationInput with proper boundary wiring
         var input = BuildYouTurnCreationInput(currentPosition, headingRadians, abHeading, turnLeft);
@@ -1075,9 +1036,9 @@ public partial class MainViewModel
                 if (fallbackPath != null && fallbackPath.Count > 10)
                 {
                     State.YouTurn.TurnPath = fallbackPath;
-                    _youTurnPath = fallbackPath;
-                    _youTurnCounter = 0;
-                    _mapService.SetYouTurnPath(_youTurnPath.Select(p => (p.Easting, p.Northing)).ToList());
+                    State.YouTurn.TurnPath = fallbackPath;
+                    State.YouTurn.YouTurnCounter = 0;
+                    _mapService.SetYouTurnPath(State.YouTurn.TurnPath.Select(p => (p.Easting, p.Northing)).ToList());
                 }
                 return;
             }
@@ -1105,12 +1066,12 @@ public partial class MainViewModel
             }
 
             State.YouTurn.TurnPath = path;
-            _youTurnPath = path;
-            _youTurnCounter = 0;
+            State.YouTurn.TurnPath = path;
+            State.YouTurn.YouTurnCounter = 0;
             StatusMessage = $"YouTurn path created ({path.Count} points)";
             _logger.LogDebug($"[YouTurn] Path created with {path.Count} points");
 
-            _mapService.SetYouTurnPath(_youTurnPath.Select(p => (p.Easting, p.Northing)).ToList());
+            _mapService.SetYouTurnPath(State.YouTurn.TurnPath.Select(p => (p.Easting, p.Northing)).ToList());
         }
         else
         {
@@ -1119,9 +1080,9 @@ public partial class MainViewModel
             if (fallbackPath != null && fallbackPath.Count > 10)
             {
                 State.YouTurn.TurnPath = fallbackPath;
-                _youTurnPath = fallbackPath;
-                _youTurnCounter = 0;
-                _mapService.SetYouTurnPath(_youTurnPath.Select(p => (p.Easting, p.Northing)).ToList());
+                State.YouTurn.TurnPath = fallbackPath;
+                State.YouTurn.YouTurnCounter = 0;
+                _mapService.SetYouTurnPath(State.YouTurn.TurnPath.Select(p => (p.Easting, p.Northing)).ToList());
             }
         }
     }
@@ -1137,7 +1098,7 @@ public partial class MainViewModel
 
         // Create the current offset track (same logic as guidance)
         double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-        double offsetDistance = _howManyPathsAway * widthMinusOverlap;
+        double offsetDistance = State.Guidance.HowManyPathsAway * widthMinusOverlap;
 
         List<Vec3> searchPoints;
         if (Math.Abs(offsetDistance) < 0.01)
@@ -1184,7 +1145,7 @@ public partial class MainViewModel
                                       h1.Easting, h1.Northing, h2.Easting, h2.Northing))
                 {
                     // Found intersection - return the track heading at this segment
-                    _logger.LogDebug($"[YouTurn] Found headland intersection on offset track (path {_howManyPathsAway}) at index {i}, heading={p1.Heading * 180 / Math.PI:F1}°");
+                    _logger.LogDebug($"[YouTurn] Found headland intersection on offset track (path {State.Guidance.HowManyPathsAway}) at index {i}, heading={p1.Heading * 180 / Math.PI:F1}°");
                     return p1.Heading;
                 }
             }
@@ -1349,13 +1310,13 @@ public partial class MainViewModel
             // AB line guidance data
             // For curves, use the track heading at the headland intersection, not at vehicle position
             ABHeading = track.Points.Count > 2
-                ? FindTrackHeadingAtHeadland(track, new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians), _isHeadingSameWay)
+                ? FindTrackHeadingAtHeadland(track, new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians), State.Guidance.IsHeadingSameWay)
                 : abHeading,
             // Calculate reference point on the CURRENT track near the vehicle position
             // (not at the extended endpoints which could be kilometers away)
             ABReferencePoint = CalculateCurrentTrackReferencePoint(track, toolWidth, abHeading,
                 new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians)),
-            IsHeadingSameWay = _isHeadingSameWay,
+            IsHeadingSameWay = State.Guidance.IsHeadingSameWay,
 
             // Vehicle position and configuration
             PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians),
@@ -1365,15 +1326,15 @@ public partial class MainViewModel
             TurnRadius = Guidance.UTurnRadius,
 
             // Turn parameters - use pre-calculated offset from ComputeNextTrack (matches cyan line exactly)
-            TurnOffset = NextTrackTurnOffset,
+            TurnOffset = State.YouTurn.NextTrackTurnOffset,
             RowSkipsWidth = UTurnSkipRows, // Kept for fallback/logging
             TurnStartOffset = 0,
-            HowManyPathsAway = _howManyPathsAway,
+            HowManyPathsAway = State.Guidance.HowManyPathsAway,
             NudgeDistance = 0.0,
             TrackMode = 0, // Standard mode
 
             // State machine
-            MakeUTurnCounter = _youTurnCounter + 10, // Ensure we pass the throttle check
+            MakeUTurnCounter = State.YouTurn.YouTurnCounter + 10, // Ensure we pass the throttle check
 
             // Leg length - use user's UTurnExtension setting directly
             LegLength = Guidance.UTurnExtension,
@@ -1400,7 +1361,7 @@ public partial class MainViewModel
 
         // First, create the current offset track (same logic as in guidance)
         double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-        double offsetDistance = _howManyPathsAway * widthMinusOverlap;
+        double offsetDistance = State.Guidance.HowManyPathsAway * widthMinusOverlap;
 
         Track currentOffsetTrack;
         if (Math.Abs(offsetDistance) < 0.01)
@@ -1415,7 +1376,7 @@ public partial class MainViewModel
 
             currentOffsetTrack = new Track
             {
-                Name = $"Current path {_howManyPathsAway}",
+                Name = $"Current path {State.Guidance.HowManyPathsAway}",
                 Points = offsetPoints,
                 Type = track.Type,
                 IsVisible = false,
@@ -1424,10 +1385,10 @@ public partial class MainViewModel
         }
 
         // Now find where the OFFSET TRACK crosses the headland (no additional offset needed)
-        var intersection = FindTrackHeadlandIntersectionAhead(currentOffsetTrack, vehiclePosition, _isHeadingSameWay);
+        var intersection = FindTrackHeadlandIntersectionAhead(currentOffsetTrack, vehiclePosition, State.Guidance.IsHeadingSameWay);
         if (intersection.HasValue)
         {
-            _logger.LogDebug($"[YouTurn] Reference point: offset track (path {_howManyPathsAway}) crosses headland at ({intersection.Value.Easting:F1}, {intersection.Value.Northing:F1})");
+            _logger.LogDebug($"[YouTurn] Reference point: offset track (path {State.Guidance.HowManyPathsAway}) crosses headland at ({intersection.Value.Easting:F1}, {intersection.Value.Northing:F1})");
             return intersection.Value;
         }
 
@@ -1452,7 +1413,7 @@ public partial class MainViewModel
         double projEasting = ptA.Easting + t * abE;
         double projNorthing = ptA.Northing + t * abN;
 
-        _logger.LogDebug($"[YouTurn] Reference point: fallback to vehicle projection on offset track, path={_howManyPathsAway}");
+        _logger.LogDebug($"[YouTurn] Reference point: fallback to vehicle projection on offset track, path={State.Guidance.HowManyPathsAway}");
 
         return new Vec2(projEasting, projNorthing);
     }
@@ -1600,11 +1561,11 @@ public partial class MainViewModel
     {
         var path = new List<Vec3>();
 
-        // Parameters - use the pre-calculated NextTrackTurnOffset which matches the cyan "next track" line
+        // Parameters - use the pre-calculated State.YouTurn.NextTrackTurnOffset which matches the cyan "next track" line
         double pointSpacing = 0.5; // meters between path points
-        double turnOffset = NextTrackTurnOffset; // Use pre-calculated offset to match cyan line exactly
+        double turnOffset = State.YouTurn.NextTrackTurnOffset; // Use pre-calculated offset to match cyan line exactly
 
-        // Fallback if NextTrackTurnOffset wasn't set
+        // Fallback if State.YouTurn.NextTrackTurnOffset wasn't set
         if (turnOffset < 0.1)
         {
             int rowSkipWidth = UTurnSkipRows;
@@ -1632,7 +1593,7 @@ public partial class MainViewModel
 
         // Get the heading we're traveling (adjusted for same/opposite to AB)
         double travelHeading = abHeading;
-        if (!_isHeadingSameWay)
+        if (!State.Guidance.IsHeadingSameWay)
         {
             travelHeading += Math.PI;
             if (travelHeading >= Math.PI * 2) travelHeading -= Math.PI * 2;
@@ -1646,7 +1607,7 @@ public partial class MainViewModel
         double perpAngle = turnLeft ? (travelHeading - Math.PI / 2) : (travelHeading + Math.PI / 2);
 
         // Calculate the headland boundary point on CURRENT track
-        double distToHeadland = _distanceToHeadland;
+        double distToHeadland = State.YouTurn.DistanceToHeadland;
         double headlandBoundaryEasting = currentPosition.Easting + Math.Sin(travelHeading) * distToHeadland;
         double headlandBoundaryNorthing = currentPosition.Northing + Math.Cos(travelHeading) * distToHeadland;
 

@@ -219,7 +219,7 @@ public partial class MainViewModel
         UpdateAutoTrackSelection(data.CurrentPosition);
 
         // YouTurn creation/trigger logic stays in ViewModel for now (user-command driven,
-        // needs access to SelectedTrack, _howManyPathsAway, etc.)
+        // needs access to SelectedTrack, State.Guidance.HowManyPathsAway, etc.)
         // The pipeline handles YouTurn *guidance* once a path is set.
         double driftedEasting = posEasting + State.Field.DriftEasting;
         double driftedNorthing = posNorthing + State.Field.DriftNorthing;
@@ -232,7 +232,7 @@ public partial class MainViewModel
                 Northing = driftedNorthing
             };
 
-            _youTurnCounter++;
+            State.YouTurn.YouTurnCounter++;
 
             // YouTurn state machine: create paths, trigger turns, detect completion
             if (IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
@@ -242,7 +242,7 @@ public partial class MainViewModel
 
             // Sync YouTurn state to pipeline so it knows whether to use YouTurn guidance
             _gpsPipelineService.SetYouTurnState(
-                _isYouTurnTriggered, _isInYouTurn, _youTurnPath);
+                State.YouTurn.IsTriggered, State.YouTurn.IsExecuting, State.YouTurn.TurnPath);
         }
     }
 
@@ -427,7 +427,7 @@ public partial class MainViewModel
             && CurrentBoundary?.OuterBoundary != null;
 
         _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
-        _gpsPipelineService.SetActiveTrack(track, _howManyPathsAway, _nudgeOffset, isOnBoundary);
+        _gpsPipelineService.SetActiveTrack(track, State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset, isOnBoundary);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);

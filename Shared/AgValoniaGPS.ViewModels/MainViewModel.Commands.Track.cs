@@ -44,12 +44,12 @@ public partial class MainViewModel
                 StatusMessage = "No track selected";
                 return;
             }
-            _howManyPathsAway -= _isHeadingSameWay ? 1 : -1;
-            _nudgeOffset = 0;
+            State.Guidance.HowManyPathsAway -= State.Guidance.IsHeadingSameWay ? 1 : -1;
+            State.Guidance.NudgeOffset = 0;
             _trackGuidanceState = null;
             SyncGuidanceStateToPipeline();
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            StatusMessage = $"Snapped left to path {_howManyPathsAway} ({Math.Abs(widthMinusOverlap * _howManyPathsAway):F1}m offset)";
+            StatusMessage = $"Snapped left to path {State.Guidance.HowManyPathsAway} ({Math.Abs(widthMinusOverlap * State.Guidance.HowManyPathsAway):F1}m offset)";
         });
 
         SnapRightCommand = new RelayCommand(() =>
@@ -59,12 +59,12 @@ public partial class MainViewModel
                 StatusMessage = "No track selected";
                 return;
             }
-            _howManyPathsAway += _isHeadingSameWay ? 1 : -1;
-            _nudgeOffset = 0;
+            State.Guidance.HowManyPathsAway += State.Guidance.IsHeadingSameWay ? 1 : -1;
+            State.Guidance.NudgeOffset = 0;
             _trackGuidanceState = null;
             SyncGuidanceStateToPipeline();
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            StatusMessage = $"Snapped right to path {_howManyPathsAway} ({Math.Abs(widthMinusOverlap * _howManyPathsAway):F1}m offset)";
+            StatusMessage = $"Snapped right to path {State.Guidance.HowManyPathsAway} ({Math.Abs(widthMinusOverlap * State.Guidance.HowManyPathsAway):F1}m offset)";
         });
 
         StopGuidanceCommand = new RelayCommand(() =>
@@ -655,7 +655,7 @@ public partial class MainViewModel
         ResetNudgeCommand = new RelayCommand(() =>
         {
             if (SelectedTrack == null) return;
-            _nudgeOffset = 0;
+            State.Guidance.NudgeOffset = 0;
             SelectedTrack.NudgeDistance = 0;
             _trackGuidanceState = null;
             SyncGuidanceStateToPipeline();
@@ -724,8 +724,8 @@ public partial class MainViewModel
             IsUTurnSkipRowsEnabled = !IsUTurnSkipRowsEnabled;
             IsSkipWorkedMode = IsUTurnSkipRowsEnabled;
             // Reset snake sequence so it rebuilds on next turn
-            _snakeSequence = null;
-            _snakeIndex = -1;
+            State.YouTurn.SnakeSequence = null;
+            State.YouTurn.SnakeIndex = -1;
             StatusMessage = IsUTurnSkipRowsEnabled
                 ? $"U-Turn skip rows: ON ({UTurnSkipRows} rows, snake pattern)"
                 : "U-Turn skip rows: OFF";
@@ -898,7 +898,7 @@ public partial class MainViewModel
             if (IsAutoSteerEngaged)
             {
                 double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-                _logger.LogDebug($"[NUDGE] AutoSteer ENGAGED: _howManyPathsAway={_howManyPathsAway}, offset={_howManyPathsAway * widthMinusOverlap:F2}m");
+                _logger.LogDebug($"[NUDGE] AutoSteer ENGAGED: State.Guidance.HowManyPathsAway={State.Guidance.HowManyPathsAway}, offset={State.Guidance.HowManyPathsAway * widthMinusOverlap:F2}m");
             }
             SyncGuidanceStateToPipeline();
             StatusMessage = IsAutoSteerEngaged ? "AutoSteer ENGAGED" : "AutoSteer disengaged";
@@ -917,8 +917,8 @@ public partial class MainViewModel
             // Reset track guidance state to force global search for nearest segment
             _trackGuidanceState = null;
             // Reset pass counter, nudge offset, worked paths, and track offset on ALL tracks
-            _howManyPathsAway = 0;
-            _nudgeOffset = 0;
+            State.Guidance.HowManyPathsAway = 0;
+            State.Guidance.NudgeOffset = 0;
             foreach (var track in SavedTracks)
             {
                 track.NudgeDistance = 0;
@@ -959,9 +959,9 @@ public partial class MainViewModel
                     _trackGuidanceState = null;
 
                     // Reset pass counter, nudge offset, and track offset to go back to the original track
-                    _logger.LogDebug("[NUDGE] Resetting _howManyPathsAway from {HowManyPathsAway} to 0, _nudgeOffset from {NudgeOffset:F3} to 0", _howManyPathsAway, _nudgeOffset);
-                    _howManyPathsAway = 0;
-                    _nudgeOffset = 0;
+                    _logger.LogDebug("[NUDGE] Resetting State.Guidance.HowManyPathsAway from {HowManyPathsAway} to 0, State.Guidance.NudgeOffset from {NudgeOffset:F3} to 0", State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset);
+                    State.Guidance.HowManyPathsAway = 0;
+                    State.Guidance.NudgeOffset = 0;
 
                     // Reset NudgeDistance on ALL tracks, not just selected
                     _logger.LogDebug("[NUDGE] Resetting NudgeDistance on {TrackCount} tracks", SavedTracks.Count);
@@ -980,7 +980,7 @@ public partial class MainViewModel
                     }
                     // Save tracks to persist the reset NudgeDistance
                     SaveTracksToFile();
-                    _logger.LogDebug("[NUDGE] Saved tracks to file, _howManyPathsAway is now {HowManyPathsAway}", _howManyPathsAway);
+                    _logger.LogDebug("[NUDGE] Saved tracks to file, State.Guidance.HowManyPathsAway is now {HowManyPathsAway}", State.Guidance.HowManyPathsAway);
 
                     RefreshCoverageStatistics();
                     StatusMessage = "Applied area deleted";
@@ -1558,16 +1558,16 @@ public partial class MainViewModel
         }
 
         // Account for heading direction (like AgOpenGPS)
-        double adjustedDist = _isHeadingSameWay ? distanceMeters : -distanceMeters;
-        _nudgeOffset += adjustedDist;
+        double adjustedDist = State.Guidance.IsHeadingSameWay ? distanceMeters : -distanceMeters;
+        State.Guidance.NudgeOffset += adjustedDist;
 
         // Invalidate guidance state to force recalculation
         _trackGuidanceState = null;
         SyncGuidanceStateToPipeline();
 
-        double totalOffset = (ConfigStore.ActualToolWidth - Tool.Overlap) * _howManyPathsAway + _nudgeOffset;
+        double totalOffset = (ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway + State.Guidance.NudgeOffset;
         _logger.LogDebug("[NUDGE] NudgeTrack: dist={Dist:F3}m (adjusted={Adj:F3}m), nudgeOffset={Offset:F3}m, totalOffset={Total:F3}m",
-            distanceMeters, adjustedDist, _nudgeOffset, totalOffset);
+            distanceMeters, adjustedDist, State.Guidance.NudgeOffset, totalOffset);
 
         StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm (total offset: {totalOffset:F2}m)";
     }

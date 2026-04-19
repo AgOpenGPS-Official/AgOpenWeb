@@ -70,7 +70,7 @@ public partial class MainViewModel
         // Auto-detect nearest pass when autosteer is not engaged
         if (result.NearestPassNumber.HasValue && !_isAutoSteerEngaged)
         {
-            _howManyPathsAway = result.NearestPassNumber.Value;
+            State.Guidance.HowManyPathsAway = result.NearestPassNumber.Value;
             SyncGuidanceStateToPipeline();
         }
 
