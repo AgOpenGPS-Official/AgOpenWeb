@@ -275,8 +275,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double posNorthing = pos.Northing;
 
         if (Math.Abs(posEasting) < 0.001 && Math.Abs(posNorthing) < 0.001
-            && Math.Abs(pos.Latitude) > 0.001)
+            && data.FixQuality > 0)
         {
+            // Auto-create local plane from first GPS fix if none exists
+            if (_appState.Field.LocalPlane == null)
+            {
+                _appState.Field.LocalPlane = new LocalPlane(
+                    new Wgs84(pos.Latitude, pos.Longitude),
+                    new SharedFieldProperties());
+            }
+
             var localPlane = _appState.Field.LocalPlane;
             if (localPlane != null)
             {

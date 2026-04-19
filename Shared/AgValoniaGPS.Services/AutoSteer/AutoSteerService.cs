@@ -122,6 +122,10 @@ public class AutoSteerService : IAutoSteerService
     /// <summary>Sensor reading as percentage (0-100).</summary>
     public double SensorPercent => _sensorPercent;
 
+    /// <inheritdoc/>
+    public VehicleStateSnapshot? LatestSnapshot => _latestSnapshot;
+    private VehicleStateSnapshot? _latestSnapshot;
+
     /// <summary>
     /// Handle incoming UDP data from steering module.
     /// </summary>
@@ -307,6 +311,15 @@ public class AutoSteerService : IAutoSteerService
             return;
         }
 
+        // Auto-create a temporary local plane from first GPS fix
+        // so the tractor moves on screen without opening a field
+        if (_localPlane == null && _state.FixQuality > 0)
+        {
+            _localPlane = new LocalPlane(
+                new Wgs84(_state.Latitude, _state.Longitude),
+                new SharedFieldProperties());
+        }
+
         // Convert to local coordinates if we have a plane
         if (_localPlane != null)
         {
@@ -456,7 +469,9 @@ public class AutoSteerService : IAutoSteerService
 
     private void NotifyStateUpdated()
     {
-        StateUpdated?.Invoke(this, CreateSnapshot());
+        var snapshot = CreateSnapshot();
+        _latestSnapshot = snapshot;
+        StateUpdated?.Invoke(this, snapshot);
     }
 
     private VehicleStateSnapshot CreateSnapshot()
