@@ -311,6 +311,51 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
 
 ---
 
+### TMP-008 — Manual U-turn does not execute when triggered
+
+- **Status:** Open
+- **Raised in:** Phase A (discovered during the acceptance smoke test)
+- **Decide by:** Phase C (before it migrates
+  `TriggerManualYouTurnLeft/Right` onto the intent queue — a buggy
+  starting state makes a migration impossible to verify)
+- **Source:** Phase A smoke test on 2026-04-19 — operator pressed right
+  manual-turn button; a point dropped and a dashed yellow line drew to
+  the front of the tractor, but the tractor stayed on the guidance
+  line instead of turning.
+
+**Why parked.** Pre-existing bug, not a Phase A regression. Verified by
+`git diff develop..feature/threading-phase-a --` over
+`MainViewModel.YouTurn.cs`, `MainViewModel.GpsHandling.cs`,
+`YouTurnStateMachine.cs`, and `MainViewModel.ApplyResults.cs` — zero
+lines changed. Phase A's only runtime effect is a discarded
+`Drain()` call in `GpsPipelineService.ProcessCycle`, with no
+side-effects on any state the YouTurn machine reads.
+
+Two plausible root causes, both pre-existing:
+1. `YouTurnStateMachine.TriggerManual` bails at line 246 when
+   `!isAutoSteerEngaged`, posting status "Enable autosteer first"
+   without creating a path. If auto-steer wasn't engaged during the
+   smoke test, that's working-as-designed — but the user saw a yellow
+   dashed line, which suggests *something* ran. Need to check whether
+   the rendered visual is the turn path, the Pure Pursuit goal-point,
+   or a dropped marker.
+2. Auto-steer was engaged, the path was generated (`SetYouTurnPath`
+   called), but the autosteer loop isn't switching from guidance line
+   to turn path. That would be a bug in the path-follow handoff.
+
+**What the decision is.** Reproduce once with verbose logging on;
+determine which of the two causes applies. Then either (a) confirm
+"enable autosteer first" is the correct behavior and document it, or
+(b) fix the path-follow handoff before Phase C migrates the trigger.
+
+**Review log.**
+- 2026-04-19 — Added during Phase A close after smoke test surfaced
+  the issue. Parked because Phase A had no mandate to fix pre-existing
+  YouTurn bugs, and because Phase C needs to inherit a working manual
+  U-turn to verify its migration doesn't regress it.
+
+---
+
 ## 5. Resolved items
 
 Empty. Items move here on resolution with their final review log
