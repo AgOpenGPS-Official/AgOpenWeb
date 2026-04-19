@@ -16,11 +16,13 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 -->
 
-# Background-Thread State Migration Plan
+# AgValoniaGPS Threading Migration Plan
 
-Fix the AgOpenGPS / WinForms anti-pattern we inherited: shared mutable
-observable state that every thread writes to. Replace it with a strict
-one-way data flow driven by a dedicated background cycle worker.
+The authoritative plan for moving AgValoniaGPS off the AgOpenGPS /
+WinForms threading pattern onto a strict one-way data flow driven by a
+dedicated background cycle worker. Covers both the GPS pipeline
+unification and the domain-state migration — one plan, six phases, one
+threading invariant governing all of them.
 
 ![Ideal threading model](threading_model.svg)
 
@@ -67,14 +69,13 @@ new paint. The cost of a slow tick is different per thread:
 Only the last failure mode is survivable. That's why the cycle worker
 exists and why it must stay.
 
-**Relationship to `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md`:**
-That plan's content is absorbed into **Phase B** of this plan (see §5). The
-unification is correct and necessary — merging the two parsed-NMEA paths
-and collapsing to a single LocalPlane are prerequisites to having a
-coherent single cycle owner. This plan adopts that work but reframes it
-under §0: the unified cycle owner must retain the `Task.Run` handoff so
-cycle work doesn't run on the receive thread. Xyntexx's original plan
-document stays in place for his reference; the work is executed from here.
+**Historical note — `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md`:**
+That plan identified the GPS pipeline duplication (two parsers, two
+LocalPlane instances, split cycle work) and is the origin of Phase B. Its
+content is now owned here, reframed under §0 — the unified cycle owner
+must retain the `Task.Run` handoff so cycle work doesn't run on the
+receive thread. The original document stays in place for Xyntexx's
+reference; the work is executed from this plan.
 
 ---
 

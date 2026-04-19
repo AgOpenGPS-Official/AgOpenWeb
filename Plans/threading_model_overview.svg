@@ -135,14 +135,11 @@
   <!-- UI lane target -->
   <rect x="40" y="1202" width="1320" height="92" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5" rx="8"/>
   <text x="56" y="1222" font-size="12" font-weight="700" fill="#0d47a1">UI thread</text>
-  <rect x="150" y="1230" width="420" height="56" fill="#ffffff" stroke="#1976d2" stroke-width="1" rx="4"/>
-  <text x="360" y="1248" text-anchor="middle" font-size="12" font-weight="600" fill="#0d47a1">render · ApplyGpsCycleResult · user commands</text>
-  <circle cx="170" cy="1272" r="10" fill="#2e7d32"/><text x="170" y="1276" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">4</text>
-  <circle cx="196" cy="1272" r="10" fill="#2e7d32"/><text x="196" y="1276" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">5</text>
-  <text x="216" y="1276" font-size="11" fill="#2e7d32">ApplyGpsCycleResult sole writer · commands push intents (no direct service calls)</text>
-  <rect x="590" y="1230" width="760" height="56" fill="#ffffff" stroke="#1976d2" stroke-width="1" rx="4"/>
-  <text x="970" y="1254" text-anchor="middle" font-size="12" font-weight="600" fill="#0d47a1">no domain logic, no ObservableObject writes from anywhere else</text>
-  <text x="610" y="1272" font-size="11" fill="#1565c0">frame budget preserved; turn-creation spike no longer visible here</text>
+  <rect x="150" y="1230" width="1200" height="56" fill="#ffffff" stroke="#1976d2" stroke-width="1" rx="4"/>
+  <text x="750" y="1250" text-anchor="middle" font-size="12" font-weight="600" fill="#0d47a1">render · ApplyGpsCycleResult · user commands — no domain logic, no ObservableObject writes from elsewhere</text>
+  <circle cx="170" cy="1274" r="10" fill="#2e7d32"/><text x="170" y="1278" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">4</text>
+  <circle cx="196" cy="1274" r="10" fill="#2e7d32"/><text x="196" y="1278" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">5</text>
+  <text x="216" y="1278" font-size="11" fill="#2e7d32">ApplyGpsCycleResult sole writer · commands push intents · frame budget preserved (turn-creation spike no longer visible here)</text>
 
   <!-- Cycle lane target -->
   <rect x="40" y="1304" width="1320" height="92" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5" rx="8"/>
