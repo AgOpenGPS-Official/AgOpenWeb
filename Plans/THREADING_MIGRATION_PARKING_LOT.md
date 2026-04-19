@@ -120,6 +120,9 @@ the UI thread.
 **Review log.**
 - 2026-04-19 — Parked during Phase A planning. Type-level decision made
   (records) that keeps both paths open.
+- 2026-04-19 (Phase A close) — Phase A ships `YouTurnSnapshot` and
+  `GuidanceSnapshot` as records with `IReadOnlyList<T>?` for list fields,
+  which supports either future approach. Still parked; Phase C owns.
 
 ---
 
@@ -149,6 +152,9 @@ Carve-outs are the only sanctioned bypass of the one-way flow.
 **Review log.**
 - 2026-04-19 — Parked during Phase A planning. No commands migrated
   yet.
+- 2026-04-19 (Phase A close) — Still nothing migrated; no commands
+  touched in Phase A. Phase C's plan must open with the carve-out
+  inventory for `TriggerManualYouTurnLeft/Right` and `ClearYouTurnState`.
 
 ---
 
@@ -175,6 +181,10 @@ writing it is bike-shedding.
 - 2026-04-19 — Parked during Phase A planning. The §0 invariant (cycle
   runs on `Task.Run` with `Interlocked` back-pressure) governs
   regardless of name.
+- 2026-04-19 (Phase A close) — Phase A added `IPipelineIntents` and a
+  `Drain()` call inside `GpsPipelineService`, i.e. the existing service
+  accepted a new responsibility cleanly. Weak signal that the name can
+  stay, but Phase B's implementation still decides.
 
 ---
 
@@ -201,6 +211,8 @@ last-wins vs FIFO), the producer/consumer wiring, whether it's a
 **Review log.**
 - 2026-04-19 — Parked during Phase A planning. Phase A uses the
   existing event wiring; no behavior change.
+- 2026-04-19 (Phase A close) — I/O wiring untouched by Phase A, event
+  path intact. Still parked for Phase B.
 
 ---
 
@@ -228,6 +240,12 @@ dead fields in the snapshot).
 **Review log.**
 - 2026-04-19 — Parked during Phase A planning. Owned by Phase C / D
   explicitly in their plans.
+- 2026-04-19 (Phase A close) — Flat fields on `GpsCycleResult` remain
+  (`IsInYouTurn`, `YouTurnTriggered`, `YouTurnCompleted`, `SteerAngle`,
+  `CrossTrackError`, `GoalPointEasting`, `GoalPointNorthing`,
+  `HasGuidance`). New `YouTurn` / `Guidance` snapshot fields sit
+  alongside them as `null` placeholders. No removal in Phase A; still
+  parked.
 
 ---
 
@@ -254,6 +272,9 @@ can miss aliased writes). Or both.
 **Review log.**
 - 2026-04-19 — Parked during Phase A planning. No phase currently
   owns it.
+- 2026-04-19 (Phase A close) — No services migrated in Phase A; the
+  invariant has nothing to enforce yet. Still parked — revisit at the
+  end of Phase C when the first migrated service exists.
 
 ---
 
@@ -278,6 +299,15 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
 **Review log.**
 - 2026-04-19 — Parked during Phase A planning. Trivial but will be
   forgotten if not tracked.
+- 2026-04-19 (Phase A close) — **Baseline captured** at end of Phase A
+  (same commit base Phase C will branch from): `MainViewModel.cs` =
+  5,148 lines, 23 partial files totaling 14,136 lines overall.
+  Notable per-phase targets:
+  - `MainViewModel.YouTurn.cs` = 206 lines (Phase A acceptance target:
+    under 100 lines after Phase C).
+  - `MainViewModel.GpsHandling.cs` = 436 lines (Phase C removes the
+    `YouTurnStateMachine.Tick` call from this file).
+  Phase C's final commit compares against this baseline.
 
 ---
 
