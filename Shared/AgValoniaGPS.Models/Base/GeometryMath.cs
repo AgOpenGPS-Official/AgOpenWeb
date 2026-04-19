@@ -368,6 +368,68 @@ namespace AgValoniaGPS.Models.Base
             return false;
         }
 
+        /// <summary>
+        /// Shortest distance from a point to a finite line segment.
+        /// Degenerate segments (zero length) fall back to point-to-point distance.
+        /// </summary>
+        public static double PointToSegmentDistance(double px, double py, double ax, double ay, double bx, double by)
+        {
+            double dx = bx - ax;
+            double dy = by - ay;
+            double lenSq = dx * dx + dy * dy;
+
+            if (lenSq < 1e-10)
+                return Math.Sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay));
+
+            double t = Math.Max(0, Math.Min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+            double projX = ax + t * dx;
+            double projY = ay + t * dy;
+
+            return Math.Sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
+        }
+
+        /// <summary>
+        /// Shortest distance from a point to a finite line segment (Vec2 overload).
+        /// </summary>
+        public static double PointToSegmentDistance(Vec2 point, Vec2 segA, Vec2 segB)
+            => PointToSegmentDistance(point.Easting, point.Northing,
+                segA.Easting, segA.Northing, segB.Easting, segB.Northing);
+
+        /// <summary>
+        /// True iff the two closed line segments A1-A2 and B1-B2 intersect (endpoints inclusive).
+        /// Collinear (parallel) segments return false.
+        /// </summary>
+        public static bool SegmentsIntersect(double ax1, double ay1, double ax2, double ay2,
+                                             double bx1, double by1, double bx2, double by2)
+        {
+            double d = (ax1 - ax2) * (by1 - by2) - (ay1 - ay2) * (bx1 - bx2);
+            if (Math.Abs(d) < 1e-10) return false;
+
+            double t = ((ax1 - bx1) * (by1 - by2) - (ay1 - by1) * (bx1 - bx2)) / d;
+            double u = -((ax1 - ax2) * (ay1 - by1) - (ay1 - ay2) * (ax1 - bx1)) / d;
+
+            return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+        }
+
+        /// <summary>
+        /// Intersection point of the two closed segments A1-A2 and B1-B2, or null if they
+        /// don't meet (including collinear/parallel cases).
+        /// </summary>
+        public static Vec2? TryGetSegmentIntersection(double ax1, double ay1, double ax2, double ay2,
+                                                      double bx1, double by1, double bx2, double by2)
+        {
+            double d = (ax1 - ax2) * (by1 - by2) - (ay1 - ay2) * (bx1 - bx2);
+            if (Math.Abs(d) < 1e-10) return null;
+
+            double t = ((ax1 - bx1) * (by1 - by2) - (ay1 - by1) * (bx1 - bx2)) / d;
+            double u = -((ax1 - ax2) * (ay1 - by1) - (ay1 - ay2) * (ax1 - bx1)) / d;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
+                return new Vec2(ax1 + t * (ax2 - ax1), ay1 + t * (ay2 - ay1));
+
+            return null;
+        }
+
         #endregion
 
         #region Coordinate Transform (for Segment-Based Coverage)

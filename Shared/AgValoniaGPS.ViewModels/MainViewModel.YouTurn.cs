@@ -103,10 +103,6 @@ public partial class MainViewModel
         _mapService.SetYouTurnPath(null);
         _mapService.SetNextTrack(null);
         _mapService.SetIsInYouTurn(false);
-
-        State.YouTurn.IsTriggered = false;
-        State.YouTurn.IsExecuting = false;
-        State.YouTurn.TurnPath = null;
     }
 
     /// <summary>
@@ -190,8 +186,6 @@ public partial class MainViewModel
         if (State.YouTurn.TurnPath != null && State.YouTurn.TurnPath.Count > 2)
         {
             // Immediately trigger the turn (don't wait for proximity to start point)
-            State.YouTurn.IsTriggered = true;
-            State.YouTurn.IsExecuting = true;
             State.YouTurn.IsTriggered = true;
             State.YouTurn.IsExecuting = true;
             StatusMessage = $"Manual {(turnLeft ? "left" : "right")} U-turn started";
@@ -404,8 +398,6 @@ public partial class MainViewModel
             {
                 State.YouTurn.IsTriggered = true;
                 State.YouTurn.IsExecuting = true;
-                State.YouTurn.IsTriggered = true;
-                State.YouTurn.IsExecuting = true;
                 StatusMessage = "YouTurn triggered!";
                 _logger.LogDebug($"[YouTurn] Triggered at {distToTurnStart:F2}m from turn start");
             }
@@ -518,13 +510,9 @@ public partial class MainViewModel
     /// </summary>
     private bool IsPointInsideCultivatedArea(double easting, double northing)
     {
-        // Use _currentHeadlandLine (the orange line used for zone detection)
         if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
-        {
-            return IsPointInPolygon(_currentHeadlandLine, easting, northing);
-        }
+            return GeometryMath.IsPointInPolygon(_currentHeadlandLine, new Vec2(easting, northing));
 
-        // Fall back to outer boundary if no headland defined
         return IsPointInsideBoundary(easting, northing);
     }
 
@@ -536,27 +524,11 @@ public partial class MainViewModel
         if (_currentBoundary?.OuterBoundary == null || !_currentBoundary.OuterBoundary.IsValid)
             return true;
 
-        var points = _currentBoundary.OuterBoundary.Points;
-        int n = points.Count;
-        bool inside = false;
-
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            var pi = points[i];
-            var pj = points[j];
-
-            if (((pi.Northing > northing) != (pj.Northing > northing)) &&
-                (easting < (pj.Easting - pi.Easting) * (northing - pi.Northing) / (pj.Northing - pi.Northing) + pi.Easting))
-            {
-                inside = !inside;
-            }
-        }
-
-        return inside;
+        return _currentBoundary.OuterBoundary.IsPointInside(easting, northing);
     }
 
     /// <summary>
-    /// Calculate the minimum distance from a point to the boundary polygon.
+    /// Minimum distance from a point to the outer boundary polygon.
     /// </summary>
     private double DistanceToBoundary(double easting, double northing)
     {
@@ -571,33 +543,15 @@ public partial class MainViewModel
             var p1 = points[i];
             var p2 = points[(i + 1) % points.Count];
 
-            // Distance from point to line segment
-            double dist = PointToSegmentDistance(easting, northing, p1.Easting, p1.Northing, p2.Easting, p2.Northing);
+            double dist = GeometryMath.PointToSegmentDistance(
+                easting, northing,
+                p1.Easting, p1.Northing,
+                p2.Easting, p2.Northing);
             if (dist < minDist)
                 minDist = dist;
         }
 
         return minDist;
-    }
-
-    /// <summary>
-    /// Calculate the distance from a point to a line segment.
-    /// </summary>
-    private static double PointToSegmentDistance(double px, double py, double x1, double y1, double x2, double y2)
-    {
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        double lenSq = dx * dx + dy * dy;
-
-        if (lenSq < 0.0001) // Degenerate segment
-            return Math.Sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
-
-        // Project point onto line, clamped to segment
-        double t = Math.Max(0, Math.Min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
-        double projX = x1 + t * dx;
-        double projY = y1 + t * dy;
-
-        return Math.Sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
     }
 
     /// <summary>
@@ -741,17 +695,9 @@ public partial class MainViewModel
         _logger.LogDebug($"[YouTurn] Now on path {State.Guidance.HowManyPathsAway} ({(ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway:F1}m from reference)");
         _logger.LogDebug($"[YouTurn] Total offset: {(ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway:F1}m from reference line");
 
-        // Remember this turn direction for alternating pattern
-        State.YouTurn.LastTurnWasLeft = State.YouTurn.IsTurnLeft;
-
-        // Update centralized state
+        // Remember this turn direction for alternating pattern.
         State.YouTurn.LastTurnWasLeft = State.YouTurn.IsTurnLeft;
         State.YouTurn.HasCompletedFirstTurn = true;
-        State.YouTurn.IsTriggered = false;
-        State.YouTurn.IsExecuting = false;
-        State.YouTurn.TurnPath = null;
-
-        // Clear the U-turn state
         State.YouTurn.IsTriggered = false;
         State.YouTurn.IsExecuting = false;
         State.YouTurn.TurnPath = null;
@@ -945,7 +891,7 @@ public partial class MainViewModel
         // Check if inside headland (cultivated area) first - most common case
         if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
         {
-            if (IsPointInPolygon(_currentHeadlandLine, easting, northing))
+            if (GeometryMath.IsPointInPolygon(_currentHeadlandLine, new Vec2(easting, northing)))
                 return TractorZone.InCultivatedArea;
         }
 
@@ -958,29 +904,6 @@ public partial class MainViewModel
 
         // Outside everything
         return TractorZone.OutsideBoundary;
-    }
-
-    /// <summary>
-    /// Ray casting point-in-polygon test for Vec3 list (headland line).
-    /// </summary>
-    private static bool IsPointInPolygon(List<Vec3> polygon, double easting, double northing)
-    {
-        int n = polygon.Count;
-        bool inside = false;
-
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            var pi = polygon[i];
-            var pj = polygon[j];
-
-            if (((pi.Northing > northing) != (pj.Northing > northing)) &&
-                (easting < (pj.Easting - pi.Easting) * (northing - pi.Northing) / (pj.Northing - pi.Northing) + pi.Easting))
-            {
-                inside = !inside;
-            }
-        }
-
-        return inside;
     }
 
     #endregion
@@ -1036,36 +959,15 @@ public partial class MainViewModel
                 if (fallbackPath != null && fallbackPath.Count > 10)
                 {
                     State.YouTurn.TurnPath = fallbackPath;
-                    State.YouTurn.TurnPath = fallbackPath;
                     State.YouTurn.YouTurnCounter = 0;
                     _mapService.SetYouTurnPath(State.YouTurn.TurnPath.Select(p => (p.Easting, p.Northing)).ToList());
                 }
                 return;
             }
 
-            // Apply smoothing passes from config (1-50)
-            int smoothingPasses = Guidance.UTurnSmoothing;
-            if (smoothingPasses > 1 && path.Count > 4)
-            {
-                for (int pass = 0; pass < smoothingPasses; pass++)
-                {
-                    for (int i = 2; i < path.Count - 2; i++)
-                    {
-                        var prev = path[i - 1];
-                        var curr = path[i];
-                        var next = path[i + 1];
+            // Apply smoothing passes from config (1-50).
+            TurnPathSmoothing.Smooth(path, Guidance.UTurnSmoothing);
 
-                        path[i] = new Vec3
-                        {
-                            Easting = (prev.Easting + curr.Easting + next.Easting) / 3.0,
-                            Northing = (prev.Northing + curr.Northing + next.Northing) / 3.0,
-                            Heading = curr.Heading
-                        };
-                    }
-                }
-            }
-
-            State.YouTurn.TurnPath = path;
             State.YouTurn.TurnPath = path;
             State.YouTurn.YouTurnCounter = 0;
             StatusMessage = $"YouTurn path created ({path.Count} points)";
@@ -1141,8 +1043,9 @@ public partial class MainViewModel
                 var h1 = _currentHeadlandLine[j];
                 var h2 = _currentHeadlandLine[(j + 1) % _currentHeadlandLine.Count];
 
-                if (SegmentsIntersect(p1.Easting, p1.Northing, p2.Easting, p2.Northing,
-                                      h1.Easting, h1.Northing, h2.Easting, h2.Northing))
+                if (GeometryMath.SegmentsIntersect(
+                        p1.Easting, p1.Northing, p2.Easting, p2.Northing,
+                        h1.Easting, h1.Northing, h2.Easting, h2.Northing))
                 {
                     // Found intersection - return the track heading at this segment
                     _logger.LogDebug($"[YouTurn] Found headland intersection on offset track (path {State.Guidance.HowManyPathsAway}) at index {i}, heading={p1.Heading * 180 / Math.PI:F1}°");
@@ -1153,21 +1056,6 @@ public partial class MainViewModel
 
         // No intersection found, use heading at nearest point
         return searchPoints[nearestIdx].Heading;
-    }
-
-    /// <summary>
-    /// Check if two line segments intersect.
-    /// </summary>
-    private bool SegmentsIntersect(double x1, double y1, double x2, double y2,
-                                   double x3, double y3, double x4, double y4)
-    {
-        double d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if (Math.Abs(d) < 1e-10) return false;
-
-        double t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d;
-        double u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / d;
-
-        return t >= 0 && t <= 1 && u >= 0 && u <= 1;
     }
 
     /// <summary>
@@ -1463,7 +1351,7 @@ public partial class MainViewModel
                     var h1 = _currentHeadlandLine[j];
                     var h2 = _currentHeadlandLine[(j + 1) % _currentHeadlandLine.Count];
 
-                    var intersection = GetLineIntersection(
+                    var intersection = GeometryMath.TryGetSegmentIntersection(
                         p1.Easting, p1.Northing, p2.Easting, p2.Northing,
                         h1.Easting, h1.Northing, h2.Easting, h2.Northing);
 
@@ -1512,7 +1400,7 @@ public partial class MainViewModel
             var h1 = _currentHeadlandLine[j];
             var h2 = _currentHeadlandLine[(j + 1) % _currentHeadlandLine.Count];
 
-            var intersection = GetLineIntersection(
+            var intersection = GeometryMath.TryGetSegmentIntersection(
                 vehiclePos.Easting, vehiclePos.Northing, extendedE, extendedN,
                 h1.Easting, h1.Northing, h2.Easting, h2.Northing);
 
@@ -1531,27 +1419,6 @@ public partial class MainViewModel
         return closestIntersection;
     }
 
-    /// <summary>
-    /// Get the intersection point of two line segments, or null if they don't intersect.
-    /// </summary>
-    private Vec2? GetLineIntersection(double x1, double y1, double x2, double y2,
-                                      double x3, double y3, double x4, double y4)
-    {
-        double d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
-        if (Math.Abs(d) < 1e-10) return null;
-
-        double t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / d;
-        double u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / d;
-
-        if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
-        {
-            double x = x1 + t * (x2 - x1);
-            double y = y1 + t * (y2 - y1);
-            return new Vec2(x, y);
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Create a simple geometric U-turn path with entry leg, semicircle arc, and exit leg.
@@ -1728,27 +1595,7 @@ public partial class MainViewModel
 
         _logger.LogDebug($"[YouTurn] Simple fallback path has {path.Count} points");
 
-        // Apply smoothing passes from config
-        int smoothingPasses = Guidance.UTurnSmoothing;
-        if (smoothingPasses > 1 && path.Count > 4)
-        {
-            for (int pass = 0; pass < smoothingPasses; pass++)
-            {
-                for (int i = 2; i < path.Count - 2; i++)
-                {
-                    var prev = path[i - 1];
-                    var curr = path[i];
-                    var next = path[i + 1];
-
-                    path[i] = new Vec3
-                    {
-                        Easting = (prev.Easting + curr.Easting + next.Easting) / 3.0,
-                        Northing = (prev.Northing + curr.Northing + next.Northing) / 3.0,
-                        Heading = curr.Heading
-                    };
-                }
-            }
-        }
+        TurnPathSmoothing.Smooth(path, Guidance.UTurnSmoothing);
 
         return path;
     }
