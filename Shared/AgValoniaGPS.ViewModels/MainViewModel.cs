@@ -56,7 +56,6 @@ public partial class MainViewModel : ObservableObject
     private readonly IBoundaryRecordingService _boundaryRecordingService;
     private readonly IBoundaryBuilderService _boundaryBuilderService;
     private readonly BoundaryFileService _boundaryFileService;
-    private readonly NmeaParserService _nmeaParser;
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly YouTurnCreationService _youTurnCreationService;
@@ -250,7 +249,6 @@ public partial class MainViewModel : ObservableObject
         _elevationLogService = elevationLogService;
         _gpsPipelineService = gpsPipelineService;
         _appState = appState;
-        _nmeaParser = new NmeaParserService(gpsService);
         _fieldPlaneFileService = new FieldPlaneFileService();
 
         // Subscribe to events
@@ -975,18 +973,11 @@ public partial class MainViewModel : ObservableObject
         var now = DateTime.Now;
         var packetAge = (now - e.Timestamp).TotalMilliseconds;
 
-        // Handle different message types
-        if (e.PGN == 0)
-        {
-            // NMEA text sentence
-            try
-            {
-                string sentence = System.Text.Encoding.ASCII.GetString(e.Data);
-                _nmeaParser.ParseSentence(sentence);
-            }
-            catch { }
-        }
-        else
+        // Handle different message types.
+        // Phase B C3: NMEA packets (PGN == 0) are now handled by the zero-copy
+        // AutoSteerService.ProcessGpsBuffer path in UdpCommunicationService. The MVM
+        // handler only touches non-NMEA PGNs.
+        if (e.PGN != 0)
         {
             // Binary PGN message - log it with age to detect buffering
             DebugLog = $"PGN: {e.PGN} (0x{e.PGN:X2}) @ {e.Timestamp:HH:mm:ss.fff} (age: {packetAge:F0}ms)";

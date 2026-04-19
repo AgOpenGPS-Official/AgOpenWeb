@@ -42,8 +42,14 @@ public class AutoSteerService : IAutoSteerService
     // Dependencies
     private readonly ITrackGuidanceService _guidanceService;
     private readonly IUdpCommunicationService _udpService;
+    private readonly IGpsService _gpsService;
     private readonly ApplicationState _appState;
     private ITramLineService? _tramLineService;
+
+    // Reused GpsData instance — the hot path updates-in-place and hands it to
+    // GpsService.UpdateGpsData each tick. Phase B C3 made AutoSteer the sole
+    // owner of the NMEA → GpsData translation.
+    private readonly GpsData _gpsData = new();
 
     // Drift compensation applied after LocalPlane → local coordinate conversion.
     // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
@@ -76,10 +82,12 @@ public class AutoSteerService : IAutoSteerService
     public AutoSteerService(
         ITrackGuidanceService guidanceService,
         IUdpCommunicationService udpService,
+        IGpsService gpsService,
         ApplicationState appState)
     {
         _guidanceService = guidanceService;
         _udpService = udpService;
+        _gpsService = gpsService;
         _appState = appState;
 
         // Initialize state
@@ -305,6 +313,10 @@ public class AutoSteerService : IAutoSteerService
             return;
         }
 
+        // Publish the parsed fix to GpsService so the cycle worker fires. Phase B C3
+        // made AutoSteer the sole NMEA entry point; MVM's string-parse path was removed.
+        PublishGpsData();
+
         // Read the shared LocalPlane. Creation is owned by field-open (UI thread) or
         // the cycle worker on first valid fix — never here. If still null (pre-first-fix
         // or simulator edge case), skip conversion; Easting/Northing keep prior values.
@@ -387,6 +399,31 @@ public class AutoSteerService : IAutoSteerService
         NotifyStateUpdated();
 
         _cycleCount++;
+    }
+
+    /// <summary>
+    /// Mirror the parsed VehicleState fields onto the shared GpsData and fire
+    /// GpsService.UpdateGpsData — this is what kicks off the cycle worker.
+    /// Reuses a single GpsData instance to avoid per-tick allocation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PublishGpsData()
+    {
+        _gpsData.CurrentPosition = new Position
+        {
+            Latitude = _state.Latitude,
+            Longitude = _state.Longitude,
+            Altitude = _state.Altitude,
+            Heading = _state.Heading,
+            Speed = _state.Speed,
+        };
+        _gpsData.FixQuality = _state.FixQuality;
+        _gpsData.SatellitesInUse = _state.Satellites;
+        _gpsData.Hdop = _state.Hdop;
+        _gpsData.DifferentialAge = _state.DifferentialAge;
+        _gpsData.Timestamp = DateTime.UtcNow;
+
+        _gpsService.UpdateGpsData(_gpsData);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

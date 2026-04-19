@@ -108,6 +108,7 @@ public class OffsetFixTests
         var autoSteer = new AgValoniaGPS.Services.AutoSteer.AutoSteerService(
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
+            Substitute.For<IGpsService>(),
             new AgValoniaGPS.Models.State.ApplicationState());
 
         autoSteer.SetDriftCompensation(5.0, -10.0);
