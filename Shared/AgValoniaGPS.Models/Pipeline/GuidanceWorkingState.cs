@@ -53,8 +53,10 @@ public class GuidanceWorkingState
     public Vec2 RadiusPoint { get; set; }
     public double PurePursuitRadius { get; set; }
 
-    // Direction relative to track
-    public bool IsHeadingSameWay { get; set; } = true;
+    // Direction relative to track.
+    // Default matches GuidanceState — the backing field defaults to false at construction,
+    // and only Reset() sets it to true (the "assume aligned" post-reset convention).
+    public bool IsHeadingSameWay { get; set; }
     public bool IsReverse { get; set; }
 
     // Line offset (how many passes from original)
