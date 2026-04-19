@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 1060" font-family="system-ui, -apple-system, Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333"/>
+    </marker>
+    <marker id="arrow-blocked" viewBox="0 0 14 14" refX="7" refY="7" markerWidth="14" markerHeight="14" orient="auto">
+      <circle cx="7" cy="7" r="6" fill="#b71c1c" fill-opacity="0.15" stroke="#b71c1c" stroke-width="1.5"/>
+      <line x1="3" y1="3" x2="11" y2="11" stroke="#b71c1c" stroke-width="1.8"/>
+      <line x1="11" y1="3" x2="3" y2="11" stroke="#b71c1c" stroke-width="1.8"/>
+    </marker>
+  </defs>
+
+  <!-- ==================== TITLE ==================== -->
+  <text x="640" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#212121">AgValoniaGPS — Ideal threading model</text>
+  <text x="640" y="68" text-anchor="middle" font-size="14" fill="#616161">One-way data flow. A dedicated cycle worker owns all domain mutations.</text>
+  <text x="640" y="86" text-anchor="middle" font-size="14" fill="#616161">No domain work on UI or I/O threads.</text>
+
+  <!-- ==================== UI LANE ==================== -->
+  <rect x="40" y="110" width="1200" height="200" fill="#e3f2fd" stroke="#1976d2" stroke-width="1.5" rx="10"/>
+  <text x="60" y="138" font-size="15" font-weight="700" fill="#0d47a1">UI thread (Avalonia dispatcher)</text>
+  <text x="60" y="158" font-size="12" fill="#1565c0">Bindings, rendering, user input. Single-threaded by Avalonia contract. Keeps the frame budget.</text>
+
+  <!-- UI box 1: Render loop -->
+  <rect x="60" y="176" width="360" height="118" fill="#ffffff" stroke="#1976d2" stroke-width="1" rx="6"/>
+  <text x="240" y="198" text-anchor="middle" font-size="13" font-weight="600" fill="#0d47a1">XAML bindings &amp; render loop (~30 FPS)</text>
+  <text x="80" y="222" font-size="12" fill="#263238">reads:</text>
+  <text x="80" y="240" font-size="12" fill="#263238">  State.Vehicle · State.Field</text>
+  <text x="80" y="258" font-size="12" fill="#263238">  State.YouTurn · State.Guidance</text>
+  <text x="80" y="276" font-size="12" fill="#263238">  State.Section · map state</text>
+
+  <!-- UI box 2: ApplyGpsCycleResult -->
+  <rect x="440" y="176" width="360" height="118" fill="#ffffff" stroke="#1976d2" stroke-width="1" rx="6"/>
+  <text x="620" y="198" text-anchor="middle" font-size="13" font-weight="600" fill="#0d47a1">ApplyGpsCycleResult(result)</text>
+  <text x="620" y="214" text-anchor="middle" font-size="11" font-style="italic" fill="#546e7a">the only writer to State.* ObservableObject</text>
+  <text x="460" y="236" font-size="12" fill="#263238">writes:</text>
+  <text x="460" y="254" font-size="12" fill="#263238">  State.* (ObservableObject properties)</text>
+  <text x="460" y="272" font-size="12" fill="#263238">  map overlays (turn path, next track)</text>
+  <text x="460" y="290" font-size="12" fill="#263238">  status message, disengage notice</text>
+
+  <!-- UI box 3: Commands -->
+  <rect x="820" y="176" width="400" height="118" fill="#ffffff" stroke="#1976d2" stroke-width="1" rx="6"/>
+  <text x="1020" y="198" text-anchor="middle" font-size="13" font-weight="600" fill="#0d47a1">User commands (buttons, hotkeys)</text>
+  <text x="840" y="222" font-size="12" fill="#263238">pushes intents downward:</text>
+  <text x="840" y="240" font-size="12" fill="#263238">  RequestManualYouTurn(left/right)</text>
+  <text x="840" y="258" font-size="12" fill="#263238">  RequestClearYouTurn</text>
+  <text x="840" y="276" font-size="12" fill="#263238">  RequestNudge(meters), RequestSnap</text>
+
+  <!-- ==================== DOWN ARROWS (UI → cycle) ==================== -->
+  <!-- Snapshot up via Dispatcher.Post -->
+  <line x1="620" y1="310" x2="620" y2="392" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <rect x="460" y="320" width="320" height="48" fill="#fff" stroke="#2e7d32" stroke-width="1" rx="4"/>
+  <text x="620" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#1b5e20">GpsCycleResult snapshot (immutable)</text>
+  <text x="620" y="358" text-anchor="middle" font-size="11" fill="#2e7d32">via Dispatcher.UIThread.Post — flows UP</text>
+
+  <!-- Intents down -->
+  <line x1="1020" y1="392" x2="1020" y2="310" stroke="#5e35b2" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <rect x="870" y="322" width="300" height="44" fill="#fff" stroke="#5e35b2" stroke-width="1" rx="4"/>
+  <text x="1020" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#311b92">Intents (thread-safe setters)</text>
+  <text x="1020" y="356" text-anchor="middle" font-size="11" fill="#5e35b2">drained at the start of next cycle — flows DOWN</text>
+
+  <!-- ==================== CYCLE WORKER LANE ==================== -->
+  <rect x="40" y="400" width="1200" height="280" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5" rx="10"/>
+  <text x="60" y="428" font-size="15" font-weight="700" fill="#1b5e20">Cycle worker — Task.Run per tick (~10 Hz)</text>
+  <text x="60" y="448" font-size="12" fill="#2e7d32">Owned by the pipeline service. Single in-flight via Interlocked guard (back-pressure drops the late cycle, not the early one).</text>
+  <text x="60" y="465" font-size="12" fill="#2e7d32">Owns all domain mutations. Does not touch any ObservableObject.</text>
+
+  <!-- Drain intents -->
+  <rect x="60" y="484" width="180" height="180" fill="#ffffff" stroke="#2e7d32" stroke-width="1" rx="6"/>
+  <text x="150" y="506" text-anchor="middle" font-size="13" font-weight="600" fill="#1b5e20">1. Drain intents</text>
+  <text x="78" y="528" font-size="12" fill="#263238">consume thread-safe</text>
+  <text x="78" y="546" font-size="12" fill="#263238">queue/flags from UI:</text>
+  <text x="78" y="568" font-size="12" fill="#263238">  • manual trigger</text>
+  <text x="78" y="586" font-size="12" fill="#263238">  • clear field</text>
+  <text x="78" y="604" font-size="12" fill="#263238">  • nudge / snap</text>
+  <text x="78" y="622" font-size="12" fill="#263238">  • autosteer toggle</text>
+  <text x="78" y="646" font-size="11" font-style="italic" fill="#546e7a">apply to WorkingState</text>
+
+  <!-- Domain services -->
+  <rect x="260" y="484" width="460" height="180" fill="#ffffff" stroke="#2e7d32" stroke-width="1" rx="6"/>
+  <text x="490" y="506" text-anchor="middle" font-size="13" font-weight="600" fill="#1b5e20">2. Run the cycle</text>
+  <text x="280" y="530" font-size="12" fill="#263238">  ToolPositionService.Update</text>
+  <text x="280" y="548" font-size="12" fill="#263238">  TrackGuidanceService.Compute</text>
+  <text x="280" y="566" font-size="12" fill="#263238">  YouTurnStateMachine.Tick</text>
+  <text x="280" y="584" font-size="12" fill="#263238">  SectionControlService.Update</text>
+  <text x="280" y="602" font-size="12" fill="#263238">  CoverageMapService.Paint</text>
+  <text x="280" y="620" font-size="12" fill="#263238">  AutoSteerService.BuildPgn</text>
+  <text x="280" y="646" font-size="11" font-style="italic" fill="#546e7a">each service reads/writes WorkingState freely — single-threaded, no locks needed</text>
+
+  <!-- Working state -->
+  <rect x="740" y="484" width="220" height="180" fill="#fffde7" stroke="#f9a825" stroke-width="1.5" stroke-dasharray="5 3" rx="6"/>
+  <text x="850" y="506" text-anchor="middle" font-size="13" font-weight="700" fill="#f57f17">*WorkingState (POCO)</text>
+  <text x="850" y="522" text-anchor="middle" font-size="11" font-style="italic" fill="#795548">no ObservableObject</text>
+  <text x="760" y="548" font-size="12" fill="#263238">  YouTurnWorkingState</text>
+  <text x="760" y="566" font-size="12" fill="#263238">  GuidanceWorkingState</text>
+  <text x="760" y="584" font-size="12" fill="#263238">  (tool / section / coverage</text>
+  <text x="760" y="602" font-size="12" fill="#263238">   working state as needed)</text>
+  <text x="760" y="628" font-size="11" font-style="italic" fill="#546e7a">single writer: the cycle worker.</text>
+  <text x="760" y="644" font-size="11" font-style="italic" fill="#546e7a">read by services within the cycle.</text>
+
+  <!-- Emit GpsCycleResult -->
+  <rect x="980" y="484" width="240" height="180" fill="#ffffff" stroke="#2e7d32" stroke-width="1" rx="6"/>
+  <text x="1100" y="506" text-anchor="middle" font-size="13" font-weight="600" fill="#1b5e20">3. Emit snapshot</text>
+  <text x="1000" y="530" font-size="12" fill="#263238">build GpsCycleResult</text>
+  <text x="1000" y="548" font-size="12" fill="#263238">(immutable record):</text>
+  <text x="1000" y="570" font-size="12" fill="#263238">  position · steer · guidance</text>
+  <text x="1000" y="588" font-size="12" fill="#263238">  YouTurn snapshot</text>
+  <text x="1000" y="606" font-size="12" fill="#263238">  section bits · map overlays</text>
+  <text x="1000" y="624" font-size="12" fill="#263238">  status · disengage reason</text>
+  <text x="1000" y="648" font-size="11" font-style="italic" fill="#546e7a">CycleCompleted → Dispatcher.Post</text>
+
+  <!-- Internal arrows inside cycle lane -->
+  <line x1="240" y1="574" x2="258" y2="574" stroke="#2e7d32" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="720" y1="574" x2="738" y2="574" stroke="#f9a825" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+  <line x1="960" y1="574" x2="978" y2="574" stroke="#f9a825" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4 2"/>
+
+  <!-- ==================== DOWN ARROWS (cycle → I/O) ==================== -->
+  <!-- Parsed position from I/O to cycle (up) -->
+  <line x1="300" y1="772" x2="300" y2="682" stroke="#ef6c00" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <rect x="160" y="700" width="280" height="44" fill="#fff" stroke="#ef6c00" stroke-width="1" rx="4"/>
+  <text x="300" y="720" text-anchor="middle" font-size="12" font-weight="600" fill="#e65100">Parsed GPS position</text>
+  <text x="300" y="736" text-anchor="middle" font-size="11" fill="#ef6c00">UdpGpsQueue — handoff only</text>
+
+  <!-- PGN out down from cycle to UDP send (external) -->
+  <line x1="1100" y1="682" x2="1100" y2="772" stroke="#ef6c00" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <rect x="960" y="700" width="280" height="44" fill="#fff" stroke="#ef6c00" stroke-width="1" rx="4"/>
+  <text x="1100" y="720" text-anchor="middle" font-size="12" font-weight="600" fill="#e65100">PGN out (steer, sections)</text>
+  <text x="1100" y="736" text-anchor="middle" font-size="11" fill="#ef6c00">built in cycle, sent on UDP thread</text>
+
+  <!-- ==================== I/O LANE ==================== -->
+  <rect x="40" y="770" width="1200" height="150" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5" rx="10"/>
+  <text x="60" y="796" font-size="15" font-weight="700" fill="#e65100">I/O threads (UDP receive, NMEA parse, file watchers)</text>
+  <text x="60" y="816" font-size="12" fill="#ef6c00">Parse packets and hand off. Return immediately. Zero domain logic. Any blocking work here stalls the radio.</text>
+
+  <!-- IO boxes -->
+  <rect x="60" y="834" width="280" height="72" fill="#ffffff" stroke="#ef6c00" stroke-width="1" rx="6"/>
+  <text x="200" y="856" text-anchor="middle" font-size="13" font-weight="600" fill="#e65100">UDP receive</text>
+  <text x="80" y="876" font-size="12" fill="#263238">socket callback</text>
+  <text x="80" y="892" font-size="12" fill="#263238">route by PGN ID</text>
+
+  <rect x="360" y="834" width="320" height="72" fill="#ffffff" stroke="#ef6c00" stroke-width="1" rx="6"/>
+  <text x="520" y="856" text-anchor="middle" font-size="13" font-weight="600" fill="#e65100">NMEA parse (Span-based)</text>
+  <text x="380" y="876" font-size="12" fill="#263238">parse GGA/VTG/HDT into a Position</text>
+  <text x="380" y="892" font-size="12" fill="#263238">no coordinate conversion, no state</text>
+
+  <rect x="700" y="834" width="260" height="72" fill="#ffffff" stroke="#ef6c00" stroke-width="1" rx="6"/>
+  <text x="830" y="856" text-anchor="middle" font-size="13" font-weight="600" fill="#e65100">Enqueue for cycle</text>
+  <text x="720" y="876" font-size="12" fill="#263238">push Position onto</text>
+  <text x="720" y="892" font-size="12" fill="#263238">the cycle queue, return</text>
+
+  <rect x="980" y="834" width="240" height="72" fill="#ffffff" stroke="#ef6c00" stroke-width="1" rx="6"/>
+  <text x="1100" y="856" text-anchor="middle" font-size="13" font-weight="600" fill="#e65100">UDP send</text>
+  <text x="1000" y="876" font-size="12" fill="#263238">ship pre-built PGNs</text>
+  <text x="1000" y="892" font-size="12" fill="#263238">(PGN 253, 254, …)</text>
+
+  <!-- Flow arrow on I/O lane -->
+  <line x1="340" y1="870" x2="358" y2="870" stroke="#ef6c00" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="680" y1="870" x2="698" y2="870" stroke="#ef6c00" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ==================== NON-NEGOTIABLES ==================== -->
+  <rect x="40" y="946" width="1200" height="100" fill="#fce4ec" stroke="#c2185b" stroke-width="1.5" rx="10"/>
+  <text x="60" y="972" font-size="14" font-weight="700" fill="#880e4f">Non-negotiables</text>
+  <text x="60" y="996" font-size="12" fill="#4a148c">• Per-cycle pipeline work runs on the cycle worker — never on the UI dispatcher, never on a UDP / NMEA / file-I/O thread.</text>
+  <text x="60" y="1014" font-size="12" fill="#4a148c">• State.* (ObservableObject) has exactly one writer: ApplyGpsCycleResult, on the UI thread. *WorkingState (POCO) has exactly one writer: the cycle worker.</text>
+  <text x="60" y="1032" font-size="12" fill="#4a148c">• UI commands push intents; they don't reach into cycle state. Snapshots flow up; intents flow down. No cross-writes.</text>
+</svg>
