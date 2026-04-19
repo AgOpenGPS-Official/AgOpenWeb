@@ -163,40 +163,6 @@ Carve-outs are the only sanctioned bypass of the one-way flow.
 
 ---
 
-### TMP-004 — `UdpGpsQueue` introduction
-
-- **Status:** Open
-- **Raised in:** Phase A (discovered via Ideal Threading Model SVG)
-- **Decide by:** Phase B
-- **Source:** `threading_model.svg` (I/O-to-cycle handoff, orange box
-  "Parsed GPS position / UdpGpsQueue — handoff only")
-
-**Why parked.** Today the I/O-to-cycle handoff is event-driven:
-`GpsPipelineService` subscribes to a `GpsDataUpdated` event and kicks
-off `Task.Run` per event. The SVG shows a named `UdpGpsQueue` as the
-eventual shape — NMEA parser pushes a `Position`, cycle worker pulls at
-tick boundary. Phase B replaces the event wiring with the queue as part
-of unifying the two parsers. Phase A does not touch this; name is
-reserved so Phase B doesn't drift.
-
-**What the decision is.** Queue type (bounded vs unbounded,
-last-wins vs FIFO), the producer/consumer wiring, whether it's a
-`Channel<T>` or a hand-rolled single-slot volatile field.
-
-**Review log.**
-- 2026-04-19 — Parked during Phase A planning. Phase A uses the
-  existing event wiring; no behavior change.
-- 2026-04-19 (Phase A close) — I/O wiring untouched by Phase A, event
-  path intact. Still parked for Phase B.
-- 2026-04-19 (Phase B close) — Phase B kept the event handoff per plan
-  §2.2. No formal cycle-rate measurement on hardware yet. Smoke test on
-  Mac mini M4 showed the cycle comfortably keeps up at ~10 Hz GPS rate
-  (FPS 36–48, well above floor). Still open pending real-hardware
-  cadence check — if cycle ever can't keep up, upgrade to an explicit
-  bounded `Channel<Position>`. Reopen in Phase F or sooner if needed.
-
----
-
 ### TMP-005 — Removal of flat YouTurn / Guidance fields on `GpsCycleResult`
 
 - **Status:** Open
@@ -415,6 +381,21 @@ imperceptible. If regression, options:
   cosmetic rename deferred until post-Phase-F if still desired.
 - **Decided in:** Phase B plan §2.1
 - **Closing PR:** #259 (Phase B commit range `5d6bccd..d04bfc6`)
+
+### TMP-004 — `UdpGpsQueue` introduction
+
+- **Status:** Resolved (Phase B close, 2026-04-19)
+- **Resolution:** Keep the existing `GpsDataUpdated` event + `Task.Run`
+  handoff. Real-hardware smoke test on the AiO board over UDP showed
+  autosteer engaged and held through the full drive, 60 FPS avg, no
+  cycle back-pressure drops, and latency display updating at GPS
+  cadence (after the rejection-gate fix in `9fe4dc9`). An explicit
+  `Channel<Position>` would be overhead with no observable benefit.
+  Reopen only if a future phase's cycle work lengthens enough to miss
+  GPS ticks — the §0 invariant and existing `Interlocked` back-pressure
+  remain in place either way.
+- **Decided in:** Phase B plan §2.2; validated by real-hardware smoke test
+- **Closing PR:** #259 (Phase B commit `9fe4dc9`)
 
 ---
 
