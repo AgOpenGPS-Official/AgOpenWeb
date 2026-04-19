@@ -124,6 +124,55 @@ public class YouTurnState : ObservableObject
         set => SetProperty(ref _youTurnCounter, value);
     }
 
+    // Heading direction captured at turn start, used to compute the post-turn pass offset.
+    // Stored because _isHeadingSameWay on GuidanceState flips 180° once the turn completes.
+    private bool _wasHeadingSameWayAtTurnStart;
+    public bool WasHeadingSameWayAtTurnStart
+    {
+        get => _wasHeadingSameWayAtTurnStart;
+        set => SetProperty(ref _wasHeadingSameWayAtTurnStart, value);
+    }
+
+    // Pre-computed perpendicular offset to the next track (meters, always positive).
+    // Authoritative value for U-turn arc width — consumers should use this rather than recompute.
+    private double _nextTrackTurnOffset;
+    public double NextTrackTurnOffset
+    {
+        get => _nextTrackTurnOffset;
+        set => SetProperty(ref _nextTrackTurnOffset, value);
+    }
+
+    // When set, CompleteTurn jumps directly to this path number (used by snake / skip-worked modes).
+    private int? _returnPassTargetPath;
+    public int? ReturnPassTargetPath
+    {
+        get => _returnPassTargetPath;
+        set => SetProperty(ref _returnPassTargetPath, value);
+    }
+
+    // Pre-computed path sequence for skip-and-fill (snake) mode. Null when not in snake mode.
+    private System.Collections.Generic.List<int>? _snakeSequence;
+    public System.Collections.Generic.List<int>? SnakeSequence
+    {
+        get => _snakeSequence;
+        set => SetProperty(ref _snakeSequence, value);
+    }
+
+    private int _snakeIndex = -1;
+    public int SnakeIndex
+    {
+        get => _snakeIndex;
+        set => SetProperty(ref _snakeIndex, value);
+    }
+
+    // Zone the tractor is in — source of truth for turn creation gating.
+    private TractorZone _currentZone = TractorZone.OutsideBoundary;
+    public TractorZone CurrentZone
+    {
+        get => _currentZone;
+        set => SetProperty(ref _currentZone, value);
+    }
+
     public void Reset()
     {
         IsTriggered = false;
@@ -135,6 +184,12 @@ public class YouTurnState : ObservableObject
         NextTrack = null;
         HasCompletedFirstTurn = false;
         YouTurnCounter = 0;
+        WasHeadingSameWayAtTurnStart = false;
+        NextTrackTurnOffset = 0;
+        ReturnPassTargetPath = null;
+        SnakeSequence = null;
+        SnakeIndex = -1;
+        CurrentZone = TractorZone.OutsideBoundary;
     }
 
     public void CompleteTurn()

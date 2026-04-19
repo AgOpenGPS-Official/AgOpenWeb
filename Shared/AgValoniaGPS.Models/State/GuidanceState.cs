@@ -153,6 +153,14 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _howManyPathsAway, value);
     }
 
+    // Fine nudge offset in meters, added on top of the whole-pass offset from HowManyPathsAway.
+    private double _nudgeOffset;
+    public double NudgeOffset
+    {
+        get => _nudgeOffset;
+        set => SetProperty(ref _nudgeOffset, value);
+    }
+
     private string _currentLineLabel = "1L";
     public string CurrentLineLabel
     {
@@ -182,6 +190,7 @@ public class GuidanceState : ObservableObject
         IsHeadingSameWay = true;
         IsReverse = false;
         HowManyPathsAway = 0;
+        NudgeOffset = 0;
         CurrentLineLabel = "1L";
         IsContourMode = false;
     }
