@@ -49,7 +49,9 @@ public class MainViewModelBuilder
             boundaryFileService: new BoundaryFileService(),
             headlandBuilderService: Substitute.For<AgValoniaGPS.Services.Headland.IHeadlandBuilderService>(),
             trackGuidanceService: Substitute.For<ITrackGuidanceService>(),
-            youTurnCreationService: new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance),
+            youTurnCreationService: new YouTurnCreationService(
+                NullLogger<YouTurnCreationService>.Instance,
+                Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
             youTurnGuidanceService: new YouTurnGuidanceService(),
             youTurnPathingService: new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
             polygonOffsetService: Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
