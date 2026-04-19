@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 1220" font-family="system-ui, -apple-system, Segoe UI, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1360 1240" font-family="system-ui, -apple-system, Segoe UI, Arial, sans-serif">
   <defs>
     <marker id="arrow-mig" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="12" markerHeight="12" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#455a64"/>
@@ -11,7 +11,7 @@
 
   <!-- ==================== TITLE ==================== -->
   <text x="680" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#212121">AgValoniaGPS — Migration plan</text>
-  <text x="680" y="68" text-anchor="middle" font-size="14" fill="#616161">How each problem in the current model moves to its home in the ideal model. Five phases plus one cross-plan.</text>
+  <text x="680" y="68" text-anchor="middle" font-size="14" fill="#616161">How each problem in the current model moves to its home in the ideal model. Six phases, A–F.</text>
 
   <!-- ==================== LEGEND ==================== -->
   <rect x="40" y="92" width="1280" height="42" fill="#fafafa" stroke="#cfd8dc" stroke-width="1" rx="6"/>
@@ -31,29 +31,62 @@
   <text x="96" y="184" font-size="15" font-weight="700" fill="#004d40">Scaffolding — no behavior change</text>
   <text x="96" y="204" font-size="12" fill="#00695c">Adds: YouTurnWorkingState + GuidanceWorkingState (POCOs) · GpsCycleResult extensions · thread-safe intent surface.</text>
   <text x="96" y="222" font-size="12" fill="#00695c">Why first: every later phase needs these shapes. Landing them as scaffolding lets each subsequent phase ship as a small, reversible change.</text>
-  <text x="96" y="238" font-size="11" font-style="italic" fill="#4db6ac">Addresses no current problem directly. Prerequisite for B and C.</text>
+  <text x="96" y="238" font-size="11" font-style="italic" fill="#4db6ac">Addresses no current problem directly. Prerequisite for C and D.</text>
 
-  <!-- ==================== PHASE B ==================== -->
-  <rect x="40" y="262" width="1280" height="228" fill="#fff3e0" stroke="#e65100" stroke-width="2" rx="10"/>
-  <rect x="56" y="278" width="30" height="22" fill="#e65100" rx="4"/>
+  <!-- ==================== PHASE B (unify — absorbed) ==================== -->
+  <rect x="40" y="262" width="1280" height="184" fill="#e1f5fe" stroke="#01579b" stroke-width="2" rx="10"/>
+  <rect x="56" y="278" width="30" height="22" fill="#01579b" rx="4"/>
   <text x="71" y="295" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">B</text>
-  <text x="96" y="296" font-size="15" font-weight="700" fill="#bf360c">YouTurn end-to-end — the proof-of-pattern phase</text>
-  <text x="96" y="316" font-size="12" fill="#e65100">This is the biggest single win. Three current problems move at once; the state machine runs where it should for the first time.</text>
+  <text x="96" y="296" font-size="15" font-weight="700" fill="#01579b">Unify GPS pipeline — absorbs docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md</text>
+  <text x="96" y="316" font-size="12" fill="#0277bd">One parser, one LocalPlane, one cycle owner. AutoSteer heavy work moves behind the Task.Run boundary (§0). PGN cadence becomes cycle-driven.</text>
 
-  <!-- B move 1 -->
   <g transform="translate(0,328)">
+    <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
+    <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 2:</text>
+    <text x="170" y="18" font-size="12" fill="#263238">AutoSteer guidance + PGN on UDP receive thread</text>
+    <line x1="570" y1="14" x2="660" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
+    <circle cx="680" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+    <text x="694" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
+    <text x="744" y="18" font-size="12" fill="#263238">cycle worker; receive thread parses and hands off only</text>
+  </g>
+  <g transform="translate(0,356)">
+    <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
+    <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 3:</text>
+    <text x="170" y="18" font-size="12" fill="#263238">Two NMEA parsers + two LocalPlane instances</text>
+    <line x1="540" y1="14" x2="630" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
+    <circle cx="650" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+    <text x="664" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
+    <text x="714" y="18" font-size="12" fill="#263238">single parser, single LocalPlane, one coordinate frame</text>
+  </g>
+  <g transform="translate(0,384)">
+    <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
+    <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 6:</text>
+    <text x="170" y="18" font-size="12" fill="#263238">PGN send cadence coupled to packet arrival</text>
+    <line x1="530" y1="14" x2="620" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
+    <circle cx="640" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+    <text x="654" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
+    <text x="704" y="18" font-size="12" fill="#263238">PGNs built on cycle; sent at deterministic cadence</text>
+  </g>
+  <text x="96" y="430" font-size="11" font-style="italic" fill="#0288d1">why: one parsed path, one coordinate frame, no heavy work on I/O thread. Unblocks the "cycle worker is the single owner" invariant.</text>
+
+  <!-- ==================== PHASE C — YouTurn end-to-end ==================== -->
+  <rect x="40" y="462" width="1280" height="228" fill="#fff3e0" stroke="#e65100" stroke-width="2" rx="10"/>
+  <rect x="56" y="478" width="30" height="22" fill="#e65100" rx="4"/>
+  <text x="71" y="495" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">C</text>
+  <text x="96" y="496" font-size="15" font-weight="700" fill="#bf360c">YouTurn end-to-end — the proof-of-pattern phase</text>
+  <text x="96" y="516" font-size="12" fill="#e65100">Three current problems move at once; the state machine runs where it should for the first time.</text>
+
+  <g transform="translate(0,528)">
     <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
     <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 1:</text>
     <text x="170" y="18" font-size="12" fill="#263238">YouTurn Tick on event-firing thread</text>
     <line x1="470" y1="14" x2="560" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
     <circle cx="580" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
     <text x="594" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
-    <text x="644" y="18" font-size="12" fill="#263238">cycle worker (Task.Run), inside GpsPipelineService.ProcessCycle</text>
+    <text x="644" y="18" font-size="12" fill="#263238">cycle worker (Task.Run), same process as tool/section/coverage</text>
     <text x="96" y="36" font-size="11" font-style="italic" fill="#546e7a">why: single owner of the tick; no more "which thread fired the event?" surprises.</text>
   </g>
-
-  <!-- B move 2 -->
-  <g transform="translate(0,380)">
+  <g transform="translate(0,580)">
     <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
     <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 4:</text>
     <text x="170" y="18" font-size="12" fill="#263238">State.YouTurn (ObservableObject) written from background</text>
@@ -63,9 +96,7 @@
     <text x="774" y="18" font-size="12" fill="#263238">ApplyGpsCycleResult (UI thread) as sole writer, via snapshot field</text>
     <text x="96" y="36" font-size="11" font-style="italic" fill="#546e7a">why: no more unmarshaled cross-thread binding writes; State.YouTurn becomes a one-way mirror of the cycle's output.</text>
   </g>
-
-  <!-- B move 3 -->
-  <g transform="translate(0,432)">
+  <g transform="translate(0,632)">
     <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
     <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 5:</text>
     <text x="170" y="18" font-size="12" fill="#263238">Manual U-turn commands mutate state synchronously from UI</text>
@@ -76,14 +107,14 @@
     <text x="96" y="36" font-size="11" font-style="italic" fill="#546e7a">why: UI commands stop racing with the cycle; ~100 ms latency is invisible and tradeable for ordering guarantees.</text>
   </g>
 
-  <!-- ==================== PHASE C ==================== -->
-  <rect x="40" y="506" width="1280" height="152" fill="#f3e5f5" stroke="#6a1b9a" stroke-width="1.5" rx="10"/>
-  <rect x="56" y="522" width="30" height="22" fill="#6a1b9a" rx="4"/>
-  <text x="71" y="539" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">C</text>
-  <text x="96" y="540" font-size="15" font-weight="700" fill="#4a148c">Guidance state migration</text>
-  <text x="96" y="560" font-size="12" fill="#6a1b9a">Same pattern as B, applied to GuidanceState. Needed because YouTurn and TrackGuidance share IsHeadingSameWay / HowManyPathsAway / NudgeOffset.</text>
+  <!-- ==================== PHASE D — Guidance ==================== -->
+  <rect x="40" y="706" width="1280" height="152" fill="#f3e5f5" stroke="#6a1b9a" stroke-width="1.5" rx="10"/>
+  <rect x="56" y="722" width="30" height="22" fill="#6a1b9a" rx="4"/>
+  <text x="71" y="739" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D</text>
+  <text x="96" y="740" font-size="15" font-weight="700" fill="#4a148c">Guidance state migration</text>
+  <text x="96" y="760" font-size="12" fill="#6a1b9a">Same pattern as C, applied to GuidanceState. Needed because YouTurn and TrackGuidance share IsHeadingSameWay / HowManyPathsAway / NudgeOffset.</text>
 
-  <g transform="translate(0,576)">
+  <g transform="translate(0,776)">
     <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
     <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 4 (remainder):</text>
     <text x="240" y="18" font-size="12" fill="#263238">State.Guidance written from services</text>
@@ -92,7 +123,7 @@
     <text x="664" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
     <text x="714" y="18" font-size="12" fill="#263238">GuidanceWorkingState in cycle; snapshot → ApplyGpsCycleResult</text>
   </g>
-  <g transform="translate(0,608)">
+  <g transform="translate(0,808)">
     <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
     <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 5 (remainder):</text>
     <text x="240" y="18" font-size="12" fill="#263238">Nudge / snap UI commands mutate state directly</text>
@@ -101,80 +132,44 @@
     <text x="724" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
     <text x="774" y="18" font-size="12" fill="#263238">intents (RequestNudge, RequestSnap) drained by cycle worker</text>
   </g>
-  <text x="96" y="644" font-size="11" font-style="italic" fill="#8e24aa">why: after C, the entire cycle runs without touching any ObservableObject — the invariant is complete for the hot path.</text>
+  <text x="96" y="844" font-size="11" font-style="italic" fill="#8e24aa">why: after D, the entire cycle runs without touching any ObservableObject — the invariant is complete for the hot path.</text>
 
-  <!-- ==================== COORDINATED UNIFY (cross-plan) ==================== -->
-  <rect x="40" y="674" width="1280" height="176" fill="#e1f5fe" stroke="#01579b" stroke-width="2" stroke-dasharray="6 3" rx="10"/>
-  <rect x="56" y="690" width="30" height="22" fill="#01579b" rx="4"/>
-  <text x="71" y="707" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">U</text>
-  <text x="96" y="708" font-size="15" font-weight="700" fill="#01579b">Coordinated with docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md</text>
-  <text x="96" y="728" font-size="12" fill="#0277bd">Not owned by this plan. Addresses problems 2, 3, 6. Must preserve the Task.Run boundary (see §0 of the state-migration plan).</text>
+  <!-- ==================== PHASE E — FieldState ==================== -->
+  <rect x="40" y="874" width="628" height="110" fill="#f1f8e9" stroke="#558b2f" stroke-width="1.5" rx="10"/>
+  <rect x="56" y="890" width="30" height="22" fill="#558b2f" rx="4"/>
+  <text x="71" y="907" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">E</text>
+  <text x="96" y="908" font-size="15" font-weight="700" fill="#33691e">FieldState audit</text>
+  <text x="56" y="932" font-size="12" fill="#558b2f">Mostly verification. Confirm no service writes FieldState from background.</text>
+  <text x="56" y="952" font-size="12" fill="#558b2f">Document the read/write boundaries around boundaries, headland, drift.</text>
+  <text x="56" y="974" font-size="11" font-style="italic" fill="#7cb342">why: cheap insurance. Likely no-op or tiny cleanup.</text>
 
-  <g transform="translate(0,744)">
-    <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
-    <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 2:</text>
-    <text x="170" y="18" font-size="12" fill="#263238">AutoSteer guidance + PGN on UDP receive thread</text>
-    <line x1="570" y1="14" x2="660" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
-    <circle cx="680" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
-    <text x="694" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
-    <text x="744" y="18" font-size="12" fill="#263238">cycle worker; receive thread parses and hands off only</text>
-  </g>
-  <g transform="translate(0,772)">
-    <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
-    <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 3:</text>
-    <text x="170" y="18" font-size="12" fill="#263238">Two NMEA parsers + two LocalPlane instances</text>
-    <line x1="540" y1="14" x2="630" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
-    <circle cx="650" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
-    <text x="664" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
-    <text x="714" y="18" font-size="12" fill="#263238">single parser, single LocalPlane, one coordinate frame</text>
-  </g>
-  <g transform="translate(0,800)">
-    <circle cx="80" cy="14" r="7" fill="#ffebee" stroke="#b71c1c" stroke-width="1.5"/>
-    <text x="94" y="18" font-size="12" fill="#b71c1c" font-weight="700">Problem 6:</text>
-    <text x="170" y="18" font-size="12" fill="#263238">PGN send cadence coupled to packet arrival</text>
-    <line x1="530" y1="14" x2="620" y2="14" stroke="#2e7d32" stroke-width="2.2" marker-end="url(#arrow-mig-thick)"/>
-    <circle cx="640" cy="14" r="7" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
-    <text x="654" y="18" font-size="12" fill="#2e7d32" font-weight="700">Target:</text>
-    <text x="704" y="18" font-size="12" fill="#263238">PGNs built on cycle; sent at deterministic cadence</text>
-  </g>
-  <text x="96" y="838" font-size="11" font-style="italic" fill="#0288d1">why: one parsed path, one coordinate frame, no heavy work on I/O thread. Unblocks the "cycle worker is the single owner" invariant.</text>
-
-  <!-- ==================== PHASE D ==================== -->
-  <rect x="40" y="866" width="628" height="110" fill="#f1f8e9" stroke="#558b2f" stroke-width="1.5" rx="10"/>
-  <rect x="56" y="882" width="30" height="22" fill="#558b2f" rx="4"/>
-  <text x="71" y="899" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">D</text>
-  <text x="96" y="900" font-size="15" font-weight="700" fill="#33691e">FieldState audit</text>
-  <text x="56" y="924" font-size="12" fill="#558b2f">Mostly verification. Confirm no service writes FieldState from background.</text>
-  <text x="56" y="944" font-size="12" fill="#558b2f">Document the read/write boundaries around boundaries, headland, drift.</text>
-  <text x="56" y="966" font-size="11" font-style="italic" fill="#7cb342">why: cheap insurance. Likely no-op or tiny cleanup.</text>
-
-  <!-- ==================== PHASE E ==================== -->
-  <rect x="692" y="866" width="628" height="110" fill="#efebe9" stroke="#4e342e" stroke-width="1.5" rx="10"/>
-  <rect x="708" y="882" width="30" height="22" fill="#4e342e" rx="4"/>
-  <text x="723" y="899" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">E</text>
-  <text x="748" y="900" font-size="15" font-weight="700" fill="#3e2723">ConnectionState (NTRIP / UDP status)</text>
-  <text x="708" y="924" font-size="12" fill="#4e342e">Services own working state; emit status events to a marshaled handler.</text>
-  <text x="708" y="944" font-size="12" fill="#4e342e">Not tied to GpsCycleResult — NTRIP/UDP have their own cadence.</text>
-  <text x="708" y="966" font-size="11" font-style="italic" fill="#6d4c41">why: same pattern, off the critical path, extends the invariant to async I/O.</text>
+  <!-- ==================== PHASE F — ConnectionState ==================== -->
+  <rect x="692" y="874" width="628" height="110" fill="#efebe9" stroke="#4e342e" stroke-width="1.5" rx="10"/>
+  <rect x="708" y="890" width="30" height="22" fill="#4e342e" rx="4"/>
+  <text x="723" y="907" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">F</text>
+  <text x="748" y="908" font-size="15" font-weight="700" fill="#3e2723">ConnectionState (NTRIP / UDP status)</text>
+  <text x="708" y="932" font-size="12" fill="#4e342e">Services own working state; emit status events to a marshaled handler.</text>
+  <text x="708" y="952" font-size="12" fill="#4e342e">Not tied to GpsCycleResult — NTRIP/UDP have their own cadence.</text>
+  <text x="708" y="974" font-size="11" font-style="italic" fill="#6d4c41">why: same pattern, off the critical path, extends the invariant to async I/O.</text>
 
   <!-- ==================== OUTCOME ==================== -->
-  <rect x="40" y="996" width="1280" height="204" fill="#fafafa" stroke="#37474f" stroke-width="1.5" rx="10"/>
-  <text x="60" y="1024" font-size="15" font-weight="700" fill="#263238">After the migration</text>
+  <rect x="40" y="1004" width="1280" height="204" fill="#fafafa" stroke="#37474f" stroke-width="1.5" rx="10"/>
+  <text x="60" y="1032" font-size="15" font-weight="700" fill="#263238">After the migration</text>
 
-  <text x="60" y="1050" font-size="12" fill="#263238" font-weight="600">✓ One owner per state class.</text>
-  <text x="248" y="1050" font-size="12" fill="#263238">Cycle worker owns *WorkingState. ApplyGpsCycleResult owns *State (ObservableObject). No exceptions.</text>
+  <text x="60" y="1058" font-size="12" fill="#263238" font-weight="600">✓ One owner per state class.</text>
+  <text x="248" y="1058" font-size="12" fill="#263238">Cycle worker owns *WorkingState. ApplyGpsCycleResult owns *State (ObservableObject). No exceptions.</text>
 
-  <text x="60" y="1074" font-size="12" fill="#263238" font-weight="600">✓ Domain work runs only on the cycle worker.</text>
-  <text x="340" y="1074" font-size="12" fill="#263238">The 50–200 ms turn-creation spike is off the UI thread; the UDP thread is free to keep up with packets.</text>
+  <text x="60" y="1082" font-size="12" fill="#263238" font-weight="600">✓ Domain work runs only on the cycle worker.</text>
+  <text x="340" y="1082" font-size="12" fill="#263238">The 50–200 ms turn-creation spike is off the UI thread; the UDP thread is free to keep up with packets.</text>
 
-  <text x="60" y="1098" font-size="12" fill="#263238" font-weight="600">✓ UI commands can't race the cycle.</text>
-  <text x="308" y="1098" font-size="12" fill="#263238">Every user action is a thread-safe intent drained at a known point in the tick. Ordering guaranteed.</text>
+  <text x="60" y="1106" font-size="12" fill="#263238" font-weight="600">✓ UI commands can't race the cycle.</text>
+  <text x="308" y="1106" font-size="12" fill="#263238">Every user action is a thread-safe intent drained at a known point in the tick. Ordering guaranteed.</text>
 
-  <text x="60" y="1122" font-size="12" fill="#263238" font-weight="600">✓ Deterministic PGN cadence.</text>
-  <text x="300" y="1122" font-size="12" fill="#263238">Steer / section PGNs go out on the cycle's schedule, not whenever a packet happens to arrive.</text>
+  <text x="60" y="1130" font-size="12" fill="#263238" font-weight="600">✓ Deterministic PGN cadence.</text>
+  <text x="300" y="1130" font-size="12" fill="#263238">Steer / section PGNs go out on the cycle's schedule, not whenever a packet happens to arrive.</text>
 
-  <text x="60" y="1146" font-size="12" fill="#263238" font-weight="600">✓ Testable in isolation.</text>
-  <text x="246" y="1146" font-size="12" fill="#263238">Working states are POCOs. State-machine tests run without any view model, dispatcher, or UDP socket.</text>
+  <text x="60" y="1154" font-size="12" fill="#263238" font-weight="600">✓ Testable in isolation.</text>
+  <text x="246" y="1154" font-size="12" fill="#263238">Working states are POCOs. State-machine tests run without any view model, dispatcher, or UDP socket.</text>
 
-  <text x="60" y="1176" font-size="12" fill="#455a64" font-style="italic">The AgOpenGPS / WinForms pattern — one mutable graph, every thread writes, last writer wins — is structurally impossible to reintroduce without reverting the architecture on purpose.</text>
+  <text x="60" y="1184" font-size="12" fill="#455a64" font-style="italic">The AgOpenGPS / WinForms pattern — one mutable graph, every thread writes, last writer wins — is structurally impossible to reintroduce without reverting the architecture on purpose.</text>
 </svg>

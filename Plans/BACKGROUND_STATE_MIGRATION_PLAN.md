@@ -24,15 +24,16 @@ one-way data flow driven by a dedicated background cycle worker.
 
 ![Ideal threading model](threading_model.svg)
 
-Three diagrams, meant to be read together:
+Four diagrams, meant to be read together:
 
 | Diagram | Shows |
 |---|---|
+| [`threading_model_overview.svg`](threading_model_overview.svg) | **Start here.** Current → phases → target in a single frame, with problem-to-phase-to-destination traceability at the bottom. |
 | [`threading_model.svg`](threading_model.svg) | The target — ideal threading with the one-way data flow and non-negotiables |
 | [`threading_model_current.svg`](threading_model_current.svg) | What's running today, with six numbered problems in red |
 | [`threading_model_migration.svg`](threading_model_migration.svg) | The phased migration from current → ideal, showing where each red problem moves and why |
 
-Problem numbers are consistent across the three diagrams so a reviewer can trace "Problem 1" from today's broken location to its Phase B move to its ideal home.
+Problem numbers (1–6) and phase letters (A–F) are consistent across all four diagrams, so a reviewer can trace "Problem 1" from today's broken location through Phase C to its ideal home.
 
 > **Strategic, not tactical.** Each phase below describes *what* and *why*.
 > Each phase becomes its own implementation branch with its own
@@ -66,12 +67,14 @@ new paint. The cost of a slow tick is different per thread:
 Only the last failure mode is survivable. That's why the cycle worker
 exists and why it must stay.
 
-**Compatibility note with `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md`:**
-That plan proposes folding pipeline work into `AutoSteerService` on the UDP
-receive thread. That's orthogonal to unification itself — unifying the two
-parsed-NMEA paths is correct, but the unified service must retain the
-`Task.Run` handoff so cycle work doesn't run on the receive thread. Both
-plans should be reconciled around this principle before either lands.
+**Relationship to `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md`:**
+That plan's content is absorbed into **Phase B** of this plan (see §5). The
+unification is correct and necessary — merging the two parsed-NMEA paths
+and collapsing to a single LocalPlane are prerequisites to having a
+coherent single cycle owner. This plan adopts that work but reframes it
+under §0: the unified cycle owner must retain the `Task.Run` handoff so
+cycle work doesn't run on the receive thread. Xyntexx's original plan
+document stays in place for his reference; the work is executed from here.
 
 ---
 
@@ -179,8 +182,9 @@ the pattern or are genuinely UI-only.
 
 ## 5. Phased plan
 
-Each phase is a separate branch and PR. Phases A and B are the core;
-C unblocks related services; D and E are verification / extension.
+Each phase is a separate branch and PR. A and B are foundation;
+C is the proof-of-pattern; D completes the invariant for the hot path;
+E and F extend the pattern.
 
 ### Phase A — Foundation: state-flow primitives
 
@@ -199,9 +203,39 @@ No behavior change. Define the shapes the rest of the work will use.
 
 Ships as scaffolding. No call sites change yet.
 
-### Phase B — YouTurn end-to-end
+### Phase B — Unify the GPS pipeline
 
-Proof-of-pattern phase.
+Absorbs `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md`.
+Addresses current-state problems **2, 3, and 6**.
+
+The current codebase has two parallel GPS processing paths — a zero-copy
+parse into AutoSteer on the receive thread, and a string-based parse into
+`GpsPipelineService` via `Task.Run`. That produces: NMEA parsed twice, two
+`LocalPlane` instances, cycle work split across two threads, and a PGN
+send cadence tied to packet arrival rather than the cycle.
+
+- Merge the two parsers. Keep the `Span`-based `NmeaParserServiceFast`;
+  retire `NmeaParserService`.
+- Single `LocalPlane` instance, shared via `ApplicationState.Field`.
+  Auto-create in exactly one place. Field open/close replaces it.
+- Collapse to a single cycle owner (service name to be decided during
+  implementation — the critical constraint is §0, not the class name).
+  Move `ToolPositionService.Update`, `SectionControlService.Update`,
+  coverage painting, and AutoSteer guidance + PGN build into the cycle.
+- **Preserve the `Task.Run` handoff.** The receive thread parses NMEA
+  into a `Position`, hands it off to the cycle via a queue or volatile
+  field, and returns immediately. Heavy work runs on the cycle worker, not
+  the receive callback.
+- PGN cadence becomes cycle-driven: PGNs are built inside the cycle,
+  handed to the UDP send path at end-of-cycle.
+
+After Phase B: one parsed path, one coordinate frame, one cycle owner on a
+dedicated worker. The architecture is now coherent enough for the
+domain-specific phases to land cleanly.
+
+### Phase C — YouTurn end-to-end
+
+Proof-of-pattern phase. Addresses current-state problems **1, 4, 5**.
 
 - Cycle worker owns a `YouTurnWorkingState` instance. State machine takes
   the working state instead of `YouTurnState`.
@@ -216,11 +250,11 @@ Proof-of-pattern phase.
   calling the state machine directly.
 - `ClearYouTurnState` becomes a `RequestClearYouTurn` intent.
 
-After Phase B: the YouTurn state machine runs on the cycle worker. The
+After Phase C: the YouTurn state machine runs on the cycle worker. The
 extraction is genuinely complete. `MainViewModel.YouTurn.cs` shrinks
 further (target: under 100 lines).
 
-### Phase C — Guidance state migration
+### Phase D — Guidance state migration
 
 Same pattern, applied to `GuidanceState`. Required because the YouTurn
 machine reads/writes `IsHeadingSameWay`, `HowManyPathsAway`, `NudgeOffset`
@@ -232,11 +266,11 @@ machine reads/writes `IsHeadingSameWay`, `HowManyPathsAway`, `NudgeOffset`
 - `ApplyGpsCycleResult` mirrors a `Guidance` snapshot onto `State.Guidance`.
 - Nudge / snap commands (`Commands.Track.cs`) become intents.
 
-After Phase C: the entire cycle runs without touching any
+After Phase D: the entire cycle runs without touching any
 `ObservableObject`. UI updates happen exactly once per cycle, at the
 marshal point.
 
-### Phase D — `FieldState` careful audit
+### Phase E — `FieldState` careful audit
 
 `FieldState` holds the active field, boundaries, headland, drift. The
 cycle *reads* most of these and *writes* `HeadlandProximityDistance` /
@@ -247,7 +281,7 @@ This phase is mostly verification — confirm no service writes to
 `FieldState` from a background thread, document the read/write
 boundaries. Likely small or no-op.
 
-### Phase E — `ConnectionState` for NTRIP / UDP
+### Phase F — `ConnectionState` for NTRIP / UDP
 
 NTRIP and UDP services run on their own background threads and update
 `ConnectionState` directly today. Same risk as the rest. Apply the same
@@ -326,18 +360,15 @@ one-way-flow design is correct architecturally regardless of what the
 binding layer tolerates, and AV12 would only *tolerate* the wrong
 pattern, not reward it. Stay the course.
 
-### 6.6 Coordination with `unify-gps-pipeline`
+### 6.6 Phase B service name
 
-The unify-pipeline plan targets `AutoSteerService` as the unified cycle
-owner. This plan targets "the cycle worker" generically. Compatible if
-and only if §0 (cycle worker = `Task.Run` handoff, not the UDP receive
-thread) is preserved through the unification. The concrete service name
-in Phase B isn't a risk; the thread destination is.
+The absorbed unify-plan targets `AutoSteerService` as the unified cycle
+owner. This plan is deliberately silent on the concrete name — the §0
+constraint governs regardless of which class ends up hosting the cycle.
 
-**Decision needed (cross-plan):** confirm with the unify-pipeline author
-that the unified service retains the `Task.Run` boundary. If yes, the
-two plans compose cleanly. If no, the state migration blocks on a
-threading-model decision that needs to be made first.
+**Decision needed:** does the unified service keep the `AutoSteerService`
+name, revive `GpsPipelineService`, or take a new name? Surfaces during
+Phase B implementation; not a blocker for Phase A.
 
 ---
 
@@ -349,7 +380,7 @@ Per phase:
 - Smoke test: drive a full field cycle (field open → track follow → auto
   U-turn → next pass → close field) on desktop. No exceptions, no
   rendering glitches.
-- For Phase B specifically: `MainViewModel.YouTurn.cs` shrinks to a thin
+- For Phase C specifically: `MainViewModel.YouTurn.cs` shrinks to a thin
   property/command file (target: under 100 lines).
 
 Whole-effort:
@@ -361,7 +392,7 @@ Whole-effort:
 - Headland-turn FPS on iPad Pro 2nd gen does not regress (24 FPS floor,
   per `project_fps_floor`). Ideally improves on the create-turn frame.
 - `MainViewModel` partials total line count drops measurably (baseline
-  captured before Phase B).
+  captured before Phase C).
 
 ---
 
@@ -371,8 +402,8 @@ Whole-effort:
   sliding onto the UDP thread as an alternative). Background races become
   impossible by construction, not by discipline.
 - **YouTurn turn-creation spike.** The 50–200 ms Dubins computation moves
-  to the cycle worker. UI thread does only the snapshot apply. Frame
-  budget intact during turns — exactly when it matters.
+  to the cycle worker after Phase C. UI thread does only the snapshot apply.
+  Frame budget intact during turns — exactly when it matters.
 - **Testability.** Working states are POCOs; state-machine tests run
   without any view model or dispatcher.
 - **Future-proofing.** Adding new domain computation (route planning,
@@ -387,13 +418,14 @@ Whole-effort:
   Settings changes from the UI propagate through the same
   `ObservableObject` pattern; fine because they're user-initiated and
   infrequent.
-- NTRIP / UDP services have their own threading story (Phase E).
+- NTRIP / UDP services have their own threading story (Phase F).
 - Avalonia 12 upgrade is independent. This plan doesn't depend on it.
 
 ---
 
 ## 10. Linked plans / memory references
 
+- `Plans/threading_model_overview.svg` — the whole picture in one frame.
 - `Plans/threading_model.svg` — target threading model.
 - `Plans/threading_model_current.svg` — current reality with numbered problems.
 - `Plans/threading_model_migration.svg` — phased migration.
@@ -404,6 +436,6 @@ Whole-effort:
 - `project_av12_threading` (memory) — the original observation that the
   VM orchestrates too much on the UI thread.
 - `project_turns_are_critical` (memory) — turns are the worst-frame
-  scenario; Phase B directly targets the spike on the worst frame.
+  scenario; Phase C directly targets the spike on the worst frame.
 - `project_fps_floor` (memory) — 24 FPS minimum during normal operation;
   acceptance criterion above.
