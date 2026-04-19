@@ -294,18 +294,25 @@ public class AutoSteerService : IAutoSteerService
     }
 
     /// <summary>
-    /// Process incoming GPS buffer - entry point for zero-copy pipeline.
-    /// Called directly from UDP receive handler.
+    /// Process incoming GPS buffer — entry point for the zero-copy pipeline.
+    /// Called directly from the UDP receive callback.
+    ///
+    /// Phase B C4: this method does parse-and-return only. Coordinate
+    /// conversion, guidance, PGN build, tram detection, notify, and latency
+    /// recording all moved to the cycle worker, which calls
+    /// <see cref="ProcessSimulatedPosition"/> once per tick with the
+    /// cycle-computed coordinates and heading. Pre-C4, those steps ran here
+    /// on the receive thread, violating the §0 invariant and emitting PGNs
+    /// twice per packet (once here, once from the cycle).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void ProcessGpsBuffer(byte[] buffer, int length)
     {
         if (!_isEnabled) return;
 
-        // Mark cycle start
-        _state.BeginNewCycle();
-
-        // Parse directly into VehicleState (zero-copy)
+        // Parse directly into VehicleState (zero-copy). ParseIntoState marks
+        // its own parse-timing fields; no BeginNewCycle here because the
+        // cycle owns timing now.
         ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
         if (!NmeaParserServiceFast.ParseIntoState(data, ref _state))
         {
@@ -313,41 +320,9 @@ public class AutoSteerService : IAutoSteerService
             return;
         }
 
-        // Publish the parsed fix to GpsService so the cycle worker fires. Phase B C3
-        // made AutoSteer the sole NMEA entry point; MVM's string-parse path was removed.
+        // Publish the parsed fix to GpsService. This is the sole event the
+        // cycle worker listens to; everything else runs there.
         PublishGpsData();
-
-        // Read the shared LocalPlane. Creation is owned by field-open (UI thread) or
-        // the cycle worker on first valid fix — never here. If still null (pre-first-fix
-        // or simulator edge case), skip conversion; Easting/Northing keep prior values.
-        var localPlane = _appState.Field.LocalPlane;
-        if (localPlane != null)
-        {
-            var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
-                new Wgs84(_state.Latitude, _state.Longitude));
-            // Apply GPS drift compensation (offset fix) before any calculations
-            // This shifts tractor + implement together, matching legacy behavior
-            _state.Easting = geoCoord.Easting + _driftEasting;
-            _state.Northing = geoCoord.Northing + _driftNorthing;
-        }
-
-        // Calculate guidance if we have an active track
-        if (_currentTrack != null && _currentTrack.Points.Count >= 2)
-        {
-            CalculateGuidance();
-        }
-
-        // Build and send PGNs
-        SendPgns();
-
-        // Mark PGN sent and record latency
-        _state.MarkPgnSent();
-        RecordLatency(_state.TotalLatencyMs);
-
-        // Notify UI (creates snapshot copy)
-        NotifyStateUpdated();
-
-        _cycleCount++;
     }
 
     /// <summary>

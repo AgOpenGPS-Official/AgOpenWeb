@@ -59,6 +59,14 @@ public class SimulatorDataFlowTests
         _autoSteer.Stop();
     }
 
+    // Phase B C4 contract: AutoSteerService.ProcessGpsBuffer only parses and
+    // publishes the GpsData — coordinate conversion, guidance, PGN build,
+    // and snapshot emission now run on the cycle worker. Tests that relied
+    // on coordinate-conversion behavior moved to the C6 pipeline-level
+    // integration tests; tests that verified parse-correctness were updated
+    // to capture the published GpsData via the mock IGpsService instead of
+    // the (no-longer-firing) StateUpdated event.
+
     [Test]
     public void GpsData_FromSimulator_ParsedByAutoSteerService()
     {
@@ -85,27 +93,28 @@ public class SimulatorDataFlowTests
         IPEndPoint? remote = null;
         var rawBytes = listener.Receive(ref remote);
 
-        // 3. Capture the snapshot from AutoSteerService
-        VehicleStateSnapshot? snapshot = null;
-        _autoSteer.StateUpdated += (_, s) => snapshot = s;
+        // 3. Capture the published GpsData from the mock IGpsService.
+        //    StateUpdated no longer fires from ProcessGpsBuffer — post-C4 the
+        //    sole observable side-effect is IGpsService.UpdateGpsData.
+        GpsData? published = null;
+        _mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
+                .Do(ci => published = ci.Arg<GpsData>());
 
         // 4. Feed the raw GPS bytes directly to AutoSteerService (same path as UdpCommunicationService)
         _autoSteer.ProcessGpsBuffer(rawBytes, rawBytes.Length);
 
         // 5. Verify the state was parsed correctly
-        Assert.That(snapshot, Is.Not.Null, "StateUpdated should fire after GPS processing");
-        Assert.That(snapshot!.Value.Latitude, Is.EqualTo(43.712800).Within(0.001),
+        Assert.That(published, Is.Not.Null, "UpdateGpsData should fire after parse");
+        Assert.That(published!.CurrentPosition.Latitude, Is.EqualTo(43.712800).Within(0.001),
             "Latitude should match sent value");
-        Assert.That(snapshot.Value.Longitude, Is.EqualTo(-74.006000).Within(0.001),
+        Assert.That(published.CurrentPosition.Longitude, Is.EqualTo(-74.006000).Within(0.001),
             "Longitude should match sent value");
-        Assert.That(snapshot.Value.Heading, Is.EqualTo(127.5).Within(0.5),
+        Assert.That(published.CurrentPosition.Heading, Is.EqualTo(127.5).Within(0.5),
             "Heading should match sent value");
-        Assert.That(snapshot.Value.FixQuality, Is.EqualTo(4),
+        Assert.That(published.FixQuality, Is.EqualTo(4),
             "Fix quality should be RTK Fixed");
-        Assert.That(snapshot.Value.Satellites, Is.EqualTo(14));
-        Assert.That(snapshot.Value.Hdop, Is.EqualTo(0.7).Within(0.1));
-        Assert.That(snapshot.Value.GpsValid, Is.True,
-            "GPS should be marked valid after successful parse");
+        Assert.That(published.SatellitesInUse, Is.EqualTo(14));
+        Assert.That(published.Hdop, Is.EqualTo(0.7).Within(0.1));
     }
 
     [Test]
@@ -157,91 +166,17 @@ public class SimulatorDataFlowTests
     }
 
     [Test]
-    public void LocalPlaneConversion_ProducesConsistentOffsets()
+    public void ParseStillRuns_WhenFixQualityZero()
     {
-        // Phase B: LocalPlane creation moves to the cycle worker / field-open.
-        // AutoSteerService reads from ApplicationState.Field.LocalPlane.
-        // Preseed the plane at the first-fix location to mimic what the cycle
-        // worker would do, then verify a subsequent fix produces the expected offset.
-        PresetLocalPlane(43.712800, -74.006000);
-
-        // Position 1: First GPS fix at the plane origin
-        using var listener1 = new UdpClient(0);
-        int port1 = ((IPEndPoint)listener1.Client.LocalEndPoint!).Port;
-
-        using var gps = new VirtualGpsReceiver(targetPort: port1);
-        gps.Latitude = 43.712800;
-        gps.Longitude = -74.006000;
-        gps.HeadingDegrees = 0.0;
-        gps.SpeedKnots = 0.0;
-        gps.FixQuality = 4; // RTK Fixed
-        gps.Satellites = 12;
-
-        gps.SendOnce();
-        listener1.Client.ReceiveTimeout = 2000;
-        IPEndPoint? remote1 = null;
-        var bytes1 = listener1.Receive(ref remote1);
-
-        VehicleStateSnapshot? snapshot1 = null;
-        EventHandler<VehicleStateSnapshot> handler1 = (_, s) => snapshot1 = s;
-        _autoSteer.StateUpdated += handler1;
-
-        _autoSteer.ProcessGpsBuffer(bytes1, bytes1.Length);
-
-        _autoSteer.StateUpdated -= handler1;
-
-        Assert.That(snapshot1, Is.Not.Null, "Should get snapshot from first fix");
-        // First fix creates the local plane at this position,
-        // so Easting/Northing should be near zero (origin)
-        double firstEasting = snapshot1!.Value.Easting;
-        double firstNorthing = snapshot1.Value.Northing;
-        Assert.That(Math.Abs(firstEasting) < 1.0,
-            "First fix Easting should be near origin");
-        Assert.That(Math.Abs(firstNorthing) < 1.0,
-            "First fix Northing should be near origin");
-
-        // Position 2: Move slightly north (increase latitude)
-        using var listener2 = new UdpClient(0);
-        int port2 = ((IPEndPoint)listener2.Client.LocalEndPoint!).Port;
-
-        using var gps2 = new VirtualGpsReceiver(targetPort: port2);
-        gps2.Latitude = 43.713800;  // ~111m north
-        gps2.Longitude = -74.006000;
-        gps2.HeadingDegrees = 0.0;
-        gps2.SpeedKnots = 0.0;
-        gps2.FixQuality = 4;
-        gps2.Satellites = 12;
-
-        gps2.SendOnce();
-        listener2.Client.ReceiveTimeout = 2000;
-        IPEndPoint? remote2 = null;
-        var bytes2 = listener2.Receive(ref remote2);
-
-        VehicleStateSnapshot? snapshot2 = null;
-        _autoSteer.StateUpdated += (_, s) => snapshot2 = s;
-
-        // Process second fix - should use existing local plane
-        _autoSteer.ProcessGpsBuffer(bytes2, bytes2.Length);
-
-        Assert.That(snapshot2, Is.Not.Null, "Should get snapshot from second fix");
-        // Moving 0.001 degrees north ~ 111m, so Northing should be significantly non-zero
-        Assert.That(Math.Abs(snapshot2!.Value.Northing), Is.GreaterThan(50.0),
-            "Second fix should have significant Northing offset from origin");
-        Assert.That(snapshot2.Value.Northing, Is.Not.EqualTo(firstNorthing),
-            "Northing should change between fixes at different positions");
-    }
-
-    [Test]
-    public void NoLocalPlane_WhenFixQualityZero()
-    {
-        // Send GPS data with FixQuality=0 (no fix) - should NOT create local plane
+        // FixQuality=0 still parses and publishes — the cycle worker's
+        // GpsFixQualityValidator is what rejects bad fixes, not AutoSteerService.
         using var listener = new UdpClient(0);
         int port = ((IPEndPoint)listener.Client.LocalEndPoint!).Port;
 
         using var gps = new VirtualGpsReceiver(targetPort: port);
         gps.Latitude = 43.712800;
         gps.Longitude = -74.006000;
-        gps.FixQuality = 0; // No fix
+        gps.FixQuality = 0;
         gps.Satellites = 0;
 
         gps.SendOnce();
@@ -249,19 +184,14 @@ public class SimulatorDataFlowTests
         IPEndPoint? remote = null;
         var rawBytes = listener.Receive(ref remote);
 
-        VehicleStateSnapshot? snapshot = null;
-        _autoSteer.StateUpdated += (_, s) => snapshot = s;
+        GpsData? published = null;
+        _mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
+                .Do(ci => published = ci.Arg<GpsData>());
 
         _autoSteer.ProcessGpsBuffer(rawBytes, rawBytes.Length);
 
-        // FixQuality=0 should still parse but Easting/Northing stay 0 (no local plane)
-        if (snapshot != null)
-        {
-            Assert.That(snapshot.Value.Easting, Is.EqualTo(0.0),
-                "No local plane should be created with no fix");
-            Assert.That(snapshot.Value.Northing, Is.EqualTo(0.0),
-                "No local plane should be created with no fix");
-        }
+        Assert.That(published, Is.Not.Null, "parse + publish still runs for fix quality 0");
+        Assert.That(published!.FixQuality, Is.EqualTo(0));
     }
 
     [Test]
@@ -280,8 +210,9 @@ public class SimulatorDataFlowTests
         gps.FixQuality = 4;
         gps.Satellites = 12;
 
-        int snapshotCount = 0;
-        _autoSteer.StateUpdated += (_, _) => snapshotCount++;
+        int publishCount = 0;
+        _mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
+                .Do(_ => publishCount++);
 
         // Send 10 frames, stepping position between each
         for (int i = 0; i < 10; i++)
@@ -293,15 +224,15 @@ public class SimulatorDataFlowTests
             gps.Step(0.1); // 100ms at 10Hz
         }
 
-        // Verify all frames were processed
-        Assert.That(snapshotCount, Is.EqualTo(10),
-            "All 10 GPS frames should produce snapshots");
+        // Every successful parse should publish to GpsService.
+        Assert.That(publishCount, Is.EqualTo(10),
+            "UpdateGpsData should fire for each parsed frame");
 
         var metrics = _autoSteer.GetLatencyMetrics();
-        Assert.That(metrics.CycleCount, Is.EqualTo(10),
-            "Cycle count should match frames sent");
         Assert.That(metrics.ParseFailures, Is.EqualTo(0),
             "No parse failures expected for valid $PANDA sentences");
+        // CycleCount is now incremented by the cycle worker, not ProcessGpsBuffer —
+        // pipeline-level integration tests (Phase B C6) verify it end-to-end.
     }
 
     [Test]
@@ -330,214 +261,12 @@ public class SimulatorDataFlowTests
             "Sensor percent should be approximately 50%");
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // Tractor Movement Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Helper: send a VirtualGpsReceiver PANDA sentence via UDP and capture the raw bytes.
-    /// </summary>
-    private static byte[] BuildPandaBytes(double lat, double lon, double heading = 0,
-        double speedKnots = 5, int fixQuality = 4)
-    {
-        using var listener = new UdpClient(0);
-        int port = ((IPEndPoint)listener.Client.LocalEndPoint!).Port;
-        listener.Client.ReceiveTimeout = 2000;
-
-        using var gps = new VirtualGpsReceiver(targetPort: port);
-        gps.Latitude = lat;
-        gps.Longitude = lon;
-        gps.HeadingDegrees = heading;
-        gps.SpeedKnots = speedKnots;
-        gps.FixQuality = fixQuality;
-        gps.Satellites = 12;
-        gps.Hdop = 0.7;
-
-        gps.SendOnce();
-        IPEndPoint? remote = null;
-        return listener.Receive(ref remote);
-    }
-
-    [Test]
-    public void TractorSkipsLocalCoords_WithoutLocalPlane()
-    {
-        // New Phase B contract: AutoSteerService no longer auto-creates a LocalPlane.
-        // Without a preset plane (from field-open or the cycle worker), ProcessGpsBuffer
-        // parses lat/lon into state but leaves Easting/Northing at their initialized zeros.
-        var bytes = BuildPandaBytes(lat: 42.0, lon: -93.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap = null;
-        EventHandler<VehicleStateSnapshot> h = (_, s) => snap = s;
-        _autoSteer.StateUpdated += h;
-        _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-        _autoSteer.StateUpdated -= h;
-
-        Assert.That(snap, Is.Not.Null, "Parse still runs; snapshot still fires");
-        Assert.That(snap!.Value.Latitude, Is.EqualTo(42.0).Within(1e-4),
-            "Latitude parsed from NMEA");
-        Assert.That(snap.Value.Easting, Is.EqualTo(0.0),
-            "No LocalPlane → Easting unchanged from default zero");
-        Assert.That(snap.Value.Northing, Is.EqualTo(0.0),
-            "No LocalPlane → Northing unchanged from default zero");
-    }
-
-    [Test]
-    public void TractorMoves_WithPresetPlane_AtGpsOrigin()
-    {
-        // Preset a LocalPlane at the GPS origin — mimics what the cycle worker
-        // (GpsPipelineService) would auto-create on first valid fix.
-        PresetLocalPlane(42.0, -93.0);
-
-        // First GPS fix at origin -- Easting/Northing near 0
-        var bytes1 = BuildPandaBytes(lat: 42.0, lon: -93.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap1 = null;
-        EventHandler<VehicleStateSnapshot> h1 = (_, s) => snap1 = s;
-        _autoSteer.StateUpdated += h1;
-        _autoSteer.ProcessGpsBuffer(bytes1, bytes1.Length);
-        _autoSteer.StateUpdated -= h1;
-
-        Assert.That(snap1, Is.Not.Null, "Should produce snapshot from first fix");
-        Assert.That(Math.Abs(snap1!.Value.Easting), Is.LessThan(1.0),
-            "First fix Easting should be near origin");
-        Assert.That(Math.Abs(snap1.Value.Northing), Is.LessThan(1.0),
-            "First fix Northing should be near origin");
-
-        // Second fix ~11m north (0.0001 degrees latitude)
-        var bytes2 = BuildPandaBytes(lat: 42.0001, lon: -93.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap2 = null;
-        _autoSteer.StateUpdated += (_, s) => snap2 = s;
-        _autoSteer.ProcessGpsBuffer(bytes2, bytes2.Length);
-
-        Assert.That(snap2, Is.Not.Null, "Should produce snapshot from second fix");
-        Assert.That(snap2!.Value.Northing, Is.GreaterThan(5.0),
-            "Northing should increase when moving north");
-        Assert.That(Math.Abs(snap2.Value.Easting), Is.LessThan(1.0),
-            "Easting should stay near zero when only latitude changes");
-    }
-
-    [Test]
-    public void TractorMoves_WithField_FieldOriginPlane()
-    {
-        // Set up a field local plane at lat=42.0, lon=-93.0 BEFORE sending GPS
-        PresetLocalPlane(42.0, -93.0);
-
-        // First GPS fix at origin -- should be near (0,0)
-        var bytes1 = BuildPandaBytes(lat: 42.0, lon: -93.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap1 = null;
-        EventHandler<VehicleStateSnapshot> h1 = (_, s) => snap1 = s;
-        _autoSteer.StateUpdated += h1;
-        _autoSteer.ProcessGpsBuffer(bytes1, bytes1.Length);
-        _autoSteer.StateUpdated -= h1;
-
-        Assert.That(snap1, Is.Not.Null, "Should produce snapshot from first fix");
-        Assert.That(Math.Abs(snap1!.Value.Easting), Is.LessThan(1.0),
-            "Easting at field origin should be near zero");
-        Assert.That(Math.Abs(snap1.Value.Northing), Is.LessThan(1.0),
-            "Northing at field origin should be near zero");
-
-        // Second fix at lat=42.001 (~111m north)
-        var bytes2 = BuildPandaBytes(lat: 42.001, lon: -93.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap2 = null;
-        _autoSteer.StateUpdated += (_, s) => snap2 = s;
-        _autoSteer.ProcessGpsBuffer(bytes2, bytes2.Length);
-
-        Assert.That(snap2, Is.Not.Null, "Should produce snapshot from second fix");
-        Assert.That(snap2!.Value.Northing, Is.GreaterThan(50.0),
-            "Northing should be significant (~111m) after moving 0.001 degrees north");
-        Assert.That(snap2.Value.Northing, Is.Not.EqualTo(snap1.Value.Northing),
-            "Position should change between fixes");
-    }
-
-    [Test]
-    public void TractorMoves_FieldOriginDifferentFromGps_CorrectOffset()
-    {
-        // Field origin at lat=42.0, lon=-93.0
-        PresetLocalPlane(42.0, -93.0);
-
-        // GPS fix at lat=42.001 (0.001 degrees north of field origin ~ 111m)
-        var bytes = BuildPandaBytes(lat: 42.001, lon: -93.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap = null;
-        _autoSteer.StateUpdated += (_, s) => snap = s;
-        _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-
-        Assert.That(snap, Is.Not.Null, "Should produce snapshot");
-
-        // Northing should be approximately 111m (not 0, proving field origin is used)
-        Assert.That(snap!.Value.Northing, Is.EqualTo(111.0).Within(5.0),
-            "Northing should be ~111m when GPS is 0.001 deg north of field origin");
-        Assert.That(Math.Abs(snap.Value.Easting), Is.LessThan(1.0),
-            "Easting should be near zero (same longitude as field origin)");
-    }
-
-    /// <summary>Get a random ephemeral port by binding to 0 and reading the assigned port.</summary>
-    private static int GetEphemeralPort()
-    {
-        using var tmp = new UdpClient(0);
-        return ((IPEndPoint)tmp.Client.LocalEndPoint!).Port;
-    }
-
-    [Test]
-    public void TractorMoves_WithPresetPlane_AtEquator()
-    {
-        // Preset a LocalPlane at (0,0) so coordinate conversion runs.
-        // Previously this test relied on AutoSteer's auto-create; post-Phase-B that
-        // creation moves to the cycle worker, so tests set up the plane explicitly.
-        PresetLocalPlane(0.0, 0.0);
-
-        // First GPS fix at lat=0, lon=0 (equator) -- must not be skipped
-        var bytes1 = BuildPandaBytes(lat: 0.0, lon: 0.0, heading: 90, speedKnots: 5);
-
-        VehicleStateSnapshot? snap1 = null;
-        EventHandler<VehicleStateSnapshot> h1 = (_, s) => snap1 = s;
-        _autoSteer.StateUpdated += h1;
-        _autoSteer.ProcessGpsBuffer(bytes1, bytes1.Length);
-        _autoSteer.StateUpdated -= h1;
-
-        Assert.That(snap1, Is.Not.Null, "Should produce snapshot at lat=0");
-        Assert.That(snap1!.Value.GpsValid, Is.True, "GPS should be valid at lat=0");
-        Assert.That(Math.Abs(snap1.Value.Easting), Is.LessThan(1.0),
-            "First fix Easting should be near origin at lat=0");
-        Assert.That(Math.Abs(snap1.Value.Northing), Is.LessThan(1.0),
-            "First fix Northing should be near origin at lat=0");
-
-        // Second fix moved east (0.001 deg longitude at equator ~ 111m)
-        var bytes2 = BuildPandaBytes(lat: 0.0, lon: 0.001, heading: 90, speedKnots: 5);
-
-        VehicleStateSnapshot? snap2 = null;
-        EventHandler<VehicleStateSnapshot> h2 = (_, s) => snap2 = s;
-        _autoSteer.StateUpdated += h2;
-        _autoSteer.ProcessGpsBuffer(bytes2, bytes2.Length);
-        _autoSteer.StateUpdated -= h2;
-
-        Assert.That(snap2, Is.Not.Null, "Should produce snapshot for second fix at lat=0");
-        Assert.That(Math.Abs(snap2!.Value.Easting), Is.GreaterThan(50),
-            "Easting should change when longitude changes at equator");
-        Assert.That(Math.Abs(snap2.Value.Northing), Is.LessThan(5),
-            "Northing should stay near 0 when only longitude changed");
-    }
-
-    [Test]
-    public void TractorMoves_AtEquator_WithField()
-    {
-        // Set field origin at equator
-        PresetLocalPlane(0.0, 0.0);
-
-        // GPS fix slightly north of equator
-        var bytes = BuildPandaBytes(lat: 0.001, lon: 0.0, heading: 0, speedKnots: 5);
-
-        VehicleStateSnapshot? snap = null;
-        EventHandler<VehicleStateSnapshot> h = (_, s) => snap = s;
-        _autoSteer.StateUpdated += h;
-        _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-        _autoSteer.StateUpdated -= h;
-
-        Assert.That(snap, Is.Not.Null, "Should produce snapshot at equator with field");
-        Assert.That(snap!.Value.Northing, Is.GreaterThan(50).And.LessThan(200),
-            $"Northing should be ~111m for 0.001 deg at equator, got {snap.Value.Northing:F1}");
-    }
+    // Coordinate-conversion tests removed in Phase B C4. Pre-C4, ProcessGpsBuffer did
+    // coord conversion + guidance + PGN + snapshot emission on the receive thread; post-C4
+    // it parses and publishes only. The cycle worker owns coord conversion now, and Phase B
+    // C6's pipeline-level integration tests cover end-to-end. Searchable in git history:
+    // LocalPlaneConversion_ProducesConsistentOffsets, TractorSkipsLocalCoords_WithoutLocalPlane,
+    // TractorMoves_WithPresetPlane_AtGpsOrigin, TractorMoves_WithField_FieldOriginPlane,
+    // TractorMoves_FieldOriginDifferentFromGps_CorrectOffset, TractorMoves_WithPresetPlane_AtEquator,
+    // TractorMoves_AtEquator_WithField.
 }
