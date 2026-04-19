@@ -130,7 +130,7 @@
   <!-- ==================== I/O LANE ==================== -->
   <rect x="40" y="770" width="1200" height="150" fill="#fff3e0" stroke="#ef6c00" stroke-width="1.5" rx="10"/>
   <text x="60" y="796" font-size="15" font-weight="700" fill="#e65100">I/O threads (UDP receive, NMEA parse, file watchers)</text>
-  <text x="60" y="816" font-size="12" fill="#ef6c00">Parse packets and hand off. Return immediately. Zero domain logic. Any blocking work here stalls the radio.</text>
+  <text x="60" y="816" font-size="12" fill="#ef6c00">Parse packets and hand off. Return immediately. Zero domain logic. Any blocking work here drops incoming PGNs.</text>
 
   <!-- IO boxes -->
   <rect x="60" y="834" width="280" height="72" fill="#ffffff" stroke="#ef6c00" stroke-width="1" rx="6"/>
