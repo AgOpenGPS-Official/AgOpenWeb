@@ -1,7 +1,9 @@
 // AgValoniaGPS
-// Copyright (C) 2024-2025 AgValoniaGPS Contributors
+// Copyright (C) 2024-2026 AgValoniaGPS Contributors
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
+
+using AgValoniaGPS.Models.Pipeline;
 
 namespace AgValoniaGPS.Models.State;
 
@@ -56,6 +58,12 @@ public record GpsCycleResult
     public bool IsInYouTurn { get; init; }
     public bool YouTurnTriggered { get; init; }
     public bool YouTurnCompleted { get; init; }
+
+    // Phase A scaffolding — populated by the cycle worker in Phase C / D,
+    // unused until then. Flat YouTurn / guidance fields above are removed
+    // once all consumers read from these snapshots.
+    public YouTurnSnapshot? YouTurn { get; init; }
+    public GuidanceSnapshot? Guidance { get; init; }
 
     // Section states (compact — individual section properties updated from this)
     public bool[]? SectionStates { get; init; }
