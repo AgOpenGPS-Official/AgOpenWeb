@@ -51,6 +51,7 @@ public class MainViewModelBuilder
             trackGuidanceService: Substitute.For<ITrackGuidanceService>(),
             youTurnCreationService: new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance),
             youTurnGuidanceService: new YouTurnGuidanceService(),
+            youTurnPathingService: new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
             polygonOffsetService: Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
             turnAreaService: Substitute.For<AgValoniaGPS.Services.Interfaces.ITurnAreaService>(),
             vehicleProfileService: VehicleProfileService,

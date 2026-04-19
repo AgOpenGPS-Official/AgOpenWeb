@@ -60,6 +60,7 @@ public partial class MainViewModel : ObservableObject
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly YouTurnCreationService _youTurnCreationService;
+    private readonly YouTurnPathingService _youTurnPathingService;
     private readonly Services.Geometry.IPolygonOffsetService _polygonOffsetService;
     private readonly Services.Interfaces.ITurnAreaService _turnAreaService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
@@ -176,6 +177,7 @@ public partial class MainViewModel : ObservableObject
         ITrackGuidanceService trackGuidanceService,
         YouTurnCreationService youTurnCreationService,
         YouTurnGuidanceService youTurnGuidanceService,
+        YouTurnPathingService youTurnPathingService,
         Services.Geometry.IPolygonOffsetService polygonOffsetService,
         Services.Interfaces.ITurnAreaService turnAreaService,
         IVehicleProfileService vehicleProfileService,
@@ -229,6 +231,7 @@ public partial class MainViewModel : ObservableObject
         _trackGuidanceService = trackGuidanceService;
         _youTurnCreationService = youTurnCreationService;
         _youTurnGuidanceService = youTurnGuidanceService;
+        _youTurnPathingService = youTurnPathingService;
         _polygonOffsetService = polygonOffsetService;
         _turnAreaService = turnAreaService;
         _vehicleProfileService = vehicleProfileService;

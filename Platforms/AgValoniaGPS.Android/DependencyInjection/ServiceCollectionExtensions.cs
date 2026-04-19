@@ -102,6 +102,7 @@ public static class ServiceCollectionExtensions
         // YouTurn services
         services.AddSingleton<YouTurnCreationService>();
         services.AddSingleton<YouTurnGuidanceService>();
+        services.AddSingleton<YouTurnPathingService>();
 
         // Tool position service (for trailing implements)
         services.AddSingleton<IToolPositionService, ToolPositionService>();
