@@ -12,6 +12,7 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services.Headland;
@@ -37,6 +38,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IAutoSteerService _autoSteerService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
     private readonly IAudioService _audioService;
+    private readonly IPipelineIntents _intents;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
 
@@ -96,6 +98,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         IAutoSteerService autoSteerService,
         YouTurnGuidanceService youTurnGuidanceService,
         IAudioService audioService,
+        IPipelineIntents intents,
         ILogger<GpsPipelineService> logger,
         ApplicationState appState)
     {
@@ -107,6 +110,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _autoSteerService = autoSteerService;
         _youTurnGuidanceService = youTurnGuidanceService;
         _audioService = audioService;
+        _intents = intents;
         _logger = logger;
         _appState = appState;
     }
@@ -235,6 +239,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         _cycleCounter++;
         var config = ConfigurationStore.Instance;
+
+        // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
+        // Consumers land in Phase C (YouTurn) and Phase D (Guidance); the batch is
+        // discarded until then to prove the pipe without changing behavior.
+        _ = _intents.Drain();
 
         // ── Snapshot operational state under lock ────────────────────────
         bool autoSteerEngaged;

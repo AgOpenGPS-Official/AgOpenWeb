@@ -32,6 +32,7 @@ using AgValoniaGPS.Services.Section;
 using AgValoniaGPS.Services.Tram;
 using AgValoniaGPS.ViewModels;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Desktop.Services;
 
@@ -134,6 +135,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IElevationLogService, ElevationLogService>();
 
         // GPS processing pipeline (background-thread orchestration)
+        // Singleton: UI commands and the cycle worker must share one intent instance.
+        services.AddSingleton<IPipelineIntents, PipelineIntents>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
         // Platform-specific services (Desktop implementations)
