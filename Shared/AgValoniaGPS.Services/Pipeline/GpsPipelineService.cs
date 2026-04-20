@@ -682,15 +682,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             HitchNorthing = hitchPos.Northing,
             IsToolPositionReady = isToolReady,
 
-            // Guidance
-            SteerAngle = steerAngle,
-            CrossTrackError = crossTrackError,
-            GoalPointEasting = goalE,
-            GoalPointNorthing = goalN,
-            HasGuidance = hasGuidance,
-            DisplayTrack = displayTrack,
-            BaseTrack = baseTrack,
-
             // Autosteer
             IsAutoSteerEngaged = autoSteerEngaged,
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
