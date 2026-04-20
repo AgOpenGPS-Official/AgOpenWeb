@@ -61,4 +61,32 @@ public record GuidanceSnapshot
     public string CurrentLineLabel { get; init; } = "1L";
 
     public bool IsContourMode { get; init; }
+
+    // ── Cycle-only fields (not mirrored on GuidanceState) ─────────────────
+    // These are produced by the cycle worker and consumed by ApplyGpsCycleResult
+    // to drive map-service pushes and the HowManyPathsAway mirror. They do not
+    // correspond to observable GuidanceState properties, so they live on the
+    // snapshot only — GuidanceWorkingState stays property-for-property aligned
+    // with GuidanceState.
+
+    /// <summary>
+    /// True when the cycle's guidance branch produced steering output this
+    /// tick. Controls whether <c>ApplyGpsCycleResult</c> calls
+    /// <c>_mapService.SetGuidancePoints(..., isActive: true)</c>.
+    /// </summary>
+    public bool HasGuidance { get; init; }
+
+    /// <summary>
+    /// The offset track the tractor is following (i.e., the visible magenta
+    /// line on the map). Equal to <see cref="ActiveTrack"/> when
+    /// <see cref="HowManyPathsAway"/> is 0, otherwise a fresh offset curve.
+    /// </summary>
+    public Track.Track? DisplayTrack { get; init; }
+
+    /// <summary>
+    /// The reference (unshifted) track that <see cref="DisplayTrack"/> was
+    /// offset from, or <c>null</c> when the tractor is on pass 0 and
+    /// DisplayTrack already equals the base.
+    /// </summary>
+    public Track.Track? BaseTrack { get; init; }
 }
