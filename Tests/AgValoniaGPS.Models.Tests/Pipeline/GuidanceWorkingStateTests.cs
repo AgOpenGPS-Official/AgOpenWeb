@@ -79,37 +79,10 @@ public class GuidanceWorkingStateTests
         });
     }
 
-    [Test]
-    public void UpdateFromGuidance_copies_the_same_fields_as_GuidanceState()
-    {
-        var output = new TrackGuidanceOutput
-        {
-            CrossTrackError = 0.5,
-            SteerAngle = 1.5,
-            GuidanceLineSteerAngle = 150,
-            GuidanceLineDistanceOff = 500,
-            GoalPoint = new Vec2 { Easting = 10, Northing = 20 },
-            RadiusPoint = new Vec2 { Easting = 30, Northing = 40 },
-            PurePursuitRadius = 5.5,
-        };
-
-        var working = new GuidanceWorkingState();
-        var observable = new GuidanceState();
-
-        working.UpdateFromGuidance(output);
-        observable.UpdateFromGuidance(output);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(working.CrossTrackError, Is.EqualTo(observable.CrossTrackError));
-            Assert.That(working.SteerAngle, Is.EqualTo(observable.SteerAngle));
-            Assert.That(working.SteerAngleRaw, Is.EqualTo(observable.SteerAngleRaw));
-            Assert.That(working.DistanceOffRaw, Is.EqualTo(observable.DistanceOffRaw));
-            Assert.That(working.GoalPoint.Easting, Is.EqualTo(observable.GoalPoint.Easting));
-            Assert.That(working.RadiusPoint.Easting, Is.EqualTo(observable.RadiusPoint.Easting));
-            Assert.That(working.PurePursuitRadius, Is.EqualTo(observable.PurePursuitRadius));
-        });
-    }
+    // Phase D D9 removed UpdateFromGuidance from both GuidanceState and
+    // GuidanceWorkingState — its only caller (CalculateContourGuidance) was
+    // dead code. Cycle writers target specific fields directly. A parity
+    // test for the method no longer makes sense.
 
     private static (string Name, System.Type Type)[] DeclaredProps(System.Type t) =>
         t.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance)

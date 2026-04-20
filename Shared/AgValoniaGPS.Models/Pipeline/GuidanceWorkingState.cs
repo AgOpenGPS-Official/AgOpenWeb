@@ -88,18 +88,4 @@ public class GuidanceWorkingState
         CurrentLineLabel = "1L";
         IsContourMode = false;
     }
-
-    /// <summary>
-    /// Update from TrackGuidanceOutput.
-    /// </summary>
-    public void UpdateFromGuidance(TrackGuidanceOutput output)
-    {
-        CrossTrackError = output.CrossTrackError;
-        SteerAngle = output.SteerAngle;
-        SteerAngleRaw = output.GuidanceLineSteerAngle;
-        DistanceOffRaw = output.GuidanceLineDistanceOff;
-        GoalPoint = output.GoalPoint;
-        RadiusPoint = output.RadiusPoint;
-        PurePursuitRadius = output.PurePursuitRadius;
-    }
 }
