@@ -72,12 +72,11 @@ public partial class MainViewModel
             _mapService.SetBaseTrack(result.BaseTrack);
         }
 
-        // Auto-detect nearest pass when autosteer is not engaged
-        if (result.NearestPassNumber.HasValue && !_isAutoSteerEngaged)
-        {
-            State.Guidance.HowManyPathsAway = result.NearestPassNumber.Value;
-            SyncGuidanceStateToPipeline();
-        }
+        // Phase D D3: the cycle is now the sole writer of
+        // _guidanceWorking.HowManyPathsAway, including the not-autosteering
+        // auto-detect-nearest-pass path. The UI thread mirrors the value
+        // through the Guidance snapshot below — no separate NearestPassNumber
+        // field or SyncGuidanceStateToPipeline push needed here anymore.
 
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
@@ -124,16 +123,11 @@ public partial class MainViewModel
 
         if (result.Guidance is { } g)
         {
-            // Only the fields the YouTurn state machine currently writes; Phase D
-            // extends this when all Guidance writers move to the cycle worker.
+            // Phase D D3: cycle is the sole writer of _guidanceWorking
+            // fields we mirror here; no Sync back-push needed. D7 extends
+            // this mirror to cover every field of GuidanceSnapshot.
             State.Guidance.IsHeadingSameWay = g.IsHeadingSameWay;
-            if (State.Guidance.HowManyPathsAway != g.HowManyPathsAway)
-            {
-                State.Guidance.HowManyPathsAway = g.HowManyPathsAway;
-                // Cycle-side pipeline cache needs to be updated so the next tick
-                // sees the new pass number. Safe to call here (UI thread).
-                SyncGuidanceStateToPipeline();
-            }
+            State.Guidance.HowManyPathsAway = g.HowManyPathsAway;
         }
 
         // Turn-completion signal: YouTurn snapshot's JustCompleted is set on

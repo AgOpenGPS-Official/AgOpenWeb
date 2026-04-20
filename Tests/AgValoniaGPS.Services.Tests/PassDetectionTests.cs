@@ -179,25 +179,21 @@ public class PassDetectionTests
     }
 
     // ---------------------------------------------------------------
-    // GpsCycleResult has NearestPassNumber field
+    // GuidanceSnapshot carries the detected nearest pass via HowManyPathsAway
+    // (Phase D D3 removed the flat GpsCycleResult.NearestPassNumber field —
+    // the cycle is now the sole writer of _guidanceWorking.HowManyPathsAway
+    // including the auto-detect-when-not-autosteering branch, so the snapshot
+    // carries the detected pass directly).
     // ---------------------------------------------------------------
 
     [Test]
-    public void GpsCycleResult_HasNearestPassNumber()
+    public void GuidanceSnapshot_Carries_HowManyPathsAway()
     {
-        var result = new Models.State.GpsCycleResult
+        var snapshot = new Models.Pipeline.GuidanceSnapshot
         {
-            NearestPassNumber = 3
+            HowManyPathsAway = 3
         };
 
-        Assert.That(result.NearestPassNumber, Is.EqualTo(3));
-    }
-
-    [Test]
-    public void GpsCycleResult_NearestPassNumber_NullByDefault()
-    {
-        var result = new Models.State.GpsCycleResult();
-
-        Assert.That(result.NearestPassNumber, Is.Null);
+        Assert.That(snapshot.HowManyPathsAway, Is.EqualTo(3));
     }
 }

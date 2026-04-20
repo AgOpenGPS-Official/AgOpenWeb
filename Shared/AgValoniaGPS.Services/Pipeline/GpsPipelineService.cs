@@ -59,9 +59,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     private bool _autoSteerEngaged;
     private Models.Track.Track? _activeTrack;
-    private int _passNumber;
-    private double _nudgeOffset;
     private bool _isTrackOnBoundary;
+    // Phase D D3: passNumber / nudgeOffset live on _guidanceWorking as the single
+    // source of truth. The separate _passNumber / _nudgeOffset fields used to be
+    // pushed here by SetActiveTrack; that path now writes directly to the
+    // working state (still UI-thread under lock — retires fully in D4/D5/D6
+    // when snap / nudge / set-active-track all become intents).
 
     private bool _youTurnEnabled;
     private int _uTurnSkipRows;
@@ -170,8 +173,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock)
         {
             _activeTrack = track;
-            _passNumber = passNumber;
-            _nudgeOffset = nudgeOffset;
+            _guidanceWorking.HowManyPathsAway = passNumber;
+            _guidanceWorking.NudgeOffset = nudgeOffset;
             _isTrackOnBoundary = isOnBoundary;
             // Reset guidance state when track changes so we do a global search
             _trackGuidanceState = null;
@@ -308,8 +311,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             autoSteerEngaged = _autoSteerEngaged;
             track = _activeTrack;
-            passNumber = _passNumber;
-            nudgeOffset = _nudgeOffset;
+            // Phase D D3: pass number / nudge offset live on _guidanceWorking as
+            // the single source of truth. Still read under lock here because
+            // SetActiveTrack (UI-thread) writes them under the same lock.
+            passNumber = _guidanceWorking.HowManyPathsAway;
+            nudgeOffset = _guidanceWorking.NudgeOffset;
             isTrackOnBoundary = _isTrackOnBoundary;
             youTurnEnabled = _youTurnEnabled;
             uTurnSkipRows = _uTurnSkipRows;
@@ -396,10 +402,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // track + no turn already in progress) and sets a status message otherwise.
         if (intents.ManualYouTurn.HasValue && hasTickableTrack)
         {
-            _guidanceWorking.IsHeadingSameWay = _appState.Guidance.IsHeadingSameWay;
-            _guidanceWorking.HowManyPathsAway = passNumber;
-            _guidanceWorking.NudgeOffset = nudgeOffset;
-
+            // IsHeadingSameWay is computed fresh by the state machine each tick;
+            // HowManyPathsAway and NudgeOffset are already authoritative on
+            // _guidanceWorking (D3 — SetActiveTrack writes directly).
             youTurnTickEffects = _youTurnStateMachine.TriggerManual(
                 intents.ManualYouTurn.Value, autoSteerEngaged,
                 in tickCtx, _guidanceWorking, _youTurn);
@@ -408,13 +413,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (autoSteerEngaged && hasTickableTrack
             && youTurnEnabled && hasValidHeadlandLine)
         {
-            // Bridge read-only guidance fields the state machine needs.
-            // State.Guidance is written only by ApplyGpsCycleResult on the
-            // UI thread; these are primitive reads and safe cross-thread.
-            _guidanceWorking.IsHeadingSameWay = _appState.Guidance.IsHeadingSameWay;
-            _guidanceWorking.HowManyPathsAway = passNumber;
-            _guidanceWorking.NudgeOffset = nudgeOffset;
-
             _youTurn.YouTurnCounter++;
 
             var autoEffects = _youTurnStateMachine.Tick(in tickCtx, _guidanceWorking, _youTurn);
@@ -532,18 +530,24 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
             }
         }
-        int? detectedNearestPass = null;
         if (!autoSteerEngaged && hasTrack)
         {
-            // Display-only: auto-detect nearest pass and update visualization
+            // Display-only: auto-detect nearest pass and update visualization.
+            // Phase D D3: write the detected pass directly into the cycle's
+            // working state. Previously this was emitted as
+            // GpsCycleResult.NearestPassNumber and the UI thread wrote it back
+            // through SyncGuidanceStateToPipeline — two writers fighting each
+            // other and causing a per-cycle oscillation (see commit 57920e0).
+            // One writer now — the cycle.
             var (nearestPass, nearestDisplayTrack) = UpdateDisplayTrack(
                 pos, track!, passNumber, nudgeOffset, driftedEasting, driftedNorthing);
-            detectedNearestPass = nearestPass;
             if (nearestDisplayTrack != null)
             {
                 displayTrack = nearestDisplayTrack;
                 if (nearestPass != 0) baseTrack = track;
             }
+            _guidanceWorking.HowManyPathsAway = nearestPass;
+            passNumber = nearestPass;
         }
 
         // Phase D D2: write cycle-local guidance outputs into _guidanceWorking
@@ -654,7 +658,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             HasGuidance = hasGuidance,
             DisplayTrack = displayTrack,
             BaseTrack = baseTrack,
-            NearestPassNumber = detectedNearestPass,
 
             // Autosteer
             IsAutoSteerEngaged = autoSteerEngaged,
@@ -664,20 +667,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Per-cycle snapshots for UI-thread mirror via ApplyGpsCycleResult.
             // JustCompleted on the YouTurn snapshot carries the one-cycle turn
             // completion signal previously on the flat YouTurnCompleted field.
-            // Guidance snapshot is only emitted when the YouTurn tick ran —
-            // otherwise _guidanceWorking.HowManyPathsAway holds a stale seed
-            // that would fight the UI's NearestPassNumber auto-detect writer
-            // (oscillating _passNumber between the detected pass and 0). The
-            // state machine only runs under autosteer, and NearestPassNumber
-            // is gated on !autosteer, so the two writers are mutually
-            // exclusive when the snapshot is null. Full Guidance migration is
-            // Phase D's scope.
+            // Guidance snapshot emits every cycle — Phase D D3 made the cycle
+            // the sole writer of _guidanceWorking.HowManyPathsAway, so the
+            // snapshot can no longer fight an opposing UI-thread writer.
             YouTurn = BuildYouTurnSnapshot(
                 _youTurn,
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
-            Guidance = youTurnTickEffects != null
-                ? BuildGuidanceSnapshot(_guidanceWorking, displayTrack, baseTrack, hasGuidance)
-                : null,
+            Guidance = BuildGuidanceSnapshot(_guidanceWorking, displayTrack, baseTrack, hasGuidance),
 
             // Sections
             SectionStates = secStatesArr,
