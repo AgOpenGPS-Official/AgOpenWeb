@@ -521,6 +521,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 {
                     steerAngle = ytResult.Value.steerAngle;
                     crossTrackError = ytResult.Value.xte;
+                    goalE = ytResult.Value.goalE;
+                    goalN = ytResult.Value.goalN;
                     youTurnCompleted = ytResult.Value.turnComplete;
                     hasGuidance = !youTurnCompleted;
                 }
@@ -893,7 +895,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// <summary>
     /// Calculate YouTurn path-following guidance. Returns null if no path.
     /// </summary>
-    private (double steerAngle, double xte, bool turnComplete)?
+    private (double steerAngle, double xte, double goalE, double goalN, bool turnComplete)?
         CalculateYouTurnGuidance(Position currentPosition, List<Vec3> turnPath)
     {
         if (turnPath.Count == 0) return null;
@@ -921,9 +923,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var output = _youTurnGuidanceService.CalculateGuidance(input);
 
         if (output.IsTurnComplete)
-            return (0, 0, true);
+            return (0, 0, 0, 0, true);
 
-        return (output.SteerAngle, output.DistanceFromCurrentLine, false);
+        return (output.SteerAngle, output.DistanceFromCurrentLine,
+            output.GoalPoint.Easting, output.GoalPoint.Northing, false);
     }
 
     // ══════════════════════════════════════════════════════════════════════
