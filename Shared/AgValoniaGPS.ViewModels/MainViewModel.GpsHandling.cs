@@ -296,52 +296,6 @@ public partial class MainViewModel
             northing - halfSize, northing + halfSize);
     }
 
-    private static readonly AgValoniaGPS.Services.Headland.HeadlandDetectionService _headlandDetector = new();
-
-    /// <summary>
-    /// Calculate distance from tool pivot to nearest headland boundary line.
-    /// Uses HeadlandDetectionService with direction-aware warnings, matching legacy AgOpenGPS.
-    /// </summary>
-    private void UpdateHeadlandProximity(AgValoniaGPS.Models.Position position)
-    {
-        var headlandLine = State.Field.HeadlandLine;
-        if (headlandLine == null || headlandLine.Count < 3)
-        {
-            State.Field.HeadlandProximityDistance = null;
-            State.Field.HeadlandProximityWarning = false;
-            return;
-        }
-
-        // Use tool pivot position (implement hitch point), matching legacy mf.toolPivotPos
-        var toolPivot = _toolPositionService.ToolPivotPosition;
-
-        // Build minimal input for proximity calculation
-        var input = new AgValoniaGPS.Models.Headland.HeadlandDetectionInput
-        {
-            IsHeadlandOn = true,
-            VehiclePosition = toolPivot,
-            Boundaries = new System.Collections.Generic.List<AgValoniaGPS.Models.Headland.BoundaryData>
-            {
-                new AgValoniaGPS.Models.Headland.BoundaryData
-                {
-                    HeadlandLine = new System.Collections.Generic.List<Models.Base.Vec3>(headlandLine)
-                }
-            }
-        };
-
-        var output = _headlandDetector.DetectHeadland(input);
-
-        bool wasWarning = State.Field.HeadlandProximityWarning;
-        State.Field.HeadlandProximityDistance = output.HeadlandDistance;
-        State.Field.HeadlandProximityWarning = output.ShouldTriggerWarning;
-
-        // Play headland alarm on warning transition (not every frame)
-        if (output.ShouldTriggerWarning && !wasWarning)
-        {
-            _audioService.Play(AgValoniaGPS.Services.Interfaces.SoundEffect.Headland);
-        }
-    }
-
     /// <summary>
     /// Add a point to the curve being recorded, with minimum spacing filtering.
     /// </summary>
