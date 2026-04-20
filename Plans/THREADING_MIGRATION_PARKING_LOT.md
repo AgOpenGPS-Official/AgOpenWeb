@@ -463,6 +463,8 @@ imperceptible. If regression, options:
 - **Raised in:** Phase C C6 smoke test, 2026-04-20.
 - **Decide by:** Post-threading-migration — investigated separately from
   the threading work since it is not caused by it.
+- **Tracked as:** [Issue #267 — UI stalls for a fraction of a second on
+  tooltip balloon appearance](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/267)
 
 **Symptom.** Mouse hovers over any button (sidebar, bottom bar, or
 floating panel); after the normal tooltip delay, the balloon appears
@@ -499,6 +501,8 @@ with zero Phase-C code on the UI thread exhibits the same stall.
   baseline via worktree — freeze reproduces there. Hypothesis
   falsified; gating change reverted. Parked for post-migration
   investigation.
+- 2026-04-20 — Filed as issue #267 so the investigation has a
+  tracker outside the parking lot.
 
 ---
 
