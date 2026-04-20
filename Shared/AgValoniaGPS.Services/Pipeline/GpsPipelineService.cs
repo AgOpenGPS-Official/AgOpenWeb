@@ -76,6 +76,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
     private double _simulatorSteerAngle;
 
+    // ── YouTurn working state (Phase C) ─────────────────────────────────
+    // POCO mirror of State.YouTurn. Populated by the cycle worker's
+    // YouTurn state machine in later Phase C commits; unreferenced for
+    // now. Kept private and non-observable — cycle worker is the sole
+    // writer once wired up. UI mirrors via YouTurnSnapshot on
+    // GpsCycleResult, never reads this directly.
+    private readonly YouTurnWorkingState _youTurn = new();
+
     // ── Headland proximity ──────────────────────────────────────────────
     private readonly HeadlandDetectionService _headlandDetector = new();
 
