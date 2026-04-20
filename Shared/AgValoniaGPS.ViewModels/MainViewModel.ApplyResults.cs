@@ -54,29 +54,10 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(IsToolPositionReady));
         ToolEasting = result.ToolEasting;
 
-        // Guidance
-        if (result.HasGuidance)
-        {
-            SimulatorSteerAngle = result.SteerAngle;
-            CrossTrackError = result.CrossTrackError * 100; // meters to cm
-
-            _mapService.SetGuidancePoints(
-                result.GoalPointEasting, result.GoalPointNorthing,
-                isActive: true);
-        }
-
-        // Update display track from pipeline (the offset line being followed)
-        if (result.DisplayTrack != null)
-        {
-            _mapService.SetActiveTrack(result.DisplayTrack);
-            _mapService.SetBaseTrack(result.BaseTrack);
-        }
-
-        // Phase D D3: the cycle is now the sole writer of
-        // _guidanceWorking.HowManyPathsAway, including the not-autosteering
-        // auto-detect-nearest-pass path. The UI thread mirrors the value
-        // through the Guidance snapshot below — no separate NearestPassNumber
-        // field or SyncGuidanceStateToPipeline push needed here anymore.
+        // Phase D D7: guidance outputs come from GuidanceSnapshot (mirror block
+        // below). The flat SteerAngle / CrossTrackError / GoalPoint* / HasGuidance /
+        // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
+        // deletes them, but this method no longer reads them.
 
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
@@ -123,11 +104,57 @@ public partial class MainViewModel
 
         if (result.Guidance is { } g)
         {
-            // Phase D D3: cycle is the sole writer of _guidanceWorking
-            // fields we mirror here; no Sync back-push needed. D7 extends
-            // this mirror to cover every field of GuidanceSnapshot.
-            State.Guidance.IsHeadingSameWay = g.IsHeadingSameWay;
-            State.Guidance.HowManyPathsAway = g.HowManyPathsAway;
+            // Phase D D7: full GuidanceSnapshot mirror. The cycle is the
+            // sole writer of these working-state fields; this block is the
+            // single UI-thread point where they become PropertyChanged events
+            // on State.Guidance.
+            var sg = State.Guidance;
+            sg.ActiveTrack = g.ActiveTrack;
+            sg.IsGuidanceActive = g.IsGuidanceActive;
+            sg.CrossTrackError = g.CrossTrackError;
+            sg.HeadingError = g.HeadingError;
+            sg.SteerAngle = g.SteerAngle;
+            sg.SteerAngleRaw = g.SteerAngleRaw;
+            sg.DistanceOffRaw = g.DistanceOffRaw;
+            sg.PpIntegral = g.PpIntegral;
+            sg.PpPivotDistanceError = g.PpPivotDistanceError;
+            sg.PpPivotDistanceErrorLast = g.PpPivotDistanceErrorLast;
+            sg.PpCounter = g.PpCounter;
+            sg.GoalPoint = g.GoalPoint;
+            sg.RadiusPoint = g.RadiusPoint;
+            sg.PurePursuitRadius = g.PurePursuitRadius;
+            sg.IsHeadingSameWay = g.IsHeadingSameWay;
+            sg.IsReverse = g.IsReverse;
+            sg.HowManyPathsAway = g.HowManyPathsAway;
+            sg.NudgeOffset = g.NudgeOffset;
+            sg.CurrentLineLabel = g.CurrentLineLabel;
+            sg.IsContourMode = g.IsContourMode;
+
+            // VM-level bindings previously driven from the flat GpsCycleResult
+            // fields. CrossTrackError is still displayed in cm on the HUD.
+            SimulatorSteerAngle = g.SteerAngle;
+            CrossTrackError = g.CrossTrackError * 100;
+
+            // Map-service pushes with reference / value gating to avoid per-cycle
+            // SendStateToHandler churn. The cycle reuses DisplayTrack / BaseTrack
+            // references across cycles when they haven't changed, so ReferenceEquals
+            // elides the call in steady state. Guidance points are a Vec2 (value
+            // type) and change every cycle during active guidance — no gating
+            // would help; the gate below is structural.
+            if (g.HasGuidance)
+            {
+                _mapService.SetGuidancePoints(g.GoalPoint.Easting, g.GoalPoint.Northing, isActive: true);
+            }
+            if (!ReferenceEquals(_lastMirroredDisplayTrack, g.DisplayTrack))
+            {
+                _lastMirroredDisplayTrack = g.DisplayTrack;
+                _mapService.SetActiveTrack(g.DisplayTrack);
+            }
+            if (!ReferenceEquals(_lastMirroredBaseTrack, g.BaseTrack))
+            {
+                _lastMirroredBaseTrack = g.BaseTrack;
+                _mapService.SetBaseTrack(g.BaseTrack);
+            }
         }
 
         // Turn-completion signal: YouTurn snapshot's JustCompleted is set on

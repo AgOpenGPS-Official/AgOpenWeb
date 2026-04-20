@@ -402,6 +402,14 @@ public partial class MainViewModel
     private int? _pendingInitialPathsAway;
     private double? _pendingInitialNudgeOffset;
 
+    // Phase D D7: last DisplayTrack / BaseTrack references pushed to the map
+    // service, used by ApplyGpsCycleResult to skip SetActiveTrack /
+    // SetBaseTrack when the snapshot carries the same references (the cycle
+    // reuses them across ticks whenever pass / nudge haven't changed).
+    // Prevents per-cycle SendStateToHandler churn.
+    private AgValoniaGPS.Models.Track.Track? _lastMirroredDisplayTrack;
+    private AgValoniaGPS.Models.Track.Track? _lastMirroredBaseTrack;
+
     /// <summary>
     /// Sync all guidance-relevant state to the pipeline service.
     /// Call this from commands that change autosteer, track, boundary, headland, or drift state.
