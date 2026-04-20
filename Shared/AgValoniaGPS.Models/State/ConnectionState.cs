@@ -19,8 +19,36 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace AgValoniaGPS.Models.State;
 
 /// <summary>
-/// Connection status for all external systems.
-/// Updated by communication services.
+/// Connection status for all external systems (GPS, NTRIP, AutoSteer/Machine/IMU modules).
+///
+/// <para>
+/// <b>Thread ownership (§0 invariant, Phase F close):</b>
+/// Every property is written on the UI thread. No service writes here
+/// directly — communication services (<c>NtripClientService</c>,
+/// <c>UdpCommunicationService</c>) raise events from their own background
+/// threads; the ViewModel's handlers check
+/// <c>Dispatcher.UIThread.CheckAccess()</c> and <c>Post</c> if needed
+/// before touching <c>State.Connections</c>. The hello-timer polling
+/// in <c>MainViewModel</c> starts on the UI thread and its <c>await</c>
+/// continuations stay on the UI thread via Avalonia's
+/// <c>SynchronizationContext</c>, so <c>State.Connections</c> writes
+/// there are also UI-thread.
+/// </para>
+///
+/// <para>Reader / writer table:</para>
+/// <list type="table">
+///   <listheader><term>Property</term><description>Written by</description></listheader>
+///   <item><term>IsGpsConnected / IsGpsDataOk</term>                     <description>UI — <c>MainViewModel</c> hello-timer (awaited loop)</description></item>
+///   <item><term>IsAutoSteerDataOk / IsMachineDataOk / IsImuDataOk</term><description>UI — same hello-timer</description></item>
+///   <item><term>IsAutoSteerConnected / IsMachineConnected / IsImuConnected</term><description>UI — same hello-timer (connection vs data-flow distinction)</description></item>
+///   <item><term>IsAutoSteerEngaged</term>                               <description>UI — <c>ToggleAutoSteerCommand</c></description></item>
+///   <item><term>IsNtripConnected / NtripStatus</term>                   <description>UI — <c>OnNtripConnectionChanged</c> handler (Dispatcher-Posted)</description></item>
+///   <item><term>NtripBytesReceived</term>                               <description>UI — <c>OnRtcmDataReceived</c> handler (Dispatcher-Posted)</description></item>
+/// </list>
+///
+/// <para>Services raise events and expose polling APIs — they never
+/// reference this type. See <c>Plans/threading_model.svg</c> for the
+/// full data-flow contract.</para>
 /// </summary>
 public class ConnectionState : ObservableObject
 {
