@@ -46,11 +46,6 @@ public class AutoSteerService : IAutoSteerService
     private readonly ApplicationState _appState;
     private ITramLineService? _tramLineService;
 
-    // Reused GpsData instance — the hot path updates-in-place and hands it to
-    // GpsService.UpdateGpsData each tick. Phase B C3 made AutoSteer the sole
-    // owner of the NMEA → GpsData translation.
-    private readonly GpsData _gpsData = new();
-
     // Drift compensation applied after LocalPlane → local coordinate conversion.
     // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
     // across AutoSteer and the cycle worker. Created by field-open (UI thread) or by the
@@ -377,28 +372,32 @@ public class AutoSteerService : IAutoSteerService
     }
 
     /// <summary>
-    /// Mirror the parsed VehicleState fields onto the shared GpsData and fire
+    /// Mirror the parsed VehicleState fields onto a fresh GpsData and fire
     /// GpsService.UpdateGpsData — this is what kicks off the cycle worker.
-    /// Reuses a single GpsData instance to avoid per-tick allocation.
+    /// A fresh instance per packet is required: the event handler hands
+    /// the reference to a background Task.Run (the cycle worker), and a
+    /// reused instance would race with the next receive-thread mutation.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PublishGpsData()
     {
-        _gpsData.CurrentPosition = new Position
+        var gpsData = new GpsData
         {
-            Latitude = _state.Latitude,
-            Longitude = _state.Longitude,
-            Altitude = _state.Altitude,
-            Heading = _state.Heading,
-            Speed = _state.Speed,
+            CurrentPosition = new Position
+            {
+                Latitude = _state.Latitude,
+                Longitude = _state.Longitude,
+                Altitude = _state.Altitude,
+                Heading = _state.Heading,
+                Speed = _state.Speed,
+            },
+            FixQuality = _state.FixQuality,
+            SatellitesInUse = _state.Satellites,
+            Hdop = _state.Hdop,
+            DifferentialAge = _state.DifferentialAge,
+            Timestamp = DateTime.UtcNow,
         };
-        _gpsData.FixQuality = _state.FixQuality;
-        _gpsData.SatellitesInUse = _state.Satellites;
-        _gpsData.Hdop = _state.Hdop;
-        _gpsData.DifferentialAge = _state.DifferentialAge;
-        _gpsData.Timestamp = DateTime.UtcNow;
-
-        _gpsService.UpdateGpsData(_gpsData);
+        _gpsService.UpdateGpsData(gpsData);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
