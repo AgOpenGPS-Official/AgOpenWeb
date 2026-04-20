@@ -61,7 +61,6 @@ public partial class MainViewModel : ObservableObject
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly YouTurnCreationService _youTurnCreationService;
     private readonly YouTurnPathingService _youTurnPathingService;
-    private readonly YouTurnStateMachine _youTurnStateMachine;
     private readonly Services.Geometry.IPolygonOffsetService _polygonOffsetService;
     private readonly Services.Interfaces.ITurnAreaService _turnAreaService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
@@ -180,7 +179,6 @@ public partial class MainViewModel : ObservableObject
         YouTurnCreationService youTurnCreationService,
         YouTurnGuidanceService youTurnGuidanceService,
         YouTurnPathingService youTurnPathingService,
-        YouTurnStateMachine youTurnStateMachine,
         Services.Geometry.IPolygonOffsetService polygonOffsetService,
         Services.Interfaces.ITurnAreaService turnAreaService,
         IVehicleProfileService vehicleProfileService,
@@ -236,7 +234,6 @@ public partial class MainViewModel : ObservableObject
         _youTurnCreationService = youTurnCreationService;
         _youTurnGuidanceService = youTurnGuidanceService;
         _youTurnPathingService = youTurnPathingService;
-        _youTurnStateMachine = youTurnStateMachine;
         _polygonOffsetService = polygonOffsetService;
         _turnAreaService = turnAreaService;
         _vehicleProfileService = vehicleProfileService;
@@ -1408,6 +1405,16 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void ClearFieldState()
     {
+        // Disengage autosteer first so the cycle stops emitting steer commands
+        // before the track / boundary / U-turn state vanishes out from under it.
+        // Without this the tractor keeps executing the last-sent steer angle
+        // (visible as "keeps circling" when closing mid-U-turn).
+        if (IsAutoSteerEngaged)
+        {
+            IsAutoSteerEngaged = false;
+            SyncGuidanceStateToPipeline();
+        }
+
         CurrentFieldName = string.Empty;
         IsFieldOpen = false;
 

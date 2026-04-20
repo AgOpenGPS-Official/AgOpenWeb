@@ -15,13 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 
 using AgValoniaGPS.Models.Base;
-using AgValoniaGPS.Models.Pipeline;
-using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Track;
-using AgValoniaGPS.Services.YouTurn;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -76,76 +72,19 @@ public partial class MainViewModel
 
     #region YouTurn Entry Points
 
-    // Phase C C7 bridge: ClearYouTurnState still runs on the UI thread via a
-    // local POCO copy pushed into the cycle worker. Retires in C7 when clear
-    // becomes an intent drained by the cycle.
-    private readonly YouTurnWorkingState _youTurnBridge = new();
+    // Phase C C6/C7: YouTurn commands post intents and return. The cycle worker
+    // drains them at the top of ProcessCycle and runs YouTurnStateMachine on
+    // the cycle thread against its own POCO working state. The UI thread no
+    // longer touches the state machine or the cycle's working state. Map
+    // updates (SetYouTurnPath / SetNextTrack / SetIsInYouTurn) land via the
+    // GpsCycleResult.YouTurn snapshot mirror in ApplyGpsCycleResult.
 
-    /// <summary>Clear all U-turn state — called when closing a field.</summary>
-    public void ClearYouTurnState()
-    {
-        BridgeStateToWorking(State.YouTurn, _youTurnBridge);
-        YouTurnStateMachine.ClearState(_youTurnBridge);
-        BridgeWorkingToState(_youTurnBridge, State.YouTurn);
-        _gpsPipelineService.SetYouTurnWorkingState(_youTurnBridge);
-        _mapService.SetYouTurnPath(null);
-        _mapService.SetNextTrack(null);
-        _mapService.SetIsInYouTurn(false);
-    }
+    /// <summary>Clear all U-turn state — called on field close or track deselect.</summary>
+    public void ClearYouTurnState() => _intents.RequestClearYouTurn();
 
-    // Phase C C6: manual-trigger commands post an intent and return. The cycle
-    // worker drains it in ProcessCycle and runs the state machine on the
-    // cycle thread against its own working state. UI thread no longer touches
-    // the state machine or the cycle's POCOs for manual turns.
     public void TriggerManualYouTurnLeft() => _intents.RequestManualYouTurn(turnLeft: true);
 
     public void TriggerManualYouTurnRight() => _intents.RequestManualYouTurn(turnLeft: false);
-
-    private static void BridgeStateToWorking(AgValoniaGPS.Models.State.YouTurnState src, YouTurnWorkingState dst)
-    {
-        dst.IsEnabled = src.IsEnabled;
-        dst.IsTriggered = src.IsTriggered;
-        dst.IsExecuting = src.IsExecuting;
-        dst.TurnPath = src.TurnPath;
-        dst.PathIndex = src.PathIndex;
-        dst.IsTurnLeft = src.IsTurnLeft;
-        dst.LastTurnWasLeft = src.LastTurnWasLeft;
-        dst.DistanceToHeadland = src.DistanceToHeadland;
-        dst.DistanceToTrigger = src.DistanceToTrigger;
-        dst.NextTrack = src.NextTrack;
-        dst.LastCompletionPosition = src.LastCompletionPosition;
-        dst.HasCompletedFirstTurn = src.HasCompletedFirstTurn;
-        dst.YouTurnCounter = src.YouTurnCounter;
-        dst.WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart;
-        dst.NextTrackTurnOffset = src.NextTrackTurnOffset;
-        dst.ReturnPassTargetPath = src.ReturnPassTargetPath;
-        dst.SnakeSequence = src.SnakeSequence;
-        dst.SnakeIndex = src.SnakeIndex;
-        dst.CurrentZone = src.CurrentZone;
-    }
-
-    private static void BridgeWorkingToState(YouTurnWorkingState src, AgValoniaGPS.Models.State.YouTurnState dst)
-    {
-        dst.IsEnabled = src.IsEnabled;
-        dst.IsTriggered = src.IsTriggered;
-        dst.IsExecuting = src.IsExecuting;
-        dst.TurnPath = src.TurnPath;
-        dst.PathIndex = src.PathIndex;
-        dst.IsTurnLeft = src.IsTurnLeft;
-        dst.LastTurnWasLeft = src.LastTurnWasLeft;
-        dst.DistanceToHeadland = src.DistanceToHeadland;
-        dst.DistanceToTrigger = src.DistanceToTrigger;
-        dst.NextTrack = src.NextTrack;
-        dst.LastCompletionPosition = src.LastCompletionPosition;
-        dst.HasCompletedFirstTurn = src.HasCompletedFirstTurn;
-        dst.YouTurnCounter = src.YouTurnCounter;
-        dst.WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart;
-        dst.NextTrackTurnOffset = src.NextTrackTurnOffset;
-        dst.ReturnPassTargetPath = src.ReturnPassTargetPath;
-        dst.SnakeSequence = src.SnakeSequence;
-        dst.SnakeIndex = src.SnakeIndex;
-        dst.CurrentZone = src.CurrentZone;
-    }
 
     #endregion
 

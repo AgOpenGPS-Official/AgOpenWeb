@@ -72,13 +72,6 @@ public interface IGpsPipelineService
     /// </summary>
     void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance);
 
-    /// <summary>
-    /// Copy a UI-thread-produced YouTurn working state (post
-    /// TriggerManual / ClearYouTurnState) into the cycle worker. Temporary
-    /// — C6/C7 replaces this with an intent drain.
-    /// </summary>
-    void SetYouTurnWorkingState(YouTurnWorkingState source);
-
     // ── Read-back state the ViewModel needs for commands ─────────────────
 
     /// <summary>Whether autosteer is currently engaged.</summary>

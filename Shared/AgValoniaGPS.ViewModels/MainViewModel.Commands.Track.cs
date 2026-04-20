@@ -866,7 +866,10 @@ public partial class MainViewModel
 
         ToggleAutoSteerCommand = new RelayCommand(() =>
         {
-            if (!IsAutoSteerAvailable)
+            // Disengage is always allowed — the user must be able to stop the
+            // tractor even after the track/field has been cleared. Engagement
+            // is the only path with preconditions.
+            if (!IsAutoSteerEngaged && !IsAutoSteerAvailable)
             {
                 StatusMessage = "AutoSteer not available - no active track";
                 return;

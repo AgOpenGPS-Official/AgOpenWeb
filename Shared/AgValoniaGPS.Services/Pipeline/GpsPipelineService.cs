@@ -73,21 +73,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private double _driftE;
     private double _driftN;
 
-    // TriggerManual / ClearYouTurnState on the UI thread push the post-call
-    // working state here (SetYouTurnWorkingState). Removed wholesale in C6/C7
-    // when those UI commands become intents drained at cycle start.
-    private bool _pendingYouTurnSync;
-
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
     private double _simulatorSteerAngle;
 
     // ── YouTurn + Guidance working state (Phase C) ──────────────────────
     // POCOs mirroring State.YouTurn and the subset of State.Guidance that
-    // the YouTurn state machine reads/writes. The cycle worker is the
-    // sole writer during Tick; UI thread pushes via SetYouTurnWorkingState
-    // (bridge, retires in C6/C7). ApplyGpsCycleResult mirrors back to
-    // the observable State.* on the UI thread.
+    // the YouTurn state machine reads/writes. Single-writer contract —
+    // only mutated on the cycle worker thread, via state-machine Tick /
+    // TriggerManual / ClearState. ApplyGpsCycleResult mirrors back to the
+    // observable State.* on the UI thread.
     private readonly YouTurnWorkingState _youTurn = new();
     private readonly GuidanceWorkingState _guidanceWorking = new();
 
@@ -205,44 +200,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
     }
 
-    /// <summary>
-    /// Copy a UI-thread-produced YouTurn working state (post
-    /// TriggerManual / ClearYouTurnState) into the cycle worker's
-    /// instance. Temporary while UI commands still run on UI thread;
-    /// C6/C7 replaces with intent drain.
-    /// </summary>
-    public void SetYouTurnWorkingState(YouTurnWorkingState source)
-    {
-        lock (_stateLock)
-        {
-            CopyYouTurnWorkingState(source, _youTurn);
-            _pendingYouTurnSync = true;
-        }
-    }
-
-    private static void CopyYouTurnWorkingState(YouTurnWorkingState src, YouTurnWorkingState dst)
-    {
-        dst.IsEnabled = src.IsEnabled;
-        dst.IsTriggered = src.IsTriggered;
-        dst.IsExecuting = src.IsExecuting;
-        dst.TurnPath = src.TurnPath;
-        dst.PathIndex = src.PathIndex;
-        dst.IsTurnLeft = src.IsTurnLeft;
-        dst.LastTurnWasLeft = src.LastTurnWasLeft;
-        dst.DistanceToHeadland = src.DistanceToHeadland;
-        dst.DistanceToTrigger = src.DistanceToTrigger;
-        dst.NextTrack = src.NextTrack;
-        dst.LastCompletionPosition = src.LastCompletionPosition;
-        dst.HasCompletedFirstTurn = src.HasCompletedFirstTurn;
-        dst.YouTurnCounter = src.YouTurnCounter;
-        dst.WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart;
-        dst.NextTrackTurnOffset = src.NextTrackTurnOffset;
-        dst.ReturnPassTargetPath = src.ReturnPassTargetPath;
-        dst.SnakeSequence = src.SnakeSequence;
-        dst.SnakeIndex = src.SnakeIndex;
-        dst.CurrentZone = src.CurrentZone;
-    }
-
     public void SetHeadlandLine(IReadOnlyList<Vec3>? headlandLine)
     {
         lock (_stateLock)
@@ -307,9 +264,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var config = ConfigurationStore.Instance;
 
         // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
-        // Phase C C6 consumes ManualYouTurn; ClearYouTurn lands in C7. Other
-        // intents (Guidance writers) migrate in Phase D.
+        // Phase C: ManualYouTurn + ClearYouTurn consumed here; Guidance writers
+        // migrate in Phase D. Clear runs before any state-machine call this
+        // cycle so a clear + manual pair in the same tick resolves cleanly
+        // (clear first, then manual triggers a fresh turn from the empty state).
         var intents = _intents.Drain();
+        if (intents.ClearYouTurn)
+            YouTurnStateMachine.ClearState(_youTurn);
 
         // Stage 2: Fix-quality status. The validator labels the fix; it does not
         // abort the cycle. Pre-Phase-B, NmeaParserService ran the same checks and
@@ -362,9 +323,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             driftN = _driftN;
         }
 
-        // YouTurn working state is owned by the cycle; only push-ins from UI
-        // (TriggerManual / ClearYouTurnState via SetYouTurnWorkingState) touch
-        // it cross-thread. The Tick call below mutates it on this thread.
+        // YouTurn working state is cycle-owned — no cross-thread writers.
+        // TriggerManual (manual U-turn) and ClearState (field close / track
+        // deselect) run on the cycle thread via intents drained above.
         bool isYouTurnTriggered = _youTurn.IsTriggered;
         bool isInYouTurn = _youTurn.IsExecuting;
         List<Vec3>? youTurnPath = _youTurn.TurnPath;
@@ -464,7 +425,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
 
         // Refresh the locals the downstream guidance branch reads — the tick
-        // (or a UI-thread SetYouTurnWorkingState push) may have updated them.
+        // (or a drained intent above) may have updated them.
         isYouTurnTriggered = _youTurn.IsTriggered;
         isInYouTurn = _youTurn.IsExecuting;
         youTurnPath = _youTurn.TurnPath;
@@ -721,10 +682,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Status
             StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
         };
-
-        // Clear the "recently push-synced from UI" flag once a result including
-        // that state has been emitted — next cycle runs a fresh tick normally.
-        lock (_stateLock) _pendingYouTurnSync = false;
 
         CycleCompleted?.Invoke(result);
     }
