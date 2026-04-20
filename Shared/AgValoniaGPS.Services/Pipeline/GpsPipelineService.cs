@@ -677,9 +677,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
             YouTurnTriggered = isYouTurnTriggered,
             YouTurnCompleted = youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false),
 
-            // Phase C C5: snapshots for UI-thread mirror via ApplyGpsCycleResult
+            // Phase C C5: snapshots for UI-thread mirror via ApplyGpsCycleResult.
+            // Guidance snapshot is only emitted when the YouTurn tick ran — otherwise
+            // _guidanceWorking.HowManyPathsAway holds a stale seed that would fight the
+            // UI's NearestPassNumber auto-detect writer (oscillating _passNumber between
+            // the detected pass and 0). The state machine only runs under autosteer, and
+            // the NearestPassNumber block is gated on !autosteer, so the two writers are
+            // mutually exclusive when the snapshot is null here. Full Guidance migration
+            // is Phase D's scope.
             YouTurn = BuildYouTurnSnapshot(_youTurn, youTurnTickEffects),
-            Guidance = BuildGuidanceSnapshot(_guidanceWorking),
+            Guidance = youTurnTickEffects != null ? BuildGuidanceSnapshot(_guidanceWorking) : null,
 
             // Sections
             SectionStates = secStatesArr,

@@ -857,6 +857,7 @@ public partial class MainViewModel
         ToggleYouTurnCommand = new RelayCommand(() =>
         {
             IsYouTurnEnabled = !IsYouTurnEnabled;
+            SyncGuidanceStateToPipeline();
             StatusMessage = IsYouTurnEnabled ? "YouTurn enabled" : "YouTurn disabled";
         });
 
