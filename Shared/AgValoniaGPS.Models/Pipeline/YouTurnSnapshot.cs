@@ -68,4 +68,12 @@ public record YouTurnSnapshot
     public int SnakeIndex { get; init; }
 
     public TractorZone CurrentZone { get; init; }
+
+    /// <summary>
+    /// True on the single cycle where a turn just completed — used by the UI
+    /// to reset its TrackGuidanceState cache so the new offset track is
+    /// searched globally rather than resumed from the pre-turn index. Replaces
+    /// the legacy flat <c>GpsCycleResult.YouTurnCompleted</c> field.
+    /// </summary>
+    public bool JustCompleted { get; init; }
 }

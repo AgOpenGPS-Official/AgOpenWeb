@@ -224,7 +224,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
 
     public bool IsAutoSteerEngaged { get { lock (_stateLock) return _autoSteerEngaged; } }
-    public bool IsInYouTurn { get { lock (_stateLock) return _youTurn.IsExecuting; } }
     public double SimulatorSteerAngle => Volatile.Read(ref _simulatorSteerAngle);
 
     // ══════════════════════════════════════════════════════════════════════
@@ -654,21 +653,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
             DisengageReason = disengageReason,
 
-            // YouTurn (flat fields — removed in Phase C C8; YouTurnSnapshot below
-            // is the authoritative source after Phase C C5 consumers switch over)
-            IsInYouTurn = isInYouTurn,
-            YouTurnTriggered = isYouTurnTriggered,
-            YouTurnCompleted = youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false),
-
-            // Phase C C5: snapshots for UI-thread mirror via ApplyGpsCycleResult.
-            // Guidance snapshot is only emitted when the YouTurn tick ran — otherwise
-            // _guidanceWorking.HowManyPathsAway holds a stale seed that would fight the
-            // UI's NearestPassNumber auto-detect writer (oscillating _passNumber between
-            // the detected pass and 0). The state machine only runs under autosteer, and
-            // the NearestPassNumber block is gated on !autosteer, so the two writers are
-            // mutually exclusive when the snapshot is null here. Full Guidance migration
-            // is Phase D's scope.
-            YouTurn = BuildYouTurnSnapshot(_youTurn, youTurnTickEffects),
+            // Per-cycle snapshots for UI-thread mirror via ApplyGpsCycleResult.
+            // JustCompleted on the YouTurn snapshot carries the one-cycle turn
+            // completion signal previously on the flat YouTurnCompleted field.
+            // Guidance snapshot is only emitted when the YouTurn tick ran —
+            // otherwise _guidanceWorking.HowManyPathsAway holds a stale seed
+            // that would fight the UI's NearestPassNumber auto-detect writer
+            // (oscillating _passNumber between the detected pass and 0). The
+            // state machine only runs under autosteer, and NearestPassNumber
+            // is gated on !autosteer, so the two writers are mutually
+            // exclusive when the snapshot is null. Full Guidance migration is
+            // Phase D's scope.
+            YouTurn = BuildYouTurnSnapshot(
+                _youTurn,
+                justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
             Guidance = youTurnTickEffects != null ? BuildGuidanceSnapshot(_guidanceWorking) : null,
 
             // Sections
@@ -686,7 +684,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         CycleCompleted?.Invoke(result);
     }
 
-    private static YouTurnSnapshot BuildYouTurnSnapshot(YouTurnWorkingState src, YouTurnEffects? effects) => new()
+    private static YouTurnSnapshot BuildYouTurnSnapshot(YouTurnWorkingState src, bool justCompleted) => new()
     {
         IsEnabled = src.IsEnabled,
         IsTriggered = src.IsTriggered,
@@ -707,6 +705,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         SnakeSequence = src.SnakeSequence,
         SnakeIndex = src.SnakeIndex,
         CurrentZone = src.CurrentZone,
+        JustCompleted = justCompleted,
     };
 
     private static GuidanceSnapshot BuildGuidanceSnapshot(GuidanceWorkingState src) => new()

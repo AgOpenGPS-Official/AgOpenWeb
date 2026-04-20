@@ -136,10 +136,12 @@ public partial class MainViewModel
             }
         }
 
-        // Turn-completion signal: cycle mirrors legacy YouTurnEffects.TurnCompleted
-        // through result.YouTurnCompleted (flat field). Phase C C8 moves this into
-        // the snapshot itself; for now we read the flat field here.
-        if (result.YouTurnCompleted)
+        // Turn-completion signal: YouTurn snapshot's JustCompleted is set on
+        // the single cycle the state machine (or the YouTurn guidance branch)
+        // reports turn-complete. Reset the TrackGuidanceState cache so the new
+        // offset track is searched globally instead of resumed from the
+        // pre-turn CurrentLocationIndex.
+        if (result.YouTurn is { JustCompleted: true })
         {
             _trackGuidanceState = null;
             SyncGuidanceStateToPipeline();

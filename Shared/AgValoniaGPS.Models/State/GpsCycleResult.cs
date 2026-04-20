@@ -54,14 +54,11 @@ public record GpsCycleResult
     public bool AutoSteerDisengagedThisCycle { get; init; }
     public string? DisengageReason { get; init; }
 
-    // YouTurn
-    public bool IsInYouTurn { get; init; }
-    public bool YouTurnTriggered { get; init; }
-    public bool YouTurnCompleted { get; init; }
-
-    // Phase A scaffolding — populated by the cycle worker in Phase C / D,
-    // unused until then. Flat YouTurn / guidance fields above are removed
-    // once all consumers read from these snapshots.
+    // Per-cycle snapshots emitted by the cycle worker. Consumed on the UI
+    // thread by ApplyGpsCycleResult to mirror onto State.* (PropertyChanged
+    // boundary). YouTurn is non-null every cycle; Guidance is only emitted
+    // when the YouTurn tick ran (otherwise the cycle's HowManyPathsAway
+    // seed would fight the UI's NearestPassNumber auto-detect writer).
     public YouTurnSnapshot? YouTurn { get; init; }
     public GuidanceSnapshot? Guidance { get; init; }
 

@@ -77,9 +77,6 @@ public interface IGpsPipelineService
     /// <summary>Whether autosteer is currently engaged.</summary>
     bool IsAutoSteerEngaged { get; }
 
-    /// <summary>Whether we are executing a U-turn.</summary>
-    bool IsInYouTurn { get; }
-
     /// <summary>Latest simulator steer angle (from guidance).</summary>
     double SimulatorSteerAngle { get; }
 }
