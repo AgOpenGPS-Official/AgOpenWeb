@@ -3,6 +3,7 @@
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
 
+using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Pipeline;
 
 namespace AgValoniaGPS.Models.State;
@@ -55,6 +56,15 @@ public record GpsCycleResult
     // Headland proximity
     public double? HeadlandProximityDistance { get; init; }
     public bool HeadlandProximityWarning { get; init; }
+
+    /// <summary>
+    /// Phase E: non-null on the single cycle where the cycle worker auto-creates
+    /// a <see cref="LocalPlane"/> from the first GPS fix (no field open yet).
+    /// <see cref="MainViewModel.ApplyGpsCycleResult"/> mirrors it onto
+    /// <c>State.Field.LocalPlane</c> on the UI thread — the cycle keeps its own
+    /// reference for coord conversion in the meantime. Null on every other cycle.
+    /// </summary>
+    public LocalPlane? FirstFixLocalPlane { get; init; }
 
     // Status
     public string? StatusMessage { get; init; }

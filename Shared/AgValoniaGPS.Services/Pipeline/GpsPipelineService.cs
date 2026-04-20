@@ -80,6 +80,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
     private double _simulatorSteerAngle;
 
+    // Phase E: cycle-local cache of a LocalPlane auto-created from the first
+    // GPS fix. The cycle uses this for coord conversion in the same tick it
+    // emits it on GpsCycleResult.FirstFixLocalPlane; ApplyGpsCycleResult then
+    // commits it to _appState.Field.LocalPlane on the UI thread. Once the UI
+    // commit catches up (next cycle we see _appState.Field.LocalPlane match
+    // _cycleLocalPlane), we drop our reference.
+    private LocalPlane? _cycleLocalPlane;
+
     // ── YouTurn + Guidance working state (Phase C) ──────────────────────
     // POCOs mirroring State.YouTurn and the subset of State.Guidance that
     // the YouTurn state machine reads/writes. Single-writer contract —
@@ -374,25 +382,35 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double posEasting = pos.Easting;
         double posNorthing = pos.Northing;
 
+        // Phase E: if a UI-committed LocalPlane already exists (user opened a
+        // field, or we auto-created one on a previous cycle and ApplyGpsCycleResult
+        // has since committed it), drop our cycle-local cache — the observable
+        // instance is now the authoritative one.
+        var committedLocalPlane = _appState.Field.LocalPlane;
+        if (_cycleLocalPlane != null && ReferenceEquals(committedLocalPlane, _cycleLocalPlane))
+            _cycleLocalPlane = null;
+
+        LocalPlane? firstFixLocalPlane = null;
         if (Math.Abs(posEasting) < 0.001 && Math.Abs(posNorthing) < 0.001
             && data.FixQuality > 0)
         {
-            // Auto-create local plane from first GPS fix if none exists
-            if (_appState.Field.LocalPlane == null)
+            // Auto-create local plane from first GPS fix if none exists.
+            // Cycle-local cache so we don't cross-thread-write an ObservableObject;
+            // the UI thread commits it via ApplyGpsCycleResult.
+            var localPlane = committedLocalPlane ?? _cycleLocalPlane;
+            if (localPlane == null)
             {
-                _appState.Field.LocalPlane = new LocalPlane(
+                localPlane = new LocalPlane(
                     new Wgs84(pos.Latitude, pos.Longitude),
                     new SharedFieldProperties());
+                _cycleLocalPlane = localPlane;
+                firstFixLocalPlane = localPlane; // emit to UI this cycle
             }
 
-            var localPlane = _appState.Field.LocalPlane;
-            if (localPlane != null)
-            {
-                var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
-                    new Wgs84(pos.Latitude, pos.Longitude));
-                posEasting = geoCoord.Easting;
-                posNorthing = geoCoord.Northing;
-            }
+            var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
+                new Wgs84(pos.Latitude, pos.Longitude));
+            posEasting = geoCoord.Easting;
+            posNorthing = geoCoord.Northing;
         }
 
         // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
@@ -705,6 +723,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Headland proximity
             HeadlandProximityDistance = headlandDist,
             HeadlandProximityWarning = headlandWarning,
+
+            // Phase E: first-fix LocalPlane auto-create — non-null only on
+            // the single cycle where the cycle bootstrapped the plane.
+            FirstFixLocalPlane = firstFixLocalPlane,
 
             // Status
             StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
