@@ -1208,7 +1208,12 @@ public partial class MainViewModel : ObservableObject
                 {
                     SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
                     _logger.LogDebug($"[Field] Set origin: {_fieldOriginLatitude}, {_fieldOriginLongitude}");
-                    SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
+                    // Only reposition the simulator if the field has a real (non-zero)
+                    // georeference. Fields that were never georeferenced persist an
+                    // origin of (0, 0), which otherwise clobbers the user's
+                    // simulator coords (saved to appsettings on window close).
+                    if (_fieldOriginLatitude != 0 || _fieldOriginLongitude != 0)
+                        SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
                 }
             }
             catch (Exception ex)
