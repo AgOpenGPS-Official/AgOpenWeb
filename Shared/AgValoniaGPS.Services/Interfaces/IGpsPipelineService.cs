@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 
 using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 
 namespace AgValoniaGPS.Services.Interfaces;
@@ -66,10 +67,17 @@ public interface IGpsPipelineService
     void SetDriftCompensation(double driftE, double driftN);
 
     /// <summary>
-    /// Provide the active YouTurn path and triggered state.
-    /// Called by the ViewModel when a U-turn is created or completed.
+    /// Push YouTurn configuration (skip-rows, skip-worked mode, headland
+    /// geometry) so the cycle worker can build its own TickContext.
     /// </summary>
-    void SetYouTurnState(bool isTriggered, bool isInYouTurn, List<Vec3>? youTurnPath);
+    void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance);
+
+    /// <summary>
+    /// Copy a UI-thread-produced YouTurn working state (post
+    /// TriggerManual / ClearYouTurnState) into the cycle worker. Temporary
+    /// — C6/C7 replaces this with an intent drain.
+    /// </summary>
+    void SetYouTurnWorkingState(YouTurnWorkingState source);
 
     // ── Read-back state the ViewModel needs for commands ─────────────────
 

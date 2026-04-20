@@ -218,30 +218,10 @@ public partial class MainViewModel
         // Auto-select closest track when autosteer is not engaged (#143)
         UpdateAutoTrackSelection(data.CurrentPosition);
 
-        // YouTurn state machine runs on the VM's thread for now; pipeline-threading is deferred.
-        // The pipeline handles YouTurn *guidance* (following the turn path) once one is set.
-        double driftedEasting = posEasting + State.Field.DriftEasting;
-        double driftedNorthing = posNorthing + State.Field.DriftNorthing;
-
-        if (IsAutoSteerEngaged && HasActiveTrack)
-        {
-            var guidancePos = data.CurrentPosition with
-            {
-                Easting = driftedEasting,
-                Northing = driftedNorthing
-            };
-
-            State.YouTurn.YouTurnCounter++;
-
-            if (IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
-            {
-                TickYouTurnStateMachine(guidancePos);
-            }
-
-            // Sync YouTurn state to pipeline so it knows whether to use YouTurn guidance.
-            _gpsPipelineService.SetYouTurnState(
-                State.YouTurn.IsTriggered, State.YouTurn.IsExecuting, State.YouTurn.TurnPath);
-        }
+        // Phase C C4: the YouTurn tick now runs on the cycle worker
+        // (GpsPipelineService.ProcessCycle) and mirrors back to State.YouTurn
+        // via ApplyGpsCycleResult. The previous UI-thread tick + SetYouTurnState
+        // push lived here; both are gone.
     }
 
     private bool _isAutoTrackEnabled = true;
@@ -430,6 +410,8 @@ public partial class MainViewModel
         _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled);
+        _gpsPipelineService.SetYouTurnConfig(
+            UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
     }
 
     #endregion

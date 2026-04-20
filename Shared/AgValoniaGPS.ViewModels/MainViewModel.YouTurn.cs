@@ -76,12 +76,14 @@ public partial class MainViewModel
 
     #region YouTurn Entry Points
 
-    // Phase C C3 bridge: the state machine now takes YouTurnWorkingState (POCO),
-    // but the tick still runs on the UI thread from this file. Until C4 moves
-    // the tick into the cycle worker, we copy State.YouTurn (observable) into
-    // a local working-state scratch, run the machine, and copy back. Removed
-    // wholesale in C4 — don't generalize these bridge helpers.
+    // Phase C C4 bridges: manual trigger and clear-state commands still run on
+    // the UI thread. We copy State.YouTurn / State.Guidance into local POCOs,
+    // call the state machine, copy results back, and push the updated YouTurn
+    // working state into the cycle worker so its Tick sees the manual trigger
+    // on the next cycle. Removed in C6/C7 when commands become intents drained
+    // at cycle start.
     private readonly YouTurnWorkingState _youTurnBridge = new();
+    private readonly GuidanceWorkingState _guidanceBridge = new();
 
     /// <summary>Clear all U-turn state — called when closing a field.</summary>
     public void ClearYouTurnState()
@@ -89,6 +91,7 @@ public partial class MainViewModel
         BridgeStateToWorking(State.YouTurn, _youTurnBridge);
         YouTurnStateMachine.ClearState(_youTurnBridge);
         BridgeWorkingToState(_youTurnBridge, State.YouTurn);
+        _gpsPipelineService.SetYouTurnWorkingState(_youTurnBridge);
         _mapService.SetYouTurnPath(null);
         _mapService.SetNextTrack(null);
         _mapService.SetIsInYouTurn(false);
@@ -103,25 +106,29 @@ public partial class MainViewModel
     private void TriggerManualYouTurn(bool turnLeft)
     {
         BridgeStateToWorking(State.YouTurn, _youTurnBridge);
+        BridgeGuidanceStateToWorking(State.Guidance, _guidanceBridge);
         var effects = _youTurnStateMachine.TriggerManual(
             turnLeft, IsAutoSteerEngaged, BuildTickContext(GetCurrentGpsPosition()),
-            State.Guidance, _youTurnBridge);
+            _guidanceBridge, _youTurnBridge);
         BridgeWorkingToState(_youTurnBridge, State.YouTurn);
+        BridgeGuidanceWorkingToState(_guidanceBridge, State.Guidance);
+        _gpsPipelineService.SetYouTurnWorkingState(_youTurnBridge);
         ApplyEffects(effects);
     }
 
-    /// <summary>
-    /// Drive the state machine one cycle. Called from the GPS handler while autosteer
-    /// is engaged, YouTurn is enabled, and a headland line exists. Mutates state
-    /// and applies the resulting side effects.
-    /// </summary>
-    internal void TickYouTurnStateMachine(AgValoniaGPS.Models.Position currentPosition)
+    private static void BridgeGuidanceStateToWorking(AgValoniaGPS.Models.State.GuidanceState src, GuidanceWorkingState dst)
     {
-        BridgeStateToWorking(State.YouTurn, _youTurnBridge);
-        var effects = _youTurnStateMachine.Tick(
-            BuildTickContext(currentPosition), State.Guidance, _youTurnBridge);
-        BridgeWorkingToState(_youTurnBridge, State.YouTurn);
-        ApplyEffects(effects);
+        // State machine reads IsHeadingSameWay + HowManyPathsAway + NudgeOffset;
+        // only those three need accurate round-trip for now.
+        dst.IsHeadingSameWay = src.IsHeadingSameWay;
+        dst.HowManyPathsAway = src.HowManyPathsAway;
+        dst.NudgeOffset = src.NudgeOffset;
+    }
+
+    private static void BridgeGuidanceWorkingToState(GuidanceWorkingState src, AgValoniaGPS.Models.State.GuidanceState dst)
+    {
+        dst.IsHeadingSameWay = src.IsHeadingSameWay;
+        dst.HowManyPathsAway = src.HowManyPathsAway;
     }
 
     private static void BridgeStateToWorking(AgValoniaGPS.Models.State.YouTurnState src, YouTurnWorkingState dst)

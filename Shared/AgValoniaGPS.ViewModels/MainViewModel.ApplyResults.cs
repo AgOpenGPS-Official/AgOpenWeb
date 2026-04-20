@@ -3,6 +3,7 @@
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
 
+using System.Linq;
 using AgValoniaGPS.Models.State;
 
 namespace AgValoniaGPS.ViewModels;
@@ -83,6 +84,65 @@ public partial class MainViewModel
         {
             IsAutoSteerEngaged = false;
             StatusMessage = result.DisengageReason ?? "AutoSteer disengaged";
+        }
+
+        // Phase C C5: YouTurn + Guidance snapshot mirror. The cycle worker
+        // runs the YouTurn state machine on its own POCO working state; this
+        // is the single UI-thread point where those writes become PropertyChanged
+        // events on State.YouTurn / State.Guidance, and where map-service side
+        // effects (turn path, next track, in-youturn flag) land.
+        if (result.YouTurn is { } yt)
+        {
+            var sy = State.YouTurn;
+            sy.IsEnabled = yt.IsEnabled;
+            sy.IsTriggered = yt.IsTriggered;
+            sy.IsExecuting = yt.IsExecuting;
+            // TurnPath / SnakeSequence: reference equality elides PropertyChanged
+            // when the cycle reuses the list across cycles (list ref replaced
+            // only on turn start/end) — see TMP-001 resolution.
+            sy.TurnPath = yt.TurnPath is List<AgValoniaGPS.Models.Base.Vec3> tp ? tp : yt.TurnPath?.ToList();
+            sy.PathIndex = yt.PathIndex;
+            sy.IsTurnLeft = yt.IsTurnLeft;
+            sy.LastTurnWasLeft = yt.LastTurnWasLeft;
+            sy.DistanceToHeadland = yt.DistanceToHeadland;
+            sy.DistanceToTrigger = yt.DistanceToTrigger;
+            sy.NextTrack = yt.NextTrack;
+            sy.LastCompletionPosition = yt.LastCompletionPosition;
+            sy.HasCompletedFirstTurn = yt.HasCompletedFirstTurn;
+            sy.YouTurnCounter = yt.YouTurnCounter;
+            sy.WasHeadingSameWayAtTurnStart = yt.WasHeadingSameWayAtTurnStart;
+            sy.NextTrackTurnOffset = yt.NextTrackTurnOffset;
+            sy.ReturnPassTargetPath = yt.ReturnPassTargetPath;
+            sy.SnakeSequence = yt.SnakeSequence is List<int> ss ? ss : yt.SnakeSequence?.ToList();
+            sy.SnakeIndex = yt.SnakeIndex;
+            sy.CurrentZone = yt.CurrentZone;
+
+            _mapService.SetYouTurnPath(yt.TurnPath?.Select(p => (p.Easting, p.Northing)).ToList());
+            _mapService.SetNextTrack(yt.NextTrack);
+            _mapService.SetIsInYouTurn(yt.IsExecuting);
+        }
+
+        if (result.Guidance is { } g)
+        {
+            // Only the fields the YouTurn state machine currently writes; Phase D
+            // extends this when all Guidance writers move to the cycle worker.
+            State.Guidance.IsHeadingSameWay = g.IsHeadingSameWay;
+            if (State.Guidance.HowManyPathsAway != g.HowManyPathsAway)
+            {
+                State.Guidance.HowManyPathsAway = g.HowManyPathsAway;
+                // Cycle-side pipeline cache needs to be updated so the next tick
+                // sees the new pass number. Safe to call here (UI thread).
+                SyncGuidanceStateToPipeline();
+            }
+        }
+
+        // Turn-completion signal: cycle mirrors legacy YouTurnEffects.TurnCompleted
+        // through result.YouTurnCompleted (flat field). Phase C C8 moves this into
+        // the snapshot itself; for now we read the flat field here.
+        if (result.YouTurnCompleted)
+        {
+            _trackGuidanceState = null;
+            SyncGuidanceStateToPipeline();
         }
 
         // Headland proximity

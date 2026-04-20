@@ -58,7 +58,7 @@ public sealed class YouTurnPathingService
     public void ComputeNextTrack(
         Models.Track.Track referenceTrack,
         double abHeading,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         int uTurnSkipRows,
         bool isSkipWorkedMode,
@@ -128,7 +128,7 @@ public sealed class YouTurnPathingService
     public bool WouldNextLineBeInsideBoundary(
         Models.Track.Track currentTrack,
         double abHeading,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine,
         int uTurnSkipRows)
@@ -166,7 +166,7 @@ public sealed class YouTurnPathingService
     public void BuildSnakeSequence(
         Models.Track.Track referenceTrack,
         double abHeading,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine)

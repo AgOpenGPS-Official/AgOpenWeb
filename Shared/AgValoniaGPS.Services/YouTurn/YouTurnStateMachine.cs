@@ -87,7 +87,7 @@ public sealed class YouTurnStateMachine
     /// YouTurn enabled, headland line has ≥3 points. The caller should gate these before
     /// invoking Tick.
     /// </summary>
-    public YouTurnEffects Tick(in TickContext ctx, GuidanceState guidance, YouTurnWorkingState turn)
+    public YouTurnEffects Tick(in TickContext ctx, GuidanceWorkingState guidance, YouTurnWorkingState turn)
     {
         var effects = new YouTurnEffects();
         var track = ctx.SelectedTrack;
@@ -239,7 +239,7 @@ public sealed class YouTurnStateMachine
         bool turnLeft,
         bool isAutoSteerEngaged,
         in TickContext ctx,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn)
     {
         var effects = new YouTurnEffects();
@@ -327,7 +327,7 @@ public sealed class YouTurnStateMachine
         double abHeading,
         Position currentPosition,
         double headingRadians,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
@@ -395,7 +395,7 @@ public sealed class YouTurnStateMachine
         double abHeading,
         Position currentPosition,
         double headingRadians,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
@@ -428,7 +428,7 @@ public sealed class YouTurnStateMachine
         Models.Track.Track track,
         double headingRadians,
         double abHeading,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
@@ -449,7 +449,7 @@ public sealed class YouTurnStateMachine
 
     private void CompleteTurn(
         in TickContext ctx,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {

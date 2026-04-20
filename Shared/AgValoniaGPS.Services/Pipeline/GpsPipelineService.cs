@@ -38,6 +38,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly ICoverageMapService _coverageMapService;
     private readonly IAutoSteerService _autoSteerService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
+    private readonly YouTurnStateMachine _youTurnStateMachine;
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
     private readonly IGpsHeadingFusionService _headingFusion;
@@ -63,26 +64,32 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private bool _isTrackOnBoundary;
 
     private bool _youTurnEnabled;
+    private int _uTurnSkipRows;
+    private bool _isSkipWorkedMode;
+    private double _headlandCalculatedWidth;
+    private double _headlandDistanceConfig;
     private List<Vec3>? _headlandLine;
     private Boundary? _boundary;
     private double _driftE;
     private double _driftN;
 
-    private bool _isYouTurnTriggered;
-    private bool _isInYouTurn;
-    private List<Vec3>? _youTurnPath;
+    // TriggerManual / ClearYouTurnState on the UI thread push the post-call
+    // working state here (SetYouTurnWorkingState). Removed wholesale in C6/C7
+    // when those UI commands become intents drained at cycle start.
+    private bool _pendingYouTurnSync;
 
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
     private double _simulatorSteerAngle;
 
-    // ── YouTurn working state (Phase C) ─────────────────────────────────
-    // POCO mirror of State.YouTurn. Populated by the cycle worker's
-    // YouTurn state machine in later Phase C commits; unreferenced for
-    // now. Kept private and non-observable — cycle worker is the sole
-    // writer once wired up. UI mirrors via YouTurnSnapshot on
-    // GpsCycleResult, never reads this directly.
+    // ── YouTurn + Guidance working state (Phase C) ──────────────────────
+    // POCOs mirroring State.YouTurn and the subset of State.Guidance that
+    // the YouTurn state machine reads/writes. The cycle worker is the
+    // sole writer during Tick; UI thread pushes via SetYouTurnWorkingState
+    // (bridge, retires in C6/C7). ApplyGpsCycleResult mirrors back to
+    // the observable State.* on the UI thread.
     private readonly YouTurnWorkingState _youTurn = new();
+    private readonly GuidanceWorkingState _guidanceWorking = new();
 
     // ── Headland proximity ──────────────────────────────────────────────
     private readonly HeadlandDetectionService _headlandDetector = new();
@@ -107,6 +114,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         ICoverageMapService coverageMapService,
         IAutoSteerService autoSteerService,
         YouTurnGuidanceService youTurnGuidanceService,
+        YouTurnStateMachine youTurnStateMachine,
         IAudioService audioService,
         IPipelineIntents intents,
         IGpsHeadingFusionService headingFusion,
@@ -120,6 +128,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _coverageMapService = coverageMapService;
         _autoSteerService = autoSteerService;
         _youTurnGuidanceService = youTurnGuidanceService;
+        _youTurnStateMachine = youTurnStateMachine;
         _audioService = audioService;
         _intents = intents;
         _headingFusion = headingFusion;
@@ -179,6 +188,61 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock) _youTurnEnabled = enabled;
     }
 
+    /// <summary>
+    /// Push YouTurn configuration values (skip-rows, skip-worked mode,
+    /// headland geometry). Phase C C4 adds this so the cycle worker's
+    /// YouTurn tick can build its own TickContext without reaching into
+    /// the MVM.
+    /// </summary>
+    public void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance)
+    {
+        lock (_stateLock)
+        {
+            _uTurnSkipRows = uTurnSkipRows;
+            _isSkipWorkedMode = isSkipWorkedMode;
+            _headlandCalculatedWidth = headlandCalculatedWidth;
+            _headlandDistanceConfig = headlandDistance;
+        }
+    }
+
+    /// <summary>
+    /// Copy a UI-thread-produced YouTurn working state (post
+    /// TriggerManual / ClearYouTurnState) into the cycle worker's
+    /// instance. Temporary while UI commands still run on UI thread;
+    /// C6/C7 replaces with intent drain.
+    /// </summary>
+    public void SetYouTurnWorkingState(YouTurnWorkingState source)
+    {
+        lock (_stateLock)
+        {
+            CopyYouTurnWorkingState(source, _youTurn);
+            _pendingYouTurnSync = true;
+        }
+    }
+
+    private static void CopyYouTurnWorkingState(YouTurnWorkingState src, YouTurnWorkingState dst)
+    {
+        dst.IsEnabled = src.IsEnabled;
+        dst.IsTriggered = src.IsTriggered;
+        dst.IsExecuting = src.IsExecuting;
+        dst.TurnPath = src.TurnPath;
+        dst.PathIndex = src.PathIndex;
+        dst.IsTurnLeft = src.IsTurnLeft;
+        dst.LastTurnWasLeft = src.LastTurnWasLeft;
+        dst.DistanceToHeadland = src.DistanceToHeadland;
+        dst.DistanceToTrigger = src.DistanceToTrigger;
+        dst.NextTrack = src.NextTrack;
+        dst.LastCompletionPosition = src.LastCompletionPosition;
+        dst.HasCompletedFirstTurn = src.HasCompletedFirstTurn;
+        dst.YouTurnCounter = src.YouTurnCounter;
+        dst.WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart;
+        dst.NextTrackTurnOffset = src.NextTrackTurnOffset;
+        dst.ReturnPassTargetPath = src.ReturnPassTargetPath;
+        dst.SnakeSequence = src.SnakeSequence;
+        dst.SnakeIndex = src.SnakeIndex;
+        dst.CurrentZone = src.CurrentZone;
+    }
+
     public void SetHeadlandLine(IReadOnlyList<Vec3>? headlandLine)
     {
         lock (_stateLock)
@@ -198,22 +262,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock) { _driftE = driftE; _driftN = driftN; }
     }
 
-    public void SetYouTurnState(bool isTriggered, bool isInYouTurn, List<Vec3>? youTurnPath)
-    {
-        lock (_stateLock)
-        {
-            _isYouTurnTriggered = isTriggered;
-            _isInYouTurn = isInYouTurn;
-            _youTurnPath = youTurnPath != null ? new List<Vec3>(youTurnPath) : null;
-        }
-    }
-
     // ══════════════════════════════════════════════════════════════════════
     // Read-back properties
     // ══════════════════════════════════════════════════════════════════════
 
     public bool IsAutoSteerEngaged { get { lock (_stateLock) return _autoSteerEngaged; } }
-    public bool IsInYouTurn { get { lock (_stateLock) return _isInYouTurn; } }
+    public bool IsInYouTurn { get { lock (_stateLock) return _youTurn.IsExecuting; } }
     public double SimulatorSteerAngle => Volatile.Read(ref _simulatorSteerAngle);
 
     // ══════════════════════════════════════════════════════════════════════
@@ -282,12 +336,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double nudgeOffset;
         bool isTrackOnBoundary;
         bool youTurnEnabled;
+        int uTurnSkipRows;
+        bool isSkipWorkedMode;
+        double headlandCalculatedWidth;
+        double headlandDistanceConfig;
         List<Vec3>? headlandLine;
         Boundary? boundary;
         double driftE, driftN;
-        bool isYouTurnTriggered;
-        bool isInYouTurn;
-        List<Vec3>? youTurnPath;
 
         lock (_stateLock)
         {
@@ -297,14 +352,22 @@ public sealed class GpsPipelineService : IGpsPipelineService
             nudgeOffset = _nudgeOffset;
             isTrackOnBoundary = _isTrackOnBoundary;
             youTurnEnabled = _youTurnEnabled;
+            uTurnSkipRows = _uTurnSkipRows;
+            isSkipWorkedMode = _isSkipWorkedMode;
+            headlandCalculatedWidth = _headlandCalculatedWidth;
+            headlandDistanceConfig = _headlandDistanceConfig;
             headlandLine = _headlandLine;
             boundary = _boundary;
             driftE = _driftE;
             driftN = _driftN;
-            isYouTurnTriggered = _isYouTurnTriggered;
-            isInYouTurn = _isInYouTurn;
-            youTurnPath = _youTurnPath;
         }
+
+        // YouTurn working state is owned by the cycle; only push-ins from UI
+        // (TriggerManual / ClearYouTurnState via SetYouTurnWorkingState) touch
+        // it cross-thread. The Tick call below mutates it on this thread.
+        bool isYouTurnTriggered = _youTurn.IsTriggered;
+        bool isInYouTurn = _youTurn.IsExecuting;
+        List<Vec3>? youTurnPath = _youTurn.TurnPath;
 
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
@@ -344,6 +407,45 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double driftedEasting = posEasting + driftE;
         double driftedNorthing = posNorthing + driftN;
         double headingRad = pos.Heading * Math.PI / 180.0;
+
+        // ── Phase C C4: YouTurn state machine tick ──────────────────────
+        // Gate matches pre-C4 MVM guards: autosteer + track + youturn-enabled
+        // + valid headland. The state machine mutates _youTurn (POCO) and
+        // _guidanceWorking (POCO). Snapshots built later in the cycle; the
+        // VM mirrors back via ApplyGpsCycleResult on the UI thread.
+        YouTurnEffects? youTurnTickEffects = null;
+        bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
+        if (autoSteerEngaged && track != null && track.Points.Count >= 2
+            && youTurnEnabled && hasValidHeadlandLine)
+        {
+            // Bridge read-only guidance fields the state machine needs.
+            // State.Guidance is written only by ApplyGpsCycleResult on the
+            // UI thread; these are primitive reads and safe cross-thread.
+            _guidanceWorking.IsHeadingSameWay = _appState.Guidance.IsHeadingSameWay;
+            _guidanceWorking.HowManyPathsAway = passNumber;
+            _guidanceWorking.NudgeOffset = nudgeOffset;
+
+            _youTurn.YouTurnCounter++;
+
+            var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
+            var tickCtx = new YouTurnStateMachine.TickContext(
+                tickPosition,
+                track,
+                boundary,
+                headlandLine,
+                uTurnSkipRows,
+                isSkipWorkedMode,
+                headlandCalculatedWidth,
+                headlandDistanceConfig);
+
+            youTurnTickEffects = _youTurnStateMachine.Tick(in tickCtx, _guidanceWorking, _youTurn);
+        }
+
+        // Refresh the locals the downstream guidance branch reads — the tick
+        // (or a UI-thread SetYouTurnWorkingState push) may have updated them.
+        isYouTurnTriggered = _youTurn.IsTriggered;
+        isInYouTurn = _youTurn.IsExecuting;
+        youTurnPath = _youTurn.TurnPath;
 
         // ── (3) Tool position ───────────────────────────────────────────
         _toolPositionService.Update(
@@ -567,10 +669,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
             DisengageReason = disengageReason,
 
-            // YouTurn
+            // YouTurn (flat fields — removed in Phase C C8; YouTurnSnapshot below
+            // is the authoritative source after Phase C C5 consumers switch over)
             IsInYouTurn = isInYouTurn,
             YouTurnTriggered = isYouTurnTriggered,
-            YouTurnCompleted = youTurnCompleted,
+            YouTurnCompleted = youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false),
+
+            // Phase C C5: snapshots for UI-thread mirror via ApplyGpsCycleResult
+            YouTurn = BuildYouTurnSnapshot(_youTurn, youTurnTickEffects),
+            Guidance = BuildGuidanceSnapshot(_guidanceWorking),
 
             // Sections
             SectionStates = secStatesArr,
@@ -581,11 +688,48 @@ public sealed class GpsPipelineService : IGpsPipelineService
             HeadlandProximityWarning = headlandWarning,
 
             // Status
-            StatusMessage = statusMessage ?? fixRejectionReason
+            StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
         };
+
+        // Clear the "recently push-synced from UI" flag once a result including
+        // that state has been emitted — next cycle runs a fresh tick normally.
+        lock (_stateLock) _pendingYouTurnSync = false;
 
         CycleCompleted?.Invoke(result);
     }
+
+    private static YouTurnSnapshot BuildYouTurnSnapshot(YouTurnWorkingState src, YouTurnEffects? effects) => new()
+    {
+        IsEnabled = src.IsEnabled,
+        IsTriggered = src.IsTriggered,
+        IsExecuting = src.IsExecuting,
+        TurnPath = src.TurnPath,
+        PathIndex = src.PathIndex,
+        IsTurnLeft = src.IsTurnLeft,
+        LastTurnWasLeft = src.LastTurnWasLeft,
+        DistanceToHeadland = src.DistanceToHeadland,
+        DistanceToTrigger = src.DistanceToTrigger,
+        NextTrack = src.NextTrack,
+        LastCompletionPosition = src.LastCompletionPosition,
+        HasCompletedFirstTurn = src.HasCompletedFirstTurn,
+        YouTurnCounter = src.YouTurnCounter,
+        WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart,
+        NextTrackTurnOffset = src.NextTrackTurnOffset,
+        ReturnPassTargetPath = src.ReturnPassTargetPath,
+        SnakeSequence = src.SnakeSequence,
+        SnakeIndex = src.SnakeIndex,
+        CurrentZone = src.CurrentZone,
+    };
+
+    private static GuidanceSnapshot BuildGuidanceSnapshot(GuidanceWorkingState src) => new()
+    {
+        // Only the fields the YouTurn state machine writes are authoritative
+        // here; Phase D will extend this snapshot when all Guidance writers
+        // move to the cycle. Others are read-only passthrough of UI-thread state.
+        IsHeadingSameWay = src.IsHeadingSameWay,
+        HowManyPathsAway = src.HowManyPathsAway,
+        NudgeOffset = src.NudgeOffset,
+    };
 
     // ══════════════════════════════════════════════════════════════════════
     // Guidance helpers (run on background thread, no Avalonia types)
