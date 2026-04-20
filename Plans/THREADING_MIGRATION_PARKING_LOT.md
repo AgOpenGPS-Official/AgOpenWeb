@@ -261,6 +261,19 @@ can miss aliased writes). Or both.
   (catches cross-cutting patterns like `State.*` writes from any
   service, which the reflection guard doesn't address). Still parked
   for post-migration.
+- 2026-04-20 (Phase E close) — Third structural guard shipped:
+  `FieldStateCycleTests.IGpsPipelineService_has_no_direct_LocalPlane_
+  writethrough_methods` (scans for methods taking `LocalPlane`).
+  All three mutable `ObservableObject` types in `ApplicationState`
+  now have reflection-level cycle-to-UI direction enforcement. The
+  final acceptance grep — `grep -rn '_appState\.\w+\.\w+\s*='
+  Shared/AgValoniaGPS.Services` — returns **zero** after E1 moved
+  the LocalPlane auto-create off the cycle thread. §0 invariant
+  satisfied end-to-end for `FieldState`/`YouTurnState`/`GuidanceState`.
+  Only `ConnectionState` remains (Phase F). Post-migration analyzer
+  / CI grep is still the right final answer but is no longer urgent —
+  the current test suite catches every architectural regression we
+  know to look for.
 
 ---
 
@@ -320,6 +333,17 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
   Phase C meets the parent-plan intent ("drops measurably") and hits
   its YouTurn-specific target within a documented cross-cutting
   exception. Phase D will re-measure.
+- 2026-04-20 (Phase E close) — Post-Phase-E snapshot:
+  - `MainViewModel.GpsHandling.cs` = **399 lines** (−45 from D, E2
+    deleted the dead `UpdateHeadlandProximity` method +
+    `_headlandDetector` field).
+  - Other VM files unchanged from D close.
+  - Total across 23 partials: **14,003 lines** (−33 from D, **−133
+    from the Phase A baseline of 14,136**).
+  Phase E is almost entirely audit + deletion — the delta comes
+  from dead-code removal rather than new threading scaffolding.
+  Phase F owns the final `ConnectionState` migration; no VM-file
+  changes expected there.
 - 2026-04-20 (Phase D close) — Post-Phase-D snapshot:
   - `MainViewModel.YouTurn.cs` = **132 lines** (unchanged from C —
     Phase D didn't touch it).
