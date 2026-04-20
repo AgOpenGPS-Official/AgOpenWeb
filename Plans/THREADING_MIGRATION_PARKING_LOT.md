@@ -96,36 +96,7 @@ Every open item carries:
 
 ### TMP-001 — Snapshot identity vs equality
 
-- **Status:** Open
-- **Raised in:** Phase A
-- **Decide by:** Phase C (Commit 1, before `YouTurnSnapshot` is populated)
-- **Source:** parent plan §6.1; Phase A plan §8
-
-**Why parked.** Becomes a testable question only when the cycle worker
-actually builds a `YouTurnSnapshot` every tick. In Phase A nothing
-populates it, so there's nothing to construct or compare. The `record`
-type chosen in Phase A Commit 2 supports either answer.
-
-**What the decision is.** Either:
-- (a) the cycle worker reuses list instances (e.g., `TurnPath`,
-  `SnakeSequence`) when the state didn't change, so
-  `SetProperty`'s reference check elides `PropertyChanged` firing, or
-- (b) the `ApplyGpsCycleResult` path does value-equality checks before
-  writing, letting the cycle worker build fresh snapshots every tick.
-
-(a) is faster but forces the cycle worker to track instance identity
-across ticks. (b) is simpler but spends cycles on equality checks on
-the UI thread.
-
-**Review log.**
-- 2026-04-19 — Parked during Phase A planning. Type-level decision made
-  (records) that keeps both paths open.
-- 2026-04-19 (Phase A close) — Phase A ships `YouTurnSnapshot` and
-  `GuidanceSnapshot` as records with `IReadOnlyList<T>?` for list fields,
-  which supports either future approach. Still parked; Phase C owns.
-- 2026-04-19 (Phase B close) — Phase B didn't populate snapshots; the
-  `null`-valued fields on `GpsCycleResult` continue untouched. Still
-  parked for Phase C C1.
+**Status:** Resolved (Phase C close, 2026-04-20). Moved to §5 Resolved.
 
 ---
 
@@ -160,6 +131,15 @@ Carve-outs are the only sanctioned bypass of the one-way flow.
   inventory for `TriggerManualYouTurnLeft/Right` and `ClearYouTurnState`.
 - 2026-04-19 (Phase B close) — Phase B migrated no UI commands.
   Still parked for Phase C (YouTurn commands) and D (guidance commands).
+- 2026-04-20 (Phase C close) — **No carve-outs needed for the YouTurn
+  command set.** C6 migrated `TriggerManualYouTurnLeft/Right` to
+  `IPipelineIntents.RequestManualYouTurn`; C7 migrated `ClearYouTurnState`
+  to `RequestClearYouTurn`. Both tolerate the ~1-cycle (50–100 ms)
+  latency well. Smoke-verified: manual turn plots promptly; clear
+  on field-close makes the path disappear imperceptibly after the
+  next cycle. YouTurn half of this item resolved; Guidance half
+  (nudge / snap / reverse-heading / `HowManyPathsAway` writes) still
+  owned by Phase D.
 
 ---
 
@@ -197,6 +177,16 @@ dead fields in the snapshot).
   placeholders still unused. Phase C populates the YouTurn snapshot and
   removes the three flat YouTurn fields. Phase D does the same for
   Guidance.
+- 2026-04-20 (Phase C close) — **YouTurn half resolved (C8, commit
+  `f50ef51`).** `IsInYouTurn`, `YouTurnTriggered`, `YouTurnCompleted`
+  deleted from `GpsCycleResult`. New `YouTurnSnapshot.JustCompleted`
+  carries the one-cycle completion signal that the UI uses to reset
+  its `_trackGuidanceState` cache. `IGpsPipelineService.IsInYouTurn`
+  also deleted (no callers). Guidance half (`SteerAngle`,
+  `CrossTrackError`, `GoalPointEasting`, `GoalPointNorthing`,
+  `HasGuidance`, `NearestPassNumber`, `DisplayTrack`, `BaseTrack`,
+  `AutoSteerDisengagedThisCycle`, `DisengageReason`) remains —
+  owned by Phase D. Keep open until then.
 
 ---
 
@@ -231,6 +221,14 @@ can miss aliased writes). Or both.
   `_localPlane`, `NmeaParserService` deleted. The `UnifiedPipelineTests`
   (C6) enforce the first two at unit-test level but an analyzer or CI
   grep would catch structural drift earlier. Still parked.
+- 2026-04-20 (Phase C close) — Phase C added a third unit-test-level
+  structural guard: `YouTurnCycleTests.IGpsPipelineService_has_no_
+  direct_YouTurn_writethrough_methods` (reflection-based; catches any
+  future `SetYouTurn*`/`PushYouTurn*`/`ApplyYouTurn*` method that
+  bypasses the intent channel). Phase D will add a similar guard for
+  Guidance. An analyzer / CI grep is still worthwhile post-migration
+  to catch cross-cutting cases the reflection tests don't cover.
+  Still parked; the tests are a useful stopgap.
 
 ---
 
@@ -269,6 +267,27 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
   construction, and the NMEA-parse branch in `OnUdpDataReceived`).
   Total across 23 partials: 14,127 lines (−9). Phase C's reduction
   target is still measured against the 14,136 Phase-A baseline.
+- 2026-04-20 (Phase C close) — Post-Phase-C snapshot:
+  - `MainViewModel.YouTurn.cs` = **132 lines** (Phase A baseline: 206,
+    target <100). Bridge helpers, `ApplyEffects`, `BuildTickContext`,
+    `GetCurrentGpsPosition`, `_youTurnBridge`, `_guidanceBridge` all
+    gone. The residual ~32 lines are `IsTrackOnBoundary` and
+    `DistanceToBoundary` helpers that the file itself calls out as
+    "used outside YouTurn too" — moving them would push the file
+    comfortably under 100, but cross-cutting. Deferred as a pure
+    cleanup (not a threading decision).
+  - `MainViewModel.GpsHandling.cs` = **418 lines** (Phase A baseline:
+    436, −18). C4 removed the inline YouTurn tick block; the remaining
+    file size is GPS data flow + track-selection auto-fit.
+  - `MainViewModel.cs` = **5,150 lines** (Phase A: 5,148; +2 net —
+    added `IPipelineIntents _intents` field, constructor parameter,
+    and assignment; offset by `_youTurnStateMachine` DI removal in
+    C7). Net neutral.
+  - Total across 23 partials: **14,112 lines** (−24 from Phase A
+    baseline, −15 from Phase B).
+  Phase C meets the parent-plan intent ("drops measurably") and hits
+  its YouTurn-specific target within a documented cross-cutting
+  exception. Phase D will re-measure.
 
 ---
 
@@ -374,6 +393,22 @@ with zero Phase-C code on the UI thread exhibits the same stall.
 ---
 
 ## 5. Resolved items
+
+### TMP-001 — Snapshot identity vs equality
+
+- **Status:** Resolved (Phase C close, 2026-04-20)
+- **Resolution:** Option (a) — reuse list references. The
+  `YouTurnStateMachine` swaps `TurnPath` / `NextTrack` refs only at
+  turn-start (creation) and turn-end (clear / complete). Between
+  those points, every cycle's snapshot carries the same list
+  references. `ApplyGpsCycleResult` assigns via `ObservableObject`
+  setters which compare refs before firing `PropertyChanged`, so
+  steady-state ticks don't churn UI bindings. No explicit
+  value-equality code needed on the UI thread. Verified on the
+  Bing Test field across auto + manual U-turns.
+- **Decided in:** Phase C plan §2.1; validated by smoke tests across
+  C4/C5/C6/C7
+- **Closing PR:** #259 (Phase C commit range `25c2042..f50ef51`)
 
 ### TMP-003 — Phase B unified service name
 

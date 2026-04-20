@@ -27,6 +27,7 @@ public class MainViewModelBuilder
     public ISectionControlService SectionControlService { get; } = Substitute.For<ISectionControlService>();
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
+    public AgValoniaGPS.Services.Pipeline.PipelineIntents Intents { get; } = new();
 
     public MainViewModelBuilder()
     {
@@ -78,7 +79,7 @@ public class MainViewModelBuilder
             elevationLogService: Substitute.For<IElevationLogService>(),
             tramLineService: Substitute.For<AgValoniaGPS.Services.Interfaces.ITramLineService>(),
             gpsPipelineService: GpsPipelineService,
-            intents: new AgValoniaGPS.Services.Pipeline.PipelineIntents(),
+            intents: Intents,
             logger: NullLogger<MainViewModel>.Instance,
             appState: new ApplicationState());
     }
