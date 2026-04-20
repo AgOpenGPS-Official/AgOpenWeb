@@ -188,45 +188,42 @@ Verified before this plan was drafted.
 Nine commits. Each independently reviewable, each leaves the app
 working, each commit's smoke test passes before moving on.
 
-### Commit 1 — Investigate and fix TMP-008
+### Commit 1 — Investigate TMP-008 (no code fix)
 
-**Goal:** Manual U-turn correctly executes on trigger. Phase C
-cannot verify its migration doesn't regress behavior without a working
-baseline. This commit is phase-gating — no C2+ work until C1 ships.
+**Goal:** Establish whether manual U-turn is a real blocker for the
+thread migration. Spoiler (filled in after investigation): it isn't.
 
-**Investigation plan:**
-- Add temporary verbose logging around `TriggerManual`, `ApplyEffects`,
-  and the pipeline's U-turn follow path. Confirm: path is generated,
-  `IsExecuting = true` is set, `SetYouTurnState()` pushes to pipeline,
-  pipeline's `_isInYouTurn` flips true, guidance calc chooses turn
-  path over original track.
-- Identify where the chain breaks. Strong hypothesis (from the Phase C
-  exploration): the pipeline's `_isInYouTurn` / `_youTurnPath` are
-  updated only from `MainViewModel.GpsHandling.cs:242-243`'s push,
-  which happens on the NEXT GPS cycle after the manual click. Meanwhile
-  the cycle's guidance picks a track based on whichever state was
-  current when it started. Timing gap ≈ one cycle. If the user's click
-  landed in a specific window, the turn gets "lost" before the
-  pipeline sees it.
+**Outcome of the investigation (2026-04-19):**
+- Diagnostic logging (`[C1-DBG:...]` prefixes, commit-stripped after
+  the repro) in `ProcessCycle`, `TriggerManual`, and
+  `CreatePathAndSync` showed that:
+  - Path coordinates are internally consistent within 0.001m
+  - Manual U-turn path is anchored at the tractor's current position;
+    when the tractor is off the magenta pass line at click time, the
+    path is offset from the displayed tracks by exactly the tractor's
+    cross-track error at that moment
+  - Tracks, tractor, and U-turn path are all rendered in the same
+    coordinate frame — no frame mismatch
+- Compared to AgOpenGPS-original: the reference implementation plots
+  an **immediate** Dubins-like arc starting at the tractor's position
+  (no headland-based entry-arc-exit). The user's original TMP-008
+  report ("the tractor doesn't execute the turn") was a misread of
+  AgOpen parity behavior they expected — our manual U-turn does
+  execute, it just follows a different model.
+- Working as designed. Not a bug; a missing feature.
 
-**Fix approach (depends on what the investigation finds):**
-- Most likely: missing path-follow check in the cycle's guidance
-  selector. Fix with minimal diff.
-- Less likely: timing race. Fix by synchronously pushing YouTurn state
-  to the pipeline when `TriggerManual` completes, not waiting for the
-  next `SetYouTurnState` call.
-- Remove the temporary logging before commit.
+**Result:**
+- TMP-008 closed as "works as designed, AgOpen parity deferred"
+- AgOpen-style immediate manual U-turn → GitHub issue #260 (Project
+  "AgValoniaGPS", Planning column)
+- Free-drive line-follows-tractor → GitHub issue #261 (same)
+- Diagnostic logging stripped (this commit)
+- Phase C C2+ proceeds unchanged
 
-**Verification:**
-- Manual repro: engage autosteer, press right-turn, observe tractor
-  enters turn path.
-- Add a regression test if feasible: `YouTurnGuidanceServiceTests` or
-  similar, asserting that after `TriggerManual`, the follow path
-  produces non-zero steer angle.
-- Smoke test on simulator + real AiO.
-
-**Ships even if Phase C stops here** — this is a pre-existing bug fix
-that makes the app better regardless of the rest of the migration.
+**Ships:** the diagnostic-log removal + parking-lot TMP-008 resolution
++ this plan amendment. No runtime behavior change. The manual U-turn
+model can be changed independently of threading in a future commit
+driven by issue #260.
 
 ### Commit 2 — Cycle worker owns `YouTurnWorkingState` instance
 

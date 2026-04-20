@@ -274,48 +274,8 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
 
 ### TMP-008 — Manual U-turn does not execute when triggered
 
-- **Status:** Open
-- **Raised in:** Phase A (discovered during the acceptance smoke test)
-- **Decide by:** Phase C (before it migrates
-  `TriggerManualYouTurnLeft/Right` onto the intent queue — a buggy
-  starting state makes a migration impossible to verify)
-- **Source:** Phase A smoke test on 2026-04-19 — operator pressed right
-  manual-turn button; a point dropped and a dashed yellow line drew to
-  the front of the tractor, but the tractor stayed on the guidance
-  line instead of turning.
-
-**Why parked.** Pre-existing bug, not a Phase A regression. Verified by
-`git diff develop..feature/threading-phase-a --` over
-`MainViewModel.YouTurn.cs`, `MainViewModel.GpsHandling.cs`,
-`YouTurnStateMachine.cs`, and `MainViewModel.ApplyResults.cs` — zero
-lines changed. Phase A's only runtime effect is a discarded
-`Drain()` call in `GpsPipelineService.ProcessCycle`, with no
-side-effects on any state the YouTurn machine reads.
-
-Two plausible root causes, both pre-existing:
-1. `YouTurnStateMachine.TriggerManual` bails at line 246 when
-   `!isAutoSteerEngaged`, posting status "Enable autosteer first"
-   without creating a path. If auto-steer wasn't engaged during the
-   smoke test, that's working-as-designed — but the user saw a yellow
-   dashed line, which suggests *something* ran. Need to check whether
-   the rendered visual is the turn path, the Pure Pursuit goal-point,
-   or a dropped marker.
-2. Auto-steer was engaged, the path was generated (`SetYouTurnPath`
-   called), but the autosteer loop isn't switching from guidance line
-   to turn path. That would be a bug in the path-follow handoff.
-
-**What the decision is.** Reproduce once with verbose logging on;
-determine which of the two causes applies. Then either (a) confirm
-"enable autosteer first" is the correct behavior and document it, or
-(b) fix the path-follow handoff before Phase C migrates the trigger.
-
-**Review log.**
-- 2026-04-19 — Added during Phase A close after smoke test surfaced
-  the issue. Parked because Phase A had no mandate to fix pre-existing
-  YouTurn bugs, and because Phase C needs to inherit a working manual
-  U-turn to verify its migration doesn't regress it.
-- 2026-04-19 (Phase B close) — Phase B touched no YouTurn code. Still
-  parked for Phase C — investigation is Phase C's first task.
+**Status:** Resolved as "works as designed, AgOpen-parity deferred"
+(Phase C C1 investigation, 2026-04-19). Moved to §5 Resolved.
 
 ---
 
@@ -396,6 +356,38 @@ imperceptible. If regression, options:
   remain in place either way.
 - **Decided in:** Phase B plan §2.2; validated by real-hardware smoke test
 - **Closing PR:** #259 (Phase B commit `9fe4dc9`)
+
+### TMP-008 — Manual U-turn does not execute when triggered
+
+- **Status:** Resolved as "works as designed, AgOpen parity deferred"
+  (Phase C C1 investigation, 2026-04-19)
+- **Resolution:** Original Phase A smoke-test symptom ("tractor didn't
+  execute the turn") was misread. The tractor **does** execute the
+  manual U-turn; the visual offset the user reported came from clicking
+  the manual-trigger button before the tractor had settled on the
+  magenta pass line — the generated path anchors at the tractor's
+  current position, producing entry/exit legs offset from the visible
+  tracks by the tractor's cross-track error at click time.
+  Diagnostic logging (commit stripped in Phase C C1) confirmed path
+  coordinates are mathematically consistent within 0.001m.
+
+  Reference behavior in AgOpenGPS-original differs in two ways: (a) it
+  plots an **immediate** Dubins-like arc at the tractor's current
+  position rather than a headland-based entry-arc-exit, and (b) the
+  guidance line visually shifts to the new post-turn pass. That's not
+  a bug in AgValoniaGPS — it's a missing feature. Tracked as a real
+  feature request, not a threading-migration blocker:
+  - [Issue #260 — Manual U-turn: immediate turn at tractor position
+    (AgOpen parity)](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/260)
+    (GitHub project "AgValoniaGPS", Planning column)
+  - [Issue #261 — Free-drive: guidance line follows the tractor](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/261)
+    (same project, Planning column)
+
+  Phase C C2 proceeds on the existing manual-U-turn behavior; the
+  threading migration is independent of which path-generation
+  algorithm the manual trigger uses.
+- **Investigated in:** Phase C C1 (2026-04-19)
+- **Closing PR:** #259 (diagnostic logs stripped, no code fix)
 
 ---
 
