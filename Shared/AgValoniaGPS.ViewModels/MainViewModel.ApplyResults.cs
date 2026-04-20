@@ -130,19 +130,22 @@ public partial class MainViewModel
             sg.CurrentLineLabel = g.CurrentLineLabel;
             sg.IsContourMode = g.IsContourMode;
 
-            // VM-level bindings previously driven from the flat GpsCycleResult
-            // fields. CrossTrackError is still displayed in cm on the HUD.
-            SimulatorSteerAngle = g.SteerAngle;
-            CrossTrackError = g.CrossTrackError * 100;
-
             // Map-service pushes with reference / value gating to avoid per-cycle
             // SendStateToHandler churn. The cycle reuses DisplayTrack / BaseTrack
             // references across cycles when they haven't changed, so ReferenceEquals
             // elides the call in steady state. Guidance points are a Vec2 (value
             // type) and change every cycle during active guidance — no gating
             // would help; the gate below is structural.
+            //
+            // SimulatorSteerAngle and CrossTrackError must ALSO be gated on
+            // HasGuidance: SimulatorSteerAngle is the user's simulator steering
+            // input, and if we unconditionally wrote g.SteerAngle (=0 when no
+            // guidance) every cycle we'd overwrite the user's L/R keypress
+            // before the simulator tick consumed it.
             if (g.HasGuidance)
             {
+                SimulatorSteerAngle = g.SteerAngle;
+                CrossTrackError = g.CrossTrackError * 100;
                 _mapService.SetGuidancePoints(g.GoalPoint.Easting, g.GoalPoint.Northing, isActive: true);
             }
             if (!ReferenceEquals(_lastMirroredDisplayTrack, g.DisplayTrack))
@@ -171,6 +174,16 @@ public partial class MainViewModel
         // Headland proximity
         State.Field.HeadlandProximityDistance = result.HeadlandProximityDistance;
         State.Field.HeadlandProximityWarning = result.HeadlandProximityWarning;
+
+        // Phase E E1: the cycle's first-fix LocalPlane auto-create arrives
+        // here. The cycle already holds a cache of it for coord conversion;
+        // we commit to the observable so subsequent UI readers see it. Only
+        // first-wins — if the user explicitly opened a field in the meantime
+        // (SetFieldOrigin), their instance stays.
+        if (result.FirstFixLocalPlane != null && State.Field.LocalPlane == null)
+        {
+            State.Field.LocalPlane = result.FirstFixLocalPlane;
+        }
 
         // Section states
         if (result.SectionStates != null)
