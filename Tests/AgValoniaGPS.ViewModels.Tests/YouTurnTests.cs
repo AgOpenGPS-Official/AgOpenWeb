@@ -168,4 +168,106 @@ public class YouTurnTests
             Arg.Any<double>(),
             Arg.Any<bool>());
     }
+
+    // ── Phase D D4/D5 — guidance-command intent channel locks ──────────
+
+    [Test]
+    public void SnapLeftCommand_posts_snap_left_intent()
+    {
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        vm.SavedTracks.Add(Track.FromABLine("t", new Vec3(0, 0, 0), new Vec3(0, 100, 0)));
+        vm.SelectedTrack = vm.SavedTracks[0];
+        builder.Intents.Drain(); // discard any intents posted by SelectedTrack setter
+
+        vm.SnapLeftCommand!.Execute(null);
+
+        Assert.That(builder.Intents.Drain().GuidanceSnap, Is.True,
+            "SnapLeftCommand must post RequestGuidanceSnap(left: true)");
+    }
+
+    [Test]
+    public void SnapRightCommand_posts_snap_right_intent()
+    {
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        vm.SavedTracks.Add(Track.FromABLine("t", new Vec3(0, 0, 0), new Vec3(0, 100, 0)));
+        vm.SelectedTrack = vm.SavedTracks[0];
+        builder.Intents.Drain();
+
+        vm.SnapRightCommand!.Execute(null);
+
+        Assert.That(builder.Intents.Drain().GuidanceSnap, Is.False,
+            "SnapRightCommand must post RequestGuidanceSnap(left: false)");
+    }
+
+    [Test]
+    public void NudgeLeftCommand_posts_negative_nudge_delta()
+    {
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        vm.SavedTracks.Add(Track.FromABLine("t", new Vec3(0, 0, 0), new Vec3(0, 100, 0)));
+        vm.SelectedTrack = vm.SavedTracks[0];
+        builder.Intents.Drain();
+
+        vm.NudgeLeftCommand!.Execute(null);
+
+        Assert.That(builder.Intents.Drain().GuidanceNudgeMeters, Is.LessThan(0),
+            "NudgeLeft must post a negative nudge delta");
+    }
+
+    [Test]
+    public void ResetNudgeCommand_posts_reset_intent()
+    {
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        vm.SavedTracks.Add(Track.FromABLine("t", new Vec3(0, 0, 0), new Vec3(0, 100, 0)));
+        vm.SelectedTrack = vm.SavedTracks[0];
+        builder.Intents.Drain();
+
+        vm.ResetNudgeCommand!.Execute(null);
+
+        Assert.That(builder.Intents.Drain().GuidanceResetNudge, Is.True,
+            "ResetNudgeCommand must post RequestGuidanceResetNudge");
+    }
+
+    // ── Phase D D7 — full Guidance snapshot mirror ─────────────────────
+
+    [Test]
+    public void ApplyGpsCycleResult_mirrors_full_Guidance_snapshot_onto_StateGuidance()
+    {
+        var vm = new MainViewModelBuilder().Build();
+        var snapshot = new GuidanceSnapshot
+        {
+            CrossTrackError = 0.42,
+            HeadingError = 0.05,
+            SteerAngle = 1.7,
+            SteerAngleRaw = 170,
+            DistanceOffRaw = 420,
+            PpIntegral = 0.1,
+            GoalPoint = new Vec2(10, 20),
+            RadiusPoint = new Vec2(30, 40),
+            PurePursuitRadius = 5.5,
+            IsHeadingSameWay = true,
+            IsReverse = false,
+            HowManyPathsAway = 3,
+            NudgeOffset = 0.15,
+            CurrentLineLabel = "4R",
+            IsContourMode = false,
+            HasGuidance = true,
+        };
+
+        vm.ApplyGpsCycleResult(new GpsCycleResult { Guidance = snapshot });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.State.Guidance.CrossTrackError, Is.EqualTo(0.42));
+            Assert.That(vm.State.Guidance.SteerAngle, Is.EqualTo(1.7));
+            Assert.That(vm.State.Guidance.HowManyPathsAway, Is.EqualTo(3));
+            Assert.That(vm.State.Guidance.NudgeOffset, Is.EqualTo(0.15));
+            Assert.That(vm.State.Guidance.CurrentLineLabel, Is.EqualTo("4R"));
+            Assert.That(vm.State.Guidance.GoalPoint.Easting, Is.EqualTo(10));
+            Assert.That(vm.State.Guidance.IsHeadingSameWay, Is.True);
+        });
+    }
 }

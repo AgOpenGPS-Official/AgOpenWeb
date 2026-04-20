@@ -140,6 +140,18 @@ Carve-outs are the only sanctioned bypass of the one-way flow.
   next cycle. YouTurn half of this item resolved; Guidance half
   (nudge / snap / reverse-heading / `HowManyPathsAway` writes) still
   owned by Phase D.
+- 2026-04-20 (Phase D close) — **Guidance half resolved (D4/D5/D6).**
+  Every guidance-writing UI command became an intent:
+  `SnapLeft`/`SnapRight` → `RequestGuidanceSnap(left)` (D4, commit
+  `88dbeb7`); all nudge commands (Nudge, FineNudge, HalfToolNudge,
+  SnapToPivot via NudgeTrack) → `RequestGuidanceNudge(meters)` (D5,
+  `e95d40c`); `ResetNudge` → `RequestGuidanceResetNudge`. The
+  `SelectedTrack` setter + `DeleteContours` + `DeleteAppliedArea`
+  paths stopped writing `State.Guidance.*` directly — they seed
+  `_pendingInitialPathsAway`/`_pendingInitialNudgeOffset` and let
+  `SyncGuidanceStateToPipeline → SetActiveTrack` carry the values
+  into `_guidanceWorking` (D6, `807fd45`). No carve-outs needed;
+  ~1-cycle latency imperceptible on smoke. **Fully resolved.**
 
 ---
 
@@ -187,6 +199,17 @@ dead fields in the snapshot).
   `HasGuidance`, `NearestPassNumber`, `DisplayTrack`, `BaseTrack`,
   `AutoSteerDisengagedThisCycle`, `DisengageReason`) remains —
   owned by Phase D. Keep open until then.
+- 2026-04-20 (Phase D close) — **Guidance half resolved.** D3 (commit
+  `f205845`) deleted `NearestPassNumber` — the cycle is now the sole
+  writer of `_guidanceWorking.HowManyPathsAway` including the
+  not-autosteering auto-detect path. D8 (commit `d86a3a4`) deleted
+  the rest: `SteerAngle`, `CrossTrackError`, `GoalPointEasting`,
+  `GoalPointNorthing`, `HasGuidance`, `DisplayTrack`, `BaseTrack`.
+  All moved onto `GuidanceSnapshot` (D1/D2) and consumed through
+  the full snapshot mirror in `ApplyGpsCycleResult` (D7, `04ad231`).
+  `AutoSteerDisengagedThisCycle` / `DisengageReason` stay flat
+  intentionally (one-shot transition signals — no Guidance equivalent
+  of `YouTurn.JustCompleted`). **Fully resolved.**
 
 ---
 
@@ -229,6 +252,15 @@ can miss aliased writes). Or both.
   Guidance. An analyzer / CI grep is still worthwhile post-migration
   to catch cross-cutting cases the reflection tests don't cover.
   Still parked; the tests are a useful stopgap.
+- 2026-04-20 (Phase D close) — Phase D added the guidance twin:
+  `GuidanceCycleTests.IGpsPipelineService_has_no_direct_Guidance_
+  writethrough_methods` (same reflection pattern, scans for methods
+  taking `GuidanceWorkingState` or `GuidanceSnapshot`). YouTurn
+  + Guidance now both covered at the unit-test level. An analyzer
+  / CI grep is still the right answer for post-migration enforcement
+  (catches cross-cutting patterns like `State.*` writes from any
+  service, which the reflection guard doesn't address). Still parked
+  for post-migration.
 
 ---
 
@@ -288,6 +320,30 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
   Phase C meets the parent-plan intent ("drops measurably") and hits
   its YouTurn-specific target within a documented cross-cutting
   exception. Phase D will re-measure.
+- 2026-04-20 (Phase D close) — Post-Phase-D snapshot:
+  - `MainViewModel.YouTurn.cs` = **132 lines** (unchanged from C —
+    Phase D didn't touch it).
+  - `MainViewModel.GpsHandling.cs` = **444 lines** (+26 from C close
+    — D6 added `_pendingInitialPathsAway`/`_pendingInitialNudgeOffset`
+    fields + the Sync consumption logic; D7 added `_lastMirrored
+    DisplayTrack`/`BaseTrack` fields).
+  - `MainViewModel.TrackManagement.cs` = **423 lines** (−106 from
+    pre-D — D9 deleted `CalculateContourGuidance` + `FindNearestContour`
+    dead code).
+  - `MainViewModel.Commands.Track.cs` = **1,565 lines** (−1 net
+    from pre-D; D4/D5/D6 simplified snap/nudge/reset commands but
+    `DeleteContours` and `DeleteAppliedArea` grew slightly from the
+    intent-seeding pattern).
+  - `MainViewModel.cs` = **5,160 lines** (+10 from C; D6 rewrote the
+    SelectedTrack setter block).
+  - Total across 23 partials: **14,036 lines** (−100 from Phase C
+    close, −91 from Phase B, and **−100 from the Phase A baseline
+    of 14,136**).
+  The net −100-line reduction lines up with D9's dead-code deletion
+  dominating the diff; D4–D7 were roughly size-neutral (intent
+  plumbing balances out direct-write removals). Phase D hits the
+  parent-plan intent ("drops measurably"). Phase E / F will
+  re-measure if they touch VM files.
 
 ---
 
