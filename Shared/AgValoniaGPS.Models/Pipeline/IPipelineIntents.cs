@@ -44,6 +44,21 @@ public interface IPipelineIntents
     void RequestGuidanceSnap(bool left);
 
     /// <summary>
+    /// Request a nudge to the guidance line by the given delta in meters.
+    /// Positive = right, negative = left (unadjusted for heading — the cycle
+    /// applies the heading-same-way sign flip). Accumulating semantics:
+    /// multiple requests between drains sum; the cycle observes the total.
+    /// </summary>
+    void RequestGuidanceNudge(double deltaMeters);
+
+    /// <summary>
+    /// Request that <c>NudgeOffset</c> be zeroed out on the next cycle.
+    /// Idempotent between drains. Runs after any accumulated
+    /// <see cref="RequestGuidanceNudge"/> in the same tick — reset wins.
+    /// </summary>
+    void RequestGuidanceResetNudge();
+
+    /// <summary>
     /// Atomically read and clear all pending intents. Called once per cycle tick.
     /// </summary>
     PipelineIntentBatch Drain();

@@ -28,4 +28,18 @@ public readonly record struct PipelineIntentBatch
     /// <c>false</c> = right. Last-wins semantics.
     /// </summary>
     public bool? GuidanceSnap { get; init; }
+
+    /// <summary>
+    /// Accumulated guidance nudge delta in meters (positive = right,
+    /// negative = left; pre-heading-adjustment). <c>0</c> = no request.
+    /// Multiple nudge requests between drains sum into this value.
+    /// </summary>
+    public double GuidanceNudgeMeters { get; init; }
+
+    /// <summary>
+    /// Whether the UI requested a nudge-offset reset since the previous
+    /// drain. Applied after any accumulated <see cref="GuidanceNudgeMeters"/>
+    /// — reset wins if both arrive in the same tick.
+    /// </summary>
+    public bool GuidanceResetNudge { get; init; }
 }

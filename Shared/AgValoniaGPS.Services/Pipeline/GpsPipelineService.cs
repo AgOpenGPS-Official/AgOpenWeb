@@ -288,6 +288,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _guidanceWorking.NudgeOffset = 0;
             _trackGuidanceState = null;
         }
+        // Phase D D5. Nudge accumulates (multiple clicks between drains sum).
+        // Heading-same-way flips the sign so "left" always means left from the
+        // driver's seat regardless of track direction. Reset wins if both
+        // arrive in the same tick.
+        if (intents.GuidanceNudgeMeters != 0)
+        {
+            double adjusted = _guidanceWorking.IsHeadingSameWay
+                ? intents.GuidanceNudgeMeters
+                : -intents.GuidanceNudgeMeters;
+            _guidanceWorking.NudgeOffset += adjusted;
+            _trackGuidanceState = null;
+        }
+        if (intents.GuidanceResetNudge)
+        {
+            _guidanceWorking.NudgeOffset = 0;
+            _trackGuidanceState = null;
+        }
 
         // Stage 2: Fix-quality status. The validator labels the fix; it does not
         // abort the cycle. Pre-Phase-B, NmeaParserService ran the same checks and

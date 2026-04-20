@@ -647,10 +647,8 @@ public partial class MainViewModel
         ResetNudgeCommand = new RelayCommand(() =>
         {
             if (SelectedTrack == null) return;
-            State.Guidance.NudgeOffset = 0;
             SelectedTrack.NudgeDistance = 0;
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
+            _intents.RequestGuidanceResetNudge();
             StatusMessage = "Nudge reset to zero";
         });
 
@@ -1542,8 +1540,10 @@ public partial class MainViewModel
 
     /// <summary>
     /// Nudge the current guidance line by a distance in meters.
-    /// Positive = right, Negative = left (when heading same way as track).
-    /// Accounts for heading direction: if driving opposite to track, nudge is inverted.
+    /// Positive = right, Negative = left (unadjusted — the cycle applies
+    /// the heading-same-way sign flip).
+    /// Phase D D5: posts an intent; the cycle drains and mutates
+    /// _guidanceWorking.NudgeOffset on its own thread.
     /// </summary>
     private void NudgeTrack(double distanceMeters)
     {
@@ -1553,18 +1553,7 @@ public partial class MainViewModel
             return;
         }
 
-        // Account for heading direction (like AgOpenGPS)
-        double adjustedDist = State.Guidance.IsHeadingSameWay ? distanceMeters : -distanceMeters;
-        State.Guidance.NudgeOffset += adjustedDist;
-
-        // Invalidate guidance state to force recalculation
-        _trackGuidanceState = null;
-        SyncGuidanceStateToPipeline();
-
-        double totalOffset = (ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway + State.Guidance.NudgeOffset;
-        _logger.LogDebug("[NUDGE] NudgeTrack: dist={Dist:F3}m (adjusted={Adj:F3}m), nudgeOffset={Offset:F3}m, totalOffset={Total:F3}m",
-            distanceMeters, adjustedDist, State.Guidance.NudgeOffset, totalOffset);
-
-        StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm (total offset: {totalOffset:F2}m)";
+        _intents.RequestGuidanceNudge(distanceMeters);
+        StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm";
     }
 }
