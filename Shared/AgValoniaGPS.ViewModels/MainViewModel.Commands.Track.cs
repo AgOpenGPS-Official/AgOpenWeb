@@ -44,12 +44,8 @@ public partial class MainViewModel
                 StatusMessage = "No track selected";
                 return;
             }
-            State.Guidance.HowManyPathsAway -= State.Guidance.IsHeadingSameWay ? 1 : -1;
-            State.Guidance.NudgeOffset = 0;
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
-            double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            StatusMessage = $"Snapped left to path {State.Guidance.HowManyPathsAway} ({Math.Abs(widthMinusOverlap * State.Guidance.HowManyPathsAway):F1}m offset)";
+            _intents.RequestGuidanceSnap(left: true);
+            StatusMessage = "Snapped left";
         });
 
         SnapRightCommand = new RelayCommand(() =>
@@ -59,12 +55,8 @@ public partial class MainViewModel
                 StatusMessage = "No track selected";
                 return;
             }
-            State.Guidance.HowManyPathsAway += State.Guidance.IsHeadingSameWay ? 1 : -1;
-            State.Guidance.NudgeOffset = 0;
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
-            double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            StatusMessage = $"Snapped right to path {State.Guidance.HowManyPathsAway} ({Math.Abs(widthMinusOverlap * State.Guidance.HowManyPathsAway):F1}m offset)";
+            _intents.RequestGuidanceSnap(left: false);
+            StatusMessage = "Snapped right";
         });
 
         StopGuidanceCommand = new RelayCommand(() =>

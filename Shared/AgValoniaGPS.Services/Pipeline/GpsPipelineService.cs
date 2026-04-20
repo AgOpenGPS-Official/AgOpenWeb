@@ -266,13 +266,28 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var config = ConfigurationStore.Instance;
 
         // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
-        // Phase C: ManualYouTurn + ClearYouTurn consumed here; Guidance writers
-        // migrate in Phase D. Clear runs before any state-machine call this
-        // cycle so a clear + manual pair in the same tick resolves cleanly
-        // (clear first, then manual triggers a fresh turn from the empty state).
+        // Phase C consumes ManualYouTurn + ClearYouTurn here; Phase D extends
+        // with Guidance writers (snap in D4, nudge in D5). Clear runs before
+        // any state-machine call this cycle so a clear + manual pair resolves
+        // cleanly (clear first, then manual triggers a fresh turn from the
+        // empty state). Snap applies to HowManyPathsAway before the display-
+        // track computation so this cycle's visuals reflect the new pass.
         var intents = _intents.Drain();
         if (intents.ClearYouTurn)
             YouTurnStateMachine.ClearState(_youTurn);
+        if (intents.GuidanceSnap.HasValue)
+        {
+            // Phase D D4. IsHeadingSameWay is the cycle's view of whether the
+            // tractor is aligned with the track direction. Snap "left" from
+            // the driver's perspective means "decrement pass number when
+            // aligned, increment when reversed" — matches AgOpenGPS.
+            int delta = intents.GuidanceSnap.Value
+                ? (_guidanceWorking.IsHeadingSameWay ? -1 : 1)
+                : (_guidanceWorking.IsHeadingSameWay ? 1 : -1);
+            _guidanceWorking.HowManyPathsAway += delta;
+            _guidanceWorking.NudgeOffset = 0;
+            _trackGuidanceState = null;
+        }
 
         // Stage 2: Fix-quality status. The validator labels the fix; it does not
         // abort the cycle. Pre-Phase-B, NmeaParserService ran the same checks and

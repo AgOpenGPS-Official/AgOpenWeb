@@ -35,6 +35,15 @@ public interface IPipelineIntents
     void RequestClearYouTurn();
 
     /// <summary>
+    /// Request a snap to the adjacent offset pass. Last-wins semantics —
+    /// only the most recent left/right request since the previous drain is
+    /// observed. The cycle applies the direction (±1) to
+    /// <c>HowManyPathsAway</c> and zeroes <c>NudgeOffset</c>.
+    /// </summary>
+    /// <param name="left"><c>true</c> to snap left, <c>false</c> to snap right.</param>
+    void RequestGuidanceSnap(bool left);
+
+    /// <summary>
     /// Atomically read and clear all pending intents. Called once per cycle tick.
     /// </summary>
     PipelineIntentBatch Drain();

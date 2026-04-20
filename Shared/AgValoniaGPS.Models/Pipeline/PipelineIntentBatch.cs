@@ -22,4 +22,10 @@ public readonly record struct PipelineIntentBatch
     /// Whether the UI requested a full YouTurn state reset since the previous drain.
     /// </summary>
     public bool ClearYouTurn { get; init; }
+
+    /// <summary>
+    /// Guidance snap request. <c>null</c> = none, <c>true</c> = left,
+    /// <c>false</c> = right. Last-wins semantics.
+    /// </summary>
+    public bool? GuidanceSnap { get; init; }
 }
