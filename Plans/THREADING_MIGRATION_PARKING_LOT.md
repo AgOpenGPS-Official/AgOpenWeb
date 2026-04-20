@@ -274,6 +274,24 @@ can miss aliased writes). Or both.
   / CI grep is still the right final answer but is no longer urgent —
   the current test suite catches every architectural regression we
   know to look for.
+- 2026-04-20 (Phase F close) — Fourth and final structural guard:
+  `ConnectionStateCycleTests` covers `IGpsPipelineService`,
+  `INtripClientService`, and `IUdpCommunicationService` — none may
+  take a `ConnectionState` parameter. ConnectionState was never
+  service-written (audit found zero matches), so F1 is documentation
+  + test rather than a migration. The final acceptance grep over
+  every service-side write to any observable state returns **zero**:
+  ```
+  grep -rn 'State\.\w+\.\w+\s*=\|_appState\.\w+\.\w+\s*='
+       Shared/AgValoniaGPS.Services
+  ```
+  The migration is complete. Post-migration TMP-006 resolution
+  (analyzer / CI grep) is now a **deliberate choice** rather than
+  an urgent need — the four reflection-level guards + the
+  already-established `UnifiedPipelineTests` catch every
+  architectural drift scenario we've actually encountered during
+  Phases A–F. Leaving open as a "would be nice" for a future
+  house-keeping PR.
 
 ---
 
@@ -344,6 +362,18 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
   from dead-code removal rather than new threading scaffolding.
   Phase F owns the final `ConnectionState` migration; no VM-file
   changes expected there.
+- 2026-04-20 (Phase F close) — Final migration snapshot:
+  - Total across 23 partials: **14,003 lines** (unchanged from E;
+    Phase F was documentation + a new test, no VM-file deltas).
+  - Full Phase A→F arc: `MainViewModel.cs` held at 5,160 lines,
+    `MainViewModel.YouTurn.cs` dropped from 206 → 132
+    (−74, 36%), `MainViewModel.GpsHandling.cs` 436 → 399
+    (−37, 8%), `MainViewModel.TrackManagement.cs` 529 → 423
+    (−106, 20%). Total repo VM-partials: −133 lines (about 1%).
+  The migration's real payoff is structural — observable state is
+  no longer touched on background threads — rather than line-count
+  reduction. The line-count drop was a side effect of consolidating
+  bridge helpers (C7) and deleting dead code (D9, E2).
 - 2026-04-20 (Phase D close) — Post-Phase-D snapshot:
   - `MainViewModel.YouTurn.cs` = **132 lines** (unchanged from C —
     Phase D didn't touch it).
