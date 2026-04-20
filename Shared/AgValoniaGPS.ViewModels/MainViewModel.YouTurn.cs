@@ -76,14 +76,10 @@ public partial class MainViewModel
 
     #region YouTurn Entry Points
 
-    // Phase C C4 bridges: manual trigger and clear-state commands still run on
-    // the UI thread. We copy State.YouTurn / State.Guidance into local POCOs,
-    // call the state machine, copy results back, and push the updated YouTurn
-    // working state into the cycle worker so its Tick sees the manual trigger
-    // on the next cycle. Removed in C6/C7 when commands become intents drained
-    // at cycle start.
+    // Phase C C7 bridge: ClearYouTurnState still runs on the UI thread via a
+    // local POCO copy pushed into the cycle worker. Retires in C7 when clear
+    // becomes an intent drained by the cycle.
     private readonly YouTurnWorkingState _youTurnBridge = new();
-    private readonly GuidanceWorkingState _guidanceBridge = new();
 
     /// <summary>Clear all U-turn state — called when closing a field.</summary>
     public void ClearYouTurnState()
@@ -97,39 +93,13 @@ public partial class MainViewModel
         _mapService.SetIsInYouTurn(false);
     }
 
-    /// <summary>Manually trigger a left U-turn.</summary>
-    public void TriggerManualYouTurnLeft() => TriggerManualYouTurn(turnLeft: true);
+    // Phase C C6: manual-trigger commands post an intent and return. The cycle
+    // worker drains it in ProcessCycle and runs the state machine on the
+    // cycle thread against its own working state. UI thread no longer touches
+    // the state machine or the cycle's POCOs for manual turns.
+    public void TriggerManualYouTurnLeft() => _intents.RequestManualYouTurn(turnLeft: true);
 
-    /// <summary>Manually trigger a right U-turn.</summary>
-    public void TriggerManualYouTurnRight() => TriggerManualYouTurn(turnLeft: false);
-
-    private void TriggerManualYouTurn(bool turnLeft)
-    {
-        BridgeStateToWorking(State.YouTurn, _youTurnBridge);
-        BridgeGuidanceStateToWorking(State.Guidance, _guidanceBridge);
-        var effects = _youTurnStateMachine.TriggerManual(
-            turnLeft, IsAutoSteerEngaged, BuildTickContext(GetCurrentGpsPosition()),
-            _guidanceBridge, _youTurnBridge);
-        BridgeWorkingToState(_youTurnBridge, State.YouTurn);
-        BridgeGuidanceWorkingToState(_guidanceBridge, State.Guidance);
-        _gpsPipelineService.SetYouTurnWorkingState(_youTurnBridge);
-        ApplyEffects(effects);
-    }
-
-    private static void BridgeGuidanceStateToWorking(AgValoniaGPS.Models.State.GuidanceState src, GuidanceWorkingState dst)
-    {
-        // State machine reads IsHeadingSameWay + HowManyPathsAway + NudgeOffset;
-        // only those three need accurate round-trip for now.
-        dst.IsHeadingSameWay = src.IsHeadingSameWay;
-        dst.HowManyPathsAway = src.HowManyPathsAway;
-        dst.NudgeOffset = src.NudgeOffset;
-    }
-
-    private static void BridgeGuidanceWorkingToState(GuidanceWorkingState src, AgValoniaGPS.Models.State.GuidanceState dst)
-    {
-        dst.IsHeadingSameWay = src.IsHeadingSameWay;
-        dst.HowManyPathsAway = src.HowManyPathsAway;
-    }
+    public void TriggerManualYouTurnRight() => _intents.RequestManualYouTurn(turnLeft: false);
 
     private static void BridgeStateToWorking(AgValoniaGPS.Models.State.YouTurnState src, YouTurnWorkingState dst)
     {
@@ -217,56 +187,6 @@ public partial class MainViewModel
             if (dist < minDist) minDist = dist;
         }
         return minDist;
-    }
-
-    #endregion
-
-    #region Helpers
-
-    private YouTurnStateMachine.TickContext BuildTickContext(AgValoniaGPS.Models.Position currentPosition)
-        => new(
-            currentPosition,
-            SelectedTrack,
-            _currentBoundary,
-            _currentHeadlandLine,
-            UTurnSkipRows,
-            IsSkipWorkedMode,
-            HeadlandCalculatedWidth,
-            HeadlandDistance);
-
-    private AgValoniaGPS.Models.Position GetCurrentGpsPosition() => new()
-    {
-        Easting = Easting,
-        Northing = Northing,
-        Heading = Heading,
-    };
-
-    private void ApplyEffects(YouTurnEffects effects)
-    {
-        if (effects.SyncTurnPathToMap)
-        {
-            _mapService.SetYouTurnPath(State.YouTurn.TurnPath?
-                .Select(p => (p.Easting, p.Northing)).ToList());
-        }
-        if (effects.SyncNextTrackToMap)
-        {
-            _mapService.SetNextTrack(State.YouTurn.NextTrack);
-        }
-        if (effects.IsInYouTurnMapFlag.HasValue)
-        {
-            _mapService.SetIsInYouTurn(effects.IsInYouTurnMapFlag.Value);
-        }
-        if (effects.TurnCompleted)
-        {
-            // Force guidance to do a fresh global search on the new offset track instead of
-            // resuming from the pre-turn CurrentLocationIndex (which points at the wrong track).
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
-        }
-        if (effects.StatusMessage != null)
-        {
-            StatusMessage = effects.StatusMessage;
-        }
     }
 
     #endregion

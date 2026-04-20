@@ -91,7 +91,7 @@ public partial class MainViewModel
                 _logger.LogDebug("[UTurn] No boundary/headland, triggering manual U-turn left");
             }
 
-            TriggerManualYouTurn(turnLeft: true);
+            TriggerManualYouTurnLeft();
         });
 
         // AB Line Guidance Commands - Flyout Menu

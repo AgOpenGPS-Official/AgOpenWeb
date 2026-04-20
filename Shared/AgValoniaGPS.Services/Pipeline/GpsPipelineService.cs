@@ -307,9 +307,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var config = ConfigurationStore.Instance;
 
         // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
-        // Consumers land in Phase C (YouTurn) and Phase D (Guidance); the batch is
-        // discarded until then to prove the pipe without changing behavior.
-        _ = _intents.Drain();
+        // Phase C C6 consumes ManualYouTurn; ClearYouTurn lands in C7. Other
+        // intents (Guidance writers) migrate in Phase D.
+        var intents = _intents.Drain();
 
         // Stage 2: Fix-quality status. The validator labels the fix; it does not
         // abort the cycle. Pre-Phase-B, NmeaParserService ran the same checks and
@@ -408,14 +408,44 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double driftedNorthing = posNorthing + driftN;
         double headingRad = pos.Heading * Math.PI / 180.0;
 
-        // ── Phase C C4: YouTurn state machine tick ──────────────────────
-        // Gate matches pre-C4 MVM guards: autosteer + track + youturn-enabled
-        // + valid headland. The state machine mutates _youTurn (POCO) and
-        // _guidanceWorking (POCO). Snapshots built later in the cycle; the
-        // VM mirrors back via ApplyGpsCycleResult on the UI thread.
+        // ── Phase C C4/C6: YouTurn state machine on the cycle worker ───
+        // Two entry points, both running here on the background thread
+        // against the cycle-owned _youTurn / _guidanceWorking POCOs:
+        //   • Manual trigger via intent (C6 — drained above).
+        //   • Auto tick, gated on autosteer + track + youturn-enabled +
+        //     valid headland (matches pre-C4 MVM guards).
+        // Snapshots built later in the cycle; the VM mirrors them back
+        // via ApplyGpsCycleResult on the UI thread.
         YouTurnEffects? youTurnTickEffects = null;
         bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
-        if (autoSteerEngaged && track != null && track.Points.Count >= 2
+        bool hasTickableTrack = track != null && track.Points.Count >= 2;
+
+        var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
+        var tickCtx = new YouTurnStateMachine.TickContext(
+            tickPosition,
+            track,
+            boundary,
+            headlandLine,
+            uTurnSkipRows,
+            isSkipWorkedMode,
+            headlandCalculatedWidth,
+            headlandDistanceConfig);
+
+        // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
+        // toggle off). TriggerManual enforces its own preconditions (autosteer +
+        // track + no turn already in progress) and sets a status message otherwise.
+        if (intents.ManualYouTurn.HasValue && hasTickableTrack)
+        {
+            _guidanceWorking.IsHeadingSameWay = _appState.Guidance.IsHeadingSameWay;
+            _guidanceWorking.HowManyPathsAway = passNumber;
+            _guidanceWorking.NudgeOffset = nudgeOffset;
+
+            youTurnTickEffects = _youTurnStateMachine.TriggerManual(
+                intents.ManualYouTurn.Value, autoSteerEngaged,
+                in tickCtx, _guidanceWorking, _youTurn);
+        }
+
+        if (autoSteerEngaged && hasTickableTrack
             && youTurnEnabled && hasValidHeadlandLine)
         {
             // Bridge read-only guidance fields the state machine needs.
@@ -427,18 +457,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
             _youTurn.YouTurnCounter++;
 
-            var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
-            var tickCtx = new YouTurnStateMachine.TickContext(
-                tickPosition,
-                track,
-                boundary,
-                headlandLine,
-                uTurnSkipRows,
-                isSkipWorkedMode,
-                headlandCalculatedWidth,
-                headlandDistanceConfig);
-
-            youTurnTickEffects = _youTurnStateMachine.Tick(in tickCtx, _guidanceWorking, _youTurn);
+            var autoEffects = _youTurnStateMachine.Tick(in tickCtx, _guidanceWorking, _youTurn);
+            // If a manual trigger already set effects this cycle, keep those —
+            // state-machine branches make the auto tick a no-op mid-turn anyway.
+            youTurnTickEffects ??= autoEffects;
         }
 
         // Refresh the locals the downstream guidance branch reads — the tick

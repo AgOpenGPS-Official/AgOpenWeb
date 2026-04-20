@@ -26,6 +26,7 @@ using CommunityToolkit.Mvvm.Input;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.YouTurn;
@@ -80,6 +81,7 @@ public partial class MainViewModel : ObservableObject
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
+    private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
     private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
@@ -194,6 +196,7 @@ public partial class MainViewModel : ObservableObject
         IElevationLogService elevationLogService,
         ITramLineService tramLineService,
         IGpsPipelineService gpsPipelineService,
+        IPipelineIntents intents,
         ILogger<MainViewModel> logger,
         ApplicationState appState)
     {
@@ -248,6 +251,7 @@ public partial class MainViewModel : ObservableObject
         _audioService = audioService;
         _elevationLogService = elevationLogService;
         _gpsPipelineService = gpsPipelineService;
+        _intents = intents;
         _appState = appState;
         _fieldPlaneFileService = new FieldPlaneFileService();
 
