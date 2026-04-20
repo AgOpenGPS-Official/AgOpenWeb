@@ -393,6 +393,15 @@ public partial class MainViewModel
 
     #region Pipeline State Sync
 
+    // Phase D D6: when the SelectedTrack setter needs to seed a fresh pass
+    // number + nudge offset from the track's persisted NudgeDistance, it
+    // stores them here for the next SyncGuidanceStateToPipeline to carry
+    // into _guidanceWorking (via SetActiveTrack). Cleared after the sync
+    // consumes them — subsequent syncs read the current _guidanceWorking
+    // values back (mirrored onto State.Guidance by ApplyGpsCycleResult).
+    private int? _pendingInitialPathsAway;
+    private double? _pendingInitialNudgeOffset;
+
     /// <summary>
     /// Sync all guidance-relevant state to the pipeline service.
     /// Call this from commands that change autosteer, track, boundary, headland, or drift state.
@@ -404,8 +413,17 @@ public partial class MainViewModel
         bool isOnBoundary = track != null && State.Field.Tracks.IndexOf(track) == 0
             && CurrentBoundary?.OuterBoundary != null;
 
+        // Use pending initial values if the SelectedTrack setter just seeded
+        // them; otherwise re-push the current State.Guidance (which the cycle
+        // wrote on the last snapshot). The pipeline's SetActiveTrack is
+        // idempotent when the values haven't changed.
+        int pathsAway = _pendingInitialPathsAway ?? State.Guidance.HowManyPathsAway;
+        double nudgeOffset = _pendingInitialNudgeOffset ?? State.Guidance.NudgeOffset;
+        _pendingInitialPathsAway = null;
+        _pendingInitialNudgeOffset = null;
+
         _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
-        _gpsPipelineService.SetActiveTrack(track, State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset, isOnBoundary);
+        _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset, isOnBoundary);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);

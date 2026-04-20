@@ -1700,20 +1700,25 @@ public partial class MainViewModel : ObservableObject
                     // Generate tram lines from the selected track
                     UpdateTramLines(value);
 
-                    // Initialize pass number and nudge offset from saved NudgeDistance
-                    // NudgeDistance = widthMinusOverlap * howManyPathsAway + nudgeOffset
+                    // Phase D D6: compute the initial pass number + nudge offset
+                    // locally from the track's persisted NudgeDistance (inverse of
+                    // NudgeDistance = widthMinusOverlap * pathsAway + nudgeOffset).
+                    // The cycle is the sole writer of State.Guidance post-D3, so
+                    // we don't touch it here — the values flow into _guidanceWorking
+                    // via SyncGuidanceStateToPipeline's SetActiveTrack below, and
+                    // the next cycle's snapshot mirrors them back to State.Guidance.
                     double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
                     if (widthMinusOverlap > 0.1)
                     {
-                        State.Guidance.HowManyPathsAway = (int)Math.Round(value.NudgeDistance / widthMinusOverlap);
-                        State.Guidance.NudgeOffset = value.NudgeDistance - (State.Guidance.HowManyPathsAway * widthMinusOverlap);
-                        _logger.LogDebug($"[NUDGE] SelectedTrack setter: '{value.Name}' NudgeDistance={value.NudgeDistance:F2}m -> State.Guidance.HowManyPathsAway={State.Guidance.HowManyPathsAway}, State.Guidance.NudgeOffset={State.Guidance.NudgeOffset:F3}m");
+                        _pendingInitialPathsAway = (int)Math.Round(value.NudgeDistance / widthMinusOverlap);
+                        _pendingInitialNudgeOffset = value.NudgeDistance - (_pendingInitialPathsAway.Value * widthMinusOverlap);
+                        _logger.LogDebug($"[NUDGE] SelectedTrack setter: '{value.Name}' NudgeDistance={value.NudgeDistance:F2}m -> pathsAway={_pendingInitialPathsAway}, nudgeOffset={_pendingInitialNudgeOffset:F3}m");
                     }
                     else
                     {
-                        State.Guidance.HowManyPathsAway = 0;
-                        State.Guidance.NudgeOffset = 0;
-                        _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, State.Guidance.HowManyPathsAway=0", value.Name);
+                        _pendingInitialPathsAway = 0;
+                        _pendingInitialNudgeOffset = 0;
+                        _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, pathsAway=0", value.Name);
                     }
 
                     // Check if track runs along boundary (skip disengage on first pass)

@@ -910,9 +910,13 @@ public partial class MainViewModel
             _coverageMapService.ClearAll();
             // Reset track guidance state to force global search for nearest segment
             _trackGuidanceState = null;
-            // Reset pass counter, nudge offset, worked paths, and track offset on ALL tracks
-            State.Guidance.HowManyPathsAway = 0;
-            State.Guidance.NudgeOffset = 0;
+            // Phase D D6: seed pending zeros and sync — the cycle becomes the
+            // writer of HowManyPathsAway / NudgeOffset (via SetActiveTrack in
+            // SyncGuidanceStateToPipeline). State.Guidance gets zeroed on the
+            // next snapshot mirror.
+            _pendingInitialPathsAway = 0;
+            _pendingInitialNudgeOffset = 0;
+            SyncGuidanceStateToPipeline();
             foreach (var track in SavedTracks)
             {
                 track.NudgeDistance = 0;
@@ -952,10 +956,12 @@ public partial class MainViewModel
                     // Otherwise it will continue from where coverage ended
                     _trackGuidanceState = null;
 
-                    // Reset pass counter, nudge offset, and track offset to go back to the original track
-                    _logger.LogDebug("[NUDGE] Resetting State.Guidance.HowManyPathsAway from {HowManyPathsAway} to 0, State.Guidance.NudgeOffset from {NudgeOffset:F3} to 0", State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset);
-                    State.Guidance.HowManyPathsAway = 0;
-                    State.Guidance.NudgeOffset = 0;
+                    // Phase D D6: seed pending zeros; sync below carries them into
+                    // _guidanceWorking and the next snapshot zeroes State.Guidance.
+                    _logger.LogDebug("[NUDGE] Resetting pathsAway from {HowManyPathsAway} to 0, nudgeOffset from {NudgeOffset:F3} to 0", State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset);
+                    _pendingInitialPathsAway = 0;
+                    _pendingInitialNudgeOffset = 0;
+                    SyncGuidanceStateToPipeline();
 
                     // Reset NudgeDistance on ALL tracks, not just selected
                     _logger.LogDebug("[NUDGE] Resetting NudgeDistance on {TrackCount} tracks", SavedTracks.Count);
