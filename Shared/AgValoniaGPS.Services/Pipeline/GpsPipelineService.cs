@@ -546,6 +546,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
+        // Phase D D2: write cycle-local guidance outputs into _guidanceWorking
+        // so BuildGuidanceSnapshot can read them uniformly. D3 will make the
+        // working state the authoritative source (today the flat GpsCycleResult
+        // fields are still populated from locals and consumed by ApplyResults).
+        _guidanceWorking.SteerAngle = steerAngle;
+        _guidanceWorking.CrossTrackError = crossTrackError;
+        _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
+
         // ── (7) Section control ─────────────────────────────────────────
         _sectionControlService.Update(toolPos, toolHeading, headingRad, pos.Speed);
 
@@ -667,7 +675,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             YouTurn = BuildYouTurnSnapshot(
                 _youTurn,
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
-            Guidance = youTurnTickEffects != null ? BuildGuidanceSnapshot(_guidanceWorking) : null,
+            Guidance = youTurnTickEffects != null
+                ? BuildGuidanceSnapshot(_guidanceWorking, displayTrack, baseTrack, hasGuidance)
+                : null,
 
             // Sections
             SectionStates = secStatesArr,
@@ -708,14 +718,40 @@ public sealed class GpsPipelineService : IGpsPipelineService
         JustCompleted = justCompleted,
     };
 
-    private static GuidanceSnapshot BuildGuidanceSnapshot(GuidanceWorkingState src) => new()
+    private static GuidanceSnapshot BuildGuidanceSnapshot(
+        GuidanceWorkingState src,
+        Models.Track.Track? displayTrack,
+        Models.Track.Track? baseTrack,
+        bool hasGuidance) => new()
     {
-        // Only the fields the YouTurn state machine writes are authoritative
-        // here; Phase D will extend this snapshot when all Guidance writers
-        // move to the cycle. Others are read-only passthrough of UI-thread state.
+        // GuidanceState-mirrored fields (all populated from the cycle's
+        // working state — Phase D D2 writes them there at end-of-branch).
+        ActiveTrack = src.ActiveTrack,
+        IsGuidanceActive = src.IsGuidanceActive,
+        CrossTrackError = src.CrossTrackError,
+        HeadingError = src.HeadingError,
+        SteerAngle = src.SteerAngle,
+        SteerAngleRaw = src.SteerAngleRaw,
+        DistanceOffRaw = src.DistanceOffRaw,
+        PpIntegral = src.PpIntegral,
+        PpPivotDistanceError = src.PpPivotDistanceError,
+        PpPivotDistanceErrorLast = src.PpPivotDistanceErrorLast,
+        PpCounter = src.PpCounter,
+        GoalPoint = src.GoalPoint,
+        RadiusPoint = src.RadiusPoint,
+        PurePursuitRadius = src.PurePursuitRadius,
         IsHeadingSameWay = src.IsHeadingSameWay,
+        IsReverse = src.IsReverse,
         HowManyPathsAway = src.HowManyPathsAway,
         NudgeOffset = src.NudgeOffset,
+        CurrentLineLabel = src.CurrentLineLabel,
+        IsContourMode = src.IsContourMode,
+
+        // Cycle-only fields (not mirrored on GuidanceState) — passed in
+        // from ProcessCycle's local computations.
+        HasGuidance = hasGuidance,
+        DisplayTrack = displayTrack,
+        BaseTrack = baseTrack,
     };
 
     // ══════════════════════════════════════════════════════════════════════
