@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 
 using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Services.YouTurn;
@@ -75,10 +76,19 @@ public partial class MainViewModel
 
     #region YouTurn Entry Points
 
+    // Phase C C3 bridge: the state machine now takes YouTurnWorkingState (POCO),
+    // but the tick still runs on the UI thread from this file. Until C4 moves
+    // the tick into the cycle worker, we copy State.YouTurn (observable) into
+    // a local working-state scratch, run the machine, and copy back. Removed
+    // wholesale in C4 — don't generalize these bridge helpers.
+    private readonly YouTurnWorkingState _youTurnBridge = new();
+
     /// <summary>Clear all U-turn state — called when closing a field.</summary>
     public void ClearYouTurnState()
     {
-        YouTurnStateMachine.ClearState(State.YouTurn);
+        BridgeStateToWorking(State.YouTurn, _youTurnBridge);
+        YouTurnStateMachine.ClearState(_youTurnBridge);
+        BridgeWorkingToState(_youTurnBridge, State.YouTurn);
         _mapService.SetYouTurnPath(null);
         _mapService.SetNextTrack(null);
         _mapService.SetIsInYouTurn(false);
@@ -92,9 +102,11 @@ public partial class MainViewModel
 
     private void TriggerManualYouTurn(bool turnLeft)
     {
+        BridgeStateToWorking(State.YouTurn, _youTurnBridge);
         var effects = _youTurnStateMachine.TriggerManual(
             turnLeft, IsAutoSteerEngaged, BuildTickContext(GetCurrentGpsPosition()),
-            State.Guidance, State.YouTurn);
+            State.Guidance, _youTurnBridge);
+        BridgeWorkingToState(_youTurnBridge, State.YouTurn);
         ApplyEffects(effects);
     }
 
@@ -105,9 +117,57 @@ public partial class MainViewModel
     /// </summary>
     internal void TickYouTurnStateMachine(AgValoniaGPS.Models.Position currentPosition)
     {
+        BridgeStateToWorking(State.YouTurn, _youTurnBridge);
         var effects = _youTurnStateMachine.Tick(
-            BuildTickContext(currentPosition), State.Guidance, State.YouTurn);
+            BuildTickContext(currentPosition), State.Guidance, _youTurnBridge);
+        BridgeWorkingToState(_youTurnBridge, State.YouTurn);
         ApplyEffects(effects);
+    }
+
+    private static void BridgeStateToWorking(AgValoniaGPS.Models.State.YouTurnState src, YouTurnWorkingState dst)
+    {
+        dst.IsEnabled = src.IsEnabled;
+        dst.IsTriggered = src.IsTriggered;
+        dst.IsExecuting = src.IsExecuting;
+        dst.TurnPath = src.TurnPath;
+        dst.PathIndex = src.PathIndex;
+        dst.IsTurnLeft = src.IsTurnLeft;
+        dst.LastTurnWasLeft = src.LastTurnWasLeft;
+        dst.DistanceToHeadland = src.DistanceToHeadland;
+        dst.DistanceToTrigger = src.DistanceToTrigger;
+        dst.NextTrack = src.NextTrack;
+        dst.LastCompletionPosition = src.LastCompletionPosition;
+        dst.HasCompletedFirstTurn = src.HasCompletedFirstTurn;
+        dst.YouTurnCounter = src.YouTurnCounter;
+        dst.WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart;
+        dst.NextTrackTurnOffset = src.NextTrackTurnOffset;
+        dst.ReturnPassTargetPath = src.ReturnPassTargetPath;
+        dst.SnakeSequence = src.SnakeSequence;
+        dst.SnakeIndex = src.SnakeIndex;
+        dst.CurrentZone = src.CurrentZone;
+    }
+
+    private static void BridgeWorkingToState(YouTurnWorkingState src, AgValoniaGPS.Models.State.YouTurnState dst)
+    {
+        dst.IsEnabled = src.IsEnabled;
+        dst.IsTriggered = src.IsTriggered;
+        dst.IsExecuting = src.IsExecuting;
+        dst.TurnPath = src.TurnPath;
+        dst.PathIndex = src.PathIndex;
+        dst.IsTurnLeft = src.IsTurnLeft;
+        dst.LastTurnWasLeft = src.LastTurnWasLeft;
+        dst.DistanceToHeadland = src.DistanceToHeadland;
+        dst.DistanceToTrigger = src.DistanceToTrigger;
+        dst.NextTrack = src.NextTrack;
+        dst.LastCompletionPosition = src.LastCompletionPosition;
+        dst.HasCompletedFirstTurn = src.HasCompletedFirstTurn;
+        dst.YouTurnCounter = src.YouTurnCounter;
+        dst.WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart;
+        dst.NextTrackTurnOffset = src.NextTrackTurnOffset;
+        dst.ReturnPassTargetPath = src.ReturnPassTargetPath;
+        dst.SnakeSequence = src.SnakeSequence;
+        dst.SnakeIndex = src.SnakeIndex;
+        dst.CurrentZone = src.CurrentZone;
     }
 
     #endregion

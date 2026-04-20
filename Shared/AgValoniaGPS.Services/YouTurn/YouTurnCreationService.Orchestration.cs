@@ -22,6 +22,7 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.YouTurn;
 
@@ -57,7 +58,7 @@ public partial class YouTurnCreationService
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine,
         GuidanceState guidance,
-        YouTurnState turn,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandCalculatedWidth,
         double headlandDistance)
@@ -130,7 +131,7 @@ public partial class YouTurnCreationService
         Boundary? boundary,
         IReadOnlyList<Vec3> headlandLine,
         GuidanceState guidance,
-        YouTurnState turn,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandCalculatedWidth)
     {
@@ -449,7 +450,7 @@ public partial class YouTurnCreationService
         bool turnLeft,
         Boundary? boundary,
         GuidanceState guidance,
-        YouTurnState turn,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandDistance)
     {
