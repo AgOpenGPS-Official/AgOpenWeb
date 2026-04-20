@@ -328,6 +328,49 @@ imperceptible. If regression, options:
   default to effectively-disabled or refactor `GpsHeadingFusionService`
   to gate fix-to-fix behind a config toggle.
 
+### TMP-010 — UI freeze synchronised with tooltip balloon show
+
+- **Status:** Open, not blocking Phase C.
+- **Raised in:** Phase C C6 smoke test, 2026-04-20.
+- **Decide by:** Post-threading-migration — investigated separately from
+  the threading work since it is not caused by it.
+
+**Symptom.** Mouse hovers over any button (sidebar, bottom bar, or
+floating panel); after the normal tooltip delay, the balloon appears
+and the entire UI stalls for a fraction of a second at the exact moment
+the balloon shows. Dwell time before the balloon is smooth — only the
+balloon-appearance frame freezes. Reproducible on every button,
+independent of autosteer state, field open state, or session age
+(happens on fresh launch).
+
+**Why parked.** Tested on `develop` (commit `951865f`, pre-Phase-A)
+using a git worktree on 2026-04-20. Freeze reproduces there too,
+confirming this is a pre-existing Avalonia / tooltip-popup interaction,
+not a threading-migration regression. Phase C adds more work to
+`ApplyGpsCycleResult` (snapshot mirror) and more allocations per cycle
+(TickContext, Position.With), which may make the freeze more or less
+pronounced, but it is not the root cause — a pristine develop binary
+with zero Phase-C code on the UI thread exhibits the same stall.
+
+**Possible next-step investigations** (not to be done in-phase):
+1. Run Avalonia with `LogRenderTiming` and `LogSendStateFrequency`
+   diag flags while hovering; check whether the freeze is GC-induced
+   (Gen2) or render/layout-induced (popup-root creation cost).
+2. Compare against Avalonia 12 behavior — see `reference_avalonia12.md`
+   in auto-memory; tooltip popup-root may be cheaper there.
+3. Profile the popup-creation path with a managed profiler to see
+   whether the cost is in resource resolution, font loading, or
+   style application.
+
+**Review log.**
+- 2026-04-20 — Reported during Phase C C6 smoke test. Initial
+  hypothesis: `_mapService.Set*` unconditional calls in the YouTurn
+  snapshot mirror flooding `SendStateToHandler`. Added reference-
+  equality gating speculatively; freeze persisted. Tested `develop`
+  baseline via worktree — freeze reproduces there. Hypothesis
+  falsified; gating change reverted. Parked for post-migration
+  investigation.
+
 ---
 
 ## 5. Resolved items
