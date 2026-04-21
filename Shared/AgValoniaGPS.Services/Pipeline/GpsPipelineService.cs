@@ -594,7 +594,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
             if (nearestDisplayTrack != null)
             {
                 displayTrack = nearestDisplayTrack;
-                if (nearestPass != 0) baseTrack = track;
+                // Explicitly clear baseTrack when returning to pass 0 — otherwise a
+                // stale baseTrack set by the earlier block (when incoming passNumber
+                // was non-zero) stays pointing at the reference track, and the UI
+                // renders baseTrack + displayTrack at the same position (overlap).
+                baseTrack = nearestPass != 0 ? track : null;
             }
             _guidanceWorking.HowManyPathsAway = nearestPass;
             passNumber = nearestPass;
