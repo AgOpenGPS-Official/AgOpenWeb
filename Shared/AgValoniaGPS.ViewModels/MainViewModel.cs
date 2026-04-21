@@ -1204,6 +1204,40 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 var fieldInfo = _fieldPlaneFileService.LoadField(fieldPath);
+
+                // Recovery: if Field.txt has no origin or a zero origin, fall
+                // back to field.origin — a separate file written at field-
+                // create time and never touched by close-save. Fields
+                // corrupted by the pre-#270 save-with-zero bug can be healed
+                // this way; next close writes the real origin back to both
+                // Field.txt and field.geojson.
+                if (fieldInfo.Origin == null
+                    || (fieldInfo.Origin.Latitude == 0 && fieldInfo.Origin.Longitude == 0))
+                {
+                    var originBackupPath = Path.Combine(fieldPath, "field.origin");
+                    if (File.Exists(originBackupPath))
+                    {
+                        var originLine = File.ReadAllText(originBackupPath).Trim();
+                        var parts = originLine.Split(',');
+                        if (parts.Length == 2
+                            && double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var backupLat)
+                            && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var backupLon)
+                            && (backupLat != 0 || backupLon != 0)
+                            && backupLat >= -90 && backupLat <= 90
+                            && backupLon >= -180 && backupLon <= 180)
+                        {
+                            fieldInfo.Origin = new Position
+                            {
+                                Latitude = backupLat,
+                                Longitude = backupLon,
+                            };
+                            _logger.LogDebug($"[Field] Recovered origin from field.origin backup: {backupLat}, {backupLon}");
+                        }
+                    }
+                }
+
                 if (fieldInfo.Origin != null)
                 {
                     SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
@@ -1236,12 +1270,20 @@ public partial class MainViewModel : ObservableObject
             // Load background image
             LoadBackgroundImage(fieldPath, boundary);
 
-            // Create field object and set as active
+            // Create field object and set as active. Origin must be copied from
+            // the loaded Field.txt — otherwise Field.Origin defaults to (0, 0)
+            // and CloseFieldAsync silently overwrites the on-disk Field.txt with
+            // a zero origin, corrupting the field for every future session.
             var field = new Field
             {
                 Name = fieldName,
                 DirectoryPath = fieldPath,
-                Boundary = boundary
+                Boundary = boundary,
+                Origin = new Position
+                {
+                    Latitude = _fieldOriginLatitude,
+                    Longitude = _fieldOriginLongitude,
+                }
             };
 
             // Update field service (triggers OnActiveFieldChanged for state sync only)

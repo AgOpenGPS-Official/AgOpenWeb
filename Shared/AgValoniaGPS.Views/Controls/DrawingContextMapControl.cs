@@ -3496,10 +3496,17 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // non-distinct so the stretched version is visually indistinguishable
             // from the tiled version in practice. One draw call at any zoom,
             // constant cost.
+            //
+            // The rect is in world coordinates (the camera transform is already
+            // pushed on dc). Center on the camera so the texture tracks the
+            // viewport rather than drifting relative to fixed world features.
+            // The earlier tile-loop fallback used `-(centerY + diagonal)` here,
+            // which mirrored the Y axis incorrectly and caused the texture to
+            // appear to slide south as the tractor moved north (issue #262).
             double centerX = s.CameraX;
             double centerY = s.CameraY;
             double diagonal = Math.Sqrt(viewWidth * viewWidth + viewHeight * viewHeight) / 2 + 100.0;
-            var viewRect = new Rect(centerX - diagonal, -(centerY + diagonal), diagonal * 2, diagonal * 2);
+            var viewRect = new Rect(centerX - diagonal, centerY - diagonal, diagonal * 2, diagonal * 2);
             dc.DrawBitmap(s.GroundTexture!, viewRect);
         }
 
