@@ -629,10 +629,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     {
         if (e.PropertyName == nameof(AgValoniaGPS.Models.Configuration.DisplayConfig.DisplayResolutionMultiplier))
         {
-            // Rebuild bitmap at new resolution using stored bounds.
-            // Can't use UpdateCoverageBitmapIfNeeded — providers may be null on this instance.
-            if (_coverageWriteableBitmap != null && _bitmapWidth > 0)
+            if (_coverageWriteableBitmap == null || _bitmapWidth <= 0) return;
+
+            // Prefer the provider-driven path: UpdateCoverageBitmapIfNeeded recomputes
+            // dimensions at the new multiplier, recreates the bitmap, and repaints from
+            // the coverage providers. Calling InitializeCoverageBitmapWithBounds alone
+            // produces an empty bitmap with no repaint, which looks like the coverage
+            // was wiped.
+            if (_coverageBoundsProvider != null && _coverageAllCellsProvider != null)
             {
+                MarkCoverageFullRebuildNeeded();
+            }
+            else
+            {
+                // Secondary instance (no providers wired). Best we can do is resize
+                // the empty bitmap to the new resolution.
                 InitializeCoverageBitmapWithBounds(_bitmapMinE, _bitmapMaxE, _bitmapMinN, _bitmapMaxN);
             }
         }
@@ -1388,6 +1399,16 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     cellCount++;
                 }
             }
+        }
+
+        // Step 4: Propagate painted cells to the Bgra8888 display bitmap and the
+        // SKBitmap shadow. Without this, the data bitmap has pixels but the
+        // renderer (which reads _coverageSkBitmap) shows empty — exactly what
+        // happens after a resolution-multiplier change in-session.
+        if (cellCount > 0)
+        {
+            SyncDisplayBitmap();
+            SyncSkBitmapFromDisplay();
         }
 
         return cellCount;
