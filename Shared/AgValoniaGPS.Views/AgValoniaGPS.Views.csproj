@@ -44,5 +44,11 @@
     <AvaloniaResource Include="Assets\Images\**\*.png" />
     <AvaloniaResource Include="Assets\Sounds\**\*.wav" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Update="Controls\FloatingPanel.axaml.cs">
+      <DependentUpon>FloatingPanel.axaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
 
 </Project>
