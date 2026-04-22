@@ -68,195 +68,76 @@ Thank you for your interest in contributing to AgValoniaGPS! This document lists
 - Flag placement banner existed only in Desktop
 - Screenshot capture code was duplicated across all three platforms instead of a shared helper
 
-## Features Needing Implementation
+## MVVM Discipline
 
-### Difficulty: Easy
+AgValoniaGPS follows strict MVVM layering. An earlier refactor cleaned up significant violations of this pattern — regressions are not welcome.
 
-These features are good starting points for new contributors.
+> **Pipeline computes, ViewModel coordinates, View binds.**
 
-#### Help Documentation
-- **Button location**: File Menu Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FileMenuPanel.axaml` (Line 95)
-- **Task**: Create help dialog or link to online documentation
-- **Skills needed**: XAML, basic ViewModel
+### What goes where
 
-#### App Colors / Theme
-- **Button location**: File Menu Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FileMenuPanel.axaml` (Line 75)
-- **Task**: Create dialog to customize application color scheme/theme
-- **Skills needed**: XAML, Avalonia theming, settings persistence
+- **Services / pipeline** (`AgValoniaGPS.Services/`): all domain computation. Geometry, guidance math, coordinate conversion, coverage painting, section logic, pathing, state machines. These are the units under test.
+- **Models** (`AgValoniaGPS.Models/`): data shapes. `*WorkingState` POCOs, `*State : ObservableObject` mirrors, records, DTOs, geometry primitives. Behavior is limited to pure helpers (e.g., `GeometryMath`).
+- **ViewModels** (`AgValoniaGPS.ViewModels/`): orchestration only. Expose bindable properties, wire commands to services, translate user intent into intents/service calls. ViewModels are thin.
+- **Views** (`AgValoniaGPS.Views/`): AXAML bindings and presentation. Code-behind is limited to view concerns (pointer handlers for dragging, focus, keyboard routing).
 
-#### U-Turn Skip Rows - Return Pass
-- **Button location**: Bottom Navigation Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/BottomNavigationPanel.axaml` (Line 143)
-- **Task**: Implement the return pass logic for skip rows. Currently skipping rows widens U-turn offset but there is no logic to track which rows were skipped and guide back to fill them at the far boundary. The full pattern: skip rows going one direction, then return to fill gaps — avoids omega turns.
-- **Skills needed**: U-turn system, guidance, track state management
+### Rules
 
-#### Display Options - Wire Up Settings
-- **Location**: Configuration Dialog → Display Options tab
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/DisplayConfigTab.axaml`
-- **Task**: Wire up display toggles to actually affect rendering/UI. Settings toggle but have no effect:
-  - Polygons, Speedometer, Keyboard, Headland Distance display
-  - Auto Day/Night brightness, Svenn Arrow, Start Fullscreen
-  - Elevation Log, Field Texture, Grid, Extra Guidelines
-  - Line Smooth, Direction Markers, Section Lines
-- **Skills needed**: DrawingContext rendering, MainViewModel integration
+1. **No domain computation in the ViewModel.** If you find yourself writing geometry, distance math, pathing, or multi-step business logic inside a `*ViewModel.cs`, stop — move it to a service and call the service from the VM. The VM's job is to coordinate, not to compute.
+2. **No service calls from code-behind.** Views bind to ViewModel properties and commands. Don't inject services into a `View.axaml.cs`.
+3. **Commands stay thin.** A `ReactiveCommand` delegate should read as *"ask service X to do Y, optionally push an intent, optionally show a dialog."* If it's longer than that, the body belongs in a service method.
+4. **No direct `State.*` mutation from commands for pipeline-owned state.** Push an intent through `IPipelineIntents` — see the Threading Model section. UI-only state (dialog visibility, panel position) is fine to mutate directly.
+5. **No ViewModel references from services.** Services expose interfaces, raise events, or return results. The ViewModel subscribes/consumes. Dependency flows one direction.
 
-#### Additional Options - Wire Up Settings
-- **Location**: Configuration Dialog → Additional Options tab
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/AdditionalOptionsConfigTab.axaml`
-- **Task**: Wire up additional options to actually affect the application:
-  - Screen Buttons: U-Turn button visibility, Lateral button visibility
-  - Sounds: Auto Steer, U-Turn, Hydraulic, Sections sounds
-  - Hardware Messages toggle
-- **Skills needed**: Audio playback, UI visibility bindings
+### Why this matters
 
-#### View Settings Panel - Wire Up Remaining Settings
-- **Location**: View Settings Panel (opened from left nav)
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/ViewSettingsPanel.axaml`
-- **Task**: Wire up remaining view settings to actually affect rendering. Grid works. Still need:
-  - 2D/3D toggle (Is2DMode toggles but renderer doesn't use it)
-  - Camera Tilt Up/Down (CameraPitch changes but renderer doesn't use it)
-  - Day/Night mode (IsDayMode toggles but doesn't change rendering colors)
-  - North Up/Track Up (IsNorthUp toggles but map doesn't orient to north)
-  - Brightness +/- (IsBrightnessSupported returns false)
-- **Skills needed**: DrawingContext rendering, camera transforms
+Services are unit-testable without a dispatcher, a view, or a mocked VM. Once computation leaks into the VM, that testability is gone and the VM becomes a 3000-line god object — the exact problem the earlier refactor fixed. Keep the layers clean.
 
----
+## Threading Model
 
-### Difficulty: Medium
+AgValoniaGPS uses a strict one-way data flow driven by a dedicated background cycle worker. This is a hard architectural requirement, not a convention — violating it reintroduces the AgOpenGPS/WinForms failure mode where domain logic races on the UI thread.
 
-These features require more understanding of the codebase.
+![Threading model](Plans/threading_model.svg)
 
-#### Log Viewer
-- **Button location**: Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/ToolsPanel.axaml` (Line 78)
-- **Task**: Create a log viewer to display application diagnostic logs
-- **Skills needed**: XAML, logging infrastructure, virtualized lists
+See [`Plans/threading_model_overview.svg`](Plans/threading_model_overview.svg) for the full picture (current → phases → target in one frame) and [`Plans/THREADING_MIGRATION_PLAN.md`](Plans/THREADING_MIGRATION_PLAN.md) for the authoritative plan.
 
-#### Flag By Lat/Lon
-- **Button location**: Field Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FieldToolsPanel.axaml` (Line 121)
-- **Task**: Allow user to place a flag/marker at specific GPS coordinates
-- **Skills needed**: XAML, coordinate conversion, map integration
+### The invariant (non-negotiable)
 
-#### Recorded Path Display
-- **Button location**: Field Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FieldToolsPanel.axaml` (Line 131)
-- **Task**: Display the GPS path/trail that has been recorded
-- **Skills needed**: XAML, GPS data, DrawingContext rendering
+> **Per-cycle GPS pipeline work runs on a dedicated cycle worker** (`Task.Run` per tick, with single-cycle-in-flight back-pressure via `Interlocked`). It does **not** run on the UI dispatcher, and it does **not** run on any I/O thread — UDP receive, NMEA parse, file watcher. I/O threads parse, hand off, and return immediately.
 
-#### Import Tracks
-- **Button location**: Field Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FieldToolsPanel.axaml` (Line 138)
-- **Task**: Import track/guidance line data from external files (KML, shapefile, etc.)
-- **Skills needed**: File parsing, coordinate systems, Track model
+Only the cycle-worker failure mode is survivable: back-pressure drops the *next* tick, the current cycle completes uninterrupted, I/O and UI keep running. Running cycle work on the UI dispatcher drops frames during turns (violating the 24 FPS floor); running it on the UDP receive thread stalls packet ingestion and can lose fixes.
 
+### Two state types per domain
 
-#### Delete Contours
-- **Button location**: Bottom Navigation Panel (AB Line Options section)
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/BottomNavigationPanel.axaml` (Line 261)
-- **Task**: Implement DeleteContoursCommand to remove contour reference lines
-- **Skills needed**: Track model, contour system
+- **`*WorkingState`** — plain POCO/record. Owned by the cycle worker. Mutated freely on the background thread. No `ObservableObject`, no `PropertyChanged`, no UI awareness. Single-writer.
+- **`*State : ObservableObject`** — the UI-bound type. A one-way mirror. **The only writer is `ApplyGpsCycleResult` on the UI thread.** No service writes to it directly.
 
-#### Contour Mode On/Off
-- **Button location**: Right Navigation Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/RightNavigationPanel.axaml` (Line 95)
-- **Task**: Implement contour following - record driven path as guidance reference, or offset parallel to boundary. Currently just toggles a boolean with no guidance backend.
-- **Skills needed**: Guidance system, contour tracking, geometry
+### Data flow
 
-#### View All Settings
-- **Button location**: File Menu Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FileMenuPanel.axaml` (Line 73)
-- **Task**: Create comprehensive settings viewer/editor
-- **Skills needed**: XAML, reflection or settings enumeration
+**Cycle → UI (snapshots):** Cycle worker mutates `*WorkingState` during a tick → builds an immutable `GpsCycleResult` snapshot at end of tick → posts to the UI dispatcher → `ApplyGpsCycleResult` writes the snapshot fields onto `State.*`, firing `PropertyChanged` and updating bindings.
 
----
+**UI → Cycle (intents):** UI command writes to a thread-safe intent field/queue (`IPipelineIntents`) → cycle worker drains intents at the start of each tick → reacts on that tick → result appears in the UI on the same cycle's snapshot.
 
-### Difficulty: Hard
+### Three rules, no exceptions
 
-These features require deep understanding of agricultural guidance or complex implementations.
+1. **Cycle worker never touches `*State : ObservableObject`.** Only `*WorkingState`.
+2. **ViewModel never mutates `*State` from a service callback.** Only `ApplyGpsCycleResult`.
+3. **UI commands push intents, they don't reach into cycle-worker state.**
 
-#### Steer Chart
-- **Button location**: Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/ToolsPanel.axaml` (Line 86)
-- **Task**: Real-time chart showing steering angle commands vs actual response
-- **Skills needed**: Charting library or custom rendering, real-time data, autosteer system
+### Common patterns to follow
 
-#### Heading Chart
-- **Button location**: Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/ToolsPanel.axaml` (Line 92)
-- **Task**: Real-time chart showing heading data over time
-- **Skills needed**: Charting library or custom rendering, GPS data
+- Adding a new domain state: create a `FooWorkingState` POCO, extend `GpsCycleResult` with a `Foo` snapshot record, mirror it in `ApplyGpsCycleResult`.
+- Adding a new UI command that changes pipeline behavior: define a method on `IPipelineIntents`, push from the command, drain at the start of the cycle.
+- Adding a new service that reads GPS/position: take `*WorkingState` as a parameter, don't inject `ApplicationState`.
+- Avoid writing to `State.YouTurn`, `State.Guidance`, `State.Vehicle`, `State.Section` from anywhere except `ApplyGpsCycleResult`.
 
-#### XTE Chart (Cross-Track Error)
-- **Button location**: Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/ToolsPanel.axaml` (Line 100)
-- **Task**: Real-time chart showing cross-track error history
-- **Skills needed**: Charting library or custom rendering, guidance system
+## What Needs Doing
 
-#### Roll Correction
-- **Button location**: Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/ToolsPanel.axaml` (Line 106)
-- **Task**: Interface for configuring GPS antenna roll/tilt correction
-- **Skills needed**: IMU/GPS concepts, coordinate transforms
-
-#### Tram Lines
-- **Button location**: Field Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FieldToolsPanel.axaml` (Line 98)
-- **Task**: Display and manage tram line (tramline) patterns for controlled traffic farming
-- **Skills needed**: Agricultural concepts, track system, rendering
-
-#### Tram Lines Builder
-- **Button location**: Field Tools Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FieldToolsPanel.axaml` (Line 105)
-- **Task**: Create interface to build/edit tram line patterns
-- **Skills needed**: Agricultural concepts, complex UI, track generation
-
-#### Offset Fix
-- **Button location**: Job Menu Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/JobMenuPanel.axaml` (Line 137)
-- **Task**: Apply offset correction to shift all field tracks
-- **Skills needed**: Coordinate transforms, track system
-
-#### AutoSteer Setup Wizard
-- **Button location**: AutoSteer Config dialog
-- **File**: `Shared/AgValoniaGPS.ViewModels/AutoSteerConfigViewModel.cs` (Line 959)
-- **Task**: Step-by-step wizard for configuring autosteer system
-- **Skills needed**: Autosteer concepts, multi-step wizard UI, UDP communication
-
-#### Hardware Pin Configuration Upload
-- **Button location**: Configuration dialog
-- **File**: `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs` (Line 1502)
-- **Task**: Read current pin configuration from machine module via UDP
-- **Skills needed**: UDP protocol, AgOpenGPS hardware protocol
-
-#### Send Machine Configuration
-- **Button location**: Configuration dialog
-- **File**: `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs` (Line 1508)
-- **Task**: Send configuration to machine module via UDP
-- **Skills needed**: UDP protocol, AgOpenGPS hardware protocol
-
----
-
-### Not Prioritized
-
-These features may not be needed or have lower priority.
-
-#### Language/Localization
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FileMenuPanel.axaml` (Line 67)
-- **Note**: Requires localization infrastructure to be set up first
-
-#### Section Mapping Colors
-- **Button location**: Bottom Navigation Panel
-- **File**: `Shared/AgValoniaGPS.Views/Controls/Panels/BottomNavigationPanel.axaml` (Line 153)
-- **Note**: May be redundant with App Colors/Theme configuration
-
----
+Open work is tracked on the [AgValoniaGPS project board](https://github.com/orgs/AgOpenGPS-Official/projects/16). Pick a card, comment on the linked issue to claim it, and open your PR against `develop`.
 
 ## How to Implement a Button Feature
 
-1. **Find the button** in the AXAML file listed above
+1. **Find the button** in the relevant AXAML file under `Shared/AgValoniaGPS.Views/Controls/`
 
 2. **Add a Command binding** to the button:
    ```xml
