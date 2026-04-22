@@ -106,6 +106,16 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // Reduce receive buffer to minimize packet buffering/delay
             _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 8192);
 
+            // Windows: an ICMP Port Unreachable from a peer on a prior Send would
+            // otherwise surface as a SocketException (ConnectionReset) on the next
+            // ReceiveFrom call, breaking the receive loop. SIO_UDP_CONNRESET
+            // disables that surfacing. No-op on non-Windows. (From PR #278.)
+            if (OperatingSystem.IsWindows())
+            {
+                const int SIO_UDP_CONNRESET = -1744830452; // 0x9800000C
+                _udpSocket.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
+            }
+
             _udpSocket.Bind(new IPEndPoint(IPAddress.Any, 9999));
 
             // Discover broadcast endpoints on all network interfaces
@@ -261,7 +271,22 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 ProcessReceivedData(data, (IPEndPoint)_remoteEndPoint);
             }
         }
-        catch { }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
+        {
+            // Non-fatal on UDP. Paired with SIO_UDP_CONNRESET above, this should
+            // be rare — but if SIO setup failed (unusual socket state) the
+            // ICMP Port Unreachable can still surface here. From PR #278.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Socket closed during shutdown — stop the receive loop. From PR #278.
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Unexpected — at least trace instead of silently swallowing.
+            System.Diagnostics.Debug.WriteLine($"[UDP] ReceiveCallback unexpected: {ex}");
+        }
 
         // IMMEDIATELY start the next receive operation - this is the key fix!
         if (_udpSocket != null)
