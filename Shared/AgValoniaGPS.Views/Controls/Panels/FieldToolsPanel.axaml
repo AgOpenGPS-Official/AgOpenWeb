@@ -18,95 +18,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
-             mc:Ignorable="d"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Panels.FieldToolsPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding IsFieldToolsPanelVisible}"
              IsHitTestVisible="{Binding IsFieldToolsPanelVisible}">
 
-    <UserControl.Styles>
-        <Style Selector="Border.FloatingPanel">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style Selector="Button.ModernButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
-        <Style Selector="Button.ModernButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-    </UserControl.Styles>
+  <controls:FloatingPanel x:Name="FP"
+                          Title="{loc:Localize FieldTools}"
+                          CloseCommand="{Binding ToggleFieldToolsPanelCommand}">
 
-    <Border Classes="FloatingPanel" MinWidth="400" IsVisible="{Binding IsFieldToolsPanelVisible}" IsHitTestVisible="True">
-        <StackPanel Spacing="4" Background="Transparent">
-            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,*,Auto" Height="32" Margin="0,0,0,8"
-                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Cursor="Hand" ToolTip.Tip="Drag to move">
-                <TextBlock Grid.Column="0" Text="=" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="20" FontWeight="Bold"
-                           VerticalAlignment="Center" Margin="8,0,8,0" IsHitTestVisible="False"/>
-                <TextBlock Grid.Column="1" Text="{loc:Localize FieldTools}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="16" FontWeight="Bold"
-                           VerticalAlignment="Center" IsHitTestVisible="False"/>
-                <Button Grid.Column="2" Content="X" Width="24" Height="24" Padding="0" BorderThickness="0"
-                        Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="16" Cursor="Hand"
-                        Command="{Binding ToggleFieldToolsPanelCommand}" Margin="8,0,8,0"/>
-            </Grid>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/Headache.png"
+                         Text="Field Builder"
+                         Command="{Binding ShowFieldBuilderCommand}"/>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/Boundary.png"
+                         Text="{loc:Localize Boundary}"
+                         Command="{Binding ShowBoundaryDialogCommand}"/>
 
-            <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,0,0,4"/>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/TrashApplied.png"
+                         Text="{loc:Localize DeleteAppliedArea}"
+                         Command="{Binding DeleteAppliedAreaCommand}"/>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/BoundaryFromTracks.png"
+                         Text="{loc:Localize ImportTracks}"
+                         Command="{Binding ImportTracksCommand}"/>
 
-            <!-- Menu Items: 2-column compact layout -->
-            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="4" Background="Transparent">
-                <!-- Row 0: Field Builder, Boundary -->
-                <Button Grid.Column="0" Grid.Row="0" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44"
-                        ClickMode="Press" Command="{Binding ShowFieldBuilderCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Headache.png" Width="28" Height="28"/>
-                        <TextBlock Text="Field Builder" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" Grid.Row="0" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44"
-                        ClickMode="Press" Command="{Binding ShowBoundaryDialogCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Boundary.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize Boundary}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/RecPath.png"
+                         Text="{loc:Localize RecordedPath}"
+                         Command="{Binding ToggleRecordedPathPanelCommand}"/>
 
-                <!-- Row 1: Delete Applied Area, Import Tracks -->
-                <Button Grid.Column="0" Grid.Row="1" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44"
-                        ClickMode="Press" Command="{Binding DeleteAppliedAreaCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/TrashApplied.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize DeleteAppliedArea}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" Grid.Row="1" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44"
-                        ClickMode="Press" Command="{Binding ImportTracksCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/BoundaryFromTracks.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize ImportTracks}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Row 2: Recorded Path -->
-                <Button Grid.Column="0" Grid.Row="2" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44"
-                        ClickMode="Press" Command="{Binding ToggleRecordedPathPanelCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/RecPath.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize RecordedPath}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-            </Grid>
-        </StackPanel>
-    </Border>
+  </controls:FloatingPanel>
 </UserControl>

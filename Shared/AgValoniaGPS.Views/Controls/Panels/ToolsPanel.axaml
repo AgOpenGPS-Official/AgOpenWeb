@@ -18,99 +18,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
-             mc:Ignorable="d"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Panels.ToolsPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding IsToolsPanelVisible}"
              IsHitTestVisible="{Binding IsToolsPanelVisible}">
 
-    <UserControl.Styles>
-        <Style Selector="Border.FloatingPanel">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style Selector="Button.ModernButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
-        <Style Selector="Button.ModernButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-    </UserControl.Styles>
+  <controls:FloatingPanel x:Name="FP"
+                          Title="Tools"
+                          CloseCommand="{Binding ToggleToolsPanelCommand}">
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/WizardWand.png"
+                         Text="{loc:Localize SteerWizard}"
+                         Command="{Binding ShowSteerWizardCommand}"/>
 
-    <Border Classes="FloatingPanel" MinWidth="360" IsVisible="{Binding IsToolsPanelVisible}">
-        <StackPanel Spacing="4">
-            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,*,Auto" Height="32" Margin="0,0,0,8"
-                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Cursor="Hand" ToolTip.Tip="Drag to move">
-                <TextBlock Grid.Column="0" Text="=" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="20" FontWeight="Bold"
-                           VerticalAlignment="Center" Margin="8,0,8,0" IsHitTestVisible="False"/>
-                <TextBlock Grid.Column="1" Text="{loc:Localize Tools}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="16" FontWeight="Bold"
-                           VerticalAlignment="Center" IsHitTestVisible="False"/>
-                <Button Grid.Column="2" Content="X" Width="24" Height="24" Padding="0" BorderThickness="0"
-                        Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="16" Cursor="Hand"
-                        Command="{Binding ToggleToolsPanelCommand}" Margin="8,0,8,0"/>
-            </Grid>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/ABTracks.png"
+                         Text="{loc:Localize LogViewer}"/>
 
-            <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,0,0,4"/>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerOn.png"
+                         Text="{loc:Localize SteerChart}"
+                         Command="{Binding ToggleSteerChartPanelCommand}"/>
 
-            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="4">
-                <!-- Row 0: Wizards -->
-                <Button Grid.Column="0" Grid.Row="0" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ShowSteerWizardCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/WizardWand.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize SteerWizard}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" Grid.Row="0" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ABTracks.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize LogViewer}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesHeading.png"
+                         Text="{loc:Localize HeadingChart}"
+                         Command="{Binding ToggleHeadingChartPanelCommand}"/>
 
-                <!-- Row 1: Charts -->
-                <Button Grid.Column="0" Grid.Row="1" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ToggleSteerChartPanelCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerOn.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize SteerChart}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" Grid.Row="1" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ToggleHeadingChartPanelCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesHeading.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize HeadingChart}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/AutoManualIsAuto.png"
+                         Text="{loc:Localize XteChart}"
+                         Command="{Binding ToggleXTEChartPanelCommand}"/>
 
-                <!-- Row 2: More Charts + Roll Correction -->
-                <Button Grid.Column="0" Grid.Row="2" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ToggleXTEChartPanelCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoManualIsAuto.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize XteChart}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" Grid.Row="2" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesRoll.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize RollCorrection}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-            </Grid>
-        </StackPanel>
-    </Border>
+    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesRoll.png"
+                         Text="{loc:Localize RollCorrection}"/>
+    </controls:FloatingPanel>
 </UserControl>

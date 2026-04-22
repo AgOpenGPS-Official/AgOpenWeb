@@ -18,118 +18,83 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
-             mc:Ignorable="d"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Panels.ConfigurationPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding IsConfigurationPanelVisible}"
              IsHitTestVisible="{Binding IsConfigurationPanelVisible}">
 
-    <UserControl.Styles>
-        <Style Selector="Border.FloatingPanel">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-        </Style>
-        <Style Selector="Button.ModernButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="8,6"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-        </Style>
-        <Style Selector="Button.ModernButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-    </UserControl.Styles>
-
     <Grid>
-    <Border Classes="FloatingPanel" MinWidth="360" IsVisible="{Binding IsConfigurationPanelVisible}">
-        <StackPanel Spacing="4">
-            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,*,Auto" Height="32" Margin="0,0,0,8"
-                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Cursor="Hand" ToolTip.Tip="Drag to move">
-                <TextBlock Grid.Column="0" Text="=" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="20" FontWeight="Bold"
-                           VerticalAlignment="Center" Margin="8,0,8,0" IsHitTestVisible="False"/>
-                <TextBlock Grid.Column="1" Text="{loc:Localize VehicleConfiguration}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="16" FontWeight="Bold"
-                           VerticalAlignment="Center" IsHitTestVisible="False"/>
-                <Button Grid.Column="2" Content="X" Width="24" Height="24" Padding="0" BorderThickness="0"
-                        Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="16" Cursor="Hand"
-                        Command="{Binding ToggleConfigurationPanelCommand}" Margin="8,0,8,0"/>
-            </Grid>
 
-            <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,0,0,4"/>
+        <!-- Main Panel -->
+        <controls:FloatingPanel x:Name="FP"
+                                Title="{loc:Localize VehicleConfiguration}"
+                                CloseCommand="{Binding ToggleConfigurationPanelCommand}">
 
-            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="4">
-                <!-- Row 0: Profile Management -->
-                <Button Grid.Column="0" Grid.Row="0" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ShowNewProfileDialogCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/FileNew.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize NewProfile}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
-                <Button Grid.Column="1" Grid.Row="0" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ShowLoadProfileDialogCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/FileOpen.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize LoadProfile}" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                </Button>
+            <controls:FloatingPanel.PanelContent>
+                <Border Background="#DD1E8449" CornerRadius="6" Padding="8,4" Margin="0,8,0,0">
+                    <TextBlock Text="{Binding CurrentProfileName, StringFormat='Profile: {0}'}"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               HorizontalAlignment="Center"/>
+                </Border>
+            </controls:FloatingPanel.PanelContent>
 
-                <!-- Row 1: Vehicle Settings -->
-                <Button Grid.Column="0" Grid.Row="1" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="0,2" Height="44" ClickMode="Press"
-                        Command="{Binding ShowConfigurationDialogCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Settings48.png" Width="28" Height="28"/>
-                        <TextBlock Text="{loc:Localize VehicleSettings}" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </Button>
-            </Grid>
+            <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileNew.png"
+                                 Text="{loc:Localize NewProfile}"
+                                 Command="{Binding ShowNewProfileDialogCommand}"/>
+            <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileOpen.png"
+                                 Text="{loc:Localize LoadProfile}"
+                                 Command="{Binding ShowLoadProfileDialogCommand}"/>
+            <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/Settings48.png"
+                                 Text="{loc:Localize VehicleSettings}"
+                                 Command="{Binding ShowConfigurationDialogCommand}"/>
 
-            <!-- Current Profile Display -->
-            <Border Background="#DD1E8449" CornerRadius="6" Padding="8,4" Margin="0,8,0,0">
-                <TextBlock Text="{Binding CurrentProfileName, StringFormat='Profile: {0}'}"
+        </controls:FloatingPanel>
+
+        <!-- Profile Selection Popup -->
+        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                CornerRadius="12" Padding="8" BorderThickness="1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                MinWidth="300"
+                IsVisible="{Binding IsProfileSelectionVisible}"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel Spacing="8">
+                <TextBlock Text="{loc:Localize SelectProfile}"
+                           FontSize="16" FontWeight="Bold"
                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           TextWrapping="Wrap"
-                           HorizontalAlignment="Center"/>
-            </Border>
-        </StackPanel>
-    </Border>
+                           HorizontalAlignment="Center" Margin="0,4,0,8"/>
+                <ListBox ItemsSource="{Binding AvailableProfiles}"
+                         SelectedItem="{Binding SelectedProfile}"
+                         MaxHeight="200" MinWidth="260"
+                         Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                       FontSize="14" Padding="8,6"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
+                    <Button Grid.Column="0" Content="{loc:Localize Cancel}"
+                            HorizontalContentAlignment="Center"
+                            Background="#E74C3C"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            CornerRadius="6" Height="36"
+                            Command="{Binding CancelProfileSelectionCommand}"/>
+                    <Button Grid.Column="1" Content="{loc:Localize Load}"
+                            HorizontalContentAlignment="Center"
+                            Background="#4A9A7E"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            CornerRadius="6" Height="36"
+                            Command="{Binding LoadSelectedProfileCommand}"/>
+                </Grid>
+            </StackPanel>
+        </Border>
 
-    <!-- Profile Selection Popup -->
-    <Border Classes="FloatingPanel" MinWidth="300" IsVisible="{Binding IsProfileSelectionVisible}"
-            HorizontalAlignment="Center" VerticalAlignment="Center">
-        <StackPanel Spacing="8">
-            <TextBlock Text="{loc:Localize SelectProfile}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                       HorizontalAlignment="Center" Margin="0,4,0,8"/>
-
-            <ListBox ItemsSource="{Binding AvailableProfiles}"
-                     SelectedItem="{Binding SelectedProfile}"
-                     MaxHeight="200" MinWidth="260" Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="14" Padding="8,6"/>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
-                <Button Grid.Column="0" Content="{loc:Localize Cancel}" HorizontalContentAlignment="Center"
-                        Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" CornerRadius="6" Height="36"
-                        Command="{Binding CancelProfileSelectionCommand}"/>
-                <Button Grid.Column="1" Content="{loc:Localize Load}" HorizontalContentAlignment="Center"
-                        Background="#4A9A7E" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" CornerRadius="6" Height="36"
-                        Command="{Binding LoadSelectedProfileCommand}"/>
-            </Grid>
-        </StackPanel>
-    </Border>
     </Grid>
 </UserControl>
