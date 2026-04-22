@@ -40,7 +40,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
             <Setter Property="Height" Value="44"/>
-            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Margin" Value="2"/>
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
 
