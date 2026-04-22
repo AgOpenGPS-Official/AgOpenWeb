@@ -22,6 +22,7 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Track;
 
@@ -57,8 +58,8 @@ public sealed class YouTurnPathingService
     public void ComputeNextTrack(
         Models.Track.Track referenceTrack,
         double abHeading,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         bool isSkipWorkedMode,
         Models.Track.Track? selectedTrack)
@@ -127,7 +128,7 @@ public sealed class YouTurnPathingService
     public bool WouldNextLineBeInsideBoundary(
         Models.Track.Track currentTrack,
         double abHeading,
-        GuidanceState guidance,
+        GuidanceWorkingState guidance,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine,
         int uTurnSkipRows)
@@ -165,8 +166,8 @@ public sealed class YouTurnPathingService
     public void BuildSnakeSequence(
         Models.Track.Track referenceTrack,
         double abHeading,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine)
     {
@@ -219,7 +220,7 @@ public sealed class YouTurnPathingService
     /// <summary>
     /// Peek the next path number in the snake sequence, or null if the sequence is exhausted.
     /// </summary>
-    public int? GetNextSnakePath(YouTurnState turn)
+    public int? GetNextSnakePath(YouTurnWorkingState turn)
     {
         if (turn.SnakeSequence == null || turn.SnakeIndex < 0) return null;
 
@@ -232,7 +233,7 @@ public sealed class YouTurnPathingService
     /// <summary>
     /// Advance the snake sequence cursor after a pass has been completed.
     /// </summary>
-    public void AdvanceSnakeSequence(YouTurnState turn)
+    public void AdvanceSnakeSequence(YouTurnWorkingState turn)
     {
         if (turn.SnakeSequence != null && turn.SnakeIndex < turn.SnakeSequence.Count - 1)
         {

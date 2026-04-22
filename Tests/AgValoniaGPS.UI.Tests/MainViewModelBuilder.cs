@@ -18,6 +18,7 @@ public class MainViewModelBuilder
     public ISettingsService SettingsService { get; } = Substitute.For<ISettingsService>();
     public IVehicleProfileService VehicleProfileService { get; } = Substitute.For<IVehicleProfileService>();
     public INtripProfileService NtripProfileService { get; } = Substitute.For<INtripProfileService>();
+    public AgValoniaGPS.Services.Pipeline.PipelineIntents Intents { get; } = new();
 
     public MainViewModelBuilder()
     {
@@ -54,12 +55,6 @@ public class MainViewModelBuilder
                 Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
             youTurnGuidanceService: new YouTurnGuidanceService(),
             youTurnPathingService: new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-            youTurnStateMachine: new YouTurnStateMachine(
-                new YouTurnCreationService(
-                    NullLogger<YouTurnCreationService>.Instance,
-                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
-                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-                NullLogger<YouTurnStateMachine>.Instance),
             polygonOffsetService: Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
             turnAreaService: Substitute.For<AgValoniaGPS.Services.Interfaces.ITurnAreaService>(),
             vehicleProfileService: VehicleProfileService,
@@ -75,6 +70,7 @@ public class MainViewModelBuilder
             elevationLogService: Substitute.For<IElevationLogService>(),
             tramLineService: Substitute.For<ITramLineService>(),
             gpsPipelineService: Substitute.For<IGpsPipelineService>(),
+            intents: Intents,
             logger: NullLogger<MainViewModel>.Instance,
             appState: new ApplicationState());
     }

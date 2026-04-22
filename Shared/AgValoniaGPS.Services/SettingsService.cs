@@ -36,7 +36,23 @@ namespace AgValoniaGPS.Services
         public event EventHandler<AppSettings>? SettingsLoaded;
         public event EventHandler<AppSettings>? SettingsSaved;
 
-        public SettingsService()
+        public SettingsService() : this(ResolveDefaultDirectory()) { }
+
+        /// <summary>
+        /// Test-friendly constructor. Tests should pass an isolated temp
+        /// directory so they don't clobber the user's real
+        /// <c>~/Documents/AgValoniaGPS/appsettings.json</c>.
+        /// </summary>
+        public SettingsService(string settingsDirectory)
+        {
+            _settingsDirectory = settingsDirectory;
+            _settingsFilePath = Path.Combine(_settingsDirectory, SettingsFileName);
+
+            // Initialize with defaults
+            Settings = new AppSettings();
+        }
+
+        private static string ResolveDefaultDirectory()
         {
             // Store settings in Documents/AgValoniaGPS (same as Fields)
             // This works consistently across Desktop, iOS, and Android
@@ -54,11 +70,7 @@ namespace AgValoniaGPS.Services
                 documentsPath = Environment.CurrentDirectory;
             }
 
-            _settingsDirectory = Path.Combine(documentsPath, "AgValoniaGPS");
-            _settingsFilePath = Path.Combine(_settingsDirectory, SettingsFileName);
-
-            // Initialize with defaults
-            Settings = new AppSettings();
+            return Path.Combine(documentsPath, "AgValoniaGPS");
         }
 
         public bool Load()

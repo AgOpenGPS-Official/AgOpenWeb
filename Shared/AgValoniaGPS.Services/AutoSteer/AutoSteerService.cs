@@ -22,9 +22,10 @@ using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
 
-// Alias to disambiguate from Track namespace
+// Aliases to disambiguate from colliding namespaces.
 using TrackModel = AgValoniaGPS.Models.Track.Track;
 using TrackInput = AgValoniaGPS.Models.Track.TrackGuidanceInput;
+using ApplicationState = AgValoniaGPS.Models.State.ApplicationState;
 
 namespace AgValoniaGPS.Services.AutoSteer;
 
@@ -41,11 +42,14 @@ public class AutoSteerService : IAutoSteerService
     // Dependencies
     private readonly ITrackGuidanceService _guidanceService;
     private readonly IUdpCommunicationService _udpService;
+    private readonly IGpsService _gpsService;
+    private readonly ApplicationState _appState;
     private ITramLineService? _tramLineService;
 
-    // Local coordinate system reference
-    private LocalPlane? _localPlane;
-    private SharedFieldProperties _sharedFieldProperties;
+    // Drift compensation applied after LocalPlane → local coordinate conversion.
+    // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
+    // across AutoSteer and the cycle worker. Created by field-open (UI thread) or by the
+    // cycle worker on first valid fix; never written here (receive thread).
     private double _driftEasting;
     private double _driftNorthing;
 
@@ -72,14 +76,17 @@ public class AutoSteerService : IAutoSteerService
 
     public AutoSteerService(
         ITrackGuidanceService guidanceService,
-        IUdpCommunicationService udpService)
+        IUdpCommunicationService udpService,
+        IGpsService gpsService,
+        ApplicationState appState)
     {
         _guidanceService = guidanceService;
         _udpService = udpService;
+        _gpsService = gpsService;
+        _appState = appState;
 
         // Initialize state
         _state = new VehicleState();
-        _sharedFieldProperties = new SharedFieldProperties();
         _guidanceInput = new TrackInput();
     }
 
@@ -235,16 +242,6 @@ public class AutoSteerService : IAutoSteerService
     }
 
     /// <summary>
-    /// Set the local coordinate system for GPS→local conversion.
-    /// Called by MainViewModel when field is loaded or first GPS position received.
-    /// </summary>
-    public void SetLocalPlane(LocalPlane localPlane, SharedFieldProperties sharedFieldProperties)
-    {
-        _localPlane = localPlane;
-        _sharedFieldProperties = sharedFieldProperties;
-    }
-
-    /// <summary>
     /// Set GPS drift compensation (offset fix). Applied to local coordinates
     /// before guidance and tool position calculations, so tractor + implement
     /// move together. Values in meters.
@@ -292,18 +289,25 @@ public class AutoSteerService : IAutoSteerService
     }
 
     /// <summary>
-    /// Process incoming GPS buffer - entry point for zero-copy pipeline.
-    /// Called directly from UDP receive handler.
+    /// Process incoming GPS buffer — entry point for the zero-copy pipeline.
+    /// Called directly from the UDP receive callback.
+    ///
+    /// Phase B C4: this method does parse-and-return only. Coordinate
+    /// conversion, guidance, PGN build, tram detection, notify, and latency
+    /// recording all moved to the cycle worker, which calls
+    /// <see cref="ProcessSimulatedPosition"/> once per tick with the
+    /// cycle-computed coordinates and heading. Pre-C4, those steps ran here
+    /// on the receive thread, violating the §0 invariant and emitting PGNs
+    /// twice per packet (once here, once from the cycle).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void ProcessGpsBuffer(byte[] buffer, int length)
     {
         if (!_isEnabled) return;
 
-        // Mark cycle start
-        _state.BeginNewCycle();
-
-        // Parse directly into VehicleState (zero-copy)
+        // Parse directly into VehicleState (zero-copy). ParseIntoState marks
+        // its own parse-timing fields; no BeginNewCycle here because the
+        // cycle owns timing now.
         ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
         if (!NmeaParserServiceFast.ParseIntoState(data, ref _state))
         {
@@ -311,43 +315,9 @@ public class AutoSteerService : IAutoSteerService
             return;
         }
 
-        // Auto-create a temporary local plane from first GPS fix
-        // so the tractor moves on screen without opening a field
-        if (_localPlane == null && _state.FixQuality > 0)
-        {
-            _localPlane = new LocalPlane(
-                new Wgs84(_state.Latitude, _state.Longitude),
-                new SharedFieldProperties());
-        }
-
-        // Convert to local coordinates if we have a plane
-        if (_localPlane != null)
-        {
-            var geoCoord = _localPlane.ConvertWgs84ToGeoCoord(
-                new Wgs84(_state.Latitude, _state.Longitude));
-            // Apply GPS drift compensation (offset fix) before any calculations
-            // This shifts tractor + implement together, matching legacy behavior
-            _state.Easting = geoCoord.Easting + _driftEasting;
-            _state.Northing = geoCoord.Northing + _driftNorthing;
-        }
-
-        // Calculate guidance if we have an active track
-        if (_currentTrack != null && _currentTrack.Points.Count >= 2)
-        {
-            CalculateGuidance();
-        }
-
-        // Build and send PGNs
-        SendPgns();
-
-        // Mark PGN sent and record latency
-        _state.MarkPgnSent();
-        RecordLatency(_state.TotalLatencyMs);
-
-        // Notify UI (creates snapshot copy)
-        NotifyStateUpdated();
-
-        _cycleCount++;
+        // Publish the parsed fix to GpsService. This is the sole event the
+        // cycle worker listens to; everything else runs there.
+        PublishGpsData();
     }
 
     /// <summary>
@@ -399,6 +369,35 @@ public class AutoSteerService : IAutoSteerService
         NotifyStateUpdated();
 
         _cycleCount++;
+    }
+
+    /// <summary>
+    /// Mirror the parsed VehicleState fields onto a fresh GpsData and fire
+    /// GpsService.UpdateGpsData — this is what kicks off the cycle worker.
+    /// A fresh instance per packet is required: the event handler hands
+    /// the reference to a background Task.Run (the cycle worker), and a
+    /// reused instance would race with the next receive-thread mutation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PublishGpsData()
+    {
+        var gpsData = new GpsData
+        {
+            CurrentPosition = new Position
+            {
+                Latitude = _state.Latitude,
+                Longitude = _state.Longitude,
+                Altitude = _state.Altitude,
+                Heading = _state.Heading,
+                Speed = _state.Speed,
+            },
+            FixQuality = _state.FixQuality,
+            SatellitesInUse = _state.Satellites,
+            Hdop = _state.Hdop,
+            DifferentialAge = _state.DifferentialAge,
+            Timestamp = DateTime.UtcNow,
+        };
+        _gpsService.UpdateGpsData(gpsData);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

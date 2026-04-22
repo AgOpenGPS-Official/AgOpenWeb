@@ -53,7 +53,7 @@ public class GpsService : IGpsService
         if (string.IsNullOrWhiteSpace(sentence))
             return;
 
-        // This is called by NmeaParserService after parsing
+        // Called by the parser after a sentence is parsed.
         // Just trigger event notification
         GpsDataUpdated?.Invoke(this, CurrentData);
     }

@@ -3,6 +3,7 @@
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
 
+using System.Linq;
 using AgValoniaGPS.Models.State;
 
 namespace AgValoniaGPS.ViewModels;
@@ -53,30 +54,10 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(IsToolPositionReady));
         ToolEasting = result.ToolEasting;
 
-        // Guidance
-        if (result.HasGuidance)
-        {
-            SimulatorSteerAngle = result.SteerAngle;
-            CrossTrackError = result.CrossTrackError * 100; // meters to cm
-
-            _mapService.SetGuidancePoints(
-                result.GoalPointEasting, result.GoalPointNorthing,
-                isActive: true);
-        }
-
-        // Update display track from pipeline (the offset line being followed)
-        if (result.DisplayTrack != null)
-        {
-            _mapService.SetActiveTrack(result.DisplayTrack);
-            _mapService.SetBaseTrack(result.BaseTrack);
-        }
-
-        // Auto-detect nearest pass when autosteer is not engaged
-        if (result.NearestPassNumber.HasValue && !_isAutoSteerEngaged)
-        {
-            State.Guidance.HowManyPathsAway = result.NearestPassNumber.Value;
-            SyncGuidanceStateToPipeline();
-        }
+        // Phase D D7: guidance outputs come from GuidanceSnapshot (mirror block
+        // below). The flat SteerAngle / CrossTrackError / GoalPoint* / HasGuidance /
+        // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
+        // deletes them, but this method no longer reads them.
 
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
@@ -85,9 +66,124 @@ public partial class MainViewModel
             StatusMessage = result.DisengageReason ?? "AutoSteer disengaged";
         }
 
+        // Phase C C5: YouTurn + Guidance snapshot mirror. The cycle worker
+        // runs the YouTurn state machine on its own POCO working state; this
+        // is the single UI-thread point where those writes become PropertyChanged
+        // events on State.YouTurn / State.Guidance, and where map-service side
+        // effects (turn path, next track, in-youturn flag) land.
+        if (result.YouTurn is { } yt)
+        {
+            var sy = State.YouTurn;
+            sy.IsEnabled = yt.IsEnabled;
+            sy.IsTriggered = yt.IsTriggered;
+            sy.IsExecuting = yt.IsExecuting;
+            // TurnPath / SnakeSequence: reference equality elides PropertyChanged
+            // when the cycle reuses the list across cycles (list ref replaced
+            // only on turn start/end) — see TMP-001 resolution.
+            sy.TurnPath = yt.TurnPath is List<AgValoniaGPS.Models.Base.Vec3> tp ? tp : yt.TurnPath?.ToList();
+            sy.PathIndex = yt.PathIndex;
+            sy.IsTurnLeft = yt.IsTurnLeft;
+            sy.LastTurnWasLeft = yt.LastTurnWasLeft;
+            sy.DistanceToHeadland = yt.DistanceToHeadland;
+            sy.DistanceToTrigger = yt.DistanceToTrigger;
+            sy.NextTrack = yt.NextTrack;
+            sy.LastCompletionPosition = yt.LastCompletionPosition;
+            sy.HasCompletedFirstTurn = yt.HasCompletedFirstTurn;
+            sy.YouTurnCounter = yt.YouTurnCounter;
+            sy.WasHeadingSameWayAtTurnStart = yt.WasHeadingSameWayAtTurnStart;
+            sy.NextTrackTurnOffset = yt.NextTrackTurnOffset;
+            sy.ReturnPassTargetPath = yt.ReturnPassTargetPath;
+            sy.SnakeSequence = yt.SnakeSequence is List<int> ss ? ss : yt.SnakeSequence?.ToList();
+            sy.SnakeIndex = yt.SnakeIndex;
+            sy.CurrentZone = yt.CurrentZone;
+
+            _mapService.SetYouTurnPath(yt.TurnPath?.Select(p => (p.Easting, p.Northing)).ToList());
+            _mapService.SetNextTrack(yt.NextTrack);
+            _mapService.SetIsInYouTurn(yt.IsExecuting);
+        }
+
+        if (result.Guidance is { } g)
+        {
+            // Phase D D7: full GuidanceSnapshot mirror. The cycle is the
+            // sole writer of these working-state fields; this block is the
+            // single UI-thread point where they become PropertyChanged events
+            // on State.Guidance.
+            var sg = State.Guidance;
+            sg.ActiveTrack = g.ActiveTrack;
+            sg.IsGuidanceActive = g.IsGuidanceActive;
+            sg.CrossTrackError = g.CrossTrackError;
+            sg.HeadingError = g.HeadingError;
+            sg.SteerAngle = g.SteerAngle;
+            sg.SteerAngleRaw = g.SteerAngleRaw;
+            sg.DistanceOffRaw = g.DistanceOffRaw;
+            sg.PpIntegral = g.PpIntegral;
+            sg.PpPivotDistanceError = g.PpPivotDistanceError;
+            sg.PpPivotDistanceErrorLast = g.PpPivotDistanceErrorLast;
+            sg.PpCounter = g.PpCounter;
+            sg.GoalPoint = g.GoalPoint;
+            sg.RadiusPoint = g.RadiusPoint;
+            sg.PurePursuitRadius = g.PurePursuitRadius;
+            sg.IsHeadingSameWay = g.IsHeadingSameWay;
+            sg.IsReverse = g.IsReverse;
+            sg.HowManyPathsAway = g.HowManyPathsAway;
+            sg.NudgeOffset = g.NudgeOffset;
+            sg.CurrentLineLabel = g.CurrentLineLabel;
+            sg.IsContourMode = g.IsContourMode;
+
+            // Map-service pushes with reference / value gating to avoid per-cycle
+            // SendStateToHandler churn. The cycle reuses DisplayTrack / BaseTrack
+            // references across cycles when they haven't changed, so ReferenceEquals
+            // elides the call in steady state. Guidance points are a Vec2 (value
+            // type) and change every cycle during active guidance — no gating
+            // would help; the gate below is structural.
+            //
+            // SimulatorSteerAngle and CrossTrackError must ALSO be gated on
+            // HasGuidance: SimulatorSteerAngle is the user's simulator steering
+            // input, and if we unconditionally wrote g.SteerAngle (=0 when no
+            // guidance) every cycle we'd overwrite the user's L/R keypress
+            // before the simulator tick consumed it.
+            if (g.HasGuidance)
+            {
+                SimulatorSteerAngle = g.SteerAngle;
+                CrossTrackError = g.CrossTrackError * 100;
+                _mapService.SetGuidancePoints(g.GoalPoint.Easting, g.GoalPoint.Northing, isActive: true);
+            }
+            if (!ReferenceEquals(_lastMirroredDisplayTrack, g.DisplayTrack))
+            {
+                _lastMirroredDisplayTrack = g.DisplayTrack;
+                _mapService.SetActiveTrack(g.DisplayTrack);
+            }
+            if (!ReferenceEquals(_lastMirroredBaseTrack, g.BaseTrack))
+            {
+                _lastMirroredBaseTrack = g.BaseTrack;
+                _mapService.SetBaseTrack(g.BaseTrack);
+            }
+        }
+
+        // Turn-completion signal: YouTurn snapshot's JustCompleted is set on
+        // the single cycle the state machine (or the YouTurn guidance branch)
+        // reports turn-complete. Reset the TrackGuidanceState cache so the new
+        // offset track is searched globally instead of resumed from the
+        // pre-turn CurrentLocationIndex.
+        if (result.YouTurn is { JustCompleted: true })
+        {
+            _trackGuidanceState = null;
+            SyncGuidanceStateToPipeline();
+        }
+
         // Headland proximity
         State.Field.HeadlandProximityDistance = result.HeadlandProximityDistance;
         State.Field.HeadlandProximityWarning = result.HeadlandProximityWarning;
+
+        // Phase E E1: the cycle's first-fix LocalPlane auto-create arrives
+        // here. The cycle already holds a cache of it for coord conversion;
+        // we commit to the observable so subsequent UI readers see it. Only
+        // first-wins — if the user explicitly opened a field in the meantime
+        // (SetFieldOrigin), their instance stays.
+        if (result.FirstFixLocalPlane != null && State.Field.LocalPlane == null)
+        {
+            State.Field.LocalPlane = result.FirstFixLocalPlane;
+        }
 
         // Section states
         if (result.SectionStates != null)

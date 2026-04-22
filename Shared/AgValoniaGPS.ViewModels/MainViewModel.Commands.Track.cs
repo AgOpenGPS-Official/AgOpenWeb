@@ -44,12 +44,8 @@ public partial class MainViewModel
                 StatusMessage = "No track selected";
                 return;
             }
-            State.Guidance.HowManyPathsAway -= State.Guidance.IsHeadingSameWay ? 1 : -1;
-            State.Guidance.NudgeOffset = 0;
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
-            double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            StatusMessage = $"Snapped left to path {State.Guidance.HowManyPathsAway} ({Math.Abs(widthMinusOverlap * State.Guidance.HowManyPathsAway):F1}m offset)";
+            _intents.RequestGuidanceSnap(left: true);
+            StatusMessage = "Snapped left";
         });
 
         SnapRightCommand = new RelayCommand(() =>
@@ -59,12 +55,8 @@ public partial class MainViewModel
                 StatusMessage = "No track selected";
                 return;
             }
-            State.Guidance.HowManyPathsAway += State.Guidance.IsHeadingSameWay ? 1 : -1;
-            State.Guidance.NudgeOffset = 0;
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
-            double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            StatusMessage = $"Snapped right to path {State.Guidance.HowManyPathsAway} ({Math.Abs(widthMinusOverlap * State.Guidance.HowManyPathsAway):F1}m offset)";
+            _intents.RequestGuidanceSnap(left: false);
+            StatusMessage = "Snapped right";
         });
 
         StopGuidanceCommand = new RelayCommand(() =>
@@ -91,7 +83,7 @@ public partial class MainViewModel
                 _logger.LogDebug("[UTurn] No boundary/headland, triggering manual U-turn left");
             }
 
-            TriggerManualYouTurn(turnLeft: true);
+            TriggerManualYouTurnLeft();
         });
 
         // AB Line Guidance Commands - Flyout Menu
@@ -655,10 +647,8 @@ public partial class MainViewModel
         ResetNudgeCommand = new RelayCommand(() =>
         {
             if (SelectedTrack == null) return;
-            State.Guidance.NudgeOffset = 0;
             SelectedTrack.NudgeDistance = 0;
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
+            _intents.RequestGuidanceResetNudge();
             StatusMessage = "Nudge reset to zero";
         });
 
@@ -857,6 +847,7 @@ public partial class MainViewModel
         ToggleYouTurnCommand = new RelayCommand(() =>
         {
             IsYouTurnEnabled = !IsYouTurnEnabled;
+            SyncGuidanceStateToPipeline();
             StatusMessage = IsYouTurnEnabled ? "YouTurn enabled" : "YouTurn disabled";
         });
 
@@ -865,7 +856,10 @@ public partial class MainViewModel
 
         ToggleAutoSteerCommand = new RelayCommand(() =>
         {
-            if (!IsAutoSteerAvailable)
+            // Disengage is always allowed — the user must be able to stop the
+            // tractor even after the track/field has been cleared. Engagement
+            // is the only path with preconditions.
+            if (!IsAutoSteerEngaged && !IsAutoSteerAvailable)
             {
                 StatusMessage = "AutoSteer not available - no active track";
                 return;
@@ -916,9 +910,13 @@ public partial class MainViewModel
             _coverageMapService.ClearAll();
             // Reset track guidance state to force global search for nearest segment
             _trackGuidanceState = null;
-            // Reset pass counter, nudge offset, worked paths, and track offset on ALL tracks
-            State.Guidance.HowManyPathsAway = 0;
-            State.Guidance.NudgeOffset = 0;
+            // Phase D D6: seed pending zeros and sync — the cycle becomes the
+            // writer of HowManyPathsAway / NudgeOffset (via SetActiveTrack in
+            // SyncGuidanceStateToPipeline). State.Guidance gets zeroed on the
+            // next snapshot mirror.
+            _pendingInitialPathsAway = 0;
+            _pendingInitialNudgeOffset = 0;
+            SyncGuidanceStateToPipeline();
             foreach (var track in SavedTracks)
             {
                 track.NudgeDistance = 0;
@@ -958,10 +956,12 @@ public partial class MainViewModel
                     // Otherwise it will continue from where coverage ended
                     _trackGuidanceState = null;
 
-                    // Reset pass counter, nudge offset, and track offset to go back to the original track
-                    _logger.LogDebug("[NUDGE] Resetting State.Guidance.HowManyPathsAway from {HowManyPathsAway} to 0, State.Guidance.NudgeOffset from {NudgeOffset:F3} to 0", State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset);
-                    State.Guidance.HowManyPathsAway = 0;
-                    State.Guidance.NudgeOffset = 0;
+                    // Phase D D6: seed pending zeros; sync below carries them into
+                    // _guidanceWorking and the next snapshot zeroes State.Guidance.
+                    _logger.LogDebug("[NUDGE] Resetting pathsAway from {HowManyPathsAway} to 0, nudgeOffset from {NudgeOffset:F3} to 0", State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset);
+                    _pendingInitialPathsAway = 0;
+                    _pendingInitialNudgeOffset = 0;
+                    SyncGuidanceStateToPipeline();
 
                     // Reset NudgeDistance on ALL tracks, not just selected
                     _logger.LogDebug("[NUDGE] Resetting NudgeDistance on {TrackCount} tracks", SavedTracks.Count);
@@ -1546,8 +1546,10 @@ public partial class MainViewModel
 
     /// <summary>
     /// Nudge the current guidance line by a distance in meters.
-    /// Positive = right, Negative = left (when heading same way as track).
-    /// Accounts for heading direction: if driving opposite to track, nudge is inverted.
+    /// Positive = right, Negative = left (unadjusted — the cycle applies
+    /// the heading-same-way sign flip).
+    /// Phase D D5: posts an intent; the cycle drains and mutates
+    /// _guidanceWorking.NudgeOffset on its own thread.
     /// </summary>
     private void NudgeTrack(double distanceMeters)
     {
@@ -1557,18 +1559,7 @@ public partial class MainViewModel
             return;
         }
 
-        // Account for heading direction (like AgOpenGPS)
-        double adjustedDist = State.Guidance.IsHeadingSameWay ? distanceMeters : -distanceMeters;
-        State.Guidance.NudgeOffset += adjustedDist;
-
-        // Invalidate guidance state to force recalculation
-        _trackGuidanceState = null;
-        SyncGuidanceStateToPipeline();
-
-        double totalOffset = (ConfigStore.ActualToolWidth - Tool.Overlap) * State.Guidance.HowManyPathsAway + State.Guidance.NudgeOffset;
-        _logger.LogDebug("[NUDGE] NudgeTrack: dist={Dist:F3}m (adjusted={Adj:F3}m), nudgeOffset={Offset:F3}m, totalOffset={Total:F3}m",
-            distanceMeters, adjustedDist, State.Guidance.NudgeOffset, totalOffset);
-
-        StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm (total offset: {totalOffset:F2}m)";
+        _intents.RequestGuidanceNudge(distanceMeters);
+        StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm";
     }
 }

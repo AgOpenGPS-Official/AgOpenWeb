@@ -22,6 +22,7 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.YouTurn;
 
@@ -56,8 +57,8 @@ public partial class YouTurnCreationService
         double abHeading,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandCalculatedWidth,
         double headlandDistance)
@@ -129,8 +130,8 @@ public partial class YouTurnCreationService
         bool turnLeft,
         Boundary? boundary,
         IReadOnlyList<Vec3> headlandLine,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandCalculatedWidth)
     {
@@ -242,7 +243,7 @@ public partial class YouTurnCreationService
         Models.Track.Track track,
         Vec3 vehiclePos,
         IReadOnlyList<Vec3> headlandLine,
-        GuidanceState guidance)
+        GuidanceWorkingState guidance)
     {
         if (headlandLine.Count < 3) return track.Points[0].Heading;
 
@@ -301,7 +302,7 @@ public partial class YouTurnCreationService
         double abHeading,
         Vec3 vehiclePosition,
         IReadOnlyList<Vec3> headlandLine,
-        GuidanceState guidance)
+        GuidanceWorkingState guidance)
     {
         if (track.Points.Count < 2)
             return new Vec2(vehiclePosition.Easting, vehiclePosition.Northing);
@@ -448,8 +449,8 @@ public partial class YouTurnCreationService
         double abHeading,
         bool turnLeft,
         Boundary? boundary,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandDistance)
     {

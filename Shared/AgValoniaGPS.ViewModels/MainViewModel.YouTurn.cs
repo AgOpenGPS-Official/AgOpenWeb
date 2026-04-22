@@ -15,12 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 
 using AgValoniaGPS.Models.Base;
-using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Track;
-using AgValoniaGPS.Services.YouTurn;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -75,40 +72,19 @@ public partial class MainViewModel
 
     #region YouTurn Entry Points
 
-    /// <summary>Clear all U-turn state — called when closing a field.</summary>
-    public void ClearYouTurnState()
-    {
-        YouTurnStateMachine.ClearState(State.YouTurn);
-        _mapService.SetYouTurnPath(null);
-        _mapService.SetNextTrack(null);
-        _mapService.SetIsInYouTurn(false);
-    }
+    // Phase C C6/C7: YouTurn commands post intents and return. The cycle worker
+    // drains them at the top of ProcessCycle and runs YouTurnStateMachine on
+    // the cycle thread against its own POCO working state. The UI thread no
+    // longer touches the state machine or the cycle's working state. Map
+    // updates (SetYouTurnPath / SetNextTrack / SetIsInYouTurn) land via the
+    // GpsCycleResult.YouTurn snapshot mirror in ApplyGpsCycleResult.
 
-    /// <summary>Manually trigger a left U-turn.</summary>
-    public void TriggerManualYouTurnLeft() => TriggerManualYouTurn(turnLeft: true);
+    /// <summary>Clear all U-turn state — called on field close or track deselect.</summary>
+    public void ClearYouTurnState() => _intents.RequestClearYouTurn();
 
-    /// <summary>Manually trigger a right U-turn.</summary>
-    public void TriggerManualYouTurnRight() => TriggerManualYouTurn(turnLeft: false);
+    public void TriggerManualYouTurnLeft() => _intents.RequestManualYouTurn(turnLeft: true);
 
-    private void TriggerManualYouTurn(bool turnLeft)
-    {
-        var effects = _youTurnStateMachine.TriggerManual(
-            turnLeft, IsAutoSteerEngaged, BuildTickContext(GetCurrentGpsPosition()),
-            State.Guidance, State.YouTurn);
-        ApplyEffects(effects);
-    }
-
-    /// <summary>
-    /// Drive the state machine one cycle. Called from the GPS handler while autosteer
-    /// is engaged, YouTurn is enabled, and a headland line exists. Mutates state
-    /// and applies the resulting side effects.
-    /// </summary>
-    internal void TickYouTurnStateMachine(AgValoniaGPS.Models.Position currentPosition)
-    {
-        var effects = _youTurnStateMachine.Tick(
-            BuildTickContext(currentPosition), State.Guidance, State.YouTurn);
-        ApplyEffects(effects);
-    }
+    public void TriggerManualYouTurnRight() => _intents.RequestManualYouTurn(turnLeft: false);
 
     #endregion
 
@@ -150,56 +126,6 @@ public partial class MainViewModel
             if (dist < minDist) minDist = dist;
         }
         return minDist;
-    }
-
-    #endregion
-
-    #region Helpers
-
-    private YouTurnStateMachine.TickContext BuildTickContext(AgValoniaGPS.Models.Position currentPosition)
-        => new(
-            currentPosition,
-            SelectedTrack,
-            _currentBoundary,
-            _currentHeadlandLine,
-            UTurnSkipRows,
-            IsSkipWorkedMode,
-            HeadlandCalculatedWidth,
-            HeadlandDistance);
-
-    private AgValoniaGPS.Models.Position GetCurrentGpsPosition() => new()
-    {
-        Easting = Easting,
-        Northing = Northing,
-        Heading = Heading,
-    };
-
-    private void ApplyEffects(YouTurnEffects effects)
-    {
-        if (effects.SyncTurnPathToMap)
-        {
-            _mapService.SetYouTurnPath(State.YouTurn.TurnPath?
-                .Select(p => (p.Easting, p.Northing)).ToList());
-        }
-        if (effects.SyncNextTrackToMap)
-        {
-            _mapService.SetNextTrack(State.YouTurn.NextTrack);
-        }
-        if (effects.IsInYouTurnMapFlag.HasValue)
-        {
-            _mapService.SetIsInYouTurn(effects.IsInYouTurnMapFlag.Value);
-        }
-        if (effects.TurnCompleted)
-        {
-            // Force guidance to do a fresh global search on the new offset track instead of
-            // resuming from the pre-turn CurrentLocationIndex (which points at the wrong track).
-            _trackGuidanceState = null;
-            SyncGuidanceStateToPipeline();
-        }
-        if (effects.StatusMessage != null)
-        {
-            StatusMessage = effects.StatusMessage;
-        }
     }
 
     #endregion

@@ -21,6 +21,7 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.YouTurn;
 
@@ -86,7 +87,7 @@ public sealed class YouTurnStateMachine
     /// YouTurn enabled, headland line has ≥3 points. The caller should gate these before
     /// invoking Tick.
     /// </summary>
-    public YouTurnEffects Tick(in TickContext ctx, GuidanceState guidance, YouTurnState turn)
+    public YouTurnEffects Tick(in TickContext ctx, GuidanceWorkingState guidance, YouTurnWorkingState turn)
     {
         var effects = new YouTurnEffects();
         var track = ctx.SelectedTrack;
@@ -238,8 +239,8 @@ public sealed class YouTurnStateMachine
         bool turnLeft,
         bool isAutoSteerEngaged,
         in TickContext ctx,
-        GuidanceState guidance,
-        YouTurnState turn)
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn)
     {
         var effects = new YouTurnEffects();
 
@@ -308,7 +309,7 @@ public sealed class YouTurnStateMachine
     /// <summary>
     /// Clear all U-turn state. Called when closing a field. Safe to call at any time.
     /// </summary>
-    public static void ClearState(YouTurnState turn)
+    public static void ClearState(YouTurnWorkingState turn)
     {
         turn.TurnPath = null;
         turn.NextTrack = null;
@@ -326,8 +327,8 @@ public sealed class YouTurnStateMachine
         double abHeading,
         Position currentPosition,
         double headingRadians,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
         // Build the rotated snake sequence lazily on first turn.
@@ -394,8 +395,8 @@ public sealed class YouTurnStateMachine
         double abHeading,
         Position currentPosition,
         double headingRadians,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
         bool nextLineInside = _pathing.WouldNextLineBeInsideBoundary(
@@ -427,8 +428,8 @@ public sealed class YouTurnStateMachine
         Models.Track.Track track,
         double headingRadians,
         double abHeading,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
         var result = _creation.CreateTurnPath(
@@ -448,8 +449,8 @@ public sealed class YouTurnStateMachine
 
     private void CompleteTurn(
         in TickContext ctx,
-        GuidanceState guidance,
-        YouTurnState turn,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
         // Guard against double-call (turn completion can fire from both Tick and

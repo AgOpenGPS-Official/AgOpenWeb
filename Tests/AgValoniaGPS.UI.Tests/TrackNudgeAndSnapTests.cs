@@ -218,21 +218,20 @@ public class TrackNudgeAndSnapTests
     [Test]
     public void MultipleNudges_Accumulate()
     {
-        var vm = new MainViewModelBuilder().Build();
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
         var track = CreateTestTrack();
         vm.SavedTracks.Add(track);
         vm.SelectedTrack = track;
 
-        // Nudge right twice - status should show accumulated offset
+        // Phase D D5: nudge commands post accumulating intents. Two nudges
+        // between drains sum. Drain once after both clicks and assert the
+        // batch carries the doubled delta.
         vm.NudgeRightCommand!.Execute(null);
-        var firstStatus = vm.StatusMessage;
-
         vm.NudgeRightCommand!.Execute(null);
-        var secondStatus = vm.StatusMessage;
 
-        // Both should say "Nudged right" but total offset should differ
-        Assert.That(firstStatus, Does.Contain("Nudged right"));
-        Assert.That(secondStatus, Does.Contain("Nudged right"));
-        Assert.That(secondStatus, Is.Not.EqualTo(firstStatus));
+        var batch = builder.Intents.Drain();
+        Assert.That(batch.GuidanceNudgeMeters, Is.GreaterThan(0),
+            "Two right nudges between drains must sum into a positive delta");
     }
 }

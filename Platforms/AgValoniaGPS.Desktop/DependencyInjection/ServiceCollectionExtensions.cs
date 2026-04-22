@@ -19,6 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.AutoSteer;
+using AgValoniaGPS.Services.Gps;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Services.Geometry;
 using AgValoniaGPS.Services.Headland;
@@ -32,6 +33,7 @@ using AgValoniaGPS.Services.Section;
 using AgValoniaGPS.Services.Tram;
 using AgValoniaGPS.ViewModels;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Desktop.Services;
 
@@ -134,6 +136,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IElevationLogService, ElevationLogService>();
 
         // GPS processing pipeline (background-thread orchestration)
+        // Singleton: UI commands and the cycle worker must share one intent instance.
+        services.AddSingleton<IPipelineIntents, PipelineIntents>();
+        // Fusion service holds fix-to-fix state between cycles; singleton required.
+        services.AddSingleton<IGpsHeadingFusionService, GpsHeadingFusionService>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
         // Platform-specific services (Desktop implementations)
