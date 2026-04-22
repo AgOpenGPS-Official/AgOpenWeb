@@ -250,10 +250,21 @@ public sealed class YouTurnStateMachine
             return effects;
         }
 
-        if (turn.IsExecuting || turn.TurnPath != null)
+        if (turn.IsExecuting)
         {
+            // Refuse to swap paths while the guidance service is actively following
+            // one — doing so could whip the steering mid-arc.
             effects.StatusMessage = "U-turn already in progress";
             return effects;
+        }
+
+        // If an auto-trigger plotted a path but it hasn't engaged yet, discard it so
+        // the manual trigger's immediate arc takes over.
+        if (turn.TurnPath != null)
+        {
+            turn.TurnPath = null;
+            turn.IsTriggered = false;
+            effects.SyncTurnPathToMap = true;
         }
 
         var track = ctx.SelectedTrack;
@@ -289,10 +300,18 @@ public sealed class YouTurnStateMachine
         effects.SyncNextTrackToMap = true;
         effects.IsInYouTurnMapFlag = true;
 
-        CreatePathAndSync(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+        // Manual triggers skip the boundary-anchored Dubins pipeline used by auto turns.
+        // The arc starts at the tractor's current position so the turn begins the instant
+        // the path renders — no headland traversal, no entry/exit legs (#260).
+        var path = _creation.CreateManualArcPath(
+            ctx.CurrentPosition, abHeading, turnLeft,
+            ctx.Boundary, guidance, ctx.UTurnSkipRows);
 
-        if (turn.TurnPath != null && turn.TurnPath.Count > 2)
+        if (path.Count > 2)
         {
+            turn.TurnPath = path;
+            turn.YouTurnCounter = 0;
+            effects.SyncTurnPathToMap = true;
             // Manual turns trigger immediately — no proximity check against the turn start.
             turn.IsTriggered = true;
             turn.IsExecuting = true;
@@ -300,7 +319,7 @@ public sealed class YouTurnStateMachine
         }
         else
         {
-            effects.StatusMessage = "Failed to create U-turn path";
+            effects.StatusMessage = "Not enough room — turn would leave the field";
         }
 
         return effects;
