@@ -596,4 +596,102 @@ public partial class YouTurnCreationService
 
         return path;
     }
+
+    /// <summary>
+    /// Build an immediate U-turn path anchored at the tractor's current position — no
+    /// entry/exit straight legs, no headland traversal. Just a semicircle from the
+    /// tractor to the next parallel pass, executed the moment it's rendered (#260).
+    ///
+    /// The arc radius is fixed at <c>offset / 2</c> so the endpoint lands exactly on
+    /// the next parallel pass with reversed heading. The configured
+    /// <c>Guidance.UTurnRadius</c> is ignored because any larger radius would overshoot
+    /// the target pass and would need a connector leg to bridge the gap — which would
+    /// defeat the "no legs, immediate" requirement.
+    /// </summary>
+    public List<Vec3> CreateManualArcPath(
+        Position currentPosition,
+        double abHeading,
+        bool turnLeft,
+        Boundary? boundary,
+        GuidanceWorkingState guidance,
+        int uTurnSkipRows)
+    {
+        var path = new List<Vec3>();
+        var config = ConfigurationStore.Instance;
+
+        const double pointSpacing = 0.5;
+        double trackWidth = config.ActualToolWidth - config.Tool.Overlap;
+        double turnOffset = trackWidth * (uTurnSkipRows + 1);
+        if (turnOffset < 0.1)
+        {
+            _logger.LogWarning("[ManualYouTurn] Tool width is zero — cannot compute offset");
+            return path;
+        }
+
+        double turnRadius = turnOffset / 2.0;
+
+        // Travel direction as the tractor is currently heading along the AB line.
+        double travelHeading = abHeading;
+        if (!guidance.IsHeadingSameWay)
+        {
+            travelHeading += Math.PI;
+            if (travelHeading >= Math.PI * 2) travelHeading -= Math.PI * 2;
+        }
+
+        double arcStartE = currentPosition.Easting;
+        double arcStartN = currentPosition.Northing;
+
+        double perpAngle = turnLeft ? (travelHeading - Math.PI / 2) : (travelHeading + Math.PI / 2);
+
+        double arcCenterE = arcStartE + Math.Sin(perpAngle) * turnRadius;
+        double arcCenterN = arcStartN + Math.Cos(perpAngle) * turnRadius;
+
+        double arcEndE = arcStartE + Math.Sin(perpAngle) * (2 * turnRadius);
+        double arcEndN = arcStartN + Math.Cos(perpAngle) * (2 * turnRadius);
+
+        // Refuse to plot a turn whose endpoint lands outside the field.
+        if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid
+            && !boundary.OuterBoundary.IsPointInside(arcEndE, arcEndN))
+        {
+            _logger.LogDebug("[ManualYouTurn] Arc end ({E:F1},{N:F1}) outside boundary — refusing",
+                arcEndE, arcEndN);
+            return path;
+        }
+
+        double startAngle = Math.Atan2(arcStartE - arcCenterE, arcStartN - arcCenterN);
+        int arcPoints = Math.Max((int)(Math.PI * turnRadius / pointSpacing), 20);
+
+        // Include the start point so guidance has a valid t=0 sample at the tractor.
+        path.Add(new Vec3
+        {
+            Easting = arcStartE,
+            Northing = arcStartN,
+            Heading = travelHeading,
+        });
+
+        for (int i = 1; i <= arcPoints; i++)
+        {
+            double t = (double)i / arcPoints;
+            double sweepAngle = turnLeft ? (-Math.PI * t) : (Math.PI * t);
+            double currentAngle = startAngle + sweepAngle;
+
+            double tangentHeading = currentAngle + (turnLeft ? -Math.PI / 2 : Math.PI / 2);
+            if (tangentHeading < 0) tangentHeading += Math.PI * 2;
+            if (tangentHeading >= Math.PI * 2) tangentHeading -= Math.PI * 2;
+
+            path.Add(new Vec3
+            {
+                Easting = arcCenterE + Math.Sin(currentAngle) * turnRadius,
+                Northing = arcCenterN + Math.Cos(currentAngle) * turnRadius,
+                Heading = tangentHeading,
+            });
+        }
+
+        TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
+
+        _logger.LogDebug("[ManualYouTurn] Arc path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
+            path.Count, turnRadius, turnOffset, turnLeft);
+
+        return path;
+    }
 }
