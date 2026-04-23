@@ -302,16 +302,19 @@ public partial class MainWindow : Window
         // Panel positions are now anchored (no saved positions needed)
     }
 
+    // Set to true while we're re-entering Closing after programmatically calling Close()
+    // at the end of SaveAndCloseAsync. The flag lets that second close proceed without
+    // re-firing the save path.
+    private bool _closeSaveInProgress;
+
     private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         if (App.Services == null) return;
 
-        // Save all settings to ConfigurationStore.Display (which then syncs to AppSettings)
+        // Window geometry + UI toggles — capture synchronously on every close attempt.
+        // Cheap and small, never a good reason to skip.
         var display = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display;
-
-        // Save window state
         display.WindowMaximized = WindowState == WindowState.Maximized;
-
         if (WindowState == WindowState.Normal)
         {
             display.WindowWidth = Width;
@@ -319,32 +322,60 @@ public partial class MainWindow : Window
             display.WindowX = Position.X;
             display.WindowY = Position.Y;
         }
-
-        // Save UI state to ConfigurationStore
         if (ViewModel != null)
-        {
             display.GridVisible = ViewModel.IsGridOn;
+
+        // Second-pass close triggered by SaveAndCloseAsync → let it through.
+        if (_closeSaveInProgress)
+            return;
+
+        // If a field is open, we need to run CloseFieldAsync (saves boundary / tracks /
+        // headland / tram / elevation / coverage) before actually exiting. The old path
+        // only saved coverage via fire-and-forget Task.Run, which (a) missed the rest and
+        // (b) raced the process exit — users who closed without explicit File → Close Field
+        // lost session work (#291).
+        //
+        // Closing is a synchronous event, so we cancel it, run the async save, then call
+        // Close() a second time; the _closeSaveInProgress flag tells this handler to let
+        // the second close proceed.
+        if (ViewModel?.HasActiveField == true)
+        {
+            e.Cancel = true;
+            _closeSaveInProgress = true;
+            _ = SaveAndCloseAsync();
+            return;
         }
 
-        // Save on background thread — don't block the window close
-        var configService = App.Services.GetRequiredService<IConfigurationService>();
-        var fieldService = App.Services.GetRequiredService<IFieldService>();
-        var coverageService = App.Services.GetRequiredService<ICoverageMapService>();
-        var fieldPath = fieldService.ActiveField?.DirectoryPath;
-
-        Task.Run(() =>
+        // No field open — just persist AppSettings (cheap, synchronous).
+        try
         {
-            try
-            {
-                configService.SaveAppSettings();
-                if (!string.IsNullOrEmpty(fieldPath))
-                    coverageService.SaveToFile(fieldPath);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Save] Error saving on close: {ex.Message}");
-            }
-        });
+            App.Services.GetRequiredService<IConfigurationService>().SaveAppSettings();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Save] Error saving settings on close: {ex.Message}");
+        }
+    }
+
+    private async Task SaveAndCloseAsync()
+    {
+        try
+        {
+            if (App.Services != null)
+                App.Services.GetRequiredService<IConfigurationService>().SaveAppSettings();
+
+            if (ViewModel != null)
+                await ViewModel.CloseFieldAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Save] Error during SaveAndCloseAsync: {ex.Message}");
+        }
+        finally
+        {
+            // Re-initiate the close; _closeSaveInProgress lets it through.
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => Close());
+        }
     }
 
     private void MainWindow_KeyDown(object? sender, KeyEventArgs e)
