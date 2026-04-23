@@ -122,9 +122,18 @@ public sealed class YouTurnPathingService
     }
 
     /// <summary>
-    /// True if the midpoint of the next pass (as determined by the normal turn rule — turnLeft XOR
-    /// sameWay — with no skip-worked adjustment) lies inside the cultivated area.
+    /// True if *any portion* of the next pass line (as determined by the normal turn rule —
+    /// turnLeft XOR sameWay — with no skip-worked adjustment) crosses the cultivated area.
     /// </summary>
+    /// <remarks>
+    /// Fixes #289 F1. The previous implementation tested only the midpoint of the AB segment
+    /// offset perpendicular — for non-rectangular fields the AB midpoint is not the center of
+    /// every offset pass's usable span, so a midpoint can fall outside the polygon even when
+    /// the offset line still crosses the field somewhere along its 2000 m rendered extent.
+    /// That false-negative stopped U-turns early, leaving unworked strips on the far side of
+    /// non-rectangular fields. New implementation walks the full offset line at fixed spacing
+    /// and returns true if any sample lies inside the cultivated area.
+    /// </remarks>
     public bool WouldNextLineBeInsideBoundary(
         Models.Track.Track currentTrack,
         double abHeading,
@@ -150,13 +159,46 @@ public sealed class YouTurnPathingService
         var pointB = currentTrack.Points[currentTrack.Points.Count - 1];
         double perpAngle = abHeading + Math.PI / 2;
 
+        // Sample the offset pass line along the AB direction across the full rendered extent
+        // (pass lines are drawn 2000 m beyond A and B in each direction — see
+        // DrawingContextMapControl.DrawSingleTrack). Spacing 5 m gives ~800 samples across a
+        // 4 km line — trivial cost, and won't miss a field whose narrowest usable span is > 5 m.
+        const double SampleSpacing = 5.0;
+        const double LineExtent = 2000.0;
+        double abDx = pointB.Easting - pointA.Easting;
+        double abDy = pointB.Northing - pointA.Northing;
+        double abLen = Math.Sqrt(abDx * abDx + abDy * abDy);
+        if (abLen < 0.01) return IsPointInsideCultivatedArea(
+            (pointA.Easting + pointB.Easting) / 2 + Math.Sin(perpAngle) * nextDistAway,
+            (pointA.Northing + pointB.Northing) / 2 + Math.Cos(perpAngle) * nextDistAway,
+            boundary, headlandLine);
+
+        double abNx = abDx / abLen;
+        double abNy = abDy / abLen;
+
         double midEasting = (pointA.Easting + pointB.Easting) / 2 + Math.Sin(perpAngle) * nextDistAway;
         double midNorthing = (pointA.Northing + pointB.Northing) / 2 + Math.Cos(perpAngle) * nextDistAway;
 
-        bool inside = IsPointInsideCultivatedArea(midEasting, midNorthing, boundary, headlandLine);
-        _logger.LogDebug("[NextTrack] currentPath={Cur}, nextPath={Next}, midpoint=({E:F1},{N:F1}) insideCultivated={Inside}",
-            guidance.HowManyPathsAway, nextPathsAway, midEasting, midNorthing, inside);
-        return inside;
+        double totalLength = abLen + 2 * LineExtent;
+        int sampleCount = (int)(totalLength / SampleSpacing);
+        double startOffset = -(totalLength / 2.0);
+
+        for (int i = 0; i <= sampleCount; i++)
+        {
+            double t = startOffset + i * SampleSpacing;
+            double e = midEasting + abNx * t;
+            double n = midNorthing + abNy * t;
+            if (IsPointInsideCultivatedArea(e, n, boundary, headlandLine))
+            {
+                _logger.LogDebug("[NextTrack] currentPath={Cur}, nextPath={Next}, sample at t={T:F0}m hit cultivated area",
+                    guidance.HowManyPathsAway, nextPathsAway, t);
+                return true;
+            }
+        }
+
+        _logger.LogDebug("[NextTrack] currentPath={Cur}, nextPath={Next}, no sample along {N} samples of offset line hit cultivated area",
+            guidance.HowManyPathsAway, nextPathsAway, sampleCount + 1);
+        return false;
     }
 
     /// <summary>

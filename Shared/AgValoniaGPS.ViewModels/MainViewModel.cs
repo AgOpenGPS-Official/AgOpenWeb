@@ -3602,12 +3602,13 @@ public partial class MainViewModel : ObservableObject
         }
         else
         {
-            State.Field.HeadlandLine = null;
-            _currentHeadlandLine = null;
-            _mapService.SetHeadlandLine(null);
-            HasHeadland = false;
-            IsHeadlandOn = false;
-            _logger.LogDebug($"[Headland] No valid HeadlandPolygon - YouTurn headland detection disabled");
+            // Boundary didn't carry a HeadlandPolygon (field.geojson has no headland role).
+            // DO NOT clobber State.Field.HeadlandLine here — the legacy Headlines.txt
+            // loader (LoadHeadland) runs separately on field open and is the authoritative
+            // source for the legacy-format case. Nulling it here races with that loader
+            // and silently disables U-turn headland detection (#289 F3). Field close and
+            // explicit headland removal handle the reset case elsewhere.
+            _logger.LogDebug($"[Headland] Boundary has no HeadlandPolygon — deferring to LoadHeadland / existing state");
         }
 
         // Sync boundary + headland to pipeline for guidance computations
