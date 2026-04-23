@@ -30,6 +30,10 @@ namespace AgValoniaGPS.Services.Pipeline;
 /// </summary>
 public sealed class GpsPipelineService : IGpsPipelineService
 {
+    // Lookahead time (seconds) used for auto-track-select in free-drive mode.
+    // Matches AgOpen's setAS_guidanceLookAheadTime default. See #261.
+    private const double GuidanceLookAheadSeconds = 2.0;
+
     // ── Dependencies ────────────────────────────────────────────────────
     private readonly IGpsService _gpsService;
     private readonly IToolPositionService _toolPositionService;
@@ -589,8 +593,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // through SyncGuidanceStateToPipeline — two writers fighting each
             // other and causing a per-cycle oscillation (see commit 57920e0).
             // One writer now — the cycle.
+            //
+            // #261: match AgOpen — project a *lookahead* point (pivot + heading * lookDist)
+            // onto the reference line instead of the raw pivot. Produces the "track jumps
+            // ahead of the tractor" behavior operators expect in free-drive.
+            double lookDist = Math.Max(
+                ConfigurationStore.Instance.ActualToolWidth * 0.5,
+                pos.Speed * GuidanceLookAheadSeconds);
+            double hRad = pos.Heading * Math.PI / 180.0;
+            double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
+            double lookN = driftedNorthing + Math.Cos(hRad) * lookDist;
             var (nearestPass, nearestDisplayTrack) = UpdateDisplayTrack(
-                pos, track!, passNumber, nudgeOffset, driftedEasting, driftedNorthing);
+                pos, track!, passNumber, nudgeOffset,
+                driftedEasting, driftedNorthing,
+                lookE, lookN);
             if (nearestDisplayTrack != null)
             {
                 displayTrack = nearestDisplayTrack;
@@ -912,14 +928,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// </summary>
     private (int nearestPass, Models.Track.Track? displayTrack) UpdateDisplayTrack(
         Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
-        double driftedEasting, double driftedNorthing)
+        double pivotEasting, double pivotNorthing,
+        double sampleEasting, double sampleNorthing)
     {
         var config = ConfigurationStore.Instance;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         if (widthMinusOverlap < 0.1) widthMinusOverlap = 1.0;
 
-        double perpDist = CalculatePerpendicularDistance(track, driftedEasting, driftedNorthing);
-        int nearestPass = (int)Math.Round(perpDist / widthMinusOverlap);
+        // Nearest-pass selection uses the *lookahead* sample (hysteresis: line jumps
+        // ahead of the tractor in free-drive). XTE display uses the *pivot* (actual
+        // cross-track error from the tractor position). See #261.
+        double sampleDist = CalculatePerpendicularDistance(track, sampleEasting, sampleNorthing);
+
+        // Match AgOpen CABLine.BuildCurrentABLineList — subtract the accumulated nudge
+        // before rounding to the nearest pass. Without this, nudging the line perpendicular
+        // can cause the auto-select to fight the nudge each cycle.
+        double refDist = (sampleDist - nudgeOffset) / widthMinusOverlap;
+        int nearestPass = refDist < 0 ? (int)(refDist - 0.5) : (int)(refDist + 0.5);
         double distAway = widthMinusOverlap * nearestPass + nudgeOffset;
 
         Models.Track.Track? resultTrack = null;
@@ -941,8 +966,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             };
         }
 
-        // Update XTE display
-        double xte = perpDist - (nearestPass * widthMinusOverlap);
+        // Update XTE display — actual pivot distance to the selected pass line.
+        double pivotPerp = CalculatePerpendicularDistance(track, pivotEasting, pivotNorthing);
+        double xte = pivotPerp - distAway;
         if (track.Points.Count >= 2)
         {
             var a = track.Points[0];
