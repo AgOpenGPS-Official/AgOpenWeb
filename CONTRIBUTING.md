@@ -135,6 +135,12 @@ Only the cycle-worker failure mode is survivable: back-pressure drops the *next*
 
 Open work is tracked on the [AgValoniaGPS project board](https://github.com/orgs/AgOpenGPS-Official/projects/16). Pick a card, comment on the linked issue to claim it, and open your PR against `develop`.
 
+## Translations
+
+Translation contributions are **on hold** until we decide how AgValoniaGPS will connect to the shared [AgOpenGPS Weblate project](https://hosted.weblate.org/engage/agopengps/). AgOpen has used Weblate for over a year; our goal is to let one Weblate contribution benefit both projects rather than maintain parallel hand-edited `.resx` files.
+
+Until that workflow is decided, please do not open PRs that add or edit files under `Shared/AgValoniaGPS.Views/Localization/`. If you'd like to translate, watch this section — we'll link to the Weblate project here once it's set up.
+
 ## How to Implement a Button Feature
 
 1. **Find the button** in the relevant AXAML file under `Shared/AgValoniaGPS.Views/Controls/`
