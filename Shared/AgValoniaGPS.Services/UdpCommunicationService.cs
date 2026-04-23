@@ -72,6 +72,12 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private DateTime _lastDataFromMachine = DateTime.MinValue;
     private DateTime _lastDataFromIMU = DateTime.MinValue;
 
+    // Per-module remote IP from the most recent inbound packet. Populated from
+    // HELLO_FROM_* (and AutoSteer data PGNs, which also identify the module).
+    private string? _autoSteerIp;
+    private string? _machineIp;
+    private string? _imuIp;
+
     private const int HELLO_TIMEOUT_MS = 2000; // 2 seconds for hello response
     private const int DATA_TIMEOUT_STEER_MACHINE_MS = 100; // 50Hz data = 20ms cycle, allow 100ms
     private const int DATA_TIMEOUT_IMU_MS = 300; // 10Hz data = 100ms cycle, allow 300ms
@@ -339,6 +345,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private void UpdateModuleConnection(byte pgn, IPEndPoint remoteEndPoint)
     {
         var now = DateTime.Now;
+        var remoteIp = remoteEndPoint.Address.ToString();
 
         // Track ALL PGNs as data - if we're getting any PGN from a module, it's sending data
         switch (pgn)
@@ -346,6 +353,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // AutoSteer PGNs
             case PgnNumbers.HELLO_FROM_AUTOSTEER: // 126
                 _lastHelloFromAutoSteer = now;
+                _autoSteerIp = remoteIp;
                 LockToSubnet(remoteEndPoint.Address);
                 System.Diagnostics.Debug.WriteLine($"AutoSteer HELLO received at {now:HH:mm:ss.fff}");
                 break;
@@ -356,12 +364,14 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.STEER_SETTINGS:       // 252
             case PgnNumbers.STEER_CONFIG:         // 251
                 _lastDataFromAutoSteer = now;
+                _autoSteerIp = remoteIp;
                 _lastModuleResponse = DateTime.UtcNow;
                 break;
 
             // Machine PGNs (receive-only, only Hello matters)
             case PgnNumbers.HELLO_FROM_MACHINE:  // 123
                 _lastHelloFromMachine = now;
+                _machineIp = remoteIp;
                 LockToSubnet(remoteEndPoint.Address);
                 System.Diagnostics.Debug.WriteLine($"Machine HELLO received at {now:HH:mm:ss.fff}");
                 break;
@@ -369,6 +379,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // IMU PGNs (only Hello matters - data only sent when active)
             case PgnNumbers.HELLO_FROM_IMU: // 121
                 _lastHelloFromIMU = now;
+                _imuIp = remoteIp;
                 LockToSubnet(remoteEndPoint.Address);
                 System.Diagnostics.Debug.WriteLine($"IMU HELLO received at {now:HH:mm:ss.fff}");
                 break;
@@ -379,6 +390,18 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 break;
         }
     }
+
+    /// <summary>
+    /// Returns the most-recently-observed remote IP for the given module, or null
+    /// if no packet has ever been received from it.
+    /// </summary>
+    public string? GetModuleIpAddress(ModuleType moduleType) => moduleType switch
+    {
+        ModuleType.AutoSteer => _autoSteerIp,
+        ModuleType.Machine   => _machineIp,
+        ModuleType.IMU       => _imuIp,
+        _                    => null,
+    };
 
     /// <summary>
     /// Lock outgoing packets to the subnet of a responding module.

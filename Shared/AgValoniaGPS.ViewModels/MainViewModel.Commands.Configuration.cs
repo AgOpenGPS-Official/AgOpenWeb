@@ -29,14 +29,6 @@ public partial class MainViewModel
 {
     private void InitializeConfigurationCommands()
     {
-        // Data IO Dialog
-        ShowDataIODialogCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(DialogType.DataIO);
-        });
-
-        CloseDataIODialogCommand = new RelayCommand(CloseDataIODialog);
-
         // Configuration Dialog
         ShowConfigurationDialogCommand = new RelayCommand(() =>
         {
