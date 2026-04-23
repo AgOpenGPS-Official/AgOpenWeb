@@ -42,17 +42,22 @@ Rewrite every AgValonia key to use AgOpen's `gs*` convention (or some shared sch
 
 ### Option B — Separate Weblate components, rely on Translation Memory
 
-AgOpen and AgValonia stay as distinct components on the same Weblate project. Weblate's built-in **Translation Memory** auto-suggests a matching translation whenever the same English source string appears in a different component. Translator clicks *Accept* instead of retyping.
+AgOpen and AgValonia stay as distinct components on the same Weblate project. Weblate's built-in **Translation Memory** indexes every saved translation and auto-suggests matching entries whenever the same English source string appears anywhere else — **bidirectionally** across components. A translator clicks *Accept* instead of retyping.
 
-**Effort:** Zero code changes. Set up one Weblate component for AgValonia pointing at `Shared/AgValoniaGPS.Views/Localization/` with the standard `.resx` file filter. Tell translators both projects live in the same Weblate site.
+**Effort:** Zero code changes. Set up one Weblate component for AgValonia pointing at `Shared/AgValoniaGPS.Views/Localization/` with the standard `.resx` file filter, inside the existing AgOpen Weblate project. Tell translators both projects live in the same Weblate site.
 
 **Risk:** Minimal. Existing `.resx` files keep their structure. Worst case: translators see two lists of strings per language.
 
-**Translator experience:** Decent. They see two components but when working on AgValonia, familiar strings auto-suggest from AgOpen's existing translations. No retyping for matching strings.
+**Translator experience:** Decent. They see two components but familiar strings auto-suggest the other component's existing translation whenever English matches. No retyping for matching strings in either direction.
 
-**Ongoing cost:** Zero beyond Weblate hosting. New AgValonia strings get translated in AgValonia's component only; the translation memory pattern means if AgOpen later adds the same string, translators there see it pre-suggested from AgValonia.
+**Ongoing cost:** Zero beyond Weblate hosting. TM flows both ways:
 
-**Auto-sharing:** ~27% of strings (the 102 exact value matches). Translator still clicks *Accept* per string.
+- AgValonia translator approves a string that AgOpen doesn't yet have → AgOpen translators get it as a suggestion next time they hit the same English source.
+- AgOpen already has translations for 102 of our English strings → AgValonia translators get them pre-suggested from day one.
+
+This requires AgValonia to live as a **component inside the existing AgOpen Weblate project** (TM is automatically shared within a project). If it's set up as a separate Weblate project, cross-project TM sharing has to be enabled explicitly — it's on by default on `hosted.weblate.org`, but worth verifying.
+
+**Auto-sharing:** ~27% of strings get exact-match suggestions (the 102 English value matches). Fuzzy matches surface additional near-duplicates ranked by similarity. Translator still clicks *Accept* per string — TM is suggestion-only, not auto-apply, so a bad translation in one component can't silently propagate.
 
 ---
 
