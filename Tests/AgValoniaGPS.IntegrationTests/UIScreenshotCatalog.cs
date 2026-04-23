@@ -74,7 +74,6 @@ public static class UIScreenshotCatalog
                 (DialogType.FieldSelection, "field_selection"),
                 (DialogType.Tracks, "tracks"),
                 (DialogType.NewField, "new_field"),
-                (DialogType.DataIO, "data_io"),
                 (DialogType.HeadlandBuilder, "headland_builder"),
                 (DialogType.QuickABSelector, "quick_ab_selector"),
                 (DialogType.DrawAB, "draw_ab"),

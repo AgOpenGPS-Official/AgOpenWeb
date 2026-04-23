@@ -516,6 +516,9 @@ public partial class MainViewModel : ObservableObject
                 State.Connections.IsImuDataOk = imuOk;
                 State.Connections.IsGpsDataOk = gpsOk;
                 State.Connections.IsGpsConnected = gpsOk;
+                State.Connections.AutoSteerIpAddress = _udpService.GetModuleIpAddress(ModuleType.AutoSteer);
+                State.Connections.MachineIpAddress = _udpService.GetModuleIpAddress(ModuleType.Machine);
+                State.Connections.ImuIpAddress = _udpService.GetModuleIpAddress(ModuleType.IMU);
 
                 // Legacy property updates (for existing bindings - will be removed in Phase 5)
                 IsAutoSteerDataOk = steerOk;
@@ -2380,15 +2383,6 @@ public partial class MainViewModel : ObservableObject
 
     // AgShare Download Dialog (visibility managed by State.UI)
     public ICommand? CancelAgShareDownloadDialogCommand { get; private set; }
-
-    // Data I/O Commands
-    public ICommand? ShowDataIODialogCommand { get; private set; }
-    public ICommand? CloseDataIODialogCommand { get; private set; }
-
-    private void CloseDataIODialog()
-    {
-        State.UI.CloseDialog();
-    }
 
     // iOS Modal Sheet Visibility Properties
     private bool _isFileMenuVisible;

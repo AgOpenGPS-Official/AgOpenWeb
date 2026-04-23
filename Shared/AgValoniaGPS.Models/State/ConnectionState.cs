@@ -111,6 +111,13 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _isAutoSteerEngaged, value);
     }
 
+    private string? _autoSteerIpAddress;
+    public string? AutoSteerIpAddress
+    {
+        get => _autoSteerIpAddress;
+        set => SetProperty(ref _autoSteerIpAddress, value);
+    }
+
     // Machine module
     private bool _isMachineConnected;
     public bool IsMachineConnected
@@ -126,6 +133,13 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _isMachineDataOk, value);
     }
 
+    private string? _machineIpAddress;
+    public string? MachineIpAddress
+    {
+        get => _machineIpAddress;
+        set => SetProperty(ref _machineIpAddress, value);
+    }
+
     // IMU
     private bool _isImuConnected;
     public bool IsImuConnected
@@ -139,6 +153,13 @@ public class ConnectionState : ObservableObject
     {
         get => _isImuDataOk;
         set => SetProperty(ref _isImuDataOk, value);
+    }
+
+    private string? _imuIpAddress;
+    public string? ImuIpAddress
+    {
+        get => _imuIpAddress;
+        set => SetProperty(ref _imuIpAddress, value);
     }
 
     // Overall status
@@ -167,5 +188,6 @@ public class ConnectionState : ObservableObject
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;
+        AutoSteerIpAddress = MachineIpAddress = ImuIpAddress = null;
     }
 }

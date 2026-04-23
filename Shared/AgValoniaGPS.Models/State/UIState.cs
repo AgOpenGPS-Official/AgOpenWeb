@@ -51,7 +51,6 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsAgShareSettingsDialogVisible));
                 OnPropertyChanged(nameof(IsAgShareUploadDialogVisible));
                 OnPropertyChanged(nameof(IsAgShareDownloadDialogVisible));
-                OnPropertyChanged(nameof(IsDataIODialogVisible));
                 OnPropertyChanged(nameof(IsSimCoordsDialogVisible));
                 OnPropertyChanged(nameof(IsQuickABSelectorVisible));
                 OnPropertyChanged(nameof(IsDrawABDialogVisible));
@@ -94,7 +93,6 @@ public class UIState : ObservableObject
     public bool IsAgShareSettingsDialogVisible => ActiveDialog == DialogType.AgShareSettings;
     public bool IsAgShareUploadDialogVisible => ActiveDialog == DialogType.AgShareUpload;
     public bool IsAgShareDownloadDialogVisible => ActiveDialog == DialogType.AgShareDownload;
-    public bool IsDataIODialogVisible => ActiveDialog == DialogType.DataIO;
     public bool IsSimCoordsDialogVisible => ActiveDialog == DialogType.SimCoords;
     public bool IsQuickABSelectorVisible => ActiveDialog == DialogType.QuickABSelector;
     public bool IsDrawABDialogVisible => ActiveDialog == DialogType.DrawAB;
@@ -224,7 +222,6 @@ public enum DialogType
     AgShareSettings,
     AgShareUpload,
     AgShareDownload,
-    DataIO,
     Headland,
     HeadlandBuilder,
     SimCoords,
