@@ -40,24 +40,33 @@ Rewrite every AgValonia key to use AgOpen's `gs*` convention (or some shared sch
 
 ---
 
-### Option B — Separate Weblate components, rely on Translation Memory
+### Option B — Keep separate translation sources, rely on Translation Memory
 
-AgOpen and AgValonia stay as distinct components on the same Weblate project. Weblate's built-in **Translation Memory** indexes every saved translation and auto-suggests matching entries whenever the same English source string appears anywhere else — **bidirectionally** across components. A translator clicks *Accept* instead of retyping.
+AgOpen and AgValonia stay as distinct translation targets. Weblate's built-in **Translation Memory** indexes every saved translation and auto-suggests matching entries whenever the same English source string appears anywhere else — **bidirectionally**. A translator clicks *Accept* instead of retyping.
 
-**Effort:** Zero code changes. Set up one Weblate component for AgValonia pointing at `Shared/AgValoniaGPS.Views/Localization/` with the standard `.resx` file filter, inside the existing AgOpen Weblate project. Tell translators both projects live in the same Weblate site.
+There are two valid layouts; pick based on admin preference:
 
-**Risk:** Minimal. Existing `.resx` files keep their structure. Worst case: translators see two lists of strings per language.
+| Layout | TM behavior | Admin / branding |
+|---|---|---|
+| **Same project, separate components** | Within-project TM — automatic, no config | One project URL for both; shared maintainers, badges, stats |
+| **Separate projects** | Cross-project TM on `hosted.weblate.org` is on by default for public projects (one shared pool across every public Weblate project on the instance, not just ours) | Independent settings/maintainers/access per project; each gets its own URL, badge, stats page |
 
-**Translator experience:** Decent. They see two components but familiar strings auto-suggest the other component's existing translation whenever English matches. No retyping for matching strings in either direction.
+TM flows both ways regardless of layout:
 
-**Ongoing cost:** Zero beyond Weblate hosting. TM flows both ways:
-
-- AgValonia translator approves a string that AgOpen doesn't yet have → AgOpen translators get it as a suggestion next time they hit the same English source.
+- AgValonia translator approves a string AgOpen doesn't yet have → AgOpen translators get it as a suggestion next time they hit the same English source.
 - AgOpen already has translations for 102 of our English strings → AgValonia translators get them pre-suggested from day one.
 
-This requires AgValonia to live as a **component inside the existing AgOpen Weblate project** (TM is automatically shared within a project). If it's set up as a separate Weblate project, cross-project TM sharing has to be enabled explicitly — it's on by default on `hosted.weblate.org`, but worth verifying.
+**Effort:** Zero code changes. Create one Weblate target (component or project) pointing at `Shared/AgValoniaGPS.Views/Localization/` with the standard `.resx` file filter.
 
-**Auto-sharing:** ~27% of strings get exact-match suggestions (the 102 English value matches). Fuzzy matches surface additional near-duplicates ranked by similarity. Translator still clicks *Accept* per string — TM is suggestion-only, not auto-apply, so a bad translation in one component can't silently propagate.
+**Risk:** Minimal. Existing `.resx` files keep their structure.
+
+**Translator experience:** Decent. They navigate to AgValonia's target; familiar strings auto-suggest from AgOpen's existing translations (and vice versa). No retyping for matching strings.
+
+**Ongoing cost:** Zero beyond Weblate hosting.
+
+**Caveat with separate projects on `hosted.weblate.org`:** the cross-project TM pool includes *all* public projects on the instance, not just AgOpen + AgValonia. Expect occasional noisy suggestions from unrelated apps — translators can ignore them. Within a single project the TM pool is scoped cleanly to our two components only.
+
+**Auto-sharing:** ~27% of strings get exact-match suggestions (the 102 English value matches). Fuzzy matches surface additional near-duplicates ranked by similarity. Translator still clicks *Accept* per string — TM is suggestion-only, not auto-apply, so a bad translation can't silently propagate.
 
 ---
 
