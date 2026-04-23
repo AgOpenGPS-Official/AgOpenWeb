@@ -88,8 +88,20 @@ public partial class YouTurnCreationService
         {
             var path = output.TurnPath;
 
-            // Spiral / pretzel guard: a clean U-turn is ~180°; anything over ~270° means
-            // the Dubins / Omega algorithm wrapped, so drop to the simple fallback.
+            // Spiral / pretzel guard. The original check summed |ΔHeading| per step and
+            // rejected anything > 1.5π (270°) — but a legit Dubins RLR/LRL arc-arc-arc
+            // solution can accumulate 300°+ of absolute turning while ending at the correct
+            // 180° reversal. That false-rejected valid paths (#289 F2) and dropped the run
+            // to the less-optimal simple fallback.
+            //
+            // New guard:
+            //   - Primary check: start-to-end heading delta should be ~π (180°) for a U-turn.
+            //   - Secondary safety: cumulative |ΔHeading| capped at 4π (720°) to still catch
+            //     actual infinite-loop spirals, without rejecting loopy-but-valid paths.
+            double netHeadingChange = path[^1].Heading - path[0].Heading;
+            while (netHeadingChange > Math.PI) netHeadingChange -= 2 * Math.PI;
+            while (netHeadingChange < -Math.PI) netHeadingChange += 2 * Math.PI;
+
             double totalHeadingChange = 0;
             for (int i = 1; i < path.Count; i++)
             {
@@ -99,17 +111,22 @@ public partial class YouTurnCreationService
                 totalHeadingChange += Math.Abs(delta);
             }
 
-            if (totalHeadingChange > Math.PI * 1.5)
+            // ~π expected for U-turn; tolerate ±30° slack to account for approach angle.
+            bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - Math.PI) < Math.PI / 6.0;
+            bool cumulativeRunaway = totalHeadingChange > Math.PI * 4.0;
+
+            if (!netIsUTurnLike || cumulativeRunaway)
             {
-                _logger.LogWarning("[YouTurn] Service path has excessive heading change ({Deg:F0}°) - using simple fallback",
-                    totalHeadingChange * 180 / Math.PI);
+                _logger.LogWarning("[YouTurn] Service path rejected: net={Net:F0}° cumulative={Cum:F0}° - using simple fallback",
+                    netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
                 var fallback = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
                     guidance, turn, uTurnSkipRows, headlandDistance);
                 return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
             }
 
             TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
-            _logger.LogDebug("[YouTurn] Path created with {Count} points", path.Count);
+            _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}°",
+                path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
             return new TurnPathResult(path, UsedFallback: false);
         }
 
@@ -490,11 +507,34 @@ public partial class YouTurnCreationService
         double headlandBoundaryNorthing = currentPosition.Northing + Math.Cos(travelHeading) * distToHeadland;
 
         double distanceFromBoundary = config.Guidance.UTurnDistanceFromBoundary;
-        double headlandLegLength = headlandDistance - turnRadius - distanceFromBoundary;
+
+        // #289 F4: Compute the actual distance from the headland crossing to the outer
+        // boundary along the travel heading, instead of assuming headlandDistance (the
+        // scalar headland-zone width). On non-rectangular fields the available forward
+        // room varies along the headland — near a corner it's tighter than the zone
+        // width, along a long straight edge it's closer to the zone width. The previous
+        // formula `headlandLegLength = headlandDistance - turnRadius - distanceFromBoundary`
+        // produced a tight arc when used as a fallback for a turn that the Dubins service
+        // would have placed deeper. Using the actual ray distance makes the fallback's
+        // apex placement match the service's intent regardless of field shape.
+        double rayToOuter = double.MaxValue;
+        if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
+        {
+            rayToOuter = RaycastDistanceToPolygon(
+                headlandBoundaryEasting, headlandBoundaryNorthing,
+                travelHeading, boundary.OuterBoundary.Points);
+        }
+        double availableHeadlandSpan = rayToOuter < double.MaxValue
+            ? rayToOuter
+            : headlandDistance; // fallback to legacy scalar when raycast fails
+
+        double headlandLegLength = availableHeadlandSpan - turnRadius - distanceFromBoundary;
+        if (headlandLegLength < 0) headlandLegLength = 0;
         double fieldLegLength = config.Guidance.UTurnExtension;
 
         _logger.LogDebug("[YouTurn] Simple path: turnOffset={Off:F1}m, turnRadius={Rad:F1}m", turnOffset, turnRadius);
-        _logger.LogDebug("[YouTurn] HeadlandDistance={HD:F1}m, headlandLegLength={HLL:F1}m", headlandDistance, headlandLegLength);
+        _logger.LogDebug("[YouTurn] headlandDist(scalar)={HD:F1}m rayToOuter={RO:F1}m, headlandLegLength={HLL:F1}m",
+            headlandDistance, rayToOuter, headlandLegLength);
 
         double entryStartE = headlandBoundaryEasting - Math.Sin(travelHeading) * fieldLegLength;
         double entryStartN = headlandBoundaryNorthing - Math.Cos(travelHeading) * fieldLegLength;
@@ -693,5 +733,44 @@ public partial class YouTurnCreationService
             path.Count, turnRadius, turnOffset, turnLeft);
 
         return path;
+    }
+
+    /// <summary>
+    /// Distance from (startE, startN) along direction `heading` to the first intersection
+    /// with a closed polygon. Returns double.MaxValue if the ray never hits. Used by
+    /// SimpleFallback to measure the actual forward distance from the headland crossing to
+    /// the outer boundary on non-rectangular fields (#289 F4).
+    /// </summary>
+    private static double RaycastDistanceToPolygon(
+        double startE, double startN, double heading, IReadOnlyList<BoundaryPoint> polygon)
+    {
+        if (polygon.Count < 3) return double.MaxValue;
+
+        double dirE = Math.Sin(heading);
+        double dirN = Math.Cos(heading);
+        double minDist = double.MaxValue;
+        int n = polygon.Count;
+
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = polygon[i];
+            var p2 = polygon[(i + 1) % n];
+
+            double edgeE = p2.Easting - p1.Easting;
+            double edgeN = p2.Northing - p1.Northing;
+            double toP1E = p1.Easting - startE;
+            double toP1N = p1.Northing - startN;
+
+            double cross = dirE * edgeN - dirN * edgeE;
+            if (Math.Abs(cross) < 1e-10) continue;
+
+            double t = (toP1E * edgeN - toP1N * edgeE) / cross;
+            double u = (toP1E * dirN - toP1N * dirE) / cross;
+
+            if (t > 0 && u >= 0 && u <= 1 && t < minDist)
+                minDist = t;
+        }
+
+        return minDist;
     }
 }

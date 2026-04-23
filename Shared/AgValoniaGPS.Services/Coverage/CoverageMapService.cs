@@ -1518,6 +1518,17 @@ public class CoverageMapService : ICoverageMapService
             SetPixelBufferCallback(pixels);
 
             Console.WriteLine($"[Coverage] Loaded section display: {nonZeroPixels:N0} covered pixels{(needsScaling ? " (scaled)" : "")}");
+
+            // If the display file decoded to an empty canvas (no covered pixels) but the
+            // caller also has detection bits to draw from, return false so LoadFromFile's
+            // CoverageUpdated event reports PixelsAlreadyLoaded=false and the UI rebuilds
+            // the display from detection bits. Otherwise a truncated / stale / header-only
+            // disp file silently wins over valid detection data and the field opens blank.
+            if (nonZeroPixels == 0)
+            {
+                Console.WriteLine("[Coverage] Section display is empty — treating as no-display so detection bits can rebuild the map");
+                return false;
+            }
             return true;
         }
         catch (Exception ex)
