@@ -127,6 +127,13 @@ public interface IMapService
         IReadOnlyList<bool>? turnValidity = null,
         IReadOnlyList<bool>? turnIsTransit = null);
 
+    /// <summary>
+    /// Debug overlay: cell decomposition boundaries from the F2C-style route
+    /// planner. Each entry is one cell's outer ring; rendering is gated on
+    /// <c>DisplayConfig.RoutePlanningCellOverlayVisible</c>.
+    /// </summary>
+    void SetPlannedCells(IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec2>> cellPolygons);
+
     // Coverage bitmap initialization
     // Initialize coverage bitmap with field bounds on field load
     // If background image is set, composites it; otherwise initializes to black

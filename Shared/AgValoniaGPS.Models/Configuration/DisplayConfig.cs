@@ -33,6 +33,19 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _gridVisible, value);
     }
 
+    /// <summary>
+    /// Debug overlay: draw the F2C-pipeline cell decomposition boundaries on
+    /// top of the planned route. Default ON during the route-planning rewrite
+    /// so we can see what the planner actually produced; flip to false for
+    /// release once Phase 12 validation lands.
+    /// </summary>
+    private bool _routePlanningCellOverlayVisible = true;
+    public bool RoutePlanningCellOverlayVisible
+    {
+        get => _routePlanningCellOverlayVisible;
+        set => SetProperty(ref _routePlanningCellOverlayVisible, value);
+    }
+
     private bool _compassVisible = true;
     public bool CompassVisible
     {

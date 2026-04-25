@@ -200,6 +200,9 @@ public class MapService : IMapService
         System.Collections.Generic.IReadOnlyList<bool>? turnIsTransit = null) =>
         GetMapControl().SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
 
+    public void SetPlannedCells(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec2>> cellPolygons) =>
+        GetMapControl().SetPlannedCells(cellPolygons);
+
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>
         GetMapControl().InitializeCoverageBitmapWithBounds(minE, maxE, minN, maxN);

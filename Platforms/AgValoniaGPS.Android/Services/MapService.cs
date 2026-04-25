@@ -282,6 +282,11 @@ public class MapService : IMapService
         _mapControl?.SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
     }
 
+    public void SetPlannedCells(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec2>> cellPolygons)
+    {
+        _mapControl?.SetPlannedCells(cellPolygons);
+    }
+
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN)
     {

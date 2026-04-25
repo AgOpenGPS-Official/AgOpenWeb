@@ -118,6 +118,7 @@ public interface ISharedMapControl
     void SetRecordedPaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> paths);
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
     void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
+    void SetPlannedCells(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec2>> cellPolygons);
     void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
         IReadOnlyList<bool>? turnValidity = null,
         IReadOnlyList<bool>? turnIsTransit = null);
@@ -239,6 +240,8 @@ internal class MapRenderState
     public IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> PlannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
     public IReadOnlyList<bool> PlannedTurnValidity = Array.Empty<bool>();
     public IReadOnlyList<bool> PlannedTurnIsTransit = Array.Empty<bool>();
+    public IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec2>> PlannedCells = Array.Empty<List<AgValoniaGPS.Models.Base.Vec2>>();
+    public bool PlannedCellsVisible;
 
     // Recording
     public List<(double Easting, double Northing)>? RecordingPoints;
@@ -547,6 +550,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> _plannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
     private IReadOnlyList<bool> _plannedTurnValidity = Array.Empty<bool>();
     private IReadOnlyList<bool> _plannedTurnIsTransit = Array.Empty<bool>();
+    private IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec2>> _plannedCells = Array.Empty<List<AgValoniaGPS.Models.Base.Vec2>>();
 
     // Ground texture bitmaps (passed to render thread via state snapshot)
     private Bitmap? _groundTexture;
@@ -840,6 +844,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             PlannedTurnPaths = _plannedTurnPaths,
             PlannedTurnValidity = _plannedTurnValidity,
             PlannedTurnIsTransit = _plannedTurnIsTransit,
+            PlannedCells = _plannedCells,
+            PlannedCellsVisible = AgValoniaGPS.Models.Configuration.ConfigurationStore
+                .Instance.Display.RoutePlanningCellOverlayVisible,
 
             RecordingPoints = _recordingPoints != null
                 ? new List<(double, double)>(_recordingPoints) : null,
@@ -2704,6 +2711,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _plannedTurnPaths = turnPaths;
         _plannedTurnValidity = turnValidity ?? Array.Empty<bool>();
         _plannedTurnIsTransit = turnIsTransit ?? Array.Empty<bool>();
+        SendStateToHandler();
+    }
+
+    public void SetPlannedCells(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec2>> cellPolygons)
+    {
+        _plannedCells = cellPolygons;
         SendStateToHandler();
     }
 
@@ -4933,6 +4946,30 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     for (int i = 1; i < turnPath.Count; i++)
                         path.LineTo((float)turnPath[i].Easting, (float)turnPath[i].Northing);
                     canvas.DrawPath(path, paint);
+                }
+            }
+
+            // F2C-pipeline cell-decomposition debug overlay. Drawn under the
+            // swath/turn layers so it doesn't visually compete with the route.
+            if (s.PlannedCellsVisible && s.PlannedCells.Count > 0)
+            {
+                using var cellPaint = new SKPaint
+                {
+                    Color = new SKColor(255, 80, 200, 140),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 0.5f,
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new float[] { 1.5f, 1.5f }, 0),
+                };
+                foreach (var cellPoly in s.PlannedCells)
+                {
+                    if (cellPoly.Count < 3) continue;
+                    using var path = new SKPath();
+                    path.MoveTo((float)cellPoly[0].Easting, (float)cellPoly[0].Northing);
+                    for (int i = 1; i < cellPoly.Count; i++)
+                        path.LineTo((float)cellPoly[i].Easting, (float)cellPoly[i].Northing);
+                    path.Close();
+                    canvas.DrawPath(path, cellPaint);
                 }
             }
 

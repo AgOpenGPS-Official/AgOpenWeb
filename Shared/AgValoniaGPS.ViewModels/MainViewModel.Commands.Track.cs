@@ -1505,6 +1505,10 @@ public partial class MainViewModel
 
         _mapService.SetPlannedSwaths(displaySwaths);
         _mapService.SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
+        // Debug overlay: pipe the cell decomposition through to the renderer
+        // so the F2C-pipeline cells can be inspected against the planned route.
+        var cellPolygons = cells.Select(c => c.Polygon).ToList();
+        _mapService.SetPlannedCells(cellPolygons);
 
         // Store route plan in application state for Phase 3 route following
         State.RoutePlan.ActivePlan = routePlan;
