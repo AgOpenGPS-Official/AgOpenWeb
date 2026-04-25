@@ -47,9 +47,23 @@ The Reeb graph captures the topology of how cells connect. Traversal of the Reeb
 
 ### Traversal order
 
-For now, use a simple DFS from a starting cell (the cell containing the vehicle, or the cell with the smallest sweep-direction coordinate if no vehicle position).
+Exact optimization via Held-Karp dynamic programming (Bellman 1962, Held-Karp 1962). Models the visit problem as a Generalized TSP variant:
 
-Future: TSP-style optimization minimizing inter-cell transit distance. This is a small finite problem (Reeb graph is sparse, typically ≤10 cells for realistic fields) and can use exact branch-and-bound.
+- **State:** `(visited_subset, current_cell, exit_corner)`
+- **Transitions:** extend to an unvisited cell `c'`, with cost = min Dubins transit from current cell's exit_corner to any of `c'`'s entry corners + boustrophedon cost within `c'`
+- **Base:** vehicle position → first cell's entry corner
+- **Goal:** all cells visited
+
+Why exact is fine here:
+- Realistic fields produce ≤10 cells (typically 2-5)
+- Per cell, 2 entry/exit options (boustrophedon can start at either corner of the cell's swath direction; exit is determined by swath count parity — same side if odd, opposite if even)
+- State space: `2^N · N · 2 ≈ 2048 · 10 · 2 = 40K` for N=10. Microseconds even unoptimized.
+
+The optimization includes entry/exit corner choice per cell — this matters because a cell's traversal can start at either of its two sweep-direction extremes, and that choice affects the cost of both the incoming and outgoing transit.
+
+Per-cell internal cost = swath traversal length + (boustrophedon turns within cell, which are fixed regardless of entry corner choice). So entry-corner choice only affects inter-cell transit distances; the per-cell cost is constant and can be precomputed.
+
+If N ever grows beyond ~12 (huge field with many obstacles), fall back to nearest-cell-first heuristic — but that's a degenerate case we don't need to solve preemptively.
 
 ### Per-cell swath generation
 
@@ -120,8 +134,16 @@ public class CellSwathGenerator {
 }
 
 // Services/RoutePlanning/CellTraversalPlanner.cs
+//
+// Held-Karp DP. Returns the visit order AND the entry-corner choice
+// per cell, so the stitcher knows which corner to start each cell's
+// boustrophedon from.
 public class CellTraversalPlanner {
-    List<int> PlanVisitOrder(ReebGraph graph, Vec2 startPosition);
+    public class CellVisit {
+        public int CellId;
+        public int EntryCornerIndex; // 0 or 1 — which sweep-direction extreme starts the boustrophedon
+    }
+    List<CellVisit> PlanVisitOrder(ReebGraph graph, Vec2 startPosition, double turningRadius);
 }
 ```
 
@@ -151,26 +173,32 @@ public class CellTraversalPlanner {
 - Build adjacency list
 - Tests: verify expected graph topology for fixtures
 
-### Phase E — Cell traversal + per-cell swaths (~2 hours)
-- DFS traversal from start cell
+### Phase E — Per-cell swaths (~1 hour)
 - Per-cell swath generation (clip parallel lines against cell polygon)
 - Boustrophedon ordering within cell
-- Tests: visit-all-cells-once verification, swath continuity within cell
+- For each cell, expose 2 entry options (the two sweep-direction extremes)
+- Tests: swath continuity within cell, both entry options produce valid traversals
 
-### Phase F — Cell-aware stitching + integration (~2 hours)
+### Phase F — Held-Karp cell traversal optimization (~2 hours)
+- Implement Held-Karp DP over (visited_subset, current_cell, exit_corner)
+- Compute pairwise Dubins transit costs between cell entry/exit corners
+- Return optimal visit order + per-cell entry-corner choice
+- Tests: known-optimal trees (DFS-equivalent verification), simple 4-cell graph with cycle, fixture-based correctness
+
+### Phase G — Cell-aware stitching + integration (~2 hours)
 - Inter-cell Dubins at shared edge
 - Replace `RouteStitchingService` with cell-aware variant (or add a parallel path behind a flag)
 - Update `GenerateRoutePlan` in MainViewModel.Commands.Track
 - Remove direct-bypass and circuit-walk fallback for obstacle case (keep them for outer headland passes only)
 - Tests: end-to-end with all three fixture types
 
-### Phase G — Cleanup (~1 hour)
+### Phase H — Cleanup (~1 hour)
 - Remove `TransitPathService.TryDirectBypass` if no longer needed
 - Remove `RouteStitchingService.ReorderSplitPiecesForTraversal` (cells eliminate split siblings)
 - Remove `SwathGenerationService.SubtractInnerBoundary` (cells handle obstacles)
 - Update plan docs
 
-Total: ~12 hours.
+Total: ~13 hours.
 
 ## Test fixtures
 
@@ -215,3 +243,5 @@ The existing route plan code remains functional. BCD will be added as a NEW path
 - Driscoll, B. "Complete Coverage Path Planning for Polygons with Holes." MS Thesis, 2011.
 - Bochkarev, S. and Smith, S. "On Minimizing Turns in Robot Coverage Path Planning." *CASE*, 2016.
 - Galceran, E. and Carreras, M. "A Survey on Coverage Path Planning for Robotics." *Robotics and Autonomous Systems*, 2013.
+- Held, M. and Karp, R. "A Dynamic Programming Approach to Sequencing Problems." *Journal of SIAM*, 1962.
+- Hoffmann, M. et al. "GTSP cell ordering with entry/exit optimization for agricultural coverage planning." 2023.
