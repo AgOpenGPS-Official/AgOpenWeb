@@ -9,10 +9,14 @@
 namespace AgValoniaGPS.Models.RoutePlanning;
 
 /// <summary>
-/// Identifies whether a route segment is a working swath or a turn between swaths.
+/// Identifies whether a route segment is a working swath, a turn between swaths,
+/// or a transit path traced along a perimeter circuit to bypass an obstacle.
+/// Transits move the vehicle between zones without working — section control
+/// lifts automatically as the vehicle enters inner-boundary buffer zones.
 /// </summary>
 public enum RouteSegmentType
 {
     Swath,
-    Turn
+    Turn,
+    Transit
 }

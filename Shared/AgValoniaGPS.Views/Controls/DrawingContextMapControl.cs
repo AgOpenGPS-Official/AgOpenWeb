@@ -118,7 +118,8 @@ public interface ISharedMapControl
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
     void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
     void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
-        IReadOnlyList<bool>? turnValidity = null);
+        IReadOnlyList<bool>? turnValidity = null,
+        IReadOnlyList<bool>? turnIsTransit = null);
 
     // Coverage visualization
     void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches);
@@ -232,6 +233,7 @@ internal class MapRenderState
     public IReadOnlyList<AgValoniaGPS.Models.Track.Track> PlannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     public IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> PlannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
     public IReadOnlyList<bool> PlannedTurnValidity = Array.Empty<bool>();
+    public IReadOnlyList<bool> PlannedTurnIsTransit = Array.Empty<bool>();
 
     // Recording
     public List<(double Easting, double Northing)>? RecordingPoints;
@@ -539,6 +541,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private IReadOnlyList<AgValoniaGPS.Models.Track.Track> _plannedSwaths = Array.Empty<AgValoniaGPS.Models.Track.Track>();
     private IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> _plannedTurnPaths = Array.Empty<List<AgValoniaGPS.Models.Base.Vec3>>();
     private IReadOnlyList<bool> _plannedTurnValidity = Array.Empty<bool>();
+    private IReadOnlyList<bool> _plannedTurnIsTransit = Array.Empty<bool>();
 
     // Ground texture bitmaps (passed to render thread via state snapshot)
     private Bitmap? _groundTexture;
@@ -791,6 +794,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             PlannedSwaths = _plannedSwaths,
             PlannedTurnPaths = _plannedTurnPaths,
             PlannedTurnValidity = _plannedTurnValidity,
+            PlannedTurnIsTransit = _plannedTurnIsTransit,
 
             RecordingPoints = _recordingPoints != null
                 ? new List<(double, double)>(_recordingPoints) : null,
@@ -2639,10 +2643,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     }
 
     public void SetPlannedTurnPaths(IReadOnlyList<List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
-        IReadOnlyList<bool>? turnValidity = null)
+        IReadOnlyList<bool>? turnValidity = null,
+        IReadOnlyList<bool>? turnIsTransit = null)
     {
         _plannedTurnPaths = turnPaths;
         _plannedTurnValidity = turnValidity ?? Array.Empty<bool>();
+        _plannedTurnIsTransit = turnIsTransit ?? Array.Empty<bool>();
         SendStateToHandler();
     }
 
@@ -4522,6 +4528,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     StrokeWidth = 1.0f,
                     IsAntialias = true
                 };
+                // Transit segments — gray to signal "implement up, just driving through".
+                using var transitPaint = new SKPaint
+                {
+                    Color = new SKColor(180, 180, 180, 220),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1.5f,
+                    IsAntialias = true
+                };
+                using var completedTransitPaint = new SKPaint
+                {
+                    Color = new SKColor(180, 180, 180, 60),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1.0f,
+                    IsAntialias = true
+                };
 
                 for (int ti = 0; ti < s.PlannedTurnPaths.Count; ti++)
                 {
@@ -4529,21 +4550,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     if (turnPath.Count < 2) continue;
 
                     bool isValid = ti < s.PlannedTurnValidity.Count ? s.PlannedTurnValidity[ti] : true;
+                    bool isTransit = ti < s.PlannedTurnIsTransit.Count && s.PlannedTurnIsTransit[ti];
 
-                    // Turn ti is between swath ti and swath ti+1, at segment index ti*2+1
+                    // Connection ti is between swath ti and swath ti+1, at segment index ti*2+1
                     SKPaint paint;
+                    bool completed = false;
                     if (routeActive2)
                     {
                         int turnSegIdx = ti * 2 + 1;
-                        if (turnSegIdx < currentSegIdx2)
-                            paint = completedTurnPaint;
-                        else
-                            paint = isValid ? validTurnPaint : invalidTurnPaint;
+                        completed = turnSegIdx < currentSegIdx2;
                     }
+
+                    if (!isValid)
+                        paint = invalidTurnPaint;
+                    else if (isTransit)
+                        paint = completed ? completedTransitPaint : transitPaint;
                     else
-                    {
-                        paint = isValid ? validTurnPaint : invalidTurnPaint;
-                    }
+                        paint = completed ? completedTurnPaint : validTurnPaint;
 
                     using var path = new SKPath();
                     path.MoveTo((float)turnPath[0].Easting, (float)turnPath[0].Northing);

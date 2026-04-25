@@ -75,9 +75,10 @@ public partial class MainViewModel
                 State.RoutePlan.CurrentSegmentIndex = 0;
                 State.RoutePlan.IsRouteComplete = false;
 
-                // Update map display
-                var turnSegments = plan.Segments
-                    .Where(s => s.Type == RouteSegmentType.Turn).ToList();
+                // Update map display — connections include both Dubins turns and transits.
+                var connectionSegments = plan.Segments
+                    .Where(s => s.Type == RouteSegmentType.Turn || s.Type == RouteSegmentType.Transit)
+                    .ToList();
                 var swathTracks = plan.Segments
                     .Where(s => s.Type == RouteSegmentType.Swath)
                     .Select(s => Models.Track.Track.FromCurve(
@@ -85,10 +86,13 @@ public partial class MainViewModel
                     .ToList();
                 _mapService.SetPlannedSwaths(swathTracks);
                 _mapService.SetPlannedTurnPaths(
-                    turnSegments.Select(s => s.Waypoints).ToList(),
-                    turnSegments.Select(s => s.IsTurnValid).ToList());
+                    connectionSegments.Select(s => s.Waypoints).ToList(),
+                    connectionSegments.Select(s => s.IsTurnValid).ToList(),
+                    connectionSegments.Select(s => s.Type == RouteSegmentType.Transit).ToList());
 
-                RoutePlanStatus = $"Loaded: {plan.SwathCount} swaths | {plan.TurnCount} turns";
+                var loadStatus = $"Loaded: {plan.SwathCount} swaths | {plan.TurnCount} turns";
+                if (plan.TransitCount > 0) loadStatus += $" | {plan.TransitCount} transits";
+                RoutePlanStatus = loadStatus;
             }
             else
             {
@@ -140,9 +144,12 @@ public partial class MainViewModel
                     swathNum++;
             }
 
-            string segLabel = segment.Type == RouteSegmentType.Swath
-                ? $"Swath {swathNum}/{plan.SwathCount}"
-                : $"Turn {swathNum}→{swathNum + 1}";
+            string segLabel = segment.Type switch
+            {
+                RouteSegmentType.Swath => $"Swath {swathNum}/{plan.SwathCount}",
+                RouteSegmentType.Transit => $"Transit {swathNum}→{swathNum + 1}",
+                _ => $"Turn {swathNum}→{swathNum + 1}",
+            };
 
             int pct = (int)(100.0 * State.RoutePlan.CurrentSegmentIndex / plan.Segments.Count);
             return $"{segLabel} | {pct}%";

@@ -17,16 +17,25 @@ namespace AgValoniaGPS.Services.RoutePlanning;
 /// <summary>
 /// Assembles ordered swaths and validated turn paths into a RoutePlan.
 ///
-/// For each swath pair, calls TurnPathService to generate a boundary-validated
-/// Dubins turn. The result is an alternating sequence: swath, turn, swath, turn, ...
+/// For each swath pair the stitcher chooses one of three connection types:
+/// 1. <b>Transit</b> when the next swath is a split sibling (same source index) —
+///    the next piece is on the other side of an obstacle, so a Dubins turn is
+///    nonsensical; trace along a perimeter circuit instead.
+/// 2. <b>Turn</b> (Dubins) when the next swath is in the same zone — the existing
+///    boundary-validated turn.
+/// 3. <b>Transit</b> as a fallback when the Dubins turn fails validation —
+///    the swaths are in different zones (e.g. concave outer notch, non-convex
+///    headland neck). Trace along the best available circuit.
 /// </summary>
 public class RouteStitchingService : IRouteStitchingService
 {
     private readonly ITurnPathService _turnPathService;
+    private readonly ITransitPathService _transitPathService;
 
-    public RouteStitchingService(ITurnPathService turnPathService)
+    public RouteStitchingService(ITurnPathService turnPathService, ITransitPathService transitPathService)
     {
         _turnPathService = turnPathService;
+        _transitPathService = transitPathService;
     }
 
     public RoutePlan StitchRoute(List<Models.Track.Track> swaths, RouteStitchConfig config,
@@ -70,69 +79,111 @@ public class RouteStitchingService : IRouteStitchingService
                 IsTurnValid = true,
             });
 
-            // Generate turn to next swath (if not the last swath).
-            // Skip if the next track is a sibling segment of the same original swath
-            // (split by an inner boundary) — no turn between pieces of the same line.
-            bool skipTurn = sourceSwathIndex != null
-                && i + 1 < swaths.Count
-                && i < sourceSwathIndex.Count
-                && i + 1 < sourceSwathIndex.Count
-                && sourceSwathIndex[i] == sourceSwathIndex[i + 1];
+            // Generate connection to next swath (if not the last swath).
+            if (i >= swaths.Count - 1) continue;
+            var next = swaths[i + 1];
+            if (next.Points.Count < 2) continue;
 
-            if (i < swaths.Count - 1 && !skipTurn)
+            // Exit/entry points depend on alternating direction
+            Vec3 exitPoint, entryPoint;
+            double exitHeading, entryHeading;
+
+            if (i % 2 == 0)
             {
-                var next = swaths[i + 1];
-                if (next.Points.Count < 2) continue;
+                // Current swath driven forward: exit from end
+                exitPoint = swath.Points[^1];
+                // Next swath driven reverse: enter from end
+                entryPoint = next.Points[^1];
+                exitHeading = heading;
+                entryHeading = heading + Math.PI;
+            }
+            else
+            {
+                // Current swath driven reverse: exit from start
+                exitPoint = swath.Points[0];
+                // Next swath driven forward: enter from start
+                entryPoint = next.Points[0];
+                exitHeading = heading + Math.PI;
+                entryHeading = heading;
+            }
 
-                // Exit/entry points depend on alternating direction
-                Vec3 exitPoint, entryPoint;
-                double exitHeading, entryHeading;
+            // Generate Dubins turn unconditionally; it's the "no obstacle" answer.
+            var turnInput = new TurnPathInput
+            {
+                ExitPoint = exitPoint,
+                ExitHeading = exitHeading,
+                EntryPoint = entryPoint,
+                EntryHeading = entryHeading,
+                TurningRadius = config.TurningRadius,
+                HeadlandWidth = config.HeadlandWidth,
+                Boundary = config.Boundary,
+                InnerBoundaries = config.InnerBoundaries,
+            };
+            var turnResult = _turnPathService.GenerateTurn(turnInput);
 
-                if (i % 2 == 0)
-                {
-                    // Current swath driven forward: exit from end
-                    exitPoint = swath.Points[^1];
-                    // Next swath driven reverse: enter from end
-                    entryPoint = next.Points[^1];
-                    exitHeading = heading;
-                    entryHeading = heading + Math.PI;
-                }
-                else
-                {
-                    // Current swath driven reverse: exit from start
-                    exitPoint = swath.Points[0];
-                    // Next swath driven forward: enter from start
-                    entryPoint = next.Points[0];
-                    exitHeading = heading + Math.PI;
-                    entryHeading = heading;
-                }
-
-                var turnInput = new TurnPathInput
+            // If Dubins is valid, prefer it (shorter / direct).
+            // Otherwise — split sibling, concave outer, or non-convex headland —
+            // try a transit along the available perimeter circuits.
+            RouteSegment connection;
+            bool needTransit = !turnResult.IsValid && config.Circuits.Count > 0;
+            TransitPathResult? transitResult = needTransit
+                ? _transitPathService.GenerateTransit(new TransitPathInput
                 {
                     ExitPoint = exitPoint,
                     ExitHeading = exitHeading,
                     EntryPoint = entryPoint,
                     EntryHeading = entryHeading,
                     TurningRadius = config.TurningRadius,
-                    HeadlandWidth = config.HeadlandWidth,
-                    Boundary = config.Boundary,
-                    InnerBoundaries = config.InnerBoundaries,
-                };
+                    OuterBoundary = config.Boundary,
+                    InnerBoundaries = config.RawInnerBoundaries,
+                    Circuits = config.Circuits,
+                })
+                : null;
 
-                var turnResult = _turnPathService.GenerateTurn(turnInput);
-
-                plan.Segments.Add(new RouteSegment
-                {
-                    Type = RouteSegmentType.Turn,
-                    SwathIndex = i, // Turn from swath i to i+1
-                    Waypoints = turnResult.Waypoints,
-                    Length = turnResult.Length,
-                    IsTurnValid = turnResult.IsValid,
-                    TurnPathType = turnResult.PathType,
-                });
+            if (turnResult.IsValid)
+            {
+                connection = MakeTurn(turnResult, i);
             }
+            else if (transitResult != null && transitResult.IsValid)
+            {
+                connection = MakeTransit(transitResult, i);
+            }
+            else if (transitResult != null && transitResult.Waypoints.Count > 0)
+            {
+                // Both attempts invalid; transit reached a circuit but couldn't fully
+                // route inside outer/outside inner. Render the transit attempt — its
+                // shape at least hints at the routing path the planner tried.
+                connection = MakeTransit(transitResult, i);
+            }
+            else
+            {
+                // No circuits, or transit produced nothing. Keep Dubins best-effort.
+                connection = MakeTurn(turnResult, i);
+            }
+
+            plan.Segments.Add(connection);
         }
 
         return plan;
     }
+
+    private static RouteSegment MakeTurn(TurnPathResult result, int swathFromIndex) => new()
+    {
+        Type = RouteSegmentType.Turn,
+        SwathIndex = swathFromIndex,
+        Waypoints = result.Waypoints,
+        Length = result.Length,
+        IsTurnValid = result.IsValid,
+        TurnPathType = result.PathType,
+    };
+
+    private static RouteSegment MakeTransit(TransitPathResult result, int swathFromIndex) => new()
+    {
+        Type = RouteSegmentType.Transit,
+        SwathIndex = swathFromIndex,
+        Waypoints = result.Waypoints,
+        Length = result.Length,
+        IsTurnValid = result.IsValid,
+        TurnPathType = result.CircuitUsed,
+    };
 }

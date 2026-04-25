@@ -49,7 +49,8 @@ public class RouteStitchingServiceTests
     public void SetUp()
     {
         var turnService = new TurnPathService();
-        _service = new RouteStitchingService(turnService);
+        var transitService = new TransitPathService();
+        _service = new RouteStitchingService(turnService, transitService);
     }
 
     [Test]

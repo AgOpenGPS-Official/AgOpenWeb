@@ -124,7 +124,8 @@ public interface IMapService
     void SetContourStrips(IReadOnlyList<AgValoniaGPS.Models.Track.Track> strips);
     void SetPlannedSwaths(IReadOnlyList<AgValoniaGPS.Models.Track.Track> swaths);
     void SetPlannedTurnPaths(IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
-        IReadOnlyList<bool>? turnValidity = null);
+        IReadOnlyList<bool>? turnValidity = null,
+        IReadOnlyList<bool>? turnIsTransit = null);
 
     // Coverage bitmap initialization
     // Initialize coverage bitmap with field bounds on field load

@@ -8,6 +8,7 @@
 
 using System.Collections.Generic;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.RoutePlanning;
 using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Services.Track;
@@ -46,6 +47,17 @@ public class RouteStitchConfig
 
     /// <summary>Inner boundaries (expanded by buffer) — turns must not cross these.</summary>
     public List<BoundaryPolygon> InnerBoundaries { get; set; } = new();
+
+    /// <summary>Raw inner boundaries (no buffer) — used for transit-path validation,
+    /// where the path must avoid the actual obstacle but may live inside the buffer
+    /// (the inner perimeter circuit lies inside the buffer by design).</summary>
+    public List<BoundaryPolygon> RawInnerBoundaries { get; set; } = new();
+
+    /// <summary>Perimeter circuits available for transit (outer + per-inner). Each
+    /// circuit's points include tangent headings produced by <c>HeadlandCircuitService</c>.
+    /// When a Dubins turn fails validation, the stitcher attempts a transit along the
+    /// best of these circuits.</summary>
+    public List<TransitCircuit> Circuits { get; set; } = new();
 
     /// <summary>Reference heading from the AB line (radians).</summary>
     public double ReferenceHeading { get; set; }

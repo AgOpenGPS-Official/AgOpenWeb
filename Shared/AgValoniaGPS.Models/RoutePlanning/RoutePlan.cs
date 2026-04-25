@@ -30,6 +30,14 @@ public class RoutePlan
     /// <summary>Number of turns that failed boundary validation.</summary>
     public int InvalidTurnCount => Segments.Count(s => s.Type == RouteSegmentType.Turn && !s.IsTurnValid);
 
+    /// <summary>Number of transit segments in this plan.</summary>
+    public int TransitCount => Segments.Count(s => s.Type == RouteSegmentType.Transit);
+
+    /// <summary>Connections (turn or transit) that failed validation — these are the
+    /// gaps the user must accept or reject before route following.</summary>
+    public int InvalidConnectionCount => Segments.Count(s =>
+        (s.Type == RouteSegmentType.Turn || s.Type == RouteSegmentType.Transit) && !s.IsTurnValid);
+
     /// <summary>Total working distance (swaths only) in meters.</summary>
     public double TotalSwathDistance => Segments.Where(s => s.Type == RouteSegmentType.Swath).Sum(s => s.Length);
 

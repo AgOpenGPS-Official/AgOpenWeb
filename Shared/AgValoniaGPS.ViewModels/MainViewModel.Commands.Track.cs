@@ -1461,11 +1461,52 @@ public partial class MainViewModel
 
         var swathPlan = swathService.GenerateSwaths(input);
 
-        // Stitch swaths + boundary-validated turns into a RoutePlan
         var outerBoundary = boundary.OuterBoundary ?? clipBoundary;
-        var turnService = new Services.RoutePlanning.TurnPathService();
-        var stitchService = new Services.RoutePlanning.RouteStitchingService(turnService);
-        // Build expanded inner boundaries (one tool-width buffer) so turns also avoid the buffer zone
+
+        // Generate circuit passes (outer + per-inner) once. They serve two roles:
+        // (1) display tracks, (2) transit paths for the route stitcher.
+        var circuitOffsetService = new Services.Geometry.PolygonOffsetService();
+        var circuitService = new Services.RoutePlanning.HeadlandCircuitService(circuitOffsetService);
+        double toolEffective = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
+        if (toolEffective <= 0) toolEffective = 1.0;
+
+        var circuitTracks = new List<Models.Track.Track>();
+        var transitCircuits = new List<Services.Interfaces.TransitCircuit>();
+        if (outerBoundary != null && outerBoundary.Points.Count >= 3)
+        {
+            var outerPasses = circuitService.GenerateOuterPasses(outerBoundary, toolEffective, _routePlanHeadlandPasses);
+            foreach (var pass in outerPasses)
+            {
+                circuitTracks.Add(Models.Track.Track.FromCurve($"Circuit pass {pass.PassNumber + 1}", pass.Points));
+                // Outer circuits are reused for transit (concave outer / non-convex headland).
+                transitCircuits.Add(new Services.Interfaces.TransitCircuit
+                {
+                    Points = pass.Points,
+                    IsInnerBoundary = false,
+                });
+            }
+        }
+        var rawInnerBoundaries = new List<BoundaryPolygon>();
+        if (boundary.InnerBoundaries != null)
+        {
+            foreach (var inner in boundary.InnerBoundaries)
+            {
+                if (inner.Points.Count < 3) continue;
+                rawInnerBoundaries.Add(inner);
+                var innerPasses = circuitService.GenerateInnerPasses(inner, toolEffective, _routePlanHeadlandPasses);
+                foreach (var pass in innerPasses)
+                {
+                    circuitTracks.Add(Models.Track.Track.FromCurve($"Inner circuit {pass.PassNumber + 1}", pass.Points));
+                    transitCircuits.Add(new Services.Interfaces.TransitCircuit
+                    {
+                        Points = pass.Points,
+                        IsInnerBoundary = true,
+                    });
+                }
+            }
+        }
+
+        // Build expanded inner boundaries (one tool-width buffer) so Dubins turns also avoid the buffer zone
         var expandedInnerBoundaries = new List<BoundaryPolygon>();
         if (boundary.InnerBoundaries != null && _routePlanHeadlandPasses > 0)
         {
@@ -1489,56 +1530,39 @@ public partial class MainViewModel
             }
         }
 
+        // Stitch swaths + boundary-validated turns + perimeter transits into a RoutePlan
+        var turnService = new Services.RoutePlanning.TurnPathService();
+        var transitService = new Services.RoutePlanning.TransitPathService();
+        var stitchService = new Services.RoutePlanning.RouteStitchingService(turnService, transitService);
+
         var routePlan = stitchService.StitchRoute(swathPlan.Swaths, new Services.Interfaces.RouteStitchConfig
         {
             TurningRadius = ConfigStore.Guidance.UTurnRadius,
             HeadlandWidth = State.Field.HeadlandDistance,
             Boundary = outerBoundary,
             InnerBoundaries = expandedInnerBoundaries,
+            RawInnerBoundaries = rawInnerBoundaries,
+            Circuits = transitCircuits,
             ReferenceHeading = track.Heading,
             Pattern = _routePlanPattern,
         }, swathPlan.SourceSwathIndex);
 
-        // Generate headland circuit passes (outer + inner boundary buffers) for display
-        var circuitOffsetService = new Services.Geometry.PolygonOffsetService();
-        var circuitService = new Services.RoutePlanning.HeadlandCircuitService(circuitOffsetService);
-        double toolEffective = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
-        if (toolEffective <= 0) toolEffective = 1.0;
-
-        var circuitTracks = new List<Models.Track.Track>();
-        if (outerBoundary != null && outerBoundary.Points.Count >= 3)
-        {
-            var outerPasses = circuitService.GenerateOuterPasses(outerBoundary, toolEffective, _routePlanHeadlandPasses);
-            foreach (var pass in outerPasses)
-            {
-                circuitTracks.Add(Models.Track.Track.FromCurve($"Circuit pass {pass.PassNumber + 1}", pass.Points));
-            }
-        }
-        if (boundary.InnerBoundaries != null)
-        {
-            foreach (var inner in boundary.InnerBoundaries)
-            {
-                if (inner.Points.Count < 3) continue;
-                var innerPasses = circuitService.GenerateInnerPasses(inner, toolEffective, _routePlanHeadlandPasses);
-                foreach (var pass in innerPasses)
-                {
-                    circuitTracks.Add(Models.Track.Track.FromCurve($"Inner circuit {pass.PassNumber + 1}", pass.Points));
-                }
-            }
-        }
-
-        // Extract turn paths and validity for map rendering
-        var turnSegments = routePlan.Segments
-            .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Turn)
+        // Extract connection paths (turns + transits) for map rendering, with type info
+        var connectionSegments = routePlan.Segments
+            .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Turn
+                     || s.Type == Models.RoutePlanning.RouteSegmentType.Transit)
             .ToList();
-        var turnPaths = turnSegments.Select(s => s.Waypoints).ToList();
-        var turnValidity = turnSegments.Select(s => s.IsTurnValid).ToList();
+        var turnPaths = connectionSegments.Select(s => s.Waypoints).ToList();
+        var turnValidity = connectionSegments.Select(s => s.IsTurnValid).ToList();
+        var turnIsTransit = connectionSegments
+            .Select(s => s.Type == Models.RoutePlanning.RouteSegmentType.Transit)
+            .ToList();
 
         // Combine interior swaths + headland circuit passes in the displayed swath list
         var displaySwaths = new List<Models.Track.Track>(swathPlan.Swaths);
         displaySwaths.AddRange(circuitTracks);
         _mapService.SetPlannedSwaths(displaySwaths);
-        _mapService.SetPlannedTurnPaths(turnPaths, turnValidity);
+        _mapService.SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
 
         // Store route plan in application state for Phase 3 route following
         State.RoutePlan.ActivePlan = routePlan;
@@ -1547,11 +1571,23 @@ public partial class MainViewModel
 
         sw.Stop();
 
-        // Build status with timing and invalid turn warning
-        var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns | {routePlan.TotalDistance:F0}m | {sw.ElapsedMilliseconds}ms";
-        if (routePlan.InvalidTurnCount > 0)
-            status += $" | {routePlan.InvalidTurnCount} turn(s) clip boundary";
+        // Build status with timing, transit count, and invalid-connection warning
+        var status = $"{routePlan.SwathCount} swaths | {routePlan.TurnCount} turns";
+        if (routePlan.TransitCount > 0)
+            status += $" | {routePlan.TransitCount} transits";
+        status += $" | {routePlan.TotalDistance:F0}m | {sw.ElapsedMilliseconds}ms";
+        if (routePlan.InvalidConnectionCount > 0)
+            status += $" | {routePlan.InvalidConnectionCount} gap(s)";
         RoutePlanStatus = status;
+
+        // If any connection failed validation, prompt the user to accept the incomplete route.
+        if (routePlan.InvalidConnectionCount > 0)
+        {
+            ShowConfirmationDialog(
+                "Incomplete Route",
+                $"Route has {routePlan.InvalidConnectionCount} inaccessible connection(s) — the planner could not route around an obstacle, concave boundary, or narrow neck. Proceed with the incomplete route? You will need to drive around problem areas manually.",
+                onConfirm: () => { /* keep route as-is */ });
+        }
     }
 
     /// <summary>

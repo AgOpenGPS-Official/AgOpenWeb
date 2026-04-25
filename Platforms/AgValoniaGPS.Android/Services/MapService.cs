@@ -276,9 +276,10 @@ public class MapService : IMapService
     }
 
     public void SetPlannedTurnPaths(System.Collections.Generic.IReadOnlyList<System.Collections.Generic.List<AgValoniaGPS.Models.Base.Vec3>> turnPaths,
-        System.Collections.Generic.IReadOnlyList<bool>? turnValidity = null)
+        System.Collections.Generic.IReadOnlyList<bool>? turnValidity = null,
+        System.Collections.Generic.IReadOnlyList<bool>? turnIsTransit = null)
     {
-        _mapControl?.SetPlannedTurnPaths(turnPaths, turnValidity);
+        _mapControl?.SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
     }
 
     // Coverage bitmap initialization on field load
