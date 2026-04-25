@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+using System;
 using System.Globalization;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
@@ -130,7 +131,7 @@ public class VehicleProfileService : IVehicleProfileService
         store.Tool.Overlap = 0.0;
         store.Tool.Offset = 0.0;
         store.Tool.HitchLength = 1.8;
-        store.Tool.TrailingHitchLength = -2.5;
+        store.Tool.TrailingHitchLength = 2.5;
         store.Tool.TankTrailingHitchLength = 3.0;
         store.Tool.TrailingToolToPivotLength = 0.0;
         store.Tool.IsToolTrailing = false;
@@ -203,7 +204,9 @@ public class VehicleProfileService : IVehicleProfileService
         store.Tool.Overlap = GetDouble(settings, "setVehicle_toolOverlap", 0.0);
         store.Tool.Offset = GetDouble(settings, "setVehicle_toolOffset", 0.0);
         store.Tool.HitchLength = GetDouble(settings, "setVehicle_hitchLength", 1.8);
-        store.Tool.TrailingHitchLength = GetDouble(settings, "setTool_toolTrailingHitchLength", -2.5);
+        // Legacy AOG XML profiles often store TrailingHitchLength as a negative value due to
+        // a historical sign convention. Migrate to "positive = behind hitch" by taking abs.
+        store.Tool.TrailingHitchLength = Math.Abs(GetDouble(settings, "setTool_toolTrailingHitchLength", 2.5));
         store.Tool.TankTrailingHitchLength = GetDouble(settings, "setVehicle_tankTrailingHitchLength", 3.0);
         store.Tool.TrailingToolToPivotLength = GetDouble(settings, "setTool_trailingToolToPivotLength", 0.0);
         store.Tool.IsToolTrailing = GetBool(settings, "setTool_isToolTrailing", false);

@@ -191,6 +191,10 @@ internal class MapRenderState
     public double ToolX, ToolY, ToolHeading, ToolWidth, HitchX, HitchY;
     public bool ToolReady;
     public double HitchLength;
+    public bool IsToolTrailing;       // includes TBT — render as a single tongue line
+    public double ToolArmHalfSpread;  // half lateral spread of 3PT arms at the tractor mount
+    public double ToolArmBaseX, ToolArmBaseY; // tractor-side anchor for the 3PT arms (rear axle for rear-mounted, front of tractor for front-mounted)
+    public double ToolDrawbarBaseX, ToolDrawbarBaseY; // tractor-side anchor for the trailing drawbar (always at the rear axle)
 
     // Sections
     public bool[] SectionOn = Array.Empty<bool>();
@@ -775,6 +779,17 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             HitchY = _hitchY,
             ToolReady = _toolPositionReady,
             HitchLength = toolCfg.HitchLength,
+            IsToolTrailing = toolCfg.IsToolTrailing || toolCfg.IsToolTBT,
+            // 3PT lower-arm spread is typically narrower than the wheel track. Use 60% of
+            // half-track as a reasonable visual approximation since we don't model arm width.
+            ToolArmHalfSpread = vehicleCfg.TrackWidth * 0.5 * 0.6,
+            // Arm base = the tractor-side mount: rear axle (= vehicle pivot) for rear-mounted,
+            // or one wheelbase forward for front-mounted.
+            ToolArmBaseX = _vehicleX + (toolCfg.IsToolFrontFixed ? Math.Sin(_vehicleHeading) * vehicleCfg.Wheelbase : 0),
+            ToolArmBaseY = _vehicleY + (toolCfg.IsToolFrontFixed ? Math.Cos(_vehicleHeading) * vehicleCfg.Wheelbase : 0),
+            // Drawbar base = rear axle, always behind the vehicle pivot.
+            ToolDrawbarBaseX = _vehicleX,
+            ToolDrawbarBaseY = _vehicleY,
 
             SectionOn = (bool[])_sectionOn.Clone(),
             SectionWidths = (double[])_sectionWidths.Clone(),
@@ -4207,21 +4222,30 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             if (s.ToolWidth < 0.1) return;
             double toolDepth = 2.0;
 
-            // Hitch bar
-            double barEndX = s.HitchX + Math.Sin(s.VehicleHeading) * s.HitchLength;
-            double barEndY = s.HitchY + Math.Cos(s.VehicleHeading) * s.HitchLength;
-            var rearPen = new ImmutablePen(new ImmutableSolidColorBrush(Colors.Black), 0.3);
-            dc.DrawLine(rearPen, new Point(barEndX, barEndY), new Point(s.HitchX, s.HitchY));
-
-            // V-shape hitch
-            double hitchHalfW = s.ToolWidth / 2.0;
-            double cosH = Math.Cos(-s.ToolHeading);
-            double sinH = Math.Sin(-s.ToolHeading);
-            var leftEnd = new Point(s.ToolX + (-hitchHalfW) * cosH, s.ToolY + (-hitchHalfW) * sinH);
-            var rightEnd = new Point(s.ToolX + hitchHalfW * cosH, s.ToolY + hitchHalfW * sinH);
-            var apex = new Point(s.HitchX, s.HitchY);
-            dc.DrawLine(_hitchPenImm, apex, leftEnd);
-            dc.DrawLine(_hitchPenImm, apex, rightEnd);
+            if (s.IsToolTrailing)
+            {
+                // Trailing/TBT: single drawbar + tongue. The drawbar runs from the rear
+                // axle to the hitch ball; the tongue runs from the hitch ball to the
+                // implement center.
+                var drawbarPen = new ImmutablePen(new ImmutableSolidColorBrush(Colors.Black), 0.3);
+                dc.DrawLine(drawbarPen, new Point(s.ToolDrawbarBaseX, s.ToolDrawbarBaseY), new Point(s.HitchX, s.HitchY));
+                dc.DrawLine(_hitchPenImm, new Point(s.HitchX, s.HitchY), new Point(s.ToolX, s.ToolY));
+            }
+            else
+            {
+                // Fixed (3PT-mounted): two angled lower arms from the tractor mount out to
+                // the implement. No drawbar — the implement attaches directly. Arms diverge
+                // laterally at the mount (rear axle for rear-mounted, front of tractor for
+                // front-mounted) and converge to the implement center.
+                double cosV = Math.Cos(-s.VehicleHeading);
+                double sinV = Math.Sin(-s.VehicleHeading);
+                double armSpread = s.ToolArmHalfSpread;
+                var armBaseLeft = new Point(s.ToolArmBaseX + (-armSpread) * cosV, s.ToolArmBaseY + (-armSpread) * sinV);
+                var armBaseRight = new Point(s.ToolArmBaseX + armSpread * cosV, s.ToolArmBaseY + armSpread * sinV);
+                var implementCenter = new Point(s.ToolX, s.ToolY);
+                dc.DrawLine(_hitchPenImm, armBaseLeft, implementCenter);
+                dc.DrawLine(_hitchPenImm, armBaseRight, implementCenter);
+            }
 
             // Sections
             using (dc.PushPreTransform(Matrix.CreateTranslation(s.ToolX, s.ToolY)))
@@ -4556,21 +4580,27 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             float tx = (float)s.ToolX, ty = (float)s.ToolY;
             float toolDepth = 2.0f;
 
-            // Hitch bar (rear axle to hitch point)
-            float barEndX = (float)(s.HitchX + Math.Sin(s.VehicleHeading) * s.HitchLength);
-            float barEndY = (float)(s.HitchY + Math.Cos(s.VehicleHeading) * s.HitchLength);
-            using var rearPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
-            canvas.DrawLine(barEndX, barEndY, (float)s.HitchX, (float)s.HitchY, rearPaint);
-
-            // V-shape hitch (hitch point to tool ends)
-            float hitchHalfW = (float)(s.ToolWidth / 2.0);
-            float cosH = (float)Math.Cos(-s.ToolHeading);
-            float sinH = (float)Math.Sin(-s.ToolHeading);
             using var hitchPaint = new SKPaint { Color = new SKColor(255, 255, 0), Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f };
-            canvas.DrawLine((float)s.HitchX, (float)s.HitchY,
-                tx + (-hitchHalfW) * cosH, ty + (-hitchHalfW) * sinH, hitchPaint);
-            canvas.DrawLine((float)s.HitchX, (float)s.HitchY,
-                tx + hitchHalfW * cosH, ty + hitchHalfW * sinH, hitchPaint);
+
+            if (s.IsToolTrailing)
+            {
+                // Trailing/TBT: single drawbar (rear axle to hitch ball) + tongue (hitch to implement).
+                using var drawbarPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
+                canvas.DrawLine((float)s.ToolDrawbarBaseX, (float)s.ToolDrawbarBaseY,
+                    (float)s.HitchX, (float)s.HitchY, drawbarPaint);
+                canvas.DrawLine((float)s.HitchX, (float)s.HitchY, tx, ty, hitchPaint);
+            }
+            else
+            {
+                // Fixed (3PT-mounted): two angled lower arms from tractor mount converging at the implement.
+                float cosV = (float)Math.Cos(-s.VehicleHeading);
+                float sinV = (float)Math.Sin(-s.VehicleHeading);
+                float baseX = (float)s.ToolArmBaseX;
+                float baseY = (float)s.ToolArmBaseY;
+                float armSpread = (float)s.ToolArmHalfSpread;
+                canvas.DrawLine(baseX + (-armSpread) * cosV, baseY + (-armSpread) * sinV, tx, ty, hitchPaint);
+                canvas.DrawLine(baseX + armSpread * cosV, baseY + armSpread * sinV, tx, ty, hitchPaint);
+            }
 
             canvas.Save();
             canvas.Translate(tx, ty);

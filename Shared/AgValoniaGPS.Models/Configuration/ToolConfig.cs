@@ -60,7 +60,11 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _hitchLength, Math.Max(0, value));
     }
 
-    private double _trailingHitchLength = -2.5;
+    // Distance from hitch to trailing tool, measured behind the hitch.
+    // Convention: positive = tool is behind hitch (the only physically valid direction
+    // for a trailing implement). Sign-agnostic at runtime; legacy profiles with
+    // negative values are migrated on load.
+    private double _trailingHitchLength = 2.5;
     public double TrailingHitchLength
     {
         get => _trailingHitchLength;
