@@ -98,7 +98,14 @@ public class TransitPathService : ITransitPathService
 
         var dubins = new DubinsPathService(input.TurningRadius);
         var approachPaths = dubins.GenerateAllPaths(approachStart, approachGoal);
-        var approach = approachPaths.OrderBy(p => p.Length).FirstOrDefault();
+        // Prefer the shortest VALID approach — picking the unconditionally shortest
+        // Dubins variant frequently produced an arc that swung through the obstacle,
+        // pushing the planner to fall back to the (much longer) outer circuit.
+        var approach = approachPaths
+            .OrderBy(p => p.Length)
+            .FirstOrDefault(p => p.Path != null && p.Path.Count > 0
+                && AllPointsInsidePolygon(p.Path, outerVec2)
+                && !AnyPointsInsideAnyPolygon(p.Path, innerVec2List));
         if (approach.Path == null || approach.Path.Count == 0) return null;
 
         // Departure leg: last arc point → EntryPoint, oriented along circuit tangent at entryIdx.
@@ -107,7 +114,11 @@ public class TransitPathService : ITransitPathService
         var departGoal = new Vec3(input.EntryPoint.Easting, input.EntryPoint.Northing, input.EntryHeading);
 
         var departPaths = dubins.GenerateAllPaths(departStart, departGoal);
-        var depart = departPaths.OrderBy(p => p.Length).FirstOrDefault();
+        var depart = departPaths
+            .OrderBy(p => p.Length)
+            .FirstOrDefault(p => p.Path != null && p.Path.Count > 0
+                && AllPointsInsidePolygon(p.Path, outerVec2)
+                && !AnyPointsInsideAnyPolygon(p.Path, innerVec2List));
         if (depart.Path == null || depart.Path.Count == 0) return null;
 
         // Stitch: ExitPoint + approach + arc + depart + EntryPoint
