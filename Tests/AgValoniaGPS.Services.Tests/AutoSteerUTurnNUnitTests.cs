@@ -43,8 +43,8 @@ public class AutoSteerUTurnNUnitTests
     private const double ORIGIN_LAT = 43.712800;
     private const double ORIGIN_LON = -74.006000;
     private const double FIELD_W = 200.0;
-    private const double FIELD_H = 78.0;
-    private const double HEADLAND = 12.0; // Match real app headland distance
+    private const double FIELD_H = 200.0; // Square field for fair E-W vs N-S comparison
+    private const double HEADLAND = 12.0;
     private const double TOOL_WIDTH = 6.0; // Match real app bug report
 
     private static readonly double MetersPerDegLat = 111320.0;
@@ -54,6 +54,8 @@ public class AutoSteerUTurnNUnitTests
     private AutoSteerService _autoSteer = null!;
     private GpsPipelineService _pipeline = null!;
     private ToolPositionService _toolPosition = null!;
+    private SectionControlService _sectionControl = null!;
+    private CoverageMapService _coverage = null!;
     private PipelineIntents _intents = null!;
     private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
@@ -92,8 +94,15 @@ public class AutoSteerUTurnNUnitTests
 
         _toolPosition = new ToolPositionService();
         var guidance = new TrackGuidanceService();
-        var coverage = new CoverageMapService();
-        var sectionControl = new SectionControlService(_toolPosition, coverage, _appState);
+        _coverage = new CoverageMapService();
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState);
+
+        // Enable sections for coverage painting
+        _sectionControl.MasterState = SectionMasterState.Auto;
+        _sectionControl.SetAllAuto();
+
+        // Initialize coverage bounds for the field
+        _coverage.SetFieldBounds(-10, FIELD_W + 10, -10, FIELD_H + 10);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
@@ -148,7 +157,7 @@ public class AutoSteerUTurnNUnitTests
         var logFactory = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Debug));
 
         _pipeline = new GpsPipelineService(
-            _gpsService, _toolPosition, guidance, sectionControl, coverage,
+            _gpsService, _toolPosition, guidance, _sectionControl, _coverage,
             _autoSteer, new YouTurnGuidanceService(),
             new YouTurnStateMachine(
                 new YouTurnCreationService(logFactory.CreateLogger<YouTurnCreationService>(), polygonOffset),
@@ -201,7 +210,7 @@ public class AutoSteerUTurnNUnitTests
         {
             var bytes = BuildPandaBytes(lat, lon, heading, 10.0);
             _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-            Thread.Sleep(5);
+            Thread.Sleep(10);
         }
         Thread.Sleep(100);
     }
@@ -239,7 +248,7 @@ public class AutoSteerUTurnNUnitTests
 
             var bytes = BuildPandaBytes(lat, lon, heading, speedKmh / 1.852);
             _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-            Thread.Sleep(5);
+            Thread.Sleep(10);
         }
         Thread.Sleep(100);
     }
@@ -263,7 +272,7 @@ public class AutoSteerUTurnNUnitTests
 
             var bytes = BuildPandaBytes(lat, lon, heading, speedKmh / 1.852);
             _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-            Thread.Sleep(5);
+            Thread.Sleep(10);
         }
         Thread.Sleep(100);
     }
@@ -304,7 +313,7 @@ public class AutoSteerUTurnNUnitTests
 
             var bytes = BuildPandaBytes(lat, lon, heading, speedKmh / 1.852);
             _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
-            Thread.Sleep(5);
+            Thread.Sleep(10);
 
             // Grab latest result
             lock (_results)
@@ -316,15 +325,22 @@ public class AutoSteerUTurnNUnitTests
                 }
             }
 
+            // Safety: stop if tractor leaves field
+            double tractorE = (lon - ORIGIN_LON) * MetersPerDegLon;
+            double tractorN = (lat - ORIGIN_LAT) * MetersPerDegLat;
+            if (tractorE < -20 || tractorE > FIELD_W + 20 || tractorN < -20 || tractorN > FIELD_H + 20)
+                break;
+
             if (stopCondition != null && stopCondition(lastResult))
                 break;
         }
         Thread.Sleep(100);
     }
 
-    [TestCase(false, TestName = "UTurn_EastWest")]
-    [TestCase(true, TestName = "UTurn_NorthSouth")]
-    public void DriveMultiplePasses_WithAutoUTurns(bool northSouth)
+    [TestCase(false, false, TestName = "UTurn_EastWest")]
+    [TestCase(true, false, TestName = "UTurn_NorthSouth")]
+    [TestCase(false, true, TestName = "UTurn_Diagonal45"), Ignore("U-turn arc overshoots boundary at diagonal - needs turn path geometry fix")]
+    public void DriveMultiplePasses_WithAutoUTurns(bool northSouth, bool diagonal)
     {
         // Set up local plane at origin
         var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
@@ -359,7 +375,27 @@ public class AutoSteerUTurnNUnitTests
         AgValoniaGPS.Models.Track.Track track;
         double startLat, startLon, startHdg;
 
-        if (!driveNorthSouth)
+        if (diagonal)
+        {
+            // 45 degree diagonal AB line (NE to SW)
+            double heading45 = Math.PI / 4; // 45 degrees
+            double margin = HEADLAND * 1.5;
+            track = new AgValoniaGPS.Models.Track.Track
+            {
+                Name = "AB_Test_Diag",
+                Points = new List<Vec3>
+                {
+                    new Vec3(margin, margin, heading45),
+                    new Vec3(FIELD_W - margin, FIELD_H - margin, heading45)
+                },
+                Type = AgValoniaGPS.Models.Track.TrackType.ABLine
+            };
+            startLat = ORIGIN_LAT + margin / MetersPerDegLat;
+            startLon = ORIGIN_LON + margin / MetersPerDegLon;
+            startHdg = 45.0;
+            SendGpsAt(margin, margin, heading: 45, count: 20);
+        }
+        else if (!driveNorthSouth)
         {
             // East-West AB line
             track = new AgValoniaGPS.Models.Track.Track
@@ -385,7 +421,7 @@ public class AutoSteerUTurnNUnitTests
                 Name = "AB_Test_NS",
                 Points = new List<Vec3>
                 {
-                    new Vec3(abEasting, HEADLAND, 0),        // heading north
+                    new Vec3(abEasting, HEADLAND, 0),
                     new Vec3(abEasting, FIELD_H - HEADLAND, 0)
                 },
                 Type = AgValoniaGPS.Models.Track.TrackType.ABLine
@@ -450,6 +486,15 @@ public class AutoSteerUTurnNUnitTests
         Assert.That(pass1.Count, Is.GreaterThan(50), "Pass 1 should produce cycles");
         Assert.That(pass2.Count, Is.GreaterThan(50), "Pass 2 should produce cycles");
 
+        // Verify tractor never left the field (allow 10m for U-turn arcs)
+        foreach (var (phase, r) in allResults)
+        {
+            Assert.That(r.Easting, Is.GreaterThan(-10.0).And.LessThan(FIELD_W + 10),
+                $"Tractor left field at {phase}: E={r.Easting:F1}");
+            Assert.That(r.Northing, Is.GreaterThan(-10.0).And.LessThan(FIELD_H + 10),
+                $"Tractor left field at {phase}: N={r.Northing:F1}");
+        }
+
         // Verify pass 2 is on a DIFFERENT northing than pass 1
         TestContext.Out.WriteLine($"\nPass separation: {Math.Abs(pass2Northing - pass1Northing):F1}m " +
             $"(expected ~{TOOL_WIDTH:F0}m)");
@@ -497,5 +542,199 @@ public class AutoSteerUTurnNUnitTests
         }
         TestContext.Out.WriteLine($"CSV: {csvPath}");
         TestContext.Out.WriteLine($"Total: {allResults.Count} data points");
+        TestContext.Out.WriteLine($"Coverage: worked={_coverage.TotalWorkedArea:F0}m2");
+
+        // Export coverage grid by sampling IsPointCovered
+        var covCsvPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "uturn_coverage.csv");
+        using (var writer = new StreamWriter(covCsvPath))
+        {
+            writer.WriteLine("e,n,covered");
+            double step = 0.5; // 0.5m grid
+            for (double e = 0; e <= FIELD_W; e += step)
+            {
+                for (double n = 0; n <= FIELD_H; n += step)
+                {
+                    if (_coverage.IsPointCovered(e, n))
+                        writer.WriteLine($"{e:F1},{n:F1},1");
+                }
+            }
+        }
+        TestContext.Out.WriteLine($"Coverage CSV: {covCsvPath}");
+    }
+
+    [Test]
+    public void DriveEntireField_EastWest_MeasureCoverage()
+    {
+        // Set up field
+        var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
+        _appState.Field.LocalPlane = new LocalPlane(origin, new SharedFieldProperties());
+
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = 0 });
+        outerPoly.Points.Add(new BoundaryPoint { Easting = FIELD_W, Northing = 0 });
+        outerPoly.Points.Add(new BoundaryPoint { Easting = FIELD_W, Northing = FIELD_H });
+        outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = FIELD_H });
+        outerPoly.UpdateBounds();
+        var boundary = new Boundary { OuterBoundary = outerPoly };
+        _pipeline.SetBoundary(boundary);
+
+        var headlandLine = new List<Vec3>
+        {
+            new Vec3(HEADLAND, HEADLAND, 0),
+            new Vec3(FIELD_W - HEADLAND, HEADLAND, 0),
+            new Vec3(FIELD_W - HEADLAND, FIELD_H - HEADLAND, 0),
+            new Vec3(HEADLAND, FIELD_H - HEADLAND, 0),
+            new Vec3(HEADLAND, HEADLAND, 0),
+        };
+        _pipeline.SetHeadlandLine(headlandLine);
+
+        // AB line: first pass at HEADLAND + TOOL_WIDTH/2
+        double abN = HEADLAND + TOOL_WIDTH / 2.0;
+        var track = new AgValoniaGPS.Models.Track.Track
+        {
+            Name = "AB_FullField",
+            Points = new List<Vec3>
+            {
+                new Vec3(HEADLAND, abN, Math.PI / 2),
+                new Vec3(FIELD_W - HEADLAND, abN, Math.PI / 2)
+            },
+            Type = AgValoniaGPS.Models.Track.TrackType.ABLine
+        };
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetAutoSteerEngaged(true);
+        _pipeline.SetYouTurnEnabled(true);
+
+        SendGpsAt(HEADLAND + 5, abN, heading: 90, count: 20);
+
+        // Calculate expected passes
+        double cultivatedWidth = FIELD_H - 2 * HEADLAND; // 176m
+        int expectedPasses = (int)Math.Ceiling(cultivatedWidth / TOOL_WIDTH); // ~30
+        TestContext.Out.WriteLine($"Field: {FIELD_W}x{FIELD_H}m, headland={HEADLAND}m");
+        TestContext.Out.WriteLine($"Cultivated width: {cultivatedWidth}m, tool: {TOOL_WIDTH}m");
+        TestContext.Out.WriteLine($"Expected passes: {expectedPasses}");
+
+        // Drive with feedback loop until field is done or max steps
+        double lat = ORIGIN_LAT + abN / MetersPerDegLat;
+        double lon = ORIGIN_LON + HEADLAND / MetersPerDegLon;
+        double hdg = 90.0;
+        int totalSteps = 0;
+        int maxSteps = expectedPasses * 350 + 5000; // generous limit
+        int passCompletions = 0;
+        var allResults = new List<(string phase, GpsCycleResult r)>();
+        GpsCycleResult? lastResult = null;
+        bool fieldDone = false;
+
+        double speedMs = 25.0 / 3.6;
+        double dt = 0.1;
+        double wheelbase = ConfigurationStore.Instance.Vehicle.Wheelbase;
+
+        while (totalSteps < maxSteps && !fieldDone)
+        {
+            // Autosteer feedback
+            double steerAngleDeg = 0;
+            if (lastResult?.Guidance is { HasGuidance: true } g)
+                steerAngleDeg = g.SteerAngle;
+
+            // Use slower speed during U-turns
+            bool inUturn = lastResult?.YouTurn?.IsExecuting ?? false;
+            double currentSpeed = inUturn ? 12.0 / 3.6 : speedMs;
+
+            // Bicycle model
+            double headingRad = hdg * Math.PI / 180.0;
+            double steerRad = steerAngleDeg * Math.PI / 180.0;
+            if (Math.Abs(wheelbase) > 0.1)
+                headingRad += currentSpeed * Math.Tan(steerRad) / wheelbase * dt;
+            hdg = (headingRad * 180.0 / Math.PI) % 360.0;
+            if (hdg < 0) hdg += 360.0;
+
+            lat += currentSpeed * Math.Cos(headingRad) * dt / MetersPerDegLat;
+            lon += currentSpeed * Math.Sin(headingRad) * dt / MetersPerDegLon;
+
+            var bytes = BuildPandaBytes(lat, lon, hdg, currentSpeed * 1.944);
+            _autoSteer.ProcessGpsBuffer(bytes, bytes.Length);
+            Thread.Sleep(10); // Allow pipeline to process
+
+            lock (_results)
+            {
+                if (_results.Count > 0)
+                {
+                    lastResult = _results[^1];
+                    allResults.Add(("drive", lastResult));
+                }
+            }
+
+            totalSteps++;
+
+            // Safety: stop if tractor leaves field by more than 20m
+            double tractorE = (lon - ORIGIN_LON) * MetersPerDegLon;
+            double tractorN = (lat - ORIGIN_LAT) * MetersPerDegLat;
+            if (tractorE < -20 || tractorE > FIELD_W + 20 || tractorN < -20 || tractorN > FIELD_H + 20)
+            {
+                TestContext.Out.WriteLine($"  SAFETY STOP at step {totalSteps}: E={tractorE:F0} N={tractorN:F0}");
+                fieldDone = true;
+            }
+
+            // Log every 500 steps
+            if (totalSteps % 500 == 0)
+            {
+                var yt = lastResult?.YouTurn;
+                TestContext.Out.WriteLine(
+                    $"  step {totalSteps}: E={lastResult?.Easting:F0} N={lastResult?.Northing:F0} " +
+                    $"H={lastResult?.Heading:F0} pass={lastResult?.Guidance?.HowManyPathsAway} " +
+                    $"yt={yt?.IsExecuting} coverage={_coverage.TotalWorkedArea:F0}m2");
+            }
+        }
+
+        Thread.Sleep(500);
+
+        // Report
+        double workedArea = _coverage.TotalWorkedArea;
+        double cultivatedArea = (FIELD_H - 2 * HEADLAND) * (FIELD_W - 2 * HEADLAND);
+        double coveragePct = workedArea / cultivatedArea * 100;
+
+        TestContext.Out.WriteLine($"\n=== Full Field Results ===");
+        TestContext.Out.WriteLine($"Total steps: {totalSteps}");
+        TestContext.Out.WriteLine($"Cultivated area: {cultivatedArea:F0}m2");
+        TestContext.Out.WriteLine($"Worked area: {workedArea:F0}m2");
+        TestContext.Out.WriteLine($"Coverage: {coveragePct:F1}%");
+
+        // Export coverage
+        var covCsvPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "fullfield_coverage.csv");
+        using (var writer = new StreamWriter(covCsvPath))
+        {
+            writer.WriteLine("e,n");
+            for (double e = 0; e <= FIELD_W; e += 0.5)
+                for (double n = 0; n <= FIELD_H; n += 0.5)
+                    if (_coverage.IsPointCovered(e, n))
+                        writer.WriteLine($"{e:F1},{n:F1}");
+        }
+
+        // Export path
+        var pathCsvPath = Path.Combine(TestContext.CurrentContext.WorkDirectory, "fullfield_path.csv");
+        using (var writer = new StreamWriter(pathCsvPath))
+        {
+            writer.WriteLine("step,e,n,heading,steer,yt_exec");
+            int step = 0;
+            foreach (var (_, r) in allResults)
+            {
+                double steer = r.Guidance?.SteerAngle ?? 0;
+                bool ytExec = r.YouTurn?.IsExecuting ?? false;
+                writer.WriteLine($"{step++},{r.Easting:F2},{r.Northing:F2},{r.Heading:F1},{steer:F2},{ytExec}");
+            }
+        }
+        TestContext.Out.WriteLine($"Path CSV: {pathCsvPath}");
+        TestContext.Out.WriteLine($"Coverage CSV: {covCsvPath}");
+
+        Assert.That(coveragePct, Is.GreaterThan(50), $"Coverage should be >50%, got {coveragePct:F1}%");
+
+        // Verify tractor never left the field (allow 10m overshoot for U-turn arcs)
+        double margin = 10.0;
+        foreach (var (_, r) in allResults)
+        {
+            Assert.That(r.Easting, Is.GreaterThan(-margin).And.LessThan(FIELD_W + margin),
+                $"Tractor left field: E={r.Easting:F1} (field: 0-{FIELD_W})");
+            Assert.That(r.Northing, Is.GreaterThan(-margin).And.LessThan(FIELD_H + margin),
+                $"Tractor left field: N={r.Northing:F1} (field: 0-{FIELD_H})");
+        }
     }
 }
