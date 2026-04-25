@@ -49,6 +49,14 @@ public class RouteStitchingService : IRouteStitchingService
         if (swaths.Count == 0)
             return plan;
 
+        // Reorder split pieces of each source so they appear in traversal order.
+        // SwathGenerationService outputs pieces in geometric order along the
+        // heading (low-t to high-t); for a source driven in reverse, traversal
+        // order is the opposite. Reorder up-front so the rest of the loop can
+        // assume swaths[i] precedes swaths[i+1] in actual travel order.
+        if (sourceSwathIndex != null)
+            (swaths, sourceSwathIndex) = ReorderSplitPiecesForTraversal(swaths, sourceSwathIndex);
+
         double heading = config.ReferenceHeading;
 
         for (int i = 0; i < swaths.Count; i++)
@@ -56,8 +64,13 @@ public class RouteStitchingService : IRouteStitchingService
             var swath = swaths[i];
             if (swath.Points.Count < 2) continue;
 
-            // Determine travel direction: even swaths forward, odd swaths reverse
-            bool isReverse = i % 2 != 0;
+            // Travel direction is per-source, not per-list-position. With splits,
+            // multiple list entries share a source, and they must all be driven
+            // in the same direction. Without sourceSwathIndex (legacy callers),
+            // fall back to the old per-position alternation.
+            bool isReverse = sourceSwathIndex != null && i < sourceSwathIndex.Count
+                ? sourceSwathIndex[i] % 2 != 0
+                : i % 2 != 0;
             var waypoints = new List<Vec3>(swath.Points);
 
             // Calculate swath length
@@ -84,28 +97,18 @@ public class RouteStitchingService : IRouteStitchingService
             var next = swaths[i + 1];
             if (next.Points.Count < 2) continue;
 
-            // Exit/entry points depend on alternating direction
-            Vec3 exitPoint, entryPoint;
-            double exitHeading, entryHeading;
+            // Direction of next swath (same source = same direction; new source = alternating).
+            bool isReverseNext = sourceSwathIndex != null && i + 1 < sourceSwathIndex.Count
+                ? sourceSwathIndex[i + 1] % 2 != 0
+                : (i + 1) % 2 != 0;
 
-            if (i % 2 == 0)
-            {
-                // Current swath driven forward: exit from end
-                exitPoint = swath.Points[^1];
-                // Next swath driven reverse: enter from end
-                entryPoint = next.Points[^1];
-                exitHeading = heading;
-                entryHeading = heading + Math.PI;
-            }
-            else
-            {
-                // Current swath driven reverse: exit from start
-                exitPoint = swath.Points[0];
-                // Next swath driven forward: enter from start
-                entryPoint = next.Points[0];
-                exitHeading = heading + Math.PI;
-                entryHeading = heading;
-            }
+            // Exit from current swath at the end of the current direction.
+            Vec3 exitPoint = isReverse ? swath.Points[0] : swath.Points[^1];
+            double exitHeading = isReverse ? heading + Math.PI : heading;
+
+            // Enter next swath at the start of the next direction.
+            Vec3 entryPoint = isReverseNext ? next.Points[^1] : next.Points[0];
+            double entryHeading = isReverseNext ? heading + Math.PI : heading;
 
             // Generate Dubins turn unconditionally; it's the "no obstacle" answer.
             var turnInput = new TurnPathInput
@@ -165,6 +168,51 @@ public class RouteStitchingService : IRouteStitchingService
         }
 
         return plan;
+    }
+
+    /// <summary>
+    /// Reorder split pieces of each source so they appear in traversal order.
+    /// SwathGenerationService outputs pieces in geometric order along the heading;
+    /// for a source driven in reverse (odd source index), traversal order is the
+    /// reverse of geometric order. Sources with a single piece are unaffected.
+    /// </summary>
+    private static (List<Models.Track.Track>, List<int>) ReorderSplitPiecesForTraversal(
+        List<Models.Track.Track> swaths, List<int> sourceSwathIndex)
+    {
+        if (swaths.Count != sourceSwathIndex.Count || swaths.Count <= 1)
+            return (swaths, sourceSwathIndex);
+
+        var outSwaths = new List<Models.Track.Track>(swaths.Count);
+        var outSources = new List<int>(sourceSwathIndex.Count);
+
+        int i = 0;
+        while (i < swaths.Count)
+        {
+            int src = sourceSwathIndex[i];
+            int j = i;
+            while (j < swaths.Count && sourceSwathIndex[j] == src) j++;
+            // [i, j) is one source's group. Reverse if source is reverse-direction.
+            bool reverseGroup = (src % 2) != 0;
+            if (reverseGroup && j - i > 1)
+            {
+                for (int k = j - 1; k >= i; k--)
+                {
+                    outSwaths.Add(swaths[k]);
+                    outSources.Add(src);
+                }
+            }
+            else
+            {
+                for (int k = i; k < j; k++)
+                {
+                    outSwaths.Add(swaths[k]);
+                    outSources.Add(src);
+                }
+            }
+            i = j;
+        }
+
+        return (outSwaths, outSources);
     }
 
     private static RouteSegment MakeTurn(TurnPathResult result, int swathFromIndex) => new()
