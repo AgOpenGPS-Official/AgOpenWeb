@@ -302,16 +302,142 @@ internal sealed class BcdSweep
 
     private void HandleSplit(SweepEvent ev)
     {
-        // Phase C.2 placeholder — for now treat as a no-op so simple-rectangle
-        // tests pass. Will be implemented when we extend to inner-hole and
-        // outer-notch fixtures.
-        // TODO Phase C.2: identify the parent cell at this perp, finish it,
-        // open two new cells with the two forward edges as their inner walls.
+        // Two new edges enter the active list (both adjacent edges go forward).
+        var aFwd = MakeEdge(ev.Vertex, ev.PrevVertex);
+        var bFwd = MakeEdge(ev.Vertex, ev.NextVertex);
+
+        // Order so leftFwd is on the lower perp side at slightly-above sweep.
+        double slightlyAbove = ev.SweepCoord + 1e-7;
+        ActiveEdge leftFwd, rightFwd;
+        if (PerpAt(aFwd, slightlyAbove) <= PerpAt(bFwd, slightlyAbove))
+        {
+            leftFwd = aFwd; rightFwd = bFwd;
+        }
+        else
+        {
+            leftFwd = bFwd; rightFwd = aFwd;
+        }
+
+        // Find existing active edges immediately surrounding V's perpendicular.
+        double vPerp = PerpCoord(ev.Vertex);
+        ActiveEdge? leftBound = null, rightBound = null;
+        double bestLeftPerp = double.NegativeInfinity;
+        double bestRightPerp = double.PositiveInfinity;
+        foreach (var e in _active)
+        {
+            double p = PerpAt(e, ev.SweepCoord);
+            if (p < vPerp && p > bestLeftPerp) { bestLeftPerp = p; leftBound = e; }
+            else if (p > vPerp && p < bestRightPerp) { bestRightPerp = p; rightBound = e; }
+        }
+
+        if (leftBound == null || rightBound == null
+            || leftBound.CellOnRight == -1
+            || leftBound.CellOnRight != rightBound.CellOnLeft)
+        {
+            // V isn't inside an active cell — fall back to an Open (rare; treats
+            // disconnected polygon-with-holes input as a separate cell).
+            HandleOpen(ev);
+            return;
+        }
+
+        int parentId = leftBound.CellOnRight;
+
+        // Close the parent cell: walk up its left chain, across V, and back down its right chain.
+        var parentPoly = new List<Vec2>(leftBound.ChainOnRight);
+        parentPoly.Add(ev.Vertex);
+        for (int i = rightBound.ChainOnLeft.Count - 1; i >= 0; i--)
+            parentPoly.Add(rightBound.ChainOnLeft[i]);
+        FinishCell(parentId, parentPoly);
+
+        // Open two new cells: L (left half) and R (right half).
+        int leftCellId = _nextCellId++;
+        int rightCellId = _nextCellId++;
+
+        leftBound.CellOnRight = leftCellId;
+        leftBound.ChainOnRight = new List<Vec2> { ev.Vertex };
+
+        rightBound.CellOnLeft = rightCellId;
+        rightBound.ChainOnLeft = new List<Vec2> { ev.Vertex };
+
+        leftFwd.CellOnLeft = leftCellId;
+        leftFwd.CellOnRight = -1;
+        leftFwd.ChainOnLeft.Add(ev.Vertex);
+
+        rightFwd.CellOnLeft = -1;
+        rightFwd.CellOnRight = rightCellId;
+        rightFwd.ChainOnRight.Add(ev.Vertex);
+
+        InsertActiveEdge(leftFwd, ev.SweepCoord);
+        InsertActiveEdge(rightFwd, ev.SweepCoord);
+
+        _reeb.Add(new ReebEdge { FromCellId = parentId, ToCellId = leftCellId, CriticalPoint = ev.Vertex });
+        _reeb.Add(new ReebEdge { FromCellId = parentId, ToCellId = rightCellId, CriticalPoint = ev.Vertex });
     }
 
     private void HandleMerge(SweepEvent ev)
     {
-        // Phase C.2 placeholder — see HandleSplit.
+        // Find the two active edges ending at V (UpperEnd == ev.Vertex).
+        ActiveEdge? leftIn = null, rightIn = null;
+        foreach (var e in _active)
+        {
+            if (!Vec2Equal(e.UpperEnd, ev.Vertex)) continue;
+            if (leftIn == null) leftIn = e;
+            else if (rightIn == null) { rightIn = e; break; }
+        }
+        if (leftIn == null || rightIn == null) return;
+
+        // Order by perp at slightly-below sweep coord (where edges still exist).
+        double slightlyBelow = ev.SweepCoord - 1e-7;
+        if (PerpAt(leftIn, slightlyBelow) > PerpAt(rightIn, slightlyBelow))
+            (leftIn, rightIn) = (rightIn, leftIn);
+
+        int leftIdx = _active.IndexOf(leftIn);
+        int rightIdx = _active.IndexOf(rightIn);
+        if (leftIdx < 0 || rightIdx < 0) return;
+
+        // The cells outside leftIn (on its left) and outside rightIn (on its right).
+        ActiveEdge? edgeAL = (leftIdx > 0) ? _active[leftIdx - 1] : null;
+        ActiveEdge? edgeBR = (rightIdx < _active.Count - 1) ? _active[rightIdx + 1] : null;
+
+        if (edgeAL == null || edgeBR == null
+            || leftIn.CellOnLeft == -1 || rightIn.CellOnRight == -1
+            || edgeAL.CellOnRight != leftIn.CellOnLeft
+            || edgeBR.CellOnLeft != rightIn.CellOnRight)
+        {
+            // Inconsistent state — degrade to a Close (collapse the inner pair).
+            HandleClose(ev);
+            return;
+        }
+
+        int cellAId = leftIn.CellOnLeft;
+        int cellBId = rightIn.CellOnRight;
+
+        // Close cell A.
+        var cellAPoly = new List<Vec2>(edgeAL.ChainOnRight);
+        cellAPoly.Add(ev.Vertex);
+        for (int i = leftIn.ChainOnLeft.Count - 1; i >= 0; i--)
+            cellAPoly.Add(leftIn.ChainOnLeft[i]);
+        FinishCell(cellAId, cellAPoly);
+
+        // Close cell B.
+        var cellBPoly = new List<Vec2>(rightIn.ChainOnRight);
+        cellBPoly.Add(ev.Vertex);
+        for (int i = edgeBR.ChainOnLeft.Count - 1; i >= 0; i--)
+            cellBPoly.Add(edgeBR.ChainOnLeft[i]);
+        FinishCell(cellBId, cellBPoly);
+
+        // Open new cell C bounded by edgeAL on its left and edgeBR on its right.
+        int cellCId = _nextCellId++;
+        edgeAL.CellOnRight = cellCId;
+        edgeAL.ChainOnRight = new List<Vec2> { ev.Vertex };
+        edgeBR.CellOnLeft = cellCId;
+        edgeBR.ChainOnLeft = new List<Vec2> { ev.Vertex };
+
+        _active.Remove(leftIn);
+        _active.Remove(rightIn);
+
+        _reeb.Add(new ReebEdge { FromCellId = cellAId, ToCellId = cellCId, CriticalPoint = ev.Vertex });
+        _reeb.Add(new ReebEdge { FromCellId = cellBId, ToCellId = cellCId, CriticalPoint = ev.Vertex });
     }
 
     private void FinishCell(int cellId, List<Vec2> polygon)

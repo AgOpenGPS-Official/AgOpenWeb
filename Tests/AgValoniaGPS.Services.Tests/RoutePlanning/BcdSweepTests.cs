@@ -55,4 +55,30 @@ public class BcdSweepTests
         Assert.That(graph.Cells.Count, Is.EqualTo(0));
         Assert.That(graph.Edges.Count, Is.EqualTo(0));
     }
+
+    [Test]
+    public void RectangleWithInteriorHole_ProducesThreeCells()
+    {
+        // Outer 10x10 with a small interior hole [3,5]x[2,4].
+        // Sweep north → expected:
+        //   - Cell 0: bottom (below hole)         ── closed at SPLIT (3,2)
+        //   - Cell 1: left strip (alongside hole) ─┐
+        //   - Cell 2: right strip                  ├ closed at MERGE (5,4)
+        //   - Cell 3: top (above hole)            ── closed at CLOSE (10,10)
+        var outer = Rect(0, 10, 0, 10);
+        var hole = Rect(3, 5, 2, 4);
+
+        var graph = new CellDecompositionService().Decompose(
+            outer, new List<BoundaryPolygon> { hole }, SweepNorth);
+
+        // 4 cells, 4 Reeb edges (split adds 2, merge adds 2)
+        Assert.That(graph.Cells.Count, Is.EqualTo(4),
+            "rectangle-with-hole should decompose into bottom + left + right + top");
+        Assert.That(graph.Edges.Count, Is.EqualTo(4),
+            "split contributes 2 edges (parent→L, parent→R), merge contributes 2 (L→C, R→C)");
+
+        // Each cell should be a valid polygon (≥3 vertices).
+        foreach (var c in graph.Cells)
+            Assert.That(c.Polygon.Count, Is.GreaterThanOrEqualTo(3));
+    }
 }
