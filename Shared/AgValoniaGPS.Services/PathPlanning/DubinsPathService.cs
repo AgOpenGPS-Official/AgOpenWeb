@@ -94,6 +94,25 @@ namespace AgValoniaGPS.Services.PathPlanning
             return results;
         }
 
+        /// <summary>
+        /// Compute all Dubins paths between start and goal and return the shortest's
+        /// raw <see cref="DubinsPathData"/> (with segment lengths, turning directions,
+        /// tangent points, and Vec2 path coordinates). Returns null if no path exists.
+        /// </summary>
+        public DubinsPathData? GetBestPathData(Vec3 start, Vec3 goal)
+        {
+            startPos.Easting = start.Easting;
+            startPos.Northing = start.Northing;
+            startHeading = start.Heading;
+
+            goalPos.Easting = goal.Easting;
+            goalPos.Northing = goal.Northing;
+            goalHeading = goal.Heading;
+
+            var paths = GetAllDubinsPaths();
+            return paths.Count > 0 ? paths[0] : null;
+        }
+
         //takes 2 points and headings to create a path - returns list of vec3 points and headings
         public List<Vec3> GeneratePath(Vec3 start, Vec3 goal)
         {
