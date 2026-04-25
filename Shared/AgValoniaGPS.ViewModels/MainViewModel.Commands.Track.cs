@@ -1443,9 +1443,9 @@ public partial class MainViewModel
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var outerBoundary = boundary.OuterBoundary ?? clipBoundary;
 
-        // BCD pipeline: decompose clipBoundary minus inner boundaries into convex
-        // cells, generate per-cell swaths, plan optimal visit order via Held-Karp,
-        // and stitch the route with inter-cell Dubins transits.
+        // F2C-style pipeline (Phase 3-8): raycast decomposition → corner
+        // classification → per-cell rotation-and-clip swaths → cell-aware
+        // stitcher with Reeds-Shepp turns and headland-constrained entry/exit.
         // Sweep direction = perpendicular to AB heading.
         double swathHeading = track.Heading;
         double sweepHeading = swathHeading + Math.PI / 2.0;
@@ -1453,55 +1453,46 @@ public partial class MainViewModel
             .Where(b => b.Points.Count >= 3)
             .ToList();
 
-        var decomposer = new Services.RoutePlanning.CellDecompositionService();
-        var reebGraph = decomposer.Decompose(clipBoundary, rawInnerBoundaries, sweepHeading);
+        // Convert BoundaryPolygons → Vec2 lists for the new services.
+        var outerVec2 = clipBoundary.Points
+            .Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
+        var innersVec2 = rawInnerBoundaries
+            .Select(b => b.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList())
+            .ToList();
+        var outerForClassifier = outerBoundary.Points
+            .Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
 
-        // Per-cell swaths.
-        var cellSwathGen = new Services.RoutePlanning.CellSwathGenerator();
-        var cellSwaths = new Dictionary<int, List<Models.Track.Track>>();
-        var allSwaths = new List<Models.Track.Track>();
-        foreach (var cell in reebGraph.Cells)
-        {
-            var cs = cellSwathGen.Generate(
-                cell, sweepHeading,
-                ConfigStore.ActualToolWidth,
-                ConfigStore.Tool.Overlap);
-            cellSwaths[cell.Id] = cs;
-            allSwaths.AddRange(cs);
-        }
+        var cells = Services.RoutePlanning.BoustrophedonDecomp.Decompose(
+            outerVec2, innersVec2, sweepHeading);
+        Services.RoutePlanning.CellCornerClassifier.ClassifyAll(
+            cells, outerForClassifier, sweepHeading);
 
-        // Optimal cell visit order.
-        var planner = new Services.RoutePlanning.CellTraversalPlanner();
-        Models.Base.Vec2 vehiclePos = State.Vehicle.HasValidFix
-            ? new Models.Base.Vec2(State.Vehicle.Easting, State.Vehicle.Northing)
-            : new Models.Base.Vec2(
+        // Per-cell swaths via the rotation-and-clip generator (handles inner
+        // rings → split sibling segments natively).
+        double opWidth = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
+        if (opWidth <= 0) opWidth = 1.0;
+        var swathGen = new Services.RoutePlanning.RotationalSwathGenerator();
+        var cellSwaths = new Dictionary<int, List<Models.RoutePlanning.GeneratedSwath>>();
+        foreach (var cell in cells)
+            cellSwaths[cell.Id] = swathGen.Generate(cell, swathHeading, opWidth);
+
+        // Stitch with greedy cell ordering + Reeds-Shepp turns/transits.
+        Models.Base.Vec3 startPose = State.Vehicle.HasValidFix
+            ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, swathHeading)
+            : new Models.Base.Vec3(
                 clipBoundary.Points[0].Easting,
-                clipBoundary.Points[0].Northing);
-        var visits = planner.Plan(
-            reebGraph.Cells, cellSwaths,
-            vehiclePos,
-            startHeading: swathHeading,
-            swathHeading: swathHeading,
-            turningRadius: ConfigStore.Guidance.UTurnRadius);
+                clipBoundary.Points[0].Northing,
+                swathHeading);
+        var stitcher = new Services.RoutePlanning.CellAwareRouteStitcher(
+            ConfigStore.Guidance.UTurnRadius);
+        var routePlan = stitcher.Stitch(cells, cellSwaths, startPose);
 
-        // Stitch BCD cell visits into a RoutePlan (intra-cell Dubins turns,
-        // inter-cell Dubins transits at cell boundaries).
-        var turnService = new Services.RoutePlanning.TurnPathService();
-        var transitService = new Services.RoutePlanning.TransitPathService();
-        var stitchService = new Services.RoutePlanning.RouteStitchingService(turnService, transitService);
-
-        var routePlan = stitchService.StitchFromCells(
-            visits,
-            outerBoundary,
-            rawInnerBoundaries,
-            turningRadius: ConfigStore.Guidance.UTurnRadius,
-            headlandWidth: State.Field.HeadlandDistance);
-
-        // No separate circuit-pass display in BCD mode — the cells handle obstacle
-        // bypass via inter-cell transits.
-        var circuitTracks = new List<Models.Track.Track>();
-
-        // Extract connection paths (turns + transits) for map rendering, with type info
+        // Display conversion: turn each Swath RouteSegment into a Track for
+        // the map renderer, and bundle Turn/Transit segments separately.
+        var displaySwaths = routePlan.Segments
+            .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Swath)
+            .Select((s, idx) => Models.Track.Track.FromCurve($"Swath-{idx}", s.Waypoints))
+            .ToList();
         var connectionSegments = routePlan.Segments
             .Where(s => s.Type == Models.RoutePlanning.RouteSegmentType.Turn
                      || s.Type == Models.RoutePlanning.RouteSegmentType.Transit)
@@ -1512,9 +1503,6 @@ public partial class MainViewModel
             .Select(s => s.Type == Models.RoutePlanning.RouteSegmentType.Transit)
             .ToList();
 
-        // Combine interior swaths + headland circuit passes in the displayed swath list
-        var displaySwaths = new List<Models.Track.Track>(allSwaths);
-        displaySwaths.AddRange(circuitTracks);
         _mapService.SetPlannedSwaths(displaySwaths);
         _mapService.SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
 
