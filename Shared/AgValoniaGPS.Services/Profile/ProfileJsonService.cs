@@ -208,7 +208,9 @@ public static class ProfileJsonService
         store.Tool.Overlap = dto.Tool?.Overlap ?? 0.0;
         store.Tool.Offset = dto.Tool?.Offset ?? 0.0;
         store.Tool.HitchLength = dto.Tool?.HitchLength ?? 1.8;
-        store.Tool.TrailingHitchLength = dto.Tool?.TrailingHitchLength ?? -2.5;
+        // Legacy profiles may have negative TrailingHitchLength from the old default;
+        // migrate to "positive = behind hitch" by taking abs.
+        store.Tool.TrailingHitchLength = Math.Abs(dto.Tool?.TrailingHitchLength ?? 2.5);
         store.Tool.TankTrailingHitchLength = dto.Tool?.TankTrailingHitchLength ?? 3.0;
         store.Tool.TrailingToolToPivotLength = dto.Tool?.TrailingToolToPivotLength ?? 0.0;
         store.Tool.IsToolTrailing = dto.Tool?.IsToolTrailing ?? false;
