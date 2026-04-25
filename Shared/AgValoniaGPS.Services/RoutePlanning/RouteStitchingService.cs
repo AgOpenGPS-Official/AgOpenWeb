@@ -215,6 +215,144 @@ public class RouteStitchingService : IRouteStitchingService
         return (outSwaths, outSources);
     }
 
+    /// <summary>
+    /// Cell-aware stitching: walks a sequence of <see cref="CellTraversalPlanner.CellVisit"/>s,
+    /// emitting per-swath segments with Dubins turns inside each cell and Dubins transits
+    /// between cells. Replaces the legacy <see cref="StitchRoute"/> path when BCD is in use.
+    /// </summary>
+    public RoutePlan StitchFromCells(
+        List<CellTraversalPlanner.CellVisit> visits,
+        Models.BoundaryPolygon outerBoundary,
+        List<Models.BoundaryPolygon> innerBoundaries,
+        double turningRadius,
+        double headlandWidth)
+    {
+        var plan = new RoutePlan { Pattern = "BCD" };
+        if (visits.Count == 0) return plan;
+
+        Vec3? prevExitPose = null;
+        int globalSwathIndex = 0;
+
+        for (int v = 0; v < visits.Count; v++)
+        {
+            var visit = visits[v];
+            var swaths = visit.SwathsInTraversalOrder;
+            int n = swaths.Count;
+            if (n == 0) continue;
+
+            bool startReversed = (visit.EntryCorner == 1 || visit.EntryCorner == 3);
+
+            // Inter-cell transit (skip for the first visit).
+            if (prevExitPose is { } prevExit)
+            {
+                var firstSwath = swaths[0];
+                bool firstReversed = startReversed;
+                Vec3 entryPose = firstReversed ? firstSwath.Points[^1] : firstSwath.Points[0];
+                double entryHeading = firstReversed
+                    ? visit.EntryHeading + Math.PI
+                    : visit.EntryHeading;
+                // EntryHeading on the visit is set so that 0/2 corners drive to higher
+                // perp and 1/3 to lower; we want the heading at entryPose.
+                entryHeading = visit.EntryHeading;
+                var entryPoint = new Vec3(entryPose.Easting, entryPose.Northing, entryHeading);
+
+                var turn = _turnPathService.GenerateTurn(new TurnPathInput
+                {
+                    ExitPoint = prevExit,
+                    ExitHeading = prevExit.Heading,
+                    EntryPoint = entryPoint,
+                    EntryHeading = entryHeading,
+                    TurningRadius = turningRadius,
+                    HeadlandWidth = headlandWidth,
+                    Boundary = outerBoundary,
+                    InnerBoundaries = innerBoundaries,
+                });
+
+                plan.Segments.Add(new RouteSegment
+                {
+                    Type = RouteSegmentType.Transit,
+                    SwathIndex = globalSwathIndex - 1,
+                    Waypoints = turn.Waypoints,
+                    Length = turn.Length,
+                    IsTurnValid = turn.IsValid,
+                    TurnPathType = $"transit:cell{visits[v - 1].CellId}->cell{visit.CellId}",
+                });
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                var swath = swaths[i];
+                if (swath.Points.Count < 2) continue;
+
+                bool isReverse = startReversed ^ ((i & 1) == 1);
+
+                var waypoints = new List<Vec3>(swath.Points);
+                double swathLen = 0;
+                for (int j = 1; j < waypoints.Count; j++)
+                {
+                    double dx = waypoints[j].Easting - waypoints[j - 1].Easting;
+                    double dy = waypoints[j].Northing - waypoints[j - 1].Northing;
+                    swathLen += Math.Sqrt(dx * dx + dy * dy);
+                }
+
+                plan.Segments.Add(new RouteSegment
+                {
+                    Type = RouteSegmentType.Swath,
+                    SwathIndex = globalSwathIndex,
+                    Waypoints = waypoints,
+                    Length = swathLen,
+                    IsReverse = isReverse,
+                    IsTurnValid = true,
+                });
+                globalSwathIndex++;
+
+                Vec3 swathExit = isReverse ? swath.Points[0] : swath.Points[^1];
+                double swathExitHeading = isReverse
+                    ? waypoints[0].Heading + Math.PI
+                    : waypoints[^1].Heading;
+                var exitPose = new Vec3(swathExit.Easting, swathExit.Northing, swathExitHeading);
+
+                if (i < n - 1)
+                {
+                    // Intra-cell boustrophedon turn to the next swath.
+                    var next = swaths[i + 1];
+                    if (next.Points.Count < 2) continue;
+                    bool nextReversed = startReversed ^ (((i + 1) & 1) == 1);
+                    Vec3 nextEntry = nextReversed ? next.Points[^1] : next.Points[0];
+                    double nextEntryHeading = nextReversed
+                        ? next.Points[^1].Heading + Math.PI
+                        : next.Points[0].Heading;
+
+                    var turn = _turnPathService.GenerateTurn(new TurnPathInput
+                    {
+                        ExitPoint = exitPose,
+                        ExitHeading = exitPose.Heading,
+                        EntryPoint = new Vec3(nextEntry.Easting, nextEntry.Northing, nextEntryHeading),
+                        EntryHeading = nextEntryHeading,
+                        TurningRadius = turningRadius,
+                        HeadlandWidth = headlandWidth,
+                        Boundary = outerBoundary,
+                        InnerBoundaries = innerBoundaries,
+                    });
+
+                    plan.Segments.Add(new RouteSegment
+                    {
+                        Type = RouteSegmentType.Turn,
+                        SwathIndex = globalSwathIndex - 1,
+                        Waypoints = turn.Waypoints,
+                        Length = turn.Length,
+                        IsTurnValid = turn.IsValid,
+                        TurnPathType = turn.PathType,
+                    });
+                }
+
+                prevExitPose = exitPose;
+            }
+        }
+
+        return plan;
+    }
+
     private static RouteSegment MakeTurn(TurnPathResult result, int swathFromIndex) => new()
     {
         Type = RouteSegmentType.Turn,

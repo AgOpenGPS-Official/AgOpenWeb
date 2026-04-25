@@ -1440,112 +1440,66 @@ public partial class MainViewModel
             return;
         }
 
-        var swathService = new Services.Track.SwathGenerationService();
-        var input = new Services.Interfaces.SwathPlanInput
-        {
-            ReferenceTrack = track,
-            ClipBoundary = clipBoundary,
-            ToolWidth = ConfigStore.ActualToolWidth,
-            Overlap = ConfigStore.Tool.Overlap,
-            Pattern = _routePlanPattern,
-            MaxTracks = _routePlanMaxTracks,
-            VehiclePosition = State.Vehicle.HasValidFix
-                ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, 0)
-                : null,
-            HeadlandWidth = State.Field.HeadlandDistance,
-            InnerBoundaries = boundary.InnerBoundaries ?? new(),
-            InnerBoundaryBufferPasses = _routePlanHeadlandPasses,
-        };
-
         var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        var swathPlan = swathService.GenerateSwaths(input);
-
         var outerBoundary = boundary.OuterBoundary ?? clipBoundary;
 
-        // Generate circuit passes (outer + per-inner) once. They serve two roles:
-        // (1) display tracks, (2) transit paths for the route stitcher.
-        var circuitOffsetService = new Services.Geometry.PolygonOffsetService();
-        var circuitService = new Services.RoutePlanning.HeadlandCircuitService(circuitOffsetService);
-        double toolEffective = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
-        if (toolEffective <= 0) toolEffective = 1.0;
+        // BCD pipeline: decompose clipBoundary minus inner boundaries into convex
+        // cells, generate per-cell swaths, plan optimal visit order via Held-Karp,
+        // and stitch the route with inter-cell Dubins transits.
+        // Sweep direction = perpendicular to AB heading.
+        double swathHeading = track.Heading;
+        double sweepHeading = swathHeading + Math.PI / 2.0;
+        var rawInnerBoundaries = (boundary.InnerBoundaries ?? new())
+            .Where(b => b.Points.Count >= 3)
+            .ToList();
 
-        var circuitTracks = new List<Models.Track.Track>();
-        var transitCircuits = new List<Services.Interfaces.TransitCircuit>();
-        if (outerBoundary != null && outerBoundary.Points.Count >= 3)
+        var decomposer = new Services.RoutePlanning.CellDecompositionService();
+        var reebGraph = decomposer.Decompose(clipBoundary, rawInnerBoundaries, sweepHeading);
+
+        // Per-cell swaths.
+        var cellSwathGen = new Services.RoutePlanning.CellSwathGenerator();
+        var cellSwaths = new Dictionary<int, List<Models.Track.Track>>();
+        var allSwaths = new List<Models.Track.Track>();
+        foreach (var cell in reebGraph.Cells)
         {
-            var outerPasses = circuitService.GenerateOuterPasses(outerBoundary, toolEffective, _routePlanHeadlandPasses);
-            foreach (var pass in outerPasses)
-            {
-                circuitTracks.Add(Models.Track.Track.FromCurve($"Circuit pass {pass.PassNumber + 1}", pass.Points));
-                // Outer circuits are reused for transit (concave outer / non-convex headland).
-                transitCircuits.Add(new Services.Interfaces.TransitCircuit
-                {
-                    Points = pass.Points,
-                    IsInnerBoundary = false,
-                });
-            }
-        }
-        var rawInnerBoundaries = new List<BoundaryPolygon>();
-        if (boundary.InnerBoundaries != null)
-        {
-            foreach (var inner in boundary.InnerBoundaries)
-            {
-                if (inner.Points.Count < 3) continue;
-                rawInnerBoundaries.Add(inner);
-                var innerPasses = circuitService.GenerateInnerPasses(inner, toolEffective, _routePlanHeadlandPasses);
-                foreach (var pass in innerPasses)
-                {
-                    circuitTracks.Add(Models.Track.Track.FromCurve($"Inner circuit {pass.PassNumber + 1}", pass.Points));
-                    transitCircuits.Add(new Services.Interfaces.TransitCircuit
-                    {
-                        Points = pass.Points,
-                        IsInnerBoundary = true,
-                    });
-                }
-            }
+            var cs = cellSwathGen.Generate(
+                cell, sweepHeading,
+                ConfigStore.ActualToolWidth,
+                ConfigStore.Tool.Overlap);
+            cellSwaths[cell.Id] = cs;
+            allSwaths.AddRange(cs);
         }
 
-        // Build expanded inner boundaries (one tool-width buffer) so Dubins turns also avoid the buffer zone
-        var expandedInnerBoundaries = new List<BoundaryPolygon>();
-        if (boundary.InnerBoundaries != null && _routePlanHeadlandPasses > 0)
-        {
-            double swathWidthEff = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
-            if (swathWidthEff <= 0) swathWidthEff = 1.0;
-            double bufferDist = _routePlanHeadlandPasses * swathWidthEff;
-            var expandOffsetSvc = new Services.Geometry.PolygonOffsetService();
-            foreach (var inner in boundary.InnerBoundaries)
-            {
-                if (inner.Points.Count < 3) continue;
-                var innerVec2 = inner.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
-                var expanded = expandOffsetSvc.CreateOutwardOffset(innerVec2, bufferDist);
-                if (expanded != null && expanded.Count >= 3)
-                {
-                    var bp = new BoundaryPolygon();
-                    foreach (var pt in expanded)
-                        bp.Points.Add(new BoundaryPoint { Easting = pt.Easting, Northing = pt.Northing });
-                    bp.UpdateBounds();
-                    expandedInnerBoundaries.Add(bp);
-                }
-            }
-        }
+        // Optimal cell visit order.
+        var planner = new Services.RoutePlanning.CellTraversalPlanner();
+        Models.Base.Vec2 vehiclePos = State.Vehicle.HasValidFix
+            ? new Models.Base.Vec2(State.Vehicle.Easting, State.Vehicle.Northing)
+            : new Models.Base.Vec2(
+                clipBoundary.Points[0].Easting,
+                clipBoundary.Points[0].Northing);
+        var visits = planner.Plan(
+            reebGraph.Cells, cellSwaths,
+            vehiclePos,
+            startHeading: swathHeading,
+            swathHeading: swathHeading,
+            turningRadius: ConfigStore.Guidance.UTurnRadius);
 
-        // Stitch swaths + boundary-validated turns + perimeter transits into a RoutePlan
+        // Stitch BCD cell visits into a RoutePlan (intra-cell Dubins turns,
+        // inter-cell Dubins transits at cell boundaries).
         var turnService = new Services.RoutePlanning.TurnPathService();
         var transitService = new Services.RoutePlanning.TransitPathService();
         var stitchService = new Services.RoutePlanning.RouteStitchingService(turnService, transitService);
 
-        var routePlan = stitchService.StitchRoute(swathPlan.Swaths, new Services.Interfaces.RouteStitchConfig
-        {
-            TurningRadius = ConfigStore.Guidance.UTurnRadius,
-            HeadlandWidth = State.Field.HeadlandDistance,
-            Boundary = outerBoundary,
-            InnerBoundaries = expandedInnerBoundaries,
-            RawInnerBoundaries = rawInnerBoundaries,
-            Circuits = transitCircuits,
-            ReferenceHeading = track.Heading,
-            Pattern = _routePlanPattern,
-        }, swathPlan.SourceSwathIndex);
+        var routePlan = stitchService.StitchFromCells(
+            visits,
+            outerBoundary,
+            rawInnerBoundaries,
+            turningRadius: ConfigStore.Guidance.UTurnRadius,
+            headlandWidth: State.Field.HeadlandDistance);
+
+        // No separate circuit-pass display in BCD mode — the cells handle obstacle
+        // bypass via inter-cell transits.
+        var circuitTracks = new List<Models.Track.Track>();
 
         // Extract connection paths (turns + transits) for map rendering, with type info
         var connectionSegments = routePlan.Segments
@@ -1559,7 +1513,7 @@ public partial class MainViewModel
             .ToList();
 
         // Combine interior swaths + headland circuit passes in the displayed swath list
-        var displaySwaths = new List<Models.Track.Track>(swathPlan.Swaths);
+        var displaySwaths = new List<Models.Track.Track>(allSwaths);
         displaySwaths.AddRange(circuitTracks);
         _mapService.SetPlannedSwaths(displaySwaths);
         _mapService.SetPlannedTurnPaths(turnPaths, turnValidity, turnIsTransit);
