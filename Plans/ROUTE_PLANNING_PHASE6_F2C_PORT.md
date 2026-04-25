@@ -243,17 +243,13 @@ Total: **~36 hours** (~30 if we skip Phase 9 hybrid A*).
 9. **66-acre field with 1.5-acre pond** — actual user scenario.
 10. **66-acre field with pond + concavity + drivable mud** — combined complexity.
 
-## Open questions
+## Decisions
 
-1. **Decomposition algorithm choice.** F2C offers Trapezoidal (simple, more cells) and Boustrophedon (Choset 2000, fewer cells via critical-points-only). Default to Boustrophedon? Same as F2C's default.
-
-2. **Cost objective for swath angle.** Default to "minimize number of swaths" (favors long swaths)? Or "minimize total turn length"? Or user-configurable?
-
-3. **Hybrid A\* inclusion.** Phase 9 is optional. Skip and rely on Reeds-Shepp + tangent-bypass, only adding A* if real fields turn up scenarios neither handles?
-
-4. **Cell visualization.** Useful for dev. Ship as a debug toggle, or always-on overlay when route plan is loaded?
-
-5. **Section control over drivable inners.** Already works in the codebase. Confirm it integrates with the new route plan structure (route doesn't mark the swath as split; section control handles it during execution).
+1. **Decomposition default:** F2C-style Boustrophedon (Choset 2000) — critical-points-only, fewer cells than plain Trapezoidal.
+2. **Swath-angle cost objective:** user-configurable, default = minimize number of swaths (favors long swaths along the cell's long axis).
+3. **Hybrid A\*:** included in scope (Phase 9). Cleaner fallback for the rare cases where Reeds-Shepp + tangent-bypass both fail.
+4. **Cell visualization:** user toggle in view settings, default ON during development phase, default OFF for release.
+5. **Section control over drivable inners:** existing behavior unchanged; the swath remains a single segment in the route plan, section control engages during execution as the vehicle crosses the inner-buffer.
 
 ## Migration
 
