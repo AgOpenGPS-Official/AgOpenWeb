@@ -39,4 +39,20 @@ public class Cell
 
     /// <summary>Sweep-direction coordinate at the cell's latest extent.</summary>
     public double SweepEnd { get; set; }
+
+    /// <summary>
+    /// Classification of the cell's four bounding-box corners in the rotated
+    /// (sweep, perp) frame, indexed by <see cref="CellCorner"/>. HEADLAND
+    /// corners are valid vehicle entry/exit; INTERNAL corners would require
+    /// driving through the field. Unknown until <c>CellCornerClassifier</c>
+    /// has been run.
+    /// </summary>
+    public CellCornerKind[] CornerKinds { get; set; } = new[]
+    {
+        CellCornerKind.Unknown, CellCornerKind.Unknown,
+        CellCornerKind.Unknown, CellCornerKind.Unknown,
+    };
+
+    public CellCornerKind GetCornerKind(CellCorner corner) => CornerKinds[(int)corner];
+    public void SetCornerKind(CellCorner corner, CellCornerKind kind) => CornerKinds[(int)corner] = kind;
 }
