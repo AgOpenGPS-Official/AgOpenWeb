@@ -185,7 +185,8 @@ public class TractorPathTests
         var sectionControl = new SectionControlService(toolPosition, coverage, appState);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
-        headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+        headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
+                                  Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
             .Returns(ci => ci.ArgAt<double>(0)); // Pass through GPS heading
 
         return new GpsPipelineService(

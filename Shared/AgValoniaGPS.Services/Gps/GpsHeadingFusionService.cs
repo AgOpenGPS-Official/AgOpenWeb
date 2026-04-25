@@ -27,7 +27,8 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private double _previousHeading;
     private bool _hasPreviousPosition;
 
-    public double FuseHeading(double gpsHeading, double speedMs, double easting, double northing)
+    public double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
+                              double speedMs, double easting, double northing)
     {
         double finalHeading = gpsHeading;
 
@@ -57,11 +58,12 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         }
 
         // IMU fusion when an IMU heading is available and fusion is enabled.
+        // For PANDA, gpsHeading was seeded from the IMU and may have been
+        // overridden by fix-to-fix above; the blend below recovers the IMU
+        // contribution per HeadingFusionWeight.
         double fusionWeight = Connections.HeadingFusionWeight;
-        if (fusionWeight > 0 && fusionWeight < 1.0 && SensorState.Instance.HasValidImu)
+        if (fusionWeight > 0 && fusionWeight < 1.0 && imuValid)
         {
-            double imuHeading = SensorState.Instance.ImuHeading;
-
             double diff = imuHeading - finalHeading;
             if (diff > 180) diff -= 360;
             if (diff < -180) diff += 360;

@@ -100,11 +100,13 @@ public class NmeaParserServiceFast
         var sentenceType = data.Slice(1, 5);
 
         // Check for PANDA or PAOGI
-        if (!sentenceType.SequenceEqual(PANDA) && !sentenceType.SequenceEqual(PAOGI))
-            return false;
+        bool isPanda;
+        if (sentenceType.SequenceEqual(PANDA)) isPanda = true;
+        else if (sentenceType.SequenceEqual(PAOGI)) isPanda = false;
+        else return false;
 
         // Parse the fields (data up to asterisk)
-        return ParsePandaFields(data.Slice(0, asterisk));
+        return ParsePandaFields(data.Slice(0, asterisk), isPanda);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -139,7 +141,7 @@ public class NmeaParserServiceFast
     }
 
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private bool ParsePandaFields(ReadOnlySpan<byte> data)
+    private bool ParsePandaFields(ReadOnlySpan<byte> data, bool isPanda)
     {
         // Find all comma positions (up to 16 fields)
         Span<int> commas = stackalloc int[20];
@@ -234,11 +236,23 @@ public class NmeaParserServiceFast
             speed *= 0.514444; // knots to m/s
         }
 
-        // Heading (field 12)
+        // Heading (field 12). PANDA: int scaled ×10 with 65535 sentinel.
+        // PAOGI: float decimal degrees.
         var headingField = GetField(data, commas, FIELD_HEADING);
         if (headingField.Length > 0)
         {
-            Utf8Parser.TryParse(headingField, out heading, out _);
+            if (isPanda)
+            {
+                if (Utf8Parser.TryParse(headingField, out int rawHeading, out _)
+                    && rawHeading != 65535)
+                {
+                    heading = rawHeading * 0.1;
+                }
+            }
+            else
+            {
+                Utf8Parser.TryParse(headingField, out heading, out _);
+            }
         }
 
         // Apply hemisphere signs
@@ -313,12 +327,17 @@ public class NmeaParserServiceFast
         // Get sentence type (bytes 1-5 after $)
         var sentenceType = data.Slice(1, 5);
 
-        // Check for PANDA or PAOGI
-        if (!sentenceType.SequenceEqual(PANDA) && !sentenceType.SequenceEqual(PAOGI))
-            return false;
+        // PANDA = single GPS + IMU; field 12 is IMU heading scaled ×10 with
+        // sentinel "65535", field 13 is IMU roll scaled ×10. PAOGI = dual
+        // antenna; field 12 is dual-antenna heading as float, field 13 is
+        // dual roll as float — no IMU fusion needed.
+        bool isPanda;
+        if (sentenceType.SequenceEqual(PANDA)) isPanda = true;
+        else if (sentenceType.SequenceEqual(PAOGI)) isPanda = false;
+        else return false;
 
         // Parse directly into state
-        if (!ParsePandaFieldsIntoState(data.Slice(0, asterisk), ref state))
+        if (!ParsePandaFieldsIntoState(data.Slice(0, asterisk), ref state, isPanda))
             return false;
 
         state.MarkParseEnd();
@@ -326,10 +345,13 @@ public class NmeaParserServiceFast
     }
 
     /// <summary>
-    /// Parse PANDA/PAOGI fields directly into VehicleState.
+    /// Parse PANDA/PAOGI fields directly into VehicleState. Fields 1-11 are
+    /// identical between the two. Fields 12-13 (heading, roll) differ:
+    /// PANDA scales them ×10 as int with a 65535 IMU-invalid sentinel on
+    /// heading; PAOGI sends them as floats with no scaling.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static bool ParsePandaFieldsIntoState(ReadOnlySpan<byte> data, ref VehicleState state)
+    private static bool ParsePandaFieldsIntoState(ReadOnlySpan<byte> data, ref VehicleState state, bool isPanda)
     {
         // Find all comma positions (up to 20 fields)
         Span<int> commas = stackalloc int[20];
@@ -416,29 +438,78 @@ public class NmeaParserServiceFast
             state.Speed *= 0.514444; // knots to m/s
         }
 
-        // Heading in degrees (field 12)
+        // Heading (field 12) and roll (field 13) — sentence-type dependent.
         var headingField = GetField(data, commas, FIELD_HEADING);
-        if (headingField.Length > 0)
-        {
-            Utf8Parser.TryParse(headingField, out state.Heading, out _);
-        }
-
-        // Roll angle in degrees (field 13)
         var rollField = GetField(data, commas, FIELD_ROLL);
-        if (rollField.Length > 0)
+
+        if (isPanda)
         {
-            Utf8Parser.TryParse(rollField, out state.Roll, out _);
-            state.ImuValid = true;
+            // PANDA: heading is `(int)(degrees * 10)` with sentinel 65535 for
+            // "no IMU"; roll is `(int)(degrees * 10)` (the firmware's
+            // currentData.roll is pre-multiplied by 10 at the IMU layer —
+            // see Firmware_Teensy_AiO_26/lib/aio_navigation/IMUProcessor.cpp).
+            int rawHeading = 0;
+            bool imuValid = false;
+            if (headingField.Length > 0
+                && Utf8Parser.TryParse(headingField, out rawHeading, out _)
+                && rawHeading != 65535)
+            {
+                state.ImuHeading = rawHeading * 0.1;
+                imuValid = true;
+            }
+            else
+            {
+                state.ImuHeading = 0;
+            }
+            state.ImuValid = imuValid;
+            // Seed primary heading from IMU so first-cycle / standstill has a
+            // sensible default. Pipeline's fix-to-fix overrides at any real speed.
+            state.Heading = imuValid ? state.ImuHeading : 0;
+
+            if (imuValid && rollField.Length > 0
+                && Utf8Parser.TryParse(rollField, out int rawRoll, out _))
+            {
+                state.Roll = rawRoll * 0.1;
+            }
+            else
+            {
+                state.Roll = 0;
+            }
+        }
+        else
+        {
+            // PAOGI: dual-antenna heading and dual roll, both float decimal
+            // degrees. Dual antenna is ground truth — no IMU fusion needed,
+            // so ImuHeading stays 0 and ImuValid stays false.
+            if (headingField.Length > 0)
+            {
+                Utf8Parser.TryParse(headingField, out state.Heading, out _);
+            }
+            else
+            {
+                state.Heading = 0;
+            }
+            state.ImuHeading = 0;
+            state.ImuValid = false;
+
+            if (rollField.Length > 0)
+            {
+                Utf8Parser.TryParse(rollField, out state.Roll, out _);
+            }
+            else
+            {
+                state.Roll = 0;
+            }
         }
 
-        // Pitch angle in degrees (field 14)
+        // Pitch angle in degrees (field 14) — same format both sentences.
         var pitchField = GetField(data, commas, FIELD_PITCH);
         if (pitchField.Length > 0)
         {
             Utf8Parser.TryParse(pitchField, out state.Pitch, out _);
         }
 
-        // Yaw rate in degrees/second (field 15)
+        // Yaw rate in degrees/second (field 15) — same format both sentences.
         var yawField = GetField(data, commas, FIELD_YAW_RATE);
         if (yawField.Length > 0)
         {

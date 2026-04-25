@@ -265,9 +265,11 @@ public class GuidancePipelineIntegrationTests
     private static string BuildPanda(double lat, string latDir, double lon, string lonDir,
         int fix, int sats, double hdop, double alt, double diffAge, double speed, double heading)
     {
+        // Heading wire format = (int)(degrees * 10), per AiO firmware.
+        int headingX10 = (int)System.Math.Round(heading * 10.0);
         string body = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-            "PANDA,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},{10:F1},0,0,0",
-            lat, latDir, lon, lonDir, fix, sats, hdop, alt, diffAge, speed, heading);
+            "PANDA,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},{10},0,0,0",
+            lat, latDir, lon, lonDir, fix, sats, hdop, alt, diffAge, speed, headingX10);
         byte checksum = 0;
         foreach (char c in body) checksum ^= (byte)c;
         return $"${body}*{checksum:X2}";

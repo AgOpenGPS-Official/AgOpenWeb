@@ -173,17 +173,77 @@ public class NmeaParserServiceFastTests
     [Test]
     public void ParseSpan_PAOGI_ParsesLikePANDA()
     {
-        byte[] sentence = BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5, 90.0, 0, 0, 0);
-        // Swap the 5 bytes of "PANDA" for "PAOGI" (same length) and recompute the checksum.
-        byte[] paogi = new byte[sentence.Length];
-        sentence.CopyTo(paogi, 0);
-        Encoding.ASCII.GetBytes("PAOGI").CopyTo(paogi, 1);
-        RecomputeChecksumInPlace(paogi);
+        byte[] sentence = BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5, 90.0, 0, 0, 0);
 
-        _parser.ParseSpan(paogi);
+        _parser.ParseSpan(sentence);
 
         Assert.That(_lastGpsData, Is.Not.Null);
         Assert.That(_lastGpsData!.CurrentPosition.Latitude, Is.EqualTo(48.1173).Within(0.001));
+    }
+
+    // ── IMU heading + roll wire-format scaling (zero-copy ParseIntoState) ─
+
+    [Test]
+    public void ParseIntoState_PANDA_DividesHeadingBy10()
+    {
+        // Wire "905" represents 90.5° on the AiO PANDA encoding.
+        byte[] sentence = BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 90.5, roll: 0, pitch: 0, yawRate: 0);
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+
+        Assert.That(ok, Is.True);
+        Assert.That(state.ImuValid, Is.True);
+        Assert.That(state.ImuHeading, Is.EqualTo(90.5).Within(1e-6));
+        // Primary heading is seeded from IMU at parse time (pipeline overrides at speed).
+        Assert.That(state.Heading, Is.EqualTo(90.5).Within(1e-6));
+    }
+
+    [Test]
+    public void ParseIntoState_PANDA_DividesRollBy10()
+    {
+        // Wire "57" represents 5.7° on PANDA encoding.
+        byte[] sentence = BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 90.0, roll: 5.7, pitch: 0, yawRate: 0);
+        var state = new VehicleState();
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+
+        Assert.That(state.Roll, Is.EqualTo(5.7).Within(1e-6));
+    }
+
+    [Test]
+    public void ParseIntoState_PANDA_65535SentinelMarksImuInvalid()
+    {
+        byte[] sentence = BuildPandaBytesNoImu(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5);
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+
+        Assert.That(ok, Is.True);
+        Assert.That(state.ImuValid, Is.False);
+        Assert.That(state.ImuHeading, Is.EqualTo(0));
+        Assert.That(state.Roll, Is.EqualTo(0));
+        Assert.That(state.Heading, Is.EqualTo(0),
+            "primary heading should fall to 0 when IMU is invalid; pipeline picks up fix-to-fix");
+    }
+
+    [Test]
+    public void ParseIntoState_PAOGI_HeadingAsFloatNoScaling_ImuStaysInvalid()
+    {
+        // PAOGI emits heading as float decimal degrees — no ×10 scaling.
+        byte[] sentence = BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 90.5, roll: 1.25, pitch: 0, yawRate: 0);
+        var state = new VehicleState();
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+
+        Assert.That(state.Heading, Is.EqualTo(90.5).Within(1e-6));
+        Assert.That(state.Roll, Is.EqualTo(1.25).Within(1e-6));
+        Assert.That(state.ImuValid, Is.False,
+            "PAOGI is dual-antenna ground truth — fusion isn't needed, ImuValid stays false");
+        Assert.That(state.ImuHeading, Is.EqualTo(0));
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -194,9 +254,51 @@ public class NmeaParserServiceFastTests
         double diffAge, double speedKnots, double heading,
         double roll, double pitch, double yawRate)
     {
+        // PANDA wire format: heading and roll are int scaled ×10 (with 65535
+        // sentinel for "no IMU" on heading); pitch is rounded int; yawRate
+        // is float. Mirrors AiO firmware's NAVProcessor::formatPANDAMessage.
+        int headingX10 = (int)System.Math.Round(heading * 10.0);
+        int rollX10 = (int)System.Math.Round(roll * 10.0);
+        int pitchInt = (int)System.Math.Round(pitch);
         string body = string.Format(CultureInfo.InvariantCulture,
-            "PANDA,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},{10:F1},{11:F1},{12:F1},{13:F1}",
-            lat, latDir, lon, lonDir, fixQuality, sats, hdop, alt, diffAge, speedKnots, heading, roll, pitch, yawRate);
+            "PANDA,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},{10},{11},{12},{13:F2}",
+            lat, latDir, lon, lonDir, fixQuality, sats, hdop, alt, diffAge, speedKnots,
+            headingX10, rollX10, pitchInt, yawRate);
+        return BuildSentence(body);
+    }
+
+    /// <summary>
+    /// Builds a PANDA sentence with the "no IMU" sentinel (65535) in the
+    /// heading field. Used to test that parser detects the sentinel and
+    /// leaves <c>state.ImuValid = false</c>.
+    /// </summary>
+    private static byte[] BuildPandaBytesNoImu(
+        double lat, string latDir, double lon, string lonDir,
+        int fixQuality, int sats, double hdop, double alt,
+        double diffAge, double speedKnots)
+    {
+        string body = string.Format(CultureInfo.InvariantCulture,
+            "PANDA,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},65535,0,0,0.00",
+            lat, latDir, lon, lonDir, fixQuality, sats, hdop, alt, diffAge, speedKnots);
+        return BuildSentence(body);
+    }
+
+    /// <summary>
+    /// Builds a PAOGI sentence (dual antenna). Heading and roll are float
+    /// decimal degrees, no scaling — matches AiO firmware's
+    /// NAVProcessor::formatPAOGIMessage.
+    /// </summary>
+    private static byte[] BuildPaogiBytes(
+        double lat, string latDir, double lon, string lonDir,
+        int fixQuality, int sats, double hdop, double alt,
+        double diffAge, double speedKnots, double heading,
+        double roll, double pitch, double yawRate)
+    {
+        int pitchInt = (int)System.Math.Round(pitch);
+        string body = string.Format(CultureInfo.InvariantCulture,
+            "PAOGI,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},{10:F1},{11:F2},{12},{13:F2}",
+            lat, latDir, lon, lonDir, fixQuality, sats, hdop, alt, diffAge, speedKnots,
+            heading, roll, pitchInt, yawRate);
         return BuildSentence(body);
     }
 
@@ -205,18 +307,5 @@ public class NmeaParserServiceFastTests
         byte checksum = 0;
         foreach (char c in body) checksum ^= (byte)c;
         return Encoding.ASCII.GetBytes($"${body}*{checksum:X2}");
-    }
-
-    private static void RecomputeChecksumInPlace(byte[] sentence)
-    {
-        int asterisk = System.Array.IndexOf(sentence, (byte)'*');
-        if (asterisk < 0) return;
-
-        byte checksum = 0;
-        for (int i = 1; i < asterisk; i++) checksum ^= sentence[i];
-
-        string hex = checksum.ToString("X2");
-        sentence[asterisk + 1] = (byte)hex[0];
-        sentence[asterisk + 2] = (byte)hex[1];
     }
 }

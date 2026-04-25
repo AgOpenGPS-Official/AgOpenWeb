@@ -17,15 +17,21 @@ namespace AgValoniaGPS.Services.Interfaces;
 public interface IGpsHeadingFusionService
 {
     /// <summary>
-    /// Compute the final heading given the raw GPS sentence heading and the
-    /// current fix's position and speed.
+    /// Compute the final heading given the raw GPS sentence heading, the
+    /// IMU heading (when valid), and the current fix's position and speed.
     /// </summary>
-    /// <param name="gpsHeading">Raw heading from the NMEA sentence, degrees 0–360.</param>
+    /// <param name="gpsHeading">Raw heading from the NMEA sentence, degrees 0–360.
+    /// For PANDA this is seeded from the IMU; for PAOGI it's the dual-antenna heading.</param>
+    /// <param name="imuHeading">IMU heading in degrees 0–360. Only meaningful
+    /// when <paramref name="imuValid"/> is true (PANDA + IMU present).</param>
+    /// <param name="imuValid">True when the IMU block in the latest sentence
+    /// is valid. False for PAOGI or PANDA with the 65535 sentinel.</param>
     /// <param name="speedMs">Current speed, m/s.</param>
     /// <param name="easting">Current easting, meters, local frame.</param>
     /// <param name="northing">Current northing, meters, local frame.</param>
     /// <returns>Final heading in degrees, normalized to 0–360.</returns>
-    double FuseHeading(double gpsHeading, double speedMs, double easting, double northing);
+    double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
+                       double speedMs, double easting, double northing);
 
     /// <summary>
     /// Discard fix-to-fix history. Call on field close or GPS reconnect.
