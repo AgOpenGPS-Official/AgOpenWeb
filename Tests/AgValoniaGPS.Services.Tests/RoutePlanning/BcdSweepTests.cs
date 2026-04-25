@@ -57,6 +57,35 @@ public class BcdSweepTests
     }
 
     [Test]
+    public void RectangleWithHole_NoCellOverlapsObstacle()
+    {
+        // Regression: cells must not contain points strictly inside the obstacle.
+        // This catches the bug where cell polygons were built without proper
+        // floor/ceiling segments, producing triangular slivers near the obstacle
+        // that included obstacle area.
+        var outer = Rect(0, 10, 0, 10);
+        var hole = Rect(3, 5, 2, 4);
+        var graph = new CellDecompositionService().Decompose(
+            outer, new List<AgValoniaGPS.Models.BoundaryPolygon> { hole }, SweepNorth);
+
+        var holeVec2 = new List<AgValoniaGPS.Models.Base.Vec2>
+        {
+            new(3, 2), new(5, 2), new(5, 4), new(3, 4)
+        };
+        foreach (var cell in graph.Cells)
+        {
+            double cx = 0, cy = 0;
+            foreach (var p in cell.Polygon) { cx += p.Easting; cy += p.Northing; }
+            cx /= cell.Polygon.Count;
+            cy /= cell.Polygon.Count;
+            bool inHole = AgValoniaGPS.Models.Base.GeometryMath.IsPointInPolygon(holeVec2,
+                new AgValoniaGPS.Models.Base.Vec2(cx, cy));
+            Assert.That(inHole, Is.False,
+                $"Cell {cell.Id} centroid ({cx:F2}, {cy:F2}) is inside the obstacle");
+        }
+    }
+
+    [Test]
     public void RectangleWithInteriorHole_ProducesThreeCells()
     {
         // Outer 10x10 with a small interior hole [3,5]x[2,4].

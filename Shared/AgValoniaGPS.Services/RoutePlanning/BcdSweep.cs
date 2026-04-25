@@ -50,6 +50,16 @@ internal sealed class BcdSweep
     private readonly List<ActiveEdge> _active = new();
     private readonly List<Cell> _finished = new();
     private readonly List<ReebEdge> _reeb = new();
+    /// <summary>
+    /// Floor (lower-sweep boundary) of each open cell. Floors come from the
+    /// virtual sweep-line segment at the cell's creation event:
+    ///   - Open: single point [V_open]
+    ///   - Split (left child): [leftAtSplit, V_split]
+    ///   - Split (right child): [V_split, rightAtSplit]
+    ///   - Merge (combined): [edgeALAtMerge, V_merge, edgeBRAtMerge]
+    /// At cell close the polygon is built as: floor + leftChain + ceiling + reverse(rightChain).
+    /// </summary>
+    private readonly Dictionary<int, List<Vec2>> _cellFloor = new();
     private int _nextCellId;
 
     public ReebGraph Run(BoundaryPolygon outer, List<BoundaryPolygon> inners, double sweepHeading)
@@ -57,6 +67,7 @@ internal sealed class BcdSweep
         _active.Clear();
         _finished.Clear();
         _reeb.Clear();
+        _cellFloor.Clear();
         _nextCellId = 0;
 
         if (outer.Points.Count < 3) return new ReebGraph();
@@ -127,14 +138,21 @@ internal sealed class BcdSweep
     /// </summary>
     private double PerpAt(ActiveEdge e, double sweepCoord)
     {
+        var p = PointAt(e, sweepCoord);
+        return p.Easting * _px + p.Northing * _py;
+    }
+
+    /// <summary>2D point on an active edge at the given sweep coord.</summary>
+    private Vec2 PointAt(ActiveEdge e, double sweepCoord)
+    {
         double sLo = SweepCoord(e.LowerEnd);
         double sHi = SweepCoord(e.UpperEnd);
         double range = sHi - sLo;
-        if (Math.Abs(range) < 1e-12) return PerpCoord(e.LowerEnd);
+        if (Math.Abs(range) < 1e-12) return e.LowerEnd;
         double t = (sweepCoord - sLo) / range;
-        double easting = e.LowerEnd.Easting + t * (e.UpperEnd.Easting - e.LowerEnd.Easting);
-        double northing = e.LowerEnd.Northing + t * (e.UpperEnd.Northing - e.LowerEnd.Northing);
-        return easting * _px + northing * _py;
+        return new Vec2(
+            e.LowerEnd.Easting + t * (e.UpperEnd.Easting - e.LowerEnd.Easting),
+            e.LowerEnd.Northing + t * (e.UpperEnd.Northing - e.LowerEnd.Northing));
     }
 
     private void ProcessEvent(SweepEvent ev)
@@ -205,31 +223,18 @@ internal sealed class BcdSweep
 
     private void HandleOpen(SweepEvent ev)
     {
-        // Two new edges enter the active list, one going to PrevVertex, one to NextVertex.
-        // After perturbation, a true OPEN has both neighbors at higher sweep coord.
         var leftEdge = MakeEdge(ev.Vertex, ev.PrevVertex);
         var rightEdge = MakeEdge(ev.Vertex, ev.NextVertex);
 
-        // Determine which edge is on the left (lower perp) and which on the right.
-        // After this event, both edges bound a single new cell: cell-on-right of
-        // leftEdge == cell-on-left of rightEdge == new cell.
-        // For an outer CCW vertex at OPEN, the LEFT edge is the one going to PrevVertex
-        // (incoming edge from polygon walk) — the polygon interior is to its right.
-        // The RIGHT edge is to NextVertex (outgoing) — interior to its left.
-        // After perturbation we double-check by perp position.
         double slightlyAbove = ev.SweepCoord + 1e-6;
-        double leftPerp = PerpAt(leftEdge, slightlyAbove);
-        double rightPerp = PerpAt(rightEdge, slightlyAbove);
-        if (leftPerp > rightPerp)
-        {
+        if (PerpAt(leftEdge, slightlyAbove) > PerpAt(rightEdge, slightlyAbove))
             (leftEdge, rightEdge) = (rightEdge, leftEdge);
-        }
 
         int cellId = _nextCellId++;
         leftEdge.CellOnRight = cellId;
-        leftEdge.ChainOnRight.Add(ev.Vertex);
         rightEdge.CellOnLeft = cellId;
-        rightEdge.ChainOnLeft.Add(ev.Vertex);
+        // Floor is just the open vertex (cell narrows to a point at the bottom).
+        _cellFloor[cellId] = new List<Vec2> { ev.Vertex };
 
         InsertActiveEdge(leftEdge, ev.SweepCoord);
         InsertActiveEdge(rightEdge, ev.SweepCoord);
@@ -237,33 +242,22 @@ internal sealed class BcdSweep
 
     private void HandleClose(SweepEvent ev)
     {
-        // Two existing active edges meet at this vertex. Both have UpperEnd == ev.Vertex.
-        // Find them in the active list.
         ActiveEdge? leftIncoming = null, rightIncoming = null;
-        for (int i = 0; i < _active.Count; i++)
+        foreach (var e in _active)
         {
-            if (Vec2Equal(_active[i].UpperEnd, ev.Vertex))
-            {
-                if (leftIncoming == null) leftIncoming = _active[i];
-                else { rightIncoming = _active[i]; break; }
-            }
+            if (!Vec2Equal(e.UpperEnd, ev.Vertex)) continue;
+            if (leftIncoming == null) leftIncoming = e;
+            else { rightIncoming = e; break; }
         }
         if (leftIncoming == null || rightIncoming == null) return;
 
-        // Order by perp.
         if (PerpAt(leftIncoming, ev.SweepCoord) > PerpAt(rightIncoming, ev.SweepCoord))
             (leftIncoming, rightIncoming) = (rightIncoming, leftIncoming);
 
-        // The cell ending here is leftIncoming.CellOnRight == rightIncoming.CellOnLeft.
         int cellId = leftIncoming.CellOnRight;
 
-        // Build cell polygon: leftIncoming.ChainOnRight (forward) + ev.Vertex + reversed rightIncoming.ChainOnLeft.
-        var poly = new List<Vec2>(leftIncoming.ChainOnRight);
-        poly.Add(ev.Vertex);
-        for (int i = rightIncoming.ChainOnLeft.Count - 1; i >= 0; i--)
-            poly.Add(rightIncoming.ChainOnLeft[i]);
-
-        FinishCell(cellId, poly);
+        FinishCellPolygon(cellId, leftIncoming.ChainOnRight, rightIncoming.ChainOnLeft,
+            ceiling: new List<Vec2> { ev.Vertex });
 
         _active.Remove(leftIncoming);
         _active.Remove(rightIncoming);
@@ -271,19 +265,12 @@ internal sealed class BcdSweep
 
     private void HandleRegular(SweepEvent ev, bool prevForward, bool nextForward)
     {
-        // One backward edge ends here; one forward edge begins. Replace the
-        // backward edge with the forward one, preserving the cell binding.
-        Vec2 backward = prevForward ? ev.NextVertex : ev.PrevVertex;
         Vec2 forward = prevForward ? ev.PrevVertex : ev.NextVertex;
 
         ActiveEdge? old = null;
-        for (int i = 0; i < _active.Count; i++)
+        foreach (var e in _active)
         {
-            if (Vec2Equal(_active[i].UpperEnd, ev.Vertex))
-            {
-                old = _active[i];
-                break;
-            }
+            if (Vec2Equal(e.UpperEnd, ev.Vertex)) { old = e; break; }
         }
         if (old == null) return;
 
@@ -292,9 +279,10 @@ internal sealed class BcdSweep
         fresh.CellOnRight = old.CellOnRight;
         fresh.ChainOnLeft = old.ChainOnLeft;
         fresh.ChainOnRight = old.ChainOnRight;
-        // Append vertex to whichever chain bounds an active cell.
-        if (fresh.CellOnLeft >= 0) fresh.ChainOnLeft.Add(ev.Vertex);
+        // Regular vertex IS on a polygon edge — append to the appropriate chain
+        // (the side that bounds an active cell).
         if (fresh.CellOnRight >= 0) fresh.ChainOnRight.Add(ev.Vertex);
+        if (fresh.CellOnLeft >= 0) fresh.ChainOnLeft.Add(ev.Vertex);
 
         _active.Remove(old);
         InsertActiveEdge(fresh, ev.SweepCoord);
@@ -342,30 +330,34 @@ internal sealed class BcdSweep
 
         int parentId = leftBound.CellOnRight;
 
-        // Close the parent cell: walk up its left chain, across V, and back down its right chain.
-        var parentPoly = new List<Vec2>(leftBound.ChainOnRight);
-        parentPoly.Add(ev.Vertex);
-        for (int i = rightBound.ChainOnLeft.Count - 1; i >= 0; i--)
-            parentPoly.Add(rightBound.ChainOnLeft[i]);
-        FinishCell(parentId, parentPoly);
+        Vec2 leftAtSplit = PointAt(leftBound, ev.SweepCoord);
+        Vec2 rightAtSplit = PointAt(rightBound, ev.SweepCoord);
 
-        // Open two new cells: L (left half) and R (right half).
+        // Close parent. Ceiling = [leftAtSplit, V_split, rightAtSplit].
+        FinishCellPolygon(parentId, leftBound.ChainOnRight, rightBound.ChainOnLeft,
+            ceiling: new List<Vec2> { leftAtSplit, ev.Vertex, rightAtSplit });
+
+        // Open new cells. Floors:
+        //   L (lower perp half): [leftAtSplit, V_split]
+        //   R (higher perp half): [V_split, rightAtSplit]
         int leftCellId = _nextCellId++;
         int rightCellId = _nextCellId++;
+        _cellFloor[leftCellId] = new List<Vec2> { leftAtSplit, ev.Vertex };
+        _cellFloor[rightCellId] = new List<Vec2> { ev.Vertex, rightAtSplit };
 
         leftBound.CellOnRight = leftCellId;
-        leftBound.ChainOnRight = new List<Vec2> { ev.Vertex };
+        leftBound.ChainOnRight = new List<Vec2>();   // chain of regulars only
 
         rightBound.CellOnLeft = rightCellId;
-        rightBound.ChainOnLeft = new List<Vec2> { ev.Vertex };
+        rightBound.ChainOnLeft = new List<Vec2>();
 
         leftFwd.CellOnLeft = leftCellId;
         leftFwd.CellOnRight = -1;
-        leftFwd.ChainOnLeft.Add(ev.Vertex);
+        leftFwd.ChainOnLeft = new List<Vec2>();
 
         rightFwd.CellOnLeft = -1;
         rightFwd.CellOnRight = rightCellId;
-        rightFwd.ChainOnRight.Add(ev.Vertex);
+        rightFwd.ChainOnRight = new List<Vec2>();
 
         InsertActiveEdge(leftFwd, ev.SweepCoord);
         InsertActiveEdge(rightFwd, ev.SweepCoord);
@@ -412,32 +404,49 @@ internal sealed class BcdSweep
         int cellAId = leftIn.CellOnLeft;
         int cellBId = rightIn.CellOnRight;
 
-        // Close cell A.
-        var cellAPoly = new List<Vec2>(edgeAL.ChainOnRight);
-        cellAPoly.Add(ev.Vertex);
-        for (int i = leftIn.ChainOnLeft.Count - 1; i >= 0; i--)
-            cellAPoly.Add(leftIn.ChainOnLeft[i]);
-        FinishCell(cellAId, cellAPoly);
+        Vec2 edgeALAtMerge = PointAt(edgeAL, ev.SweepCoord);
+        Vec2 edgeBRAtMerge = PointAt(edgeBR, ev.SweepCoord);
 
-        // Close cell B.
-        var cellBPoly = new List<Vec2>(rightIn.ChainOnRight);
-        cellBPoly.Add(ev.Vertex);
-        for (int i = edgeBR.ChainOnLeft.Count - 1; i >= 0; i--)
-            cellBPoly.Add(edgeBR.ChainOnLeft[i]);
-        FinishCell(cellBId, cellBPoly);
+        // Close A. Ceiling = [edgeALAtMerge, V_merge].
+        FinishCellPolygon(cellAId, edgeAL.ChainOnRight, leftIn.ChainOnLeft,
+            ceiling: new List<Vec2> { edgeALAtMerge, ev.Vertex });
 
-        // Open new cell C bounded by edgeAL on its left and edgeBR on its right.
+        // Close B. Ceiling = [V_merge, edgeBRAtMerge].
+        FinishCellPolygon(cellBId, rightIn.ChainOnRight, edgeBR.ChainOnLeft,
+            ceiling: new List<Vec2> { ev.Vertex, edgeBRAtMerge });
+
+        // Open new cell C. Floor = [edgeALAtMerge, V_merge, edgeBRAtMerge].
         int cellCId = _nextCellId++;
+        _cellFloor[cellCId] = new List<Vec2> { edgeALAtMerge, ev.Vertex, edgeBRAtMerge };
+
         edgeAL.CellOnRight = cellCId;
-        edgeAL.ChainOnRight = new List<Vec2> { ev.Vertex };
+        edgeAL.ChainOnRight = new List<Vec2>();
         edgeBR.CellOnLeft = cellCId;
-        edgeBR.ChainOnLeft = new List<Vec2> { ev.Vertex };
+        edgeBR.ChainOnLeft = new List<Vec2>();
 
         _active.Remove(leftIn);
         _active.Remove(rightIn);
 
         _reeb.Add(new ReebEdge { FromCellId = cellAId, ToCellId = cellCId, CriticalPoint = ev.Vertex });
         _reeb.Add(new ReebEdge { FromCellId = cellBId, ToCellId = cellCId, CriticalPoint = ev.Vertex });
+    }
+
+    /// <summary>
+    /// Assemble a cell polygon from its stored floor + accumulated left chain
+    /// of polygon-edge regulars + provided ceiling + reversed right chain.
+    /// All chains contain only REGULAR-event vertices (no virtual sweep-line corners).
+    /// Floor is provided at cell creation; ceiling at cell close.
+    /// </summary>
+    private void FinishCellPolygon(int cellId, List<Vec2> leftChainAscending,
+        List<Vec2> rightChainAscending, List<Vec2> ceiling)
+    {
+        var poly = new List<Vec2>();
+        if (_cellFloor.TryGetValue(cellId, out var floor)) poly.AddRange(floor);
+        poly.AddRange(leftChainAscending);
+        poly.AddRange(ceiling);
+        for (int i = rightChainAscending.Count - 1; i >= 0; i--)
+            poly.Add(rightChainAscending[i]);
+        FinishCell(cellId, poly);
     }
 
     private void FinishCell(int cellId, List<Vec2> polygon)
