@@ -112,12 +112,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         Command="{Binding ShowAutoSteerConfigCommand}">
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerConf.png" Stretch="Uniform"/>
                 </Button>
-
-                <!-- 9. Data I/O -->
-                <Button Classes="LeftPanelButton" ToolTip.Tip="Data I/O"
-                        Command="{Binding ShowDataIODialogCommand}">
-                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AgIO.png" Stretch="Uniform"/>
-                </Button>
             </StackPanel>
         </Border>
 

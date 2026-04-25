@@ -16,6 +16,7 @@
 
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.YouTurn;
+using AgValoniaGPS.Services.Geometry;
 using AgValoniaGPS.Services.PathPlanning;
 using Microsoft.Extensions.Logging;
 using System;
@@ -28,7 +29,7 @@ namespace AgValoniaGPS.Services.YouTurn
     /// Service for creating U-turn paths.
     /// Generates turn geometry based on guidance lines, boundaries, and vehicle configuration.
     /// </summary>
-    public class YouTurnCreationService
+    public partial class YouTurnCreationService
     {
         private const double TWO_PI = Math.PI * 2.0;
         private const double PI_BY_2 = Math.PI / 2.0;
@@ -36,10 +37,14 @@ namespace AgValoniaGPS.Services.YouTurn
         // Reusable service for Dubins path generation (radius updated per turn)
         private readonly DubinsPathService _dubinsService = new DubinsPathService(1.0);
         private readonly ILogger<YouTurnCreationService> _logger;
+        private readonly IPolygonOffsetService _polygonOffsetService;
 
-        public YouTurnCreationService(ILogger<YouTurnCreationService> logger)
+        public YouTurnCreationService(
+            ILogger<YouTurnCreationService> logger,
+            IPolygonOffsetService polygonOffsetService)
         {
             _logger = logger;
+            _polygonOffsetService = polygonOffsetService;
         }
 
         // Current input being processed (for helper methods)

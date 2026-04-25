@@ -170,16 +170,15 @@ public class VirtualModuleTests
         listener.Client.ReceiveTimeout = 2000;
         IPEndPoint? remote = null;
         var data = listener.Receive(ref remote);
-        var sentence = Encoding.ASCII.GetString(data).Trim();
 
-        // Parse with real NMEA parser, capturing via mock GpsService
+        // Parse with the real NMEA parser, capturing via mock GpsService.
         var mockGps = Substitute.For<IGpsService>();
         GpsData? received = null;
         mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
             .Do(ci => received = ci.Arg<GpsData>());
 
-        var parser = new NmeaParserService(mockGps);
-        parser.ParseSentence(sentence);
+        var parser = new NmeaParserServiceFast(mockGps);
+        parser.ParseBuffer(data, data.Length);
 
         Assert.That(received, Is.Not.Null, "NmeaParser should parse the $PANDA sentence");
         Assert.That(received!.CurrentPosition.Latitude, Is.EqualTo(43.712800).Within(0.001));
@@ -459,7 +458,7 @@ public class VirtualModuleTests
         int parsedCount = 0;
         mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
             .Do(ci => { if (ci.Arg<GpsData>().FixQuality > 0) parsedCount++; });
-        var parser = new NmeaParserService(mockGps);
+        var parser = new NmeaParserServiceFast(mockGps);
 
         // Read all sent frames
         for (int i = 0; i < 10; i++)
@@ -468,8 +467,7 @@ public class VirtualModuleTests
             {
                 IPEndPoint? remote = null;
                 var data = listener.Receive(ref remote);
-                var sentence = Encoding.ASCII.GetString(data).Trim();
-                parser.ParseSentence(sentence);
+                parser.ParseBuffer(data, data.Length);
             }
             catch (SocketException) { break; }
         }

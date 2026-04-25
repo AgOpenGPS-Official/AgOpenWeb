@@ -23,7 +23,36 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace AgValoniaGPS.Models.State;
 
 /// <summary>
-/// Active field state - boundaries, tracks, headlands.
+/// Active field state — boundaries, tracks, headlands, drift, local plane.
+///
+/// <para>
+/// <b>Thread ownership (§0 invariant, Phase E close):</b>
+/// Every property is written on the UI thread. No service writes here
+/// directly — the cycle worker emits cycle-produced values (e.g.
+/// <see cref="HeadlandProximityDistance"/>, <see cref="LocalPlane"/>) on
+/// <c>GpsCycleResult</c> and <c>MainViewModel.ApplyGpsCycleResult</c>
+/// commits them on the UI thread. See <c>Plans/threading_model.svg</c>
+/// and the Phase E plan for the full contract.
+/// </para>
+///
+/// <para>Reader / writer table:</para>
+/// <list type="table">
+///   <listheader><term>Property</term><description>Written by</description></listheader>
+///   <item><term>ActiveField / FieldsRootDirectory</term>            <description>UI — field open/close commands</description></item>
+///   <item><term>Boundaries / CurrentBoundary</term>                 <description>UI — boundary load/edit commands</description></item>
+///   <item><term>Tracks / ActiveTrack / SelectedTrack</term>         <description>UI — track load + selection</description></item>
+///   <item><term>HeadlandLine / HeadlandDistance</term>              <description>UI — headland load/build commands</description></item>
+///   <item><term>HeadlandProximityDistance / …Warning</term>         <description>UI mirror of cycle output in <c>ApplyGpsCycleResult</c></description></item>
+///   <item><term>OriginLatitude / OriginLongitude</term>             <description>UI — <c>SetFieldOrigin</c></description></item>
+///   <item><term>DriftEasting / DriftNorthing</term>                 <description>UI — offset-fix / reset-drift commands</description></item>
+///   <item><term>LocalPlane</term>                                   <description>UI — <c>SetFieldOrigin</c>; or <c>ApplyGpsCycleResult</c> committing the cycle's <c>FirstFixLocalPlane</c> auto-create (Phase E E1)</description></item>
+/// </list>
+///
+/// <para>The cycle worker <i>reads</i> <c>LocalPlane</c> for coord
+/// conversion (<c>GpsPipelineService.ProcessCycle</c>,
+/// <c>AutoSteerService.ProcessGpsBuffer</c>). All other fields the cycle
+/// needs (boundary, headland, drift) are pushed via lock-protected setters
+/// on <c>IGpsPipelineService</c>.</para>
 /// </summary>
 public class FieldState : ObservableObject
 {

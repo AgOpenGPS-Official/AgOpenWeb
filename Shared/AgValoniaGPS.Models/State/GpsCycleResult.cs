@@ -1,7 +1,10 @@
 // AgValoniaGPS
-// Copyright (C) 2024-2025 AgValoniaGPS Contributors
+// Copyright (C) 2024-2026 AgValoniaGPS Contributors
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
+
+using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Pipeline;
 
 namespace AgValoniaGPS.Models.State;
 
@@ -33,29 +36,18 @@ public record GpsCycleResult
     public double HitchNorthing { get; init; }
     public bool IsToolPositionReady { get; init; }
 
-    // Guidance
-    public double SteerAngle { get; init; }
-    public double CrossTrackError { get; init; }
-    public double GoalPointEasting { get; init; }
-    public double GoalPointNorthing { get; init; }
-    public bool HasGuidance { get; init; }
-
-    // Display tracks (computed by pipeline, displayed by view)
-    public Track.Track? DisplayTrack { get; init; }  // The offset track being followed
-    public Track.Track? BaseTrack { get; init; }      // The reference track (when offset != 0)
-
-    // Pass detection (auto-detect nearest pass when autosteer not engaged)
-    public int? NearestPassNumber { get; init; }
-
     // Autosteer
     public bool IsAutoSteerEngaged { get; init; }
     public bool AutoSteerDisengagedThisCycle { get; init; }
     public string? DisengageReason { get; init; }
 
-    // YouTurn
-    public bool IsInYouTurn { get; init; }
-    public bool YouTurnTriggered { get; init; }
-    public bool YouTurnCompleted { get; init; }
+    // Per-cycle snapshots emitted by the cycle worker. Consumed on the UI
+    // thread by ApplyGpsCycleResult to mirror onto State.* (PropertyChanged
+    // boundary). YouTurn is non-null every cycle; Guidance is only emitted
+    // when the YouTurn tick ran (otherwise the cycle's HowManyPathsAway
+    // seed would fight the UI's NearestPassNumber auto-detect writer).
+    public YouTurnSnapshot? YouTurn { get; init; }
+    public GuidanceSnapshot? Guidance { get; init; }
 
     // Section states (compact — individual section properties updated from this)
     public bool[]? SectionStates { get; init; }
@@ -64,6 +56,15 @@ public record GpsCycleResult
     // Headland proximity
     public double? HeadlandProximityDistance { get; init; }
     public bool HeadlandProximityWarning { get; init; }
+
+    /// <summary>
+    /// Phase E: non-null on the single cycle where the cycle worker auto-creates
+    /// a <see cref="LocalPlane"/> from the first GPS fix (no field open yet).
+    /// <see cref="MainViewModel.ApplyGpsCycleResult"/> mirrors it onto
+    /// <c>State.Field.LocalPlane</c> on the UI thread — the cycle keeps its own
+    /// reference for coord conversion in the meantime. Null on every other cycle.
+    /// </summary>
+    public LocalPlane? FirstFixLocalPlane { get; init; }
 
     // Status
     public string? StatusMessage { get; init; }

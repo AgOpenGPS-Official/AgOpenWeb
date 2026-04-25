@@ -54,6 +54,8 @@ public partial class App : Avalonia.Application
         {
             System.Diagnostics.Debug.WriteLine("[App] OnFrameworkInitializationCompleted starting...");
 
+            AgValoniaGPS.Views.Diagnostics.DiagFlagsBootstrap.ApplyAtStartup(this);
+
             // Build DI container
             System.Diagnostics.Debug.WriteLine("[App] Building DI container...");
             var serviceCollection = new ServiceCollection();

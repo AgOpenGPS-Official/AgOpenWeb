@@ -15,8 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,8 +50,14 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     // AutoSteer service for zero-copy GPS processing
     private IAutoSteerService? _autoSteerService;
 
-    // Module broadcast endpoint (e.g., 192.168.5.255:8888)
-    private IPEndPoint? _moduleEndpoint;
+    // Auto-discovery: broadcast on all interfaces until a module responds
+    private List<IPEndPoint> _discoveryEndpoints = new();
+    private IPEndPoint? _lockedEndpoint;
+    private DateTime _lastModuleResponse = DateTime.MinValue;
+    private DateTime _lastDiscoveryRefresh = DateTime.MinValue;
+    private static readonly IPEndPoint _localhostEndpoint = new(IPAddress.Loopback, 8888);
+    private const int ModuleTimeoutSeconds = 5;
+    private const int DiscoveryRefreshSeconds = 30;
 
     // Hello packet: [0x80, 0x81, 0x7F, 200, 3, 56, 0, 0, CRC]
     private readonly byte[] _helloPacket = { 0x80, 0x81, 0x7F, 200, 3, 56, 0, 0, 0x47 };
@@ -63,6 +71,12 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private DateTime _lastDataFromAutoSteer = DateTime.MinValue;
     private DateTime _lastDataFromMachine = DateTime.MinValue;
     private DateTime _lastDataFromIMU = DateTime.MinValue;
+
+    // Per-module remote IP from the most recent inbound packet. Populated from
+    // HELLO_FROM_* (and AutoSteer data PGNs, which also identify the module).
+    private string? _autoSteerIp;
+    private string? _machineIp;
+    private string? _imuIp;
 
     private const int HELLO_TIMEOUT_MS = 2000; // 2 seconds for hello response
     private const int DATA_TIMEOUT_STEER_MACHINE_MS = 100; // 50Hz data = 20ms cycle, allow 100ms
@@ -98,10 +112,22 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // Reduce receive buffer to minimize packet buffering/delay
             _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 8192);
 
+            // Windows: an ICMP Port Unreachable from a peer on a prior Send would
+            // otherwise surface as a SocketException (ConnectionReset) on the next
+            // ReceiveFrom call, breaking the receive loop. SIO_UDP_CONNRESET
+            // disables that surfacing. No-op on non-Windows. (From PR #278.)
+            if (OperatingSystem.IsWindows())
+            {
+                const int SIO_UDP_CONNRESET = -1744830452; // 0x9800000C
+                _udpSocket.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
+            }
+
             _udpSocket.Bind(new IPEndPoint(IPAddress.Any, 9999));
 
-            // Set up module broadcast endpoint (default: 192.168.5.255:8888)
-            _moduleEndpoint = new IPEndPoint(IPAddress.Parse("192.168.5.255"), 8888);
+            // Discover broadcast endpoints on all network interfaces
+            _discoveryEndpoints = GetBroadcastEndpoints();
+            _lockedEndpoint = null;
+            _lastDiscoveryRefresh = DateTime.UtcNow;
 
             IsConnected = true;
 
@@ -133,19 +159,42 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     public void SendToModules(byte[] data)
     {
-        if (!IsConnected || _udpSocket == null || _moduleEndpoint == null) return;
+        if (!IsConnected || _udpSocket == null) return;
 
+        // Refresh discovery endpoints periodically
+        if ((DateTime.UtcNow - _lastDiscoveryRefresh).TotalSeconds > DiscoveryRefreshSeconds)
+        {
+            _discoveryEndpoints = GetBroadcastEndpoints();
+            _lastDiscoveryRefresh = DateTime.UtcNow;
+        }
+
+        // Check for module timeout -> go back to discovery
+        if (_lockedEndpoint != null &&
+            (DateTime.UtcNow - _lastModuleResponse).TotalSeconds > ModuleTimeoutSeconds)
+        {
+            _lockedEndpoint = null;
+        }
+
+        if (_lockedEndpoint != null)
+        {
+            // Connected: send to locked endpoint + localhost only
+            SendPacket(data, _lockedEndpoint);
+            SendPacket(data, _localhostEndpoint);
+        }
+        else
+        {
+            // Discovery: broadcast on all interfaces
+            foreach (var ep in _discoveryEndpoints)
+                SendPacket(data, ep);
+        }
+    }
+
+    private void SendPacket(byte[] data, IPEndPoint endpoint)
+    {
         try
         {
-            _udpSocket.BeginSendTo(data, 0, data.Length, SocketFlags.None, _moduleEndpoint,
-                ar =>
-                {
-                    try
-                    {
-                        _udpSocket?.EndSendTo(ar);
-                    }
-                    catch { }
-                }, null);
+            _udpSocket!.BeginSendTo(data, 0, data.Length, SocketFlags.None, endpoint,
+                ar => { try { _udpSocket?.EndSendTo(ar); } catch { } }, null);
         }
         catch { }
     }
@@ -228,7 +277,22 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 ProcessReceivedData(data, (IPEndPoint)_remoteEndPoint);
             }
         }
-        catch { }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
+        {
+            // Non-fatal on UDP. Paired with SIO_UDP_CONNRESET above, this should
+            // be rare — but if SIO setup failed (unusual socket state) the
+            // ICMP Port Unreachable can still surface here. From PR #278.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Socket closed during shutdown — stop the receive loop. From PR #278.
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Unexpected — at least trace instead of silently swallowing.
+            System.Diagnostics.Debug.WriteLine($"[UDP] ReceiveCallback unexpected: {ex}");
+        }
 
         // IMMEDIATELY start the next receive operation - this is the key fix!
         if (_udpSocket != null)
@@ -253,7 +317,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             byte pgn = data[3];
 
             // Track module connections based on hello messages
-            UpdateModuleConnection(pgn);
+            UpdateModuleConnection(pgn, remoteEndPoint);
 
             // Fire event
             DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
@@ -278,9 +342,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         }
     }
 
-    private void UpdateModuleConnection(byte pgn)
+    private void UpdateModuleConnection(byte pgn, IPEndPoint remoteEndPoint)
     {
         var now = DateTime.Now;
+        var remoteIp = remoteEndPoint.Address.ToString();
 
         // Track ALL PGNs as data - if we're getting any PGN from a module, it's sending data
         switch (pgn)
@@ -288,6 +353,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // AutoSteer PGNs
             case PgnNumbers.HELLO_FROM_AUTOSTEER: // 126
                 _lastHelloFromAutoSteer = now;
+                _autoSteerIp = remoteIp;
+                LockToSubnet(remoteEndPoint.Address);
                 System.Diagnostics.Debug.WriteLine($"AutoSteer HELLO received at {now:HH:mm:ss.fff}");
                 break;
 
@@ -297,17 +364,23 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.STEER_SETTINGS:       // 252
             case PgnNumbers.STEER_CONFIG:         // 251
                 _lastDataFromAutoSteer = now;
+                _autoSteerIp = remoteIp;
+                _lastModuleResponse = DateTime.UtcNow;
                 break;
 
             // Machine PGNs (receive-only, only Hello matters)
             case PgnNumbers.HELLO_FROM_MACHINE:  // 123
                 _lastHelloFromMachine = now;
+                _machineIp = remoteIp;
+                LockToSubnet(remoteEndPoint.Address);
                 System.Diagnostics.Debug.WriteLine($"Machine HELLO received at {now:HH:mm:ss.fff}");
                 break;
 
             // IMU PGNs (only Hello matters - data only sent when active)
             case PgnNumbers.HELLO_FROM_IMU: // 121
                 _lastHelloFromIMU = now;
+                _imuIp = remoteIp;
+                LockToSubnet(remoteEndPoint.Address);
                 System.Diagnostics.Debug.WriteLine($"IMU HELLO received at {now:HH:mm:ss.fff}");
                 break;
 
@@ -316,6 +389,78 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 System.Diagnostics.Debug.WriteLine($"Unknown PGN {pgn} (0x{pgn:X2}) received");
                 break;
         }
+    }
+
+    /// <summary>
+    /// Returns the most-recently-observed remote IP for the given module, or null
+    /// if no packet has ever been received from it.
+    /// </summary>
+    public string? GetModuleIpAddress(ModuleType moduleType) => moduleType switch
+    {
+        ModuleType.AutoSteer => _autoSteerIp,
+        ModuleType.Machine   => _machineIp,
+        ModuleType.IMU       => _imuIp,
+        _                    => null,
+    };
+
+    /// <summary>
+    /// Lock outgoing packets to the subnet of a responding module.
+    /// Assumes /24 subnet (most common for field hardware).
+    /// </summary>
+    private void LockToSubnet(IPAddress remoteIP)
+    {
+        _lastModuleResponse = DateTime.UtcNow;
+
+        if (_lockedEndpoint != null || IPAddress.IsLoopback(remoteIP))
+            return;
+
+        var ipBytes = remoteIP.GetAddressBytes();
+        ipBytes[3] = 255;
+        _lockedEndpoint = new IPEndPoint(new IPAddress(ipBytes), 8888);
+        System.Diagnostics.Debug.WriteLine($"Auto-discovery: locked to subnet {_lockedEndpoint}");
+    }
+
+    /// <summary>
+    /// Enumerate broadcast addresses for all active IPv4 network interfaces.
+    /// Always includes localhost for simulator support.
+    /// </summary>
+    private static List<IPEndPoint> GetBroadcastEndpoints()
+    {
+        var endpoints = new List<IPEndPoint> { _localhostEndpoint };
+
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up)
+                    continue;
+                if (!nic.Supports(NetworkInterfaceComponent.IPv4))
+                    continue;
+
+                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork)
+                        continue;
+                    if (IPAddress.IsLoopback(addr.Address))
+                        continue;
+
+                    // Calculate broadcast: IP | ~SubnetMask
+                    var ipBytes = addr.Address.GetAddressBytes();
+                    var maskBytes = addr.IPv4Mask.GetAddressBytes();
+                    var broadcastBytes = new byte[4];
+                    for (int i = 0; i < 4; i++)
+                        broadcastBytes[i] = (byte)(ipBytes[i] | ~maskBytes[i]);
+
+                    endpoints.Add(new IPEndPoint(new IPAddress(broadcastBytes), 8888));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to enumerate network interfaces: {ex.Message}");
+        }
+
+        return endpoints;
     }
 
     private string? GetLocalIPAddress()

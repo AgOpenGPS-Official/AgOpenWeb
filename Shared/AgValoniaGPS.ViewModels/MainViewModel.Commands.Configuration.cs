@@ -29,14 +29,6 @@ public partial class MainViewModel
 {
     private void InitializeConfigurationCommands()
     {
-        // Data IO Dialog
-        ShowDataIODialogCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(DialogType.DataIO);
-        });
-
-        CloseDataIODialogCommand = new RelayCommand(CloseDataIODialog);
-
         // Configuration Dialog
         ShowConfigurationDialogCommand = new RelayCommand(() =>
         {
@@ -57,7 +49,7 @@ public partial class MainViewModel
         // AutoSteer Configuration Panel
         ShowAutoSteerConfigCommand = new RelayCommand(() =>
         {
-            AutoSteerConfigViewModel ??= new AutoSteerConfigViewModel(_configurationService, _udpService, _autoSteerService);
+            AutoSteerConfigViewModel ??= new AutoSteerConfigViewModel(_configurationService, _udpService, _autoSteerService, ShowSteerWizard);
             AutoSteerConfigViewModel.IsPanelVisible = true;
         });
 

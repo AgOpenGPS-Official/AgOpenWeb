@@ -55,11 +55,39 @@ public partial class BottomNavigationPanel : UserControl
             _flagMenuButton.Click += FlagMenuButton_Click;
         }
 
-        // Close flyouts when clicking outside
-        this.PointerPressed += OnPanelPointerPressed;
+        // Re-anchor flyouts to their actual measured size whenever they resize
+        // (e.g. after first layout, or when HasActiveTrack toggles the menu length).
+        // Fixes #263: nudge/reset/half-tool buttons were being pushed off the bottom
+        // edge because the hard-coded height estimate was ~220 px smaller than the
+        // full menu with an active track.
+        if (_abLineFlyoutPanel != null)
+            _abLineFlyoutPanel.SizeChanged += Flyout_SizeChanged;
+        if (_flagsFlyoutPanel != null)
+            _flagsFlyoutPanel.SizeChanged += Flyout_SizeChanged;
+
+        // Close flyouts when clicking outside. We attach at the TopLevel (window) so we
+        // catch clicks on the map too — attaching at this UserControl only fires for
+        // clicks inside the bottom bar's visual tree, missing the map area above it.
+        this.AttachedToVisualTree += OnAttachedToVisualTree;
+        this.DetachedFromVisualTree += OnDetachedFromVisualTree;
 
         // Subscribe to dialog changes to close flyouts when dialogs close
         this.DataContextChanged += OnDataContextChanged;
+    }
+
+    private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        var topLevel = TopLevel.GetTopLevel(this);
+        topLevel?.AddHandler(
+            InputElement.PointerPressedEvent,
+            OnTopLevelPointerPressed,
+            RoutingStrategies.Tunnel);
+    }
+
+    private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        var topLevel = TopLevel.GetTopLevel(this);
+        topLevel?.RemoveHandler(InputElement.PointerPressedEvent, OnTopLevelPointerPressed);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -88,42 +116,6 @@ public partial class BottomNavigationPanel : UserControl
         }
     }
 
-    private void UpdateFlyoutPositions()
-    {
-        if (_mainPanel == null) return;
-
-        var panelLeft = Canvas.GetLeft(_mainPanel);
-        var panelTop = Canvas.GetTop(_mainPanel);
-
-        if (double.IsNaN(panelLeft)) panelLeft = 0;
-        if (double.IsNaN(panelTop)) panelTop = -78; // Default from XAML
-
-        // Get main panel width, use estimate if not yet measured
-        var mainPanelWidth = _mainPanel.Bounds.Width > 0 ? _mainPanel.Bounds.Width : 700;
-
-        // Position flyouts above the main panel
-        // Use estimated height if bounds not yet calculated (first show)
-        if (_abLineFlyoutPanel != null)
-        {
-            // AB flyout has ~8 buttons @ 64px + spacing + padding = ~580px estimated
-            var abFlyoutHeight = _abLineFlyoutPanel.Bounds.Height > 0
-                ? _abLineFlyoutPanel.Bounds.Height
-                : 580;
-            Canvas.SetLeft(_abLineFlyoutPanel, panelLeft + mainPanelWidth - 70);
-            Canvas.SetTop(_abLineFlyoutPanel, panelTop - abFlyoutHeight - 10);
-        }
-
-        if (_flagsFlyoutPanel != null)
-        {
-            // Flags flyout has 4 buttons @ 64px + spacing + padding = ~320px estimated
-            var flagsFlyoutHeight = _flagsFlyoutPanel.Bounds.Height > 0
-                ? _flagsFlyoutPanel.Bounds.Height
-                : 320;
-            Canvas.SetLeft(_flagsFlyoutPanel, panelLeft + mainPanelWidth - 130);
-            Canvas.SetTop(_flagsFlyoutPanel, panelTop - flagsFlyoutHeight - 10);
-        }
-    }
-
     private void ABLineMenuButton_Click(object? sender, RoutedEventArgs e)
     {
         // Close flags flyout if open
@@ -146,20 +138,9 @@ public partial class BottomNavigationPanel : UserControl
         if (_abLineFlyoutPanel != null)
         {
             if (_isABLineFlyoutOpen)
-            {
-                // Height depends on HasActiveTrack - check DataContext
-                // 3 buttons (64px each) + spacing (6px * 2) + padding (16px) = ~220px without active track
-                // 7 items + 2 separators + nudge rows when active = ~580px with active track
-                double estimatedHeight = 230; // Default: no active track (3 buttons)
-
-                if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm && vm.HasActiveTrack)
-                {
-                    estimatedHeight = 580; // Full menu with active track
-                }
-
-                PositionFlyoutAboveButton(_abLineFlyoutPanel, _abLineMenuButton, estimatedHeight);
-            }
-            _abLineFlyoutPanel.IsVisible = _isABLineFlyoutOpen;
+                ShowFlyoutAboveButton(_abLineFlyoutPanel, _abLineMenuButton);
+            else
+                _abLineFlyoutPanel.IsVisible = false;
         }
     }
 
@@ -169,32 +150,31 @@ public partial class BottomNavigationPanel : UserControl
         if (_flagsFlyoutPanel != null)
         {
             if (_isFlagsFlyoutOpen)
-            {
-                // Position relative to the button (3 buttons at 40px + spacing)
-                PositionFlyoutAboveButton(_flagsFlyoutPanel, _flagMenuButton, 145);
-            }
-            _flagsFlyoutPanel.IsVisible = _isFlagsFlyoutOpen;
+                ShowFlyoutAboveButton(_flagsFlyoutPanel, _flagMenuButton);
+            else
+                _flagsFlyoutPanel.IsVisible = false;
         }
     }
 
-    private void PositionFlyoutAboveButton(Border flyout, Button? button, double estimatedHeight)
+    private void ShowFlyoutAboveButton(Border flyout, Button? button)
     {
         if (button == null || _mainPanel == null) return;
 
-        // Get button position relative to this panel's internal Canvas
+        // Order matters: IsVisible must be true before Measure() — while hidden,
+        // Avalonia excludes the control from layout and Measure() reports 0×0,
+        // which on re-open would anchor Canvas.Top to -10 and let the full-height
+        // flyout render off the bottom of the screen (#263).
+        flyout.IsVisible = true;
+        flyout.Measure(Size.Infinity);
+        var size = flyout.DesiredSize;
+
         var buttonBounds = button.Bounds;
         var buttonPosition = button.TranslatePoint(new Point(0, 0), _mainPanel);
+        if (!buttonPosition.HasValue) return;
 
-        if (buttonPosition.HasValue)
-        {
-            var flyoutHeight = estimatedHeight;
-            var flyoutWidth = flyout.Bounds.Width > 10 ? flyout.Bounds.Width : 170;
-            var flyoutLeft = buttonPosition.Value.X + buttonBounds.Width / 2 - flyoutWidth / 2;
-
-            // Position flyout above the main panel (negative Y in Canvas)
-            Canvas.SetLeft(flyout, flyoutLeft);
-            Canvas.SetTop(flyout, -flyoutHeight - 10);
-        }
+        var flyoutLeft = buttonPosition.Value.X + buttonBounds.Width / 2 - size.Width / 2;
+        Canvas.SetLeft(flyout, flyoutLeft);
+        Canvas.SetTop(flyout, -size.Height - 10);
     }
 
     private void CloseABLineFlyout()
@@ -221,60 +201,29 @@ public partial class BottomNavigationPanel : UserControl
         CloseFlagsFlyout();
     }
 
-    private void OnPanelPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnTopLevelPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // If any flyout is open and user clicked outside of it, close it
-        if (_isABLineFlyoutOpen && _abLineFlyoutPanel != null)
+        if (_isABLineFlyoutOpen
+            && IsPointerOutside(e, _abLineFlyoutPanel)
+            && IsPointerOutside(e, _abLineMenuButton))
         {
-            var position = e.GetPosition(_abLineFlyoutPanel);
-            var bounds = _abLineFlyoutPanel.Bounds;
-
-            // Check if click is outside the flyout panel bounds
-            if (position.X < 0 || position.Y < 0 ||
-                position.X > bounds.Width || position.Y > bounds.Height)
-            {
-                // But don't close if they clicked the menu button
-                if (_abLineMenuButton != null)
-                {
-                    var menuPos = e.GetPosition(_abLineMenuButton);
-                    var menuBounds = _abLineMenuButton.Bounds;
-                    if (menuPos.X >= 0 && menuPos.Y >= 0 &&
-                        menuPos.X <= menuBounds.Width && menuPos.Y <= menuBounds.Height)
-                    {
-                        // Clicked menu button, let the Click handler deal with it
-                        return;
-                    }
-                }
-
-                CloseABLineFlyout();
-            }
+            CloseABLineFlyout();
         }
 
-        if (_isFlagsFlyoutOpen && _flagsFlyoutPanel != null)
+        if (_isFlagsFlyoutOpen
+            && IsPointerOutside(e, _flagsFlyoutPanel)
+            && IsPointerOutside(e, _flagMenuButton))
         {
-            var position = e.GetPosition(_flagsFlyoutPanel);
-            var bounds = _flagsFlyoutPanel.Bounds;
-
-            // Check if click is outside the flyout panel bounds
-            if (position.X < 0 || position.Y < 0 ||
-                position.X > bounds.Width || position.Y > bounds.Height)
-            {
-                // But don't close if they clicked the menu button
-                if (_flagMenuButton != null)
-                {
-                    var menuPos = e.GetPosition(_flagMenuButton);
-                    var menuBounds = _flagMenuButton.Bounds;
-                    if (menuPos.X >= 0 && menuPos.Y >= 0 &&
-                        menuPos.X <= menuBounds.Width && menuPos.Y <= menuBounds.Height)
-                    {
-                        // Clicked menu button, let the Click handler deal with it
-                        return;
-                    }
-                }
-
-                CloseFlagsFlyout();
-            }
+            CloseFlagsFlyout();
         }
+    }
+
+    private static bool IsPointerOutside(PointerPressedEventArgs e, Control? target)
+    {
+        if (target == null) return true;
+        var p = e.GetPosition(target);
+        var b = target.Bounds;
+        return p.X < 0 || p.Y < 0 || p.X > b.Width || p.Y > b.Height;
     }
 
     /// <summary>
@@ -284,5 +233,11 @@ public partial class BottomNavigationPanel : UserControl
     public void CloseFlyoutOnAction()
     {
         CloseAllFlyouts();
+    }
+
+    private void Flyout_SizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (sender is Border flyout && flyout.IsVisible)
+            Canvas.SetTop(flyout, -e.NewSize.Height - 10);
     }
 }

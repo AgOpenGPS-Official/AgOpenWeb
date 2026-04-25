@@ -51,7 +51,6 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsAgShareSettingsDialogVisible));
                 OnPropertyChanged(nameof(IsAgShareUploadDialogVisible));
                 OnPropertyChanged(nameof(IsAgShareDownloadDialogVisible));
-                OnPropertyChanged(nameof(IsDataIODialogVisible));
                 OnPropertyChanged(nameof(IsSimCoordsDialogVisible));
                 OnPropertyChanged(nameof(IsQuickABSelectorVisible));
                 OnPropertyChanged(nameof(IsDrawABDialogVisible));
@@ -73,6 +72,7 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsRoutePlanDialogVisible));
                 OnPropertyChanged(nameof(IsTramSettingsDialogVisible));
                 OnPropertyChanged(nameof(IsFieldBuilderDialogVisible));
+                OnPropertyChanged(nameof(IsBugReportDialogVisible));
 
                 DialogChanged?.Invoke(this, new DialogChangedEventArgs(previous, value));
             }
@@ -94,7 +94,6 @@ public class UIState : ObservableObject
     public bool IsAgShareSettingsDialogVisible => ActiveDialog == DialogType.AgShareSettings;
     public bool IsAgShareUploadDialogVisible => ActiveDialog == DialogType.AgShareUpload;
     public bool IsAgShareDownloadDialogVisible => ActiveDialog == DialogType.AgShareDownload;
-    public bool IsDataIODialogVisible => ActiveDialog == DialogType.DataIO;
     public bool IsSimCoordsDialogVisible => ActiveDialog == DialogType.SimCoords;
     public bool IsQuickABSelectorVisible => ActiveDialog == DialogType.QuickABSelector;
     public bool IsDrawABDialogVisible => ActiveDialog == DialogType.DrawAB;
@@ -116,6 +115,7 @@ public class UIState : ObservableObject
     public bool IsRoutePlanDialogVisible => ActiveDialog == DialogType.RoutePlan;
     public bool IsTramSettingsDialogVisible => ActiveDialog == DialogType.TramSettings;
     public bool IsFieldBuilderDialogVisible => ActiveDialog == DialogType.FieldBuilder;
+    public bool IsBugReportDialogVisible => ActiveDialog == DialogType.BugReport;
 
     // Panel visibility (non-modal, can have multiple open)
     private bool _isSimulatorPanelVisible;
@@ -224,7 +224,6 @@ public enum DialogType
     AgShareSettings,
     AgShareUpload,
     AgShareDownload,
-    DataIO,
     Headland,
     HeadlandBuilder,
     SimCoords,
@@ -247,7 +246,8 @@ public enum DialogType
     RecordedPath,
     RoutePlan,
     TramSettings,
-    FieldBuilder
+    FieldBuilder,
+    BugReport
 }
 
 /// <summary>

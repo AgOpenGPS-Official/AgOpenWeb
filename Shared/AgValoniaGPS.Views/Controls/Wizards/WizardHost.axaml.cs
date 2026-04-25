@@ -72,24 +72,46 @@ public partial class WizardHost : UserControl
         // This bypasses DataTemplate resolution which had caching issues
         Control? view = step switch
         {
-            // Group A: Introduction
+            // Step 1: Welcome
             WelcomeStepViewModel => new WelcomeStepView(),
 
-            // Group B: Vehicle Dimensions
-            WheelbaseStepViewModel => new WheelbaseStepView(),
-            TrackWidthStepViewModel => new TrackWidthStepView(),
-            AntennaPivotStepViewModel => new AntennaPivotStepView(),
-            AntennaHeightStepViewModel => new AntennaHeightStepView(),
-            AntennaOffsetStepViewModel => new AntennaOffsetStepView(),
+            // Step 2: Vehicle Type
+            VehicleTypeStepViewModel => new VehicleTypeStepView(),
 
-            // Group C: Hardware Configuration
-            SteerEnableStepViewModel => new SteerEnableStepView(),
-            MotorDriverStepViewModel => new MotorDriverStepView(),
-            ADConverterStepViewModel => new ADConverterStepView(),
-            InvertSettingsStepViewModel => new InvertSettingsStepView(),
-            DanfossStepViewModel => new DanfossStepView(),
+            // Step 3: Vehicle Dimensions (wheelbase + track width)
+            VehicleDimensionsStepViewModel => new VehicleDimensionsStepView(),
 
-            // Group G: Completion
+            // Step 4: Antenna Position (pivot + height + offset)
+            AntennaSetupStepViewModel => new AntennaSetupStepView(),
+
+            // Step 5: Hardware Configuration
+            HardwareConfigStepViewModel => new HardwareConfigStepView(),
+
+            // Step 6: Hardware Installed
+            HardwareInstalledStepViewModel => new HardwareInstalledStepView(),
+
+            // Step 7: Roll Calibration
+            RollCalibrationStepViewModel => new RollCalibrationStepView(),
+
+            // Step 8: WAS Calibration
+            WasCalibrationStepViewModel => new WasCalibrationStepView(),
+
+            // Step 9: Auto Motor Calibration
+            AutoMotorCalibrationStepViewModel => new AutoMotorCalibrationStepView(),
+
+            // Step 10: CPD Circle Test
+            CpdCircleTestStepViewModel => new CpdCircleTestStepView(),
+
+            // Step 10: Ackermann Calibration
+            AckermannTestStepViewModel => new AckermannTestStepView(),
+
+            // Step 11: Steering Gains + Algorithm
+            SteeringGainsStepViewModel => new SteeringGainsStepView(),
+
+            // Step 9: Speed and Sensors
+            SpeedAndSensorsStepViewModel => new SpeedAndSensorsStepView(),
+
+            // Step 10: Finish
             FinishStepViewModel => new FinishStepView(),
             _ => null
         };

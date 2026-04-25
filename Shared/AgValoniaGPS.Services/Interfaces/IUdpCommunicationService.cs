@@ -78,6 +78,12 @@ public interface IUdpCommunicationService
     /// Check if module data is flowing (50Hz for Steer/Machine, 10Hz for IMU)
     /// </summary>
     bool IsModuleDataOk(ModuleType moduleType);
+
+    /// <summary>
+    /// Most-recently-observed remote IP for the given module, or null if no packet
+    /// has been received from it yet. Dotted-quad string (no port).
+    /// </summary>
+    string? GetModuleIpAddress(ModuleType moduleType);
 }
 
 /// <summary>

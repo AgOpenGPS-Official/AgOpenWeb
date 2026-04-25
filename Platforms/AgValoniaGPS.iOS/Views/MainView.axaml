@@ -26,6 +26,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
         x:Class="AgValoniaGPS.iOS.Views.MainView"
         x:DataType="vm:MainViewModel"
+        ToolTip.ServiceEnabled="False"
         Background="#1a1a1a">
 
     <!-- iOS Main View with ViewModel -->

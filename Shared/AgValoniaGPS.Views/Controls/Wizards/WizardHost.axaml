@@ -39,22 +39,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Height" Value="14"/>
         </Style>
         <Style Selector="Ellipse.step-dot.completed">
-            <Setter Property="Fill" Value="#1ABC9C"/>
+            <Setter Property="Fill" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
             <Setter Property="Opacity" Value="0.8"/>
         </Style>
 
         <!-- Navigation button styles -->
         <Style Selector="Button.wizard-nav">
-            <Setter Property="Height" Value="48"/>
-            <Setter Property="MinWidth" Value="100"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Height" Value="56"/>
+            <Setter Property="MinWidth" Value="130"/>
+            <Setter Property="FontSize" Value="18"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
         <Style Selector="Button.wizard-nav.primary">
-            <Setter Property="Background" Value="#1ABC9C"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
         </Style>
         <Style Selector="Button.wizard-nav.secondary">
@@ -70,13 +70,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
         <!-- Header with title and progress -->
         <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="16,12">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Text="{Binding WizardTitle}"
                            FontSize="22" FontWeight="Bold"
-                           Foreground="#1ABC9C"
+                           Foreground="{DynamicResource SystemControlHighlightAccentBrush}"
                            VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1"
                            Text="{Binding StepDisplay}"
@@ -92,10 +92,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                      Value="{Binding ProgressPercent}"
                      Height="6"
                      Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-                     Foreground="#1ABC9C"/>
+                     Foreground="{DynamicResource SystemControlHighlightAccentBrush}"/>
 
         <!-- Step content area -->
-        <Border Grid.Row="2" Background="#1E2A35" Padding="20">
+        <Border Grid.Row="2" Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}" Padding="20">
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled">
                 <ContentControl Content="{Binding CurrentStep}"
@@ -124,8 +124,40 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </ItemsControl>
         </Border>
 
+        <!-- Hardware Status Bar -->
+        <Border Grid.Row="4" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8,4"
+                IsVisible="{Binding StatusBar, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="20">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="WAS:" FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <TextBlock Text="{Binding StatusBar.WasAngle, StringFormat='{}{0:F1} deg'}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Roll:" FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <TextBlock Text="{Binding StatusBar.RollAngle, StringFormat='{}{0:F1} deg'}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="GPS:" FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <TextBlock Text="{Binding StatusBar.GpsStatus}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="Speed:" FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <TextBlock Text="{Binding StatusBar.SpeedKmh, StringFormat='{}{0:F1} km/h'}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="PWM:" FontSize="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    <TextBlock Text="{Binding StatusBar.PwmOutput}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <!-- Navigation buttons -->
-        <Border Grid.Row="4" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="16,12">
+        <Border Grid.Row="5" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="16,12">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                 <!-- Cancel button (left) -->
                 <Button Grid.Column="0"

@@ -4,6 +4,7 @@
 // Licensed under GNU GPL v3. See LICENSE.md.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
@@ -37,12 +38,16 @@ public class DebugDumpService
         ISettingsService settingsService,
         ApplicationState appState,
         string? additionalNotes = null,
-        byte[]? screenshotPng = null)
+        byte[]? screenshotPng = null,
+        string? outputDirectory = null,
+        string filePrefix = "debug_dump",
+        IReadOnlyList<string>? userAttachments = null)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        var dumpDir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS", "dumps");
+        var dumpDir = outputDirectory
+            ?? Path.Combine(Path.GetTempPath(), "AgValoniaGPS", "dumps");
         Directory.CreateDirectory(dumpDir);
-        var zipPath = Path.Combine(dumpDir, $"debug_dump_{timestamp}.zip");
+        var zipPath = Path.Combine(dumpDir, $"{filePrefix}_{timestamp}.zip");
 
         using var zipStream = File.Create(zipPath);
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
@@ -92,6 +97,18 @@ public class DebugDumpService
         catch (Exception ex)
         {
             AddTextEntry(archive, "logs_error.txt", ex.ToString());
+        }
+
+        // 5b. GPS data recorder (last 60 seconds of position/guidance/YouTurn)
+        try
+        {
+            var gpsCsv = Logging.GpsDataRecorder.Instance.ExportCsv();
+            if (gpsCsv.Length > 50) // more than just the header
+                AddTextEntry(archive, "gps_data_log.csv", gpsCsv);
+        }
+        catch (Exception ex)
+        {
+            AddTextEntry(archive, "gps_data_log_error.txt", ex.ToString());
         }
 
         // 6. Current field files (if a field is open)
@@ -150,6 +167,29 @@ public class DebugDumpService
         if (!string.IsNullOrEmpty(additionalNotes))
         {
             AddTextEntry(archive, "user_notes.txt", additionalNotes);
+        }
+
+        // 10. User-attached files (screenshots, videos, logs, etc.)
+        if (userAttachments != null)
+        {
+            foreach (var filePath in userAttachments)
+            {
+                try
+                {
+                    if (File.Exists(filePath))
+                    {
+                        var fileName = Path.GetFileName(filePath);
+                        var entry = archive.CreateEntry($"attachments/{fileName}");
+                        using var entryStream = entry.Open();
+                        using var fileStream = File.OpenRead(filePath);
+                        fileStream.CopyTo(entryStream);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AddTextEntry(archive, $"attachments/{Path.GetFileName(filePath)}_error.txt", ex.ToString());
+                }
+            }
         }
 
         return zipPath;

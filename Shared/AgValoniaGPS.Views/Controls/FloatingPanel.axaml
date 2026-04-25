@@ -1,0 +1,107 @@
+﻿<!--
+AgValoniaGPS
+Copyright (C) 2024-2025 AgValoniaGPS Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:AgValoniaGPS.Views.Controls"
+             xmlns:localc="using:AgValoniaGPS.Views.Converters"
+             xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
+             x:Class="AgValoniaGPS.Views.Controls.FloatingPanel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.FloatingPanelBorder">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <Style Selector="Button.ModernButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+
+        <Style Selector="Button.ModernButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+  <UserControl.Content>
+    <Border Classes="FloatingPanelBorder">
+        <StackPanel Spacing="4">
+
+            <!-- Title bar / drag handle -->
+            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,*,Auto" Height="32"
+                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                  Cursor="Hand" ToolTip.Tip="Drag to move">
+                <TextBlock Grid.Column="0" Text="=" VerticalAlignment="Center"
+                           Margin="8,0" IsHitTestVisible="False"
+                           Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                           FontSize="20" FontWeight="Bold"/>
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Title, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}"
+                           FontWeight="Bold" VerticalAlignment="Center"
+                           IsHitTestVisible="False"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                           FontSize="16"/>
+                <Button Grid.Column="2" Content="X"
+                        Width="24" Height="24" Padding="0" BorderThickness="0"
+                        Background="Transparent" FontSize="16" Cursor="Hand"
+                        Margin="8,0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Command="{Binding CloseCommand, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}"/>
+            </Grid>
+
+            <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+
+            <!-- Menu items mode: 2-column UniformGrid for ModernButton panels -->
+            <ItemsControl ItemsSource="{Binding MenuItems, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <UniformGrid Columns="2"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:MenuButton">
+                  <Button Classes="ModernButton"
+                          Command="{Binding Command}"
+                          IsEnabled="{Binding IsEnabled}">
+                    <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                      <Image Source="{Binding Icon, Converter={x:Static localc:StringToImageConverter.Instance}}" Width="28" Height="28"/>
+                      <TextBlock Text="{Binding Text}" VerticalAlignment="Center" FontSize="12"/>
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Custom content mode: charts, simulator, forms etc. -->
+            <ContentPresenter Content="{Binding PanelContent, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}"/>
+
+        </StackPanel>
+    </Border>
+  </UserControl.Content>
+</UserControl>

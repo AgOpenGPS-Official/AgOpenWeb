@@ -26,6 +26,7 @@ using CommunityToolkit.Mvvm.Input;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Guidance;
+using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.YouTurn;
@@ -36,6 +37,7 @@ using AgValoniaGPS.Models.Track;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Communication;
 using AgValoniaGPS.Models.Ntrip;
+using AgValoniaGPS.Models.Diagnostics;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 
@@ -55,10 +57,10 @@ public partial class MainViewModel : ObservableObject
     private readonly IBoundaryRecordingService _boundaryRecordingService;
     private readonly IBoundaryBuilderService _boundaryBuilderService;
     private readonly BoundaryFileService _boundaryFileService;
-    private readonly NmeaParserService _nmeaParser;
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly YouTurnCreationService _youTurnCreationService;
+    private readonly YouTurnPathingService _youTurnPathingService;
     private readonly Services.Geometry.IPolygonOffsetService _polygonOffsetService;
     private readonly Services.Interfaces.ITurnAreaService _turnAreaService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
@@ -78,6 +80,7 @@ public partial class MainViewModel : ObservableObject
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
+    private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
     private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
@@ -98,6 +101,23 @@ public partial class MainViewModel : ObservableObject
     // Current field origin (for map centering when GPS not active)
     private double _fieldOriginLatitude;
     private double _fieldOriginLongitude;
+
+    /// <summary>
+    /// Sets the field origin and propagates it into centralized FieldState so
+    /// non-ViewModel consumers (map control, services) can read the LocalPlane.
+    /// </summary>
+    private void SetFieldOrigin(double latitude, double longitude)
+    {
+        _fieldOriginLatitude = latitude;
+        _fieldOriginLongitude = longitude;
+        _simulatorLocalPlane = null;
+
+        State.Field.OriginLatitude = latitude;
+        State.Field.OriginLongitude = longitude;
+        State.Field.LocalPlane = new LocalPlane(
+            new Wgs84(latitude, longitude),
+            new SharedFieldProperties());
+    }
 
     // Track-on-boundary detection: skip boundary disengage on first pass
     private bool _isSelectedTrackOnBoundary;
@@ -158,6 +178,7 @@ public partial class MainViewModel : ObservableObject
         ITrackGuidanceService trackGuidanceService,
         YouTurnCreationService youTurnCreationService,
         YouTurnGuidanceService youTurnGuidanceService,
+        YouTurnPathingService youTurnPathingService,
         Services.Geometry.IPolygonOffsetService polygonOffsetService,
         Services.Interfaces.ITurnAreaService turnAreaService,
         IVehicleProfileService vehicleProfileService,
@@ -173,6 +194,7 @@ public partial class MainViewModel : ObservableObject
         IElevationLogService elevationLogService,
         ITramLineService tramLineService,
         IGpsPipelineService gpsPipelineService,
+        IPipelineIntents intents,
         ILogger<MainViewModel> logger,
         ApplicationState appState)
     {
@@ -211,6 +233,7 @@ public partial class MainViewModel : ObservableObject
         _trackGuidanceService = trackGuidanceService;
         _youTurnCreationService = youTurnCreationService;
         _youTurnGuidanceService = youTurnGuidanceService;
+        _youTurnPathingService = youTurnPathingService;
         _polygonOffsetService = polygonOffsetService;
         _turnAreaService = turnAreaService;
         _vehicleProfileService = vehicleProfileService;
@@ -225,8 +248,8 @@ public partial class MainViewModel : ObservableObject
         _audioService = audioService;
         _elevationLogService = elevationLogService;
         _gpsPipelineService = gpsPipelineService;
+        _intents = intents;
         _appState = appState;
-        _nmeaParser = new NmeaParserService(gpsService);
         _fieldPlaneFileService = new FieldPlaneFileService();
 
         // Subscribe to events
@@ -326,6 +349,20 @@ public partial class MainViewModel : ObservableObject
 
         // Start UDP communication (fire-and-forget but explicit)
         _ = InitializeAsync();
+
+        // Diagnostic auto-resume field — lets the FPS test harness run field-open
+        // scenarios across force-stop restarts without manual taps.
+        if (DiagFlags.AutoResumeField)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (ResumeFieldCommand?.CanExecute(null) == true)
+                {
+                    _logger.LogInformation("[DiagFlags] auto_resume_field: invoking ResumeFieldCommand");
+                    ResumeFieldCommand.Execute(null);
+                }
+            }, Avalonia.Threading.DispatcherPriority.Background);
+        }
     }
 
     private void RestoreSettings()
@@ -371,9 +408,11 @@ public partial class MainViewModel : ObservableObject
 
         _logger.LogDebug("Restored simulator: {Lat},{Lon}", settings.SimulatorLatitude, settings.SimulatorLongitude);
 
-        // Restore simulator enabled state and panel visibility
+        // Restore simulator enabled state and panel visibility.
+        // hide_all_panels diagnostic flag suppresses the auto-open so baseline
+        // perf measurements aren't contaminated by the sim panel.
         IsSimulatorEnabled = settings.SimulatorEnabled;
-        IsSimulatorPanelVisible = settings.SimulatorEnabled;
+        IsSimulatorPanelVisible = settings.SimulatorEnabled && !DiagFlags.HideAllPanels;
 
         // Initialize tool width from config so implement renders before GPS data flows
         var config = Models.Configuration.ConfigurationStore.Instance;
@@ -478,6 +517,9 @@ public partial class MainViewModel : ObservableObject
                 State.Connections.IsImuDataOk = imuOk;
                 State.Connections.IsGpsDataOk = gpsOk;
                 State.Connections.IsGpsConnected = gpsOk;
+                State.Connections.AutoSteerIpAddress = _udpService.GetModuleIpAddress(ModuleType.AutoSteer);
+                State.Connections.MachineIpAddress = _udpService.GetModuleIpAddress(ModuleType.Machine);
+                State.Connections.ImuIpAddress = _udpService.GetModuleIpAddress(ModuleType.IMU);
 
                 // Legacy property updates (for existing bindings - will be removed in Phase 5)
                 IsAutoSteerDataOk = steerOk;
@@ -786,7 +828,7 @@ public partial class MainViewModel : ObservableObject
         byte hydLiftState = CalculateHydLiftState(e.ToolPosition, Speed);
 
         // Push section bits + u-turn state + hydraulic lift to AutoSteerService for PGN 239
-        _autoSteerService.SetMachineState(_sectionControlService.GetSectionBits(), _isInYouTurn, hydLiftState);
+        _autoSteerService.SetMachineState(_sectionControlService.GetSectionBits(), State.YouTurn.IsExecuting, hydLiftState);
 
         // Update coverage painting - paint when sections are active and moving
         _updateSw.Restart();
@@ -887,7 +929,7 @@ public partial class MainViewModel : ObservableObject
         // Record worked path for skip-and-fill mode (any section painting = path is worked)
         if (states.Any(s => s.IsOn) && SelectedTrack != null)
         {
-            SelectedTrack.MarkPathWorked(_howManyPathsAway);
+            SelectedTrack.MarkPathWorked(State.Guidance.HowManyPathsAway);
         }
     }
 
@@ -936,18 +978,11 @@ public partial class MainViewModel : ObservableObject
         var now = DateTime.Now;
         var packetAge = (now - e.Timestamp).TotalMilliseconds;
 
-        // Handle different message types
-        if (e.PGN == 0)
-        {
-            // NMEA text sentence
-            try
-            {
-                string sentence = System.Text.Encoding.ASCII.GetString(e.Data);
-                _nmeaParser.ParseSentence(sentence);
-            }
-            catch { }
-        }
-        else
+        // Handle different message types.
+        // Phase B C3: NMEA packets (PGN == 0) are now handled by the zero-copy
+        // AutoSteerService.ProcessGpsBuffer path in UdpCommunicationService. The MVM
+        // handler only touches non-NMEA PGNs.
+        if (e.PGN != 0)
         {
             // Binary PGN message - log it with age to detect buffering
             DebugLog = $"PGN: {e.PGN} (0x{e.PGN:X2}) @ {e.Timestamp:HH:mm:ss.fff} (age: {packetAge:F0}ms)";
@@ -1173,13 +1208,50 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 var fieldInfo = _fieldPlaneFileService.LoadField(fieldPath);
+
+                // Recovery: if Field.txt has no origin or a zero origin, fall
+                // back to field.origin — a separate file written at field-
+                // create time and never touched by close-save. Fields
+                // corrupted by the pre-#270 save-with-zero bug can be healed
+                // this way; next close writes the real origin back to both
+                // Field.txt and field.geojson.
+                if (fieldInfo.Origin == null
+                    || (fieldInfo.Origin.Latitude == 0 && fieldInfo.Origin.Longitude == 0))
+                {
+                    var originBackupPath = Path.Combine(fieldPath, "field.origin");
+                    if (File.Exists(originBackupPath))
+                    {
+                        var originLine = File.ReadAllText(originBackupPath).Trim();
+                        var parts = originLine.Split(',');
+                        if (parts.Length == 2
+                            && double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var backupLat)
+                            && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var backupLon)
+                            && (backupLat != 0 || backupLon != 0)
+                            && backupLat >= -90 && backupLat <= 90
+                            && backupLon >= -180 && backupLon <= 180)
+                        {
+                            fieldInfo.Origin = new Position
+                            {
+                                Latitude = backupLat,
+                                Longitude = backupLon,
+                            };
+                            _logger.LogDebug($"[Field] Recovered origin from field.origin backup: {backupLat}, {backupLon}");
+                        }
+                    }
+                }
+
                 if (fieldInfo.Origin != null)
                 {
-                    _fieldOriginLatitude = fieldInfo.Origin.Latitude;
-                    _fieldOriginLongitude = fieldInfo.Origin.Longitude;
-                    _simulatorLocalPlane = null;
+                    SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
                     _logger.LogDebug($"[Field] Set origin: {_fieldOriginLatitude}, {_fieldOriginLongitude}");
-                    SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
+                    // Only reposition the simulator if the field has a real (non-zero)
+                    // georeference. Fields that were never georeferenced persist an
+                    // origin of (0, 0), which otherwise clobbers the user's
+                    // simulator coords (saved to appsettings on window close).
+                    if (_fieldOriginLatitude != 0 || _fieldOriginLongitude != 0)
+                        SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
                 }
             }
             catch (Exception ex)
@@ -1202,12 +1274,20 @@ public partial class MainViewModel : ObservableObject
             // Load background image
             LoadBackgroundImage(fieldPath, boundary);
 
-            // Create field object and set as active
+            // Create field object and set as active. Origin must be copied from
+            // the loaded Field.txt — otherwise Field.Origin defaults to (0, 0)
+            // and CloseFieldAsync silently overwrites the on-disk Field.txt with
+            // a zero origin, corrupting the field for every future session.
             var field = new Field
             {
                 Name = fieldName,
                 DirectoryPath = fieldPath,
-                Boundary = boundary
+                Boundary = boundary,
+                Origin = new Position
+                {
+                    Latitude = _fieldOriginLatitude,
+                    Longitude = _fieldOriginLongitude,
+                }
             };
 
             // Update field service (triggers OnActiveFieldChanged for state sync only)
@@ -1376,6 +1456,16 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void ClearFieldState()
     {
+        // Disengage autosteer first so the cycle stops emitting steer commands
+        // before the track / boundary / U-turn state vanishes out from under it.
+        // Without this the tractor keeps executing the last-sent steer angle
+        // (visible as "keeps circling" when closing mid-U-turn).
+        if (IsAutoSteerEngaged)
+        {
+            IsAutoSteerEngaged = false;
+            SyncGuidanceStateToPipeline();
+        }
+
         CurrentFieldName = string.Empty;
         IsFieldOpen = false;
 
@@ -1656,20 +1746,25 @@ public partial class MainViewModel : ObservableObject
                     // Generate tram lines from the selected track
                     UpdateTramLines(value);
 
-                    // Initialize pass number and nudge offset from saved NudgeDistance
-                    // NudgeDistance = widthMinusOverlap * howManyPathsAway + nudgeOffset
+                    // Phase D D6: compute the initial pass number + nudge offset
+                    // locally from the track's persisted NudgeDistance (inverse of
+                    // NudgeDistance = widthMinusOverlap * pathsAway + nudgeOffset).
+                    // The cycle is the sole writer of State.Guidance post-D3, so
+                    // we don't touch it here — the values flow into _guidanceWorking
+                    // via SyncGuidanceStateToPipeline's SetActiveTrack below, and
+                    // the next cycle's snapshot mirrors them back to State.Guidance.
                     double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
                     if (widthMinusOverlap > 0.1)
                     {
-                        _howManyPathsAway = (int)Math.Round(value.NudgeDistance / widthMinusOverlap);
-                        _nudgeOffset = value.NudgeDistance - (_howManyPathsAway * widthMinusOverlap);
-                        _logger.LogDebug($"[NUDGE] SelectedTrack setter: '{value.Name}' NudgeDistance={value.NudgeDistance:F2}m -> _howManyPathsAway={_howManyPathsAway}, _nudgeOffset={_nudgeOffset:F3}m");
+                        _pendingInitialPathsAway = (int)Math.Round(value.NudgeDistance / widthMinusOverlap);
+                        _pendingInitialNudgeOffset = value.NudgeDistance - (_pendingInitialPathsAway.Value * widthMinusOverlap);
+                        _logger.LogDebug($"[NUDGE] SelectedTrack setter: '{value.Name}' NudgeDistance={value.NudgeDistance:F2}m -> pathsAway={_pendingInitialPathsAway}, nudgeOffset={_pendingInitialNudgeOffset:F3}m");
                     }
                     else
                     {
-                        _howManyPathsAway = 0;
-                        _nudgeOffset = 0;
-                        _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, _howManyPathsAway=0", value.Name);
+                        _pendingInitialPathsAway = 0;
+                        _pendingInitialNudgeOffset = 0;
+                        _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, pathsAway=0", value.Name);
                     }
 
                     // Check if track runs along boundary (skip disengage on first pass)
@@ -2289,15 +2384,6 @@ public partial class MainViewModel : ObservableObject
 
     // AgShare Download Dialog (visibility managed by State.UI)
     public ICommand? CancelAgShareDownloadDialogCommand { get; private set; }
-
-    // Data I/O Commands
-    public ICommand? ShowDataIODialogCommand { get; private set; }
-    public ICommand? CloseDataIODialogCommand { get; private set; }
-
-    private void CloseDataIODialog()
-    {
-        State.UI.CloseDialog();
-    }
 
     // iOS Modal Sheet Visibility Properties
     private bool _isFileMenuVisible;
@@ -3532,12 +3618,13 @@ public partial class MainViewModel : ObservableObject
         }
         else
         {
-            State.Field.HeadlandLine = null;
-            _currentHeadlandLine = null;
-            _mapService.SetHeadlandLine(null);
-            HasHeadland = false;
-            IsHeadlandOn = false;
-            _logger.LogDebug($"[Headland] No valid HeadlandPolygon - YouTurn headland detection disabled");
+            // Boundary didn't carry a HeadlandPolygon (field.geojson has no headland role).
+            // DO NOT clobber State.Field.HeadlandLine here — the legacy Headlines.txt
+            // loader (LoadHeadland) runs separately on field open and is the authoritative
+            // source for the legacy-format case. Nulling it here races with that loader
+            // and silently disables U-turn headland detection (#289 F3). Field close and
+            // explicit headland removal handle the reset case elsewhere.
+            _logger.LogDebug($"[Headland] Boundary has no HeadlandPolygon — deferring to LoadHeadland / existing state");
         }
 
         // Sync boundary + headland to pipeline for guidance computations
@@ -4880,8 +4967,8 @@ public partial class MainViewModel : ObservableObject
         if (SelectedTrack != null)
         {
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
-            SelectedTrack.NudgeDistance = _howManyPathsAway * widthMinusOverlap + _nudgeOffset;
-            _logger.LogDebug($"[NUDGE] SaveTracksToFile: SelectedTrack '{SelectedTrack.Name}' NudgeDistance = {_howManyPathsAway} * {widthMinusOverlap:F2} + {_nudgeOffset:F3} = {SelectedTrack.NudgeDistance:F2}m");
+            SelectedTrack.NudgeDistance = State.Guidance.HowManyPathsAway * widthMinusOverlap + State.Guidance.NudgeOffset;
+            _logger.LogDebug($"[NUDGE] SaveTracksToFile: SelectedTrack '{SelectedTrack.Name}' NudgeDistance = {State.Guidance.HowManyPathsAway} * {widthMinusOverlap:F2} + {State.Guidance.NudgeOffset:F3} = {SelectedTrack.NudgeDistance:F2}m");
         }
 
         // Debug: Log all tracks' NudgeDistance before saving

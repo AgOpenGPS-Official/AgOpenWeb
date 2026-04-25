@@ -21,7 +21,7 @@ namespace AgValoniaGPS.ViewModels.Wizards.SteerWizard;
 
 /// <summary>
 /// ViewModel for the Steer Configuration Wizard.
-/// Guides users through AutoSteer setup step by step.
+/// Guides users through AutoSteer setup in 10 combined steps.
 /// </summary>
 public class SteerWizardViewModel : WizardViewModel
 {
@@ -29,28 +29,66 @@ public class SteerWizardViewModel : WizardViewModel
 
     public override string WizardTitle => "AutoSteer Configuration Wizard";
 
-    public SteerWizardViewModel(IConfigurationService configService)
+    /// <summary>
+    /// Persistent status bar showing live hardware data across all wizard steps.
+    /// </summary>
+    public override WizardStatusBarViewModel? StatusBar { get; }
+
+    public SteerWizardViewModel(IConfigurationService configService,
+        IAutoSteerService? autoSteerService = null)
     {
         _configService = configService;
+        StatusBar = new WizardStatusBarViewModel(autoSteerService);
 
-        // Group A: Introduction
+        // Step 1: Welcome
         AddStep(new WelcomeStepViewModel());
 
-        // Group B: Vehicle Dimensions
-        AddStep(new WheelbaseStepViewModel(configService));
-        AddStep(new TrackWidthStepViewModel(configService));
-        AddStep(new AntennaPivotStepViewModel(configService));
-        AddStep(new AntennaHeightStepViewModel(configService));
-        AddStep(new AntennaOffsetStepViewModel(configService));
+        // Step 2: Vehicle Type
+        AddStep(new VehicleTypeStepViewModel(configService));
 
-        // Group C: Hardware Configuration
-        AddStep(new SteerEnableStepViewModel(configService));
-        AddStep(new MotorDriverStepViewModel(configService));
-        AddStep(new ADConverterStepViewModel(configService));
-        AddStep(new InvertSettingsStepViewModel(configService));
-        AddStep(new DanfossStepViewModel(configService));
+        // Step 3: Hardware Installed (GPS only / AutoSteer / Full)
+        var hardwareStep = new HardwareInstalledStepViewModel();
+        AddStep(hardwareStep);
 
-        // Group G: Completion
+        // Step 4: Vehicle Dimensions (wheelbase + track width)
+        AddStep(new VehicleDimensionsStepViewModel(configService));
+
+        // Step 5: Antenna Position (pivot + height + offset)
+        AddStep(new AntennaSetupStepViewModel(configService));
+
+        // Steps 6-10: AutoSteer-only steps (skipped when GPS Only)
+        var hwConfig = new HardwareConfigStepViewModel(configService);
+        hwConfig.SetHardwareStep(hardwareStep);
+        AddStep(hwConfig);
+
+        var rollCal = new RollCalibrationStepViewModel(configService, autoSteerService);
+        rollCal.SetHardwareStep(hardwareStep);
+        AddStep(rollCal);
+
+        var wasCal = new WasCalibrationStepViewModel(configService, autoSteerService);
+        wasCal.SetHardwareStep(hardwareStep);
+        AddStep(wasCal);
+
+        var autoCal = new AutoMotorCalibrationStepViewModel(configService, autoSteerService);
+        autoCal.SetHardwareStep(hardwareStep);
+        AddStep(autoCal);
+
+        var cpdCircle = new CpdCircleTestStepViewModel(configService, autoSteerService);
+        cpdCircle.SetHardwareStep(hardwareStep);
+        AddStep(cpdCircle);
+
+        var ackermannTest = new AckermannTestStepViewModel(configService, autoSteerService);
+        ackermannTest.SetHardwareStep(hardwareStep);
+        AddStep(ackermannTest);
+
+        var steerGains = new SteeringGainsStepViewModel(configService, autoSteerService);
+        steerGains.SetHardwareStep(hardwareStep);
+        AddStep(steerGains);
+
+        // Step 11: Speed Limits + Sensors
+        AddStep(new SpeedAndSensorsStepViewModel(configService));
+
+        // Step 12: Finish
         AddStep(new FinishStepViewModel());
 
         // Initialize navigation

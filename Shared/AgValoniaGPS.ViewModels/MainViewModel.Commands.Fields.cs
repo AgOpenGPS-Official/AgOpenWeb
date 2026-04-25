@@ -184,11 +184,9 @@ public partial class MainViewModel
                 CurrentFieldName = NewFieldName;
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
-                _simulatorLocalPlane = null;
 
                 // Set field origin for coordinate transformations
-                _fieldOriginLatitude = NewFieldLatitude;
-                _fieldOriginLongitude = NewFieldLongitude;
+                SetFieldOrigin(NewFieldLatitude, NewFieldLongitude);
 
                 // Create field object and set as active (required for headland/track saving)
                 var field = new Field
@@ -497,9 +495,7 @@ public partial class MainViewModel
                 _boundaryFileService.SaveBoundary(boundary, newFieldPath);
 
                 // Set field origin so coordinate conversions work
-                _fieldOriginLatitude = KmlCenterLatitude;
-                _fieldOriginLongitude = KmlCenterLongitude;
-                _simulatorLocalPlane = null;
+                SetFieldOrigin(KmlCenterLatitude, KmlCenterLongitude);
 
                 CurrentFieldName = newFieldName;
                 FieldsRootDirectory = fieldsDir;

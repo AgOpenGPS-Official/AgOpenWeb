@@ -218,32 +218,10 @@ public partial class MainViewModel
         // Auto-select closest track when autosteer is not engaged (#143)
         UpdateAutoTrackSelection(data.CurrentPosition);
 
-        // YouTurn creation/trigger logic stays in ViewModel for now (user-command driven,
-        // needs access to SelectedTrack, _howManyPathsAway, etc.)
-        // The pipeline handles YouTurn *guidance* once a path is set.
-        double driftedEasting = posEasting + State.Field.DriftEasting;
-        double driftedNorthing = posNorthing + State.Field.DriftNorthing;
-
-        if (IsAutoSteerEngaged && HasActiveTrack)
-        {
-            var guidancePos = data.CurrentPosition with
-            {
-                Easting = driftedEasting,
-                Northing = driftedNorthing
-            };
-
-            _youTurnCounter++;
-
-            // YouTurn state machine: create paths, trigger turns, detect completion
-            if (IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
-            {
-                ProcessYouTurn(guidancePos);
-            }
-
-            // Sync YouTurn state to pipeline so it knows whether to use YouTurn guidance
-            _gpsPipelineService.SetYouTurnState(
-                _isYouTurnTriggered, _isInYouTurn, _youTurnPath);
-        }
+        // Phase C C4: the YouTurn tick now runs on the cycle worker
+        // (GpsPipelineService.ProcessCycle) and mirrors back to State.YouTurn
+        // via ApplyGpsCycleResult. The previous UI-thread tick + SetYouTurnState
+        // push lived here; both are gone.
     }
 
     private bool _isAutoTrackEnabled = true;
@@ -318,52 +296,6 @@ public partial class MainViewModel
             northing - halfSize, northing + halfSize);
     }
 
-    private static readonly AgValoniaGPS.Services.Headland.HeadlandDetectionService _headlandDetector = new();
-
-    /// <summary>
-    /// Calculate distance from tool pivot to nearest headland boundary line.
-    /// Uses HeadlandDetectionService with direction-aware warnings, matching legacy AgOpenGPS.
-    /// </summary>
-    private void UpdateHeadlandProximity(AgValoniaGPS.Models.Position position)
-    {
-        var headlandLine = State.Field.HeadlandLine;
-        if (headlandLine == null || headlandLine.Count < 3)
-        {
-            State.Field.HeadlandProximityDistance = null;
-            State.Field.HeadlandProximityWarning = false;
-            return;
-        }
-
-        // Use tool pivot position (implement hitch point), matching legacy mf.toolPivotPos
-        var toolPivot = _toolPositionService.ToolPivotPosition;
-
-        // Build minimal input for proximity calculation
-        var input = new AgValoniaGPS.Models.Headland.HeadlandDetectionInput
-        {
-            IsHeadlandOn = true,
-            VehiclePosition = toolPivot,
-            Boundaries = new System.Collections.Generic.List<AgValoniaGPS.Models.Headland.BoundaryData>
-            {
-                new AgValoniaGPS.Models.Headland.BoundaryData
-                {
-                    HeadlandLine = new System.Collections.Generic.List<Models.Base.Vec3>(headlandLine)
-                }
-            }
-        };
-
-        var output = _headlandDetector.DetectHeadland(input);
-
-        bool wasWarning = State.Field.HeadlandProximityWarning;
-        State.Field.HeadlandProximityDistance = output.HeadlandDistance;
-        State.Field.HeadlandProximityWarning = output.ShouldTriggerWarning;
-
-        // Play headland alarm on warning transition (not every frame)
-        if (output.ShouldTriggerWarning && !wasWarning)
-        {
-            _audioService.Play(AgValoniaGPS.Services.Interfaces.SoundEffect.Headland);
-        }
-    }
-
     /// <summary>
     /// Add a point to the curve being recorded, with minimum spacing filtering.
     /// </summary>
@@ -415,6 +347,23 @@ public partial class MainViewModel
 
     #region Pipeline State Sync
 
+    // Phase D D6: when the SelectedTrack setter needs to seed a fresh pass
+    // number + nudge offset from the track's persisted NudgeDistance, it
+    // stores them here for the next SyncGuidanceStateToPipeline to carry
+    // into _guidanceWorking (via SetActiveTrack). Cleared after the sync
+    // consumes them — subsequent syncs read the current _guidanceWorking
+    // values back (mirrored onto State.Guidance by ApplyGpsCycleResult).
+    private int? _pendingInitialPathsAway;
+    private double? _pendingInitialNudgeOffset;
+
+    // Phase D D7: last DisplayTrack / BaseTrack references pushed to the map
+    // service, used by ApplyGpsCycleResult to skip SetActiveTrack /
+    // SetBaseTrack when the snapshot carries the same references (the cycle
+    // reuses them across ticks whenever pass / nudge haven't changed).
+    // Prevents per-cycle SendStateToHandler churn.
+    private AgValoniaGPS.Models.Track.Track? _lastMirroredDisplayTrack;
+    private AgValoniaGPS.Models.Track.Track? _lastMirroredBaseTrack;
+
     /// <summary>
     /// Sync all guidance-relevant state to the pipeline service.
     /// Call this from commands that change autosteer, track, boundary, headland, or drift state.
@@ -426,12 +375,23 @@ public partial class MainViewModel
         bool isOnBoundary = track != null && State.Field.Tracks.IndexOf(track) == 0
             && CurrentBoundary?.OuterBoundary != null;
 
+        // Use pending initial values if the SelectedTrack setter just seeded
+        // them; otherwise re-push the current State.Guidance (which the cycle
+        // wrote on the last snapshot). The pipeline's SetActiveTrack is
+        // idempotent when the values haven't changed.
+        int pathsAway = _pendingInitialPathsAway ?? State.Guidance.HowManyPathsAway;
+        double nudgeOffset = _pendingInitialNudgeOffset ?? State.Guidance.NudgeOffset;
+        _pendingInitialPathsAway = null;
+        _pendingInitialNudgeOffset = null;
+
         _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
-        _gpsPipelineService.SetActiveTrack(track, _howManyPathsAway, _nudgeOffset, isOnBoundary);
+        _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset, isOnBoundary);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled);
+        _gpsPipelineService.SetYouTurnConfig(
+            UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
     }
 
     #endregion

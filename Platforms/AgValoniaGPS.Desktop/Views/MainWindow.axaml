@@ -28,6 +28,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="AgValoniaGPS"
+        ToolTip.ServiceEnabled="False"
         Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
 
     <!-- Styles are now in shared SharedStyles.axaml -->

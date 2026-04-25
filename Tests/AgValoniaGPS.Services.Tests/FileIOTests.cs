@@ -277,25 +277,37 @@ public class FileIOTests
 
     #region SettingsService
 
+    // Every SettingsService test uses an isolated temp directory so the real
+    // ~/Documents/AgValoniaGPS/appsettings.json isn't clobbered during test
+    // runs. Prior to this (dependency injection of the directory), running
+    // `dotnet test` reset the user's simulator coords back to defaults on
+    // every test iteration — a very annoying side effect of Save-fires-event
+    // and round-trip tests.
+
+    private static string MakeIsolatedSettingsDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS_SettingsTests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
     [Test]
     public void Settings_Load_MissingFile_ReturnsFalse()
     {
-        var service = new SettingsService();
+        var dir = MakeIsolatedSettingsDir();
+        var service = new SettingsService(dir);
 
-        // The settings service uses its own path (Documents/AgValoniaGPS),
-        // but we can test the first-run behavior
-        // If no file exists at the settings path, Load returns false
         var result = service.Load();
 
-        // First run returns false OR true (depending on whether file already exists on this machine)
-        // Either way, Settings should not be null
+        // No file in a fresh temp directory → Load returns false (first-run).
+        Assert.That(result, Is.False);
         Assert.That(service.Settings, Is.Not.Null);
     }
 
     [Test]
     public void Settings_ResetToDefaults_ClearsSettings()
     {
-        var service = new SettingsService();
+        var service = new SettingsService(MakeIsolatedSettingsDir());
         service.Settings.WindowWidth = 1920;
         service.Settings.WindowHeight = 1080;
 
@@ -309,7 +321,7 @@ public class FileIOTests
     [Test]
     public void Settings_Save_FiresSettingsSavedEvent()
     {
-        var service = new SettingsService();
+        var service = new SettingsService(MakeIsolatedSettingsDir());
         bool eventFired = false;
         service.SettingsSaved += (s, e) => eventFired = true;
 
@@ -321,7 +333,8 @@ public class FileIOTests
     [Test]
     public void Settings_SaveAndLoad_RoundTrip()
     {
-        var service = new SettingsService();
+        var dir = MakeIsolatedSettingsDir();
+        var service = new SettingsService(dir);
         service.Settings.WindowWidth = 1600;
         service.Settings.WindowHeight = 900;
         service.Settings.SimulatorEnabled = true;
@@ -330,8 +343,8 @@ public class FileIOTests
         var saveResult = service.Save();
         Assert.That(saveResult, Is.True);
 
-        // Create a new service instance and load
-        var service2 = new SettingsService();
+        // Create a new service instance pointing at the same directory and load.
+        var service2 = new SettingsService(dir);
         var loadResult = service2.Load();
         Assert.That(loadResult, Is.True);
 
