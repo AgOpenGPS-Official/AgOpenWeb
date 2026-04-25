@@ -35,9 +35,6 @@ public class TransitPathService : ITransitPathService
 {
     public TransitPathResult GenerateTransit(TransitPathInput input)
     {
-        if (input.Circuits.Count == 0)
-            return new TransitPathResult { IsValid = false, CircuitUsed = "none" };
-
         var outerVec2 = input.OuterBoundary.Points
             .Select(p => new Vec2(p.Easting, p.Northing))
             .ToList();
@@ -46,8 +43,18 @@ public class TransitPathService : ITransitPathService
             .Select(b => b.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList())
             .ToList();
 
+        // First try a direct Dubins bypass between the two endpoints. For obstacles
+        // small enough that an S-curve can clear them, this avoids the circuit walk
+        // entirely (no curly-Q approach loops trying to align with circuit tangent).
+        var direct = TryDirectBypass(input, outerVec2, innerVec2List);
+        if (direct != null && direct.IsValid)
+            return direct;
+
+        if (input.Circuits.Count == 0)
+            return direct ?? new TransitPathResult { IsValid = false, CircuitUsed = "none" };
+
         TransitPathResult? bestValid = null;
-        TransitPathResult? bestAny = null;
+        TransitPathResult? bestAny = direct;
 
         for (int ci = 0; ci < input.Circuits.Count; ci++)
         {
@@ -70,6 +77,62 @@ public class TransitPathService : ITransitPathService
         }
 
         return bestValid ?? bestAny ?? new TransitPathResult { IsValid = false, CircuitUsed = "none" };
+    }
+
+    /// <summary>
+    /// Direct Dubins bypass: connect exit pose to entry pose with a single Dubins
+    /// curve (no leg extension), validated against outer boundary and raw inner
+    /// boundaries. For small obstacles where an S-curve clears, this is much
+    /// shorter and cleaner than walking the circuit perimeter.
+    /// </summary>
+    private static TransitPathResult? TryDirectBypass(
+        TransitPathInput input,
+        List<Vec2> outerVec2,
+        List<List<Vec2>> innerVec2List)
+    {
+        var start = new Vec3(input.ExitPoint.Easting, input.ExitPoint.Northing, input.ExitHeading);
+        var goal = new Vec3(input.EntryPoint.Easting, input.EntryPoint.Northing, input.EntryHeading);
+
+        var dubins = new DubinsPathService(input.TurningRadius);
+        var paths = dubins.GenerateAllPaths(start, goal);
+        if (paths.Count == 0) return null;
+
+        TransitPathResult? bestValid = null;
+        TransitPathResult? bestAny = null;
+
+        foreach (var (path, type, length) in paths.OrderBy(p => p.Length))
+        {
+            if (path == null || path.Count == 0) continue;
+
+            var full = new List<Vec3>(path.Count + 2) { start };
+            full.AddRange(path);
+            full.Add(goal);
+
+            bool insideOuter = AllPointsInsidePolygon(full, outerVec2);
+            bool insideAnyInner = AnyPointsInsideAnyPolygon(full, innerVec2List);
+            double total = PathLength(full);
+
+            var candidate = new TransitPathResult
+            {
+                Waypoints = full,
+                Length = total,
+                IsValid = insideOuter && !insideAnyInner,
+                CircuitUsed = $"direct-{type}",
+            };
+
+            if (candidate.IsValid)
+            {
+                if (bestValid == null || candidate.Length < bestValid.Length)
+                    bestValid = candidate;
+                // Shortest valid wins; no need to keep searching longer ones.
+                break;
+            }
+
+            if (bestAny == null || candidate.Length < bestAny.Length)
+                bestAny = candidate;
+        }
+
+        return bestValid ?? bestAny;
     }
 
     private static TransitPathResult? TryBuildTransit(
