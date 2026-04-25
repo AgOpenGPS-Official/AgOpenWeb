@@ -96,7 +96,8 @@ public class AutoSteerUTurnNUnitTests
         var sectionControl = new SectionControlService(_toolPosition, coverage, _appState);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
-        headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+        headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _autoSteer = new AutoSteerService(guidance,

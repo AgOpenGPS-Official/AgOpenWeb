@@ -201,14 +201,19 @@ public class NmeaEncodingTests
     [Test]
     public void ImuFields_EncodedWithInvariantCulture()
     {
-        // Roll=1.5, pitch=-0.3, yaw=0.2 must use dot decimal, not comma
+        // PANDA wire format from VirtualGpsReceiver after IMU heading fix:
+        //   Roll  = (int)round(degrees × 10), e.g. 1.5° → "15"   (matches AiO firmware)
+        //   Pitch = float "%.2f", e.g. -0.3° → "-0.30"           (legacy fixture format)
+        //   YawRate = float "%.2f", e.g. 0.2 → "0.20"            (legacy fixture format)
+        // Test name is about culture-correct decimal separators — pitch and
+        // yaw still exercise that. Roll just verifies the scaling.
         var sentence = CapturePanda(42.0, -93.0, roll: 1.5, pitch: -0.3, yawRate: 0.2);
         var fields = sentence.Split(',');
 
         // Last field has checksum: "0.20*XX"
         string yawField = fields[15].Split('*')[0];
 
-        Assert.That(fields[13], Is.EqualTo("1.50"), $"Roll should be 1.50, got {fields[13]}");
+        Assert.That(fields[13], Is.EqualTo("15"), $"Roll should be 15 (1.5° × 10), got {fields[13]}");
         Assert.That(fields[14], Is.EqualTo("-0.30"), $"Pitch should be -0.30, got {fields[14]}");
         Assert.That(yawField, Is.EqualTo("0.20"), $"Yaw should be 0.20, got {yawField}");
     }

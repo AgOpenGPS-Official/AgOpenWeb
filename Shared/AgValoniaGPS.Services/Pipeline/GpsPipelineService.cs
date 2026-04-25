@@ -420,7 +420,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
         // with the dual-antenna-aware / fix-to-fix / IMU-blended value.
         // Receives real local easting/northing — see TMP-009 in the parking lot.
-        double fusedHeading = _headingFusion.FuseHeading(pos.Heading, pos.Speed, posEasting, posNorthing);
+        double fusedHeading = _headingFusion.FuseHeading(
+            pos.Heading, data.ImuHeading, data.ImuValid,
+            pos.Speed, posEasting, posNorthing);
         pos = pos with { Heading = fusedHeading };
 
         // ── (1b) Antenna-to-pivot transform in local coordinates ────────

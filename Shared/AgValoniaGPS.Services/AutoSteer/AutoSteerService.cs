@@ -398,6 +398,8 @@ public class AutoSteerService : IAutoSteerService
             ImuRoll = _state.Roll,
             ImuPitch = _state.Pitch,
             ImuYawRate = _state.YawRate,
+            ImuHeading = _state.ImuHeading,
+            ImuValid = _state.ImuValid,
             Timestamp = DateTime.UtcNow,
         };
         _gpsService.UpdateGpsData(gpsData);

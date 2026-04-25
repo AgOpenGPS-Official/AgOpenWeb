@@ -115,11 +115,17 @@ public class VirtualGpsReceiver : IDisposable
     private string BuildPandaSentence()
     {
         // Format: $PANDA,time,lat,N/S,lon,E/W,fix,sats,hdop,alt,age,speed,heading,roll,pitch,yaw*checksum
+        // Heading and roll wire format = (int)(degrees * 10), per AiO firmware
+        // Firmware_Teensy_AiO_26/lib/aio_navigation/NAVProcessor.cpp:157-158
+        // (heading scales explicitly; roll scales because IMUProcessor.cpp pre-multiplies
+        // currentData.roll by 10 before NAVProcessor rounds it).
         string time = DateTime.UtcNow.ToString("HHmmss.ff", CultureInfo.InvariantCulture);
         string lat = FormatLatitude(Latitude);
         string ns = Latitude >= 0 ? "N" : "S";
         string lon = FormatLongitude(Longitude);
         string ew = Longitude >= 0 ? "E" : "W";
+        int headingX10 = (int)Math.Round(HeadingDegrees * 10.0);
+        int rollX10 = (int)Math.Round(RollDegrees * 10.0);
 
         var sb = new StringBuilder();
         sb.Append("$PANDA,");
@@ -134,8 +140,8 @@ public class VirtualGpsReceiver : IDisposable
         sb.Append(Altitude.ToString("F1", CultureInfo.InvariantCulture)); sb.Append(',');
         sb.Append(DifferentialAge.ToString("F1", CultureInfo.InvariantCulture)); sb.Append(',');
         sb.Append(SpeedKnots.ToString("F2", CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(HeadingDegrees.ToString("F2", CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(RollDegrees.ToString("F2", CultureInfo.InvariantCulture)); sb.Append(',');
+        sb.Append(headingX10.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
+        sb.Append(rollX10.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
         sb.Append(PitchDegrees.ToString("F2", CultureInfo.InvariantCulture)); sb.Append(',');
         sb.Append(YawRateDegPerSec.ToString("F2", CultureInfo.InvariantCulture));
 

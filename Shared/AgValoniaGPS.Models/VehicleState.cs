@@ -74,6 +74,15 @@ public struct VehicleState
     /// <summary>Yaw rate in degrees per second</summary>
     public double YawRate;
 
+    /// <summary>
+    /// IMU heading in degrees (0-360). Distinct from <see cref="Heading"/>:
+    /// <see cref="Heading"/> is the value guidance uses (potentially fused with
+    /// fix-to-fix); <see cref="ImuHeading"/> is the raw IMU input that the
+    /// pipeline blends with fix-to-fix per <c>HeadingFusionWeight</c>.
+    /// Only populated for PANDA sentences with a valid IMU; PAOGI leaves it 0.
+    /// </summary>
+    public double ImuHeading;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Local Coordinates (updated after GPS parse, using LocalPlane)
     // ═══════════════════════════════════════════════════════════════════════
