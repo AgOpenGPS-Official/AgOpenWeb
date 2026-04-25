@@ -26,6 +26,14 @@ public class Cell
     /// <summary>Closed polygon defining the cell boundary, vertices in CCW order.</summary>
     public List<Vec2> Polygon { get; set; } = new();
 
+    /// <summary>
+    /// Local (non-topological) obstacles inside this cell. Each ring is a CW
+    /// hole in the cell — vehicle must drive around or section-control over it
+    /// during swath execution. Topological obstacles that disconnect the field
+    /// are NOT inner rings; they cause the cell to be split during decomposition.
+    /// </summary>
+    public List<List<Vec2>> InnerRings { get; set; } = new();
+
     /// <summary>Sweep-direction coordinate at the cell's earliest extent.</summary>
     public double SweepStart { get; set; }
 
