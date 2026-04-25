@@ -1459,13 +1459,17 @@ public partial class MainViewModel
         var innersVec2 = rawInnerBoundaries
             .Select(b => b.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList())
             .ToList();
-        var outerForClassifier = outerBoundary.Points
-            .Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
-
         var cells = Services.RoutePlanning.BoustrophedonDecomp.Decompose(
             outerVec2, innersVec2, sweepHeading);
+        // Classify against the SAME boundary the cells were decomposed against
+        // (the headland-clipped boundary). Cell vertices on this ring connect
+        // to the headland just outside it = HEADLAND-reachable; vertices on a
+        // cut from a topological inner are INTERNAL. Using the un-clipped
+        // outer here would mark every corner INTERNAL (cell vertices sit on
+        // the headland inner edge, not the outer field edge), which kills the
+        // stitcher's "has any headland corner" check.
         Services.RoutePlanning.CellCornerClassifier.ClassifyAll(
-            cells, outerForClassifier, sweepHeading);
+            cells, outerVec2, sweepHeading);
 
         // Per-cell swaths via the rotation-and-clip generator (handles inner
         // rings → split sibling segments natively).
