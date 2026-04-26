@@ -209,11 +209,12 @@ public class CellAwareRouteStitcher
             {
                 var (nextSwath, nextReverse) = ordering[i + 1];
                 var nextEntry = SwathEntryPose(nextSwath, nextReverse);
-                // Intra-cell U-turn at headland: use Dubins (forward-only).
-                // Reeds-Shepp would pick the geometrically shortest path,
-                // which for tight headlands is a 3-point turn with reverse —
-                // ugly to drive even when a forward LRL/RLR turn fits.
-                EmitDubinsTurn(plan, currentPose, nextEntry);
+                // Intra-cell U-turn at headland: prefer a single-arc semicircle
+                // of radius d_perp/2 when geometry allows (clean visual,
+                // ~7% longer than Dubins LSL/RSR which gives a flat-bottom U).
+                // Falls back to Dubins for non-180° turns or when d_perp/2 < R.
+                if (!TryEmitSemicircleUTurn(plan, currentPose, nextEntry))
+                    EmitDubinsTurn(plan, currentPose, nextEntry);
                 currentPose = nextEntry;
             }
         }
@@ -293,6 +294,86 @@ public class CellAwareRouteStitcher
             IsTurnValid = true,
             TurnPathType = "ReedsShepp",
         });
+    }
+
+    /// <summary>
+    /// Try to emit a clean single-arc semicircle U-turn from <paramref name="from"/>
+    /// to <paramref name="to"/>. Applies only when the two poses are antiparallel
+    /// (heading flipped 180°) and laterally offset, AND the half-offset radius is
+    /// at least the vehicle's minimum turning radius. Returns false when the
+    /// geometry doesn't fit — the caller falls back to Dubins.
+    ///
+    /// Why bother when Dubins LSL/RSR already finds a valid forward path: for
+    /// R &lt; d_perp/2, Dubins picks an arc-straight-arc shape with a visible
+    /// flat bottom, geometrically optimal but visually ugly. The agricultural
+    /// convention is a single semicircle of radius d_perp/2, which the vehicle
+    /// can drive (it's wider than its minimum radius). ~7% longer than the
+    /// Dubins shortest, but the U-turn reads as a clean half-circle.
+    /// </summary>
+    private bool TryEmitSemicircleUTurn(RoutePlan plan, Vec3 from, Vec3 to)
+    {
+        const double TwoPi = 2.0 * Math.PI;
+
+        // Heading must be flipped within ~6° of 180°.
+        double headingDelta = ((to.Heading - from.Heading - Math.PI) % TwoPi + TwoPi + Math.PI) % TwoPi - Math.PI;
+        if (Math.Abs(headingDelta) > 0.1) return false;
+
+        // Decompose to→from offset along/perp to from's heading.
+        double dE = to.Easting - from.Easting;
+        double dN = to.Northing - from.Northing;
+        double sinH = Math.Sin(from.Heading);
+        double cosH = Math.Cos(from.Heading);
+        double along = dE * sinH + dN * cosH;            // forward of from
+        double perp = dE * cosH - dN * sinH;             // right of from (positive = right)
+
+        // Reject if poses aren't lined up side-by-side (transit, not U-turn).
+        if (Math.Abs(along) > 0.5) return false;
+        double dPerp = Math.Abs(perp);
+        if (dPerp < 0.1) return false;
+
+        double radius = dPerp * 0.5;
+        if (radius < _turningRadius - 1e-6) return false;
+
+        // Arc center: midpoint of (from, to). Vehicle on one side of the
+        // center (radius away), arcs π radians around it to reach to.
+        double cx = 0.5 * (from.Easting + to.Easting);
+        double cy = 0.5 * (from.Northing + to.Northing);
+
+        // Turn direction: vehicle turns toward `to`. perp > 0 (to on right) → CW.
+        // Use turnSign convention: +1 = CCW (increasing angle), -1 = CW.
+        int turnSign = perp > 0 ? -1 : +1;
+
+        // Sample the arc at DriveDistance spacing.
+        const double driveDistance = 0.05;
+        int steps = Math.Max(8, (int)Math.Ceiling(Math.PI * radius / driveDistance));
+        double startAngle = Math.Atan2(from.Northing - cy, from.Easting - cx);
+
+        var waypoints = new List<Vec3>(steps + 1);
+        for (int i = 0; i < steps; i++)
+        {
+            double t = (double)i / steps;
+            double a = startAngle + turnSign * Math.PI * t;
+            double x = cx + radius * Math.Cos(a);
+            double y = cy + radius * Math.Sin(a);
+            // Tangent at angle a (in our heading convention from +N CW):
+            //   tangent vector (E, N) = (turnSign * −sin a, turnSign * cos a)
+            //   heading = atan2(tangentE, tangentN)
+            double tE = -turnSign * Math.Sin(a);
+            double tN = turnSign * Math.Cos(a);
+            waypoints.Add(new Vec3(x, y, NormalizeHeading(Math.Atan2(tE, tN))));
+        }
+        // Snap last waypoint exactly to goal so segment chain stays continuous.
+        waypoints.Add(new Vec3(to.Easting, to.Northing, to.Heading));
+
+        plan.Segments.Add(new RouteSegment
+        {
+            Type = RouteSegmentType.Turn,
+            Waypoints = waypoints,
+            Length = Math.PI * radius,
+            IsTurnValid = true,
+            TurnPathType = "Semicircle",
+        });
+        return true;
     }
 
     /// <summary>
