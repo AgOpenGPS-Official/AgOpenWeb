@@ -297,18 +297,19 @@ public class CellAwareRouteStitcher
     }
 
     /// <summary>
-    /// Try to emit a clean single-arc semicircle U-turn from <paramref name="from"/>
-    /// to <paramref name="to"/>. Applies only when the two poses are antiparallel
-    /// (heading flipped 180°) and laterally offset, AND the half-offset radius is
-    /// at least the vehicle's minimum turning radius. Returns false when the
-    /// geometry doesn't fit — the caller falls back to Dubins.
+    /// Try to emit a clean single-arc U-turn from <paramref name="from"/> to
+    /// <paramref name="to"/>. Works for any pair of antiparallel poses (heading
+    /// flipped 180°) where the unique forward arc has a radius at least the
+    /// vehicle's minimum turning radius — that includes pure semicircles and
+    /// (when the chord isn't perpendicular to from's heading) slightly larger
+    /// arcs sweeping a bit more than π. Returns false when geometry doesn't
+    /// fit; caller falls back to Dubins.
     ///
     /// Why bother when Dubins LSL/RSR already finds a valid forward path: for
-    /// R &lt; d_perp/2, Dubins picks an arc-straight-arc shape with a visible
-    /// flat bottom, geometrically optimal but visually ugly. The agricultural
-    /// convention is a single semicircle of radius d_perp/2, which the vehicle
-    /// can drive (it's wider than its minimum radius). ~7% longer than the
-    /// Dubins shortest, but the U-turn reads as a clean half-circle.
+    /// R &lt; d_perp/2 it picks an arc-straight-arc shape with a visible flat
+    /// bottom, geometrically optimal but visually a "lump." The agricultural
+    /// convention is a single arc; the vehicle can drive arcs wider than its
+    /// minimum turning radius without trouble. ~7% longer than Dubins shortest.
     /// </summary>
     private bool TryEmitSemicircleUTurn(RoutePlan plan, Vec3 from, Vec3 to)
     {
@@ -318,60 +319,80 @@ public class CellAwareRouteStitcher
         double headingDelta = ((to.Heading - from.Heading - Math.PI) % TwoPi + TwoPi + Math.PI) % TwoPi - Math.PI;
         if (Math.Abs(headingDelta) > 0.1) return false;
 
-        // Decompose to→from offset along/perp to from's heading.
+        // Vector from→to, decomposed along/perp to from's heading.
         double dE = to.Easting - from.Easting;
         double dN = to.Northing - from.Northing;
         double sinH = Math.Sin(from.Heading);
         double cosH = Math.Cos(from.Heading);
-        double along = dE * sinH + dN * cosH;            // forward of from
-        double perp = dE * cosH - dN * sinH;             // right of from (positive = right)
+        double perpDot = dE * cosH - dN * sinH;          // right of from (positive = right)
+        double chordSq = dE * dE + dN * dN;
+        if (chordSq < 1e-4) return false;
+        if (Math.Abs(perpDot) < 1e-3) return false;     // chord parallel to heading — not a U-turn
 
-        // Reject if poses aren't lined up side-by-side (transit, not U-turn).
-        if (Math.Abs(along) > 0.5) return false;
-        double dPerp = Math.Abs(perp);
-        if (dPerp < 0.1) return false;
-
-        double radius = dPerp * 0.5;
+        // Single-arc U-turn: center sits on the line through `from`
+        // perpendicular to its heading, AND on the perpendicular bisector of
+        // chord(from, to). Solving: r = |chord|² / (2·perpDot). Sign of
+        // perpDot picks the turn direction.
+        double radius = Math.Abs(chordSq / (2.0 * perpDot));
         if (radius < _turningRadius - 1e-6) return false;
 
-        // Arc center: midpoint of (from, to). Vehicle on one side of the
-        // center (radius away), arcs π radians around it to reach to.
-        double cx = 0.5 * (from.Easting + to.Easting);
-        double cy = 0.5 * (from.Northing + to.Northing);
+        // Center = from + r · perp_toward_to. perpDot > 0 means `to` is on the
+        // RIGHT of from's heading → vehicle turns CW, center to the right.
+        // perpDot < 0 → CCW, center to the left.
+        double signedR = perpDot > 0 ? radius : -radius;
+        double cx = from.Easting + signedR * cosH;
+        double cy = from.Northing - signedR * sinH;
 
-        // Turn direction: vehicle turns toward `to`. perp > 0 (to on right) → CW.
-        // Use turnSign convention: +1 = CCW (increasing angle), -1 = CW.
-        int turnSign = perp > 0 ? -1 : +1;
+        // Turn direction: turnSign = +1 for CCW, -1 for CW.
+        int turnSign = perpDot > 0 ? -1 : +1;
+
+        // Sweep angle from `from` to `to` around center. Going from
+        // start_angle to goal_angle in turnSign direction. For perpDot > 0
+        // (CW), sweep is negative when measured as Δangle.
+        double startAngle = Math.Atan2(from.Northing - cy, from.Easting - cx);
+        double goalAngle = Math.Atan2(to.Northing - cy, to.Easting - cx);
+        double sweep = goalAngle - startAngle;
+        // Normalize to the chosen direction. CCW (+1): sweep ∈ (0, 2π).
+        // CW (-1): sweep ∈ (-2π, 0).
+        if (turnSign > 0)
+        {
+            while (sweep <= 0) sweep += TwoPi;
+            while (sweep > TwoPi) sweep -= TwoPi;
+        }
+        else
+        {
+            while (sweep >= 0) sweep -= TwoPi;
+            while (sweep < -TwoPi) sweep += TwoPi;
+        }
 
         // Sample the arc at DriveDistance spacing.
         const double driveDistance = 0.05;
-        int steps = Math.Max(8, (int)Math.Ceiling(Math.PI * radius / driveDistance));
-        double startAngle = Math.Atan2(from.Northing - cy, from.Easting - cx);
+        double arcLength = Math.Abs(sweep) * radius;
+        int steps = Math.Max(8, (int)Math.Ceiling(arcLength / driveDistance));
 
         var waypoints = new List<Vec3>(steps + 1);
         for (int i = 0; i < steps; i++)
         {
             double t = (double)i / steps;
-            double a = startAngle + turnSign * Math.PI * t;
+            double a = startAngle + sweep * t;
             double x = cx + radius * Math.Cos(a);
             double y = cy + radius * Math.Sin(a);
-            // Tangent at angle a (in our heading convention from +N CW):
-            //   tangent vector (E, N) = (turnSign * −sin a, turnSign * cos a)
-            //   heading = atan2(tangentE, tangentN)
+            // Tangent direction (E, N) = (turnSign · −sin a, turnSign · cos a).
             double tE = -turnSign * Math.Sin(a);
             double tN = turnSign * Math.Cos(a);
             waypoints.Add(new Vec3(x, y, NormalizeHeading(Math.Atan2(tE, tN))));
         }
-        // Snap last waypoint exactly to goal so segment chain stays continuous.
+        // Snap last waypoint exactly to goal — the arc lands on goal by
+        // construction, but floating-point may leave a sub-mm offset.
         waypoints.Add(new Vec3(to.Easting, to.Northing, to.Heading));
 
         plan.Segments.Add(new RouteSegment
         {
             Type = RouteSegmentType.Turn,
             Waypoints = waypoints,
-            Length = Math.PI * radius,
+            Length = arcLength,
             IsTurnValid = true,
-            TurnPathType = "Semicircle",
+            TurnPathType = "SingleArc",
         });
         return true;
     }
