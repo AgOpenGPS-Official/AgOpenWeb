@@ -296,35 +296,56 @@ public class CellAwareRouteStitcher
     }
 
     /// <summary>
-    /// Forward-only Dubins turn for intra-cell U-turns. Falls back to a
-    /// Reeds-Shepp turn if Dubins finds no path (headland too narrow for any
-    /// forward arc family at the configured turning radius).
+    /// Forward-only Dubins turn for intra-cell U-turns. Sampled at full
+    /// <see cref="DubinsPathService.DriveDistance"/> resolution so the
+    /// rendered polyline reads as a smooth arc rather than the 0.25m-step
+    /// polygonal lumps GenerateAllPaths produces. Falls back to Reeds-Shepp
+    /// when Dubins has no forward path at all.
     /// </summary>
     private void EmitDubinsTurn(RoutePlan plan, Vec3 from, Vec3 to)
     {
-        var paths = _dubins.GenerateAllPaths(from, to);
-        if (paths.Count == 0 || paths[0].Path.Count == 0)
+        var pd = _dubins.GetBestPathData(from, to);
+        if (pd == null || pd.PathCoordinates == null || pd.PathCoordinates.Count < 2)
         {
             // No forward path — fall back to Reeds-Shepp 3-point turn.
             EmitReedsSheppTransit(plan, from, to, RouteSegmentType.Turn);
             return;
         }
-        // GenerateAllPaths sorts shortest-first. DubinsPathService rounds segment
-        // lengths down with Math.Floor and tacks the goal on; the second-to-last
-        // sample can overshoot the goal by up to one DriveDistance step, which
-        // breaks segment-chain continuity. Snap the last waypoint to the exact
-        // goal pose so the next Swath segment starts where this Turn ends.
-        var (waypoints, type, length) = paths[0];
-        if (waypoints.Count > 0)
-            waypoints[^1] = new Vec3(to.Easting, to.Northing, to.Heading);
+
+        // Emit every raw Vec2 (DriveDistance ≈ 5cm spacing). Heading at each
+        // sample = direction to next sample; last sample inherits the previous
+        // heading. Snap the final waypoint to the exact goal so the chain stays
+        // continuous (DubinsPathService floors segment lengths and may overshoot
+        // by up to one DriveDistance step).
+        var coords = pd.PathCoordinates;
+        var waypoints = new List<Vec3>(coords.Count);
+        for (int i = 0; i < coords.Count - 1; i++)
+        {
+            double dE = coords[i + 1].Easting - coords[i].Easting;
+            double dN = coords[i + 1].Northing - coords[i].Northing;
+            double h = (Math.Abs(dE) < 1e-12 && Math.Abs(dN) < 1e-12)
+                ? (waypoints.Count > 0 ? waypoints[^1].Heading : from.Heading)
+                : Math.Atan2(dE, dN);
+            waypoints.Add(new Vec3(coords[i].Easting, coords[i].Northing, NormalizeHeading(h)));
+        }
+        waypoints.Add(new Vec3(to.Easting, to.Northing, to.Heading));
+
         plan.Segments.Add(new RouteSegment
         {
             Type = RouteSegmentType.Turn,
             Waypoints = waypoints,
-            Length = length,
+            Length = pd.TotalLength,
             IsTurnValid = true,
-            TurnPathType = type,
+            TurnPathType = pd.PathType.ToString(),
         });
+    }
+
+    private static double NormalizeHeading(double h)
+    {
+        const double TwoPi = 2.0 * Math.PI;
+        h = h % TwoPi;
+        if (h < 0) h += TwoPi;
+        return h;
     }
 
     // =========================================================================
