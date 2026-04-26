@@ -127,20 +127,27 @@ public class CellAwareRouteStitcher
 
     /// <summary>
     /// Return the (E, N) position of a cell corner in the original frame.
-    /// We reach it through the swath segment endpoints: corners 0/1 are the
-    /// two ends of swath 0; corners 2/3 are the two ends of the last swath.
+    ///
+    /// RotationalSwathGenerator rotates by <c>swathHeading</c> (puts swath
+    /// direction along +x); CellCornerClassifier rotates by
+    /// <c>sweepHeading = swathHeading + π/2</c> (puts sweep direction along
+    /// +x). Working through both transforms with that 90° offset:
+    ///   generator.y = −classifier.sweep ⇒ swaths[0] (lowest y in generator)
+    ///   sits at the HIGHEST sweep coord; swaths[^1] at the LOWEST.
+    ///   generator.x = classifier.perp ⇒ Segments[0] is LowPerp,
+    ///   Segments[^1] is HighPerp.
     /// </summary>
     private static Vec2 CornerPosition(Cell cell, List<GeneratedSwath> swaths, CellCorner corner)
     {
-        var first = swaths[0];
-        var last = swaths[^1];
+        var lowSweepSwath = swaths[^1];
+        var highSweepSwath = swaths[0];
         return corner switch
         {
-            CellCorner.LowSweepLowPerp => first.Segments[0].Start,
-            CellCorner.LowSweepHighPerp => first.Segments[^1].End,
-            CellCorner.HighSweepLowPerp => last.Segments[0].Start,
-            CellCorner.HighSweepHighPerp => last.Segments[^1].End,
-            _ => first.Segments[0].Start,
+            CellCorner.LowSweepLowPerp => lowSweepSwath.Segments[0].Start,
+            CellCorner.LowSweepHighPerp => lowSweepSwath.Segments[^1].End,
+            CellCorner.HighSweepLowPerp => highSweepSwath.Segments[0].Start,
+            CellCorner.HighSweepHighPerp => highSweepSwath.Segments[^1].End,
+            _ => lowSweepSwath.Segments[0].Start,
         };
     }
 
