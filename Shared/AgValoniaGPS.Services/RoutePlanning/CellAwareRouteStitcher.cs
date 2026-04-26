@@ -29,12 +29,14 @@ public class CellAwareRouteStitcher
 {
     private readonly double _turningRadius;
     private readonly ReedsSheppPathService _rs;
+    private readonly DubinsPathService _dubins;
 
     public CellAwareRouteStitcher(double turningRadius)
     {
         if (turningRadius <= 0) throw new ArgumentException("turningRadius must be > 0");
         _turningRadius = turningRadius;
         _rs = new ReedsSheppPathService(turningRadius);
+        _dubins = new DubinsPathService(turningRadius);
     }
 
     /// <summary>
@@ -180,9 +182,9 @@ public class CellAwareRouteStitcher
             ordering.Add((swaths[idx], reverse));
         }
 
-        // Inter-cell transit: emit a Reeds-Shepp transit from currentPose to
-        // the cell's entry pose (skipped on the first cell because there's no
-        // "previous" segment to connect from).
+        // Inter-cell transit: Reeds-Shepp from previous cell's exit to this
+        // cell's entry. Allows reverse so the planner can cope with pose
+        // mismatches between distant cells. Skipped on the first cell.
         var firstSwathReverse = ordering[0].reverse;
         var firstEntryPose = SwathEntryPose(ordering[0].swath, firstSwathReverse);
         if (!isFirstCell)
@@ -200,7 +202,11 @@ public class CellAwareRouteStitcher
             {
                 var (nextSwath, nextReverse) = ordering[i + 1];
                 var nextEntry = SwathEntryPose(nextSwath, nextReverse);
-                EmitReedsSheppTransit(plan, currentPose, nextEntry, RouteSegmentType.Turn);
+                // Intra-cell U-turn at headland: use Dubins (forward-only).
+                // Reeds-Shepp would pick the geometrically shortest path,
+                // which for tight headlands is a 3-point turn with reverse —
+                // ugly to drive even when a forward LRL/RLR turn fits.
+                EmitDubinsTurn(plan, currentPose, nextEntry);
                 currentPose = nextEntry;
             }
         }
@@ -279,6 +285,38 @@ public class CellAwareRouteStitcher
             Length = path.Length,
             IsTurnValid = true,
             TurnPathType = "ReedsShepp",
+        });
+    }
+
+    /// <summary>
+    /// Forward-only Dubins turn for intra-cell U-turns. Falls back to a
+    /// Reeds-Shepp turn if Dubins finds no path (headland too narrow for any
+    /// forward arc family at the configured turning radius).
+    /// </summary>
+    private void EmitDubinsTurn(RoutePlan plan, Vec3 from, Vec3 to)
+    {
+        var paths = _dubins.GenerateAllPaths(from, to);
+        if (paths.Count == 0 || paths[0].Path.Count == 0)
+        {
+            // No forward path — fall back to Reeds-Shepp 3-point turn.
+            EmitReedsSheppTransit(plan, from, to, RouteSegmentType.Turn);
+            return;
+        }
+        // GenerateAllPaths sorts shortest-first. DubinsPathService rounds segment
+        // lengths down with Math.Floor and tacks the goal on; the second-to-last
+        // sample can overshoot the goal by up to one DriveDistance step, which
+        // breaks segment-chain continuity. Snap the last waypoint to the exact
+        // goal pose so the next Swath segment starts where this Turn ends.
+        var (waypoints, type, length) = paths[0];
+        if (waypoints.Count > 0)
+            waypoints[^1] = new Vec3(to.Easting, to.Northing, to.Heading);
+        plan.Segments.Add(new RouteSegment
+        {
+            Type = RouteSegmentType.Turn,
+            Waypoints = waypoints,
+            Length = length,
+            IsTurnValid = true,
+            TurnPathType = type,
         });
     }
 
