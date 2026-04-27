@@ -685,54 +685,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
 
         // ── (7) Section control + coverage painting ─────────────────────
-        // SectionControlService.Update internally calls UpdateMapping which
-        // adds coverage points with expanded edges, but its yaw-rate and
-        // min-distance filters skip points to avoid distorted triangles —
-        // those skips leave visible gaps at U-turn entries/exits and at
-        // slow-speed transitions.
-        //
-        // After Update, walk every mapping section and add an unfiltered
-        // coverage point with the SAME expanded edges (matching the section
-        // service's ApplyCoverageMarginStraight formula). Result: one strip
-        // width, but two-source point density — the section service prunes
-        // for noise, the pipeline ensures continuity. Strips align so no
-        // seam pattern appears when coverage overlaps itself.
+        // SectionControlService.Update internally walks each section and
+        // calls UpdateMapping → AddCoveragePoint with expanded edges. It
+        // is the SOLE writer of coverage points — no second pass here.
         _sectionControlService.Update(toolPos, toolHeading, headingRad, pos.Speed);
         var sectionStates = _sectionControlService.SectionStates;
         int numSections = _sectionControlService.NumSections;
-
-        double coverageMargin = ConfigurationStore.Instance.Tool.CoverageMarginMeters;
-        if (coverageMargin > 0)
-        {
-            double perpHeading = toolHeading + Math.PI / 2.0;
-            double perpSin = Math.Sin(perpHeading);
-            double perpCos = Math.Cos(perpHeading);
-            for (int i = 0; i < numSections; i++)
-            {
-                if (!sectionStates[i].IsMappingOn) continue;
-                var (rawLeft, rawRight) = _toolPositionService.GetSectionEdgePositions(
-                    sectionStates[i].PositionLeft, sectionStates[i].PositionRight);
-                var expandedLeft = new Vec2(
-                    rawLeft.Easting - perpSin * coverageMargin,
-                    rawLeft.Northing - perpCos * coverageMargin);
-                var expandedRight = new Vec2(
-                    rawRight.Easting + perpSin * coverageMargin,
-                    rawRight.Northing + perpCos * coverageMargin);
-                _coverageMapService.AddCoveragePoint(i, expandedLeft, expandedRight);
-            }
-        }
-        else
-        {
-            for (int i = 0; i < numSections; i++)
-            {
-                if (!sectionStates[i].IsMappingOn) continue;
-                var (left, right) = _toolPositionService.GetSectionEdgePositions(
-                    sectionStates[i].PositionLeft, sectionStates[i].PositionRight);
-                _coverageMapService.AddCoveragePoint(i,
-                    new Vec2(left.Easting, left.Northing),
-                    new Vec2(right.Easting, right.Northing));
-            }
-        }
 
         // ── (8b) Hydraulic lift state (PGN 239 input) ───────────────────
         // Phase B completion: this used to live on the UI-thread legacy
