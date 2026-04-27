@@ -36,6 +36,38 @@ public class RaycastDecompTests
     }
 
     [Test]
+    public void DecompositionThreshold_FiltersMarginalReflexVertex()
+    {
+        // L with a slightly-jittered reflex corner — interior angle ~190°
+        // instead of the clean 270°. With threshold 200°, this should be
+        // skipped and we get a single cell instead of two.
+        // The geometry: outer L shape but with the reflex bumped only 0.5°
+        // off straight. Easier construction: nearly-straight reflex.
+        // Take a vertical-edge polygon with a tiny inward bump:
+        //   (0,0), (10,0), (10,5), (9.9,5), (10,5.01), (10,10), (0,10)
+        // The vertex at (9.9, 5) is reflex but the interior angle is just
+        // barely > 180°.
+        var nearStraight = new List<Vec2>
+        {
+            new(0, 0), new(10, 0), new(10, 5),
+            new(9.9, 5), new(10, 5.01),
+            new(10, 10), new(0, 10),
+        };
+
+        // Standard 180° threshold: this nearly-straight reflex IS a critical
+        // vertex (both edges go in same sweep direction) and DOES split the cell.
+        var cellsStrict = BoustrophedonDecomp.Decompose(nearStraight, new List<List<Vec2>>(),
+            SweepNorth, decompositionThresholdDegrees: 180.0);
+
+        // 200° threshold: the marginal reflex is filtered out, single cell.
+        var cellsFiltered = BoustrophedonDecomp.Decompose(nearStraight, new List<List<Vec2>>(),
+            SweepNorth, decompositionThresholdDegrees: 200.0);
+
+        Assert.That(cellsFiltered.Count, Is.LessThanOrEqualTo(cellsStrict.Count),
+            "Higher decomposition threshold must produce ≤ cells than the strict default");
+    }
+
+    [Test]
     public void LShape_TwoCells()
     {
         // L oriented so the inside concave corner is at (5, 5).

@@ -1,0 +1,1571 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.3 20210610//EN" "JATS-journalpublishing1-3.dtd">
+<article xmlns:mml="http://www.w3.org/1998/Math/MathML" xmlns:xlink="http://www.w3.org/1999/xlink" article-type="research-article" dtd-version="1.3" xml:lang="en">
+  <front>
+    <journal-meta>
+      <journal-id journal-id-type="publisher-id">agriculture</journal-id>
+      <journal-title-group>
+        <journal-title>Agriculture</journal-title>
+        <abbrev-journal-title abbrev-type="publisher">Agriculture</abbrev-journal-title>
+        <abbrev-journal-title abbrev-type="pubmed">Agriculture</abbrev-journal-title>
+      </journal-title-group>
+      <issn pub-type="epub">2077-0472</issn>
+      <publisher>
+        <publisher-name>MDPI</publisher-name>
+      </publisher>
+    </journal-meta>
+    <article-meta>
+      <article-id pub-id-type="doi">10.3390/agriculture13122181</article-id>
+      <article-id pub-id-type="publisher-id">agriculture-13-02181</article-id>
+      <article-categories>
+        <subj-group>
+          <subject>Article</subject>
+        </subj-group>
+      </article-categories>
+      <title-group>
+        <article-title>Enabling Autonomous Navigation on the Farm: A Mission Planner for Agricultural Tasks</article-title>
+      </title-group>
+      <contrib-group>
+        <contrib contrib-type="author">
+          <name>
+            <surname>Cordova-Cardenas</surname>
+            <given-names>Ruth</given-names>
+          </name>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Conceptualization" vocab-term-identifier="https://credit.niso.org/contributor-roles/conceptualization/">Conceptualization</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Methodology" vocab-term-identifier="https://credit.niso.org/contributor-roles/methodology/">Methodology</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Software" vocab-term-identifier="https://credit.niso.org/contributor-roles/software/">Software</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Validation" vocab-term-identifier="https://credit.niso.org/contributor-roles/validation/">Validation</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Investigation" vocab-term-identifier="https://credit.niso.org/contributor-roles/investigation/">Investigation</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Writing &#x2013; original draft" vocab-term-identifier="https://credit.niso.org/contributor-roles/writing-original-draft/">Writing &#x2013; original draft</role>
+        </contrib>
+        <contrib contrib-type="author">
+          <contrib-id contrib-id-type="orcid" authenticated="true">https://orcid.org/0000-0003-4030-1038</contrib-id>
+          <name>
+            <surname>Emmi</surname>
+            <given-names>Luis</given-names>
+          </name>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Conceptualization" vocab-term-identifier="https://credit.niso.org/contributor-roles/conceptualization/">Conceptualization</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Methodology" vocab-term-identifier="https://credit.niso.org/contributor-roles/methodology/">Methodology</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Software" vocab-term-identifier="https://credit.niso.org/contributor-roles/software/">Software</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Validation" vocab-term-identifier="https://credit.niso.org/contributor-roles/validation/">Validation</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Investigation" vocab-term-identifier="https://credit.niso.org/contributor-roles/investigation/">Investigation</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Writing &#x2013; review &amp; editing" vocab-term-identifier="https://credit.niso.org/contributor-roles/writing-review-editing/">Writing &#x2013; review &amp; editing</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Supervision" vocab-term-identifier="https://credit.niso.org/contributor-roles/supervision/">Supervision</role>
+          <xref rid="c1-agriculture-13-02181" ref-type="corresp">*</xref>
+        </contrib>
+        <contrib contrib-type="author">
+          <contrib-id contrib-id-type="orcid" authenticated="true">https://orcid.org/0000-0002-0219-3155</contrib-id>
+          <name>
+            <surname>Gonzalez-de-Santos</surname>
+            <given-names>Pablo</given-names>
+          </name>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Conceptualization" vocab-term-identifier="https://credit.niso.org/contributor-roles/conceptualization/">Conceptualization</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Investigation" vocab-term-identifier="https://credit.niso.org/contributor-roles/investigation/">Investigation</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Resources" vocab-term-identifier="https://credit.niso.org/contributor-roles/resources/">Resources</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Writing &#x2013; review &amp; editing" vocab-term-identifier="https://credit.niso.org/contributor-roles/writing-review-editing/">Writing &#x2013; review &amp; editing</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Supervision" vocab-term-identifier="https://credit.niso.org/contributor-roles/supervision/">Supervision</role>
+          <role vocab="credit" vocab-identifier="https://credit.niso.org/" vocab-term="Funding acquisition" vocab-term-identifier="https://credit.niso.org/contributor-roles/funding-acquisition/">Funding acquisition</role>
+        </contrib>
+      </contrib-group>
+      <contrib-group>
+        <contrib contrib-type="editor">
+          <name>
+            <surname>Marinello</surname>
+            <given-names>Francesco</given-names>
+          </name>
+          <role>Academic Editor</role>
+        </contrib>
+      </contrib-group>
+      <aff id="af1-agriculture-13-02181">Centre for Automation and Robotics (UPM-CSIC), 28500 Arganda del Rey, Madrid, Spain; <email>ruth.cordova@car.upm-csic.es</email> (R.C.-C.); <email>pablo.gonzalez@csic.es</email> (P.G.-d.-S.)</aff>
+      <author-notes>
+        <corresp id="c1-agriculture-13-02181"><label>*</label>Correspondence: <email>luis.emmi@car.upm-csic.es</email></corresp>
+      </author-notes>
+      <pub-date pub-type="epub">
+        <day>22</day>
+        <month>11</month>
+        <year>2023</year>
+      </pub-date>
+      <pub-date pub-type="collection">
+        <month>12</month>
+        <year>2023</year>
+      </pub-date>
+      <volume>13</volume>
+      <issue>12</issue>
+      <elocation-id>2181</elocation-id>
+      <history>
+        <date date-type="received">
+          <day>20</day>
+          <month>09</month>
+          <year>2023</year>
+        </date>
+        <date date-type="rev-recd">
+          <day>10</day>
+          <month>11</month>
+          <year>2023</year>
+        </date>
+        <date date-type="accepted">
+          <day>17</day>
+          <month>11</month>
+          <year>2023</year>
+        </date>
+      </history>
+      <permissions>
+        <copyright-statement>&#xA9; 2023 by the authors.</copyright-statement>
+        <copyright-year>2023</copyright-year>
+        <license license-type="open-access">
+          <license-p>Licensee MDPI, Basel, Switzerland. This article is an open access article distributed under the terms and conditions of the Creative Commons Attribution (CC BY) license (<ext-link ext-link-type="uri" xlink:href="https://creativecommons.org/licenses/by/4.0/">https://creativecommons.org/licenses/by/4.0/</ext-link>).</license-p>
+        </license>
+      </permissions>
+      <abstract>
+        <p>This study presents the development of a route planner, called Mission Planner, for an agricultural weeding robot that generates efficient and safe routes both in the field and on the farm using a graph-based approach. This planner optimizes the robot&#x2019;s motion throughout the farm and performs weed management tasks tailored for high-power laser devices in narrow-row crops (wheat, barley, etc.) and wide-row crops (sugar beet, maize, etc.). Three main algorithms were integrated: Dijkstra&#x2019;s algorithm to find the most optimal route on the farm, the VRMP (Visibility Road-Map Planner) method to select the route within cultivated fields when roads are not visible, and an improved version of the Hamiltonian path to find the best route between the crop lines. The results support the effectiveness of the strategies implemented, demonstrating that a robot can safely and efficiently navigate through the entire farm and perform an agricultural treatment, in this case study, in laser-based weed management. In addition, it was found that the route planner reduced the robot&#x2019;s operation time, thus improving the overall efficiency of precision agriculture.</p>
+      </abstract>
+      <kwd-group>
+        <kwd>agricultural robotics</kwd>
+        <kwd>route planner</kwd>
+        <kwd>Dijkstra algorithm</kwd>
+        <kwd>VRMP method</kwd>
+        <kwd>Hamiltonian trajectory</kwd>
+        <kwd>laser weed removal</kwd>
+        <kwd>machine learning</kwd>
+        <kwd>precision agriculture</kwd>
+      </kwd-group>
+      <funding-group>
+        <award-group>
+          <funding-source>European Union&#x2019;s Horizon 2020 research and innovation program</funding-source>
+          <award-id>101000256</award-id>
+        </award-group>
+        <funding-statement>This article is part of a project that has received funding from the European Union&#x2019;s Horizon 2020 research and innovation program under grant agreement No 101000256.</funding-statement>
+      </funding-group>
+    </article-meta>
+  </front>
+  <body>
+    <sec id="sec1-agriculture-13-02181" sec-type="intro">
+      <title>1. Introduction</title>
+      <p>In recent decades, the adoption of robots in agriculture has seen significant growth. Technological advances have drastically transformed agricultural production processes [<xref ref-type="bibr" rid="B1-agriculture-13-02181">1</xref>] to minimize operating costs, reduce environmental impact, and optimize the total production cycle. Inspired by these advances in the application of technology in the agricultural sector, the main objective of this study is to develop a mission planner for an agricultural robot that can navigate autonomously, not only in crop fields but in the entire extension of the farm. The Mission Planner presented will use georeferenced maps and the Global Navigation Satellite System (GNSS) Real Time Kinematic (RTK) [<xref ref-type="bibr" rid="B2-agriculture-13-02181">2</xref>,<xref ref-type="bibr" rid="B3-agriculture-13-02181">3</xref>], allowing the robot to move efficiently around the farm and perform specific tasks, such as weed management, using laser-based technology, which is the treatment example used in this study. This process is automated by implementing specific route planning algorithms.</p>
+      <p>Map generation in precision agriculture is a constantly developing area that plays a critical role in agricultural decision making and the optimization of crop production and has benefited from various techniques and technologies, such as drones, manual sampling, online tools, and yield mapping, among others [<xref ref-type="bibr" rid="B4-agriculture-13-02181">4</xref>]. In recent years, techniques such as Simultaneous Localization and Mapping (SLAM) have generated interest in the domain of agriculture [<xref ref-type="bibr" rid="B5-agriculture-13-02181">5</xref>] thanks to their ability to integrate multiple sensors to position and locate a vehicle without prior knowledge of the operating environment. In contrast, a metric map of the environment is built for future use. However, in the agricultural environment, SLAM techniques have encountered several challenges, mainly because of seasonal variation and the dimensionality of the maps, given that agricultural environments can represent several hectares. Some SLAM solutions perform well in mapping and localization in urban environments but have struggled to reconstruct the field composed of dynamic growing crops in 3D. Another significant challenge is the alignment of multiple 3D submaps when generating a global 3D map [<xref ref-type="bibr" rid="B6-agriculture-13-02181">6</xref>]. As an alternative, Wang et al. [<xref ref-type="bibr" rid="B7-agriculture-13-02181">7</xref>] proposed the placement of stationary landmarks in the environment to mitigate seasonal changes. However, this solution requires modification of the environment, and the landmarks can be occluded by vegetation or worn over time.</p>
+      <p>Significant examples of automatic planning are found in Zoto et al. [<xref ref-type="bibr" rid="B8-agriculture-13-02181">8</xref>], where a system that generates coverage routes for uncrewed aerial vehicles (UAVs) in mountainous vineyards is described. This system uses georeferenced information from images captured by drones, which allows efficient planning of work routes in complex terrain. In addition to drone technology, another technique employed is manual sampling, as applied in [<xref ref-type="bibr" rid="B9-agriculture-13-02181">9</xref>]. In this approach, the user manually defines the perimeter of the terrain by selecting the appropriate latitude and longitude coordinates using a GNSS device. Then, topological navigation is carried out using landmarks on the ground and a graph-based algorithm to generate a detailed topological map to plan the optimal route of the agricultural robot specially designed for corn planting.</p>
+      <p>On the other hand, there are examples of Geographic Information Systems (GIS) for the generation of maps of the agricultural environment, as documented in [<xref ref-type="bibr" rid="B10-agriculture-13-02181">10</xref>,<xref ref-type="bibr" rid="B11-agriculture-13-02181">11</xref>]. In these cases, online tools based on free software are used to improve crop management. These tools leverage geographic data, such as aerial imagery and harvest records, to calculate productivity indicators and support agricultural decision making.</p>
+      <p>Regarding route planning, there is extensive literature on path planning, both in orchards and arable lands [<xref ref-type="bibr" rid="B12-agriculture-13-02181">12</xref>]. Linker and Blass [<xref ref-type="bibr" rid="B13-agriculture-13-02181">13</xref>] presented an approach based on the A* algorithm for determining the optimal paths for car-like vehicles in orchards, considering some vehicle and environment constraints, such as a limited steering angle, a limited range of pitch and roll angles, forward motion, and the undesirability of frequent turning. Santos et al. [<xref ref-type="bibr" rid="B14-agriculture-13-02181">14</xref>] present an off-line trajectory plan for a vineyard robot, taking into consideration the nearest recharging point. The authors use an A* algorithm that restricts the path to the maximum turning rate the robot allows and a 16-layer occupational grid map, where the vineyards and recharge station are located. Another relevant example of route planning in orchards is the work developed by Bochtis et al. [<xref ref-type="bibr" rid="B15-agriculture-13-02181">15</xref>], where routing plans for intra- and inter-row orchard operations are presented based on the adaptation of an optimal area coverage method developed for arable farming operations (B-patterns) that represents fieldwork tracks covering an entire area, which do not adhere to a predefined pattern but instead emerge from an optimization process based on one or more chosen criteria. In this work, the optimization criteria were the nonworking distance traveled to move from one track to a subsequent one.</p>
+      <p>On the other hand, route planning on arable lands diverges from planning in orchards since, in most cases, there is no a priori knowledge of the location of the crop, in addition to the fact that most of the work focuses on absolute coverage maps, especially on tillage and seeding tasks. Han et al. [<xref ref-type="bibr" rid="B11-agriculture-13-02181">11</xref>] developed a field path planning system capable of creating routes for complete coverage within polygonal fields, including the necessary turns at the field boundaries. The system was designed to automatically produce a map of coverage paths, following an X-shaped turning pattern, offering guidance for autonomous tillage tractors to perform efficient operations in polygonal fields. Hameed et al. [<xref ref-type="bibr" rid="B16-agriculture-13-02181">16</xref>] created a method that provides an enhanced planning strategy for producing a path map tailored for agricultural tasks, considering obstacles within the field.</p>
+      <p>Most of the works that can be found in the literature seek the optimization of the planned trajectory in terms of operation time and energy consumption, and some even consider the 3D shape of the work environment to define optimal routes. It should also be noted that the optimization problem focuses mainly on reducing the effect generated by navigation in areas outside the field, i.e., in areas where no work or treatment is carried out. This is where the vehicle turns to change crop lines or tracks.</p>
+      <p>Moreover, most mission planners focus exclusively on creating trajectories for the field without considering the structure of the farm, adjacent fields, and entry points, among others. There are some solutions for navigation in long-range open environments, as is the case of the work developed by Shah and Levine [<xref ref-type="bibr" rid="B17-agriculture-13-02181">17</xref>], where an algorithm that combines learning and planning approaches is introduced. The approach uses auxiliary data sources such as simplified roadmaps, satellite imagery, and GPS coordinates as planning aids without requiring absolute accuracy. This methodology presents its usefulness for navigation in open environments, such as in the case of a farm, but it represents specific challenges: (i) it is necessary to train the system so that it is capable of defining alternative routes given the image it perceives; (ii) it does not take into consideration the structure of the work environment beyond information from third parties, such as online maps; and (iii) it lacks knowledge of the type of environment it passes through, which is critical to defining the behavior that the robotic system must comply with.</p>
+      <p>This study introduces a Mission Planner designed for an agricultural weeding robot. The planner employs a graph-based strategy with the objective of (i) enhancing the robot&#x2019;s movement in large-scale farms and (ii) facilitating in-field targeted weed management tasks. These weeding tasks are customized explicitly for high-power laser devices in two distinct crop scenarios: narrow-row crops, such as wheat and barley, and wide-row crops, such as sugar beet and maize. In addition, this study demonstrates the effectiveness of georeferenced maps and GNSS-RTK in mission planning for agricultural robots. The article&#x2019;s structure is as follows: <xref ref-type="sec" rid="sec2-agriculture-13-02181">Section 2</xref> describes the materials and methods used, including the tools and devices used to validate the approach. <xref ref-type="sec" rid="sec3-agriculture-13-02181">Section 3</xref> presents the results that are analyzed and validated in <xref ref-type="sec" rid="sec4-agriculture-13-02181">Section 4</xref>. Finally, <xref ref-type="sec" rid="sec5-agriculture-13-02181">Section 5</xref> summarizes the findings and discusses the implications of this research.</p>
+    </sec>
+    <sec id="sec2-agriculture-13-02181">
+      <title>2. Materials and Methods</title>
+      <p>Before describing the mission planner, it is necessary to describe the types of maps used, the mobile platform, and the communication architecture used as a case study to validate it [<xref ref-type="bibr" rid="B3-agriculture-13-02181">3</xref>]. Moreover, it is also necessary to describe the methodology of how to build the connections between the different elements that constitute the digital description of the work environment. With these elements, presented in <xref ref-type="sec" rid="sec2dot1-agriculture-13-02181">Section 2.1</xref>, <xref ref-type="sec" rid="sec2dot2-agriculture-13-02181">Section 2.2</xref>, <xref ref-type="sec" rid="sec2dot3-agriculture-13-02181">Section 2.3</xref>, <xref ref-type="sec" rid="sec2dot4-agriculture-13-02181">Section 2.4</xref> and <xref ref-type="sec" rid="sec2dot5-agriculture-13-02181">Section 2.5</xref>, the mission planner shown in <xref ref-type="sec" rid="sec2dot6-agriculture-13-02181">Section 2.6</xref> can be described.</p>
+      <sec id="sec2dot1-agriculture-13-02181">
+        <title>2.1. Types of Maps</title>
+        <p>The primary goal of a route planner is to determine the shortest route between two specific points within the operational workspace, which requires a detailed farm map. This map allows the route planner to identify and avoid obstacles and generate efficient and safe trajectories for the robot. In this study, the combination of three types of maps has been implemented, described as follows:<list list-type="bullet"><list-item><p><bold>Metric maps:</bold> These maps combine information from obstacle-based maps with an occupational grid for global location and detailed navigation in local areas. Metric maps focus on representing the precise configuration and location of features in the working environment, describing the geometry of space, dimensions of obstacles, terrain features, and other relevant elements [<xref ref-type="bibr" rid="B18-agriculture-13-02181">18</xref>].</p></list-item><list-item><p><bold>Topological maps:</bold> Topological maps model the working environment as a graph, capturing spatial relationships and connectivity between different locations. They use graph or network structures, where nodes represent key locations and links represent connections or paths between these nodes. Topological maps simplify the representation of the environment by capturing the overall structure and relationships between sites, facilitating route planning and navigation by autonomous robots [<xref ref-type="bibr" rid="B19-agriculture-13-02181">19</xref>,<xref ref-type="bibr" rid="B20-agriculture-13-02181">20</xref>].</p></list-item><list-item><p><bold>Semantic maps:</bold> These maps focus on representing the meaning and contextual information of features in the working environment. They incorporate meta-information and attributes that provide additional knowledge about the characteristics and function of areas or objects in the environment. In the agricultural field, these maps are essential for specific crop areas, irrigated areas, areas with pests, or areas of particular interest [<xref ref-type="bibr" rid="B21-agriculture-13-02181">21</xref>].</p></list-item></list></p>
+      </sec>
+      <sec id="sec2dot2-agriculture-13-02181">
+        <title>2.2. Mobile Platform</title>
+        <p>To execute the planning routes, the Carob commercial platform, developed by Agreenculture, Toulouse, France (see <xref ref-type="fig" rid="agriculture-13-02181-f001">Figure 1</xref> and <xref ref-type="table" rid="agriculture-13-02181-t001">Table 1</xref>), was used, in which the different components have been integrated to configure a weeding control system with laser-based technology. A controller based on ROS was developed to control the platform, which converts speed commands into messages that the platform can understand [<xref ref-type="bibr" rid="B22-agriculture-13-02181">22</xref>]. Trajectory tracking algorithms benefit from onboard sensors to know the robot&#x2019;s position and orientation.</p>
+        <p>The selected mobile platform uses a tracked locomotion system with differential kinematics (skid steer). With this configuration, the robot movements must be optimized to ensure minimal impact on crops and soil. Therefore, specific restrictions and guidelines have been established for the robot&#x2019;s rotation to ensure efficiency [<xref ref-type="bibr" rid="B23-agriculture-13-02181">23</xref>].</p>
+      </sec>
+      <sec id="sec2dot3-agriculture-13-02181">
+        <title>2.3. Communication Architecture</title>
+        <p>The communications architecture provides a complete set of tools and technologies to manage data, facilitate interoperability, and ensure connectivity in IoT (Internet of Things) environments. In the context of Smart Farm, FIWARE (Future Internet WARE) [<xref ref-type="bibr" rid="B24-agriculture-13-02181">24</xref>] stands out as the most appropriate option since it offers all the functionalities required in operations, such as monitoring or crop management. FIWARE has a <italic>Context Broker</italic> that plays a crucial role as a centralized repository of real-time contextual information. This functionality allows relevant data to be collected and task planning and decision making of the mission planner to be accessed [<xref ref-type="bibr" rid="B3-agriculture-13-02181">3</xref>]. The information managed by the Context Broker includes the digital representation of the maps of the areas below (see <xref ref-type="sec" rid="sec2dot4-agriculture-13-02181">Section 2.4</xref>), as well as information from the mobile platform (position, state, status, etc.).</p>
+      </sec>
+      <sec id="sec2dot4-agriculture-13-02181">
+        <title>2.4. Mapping</title>
+        <p>For the data model, FIWARE uses the NGSI model, a FIWARE application programming interface, which represents context information using context elements and attributes [<xref ref-type="bibr" rid="B25-agriculture-13-02181">25</xref>]. The RESTful NGSI v2 API (application programming interface) enables the exchange of context information through defined operations, while the representation of an entity follows a specific JavaScript Object Notation (JSON) structure. This integration between the NGSI model and the FIWARE API Management enables effective communication and a coordinated exchange of information between the system components and the planner [<xref ref-type="bibr" rid="B3-agriculture-13-02181">3</xref>].</p>
+        <p>To represent the working environment, this study leverages data models created by the FIWARE community to represent previous working environments digitally. In a former work [<xref ref-type="bibr" rid="B26-agriculture-13-02181">26</xref>], an evolution of these data models was proposed, where data were conditioned to be adapted to robotic systems and oriented mainly to navigation.</p>
+        <p>This representation of the agricultural working environment includes a description of the farm, called <monospace>AgriFarm</monospace>, which comprises four main areas: fields (<monospace>AgriParcels</monospace>), roads (<monospace>RoadSegment</monospace>), buildings (<monospace>Building</monospace>), and restricted areas (<monospace>RestrictedTrafficArea</monospace>). Each area has its digital representation in the FIWARE data models called entities and contains a set of properties and characteristics that allow the farm to be composed of metric, topological, and semantic descriptions. <xref ref-type="fig" rid="agriculture-13-02181-f002">Figure 2</xref> presents the relationship between the entities that constitute a map of the farm, including some relevant properties.</p>
+      </sec>
+      <sec id="sec2dot5-agriculture-13-02181">
+        <title>2.5. Agricultural Mission</title>
+        <p>The next step is to establish the autonomous operation, according to ISO 8373:2012, &#x201C;Robots and robotics devices&#x2014;Vocabulary&#x201D; (ISO 8373:2021) in [<xref ref-type="bibr" rid="B27-agriculture-13-02181">27</xref>]. Scheduling tasks involves solving a specific task by creating a set of required steps. During this process, tasks are subdivided into smaller subtasks, and the necessary motions and actions are determined as follows (see <xref ref-type="fig" rid="agriculture-13-02181-f003">Figure 3</xref>):<list list-type="bullet"><list-item><p>ACTION: A specific activity for which the robot is programmed. This involves dividing complex trajectories into simpler ones.</p></list-item><list-item><p>OPERATION: A set of specific actions for which the robot is programmed.</p></list-item><list-item><p>TASK PLANNING (Mission): A set of tasks that the robot has to perform in the working environment (farm) and must be completed in a specific order and time.</p></list-item></list></p>
+        <p>The agricultural mission involves carrying out specific operations in the working environment described above in a predetermined order and within a certain period. During the mission, the robot moves in a planned manner from a starting point, which can be any point within the farm, to an endpoint in the specific field to be treated.</p>
+        <p>The robot&#x2019;s mission planning is based on coordinating various operations (see <xref ref-type="fig" rid="agriculture-13-02181-f004">Figure 4</xref>). At the start of the mission, a set of internal actions is activated by the &#x201C;<monospace>Wakeup</monospace>&#x201D; operation. These actions are necessary to:<list list-type="bullet"><list-item><p>start the robot modules;</p></list-item><list-item><p>initialize the procedures and sensors;</p></list-item><list-item><p>establish communications between internal systems.</p></list-item></list></p>
+        <p>The robot then moves to specific positions in the field using the &#x201C;<monospace>GoTo</monospace>&#x201D; operation, which involves moving the robot from a point on the farm to the field where the treatment will occur.</p>
+        <p>During the movement, the &#x201C;<monospace>GoTo</monospace>&#x201D; operation is divided into two types of actions: &#x201C;<monospace>FollowPath</monospace>&#x201D; and &#x201C;<monospace>MoveTo</monospace>&#x201D;. The &#x201C;<monospace>FollowPath</monospace>&#x201D; action is intended to ensure an efficient and accurate path following a predefined route. This action is ideal when the robot needs to move along a specific, predetermined path to reach a known destination and avoid obstacles, such as a road. In contrast, the &#x201C;<monospace>MoveTo</monospace>&#x201D; action allows the robot to move between different field areas without being restricted to a fixed path, for example, when there is an open field. This approach is convenient in scenarios where it is not necessary to follow a defined route, but the robot is required to reach a specific position or destination directly and without preset limitations.</p>
+        <p>Once the robot arrives at the field where the treatment will be performed, several additional actions are carried out in the &#x201C;<monospace>Treatment</monospace>&#x201D; operation. These actions include</p>
+        <p>
+          <list list-type="bullet">
+            <list-item>
+              <p>plan the movement of the robot between each crop line;</p>
+            </list-item>
+            <list-item>
+              <p>activate and deactivate the laser-based tool when the presence of weeds is detected between crops;</p>
+            </list-item>
+            <list-item>
+              <p>perform a robot&#x2019;s U-turn to change the crop line in the headlands.</p>
+            </list-item>
+          </list>
+        </p>
+        <p>In addition, the design, implementation, and evaluation of the necessary actions to eliminate weeds by laser are carried out.</p>
+        <p>At the end of the mission, the &#x201C;<monospace>Shutdown</monospace>&#x201D; operation is performed to stop the system&#x2019;s operation safely. This allows information and data to be saved for later analysis while ensuring the protection of the robot and helping to extend its service life.</p>
+      </sec>
+      <sec id="sec2dot6-agriculture-13-02181">
+        <title>2.6. Mission Planner</title>
+        <p>As introduced above, the Mission Planner relies on two main operations: &#x201C;<monospace>GoTo</monospace>&#x201D; path planning and the &#x201C;<monospace>Treatment</monospace>&#x201D; plan.</p>
+        <sec id="sec2dot6dot1-agriculture-13-02181">
+          <title>2.6.1. <monospace>GoTo </monospace>Path Planning</title>
+          <p>The &#x201C;<monospace>GoTo</monospace>&#x201D; operation allows the robot to autonomously and accurately move from a specific point A (start) to a point B (end) on the farm. The main objective is to ensure a safe and efficient movement of the robot from the departure area to the destination area, where it will carry out the &#x201C;<monospace>Treatment</monospace>&#x201D; task.</p>
+          <p>To ensure efficient performance in this operation, it is essential to precisely define the necessary components and algorithms used to design an optimal route. This precision, by definition, ensures the proper functioning of the &#x201C;<monospace>GoTo</monospace>&#x201D; operation and contributes to the overall efficiency of the robot.</p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(i)</bold>&#xA0;</label>
+                <p>
+                  <bold>Input and output parameters in the &#x201C;<monospace>GoTo</monospace>&#x201D; operation</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>Input variables fall into two main categories: user-defined and field-related.</p>
+          <p>
+            <list list-type="simple">
+              <list-item>
+                <p>
+                  <underline>User-defined input and output variables</underline>
+                  <list list-type="bullet">
+                    <list-item>
+                      <p>From place: Represents the starting area in the farm (<monospace>Building,</monospace>&#xA0;<monospace>RoadSegment</monospace>, or the same <monospace>AgriParcel</monospace>) from where the robot begins its navigation.</p>
+                    </list-item>
+                    <list-item>
+                      <p><monospace>AgriParcel</monospace>: Indicates the endpoint or destination of the &#x201C;<monospace>GoTo</monospace>&#x201D; operation.</p>
+                    </list-item>
+                    <list-item>
+                      <p>Round trip: This variable determines whether the robot should perform a round trip (where the robot returns to the mission&#x2019;s starting point) or a one-way operation (where the mission ends at the end of the treatment in the field itself).</p>
+                    </list-item>
+                  </list>
+                </p>
+              </list-item>
+              <list-item>
+                <p>
+                  <underline>Input and output variables related by the field</underline>
+                  <list list-type="bullet">
+                    <list-item>
+                      <p>Entities: Represents the different elements that make up the farm, such as <monospace>Building</monospace>, <monospace>RestrictedTrafficArea</monospace>, <monospace>AgriParcel</monospace>, and <monospace>RoadSegment</monospace>. These elements are extracted from the map and correctly classified according to their typology. <monospace>RestrictedTrafficArea </monospace>are forbidden places where the robot cannot pass.</p>
+                    </list-item>
+                    <list-item>
+                      <p>Road: Represents the type of paths and its structure. In this study, considering the field where the tests were conducted, the roads have been categorized according to the material they are made of, including two main types: dirt roads and asphalt roads. In addition, it is essential to note that these roads are interconnected to facilitate the robot&#x2019;s navigation.</p>
+                    </list-item>
+                    <list-item>
+                      <p>Open field: Indicates if the robot is operating in an open field and must navigate safely in this type of terrain.</p>
+                    </list-item>
+                  </list>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(ii)</bold>&#xA0;</label>
+                <p>
+                  <bold>Conditions and restrictions</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>Within the framework of this study, conditions and constraints are established that are defined by a specific set of rules. These rules define the interaction and behavior between the various entities present on the farm, including:</p>
+          <p><underline>Condition 1</underline>: Rules for roads and buildings</p>
+          <p>Based on the observations, it has been established that the building entity where the robot is stored is usually connected to an asphalt-type road entity. This condition has been observed on most farms where agricultural robots have been tested.</p>
+          <p><underline>Condition 2</underline>: Rules for roads and roads (between roads)</p>
+          <p>A steady transition between asphalt roads and dirt roads has been identified in the test areas. This transition is crucial for the robot&#x2019;s autonomous navigation and has been established as a condition in this analysis.</p>
+          <p><underline>Condition 3:</underline> Rules for roads and gates</p>
+          <p>Upon observing several farms, a recurring feature was identified: most fields are endowed with some access, either a physical gate or a designated space for the entrance of agricultural machinery. For this reason, this property has been incorporated into the <monospace>AgriParcel</monospace> entity, using points that represent the coordinates of the access, which is called Gate. As mentioned in the previous condition about roads, it is essential to note that there will always be a connection between a dirt road and access to the countryside. Therefore, it is necessary to consider this restriction in the analysis since the dirt road prevails in the cultivation areas and finally connects with the entrance access to the field.</p>
+          <p><underline>Condition 4:</underline> Rules for gates and fields</p>
+          <p>Finally, it is essential to consider the relationship between access and the field to be treated. This ensures that the robot enters through the correct access and treats the field previously defined by the <monospace>AgriParcel</monospace> input variable, thus optimizing the management of the cultivation areas and facilitating logistics on the farm.</p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(iii)</bold>&#xA0;</label>
+                <p>
+                  <bold>Route planner approach to Operation &#x201C;<monospace>GoTo</monospace>&#x201D;</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>Once the inputs and outputs are established, as well as the conditions and restrictions for the various entities that make up the agricultural farm, it is critical to determine the algorithm that will be used for route planning in the &#x201C;<monospace>GoTo</monospace>&#x201D; operation. After a thorough analysis, the importance of selecting a route planner that considers topography, crop layout, and obstacle location has been identified [<xref ref-type="bibr" rid="B28-agriculture-13-02181">28</xref>].</p>
+          <p>In this context, a method based on graphs has been chosen for the route planner since it visually represents all the farm entities. Each area is represented as a node in the graph, and the nodes are interconnected by edges, as shown in <xref ref-type="fig" rid="agriculture-13-02181-f005">Figure 5</xref>. Entities described include B = Building, R.A = Road Asphalt, R.D = Road dirt, OF = Open Field, G = Gate, and F = <monospace>AgriParcel</monospace>.</p>
+          <p>To build the full topological map, the allocation of the weight of the edges in the graph is based on the distance between the interconnected nodes, based on the metric map, and this is performed in strict accordance with the conditions and rules established above. The initial connection is established between the Building and the Road, and the weight of the edge is calculated based on the distance between its nearest points, fulfilling the observations made in Condition 1. To establish the connection between roads, Condition 1 must be complied with. In addition, when connecting the Road and the Gate, Condition 3 must be respected at all times to ensure the validity of the connection. It is important to note that this strategy is effective when good visibility exists in the working environment, and the robot can identify possible collisions, given that the maneuver to transit between a Road and a Gate, as well as the maneuver of crossing the Gate, can be a hazardous situation for the robot. However, manual control will be required in cases of limited or no visibility. This condition can manifest itself due to various factors, including fog, rain, darkness, uneven terrain, and even challenges related to the robot&#x2019;s perception of its surroundings.</p>
+          <p>The Dijkstra algorithm is used to obtain an optimal route for the robot within the farm, according to the graph obtained in <xref ref-type="fig" rid="agriculture-13-02181-f005">Figure 5</xref>. This algorithm finds the shortest path between two points in a graph, considering the weight of the edges connecting the nodes. This algorithm was selected since it can find an optimal path, although it sacrifices computing speed [<xref ref-type="bibr" rid="B29-agriculture-13-02181">29</xref>]. It should be noted that the Mission Planner is designed to be an offline system located in the cloud, so it does not require real-time performance. Notably, Dijkstra&#x2019;s algorithm considers the presence of obstacles in the way, assigning greater weight to nodes representing them compared to nodes representing accessible paths. This ensures that the robot can navigate safely and avoid collisions during its trajectory.</p>
+          <p>If there is limited visibility and no defined route to establish the connection between the Gate and the Field, performing low-level planning using geometric space to represent the operating environment in 2D is necessary. In this scenario, <monospace>AgriParcel</monospace> entities are considered hazardous areas with no clear path for the robot. To address this situation, the Visibility Road-Map Planner (VRMP) trajectory planning algorithm is used [<xref ref-type="bibr" rid="B30-agriculture-13-02181">30</xref>] to construct a network of roads representing the visible areas of the space, as shown in <xref ref-type="fig" rid="agriculture-13-02181-f005">Figure 5</xref>. This network is used to plan safe routes that allow the robot to move around, avoiding obstacles.</p>
+          <p>VRMP is based on the premise that trajectory planning is most efficient when considering information about visible areas of space rather than relying solely on geometric details [<xref ref-type="bibr" rid="B31-agriculture-13-02181">31</xref>]. To do this, visibility nodes are generated from the start and destination coordinates, along with the vertices of the obstacle polygons. A roadmap is then created using this information, and Dijkstra&#x2019;s search algorithm is employed to determine the shortest route from the starting point to the destination point. In this way, the trajectory is efficiently planned, considering the visible areas and avoiding dangerous areas.</p>
+        </sec>
+        <sec id="sec2dot6dot2-agriculture-13-02181">
+          <title>2.6.2. &#x201C;<monospace>Treatment</monospace>&#x201D; Plan: Route Planning</title>
+          <p>The &#x201C;<monospace>Treatment</monospace>&#x201D; operation is a fundamental process within the Mission Planner since it is responsible for planning the robot&#x2019;s route to perform the agricultural task, i.e., the treatment. To achieve this, an improved version of the Hamiltonian path is used, which allows finding an optimal solution in this complex environment.</p>
+          <p>During this process, the robot navigates the field on a permitted route without damaging the crop, detecting the presence of weeds. This treatment process helps improve crop quality and reduce production costs, making it a valuable tool for farmers.</p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(i)</bold>&#xA0;</label>
+                <p>
+                  <bold>Input and output parameters in &#x201C;<monospace>Treatment</monospace>&#x201D;</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>Input variables fall into three main categories:</p>
+          <p>
+            <list list-type="simple">
+              <list-item>
+                <p>
+                  <underline>User-defined input variables</underline>
+                  <list list-type="bullet">
+                    <list-item>
+                      <p><monospace>AgriParcel</monospace>: Indicates the working area where the &#x201C;Treatment&#x201D; operation will occur.</p>
+                    </list-item>
+                    <list-item>
+                      <p><monospace>interRow</monospace>: The distance between crop lines. This information can also be defined by the type of crop belonging to the field.</p>
+                    </list-item>
+                    <list-item>
+                      <p><monospace>Headland</monospace>: The space available at the end of each crop row where the robot performs the U-turn maneuvers.</p>
+                    </list-item>
+                  </list>
+                </p>
+              </list-item>
+              <list-item>
+                <p>
+                  <underline>Robot-defined input variables</underline>
+                  <list list-type="bullet">
+                    <list-item>
+                      <p>Robot and implement dimensions: The accuracy with which the robot can work within fields depends mainly on its size and the implement it uses. Therefore, it is crucial to review the characteristics of the robot carefully. In this study, those characteristics are detailed in <xref ref-type="table" rid="agriculture-13-02181-t001">Table 1</xref>.</p>
+                    </list-item>
+                  </list>
+                </p>
+              </list-item>
+              <list-item>
+                <p>
+                  <underline>Input variables defined by the field</underline>
+                  <list list-type="bullet">
+                    <list-item>
+                      <p><monospace>Field area</monospace>: Contains the shape and dimensions of the field; this can be a closed polygon of more than 4 sides.</p>
+                    </list-item>
+                    <list-item>
+                      <p><monospace>gateLocation</monospace>: Holds the coordinates of the access door to the field.</p>
+                    </list-item>
+                    <list-item>
+                      <p><monospace>Bearing</monospace>: Contains the direction of crops expressed in degrees measured clockwise from true or magnetic north.</p>
+                    </list-item>
+                  </list>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(ii)</bold>&#xA0;</label>
+                <p>
+                  <bold>Output variables</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>The result of the system is a graphical representation of the drawing of the work area, which shows the crop lines of the field and the lines through which the robot must pass without damaging the crop. <xref ref-type="fig" rid="agriculture-13-02181-f006">Figure 6</xref> presents an example of a populated field with crops, given its contour and the lanes (Robot path) through which the robot must pass based on the width of the implement.</p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(iii)</bold>&#xA0;</label>
+                <p>
+                  <bold>Conditions and restrictions</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>The system also sets certain conditions and restrictions to ensure the efficiency of the process. For example, the vertex closest to the door should be identified as the starting point for creating the first lane. In addition, crop lines are only created if their length is greater than or equal to 70% of the calculated maximum field length. This is because, in many situations, the contour of the field is irregular, which can generate small crop lines that do not correspond to reality.</p>
+          <p>
+            <list list-type="roman-lower">
+              <list-item>
+                <label><bold>(iv)</bold>&#xA0;</label>
+                <p>
+                  <bold>Route planner approach</bold>
+                </p>
+              </list-item>
+            </list>
+          </p>
+          <p>The Hamiltonian path is a heuristic approach that visits all graph vertices exactly once without repeating any of them [<xref ref-type="bibr" rid="B32-agriculture-13-02181">32</xref>]. A thorough exploration of all possible routes is performed to determine whether the graph has a Hamiltonian path. This process ensures no solution is lost and is helpful in route optimization problems. These techniques are widely recognized in route planning because they can find optimal solutions, even with incomplete or partial information available.</p>
+          <p>In this study, an improved Hamiltonian path algorithm is implemented. To achieve this, it is necessary to define the graph&#x2019;s vertices corresponding to the start and end points of the Robot path, or lanes, through which the robot must travel. <xref ref-type="fig" rid="agriculture-13-02181-f006">Figure 6</xref> presents these trajectories as the lines in red, where the nodes on one side are represented with odd numbers and on the other side with even numbers (see <xref ref-type="fig" rid="agriculture-13-02181-f006">Figure 6</xref>b). Among the improvements applied to the Hamiltonian trajectory, the incorporation of weights on the edges of the graph stands out. The weight between any no deny node <inline-formula><mml:math id="mm1"><mml:semantics><mml:mrow><mml:mi>j</mml:mi></mml:mrow></mml:semantics></mml:math></inline-formula> is defined as <inline-formula><mml:math id="mm2"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>i</mml:mi><mml:mo>,</mml:mo><mml:mi>j</mml:mi></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula>, where <inline-formula><mml:math id="mm3"><mml:semantics><mml:mrow><mml:mi>i</mml:mi><mml:mo>,</mml:mo><mml:mo>&#xA0;</mml:mo><mml:mi>j</mml:mi><mml:mo>&#x2208;</mml:mo><mml:mi>N</mml:mi></mml:mrow></mml:semantics></mml:math></inline-formula> and <inline-formula><mml:math id="mm4"><mml:semantics><mml:mrow><mml:mi>N</mml:mi></mml:mrow></mml:semantics></mml:math></inline-formula> is the set of real numbers that represent each of the nodes of the graph, with the size of N being even. Additionally, jumps are implemented, whose weights are determined according to the allowed jumps, considering the robot&#x2019;s U-turn capability and the headland&#x2019;s space.</p>
+          <p>To perform the computation of the weights that connect nodes at the headland of the crop field, a base weight <inline-formula><mml:math id="mm5"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>b</mml:mi><mml:mi>a</mml:mi><mml:mi>s</mml:mi><mml:mi>e</mml:mi><mml:mn>1</mml:mn></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula> is calculated, which serves as a seed to estimate the weight of the transitions below the jumps, given by Equation (1).
+          <disp-formula id="FD1-agriculture-13-02181"><label>(1)</label><mml:math id="mm6" display="block"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>b</mml:mi><mml:mi>a</mml:mi><mml:mi>s</mml:mi><mml:mi>e</mml:mi><mml:mn>1</mml:mn></mml:mrow></mml:msub><mml:mo>=</mml:mo><mml:mfenced separators="|"><mml:mrow><mml:mn>2</mml:mn><mml:mo>&#xB7;</mml:mo><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:mfenced><mml:mo>&#xB7;</mml:mo><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>r</mml:mi><mml:mi>e</mml:mi><mml:mi>f</mml:mi></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></disp-formula>
+          where <inline-formula><mml:math id="mm7"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>r</mml:mi><mml:mi>e</mml:mi><mml:mi>f</mml:mi></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula> is a predefined weight (set at 30), and <inline-formula><mml:math id="mm8"><mml:semantics><mml:mrow><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:semantics></mml:math></inline-formula> is the desired number of lines for the robot to skip on the U-turns. Subsequently, the value of the weights corresponding to the possible transitions of lines smaller than the desired jump is defined, given by Equation (2):<disp-formula id="FD2-agriculture-13-02181"><label>(2)</label><mml:math id="mm9" display="block"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>i</mml:mi><mml:mo>,</mml:mo><mml:mi>i</mml:mi><mml:mo>+</mml:mo><mml:mi>k</mml:mi></mml:mrow></mml:msub><mml:mo>=</mml:mo><mml:mrow><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>b</mml:mi><mml:mi>a</mml:mi><mml:mi>s</mml:mi><mml:mi>e</mml:mi><mml:mn>1</mml:mn></mml:mrow></mml:msub></mml:mrow><mml:mo>/</mml:mo><mml:mrow><mml:mi>k</mml:mi></mml:mrow></mml:mrow><mml:mo>,</mml:mo><mml:mfenced separators="|"><mml:mrow><mml:mi>i</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mi>m</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mn>2</mml:mn><mml:mo>=</mml:mo><mml:mi>i</mml:mi><mml:mo>+</mml:mo><mml:mi>k</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mi>m</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mn>2</mml:mn></mml:mrow></mml:mfenced><mml:mo>&#x2227;</mml:mo><mml:mfenced separators="|"><mml:mrow><mml:mn>2</mml:mn><mml:mo>&#x2264;</mml:mo><mml:mi>k</mml:mi><mml:mo>&#x2264;</mml:mo><mml:mn>2</mml:mn><mml:mo>&#xB7;</mml:mo><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:mfenced></mml:mrow></mml:semantics></mml:math></disp-formula></p>
+          <p>In addition, a second base weight <inline-formula><mml:math id="mm10"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>b</mml:mi><mml:mi>a</mml:mi><mml:mi>s</mml:mi><mml:mi>e</mml:mi><mml:mn>2</mml:mn></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula> is calculated that serves as a seed to estimate the weight of the transitions above the jumps, given by Equation (3):<disp-formula id="FD3-agriculture-13-02181"><label>(3)</label><mml:math id="mm11" display="block"><mml:semantics><mml:mrow><mml:mi>W</mml:mi><mml:mo>=</mml:mo><mml:mfrac><mml:mrow><mml:mfrac><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>b</mml:mi><mml:mi>a</mml:mi><mml:mi>s</mml:mi><mml:mi>e</mml:mi><mml:mn>2</mml:mn></mml:mrow></mml:msub></mml:mrow><mml:mrow><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi><mml:mfenced separators="|"><mml:mrow><mml:msub><mml:mrow><mml:mi>N</mml:mi></mml:mrow><mml:mrow><mml:mi>n</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mi>e</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:msub><mml:mo>&#x2212;</mml:mo><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:mfenced></mml:mrow></mml:mfrac></mml:mrow><mml:mrow><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi><mml:mo>&#x2212;</mml:mo><mml:mn>1</mml:mn></mml:mrow></mml:mfrac></mml:mrow></mml:semantics></mml:math></disp-formula>
+          where <inline-formula><mml:math id="mm12"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>N</mml:mi></mml:mrow><mml:mrow><mml:mi>n</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mi>e</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula> represent the total amount of nodes in the graph. Moreover, Equation (4) presents the computation of the value of the weights corresponding to the possible transitions of lines greater than the jumps:<disp-formula id="FD4-agriculture-13-02181"><label>(4)</label><mml:math id="mm13" display="block"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>i</mml:mi><mml:mo>,</mml:mo><mml:mi>i</mml:mi><mml:mo>+</mml:mo><mml:mi>k</mml:mi></mml:mrow></mml:msub><mml:mo>=</mml:mo><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>r</mml:mi><mml:mi>e</mml:mi><mml:mi>f</mml:mi></mml:mrow></mml:msub><mml:mo>+</mml:mo><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>b</mml:mi><mml:mi>a</mml:mi><mml:mi>s</mml:mi><mml:mi>e</mml:mi><mml:mn>2</mml:mn></mml:mrow></mml:msub><mml:mo>&#xB7;</mml:mo><mml:mfenced separators="|"><mml:mrow><mml:mfrac><mml:mrow><mml:mi>k</mml:mi></mml:mrow><mml:mrow><mml:mfrac><mml:mrow><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi></mml:mrow><mml:mrow><mml:mn>2</mml:mn></mml:mrow></mml:mfrac><mml:mo>+</mml:mo><mml:mn>2</mml:mn></mml:mrow></mml:mfrac></mml:mrow></mml:mfenced></mml:mrow></mml:semantics></mml:math></disp-formula>
+          where <inline-formula><mml:math id="mm14"><mml:semantics><mml:mrow><mml:mfenced separators="|"><mml:mrow><mml:mi>i</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mi>m</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mn>2</mml:mn><mml:mo>=</mml:mo><mml:mi>i</mml:mi><mml:mo>+</mml:mo><mml:mi>k</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mi>m</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mn>2</mml:mn></mml:mrow></mml:mfenced></mml:mrow></mml:semantics></mml:math></inline-formula> and <inline-formula><mml:math id="mm15"><mml:semantics><mml:mrow><mml:mo>(</mml:mo><mml:msub><mml:mrow><mml:mi>N</mml:mi></mml:mrow><mml:mrow><mml:mi>n</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mi>e</mml:mi><mml:mi>s</mml:mi></mml:mrow></mml:msub><mml:mo>&gt;</mml:mo><mml:mi>k</mml:mi><mml:mo>&gt;</mml:mo><mml:mn>2</mml:mn><mml:mfenced separators="|"><mml:mrow><mml:mi>j</mml:mi><mml:mi>u</mml:mi><mml:mi>m</mml:mi><mml:mi>p</mml:mi><mml:mi>s</mml:mi><mml:mo>+</mml:mo><mml:mn>1</mml:mn></mml:mrow></mml:mfenced><mml:mo>)</mml:mo></mml:mrow></mml:semantics></mml:math></inline-formula>.</p>
+          <p>To force the planner to choose the crossing of crop lines as a predefined route, the weights between nodes that correspond to the opposites of the field headlands are defined in Equation (5):<disp-formula id="FD5-agriculture-13-02181"><label>(5)</label><mml:math id="mm16" display="block"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>i</mml:mi><mml:mo>,</mml:mo><mml:mi>i</mml:mi><mml:mo>+</mml:mo><mml:mn>1</mml:mn></mml:mrow></mml:msub><mml:mo>=</mml:mo><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>l</mml:mi><mml:mi>a</mml:mi><mml:mi>n</mml:mi><mml:mi>e</mml:mi></mml:mrow></mml:msub><mml:mo>,</mml:mo><mml:mi>i</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mi>m</mml:mi><mml:mi>o</mml:mi><mml:mi>d</mml:mi><mml:mo>&#xA0;</mml:mo><mml:mn>2</mml:mn><mml:mo>=</mml:mo><mml:mn>0</mml:mn></mml:mrow></mml:semantics></mml:math></disp-formula>
+          where <inline-formula><mml:math id="mm17"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>l</mml:mi><mml:mi>a</mml:mi><mml:mi>n</mml:mi><mml:mi>e</mml:mi></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula> has been defined as a weight with several orders of magnitude less (0.01) than the reference weight <inline-formula><mml:math id="mm18"><mml:semantics><mml:mrow><mml:msub><mml:mrow><mml:mi>W</mml:mi></mml:mrow><mml:mrow><mml:mi>r</mml:mi><mml:mi>e</mml:mi><mml:mi>f</mml:mi></mml:mrow></mml:msub></mml:mrow></mml:semantics></mml:math></inline-formula>.</p>
+          <p>This allows the planner to be valid for any robot with any morphology and traction system. Moreover, this configuration parameter is critical, both for the users when defining the behavior they want the robot to follow and for the robot to define the type of maneuver to be executed for smoother navigation in the fields. With all this, it seeks to ensure that the route planner is effective and optimal in the treatment. The current version of the Mission Planner defines the number of jumps as a user-defined parameter. However, this parameter could be estimated based on the aforementioned robot capabilities, although this is outside the scope of this work.</p>
+        </sec>
+      </sec>
+    </sec>
+    <sec id="sec3-agriculture-13-02181" sec-type="results">
+      <title>3. Results</title>
+      <p>The route planner presented in this work was validated in an experimental farm setup at the Centre for Automation and Robotics (CAR). The farm (see <xref ref-type="fig" rid="agriculture-13-02181-f007">Figure 7</xref>) consists of an area made up of 6 fields, separated into two blocks (fields 1 to 5; fields 6 and 7), each with a specific Gate. The map is also made up of a set of buildings, where only two of them allow access to the robot (Buildings T and C). Moreover, the farm includes a small network of roads and restricted areas.</p>
+      <p>Using the geographical data obtained from the map and following the agreed approach for the mission planner, the user selects the starting point (<monospace>From_place</monospace>) and the endpoint (<monospace>AgriParcel</monospace>) where the laser weeding treatment will be performed. According to the task and its attributes, the operations are generated in a preset order, starting with the route planner [<xref ref-type="bibr" rid="B26-agriculture-13-02181">26</xref>].</p>
+      <p>In Operation &#x201C;<monospace>GoTo</monospace>&#x201D;, which includes the actions necessary for its execution, Dijkstra&#x2019;s algorithm is used to find the optimal route from the start point to the endpoint, as illustrated in <xref ref-type="fig" rid="agriculture-13-02181-f008">Figure 8</xref>. The algorithm selects the shortest and safest route, following a known route built mainly by the known roads, ensuring safety. This provides safe navigation and prevents entry into unknown areas potentially dangerous for the robot.</p>
+      <p>In cases where the routes between the fields are not visible, the VRMP method is used to select the route that the robot should follow within the fields without damaging the crops (see <xref ref-type="fig" rid="agriculture-13-02181-f009">Figure 9</xref>). As a result, several solutions are obtained, but the algorithm has selected the safest solution with the lowest cost, always avoiding crossing any field.</p>
+      <p>After the &#x201C;<monospace>GoTo</monospace>&#x201D; operation is completed, the &#x201C;<monospace>Treatment</monospace>&#x201D; operation is performed. This allows the user to select the number of jumps between crop lines and how many lines the robot should treat. It is achieved that the robot can pass between the crops in a path generated for its transit (see <xref ref-type="fig" rid="agriculture-13-02181-f010">Figure 10</xref>).</p>
+      <p>Finally, the data of all these processes are integrated and stored in the Mission task, which contains a set of geographical points representing both the route the robot must follow and the type of operation the robot must perform in autonomous mode. These points are stored in the order in which each operation must be completed.</p>
+      <p>On the map, the greenhouse (Building T) was selected as the mission&#x2019;s starting point and a field (Field 3) as the endpoint. The number of jumps between crop lines was set to three, and the return was set to FALSE to illustrate the mission generated and the trajectory followed without overlapping. <xref ref-type="fig" rid="agriculture-13-02181-f011">Figure 11</xref> presents the geographic coordinates of the robot (green path) while executing the planned mission (blue path). It should be noted that the minimum turning radius of the robot was set to 1.5 m, which does not allow the robot to rotate on its own axis. Therefore, on the intersections of the planned mission, when changes in direction are representative (around 90&#xB0;), the robot must perform turning maneuvers following the minimum turning radius parameter, which forces it to leave the trajectory. This has been defined as a desired behavior of the robot, sacrificing moving away from the trajectory but ensuring that upon reaching the intersection point, the robot has the desired orientation to continue to the next waypoint.</p>
+      <p><xref ref-type="table" rid="agriculture-13-02181-t002">Table 2</xref> presents the data on the duration and distance traveled by the robot in the different stages of the mission. During the Wakeup operation process, the robot requires aligning the GNSS antenna with the IMU sensor. This process is particularly required by this robot, so the actions executed are not considered during the mission planning. The &#x201C;<monospace>GoTo</monospace>&#x201D; Operation combines approaching the roads and the field where the treatment is carried out and following the roads. During the &#x201C;<monospace>Treatment</monospace>&#x201D; operation, the robot performs two main actions: following the crop rows (&#x201C;<monospace>FollowPath</monospace>&#x201D;), and completing the U-turns on the headlands (&#x201C;<monospace>MoveTo</monospace>&#x201D;). It should be noted that during the Treatment, two events occurred that were not foreseen in the mission planning (denoted as Action None): (i) an initialization time of the systems for crop-row following, and (ii) a pause of the robot since it encountered an obstacle.</p>
+      <p><xref ref-type="fig" rid="agriculture-13-02181-f012">Figure 12</xref> presents a temporal graph indicating the moments during the mission where the robot carried out the planned actions and operations.</p>
+    </sec>
+    <sec id="sec4-agriculture-13-02181" sec-type="discussion">
+      <title>4. Discussion</title>
+      <p>The first fundamental aspect to consider when validating the mission generator is the ability to perform U-turns, which is important due to the dimensions and particularities of the robot used in this study. In the test carried out in Field 6, it was shown that the U-turn time represents around 46% of the total treatment time in motion. It is relevant to note that performing a &#x201C;U&#x201D; turn could entail a significant cost, depending on the robot morphology and traction system, as well as the robot&#x2019;s maneuver capability. For this reason, instead of opting for wide turns or backing up briefly before changing direction, the robot has been configured to perform U-turns without backing up. This strategy has been designed to increase efficiency in the change to a new direction and, simultaneously, avoid the loss of helpful areas. The importance of adapting this maneuver to the robot is confirmed by numerous tests that have consistently demonstrated the necessity of this turn for efficient and safe maneuverability in various situations. The results obtained in these tests support the effectiveness of the implemented path planner and the algorithms used, as they have managed to generate satisfactory and practical paths for the robot.</p>
+      <p>A key strategy employed to simplify route planning was dividing problems into three types of maps. This division has proven beneficial, as it has facilitated the consideration of various variables and characteristics when planning robot routes. Moreover, the description of the working environment using FIWARE smart-data models (NGSIv2) has proven useful, allowing it to integrate metric and semantic properties.</p>
+      <p>The process begins with obtaining a graphical reference highlighting the farm&#x2019;s relevant features, such as its geographic location and territorial boundaries. The three types of maps that play an essential role in this research are generated from this information. However, to carry out this task effectively, it is imperative to have a tool that allows adjustments to be made according to the configuration of conditions and constraints that affect the different elements of the farm. An example of these types of tools is Geojson.io [<xref ref-type="bibr" rid="B33-agriculture-13-02181">33</xref>], which is an open-access tool to create, change, and publish maps.</p>
+      <p>These adjustments, although small in scale, are of utmost importance. They are due both to the possibility that the information provided may not be up to date and to the need to assist the robot in overcoming challenges that arise due to the proximity or distance between critical farm elements, such as roads, buildings, and fields, as well as the presence of restricted areas for the robot. In addition, it has been observed that the treatment required in the fields varies according to the orientation of the crops, which is limited by the robot&#x2019;s dimensions. This information has been considered to ensure a smooth passage of the robot between crops, especially when they are planted with different crop spaces (interRow) and the shape of the field is not entirely polygonal.</p>
+      <p>Updating maps plays a critical role in ensuring the feasibility and optimal performance of the Mission Planner, especially about the specific conditions and constraints mentioned in <xref ref-type="sec" rid="sec2dot6dot1-agriculture-13-02181">Section 2.6.1</xref>.</p>
+      <p>In an ever-changing agricultural environment, where elements such as buildings, fields, and roads may undergo modifications, it is essential to keep the maps used by the planner up to date. This ensures that the information depicted on the maps accurately reflects the reality of the terrain. When conditions, such as the junction between a building and a paved road, are not met or changed, adapting and adjusting the maps is crucial. For example, an adequate junction between the building and the asphalt road is required for smooth navigation. When any of these rules are not met, it is suggested that the nearest road be considered, adjusting its properties and attributes to simulate an asphalt road. This flexibility in route planning ensures system continuity and optimal performance.</p>
+    </sec>
+    <sec id="sec5-agriculture-13-02181" sec-type="conclusions">
+      <title>5. Conclusions</title>
+      <p>The Mission Planner introduced in this paper addressed two key objectives: (1) to find an optimal path for agricultural weeding robots across large-scale farms and (2) to provide an integrated solution for weed management tasks. The extension of the planner to the whole farm marks a significant milestone in agricultural robotics and precision farming. Moreover, this study comprehensively explored mission planning for autonomous robots in agricultural environments, emphasizing an integrated approach combining multiple vital strategies adapted to the different navigation scenarios an autonomous agricultural robot can encounter.</p>
+      <p>Incorporating diverse map types, including metric, topological, and semantic maps, has significantly enriched the understanding of the agricultural environment by providing detailed information about the physical terrain configuration and capturing the spatial relationships and connectivity between locations. Moreover, the meticulous definition of rules to define the relationships between the different working areas within the farm has resulted in the generation of highly accurate topological representations of the environment, ensuring top-quality route planning. The inherent flexibility of these rules allows this solution to adapt to different agricultural scenarios, increasing its applicability and versatility.</p>
+      <p>Regarding scalability, the proposed solution made significant strides by incorporating generic data models such as FIWARE&#x2019;s NGSI. This strategic choice has enabled this contribution to go beyond the limitations of applying only to a particular type of agricultural robot. This approach also fosters collaboration and innovation within the agricultural and robotics community.</p>
+      <p>In future work, machine learning techniques will be explored to be integrated into the existing system. These techniques could allow the robot to learn and adapt in real time to different scenarios, further improving its ability to overcome obstacles safely and efficiently.</p>
+    </sec>
+  </body>
+  <back>
+    <notes>
+      <title>Author Contributions</title>
+      <p>Conceptualization, L.E., R.C.-C. and P.G.-d.-S.; methodology, R.C.-C. and L.E. software, R.C.-C. and L.E.; validation, R.C.-C. and L.E.; investigation, L.E., R.C.-C. and P.G.-d.-S.; resources, P.G.-d.-S.; writing&#x2014;original draft preparation, R.C.-C.; writing&#x2014;review and editing, L.E. and P.G.-d.-S.; supervision, L.E. and P.G.-d.-S.; funding acquisition, P.G.-d.-S. All authors have read and agreed to the published version of the manuscript.</p>
+    </notes>
+    <notes>
+      <title>Institutional Review Board Statement</title>
+      <p>The study was conducted in accordance with the Declaration of Helsinki, and approved by the Ethical Committee of CSIC.</p>
+    </notes>
+    <notes>
+      <title>Data Availability Statement</title>
+      <p>The dataset associated with this research paper contains data obtained from experimental tests conducted with an autonomous robot in an outdoor field environment. We are committed to promoting transparency, reproducibility, and the sharing of our research findings. The dataset is available for research and verification purposes in DIGITAL.CSIC at <uri>https://doi.org/10.20350/digitalCSIC/15665</uri> named &#x201C;Data on the WeLASER robot carrying out a mission in the experimental fields of the Center for Automation and Robotics (UPM-CSIC)&#x201D;, accessed on 3 November 2023.</p>
+    </notes>
+    <notes notes-type="COI-statement">
+      <title>Conflicts of Interest</title>
+      <p>The authors were employed by the Spanish National Research Council (CSIC).</p>
+    </notes>
+    <ref-list>
+      <title>References</title>
+      <ref id="B1-agriculture-13-02181">
+        <label>1.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Fountas</surname>
+              <given-names>S.</given-names>
+            </name>
+            <name>
+              <surname>Mylonas</surname>
+              <given-names>N.</given-names>
+            </name>
+            <name>
+              <surname>Malounas</surname>
+              <given-names>I.</given-names>
+            </name>
+            <name>
+              <surname>Rodias</surname>
+              <given-names>E.</given-names>
+            </name>
+            <name>
+              <surname>Hellmann Santos</surname>
+              <given-names>C.</given-names>
+            </name>
+            <name>
+              <surname>Pekkeriet</surname>
+              <given-names>E.</given-names>
+            </name>
+          </person-group>
+          <article-title>Agricultural robotics for field operations</article-title>
+          <source>Sensors</source>
+          <year>2020</year>
+          <volume>20</volume>
+          <elocation-id>2672</elocation-id>
+          <pub-id pub-id-type="doi">10.3390/s20092672</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B2-agriculture-13-02181">
+        <label>2.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Lytridis</surname>
+              <given-names>C.</given-names>
+            </name>
+            <name>
+              <surname>Kaburlasos</surname>
+              <given-names>V.G.</given-names>
+            </name>
+            <name>
+              <surname>Pachidis</surname>
+              <given-names>T.</given-names>
+            </name>
+            <name>
+              <surname>Manios</surname>
+              <given-names>M.</given-names>
+            </name>
+            <name>
+              <surname>Vrochidou</surname>
+              <given-names>E.</given-names>
+            </name>
+            <name>
+              <surname>Kalampokas</surname>
+              <given-names>T.</given-names>
+            </name>
+            <name>
+              <surname>Chatzistamatis</surname>
+              <given-names>S.</given-names>
+            </name>
+          </person-group>
+          <article-title>An overview of cooperative robotics in agriculture</article-title>
+          <source>Agronomy</source>
+          <year>2021</year>
+          <volume>11</volume>
+          <elocation-id>1818</elocation-id>
+          <pub-id pub-id-type="doi">10.3390/agronomy11091818</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B3-agriculture-13-02181">
+        <label>3.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Emmi</surname>
+              <given-names>L.</given-names>
+            </name>
+            <name>
+              <surname>Fernandez</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Gonzalez-de-Santos</surname>
+              <given-names>P.</given-names>
+            </name>
+            <name>
+              <surname>Francia</surname>
+              <given-names>M.</given-names>
+            </name>
+            <name>
+              <surname>Golfarelli</surname>
+              <given-names>M.</given-names>
+            </name>
+            <name>
+              <surname>Vitali</surname>
+              <given-names>G.</given-names>
+            </name>
+            <name>
+              <surname>Sandmann</surname>
+              <given-names>H.</given-names>
+            </name>
+            <name>
+              <surname>Hustedt</surname>
+              <given-names>M.</given-names>
+            </name>
+            <name>
+              <surname>Wollweber</surname>
+              <given-names>M.</given-names>
+            </name>
+          </person-group>
+          <article-title>Exploiting the Internet Resources for Autonomous Robots in Agriculture</article-title>
+          <source>Agriculture</source>
+          <year>2023</year>
+          <volume>13</volume>
+          <elocation-id>1005</elocation-id>
+          <pub-id pub-id-type="doi">10.3390/agriculture13051005</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B4-agriculture-13-02181">
+        <label>4.</label>
+        <element-citation publication-type="book">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Pedersen</surname>
+              <given-names>S.M.</given-names>
+            </name>
+            <name>
+              <surname>Lind</surname>
+              <given-names>K.M.</given-names>
+            </name>
+          </person-group>
+          <source>Precision Agriculture: Technology and Economic Perspectives</source>
+          <edition>2nd ed.</edition>
+          <publisher-name>Springer International Publishing</publisher-name>
+          <publisher-loc>Cham, Switzerland</publisher-loc>
+          <year>2017</year>
+          <fpage>1</fpage>
+          <lpage>21</lpage>
+        </element-citation>
+      </ref>
+      <ref id="B5-agriculture-13-02181">
+        <label>5.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Ding</surname>
+              <given-names>H.</given-names>
+            </name>
+            <name>
+              <surname>Zhang</surname>
+              <given-names>B.</given-names>
+            </name>
+            <name>
+              <surname>Zhou</surname>
+              <given-names>J.</given-names>
+            </name>
+            <name>
+              <surname>Yan</surname>
+              <given-names>Y.</given-names>
+            </name>
+            <name>
+              <surname>Tian</surname>
+              <given-names>G.</given-names>
+            </name>
+            <name>
+              <surname>Gu</surname>
+              <given-names>B.</given-names>
+            </name>
+          </person-group>
+          <article-title>Recent developments and applications of simultaneous localization and mapping in agriculture</article-title>
+          <source>J. Field Robot.</source>
+          <year>2022</year>
+          <volume>39</volume>
+          <fpage>956</fpage>
+          <lpage>983</lpage>
+          <pub-id pub-id-type="doi">10.1002/rob.22077</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B6-agriculture-13-02181">
+        <label>6.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Se</surname>
+              <given-names>S.</given-names>
+            </name>
+            <name>
+              <surname>Lowe</surname>
+              <given-names>D.</given-names>
+            </name>
+            <name>
+              <surname>Little</surname>
+              <given-names>J.</given-names>
+            </name>
+          </person-group>
+          <article-title>Vision-based mapping with backward correction</article-title>
+          <source>Proceedings of the IEEE/RSJ International Conference on Intelligent Robots and Systems</source>
+          <conf-loc>Kyoto, Japan</conf-loc>
+          <conf-date>23&#x2013;27 October 2022</conf-date>
+        </element-citation>
+      </ref>
+      <ref id="B7-agriculture-13-02181">
+        <label>7.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Wang</surname>
+              <given-names>L.K.</given-names>
+            </name>
+            <name>
+              <surname>Hsieh</surname>
+              <given-names>S.C.</given-names>
+            </name>
+            <name>
+              <surname>Hsueh</surname>
+              <given-names>E.W.</given-names>
+            </name>
+            <name>
+              <surname>Hsaio</surname>
+              <given-names>F.B.</given-names>
+            </name>
+            <name>
+              <surname>Huang</surname>
+              <given-names>K.Y.</given-names>
+            </name>
+          </person-group>
+          <article-title>Complete pose determination for low altitude unmanned aerial vehicle using stereo vision</article-title>
+          <source>Proceedings of the IEEE/RSJ international conference on intelligent robots and systems</source>
+          <conf-loc>Edmonton, AB, Canada</conf-loc>
+          <conf-date>2&#x2013;6 August 2005</conf-date>
+        </element-citation>
+      </ref>
+      <ref id="B8-agriculture-13-02181">
+        <label>8.</label>
+        <element-citation publication-type="book">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Zoto</surname>
+              <given-names>J.</given-names>
+            </name>
+            <name>
+              <surname>Musci</surname>
+              <given-names>M.S.</given-names>
+            </name>
+            <name>
+              <surname>Khaliq</surname>
+              <given-names>A.</given-names>
+            </name>
+            <name>
+              <surname>Chiaberge</surname>
+              <given-names>M.</given-names>
+            </name>
+            <name>
+              <surname>Aicardi</surname>
+              <given-names>I.</given-names>
+            </name>
+          </person-group>
+          <article-title>Automatic path planning for unmanned ground vehicle using UAV imagery</article-title>
+          <source>Advances in Service and Industrial Robotics: Proceedings of the 28th International Conference on Robotics in Alpe-Adria-Danube Region (RAAD 2019), Kaiserslautern, Germany, 19&#x2013;21 June 2019</source>
+          <publisher-name>Springer</publisher-name>
+          <publisher-loc>Berlin/Heidelberg, Germany</publisher-loc>
+          <publisher-loc>Cham, Switzerland</publisher-loc>
+          <year>2019</year>
+        </element-citation>
+      </ref>
+      <ref id="B9-agriculture-13-02181">
+        <label>9.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Nehme</surname>
+              <given-names>H.</given-names>
+            </name>
+            <name>
+              <surname>Aubry</surname>
+              <given-names>C.</given-names>
+            </name>
+            <name>
+              <surname>Solatges</surname>
+              <given-names>T.</given-names>
+            </name>
+            <name>
+              <surname>Savatier</surname>
+              <given-names>X.</given-names>
+            </name>
+            <name>
+              <surname>Rossi</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Boutteau</surname>
+              <given-names>R.</given-names>
+            </name>
+          </person-group>
+          <article-title>Lidar-based structure tracking for agricultural robots: Application to autonomous navigation in vineyards</article-title>
+          <source>J. Intell. Robot. Syst.</source>
+          <year>2021</year>
+          <volume>103</volume>
+          <fpage>61</fpage>
+          <pub-id pub-id-type="doi">10.1007/s10846-021-01519-7</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B10-agriculture-13-02181">
+        <label>10.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Zhang</surname>
+              <given-names>N.</given-names>
+            </name>
+            <name>
+              <surname>Taylor</surname>
+              <given-names>R.K.</given-names>
+            </name>
+          </person-group>
+          <article-title>Applications of a Field&#x2013;Level Geographic Information System (FIS) in Precision Agriculture</article-title>
+          <source>Appl. Eng. Agric.</source>
+          <year>2001</year>
+          <volume>17</volume>
+          <fpage>885</fpage>
+          <pub-id pub-id-type="doi">10.13031/2013.6829</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B11-agriculture-13-02181">
+        <label>11.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Han</surname>
+              <given-names>X.</given-names>
+            </name>
+            <name>
+              <surname>Kim</surname>
+              <given-names>H.J.</given-names>
+            </name>
+            <name>
+              <surname>Jeon</surname>
+              <given-names>C.W.</given-names>
+            </name>
+            <name>
+              <surname>Moon</surname>
+              <given-names>H.C.</given-names>
+            </name>
+            <name>
+              <surname>Kim</surname>
+              <given-names>J.H.</given-names>
+            </name>
+            <name>
+              <surname>Seo</surname>
+              <given-names>I.H.</given-names>
+            </name>
+          </person-group>
+          <article-title>Design and field testing of a polygonal paddy infield path planner for unmanned tillage operations</article-title>
+          <source>Comput. Electron. Agric.</source>
+          <year>2021</year>
+          <volume>191</volume>
+          <fpage>106567</fpage>
+          <pub-id pub-id-type="doi">10.1016/j.compag.2021.106567</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B12-agriculture-13-02181">
+        <label>12.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Chakraborty</surname>
+              <given-names>S.</given-names>
+            </name>
+            <name>
+              <surname>Elangovan</surname>
+              <given-names>D.</given-names>
+            </name>
+            <name>
+              <surname>Govindarajan</surname>
+              <given-names>P.L.</given-names>
+            </name>
+            <name>
+              <surname>ELnaggar</surname>
+              <given-names>M.F.</given-names>
+            </name>
+            <name>
+              <surname>Alrashed</surname>
+              <given-names>M.M.</given-names>
+            </name>
+            <name>
+              <surname>Kamel</surname>
+              <given-names>S.</given-names>
+            </name>
+          </person-group>
+          <article-title>A comprehensive review of path planning for agricultural ground robots</article-title>
+          <source>Sustainability</source>
+          <year>2022</year>
+          <volume>14</volume>
+          <elocation-id>9156</elocation-id>
+          <pub-id pub-id-type="doi">10.3390/su14159156</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B13-agriculture-13-02181">
+        <label>13.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Linker</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Blass</surname>
+              <given-names>T.</given-names>
+            </name>
+          </person-group>
+          <article-title>Path-planning algorithm for vehicles operating in orchards</article-title>
+          <source>Biosyst. Eng.</source>
+          <year>2008</year>
+          <volume>101</volume>
+          <fpage>152</fpage>
+          <lpage>160</lpage>
+          <pub-id pub-id-type="doi">10.1016/j.biosystemseng.2008.06.002</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B14-agriculture-13-02181">
+        <label>14.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Santos</surname>
+              <given-names>L.</given-names>
+            </name>
+            <name>
+              <surname>dos Santos</surname>
+              <given-names>F.N.</given-names>
+            </name>
+            <name>
+              <surname>Mendes</surname>
+              <given-names>J.</given-names>
+            </name>
+            <name>
+              <surname>Ferraz</surname>
+              <given-names>N.</given-names>
+            </name>
+            <name>
+              <surname>Lima</surname>
+              <given-names>J.</given-names>
+            </name>
+            <name>
+              <surname>Morais</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Costa</surname>
+              <given-names>P.</given-names>
+            </name>
+          </person-group>
+          <article-title>Path planning for automatic recharging system for steep-slope vineyard robots</article-title>
+          <source>Proceedings of the Third Iberian Robotics Conference (ROBOT 2017)</source>
+          <conf-loc>Seville, Spain</conf-loc>
+          <conf-date>22&#x2013;24 November 2017</conf-date>
+        </element-citation>
+      </ref>
+      <ref id="B15-agriculture-13-02181">
+        <label>15.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Bochtis</surname>
+              <given-names>D.</given-names>
+            </name>
+            <name>
+              <surname>Griepentrog</surname>
+              <given-names>H.W.</given-names>
+            </name>
+            <name>
+              <surname>Vougioukas</surname>
+              <given-names>S.</given-names>
+            </name>
+            <name>
+              <surname>Busato</surname>
+              <given-names>P.</given-names>
+            </name>
+            <name>
+              <surname>Berruto</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Zhou</surname>
+              <given-names>K.</given-names>
+            </name>
+          </person-group>
+          <article-title>Route planning for orchard operations</article-title>
+          <source>Comput. Electron. Agric.</source>
+          <year>2015</year>
+          <volume>113</volume>
+          <fpage>51</fpage>
+          <lpage>60</lpage>
+          <pub-id pub-id-type="doi">10.1016/j.compag.2014.12.024</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B16-agriculture-13-02181">
+        <label>16.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Hameed</surname>
+              <given-names>I.A.</given-names>
+            </name>
+            <name>
+              <surname>Bochtis</surname>
+              <given-names>D.D.</given-names>
+            </name>
+            <name>
+              <surname>S&#xF8;rensen</surname>
+              <given-names>C.G.</given-names>
+            </name>
+            <name>
+              <surname>Vougioukas</surname>
+              <given-names>S.</given-names>
+            </name>
+          </person-group>
+          <article-title>An object-oriented model for simulating agricultural in-field machinery activities</article-title>
+          <source>Comput. Electron. Agric.</source>
+          <year>2012</year>
+          <volume>81</volume>
+          <fpage>24</fpage>
+          <lpage>32</lpage>
+          <pub-id pub-id-type="doi">10.1016/j.compag.2011.11.003</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B17-agriculture-13-02181">
+        <label>17.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Shah</surname>
+              <given-names>D.</given-names>
+            </name>
+            <name>
+              <surname>Levine</surname>
+              <given-names>S.</given-names>
+            </name>
+          </person-group>
+          <article-title>Viking: Vision-based kilometer-scale navigation with geographic hints</article-title>
+          <source>Proceedings of the Robotics: Science and Systems (RSS)</source>
+          <conf-loc>New York, NY, USA</conf-loc>
+          <conf-date>27 June&#x2013;1 July 2022</conf-date>
+          <fpage>3</fpage>
+        </element-citation>
+      </ref>
+      <ref id="B18-agriculture-13-02181">
+        <label>18.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Thrun</surname>
+              <given-names>S.</given-names>
+            </name>
+          </person-group>
+          <article-title>Learning metric-topological maps for indoor mobile robot navigation</article-title>
+          <source>Artif. Intell.</source>
+          <year>1998</year>
+          <volume>99</volume>
+          <fpage>21</fpage>
+          <lpage>71</lpage>
+          <pub-id pub-id-type="doi">10.1016/S0004-3702(97)00078-7</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B19-agriculture-13-02181">
+        <label>19.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Fermin-Leon</surname>
+              <given-names>L.</given-names>
+            </name>
+            <name>
+              <surname>Neira</surname>
+              <given-names>J.</given-names>
+            </name>
+            <name>
+              <surname>Castellanos</surname>
+              <given-names>J.A.</given-names>
+            </name>
+          </person-group>
+          <article-title>Incremental contour-based topological segmentation for robot exploration</article-title>
+          <source>Proceedings of the IEEE International Conference on Robotics and Automation (ICRA 2017)</source>
+          <conf-loc>Singapore</conf-loc>
+          <conf-date>29 May&#x2013;3 June 2017</conf-date>
+          <fpage>2554</fpage>
+          <lpage>2561</lpage>
+        </element-citation>
+      </ref>
+      <ref id="B20-agriculture-13-02181">
+        <label>20.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Kuipers</surname>
+              <given-names>B.</given-names>
+            </name>
+            <name>
+              <surname>Byun</surname>
+              <given-names>Y.T.</given-names>
+            </name>
+          </person-group>
+          <article-title>A robot exploration and mapping strategy based on a semantic hierarchy of spatial representations</article-title>
+          <source>Robot. Auton. Syst.</source>
+          <year>1991</year>
+          <volume>8</volume>
+          <fpage>47</fpage>
+          <lpage>63</lpage>
+          <pub-id pub-id-type="doi">10.1016/0921-8890(91)90014-C</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B21-agriculture-13-02181">
+        <label>21.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Ruiz-Sarmiento</surname>
+              <given-names>J.</given-names>
+            </name>
+            <name>
+              <surname>Galindo</surname>
+              <given-names>C.</given-names>
+            </name>
+            <name>
+              <surname>Gonzalez-Jimenez</surname>
+              <given-names>J.</given-names>
+            </name>
+          </person-group>
+          <article-title>Building Multiversal Semantic Maps for Mobile Robot Operation</article-title>
+          <source>Knowl.-Based Syst.</source>
+          <year>2017</year>
+          <volume>119</volume>
+          <fpage>257</fpage>
+          <lpage>272</lpage>
+          <pub-id pub-id-type="doi">10.1016/j.knosys.2016.12.016</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B22-agriculture-13-02181">
+        <label>22.</label>
+        <element-citation publication-type="book">
+          <person-group person-group-type="editor">
+            <name>
+              <surname>Koub&#xE2;a</surname>
+              <given-names>A.</given-names>
+            </name>
+          </person-group>
+          <source>Robot Operating System (ROS)</source>
+          <publisher-name>Springer</publisher-name>
+          <publisher-loc>Cham, Switzerland</publisher-loc>
+          <year>2017</year>
+        </element-citation>
+      </ref>
+      <ref id="B23-agriculture-13-02181">
+        <label>23.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Moysiadis</surname>
+              <given-names>V.</given-names>
+            </name>
+            <name>
+              <surname>Tsolakis</surname>
+              <given-names>N.</given-names>
+            </name>
+            <name>
+              <surname>Katikaridis</surname>
+              <given-names>D.</given-names>
+            </name>
+            <name>
+              <surname>S&#xF8;rensen</surname>
+              <given-names>C.G.</given-names>
+            </name>
+            <name>
+              <surname>Pearson</surname>
+              <given-names>S.</given-names>
+            </name>
+            <name>
+              <surname>Bochtis</surname>
+              <given-names>D.</given-names>
+            </name>
+          </person-group>
+          <article-title>Mobile Robotics in Agricultural Operations: A Narrative Review on Planning Aspects</article-title>
+          <source>Appl. Sci.</source>
+          <year>2020</year>
+          <volume>10</volume>
+          <elocation-id>3453</elocation-id>
+          <pub-id pub-id-type="doi">10.3390/app10103453</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B24-agriculture-13-02181">
+        <label>24.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>L&#xF3;pez-Riquelme</surname>
+              <given-names>J.A.</given-names>
+            </name>
+            <name>
+              <surname>Pav&#xF3;n-Pulido</surname>
+              <given-names>N.</given-names>
+            </name>
+            <name>
+              <surname>Navarro-Hell&#xED;n</surname>
+              <given-names>H.</given-names>
+            </name>
+            <name>
+              <surname>Soto-Valles</surname>
+              <given-names>F.</given-names>
+            </name>
+            <name>
+              <surname>Torres-Sanchez</surname>
+              <given-names>R.</given-names>
+            </name>
+          </person-group>
+          <article-title>A software architecture based on FIWARE cloud for Precision Agriculture</article-title>
+          <source>Agric. Water Manag.</source>
+          <year>2017</year>
+          <volume>183</volume>
+          <fpage>123</fpage>
+          <lpage>135</lpage>
+          <pub-id pub-id-type="doi">10.1016/j.agwat.2016.10.020</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B25-agriculture-13-02181">
+        <label>25.</label>
+        <element-citation publication-type="web">
+          <article-title>Smart Agrifood&#x2014;FIWARE Foundation Open Source Platform</article-title>
+          <comment>Available online: <ext-link xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="https://www.fiware.org/community/smart-agrifood/" ext-link-type="uri">https://www.fiware.org/community/smart-agrifood/</ext-link></comment>
+          <date-in-citation content-type="access-date" iso-8601-date="2023-09-18">(accessed on 18 September 2023)</date-in-citation>
+        </element-citation>
+      </ref>
+      <ref id="B26-agriculture-13-02181">
+        <label>26.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Emmi</surname>
+              <given-names>L.</given-names>
+            </name>
+            <name>
+              <surname>Parra</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Gonz&#xE1;lez-de-Santos</surname>
+              <given-names>P.</given-names>
+            </name>
+          </person-group>
+          <article-title>Digital representation of smart agricultural environments for robot navigation</article-title>
+          <source>Proceedings of the 10th International Conference on ICT in Agriculture, Food &amp; Environment (HAICTA 2022)</source>
+          <conf-loc>Athens, Greece</conf-loc>
+          <conf-date>22&#x2013;25 September 2022</conf-date>
+        </element-citation>
+      </ref>
+      <ref id="B27-agriculture-13-02181">
+        <label>27.</label>
+        <element-citation publication-type="web">
+          <article-title>Robotics&#x2014;Vocabulary (No. ISO 8373:2021)</article-title>
+          <comment>Available online: <ext-link xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://www.springer.com/lncs" ext-link-type="uri">http://www.springer.com/lncs</ext-link></comment>
+          <date-in-citation content-type="access-date" iso-8601-date="2023-09-18">(accessed on 18 September 2023)</date-in-citation>
+        </element-citation>
+      </ref>
+      <ref id="B28-agriculture-13-02181">
+        <label>28.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Vahdanjoo</surname>
+              <given-names>M.</given-names>
+            </name>
+            <name>
+              <surname>Sorensen</surname>
+              <given-names>C.G.</given-names>
+            </name>
+          </person-group>
+          <article-title>Novel route planning method to improve the operational efficiency of capacitated operations. Case: Application of organic fertilizer</article-title>
+          <source>AgriEngineering</source>
+          <year>2021</year>
+          <volume>3</volume>
+          <fpage>458</fpage>
+          <lpage>477</lpage>
+          <pub-id pub-id-type="doi">10.3390/agriengineering3030031</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B29-agriculture-13-02181">
+        <label>29.</label>
+        <element-citation publication-type="confproc">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Candra</surname>
+              <given-names>A.</given-names>
+            </name>
+            <name>
+              <surname>Budiman</surname>
+              <given-names>M.A.</given-names>
+            </name>
+            <name>
+              <surname>Hartanto</surname>
+              <given-names>K.</given-names>
+            </name>
+          </person-group>
+          <article-title>Dijkstra&#x2019;s and a-star in finding the shortest path: A tutorial</article-title>
+          <source>Proceedings of the 2020 International Conference on Data Science, Artificial Intelligence, and Business Analytics (DATABIA)</source>
+          <conf-loc>Medan, Indonesia</conf-loc>
+          <conf-date>16&#x2013;17 July 2020</conf-date>
+        </element-citation>
+      </ref>
+      <ref id="B30-agriculture-13-02181">
+        <label>30.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Sim&#xE9;on</surname>
+              <given-names>T.</given-names>
+            </name>
+            <name>
+              <surname>Laumond</surname>
+              <given-names>J.P.</given-names>
+            </name>
+            <name>
+              <surname>Nissoux</surname>
+              <given-names>C.</given-names>
+            </name>
+          </person-group>
+          <article-title>Visibility-based probabilistic roadmaps for motion planning</article-title>
+          <source>Adv. Robot.</source>
+          <year>2000</year>
+          <volume>14</volume>
+          <fpage>477</fpage>
+          <lpage>493</lpage>
+          <pub-id pub-id-type="doi">10.1163/156855300741960</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B31-agriculture-13-02181">
+        <label>31.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Murrieta-Cid</surname>
+              <given-names>R.</given-names>
+            </name>
+            <name>
+              <surname>Tovar</surname>
+              <given-names>B.</given-names>
+            </name>
+            <name>
+              <surname>Hutchinson</surname>
+              <given-names>S.</given-names>
+            </name>
+          </person-group>
+          <article-title>A sampling-based motion planning approach to maintain visibility of unpredictable targets</article-title>
+          <source>Auton. Robot.</source>
+          <year>2005</year>
+          <volume>19</volume>
+          <fpage>285</fpage>
+          <lpage>300</lpage>
+          <pub-id pub-id-type="doi">10.1007/s10514-005-4052-0</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B32-agriculture-13-02181">
+        <label>32.</label>
+        <element-citation publication-type="journal">
+          <person-group person-group-type="author">
+            <name>
+              <surname>Rahman</surname>
+              <given-names>M.S.</given-names>
+            </name>
+            <name>
+              <surname>Kaykobad</surname>
+              <given-names>M.</given-names>
+            </name>
+          </person-group>
+          <article-title>On Hamiltonian cycles and Hamiltonian paths</article-title>
+          <source>Inf. Process. Lett.</source>
+          <year>2005</year>
+          <volume>94</volume>
+          <fpage>37</fpage>
+          <lpage>41</lpage>
+          <pub-id pub-id-type="doi">10.1016/j.ipl.2004.12.002</pub-id>
+        </element-citation>
+      </ref>
+      <ref id="B33-agriculture-13-02181">
+        <label>33.</label>
+        <element-citation publication-type="web">
+          <article-title>About Edit GeoJSON</article-title>
+          <comment>Available online: <ext-link xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="http://geojson.io/about.html" ext-link-type="uri">http://geojson.io/about.html</ext-link></comment>
+          <date-in-citation content-type="access-date" iso-8601-date="2023-10-26">(accessed on 26 October 2023)</date-in-citation>
+        </element-citation>
+      </ref>
+    </ref-list>
+    <sec sec-type="display-objects">
+      <title>Figures and Tables</title>
+      <fig id="agriculture-13-02181-f001" position="float">
+        <label>Figure 1</label>
+        <caption>
+          <p>Mobile platform carrying the laser-weeding implement in a maize field.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g001.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f002" position="float">
+        <label>Figure 2</label>
+        <caption>
+          <p>Relations and properties of the FIWARE entities that made up the farm map.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g002.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f003" position="float">
+        <label>Figure 3</label>
+        <caption>
+          <p>Mission structure.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g003.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f004" position="float">
+        <label>Figure 4</label>
+        <caption>
+          <p>Elements that define a task and their planning strategies.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g004.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f005" position="float">
+        <label>Figure 5</label>
+        <caption>
+          <p>Topological map used on the &#x201C;<monospace>GoTo</monospace>&#x201D; planner (B = Building, R.A = Road Asphalt, R.D = Road dirt, OF = Open Field, G = Gate, and F = <monospace>AgriParcel</monospace>).</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g005.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f006" position="float">
+        <label>Figure 6</label>
+        <caption>
+          <p>Representation of a plane with all study elements: (<bold>a</bold>) plane with eight vertices and (<bold>b</bold>) plane with six vertices.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g006.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f007" position="float">
+        <label>Figure 7</label>
+        <caption>
+          <p>Map of the experimental farm at the Centre for Automation and Robotics (CAR).</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g007.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f008" position="float">
+        <label>Figure 8</label>
+        <caption>
+          <p>The optimum path using Dijkstra&#x2019;s algorithm (B = Building, R.A = Road Asphalt, R.D = Road dirt, OF = Open Field, G = Gate, and F = AgriParcel).</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g008.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f009" position="float">
+        <label>Figure 9</label>
+        <caption>
+          <p>VRMP method applied to the field of study.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g009.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f010" position="float">
+        <label>Figure 10</label>
+        <caption>
+          <p>Treatment operation on Field 3.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g010.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f011" position="float">
+        <label>Figure 11</label>
+        <caption>
+          <p>Example of an entire mission planned from Building T to Field 3.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g011.tif"/>
+      </fig>
+      <fig id="agriculture-13-02181-f012" position="float">
+        <label>Figure 12</label>
+        <caption>
+          <p>Temporal graph of the different operations and actions executed by the robot.</p>
+        </caption>
+        <graphic xmlns:xlink="http://www.w3.org/1999/xlink" xlink:href="agriculture-13-02181-g012.tif"/>
+      </fig>
+      <table-wrap id="agriculture-13-02181-t001" position="float">
+        <object-id pub-id-type="pii">agriculture-13-02181-t001_Table 1</object-id>
+        <label>Table 1</label>
+        <caption>
+          <p>Mobile platform features.</p>
+        </caption>
+        <table>
+          <thead>
+            <tr>
+              <th align="left" valign="middle" style="border-top:solid thin;border-bottom:solid thin">Properties</th>
+              <th align="left" valign="middle" style="border-top:solid thin;border-bottom:solid thin">Values</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td align="left" valign="middle">Type of robot</td>
+              <td align="left" valign="middle">Autonomous tracked vehicle </td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Steering mechanism</td>
+              <td align="left" valign="middle">Skid-steer</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Propulsion system</td>
+              <td align="left" valign="middle">Motor and batteries</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Maximum speed</td>
+              <td align="left" valign="middle">6 km/h</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Position accuracy</td>
+              <td align="left" valign="middle">&#xB1;0.015 m</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Positioning system</td>
+              <td align="left" valign="middle">GNSS with real-time kinematics (RTK), inertial measurement units (IMU)</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Dimensions</td>
+              <td align="left" valign="middle">1.76 m &#xD7; 1.5 m &#xD7; 1.647 m (width &#xD7; length &#xD7; height)</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle">Distance between tracks</td>
+              <td align="left" valign="middle">0.80&#x2013;2.20 m (adjustable)</td>
+            </tr>
+            <tr>
+              <td align="left" valign="middle" style="border-bottom:solid thin">Minimum distance for crops</td>
+              <td align="left" valign="middle" style="border-bottom:solid thin">1.48 m</td>
+            </tr>
+          </tbody>
+        </table>
+      </table-wrap>
+      <table-wrap id="agriculture-13-02181-t002" position="float">
+        <object-id pub-id-type="pii">agriculture-13-02181-t002_Table 2</object-id>
+        <label>Table 2</label>
+        <caption>
+          <p>Duration and distance data in the execution of the different operations and actions.</p>
+        </caption>
+        <table>
+          <thead>
+            <tr>
+              <th align="center" valign="middle" style="border-top:solid thin;border-bottom:solid thin">Operation</th>
+              <th align="center" valign="middle" style="border-top:solid thin;border-bottom:solid thin">Action</th>
+              <th align="center" valign="middle" style="border-top:solid thin;border-bottom:solid thin">Duration [s]</th>
+              <th align="center" valign="middle" style="border-top:solid thin;border-bottom:solid thin">Distance Traveled [m]</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td align="center" valign="middle" style="border-bottom:solid thin">
+                <monospace>Wakeup</monospace>
+              </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">None</td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">66.9</td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">8.8</td>
+            </tr>
+            <tr>
+              <td align="center" valign="middle">
+                <monospace>GoTo</monospace>
+              </td>
+              <td align="center" valign="middle">
+                <monospace>MoveTo</monospace>
+              </td>
+              <td align="center" valign="middle">309.5</td>
+              <td align="center" valign="middle">72.2</td>
+            </tr>
+            <tr>
+              <td align="center" valign="middle" style="border-bottom:solid thin"> </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">
+                <monospace>FollowPath</monospace>
+              </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">324.5</td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">126.4</td>
+            </tr>
+            <tr>
+              <td align="center" valign="middle">
+                <monospace>Treatment</monospace>
+              </td>
+              <td align="center" valign="middle">
+                <monospace>MoveTo</monospace>
+              </td>
+              <td align="center" valign="middle">638.1</td>
+              <td align="center" valign="middle">85.7</td>
+            </tr>
+            <tr>
+              <td align="center" valign="middle"> </td>
+              <td align="center" valign="middle">
+                <monospace>FollowPath</monospace>
+              </td>
+              <td align="center" valign="middle">74.1</td>
+              <td align="center" valign="middle">288.1</td>
+            </tr>
+            <tr>
+              <td align="center" valign="middle" style="border-bottom:solid thin"> </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">None</td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">146.8</td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">0</td>
+            </tr>
+            <tr>
+              <td align="center" valign="middle" style="border-bottom:solid thin"> </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">
+                <bold>Total</bold>
+              </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">
+                <bold>37.11 min</bold>
+              </td>
+              <td align="center" valign="middle" style="border-bottom:solid thin">
+                <bold>581.2</bold>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </table-wrap>
+    </sec>
+    <fn-group>
+      <fn>
+        <p><bold>Disclaimer/Publisher&#x2019;s Note:</bold> The statements, opinions and data contained in all publications are solely those of the individual author(s) and contributor(s) and not of MDPI and/or the editor(s). MDPI and/or the editor(s) disclaim responsibility for any injury to people or property resulting from any ideas, methods, instructions or products referred to in the content.</p>
+      </fn>
+    </fn-group>
+  </back>
+</article>

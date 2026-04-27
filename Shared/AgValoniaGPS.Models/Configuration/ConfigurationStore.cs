@@ -51,6 +51,7 @@ public class ConfigurationStore : ObservableObject
     public TramConfig Tram { get; } = new();
     public AutoSteerConfig AutoSteer { get; } = new();
     public HotkeyConfig Hotkeys { get; } = new();
+    public RoutePlanningConfig RoutePlanning { get; } = new();
 
     // Profile management
     private string _activeProfileName = "Default";

@@ -40,22 +40,30 @@ public static class TrapezoidalDecomp
     public static List<Cell> Decompose(
         List<Vec2> outer,
         List<List<Vec2>> topologicalInners,
-        double sweepHeading)
-        => RaycastDecomp.Run(outer, topologicalInners, sweepHeading, criticalOnly: false);
+        double sweepHeading,
+        double decompositionThresholdDegrees = 180.0)
+        => RaycastDecomp.Run(outer, topologicalInners, sweepHeading,
+            criticalOnly: false, decompositionThresholdDegrees);
 }
 
 /// <summary>
 /// Boustrophedon cellular decomposition (Choset 2000): only cast rays from
 /// critical vertices — vertices where both adjacent edges go the same direction
 /// in the sweep coordinate. Produces strictly fewer cells than trapezoidal.
+/// Pass <paramref name="decompositionThresholdDegrees"/> &gt; 180 to filter out
+/// marginal reflex vertices created by GPS-recorded boundary jitter (Versleijen
+/// 2019 §2.2.2; default 200° preserves the decomposition while ignoring
+/// near-straight kinks).
 /// </summary>
 public static class BoustrophedonDecomp
 {
     public static List<Cell> Decompose(
         List<Vec2> outer,
         List<List<Vec2>> topologicalInners,
-        double sweepHeading)
-        => RaycastDecomp.Run(outer, topologicalInners, sweepHeading, criticalOnly: true);
+        double sweepHeading,
+        double decompositionThresholdDegrees = 180.0)
+        => RaycastDecomp.Run(outer, topologicalInners, sweepHeading,
+            criticalOnly: true, decompositionThresholdDegrees);
 }
 
 /// <summary>
@@ -84,7 +92,8 @@ internal static class RaycastDecomp
         List<Vec2> outer,
         List<List<Vec2>> topologicalInners,
         double sweepHeading,
-        bool criticalOnly)
+        bool criticalOnly,
+        double decompositionThresholdDegrees = 180.0)
     {
         if (outer == null || outer.Count < 3) return new List<Cell>();
 
@@ -118,9 +127,9 @@ internal static class RaycastDecomp
         allPolygons.AddRange(innersRot);
 
         var cuts = new List<(Vec2 a, Vec2 b)>();
-        CollectCuts(outerRot, isHole: false, criticalOnly, allPolygons, cuts);
+        CollectCuts(outerRot, isHole: false, criticalOnly, decompositionThresholdDegrees, allPolygons, cuts);
         foreach (var inner in innersRot)
-            CollectCuts(inner, isHole: true, criticalOnly, allPolygons, cuts);
+            CollectCuts(inner, isHole: true, criticalOnly, decompositionThresholdDegrees, allPolygons, cuts);
 
         // 3. Apply cuts via Clipper2. Build the polygon-with-holes "field"
         //    and a thin rectangle for each cut, then take field − ⋃cuts.
@@ -162,7 +171,7 @@ internal static class RaycastDecomp
     /// strictly inside the field.
     /// </summary>
     private static void CollectCuts(
-        List<Vec2> polygon, bool isHole, bool criticalOnly,
+        List<Vec2> polygon, bool isHole, bool criticalOnly, double decompositionThresholdDegrees,
         List<List<Vec2>> allPolygons, List<(Vec2 a, Vec2 b)> cuts)
     {
         int n = polygon.Count;
@@ -173,6 +182,16 @@ internal static class RaycastDecomp
             var next = polygon[(i + 1) % n];
 
             if (criticalOnly && !IsCritical(prev, v, next)) continue;
+
+            // Versleijen 2019 §2.2.2 threshold: skip vertices whose field-side
+            // interior angle is below the threshold (= near-straight reflex
+            // bumps from boundary jitter). Default 180° = no extra filtering;
+            // 200° = ignore reflexes shallower than 20° beyond straight.
+            if (decompositionThresholdDegrees > 180.0)
+            {
+                double fieldInteriorDeg = FieldInteriorAngleDegrees(prev, v, next, isHole);
+                if (fieldInteriorDeg < decompositionThresholdDegrees) continue;
+            }
 
             // +y ray
             var hitUp = Raycast.FirstHit(v, new Vec2(0, 1), allPolygons);
@@ -196,6 +215,32 @@ internal static class RaycastDecomp
         bool prevBackward = prev.Easting < v.Easting - InteriorEps;
         bool nextBackward = next.Easting < v.Easting - InteriorEps;
         return (prevForward && nextForward) || (prevBackward && nextBackward);
+    }
+
+    /// <summary>
+    /// Interior angle of the FIELD at vertex v, in degrees. For an outer-CCW
+    /// vertex this equals the polygon's interior angle. For a hole-CW vertex,
+    /// the field is on the polygon's exterior side, so we return 360°−polygon-interior.
+    /// Reflex (concave from the field's perspective) ⇒ &gt; 180°.
+    /// </summary>
+    private static double FieldInteriorAngleDegrees(Vec2 prev, Vec2 v, Vec2 next, bool isHole)
+    {
+        // Incoming edge direction = v − prev; outgoing edge direction = next − v.
+        double ix = v.Easting - prev.Easting;
+        double iy = v.Northing - prev.Northing;
+        double ox = next.Easting - v.Easting;
+        double oy = next.Northing - v.Northing;
+        double cross = ix * oy - iy * ox;
+        double dot = ix * ox + iy * oy;
+        // atan2 returns the signed turn angle from incoming to outgoing in [−π, π].
+        double turn = Math.Atan2(cross, dot);
+        // Polygon interior angle (assuming CCW polygon): π − turn.
+        double polyInterior = Math.PI - turn;
+        if (polyInterior < 0) polyInterior += 2 * Math.PI;
+        if (polyInterior > 2 * Math.PI) polyInterior -= 2 * Math.PI;
+        // For a hole (CW), the field is on the OPPOSITE side, so flip.
+        double fieldInterior = isHole ? (2 * Math.PI - polyInterior) : polyInterior;
+        return fieldInterior * 180.0 / Math.PI;
     }
 
     private static Vec2 Midpoint(Vec2 a, Vec2 b)

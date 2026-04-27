@@ -4830,6 +4830,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     Style = SKPaintStyle.Fill
                 };
 
+                bool startMarkerDrawn = false;
                 for (int si = 0; si < s.PlannedSwaths.Count; si++)
                 {
                     var swath = s.PlannedSwaths[si];
@@ -4862,12 +4863,22 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                         (float)swath.Points[^1].Easting, (float)swath.Points[^1].Northing,
                         1.2f, endpointPaint);
 
-                    // Green start marker on first swath
-                    if (si == 0)
+                    // Green start marker on the first INTERIOR swath (not on
+                    // a closed-loop coverage segment — the start of a closed
+                    // loop is an arbitrary projection point, useless as a
+                    // "drive here first" marker).
+                    if (!startMarkerDrawn)
                     {
-                        canvas.DrawCircle(
-                            (float)swath.Points[0].Easting, (float)swath.Points[0].Northing,
-                            2.0f, startPaint);
+                        float endDx = (float)(swath.Points[^1].Easting - swath.Points[0].Easting);
+                        float endDy = (float)(swath.Points[^1].Northing - swath.Points[0].Northing);
+                        bool isClosedLoop = endDx * endDx + endDy * endDy < 1.0f;
+                        if (!isClosedLoop)
+                        {
+                            canvas.DrawCircle(
+                                (float)swath.Points[0].Easting, (float)swath.Points[0].Northing,
+                                2.0f, startPaint);
+                            startMarkerDrawn = true;
+                        }
                     }
                 }
             }
@@ -4998,16 +5009,28 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     TextAlign = SKTextAlign.Center
                 };
 
+                int interiorLabelNum = 0;
                 for (int si = 0; si < s.PlannedSwaths.Count; si++)
                 {
                     var swath = s.PlannedSwaths[si];
                     if (swath.Points.Count < 2) continue;
 
-                    // Get travel direction from first to last point
-                    bool isReverse = si % 2 != 0;
-                    float dx = (float)(swath.Points[^1].Easting - swath.Points[0].Easting);
-                    float dy = (float)(swath.Points[^1].Northing - swath.Points[0].Northing);
-                    if (isReverse) { dx = -dx; dy = -dy; }
+                    // Closed-loop segments (headland coverage, where the path
+                    // ends back at its start) — no meaningful "midpoint" or
+                    // "drive direction" arrow. Skip the triangle+label and
+                    // don't advance the interior label counter.
+                    float endDx = (float)(swath.Points[^1].Easting - swath.Points[0].Easting);
+                    float endDy = (float)(swath.Points[^1].Northing - swath.Points[0].Northing);
+                    if (endDx * endDx + endDy * endDy < 1.0f) continue;
+
+                    interiorLabelNum++;
+
+                    // Drive direction: Points[0] → Points[^1] is always the
+                    // drive direction (EmitSwath stores boustrophedon-reversed
+                    // segments in drive order). Don't flip per parity — that
+                    // would un-do the correct direction.
+                    float dx = endDx;
+                    float dy = endDy;
                     float len = MathF.Sqrt(dx * dx + dy * dy);
                     if (len < 0.001f) continue;
                     dx /= len; dy /= len;
@@ -5041,7 +5064,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     float textY = cy - dy * size * 0.05f;
                     canvas.Save();
                     canvas.Scale(1, -1, textX, textY);
-                    canvas.DrawText((si + 1).ToString(), textX, textY + 1.2f, numPaint);
+                    canvas.DrawText(interiorLabelNum.ToString(), textX, textY + 1.2f, numPaint);
                     canvas.Restore();
                 }
             }

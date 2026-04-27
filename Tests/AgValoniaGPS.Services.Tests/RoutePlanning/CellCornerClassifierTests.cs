@@ -29,7 +29,7 @@ public class CellCornerClassifierTests
 
         Assert.That(cells.Count, Is.EqualTo(1));
         foreach (var k in cells[0].CornerKinds)
-            Assert.That(k, Is.EqualTo(CellCornerKind.Headland));
+            Assert.That(k, Is.EqualTo(CellCornerKind.OuterHeadland));
     }
 
     [Test]
@@ -49,7 +49,7 @@ public class CellCornerClassifierTests
         Assert.That(cells.Count, Is.EqualTo(2));
         foreach (var c in cells)
             foreach (var k in c.CornerKinds)
-                Assert.That(k, Is.EqualTo(CellCornerKind.Headland),
+                Assert.That(k, Is.EqualTo(CellCornerKind.OuterHeadland),
                     $"Cell {c.Id} should have all-headland corners");
     }
 
@@ -76,7 +76,7 @@ public class CellCornerClassifierTests
         int twoEach = 0;
         foreach (var c in cells)
         {
-            int h = c.CornerKinds.Count(k => k == CellCornerKind.Headland);
+            int h = c.CornerKinds.Count(k => k == CellCornerKind.OuterHeadland);
             int i = c.CornerKinds.Count(k => k == CellCornerKind.Internal);
             if (h == 4) allHeadland++;
             else if (h == 2 && i == 2) twoEach++;
@@ -103,7 +103,7 @@ public class CellCornerClassifierTests
 
         foreach (var c in cells)
             foreach (var k in c.CornerKinds)
-                Assert.That(k, Is.EqualTo(CellCornerKind.Headland));
+                Assert.That(k, Is.EqualTo(CellCornerKind.OuterHeadland));
     }
 
     [Test]
@@ -114,5 +114,39 @@ public class CellCornerClassifierTests
             new List<Cell>(), Rect(0, 1, 0, 1), SweepNorth));
         Assert.DoesNotThrow(() => CellCornerClassifier.ClassifyAll(
             new List<Cell> { new() }, Rect(0, 1, 0, 1), SweepNorth));
+    }
+
+    [Test]
+    public void RectangleWithExpandedHole_HoleSideCornersAreInnerHeadland()
+    {
+        // Same geometry as RectangleWithTopologicalHole_SideStripsHaveTwoInternalCorners,
+        // but now the hole is decomposed against AND classified against. The
+        // hole-side cell corners now sit on the hole's expanded ring (which
+        // happens to be the same ring since we don't expand it in this test),
+        // so they get tagged InnerHeadland instead of Internal.
+        var outer = Rect(0, 10, 0, 10);
+        var hole = Rect(3, 5, 4, 6);
+        var holes = new List<List<Vec2>> { hole };
+
+        var cells = BoustrophedonDecomp.Decompose(outer, holes, SweepNorth);
+        CellCornerClassifier.ClassifyAll(cells, outer, holes, SweepNorth);
+
+        Assert.That(cells.Count, Is.EqualTo(4));
+
+        int allOuter = 0;
+        int twoOuterTwoInner = 0;
+        foreach (var c in cells)
+        {
+            int o = c.CornerKinds.Count(k => k == CellCornerKind.OuterHeadland);
+            int i = c.CornerKinds.Count(k => k == CellCornerKind.InnerHeadland);
+            int n = c.CornerKinds.Count(k => k == CellCornerKind.Internal);
+            if (o == 4) allOuter++;
+            else if (o == 2 && i == 2 && n == 0) twoOuterTwoInner++;
+        }
+
+        Assert.That(allOuter, Is.EqualTo(2),
+            "bottom and top cells span outer top-to-bottom — all-OuterHeadland");
+        Assert.That(twoOuterTwoInner, Is.EqualTo(2),
+            "left and right side strips — two OuterHeadland + two InnerHeadland");
     }
 }

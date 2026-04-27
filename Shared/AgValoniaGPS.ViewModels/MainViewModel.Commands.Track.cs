@@ -1456,31 +1456,60 @@ public partial class MainViewModel
         // Convert BoundaryPolygons → Vec2 lists for the new services.
         var outerVec2 = clipBoundary.Points
             .Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
-        var innersVec2 = rawInnerBoundaries
-            .Select(b => b.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList())
-            .ToList();
-        var cells = Services.RoutePlanning.BoustrophedonDecomp.Decompose(
-            outerVec2, innersVec2, sweepHeading);
-        // Classify against the SAME boundary the cells were decomposed against
-        // (the headland-clipped boundary). Cell vertices on this ring connect
-        // to the headland just outside it = HEADLAND-reachable; vertices on a
-        // cut from a topological inner are INTERNAL. Using the un-clipped
-        // outer here would mark every corner INTERNAL (cell vertices sit on
-        // the headland inner edge, not the outer field edge), which kills the
-        // stitcher's "has any headland corner" check.
-        Services.RoutePlanning.CellCornerClassifier.ClassifyAll(
-            cells, outerVec2, sweepHeading);
 
-        // Per-cell swaths via the rotation-and-clip generator (handles inner
-        // rings → split sibling segments natively).
+        // Expand inner rings (ponds/obstacles) outward by an inner-buffer
+        // distance so cells stop a buffer-width away from the actual obstacle.
+        // The buffer must be wide enough to fit a U-turn arc — radius
+        // = opWidth/2 plus the vehicle's minimum turning constraint. Take
+        // max(HeadlandDistance, UTurnRadius + opWidth/2) so the user's outer
+        // headland setting controls the OUTER zone but the INNER buffer is
+        // always vehicle-sized: U-turn arcs at the buffer-side track ends
+        // can't extend into the actual obstacle.
+        double opWidthForBuffer = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
+        if (opWidthForBuffer <= 0) opWidthForBuffer = 1.0;
+        double minInnerBufferForUTurns = ConfigStore.Guidance.UTurnRadius + opWidthForBuffer * 0.5;
+        double innerBufferDist = Math.Max(State.Field.HeadlandDistance, minInnerBufferForUTurns);
+        var innerOffsetService = new Services.Geometry.PolygonOffsetService();
+        var innersVec2 = new List<List<Models.Base.Vec2>>(rawInnerBoundaries.Count);
+        foreach (var b in rawInnerBoundaries)
+        {
+            var raw = b.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
+            if (innerBufferDist > 0)
+            {
+                var expanded = innerOffsetService.CreateOutwardOffset(raw, innerBufferDist);
+                if (expanded != null && expanded.Count >= 3) { innersVec2.Add(expanded); continue; }
+            }
+            innersVec2.Add(raw);
+        }
+        var cells = Services.RoutePlanning.BoustrophedonDecomp.Decompose(
+            outerVec2, innersVec2, sweepHeading,
+            ConfigStore.RoutePlanning.DecompositionThresholdDegrees);
+
+        // Block-clustering pipeline (Hameed 2013 / Höffmann 2024 review §5.7):
+        // generate field-wide parallel tracks, clip them at outer + inner
+        // rings into segments, group segments into blocks. Each block is a
+        // contiguous obstacle-free region driven as a single boustrophedon.
+        // Sidesteps cellular decomposition entirely — no "cell with hole"
+        // problem, no sub-decomposition needed.
         double opWidth = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
         if (opWidth <= 0) opWidth = 1.0;
-        var swathGen = new Services.RoutePlanning.RotationalSwathGenerator();
-        var cellSwaths = new Dictionary<int, List<Models.RoutePlanning.GeneratedSwath>>();
-        foreach (var cell in cells)
-            cellSwaths[cell.Id] = swathGen.Generate(cell, swathHeading, opWidth);
+        var blocks = Services.RoutePlanning.BlockClusterer.Cluster(
+            outerVec2, innersVec2, swathHeading, opWidth);
 
-        // Stitch with greedy cell ordering + Reeds-Shepp turns/transits.
+        // Generate the headland-track network — concentric loops around the
+        // outer boundary AND each inner ring. Inter-block transits ride on
+        // these loops so they follow the field/obstacle perimeter rather than
+        // cutting through the field. Number of passes = outer headland
+        // multiplier (so inner and outer have the same width).
+        int headlandPasses = Math.Max(1, HeadlandToolWidthMultiplier);
+        var rawOuterVec2 = (boundary.OuterBoundary?.Points ?? new())
+            .Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
+        var rawInnersVec2 = rawInnerBoundaries
+            .Select(b => b.Points.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList())
+            .ToList();
+        var headlandLoops = new Services.RoutePlanning.HeadlandTrackGenerator()
+            .Generate(rawOuterVec2, rawInnersVec2, opWidth, headlandPasses);
+
         Models.Base.Vec3 startPose = State.Vehicle.HasValidFix
             ? new Models.Base.Vec3(State.Vehicle.Easting, State.Vehicle.Northing, swathHeading)
             : new Models.Base.Vec3(
@@ -1489,7 +1518,7 @@ public partial class MainViewModel
                 swathHeading);
         var stitcher = new Services.RoutePlanning.CellAwareRouteStitcher(
             ConfigStore.Guidance.UTurnRadius);
-        var routePlan = stitcher.Stitch(cells, cellSwaths, startPose);
+        var routePlan = stitcher.StitchBlocks(blocks, startPose, headlandLoops, innersVec2);
 
         // Display conversion: turn each Swath RouteSegment into a Track for
         // the map renderer, and bundle Turn/Transit segments separately.

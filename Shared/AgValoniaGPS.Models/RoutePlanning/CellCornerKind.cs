@@ -6,21 +6,38 @@
 namespace AgValoniaGPS.Models.RoutePlanning;
 
 /// <summary>
-/// Whether a cell corner sits on the original outer field boundary
-/// (HEADLAND — the vehicle can enter/exit there because the headland is
-/// just outside) or was created by a decomposition cut (INTERNAL — using
-/// it as an entry/exit means crossing the field, not the headland).
+/// Whether a cell corner sits on a headland (vehicle can enter/exit there
+/// because there is a no-work buffer just outside the cell), or was created
+/// by an interior decomposition cut. Two flavors of headland — outer field
+/// boundary and inner-ring (obstacle) boundary — are tracked separately so
+/// downstream consumers can prefer one over the other when picking entries.
+/// Both are valid for U-turn endpoints and cell entry/exit.
 /// </summary>
 public enum CellCornerKind
 {
     /// <summary>Default — corner has not been classified yet.</summary>
     Unknown,
 
-    /// <summary>Corner lies on the original outer boundary; valid entry/exit.</summary>
-    Headland,
+    /// <summary>Corner lies on the outer field boundary; valid entry/exit.</summary>
+    OuterHeadland,
 
-    /// <summary>Corner lies on a decomposition cut, in the field interior.</summary>
+    /// <summary>Corner lies on an expanded inner-ring (obstacle) boundary; valid entry/exit.</summary>
+    InnerHeadland,
+
+    /// <summary>Corner lies on a decomposition cut, in the field interior — no headland here, no entry/exit.</summary>
     Internal,
+}
+
+/// <summary>
+/// Helpers for <see cref="CellCornerKind"/>.
+/// </summary>
+public static class CellCornerKindExtensions
+{
+    /// <summary>True when the corner sits on EITHER an outer-field-boundary
+    /// headland or an inner-ring headland — i.e. the vehicle can U-turn here
+    /// because a no-work buffer exists on the other side.</summary>
+    public static bool IsHeadland(this CellCornerKind k)
+        => k == CellCornerKind.OuterHeadland || k == CellCornerKind.InnerHeadland;
 }
 
 /// <summary>
