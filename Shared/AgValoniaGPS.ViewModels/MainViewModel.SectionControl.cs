@@ -329,15 +329,34 @@ public partial class MainViewModel
 
     #region Section Event Handlers
 
+    // Tracks whether any section was on at the last event, so we can detect
+    // aggregate transitions (auto headland entry/exit, master-toggle on/off)
+    // and play one section sound for the transition.
+    private bool _lastAnyOn;
+
     private void OnSectionStateChanged(object? sender, SectionStateChangedEventArgs e)
     {
-        // Play section sound on state change
+        // Play section sound:
+        //   - Per-section event (SectionIndex >= 0): sound matches that
+        //     section's new state. Manual toolbar toggles fall here.
+        //   - Aggregate event (SectionIndex == -1): play one sound only when
+        //     "any section on" actually transitions, so master toggles and
+        //     auto headland transitions get a single sound, not none and not
+        //     a 16x burst.
+        bool currentAnyOn = _sectionControlService.IsAnySectionOn;
         if (e.SectionIndex >= 0)
         {
             _audioService.Play(e.IsOn
                 ? Services.Interfaces.SoundEffect.SectionOn
                 : Services.Interfaces.SoundEffect.SectionOff);
         }
+        else if (currentAnyOn != _lastAnyOn)
+        {
+            _audioService.Play(currentAnyOn
+                ? Services.Interfaces.SoundEffect.SectionOn
+                : Services.Interfaces.SoundEffect.SectionOff);
+        }
+        _lastAnyOn = currentAnyOn;
 
         // Marshal to UI thread
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
