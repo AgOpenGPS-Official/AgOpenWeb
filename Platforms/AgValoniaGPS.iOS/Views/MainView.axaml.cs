@@ -297,36 +297,15 @@ public partial class MainView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        // Update vehicle position when Easting, Northing, or Heading changes
+        // Vehicle/tool/hitch positions are pushed atomically via
+        // _mapService.SetAllPositions(...) at the end of ApplyGpsCycleResult,
+        // so we must NOT also push them per-property here. Doing both caused
+        // visible tool/hitch oscillation: SetVehiclePosition moves the camera
+        // and triggers a render with stale tool state, then SetAllPositions
+        // snaps the tool forward — once per GPS tick.
         if (_mapControl != null && _viewModel != null)
         {
-            if (e.PropertyName == nameof(MainViewModel.Easting) ||
-                e.PropertyName == nameof(MainViewModel.Northing) ||
-                e.PropertyName == nameof(MainViewModel.Heading))
-            {
-                // Convert heading from degrees to radians (ViewModel stores degrees, map expects radians)
-                double headingRadians = _viewModel.Heading * Math.PI / 180.0;
-                _mapControl.SetVehiclePosition(_viewModel.Easting, _viewModel.Northing, headingRadians);
-            }
-            else if (e.PropertyName == nameof(MainViewModel.ToolEasting) ||
-                     e.PropertyName == nameof(MainViewModel.ToolNorthing))
-            {
-                // Tool position updated - update map control
-                _mapControl.SetToolPosition(
-                    _viewModel.ToolEasting,
-                    _viewModel.ToolNorthing,
-                    _viewModel.ToolHeadingRadians,
-                    _viewModel.ToolWidth,
-                    _viewModel.HitchEasting,
-                    _viewModel.HitchNorthing);
-                // Also update section states for rendering
-                _mapControl.SetSectionStates(
-                    _viewModel.GetSectionStates(),
-                    _viewModel.GetSectionWidths(),
-                    _viewModel.NumSections,
-                    _viewModel.GetSectionButtonStates());
-            }
-            else if (e.PropertyName?.StartsWith("Section") == true &&
+            if (e.PropertyName?.StartsWith("Section") == true &&
                      (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
             {
                 // Section state or color code changed - update map control
