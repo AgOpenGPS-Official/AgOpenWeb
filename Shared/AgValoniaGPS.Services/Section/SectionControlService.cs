@@ -473,6 +473,16 @@ public class SectionControlService : ISectionControlService
             // Section is off and should stay off
             section.SectionOnTimer = 0;
             section.SectionOffTimer = 0;
+
+            // Keep ticking the StopMapping debounce while mapping is still
+            // active — same reasoning as UpdateSectionOff. The shouldBeOff
+            // branch above only calls StopMapping the cycle IsOn flips;
+            // without this, IsMappingOn stays true forever once the state
+            // settles into "off, stay off".
+            if (section.IsMappingOn)
+            {
+                StopMapping(index);
+            }
         }
     }
 
