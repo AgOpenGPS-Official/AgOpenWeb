@@ -16,6 +16,7 @@
 
 using System;
 
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -329,34 +330,60 @@ public partial class MainViewModel
 
     #region Section Event Handlers
 
-    // Tracks whether any section was on at the last event, so we can detect
-    // aggregate transitions (auto headland entry/exit, master-toggle on/off)
-    // and play one section sound for the transition.
+    // Tracks aggregate state at the last event so we can detect transitions.
+    // We track two notions:
+    //   - AnyOn:     any section's IsOn flag is true (driven by manual ON
+    //                or by the cycle when an auto section enters work area).
+    //   - AnyActive: any section is in a non-Off button state (Auto/On).
+    //                Captures the user's master-toggle-to-Auto intent even
+    //                though IsOn doesn't flip synchronously on that click.
+    // Playing on either transition (IsOn first, AnyActive as fallback) gives
+    // exactly one sound per master toggle, manual toggle, or auto headland
+    // transition.
     private bool _lastAnyOn;
+    private bool _lastAnyActive;
 
     private void OnSectionStateChanged(object? sender, SectionStateChangedEventArgs e)
     {
-        // Play section sound:
-        //   - Per-section event (SectionIndex >= 0): sound matches that
-        //     section's new state. Manual toolbar toggles fall here.
-        //   - Aggregate event (SectionIndex == -1): play one sound only when
-        //     "any section on" actually transitions, so master toggles and
-        //     auto headland transitions get a single sound, not none and not
-        //     a 16x burst.
         bool currentAnyOn = _sectionControlService.IsAnySectionOn;
+        bool currentAnyActive = false;
+        var states = _sectionControlService.SectionStates;
+        for (int i = 0; i < states.Count; i++)
+        {
+            if (states[i].ButtonState != SectionButtonState.Off)
+            {
+                currentAnyActive = true;
+                break;
+            }
+        }
+
         if (e.SectionIndex >= 0)
         {
+            // Per-section toolbar toggle — sound matches the section's new state.
             _audioService.Play(e.IsOn
                 ? Services.Interfaces.SoundEffect.SectionOn
                 : Services.Interfaces.SoundEffect.SectionOff);
         }
         else if (currentAnyOn != _lastAnyOn)
         {
+            // Aggregate IsOn transition — manual ON/OFF master toggle, or
+            // auto sections turning on/off as the tool enters/exits the
+            // work area.
             _audioService.Play(currentAnyOn
                 ? Services.Interfaces.SoundEffect.SectionOn
                 : Services.Interfaces.SoundEffect.SectionOff);
         }
+        else if (currentAnyActive != _lastAnyActive)
+        {
+            // Master Auto toggle from Off → Auto doesn't flip IsOn
+            // synchronously (the cycle decides), so the IsOn check above
+            // misses it. Catch it on the ButtonState-active transition.
+            _audioService.Play(currentAnyActive
+                ? Services.Interfaces.SoundEffect.SectionOn
+                : Services.Interfaces.SoundEffect.SectionOff);
+        }
         _lastAnyOn = currentAnyOn;
+        _lastAnyActive = currentAnyActive;
 
         // Marshal to UI thread
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
