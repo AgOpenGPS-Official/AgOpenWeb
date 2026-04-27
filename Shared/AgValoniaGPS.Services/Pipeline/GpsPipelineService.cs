@@ -684,30 +684,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _guidanceWorking.CrossTrackError = crossTrackError;
         _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
 
-        // ── (7) Section control ─────────────────────────────────────────
+        // ── (7) Section control + coverage painting ─────────────────────
+        // SectionControlService.Update internally walks each section,
+        // calls UpdateMapping → AddCoveragePoint with the proper expanded
+        // edges (coverage margin + curve-following yaw adjustment) and
+        // flushes at the end. We must NOT add a second AddCoveragePoint
+        // pass here — doing so emitted a parallel triangle strip with
+        // non-expanded edges, which interleaved with the proper strip
+        // and left visible seam gaps when coverage overlapped itself.
         _sectionControlService.Update(toolPos, toolHeading, headingRad, pos.Speed);
-
-        // ── (8) Coverage painting ───────────────────────────────────────
         var sectionStates = _sectionControlService.SectionStates;
         int numSections = _sectionControlService.NumSections;
-        bool anyCoverage = false;
-
-        for (int i = 0; i < numSections; i++)
-        {
-            var sec = sectionStates[i];
-            if (sec.IsMappingOn)
-            {
-                var (left, right) = _toolPositionService.GetSectionEdgePositions(
-                    sec.PositionLeft, sec.PositionRight);
-                _coverageMapService.AddCoveragePoint(i,
-                    new Vec2(left.Easting, left.Northing),
-                    new Vec2(right.Easting, right.Northing));
-                anyCoverage = true;
-            }
-        }
-
-        if (anyCoverage)
-            _coverageMapService.FlushCoverageUpdate();
 
         // ── (8b) Hydraulic lift state (PGN 239 input) ───────────────────
         // Phase B completion: this used to live on the UI-thread legacy
