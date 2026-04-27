@@ -477,7 +477,11 @@ public class SectionControlService : ISectionControlService
     }
 
     /// <summary>
-    /// Turn a section off
+    /// Turn a section off. IsOn flips immediately; mapping tear-down has its
+    /// own debounce (MAPPING_OFF_DELAY = 2 cycles) inside StopMapping, so we
+    /// must keep calling StopMapping every cycle while IsMappingOn is still
+    /// true — even after IsOn has already flipped — so the debounce timer
+    /// accumulates and the coverage paint actually stops.
     /// </summary>
     private void UpdateSectionOff(int index)
     {
@@ -485,6 +489,9 @@ public class SectionControlService : ISectionControlService
         if (section.IsOn)
         {
             section.IsOn = false;
+        }
+        if (section.IsMappingOn)
+        {
             StopMapping(index);
         }
         section.SectionOnTimer = 0;
