@@ -472,42 +472,13 @@ public partial class MainWindow : Window
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.Easting) ||
-            e.PropertyName == nameof(MainViewModel.Northing) ||
-            e.PropertyName == nameof(MainViewModel.Heading))
-        {
-            if (ViewModel != null && MapControl != null)
-            {
-                // Convert heading from degrees to radians
-                double headingRadians = ViewModel.Heading * Math.PI / 180.0;
-                MapControl.SetVehiclePosition(ViewModel.Easting, ViewModel.Northing, headingRadians);
-                // NOTE: Boundary point recording is now handled by MainViewModel
-            }
-        }
-        else if (e.PropertyName == nameof(MainViewModel.ToolEasting) ||
-                 e.PropertyName == nameof(MainViewModel.ToolNorthing) ||
-                 e.PropertyName == nameof(MainViewModel.ToolWidth))
-        {
-            // Tool position updated - update map control
-            if (ViewModel != null && MapControl != null)
-            {
-                MapControl.SetToolPosition(
-                    ViewModel.ToolEasting,
-                    ViewModel.ToolNorthing,
-                    ViewModel.ToolHeadingRadians,
-                    ViewModel.ToolWidth,
-                    ViewModel.HitchEasting,
-                    ViewModel.HitchNorthing,
-                    ViewModel.IsToolPositionReady);
-                // Also update section states for rendering
-                MapControl.SetSectionStates(
-                    ViewModel.GetSectionStates(),
-                    ViewModel.GetSectionWidths(),
-                    ViewModel.NumSections,
-                    ViewModel.GetSectionButtonStates());
-            }
-        }
-        else if (e.PropertyName?.StartsWith("Section") == true &&
+        // Vehicle/tool/hitch positions are pushed atomically via
+        // _mapService.SetAllPositions(...) at the end of ApplyGpsCycleResult,
+        // so we must NOT also push them per-property here. Doing both caused
+        // visible tool/hitch oscillation: SetVehiclePosition moves the camera
+        // and triggers a render with stale tool state, then SetAllPositions
+        // snaps the tool forward — once per GPS tick.
+        if (e.PropertyName?.StartsWith("Section") == true &&
                  (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
         {
             // Section state or color code changed - update map control
