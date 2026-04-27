@@ -71,6 +71,7 @@ artifacts/
 # Azure Functions
 local.settings.json
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 .fake
 .mcp.json
