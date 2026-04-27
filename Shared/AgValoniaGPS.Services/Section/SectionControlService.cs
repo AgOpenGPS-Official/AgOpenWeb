@@ -473,11 +473,25 @@ public class SectionControlService : ISectionControlService
             // Section is off and should stay off
             section.SectionOnTimer = 0;
             section.SectionOffTimer = 0;
+
+            // Keep ticking the StopMapping debounce while mapping is still
+            // active — same reasoning as UpdateSectionOff. The shouldBeOff
+            // branch above only calls StopMapping the cycle IsOn flips;
+            // without this, IsMappingOn stays true forever once the state
+            // settles into "off, stay off".
+            if (section.IsMappingOn)
+            {
+                StopMapping(index);
+            }
         }
     }
 
     /// <summary>
-    /// Turn a section off
+    /// Turn a section off. IsOn flips immediately; mapping tear-down has its
+    /// own debounce (MAPPING_OFF_DELAY = 2 cycles) inside StopMapping, so we
+    /// must keep calling StopMapping every cycle while IsMappingOn is still
+    /// true — even after IsOn has already flipped — so the debounce timer
+    /// accumulates and the coverage paint actually stops.
     /// </summary>
     private void UpdateSectionOff(int index)
     {
@@ -485,6 +499,9 @@ public class SectionControlService : ISectionControlService
         if (section.IsOn)
         {
             section.IsOn = false;
+        }
+        if (section.IsMappingOn)
+        {
             StopMapping(index);
         }
         section.SectionOnTimer = 0;
@@ -545,7 +562,13 @@ public class SectionControlService : ISectionControlService
     }
 
     /// <summary>
-    /// Update coverage mapping point
+    /// Update coverage mapping point. Paints unconditionally each cycle so
+    /// adjacent triangle pairs in the strip are guaranteed continuous —
+    /// any per-cycle skip leaves a visible hole because this is the sole
+    /// writer of coverage points. The legacy yaw-rate and min-distance
+    /// filters were removed for that reason; the resulting renderer-side
+    /// near-degenerate triangles in fast turns or near-stationary motion
+    /// are visually preferable to gaps.
     /// </summary>
     private void UpdateMapping(int index, Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
     {
@@ -555,47 +578,23 @@ public class SectionControlService : ISectionControlService
         {
             // Mapping hasn't started yet - continue the startup timer
             StartMapping(index, leftEdge, rightEdge, toolHeading);
+            return;
         }
-        else
-        {
-            // Skip this point if tool is yawing too fast - would create distorted triangle
-            // Use a high threshold to only catch extreme cases (spikes), not normal curves
-            const double MAX_YAW_FOR_POINT = 0.08; // ~4.5 degrees per update
-            if (Math.Abs(_instantYawRate) > MAX_YAW_FOR_POINT)
-            {
-                // Skip this point, but keep patch active - we'll record the next good point
-                return;
-            }
 
-            int zoneIndex = GetZoneIndex(index);
+        int zoneIndex = GetZoneIndex(index);
 
-            // Check minimum distance from last coverage point to reduce edge jaggedness
-            // This filters out GPS jitter while maintaining coverage accuracy
-            var currentCenter = new Vec2(
-                (leftEdge.Easting + rightEdge.Easting) / 2,
-                (leftEdge.Northing + rightEdge.Northing) / 2);
+        // Apply coverage margin (always — the curve-skip in ApplyCoverageMargin
+        // was the cause of the dotted seam pattern when coverage overlapped
+        // itself in turns).
+        var (expandedLeft, expandedRight) = ApplyCoverageMargin(leftEdge, rightEdge, toolHeading);
 
-            if (_lastCoveragePosition.TryGetValue(zoneIndex, out var lastPos))
-            {
-                double dx = currentCenter.Easting - lastPos.Easting;
-                double dy = currentCenter.Northing - lastPos.Northing;
-                double distSq = dx * dx + dy * dy;
+        _coverageMapService.AddCoveragePoint(zoneIndex, expandedLeft, expandedRight);
 
-                if (distSq < MIN_COVERAGE_POINT_DISTANCE_SQ)
-                {
-                    // Too close to last point - skip to reduce jagged edges
-                    return;
-                }
-            }
-
-            // Apply coverage margin with curve-following adjustment
-            var (expandedLeft, expandedRight) = ApplyCoverageMargin(leftEdge, rightEdge, toolHeading);
-
-            _coverageMapService.AddCoveragePoint(zoneIndex, expandedLeft, expandedRight);
-
-            // Update last position for this zone
-            _lastCoveragePosition[zoneIndex] = currentCenter;
-        }
+        // Update last position for this zone (kept for any downstream readers
+        // even though it's no longer used as a skip threshold).
+        _lastCoveragePosition[zoneIndex] = new Vec2(
+            (leftEdge.Easting + rightEdge.Easting) / 2,
+            (leftEdge.Northing + rightEdge.Northing) / 2);
     }
 
     /// <summary>
@@ -629,9 +628,11 @@ public class SectionControlService : ISectionControlService
     }
 
     /// <summary>
-    /// Apply coverage margin to expand section edges outward.
-    /// This creates slight overlap between passes to prevent gaps from GPS drift.
-    /// Only applies margin during straight driving to avoid spikes during turns.
+    /// Apply coverage margin to expand section edges outward. Always applies
+    /// — the legacy "skip during yaw / heading mismatch" gating was the cause
+    /// of the dotted seam pattern when coverage overlapped itself, because
+    /// the strip would alternate between expanded and raw widths cycle to
+    /// cycle. Consistent margin = consistent strip width = clean overlap.
     /// </summary>
     private (Vec2 left, Vec2 right) ApplyCoverageMargin(Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
     {
@@ -641,17 +642,8 @@ public class SectionControlService : ISectionControlService
         if (margin <= 0)
             return (leftEdge, rightEdge);
 
-        // Only apply margin when tool is aligned with vehicle and not yawing.
-        // Skip margin when:
-        // 1. Tool is catching up to vehicle (large heading difference) - common with trailed implements
-        // 2. Tool is actively yawing (high instantaneous yaw rate)
-        // The margin is only needed for straight parallel passes where gaps can occur.
-        const double MAX_HEADING_DIFF = 0.05; // ~3 degrees - tool vs vehicle alignment
-        const double MAX_YAW_FOR_MARGIN = 0.02; // ~1.1 degrees per update
-        if (Math.Abs(_toolVehicleHeadingDiff) > MAX_HEADING_DIFF || Math.Abs(_instantYawRate) > MAX_YAW_FOR_MARGIN)
-            return (leftEdge, rightEdge);
-
-        // For straight/gentle curves, use slight yaw adjustment for smoother alignment
+        // For smoother alignment on curves, bias the perpendicular by half
+        // the smoothed yaw rate.
         double curveAdjustedHeading = toolHeading + _yawRate * 0.5;
 
         // Perpendicular direction (rotated 90° from adjusted heading)
@@ -869,12 +861,16 @@ public class SectionControlService : ISectionControlService
 
         _sectionStates[sectionIndex].ButtonState = state;
 
-        // For immediate UI feedback, set IsOn directly for manual states
+        // For immediate UI feedback, sync IsOn / IsMappingOn for manual states.
+        // Off must route through UpdateSectionOff so coverage mapping is torn
+        // down (StopMapping clears IsMappingOn and notifies the coverage map
+        // service) — otherwise the next Update() tick sees IsOn already false
+        // and skips the StopMapping call, leaving coverage painting forever.
+        // Auto is left for Update() to determine based on boundaries/coverage.
         if (state == SectionButtonState.On)
             _sectionStates[sectionIndex].IsOn = true;
         else if (state == SectionButtonState.Off)
-            _sectionStates[sectionIndex].IsOn = false;
-        // Auto state will be determined by Update() based on boundaries
+            UpdateSectionOff(sectionIndex);
 
         SectionStateChanged?.Invoke(this, new SectionStateChangedEventArgs
         {
@@ -891,13 +887,13 @@ public class SectionControlService : ISectionControlService
         {
             _sectionStates[i].ButtonState = state;
 
-            // Mirror SetSectionState: sync IsOn for manual states so the UI
-            // reflects the change immediately. Auto is left for Update() to
-            // determine based on coverage/boundaries.
+            // Mirror SetSectionState: sync IsOn / IsMappingOn for manual
+            // states. Off must route through UpdateSectionOff so coverage
+            // mapping is torn down. See SetSectionState for the why.
             if (state == SectionButtonState.On)
                 _sectionStates[i].IsOn = true;
             else if (state == SectionButtonState.Off)
-                _sectionStates[i].IsOn = false;
+                UpdateSectionOff(i);
         }
 
         SectionStateChanged?.Invoke(this, new SectionStateChangedEventArgs

@@ -93,40 +93,4 @@ public interface IToolPositionService
     /// <param name="vehiclePivot">Vehicle pivot point position</param>
     /// <param name="vehicleHeading">Vehicle heading in radians</param>
     void ResetTrailingState(Vec3 vehiclePivot, double vehicleHeading);
-
-    /// <summary>
-    /// Event fired when tool position is updated
-    /// </summary>
-    event EventHandler<ToolPositionUpdatedEventArgs>? PositionUpdated;
-}
-
-/// <summary>
-/// Event arguments for tool position updates
-/// </summary>
-public class ToolPositionUpdatedEventArgs : EventArgs
-{
-    /// <summary>
-    /// Current tool center position
-    /// </summary>
-    public Vec3 ToolPosition { get; init; }
-
-    /// <summary>
-    /// Current tool heading in radians
-    /// </summary>
-    public double ToolHeading { get; init; }
-
-    /// <summary>
-    /// Current vehicle heading in radians (for detecting tool catch-up on trailed implements)
-    /// </summary>
-    public double VehicleHeading { get; init; }
-
-    /// <summary>
-    /// Tank trailer position (for TBT mode)
-    /// </summary>
-    public Vec3 TankPosition { get; init; }
-
-    /// <summary>
-    /// Whether tool is in TBT mode
-    /// </summary>
-    public bool IsTBT { get; init; }
 }

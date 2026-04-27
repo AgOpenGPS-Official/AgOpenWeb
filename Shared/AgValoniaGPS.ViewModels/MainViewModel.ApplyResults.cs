@@ -43,8 +43,24 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(SpeedKmh));
         RollDegrees = result.RollDegrees;
 
-        // GPS status — set FixQuality on VehicleState (FixQualityText is computed from it)
-        State.Vehicle.FixQuality = result.FixQuality;
+        // Sole writer to State.Vehicle — Phase B completion. Was previously
+        // also written from MainViewModel.HandleGpsUiUpdates on the
+        // _gpsService.GpsDataUpdated callback path (Rule 2 violation).
+        State.Vehicle.UpdateFromGps(
+            new AgValoniaGPS.Models.Position
+            {
+                Latitude = result.Latitude,
+                Longitude = result.Longitude,
+                Altitude = result.Altitude,
+                Easting = result.Easting,
+                Northing = result.Northing,
+                Heading = result.Heading,
+                Speed = result.Speed
+            },
+            result.FixQuality,
+            result.SatelliteCount,
+            result.Hdop,
+            result.DifferentialAge);
         FixQuality = GetFixQualityString(result.FixQuality);
 
         // Tool position — set ToolEasting LAST to trigger map update
@@ -192,6 +208,15 @@ public partial class MainViewModel
         if (result.SectionStates != null)
         {
             UpdateSectionPropertiesFromResult(result.SectionStates, result.SectionColorCodes);
+
+            // Skip-and-fill bookkeeping: any active section means the current
+            // path is being worked. Was previously inside the legacy
+            // UpdateCoveragePainting on the UI-thread tool-position path
+            // (Phase B completion).
+            if (SelectedTrack != null && result.SectionStates.Any(s => s))
+            {
+                SelectedTrack.MarkPathWorked(State.Guidance.HowManyPathsAway);
+            }
         }
 
         // Status message (only if set — don't overwrite existing)
