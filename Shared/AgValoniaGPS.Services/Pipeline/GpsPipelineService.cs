@@ -709,6 +709,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (anyCoverage)
             _coverageMapService.FlushCoverageUpdate();
 
+        // ── (8b) Hydraulic lift state (PGN 239 input) ───────────────────
+        // Phase B completion: this used to live on the UI-thread legacy
+        // path (MainViewModel.UpdateToolPositionProperties). Moved here so
+        // SetMachineState's three fields (section bits, U-turn state,
+        // hyd-lift state) are all written by the cycle, before the PGN
+        // build in (9) reads them.
+        byte hydLiftState = ComputeHydLiftState(toolPos, pos.Speed, headlandLine);
+        _autoSteerService.SetMachineState(
+            _sectionControlService.GetSectionBits(),
+            isInYouTurn,
+            hydLiftState);
+
         // ── (9) AutoSteer pipeline (PGN/latency) ────────────────────────
         _autoSteerService.ProcessSimulatedPosition(
             pos.Latitude, pos.Longitude, pos.Altitude,
@@ -758,12 +770,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // GPS position
             Latitude = pos.Latitude,
             Longitude = pos.Longitude,
+            Altitude = pos.Altitude,
             Easting = driftedEasting,
             Northing = driftedNorthing,
             Heading = pos.Heading,
             Speed = pos.Speed,
             RollDegrees = data.ImuRoll,
             SatelliteCount = data.SatellitesInUse,
+            Hdop = data.Hdop,
+            DifferentialAge = data.DifferentialAge,
             FixQuality = data.FixQuality,
             GpsValid = data.IsValid,
 
@@ -1226,6 +1241,36 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var output = _headlandDetector.DetectHeadland(input);
         distance = output.HeadlandDistance;
         warning = output.ShouldTriggerWarning;
+    }
+
+    /// <summary>
+    /// Compute PGN 239 hydraulic-lift state. Migrated from
+    /// MainViewModel.CalculateHydLiftState (Phase B completion). Reads
+    /// State.Field for the boundary/headland — read-only from cycle is
+    /// §0-clean.
+    ///
+    /// Returns: 0 = off, 1 = lower (in cultivated area), 2 = raise (in headland zone).
+    /// </summary>
+    private byte ComputeHydLiftState(Vec3 toolPosition, double speed, List<Vec3>? headlandLine)
+    {
+        var machine = ConfigurationStore.Instance.Machine;
+        if (!machine.HydraulicLiftEnabled) return 0;
+
+        // Don't operate at very low speed or in reverse
+        if (speed < 0.2 || speed < -0.1) return 0;
+
+        if (headlandLine == null || headlandLine.Count < 3) return 0;
+
+        var boundary = _appState.Field.CurrentBoundary;
+        if (boundary == null || !boundary.IsValid) return 0;
+
+        bool inBoundary = boundary.IsPointInside(toolPosition.Easting, toolPosition.Northing);
+        if (!inBoundary) return 0;
+
+        bool inCultivatedArea = Models.Base.GeometryMath.IsPointInPolygon(
+            headlandLine, new Vec2(toolPosition.Easting, toolPosition.Northing));
+
+        return inCultivatedArea ? (byte)1 : (byte)2;
     }
 
     private void CheckRtkQualityChange(int fixQuality)

@@ -18,12 +18,15 @@ public record GpsCycleResult
     // GPS position
     public double Latitude { get; init; }
     public double Longitude { get; init; }
+    public double Altitude { get; init; }
     public double Easting { get; init; }
     public double Northing { get; init; }
     public double Heading { get; init; }
     public double Speed { get; init; }
     public double RollDegrees { get; init; }
     public int SatelliteCount { get; init; }
+    public double Hdop { get; init; }
+    public double DifferentialAge { get; init; }
     public int FixQuality { get; init; }
     public bool GpsValid { get; init; }
 

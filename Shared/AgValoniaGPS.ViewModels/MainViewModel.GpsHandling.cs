@@ -138,13 +138,8 @@ public partial class MainViewModel
     /// </summary>
     private void HandleGpsUiUpdates(AgValoniaGPS.Models.GpsData data)
     {
-        // Update centralized vehicle state (for AXAML bindings that read directly from State.Vehicle)
-        State.Vehicle.UpdateFromGps(
-            data.CurrentPosition,
-            data.FixQuality,
-            data.SatellitesInUse,
-            data.Hdop,
-            data.DifferentialAge);
+        // State.Vehicle is now written exclusively by ApplyGpsCycleResult
+        // (Phase B completion — Rule 2: only one State writer per domain).
 
         // Compute local coordinates for recording operations
         double posEasting = data.CurrentPosition.Easting;

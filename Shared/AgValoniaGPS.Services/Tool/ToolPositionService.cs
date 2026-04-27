@@ -63,8 +63,6 @@ public class ToolPositionService : IToolPositionService
     /// </summary>
     public bool IsToolPositionReady => _startCounter >= STARTUP_FRAMES;
 
-    public event EventHandler<ToolPositionUpdatedEventArgs>? PositionUpdated;
-
     public void Update(Vec3 vehiclePivot, double vehicleHeading)
     {
         var tool = ConfigurationStore.Instance.Tool;
@@ -106,16 +104,6 @@ public class ToolPositionService : IToolPositionService
 
         // Apply lateral offset
         ApplyLateralOffset(tool.Offset);
-
-        // Fire event
-        PositionUpdated?.Invoke(this, new ToolPositionUpdatedEventArgs
-        {
-            ToolPosition = _toolPosition,
-            ToolHeading = _toolHeading,
-            VehicleHeading = vehicleHeading,
-            TankPosition = _tankPosition,
-            IsTBT = tool.IsToolTBT
-        });
     }
 
     /// <summary>
