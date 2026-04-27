@@ -869,12 +869,16 @@ public class SectionControlService : ISectionControlService
 
         _sectionStates[sectionIndex].ButtonState = state;
 
-        // For immediate UI feedback, set IsOn directly for manual states
+        // For immediate UI feedback, sync IsOn / IsMappingOn for manual states.
+        // Off must route through UpdateSectionOff so coverage mapping is torn
+        // down (StopMapping clears IsMappingOn and notifies the coverage map
+        // service) — otherwise the next Update() tick sees IsOn already false
+        // and skips the StopMapping call, leaving coverage painting forever.
+        // Auto is left for Update() to determine based on boundaries/coverage.
         if (state == SectionButtonState.On)
             _sectionStates[sectionIndex].IsOn = true;
         else if (state == SectionButtonState.Off)
-            _sectionStates[sectionIndex].IsOn = false;
-        // Auto state will be determined by Update() based on boundaries
+            UpdateSectionOff(sectionIndex);
 
         SectionStateChanged?.Invoke(this, new SectionStateChangedEventArgs
         {
@@ -891,13 +895,13 @@ public class SectionControlService : ISectionControlService
         {
             _sectionStates[i].ButtonState = state;
 
-            // Mirror SetSectionState: sync IsOn for manual states so the UI
-            // reflects the change immediately. Auto is left for Update() to
-            // determine based on coverage/boundaries.
+            // Mirror SetSectionState: sync IsOn / IsMappingOn for manual
+            // states. Off must route through UpdateSectionOff so coverage
+            // mapping is torn down. See SetSectionState for the why.
             if (state == SectionButtonState.On)
                 _sectionStates[i].IsOn = true;
             else if (state == SectionButtonState.Off)
-                _sectionStates[i].IsOn = false;
+                UpdateSectionOff(i);
         }
 
         SectionStateChanged?.Invoke(this, new SectionStateChangedEventArgs
