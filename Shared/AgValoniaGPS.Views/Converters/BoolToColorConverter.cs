@@ -332,17 +332,25 @@ public class StringToImageConverter : IValueConverter
 
 /// <summary>
 /// Converts section color code to background brush for section buttons.
-/// Color codes: 0=Red (Off), 1=Yellow (Manual On), 2=Green (Auto On), 3=Gray (Auto Off)
+/// Mirrors the renderer's 6-state palette in DrawingContextMapControl:
+///   0 = Off (red)
+///   1 = Manual ON (yellow)
+///   2 = Auto ON (green)
+///   3 = Turning OFF (cyan)
+///   4 = Turning ON (orange)
+///   5 = Auto OFF (gray)
 /// </summary>
 public class SectionColorCodeToBackgroundConverter : IValueConverter
 {
     public static readonly SectionColorCodeToBackgroundConverter Instance = new();
 
     // Match the exact colors used in DrawingContextMapControl
-    private static readonly IBrush RedBrush = new SolidColorBrush(Color.FromRgb(242, 51, 51));     // #F23333 - Off
-    private static readonly IBrush YellowBrush = new SolidColorBrush(Color.FromRgb(247, 247, 0)); // #F7F700 - Manual On
-    private static readonly IBrush GreenBrush = new SolidColorBrush(Color.FromRgb(0, 242, 0));    // #00F200 - Auto On
-    private static readonly IBrush GrayBrush = new SolidColorBrush(Color.FromRgb(100, 100, 100)); // #646464 - Auto Off
+    private static readonly IBrush RedBrush         = new SolidColorBrush(Color.FromRgb(242,  51,  51)); // #F23333 - Off
+    private static readonly IBrush YellowBrush      = new SolidColorBrush(Color.FromRgb(247, 247,   0)); // #F7F700 - Manual On
+    private static readonly IBrush GreenBrush       = new SolidColorBrush(Color.FromRgb(  0, 242,   0)); // #00F200 - Auto On
+    private static readonly IBrush CyanBrush        = new SolidColorBrush(Color.FromRgb(  0, 222, 222)); // #00DEDE - Turning Off
+    private static readonly IBrush OrangeBrush      = new SolidColorBrush(Color.FromRgb(255, 165,   0)); // #FFA500 - Turning On
+    private static readonly IBrush GrayBrush        = new SolidColorBrush(Color.FromRgb(150, 150, 150)); // #969696 - Auto Off
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
@@ -350,10 +358,12 @@ public class SectionColorCodeToBackgroundConverter : IValueConverter
         {
             return colorCode switch
             {
-                0 => RedBrush,    // Off
-                1 => YellowBrush, // Manual On
-                2 => GreenBrush,  // Auto On
-                3 => GrayBrush,   // Auto Off
+                0 => RedBrush,
+                1 => YellowBrush,
+                2 => GreenBrush,
+                3 => CyanBrush,
+                4 => OrangeBrush,
+                5 => GrayBrush,
                 _ => GrayBrush
             };
         }

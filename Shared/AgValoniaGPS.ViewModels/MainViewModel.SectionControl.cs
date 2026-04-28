@@ -290,7 +290,11 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Get section button states (Off=0, Auto=1, On=2) for 3-state rendering.
+    /// Get per-section color codes for renderer + control bar. Returns the
+    /// pipeline's 6-state palette: 0=Off, 1=Manual On, 2=Auto On,
+    /// 3=Turning Off, 4=Turning On, 5=Auto Off. Method name is historical;
+    /// the renderer's section-bar switch and the SectionColorCodeToBackground
+    /// converter both consume these codes.
     /// </summary>
     public int[] GetSectionButtonStates()
     {
@@ -298,7 +302,7 @@ public partial class MainViewModel
         var result = new int[16];
         for (int i = 0; i < Math.Min(states.Count, 16); i++)
         {
-            result[i] = (int)states[i].ButtonState; // Off=0, Auto=1, On=2
+            result[i] = GetSectionColorCode(states[i]);
         }
         return result;
     }
@@ -438,18 +442,35 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Calculate color code for a section state (matches map rendering logic).
+    /// Calculate color code for a section state. Mirrors
+    /// GpsPipelineService.GetSectionColorCode so the section control bar,
+    /// the map renderer, and the cycle-driven SectionColorCodes array all
+    /// agree on the same 6-state palette:
+    ///   0 = Off (red)
+    ///   1 = Manual ON (yellow)
+    ///   2 = Auto ON (green)
+    ///   3 = Turning OFF (cyan) — IsOn but off-request pending
+    ///   4 = Turning ON (orange) — !IsOn but on-request pending
+    ///   5 = Auto OFF (gray)
     /// </summary>
     private static int GetSectionColorCode(SectionControlState state)
     {
-        // 3-state model: Off=Red, Auto=Green, On=Yellow
-        return state.ButtonState switch
-        {
-            SectionButtonState.Off => 0,  // Red - manually off
-            SectionButtonState.On => 1,   // Yellow - manually on
-            SectionButtonState.Auto => 2, // Green - automatic mode
-            _ => 0
-        };
+        if (state.ButtonState == SectionButtonState.Off)
+            return 0;
+        if (state.ButtonState == SectionButtonState.On)
+            return 1;
+
+        // Auto mode transition states
+        if (state.IsOn && state.SectionOffRequest)
+            return 3;
+        if (!state.IsOn && state.SectionOnRequest)
+            return 4;
+
+        // Auto mode steady states
+        if (state.IsOn)
+            return 2;
+
+        return 5;
     }
 
     #endregion
