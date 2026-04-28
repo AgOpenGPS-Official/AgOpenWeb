@@ -309,10 +309,18 @@ public class DisplayConfig : ObservableObject
     // Coverage display resolution multiplier
     // 1.0 = Ultra, 1.5 = High, 2.5 = Medium, 4.0 = Low, 6.0 = Minimum
     // Applied to coverage bitmap cell size — detection always stays at 0.1m
-    private double _displayResolutionMultiplier = 1.0;
+    private double _displayResolutionMultiplier = GetDefaultResolutionMultiplier();
     public double DisplayResolutionMultiplier
     {
         get => _displayResolutionMultiplier;
         set => SetProperty(ref _displayResolutionMultiplier, Math.Clamp(value, 1.0, 6.0));
     }
+
+    // Default High (1.5) on mobile, Ultra (1.0) on desktop. iPad Pro 2nd gen
+    // measured ~40 FPS at High with AA on — well above the 24 FPS floor —
+    // and visual quality is close enough to Ultra that it's the right
+    // first-launch default for tablets. Users can dial up to Ultra in
+    // Display config when running on faster hardware.
+    private static double GetDefaultResolutionMultiplier() =>
+        OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 1.5 : 1.0;
 }
