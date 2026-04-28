@@ -155,6 +155,11 @@ public class MapService : IMapService
             toolX, toolY, toolHeading, toolWidth, hitchX, hitchY, toolReady);
     }
 
+    public void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates)
+    {
+        _mapControl?.SetSectionStates(sectionOn, sectionWidths, numSections, buttonStates);
+    }
+
     public void SetReversing(bool isReversing) { if (_mapControl != null) _mapControl.IsReversing = isReversing; }
     public void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive) { _mapControl?.SetGuidancePoints(goalEasting, goalNorthing, isActive); }
 

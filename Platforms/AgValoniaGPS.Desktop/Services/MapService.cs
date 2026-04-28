@@ -105,6 +105,9 @@ public class MapService : IMapService
         GetMapControl().SetAllPositions(vehicleX, vehicleY, vehicleHeading,
             toolX, toolY, toolHeading, toolWidth, hitchX, hitchY, toolReady);
 
+    public void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates) =>
+        GetMapControl().SetSectionStates(sectionOn, sectionWidths, numSections, buttonStates);
+
     public bool IsGridVisible
     {
         get => _mapControl?.IsGridVisible ?? false;
