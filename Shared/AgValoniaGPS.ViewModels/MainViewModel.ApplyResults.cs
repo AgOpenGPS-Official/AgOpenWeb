@@ -209,6 +209,20 @@ public partial class MainViewModel
         {
             UpdateSectionPropertiesFromResult(result.SectionStates, result.SectionColorCodes);
 
+            // Push section layout/state to the renderer every cycle. The
+            // platform views' per-property bridge only fires on
+            // SectionXActive/ColorCode change, which doesn't happen at app
+            // start when everything's at default — that left the tool drawn
+            // as one undivided rectangle until the first auto-on flip.
+            if (NumSections > 0)
+            {
+                _mapService.SetSectionStates(
+                    GetSectionStates(),
+                    GetSectionWidths(),
+                    NumSections,
+                    GetSectionButtonStates());
+            }
+
             // Skip-and-fill bookkeeping: any active section means the current
             // path is being worked. Was previously inside the legacy
             // UpdateCoveragePainting on the UI-thread tool-position path
