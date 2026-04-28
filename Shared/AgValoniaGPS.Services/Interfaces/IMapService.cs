@@ -66,6 +66,14 @@ public interface IMapService
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady);
 
+    /// <summary>
+    /// Push section layout (count + per-section width) and current states
+    /// (on/off + button color codes) to the map renderer. Pushed every cycle
+    /// from ApplyGpsCycleResult so the renderer always has fresh layout, not
+    /// just on per-property change events.
+    /// </summary>
+    void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates);
+
     // Grid
     bool IsGridVisible { get; set; }
 
