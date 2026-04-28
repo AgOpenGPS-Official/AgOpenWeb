@@ -292,9 +292,14 @@ public class SectionControlService : ISectionControlService
         }
 
         // Auto mode - check boundary/overlap conditions
-        // Calculate look-ahead distances
-        double lookAheadOnDist = speed * tool.LookAheadOnSetting;
-        double lookAheadOffDist = speed * tool.LookAheadOffSetting;
+        // Look-ahead distances match the TURNING_ON / TURNING_OFF phase duration
+        // (max(SECTION_ON_DELAY, LookAheadOn) for ON; max(1, LookAheadOff) for OFF).
+        // The phase delay exactly cancels the projection, so the physical IsOn flip
+        // lines up with the slit edge regardless of LookAhead settings.
+        double turnOnPhaseSec = Math.Max(SECTION_ON_DELAY * 0.1, tool.LookAheadOnSetting);
+        double turnOffPhaseSec = Math.Max(0.1, tool.LookAheadOffSetting);
+        double lookAheadOnDist = speed * turnOnPhaseSec;
+        double lookAheadOffDist = speed * turnOffPhaseSec;
 
         // Calculate section half-width for segment-based checks
         double halfWidth = (section.PositionRight - section.PositionLeft) / 2.0;
@@ -380,6 +385,7 @@ public class SectionControlService : ISectionControlService
         // Section is "covered" if coverage exceeds threshold
         // Use MinCoverage setting from config (0-100), default to 70% if not set
         double coverageThreshold = tool.MinCoverage > 0 ? tool.MinCoverage / 100.0 : DEFAULT_COVERAGE_THRESHOLD;
+        bool currentCovered = currentCoverage.CoveragePercent >= coverageThreshold;
         bool lookOnCovered = lookOnCoverage.CoveragePercent >= coverageThreshold;
         bool lookOffCovered = lookOffCoverage.CoveragePercent >= coverageThreshold;
 
@@ -420,8 +426,13 @@ public class SectionControlService : ISectionControlService
             }
         }
 
-        // Determine if section should be on
-        bool shouldBeOn = !lookOnCovered      // Not already covered at look-ahead point
+        // Determine if section should be on.
+        // The actuator-delay compensation built into lookOnDist means the valve receives
+        // the OPEN command exactly the actuator's open-time before reaching clear ground.
+        // The SECTION_ON_DELAY debounce inside the state machine protects against brief
+        // false positives — by the time it expires, the section has moved enough that
+        // a transient blip cannot reach IsOn=true unless lookOnCovered stays false.
+        bool shouldBeOn = !lookOnCovered      // Not already covered at look-ON point
                        && lookOnInBoundary    // Inside boundary at look-ahead
                        && !lookOnInHeadland;  // Not in headland
 
@@ -438,7 +449,13 @@ public class SectionControlService : ISectionControlService
             section.SectionOnTimer++;
             section.SectionOffTimer = 0;
 
-            if (section.SectionOnTimer > SECTION_ON_DELAY)
+            // TURNING_ON phase models the valve open time. Coverage is NOT
+            // applied during this phase (valve opening, no fluid yet). Phase
+            // duration = LookAheadOnSetting (configured actuator open time)
+            // with a SECTION_ON_DELAY minimum for software debounce.
+            int turnOnPhaseFrames = Math.Max(SECTION_ON_DELAY, (int)(tool.LookAheadOnSetting * 10));
+
+            if (section.SectionOnTimer > turnOnPhaseFrames)
             {
                 section.IsOn = true;
                 section.SectionOnRequest = false;
@@ -452,11 +469,18 @@ public class SectionControlService : ISectionControlService
             section.SectionOffTimer++;
             section.SectionOnTimer = 0;
 
-            // Use configured turn-off delay
-            int turnOffDelay = (int)(tool.TurnOffDelay * 10); // Convert seconds to cycles at 10Hz
-            if (turnOffDelay < 1) turnOffDelay = 1;
+            // TURNING_OFF phase models the valve close time. Section is still
+            // physically applying spray during this transition, so keep updating
+            // coverage. The phase duration matches LookAheadOffSetting (the
+            // user-configured actuator close time) so the projection's
+            // anticipation is exactly cancelled by the phase delay — physical
+            // spray stops at the intended position.
+            UpdateMapping(index, leftEdge, rightEdge, toolHeading);
 
-            if (section.SectionOffTimer > turnOffDelay)
+            int turnOffPhaseFrames = (int)(tool.LookAheadOffSetting * 10);
+            if (turnOffPhaseFrames < 1) turnOffPhaseFrames = 1;
+
+            if (section.SectionOffTimer > turnOffPhaseFrames)
             {
                 section.IsOn = false;
                 section.SectionOffRequest = false;
@@ -930,6 +954,15 @@ public class SectionControlService : ISectionControlService
     {
         SetAllSections(SectionButtonState.Auto);
         _masterState = SectionMasterState.Auto;
+    }
+
+    /// <summary>
+    /// Invalidate the coverage check cache, forcing a fresh query on the next Update.
+    /// Useful in tests where wall-clock time doesn't advance between frames.
+    /// </summary>
+    public void InvalidateCoverageCache()
+    {
+        _coverageCacheValid = false;
     }
 
     public void RecalculateSectionPositions()
