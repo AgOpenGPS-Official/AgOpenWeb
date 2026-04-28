@@ -425,5 +425,217 @@ namespace AgValoniaGPS.Models.Guidance
             // Leave some margin (80% of min radius) to avoid artifacts
             return (int)(minRadius * 0.8 / passWidth);
         }
+
+        // ──────────────────────────────────────────────────────────────────
+        // Track extension and reduction (ported from AgOpenGPS 6.8.2
+        // CTrackMethods, issue #229)
+        // ──────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Extends a track by adding straight-line points before the start
+        /// and after the end, projected along the existing endpoint headings.
+        /// Useful for AB lines that need to extend past their recorded
+        /// endpoints to reach field boundaries.
+        ///
+        /// The first point's heading drives the prepend direction (going
+        /// backwards), the last point's heading drives the append direction
+        /// (going forwards).
+        /// </summary>
+        /// <param name="points">Input track (must have at least one point with valid heading on the endpoints).</param>
+        /// <param name="ptsToAdd">Number of points to add at each end. Default 10.</param>
+        /// <param name="distBetweenPoints">Spacing in meters. Default 50.</param>
+        /// <returns>Extended track: ptsToAdd-1 prepended points + original + ptsToAdd-1 appended points.</returns>
+        public static List<Vec3> AddStartEndPoints(IReadOnlyList<Vec3> points, int ptsToAdd = 10, double distBetweenPoints = 50)
+        {
+            if (points == null || points.Count == 0)
+                return new List<Vec3>();
+
+            var result = new List<Vec3>(points.Count + 2 * Math.Max(0, ptsToAdd - 1));
+            AppendPrependPoints(result, points, ptsToAdd, distBetweenPoints, prepend: true, append: true);
+            return result;
+        }
+
+        /// <summary>
+        /// Extends a track only at the start. See <see cref="AddStartEndPoints"/>.
+        /// </summary>
+        public static List<Vec3> AddStartPoints(IReadOnlyList<Vec3> points, int ptsToAdd = 10, double distBetweenPoints = 50)
+        {
+            if (points == null || points.Count == 0)
+                return new List<Vec3>();
+
+            var result = new List<Vec3>(points.Count + Math.Max(0, ptsToAdd));
+            AppendPrependPoints(result, points, ptsToAdd, distBetweenPoints, prepend: true, append: false);
+            return result;
+        }
+
+        /// <summary>
+        /// Extends a track only at the end. See <see cref="AddStartEndPoints"/>.
+        /// </summary>
+        public static List<Vec3> AddEndPoints(IReadOnlyList<Vec3> points, int ptsToAdd = 10, double distBetweenPoints = 50)
+        {
+            if (points == null || points.Count == 0)
+                return new List<Vec3>();
+
+            var result = new List<Vec3>(points.Count + Math.Max(0, ptsToAdd));
+            AppendPrependPoints(result, points, ptsToAdd, distBetweenPoints, prepend: false, append: true);
+            return result;
+        }
+
+        // Shared helper. The 6.8.2 originals used different loop bounds for
+        // the two-sided vs one-sided variants (i < ptsToAdd vs i <= ptsToAdd).
+        // We preserve that distinction: AddStartEndPoints adds ptsToAdd-1
+        // points at each end (matching 6.8.2's `for (int i = 1; i < ptsToAdd; i++)`),
+        // while AddStartPoints / AddEndPoints add ptsToAdd points (matching
+        // `for (int i = 1; i <= ptsToAdd; i++)`).
+        private static void AppendPrependPoints(
+            List<Vec3> output,
+            IReadOnlyList<Vec3> points,
+            int ptsToAdd,
+            double distBetweenPoints,
+            bool prepend,
+            bool append)
+        {
+            // For two-sided extension, the original 6.8.2 code uses i < ptsToAdd
+            // (so adds ptsToAdd-1 points). Single-sided uses i <= ptsToAdd
+            // (adds ptsToAdd). Pick the bound to match.
+            int upperExclusive = (prepend && append) ? ptsToAdd : ptsToAdd + 1;
+
+            if (prepend)
+            {
+                var start = points[0];
+                double sin = Math.Sin(start.Heading);
+                double cos = Math.Cos(start.Heading);
+                for (int i = upperExclusive - 1; i >= 1; i--)
+                {
+                    output.Add(new Vec3(
+                        start.Easting - sin * i * distBetweenPoints,
+                        start.Northing - cos * i * distBetweenPoints,
+                        start.Heading));
+                }
+            }
+
+            output.AddRange(points);
+
+            if (append)
+            {
+                var end = points[points.Count - 1];
+                double sin = Math.Sin(end.Heading);
+                double cos = Math.Cos(end.Heading);
+                for (int i = 1; i < upperExclusive; i++)
+                {
+                    output.Add(new Vec3(
+                        end.Easting + sin * i * distBetweenPoints,
+                        end.Northing + cos * i * distBetweenPoints,
+                        end.Heading));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reduces a track's point count by skipping points that don't
+        /// contribute meaningful curvature change. Useful for compressing
+        /// recorded curve tracks (storage + render perf) without losing
+        /// shape. The first and last two points are always preserved.
+        ///
+        /// A point is kept when EITHER the accumulated heading delta since
+        /// the last kept point exceeds <paramref name="angleDelta"/> radians,
+        /// OR the squared distance from the last kept point exceeds
+        /// (spread² × 0.95).
+        /// </summary>
+        /// <param name="points">Input track. Each point must have a valid Heading.</param>
+        /// <param name="angleDelta">Max heading change in radians before a point is forced. Default 0.005 (~0.29°).</param>
+        /// <param name="spread">Max distance in meters before a point is forced. Default 2.</param>
+        public static List<Vec3> ReducePointsByAngle(IReadOnlyList<Vec3> points, double angleDelta = 0.005, double spread = 2)
+        {
+            if (points == null || points.Count < 6)
+                return points == null ? new List<Vec3>() : new List<Vec3>(points);
+
+            int count = points.Count;
+            int last = count - 1;
+
+            var result = new List<Vec3>(count);
+            double accumulatedDelta = 0;
+            double accumulatedDistSq = 0;
+            double maxDistSq = spread * spread * 0.95;
+            Vec3 lastKeptPos = points[0];
+
+            for (int i = 0; i < count; i++)
+            {
+                // Always keep the first two and last two points
+                if (i < 2 || i > last - 2)
+                {
+                    result.Add(points[i]);
+                    continue;
+                }
+
+                double headingDelta = points[i - 1].Heading - points[i].Heading;
+                if (headingDelta > Math.PI) headingDelta -= GeometryMath.twoPI;
+                else if (headingDelta < -Math.PI) headingDelta += GeometryMath.twoPI;
+
+                accumulatedDelta += headingDelta;
+                accumulatedDistSq += GeometryMath.DistanceSquared(lastKeptPos, points[i]);
+                lastKeptPos = points[i];
+
+                if (Math.Abs(accumulatedDelta) > angleDelta || accumulatedDistSq >= maxDistSq)
+                {
+                    result.Add(points[i]);
+                    accumulatedDelta = 0;
+                    accumulatedDistSq = 0;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Smooths a track using Chaikin's corner-cutting algorithm. Each
+        /// iteration replaces every interior segment endpoint pair with two
+        /// new points at 25% and 75% along the segment, rounding sharp
+        /// corners. Use small iteration counts (1–3) — each iteration
+        /// roughly doubles the point count.
+        ///
+        /// Alternative to <see cref="SmoothWithCatmullRom"/>: Chaikin produces
+        /// a tighter, more "rounded" curve and is cheaper but less faithful
+        /// to the original control points.
+        /// </summary>
+        /// <param name="points">Input polyline.</param>
+        /// <param name="iterations">Number of corner-cutting passes (1–3 typical).</param>
+        /// <param name="preserveEndPoints">If true, the first and last points are kept exactly (open curve). If false, all points are rounded (closed loop).</param>
+        public static List<Vec3> ChaikinsSmooth(IReadOnlyList<Vec3> points, int iterations, bool preserveEndPoints = true)
+        {
+            if (points == null || points.Count < 2 || iterations <= 0)
+                return points == null ? new List<Vec3>() : new List<Vec3>(points);
+
+            var current = new List<Vec3>(points);
+            for (int iter = 0; iter < iterations; iter++)
+            {
+                var next = new List<Vec3>(current.Count * 2);
+
+                if (preserveEndPoints && current.Count > 0)
+                    next.Add(current[0]);
+
+                for (int i = 0; i < current.Count - 1; i++)
+                {
+                    var p0 = current[i];
+                    var p1 = current[i + 1];
+
+                    next.Add(new Vec3(
+                        0.75 * p0.Easting + 0.25 * p1.Easting,
+                        0.75 * p0.Northing + 0.25 * p1.Northing,
+                        0));
+                    next.Add(new Vec3(
+                        0.25 * p0.Easting + 0.75 * p1.Easting,
+                        0.25 * p0.Northing + 0.75 * p1.Northing,
+                        0));
+                }
+
+                if (preserveEndPoints && current.Count > 1)
+                    next.Add(current[current.Count - 1]);
+
+                current = next;
+            }
+
+            return current;
+        }
     }
 }
