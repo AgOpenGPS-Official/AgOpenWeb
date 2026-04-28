@@ -117,14 +117,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                        Width="60" Height="60" Stretch="Uniform"/>
                             </Button>
                             <TextBlock Text="Auto Day/Night" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
-                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center"
-                                        IsVisible="{Binding !Display.AutoDayNight}">
-                                <TextBlock Text="Day" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="9" VerticalAlignment="Center"/>
-                                <NumericUpDown Value="{Binding Display.DayStartHour}" Minimum="0" Maximum="23"
-                                               Width="55" FontSize="10" Height="24" FormatString="0"/>
-                                <TextBlock Text="Night" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="9" VerticalAlignment="Center"/>
-                                <NumericUpDown Value="{Binding Display.NightStartHour}" Minimum="0" Maximum="23"
-                                               Width="55" FontSize="10" Height="24" FormatString="0"/>
+                            <!-- Day/Night start-hour spinners are the GPS-unavailable
+                                 fallback used by InitializeAutoDayNight; they're only
+                                 read when AutoDayNight is ON. Visibility now matches
+                                 that — show when on, hide when off. -->
+                            <StackPanel Spacing="4" HorizontalAlignment="Center"
+                                        IsVisible="{Binding Display.AutoDayNight}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <TextBlock Text="Day" Width="40" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding Display.DayStartHour}" Minimum="0" Maximum="23" Increment="1" Width="100"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                    <TextBlock Text="Night" Width="40" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" VerticalAlignment="Center"/>
+                                    <NumericUpDown Value="{Binding Display.NightStartHour}" Minimum="0" Maximum="23" Increment="1" Width="100"/>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
 
