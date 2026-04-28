@@ -362,7 +362,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private double _cameraDistance = 100.0;
     private bool _is3DMode = false;
     private bool _isNorthUp = false;
-    private bool _isDayMode = true;
+    private bool _isDayMode = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.IsDayMode;
 
     // Camera follow mode: 0=NorthUp, 1=HeadingUp, 2=Free
     private int _cameraFollowMode = 0;
@@ -603,7 +603,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             using var nightStream = AssetLoader.Open(nightUri);
             _groundTextureNight = new Bitmap(nightStream);
 
-            _groundTexture = _groundTextureDay;
+            // Pick the texture matching the persisted day/night mode rather
+            // than always defaulting to day — the field initializer for
+            // _isDayMode now reads ConfigurationStore.Display.IsDayMode.
+            _groundTexture = _isDayMode ? _groundTextureDay : _groundTextureNight;
             Debug.WriteLine("[DrawingContextMapControl] Loaded ground textures (day + night)");
         }
         catch (Exception ex)
