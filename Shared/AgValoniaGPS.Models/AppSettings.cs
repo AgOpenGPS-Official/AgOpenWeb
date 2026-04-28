@@ -67,6 +67,12 @@ namespace AgValoniaGPS.Models
         public double DisplayResolutionMultiplier { get; set; } =
             OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 1.5 : 1.0;
 
+        // Auto day/night switching by clock time, and the current day/night
+        // mode. Both default to match DisplayConfig field initializers so a
+        // fresh AppSettings reproduces the in-memory defaults.
+        public bool AutoDayNight { get; set; } = true;
+        public bool IsDayMode { get; set; } = true;
+
         // NTRIP settings
         public string NtripCasterIp { get; set; } = string.Empty;
         public int NtripCasterPort { get; set; } = 2101;
