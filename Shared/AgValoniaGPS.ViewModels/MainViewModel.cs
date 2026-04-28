@@ -147,7 +147,6 @@ public partial class MainViewModel : ObservableObject
     private bool _isMachineDataOk;
     private bool _isImuDataOk;
     private bool _isGpsDataOk;
-    private string _debugLog = "";
 
     // Tool position (for rendering)
     private double _toolEasting;
@@ -254,7 +253,6 @@ public partial class MainViewModel : ObservableObject
 
         // Subscribe to events
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
-        _udpService.DataReceived += OnUdpDataReceived;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
@@ -723,12 +721,6 @@ public partial class MainViewModel : ObservableObject
 
     // NTRIP properties are in MainViewModel.Ntrip.cs
 
-    public string DebugLog
-    {
-        get => _debugLog;
-        set => SetProperty(ref _debugLog, value);
-    }
-
     // Tool position properties (for map rendering)
     public double ToolEasting
     {
@@ -808,39 +800,6 @@ public partial class MainViewModel : ObservableObject
             // TODO: When separate Auto/Manual section buttons are implemented, handle them individually
             ToggleSectionMasterCommand?.Execute(null);
         });
-    }
-
-    private void OnUdpDataReceived(object? sender, UdpDataReceivedEventArgs e)
-    {
-        var now = DateTime.Now;
-        var packetAge = (now - e.Timestamp).TotalMilliseconds;
-
-        // Handle different message types.
-        // Phase B C3: NMEA packets (PGN == 0) are now handled by the zero-copy
-        // AutoSteerService.ProcessGpsBuffer path in UdpCommunicationService. The MVM
-        // handler only touches non-NMEA PGNs.
-        if (e.PGN != 0)
-        {
-            // Binary PGN message - log it with age to detect buffering
-            DebugLog = $"PGN: {e.PGN} (0x{e.PGN:X2}) @ {e.Timestamp:HH:mm:ss.fff} (age: {packetAge:F0}ms)";
-
-            switch (e.PGN)
-            {
-                case PgnNumbers.HELLO_FROM_AUTOSTEER:
-                    // AutoSteer module is alive
-                    break;
-
-                case PgnNumbers.HELLO_FROM_MACHINE:
-                    // Machine module is alive
-                    break;
-
-                case PgnNumbers.HELLO_FROM_IMU:
-                    // IMU module is alive
-                    break;
-
-                // TODO: Add more PGN handlers as needed
-            }
-        }
     }
 
     private void OnModuleConnectionChanged(object? sender, ModuleConnectionEventArgs e)
