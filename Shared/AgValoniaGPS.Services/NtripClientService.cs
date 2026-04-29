@@ -52,6 +52,12 @@ public class NtripClientService : INtripClientService, IDisposable
     private readonly Queue<byte> _rtcmQueue = new Queue<byte>();
     private readonly object _queueLock = new object();
     private const int RTCM_PACKET_SIZE = 256; // Match AgIO default
+
+    // Cap header accumulation to prevent memory-exhaustion DoS from a
+    // malicious caster — or a MITM on the path — streaming bytes without
+    // the \r\n\r\n terminator. Real caster headers are well under 1 KB;
+    // 8 KiB is generous. See issue #286 / threat model finding F2.
+    private const int MaxHeaderBytes = 8 * 1024;
     private readonly IGpsService _gpsService;
     private readonly ILogger<NtripClientService> _logger;
 
@@ -222,6 +228,18 @@ public class NtripClientService : INtripClientService, IDisposable
                     // First response is HTTP header - check for success
                     if (!headerReceived)
                     {
+                        // Bail if the header has grown past the cap without a
+                        // terminator. Without this an unbounded caster could
+                        // OOM the tablet by streaming bytes forever.
+                        if (_headerBuffer.Count + bytesReceived > MaxHeaderBytes)
+                        {
+                            _logger.LogWarning(
+                                "NTRIP header exceeded {Max} bytes without \\r\\n\\r\\n terminator; disconnecting",
+                                MaxHeaderBytes);
+                            await DisconnectAsync();
+                            return;
+                        }
+
                         // Accumulate header bytes
                         for (int i = 0; i < bytesReceived; i++)
                         {
