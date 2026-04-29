@@ -69,6 +69,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IConfigurationService _configurationService;
     private readonly IAutoSteerService _autoSteerService;
     private readonly ISmartWasCalibrationService _smartWasService;
+    private readonly ITrackCopierService _trackCopierService;
     private readonly IModuleCommunicationService _moduleCommunicationService;
     private readonly IToolPositionService _toolPositionService;
     private readonly ICoverageMapService _coverageMapService;
@@ -185,6 +186,7 @@ public partial class MainViewModel : ObservableObject
         IConfigurationService configurationService,
         IAutoSteerService autoSteerService,
         ISmartWasCalibrationService smartWasService,
+        ITrackCopierService trackCopierService,
         IModuleCommunicationService moduleCommunicationService,
         IToolPositionService toolPositionService,
         ICoverageMapService coverageMapService,
@@ -241,6 +243,7 @@ public partial class MainViewModel : ObservableObject
         _configurationService = configurationService;
         _autoSteerService = autoSteerService;
         _smartWasService = smartWasService;
+        _trackCopierService = trackCopierService;
         _moduleCommunicationService = moduleCommunicationService;
         _toolPositionService = toolPositionService;
         _coverageMapService = coverageMapService;
