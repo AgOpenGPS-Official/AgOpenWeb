@@ -72,6 +72,7 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsTramSettingsDialogVisible));
                 OnPropertyChanged(nameof(IsFieldBuilderDialogVisible));
                 OnPropertyChanged(nameof(IsBugReportDialogVisible));
+                OnPropertyChanged(nameof(IsSmartWasDialogVisible));
 
                 DialogChanged?.Invoke(this, new DialogChangedEventArgs(previous, value));
             }
@@ -114,6 +115,7 @@ public class UIState : ObservableObject
     public bool IsTramSettingsDialogVisible => ActiveDialog == DialogType.TramSettings;
     public bool IsFieldBuilderDialogVisible => ActiveDialog == DialogType.FieldBuilder;
     public bool IsBugReportDialogVisible => ActiveDialog == DialogType.BugReport;
+    public bool IsSmartWasDialogVisible => ActiveDialog == DialogType.SmartWas;
 
     // Panel visibility (non-modal, can have multiple open)
     private bool _isSimulatorPanelVisible;
@@ -244,7 +246,8 @@ public enum DialogType
     RecordedPath,
     TramSettings,
     FieldBuilder,
-    BugReport
+    BugReport,
+    SmartWas
 }
 
 /// <summary>

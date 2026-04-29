@@ -68,6 +68,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IVehicleProfileService _vehicleProfileService;
     private readonly IConfigurationService _configurationService;
     private readonly IAutoSteerService _autoSteerService;
+    private readonly ISmartWasCalibrationService _smartWasService;
     private readonly IModuleCommunicationService _moduleCommunicationService;
     private readonly IToolPositionService _toolPositionService;
     private readonly ICoverageMapService _coverageMapService;
@@ -183,6 +184,7 @@ public partial class MainViewModel : ObservableObject
         IVehicleProfileService vehicleProfileService,
         IConfigurationService configurationService,
         IAutoSteerService autoSteerService,
+        ISmartWasCalibrationService smartWasService,
         IModuleCommunicationService moduleCommunicationService,
         IToolPositionService toolPositionService,
         ICoverageMapService coverageMapService,
@@ -238,6 +240,7 @@ public partial class MainViewModel : ObservableObject
         _vehicleProfileService = vehicleProfileService;
         _configurationService = configurationService;
         _autoSteerService = autoSteerService;
+        _smartWasService = smartWasService;
         _moduleCommunicationService = moduleCommunicationService;
         _toolPositionService = toolPositionService;
         _coverageMapService = coverageMapService;
@@ -255,6 +258,7 @@ public partial class MainViewModel : ObservableObject
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
+        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(_smartWasService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
 
         // Start the background GPS processing pipeline
@@ -2389,9 +2393,19 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _autoSteerConfigViewModel, value);
     }
 
+    // Smart WAS calibration dialog
+    private SmartWasViewModel? _smartWasViewModel;
+    public SmartWasViewModel? SmartWasViewModel
+    {
+        get => _smartWasViewModel;
+        set => SetProperty(ref _smartWasViewModel, value);
+    }
+
     public ICommand? ShowConfigurationDialogCommand { get; private set; }
     public ICommand? CancelConfigurationDialogCommand { get; private set; }
     public ICommand? ShowAutoSteerConfigCommand { get; private set; }
+    public ICommand? ShowSmartWasCommand { get; private set; }
+    public ICommand? CloseSmartWasDialogCommand { get; private set; }
     public ICommand? ShowLoadProfileDialogCommand { get; private set; }
     public ICommand? ShowNewProfileDialogCommand { get; private set; }
     public ICommand? LoadSelectedProfileCommand { get; private set; }

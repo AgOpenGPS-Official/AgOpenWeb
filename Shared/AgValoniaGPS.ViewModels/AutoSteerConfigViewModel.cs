@@ -41,6 +41,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     private readonly IUdpCommunicationService? _udpService;
     private readonly IAutoSteerService? _autoSteerService;
     private readonly Action? _launchWizard;
+    private readonly Action? _openSmartWas;
 
     // Debounce timer for auto-sending slider changes
     private readonly System.Timers.Timer _sliderDebounceTimer;
@@ -67,12 +68,14 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         IConfigurationService configService,
         IUdpCommunicationService? udpService = null,
         IAutoSteerService? autoSteerService = null,
-        Action? launchWizard = null)
+        Action? launchWizard = null,
+        Action? openSmartWas = null)
     {
         _configService = configService;
         _udpService = udpService;
         _autoSteerService = autoSteerService;
         _launchWizard = launchWizard;
+        _openSmartWas = openSmartWas;
 
         // Set up debounce timer for slider changes
         _sliderDebounceTimer = new System.Timers.Timer(SliderDebounceDelayMs);
@@ -923,6 +926,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     public ICommand SendAndSaveCommand { get; private set; } = null!;
     public ICommand ResetToDefaultsCommand { get; private set; } = null!;
     public ICommand WizardCommand { get; private set; } = null!;
+    public ICommand OpenSmartWasCommand { get; private set; } = null!;
 
     private bool _isResetConfirmVisible;
     public bool IsResetConfirmVisible
@@ -980,6 +984,13 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             // Close the config panel before launching the wizard
             IsPanelVisible = false;
             _launchWizard?.Invoke();
+        });
+
+        OpenSmartWasCommand = new RelayCommand(() =>
+        {
+            // Smart WAS dialog floats on top — keep AutoSteer config panel open
+            // so the operator can compare live readouts side-by-side.
+            _openSmartWas?.Invoke();
         });
     }
 

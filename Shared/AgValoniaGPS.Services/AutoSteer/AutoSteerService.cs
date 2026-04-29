@@ -45,6 +45,7 @@ public class AutoSteerService : IAutoSteerService
     private readonly IGpsService _gpsService;
     private readonly ApplicationState _appState;
     private ITramLineService? _tramLineService;
+    private ISmartWasCalibrationService? _smartWas;
 
     // Drift compensation applied after LocalPlane → local coordinate conversion.
     // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
@@ -96,6 +97,16 @@ public class AutoSteerService : IAutoSteerService
     public void SetTramLineService(ITramLineService tramLineService)
     {
         _tramLineService = tramLineService;
+    }
+
+    /// <summary>
+    /// Set the Smart WAS calibration service so each PGN 253 sample is
+    /// forwarded to its analyzer. Setter-injected to avoid the constructor
+    /// cycle (Smart WAS depends on IAutoSteerService).
+    /// </summary>
+    public void SetSmartWasService(ISmartWasCalibrationService smartWas)
+    {
+        _smartWas = smartWas;
     }
 
     public void Start()
@@ -165,6 +176,8 @@ public class AutoSteerService : IAutoSteerService
         _state.ActualSteerAngle = steerData.ActualSteerAngle;
         _state.SteerSwitchActive = steerData.SteerSwitchActive;
         _state.WorkSwitchActive = steerData.WorkSwitchActive;
+
+        _smartWas?.AddSample(steerData.ActualSteerAngle);
     }
 
     /// <summary>
