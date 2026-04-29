@@ -1081,13 +1081,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                             <!-- Bottom Action Buttons -->
                             <Grid Grid.Row="1" ColumnDefinitions="*,*,*,Auto" Margin="0,8,0,0">
-                                <!-- Wizard -->
+                                <!-- Smart WAS calibration -->
                                 <Button Grid.Column="0" Margin="2" Padding="4"
-                                        Background="#DD9B59B6" IsEnabled="False" Opacity="0.5">
+                                        Background="#DD2196F3" Command="{Binding OpenSmartWasCommand}">
                                     <StackPanel HorizontalAlignment="Center">
-                                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/WizardWand.png"
+                                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Chart.png"
                                                Width="32" Height="32" Stretch="Uniform" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="{loc:Localize Wizard}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Smart WAS" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
                                     </StackPanel>
                                 </Button>
                                 <!-- Reset -->

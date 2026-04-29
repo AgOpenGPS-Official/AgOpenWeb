@@ -49,8 +49,29 @@ public partial class MainViewModel
         // AutoSteer Configuration Panel
         ShowAutoSteerConfigCommand = new RelayCommand(() =>
         {
-            AutoSteerConfigViewModel ??= new AutoSteerConfigViewModel(_configurationService, _udpService, _autoSteerService, ShowSteerWizard);
+            AutoSteerConfigViewModel ??= new AutoSteerConfigViewModel(
+                _configurationService,
+                _udpService,
+                _autoSteerService,
+                ShowSteerWizard,
+                () => ShowSmartWasCommand?.Execute(null));
             AutoSteerConfigViewModel.IsPanelVisible = true;
+        });
+
+        // Smart WAS calibration dialog
+        ShowSmartWasCommand = new RelayCommand(() =>
+        {
+            SmartWasViewModel ??= new SmartWasViewModel(
+                _smartWasService,
+                _configurationService,
+                _udpService,
+                _autoSteerService);
+            State.UI.ShowDialog(DialogType.SmartWas);
+        });
+
+        CloseSmartWasDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
         });
 
         // Profile management
