@@ -37,16 +37,29 @@ public class VehicleProfileService : IVehicleProfileService
     public string VehiclesDirectory { get; }
 
     public VehicleProfileService(ILogger<VehicleProfileService> logger)
+        : this(logger, DefaultVehiclesDirectory())
+    {
+    }
+
+    /// <summary>
+    /// Test seam: lets a test subclass redirect VehiclesDirectory away
+    /// from MyDocuments without touching env vars or filesystem mocks.
+    /// </summary>
+    protected VehicleProfileService(ILogger<VehicleProfileService> logger, string vehiclesDirectory)
     {
         _logger = logger;
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        VehiclesDirectory = Path.Combine(documentsPath, "AgValoniaGPS", "Vehicles");
+        VehiclesDirectory = vehiclesDirectory;
 
-        // Ensure directory exists
         if (!Directory.Exists(VehiclesDirectory))
         {
             Directory.CreateDirectory(VehiclesDirectory);
         }
+    }
+
+    private static string DefaultVehiclesDirectory()
+    {
+        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return Path.Combine(documentsPath, "AgValoniaGPS", "Vehicles");
     }
 
     public List<string> GetAvailableProfiles()
@@ -75,12 +88,19 @@ public class VehicleProfileService : IVehicleProfileService
                 return true;
 
             // Fall back to legacy XML - parse and populate store directly
-            var filePath = Path.Combine(VehiclesDirectory, $"{profileName}.XML");
-            if (!File.Exists(filePath))
+            var filePath = ResolveExistingFile(profileName, ".xml");
+            if (filePath == null)
                 return false;
 
-            var doc = XDocument.Load(filePath);
-            var settings = ParseSettings(doc);
+            // Build a single dictionary by merging the primary file (legacy combined
+            // or 6.8.2 VehicleSettings) with any sibling 6.8.2 split files. The new
+            // format keeps the same <setting name="..."> keys as the old combined
+            // file — they're just spread across multiple files — so a merged
+            // dictionary feeds ApplyXmlSettingsToStore unchanged.
+            var settings = ParseSettings(XDocument.Load(filePath));
+            MergeSiblingIfPresent(profileName, ".tool.xml", settings);
+            MergeSiblingIfPresent(profileName, ".env.xml", settings);
+
             ApplyXmlSettingsToStore(settings, profileName, filePath, store);
             return true;
         }
@@ -88,6 +108,54 @@ public class VehicleProfileService : IVehicleProfileService
         {
             _logger.LogError(ex, "Error loading vehicle profile '{ProfileName}'", profileName);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Case-insensitively resolve a {profileName}{suffix} file in the Vehicles
+    /// directory. Returns the actual on-disk path or null if not found.
+    /// Needed because the existing convention is .XML (uppercase) for the
+    /// primary file but the 6.8.2 sibling files use .xml (lowercase).
+    /// </summary>
+    private string? ResolveExistingFile(string profileName, string suffix)
+    {
+        // Check exact match first (cheapest case on case-sensitive filesystems)
+        var primary = Path.Combine(VehiclesDirectory, profileName + suffix);
+        if (File.Exists(primary)) return primary;
+
+        var upper = Path.Combine(VehiclesDirectory, profileName + suffix.ToUpperInvariant());
+        if (File.Exists(upper)) return upper;
+
+        // Fallback: enumerate the directory once and match case-insensitively
+        if (!Directory.Exists(VehiclesDirectory)) return null;
+        var target = profileName + suffix;
+        foreach (var path in Directory.EnumerateFiles(VehiclesDirectory))
+        {
+            if (string.Equals(Path.GetFileName(path), target, StringComparison.OrdinalIgnoreCase))
+                return path;
+        }
+        return null;
+    }
+
+    private void MergeSiblingIfPresent(string profileName, string suffix, Dictionary<string, string> dict)
+    {
+        var path = ResolveExistingFile(profileName, suffix);
+        if (path == null) return;
+
+        try
+        {
+            var siblingDoc = XDocument.Load(path);
+            foreach (var kv in ParseSettings(siblingDoc))
+            {
+                // Sibling values take precedence on key collision; with the 6.8.2
+                // split there shouldn't be any, but if there is the more-specific
+                // file (tool/env) wins.
+                dict[kv.Key] = kv.Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not parse sibling settings file '{Path}'", path);
         }
     }
 
