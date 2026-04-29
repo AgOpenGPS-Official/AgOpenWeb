@@ -95,6 +95,9 @@ public static class ServiceCollectionExtensions
         // Smart WAS calibration (statistical WAS zero analyzer)
         services.AddSingleton<ISmartWasCalibrationService, SmartWasCalibrationService>();
 
+        // Track copying between fields (transforms via source plane → WGS84 → target plane)
+        services.AddSingleton<ITrackCopierService, TrackCopierService>();
+
         // Chart data service (collects rolling time-series for diagnostic charts)
         services.AddSingleton<IChartDataService, ChartDataService>();
 

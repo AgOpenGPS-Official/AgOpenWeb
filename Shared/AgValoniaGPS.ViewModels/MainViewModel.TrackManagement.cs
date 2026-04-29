@@ -19,12 +19,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
+using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Track;
+using AgValoniaGPS.Services;
 using Microsoft.Extensions.Logging;
 using CommunityToolkit.Mvvm.Input;
+using TrackModel = AgValoniaGPS.Models.Track.Track;
 
 namespace AgValoniaGPS.ViewModels;
 
@@ -178,8 +181,14 @@ public partial class MainViewModel
                     return;
                 }
 
+                // Transform tracks from source field's local plane into the
+                // active field's local plane. Without this, tracks from a
+                // field with a different origin land at completely wrong
+                // physical locations.
+                var transformed = TransformImportedTracks(importedTracks, sourceDir);
+
                 int importCount = 0;
-                foreach (var track in importedTracks)
+                foreach (var track in transformed)
                 {
                     track.IsActive = false;
                     SavedTracks.Add(track);
@@ -418,6 +427,40 @@ public partial class MainViewModel
         if (_recPathRecordingPoints.Count % 20 == 0)
             StatusMessage = $"Recording path: {_recPathRecordingPoints.Count} points";
     }
+
+    /// <summary>
+/// Transform tracks from a source field's local plane into the active
+/// field's local plane. If the active field's origin can't be determined
+/// or the source has no Field.txt, falls back to returning the input
+/// unchanged so the legacy "untransformed" import path still works
+/// (better than failing entirely on partial field data).
+/// </summary>
+private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourceTracks, string sourceDir)
+{
+    var activeField = ActiveField;
+    if (activeField == null) return sourceTracks.ToList();
+
+    Wgs84 sourceOrigin;
+    try
+    {
+        var sourceField = new FieldPlaneFileService().LoadField(sourceDir);
+        sourceOrigin = new Wgs84(sourceField.Origin.Latitude, sourceField.Origin.Longitude);
+    }
+    catch
+    {
+        // No Field.txt in the source directory or the file is malformed.
+        // Treat tracks as already in the active field's plane (legacy behavior).
+        _logger.LogWarning("[TrackImport] Could not read source field origin; importing tracks without coordinate transform");
+        return sourceTracks.ToList();
+    }
+
+    var targetOrigin = new Wgs84(activeField.Origin.Latitude, activeField.Origin.Longitude);
+    var props = new SharedFieldProperties();
+    var sourcePlane = new LocalPlane(sourceOrigin, props);
+    var targetPlane = new LocalPlane(targetOrigin, props);
+
+    return _trackCopierService.ConvertTracks(sourceTracks, sourcePlane, targetPlane);
+}
 
     #endregion
 }
