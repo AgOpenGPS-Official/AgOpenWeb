@@ -95,6 +95,9 @@ jobs:
           - os: windows-latest
             rid: win-x64
             name: Windows-x64
+          - os: windows-latest
+            rid: win-arm64
+            name: Windows-ARM64
           - os: macos-latest
             rid: osx-arm64
             name: macOS-ARM64
@@ -104,6 +107,9 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             name: Linux-x64
+          - os: ubuntu-latest
+            rid: linux-arm64
+            name: Linux-ARM64
 
     runs-on: ${{ matrix.os }}
 
@@ -342,9 +348,11 @@ jobs:
             | Platform | File |
             |----------|------|
             | Windows x64 | `AgValoniaGPS-Windows-x64.zip` |
+            | Windows ARM64 | `AgValoniaGPS-Windows-ARM64.zip` |
             | macOS ARM64 (M1/M2/M3) | `AgValoniaGPS-macOS-ARM64.zip` |
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
+            | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
             | Android | `AgValoniaGPS-Android.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
@@ -381,9 +389,11 @@ jobs:
             | Platform | File |
             |----------|------|
             | Windows x64 | `AgValoniaGPS-Windows-x64.zip` |
+            | Windows ARM64 | `AgValoniaGPS-Windows-ARM64.zip` |
             | macOS ARM64 (M1/M2/M3) | `AgValoniaGPS-macOS-ARM64.zip` |
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
+            | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
             | Android | `AgValoniaGPS-Android.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
