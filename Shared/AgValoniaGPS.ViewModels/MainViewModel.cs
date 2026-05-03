@@ -27,6 +27,7 @@ using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Guidance;
 using AgValoniaGPS.Models.Pipeline;
+using AgValoniaGPS.Models.Timing;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.YouTurn;
@@ -82,10 +83,13 @@ public partial class MainViewModel : ObservableObject
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
+    private readonly ISteerMachineLoopService? _controlLoop;
+    private readonly IPositionEstimator? _positionEstimator;
     private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
     private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
+    private Avalonia.Threading.DispatcherTimer? _renderPullTimer;
 
     /// <summary>
     /// Centralized application state - single source of truth for all runtime state.
@@ -199,7 +203,9 @@ public partial class MainViewModel : ObservableObject
         IGpsPipelineService gpsPipelineService,
         IPipelineIntents intents,
         ILogger<MainViewModel> logger,
-        ApplicationState appState)
+        ApplicationState appState,
+        ISteerMachineLoopService? controlLoop = null,
+        IPositionEstimator? positionEstimator = null)
     {
         _logger = logger;
         _tramLineService = tramLineService;
@@ -253,6 +259,8 @@ public partial class MainViewModel : ObservableObject
         _audioService = audioService;
         _elevationLogService = elevationLogService;
         _gpsPipelineService = gpsPipelineService;
+        _controlLoop = controlLoop;
+        _positionEstimator = positionEstimator;
         _intents = intents;
         _appState = appState;
         _fieldPlaneFileService = new FieldPlaneFileService();
@@ -267,6 +275,39 @@ public partial class MainViewModel : ObservableObject
         // Start the background GPS processing pipeline
         _gpsPipelineService.CycleCompleted += OnGpsCycleCompleted;
         _gpsPipelineService.Start();
+
+        // Host control loop (#313): runs at 100 Hz on its own thread.
+        // Each tick: read interpolated pose from estimator, update tool
+        // position + section state machine, send PGN 254 + PGN 239. This
+        // gives sub-frame section edge accuracy (~0.05 m at 25 km/h vs
+        // ~0.7 m on the prior 10 Hz path) and matches the firmware
+        // autosteer cadence so PGNs land fresh every firmware tick.
+        // Optional in test builds.
+        if (_controlLoop is not null)
+        {
+            // TickHz is on the concrete SectionControlService, not the
+            // interface (it's an internal-tuning concern, not a contract).
+            if (_sectionControlService is Services.Section.SectionControlService scsConcrete)
+                scsConcrete.TickHz = _controlLoop.FrequencyHz;
+            _controlLoop.Ticked += OnControlLoopTicked;
+            _controlLoop.Start();
+        }
+
+        // Renderer-pull timer (#313 commit 6): when a position estimator is
+        // wired, push the latest dead-reckoned vehicle pose to the map at
+        // ~30 Hz so the chevron moves smoothly between GPS samples instead
+        // of stepping at the GPS rate (10 Hz). Pulled state, not pushed —
+        // the estimator's pose at any tick reflects the latest GPS snapshot
+        // dead-reckoned forward to that tick's timestamp.
+        if (_positionEstimator is not null)
+        {
+            _renderPullTimer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(33), // ~30 Hz
+            };
+            _renderPullTimer.Tick += OnRenderPullTick;
+            _renderPullTimer.Start();
+        }
         _udpService.ModuleConnectionChanged += OnModuleConnectionChanged;
         _ntripService.ConnectionStatusChanged += OnNtripConnectionChanged;
         _ntripService.RtcmDataReceived += OnRtcmDataReceived;
@@ -366,6 +407,51 @@ public partial class MainViewModel : ObservableObject
                 }
             }, Avalonia.Threading.DispatcherPriority.Background);
         }
+    }
+
+    /// <summary>
+    /// Host control loop tick handler (#313). Runs at 100 Hz on the loop's
+    /// own thread. Reads the latest GPS-anchored pose from the estimator,
+    /// updates tool position + section state machine, then sends PGN 254 +
+    /// PGN 239 so the firmware autosteer task — which also runs at 100 Hz
+    /// — sees fresh data every cycle.
+    /// </summary>
+    private void OnControlLoopTicked(long timestampTicks)
+    {
+        // Only run the section/tool pipeline once a GPS sample exists; before
+        // then the estimator returns default(InterpolatedPose) which would
+        // pin tool position at (0,0). Autosteer PGN sends are still useful
+        // before the first GPS sample (firmware needs to see SOMETHING to
+        // know we're alive), so they don't gate.
+        if (_positionEstimator?.GetLatestSnapshot() is not null)
+        {
+            var p = _positionEstimator.GetPose(timestampTicks);
+            _toolPositionService.Update(
+                new Vec3(p.Position.Easting, p.Position.Northing, p.Heading),
+                p.Heading);
+            _sectionControlService.Update(
+                _toolPositionService.ToolPosition,
+                _toolPositionService.ToolHeading,
+                p.Heading,
+                p.SpeedMps);
+        }
+        _autoSteerService.SendPgnsForControlTick();
+    }
+
+    /// <summary>
+    /// 30 Hz UI-thread pull (#313 commit 6) of the dead-reckoned vehicle
+    /// pose so the map chevron interpolates smoothly between GPS samples
+    /// instead of stepping at the GPS rate. The estimator returns a pose
+    /// dead-reckoned to "now" from the latest GPS snapshot using yaw rate
+    /// and velocity, so position advances ~7 cm per 30 Hz frame at 25 km/h
+    /// instead of a 28 cm jump every 100 ms.
+    /// </summary>
+    private void OnRenderPullTick(object? sender, EventArgs e)
+    {
+        if (_positionEstimator?.GetLatestSnapshot() is null)
+            return;
+        var p = _positionEstimator.GetPose(Clock.Current.GetTimestamp());
+        _mapService.SetVehiclePosition(p.Position.Easting, p.Position.Northing, p.Heading);
     }
 
     private void RestoreSettings()

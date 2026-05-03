@@ -104,6 +104,76 @@ public class SectionControlServiceTests
 
     #endregion
 
+    #region Tick rate (#313 commit 5a)
+
+    [Test]
+    public void TickHz_Default_Is10Hz()
+    {
+        Assert.That(_service.TickHz, Is.EqualTo(10.0));
+    }
+
+    [Test]
+    public void TickHz_100_TurnOnDelayScalesUp()
+    {
+        // With LookAheadOn = 0.2 s configured, at 100 Hz that's 20 ticks of
+        // wait. Verify by counting Update calls — section flips on tick 20.
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 200, 0));
+        outerPoly.Points.Add(new BoundaryPoint(0, 200, 0));
+        outerPoly.UpdateBounds();
+        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
+
+        ConfigurationStore.Instance.Tool.LookAheadOnSetting = 0.2;  // 200 ms wait
+
+        _service.SetAllAuto();
+        _service.MasterState = SectionMasterState.Auto;
+        _service.TickHz = 100.0;
+
+        // At 100 Hz, ON delay = 0.2 s × 100 = 20 ticks. With >= semantics
+        // the section flips on the tick that completes the debounce, so
+        // tick 20 is the first that turns IsOn = true (200 ms exactly).
+        for (int i = 0; i < 19; i++)
+        {
+            _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+            Assert.That(_service.SectionStates[0].IsOn, Is.False,
+                $"Should not turn on yet at tick {i + 1} of 20 (100 Hz, 0.2s delay)");
+        }
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.True,
+            "Should turn on at tick 20 (completing 200 ms debounce)");
+    }
+
+    [Test]
+    public void TickHz_10_TurnOnDelayMatchesLegacyBehavior()
+    {
+        // Same scenario as above but at the legacy 10 Hz default. Should
+        // flip on tick 2 (completing the 200 ms wait).
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 200, 0));
+        outerPoly.Points.Add(new BoundaryPoint(0, 200, 0));
+        outerPoly.UpdateBounds();
+        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
+
+        ConfigurationStore.Instance.Tool.LookAheadOnSetting = 0.2;
+
+        _service.SetAllAuto();
+        _service.MasterState = SectionMasterState.Auto;
+        // TickHz default = 10.
+
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.False,
+            "Should not turn on yet at tick 1 of 2 (10 Hz, 0.2s delay)");
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.True,
+            "Should turn on at tick 2 (completing 200 ms debounce)");
+    }
+
+    #endregion
+
     #region No Boundary
 
     [Test]

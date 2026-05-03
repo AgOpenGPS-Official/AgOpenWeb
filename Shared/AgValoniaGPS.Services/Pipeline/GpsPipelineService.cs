@@ -14,6 +14,7 @@ using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
 using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
+using AgValoniaGPS.Models.Timing;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services.Gps;
 using AgValoniaGPS.Services.Headland;
@@ -51,6 +52,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Events ──────────────────────────────────────────────────────────
     public event Action<GpsCycleResult>? CycleCompleted;
+
+    /// <summary>
+    /// Fired inside ProcessCycle just after the canonical pose is published
+    /// to <see cref="IPositionEstimator"/>, before the cycle reads section
+    /// state to build <see cref="GpsCycleResult"/>. Argument is the timestamp
+    /// of the publish (matches the snapshot's TimestampTicks).
+    ///
+    /// Production: no subscriber — the host control loop runs on its own
+    /// thread and ticks at a fixed cadence regardless of GPS arrivals.
+    /// Tests: subscribe a synchronous control-loop tick so GpsCycleResult.
+    /// SectionStates reflects the section state at this GPS frame's pose
+    /// (no one-frame lag).
+    /// </summary>
+    public event Action<long>? PoseEstimatorUpdated;
 
     // ── Re-entrancy guard ───────────────────────────────────────────────
     private int _processing; // 0 = idle, 1 = processing
@@ -116,6 +131,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ── Logging throttle ────────────────────────────────────────────────
     private int _cycleCounter;
 
+    private readonly IPositionEstimator? _positionEstimator;
+
     public GpsPipelineService(
         IGpsService gpsService,
         IToolPositionService toolPositionService,
@@ -129,7 +146,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         IPipelineIntents intents,
         IGpsHeadingFusionService headingFusion,
         ILogger<GpsPipelineService> logger,
-        ApplicationState appState)
+        ApplicationState appState,
+        IPositionEstimator? positionEstimator = null)
     {
         _gpsService = gpsService;
         _toolPositionService = toolPositionService;
@@ -144,6 +162,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _headingFusion = headingFusion;
         _logger = logger;
         _appState = appState;
+        _positionEstimator = positionEstimator;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -480,6 +499,33 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double driftedNorthing = posNorthing + driftN;
         double headingRad = pos.Heading * Math.PI / 180.0;
 
+        // ── (2b) Publish canonical pose to the position estimator ───────
+        // The estimator is the bridge between GPS arrivals (10 Hz) and
+        // the host control loop (100 Hz). Readers — control loop,
+        // renderer — pull dead-reckoned pose between GPS samples.
+        if (_positionEstimator is not null)
+        {
+            double yawRateRadPerSec = data.ImuValid
+                ? data.ImuYawRate * Math.PI / 180.0
+                : 0.0;
+            double rollRad = data.ImuValid
+                ? data.ImuRoll * Math.PI / 180.0
+                : 0.0;
+            long ts = Clock.Current.GetTimestamp();
+            _positionEstimator.UpdateFromGps(new PoseSnapshot(
+                new Vec2(driftedEasting, driftedNorthing),
+                headingRad,
+                pos.Speed,
+                yawRateRadPerSec,
+                rollRad,
+                ts));
+            // Test hook: fire so a synchronous control-loop tick can advance
+            // the section state machine before this cycle's GpsCycleResult
+            // captures section bits. No-op in production (loop runs on its
+            // own thread).
+            PoseEstimatorUpdated?.Invoke(ts);
+        }
+
         // ── Phase C C4/C6: YouTurn state machine on the cycle worker ───
         // Two entry points, both running here on the background thread
         // against the cycle-owned _youTurn / _guidanceWorking POCOs:
@@ -685,10 +731,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
 
         // ── (7) Section control + coverage painting ─────────────────────
-        // SectionControlService.Update internally walks each section and
-        // calls UpdateMapping → AddCoveragePoint with expanded edges. It
-        // is the SOLE writer of coverage points — no second pass here.
-        _sectionControlService.Update(toolPos, toolHeading, headingRad, pos.Speed);
+        // SectionControlService.Update is now driven by the host control
+        // loop at 100 Hz (#313 commit 5c) for sub-frame edge accuracy.
+        // The pipeline only reads the latest section states here for its
+        // PGN-build step below.
         var sectionStates = _sectionControlService.SectionStates;
         int numSections = _sectionControlService.NumSections;
 
