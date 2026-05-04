@@ -773,7 +773,7 @@ public partial class ConfigurationViewModel : ObservableObject
         set
         {
             SetProperty(ref _selectedProfileName, value);
-            if (value != null && value != Config.ActiveProfileName)
+            if (value != null && value != Config.ActiveVehicleProfileName)
             {
                 _configService.LoadProfile(value);
             }
@@ -1018,7 +1018,7 @@ public partial class ConfigurationViewModel : ObservableObject
         RefreshProfileList();
 
         // Set selected profile name to current
-        _selectedProfileName = Config.ActiveProfileName;
+        _selectedProfileName = Config.ActiveVehicleProfileName;
     }
 
     private void InitializeVehicleEditCommands()
@@ -1698,8 +1698,8 @@ public partial class ConfigurationViewModel : ObservableObject
 
     private void SaveProfile()
     {
-        _configService.SaveProfile(Config.ActiveProfileName);
-        ProfileSaved?.Invoke(this, Config.ActiveProfileName);
+        _configService.SaveProfile(Config.ActiveVehicleProfileName);
+        ProfileSaved?.Invoke(this, Config.ActiveVehicleProfileName);
     }
 
     private void CreateNewProfile(string? profileName)
@@ -1715,7 +1715,7 @@ public partial class ConfigurationViewModel : ObservableObject
     private void DeleteProfile()
     {
         if (string.IsNullOrEmpty(SelectedProfileName)) return;
-        if (SelectedProfileName == Config.ActiveProfileName) return; // Can't delete active
+        if (SelectedProfileName == Config.ActiveVehicleProfileName) return; // Can't delete active
 
         _configService.DeleteProfile(SelectedProfileName);
         RefreshProfileList();
@@ -1723,7 +1723,7 @@ public partial class ConfigurationViewModel : ObservableObject
 
     private void ApplyChanges()
     {
-        _configService.SaveProfile(Config.ActiveProfileName);
+        _configService.SaveProfile(Config.ActiveVehicleProfileName);
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 

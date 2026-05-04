@@ -98,7 +98,7 @@ public class SteerWizardViewModel : WizardViewModel
     protected override Task OnCompletingAsync()
     {
         // Save all configuration changes
-        _configService.SaveProfile(_configService.Store.ActiveProfileName);
+        _configService.SaveProfile(_configService.Store.ActiveVehicleProfileName);
         return Task.CompletedTask;
     }
 }

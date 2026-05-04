@@ -82,7 +82,7 @@ public partial class MainViewModel
             {
                 AvailableProfiles.Add(profile);
             }
-            SelectedProfile = _configurationService.Store.ActiveProfileName;
+            SelectedProfile = _configurationService.Store.ActiveVehicleProfileName;
             IsProfileSelectionVisible = true;
         });
 

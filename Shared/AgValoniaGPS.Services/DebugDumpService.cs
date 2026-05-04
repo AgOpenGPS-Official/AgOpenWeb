@@ -140,7 +140,7 @@ public class DebugDumpService
         // 7. Current vehicle profile
         try
         {
-            var profileName = ConfigurationStore.Instance.ActiveProfileName;
+            var profileName = ConfigurationStore.Instance.ActiveVehicleProfileName;
             if (!string.IsNullOrEmpty(profileName))
             {
                 AddTextEntry(archive, "active_profile_name.txt", profileName);
@@ -257,7 +257,7 @@ public class DebugDumpService
             },
             NumSections = store.NumSections,
             IsMetric = store.IsMetric,
-            ActiveProfile = store.ActiveProfileName
+            ActiveProfile = store.ActiveVehicleProfileName
         };
         return JsonSerializer.Serialize(snapshot, JsonOptions);
     }

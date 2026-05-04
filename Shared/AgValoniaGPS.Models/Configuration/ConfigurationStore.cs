@@ -52,20 +52,20 @@ public class ConfigurationStore : ObservableObject
     public AutoSteerConfig AutoSteer { get; } = new();
     public HotkeyConfig Hotkeys { get; } = new();
 
-    // Profile management.
-    // ActiveProfileName/Path will be renamed to ActiveVehicleProfileName/Path in
-    // phase 3 of the vehicle/tool split (#346); for now they continue to track
-    // the vehicle profile, and the new ActiveToolProfile* fields below track
-    // the tool profile.
+    // Profile management — split into vehicle and tool sides per the
+    // AgOpenGPS 6.8.2-style vehicle/tool split (#346). The pre-split
+    // ActiveProfileName/Path used to track a single combined profile and
+    // were renamed to ActiveVehicleProfileName/Path; the tool side adds
+    // ActiveToolProfileName/Path tracking the loaded tool profile.
     private string _activeProfileName = "Default";
-    public string ActiveProfileName
+    public string ActiveVehicleProfileName
     {
         get => _activeProfileName;
         set => SetProperty(ref _activeProfileName, value);
     }
 
     private string _activeProfilePath = string.Empty;
-    public string ActiveProfilePath
+    public string ActiveVehicleProfilePath
     {
         get => _activeProfilePath;
         set => SetProperty(ref _activeProfilePath, value);

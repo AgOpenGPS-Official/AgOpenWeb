@@ -41,7 +41,7 @@ public class ProfileJsonServiceV1Tests
         var loaded = ProfileJsonServiceV1.Load(_tempDir, "TestTractor", loadStore);
 
         Assert.That(loaded, Is.True);
-        Assert.That(loadStore.ActiveProfileName, Is.EqualTo("TestTractor"));
+        Assert.That(loadStore.ActiveVehicleProfileName, Is.EqualTo("TestTractor"));
     }
 
     [Test]
@@ -395,7 +395,7 @@ public class ProfileJsonServiceV1Tests
 
     private void SetupTestStore(string name)
     {
-        _store.ActiveProfileName = name;
+        _store.ActiveVehicleProfileName = name;
         _store.Vehicle.Name = name;
         _store.Tool.Width = 6.0;
         _store.NumSections = 1;

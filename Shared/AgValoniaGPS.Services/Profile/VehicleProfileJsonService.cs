@@ -162,8 +162,8 @@ public static class VehicleProfileJsonService
         store.IsMetric = dto.General?.IsMetric ?? false;
 
         // Profile metadata
-        store.ActiveProfileName = profileName;
-        store.ActiveProfilePath = filePath;
+        store.ActiveVehicleProfileName = profileName;
+        store.ActiveVehicleProfilePath = filePath;
     }
 
     // ── DTOs ───────────────────────────────────────────────────────────

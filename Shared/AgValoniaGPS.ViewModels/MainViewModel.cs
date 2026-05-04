@@ -539,11 +539,11 @@ public partial class MainViewModel : ObservableObject
                 _logger.LogDebug("Loading first available vehicle profile: {ProfileName}", profileToLoad);
             }
 
-            // Use ConfigurationService to load - this sets ConfigurationStore.ActiveProfileName
+            // Use ConfigurationService to load - this sets ConfigurationStore.ActiveVehicleProfileName
             if (_configurationService.LoadProfile(profileToLoad))
             {
                 var store = _configurationService.Store;
-                _logger.LogInformation("Loaded vehicle profile: {ProfileName}", store.ActiveProfileName);
+                _logger.LogInformation("Loaded vehicle profile: {ProfileName}", store.ActiveVehicleProfileName);
                 _logger.LogDebug("  Tool width: {ToolWidth}m (from {NumSections} sections)", store.ActualToolWidth, store.NumSections);
                 _logger.LogDebug("  YouTurn radius: {Radius}m", store.Guidance.UTurnRadius);
                 _logger.LogDebug("  Wheelbase: {Wheelbase}m", store.Vehicle.Wheelbase);
@@ -2522,7 +2522,7 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _selectedProfile, value);
     }
 
-    public string CurrentProfileName => _configurationService.Store.ActiveProfileName;
+    public string CurrentProfileName => _configurationService.Store.ActiveVehicleProfileName;
 
     // Headland Builder properties (visibility managed by State.UI)
     private bool _isHeadlandOn;

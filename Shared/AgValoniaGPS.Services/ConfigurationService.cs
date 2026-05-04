@@ -99,9 +99,9 @@ public class ConfigurationService(
 
     public void ReloadCurrentProfile()
     {
-        if (!string.IsNullOrEmpty(Store.ActiveProfileName))
+        if (!string.IsNullOrEmpty(Store.ActiveVehicleProfileName))
         {
-            LoadProfile(Store.ActiveProfileName);
+            LoadProfile(Store.ActiveVehicleProfileName);
         }
     }
 
@@ -250,7 +250,7 @@ public class ConfigurationService(
         settings.HotkeyBindings = store.Hotkeys.ToDictionary();
 
         // Active profile
-        settings.LastUsedVehicleProfile = store.ActiveProfileName;
+        settings.LastUsedVehicleProfile = store.ActiveVehicleProfileName;
     }
 
     #endregion

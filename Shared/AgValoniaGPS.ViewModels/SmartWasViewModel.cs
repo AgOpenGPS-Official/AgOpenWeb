@@ -231,7 +231,7 @@ public partial class SmartWasViewModel : ObservableObject
         _udpService.SendToModules(pgn);
 
         // Persist current vehicle profile
-        var profileName = _configService.Store.ActiveProfileName;
+        var profileName = _configService.Store.ActiveVehicleProfileName;
         if (!string.IsNullOrEmpty(profileName))
             _configService.SaveProfile(profileName);
     }

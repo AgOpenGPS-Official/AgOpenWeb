@@ -222,8 +222,8 @@ public class VehicleProfileService : IVehicleProfileService
 
         store.IsMetric = false;
 
-        store.ActiveProfileName = profileName;
-        store.ActiveProfilePath = Path.Combine(VehiclesDirectory, $"{profileName}.json");
+        store.ActiveVehicleProfileName = profileName;
+        store.ActiveVehicleProfilePath = Path.Combine(VehiclesDirectory, $"{profileName}.json");
 
         // Save the new default profile
         Save(profileName, store);
@@ -303,8 +303,8 @@ public class VehicleProfileService : IVehicleProfileService
         store.IsMetric = GetBool(settings, "setMenu_isMetric", false);
 
         // Profile metadata
-        store.ActiveProfileName = profileName;
-        store.ActiveProfilePath = filePath;
+        store.ActiveVehicleProfileName = profileName;
+        store.ActiveVehicleProfilePath = filePath;
     }
 
     private Dictionary<string, string> ParseSettings(XDocument doc)

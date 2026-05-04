@@ -949,7 +949,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             SendSteerConfigPgn();
 
             // Save configuration
-            _configService.SaveProfile(Config.ActiveProfileName);
+            _configService.SaveProfile(Config.ActiveVehicleProfileName);
 
             // Clear the unsaved changes warning
             HasUnsavedRightSideChanges = false;
