@@ -842,17 +842,23 @@ public class LookAheadSlitTests
     [Test]
     public void DriveOverPartialSlit_OuterSectionsStayOn()
     {
-        // 3 sections x 2m = 6m tool. Slit only covers center 2m.
-        // Center section should turn off, outer sections should stay on.
+        // 3 sections x 2m = 6m tool. Slit covers the center 4m so the centre
+        // section's swath is unambiguously fully covered while the outer
+        // sections see ≈50 % coverage. Center turns off (>= the OFF threshold
+        // ≈ full coverage); outer sections stay on. Was 2m wide before #348
+        // but with the OFF threshold now at ~99 % rather than MinCoverage,
+        // a slit equal to one section width leaves a few edge cells
+        // unmatched and the section correctly stays on to fill them.
         SetUpPipeline(numSections: 3, totalToolWidth: 6.0);
         SetUpField();
 
         double toolCenter = FIELD_SIZE / 2;
         double slitNorthing = FIELD_SIZE / 2;
 
-        // Paint a narrow slit that only covers the center section (E=99..101)
+        // Paint a slit that fully covers the centre section's 2m swath
+        // (E=99..101) plus 1m on either side (E=98..102, 4m total).
         _coverage.MarkRectangleCovered(
-            toolCenter - 1, toolCenter + 1,  // 2m wide, centered
+            toolCenter - 2, toolCenter + 2,  // 4m wide, centered
             slitNorthing - 3, slitNorthing + 3,  // 6m tall
             zone: 0);
 
