@@ -52,7 +52,11 @@ public class ConfigurationStore : ObservableObject
     public AutoSteerConfig AutoSteer { get; } = new();
     public HotkeyConfig Hotkeys { get; } = new();
 
-    // Profile management
+    // Profile management.
+    // ActiveProfileName/Path will be renamed to ActiveVehicleProfileName/Path in
+    // phase 3 of the vehicle/tool split (#346); for now they continue to track
+    // the vehicle profile, and the new ActiveToolProfile* fields below track
+    // the tool profile.
     private string _activeProfileName = "Default";
     public string ActiveProfileName
     {
@@ -65,6 +69,20 @@ public class ConfigurationStore : ObservableObject
     {
         get => _activeProfilePath;
         set => SetProperty(ref _activeProfilePath, value);
+    }
+
+    private string _activeToolProfileName = "Default";
+    public string ActiveToolProfileName
+    {
+        get => _activeToolProfileName;
+        set => SetProperty(ref _activeToolProfileName, value);
+    }
+
+    private string _activeToolProfilePath = string.Empty;
+    public string ActiveToolProfilePath
+    {
+        get => _activeToolProfilePath;
+        set => SetProperty(ref _activeToolProfilePath, value);
     }
 
     // Dirty tracking for save prompts

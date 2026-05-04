@@ -131,6 +131,7 @@ public static class ServiceCollectionExtensions
 
         // Vehicle profile service
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
+        services.AddSingleton<IToolProfileService, ToolProfileService>();
 
         // NTRIP profile service
         services.AddSingleton<INtripProfileService, NtripProfileService>();
