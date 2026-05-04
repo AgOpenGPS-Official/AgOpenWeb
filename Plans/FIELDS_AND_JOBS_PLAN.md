@@ -1,4 +1,4 @@
-# Fields and Jobs UX Plan
+# Track work sessions on each field (per-job coverage, notes, history)
 
 **Issue:** #349
 **Branch:** `feature/fields-and-jobs` (rename of `feature/field-job-hub-parity`)
