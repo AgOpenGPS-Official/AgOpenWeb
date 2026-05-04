@@ -371,7 +371,7 @@ public partial class YouTurnCreationService
         return new Vec2(ptA.Easting + t * abE, ptA.Northing + t * abN);
     }
 
-    private static Vec2? FindTrackHeadlandIntersectionAhead(
+    internal static Vec2? FindTrackHeadlandIntersectionAhead(
         Models.Track.Track track,
         Vec3 vehiclePos,
         IReadOnlyList<Vec3> headlandLine,
@@ -414,18 +414,32 @@ public partial class YouTurnCreationService
             return null;
         }
 
-        // AB line: extend the line in the travel direction and find the closest crossing.
+        // AB line: intersect the AB line itself (extended past both endpoints)
+        // with the headland; pick the intersection closest to the vehicle.
+        //
+        // The intersection MUST be a point on the AB line — anything else
+        // produces a perpendicular-offset reference point, which cascades into
+        // FindABTurnPoint and the U-turn arc landing off the cyan NextTrack
+        // line by the same offset (issue #354). The previous implementation
+        // intersected a *vehicle-anchored* line with the headland, which only
+        // landed on AB when the vehicle happened to be on AB exactly — and
+        // produced the order-dependent misalignment when the vehicle was
+        // perpendicular-offset (e.g. activation before the auto-pass-detect
+        // had time to update HowManyPathsAway from a stale 0).
         var ptA = track.Points[0];
         var ptB = track.Points[1];
-        var (startPoint, endPoint) = headingSameWay ? (ptA, ptB) : (ptB, ptA);
 
-        double dx = endPoint.Easting - startPoint.Easting;
-        double dy = endPoint.Northing - startPoint.Northing;
+        double dx = ptB.Easting - ptA.Easting;
+        double dy = ptB.Northing - ptA.Northing;
         double len = Math.Sqrt(dx * dx + dy * dy);
         if (len < 0.001) return null;
 
-        double extendedE = endPoint.Easting + (dx / len) * 1000;
-        double extendedN = endPoint.Northing + (dy / len) * 1000;
+        double dirE = dx / len;
+        double dirN = dy / len;
+        double extendedStartE = ptA.Easting - dirE * 1000;
+        double extendedStartN = ptA.Northing - dirN * 1000;
+        double extendedEndE = ptB.Easting + dirE * 1000;
+        double extendedEndN = ptB.Northing + dirN * 1000;
 
         Vec2? closestIntersection = null;
         double closestDist = double.MaxValue;
@@ -436,7 +450,7 @@ public partial class YouTurnCreationService
             var h2 = headlandLine[(j + 1) % headlandLine.Count];
 
             var intersection = GeometryMath.TryGetSegmentIntersection(
-                vehiclePos.Easting, vehiclePos.Northing, extendedE, extendedN,
+                extendedStartE, extendedStartN, extendedEndE, extendedEndN,
                 h1.Easting, h1.Northing, h2.Easting, h2.Northing);
 
             if (intersection.HasValue)

@@ -20,4 +20,8 @@
     <ProjectReference Include="..\AgValoniaGPS.Models\AgValoniaGPS.Models.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgValoniaGPS.Services.Tests" />
+  </ItemGroup>
+
 </Project>
