@@ -84,7 +84,7 @@ public class VehicleProfileService : IVehicleProfileService
         try
         {
             // Prefer JSON format - loads directly into store
-            if (ProfileJsonService.Load(VehiclesDirectory, profileName, store))
+            if (ProfileJsonServiceV1.Load(VehiclesDirectory, profileName, store))
                 return true;
 
             // Fall back to legacy XML - parse and populate store directly
@@ -162,7 +162,7 @@ public class VehicleProfileService : IVehicleProfileService
     public void Save(string profileName, ConfigurationStore store)
     {
         // Save JSON only (new canonical format)
-        ProfileJsonService.Save(VehiclesDirectory, profileName, store);
+        ProfileJsonServiceV1.Save(VehiclesDirectory, profileName, store);
     }
 
     public void CreateDefaultProfile(string profileName, ConfigurationStore store)
