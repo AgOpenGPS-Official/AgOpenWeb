@@ -10,6 +10,7 @@ using System.Linq;
 using System.Windows.Input;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
+using AgValoniaGPS.Services.Profile;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -40,13 +41,13 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
         LoadCommand = new RelayCommand(Load, () => CanLoad);
         CancelCommand = new RelayCommand(Cancel);
-        NewVehicleCommand = new RelayCommand<string>(NewVehicle);
+        NewVehicleCommand = new RelayCommand(() => NewVehicle(VehicleNameInput));
         DeleteVehicleCommand = new RelayCommand(DeleteVehicle, () => SelectedVehicle != null && !IsActiveVehicle(SelectedVehicle));
-        RenameVehicleCommand = new RelayCommand<string>(RenameVehicle);
+        RenameVehicleCommand = new RelayCommand(() => RenameVehicle(VehicleNameInput));
         ResetVehicleCommand = new RelayCommand(ResetVehicle);
-        NewToolCommand = new RelayCommand<string>(NewTool);
+        NewToolCommand = new RelayCommand(() => NewTool(ToolNameInput));
         DeleteToolCommand = new RelayCommand(DeleteTool, () => SelectedTool != null && !IsActiveTool(SelectedTool));
-        RenameToolCommand = new RelayCommand<string>(RenameTool);
+        RenameToolCommand = new RelayCommand(() => RenameTool(ToolNameInput));
         ResetToolCommand = new RelayCommand(ResetTool);
     }
 
@@ -61,6 +62,16 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _statusMessage;
+
+    /// <summary>
+    /// Text typed into the per-panel "profile name" TextBox. Two-way bound
+    /// from AXAML; cleared by the VM after a successful New / Rename.
+    /// </summary>
+    [ObservableProperty]
+    private string _vehicleNameInput = string.Empty;
+
+    [ObservableProperty]
+    private string _toolNameInput = string.Empty;
 
     public string CurrentVehicle => _configurationService.Store.ActiveVehicleProfileName;
     public string CurrentTool => _configurationService.Store.ActiveToolProfileName;
@@ -163,6 +174,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         _configurationService.SaveProfiles(name, _configurationService.Store.ActiveToolProfileName);
         Refresh();
         SelectedVehicle = name;
+        VehicleNameInput = string.Empty;
         StatusMessage = $"Created vehicle '{name}'";
     }
 
@@ -204,6 +216,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
             StatusMessage = $"Renamed '{oldName}' → '{newName}'";
             Refresh();
             SelectedVehicle = newName;
+            VehicleNameInput = string.Empty;
         }
         else
         {
@@ -237,6 +250,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         _configurationService.SaveProfiles(_configurationService.Store.ActiveVehicleProfileName, name);
         Refresh();
         SelectedTool = name;
+        ToolNameInput = string.Empty;
         StatusMessage = $"Created tool '{name}'";
     }
 
@@ -278,6 +292,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
             StatusMessage = $"Renamed '{oldName}' → '{newName}'";
             Refresh();
             SelectedTool = newName;
+            ToolNameInput = string.Empty;
         }
         else
         {
@@ -300,42 +315,60 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     private string BuildVehiclePreview(string name)
     {
-        // Preview uses an ephemeral store so the live store isn't perturbed.
-        var preview = new ConfigurationStore();
-        var current = ConfigurationStore.Instance;
-        try
-        {
-            ConfigurationStore.SetInstance(preview);
-            // We don't actually have a per-name read API that targets a
-            // throwaway store, so fall back to "load into the current store"
-            // when previewing the active profile.
-        }
-        finally
-        {
-            ConfigurationStore.SetInstance(current);
-        }
-
-        // Show the live values for the active profile; placeholder otherwise.
+        // Active profile already lives in the live store — no disk read.
         if (IsActiveVehicle(name))
-        {
-            var v = current.Vehicle;
-            return $"Type: {v.Type}\nWheelbase: {v.Wheelbase:F2} m\nAntenna pivot: {v.AntennaPivot:F2} m\nTrack width: {v.TrackWidth:F2} m";
-        }
-        return $"Vehicle profile: {name}\n(Load to view details)";
+            return FormatVehicle(_configurationService.Store);
+
+        // Preview a non-active profile by reading its file into a throwaway
+        // store so the live one isn't perturbed. Falls back to v1 reader for
+        // pre-#346 files that haven't been migrated yet.
+        var temp = new ConfigurationStore();
+        bool ok = VehicleProfileJsonService.Load(_configurationService.ProfilesDirectory, name, temp)
+               || ProfileJsonServiceV1.Load(_configurationService.ProfilesDirectory, name, temp);
+        if (!ok)
+            return $"Vehicle profile '{name}'\n(file not found / unreadable)";
+        return FormatVehicle(temp);
     }
 
     private string BuildToolPreview(string name)
     {
-        var current = ConfigurationStore.Instance;
         if (IsActiveTool(name))
-        {
-            var t = current.Tool;
-            string attach = t.IsToolFrontFixed ? "Front fixed"
-                          : t.IsToolRearFixed ? "Rear fixed"
-                          : t.IsToolTrailing ? "Trailing"
-                          : "—";
-            return $"Width: {t.Width:F2} m\nOverlap: {t.Overlap:F2} m\nOffset: {t.Offset:F2} m\nSections: {current.NumSections}\nAttach: {attach}";
-        }
-        return $"Tool profile: {name}\n(Load to view details)";
+            return FormatTool(_configurationService.Store);
+
+        var temp = new ConfigurationStore();
+        bool ok = ToolProfileJsonService.Load(_configurationService.ToolsDirectory, name, temp)
+               || ProfileJsonServiceV1.Load(_configurationService.ProfilesDirectory, name, temp);
+        if (!ok)
+            return $"Tool profile '{name}'\n(file not found / unreadable)";
+        return FormatTool(temp);
+    }
+
+    private static string FormatVehicle(ConfigurationStore store)
+    {
+        var v = store.Vehicle;
+        return
+            $"Type: {v.Type}\n" +
+            $"Wheelbase: {v.Wheelbase:F2} m\n" +
+            $"Track width: {v.TrackWidth:F2} m\n" +
+            $"Antenna height: {v.AntennaHeight:F2} m\n" +
+            $"Antenna pivot: {v.AntennaPivot:F2} m\n" +
+            $"Antenna offset: {v.AntennaOffset:F2} m\n" +
+            $"Max steer angle: {v.MaxSteerAngle:F1}°";
+    }
+
+    private static string FormatTool(ConfigurationStore store)
+    {
+        var t = store.Tool;
+        string attach = t.IsToolFrontFixed ? "Front fixed"
+                      : t.IsToolRearFixed ? "Rear fixed"
+                      : t.IsToolTrailing ? "Trailing"
+                      : "—";
+        return
+            $"Width: {t.Width:F2} m\n" +
+            $"Overlap: {t.Overlap:F2} m\n" +
+            $"Offset: {t.Offset:F2} m\n" +
+            $"Sections: {store.NumSections}\n" +
+            $"Min coverage: {t.MinCoverage}%\n" +
+            $"Attach: {attach}";
     }
 }

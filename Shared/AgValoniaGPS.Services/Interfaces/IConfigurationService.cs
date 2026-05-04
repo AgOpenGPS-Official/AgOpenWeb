@@ -37,6 +37,11 @@ public interface IConfigurationService
     /// </summary>
     string ProfilesDirectory { get; }
 
+    /// <summary>
+    /// Gets the directory where tool profiles are stored (#346).
+    /// </summary>
+    string ToolsDirectory { get; }
+
     #region Profile Management
 
     /// <summary>
