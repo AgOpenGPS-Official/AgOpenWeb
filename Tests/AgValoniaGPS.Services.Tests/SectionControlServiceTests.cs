@@ -175,16 +175,18 @@ public class SectionControlServiceTests
 
     #endregion
 
-    #region Coverage hysteresis (#345)
+    #region Coverage thresholds (#345 hysteresis + #348 gap-fill)
 
     [Test]
-    public void CoverageHysteresis_StaysInStateInsideTheGap()
+    public void Coverage_StaysOnUntilFullyCovered_TurnsOnBelowMinCoverage()
     {
-        // Repro for #345. With single-threshold logic, a section's coverage %
-        // bobbing around MinCoverage (e.g. 70 %) flips shouldBeOn /
-        // shouldBeOff every tick at slow speed and produces visible flicker.
-        // Hysteresis: 15 % gap below MinCoverage is dead-zone — the section
-        // stays in its current state.
+        // Combined repro for #345 (slow-speed flicker — needs hysteresis gap
+        // between ON and OFF thresholds) and #348 (sections turn off too
+        // early over partly-painted strips, leaving gaps unfilled).
+        //
+        // Design: ON threshold = MinCoverage (user's overlap preference);
+        // OFF threshold = 0.99 (only when essentially fully covered).
+        // The ~30 percentage-point gap between them is the hysteresis.
         var outerPoly = new BoundaryPolygon();
         outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
         outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
@@ -193,7 +195,7 @@ public class SectionControlServiceTests
         outerPoly.UpdateBounds();
         _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
 
-        ConfigurationStore.Instance.Tool.MinCoverage = 70; // OFF=0.70, ON=0.55
+        ConfigurationStore.Instance.Tool.MinCoverage = 70; // ON=0.70, OFF=0.99
         _service.SetAllAuto();
         _service.MasterState = SectionMasterState.Auto;
 
@@ -204,44 +206,54 @@ public class SectionControlServiceTests
                 .ReturnsForAnyArgs((r, r, r));
         }
 
-        // Phase 1: 0 % coverage → section turns ON.
+        // Phase 1: 0 % coverage → section turns ON (well below MinCoverage).
         SetCoverage(0.0);
         _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
         Assert.That(_service.SectionStates[0].IsOn, Is.True,
             "Phase 1: section should turn ON at 0 % coverage");
 
-        // Phase 2: 65 % coverage — inside the 55-70 % hysteresis gap. With
-        // single-threshold logic the section would have flapped once cov
-        // climbed above 70 % then bobbed back below; with hysteresis the
-        // section is still ON and stays that way.
+        // Phase 2: 65 % coverage — below the ON threshold. Section is already
+        // ON, stays ON. (Exercises the slow-speed-flicker scenario from #345
+        // where coverage % bobs around MinCoverage; the natural ON↔OFF gap
+        // means neither boolean flips.)
         SetCoverage(0.65);
         for (int i = 0; i < 5; i++)
             _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
         Assert.That(_service.SectionStates[0].IsOn, Is.True,
-            "Phase 2: section should stay ON when coverage is in the hysteresis gap (65 %)");
+            "Phase 2: section should stay ON below ON threshold (65 %)");
 
-        // Phase 3: 70 % coverage hits the OFF threshold → section turns OFF.
-        SetCoverage(0.70);
+        // Phase 3: 85 % coverage — past MinCoverage but well short of full.
+        // This is the #348 case: under the old logic the section would have
+        // turned OFF here, leaving the remaining 15 % of cells unsprayed.
+        // With the new OFF threshold it stays ON to fill the remaining gaps.
+        SetCoverage(0.85);
+        for (int i = 0; i < 5; i++)
+            _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.True,
+            "Phase 3: section should stay ON over partly-painted area (85 %) to fill gaps (#348)");
+
+        // Phase 4: 99 % coverage hits the OFF threshold → section turns OFF.
+        SetCoverage(0.99);
         _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
         Assert.That(_service.SectionStates[0].IsOn, Is.False,
-            "Phase 3: section should turn OFF when coverage reaches 70 % (OFF threshold)");
+            "Phase 4: section should turn OFF when coverage reaches 99 % (full)");
 
-        // Phase 4: drop coverage to 60 % — back inside the gap. Without
-        // hysteresis the section would flip back ON the moment cov dropped
-        // below 70 %. With hysteresis it stays OFF.
-        SetCoverage(0.60);
+        // Phase 5: 75 % coverage — above MinCoverage, in the hysteresis
+        // dead-zone. Section just turned OFF; stays OFF. Without the gap the
+        // section would flap back on the moment coverage dropped below 99 %.
+        SetCoverage(0.75);
         for (int i = 0; i < 5; i++)
             _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
         Assert.That(_service.SectionStates[0].IsOn, Is.False,
-            "Phase 4: section should stay OFF when coverage drops back into the gap (60 %)");
+            "Phase 5: section should stay OFF in the hysteresis gap (75 %)");
 
-        // Phase 5: drop coverage below ON threshold (50 % < 55 %) → section
-        // turns ON again. This confirms the gap is not infinite — the
-        // section will resume spraying when there's a real gap to fill.
-        SetCoverage(0.50);
+        // Phase 6: 60 % coverage — below MinCoverage (the ON threshold). The
+        // section turns back on: there's enough uncovered area to be worth
+        // spraying.
+        SetCoverage(0.60);
         _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
         Assert.That(_service.SectionStates[0].IsOn, Is.True,
-            "Phase 5: section should turn ON when coverage drops below ON threshold (55 %)");
+            "Phase 6: section should turn ON below MinCoverage (60 %)");
     }
 
     [Test]

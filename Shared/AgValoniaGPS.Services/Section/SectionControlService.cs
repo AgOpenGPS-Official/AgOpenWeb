@@ -74,17 +74,16 @@ public class SectionControlService : ISectionControlService
     // Default coverage overlap threshold (used if MinCoverage is 0)
     private const double DEFAULT_COVERAGE_THRESHOLD = 0.70; // 70%
 
-    // Hysteresis gap between the OFF threshold (where a covered area is "done")
-    // and the ON threshold (where an uncovered area should be sprayed). At slow
-    // speed (~5 km/h or below) the look-ahead points sample nearly-stationary
-    // pixels, so a single boundary cell flipping causes the coverage % to bob
-    // 1-2 % around the threshold. Without a gap, that bob flips the
-    // shouldBeOn / shouldBeOff booleans every tick and produces visible
-    // flicker + missed spray. 15 percentage points is wide enough to absorb
-    // pixel-flip noise without compromising the MinCoverage intent.
-    private const double COVERAGE_HYSTERESIS_MARGIN = 0.15;
-    // Floor so the ON threshold can't go ≤ 0 when MinCoverage is set very low.
-    private const double COVERAGE_ON_THRESHOLD_FLOOR = 0.05;
+    // OFF threshold: section stays on until its swath is essentially fully
+    // covered, so a pass over a partly-painted strip fills the holes instead
+    // of turning the section off as soon as it reads "mostly covered". A
+    // section-wide threshold tied to MinCoverage caused #348 (gaps don't
+    // fill on subsequent passes); decoupling the OFF decision from
+    // MinCoverage and pinning it near full coverage is the principled fix.
+    // 0.99 (with 0.01 tolerance for FP / pixel noise around 100 %) keeps the
+    // section on through any meaningful gap. MarkCellCovered is already
+    // idempotent so over-painting covered cells is a no-op.
+    private const double COVERAGE_OFF_THRESHOLD = 0.99;
 
     // Floor on the forward distance from section center to the look-on /
     // look-off sample points. lookAheadDistance = speed × LookAheadSetting,
@@ -409,20 +408,23 @@ public class SectionControlService : ISectionControlService
             lookAheadOffDist);
         _totalCoverageMs += _sectionSw.Elapsed.TotalMilliseconds;
 
-        // Section is "covered" if coverage exceeds the threshold.
-        // Use MinCoverage setting from config (0-100), default to 70% if not set.
-        // Apply hysteresis: a higher OFF threshold (when to consider an area
-        // "covered enough to skip") and a lower ON threshold (when to consider
-        // it "uncovered enough to spray"). The gap between them prevents the
-        // shouldBeOn / shouldBeOff booleans from oscillating when the look-ahead
-        // points sample noisy pixels near the threshold — the pathology behind
-        // the slow-speed flicker / missed spray (issue #345).
-        double coverageOffThreshold = tool.MinCoverage > 0
+        // The ON and OFF decisions use different thresholds — by design, not
+        // for noise hysteresis (the #345 explicit margin is gone, replaced
+        // by the natural separation below).
+        //   ON threshold = MinCoverage. User's "I want X % overlap" setting
+        //     gates turning the section on: don't bother firing if the look-
+        //     ahead area is already at or above the user's accepted overlap.
+        //   OFF threshold = COVERAGE_OFF_THRESHOLD (≈ 1.0). Section stays on
+        //     while ANY meaningful cell in its swath is uncovered, so a pass
+        //     over a partly-painted strip fills the gaps (#348). Per-cell
+        //     idempotency in MarkCellCovered handles the already-covered
+        //     cells without over-paint. The natural separation between this
+        //     and the ON threshold (≈ 30 points at default MinCoverage) is
+        //     the hysteresis that prevents slow-speed flicker (#345).
+        double coverageOnThreshold = tool.MinCoverage > 0
             ? tool.MinCoverage / 100.0
             : DEFAULT_COVERAGE_THRESHOLD;
-        double coverageOnThreshold = Math.Max(
-            COVERAGE_ON_THRESHOLD_FLOOR,
-            coverageOffThreshold - COVERAGE_HYSTERESIS_MARGIN);
+        double coverageOffThreshold = COVERAGE_OFF_THRESHOLD;
         bool lookOnCovered = lookOnCoverage.CoveragePercent >= coverageOnThreshold;
         bool lookOffCovered = lookOffCoverage.CoveragePercent >= coverageOffThreshold;
 
