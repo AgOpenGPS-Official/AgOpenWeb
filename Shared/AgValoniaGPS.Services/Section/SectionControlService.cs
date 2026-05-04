@@ -74,6 +74,31 @@ public class SectionControlService : ISectionControlService
     // Default coverage overlap threshold (used if MinCoverage is 0)
     private const double DEFAULT_COVERAGE_THRESHOLD = 0.70; // 70%
 
+    // Hysteresis gap between the OFF threshold (where a covered area is "done")
+    // and the ON threshold (where an uncovered area should be sprayed). At slow
+    // speed (~5 km/h or below) the look-ahead points sample nearly-stationary
+    // pixels, so a single boundary cell flipping causes the coverage % to bob
+    // 1-2 % around the threshold. Without a gap, that bob flips the
+    // shouldBeOn / shouldBeOff booleans every tick and produces visible
+    // flicker + missed spray. 15 percentage points is wide enough to absorb
+    // pixel-flip noise without compromising the MinCoverage intent.
+    private const double COVERAGE_HYSTERESIS_MARGIN = 0.15;
+    // Floor so the ON threshold can't go ≤ 0 when MinCoverage is set very low.
+    private const double COVERAGE_ON_THRESHOLD_FLOOR = 0.05;
+
+    // Floor on the forward distance from section center to the look-on /
+    // look-off sample points. lookAheadDistance = speed × LookAheadSetting,
+    // so at slow speed and/or LookAheadSetting=0 (the default) it goes to
+    // zero — the look-on/off check then samples cells at the section center,
+    // i.e. inside the section's own freshly-painted swath. shouldBeOff fires
+    // off the section's own coverage, IsOn flips off, paint stops; the next
+    // tick the section has crept past its own paint slightly, shouldBeOn
+    // fires, IsOn flips back on. This is the slow-speed flicker in #345.
+    // 0.3 m (3 detection cells) is enough to clear the painted swath
+    // longitudinally without changing behavior at normal speeds, where
+    // speed × time already exceeds it.
+    private const double MIN_LOOKAHEAD_FORWARD_DISTANCE_METERS = 0.3;
+
     // Minimum distance (squared) between coverage points to reduce edge jaggedness
     // At 10Hz and 10 kph (2.78 m/s), vehicle moves ~0.28m per update
     // Using 0.12m threshold ensures we add points frequently enough for accuracy
@@ -312,8 +337,13 @@ public class SectionControlService : ISectionControlService
         // flips on the first tick that shouldBe(On|Off) becomes true.
         double turnOnPhaseSec = tool.LookAheadOnSetting;
         double turnOffPhaseSec = tool.LookAheadOffSetting;
-        double lookAheadOnDist = speed * turnOnPhaseSec;
-        double lookAheadOffDist = speed * turnOffPhaseSec;
+        // Floor the FORWARD distance only (the time-based phase debounce above
+        // stays at user config). This keeps the sample point past the section's
+        // own swath at slow speed; at normal speeds speed × time exceeds the
+        // floor and the user's anticipation is preserved exactly. See the
+        // MIN_LOOKAHEAD_FORWARD_DISTANCE_METERS comment for the full reason.
+        double lookAheadOnDist = Math.Max(speed * turnOnPhaseSec, MIN_LOOKAHEAD_FORWARD_DISTANCE_METERS);
+        double lookAheadOffDist = Math.Max(speed * turnOffPhaseSec, MIN_LOOKAHEAD_FORWARD_DISTANCE_METERS);
 
         // Calculate section half-width for segment-based checks
         double halfWidth = (section.PositionRight - section.PositionLeft) / 2.0;
@@ -379,12 +409,22 @@ public class SectionControlService : ISectionControlService
             lookAheadOffDist);
         _totalCoverageMs += _sectionSw.Elapsed.TotalMilliseconds;
 
-        // Section is "covered" if coverage exceeds threshold
-        // Use MinCoverage setting from config (0-100), default to 70% if not set
-        double coverageThreshold = tool.MinCoverage > 0 ? tool.MinCoverage / 100.0 : DEFAULT_COVERAGE_THRESHOLD;
-        bool currentCovered = currentCoverage.CoveragePercent >= coverageThreshold;
-        bool lookOnCovered = lookOnCoverage.CoveragePercent >= coverageThreshold;
-        bool lookOffCovered = lookOffCoverage.CoveragePercent >= coverageThreshold;
+        // Section is "covered" if coverage exceeds the threshold.
+        // Use MinCoverage setting from config (0-100), default to 70% if not set.
+        // Apply hysteresis: a higher OFF threshold (when to consider an area
+        // "covered enough to skip") and a lower ON threshold (when to consider
+        // it "uncovered enough to spray"). The gap between them prevents the
+        // shouldBeOn / shouldBeOff booleans from oscillating when the look-ahead
+        // points sample noisy pixels near the threshold — the pathology behind
+        // the slow-speed flicker / missed spray (issue #345).
+        double coverageOffThreshold = tool.MinCoverage > 0
+            ? tool.MinCoverage / 100.0
+            : DEFAULT_COVERAGE_THRESHOLD;
+        double coverageOnThreshold = Math.Max(
+            COVERAGE_ON_THRESHOLD_FLOOR,
+            coverageOffThreshold - COVERAGE_HYSTERESIS_MARGIN);
+        bool lookOnCovered = lookOnCoverage.CoveragePercent >= coverageOnThreshold;
+        bool lookOffCovered = lookOffCoverage.CoveragePercent >= coverageOffThreshold;
 
         // Store coverage percentage for potential UI display
         section.CoveragePercent = currentCoverage.CoveragePercent;
