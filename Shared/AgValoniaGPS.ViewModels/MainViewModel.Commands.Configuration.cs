@@ -46,6 +46,21 @@ public partial class MainViewModel
                 ConfigurationViewModel.IsDialogVisible = false;
         });
 
+        // Load Vehicle / Tool picker (#346)
+        ShowLoadVehicleToolDialogCommand = new RelayCommand(() =>
+        {
+            LoadVehicleToolDialogVm = new LoadVehicleToolDialogViewModel(
+                _configurationService,
+                onClose: () => State.UI.CloseDialog(),
+                confirm: (msg, action) => ShowConfirmationDialog("Confirm", msg, action));
+            State.UI.ShowDialog(DialogType.LoadVehicleTool);
+        });
+
+        CancelLoadVehicleToolDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
         // AutoSteer Configuration Panel
         ShowAutoSteerConfigCommand = new RelayCommand(() =>
         {

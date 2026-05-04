@@ -46,9 +46,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileNew.png"
                                  Text="{loc:Localize NewProfile}"
                                  Command="{Binding ShowNewProfileDialogCommand}"/>
+            <!-- #346: redirected to the new two-panel picker. -->
             <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileOpen.png"
                                  Text="{loc:Localize LoadProfile}"
-                                 Command="{Binding ShowLoadProfileDialogCommand}"/>
+                                 Command="{Binding ShowLoadVehicleToolDialogCommand}"/>
             <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/Settings48.png"
                                  Text="{loc:Localize VehicleSettings}"
                                  Command="{Binding ShowConfigurationDialogCommand}"/>

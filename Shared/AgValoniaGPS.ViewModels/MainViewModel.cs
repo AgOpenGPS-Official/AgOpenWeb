@@ -2498,8 +2498,18 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _smartWasViewModel, value);
     }
 
+    // Load Vehicle/Tool picker dialog (#346)
+    private LoadVehicleToolDialogViewModel? _loadVehicleToolDialogVm;
+    public LoadVehicleToolDialogViewModel? LoadVehicleToolDialogVm
+    {
+        get => _loadVehicleToolDialogVm;
+        set => SetProperty(ref _loadVehicleToolDialogVm, value);
+    }
+
     public ICommand? ShowConfigurationDialogCommand { get; private set; }
     public ICommand? CancelConfigurationDialogCommand { get; private set; }
+    public ICommand? ShowLoadVehicleToolDialogCommand { get; private set; }
+    public ICommand? CancelLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? ShowAutoSteerConfigCommand { get; private set; }
     public ICommand? ShowSmartWasCommand { get; private set; }
     public ICommand? CloseSmartWasDialogCommand { get; private set; }

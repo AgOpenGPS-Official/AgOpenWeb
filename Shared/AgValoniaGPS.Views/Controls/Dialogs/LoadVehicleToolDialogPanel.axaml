@@ -1,0 +1,165 @@
+<!--
+AgValoniaGPS
+Copyright (C) 2024-2026 AgValoniaGPS Contributors
+
+Licensed under GNU GPL v3. See LICENSE.md.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AgValoniaGPS.ViewModels"
+             mc:Ignorable="d"
+             x:Class="AgValoniaGPS.Views.Controls.Dialogs.LoadVehicleToolDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsLoadVehicleToolDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsLoadVehicleToolDialogVisible}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.Header">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.SubHeader">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="Button.DialogButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.DialogButton:pointerover">
+            <Setter Property="Background" Value="#2980B9"/>
+        </Style>
+        <Style Selector="Button.CancelButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+        <Style Selector="Button.DangerButton">
+            <Setter Property="Background" Value="#E74C3C"/>
+        </Style>
+        <Style Selector="Button.DangerButton:pointerover">
+            <Setter Property="Background" Value="#C0392B"/>
+        </Style>
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="#27AE60"/>
+        </Style>
+        <Style Selector="Border.PreviewBox">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="MinHeight" Value="100"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <Border Background="#80000000" IsHitTestVisible="True"
+                PointerPressed="Backdrop_PointerPressed"/>
+
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                CornerRadius="12"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                BorderThickness="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="640"
+                MaxWidth="900"
+                MaxHeight="640"
+                Padding="20"
+                DataContext="{Binding LoadVehicleToolDialogVm}">
+            <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,*">
+                <!-- Vehicle column -->
+                <StackPanel Grid.Row="0" Grid.Column="0">
+                    <TextBlock Classes="Header" Text="Vehicle"/>
+                    <TextBlock Classes="SubHeader"
+                               Text="{Binding CurrentVehicle, StringFormat='Current: {0}'}"/>
+                </StackPanel>
+
+                <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto">
+                    <ListBox Grid.Row="0"
+                             SelectionMode="Single"
+                             MinHeight="180"
+                             ItemsSource="{Binding Vehicles}"
+                             SelectedItem="{Binding SelectedVehicle, Mode=TwoWay}"/>
+                    <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding VehiclePreview}" TextWrapping="Wrap"/>
+                    </Border>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+                        <Button Classes="DialogButton" Content="New" Command="{Binding NewVehicleCommand}"
+                                CommandParameter="NewVehicle"/>
+                        <Button Classes="DialogButton DangerButton" Content="Delete" Command="{Binding DeleteVehicleCommand}"/>
+                        <Button Classes="DialogButton" Content="Rename" Command="{Binding RenameVehicleCommand}"
+                                CommandParameter="RenamedVehicle"/>
+                    </StackPanel>
+                    <Button Grid.Row="3" Classes="DialogButton CancelButton" Content="Reset to Default"
+                            Command="{Binding ResetVehicleCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
+                </Grid>
+
+                <!-- Tool column -->
+                <StackPanel Grid.Row="0" Grid.Column="2">
+                    <TextBlock Classes="Header" Text="Tool"/>
+                    <TextBlock Classes="SubHeader"
+                               Text="{Binding CurrentTool, StringFormat='Current: {0}'}"/>
+                </StackPanel>
+
+                <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto">
+                    <ListBox Grid.Row="0"
+                             SelectionMode="Single"
+                             MinHeight="180"
+                             ItemsSource="{Binding Tools}"
+                             SelectedItem="{Binding SelectedTool, Mode=TwoWay}"/>
+                    <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
+                        <TextBlock Text="{Binding ToolPreview}" TextWrapping="Wrap"/>
+                    </Border>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+                        <Button Classes="DialogButton" Content="New" Command="{Binding NewToolCommand}"
+                                CommandParameter="NewTool"/>
+                        <Button Classes="DialogButton DangerButton" Content="Delete" Command="{Binding DeleteToolCommand}"/>
+                        <Button Classes="DialogButton" Content="Rename" Command="{Binding RenameToolCommand}"
+                                CommandParameter="RenamedTool"/>
+                    </StackPanel>
+                    <Button Grid.Row="3" Classes="DialogButton CancelButton" Content="Reset to Default"
+                            Command="{Binding ResetToolCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
+                </Grid>
+
+                <!-- Status row spans both columns -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                           Text="{Binding StatusMessage}"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                           Margin="0,12,0,0"
+                           HorizontalAlignment="Left"/>
+
+                <!-- Action buttons -->
+                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+                    <Border Grid.Column="0"/>
+                    <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="Cancel"
+                            Command="{Binding CancelCommand}"/>
+                    <Button Grid.Column="2" Classes="DialogButton" Content="Load"
+                            Command="{Binding LoadCommand}" Margin="8,0,0,0"/>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
