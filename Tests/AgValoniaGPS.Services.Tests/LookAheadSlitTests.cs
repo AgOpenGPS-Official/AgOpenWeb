@@ -236,7 +236,13 @@ public class LookAheadSlitTests
         outerPoly.Points.Add(new BoundaryPoint { Easting = FIELD_SIZE, Northing = FIELD_SIZE });
         outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = FIELD_SIZE });
         outerPoly.UpdateBounds();
-        _pipeline.SetBoundary(new Boundary { OuterBoundary = outerPoly });
+        var boundary = new Boundary { OuterBoundary = outerPoly };
+        _pipeline.SetBoundary(boundary);
+        // Section control reads CurrentBoundary directly off the shared
+        // ApplicationState; pipeline.SetBoundary only updates the pipeline's
+        // private copy. Without this, sections see no boundary and stay OFF
+        // (issue #347 fix).
+        _appState.Field.CurrentBoundary = boundary;
     }
 
     /// <summary>

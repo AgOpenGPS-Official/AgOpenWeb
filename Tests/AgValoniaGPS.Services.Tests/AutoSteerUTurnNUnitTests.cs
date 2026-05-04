@@ -419,6 +419,9 @@ public class AutoSteerUTurnNUnitTests
         outerPoly.UpdateBounds();
         var boundary = new Boundary { OuterBoundary = outerPoly };
         _pipeline.SetBoundary(boundary);
+        // Section control reads CurrentBoundary off the shared ApplicationState;
+        // pipeline.SetBoundary only updates the pipeline's private copy. (#347)
+        _appState.Field.CurrentBoundary = boundary;
 
         // Create headland line for YouTurn detection
         var headlandLine = new List<Vec3>
@@ -645,6 +648,8 @@ public class AutoSteerUTurnNUnitTests
         outerPoly.UpdateBounds();
         var boundary = new Boundary { OuterBoundary = outerPoly };
         _pipeline.SetBoundary(boundary);
+        // Section control reads CurrentBoundary off the shared ApplicationState (#347).
+        _appState.Field.CurrentBoundary = boundary;
 
         var headlandLine = new List<Vec3>
         {

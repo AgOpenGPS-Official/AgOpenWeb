@@ -318,21 +318,22 @@ public class SectionControlServiceTests
     #region No Boundary
 
     [Test]
-    public void Update_NoBoundary_AutoSectionsTurnOnAnywhere()
+    public void Update_NoBoundary_AutoSectionsStayOff()
     {
-        // No boundary set on _appState.Field. GetSegmentBoundaryStatus returns
-        // FullyInside in that case, so Auto sections aren't blocked by the
-        // boundary check. Combined with no coverage and no headland, shouldBeOn
-        // is true and the section flips on after one TURNING_ON phase tick
-        // (LookAheadOnSetting defaults to 0 → 1-tick floor in the section
-        // state machine). This documents current behavior; if we want a
-        // defensive "no boundary, no spray" mode that's a separate change.
+        // Issue #347: no field open (boundary null) must mean "no spray".
+        // GetSegmentBoundaryStatus returns FullyOutside in that case, so the
+        // strict isInBoundary check fails for every section and the early
+        // UpdateSectionOff path forces IsOn=false. Spraying outside a defined
+        // field is never the intended operation — matches firmware behavior.
         _service.SetAllAuto();
         _service.MasterState = SectionMasterState.Auto;
 
-        _service.Update(new Vec3(50, 50, 0), 0, 0, 5.0);
+        // Run several ticks to outlast any TURNING_ON debounce; with no
+        // boundary, IsAnySectionOn must remain false.
+        for (int i = 0; i < 5; i++)
+            _service.Update(new Vec3(50, 50, 0), 0, 0, 5.0);
 
-        Assert.That(_service.IsAnySectionOn, Is.True);
+        Assert.That(_service.IsAnySectionOn, Is.False);
     }
 
     #endregion

@@ -68,9 +68,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
     </UserControl.Styles>
 
-    <!-- Floating panel with section indicators -->
+    <!-- Floating panel with section indicators.
+         Hidden when no field open (#347): sections can't paint with no boundary. -->
     <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="12"
-            BoxShadow="0 4 16 2 #40000000">
+            BoxShadow="0 4 16 2 #40000000"
+            IsVisible="{Binding HasBoundary}">
         <StackPanel Orientation="Horizontal" Spacing="8">
             <!-- Section buttons - 2 rows of up to 8 each -->
             <StackPanel Orientation="Vertical" Spacing="4">
