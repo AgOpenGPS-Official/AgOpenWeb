@@ -31,11 +31,13 @@ namespace AgValoniaGPS.Services;
 /// </summary>
 public class ConfigurationService(
     IVehicleProfileService profileService,
+    IToolProfileService toolProfileService,
     ISettingsService settingsService) : IConfigurationService
 {
     public ConfigurationStore Store => ConfigurationStore.Instance;
 
     public string ProfilesDirectory => profileService.VehiclesDirectory;
+    public string ToolsDirectory => toolProfileService.ToolsDirectory;
 
     public event EventHandler<string>? ProfileLoaded;
     public event EventHandler<string>? ProfileSaved;
@@ -47,30 +49,56 @@ public class ConfigurationService(
         return profileService.GetAvailableProfiles();
     }
 
-    public bool LoadProfile(string name)
+    public IReadOnlyList<string> GetAvailableToolProfiles()
     {
-        if (!profileService.Load(name, Store))
+        return toolProfileService.GetAvailableProfiles();
+    }
+
+    /// <summary>
+    /// Convenience: load a vehicle and a tool profile that share the same
+    /// name. The legacy single-profile callers and the same-name save
+    /// pattern both flow through here.
+    /// </summary>
+    public bool LoadProfile(string name) => LoadProfiles(name, name);
+
+    /// <summary>
+    /// Load a vehicle profile and (independently) a tool profile. The
+    /// picker dialog (#346) calls this with mismatched names.
+    /// </summary>
+    public bool LoadProfiles(string vehicleName, string toolName)
+    {
+        if (!profileService.Load(vehicleName, Store))
             return false;
 
-        LoadAutoSteerConfig(name);
+        // Tool side is best-effort: a matching tool file may not exist yet
+        // (pre-#346 user, no migration run, fresh install with no tool yet).
+        // Failure leaves the tool/sections sub-store as the v1 reader (or
+        // CreateDefaultProfile path) populated it.
+        toolProfileService.Load(toolName, Store);
+
+        LoadAutoSteerConfig(vehicleName);
         Store.HasUnsavedChanges = false;
         Store.OnProfileLoaded();
-        ProfileLoaded?.Invoke(this, name);
+        ProfileLoaded?.Invoke(this, vehicleName);
         return true;
     }
 
-    public void SaveProfile(string name)
+    public void SaveProfile(string name) => SaveProfiles(name, name);
+
+    public void SaveProfiles(string vehicleName, string toolName)
     {
-        profileService.Save(name, Store);
-        SaveAutoSteerConfig(name);
+        profileService.Save(vehicleName, Store);
+        toolProfileService.Save(toolName, Store);
+        SaveAutoSteerConfig(vehicleName);
         Store.HasUnsavedChanges = false;
         Store.OnProfileSaved();
-        ProfileSaved?.Invoke(this, name);
+        ProfileSaved?.Invoke(this, vehicleName);
     }
 
     public void CreateProfile(string name)
     {
         profileService.CreateDefaultProfile(name, Store);
+        toolProfileService.CreateDefaultProfile(name, Store);
         Store.HasUnsavedChanges = false;
     }
 
@@ -79,11 +107,17 @@ public class ConfigurationService(
         bool deleted = false;
         try
         {
-            // Delete JSON profile (primary format)
+            // Delete v2 vehicle JSON
             var jsonPath = Path.Combine(ProfilesDirectory, $"{name}.json");
             if (File.Exists(jsonPath)) { File.Delete(jsonPath); deleted = true; }
 
-            // Also clean up legacy XML and AutoSteer JSON if they exist
+            // Delete v2 tool JSON (paired by name; rare to delete vehicle and
+            // not its same-name tool — the picker dialog manages independent
+            // delete for mismatched names).
+            var toolPath = Path.Combine(ToolsDirectory, $"{name}.json");
+            if (File.Exists(toolPath)) { File.Delete(toolPath); deleted = true; }
+
+            // Legacy AOG XML (vehicle side only) and AutoSteer sidecar.
             var xmlPath = Path.Combine(ProfilesDirectory, $"{name}.XML");
             if (File.Exists(xmlPath)) { File.Delete(xmlPath); deleted = true; }
 
@@ -101,7 +135,11 @@ public class ConfigurationService(
     {
         if (!string.IsNullOrEmpty(Store.ActiveVehicleProfileName))
         {
-            LoadProfile(Store.ActiveVehicleProfileName);
+            LoadProfiles(
+                Store.ActiveVehicleProfileName,
+                string.IsNullOrEmpty(Store.ActiveToolProfileName)
+                    ? Store.ActiveVehicleProfileName
+                    : Store.ActiveToolProfileName);
         }
     }
 
@@ -249,8 +287,9 @@ public class ConfigurationService(
         // Hotkey bindings
         settings.HotkeyBindings = store.Hotkeys.ToDictionary();
 
-        // Active profile
+        // Active profile pair (#346)
         settings.LastUsedVehicleProfile = store.ActiveVehicleProfileName;
+        settings.LastUsedToolProfile = store.ActiveToolProfileName;
     }
 
     #endregion

@@ -83,11 +83,19 @@ public class VehicleProfileService : IVehicleProfileService
     {
         try
         {
-            // Prefer JSON format - loads directly into store
+            // Prefer v2 vehicle-only format (#346) — JSON with FormatVersion >= 2.
+            if (VehicleProfileJsonService.Load(VehiclesDirectory, profileName, store))
+                return true;
+
+            // Fall back to v1 combined JSON. V1 hydrates the entire store
+            // (Vehicle + Guidance + YouTurn + General + Tool + Sections); the
+            // Tool side will be re-written to its own file on next save, and
+            // the v1 → v2 migration in ConfigurationService handles the
+            // proactive split for users who don't save first.
             if (ProfileJsonServiceV1.Load(VehiclesDirectory, profileName, store))
                 return true;
 
-            // Fall back to legacy XML - parse and populate store directly
+            // Last-resort fall back to legacy AOG XML.
             var filePath = ResolveExistingFile(profileName, ".xml");
             if (filePath == null)
                 return false;
@@ -161,8 +169,9 @@ public class VehicleProfileService : IVehicleProfileService
 
     public void Save(string profileName, ConfigurationStore store)
     {
-        // Save JSON only (new canonical format)
-        ProfileJsonServiceV1.Save(VehiclesDirectory, profileName, store);
+        // v2 vehicle-only format (#346). Tool/Sections are persisted via
+        // IToolProfileService — ConfigurationService coordinates both sides.
+        VehicleProfileJsonService.Save(VehiclesDirectory, profileName, store);
     }
 
     public void CreateDefaultProfile(string profileName, ConfigurationStore store)

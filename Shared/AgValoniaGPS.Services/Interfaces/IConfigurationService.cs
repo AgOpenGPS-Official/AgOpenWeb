@@ -40,22 +40,39 @@ public interface IConfigurationService
     #region Profile Management
 
     /// <summary>
-    /// Gets a list of available profile names
+    /// Gets a list of available vehicle profile names.
     /// </summary>
     IReadOnlyList<string> GetAvailableProfiles();
 
     /// <summary>
-    /// Loads a profile by name into the ConfigurationStore
+    /// Gets a list of available tool profile names (#346).
     /// </summary>
-    /// <param name="name">Profile name</param>
-    /// <returns>True if loaded successfully</returns>
+    IReadOnlyList<string> GetAvailableToolProfiles();
+
+    /// <summary>
+    /// Loads a paired vehicle + tool profile by name. Equivalent to
+    /// <see cref="LoadProfiles(string, string)"/> with the same name on
+    /// both sides — covers the common case where the operator has not
+    /// explicitly mixed-and-matched.
+    /// </summary>
     bool LoadProfile(string name);
 
     /// <summary>
-    /// Saves the current ConfigurationStore to the specified profile
+    /// Loads a vehicle profile and a tool profile by name (#346 split).
     /// </summary>
-    /// <param name="name">Profile name</param>
+    bool LoadProfiles(string vehicleName, string toolName);
+
+    /// <summary>
+    /// Saves the current ConfigurationStore to a paired vehicle + tool
+    /// profile under <paramref name="name"/> on both sides.
+    /// </summary>
     void SaveProfile(string name);
+
+    /// <summary>
+    /// Saves the current ConfigurationStore to a vehicle profile and a
+    /// tool profile (#346 split).
+    /// </summary>
+    void SaveProfiles(string vehicleName, string toolName);
 
     /// <summary>
     /// Creates a new profile with default values

@@ -30,6 +30,7 @@ public class ConfigurationServiceMappingTests
 
         _service = new ConfigurationService(
             Substitute.For<IVehicleProfileService>(),
+            Substitute.For<IToolProfileService>(),
             _settingsService);
     }
 
