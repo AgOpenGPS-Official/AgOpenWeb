@@ -148,7 +148,12 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     private void NewVehicle(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            StatusMessage = "Type a name in the box, then click New";
+            return;
+        }
         if (Vehicles.Any(v => string.Equals(v, name, StringComparison.OrdinalIgnoreCase)))
         {
             StatusMessage = $"Vehicle profile '{name}' already exists";
@@ -158,6 +163,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         _configurationService.SaveProfiles(name, _configurationService.Store.ActiveToolProfileName);
         Refresh();
         SelectedVehicle = name;
+        StatusMessage = $"Created vehicle '{name}'";
     }
 
     private void DeleteVehicle()
@@ -181,7 +187,17 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     private void RenameVehicle(string? newName)
     {
-        if (SelectedVehicle is null || string.IsNullOrWhiteSpace(newName)) return;
+        newName = newName?.Trim();
+        if (SelectedVehicle is null)
+        {
+            StatusMessage = "Select a vehicle profile in the list, then click Rename";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            StatusMessage = "Type a new name in the box, then click Rename";
+            return;
+        }
         var oldName = SelectedVehicle;
         if (_configurationService.RenameVehicleProfile(oldName, newName))
         {
@@ -207,7 +223,12 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     private void NewTool(string? name)
     {
-        if (string.IsNullOrWhiteSpace(name)) return;
+        name = name?.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            StatusMessage = "Type a name in the box, then click New";
+            return;
+        }
         if (Tools.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase)))
         {
             StatusMessage = $"Tool profile '{name}' already exists";
@@ -216,6 +237,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         _configurationService.SaveProfiles(_configurationService.Store.ActiveVehicleProfileName, name);
         Refresh();
         SelectedTool = name;
+        StatusMessage = $"Created tool '{name}'";
     }
 
     private void DeleteTool()
@@ -239,7 +261,17 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     private void RenameTool(string? newName)
     {
-        if (SelectedTool is null || string.IsNullOrWhiteSpace(newName)) return;
+        newName = newName?.Trim();
+        if (SelectedTool is null)
+        {
+            StatusMessage = "Select a tool profile in the list, then click Rename";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            StatusMessage = "Type a new name in the box, then click Rename";
+            return;
+        }
         var oldName = SelectedTool;
         if (_configurationService.RenameToolProfile(oldName, newName))
         {

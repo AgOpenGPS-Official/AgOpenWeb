@@ -97,7 +97,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                                Text="{Binding CurrentVehicle, StringFormat='Current: {0}'}"/>
                 </StackPanel>
 
-                <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto">
+                <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
                              MinHeight="180"
@@ -106,14 +106,19 @@ Licensed under GNU GPL v3. See LICENSE.md.
                     <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
                         <TextBlock Text="{Binding VehiclePreview}" TextWrapping="Wrap"/>
                     </Border>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-                        <Button Classes="DialogButton" Content="New" Command="{Binding NewVehicleCommand}"
-                                CommandParameter="NewVehicle"/>
+                    <TextBox Grid.Row="2" x:Name="VehicleNameInput"
+                             Watermark="Profile name (for New / Rename)"
+                             Margin="0,8,0,0"/>
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                        <Button Classes="DialogButton" Content="New"
+                                Command="{Binding NewVehicleCommand}"
+                                CommandParameter="{Binding #VehicleNameInput.Text}"/>
                         <Button Classes="DialogButton DangerButton" Content="Delete" Command="{Binding DeleteVehicleCommand}"/>
-                        <Button Classes="DialogButton" Content="Rename" Command="{Binding RenameVehicleCommand}"
-                                CommandParameter="RenamedVehicle"/>
+                        <Button Classes="DialogButton" Content="Rename"
+                                Command="{Binding RenameVehicleCommand}"
+                                CommandParameter="{Binding #VehicleNameInput.Text}"/>
                     </StackPanel>
-                    <Button Grid.Row="3" Classes="DialogButton CancelButton" Content="Reset to Default"
+                    <Button Grid.Row="4" Classes="DialogButton CancelButton" Content="Reset to Default"
                             Command="{Binding ResetVehicleCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
                 </Grid>
 
@@ -124,7 +129,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                                Text="{Binding CurrentTool, StringFormat='Current: {0}'}"/>
                 </StackPanel>
 
-                <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto">
+                <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
                              MinHeight="180"
@@ -133,14 +138,19 @@ Licensed under GNU GPL v3. See LICENSE.md.
                     <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
                         <TextBlock Text="{Binding ToolPreview}" TextWrapping="Wrap"/>
                     </Border>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
-                        <Button Classes="DialogButton" Content="New" Command="{Binding NewToolCommand}"
-                                CommandParameter="NewTool"/>
+                    <TextBox Grid.Row="2" x:Name="ToolNameInput"
+                             Watermark="Profile name (for New / Rename)"
+                             Margin="0,8,0,0"/>
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                        <Button Classes="DialogButton" Content="New"
+                                Command="{Binding NewToolCommand}"
+                                CommandParameter="{Binding #ToolNameInput.Text}"/>
                         <Button Classes="DialogButton DangerButton" Content="Delete" Command="{Binding DeleteToolCommand}"/>
-                        <Button Classes="DialogButton" Content="Rename" Command="{Binding RenameToolCommand}"
-                                CommandParameter="RenamedTool"/>
+                        <Button Classes="DialogButton" Content="Rename"
+                                Command="{Binding RenameToolCommand}"
+                                CommandParameter="{Binding #ToolNameInput.Text}"/>
                     </StackPanel>
-                    <Button Grid.Row="3" Classes="DialogButton CancelButton" Content="Reset to Default"
+                    <Button Grid.Row="4" Classes="DialogButton CancelButton" Content="Reset to Default"
                             Command="{Binding ResetToolCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
                 </Grid>
 
