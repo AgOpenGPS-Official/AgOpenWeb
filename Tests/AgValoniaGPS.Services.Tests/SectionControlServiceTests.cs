@@ -1,6 +1,7 @@
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Services.Section;
@@ -170,6 +171,146 @@ public class SectionControlServiceTests
         _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
         Assert.That(_service.SectionStates[0].IsOn, Is.True,
             "Should turn on at tick 2 (completing 200 ms debounce)");
+    }
+
+    #endregion
+
+    #region Coverage hysteresis (#345)
+
+    [Test]
+    public void CoverageHysteresis_StaysInStateInsideTheGap()
+    {
+        // Repro for #345. With single-threshold logic, a section's coverage %
+        // bobbing around MinCoverage (e.g. 70 %) flips shouldBeOn /
+        // shouldBeOff every tick at slow speed and produces visible flicker.
+        // Hysteresis: 15 % gap below MinCoverage is dead-zone — the section
+        // stays in its current state.
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 200, 0));
+        outerPoly.Points.Add(new BoundaryPoint(0, 200, 0));
+        outerPoly.UpdateBounds();
+        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
+
+        ConfigurationStore.Instance.Tool.MinCoverage = 70; // OFF=0.70, ON=0.55
+        _service.SetAllAuto();
+        _service.MasterState = SectionMasterState.Auto;
+
+        void SetCoverage(double pct)
+        {
+            var r = new CoverageResult(pct, pct > 0, pct >= 1.0, 0);
+            _coverageMap.GetSegmentCoverageMulti(default, default, default, default, default)
+                .ReturnsForAnyArgs((r, r, r));
+        }
+
+        // Phase 1: 0 % coverage → section turns ON.
+        SetCoverage(0.0);
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.True,
+            "Phase 1: section should turn ON at 0 % coverage");
+
+        // Phase 2: 65 % coverage — inside the 55-70 % hysteresis gap. With
+        // single-threshold logic the section would have flapped once cov
+        // climbed above 70 % then bobbed back below; with hysteresis the
+        // section is still ON and stays that way.
+        SetCoverage(0.65);
+        for (int i = 0; i < 5; i++)
+            _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.True,
+            "Phase 2: section should stay ON when coverage is in the hysteresis gap (65 %)");
+
+        // Phase 3: 70 % coverage hits the OFF threshold → section turns OFF.
+        SetCoverage(0.70);
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.False,
+            "Phase 3: section should turn OFF when coverage reaches 70 % (OFF threshold)");
+
+        // Phase 4: drop coverage to 60 % — back inside the gap. Without
+        // hysteresis the section would flip back ON the moment cov dropped
+        // below 70 %. With hysteresis it stays OFF.
+        SetCoverage(0.60);
+        for (int i = 0; i < 5; i++)
+            _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.False,
+            "Phase 4: section should stay OFF when coverage drops back into the gap (60 %)");
+
+        // Phase 5: drop coverage below ON threshold (50 % < 55 %) → section
+        // turns ON again. This confirms the gap is not infinite — the
+        // section will resume spraying when there's a real gap to fill.
+        SetCoverage(0.50);
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 5.0);
+        Assert.That(_service.SectionStates[0].IsOn, Is.True,
+            "Phase 5: section should turn ON when coverage drops below ON threshold (55 %)");
+    }
+
+    [Test]
+    public void LookAheadDistance_ClampedToMinimum_AtSlowSpeedAndZeroSetting()
+    {
+        // Repro for the structural part of #345: with LookAheadOn/Off=0 and
+        // slow speed, lookAhead distance = speed × 0 = 0. The look-on/off
+        // sample point collapses onto the section center, where it samples
+        // the section's own freshly-painted swath and shouldBeOff fires off
+        // the section's own coverage every tick. The fix clamps the FORWARD
+        // distance to a minimum so the sample point clears the painted area
+        // regardless of speed or LookAheadSetting.
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 200, 0));
+        outerPoly.Points.Add(new BoundaryPoint(0, 200, 0));
+        outerPoly.UpdateBounds();
+        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
+
+        ConfigurationStore.Instance.Tool.LookAheadOnSetting = 0;
+        ConfigurationStore.Instance.Tool.LookAheadOffSetting = 0;
+        _service.SetAllAuto();
+        _service.MasterState = SectionMasterState.Auto;
+
+        // Slow speed (~5 km/h ≈ 1.4 m/s). With LookAheadSetting=0, the
+        // un-clamped look-ahead distance would be 0 in both directions.
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 1.4);
+
+        // Both look-on and look-off distances passed to the coverage service
+        // must be ≥ the floor (~0.3 m) so the sample point clears the swath.
+        _coverageMap.Received().GetSegmentCoverageMulti(
+            Arg.Any<Vec2>(),
+            Arg.Any<double>(),
+            Arg.Any<double>(),
+            Arg.Is<double>(d => d >= 0.3),
+            Arg.Is<double>(d => d >= 0.3));
+    }
+
+    [Test]
+    public void LookAheadDistance_NotClamped_WhenSpeedTimeExceedsFloor()
+    {
+        // Inverse of the slow-speed case: at normal speed and a non-zero
+        // LookAheadSetting, the user's anticipation is preserved exactly —
+        // the floor only kicks in when speed × time would otherwise be
+        // smaller than it.
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 200, 0));
+        outerPoly.Points.Add(new BoundaryPoint(0, 200, 0));
+        outerPoly.UpdateBounds();
+        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
+
+        ConfigurationStore.Instance.Tool.LookAheadOnSetting = 0.5;  // 500 ms
+        ConfigurationStore.Instance.Tool.LookAheadOffSetting = 0.4; // 400 ms
+        _service.SetAllAuto();
+        _service.MasterState = SectionMasterState.Auto;
+
+        // 4 m/s × 0.5 s = 2.0 m for ON; 4 × 0.4 = 1.6 m for OFF.
+        // Both well above the 0.3 m floor — no clamping should occur.
+        _service.Update(new Vec3(100, 100, 0), 0, 0, 4.0);
+
+        _coverageMap.Received().GetSegmentCoverageMulti(
+            Arg.Any<Vec2>(),
+            Arg.Any<double>(),
+            Arg.Any<double>(),
+            Arg.Is<double>(d => Math.Abs(d - 2.0) < 0.001),
+            Arg.Is<double>(d => Math.Abs(d - 1.6) < 0.001));
     }
 
     #endregion
