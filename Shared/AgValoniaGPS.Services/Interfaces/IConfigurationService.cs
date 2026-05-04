@@ -92,6 +92,12 @@ public interface IConfigurationService
     /// </summary>
     void ReloadCurrentProfile();
 
+    /// <summary>
+    /// One-time v1 → v2 split migration of any pre-#346 combined profiles.
+    /// No-op if Tools/ is non-empty.
+    /// </summary>
+    bool MigrateV1ProfilesIfNeeded();
+
     #endregion
 
     #region App Settings Management

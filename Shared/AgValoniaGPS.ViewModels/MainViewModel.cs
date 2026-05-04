@@ -516,6 +516,14 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            // One-time #346 migration: split any pre-v2 combined profiles
+            // into paired v2 vehicle + tool files before the load below
+            // tries to find them.
+            if (_configurationService.MigrateV1ProfilesIfNeeded())
+            {
+                _logger.LogInformation("Migrated v1 vehicle profiles to v2 (split vehicle/tool)");
+            }
+
             var profiles = _configurationService.GetAvailableProfiles();
             if (profiles.Count == 0)
             {

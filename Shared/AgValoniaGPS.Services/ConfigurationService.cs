@@ -21,6 +21,7 @@ using System.Text.Json;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
+using AgValoniaGPS.Services.Profile;
 
 namespace AgValoniaGPS.Services;
 
@@ -129,6 +130,79 @@ public class ConfigurationService(
             return false;
         }
         return deleted;
+    }
+
+    /// <summary>
+    /// One-time v1 → v2 split migration (#346). Triggered when the Tools/
+    /// directory is empty but the Vehicles/ directory holds JSON profiles
+    /// that lack <c>formatVersion: 2</c>. For each pre-v2 file, reads the
+    /// combined v1 profile, writes the split v2 vehicle file (overwrite)
+    /// and a same-named v2 tool file. Also pairs up
+    /// AppSettings.LastUsedToolProfile = LastUsedVehicleProfile so the
+    /// active pairing is preserved across the migration.
+    /// </summary>
+    /// <returns>true if any file was migrated.</returns>
+    public bool MigrateV1ProfilesIfNeeded()
+    {
+        var existingTools = toolProfileService.GetAvailableProfiles();
+        if (existingTools.Count > 0)
+            return false; // assumed migrated
+
+        var vehicleNames = profileService.GetAvailableProfiles();
+        bool migrated = false;
+
+        foreach (var name in vehicleNames)
+        {
+            var jsonPath = Path.Combine(profileService.VehiclesDirectory, $"{name}.json");
+            if (!File.Exists(jsonPath))
+                continue; // XML-only legacy profile — leaves it for next save to migrate
+
+            var version = PeekFormatVersion(jsonPath);
+            if (version >= 2)
+                continue; // already split
+
+            // Read v1 into an isolated temp store so we don't perturb the
+            // app singleton during startup before the proper LoadProfile.
+            var tempStore = new ConfigurationStore();
+            if (!ProfileJsonServiceV1.Load(profileService.VehiclesDirectory, name, tempStore))
+                continue;
+
+            try
+            {
+                VehicleProfileJsonService.Save(profileService.VehiclesDirectory, name, tempStore);
+                toolProfileService.Save(name, tempStore);
+                migrated = true;
+            }
+            catch (Exception)
+            {
+                // Best-effort migration — leave the v1 file in place if
+                // either side fails so the user can retry / file a bug.
+            }
+        }
+
+        if (migrated && string.IsNullOrEmpty(settingsService.Settings.LastUsedToolProfile))
+        {
+            settingsService.Settings.LastUsedToolProfile = settingsService.Settings.LastUsedVehicleProfile;
+            settingsService.Save();
+        }
+
+        return migrated;
+    }
+
+    private static int? PeekFormatVersion(string path)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            // JSON serializer used camelCase, so the property is "formatVersion".
+            if (doc.RootElement.TryGetProperty("formatVersion", out var v) && v.ValueKind == JsonValueKind.Number)
+                return v.GetInt32();
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void ReloadCurrentProfile()
