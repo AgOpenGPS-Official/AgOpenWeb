@@ -247,6 +247,12 @@ public partial class MainViewModel : ObservableObject
         _turnAreaService = turnAreaService;
         _vehicleProfileService = vehicleProfileService;
         _configurationService = configurationService;
+        // Refresh status-bar bindings whenever the active profile changes
+        // (load / save / picker dialog) so labels like CurrentProfileName
+        // re-render. The store updates correctly on its own, but bindings
+        // through computed properties on this VM need an explicit notify.
+        _configurationService.ProfileLoaded += (_, _) => RaiseProfileNameChanged();
+        _configurationService.ProfileSaved += (_, _) => RaiseProfileNameChanged();
         _autoSteerService = autoSteerService;
         _smartWasService = smartWasService;
         _trackCopierService = trackCopierService;
@@ -2541,6 +2547,20 @@ public partial class MainViewModel : ObservableObject
     }
 
     public string CurrentProfileName => _configurationService.Store.ActiveVehicleProfileName;
+    public string CurrentToolProfileName => _configurationService.Store.ActiveToolProfileName;
+
+    /// <summary>
+    /// Notifies bindings tied to the active vehicle/tool profile names.
+    /// Wired to <see cref="IConfigurationService.ProfileLoaded"/> /
+    /// <see cref="IConfigurationService.ProfileSaved"/> so labels like the
+    /// status pill on ConfigurationPanel refresh after the picker dialog
+    /// or any other profile change.
+    /// </summary>
+    private void RaiseProfileNameChanged()
+    {
+        OnPropertyChanged(nameof(CurrentProfileName));
+        OnPropertyChanged(nameof(CurrentToolProfileName));
+    }
 
     // Headland Builder properties (visibility managed by State.UI)
     private bool _isHeadlandOn;
