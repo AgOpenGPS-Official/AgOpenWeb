@@ -90,8 +90,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </Button>
 
             <!-- 2. Manual Mode Toggle - All sections Manual On/Off -->
+            <!-- Hidden when no field open (#347): sections can't paint with no boundary anyway. -->
             <Button Classes="RightPanelButton" ToolTip.Tip="All Sections Manual On/Off"
-                    Command="{Binding ToggleManualModeCommand}">
+                    Command="{Binding ToggleManualModeCommand}"
+                    IsVisible="{Binding HasBoundary}">
                 <Panel>
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ManualOn.png" Stretch="Uniform"
                            IsVisible="{Binding IsManualSectionMode}"/>
@@ -101,8 +103,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </Button>
 
             <!-- 3. Section Master Toggle - All sections Auto/Off -->
+            <!-- Hidden when no field open (#347). -->
             <Button Classes="RightPanelButton" ToolTip.Tip="All Sections Auto/Off"
-                    Command="{Binding ToggleSectionMasterCommand}">
+                    Command="{Binding ToggleSectionMasterCommand}"
+                    IsVisible="{Binding HasBoundary}">
                 <Panel>
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/SectionMasterOn.png" Stretch="Uniform"
                            IsVisible="{Binding IsSectionMasterOn}"/>
