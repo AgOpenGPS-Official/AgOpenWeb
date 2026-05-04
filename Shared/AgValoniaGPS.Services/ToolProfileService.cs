@@ -75,6 +75,37 @@ public class ToolProfileService : IToolProfileService
         ToolProfileJsonService.Save(ToolsDirectory, profileName, store);
     }
 
+    public bool Rename(string oldName, string newName)
+    {
+        if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName))
+            return false;
+
+        var oldPath = Path.Combine(ToolsDirectory, $"{oldName}.json");
+        var newPath = Path.Combine(ToolsDirectory, $"{newName}.json");
+        if (!File.Exists(oldPath))
+            return false;
+
+        bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(oldName, newName, StringComparison.Ordinal);
+        if (!caseOnly && File.Exists(newPath) &&
+            !string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        File.Move(oldPath, newPath, overwrite: caseOnly);
+        return true;
+    }
+
+    public bool Delete(string profileName)
+    {
+        if (string.IsNullOrEmpty(profileName))
+            return false;
+        var path = Path.Combine(ToolsDirectory, $"{profileName}.json");
+        if (!File.Exists(path))
+            return false;
+        File.Delete(path);
+        return true;
+    }
+
     public void CreateDefaultProfile(string profileName, ConfigurationStore store)
     {
         // Tool defaults (mirrors VehicleProfileService.CreateDefaultProfile but

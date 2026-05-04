@@ -174,6 +174,38 @@ public class VehicleProfileService : IVehicleProfileService
         VehicleProfileJsonService.Save(VehiclesDirectory, profileName, store);
     }
 
+    public bool Rename(string oldName, string newName)
+    {
+        if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName))
+            return false;
+
+        var oldPath = Path.Combine(VehiclesDirectory, $"{oldName}.json");
+        var newPath = Path.Combine(VehiclesDirectory, $"{newName}.json");
+        if (!File.Exists(oldPath))
+            return false;
+
+        // Allow case-only rename on case-insensitive filesystems.
+        bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(oldName, newName, StringComparison.Ordinal);
+        if (!caseOnly && File.Exists(newPath) &&
+            !string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        File.Move(oldPath, newPath, overwrite: caseOnly);
+        return true;
+    }
+
+    public bool Delete(string profileName)
+    {
+        if (string.IsNullOrEmpty(profileName))
+            return false;
+        var path = Path.Combine(VehiclesDirectory, $"{profileName}.json");
+        if (!File.Exists(path))
+            return false;
+        File.Delete(path);
+        return true;
+    }
+
     public void CreateDefaultProfile(string profileName, ConfigurationStore store)
     {
         // Reset store to defaults for vehicle-profile-related fields

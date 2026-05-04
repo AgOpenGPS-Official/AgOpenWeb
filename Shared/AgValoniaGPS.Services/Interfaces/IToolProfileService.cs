@@ -46,4 +46,10 @@ public interface IToolProfileService
     /// <paramref name="profileName"/>.
     /// </summary>
     void CreateDefaultProfile(string profileName, ConfigurationStore store);
+
+    /// <summary>Rename an existing tool profile file (see vehicle counterpart).</summary>
+    bool Rename(string oldName, string newName);
+
+    /// <summary>Delete a tool profile file (see vehicle counterpart).</summary>
+    bool Delete(string profileName);
 }

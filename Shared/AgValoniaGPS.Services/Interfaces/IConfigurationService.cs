@@ -81,11 +81,31 @@ public interface IConfigurationService
     void CreateProfile(string name);
 
     /// <summary>
-    /// Deletes a profile
+    /// Deletes a profile (vehicle JSON, paired tool JSON if any, legacy XML, AutoSteer sidecar).
     /// </summary>
-    /// <param name="name">Profile name</param>
-    /// <returns>True if deleted successfully</returns>
     bool DeleteProfile(string name);
+
+    /// <summary>
+    /// Renames the vehicle profile. Updates the active pointer if the
+    /// renamed profile is the active one. Returns false on collision /
+    /// missing source.
+    /// </summary>
+    bool RenameVehicleProfile(string oldName, string newName);
+
+    /// <summary>
+    /// Renames the tool profile (see RenameVehicleProfile).
+    /// </summary>
+    bool RenameToolProfile(string oldName, string newName);
+
+    /// <summary>
+    /// Deletes a vehicle profile. Returns false if the profile is active.
+    /// </summary>
+    bool DeleteVehicleProfile(string name);
+
+    /// <summary>
+    /// Deletes a tool profile. Returns false if the profile is active.
+    /// </summary>
+    bool DeleteToolProfile(string name);
 
     /// <summary>
     /// Reloads the current profile, discarding unsaved changes

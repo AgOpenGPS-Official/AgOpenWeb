@@ -103,6 +103,66 @@ public class ConfigurationService(
         Store.HasUnsavedChanges = false;
     }
 
+    /// <summary>
+    /// Rename a vehicle profile. If the renamed profile is the active one,
+    /// the store's ActiveVehicleProfileName/Path and AppSettings.LastUsedVehicleProfile
+    /// follow the rename so the active pointer survives. Returns false on
+    /// collision / missing source. Throws on I/O failure.
+    /// </summary>
+    public bool RenameVehicleProfile(string oldName, string newName)
+    {
+        if (!profileService.Rename(oldName, newName))
+            return false;
+
+        if (string.Equals(Store.ActiveVehicleProfileName, oldName, StringComparison.OrdinalIgnoreCase))
+        {
+            Store.ActiveVehicleProfileName = newName;
+            Store.ActiveVehicleProfilePath = Path.Combine(profileService.VehiclesDirectory, $"{newName}.json");
+            settingsService.Settings.LastUsedVehicleProfile = newName;
+            settingsService.Save();
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Rename a tool profile (see RenameVehicleProfile for active-pointer behavior).
+    /// </summary>
+    public bool RenameToolProfile(string oldName, string newName)
+    {
+        if (!toolProfileService.Rename(oldName, newName))
+            return false;
+
+        if (string.Equals(Store.ActiveToolProfileName, oldName, StringComparison.OrdinalIgnoreCase))
+        {
+            Store.ActiveToolProfileName = newName;
+            Store.ActiveToolProfilePath = Path.Combine(toolProfileService.ToolsDirectory, $"{newName}.json");
+            settingsService.Settings.LastUsedToolProfile = newName;
+            settingsService.Save();
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Delete a vehicle profile. The active vehicle profile cannot be
+    /// deleted — returns false.
+    /// </summary>
+    public bool DeleteVehicleProfile(string name)
+    {
+        if (string.Equals(Store.ActiveVehicleProfileName, name, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return profileService.Delete(name);
+    }
+
+    /// <summary>
+    /// Delete a tool profile. The active tool profile cannot be deleted.
+    /// </summary>
+    public bool DeleteToolProfile(string name)
+    {
+        if (string.Equals(Store.ActiveToolProfileName, name, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return toolProfileService.Delete(name);
+    }
+
     public bool DeleteProfile(string name)
     {
         bool deleted = false;
