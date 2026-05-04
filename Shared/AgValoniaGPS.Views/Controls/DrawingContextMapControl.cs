@@ -513,6 +513,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     // Flag to preserve bitmap when explicitly initialized (don't dispose when no coverage)
     private bool _bitmapExplicitlyInitialized = false;
 
+    // Cached decoded background pixels (BGRA8888) so we don't redecode on every composite.
+    // Invalidated when _backgroundImagePath changes.
+    private byte[]? _cachedBgPixels;
+    private string? _cachedBgPath;
+    private int _cachedBgPixelW;
+    private int _cachedBgPixelH;
+
+    // Skip-composite guard: tracks the (path, bitmap bounds) for which we've already composited.
+    // Prevents redundant 550 ms composites when nothing has changed.
+    private string? _compositedForPath;
+    private double _compositedForMinE, _compositedForMinN;
+    private int _compositedForWidth, _compositedForHeight;
+
     // Dynamic display resolution: scale based on field size to fit ~50M pixels
     // Detection stays at 0.1m (in CoverageMapService), display scales for large fields
     private const bool USE_RGB565_FULL_RESOLUTION = false;
@@ -1120,6 +1133,18 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             return;
         }
 
+        // Skip if we've already composited this exact (path, bounds, dimensions) combination.
+        // Avoids ~550 ms of redundant decode + sample work on field load when callers re-fire.
+        if (_backgroundComposited &&
+            _compositedForPath == _backgroundImagePath &&
+            _compositedForWidth == _bitmapWidth &&
+            _compositedForHeight == _bitmapHeight &&
+            Math.Abs(_compositedForMinE - _bitmapMinE) < 0.01 &&
+            Math.Abs(_compositedForMinN - _bitmapMinN) < 0.01)
+        {
+            return;
+        }
+
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // Calculate the overlap between background bounds and coverage bounds
@@ -1143,71 +1168,19 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         double bgPixelsPerMeterX = bgWidth / bgWorldWidth;
         double bgPixelsPerMeterY = bgHeight / bgWorldHeight;
 
-        // Copy background to a WriteableBitmap so we can read pixels
-        using var bgWriteable = new WriteableBitmap(
-            new PixelSize(bgWidth, bgHeight),
-            new Vector(96, 96),
-            Avalonia.Platform.PixelFormat.Bgra8888,
-            Avalonia.Platform.AlphaFormat.Premul);
-
-        // Render background image to the writeable bitmap
-        using (var bgBuffer = bgWriteable.Lock())
-        {
-            // Use RenderTargetBitmap to render the image
-            using var renderTarget = new RenderTargetBitmap(new PixelSize(bgWidth, bgHeight));
-            using (var ctx = renderTarget.CreateDrawingContext())
-            {
-                ctx.DrawImage(_backgroundImage, new Rect(0, 0, bgWidth, bgHeight));
-            }
-
-            // Now copy from RenderTargetBitmap to our buffer via SaveAsXxx workaround
-            // Actually, let's use a simpler approach - render directly and copy
-        }
-
-        // Alternative: Use SkiaSharp to decode the image directly
-        // For now, let's try rendering to a temp surface
-        byte[]? bgPixelData = null;
-        try
-        {
-            // Create temp WriteableBitmap and render the background to it
-            using var tempBitmap = new WriteableBitmap(
-                new PixelSize(bgWidth, bgHeight),
-                new Vector(96, 96),
-                Avalonia.Platform.PixelFormat.Bgra8888,
-                Avalonia.Platform.AlphaFormat.Premul);
-
-            // We can't easily render an Avalonia Bitmap to a WriteableBitmap
-            // Instead, reload from file using SkiaSharp
-            if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
-            {
-                using var skBitmap = SKBitmap.Decode(_backgroundImagePath);
-                if (skBitmap != null)
-                {
-                    bgPixelData = new byte[skBitmap.Width * skBitmap.Height * 4];
-                    var pixels = skBitmap.Pixels;
-                    for (int i = 0; i < pixels.Length; i++)
-                    {
-                        bgPixelData[i * 4 + 0] = pixels[i].Blue;
-                        bgPixelData[i * 4 + 1] = pixels[i].Green;
-                        bgPixelData[i * 4 + 2] = pixels[i].Red;
-                        bgPixelData[i * 4 + 3] = pixels[i].Alpha;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[Background] Failed to decode background: {ex.Message}");
-            _backgroundComposited = false;
-            return;
-        }
-
+        // Decode background pixels (BGRA8888). Cache by path so re-composite doesn't redecode.
+        byte[]? bgPixelData = LoadBackgroundPixelsCached(out int cachedW, out int cachedH);
         if (bgPixelData == null)
         {
             Debug.WriteLine("[Background] Failed to get background pixel data");
             _backgroundComposited = false;
             return;
         }
+        // Use the dimensions of the decoded image (in case _backgroundImage and the cache disagree)
+        bgWidth = cachedW;
+        bgHeight = cachedH;
+        bgPixelsPerMeterX = bgWidth / bgWorldWidth;
+        bgPixelsPerMeterY = bgHeight / bgWorldHeight;
 
         // Lock coverage bitmap for writing
         using var covBuffer = _coverageWriteableBitmap.Lock();
@@ -1298,10 +1271,63 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         sw.Stop();
         Debug.WriteLine($"[Background] Composited {pixelsWritten} pixels into coverage bitmap in {sw.ElapsedMilliseconds}ms");
         _backgroundComposited = true;
+        _compositedForPath = _backgroundImagePath;
+        _compositedForMinE = _bitmapMinE;
+        _compositedForMinN = _bitmapMinN;
+        _compositedForWidth = _bitmapWidth;
+        _compositedForHeight = _bitmapHeight;
 
         // Sync display bitmap so background shows with proper transparency
         SyncDisplayBitmap();
         SyncSkBitmapFromDisplay();
+    }
+
+    /// <summary>
+    /// Decode the background image to a BGRA byte[]. Caches by path so callers don't
+    /// pay the ~340 ms decode + copy on repeat composites.
+    /// </summary>
+    private byte[]? LoadBackgroundPixelsCached(out int width, out int height)
+    {
+        width = 0;
+        height = 0;
+        if (string.IsNullOrEmpty(_backgroundImagePath) || !File.Exists(_backgroundImagePath))
+            return null;
+
+        if (_cachedBgPixels != null && _cachedBgPath == _backgroundImagePath)
+        {
+            width = _cachedBgPixelW;
+            height = _cachedBgPixelH;
+            return _cachedBgPixels;
+        }
+
+        try
+        {
+            using var skBitmap = SKBitmap.Decode(_backgroundImagePath);
+            if (skBitmap == null) return null;
+
+            var data = new byte[skBitmap.Width * skBitmap.Height * 4];
+            var pixels = skBitmap.Pixels;
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                data[i * 4 + 0] = pixels[i].Blue;
+                data[i * 4 + 1] = pixels[i].Green;
+                data[i * 4 + 2] = pixels[i].Red;
+                data[i * 4 + 3] = pixels[i].Alpha;
+            }
+
+            _cachedBgPixels = data;
+            _cachedBgPath = _backgroundImagePath;
+            _cachedBgPixelW = skBitmap.Width;
+            _cachedBgPixelH = skBitmap.Height;
+            width = skBitmap.Width;
+            height = skBitmap.Height;
+            return data;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Background] Failed to decode background: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>
@@ -2485,6 +2511,14 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         Debug.WriteLine($"[MapControl] SetBackgroundImage: {imagePath}, control={GetHashCode()}");
         Debug.WriteLine($"[MapControl] Background bounds: minX={minX:F1}, maxY={maxY:F1}, maxX={maxX:F1}, minY={minY:F1}");
 
+        // Invalidate caches if path changed
+        if (_backgroundImagePath != imagePath)
+        {
+            _cachedBgPixels = null;
+            _cachedBgPath = null;
+            _compositedForPath = null;
+        }
+
         _backgroundImagePath = imagePath;
         _bgMinX = minX;
         _bgMaxY = maxY;
@@ -2569,6 +2603,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _backgroundComposited = false;
         _useMercatorSampling = false;
         _bgMinX = _bgMaxX = _bgMinY = _bgMaxY = 0;
+        _cachedBgPixels = null;
+        _cachedBgPath = null;
+        _compositedForPath = null;
     }
 
     public void SetBoundaryOffsetIndicator(bool show, double offsetMeters = 0.0)
