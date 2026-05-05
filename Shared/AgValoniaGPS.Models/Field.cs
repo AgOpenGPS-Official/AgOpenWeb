@@ -86,6 +86,13 @@ public class Field
     public DateTime LastModifiedDate { get; set; } = DateTime.Now;
 
     /// <summary>
+    /// Date the field was most recently opened (for any job, or view-only).
+    /// Distinct from <see cref="LastModifiedDate"/>: opening a field for view
+    /// updates this without bumping LastModifiedDate.
+    /// </summary>
+    public DateTime LastOpenedDate { get; set; } = DateTime.Now;
+
+    /// <summary>
     /// Center position of the field (calculated from boundaries)
     /// </summary>
     public Position? CenterPosition { get; set; }
