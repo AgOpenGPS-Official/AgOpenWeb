@@ -89,15 +89,29 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 MaxHeight="640"
                 Padding="20"
                 DataContext="{Binding LoadVehicleToolDialogVm}">
-            <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,*">
+            <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" ColumnDefinitions="*,16,*">
+                <!-- Active combo banner — spans both columns so the loaded
+                     pair is the first thing the operator sees. -->
+                <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                        Background="#DD1E8449"
+                        CornerRadius="6"
+                        Padding="12,6"
+                        Margin="0,0,0,12">
+                    <TextBlock Text="{Binding CurrentSummary, StringFormat='Active: {0}'}"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"/>
+                </Border>
+
                 <!-- Vehicle column -->
-                <StackPanel Grid.Row="0" Grid.Column="0">
+                <StackPanel Grid.Row="1" Grid.Column="0">
                     <TextBlock Classes="Header" Text="Vehicle"/>
                     <TextBlock Classes="SubHeader"
                                Text="{Binding CurrentVehicle, StringFormat='Current: {0}'}"/>
                 </StackPanel>
 
-                <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto,Auto">
+                <Grid Grid.Row="2" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
                              MinHeight="180"
@@ -120,13 +134,13 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 </Grid>
 
                 <!-- Tool column -->
-                <StackPanel Grid.Row="0" Grid.Column="2">
+                <StackPanel Grid.Row="1" Grid.Column="2">
                     <TextBlock Classes="Header" Text="Tool"/>
                     <TextBlock Classes="SubHeader"
                                Text="{Binding CurrentTool, StringFormat='Current: {0}'}"/>
                 </StackPanel>
 
-                <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto,Auto">
+                <Grid Grid.Row="2" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
                              MinHeight="180"
@@ -149,14 +163,14 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 </Grid>
 
                 <!-- Status row spans both columns -->
-                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                            Text="{Binding StatusMessage}"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
                            Margin="0,12,0,0"
                            HorizontalAlignment="Left"/>
 
                 <!-- Action buttons -->
-                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+                <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
                     <Border Grid.Column="0"/>
                     <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="Cancel"
                             Command="{Binding CancelCommand}"/>

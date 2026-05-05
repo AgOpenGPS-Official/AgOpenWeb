@@ -76,6 +76,22 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
     public string CurrentVehicle => _configurationService.Store.ActiveVehicleProfileName;
     public string CurrentTool => _configurationService.Store.ActiveToolProfileName;
 
+    /// <summary>
+    /// Combined active "Vehicle / Tool" label shown at the top of the
+    /// picker so the operator sees the loaded pair without scanning the
+    /// per-column "Current:" lines.
+    /// </summary>
+    public string CurrentSummary
+    {
+        get
+        {
+            var v = CurrentVehicle;
+            var t = CurrentTool;
+            if (string.IsNullOrEmpty(t)) return v;
+            return $"{v} / {t}";
+        }
+    }
+
     public string VehiclePreview => SelectedVehicle is null
         ? string.Empty
         : BuildVehiclePreview(SelectedVehicle);
@@ -133,14 +149,19 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
         OnPropertyChanged(nameof(CurrentVehicle));
         OnPropertyChanged(nameof(CurrentTool));
+        OnPropertyChanged(nameof(CurrentSummary));
         OnPropertyChanged(nameof(VehiclePreview));
         OnPropertyChanged(nameof(ToolPreview));
     }
 
     private void Load()
     {
-        // Save current store state before switching so unsaved edits survive.
-        _configurationService.SaveProfile(CurrentVehicle);
+        // Save current store state before switching so unsaved edits in the
+        // outgoing pair are not lost. Use the active *pair*: writing the
+        // live tool config under the vehicle name (the legacy
+        // SaveProfile(name) shape) would clobber the wrong tool file when
+        // vehicle and tool are independently named.
+        _configurationService.SaveProfiles(CurrentVehicle, CurrentTool);
 
         var v = SelectedVehicle ?? CurrentVehicle;
         var t = SelectedTool ?? CurrentTool;

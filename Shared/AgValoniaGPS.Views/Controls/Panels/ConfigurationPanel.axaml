@@ -34,7 +34,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
             <controls:FloatingPanel.PanelContent>
                 <Border Background="#DD1E8449" CornerRadius="6" Padding="8,4" Margin="0,8,0,0">
-                    <TextBlock Text="{Binding CurrentProfileName, StringFormat='Profile: {0}'}"
+                    <TextBlock Text="{Binding CurrentProfileSummary, StringFormat='Profile: {0}'}"
                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                FontSize="13"
                                FontWeight="SemiBold"

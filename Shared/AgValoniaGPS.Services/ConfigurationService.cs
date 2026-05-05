@@ -60,7 +60,20 @@ public class ConfigurationService(
     /// name. The legacy single-profile callers and the same-name save
     /// pattern both flow through here.
     /// </summary>
-    public bool LoadProfile(string name) => LoadProfiles(name, name);
+    /// <summary>
+    /// Legacy single-arg load. Pairs the given vehicle name with the
+    /// currently-active tool name (not <paramref name="name"/> itself), so
+    /// callers like the old "select profile" dropdown that only know about
+    /// the vehicle side don't unintentionally re-bind the tool to a
+    /// same-named tool file. Pre-#346 callers that genuinely want the
+    /// vehicle/tool pair to share a name should call
+    /// <see cref="LoadProfiles(string, string)"/> directly.
+    /// </summary>
+    public bool LoadProfile(string name)
+    {
+        var tool = string.IsNullOrEmpty(Store.ActiveToolProfileName) ? name : Store.ActiveToolProfileName;
+        return LoadProfiles(name, tool);
+    }
 
     /// <summary>
     /// Load a vehicle profile and (independently) a tool profile. The
@@ -79,12 +92,32 @@ public class ConfigurationService(
 
         LoadAutoSteerConfig(vehicleName);
         Store.HasUnsavedChanges = false;
+
+        // Persist the active pair so the next startup restores the same
+        // combo instead of falling through to LoadProfile(name) and pairing
+        // the vehicle name with itself as the tool name.
+        settingsService.Settings.LastUsedVehicleProfile = Store.ActiveVehicleProfileName;
+        settingsService.Settings.LastUsedToolProfile = Store.ActiveToolProfileName;
+        settingsService.Save();
+
         Store.OnProfileLoaded();
         ProfileLoaded?.Invoke(this, vehicleName);
         return true;
     }
 
-    public void SaveProfile(string name) => SaveProfiles(name, name);
+    /// <summary>
+    /// Legacy single-arg save. Writes the vehicle file under
+    /// <paramref name="name"/> and the tool file under the currently-active
+    /// tool name. The pre-#346 SaveProfiles(name, name) shape clobbered the
+    /// wrong tool file whenever vehicle and tool were independently named
+    /// (e.g. Deere 5055e / Default), losing edits like section-width changes
+    /// on app restart.
+    /// </summary>
+    public void SaveProfile(string name)
+    {
+        var tool = string.IsNullOrEmpty(Store.ActiveToolProfileName) ? name : Store.ActiveToolProfileName;
+        SaveProfiles(name, tool);
+    }
 
     public void SaveProfiles(string vehicleName, string toolName)
     {

@@ -538,34 +538,51 @@ public partial class MainViewModel : ObservableObject
             }
 
             // Try to load the last used profile first
-            var lastUsedProfile = _settingsService.Settings.LastUsedVehicleProfile;
-            string profileToLoad;
+            var lastUsedVehicle = _settingsService.Settings.LastUsedVehicleProfile;
+            var lastUsedTool = _settingsService.Settings.LastUsedToolProfile;
+            string vehicleToLoad;
 
-            if (!string.IsNullOrEmpty(lastUsedProfile) && profiles.Contains(lastUsedProfile))
+            if (!string.IsNullOrEmpty(lastUsedVehicle) && profiles.Contains(lastUsedVehicle))
             {
-                profileToLoad = lastUsedProfile;
-                _logger.LogDebug("Loading last used vehicle profile: {ProfileName}", profileToLoad);
+                vehicleToLoad = lastUsedVehicle;
+                _logger.LogDebug("Loading last used vehicle profile: {ProfileName}", vehicleToLoad);
             }
             else
             {
                 // Fall back to first available profile
-                profileToLoad = profiles[0];
-                _logger.LogDebug("Loading first available vehicle profile: {ProfileName}", profileToLoad);
+                vehicleToLoad = profiles[0];
+                _logger.LogDebug("Loading first available vehicle profile: {ProfileName}", vehicleToLoad);
             }
 
-            // Use ConfigurationService to load - this sets ConfigurationStore.ActiveVehicleProfileName
-            if (_configurationService.LoadProfile(profileToLoad))
+            // If no tool was previously paired (fresh install / pre-#346
+            // settings file), fall back to a same-named tool — that's the
+            // post-migration default and matches what the picker will show
+            // until the operator picks a different combo.
+            var availableTools = _configurationService.GetAvailableToolProfiles();
+            string toolToLoad;
+            if (!string.IsNullOrEmpty(lastUsedTool) && availableTools.Contains(lastUsedTool))
+                toolToLoad = lastUsedTool;
+            else if (availableTools.Contains(vehicleToLoad))
+                toolToLoad = vehicleToLoad;
+            else if (availableTools.Count > 0)
+                toolToLoad = availableTools[0];
+            else
+                toolToLoad = vehicleToLoad; // best-effort; LoadProfiles tolerates a missing tool file
+
+            // LoadProfiles persists the chosen pair back to AppSettings, so
+            // a same-name fallback here will overwrite an empty
+            // LastUsedToolProfile with a real name on the next save.
+            if (_configurationService.LoadProfiles(vehicleToLoad, toolToLoad))
             {
                 var store = _configurationService.Store;
-                _logger.LogInformation("Loaded vehicle profile: {ProfileName}", store.ActiveVehicleProfileName);
+                _logger.LogInformation(
+                    "Loaded vehicle profile: {Vehicle} / tool: {Tool}",
+                    store.ActiveVehicleProfileName,
+                    store.ActiveToolProfileName);
                 _logger.LogDebug("  Tool width: {ToolWidth}m (from {NumSections} sections)", store.ActualToolWidth, store.NumSections);
                 _logger.LogDebug("  YouTurn radius: {Radius}m", store.Guidance.UTurnRadius);
                 _logger.LogDebug("  Wheelbase: {Wheelbase}m", store.Vehicle.Wheelbase);
                 _logger.LogDebug("  Sections: {NumSections}", store.NumSections);
-
-                // Save as last used profile
-                _settingsService.Settings.LastUsedVehicleProfile = profileToLoad;
-                _settingsService.Save();
             }
         }
         catch (Exception ex)
@@ -2550,6 +2567,21 @@ public partial class MainViewModel : ObservableObject
     public string CurrentToolProfileName => _configurationService.Store.ActiveToolProfileName;
 
     /// <summary>
+    /// Combined "Vehicle / Tool" label for the configuration-panel pill so
+    /// the operator sees both halves of the active pair at a glance.
+    /// </summary>
+    public string CurrentProfileSummary
+    {
+        get
+        {
+            var v = _configurationService.Store.ActiveVehicleProfileName;
+            var t = _configurationService.Store.ActiveToolProfileName;
+            if (string.IsNullOrEmpty(t)) return v;
+            return $"{v} / {t}";
+        }
+    }
+
+    /// <summary>
     /// Notifies bindings tied to the active vehicle/tool profile names.
     /// Wired to <see cref="IConfigurationService.ProfileLoaded"/> /
     /// <see cref="IConfigurationService.ProfileSaved"/> so labels like the
@@ -2560,6 +2592,7 @@ public partial class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(CurrentProfileName));
         OnPropertyChanged(nameof(CurrentToolProfileName));
+        OnPropertyChanged(nameof(CurrentProfileSummary));
     }
 
     // Headland Builder properties (visibility managed by State.UI)
