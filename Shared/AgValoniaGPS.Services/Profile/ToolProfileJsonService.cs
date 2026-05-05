@@ -97,6 +97,7 @@ public static class ToolProfileJsonService
                 IsToolFrontFixed = store.Tool.IsToolFrontFixed,
                 MinCoverage = store.Tool.MinCoverage,
                 IsMultiColoredSections = store.Tool.IsMultiColoredSections,
+                SingleCoverageColor = store.Tool.SingleCoverageColor,
                 IsSectionsNotZones = store.Tool.IsSectionsNotZones,
                 IsSectionOffWhenOut = store.Tool.IsSectionOffWhenOut,
                 IsHeadlandSectionControl = store.Tool.IsHeadlandSectionControl,
@@ -148,6 +149,10 @@ public static class ToolProfileJsonService
         store.Tool.TurnOffDelay = dto.Tool?.TurnOffDelay ?? 0.0;
         store.Tool.MinCoverage = dto.Tool?.MinCoverage ?? 100;
         store.Tool.IsMultiColoredSections = dto.Tool?.IsMultiColoredSections ?? false;
+        // Single-color coverage: default matches the in-memory ToolConfig
+        // initializer (pale green) so a missing field in older v2 files
+        // round-trips identically to an unmodified store.
+        store.Tool.SingleCoverageColor = dto.Tool?.SingleCoverageColor ?? 0x98FB98u;
         store.Tool.IsSectionsNotZones = dto.Tool?.IsSectionsNotZones ?? true;
         store.Tool.IsSectionOffWhenOut = dto.Tool?.IsSectionOffWhenOut ?? true;
         store.Tool.IsHeadlandSectionControl = dto.Tool?.IsHeadlandSectionControl ?? true;
@@ -217,6 +222,7 @@ public static class ToolProfileJsonService
         public bool IsToolFrontFixed { get; set; }
         public int MinCoverage { get; set; }
         public bool IsMultiColoredSections { get; set; }
+        public uint? SingleCoverageColor { get; set; }
         public bool IsSectionsNotZones { get; set; }
         public bool IsSectionOffWhenOut { get; set; }
         public bool IsHeadlandSectionControl { get; set; }

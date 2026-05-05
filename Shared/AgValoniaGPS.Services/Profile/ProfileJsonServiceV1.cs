@@ -166,6 +166,7 @@ public static class ProfileJsonServiceV1
                 IsToolFrontFixed = store.Tool.IsToolFrontFixed,
                 MinCoverage = store.Tool.MinCoverage,
                 IsMultiColoredSections = store.Tool.IsMultiColoredSections,
+                SingleCoverageColor = store.Tool.SingleCoverageColor,
                 IsSectionsNotZones = store.Tool.IsSectionsNotZones,
                 IsSectionOffWhenOut = store.Tool.IsSectionOffWhenOut,
                 IsHeadlandSectionControl = store.Tool.IsHeadlandSectionControl,
@@ -275,6 +276,7 @@ public static class ProfileJsonServiceV1
         store.Tool.TurnOffDelay = dto.Tool?.TurnOffDelay ?? 0.0;
         store.Tool.MinCoverage = dto.Tool?.MinCoverage ?? 100;
         store.Tool.IsMultiColoredSections = dto.Tool?.IsMultiColoredSections ?? false;
+        store.Tool.SingleCoverageColor = dto.Tool?.SingleCoverageColor ?? 0x98FB98u;
         // Was written but not loaded — see #343.
         store.Tool.IsSectionsNotZones = dto.Tool?.IsSectionsNotZones ?? true;
         store.Tool.IsSectionOffWhenOut = dto.Tool?.IsSectionOffWhenOut ?? true;
@@ -420,6 +422,7 @@ public static class ProfileJsonServiceV1
         public bool? IsSteerSwitchEnabled { get; set; }
         public bool? IsSteerSwitchManualSections { get; set; }
         public uint[]? SectionColors { get; set; }
+        public uint? SingleCoverageColor { get; set; }
     }
 
     internal class SectionsDto
