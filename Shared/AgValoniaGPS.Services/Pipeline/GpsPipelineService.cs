@@ -460,39 +460,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
         pos = pos with { Heading = fusedHeading };
 
         // ── (1b) Antenna-to-pivot transform in local coordinates ────────
-        // GpsService.TransformAntennaToPivot cannot apply these because it
-        // runs before local plane conversion (E/N still 0). Apply here
-        // where E/N are valid local coordinates.
-        {
-            var vehicle = ConfigurationStore.Instance.Vehicle;
-            double hdgRad = pos.Heading * Math.PI / 180.0;
-
-            // Fore/aft offset (AntennaPivot)
-            if (Math.Abs(vehicle.AntennaPivot) > 0.001)
-            {
-                posEasting -= Math.Sin(hdgRad) * vehicle.AntennaPivot;
-                posNorthing -= Math.Cos(hdgRad) * vehicle.AntennaPivot;
-            }
-
-            // Lateral offset (AntennaOffset)
-            if (Math.Abs(vehicle.AntennaOffset) > 0.001)
-            {
-                double perpHeading = hdgRad + Math.PI / 2.0;
-                posEasting -= Math.Sin(perpHeading) * vehicle.AntennaOffset;
-                posNorthing -= Math.Cos(perpHeading) * vehicle.AntennaOffset;
-            }
-
-            // Roll correction (read from GpsData, not SensorState — Phase B
-            // removed NmeaParserService which was the only SensorState writer)
-            double imuRoll = data.ImuRoll;
-            if (Math.Abs(imuRoll) > 0.01 && Math.Abs(vehicle.AntennaHeight) > 0.01)
-            {
-                double rollRad = imuRoll * Math.PI / 180.0;
-                double rollDist = Math.Sin(rollRad) * -vehicle.AntennaHeight;
-                posEasting += Math.Cos(-hdgRad) * rollDist;
-                posNorthing += Math.Sin(-hdgRad) * rollDist;
-            }
-        }
+        // Single source of truth for the antenna-to-pivot transform. Runs
+        // here on local-plane (E, N) so the math is consistent regardless
+        // of how the GPS data arrived (real NMEA, simulator, replay).
+        AntennaToPivotTransform.Apply(
+            ref posEasting,
+            ref posNorthing,
+            pos.Heading * Math.PI / 180.0,
+            ConfigurationStore.Instance.Vehicle,
+            data.ImuRoll);
 
         // ── (2) Apply drift compensation ────────────────────────────────
         double driftedEasting = posEasting + driftE;
@@ -589,6 +565,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double toolHeading = _toolPositionService.ToolHeading;
         bool isToolReady = _toolPositionService.IsToolPositionReady;
         double toolWidth = config.ActualToolWidth;
+
 
         // Map positions are now sent via GpsCycleResult → ViewModel → MapRenderState.
         // The pipeline does NOT call _mapService directly.
