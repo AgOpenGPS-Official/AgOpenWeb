@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Services.Fields;
 using AgValoniaGPS.Services.GeoJson;
 
 namespace AgValoniaGPS.Services;
@@ -213,6 +214,76 @@ public class FieldService : IFieldService
         {
             ActiveField = field;
             ActiveFieldChanged?.Invoke(this, field);
+        }
+    }
+
+    public IReadOnlyList<NearbyField> FindFieldsNear(
+        string fieldsRootDirectory, double latitude, double longitude, double maxKm)
+    {
+        if (!Directory.Exists(fieldsRootDirectory))
+            return Array.Empty<NearbyField>();
+
+        var query = new Wgs84(latitude, longitude);
+        var results = new List<NearbyField>();
+
+        foreach (var dir in Directory.GetDirectories(fieldsRootDirectory))
+        {
+            var origin = TryReadFieldOrigin(dir);
+            if (origin == null) continue;
+
+            // (0,0) origin = field never georeferenced. Including it would
+            // distort the "near me" filter for every field that hasn't yet
+            // been opened in the world.
+            if (origin.Latitude == 0 && origin.Longitude == 0) continue;
+
+            var distKm = query.DistanceInKiloMeters(new Wgs84(origin.Latitude, origin.Longitude));
+            if (distKm > maxKm) continue;
+
+            var areaHa = TryReadBoundaryAreaHectares(dir);
+            results.Add(new NearbyField(
+                Name: Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar)) ?? string.Empty,
+                DirectoryPath: dir,
+                DistanceKm: distKm,
+                BoundaryAreaHectares: areaHa));
+        }
+
+        results.Sort((a, b) => a.DistanceKm.CompareTo(b.DistanceKm));
+        return results;
+    }
+
+    private Position? TryReadFieldOrigin(string fieldDirectory)
+    {
+        try
+        {
+            var fromJson = FieldJsonService.Load(fieldDirectory);
+            if (fromJson != null) return fromJson.Origin;
+        }
+        catch
+        {
+            // Fall through to legacy reader.
+        }
+
+        try
+        {
+            var legacy = _fieldPlaneService.LoadField(fieldDirectory);
+            return legacy.Origin;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private double TryReadBoundaryAreaHectares(string fieldDirectory)
+    {
+        try
+        {
+            var boundary = _boundaryService.LoadBoundary(fieldDirectory);
+            return boundary?.AreaHectares ?? 0;
+        }
+        catch
+        {
+            return 0;
         }
     }
 }

@@ -69,4 +69,21 @@ public interface IFieldService
     /// Set the active field
     /// </summary>
     void SetActiveField(Field? field);
+
+    /// <summary>
+    /// List fields within <paramref name="maxKm"/> kilometres of
+    /// (<paramref name="latitude"/>, <paramref name="longitude"/>),
+    /// ordered ascending by distance. Powers the Distance column on the
+    /// StartWorkSession dialog and the InField shortcut.
+    /// </summary>
+    /// <remarks>
+    /// Reads each field's origin from <c>field.json</c> if present,
+    /// otherwise falls back to the legacy <c>Field.txt</c> writer.
+    /// Fields with a (0,0) origin or unreadable metadata are skipped.
+    /// </remarks>
+    IReadOnlyList<NearbyField> FindFieldsNear(
+        string fieldsRootDirectory,
+        double latitude,
+        double longitude,
+        double maxKm);
 }
