@@ -55,23 +55,9 @@ public interface IConfigurationService
     IReadOnlyList<string> GetAvailableToolProfiles();
 
     /// <summary>
-    /// Loads a paired vehicle + tool profile by name. Equivalent to
-    /// <see cref="LoadProfiles(string, string)"/> with the same name on
-    /// both sides — covers the common case where the operator has not
-    /// explicitly mixed-and-matched.
-    /// </summary>
-    bool LoadProfile(string name);
-
-    /// <summary>
     /// Loads a vehicle profile and a tool profile by name (#346 split).
     /// </summary>
     bool LoadProfiles(string vehicleName, string toolName);
-
-    /// <summary>
-    /// Saves the current ConfigurationStore to a paired vehicle + tool
-    /// profile under <paramref name="name"/> on both sides.
-    /// </summary>
-    void SaveProfile(string name);
 
     /// <summary>
     /// Saves the current ConfigurationStore to a vehicle profile and a

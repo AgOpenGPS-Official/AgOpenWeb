@@ -88,51 +88,5 @@ public partial class MainViewModel
         {
             State.UI.CloseDialog();
         });
-
-        // Profile management
-        ShowLoadProfileDialogCommand = new RelayCommand(() =>
-        {
-            AvailableProfiles.Clear();
-            foreach (var profile in _configurationService.GetAvailableProfiles())
-            {
-                AvailableProfiles.Add(profile);
-            }
-            SelectedProfile = _configurationService.Store.ActiveVehicleProfileName;
-            IsProfileSelectionVisible = true;
-        });
-
-        LoadSelectedProfileCommand = new RelayCommand(() =>
-        {
-            if (!string.IsNullOrEmpty(SelectedProfile))
-            {
-                _configurationService.LoadProfile(SelectedProfile);
-                _settingsService.Settings.LastUsedVehicleProfile = SelectedProfile;
-                _settingsService.Save();
-                OnPropertyChanged(nameof(CurrentProfileName));
-            }
-            IsProfileSelectionVisible = false;
-        });
-
-        CancelProfileSelectionCommand = new RelayCommand(() =>
-        {
-            IsProfileSelectionVisible = false;
-        });
-
-        ShowNewProfileDialogCommand = new RelayCommand(() =>
-        {
-            var baseName = "New Profile";
-            var profileName = baseName;
-            var counter = 1;
-            var existingProfiles = _configurationService.GetAvailableProfiles();
-            while (existingProfiles.Contains(profileName))
-            {
-                profileName = $"{baseName} {counter++}";
-            }
-
-            _configurationService.CreateProfile(profileName);
-            _settingsService.Settings.LastUsedVehicleProfile = profileName;
-            _settingsService.Save();
-            OnPropertyChanged(nameof(CurrentProfileName));
-        });
     }
 }

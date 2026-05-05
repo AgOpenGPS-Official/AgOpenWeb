@@ -2536,32 +2536,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ShowAutoSteerConfigCommand { get; private set; }
     public ICommand? ShowSmartWasCommand { get; private set; }
     public ICommand? CloseSmartWasDialogCommand { get; private set; }
-    public ICommand? ShowLoadProfileDialogCommand { get; private set; }
-    public ICommand? ShowNewProfileDialogCommand { get; private set; }
-    public ICommand? LoadSelectedProfileCommand { get; private set; }
-    public ICommand? CancelProfileSelectionCommand { get; private set; }
-
-    // Profile selection dialog
-    private bool _isProfileSelectionVisible;
-    public bool IsProfileSelectionVisible
-    {
-        get => _isProfileSelectionVisible;
-        set => SetProperty(ref _isProfileSelectionVisible, value);
-    }
-
-    private System.Collections.ObjectModel.ObservableCollection<string> _availableProfiles = new();
-    public System.Collections.ObjectModel.ObservableCollection<string> AvailableProfiles
-    {
-        get => _availableProfiles;
-        set => SetProperty(ref _availableProfiles, value);
-    }
-
-    private string? _selectedProfile;
-    public string? SelectedProfile
-    {
-        get => _selectedProfile;
-        set => SetProperty(ref _selectedProfile, value);
-    }
 
     public string CurrentProfileName => _configurationService.Store.ActiveVehicleProfileName;
     public string CurrentToolProfileName => _configurationService.Store.ActiveToolProfileName;

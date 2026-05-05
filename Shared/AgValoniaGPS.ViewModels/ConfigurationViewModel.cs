@@ -764,22 +764,6 @@ public partial class ConfigurationViewModel : ObservableObject
 
     #region Profile Management
 
-    public ObservableCollection<string> AvailableProfiles { get; } = new();
-
-    private string? _selectedProfileName;
-    public string? SelectedProfileName
-    {
-        get => _selectedProfileName;
-        set
-        {
-            SetProperty(ref _selectedProfileName, value);
-            if (value != null && value != Config.ActiveVehicleProfileName)
-            {
-                _configService.LoadProfile(value);
-            }
-        }
-    }
-
     /// <summary>
     /// Whether there are unsaved changes (delegates to ConfigurationStore)
     /// </summary>
@@ -793,10 +777,6 @@ public partial class ConfigurationViewModel : ObservableObject
 
     #region Commands
 
-    public ICommand LoadProfileCommand { get; }
-    public ICommand SaveProfileCommand { get; }
-    public ICommand NewProfileCommand { get; }
-    public ICommand DeleteProfileCommand { get; }
     public ICommand ApplyCommand { get; }
     public ICommand CancelCommand { get; }
     public ICommand SetToolTypeCommand { get; }
@@ -956,7 +936,6 @@ public partial class ConfigurationViewModel : ObservableObject
     #region Events
 
     public event EventHandler? CloseRequested;
-    public event EventHandler<string>? ProfileSaved;
 
     #endregion
 
@@ -965,10 +944,6 @@ public partial class ConfigurationViewModel : ObservableObject
         _configService = configService;
 
         // Initialize commands
-        LoadProfileCommand = new RelayCommand<string>(LoadProfile);
-        SaveProfileCommand = new RelayCommand(SaveProfile);
-        NewProfileCommand = new RelayCommand<string>(CreateNewProfile);
-        DeleteProfileCommand = new RelayCommand(DeleteProfile);
         ApplyCommand = new RelayCommand(ApplyChanges);
         CancelCommand = new RelayCommand(Cancel);
         SetToolTypeCommand = new RelayCommand<string>(SetToolType);
@@ -1014,11 +989,6 @@ public partial class ConfigurationViewModel : ObservableObject
             }
         };
 
-        // Load available profiles
-        RefreshProfileList();
-
-        // Set selected profile name to current
-        _selectedProfileName = Config.ActiveVehicleProfileName;
     }
 
     private void InitializeVehicleEditCommands()
@@ -1679,51 +1649,9 @@ public partial class ConfigurationViewModel : ObservableObject
         });
     }
 
-    private void RefreshProfileList()
-    {
-        AvailableProfiles.Clear();
-        foreach (var profileName in _configService.GetAvailableProfiles())
-        {
-            AvailableProfiles.Add(profileName);
-        }
-    }
-
-    private void LoadProfile(string? profileName)
-    {
-        if (string.IsNullOrEmpty(profileName)) return;
-        _configService.LoadProfile(profileName);
-        _selectedProfileName = profileName;
-        OnPropertyChanged(nameof(SelectedProfileName));
-    }
-
-    private void SaveProfile()
-    {
-        _configService.SaveProfile(Config.ActiveVehicleProfileName);
-        ProfileSaved?.Invoke(this, Config.ActiveVehicleProfileName);
-    }
-
-    private void CreateNewProfile(string? profileName)
-    {
-        if (string.IsNullOrWhiteSpace(profileName)) return;
-
-        _configService.CreateProfile(profileName);
-        RefreshProfileList();
-        _selectedProfileName = profileName;
-        OnPropertyChanged(nameof(SelectedProfileName));
-    }
-
-    private void DeleteProfile()
-    {
-        if (string.IsNullOrEmpty(SelectedProfileName)) return;
-        if (SelectedProfileName == Config.ActiveVehicleProfileName) return; // Can't delete active
-
-        _configService.DeleteProfile(SelectedProfileName);
-        RefreshProfileList();
-    }
-
     private void ApplyChanges()
     {
-        _configService.SaveProfile(Config.ActiveVehicleProfileName);
+        _configService.SaveProfiles(Config.ActiveVehicleProfileName, Config.ActiveToolProfileName);
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
