@@ -73,6 +73,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<INtripClientService, NtripClientService>();
         services.AddSingleton<ISettingsService, SettingsService>();
 
+        // Per-session jobs (#349). Reads FieldsRoot through ISettingsService
+        // so changes to the user's Documents path are picked up live.
+        services.AddSingleton<IJobService>(sp =>
+        {
+            var settings = sp.GetRequiredService<ISettingsService>();
+            return new JobService(() => settings.Settings.FieldsDirectory);
+        });
+
         // Field file I/O services
         services.AddSingleton<FieldPlaneFileService>();
         services.AddSingleton<BoundaryFileService>();

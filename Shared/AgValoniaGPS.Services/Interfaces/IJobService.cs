@@ -89,6 +89,16 @@ public interface IJobService
     void CloseCurrentJob(JobStatus closingStatus = JobStatus.Done);
 
     /// <summary>
+    /// Persist the active job and clear <see cref="ActiveJob"/> without
+    /// changing <see cref="Job.Status"/> or stamping
+    /// <see cref="Job.EndedAt"/>. Used when a field is closed without an
+    /// explicit operator "Close Job" action — the next open of the same
+    /// field will resume the same in-progress job rather than creating a
+    /// new default. No-op if no active job.
+    /// </summary>
+    void SuspendCurrentJob();
+
+    /// <summary>
     /// The job currently receiving coverage / section-log writes, or null
     /// if the user has only opened a field for view (Decision #2).
     /// </summary>

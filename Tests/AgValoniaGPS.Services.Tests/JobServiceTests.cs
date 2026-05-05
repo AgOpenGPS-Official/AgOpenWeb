@@ -196,6 +196,32 @@ public class JobServiceTests
     }
 
     [Test]
+    public void SuspendCurrentJob_KeepsStatusInProgress_NextOpenResumesSameJob()
+    {
+        SeedField("f");
+        var first = _svc.CreateJob("f", "spraying", "");
+
+        _svc.SuspendCurrentJob();
+
+        Assert.That(_svc.ActiveJob, Is.Null);
+        var persisted = _svc.GetJob("f", first.TaskName)!;
+        Assert.That(persisted.Status, Is.EqualTo(JobStatus.InProgress));
+        Assert.That(persisted.EndedAt, Is.Null);
+
+        // The silent-path "open same field" should resume rather than create.
+        var resumed = _svc.GetOrCreateDefaultJob("f");
+        Assert.That(resumed.TaskName, Is.EqualTo(first.TaskName));
+        Assert.That(_svc.ActiveJob!.TaskName, Is.EqualTo(first.TaskName));
+    }
+
+    [Test]
+    public void SuspendCurrentJob_NoActiveJob_NoOp()
+    {
+        Assert.DoesNotThrow(() => _svc.SuspendCurrentJob());
+        Assert.That(_svc.ActiveJob, Is.Null);
+    }
+
+    [Test]
     public void GetOrCreateDefaultJob_ResumesExistingInProgress()
     {
         SeedField("f");

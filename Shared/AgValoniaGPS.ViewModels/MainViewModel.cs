@@ -30,6 +30,7 @@ using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.Timing;
 using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Services;
+using AgValoniaGPS.Services.Fields;
 using AgValoniaGPS.Services.YouTurn;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Models.GPS;
@@ -79,6 +80,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IChartDataService _chartDataService;
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
+    private readonly IJobService _jobService;
     private readonly ITramLineService _tramLineService;
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
@@ -199,6 +201,7 @@ public partial class MainViewModel : ObservableObject
         IChartDataService chartDataService,
         IAudioService audioService,
         IElevationLogService elevationLogService,
+        IJobService jobService,
         ITramLineService tramLineService,
         IGpsPipelineService gpsPipelineService,
         IPipelineIntents intents,
@@ -264,6 +267,7 @@ public partial class MainViewModel : ObservableObject
         _chartDataService = chartDataService;
         _audioService = audioService;
         _elevationLogService = elevationLogService;
+        _jobService = jobService;
         _gpsPipelineService = gpsPipelineService;
         _controlLoop = controlLoop;
         _positionEstimator = positionEstimator;
@@ -1108,6 +1112,18 @@ public partial class MainViewModel : ObservableObject
         // Close current field first (saves coverage, clears state)
         await CloseFieldAsync();
 
+        // Wrap any pre-#349 coverage into a synthetic imported job. Idempotent;
+        // a no-op if the field already has a jobs/ folder.
+        try
+        {
+            if (LegacyFieldMigrationService.MigrateIfNeeded(fieldPath))
+                _logger.LogDebug("[Job] Migrated legacy coverage for '{FieldName}'", fieldName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Job] Legacy migration failed for '{FieldName}'", fieldName);
+        }
+
         // Show busy overlay for loading
         State.UI.BusyMessage = "Loading field...";
         State.UI.IsBusy = true;
@@ -1222,12 +1238,18 @@ public partial class MainViewModel : ObservableObject
             // Load recorded path from RecPath.txt
             LoadRecPathFromField(fieldPath);
 
+            // Establish (or resume) the active job before any coverage paint
+            // is allowed. Coverage now lives under <field>/jobs/<task>/.
+            var activeJob = _jobService.GetOrCreateDefaultJob(fieldName);
+            _logger.LogDebug("[Job] Active job: {TaskName} (status={Status})",
+                activeJob.TaskName, activeJob.Status);
+
             // Load coverage (shows busy overlay — pixel buffer callback needs UI thread for bitmap access)
             State.UI.BusyMessage = "Loading coverage...";
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-            _coverageMapService.LoadFromFile(fieldPath);
-            _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath}");
+            _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
+            _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
             RefreshCoverageStatistics();
 
             // Load tram lines
@@ -1328,10 +1350,21 @@ public partial class MainViewModel : ObservableObject
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             await Task.Delay(50);
 
-            // Save coverage on background thread (RLE compression can take seconds)
+            // Save coverage on background thread (RLE compression can take seconds).
+            // Coverage is keyed by the active job's task name; if no job is
+            // active (field-only open) the save is skipped.
             var savePath = ActiveField.DirectoryPath;
-            await Task.Run(() => _coverageMapService.SaveToFile(savePath));
-            _logger.LogDebug($"[Coverage] Saved coverage to {savePath}");
+            var activeJob = _jobService.ActiveJob;
+            if (activeJob != null)
+            {
+                var taskName = activeJob.TaskName;
+                await Task.Run(() => _coverageMapService.SaveToFile(savePath, taskName));
+                _logger.LogDebug($"[Coverage] Saved coverage to {savePath} job={taskName}");
+            }
+            else
+            {
+                _logger.LogDebug("[Coverage] No active job; skipping coverage save (field-only open)");
+            }
 
             // Save tram lines
             if (_tramLineService.HasTramLines)
@@ -1356,6 +1389,12 @@ public partial class MainViewModel : ObservableObject
 
             // Save field (writes geojson + legacy formats)
             _fieldService.SaveField(ActiveField);
+
+            // Suspend rather than close. M2 has no explicit "Close Job"
+            // operator action — closing a field should leave the job
+            // in-progress so the next open of the same field resumes it.
+            // The dialog UI in M3+ will surface explicit close/done.
+            _jobService.SuspendCurrentJob();
         }
         catch (Exception ex)
         {

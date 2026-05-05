@@ -70,6 +70,7 @@ public class MainViewModelBuilder
             chartDataService: Substitute.For<IChartDataService>(),
             audioService: Substitute.For<IAudioService>(),
             elevationLogService: Substitute.For<IElevationLogService>(),
+            jobService: Substitute.For<IJobService>(),
             tramLineService: Substitute.For<ITramLineService>(),
             gpsPipelineService: Substitute.For<IGpsPipelineService>(),
             intents: Intents,

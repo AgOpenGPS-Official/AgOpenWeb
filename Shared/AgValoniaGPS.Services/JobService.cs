@@ -183,6 +183,25 @@ public class JobService : IJobService
         SetActiveJob(null);
     }
 
+    public void SuspendCurrentJob()
+    {
+        if (ActiveJob == null) return;
+
+        var fieldDir = ResolveFieldDir(ActiveJob.FieldName);
+        if (fieldDir == null)
+        {
+            SetActiveJob(null);
+            return;
+        }
+
+        // Bump LastOpenedAt so the cross-field history reflects this most-recent
+        // touch. Status and EndedAt deliberately untouched — see Decision #3.
+        ActiveJob.LastOpenedAt = DateTime.Now;
+        JobJsonService.Save(ActiveJob, fieldDir);
+
+        SetActiveJob(null);
+    }
+
     private void SetActiveJob(Job? job)
     {
         ActiveJob = job;
