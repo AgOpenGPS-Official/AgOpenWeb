@@ -147,6 +147,11 @@ public class MapService : IMapService
         _mapControl?.SetVehiclePosition(easting, northing, headingRadians);
     }
 
+    public void SetVehicleSteerAngle(double radians)
+    {
+        _mapControl?.SetVehicleSteerAngle(radians);
+    }
+
     public void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady)

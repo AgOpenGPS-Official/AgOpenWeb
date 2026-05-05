@@ -243,6 +243,14 @@ public partial class MainViewModel
             result.ToolEasting, result.ToolNorthing, result.ToolHeadingRadians,
             result.ToolWidth, result.HitchEasting, result.HitchNorthing,
             result.IsToolPositionReady);
+
+        // Live wheel angle for the front-wheel sprite (#336). Real WAS reading
+        // when an autosteer module is attached, simulator slider value when
+        // the sim is driving GPS. Both are in degrees and signed (+right).
+        double steerDeg = _isSimulatorEnabled
+            ? _simulatorService.SteerAngle
+            : _autoSteerService.LastSteerData.ActualSteerAngle;
+        _mapService.SetVehicleSteerAngle(steerDeg * Math.PI / 180.0);
     }
 
     private void UpdateSectionPropertiesFromResult(bool[] states, int[]? colorCodes)

@@ -68,6 +68,7 @@ public interface ISharedMapControl
     // Content
     void SetBoundary(Boundary? boundary);
     void SetVehiclePosition(double x, double y, double heading);
+    void SetVehicleSteerAngle(double radians);
     void SetToolPosition(double x, double y, double heading, double width, double hitchX, double hitchY, bool isReady = true);
 
     /// <summary>
@@ -185,6 +186,13 @@ internal class MapRenderState
 
     // Vehicle
     public double VehicleX, VehicleY, VehicleHeading;
+    // Live wheel angle (signed radians, +right). Renderer rotates the
+    // front-wheel sprite by this. See issue #336.
+    public double VehicleSteerAngle;
+    // Pulled from VehicleConfig so the renderer can place wheels at
+    // (±TrackWidth/2, Wheelbase) from the vehicle pivot (rear axle).
+    public double VehicleWheelbase, VehicleTrackWidth;
+    public IImage? FrontWheelImage;
     public bool HasValidHeading, IsReversing, ShowVehicle;
 
     // Tool
@@ -388,6 +396,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private double _vehicleX = 0.0;
     private double _vehicleY = 0.0;
     private double _vehicleHeading = 0.0;
+    // Live wheel angle (signed radians, +right). Driven by WAS in real mode,
+    // simulator slider in sim mode. See issue #336.
+    private double _vehicleSteerAngle = 0.0;
 
     // Tool state
     private double _toolX = 0.0;
@@ -556,6 +567,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private Bitmap? _groundTextureNight;
     // Vehicle image (passed to render thread via state snapshot)
     private IImage? _vehicleImage;
+    // Front-wheel image (issue #336). Drawn on top of the body sprite,
+    // rotated by the live WAS/sim steer angle around each wheel pivot.
+    private IImage? _frontWheelImage;
 
     // Composition visual for render-thread rendering
     private CompositionCustomVisual? _customVisual;
@@ -784,6 +798,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             VehicleX = _vehicleX,
             VehicleY = _vehicleY,
             VehicleHeading = _vehicleHeading,
+            VehicleSteerAngle = _vehicleSteerAngle,
+            VehicleWheelbase = vehicleCfg.Wheelbase,
+            VehicleTrackWidth = vehicleCfg.TrackWidth,
+            FrontWheelImage = _frontWheelImage,
             HasValidHeading = _hasValidHeading,
             IsReversing = _isReversing,
             ShowVehicle = ShowVehicle,
@@ -2055,6 +2073,17 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             Debug.WriteLine($"[DrawingContextMapControl] Failed to load tractor image: {ex.Message}");
             // Fallback to triangle drawing if image fails to load
         }
+
+        try
+        {
+            var uri = new Uri("avares://AgValoniaGPS.Views/Assets/Images/FrontWheels.png");
+            using var stream = AssetLoader.Open(uri);
+            _frontWheelImage = new Bitmap(stream);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[DrawingContextMapControl] Failed to load front wheels image: {ex.Message}");
+        }
     }
 
     // All Draw* methods (DrawTool, DrawVehicle, DrawSvennArrow, DrawGrid, etc.)
@@ -2293,6 +2322,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Only ground texture needs updating here (passed as Bitmap reference in state).
         _groundTexture = _isDayMode ? _groundTextureDay : _groundTextureNight;
         SendStateToHandler();
+    }
+
+    public void SetVehicleSteerAngle(double radians)
+    {
+        // Late-cycle update; the next render tick picks it up via MapRenderState.
+        _vehicleSteerAngle = radians;
     }
 
     public void SetVehiclePosition(double x, double y, double heading)
@@ -4365,7 +4400,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         private void DrawVehicle(ImmediateDrawingContext dc, SKCanvas? canvas, MapRenderState s)
         {
-            double size = 5.0;
+            // Body sprite is sized to the configured wheelbase / track width so
+            // the rear axle (= vehicle pivot) sits at the bitmap's bottom edge
+            // (y = 0) and the front axle at the top (y = Wheelbase). This is
+            // AgOpen's CVehicle sizing convention. The legacy 5×5 m hardcoded
+            // sprite floated the body around the pivot and made it impossible
+            // to overlay the steerable front wheels at the right position.
+            double trackWidth = s.VehicleTrackWidth > 0.01 ? s.VehicleTrackWidth : 1.8;
+            double wheelbase = s.VehicleWheelbase > 0.01 ? s.VehicleWheelbase : 2.8;
+            double bodyHalfWidth = trackWidth / 2.0;
 
             using (dc.PushPreTransform(Matrix.CreateTranslation(s.VehicleX, s.VehicleY)))
             using (dc.PushPreTransform(Matrix.CreateRotation(-s.VehicleHeading)))
@@ -4374,45 +4417,83 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 {
                     using (dc.PushPreTransform(Matrix.CreateScale(1, -1)))
                     {
-                        dc.DrawBitmap(vehicleBitmap, new Rect(-size / 2, -size / 2, size, size));
+                        // Y-flip: bitmap top (front of tractor) maps to world +Y.
+                        // After flip the rect is in pre-flip space, so y=-Wheelbase
+                        // means "Wheelbase forward" of the pivot in world coords.
+                        dc.DrawBitmap(vehicleBitmap, new Rect(-bodyHalfWidth, -wheelbase, trackWidth, wheelbase));
                     }
                 }
                 else
                 {
-                    // Fallback triangle using ImmediateDrawingContext (DrawLine)
+                    // Fallback triangle sized to the body footprint
                     var vehiclePen = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromRgb(0, 200, 0)), 0.3);
                     var vehicleBrush = new ImmutableSolidColorBrush(Color.FromArgb(180, 0, 200, 0));
-                    // Triangle: tip at top (0, size/2), base at (-size/3, -size/2) and (size/3, -size/2)
-                    var p1 = new Point(0, size / 2);
-                    var p2 = new Point(-size / 3, -size / 2);
-                    var p3 = new Point(size / 3, -size / 2);
+                    var p1 = new Point(0, wheelbase);
+                    var p2 = new Point(-bodyHalfWidth, 0);
+                    var p3 = new Point(bodyHalfWidth, 0);
                     dc.DrawLine(vehiclePen, p1, p2);
                     dc.DrawLine(vehiclePen, p2, p3);
                     dc.DrawLine(vehiclePen, p3, p1);
-                    // Fill center with ellipse approximation
-                    dc.DrawEllipse(vehicleBrush, null, new Point(0, -size / 6), size / 3, size / 3);
+                    dc.DrawEllipse(vehicleBrush, null, new Point(0, wheelbase * 0.5), bodyHalfWidth * 0.5, bodyHalfWidth * 0.5);
                 }
 
-                // Heading unknown indicator — draw "?" using dc (skip if no canvas)
+                // Heading unknown indicator — "?" placed off the right side of the body
                 if (!s.HasValidHeading)
                 {
                     var questionPen = new ImmutablePen(new ImmutableSolidColorBrush(Colors.Red), 0.3);
-                    dc.DrawLine(questionPen, new Point(size / 2 + 1, size / 2), new Point(size / 2 + 1, -size / 4));
+                    double qx = bodyHalfWidth + 1;
+                    dc.DrawLine(questionPen, new Point(qx, wheelbase), new Point(qx, wheelbase * 0.4));
                     dc.DrawEllipse(new ImmutableSolidColorBrush(Colors.Red), null,
-                        new Point(size / 2 + 1, -size / 2), 0.2, 0.2);
+                        new Point(qx, 0), 0.2, 0.2);
                 }
 
-                // Reverse indicator
+                // Reverse indicator (small triangle behind the rear axle)
                 if (s.IsReversing)
                 {
                     double arrowSize = 2.0;
                     var arrowBrush = new ImmutableSolidColorBrush(Color.FromArgb(200, 255, 220, 0));
-                    dc.FillRectangle(arrowBrush, new Rect(-arrowSize * 0.7, -arrowSize * 2.5, arrowSize * 1.4, arrowSize * 1.3));
+                    dc.FillRectangle(arrowBrush, new Rect(-arrowSize * 0.7, -arrowSize * 1.3, arrowSize * 1.4, arrowSize * 1.3));
                 }
 
                 // Antenna position
                 var antennaBrush = new ImmutableSolidColorBrush(Color.FromRgb(40, 120, 255));
                 dc.DrawEllipse(antennaBrush, null, new Point(s.AntennaOffset, s.AntennaPivot), 0.25, 0.25);
+
+                // Front wheels: rotate by the live WAS / sim steer angle around
+                // each wheel pivot. Position is empirically tuned to TractorAoG.png:
+                // the depicted front wheels sit at ~0.67 × Wheelbase forward of
+                // the rear axle and ~0.27 × TrackWidth from centerline (the body
+                // bitmap has decorative space — antenna mast — above the front
+                // axle so the AgOpen "wheel at (TrackWidth/2, Wheelbase)"
+                // formula puts overlay wheels past the mast top). Wheel size is
+                // sized to plausible tire footprint, not AgOpen's stretched
+                // delta, so the rotating overlay roughly matches the bitmap's
+                // depicted wheels and stays inside the body. See issue #336.
+                if (s.FrontWheelImage is Bitmap wheelBitmap
+                    && s.VehicleWheelbase > 0.01 && s.VehicleTrackWidth > 0.01)
+                {
+                    double wheelOffsetX = 0.21 * s.VehicleTrackWidth;
+                    double wheelOffsetY = 0.74 * s.VehicleWheelbase;
+                    double wheelWidth = 0.36 * s.VehicleTrackWidth;
+                    double wheelHeight = 0.60 * s.VehicleWheelbase;
+                    var wheelDst = new Rect(-wheelWidth / 2, -wheelHeight / 2, wheelWidth, wheelHeight);
+
+                    // Right front wheel
+                    using (dc.PushPreTransform(Matrix.CreateTranslation(wheelOffsetX, wheelOffsetY)))
+                    using (dc.PushPreTransform(Matrix.CreateRotation(-s.VehicleSteerAngle)))
+                    using (dc.PushPreTransform(Matrix.CreateScale(1, -1)))
+                    {
+                        dc.DrawBitmap(wheelBitmap, wheelDst);
+                    }
+
+                    // Left front wheel
+                    using (dc.PushPreTransform(Matrix.CreateTranslation(-wheelOffsetX, wheelOffsetY)))
+                    using (dc.PushPreTransform(Matrix.CreateRotation(-s.VehicleSteerAngle)))
+                    using (dc.PushPreTransform(Matrix.CreateScale(1, -1)))
+                    {
+                        dc.DrawBitmap(wheelBitmap, wheelDst);
+                    }
+                }
             }
         }
 
@@ -4580,10 +4661,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // ═══════════════════════════════════════════════════════════════
 
         private SKBitmap? _vehicleSkBitmap; // Cached SKBitmap version of vehicle image
+        private SKBitmap? _frontWheelSkBitmap; // Cached SKBitmap version of front-wheel sprite (#336)
 
         private void DrawVehicleSk(SKCanvas canvas, MapRenderState s)
         {
-            float size = 5.0f;
+            // Body sprite sized to (TrackWidth × Wheelbase), bottom edge at the
+            // pivot (rear axle). See DrawVehicle for the rationale.
+            float trackWidth = (float)(s.VehicleTrackWidth > 0.01 ? s.VehicleTrackWidth : 1.8);
+            float wheelbase = (float)(s.VehicleWheelbase > 0.01 ? s.VehicleWheelbase : 2.8);
+            float bodyHalfWidth = trackWidth / 2.0f;
             float vx = (float)s.VehicleX, vy = (float)s.VehicleY;
 
             canvas.Save();
@@ -4606,20 +4692,21 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
             if (_vehicleSkBitmap != null)
             {
-                // Y-flip because world coordinates have Y-up but bitmap is Y-down
+                // Y-flip because world coordinates have Y-up but bitmap is Y-down.
+                // Pre-flip rect: bottom (rear axle) at y=0, top (front axle) at y=-Wheelbase.
                 canvas.Scale(1, -1);
-                var dst = new SKRect(-size / 2, -size / 2, size / 2, size / 2);
+                var dst = new SKRect(-bodyHalfWidth, -wheelbase, bodyHalfWidth, 0);
                 canvas.DrawBitmap(_vehicleSkBitmap, dst);
-                canvas.Scale(1, -1); // Restore for antenna dot
+                canvas.Scale(1, -1); // Restore for antenna dot + wheels
             }
             else
             {
-                // Fallback triangle
+                // Fallback triangle sized to body footprint
                 using var vehiclePaint = new SKPaint { Color = new SKColor(0, 200, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
                 using var path = new SKPath();
-                path.MoveTo(0, size / 2);
-                path.LineTo(-size / 3, -size / 2);
-                path.LineTo(size / 3, -size / 2);
+                path.MoveTo(0, wheelbase);
+                path.LineTo(-bodyHalfWidth, 0);
+                path.LineTo(bodyHalfWidth, 0);
                 path.Close();
                 canvas.DrawPath(path, vehiclePaint);
             }
@@ -4628,23 +4715,67 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             using var antennaPaint = new SKPaint { Color = new SKColor(40, 120, 255), Style = SKPaintStyle.Fill };
             canvas.DrawCircle((float)s.AntennaOffset, (float)s.AntennaPivot, 0.25f, antennaPaint);
 
-            // Heading unknown "?" indicator
+            // Front wheels (issue #336). Convert the Avalonia Bitmap to
+            // SKBitmap once, then translate / rotate / scale per wheel. The
+            // SKBitmap shadow caches across frames.
+            if (_frontWheelSkBitmap == null && s.FrontWheelImage is Avalonia.Media.Imaging.Bitmap wheelAvBitmap)
+            {
+                try
+                {
+                    using var ms = new System.IO.MemoryStream();
+                    wheelAvBitmap.Save(ms);
+                    ms.Position = 0;
+                    _frontWheelSkBitmap = SKBitmap.Decode(ms);
+                }
+                catch { /* leave null; render is a no-op */ }
+            }
+
+            if (_frontWheelSkBitmap != null
+                && s.VehicleWheelbase > 0.01 && s.VehicleTrackWidth > 0.01)
+            {
+                // Empirical positions to match TractorAoG.png (see DrawVehicle).
+                float wheelOffsetX = (float)(0.21 * s.VehicleTrackWidth);
+                float wheelOffsetY = (float)(0.74 * s.VehicleWheelbase);
+                float wheelW = (float)(0.36 * s.VehicleTrackWidth);
+                float wheelH = (float)(0.60 * s.VehicleWheelbase);
+                var wheelDst = new SKRect(-wheelW / 2, -wheelH / 2, wheelW / 2, wheelH / 2);
+                float steerDeg = -(float)(s.VehicleSteerAngle * 180.0 / Math.PI);
+
+                // Right wheel
+                canvas.Save();
+                canvas.Translate(wheelOffsetX, wheelOffsetY);
+                canvas.RotateDegrees(steerDeg);
+                canvas.Scale(1, -1);
+                canvas.DrawBitmap(_frontWheelSkBitmap, wheelDst);
+                canvas.Restore();
+
+                // Left wheel
+                canvas.Save();
+                canvas.Translate(-wheelOffsetX, wheelOffsetY);
+                canvas.RotateDegrees(steerDeg);
+                canvas.Scale(1, -1);
+                canvas.DrawBitmap(_frontWheelSkBitmap, wheelDst);
+                canvas.Restore();
+            }
+
+            // Heading unknown "?" indicator — placed off the right side of the body
             if (!s.HasValidHeading)
             {
                 using var qPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f, IsAntialias = true };
-                canvas.DrawLine(size / 2 + 1, size / 2, size / 2 + 1, -size / 4, qPaint);
+                float qx = bodyHalfWidth + 1;
+                canvas.DrawLine(qx, wheelbase, qx, wheelbase * 0.4f, qPaint);
                 using var dotPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill };
-                canvas.DrawCircle(size / 2 + 1, -size / 2, 0.2f, dotPaint);
+                canvas.DrawCircle(qx, 0, 0.2f, dotPaint);
             }
 
-            // Reverse indicator
+            // Reverse indicator (small triangle behind the rear axle)
             if (s.IsReversing)
             {
                 using var revPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill, IsAntialias = true };
                 using var revPath = new SKPath();
-                revPath.MoveTo(0, -size / 2 - 1);
-                revPath.LineTo(-size / 4, -size / 2 - 2.5f);
-                revPath.LineTo(size / 4, -size / 2 - 2.5f);
+                revPath.MoveTo(0, -1);
+                revPath.LineTo(-bodyHalfWidth * 0.4f, -2.5f);
+                revPath.LineTo(bodyHalfWidth * 0.4f, -2.5f);
                 revPath.Close();
                 canvas.DrawPath(revPath, revPaint);
             }

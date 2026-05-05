@@ -60,6 +60,13 @@ public interface IMapService
     void SetVehiclePosition(double easting, double northing, double headingRadians);
 
     /// <summary>
+    /// Push the live wheel angle (signed radians, positive = right turn) so
+    /// the renderer can rotate the front-wheel sprite. Real WAS reading or
+    /// simulator slider value — see issue #336.
+    /// </summary>
+    void SetVehicleSteerAngle(double radians);
+
+    /// <summary>
     /// Atomic update of vehicle + tool + hitch positions in a single call.
     /// </summary>
     void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
