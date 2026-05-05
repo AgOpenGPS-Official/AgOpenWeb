@@ -37,25 +37,33 @@ public interface IConfigurationService
     /// </summary>
     string ProfilesDirectory { get; }
 
+    /// <summary>
+    /// Gets the directory where tool profiles are stored (#346).
+    /// </summary>
+    string ToolsDirectory { get; }
+
     #region Profile Management
 
     /// <summary>
-    /// Gets a list of available profile names
+    /// Gets a list of available vehicle profile names.
     /// </summary>
     IReadOnlyList<string> GetAvailableProfiles();
 
     /// <summary>
-    /// Loads a profile by name into the ConfigurationStore
+    /// Gets a list of available tool profile names (#346).
     /// </summary>
-    /// <param name="name">Profile name</param>
-    /// <returns>True if loaded successfully</returns>
-    bool LoadProfile(string name);
+    IReadOnlyList<string> GetAvailableToolProfiles();
 
     /// <summary>
-    /// Saves the current ConfigurationStore to the specified profile
+    /// Loads a vehicle profile and a tool profile by name (#346 split).
     /// </summary>
-    /// <param name="name">Profile name</param>
-    void SaveProfile(string name);
+    bool LoadProfiles(string vehicleName, string toolName);
+
+    /// <summary>
+    /// Saves the current ConfigurationStore to a vehicle profile and a
+    /// tool profile (#346 split).
+    /// </summary>
+    void SaveProfiles(string vehicleName, string toolName);
 
     /// <summary>
     /// Creates a new profile with default values
@@ -64,16 +72,42 @@ public interface IConfigurationService
     void CreateProfile(string name);
 
     /// <summary>
-    /// Deletes a profile
+    /// Deletes a profile (vehicle JSON, paired tool JSON if any, legacy XML, AutoSteer sidecar).
     /// </summary>
-    /// <param name="name">Profile name</param>
-    /// <returns>True if deleted successfully</returns>
     bool DeleteProfile(string name);
+
+    /// <summary>
+    /// Renames the vehicle profile. Updates the active pointer if the
+    /// renamed profile is the active one. Returns false on collision /
+    /// missing source.
+    /// </summary>
+    bool RenameVehicleProfile(string oldName, string newName);
+
+    /// <summary>
+    /// Renames the tool profile (see RenameVehicleProfile).
+    /// </summary>
+    bool RenameToolProfile(string oldName, string newName);
+
+    /// <summary>
+    /// Deletes a vehicle profile. Returns false if the profile is active.
+    /// </summary>
+    bool DeleteVehicleProfile(string name);
+
+    /// <summary>
+    /// Deletes a tool profile. Returns false if the profile is active.
+    /// </summary>
+    bool DeleteToolProfile(string name);
 
     /// <summary>
     /// Reloads the current profile, discarding unsaved changes
     /// </summary>
     void ReloadCurrentProfile();
+
+    /// <summary>
+    /// One-time v1 → v2 split migration of any pre-#346 combined profiles.
+    /// No-op if Tools/ is non-empty.
+    /// </summary>
+    bool MigrateV1ProfilesIfNeeded();
 
     #endregion
 

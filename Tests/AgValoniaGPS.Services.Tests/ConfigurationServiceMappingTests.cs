@@ -30,6 +30,7 @@ public class ConfigurationServiceMappingTests
 
         _service = new ConfigurationService(
             Substitute.For<IVehicleProfileService>(),
+            Substitute.For<IToolProfileService>(),
             _settingsService);
     }
 
@@ -482,9 +483,9 @@ public class ConfigurationServiceMappingTests
     #region ActiveProfile: Save
 
     [Test]
-    public void Save_ActiveProfileName()
+    public void Save_ActiveVehicleProfileName()
     {
-        _service.Store.ActiveProfileName = "MyTractor";
+        _service.Store.ActiveVehicleProfileName = "MyTractor";
 
         _service.SaveAppSettings();
 
@@ -592,7 +593,8 @@ public class ConfigurationServiceMappingTests
             "LastOpenedField",       // Managed by FieldService
             "IsFirstRun",           // Checked directly at startup
             "LastRunDate",          // Checked directly at startup
-            "LastUsedVehicleProfile", // Mapped via ActiveProfileName (different name)
+            "LastUsedVehicleProfile", // Mapped via ActiveVehicleProfileName (different name)
+            "LastUsedToolProfile",    // Mapped via ActiveToolProfileName (different name) — #346
             "HotkeyBindings",       // Mapped via Hotkeys.LoadFromDictionary (special handling)
             "Language",              // Used directly from AppSettings for localization
         };

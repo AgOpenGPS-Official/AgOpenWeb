@@ -58,4 +58,18 @@ public interface IVehicleProfileService
     /// <param name="profileName">Name for the new profile</param>
     /// <param name="store">ConfigurationStore to reset to defaults</param>
     void CreateDefaultProfile(string profileName, ConfigurationStore store);
+
+    /// <summary>
+    /// Rename an existing vehicle profile file. Returns false if the source
+    /// is missing or the target already exists (case-only renames are
+    /// allowed). Throws only on unexpected I/O failure. Active-profile
+    /// pointer updates are the orchestrator's (ConfigurationService) job.
+    /// </summary>
+    bool Rename(string oldName, string newName);
+
+    /// <summary>
+    /// Delete a vehicle profile file. Returns false if the source is
+    /// missing. Active-profile blocking is the orchestrator's job.
+    /// </summary>
+    bool Delete(string profileName);
 }

@@ -39,7 +39,7 @@ public class SmartWasViewModelTests
         _store = new ConfigurationStore();
         _store.AutoSteer.CountsPerDegree = 100;
         _store.AutoSteer.WasOffset = 10;
-        _store.ActiveProfileName = "TestProfile";
+        _store.ActiveVehicleProfileName = "TestProfile";
         _configService.Store.Returns(_store);
     }
 

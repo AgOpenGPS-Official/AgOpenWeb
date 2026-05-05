@@ -575,25 +575,35 @@ public class CoverageMapService : ICoverageMapService
 
     /// <summary>
     /// Get coverage bitmap bounds in world coordinates.
-    /// Returns fixed field bounds if set, otherwise coverage bounds.
-    /// Returns null if no bounds available.
+    /// Returns fixed field bounds if set (eagerly — even with zero coverage
+    /// cells), otherwise coverage bounds. Returns null only when neither
+    /// is available.
+    ///
+    /// Returning field bounds eagerly is critical: it lets the bitmap get
+    /// allocated and the background composited at field load (where the
+    /// busy spinner already masks the ~550 ms cost). The previous behavior
+    /// gated allocation on the first painted cell, so the pause was paid
+    /// when the vehicle crossed from the headland into the cultivated
+    /// zone — visible as a stop-the-world freeze the first time sections
+    /// turned on. (#stop-the-world-pause-on-first-coverage-cell)
     /// </summary>
     public (double MinE, double MaxE, double MinN, double MaxN)? GetCoverageBounds()
     {
-        // Return null if no coverage exists (even if field bounds are set)
-        if (GetTotalCellCount() == 0)
-            return null;
-
-        // Use fixed field bounds if set (stable coordinate system)
+        // Use fixed field bounds if set (stable coordinate system, allows
+        // pre-allocation before any coverage cells exist).
         if (_fieldBoundsSet)
             return (_fieldMinE, _fieldMaxE, _fieldMinN, _fieldMaxN);
 
-        // Fall back to coverage bounds (dynamic, can drift)
+        // No field bounds set — fall back to coverage bounds, which require
+        // at least one painted cell to be valid.
+        if (GetTotalCellCount() == 0)
+            return null;
+
         if (!_boundsValid)
             return null;
 
-        // Convert cell coordinates to world coordinates
-        // Cell (x,y) covers from x*cellSize to (x+1)*cellSize
+        // Convert cell coordinates to world coordinates.
+        // Cell (x,y) covers from x*cellSize to (x+1)*cellSize.
         double minE = _minCellE * BITMAP_CELL_SIZE;
         double maxE = (_maxCellE + 1) * BITMAP_CELL_SIZE;
         double minN = _minCellN * BITMAP_CELL_SIZE;

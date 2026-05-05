@@ -82,7 +82,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </TabItem.Header>
             <ScrollViewer>
                 <StackPanel Spacing="8" Margin="16">
-                    <TextBlock Text="{Binding SelectedProfileName, StringFormat='Current: {0}'}"
+                    <TextBlock Text="{Binding Config.ActiveVehicleProfileName, StringFormat='Current: {0}'}"
                                FontSize="24" FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                HorizontalAlignment="Center" Margin="0,0,0,20"/>
 

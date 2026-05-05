@@ -7,7 +7,7 @@ namespace AgValoniaGPS.Services.Tests;
 
 [TestFixture]
 [NonParallelizable] // Modifies ConfigurationStore.Instance
-public class ProfileJsonServiceTests
+public class ProfileJsonServiceV1Tests
 {
     private string _tempDir = null!;
     private ConfigurationStore _store = null!;
@@ -33,15 +33,15 @@ public class ProfileJsonServiceTests
     {
         SetupTestStore("TestTractor");
 
-        ProfileJsonService.Save(_tempDir, "TestTractor", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "TestTractor", _store);
 
         Assert.That(File.Exists(Path.Combine(_tempDir, "TestTractor.json")), Is.True);
 
         var loadStore = new ConfigurationStore();
-        var loaded = ProfileJsonService.Load(_tempDir, "TestTractor", loadStore);
+        var loaded = ProfileJsonServiceV1.Load(_tempDir, "TestTractor", loadStore);
 
         Assert.That(loaded, Is.True);
-        Assert.That(loadStore.ActiveProfileName, Is.EqualTo("TestTractor"));
+        Assert.That(loadStore.ActiveVehicleProfileName, Is.EqualTo("TestTractor"));
     }
 
     [Test]
@@ -56,9 +56,9 @@ public class ProfileJsonServiceTests
         _store.Vehicle.MaxSteerAngle = 40.0;
         _store.Vehicle.MaxAngularVelocity = 30.0;
 
-        ProfileJsonService.Save(_tempDir, "VehicleTest", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "VehicleTest", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "VehicleTest", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "VehicleTest", loadStore);
 
         Assert.That(loadStore.Vehicle.AntennaHeight, Is.EqualTo(4.2).Within(1e-6));
         Assert.That(loadStore.Vehicle.AntennaPivot, Is.EqualTo(1.1).Within(1e-6));
@@ -83,9 +83,9 @@ public class ProfileJsonServiceTests
         _store.Tool.MinCoverage = 80;
         _store.Tool.IsHeadlandSectionControl = true;
 
-        ProfileJsonService.Save(_tempDir, "ToolTest", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "ToolTest", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "ToolTest", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "ToolTest", loadStore);
 
         Assert.That(loadStore.Tool.Width, Is.EqualTo(12.0).Within(1e-6));
         Assert.That(loadStore.Tool.Overlap, Is.EqualTo(0.15).Within(1e-6));
@@ -108,9 +108,9 @@ public class ProfileJsonServiceTests
         _store.Guidance.PurePursuitIntegralGain = 0.05;
         _store.Guidance.IsPurePursuit = false;
 
-        ProfileJsonService.Save(_tempDir, "GuidanceTest", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "GuidanceTest", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "GuidanceTest", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "GuidanceTest", loadStore);
 
         Assert.That(loadStore.Guidance.GoalPointLookAheadHold, Is.EqualTo(5.0).Within(1e-6));
         Assert.That(loadStore.Guidance.StanleyDistanceErrorGain, Is.EqualTo(1.2).Within(1e-6));
@@ -135,9 +135,9 @@ public class ProfileJsonServiceTests
         _store.Tool.SetSectionWidth(2, 300.0);
         _store.Tool.SetSectionWidth(3, 300.0);
 
-        ProfileJsonService.Save(_tempDir, "SectionTest", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "SectionTest", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "SectionTest", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "SectionTest", loadStore);
 
         Assert.That(loadStore.NumSections, Is.EqualTo(4));
         // Widths round-trip — the regression that issue described.
@@ -166,9 +166,9 @@ public class ProfileJsonServiceTests
         _store.Tool.SetSectionWidth(2, 100.0);
         _store.Tool.SetSectionWidth(3, 100.0);
 
-        ProfileJsonService.Save(_tempDir, "SectionEdit", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "SectionEdit", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "SectionEdit", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "SectionEdit", loadStore);
 
         Assert.That(loadStore.Tool.GetSectionWidth(0), Is.EqualTo(100.0).Within(1e-6));
         Assert.That(loadStore.Tool.GetSectionWidth(1), Is.EqualTo(150.0).Within(1e-6));
@@ -180,7 +180,7 @@ public class ProfileJsonServiceTests
     public void SaveAndLoad_PreviouslyDroppedToolFields_RoundTrip()
     {
         // Regression for #343: Tool.* fields edited via UI silently lost on
-        // save because they weren't wired into ProfileJsonService.
+        // save because they weren't wired into ProfileJsonServiceV1.
         SetupTestStore("ToolFields");
         _store.Tool.DefaultSectionWidth = 175.0;
         _store.Tool.SlowSpeedCutoff = 0.7;
@@ -197,9 +197,9 @@ public class ProfileJsonServiceTests
         for (int i = 0; i < 16; i++) customColors[i] = 0x010203 + (uint)i;
         _store.Tool.SectionColors = customColors;
 
-        ProfileJsonService.Save(_tempDir, "ToolFields", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "ToolFields", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "ToolFields", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "ToolFields", loadStore);
 
         Assert.That(loadStore.Tool.DefaultSectionWidth, Is.EqualTo(175.0).Within(1e-6));
         Assert.That(loadStore.Tool.SlowSpeedCutoff, Is.EqualTo(0.7).Within(1e-6));
@@ -219,7 +219,7 @@ public class ProfileJsonServiceTests
     public void SaveAndLoad_PreviouslyDroppedGuidanceFields_RoundTrip()
     {
         // Regression for #343: Guidance.* fields edited via UI silently lost
-        // on save because they weren't wired into ProfileJsonService.
+        // on save because they weren't wired into ProfileJsonServiceV1.
         SetupTestStore("GuidanceFields");
         _store.Guidance.MinLookAheadDistance = 3.5;
         _store.Guidance.StanleyIntegralDistanceAwayTriggerAB = 0.45;
@@ -231,9 +231,9 @@ public class ProfileJsonServiceTests
         _store.Guidance.HydLiftLookAheadDistanceLeft = 2.5;
         _store.Guidance.HydLiftLookAheadDistanceRight = 1.75;
 
-        ProfileJsonService.Save(_tempDir, "GuidanceFields", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "GuidanceFields", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "GuidanceFields", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "GuidanceFields", loadStore);
 
         Assert.That(loadStore.Guidance.MinLookAheadDistance, Is.EqualTo(3.5).Within(1e-6));
         Assert.That(loadStore.Guidance.StanleyIntegralDistanceAwayTriggerAB, Is.EqualTo(0.45).Within(1e-6));
@@ -269,7 +269,7 @@ public class ProfileJsonServiceTests
         };
 
         SetupTestStore("OldProfile");
-        ProfileJsonService.Save(_tempDir, "OldProfile", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "OldProfile", _store);
         var path = System.IO.Path.Combine(_tempDir, "OldProfile.json");
 
         // Reparse, remove the new fields properly, write back. Mirrors what an
@@ -286,7 +286,7 @@ public class ProfileJsonServiceTests
         }
 
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "OldProfile", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "OldProfile", loadStore);
 
         // Defaults from ToolConfig / GuidanceConfig initializers.
         Assert.That(loadStore.Tool.DefaultSectionWidth, Is.EqualTo(100.0).Within(1e-6));
@@ -307,9 +307,9 @@ public class ProfileJsonServiceTests
         _store.Guidance.UTurnStyle = 1;
         _store.Guidance.UTurnSmoothing = 20;
 
-        ProfileJsonService.Save(_tempDir, "UTurnTest", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "UTurnTest", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "UTurnTest", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "UTurnTest", loadStore);
 
         Assert.That(loadStore.Guidance.UTurnRadius, Is.EqualTo(10.0).Within(1e-6));
         Assert.That(loadStore.Guidance.UTurnExtension, Is.EqualTo(25.0).Within(1e-6));
@@ -328,9 +328,9 @@ public class ProfileJsonServiceTests
         _store.Simulator.Latitude = 48.8566;
         _store.Simulator.Longitude = 2.3522;
 
-        ProfileJsonService.Save(_tempDir, "GeneralTest", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "GeneralTest", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "GeneralTest", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "GeneralTest", loadStore);
 
         Assert.That(loadStore.IsMetric, Is.True);
     }
@@ -339,29 +339,29 @@ public class ProfileJsonServiceTests
     public void Load_MissingFile_ReturnsFalse()
     {
         var loadStore = new ConfigurationStore();
-        var result = ProfileJsonService.Load(_tempDir, "NonExistent", loadStore);
+        var result = ProfileJsonServiceV1.Load(_tempDir, "NonExistent", loadStore);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Exists_ReturnsFalse_WhenNoFile()
     {
-        Assert.That(ProfileJsonService.Exists(_tempDir, "Nope"), Is.False);
+        Assert.That(ProfileJsonServiceV1.Exists(_tempDir, "Nope"), Is.False);
     }
 
     [Test]
     public void Exists_ReturnsTrue_AfterSave()
     {
         SetupTestStore("ExistsTest");
-        ProfileJsonService.Save(_tempDir, "ExistsTest", _store);
-        Assert.That(ProfileJsonService.Exists(_tempDir, "ExistsTest"), Is.True);
+        ProfileJsonServiceV1.Save(_tempDir, "ExistsTest", _store);
+        Assert.That(ProfileJsonServiceV1.Exists(_tempDir, "ExistsTest"), Is.True);
     }
 
     [Test]
     public void JsonOutput_IsValidAndReadable()
     {
         SetupTestStore("JsonCheck");
-        ProfileJsonService.Save(_tempDir, "JsonCheck", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "JsonCheck", _store);
         var json = File.ReadAllText(Path.Combine(_tempDir, "JsonCheck.json"));
 
         var doc = System.Text.Json.JsonDocument.Parse(json);
@@ -382,9 +382,9 @@ public class ProfileJsonServiceTests
         SetupTestStore("UTurnComp");
         _store.Guidance.UTurnCompensation = 1.75;
 
-        ProfileJsonService.Save(_tempDir, "UTurnComp", _store);
+        ProfileJsonServiceV1.Save(_tempDir, "UTurnComp", _store);
         var loadStore = new ConfigurationStore();
-        ProfileJsonService.Load(_tempDir, "UTurnComp", loadStore);
+        ProfileJsonServiceV1.Load(_tempDir, "UTurnComp", loadStore);
 
         Assert.That(loadStore.Guidance.UTurnCompensation, Is.EqualTo(1.75).Within(1e-6));
     }
@@ -395,7 +395,7 @@ public class ProfileJsonServiceTests
 
     private void SetupTestStore(string name)
     {
-        _store.ActiveProfileName = name;
+        _store.ActiveVehicleProfileName = name;
         _store.Vehicle.Name = name;
         _store.Tool.Width = 6.0;
         _store.NumSections = 1;

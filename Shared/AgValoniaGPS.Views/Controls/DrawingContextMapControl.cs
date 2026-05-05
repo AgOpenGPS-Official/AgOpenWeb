@@ -974,10 +974,16 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             new Span<byte>(ptr, bufferSize).Clear();
         }
 
-        // Composite background if available (uses its own lock)
+        // Composite background if available (uses its own lock).
+        //
+        // Invalidate the composite cache first: the WriteableBitmap above is
+        // freshly allocated with zero pixels, so even when (path, dims,
+        // bounds) match a previous run the cache's "skip — already
+        // composited" early-return would leave the new bitmap blank.
         if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
         {
             Debug.WriteLine($"[CreateCoverageBitmap] Compositing background from {_backgroundImagePath}");
+            _backgroundComposited = false;
             CompositeBackgroundIntoBitmap();
             SyncSkBitmapFromDisplay();
             _bitmapHasContent = true;
@@ -1402,23 +1408,37 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         if (_coverageWriteableBitmap == null || _coverageAllCellsProvider == null)
             return 0;
 
-        // Step 1: Clear to black
-        using (var framebuffer = _coverageWriteableBitmap.Lock())
+        // Skip clear+composite when the bitmap was just initialized by
+        // CreateCoverageBitmap (which already cleared and composited the
+        // background). Without this guard, step 1's clear erases the
+        // freshly-composited background and step 2 is then skipped by the
+        // composite cache (path/dims/bounds match) — leaving a black
+        // bitmap. This also avoids paying ~550 ms of composite work
+        // twice on every bounds change.
+        if (!_backgroundComposited)
         {
-            int bufferSize = framebuffer.RowBytes * _bitmapHeight;
-            new Span<byte>((byte*)framebuffer.Address, bufferSize).Clear();
-        }
+            // Step 1: Clear to black
+            using (var framebuffer = _coverageWriteableBitmap.Lock())
+            {
+                int bufferSize = framebuffer.RowBytes * _bitmapHeight;
+                new Span<byte>((byte*)framebuffer.Address, bufferSize).Clear();
+            }
 
-        // Step 2: Composite background if available (uses its own lock)
-        if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
-        {
-            Debug.WriteLine($"[UpdateCovBitmapFull] Compositing background from {_backgroundImagePath}");
-            CompositeBackgroundIntoBitmap();
-            SyncSkBitmapFromDisplay();
+            // Step 2: Composite background if available (uses its own lock)
+            if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+            {
+                Debug.WriteLine($"[UpdateCovBitmapFull] Compositing background from {_backgroundImagePath}");
+                CompositeBackgroundIntoBitmap();
+                SyncSkBitmapFromDisplay();
+            }
+            else
+            {
+                Debug.WriteLine($"[UpdateCovBitmapFull] No background to composite");
+            }
         }
         else
         {
-            Debug.WriteLine($"[UpdateCovBitmapFull] No background to composite");
+            Debug.WriteLine($"[UpdateCovBitmapFull] Bitmap already has background — skipping clear+composite");
         }
 
         // Step 3: Write coverage cells
@@ -1692,10 +1712,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             }
         }
 
-        // Re-composite background if available (uses its own lock)
+        // Re-composite background if available (uses its own lock).
+        // Cache invalidation is mandatory here: we just zeroed the bitmap,
+        // but the cache key (path, dims, bounds) is unchanged so the
+        // skip-composite guard would early-return without re-painting the
+        // background — leaving the screen blank after a coverage delete.
         if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
         {
             Debug.WriteLine($"[ClearCoveragePixels] Re-compositing background from {_backgroundImagePath}");
+            _backgroundComposited = false;
             CompositeBackgroundIntoBitmap();
             SyncSkBitmapFromDisplay();
         }

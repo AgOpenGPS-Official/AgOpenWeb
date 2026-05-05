@@ -510,7 +510,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <Border Grid.Row="2" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="16,12">
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto">
                         <!-- Current profile -->
-                        <TextBlock Text="{Binding Config.ActiveProfileName, StringFormat='Profile: {0}'}"
+                        <TextBlock Text="{Binding Config.ActiveVehicleProfileName, StringFormat='Profile: {0}'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" VerticalAlignment="Center"/>
 
                         <!-- Units display -->

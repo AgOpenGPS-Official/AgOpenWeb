@@ -24,11 +24,14 @@ using AgValoniaGPS.Models.Configuration;
 namespace AgValoniaGPS.Services.Profile;
 
 /// <summary>
-/// Saves and loads vehicle profiles as structured JSON, replacing the flat AgOpenGPS XML format.
-/// Serializes directly from/to ConfigurationStore sub-configs.
-/// Key improvement: dynamic section array (no 17-section hard limit).
+/// v1 (combined Vehicle + Tool + Sections + Guidance + YouTurn + General)
+/// JSON profile format. Kept around for read-back of pre-#346 profiles —
+/// the v1 → v2 split migration in phase 5 reads through this service and
+/// then rewrites to the v2 vehicle / tool serializers. New code writing
+/// new profiles should use <see cref="VehicleProfileJsonService"/> +
+/// <see cref="ToolProfileJsonService"/>.
 /// </summary>
-public static class ProfileJsonService
+public static class ProfileJsonServiceV1
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -163,6 +166,7 @@ public static class ProfileJsonService
                 IsToolFrontFixed = store.Tool.IsToolFrontFixed,
                 MinCoverage = store.Tool.MinCoverage,
                 IsMultiColoredSections = store.Tool.IsMultiColoredSections,
+                SingleCoverageColor = store.Tool.SingleCoverageColor,
                 IsSectionsNotZones = store.Tool.IsSectionsNotZones,
                 IsSectionOffWhenOut = store.Tool.IsSectionOffWhenOut,
                 IsHeadlandSectionControl = store.Tool.IsHeadlandSectionControl,
@@ -272,6 +276,7 @@ public static class ProfileJsonService
         store.Tool.TurnOffDelay = dto.Tool?.TurnOffDelay ?? 0.0;
         store.Tool.MinCoverage = dto.Tool?.MinCoverage ?? 100;
         store.Tool.IsMultiColoredSections = dto.Tool?.IsMultiColoredSections ?? false;
+        store.Tool.SingleCoverageColor = dto.Tool?.SingleCoverageColor ?? 0x98FB98u;
         // Was written but not loaded — see #343.
         store.Tool.IsSectionsNotZones = dto.Tool?.IsSectionsNotZones ?? true;
         store.Tool.IsSectionOffWhenOut = dto.Tool?.IsSectionOffWhenOut ?? true;
@@ -329,8 +334,8 @@ public static class ProfileJsonService
         store.IsMetric = dto.General?.IsMetric ?? false;
 
         // Profile metadata
-        store.ActiveProfileName = profileName;
-        store.ActiveProfilePath = filePath;
+        store.ActiveVehicleProfileName = profileName;
+        store.ActiveVehicleProfilePath = filePath;
     }
 
     // ---------------------------------------------------------------
@@ -417,6 +422,7 @@ public static class ProfileJsonService
         public bool? IsSteerSwitchEnabled { get; set; }
         public bool? IsSteerSwitchManualSections { get; set; }
         public uint[]? SectionColors { get; set; }
+        public uint? SingleCoverageColor { get; set; }
     }
 
     internal class SectionsDto

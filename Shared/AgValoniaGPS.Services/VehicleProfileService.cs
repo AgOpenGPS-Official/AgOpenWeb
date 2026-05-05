@@ -83,11 +83,19 @@ public class VehicleProfileService : IVehicleProfileService
     {
         try
         {
-            // Prefer JSON format - loads directly into store
-            if (ProfileJsonService.Load(VehiclesDirectory, profileName, store))
+            // Prefer v2 vehicle-only format (#346) — JSON with FormatVersion >= 2.
+            if (VehicleProfileJsonService.Load(VehiclesDirectory, profileName, store))
                 return true;
 
-            // Fall back to legacy XML - parse and populate store directly
+            // Fall back to v1 combined JSON. V1 hydrates the entire store
+            // (Vehicle + Guidance + YouTurn + General + Tool + Sections); the
+            // Tool side will be re-written to its own file on next save, and
+            // the v1 → v2 migration in ConfigurationService handles the
+            // proactive split for users who don't save first.
+            if (ProfileJsonServiceV1.Load(VehiclesDirectory, profileName, store))
+                return true;
+
+            // Last-resort fall back to legacy AOG XML.
             var filePath = ResolveExistingFile(profileName, ".xml");
             if (filePath == null)
                 return false;
@@ -161,8 +169,41 @@ public class VehicleProfileService : IVehicleProfileService
 
     public void Save(string profileName, ConfigurationStore store)
     {
-        // Save JSON only (new canonical format)
-        ProfileJsonService.Save(VehiclesDirectory, profileName, store);
+        // v2 vehicle-only format (#346). Tool/Sections are persisted via
+        // IToolProfileService — ConfigurationService coordinates both sides.
+        VehicleProfileJsonService.Save(VehiclesDirectory, profileName, store);
+    }
+
+    public bool Rename(string oldName, string newName)
+    {
+        if (string.IsNullOrEmpty(oldName) || string.IsNullOrEmpty(newName))
+            return false;
+
+        var oldPath = Path.Combine(VehiclesDirectory, $"{oldName}.json");
+        var newPath = Path.Combine(VehiclesDirectory, $"{newName}.json");
+        if (!File.Exists(oldPath))
+            return false;
+
+        // Allow case-only rename on case-insensitive filesystems.
+        bool caseOnly = string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(oldName, newName, StringComparison.Ordinal);
+        if (!caseOnly && File.Exists(newPath) &&
+            !string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        File.Move(oldPath, newPath, overwrite: caseOnly);
+        return true;
+    }
+
+    public bool Delete(string profileName)
+    {
+        if (string.IsNullOrEmpty(profileName))
+            return false;
+        var path = Path.Combine(VehiclesDirectory, $"{profileName}.json");
+        if (!File.Exists(path))
+            return false;
+        File.Delete(path);
+        return true;
     }
 
     public void CreateDefaultProfile(string profileName, ConfigurationStore store)
@@ -222,8 +263,8 @@ public class VehicleProfileService : IVehicleProfileService
 
         store.IsMetric = false;
 
-        store.ActiveProfileName = profileName;
-        store.ActiveProfilePath = Path.Combine(VehiclesDirectory, $"{profileName}.json");
+        store.ActiveVehicleProfileName = profileName;
+        store.ActiveVehicleProfilePath = Path.Combine(VehiclesDirectory, $"{profileName}.json");
 
         // Save the new default profile
         Save(profileName, store);
@@ -303,8 +344,8 @@ public class VehicleProfileService : IVehicleProfileService
         store.IsMetric = GetBool(settings, "setMenu_isMetric", false);
 
         // Profile metadata
-        store.ActiveProfileName = profileName;
-        store.ActiveProfilePath = filePath;
+        store.ActiveVehicleProfileName = profileName;
+        store.ActiveVehicleProfilePath = filePath;
     }
 
     private Dictionary<string, string> ParseSettings(XDocument doc)

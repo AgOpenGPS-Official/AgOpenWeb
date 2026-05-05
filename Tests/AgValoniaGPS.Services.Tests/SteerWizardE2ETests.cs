@@ -98,7 +98,7 @@ public class SteerWizardE2ETests
         await ExecuteFinishAsync(wizard);
 
         Assert.That(completedFired, Is.True, "Completed event should fire on finish");
-        _configService.Received(1).SaveProfile(Arg.Any<string>());
+        _configService.Received(1).SaveProfiles(Arg.Any<string>(), Arg.Any<string>());
     }
 
     // =========================================================================
@@ -128,7 +128,7 @@ public class SteerWizardE2ETests
         Assert.That(cancelledFired, Is.True);
 
         // SaveProfile was never called.
-        _configService.DidNotReceive().SaveProfile(Arg.Any<string>());
+        _configService.DidNotReceive().SaveProfiles(Arg.Any<string>(), Arg.Any<string>());
     }
 
     // =========================================================================
@@ -451,7 +451,7 @@ public class SteerWizardE2ETests
             "TrackWidth should be updated in config store after leaving the step");
 
         // Verify SaveProfile was called
-        _configService.Received(1).SaveProfile(Arg.Any<string>());
+        _configService.Received(1).SaveProfiles(Arg.Any<string>(), Arg.Any<string>());
     }
 
     // =========================================================================

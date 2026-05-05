@@ -230,9 +230,10 @@ public partial class SmartWasViewModel : ObservableObject
         var pgn = AgValoniaGPS.Services.AutoSteer.PgnBuilder.BuildSteerSettingsPgn(autoSteer);
         _udpService.SendToModules(pgn);
 
-        // Persist current vehicle profile
-        var profileName = _configService.Store.ActiveProfileName;
-        if (!string.IsNullOrEmpty(profileName))
-            _configService.SaveProfile(profileName);
+        // Persist the active vehicle/tool pair so the WAS calibration
+        // change lands in the right files when names diverge.
+        var store = _configService.Store;
+        if (!string.IsNullOrEmpty(store.ActiveVehicleProfileName))
+            _configService.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
     }
 }

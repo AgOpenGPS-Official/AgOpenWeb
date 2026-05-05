@@ -34,7 +34,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
             <controls:FloatingPanel.PanelContent>
                 <Border Background="#DD1E8449" CornerRadius="6" Padding="8,4" Margin="0,8,0,0">
-                    <TextBlock Text="{Binding CurrentProfileName, StringFormat='Profile: {0}'}"
+                    <TextBlock Text="{Binding CurrentProfileSummary, StringFormat='Profile: {0}'}"
                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                FontSize="13"
                                FontWeight="SemiBold"
@@ -43,58 +43,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Border>
             </controls:FloatingPanel.PanelContent>
 
-            <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileNew.png"
-                                 Text="{loc:Localize NewProfile}"
-                                 Command="{Binding ShowNewProfileDialogCommand}"/>
             <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileOpen.png"
                                  Text="{loc:Localize LoadProfile}"
-                                 Command="{Binding ShowLoadProfileDialogCommand}"/>
+                                 Command="{Binding ShowLoadVehicleToolDialogCommand}"/>
             <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/Settings48.png"
                                  Text="{loc:Localize VehicleSettings}"
                                  Command="{Binding ShowConfigurationDialogCommand}"/>
 
         </controls:FloatingPanel>
-
-        <!-- Profile Selection Popup -->
-        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-                CornerRadius="12" Padding="8" BorderThickness="1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                MinWidth="300"
-                IsVisible="{Binding IsProfileSelectionVisible}"
-                HorizontalAlignment="Center" VerticalAlignment="Center">
-            <StackPanel Spacing="8">
-                <TextBlock Text="{loc:Localize SelectProfile}"
-                           FontSize="16" FontWeight="Bold"
-                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                           HorizontalAlignment="Center" Margin="0,4,0,8"/>
-                <ListBox ItemsSource="{Binding AvailableProfiles}"
-                         SelectedItem="{Binding SelectedProfile}"
-                         MaxHeight="200" MinWidth="260"
-                         Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}"
-                                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                                       FontSize="14" Padding="8,6"/>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
-                    <Button Grid.Column="0" Content="{loc:Localize Cancel}"
-                            HorizontalContentAlignment="Center"
-                            Background="#E74C3C"
-                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                            CornerRadius="6" Height="36"
-                            Command="{Binding CancelProfileSelectionCommand}"/>
-                    <Button Grid.Column="1" Content="{loc:Localize Load}"
-                            HorizontalContentAlignment="Center"
-                            Background="#4A9A7E"
-                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                            CornerRadius="6" Height="36"
-                            Command="{Binding LoadSelectedProfileCommand}"/>
-                </Grid>
-            </StackPanel>
-        </Border>
 
     </Grid>
 </UserControl>
