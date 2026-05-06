@@ -2673,12 +2673,23 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _startWorkSessionDialogVm, value);
     }
 
+    // Resume Task cross-field history dialog (#349 M4)
+    private ResumeTaskDialogViewModel? _resumeTaskDialogVm;
+    public ResumeTaskDialogViewModel? ResumeTaskDialogVm
+    {
+        get => _resumeTaskDialogVm;
+        set => SetProperty(ref _resumeTaskDialogVm, value);
+    }
+
     public ICommand? ShowConfigurationDialogCommand { get; private set; }
     public ICommand? CancelConfigurationDialogCommand { get; private set; }
     public ICommand? ShowLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? CancelLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? ShowStartWorkSessionDialogCommand { get; private set; }
     public ICommand? CancelStartWorkSessionDialogCommand { get; private set; }
+    public ICommand? ShowResumeTaskDialogCommand { get; private set; }
+    public ICommand? CancelResumeTaskDialogCommand { get; private set; }
+    public ICommand? ResumeLastJobCommand { get; private set; }
     public ICommand? ShowAutoSteerConfigCommand { get; private set; }
     public ICommand? ShowSmartWasCommand { get; private set; }
     public ICommand? CloseSmartWasDialogCommand { get; private set; }

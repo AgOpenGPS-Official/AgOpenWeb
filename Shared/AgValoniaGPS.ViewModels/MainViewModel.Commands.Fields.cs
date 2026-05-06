@@ -60,6 +60,36 @@ public partial class MainViewModel
             State.UI.CloseDialog();
         });
 
+        // Resume Task cross-field history dialog (#349 M4).
+        ShowResumeTaskDialogCommand = new RelayCommand(() =>
+        {
+            ResumeTaskDialogVm = new ResumeTaskDialogViewModel(
+                _jobService,
+                _settingsService,
+                close: () => State.UI.CloseDialog(),
+                openFieldResumingJob: (path, name, taskName) =>
+                    _ = OpenFieldResumingJobAsync(path, name, taskName));
+            ResumeTaskDialogVm.Refresh();
+            State.UI.ShowDialog(DialogType.ResumeTask);
+        });
+
+        CancelResumeTaskDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        // Resume Last Job: one-tap reopen of the most recent job across
+        // all fields. Short-circuits the picker when the operator just
+        // wants to pick up where they left off.
+        ResumeLastJobCommand = new RelayCommand(() =>
+        {
+            var mostRecent = _jobService.ListAllJobs().FirstOrDefault();
+            if (mostRecent == null) return;
+            var fieldsRoot = _settingsService.Settings.FieldsDirectory;
+            var fieldPath = Path.Combine(fieldsRoot, mostRecent.FieldName);
+            _ = OpenFieldResumingJobAsync(fieldPath, mostRecent.FieldName, mostRecent.TaskName);
+        });
+
         // Field Selection Dialog
         ShowFieldSelectionDialogCommand = new RelayCommand(() =>
         {

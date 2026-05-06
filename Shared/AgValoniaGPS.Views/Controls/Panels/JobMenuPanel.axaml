@@ -72,6 +72,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FilePrevious.png"
                              Text="{loc:Localize Resume}"
                              Command="{Binding ResumeFieldCommand}"/>
+        <!-- #349 M4: cross-field resume + one-tap most-recent. The legacy
+             Resume button above stays until M5 cleanup. -->
+        <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FilePrevious.png"
+                             Text="Resume Last Job"
+                             Command="{Binding ResumeLastJobCommand}"/>
+        <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FilePrevious.png"
+                             Text="Resume Task"
+                             Command="{Binding ShowResumeTaskDialogCommand}"/>
 
         <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/AgShare.png"
                              Text="{loc:Localize AgShareDownload}"
