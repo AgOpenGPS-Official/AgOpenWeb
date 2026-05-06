@@ -15,18 +15,18 @@ using CommunityToolkit.Mvvm.Input;
 namespace AgValoniaGPS.ViewModels;
 
 /// <summary>
-/// Backs <c>ResumeTaskDialogPanel</c> — the cross-field "Resume Task"
+/// Backs <c>ResumeJobDialogPanel</c> — the cross-field "Resume Job"
 /// history list (#349 M4). One row per known job, ordered most-recently-
 /// opened first; row tap opens both the field and the job.
 /// </summary>
-public partial class ResumeTaskDialogViewModel : ObservableObject
+public partial class ResumeJobDialogViewModel : ObservableObject
 {
     private readonly IJobService _jobService;
     private readonly ISettingsService _settingsService;
     private readonly Action _close;
     private readonly Action<string, string, string> _openFieldResumingJob;
 
-    public ResumeTaskDialogViewModel(
+    public ResumeJobDialogViewModel(
         IJobService jobService,
         ISettingsService settingsService,
         Action close,

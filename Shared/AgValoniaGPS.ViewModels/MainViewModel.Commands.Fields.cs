@@ -60,20 +60,20 @@ public partial class MainViewModel
             State.UI.CloseDialog();
         });
 
-        // Resume Task cross-field history dialog (#349 M4).
-        ShowResumeTaskDialogCommand = new RelayCommand(() =>
+        // Resume Job cross-field history dialog (#349 M4).
+        ShowResumeJobDialogCommand = new RelayCommand(() =>
         {
-            ResumeTaskDialogVm = new ResumeTaskDialogViewModel(
+            ResumeJobDialogVm = new ResumeJobDialogViewModel(
                 _jobService,
                 _settingsService,
                 close: () => State.UI.CloseDialog(),
                 openFieldResumingJob: (path, name, taskName) =>
                     _ = OpenFieldResumingJobAsync(path, name, taskName));
-            ResumeTaskDialogVm.Refresh();
-            State.UI.ShowDialog(DialogType.ResumeTask);
+            ResumeJobDialogVm.Refresh();
+            State.UI.ShowDialog(DialogType.ResumeJob);
         });
 
-        CancelResumeTaskDialogCommand = new RelayCommand(() =>
+        CancelResumeJobDialogCommand = new RelayCommand(() =>
         {
             State.UI.CloseDialog();
         });
@@ -135,7 +135,7 @@ public partial class MainViewModel
                         SelectedFieldInfo = null;
                         _ = OpenFieldAsync(fieldPath, fieldName).ContinueWith(_ =>
                             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                                IsJobMenuPanelVisible = false));
+                                IsFieldOperationsPanelVisible = false));
                     });
                 return;
             }
@@ -144,7 +144,7 @@ public partial class MainViewModel
             SelectedFieldInfo = null;
 
             await OpenFieldAsync(fieldPath, fieldName);
-            IsJobMenuPanelVisible = false;
+            IsFieldOperationsPanelVisible = false;
         });
 
         DeleteSelectedFieldCommand = new RelayCommand(() =>
@@ -262,7 +262,7 @@ public partial class MainViewModel
                 _settingsService.Save();
 
                 State.UI.CloseDialog();
-                IsJobMenuPanelVisible = false;
+                IsFieldOperationsPanelVisible = false;
                 StatusMessage = $"Created field: {NewFieldName}";
             }
             catch (Exception ex)
@@ -403,7 +403,7 @@ public partial class MainViewModel
                 _settingsService.Save();
 
                 State.UI.CloseDialog();
-                IsJobMenuPanelVisible = false;
+                IsFieldOperationsPanelVisible = false;
                 StatusMessage = $"Created field from existing: {newFieldName}";
             }
             catch (Exception ex)
@@ -574,7 +574,7 @@ public partial class MainViewModel
                 SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
 
                 State.UI.CloseDialog();
-                IsJobMenuPanelVisible = false;
+                IsFieldOperationsPanelVisible = false;
                 var innerCount = _kmlParsedPolygons.Count - 1;
                 var innerMsg = innerCount > 0 ? $" ({innerCount} inner boundaries)" : "";
                 StatusMessage = $"Imported KML: {newFieldName}{innerMsg}";
@@ -669,7 +669,7 @@ public partial class MainViewModel
                 _settingsService.Save();
 
                 State.UI.CloseDialog();
-                IsJobMenuPanelVisible = false;
+                IsFieldOperationsPanelVisible = false;
                 StatusMessage = $"Imported ISO-XML: {newFieldName}";
             }
             catch (Exception ex)
@@ -712,13 +712,52 @@ public partial class MainViewModel
             StatusMessage = "Field closed";
         });
 
+        // "Drive In" — AgOpen-style nearby-field shortcut. Looks for fields
+        // whose origin is within 0.5 km of the operator's current GPS fix
+        // (matches AgOpenGPS FormJob.btnInField_Click). One match opens
+        // directly; multiple matches go through StartWorkSessionDialog
+        // pre-filtered to nearby. Zero matches surface a status message.
         DriveInCommand = new RelayCommand(() =>
         {
-            // Start a new field at current GPS position
-            if (Latitude != 0 && Longitude != 0)
+            if (Latitude == 0 && Longitude == 0)
             {
-                StatusMessage = "Drive-in field started";
+                StatusMessage = "No GPS fix — Drive In needs current position";
+                return;
             }
+
+            var fieldsRoot = _settingsService.Settings.FieldsDirectory;
+            var nearby = _fieldService.FindFieldsNear(fieldsRoot, Latitude, Longitude, maxKm: 0.5);
+
+            if (nearby.Count == 0)
+            {
+                StatusMessage = "No fields within 0.5 km";
+                return;
+            }
+
+            if (nearby.Count == 1)
+            {
+                var only = nearby[0];
+                _ = OpenFieldAsync(only.DirectoryPath, only.Name);
+                IsFieldOperationsPanelVisible = false;
+                return;
+            }
+
+            // 2+ — open the picker with the list pre-filtered to nearby.
+            StartWorkSessionDialogVm = new StartWorkSessionDialogViewModel(
+                _fieldService,
+                _jobService,
+                _settingsService,
+                _appState,
+                close: () => State.UI.CloseDialog(),
+                openField: (path, name) => _ = OpenFieldOnlyAsync(path, name),
+                openFieldStartingNewJob: (path, name, workType, notes, taskName) =>
+                    _ = OpenFieldStartingNewJobAsync(path, name, workType, notes, taskName),
+                openFieldResumingJob: (path, name, taskName) =>
+                    _ = OpenFieldResumingJobAsync(path, name, taskName),
+                confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action),
+                nearbyMaxKm: 0.5);
+            StartWorkSessionDialogVm.Refresh();
+            State.UI.ShowDialog(DialogType.StartWorkSession);
         });
 
         ResumeFieldCommand = new AsyncRelayCommand(async () =>
@@ -762,13 +801,13 @@ public partial class MainViewModel
                     {
                         _ = OpenFieldAsync(fieldPath, lastField).ContinueWith(_ =>
                             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                                IsJobMenuPanelVisible = false));
+                                IsFieldOperationsPanelVisible = false));
                     });
                 return;
             }
 
             await OpenFieldAsync(fieldPath, lastField);
-            IsJobMenuPanelVisible = false;
+            IsFieldOperationsPanelVisible = false;
         });
     }
 }

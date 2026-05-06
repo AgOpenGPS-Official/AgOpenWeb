@@ -2673,12 +2673,12 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _startWorkSessionDialogVm, value);
     }
 
-    // Resume Task cross-field history dialog (#349 M4)
-    private ResumeTaskDialogViewModel? _resumeTaskDialogVm;
-    public ResumeTaskDialogViewModel? ResumeTaskDialogVm
+    // Resume Job cross-field history dialog (#349 M4)
+    private ResumeJobDialogViewModel? _resumeJobDialogVm;
+    public ResumeJobDialogViewModel? ResumeJobDialogVm
     {
-        get => _resumeTaskDialogVm;
-        set => SetProperty(ref _resumeTaskDialogVm, value);
+        get => _resumeJobDialogVm;
+        set => SetProperty(ref _resumeJobDialogVm, value);
     }
 
     public ICommand? ShowConfigurationDialogCommand { get; private set; }
@@ -2687,8 +2687,8 @@ public partial class MainViewModel : ObservableObject
     public ICommand? CancelLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? ShowStartWorkSessionDialogCommand { get; private set; }
     public ICommand? CancelStartWorkSessionDialogCommand { get; private set; }
-    public ICommand? ShowResumeTaskDialogCommand { get; private set; }
-    public ICommand? CancelResumeTaskDialogCommand { get; private set; }
+    public ICommand? ShowResumeJobDialogCommand { get; private set; }
+    public ICommand? CancelResumeJobDialogCommand { get; private set; }
     public ICommand? ResumeLastJobCommand { get; private set; }
     public ICommand? ShowAutoSteerConfigCommand { get; private set; }
     public ICommand? ShowSmartWasCommand { get; private set; }
@@ -3123,7 +3123,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleFileMenuPanelCommand { get; private set; }
     public ICommand? ToggleToolsPanelCommand { get; private set; }
     public ICommand? ToggleConfigurationPanelCommand { get; private set; }
-    public ICommand? ToggleJobMenuPanelCommand { get; private set; }
+    public ICommand? ToggleFieldOperationsPanelCommand { get; private set; }
     public ICommand? ToggleFieldToolsPanelCommand { get; private set; }
     public ICommand? ToggleAutoTrackCommand { get; private set; }
     public ICommand? ToggleGridCommand { get; private set; }

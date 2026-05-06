@@ -39,6 +39,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
     private readonly Action<string, string, string, string, string?> _openFieldStartingNewJob;
     private readonly Action<string, string, string> _openFieldResumingJob;
     private readonly Action<string, Action> _confirm;   // (message, onConfirm)
+    private readonly double? _nearbyMaxKm;
 
     public StartWorkSessionDialogViewModel(
         IFieldService fieldService,
@@ -49,7 +50,8 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         Action<string, string> openField,
         Action<string, string, string, string, string?> openFieldStartingNewJob,
         Action<string, string, string> openFieldResumingJob,
-        Action<string, Action> confirm)
+        Action<string, Action> confirm,
+        double? nearbyMaxKm = null)
     {
         _fieldService = fieldService;
         _jobService = jobService;
@@ -60,6 +62,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         _openFieldStartingNewJob = openFieldStartingNewJob;
         _openFieldResumingJob = openFieldResumingJob;
         _confirm = confirm;
+        _nearbyMaxKm = nearbyMaxKm;
 
         StartNewJobCommand = new RelayCommand(StartNewJob, () => SelectedField != null);
         OpenFieldOnlyCommand = new RelayCommand(OpenFieldOnly, () => SelectedField != null);
@@ -142,12 +145,13 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         var root = _settingsService.Settings.FieldsDirectory;
         var lat = _appState.Vehicle.Latitude;
         var lon = _appState.Vehicle.Longitude;
+        var maxKm = _nearbyMaxKm ?? DefaultMaxKm;
 
         Fields.Clear();
         if (lat != 0 || lon != 0)
         {
-            // Have a fix — order by distance.
-            foreach (var nf in _fieldService.FindFieldsNear(root, lat, lon, DefaultMaxKm))
+            // Have a fix — order by distance, filter to maxKm.
+            foreach (var nf in _fieldService.FindFieldsNear(root, lat, lon, maxKm))
                 Fields.Add(nf);
         }
         else

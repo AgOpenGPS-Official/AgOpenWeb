@@ -10,10 +10,10 @@ Licensed under GNU GPL v3. See LICENSE.md.
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
              mc:Ignorable="d"
-             x:Class="AgValoniaGPS.Views.Controls.Dialogs.ResumeTaskDialogPanel"
+             x:Class="AgValoniaGPS.Views.Controls.Dialogs.ResumeJobDialogPanel"
              x:DataType="vm:MainViewModel"
-             IsVisible="{Binding State.UI.IsResumeTaskDialogVisible}"
-             IsHitTestVisible="{Binding State.UI.IsResumeTaskDialogVisible}">
+             IsVisible="{Binding State.UI.IsResumeJobDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsResumeJobDialogVisible}">
 
     <UserControl.Styles>
         <Style Selector="TextBlock.Header">
@@ -85,9 +85,9 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 MaxWidth="720"
                 MaxHeight="600"
                 Padding="20"
-                DataContext="{Binding ResumeTaskDialogVm}">
+                DataContext="{Binding ResumeJobDialogVm}">
             <Grid RowDefinitions="Auto,*,Auto,Auto">
-                <TextBlock Grid.Row="0" Classes="Header" Text="Resume Task"/>
+                <TextBlock Grid.Row="0" Classes="Header" Text="Resume Job"/>
 
                 <ListBox Grid.Row="1" x:Name="JobsListBox"
                          ItemsSource="{Binding Jobs}"
@@ -128,7 +128,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                             Command="{Binding CancelCommand}"/>
                     <Border Grid.Column="1"/>
                     <Button Grid.Column="2" Classes="DialogButton"
-                            Content="Resume Selected Task"
+                            Content="Resume Selected Job"
                             Command="{Binding ResumeJobCommand}"
                             CommandParameter="{Binding SelectedJob}"/>
                 </Grid>

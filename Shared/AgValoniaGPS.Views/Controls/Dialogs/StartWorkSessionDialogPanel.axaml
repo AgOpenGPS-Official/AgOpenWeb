@@ -201,7 +201,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                              Height="60"
                              TextWrapping="Wrap"/>
 
-                    <TextBlock Grid.Row="8" Classes="FieldLabel" Text="Task name"/>
+                    <TextBlock Grid.Row="8" Classes="FieldLabel" Text="Job name"/>
                     <Grid Grid.Row="9" ColumnDefinitions="*,Auto,Auto">
                         <TextBox Grid.Column="0" x:Name="TaskNameBox"
                                  Text="{Binding NewJobTaskName, Mode=TwoWay}"

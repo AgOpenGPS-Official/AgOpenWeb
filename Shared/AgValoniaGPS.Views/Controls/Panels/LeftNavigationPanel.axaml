@@ -95,9 +95,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Settings48.png" Stretch="Uniform"/>
                 </Button>
 
-                <!-- 5. Job Menu -->
-                <Button Classes="LeftPanelButton" ToolTip.Tip="Job Menu"
-                        Command="{Binding ToggleJobMenuPanelCommand}">
+                <!-- 5. Field Operations -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Field Operations"
+                        Command="{Binding ToggleFieldOperationsPanelCommand}">
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/JobActive.png" Stretch="Uniform"/>
                 </Button>
 
@@ -141,11 +141,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                      ZIndex="15"
                                      DataContext="{Binding}"/>
 
-        <!-- Job Menu Panel -->
-        <controls:JobMenuPanel x:Name="JobMenuPanelControl"
-                               Canvas.Left="90" Canvas.Top="0"
-                               ZIndex="15"
-                               DataContext="{Binding}"/>
+        <!-- Field Operations Panel -->
+        <controls:FieldOperationsPanel x:Name="FieldOperationsPanelControl"
+                                       Canvas.Left="90" Canvas.Top="0"
+                                       ZIndex="15"
+                                       DataContext="{Binding}"/>
 
         <!-- Field Tools Panel -->
         <controls:FieldToolsPanel x:Name="FieldToolsPanelControl"

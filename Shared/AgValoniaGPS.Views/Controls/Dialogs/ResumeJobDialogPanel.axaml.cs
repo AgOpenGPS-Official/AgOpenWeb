@@ -9,9 +9,9 @@ using AgValoniaGPS.ViewModels;
 
 namespace AgValoniaGPS.Views.Controls.Dialogs;
 
-public partial class ResumeTaskDialogPanel : UserControl
+public partial class ResumeJobDialogPanel : UserControl
 {
-    public ResumeTaskDialogPanel()
+    public ResumeJobDialogPanel()
     {
         InitializeComponent();
     }
@@ -19,9 +19,9 @@ public partial class ResumeTaskDialogPanel : UserControl
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is MainViewModel vm
-            && vm.CancelResumeTaskDialogCommand?.CanExecute(null) == true)
+            && vm.CancelResumeJobDialogCommand?.CanExecute(null) == true)
         {
-            vm.CancelResumeTaskDialogCommand.Execute(null);
+            vm.CancelResumeJobDialogCommand.Execute(null);
         }
         e.Handled = true;
     }

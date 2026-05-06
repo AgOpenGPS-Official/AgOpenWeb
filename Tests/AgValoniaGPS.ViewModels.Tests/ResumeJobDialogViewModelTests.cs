@@ -7,7 +7,7 @@ using NSubstitute;
 namespace AgValoniaGPS.ViewModels.Tests;
 
 [TestFixture]
-public class ResumeTaskDialogViewModelTests
+public class ResumeJobDialogViewModelTests
 {
     private IJobService _jobs = null!;
     private ISettingsService _settings = null!;
@@ -26,8 +26,8 @@ public class ResumeTaskDialogViewModelTests
         _closeCount = 0;
     }
 
-    private ResumeTaskDialogViewModel BuildVm() =>
-        new ResumeTaskDialogViewModel(
+    private ResumeJobDialogViewModel BuildVm() =>
+        new ResumeJobDialogViewModel(
             _jobs, _settings,
             close: () => _closeCount++,
             openFieldResumingJob: (p, n, t) => _resumeCalls.Add((p, n, t)));
