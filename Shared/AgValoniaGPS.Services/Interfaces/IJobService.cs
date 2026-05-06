@@ -99,6 +99,16 @@ public interface IJobService
     void SuspendCurrentJob();
 
     /// <summary>
+    /// Delete a job and all of its files (<c>job.json</c>, coverage,
+    /// section log) from disk. Refuses to delete the currently
+    /// <see cref="ActiveJob"/> — close or switch first.
+    /// </summary>
+    /// <returns>True if a job was deleted, false if it didn't exist.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when attempting
+    /// to delete the active job.</exception>
+    bool DeleteJob(string fieldName, string taskName);
+
+    /// <summary>
     /// The job currently receiving coverage / section-log writes, or null
     /// if the user has only opened a field for view (Decision #2).
     /// </summary>

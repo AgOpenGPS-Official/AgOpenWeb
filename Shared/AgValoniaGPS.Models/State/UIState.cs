@@ -40,6 +40,7 @@ public class UIState : ObservableObject
                 // Raise property changed for all dialog visibility properties
                 OnPropertyChanged(nameof(IsDialogOpen));
                 OnPropertyChanged(nameof(IsFieldSelectionDialogVisible));
+                OnPropertyChanged(nameof(IsStartWorkSessionDialogVisible));
                 OnPropertyChanged(nameof(IsTracksDialogVisible));
                 OnPropertyChanged(nameof(IsConfigurationDialogVisible));
                 OnPropertyChanged(nameof(IsNewFieldDialogVisible));
@@ -84,6 +85,7 @@ public class UIState : ObservableObject
 
     // Convenience properties for XAML binding (backwards compatible)
     public bool IsFieldSelectionDialogVisible => ActiveDialog == DialogType.FieldSelection;
+    public bool IsStartWorkSessionDialogVisible => ActiveDialog == DialogType.StartWorkSession;
     public bool IsTracksDialogVisible => ActiveDialog == DialogType.Tracks;
     public bool IsConfigurationDialogVisible => ActiveDialog == DialogType.Configuration;
     public bool IsNewFieldDialogVisible => ActiveDialog == DialogType.NewField;
@@ -251,6 +253,7 @@ public enum DialogType
     BugReport,
     SmartWas,
     LoadVehicleTool,
+    StartWorkSession,
 }
 
 /// <summary>

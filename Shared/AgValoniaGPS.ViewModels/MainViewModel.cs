@@ -25,6 +25,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Job;
 using AgValoniaGPS.Models.Guidance;
 using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.Timing;
@@ -268,6 +269,13 @@ public partial class MainViewModel : ObservableObject
         _audioService = audioService;
         _elevationLogService = elevationLogService;
         _jobService = jobService;
+        // Refresh the field/job pill + status strip whenever the active job
+        // changes (created, resumed, suspended).
+        _jobService.ActiveJobChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CurrentJobTaskName));
+            OnPropertyChanged(nameof(CurrentFieldAndJobLabel));
+        };
         _gpsPipelineService = gpsPipelineService;
         _controlLoop = controlLoop;
         _positionEstimator = positionEstimator;
@@ -1101,6 +1109,52 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasActiveField));
     }
 
+    // Pending intents consumed by the next OpenFieldAsync. Set by the
+    // OpenField*Async overloads below; cleared on consumption. See the
+    // JobService block inside OpenFieldAsync for why this exists
+    // (race with CloseFieldAsync's coverage save).
+    private (string FieldName, string WorkType, string Notes, string? TaskName)? _pendingNewJob;
+    private (string FieldName, string TaskName)? _pendingResumeJob;
+    private bool _pendingFieldOnly;
+
+    /// <summary>
+    /// Open a field and create a brand-new job inside it. Coverage from
+    /// the previous active job is correctly saved to that previous job's
+    /// folder before the new job is created.
+    /// </summary>
+    public Task OpenFieldStartingNewJobAsync(
+        string fieldPath, string fieldName, string workType, string notes, string? taskName = null)
+    {
+        _pendingNewJob = (fieldName, workType, notes, taskName);
+        _pendingResumeJob = null;
+        _pendingFieldOnly = false;
+        return OpenFieldAsync(fieldPath, fieldName);
+    }
+
+    /// <summary>
+    /// Open a field and resume an existing job inside it.
+    /// </summary>
+    public Task OpenFieldResumingJobAsync(string fieldPath, string fieldName, string taskName)
+    {
+        _pendingResumeJob = (fieldName, taskName);
+        _pendingNewJob = null;
+        _pendingFieldOnly = false;
+        return OpenFieldAsync(fieldPath, fieldName);
+    }
+
+    /// <summary>
+    /// Open a field's geometry without activating any job (Decision #2).
+    /// Coverage is not loaded; section paint is silently dropped at close
+    /// because <see cref="IJobService.ActiveJob"/> stays null.
+    /// </summary>
+    public Task OpenFieldOnlyAsync(string fieldPath, string fieldName)
+    {
+        _pendingFieldOnly = true;
+        _pendingNewJob = null;
+        _pendingResumeJob = null;
+        return OpenFieldAsync(fieldPath, fieldName);
+    }
+
     /// <summary>
     /// Opens a field from the specified path. This is the single entry point for all field opening.
     /// Handles: closing previous field, loading boundary, background, coverage, tracks, headland.
@@ -1240,16 +1294,59 @@ public partial class MainViewModel : ObservableObject
 
             // Establish (or resume) the active job before any coverage paint
             // is allowed. Coverage now lives under <field>/jobs/<task>/.
-            var activeJob = _jobService.GetOrCreateDefaultJob(fieldName);
-            _logger.LogDebug("[Job] Active job: {TaskName} (status={Status})",
-                activeJob.TaskName, activeJob.Status);
+            //
+            // The pending-intent fields below are set by the OpenField*Async
+            // overloads so the dialog can express "open field A and start
+            // job J2" without mutating JobService.ActiveJob before
+            // CloseFieldAsync runs — doing so used to misroute the previous
+            // job's in-memory coverage into the new job's folder.
+            Job? activeJob = null;
+            var newIntent = _pendingNewJob;
+            var resumeIntent = _pendingResumeJob;
+            var fieldOnly = _pendingFieldOnly;
+            _pendingNewJob = null;
+            _pendingResumeJob = null;
+            _pendingFieldOnly = false;
+
+            if (fieldOnly)
+            {
+                _logger.LogDebug("[Job] Field-only open; no job will be activated");
+            }
+            else if (newIntent != null)
+            {
+                activeJob = _jobService.CreateJob(
+                    newIntent.Value.FieldName,
+                    newIntent.Value.WorkType,
+                    newIntent.Value.Notes,
+                    newIntent.Value.TaskName);
+            }
+            else if (resumeIntent != null)
+            {
+                _jobService.ResumeJob(resumeIntent.Value.FieldName, resumeIntent.Value.TaskName);
+                activeJob = _jobService.ActiveJob!;
+            }
+            else
+            {
+                activeJob = _jobService.GetOrCreateDefaultJob(fieldName);
+            }
+            if (activeJob != null)
+            {
+                _logger.LogDebug("[Job] Active job: {TaskName} (status={Status})",
+                    activeJob.TaskName, activeJob.Status);
+            }
 
             // Load coverage (shows busy overlay — pixel buffer callback needs UI thread for bitmap access)
             State.UI.BusyMessage = "Loading coverage...";
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-            _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
-            _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
+            if (activeJob != null)
+            {
+                _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
+                _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
+            }
+            // Field-only opens skip coverage load — the bitmap was already
+            // cleared by ClearFieldState during CloseFieldAsync, so there's
+            // nothing to draw until the operator starts a job.
             RefreshCoverageStatistics();
 
             // Load tram lines
@@ -2568,10 +2665,20 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _loadVehicleToolDialogVm, value);
     }
 
+    // Start Work Session dialog (#349 M3)
+    private StartWorkSessionDialogViewModel? _startWorkSessionDialogVm;
+    public StartWorkSessionDialogViewModel? StartWorkSessionDialogVm
+    {
+        get => _startWorkSessionDialogVm;
+        set => SetProperty(ref _startWorkSessionDialogVm, value);
+    }
+
     public ICommand? ShowConfigurationDialogCommand { get; private set; }
     public ICommand? CancelConfigurationDialogCommand { get; private set; }
     public ICommand? ShowLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? CancelLoadVehicleToolDialogCommand { get; private set; }
+    public ICommand? ShowStartWorkSessionDialogCommand { get; private set; }
+    public ICommand? CancelStartWorkSessionDialogCommand { get; private set; }
     public ICommand? ShowAutoSteerConfigCommand { get; private set; }
     public ICommand? ShowSmartWasCommand { get; private set; }
     public ICommand? CloseSmartWasDialogCommand { get; private set; }
@@ -2972,7 +3079,32 @@ public partial class MainViewModel : ObservableObject
     public string CurrentFieldName
     {
         get => _currentFieldName;
-        set => SetProperty(ref _currentFieldName, value);
+        set
+        {
+            if (SetProperty(ref _currentFieldName, value))
+                OnPropertyChanged(nameof(CurrentFieldAndJobLabel));
+        }
+    }
+
+    /// <summary>
+    /// Active job's task name, or empty when no job is active.
+    /// </summary>
+    public string CurrentJobTaskName => _jobService?.ActiveJob?.TaskName ?? string.Empty;
+
+    /// <summary>
+    /// Combined "field / task" label for the JobMenu pill and the
+    /// upper-right status strip. Returns just the field name when there's
+    /// no active job (e.g. field-only opens once that path lands).
+    /// </summary>
+    public string CurrentFieldAndJobLabel
+    {
+        get
+        {
+            var fieldName = CurrentFieldName;
+            var task = CurrentJobTaskName;
+            if (string.IsNullOrEmpty(fieldName)) return string.Empty;
+            return string.IsNullOrEmpty(task) ? fieldName : $"{fieldName} / {task}";
+        }
     }
 
     // Commands

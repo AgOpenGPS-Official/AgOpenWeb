@@ -222,6 +222,48 @@ public class JobServiceTests
     }
 
     [Test]
+    public void DeleteJob_RemovesJobDirectoryAndFiles()
+    {
+        SeedField("f");
+        var job = _svc.CreateJob("f", "spraying", "");
+        _svc.SuspendCurrentJob();   // so DeleteJob doesn't refuse
+
+        var jobDir = JobJsonService.JobDirectory(Path.Combine(_root, "f"), job.TaskName);
+        Assert.That(Directory.Exists(jobDir), Is.True);
+
+        var deleted = _svc.DeleteJob("f", job.TaskName);
+
+        Assert.That(deleted, Is.True);
+        Assert.That(Directory.Exists(jobDir), Is.False);
+        Assert.That(_svc.ListJobs("f"), Is.Empty);
+    }
+
+    [Test]
+    public void DeleteJob_ActiveJob_Throws()
+    {
+        SeedField("f");
+        var job = _svc.CreateJob("f", "spraying", "");
+        // Job is still active here.
+
+        Assert.Throws<InvalidOperationException>(() => _svc.DeleteJob("f", job.TaskName));
+        // Files must remain intact after refusal.
+        Assert.That(JobJsonService.Exists(Path.Combine(_root, "f"), job.TaskName), Is.True);
+    }
+
+    [Test]
+    public void DeleteJob_UnknownField_ReturnsFalse()
+    {
+        Assert.That(_svc.DeleteJob("ghost", "task"), Is.False);
+    }
+
+    [Test]
+    public void DeleteJob_UnknownTask_ReturnsFalse()
+    {
+        SeedField("f");
+        Assert.That(_svc.DeleteJob("f", "no-such-task"), Is.False);
+    }
+
+    [Test]
     public void GetOrCreateDefaultJob_ResumesExistingInProgress()
     {
         SeedField("f");

@@ -33,6 +33,33 @@ public partial class MainViewModel
 {
     private void InitializeFieldCommands()
     {
+        // Start Work Session Dialog (#349 M3) — replaces the FieldSelection
+        // dialog conceptually, but the legacy dialog is left wired to its
+        // own button until M5 cleanup so this can revert without breaking
+        // the menu.
+        ShowStartWorkSessionDialogCommand = new RelayCommand(() =>
+        {
+            StartWorkSessionDialogVm = new StartWorkSessionDialogViewModel(
+                _fieldService,
+                _jobService,
+                _settingsService,
+                _appState,
+                close: () => State.UI.CloseDialog(),
+                openField: (path, name) => _ = OpenFieldOnlyAsync(path, name),
+                openFieldStartingNewJob: (path, name, workType, notes, taskName) =>
+                    _ = OpenFieldStartingNewJobAsync(path, name, workType, notes, taskName),
+                openFieldResumingJob: (path, name, taskName) =>
+                    _ = OpenFieldResumingJobAsync(path, name, taskName),
+                confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action));
+            StartWorkSessionDialogVm.Refresh();
+            State.UI.ShowDialog(DialogType.StartWorkSession);
+        });
+
+        CancelStartWorkSessionDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
         // Field Selection Dialog
         ShowFieldSelectionDialogCommand = new RelayCommand(() =>
         {

@@ -32,7 +32,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <controls:FloatingPanel.PanelContent>
             <Border Background="#DD1E8449" CornerRadius="6" Padding="8,4" Margin="0,8,0,0"
                     IsVisible="{Binding IsFieldOpen}">
-                <TextBlock Text="{Binding CurrentFieldName, StringFormat='Current Field: {0}'}"
+                <TextBlock Text="{Binding CurrentFieldAndJobLabel, StringFormat='Current: {0}'}"
                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                            FontSize="13" FontWeight="SemiBold"
                            TextWrapping="Wrap"
@@ -61,6 +61,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileOpen.png"
                              Text="{loc:Localize Open}"
                              Command="{Binding ShowFieldSelectionDialogCommand}"/>
+        <!-- #349 M3: new picker. Legacy Open button kept until M5 cleanup. -->
+        <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileOpen.png"
+                             Text="Start Session"
+                             Command="{Binding ShowStartWorkSessionDialogCommand}"/>
 
         <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/FileNew.png"
                              Text="{loc:Localize NewFromDefault}"

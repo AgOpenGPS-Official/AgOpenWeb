@@ -183,6 +183,31 @@ public class JobService : IJobService
         SetActiveJob(null);
     }
 
+    public bool DeleteJob(string fieldName, string taskName)
+    {
+        if (string.IsNullOrWhiteSpace(fieldName))
+            throw new ArgumentException("fieldName must be set", nameof(fieldName));
+        if (string.IsNullOrWhiteSpace(taskName))
+            throw new ArgumentException("taskName must be set", nameof(taskName));
+
+        if (ActiveJob != null
+            && string.Equals(ActiveJob.FieldName, fieldName, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(ActiveJob.TaskName, taskName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Cannot delete '{taskName}' while it is the active job. Close the field first.");
+        }
+
+        var fieldDir = ResolveFieldDir(fieldName);
+        if (fieldDir == null) return false;
+
+        var jobDir = JobJsonService.JobDirectory(fieldDir, taskName);
+        if (!Directory.Exists(jobDir)) return false;
+
+        Directory.Delete(jobDir, recursive: true);
+        return true;
+    }
+
     public void SuspendCurrentJob()
     {
         if (ActiveJob == null) return;

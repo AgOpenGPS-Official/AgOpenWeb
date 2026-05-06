@@ -1,0 +1,261 @@
+<!--
+AgValoniaGPS
+Copyright (C) 2024-2026 AgValoniaGPS Contributors
+
+Licensed under GNU GPL v3. See LICENSE.md.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AgValoniaGPS.ViewModels"
+             mc:Ignorable="d"
+             x:Class="AgValoniaGPS.Views.Controls.Dialogs.StartWorkSessionDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsStartWorkSessionDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsStartWorkSessionDialogVisible}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.Header">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <Style Selector="TextBlock.SubHeader">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="TextBlock.FieldLabel">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="0,8,0,2"/>
+        </Style>
+        <Style Selector="Button.DialogButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.DialogButton:pointerover">
+            <Setter Property="Background" Value="#2980B9"/>
+        </Style>
+        <Style Selector="Button.CancelButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+        <Style Selector="Button.SecondaryButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Button.DangerButton">
+            <Setter Property="Background" Value="#E74C3C"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Button.DangerButton:pointerover">
+            <Setter Property="Background" Value="#C0392B"/>
+        </Style>
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="#27AE60"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <Border Background="#80000000" IsHitTestVisible="True"
+                PointerPressed="Backdrop_PointerPressed"/>
+
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                CornerRadius="12"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                BorderThickness="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="720"
+                MaxWidth="960"
+                MaxHeight="640"
+                Padding="20"
+                DataContext="{Binding StartWorkSessionDialogVm}">
+            <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,1.5*">
+
+                <!-- Title row spans both columns -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+                           Classes="Header" Text="Start Work Session"
+                           FontSize="18" Margin="0,0,0,12"/>
+
+                <!-- LEFT: Fields list -->
+                <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="Auto,Auto,*">
+                    <TextBlock Grid.Row="0" Classes="SubHeader" Text="Fields"/>
+                    <Border Grid.Row="1"
+                            Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                            CornerRadius="4,4,0,0" Padding="10,6">
+                        <Grid ColumnDefinitions="*,80,80">
+                            <TextBlock Grid.Column="0" Text="Name"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                       FontWeight="SemiBold" FontSize="12"/>
+                            <TextBlock Grid.Column="1" Text="Dist (km)"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                       FontWeight="SemiBold" FontSize="12" TextAlignment="Right"/>
+                            <TextBlock Grid.Column="2" Text="Area (ha)"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                       FontWeight="SemiBold" FontSize="12" TextAlignment="Right"/>
+                        </Grid>
+                    </Border>
+                    <ListBox Grid.Row="2"
+                             ItemsSource="{Binding Fields}"
+                             SelectedItem="{Binding SelectedField, Mode=TwoWay}"
+                             SelectionMode="Single">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,80,80">
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                               FontSize="13"/>
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding DistanceKm, StringFormat='{}{0:F1}'}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                               FontSize="13" TextAlignment="Right"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding BoundaryAreaHectares, StringFormat='{}{0:F1}'}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                               FontSize="13" TextAlignment="Right"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+
+                <!-- RIGHT: selected-field detail + Jobs + New-Job form -->
+                <Grid Grid.Row="1" Grid.Column="2"
+                      RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                      IsVisible="{Binding SelectedField, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <TextBlock Grid.Row="0" Classes="Header"
+                               Text="{Binding SelectedField.Name}"/>
+                    <TextBlock Grid.Row="1" Classes="SubHeader"
+                               Text="{Binding SelectedField.BoundaryAreaHectares, StringFormat='Area: {0:F1} ha'}"/>
+
+                    <!-- Jobs history -->
+                    <TextBlock Grid.Row="2" Classes="FieldLabel" Text="Jobs"/>
+                    <ListBox Grid.Row="3" x:Name="JobsListBox" Height="160"
+                             ItemsSource="{Binding JobsForSelectedField}"
+                             SelectedItem="{Binding SelectedJob, Mode=TwoWay}"
+                             SelectionMode="Single">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto">
+                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                               Text="{Binding TaskName}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                               FontSize="13" FontWeight="SemiBold"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding WorkType}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                               FontSize="12" Margin="8,0,0,0"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="2"
+                                               Text="{Binding Status}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                                               FontSize="11" Margin="8,0,0,0"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                                               Text="{Binding LastOpenedAt, StringFormat='Last opened: {0:yyyy-MM-dd HH:mm}'}"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                                               FontSize="11"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- New job form -->
+                    <TextBlock Grid.Row="4" Classes="FieldLabel" Text="New Job — Work Type"/>
+                    <AutoCompleteBox Grid.Row="5"
+                                     Text="{Binding NewJobWorkType, Mode=TwoWay}"
+                                     ItemsSource="{Binding WorkTypeSuggestions}"
+                                     FilterMode="ContainsOrdinal"/>
+
+                    <Grid Grid.Row="6" ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                        <TextBlock Grid.Column="0" Classes="FieldLabel" Text="Notes"/>
+                        <Button Grid.Column="1" Classes="DialogButton SecondaryButton"
+                                Content="Use Last"
+                                Command="{Binding UseLastNotesCommand}"
+                                FontSize="11" Padding="8,4"/>
+                    </Grid>
+                    <TextBox Grid.Row="7"
+                             Text="{Binding NewJobNotes, Mode=TwoWay}"
+                             AcceptsReturn="True"
+                             Height="60"
+                             TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="8" Classes="FieldLabel" Text="Task name"/>
+                    <Grid Grid.Row="9" ColumnDefinitions="*,Auto,Auto">
+                        <TextBox Grid.Column="0" x:Name="TaskNameBox"
+                                 Text="{Binding NewJobTaskName, Mode=TwoWay}"
+                                 KeyDown="TaskNameBox_KeyDown"/>
+                        <Button Grid.Column="1" Classes="DialogButton SecondaryButton"
+                                Content="Date"
+                                Click="InsertDate_Click"
+                                FontSize="11" Padding="8,4" Margin="6,0,0,0"
+                                ToolTip.Tip="Insert today's date (yyyy-MM-dd) at the cursor"/>
+                        <Button Grid.Column="2" Classes="DialogButton SecondaryButton"
+                                Content="Time"
+                                Click="InsertTime_Click"
+                                FontSize="11" Padding="8,4" Margin="6,0,0,0"
+                                ToolTip.Tip="Insert current time (HH-mm) at the cursor"/>
+                    </Grid>
+                </Grid>
+
+                <!-- Status / error message -->
+                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
+                           Text="{Binding StatusMessage}"
+                           Foreground="#E74C3C"
+                           FontSize="12"
+                           IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Margin="0,8,0,0"/>
+
+                <!-- Buttons. Inner Border still has DataContext = sub-VM, so
+                     all commands resolve against StartWorkSessionDialogVm.
+                     Layout: [Cancel] [Open Field Only]  ...  [Delete] [Resume] [Start New]. -->
+                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                      ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto"
+                      Margin="0,16,0,0">
+                    <Button Grid.Column="0" Classes="DialogButton CancelButton"
+                            Content="Cancel"
+                            Command="{Binding CancelCommand}"/>
+                    <Button Grid.Column="1" Classes="DialogButton SecondaryButton"
+                            Content="Open Field Only"
+                            Command="{Binding OpenFieldOnlyCommand}"
+                            Margin="8,0,0,0"/>
+                    <Border Grid.Column="2"/>
+                    <Button Grid.Column="3" Classes="DialogButton DangerButton"
+                            Content="Delete Selected Job"
+                            Command="{Binding DeleteJobCommand}"
+                            CommandParameter="{Binding SelectedJob}"
+                            Margin="0,0,8,0"/>
+                    <Button Grid.Column="4" Classes="DialogButton SecondaryButton"
+                            Content="Resume Selected Job"
+                            Command="{Binding ResumeJobCommand}"
+                            CommandParameter="{Binding SelectedJob}"
+                            Margin="0,0,8,0"/>
+                    <Button Grid.Column="5" Classes="DialogButton"
+                            Content="Start New Job"
+                            Command="{Binding StartNewJobCommand}"/>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
