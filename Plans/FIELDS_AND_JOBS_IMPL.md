@@ -6,68 +6,80 @@
 
 ## Decisions (formerly TBDs)
 
-The parent plan ended with three TBDs. Locking them in here so each milestone has a stable target.
+The parent plan ended with three TBDs. Locked in conversation 2026-05-05; the
+parent `FIELDS_AND_JOBS_PLAN.md` is the canonical source — this section mirrors it.
 
-1. **Work types** — fixed enum + `Other`. Fixed labels keep history filterable and chart axes stable; the `Other` slot covers the long tail without devolving into per-operator vocabulary. Enum:
-   ```
-   Fertilizing, Spraying, Seeding, Cultivating, Tillage, Harvesting, Mowing, Other
-   ```
-   `Other` jobs may carry a free-text `OtherLabel` for display only — never used as a filter key.
+1. **Work types — free-text with autocomplete.** Stored as `Job.WorkType : string`.
+   Suggestion list = `JobWorkTypeSuggestions.Seed` (`fertilizing`, `spraying`,
+   `seeding`, `cultivating`, `tillage`, `harvesting`) plus the distinct set of
+   prior `WorkType` values across known jobs (case-insensitive, recency-ordered).
+   Operators can type anything — no enum, no `OtherLabel`.
 
-2. **Field-only open** — yes, valid. `OpenFieldOnly()` loads geometry but writes no coverage and no section-log events. Any attempt to enter `Auto` sections or paint coverage prompts to start a job. Useful for editing boundaries / tracks between sessions without polluting coverage history.
+2. **Field-only open — allowed.** `OpenFieldOnly()` loads geometry but writes no
+   coverage and no section-log events. Any attempt to enter `Auto` sections or
+   paint coverage prompts to start a job. Useful for editing boundaries / tracks
+   between sessions without polluting coverage history.
 
-3. **Job archival on close** — close locks (`Status=done`, files become read-only). "Resume" creates a continuation job with a `ParentJobId` reference. Avoids ambiguous mid-job timestamps and keeps the per-job coverage layer immutable once shipped to AgShare.
+3. **Job archival — editable on resume.** Closing a job sets `Status=Done` and
+   stamps `EndedAt`. Resuming flips `Status` back to `InProgress`, clears
+   `EndedAt`, and appends to the existing `coverage.bin` and `sections.log`.
+   No `ParentTaskName` / continuation chain — one logical session can span
+   multiple physical resumes. Files stay writable.
 
 ## Milestones
 
-Each milestone leaves `develop` in a green, shippable state when merged. No partial UX rolls out.
+Per the parent plan, all work lands on `feature/fields-and-jobs` and merges to
+`develop` as one PR once M1–M5 are complete and verified on Desktop + iPad
+(see `feedback_feature_branch_merge`). The "milestone" boundaries below are
+sequencing checkpoints on the branch — each one keeps the branch buildable and
+testable in isolation, but no milestone is merged to `develop` on its own.
 
 ### Milestone 1 — Domain model + serializers (no behavior change)
 
-**Goal:** define `Job`, `JobSummary`, `WorkType`, plus the `field.json` / `job.json` shapes. The app behaves identically; new files appear silently when fields are saved/loaded.
+**Goal:** define `Job`, `JobSummary`, `JobStatus`, `JobWorkTypeSuggestions`, plus the `field.json` / `job.json` shapes. The app behaves identically; new files appear silently when fields are saved/loaded.
 
 **New files**
-- `Shared/AgValoniaGPS.Models/Field/Job.cs`
-- `Shared/AgValoniaGPS.Models/Field/JobSummary.cs`
-- `Shared/AgValoniaGPS.Models/Field/WorkType.cs`
-- `Shared/AgValoniaGPS.Models/Field/FieldMetadata.cs` (extracted from current `FieldOverview` — keeps `Origin`, `CreatedAt`, `LastOpenedAt` in one place)
-- `Shared/AgValoniaGPS.Services/Field/FieldJsonService.cs` — write/read `field.json`
-- `Shared/AgValoniaGPS.Services/Field/JobJsonService.cs` — write/read `<field>/jobs/<task>/job.json`
+- `Shared/AgValoniaGPS.Models/Job/Job.cs`
+- `Shared/AgValoniaGPS.Models/Job/JobSummary.cs`
+- `Shared/AgValoniaGPS.Models/Job/JobStatus.cs`
+- `Shared/AgValoniaGPS.Models/Job/JobWorkTypeSuggestions.cs` (seed list + helper for distinct prior labels)
+- `Shared/AgValoniaGPS.Services/Fields/FieldJsonService.cs` — write/read `field.json` (folder is `Fields/` plural; `Services.Field` namespace collides with the `Field` class)
+- `Shared/AgValoniaGPS.Services/Fields/JobJsonService.cs` — write/read `<field>/jobs/<task>/job.json`
 
 **Modified**
-- `Shared/AgValoniaGPS.Services/FieldService.cs` — on save, write `field.json` alongside legacy `Field.txt`. On load, prefer `field.json` if present.
+- `Shared/AgValoniaGPS.Models/Field.cs` — add `LastOpenedDate` (separate from `LastModifiedDate` so view-only opens don't bump modified).
+- `Shared/AgValoniaGPS.Services/FieldService.cs` — on save, write `field.json` alongside legacy `Field.txt` / `field.geojson`. On load, prefer `field.json` if present.
 
-**Key shapes**
+**Key shapes** (see `Shared/AgValoniaGPS.Models/Job/` for the canonical source):
+
 ```csharp
-public enum WorkType { Fertilizing, Spraying, Seeding, Cultivating,
-                       Tillage, Harvesting, Mowing, Other }
-
-public sealed record Job(
-    string TaskName,            // <YYYY-MM-DD>_<work_type>[_<vehicle>]
-    WorkType WorkType,
-    string? OtherLabel,         // only when WorkType == Other
-    string Notes,
-    DateTime StartedAt,
-    DateTime? EndedAt,
-    DateTime LastOpenedAt,
-    JobStatus Status,
-    string? ParentTaskName,     // continuation chain
-    JobMetrics Metrics);
-
-public sealed record JobSummary(
-    string FieldName, string TaskName, WorkType WorkType,
-    DateTime LastOpenedAt, JobStatus Status, string NotesPreview);
-
 public enum JobStatus { InProgress, Done, Abandoned }
 
-public sealed record JobMetrics(
-    double DistanceTraveledMeters, double AreaWorkedHa, int UTurnCount);
+public class Job
+{
+    public Guid Id { get; set; }                  // stable; coverage/section files key off this
+    public string FieldName { get; set; }         // parent field folder
+    public string TaskName { get; set; }          // <YYYY-MM-DD>_<work_type>[_<vehicle_or_sim>]
+    public string WorkType { get; set; }          // free-text (Decision #1)
+    public string Notes { get; set; }
+    public DateTime StartedAt { get; set; }
+    public DateTime? EndedAt { get; set; }        // set on close, cleared on resume (Decision #3)
+    public DateTime LastOpenedAt { get; set; }
+    public JobStatus Status { get; set; }
+    public double DistanceTraveledMeters { get; set; }
+    public double AreaWorkedHectares { get; set; }
+    public int UTurnCount { get; set; }
+}
+
+public sealed record JobSummary(
+    Guid Id, string FieldName, string TaskName, string WorkType, string Notes,
+    DateTime StartedAt, DateTime? EndedAt, DateTime LastOpenedAt, JobStatus Status);
 ```
 
 **Tests**
-- `JobJsonServiceTests`: round-trip a Job; missing `OtherLabel` defaults to null; unknown enum value falls back to `Other`.
+- `JobJsonServiceTests`: round-trip a `Job`; unknown future fields are tolerated (forward-compat).
 - `FieldJsonServiceTests`: round-trip metadata; legacy `Field.txt`-only field upgrades to `field.json` on first save.
-- `WorkTypeTests`: default task-name format `2026-05-05_Spraying_Sim` (no spaces, underscores).
+- `JobTaskNameTests`: default task-name format `2026-05-05_spraying_Sim` (lowercase work type, underscores, no spaces).
 
 **Risks**
 - Json migration must not regress existing field load. Keep `Field.txt` write path until Milestone 2 to allow rollback.
@@ -95,9 +107,10 @@ public interface IJobService
     IReadOnlyList<JobSummary> ListAllJobs();   // for ResumeTaskDialog
 
     Job? GetJob(string fieldName, string taskName);
-    Job CreateJob(string fieldName, WorkType type, string? otherLabel,
-                  string notes, string? taskName = null);
+    Job CreateJob(string fieldName, string workType, string notes,
+                  string? taskName = null);
     Job GetOrCreateDefaultJob(string fieldName);  // M2 silent path
+    IReadOnlyList<string> SuggestWorkTypes();     // seed + distinct prior labels
 
     void ResumeJob(string fieldName, string taskName);
     void CloseCurrentJob(JobStatus closingStatus = JobStatus.Done);
@@ -120,7 +133,7 @@ public interface IJobService
 
 **Migration step (one-shot, runs in M2)**
 For each field directory with `Coverage.bin` but no `jobs/`:
-1. Create `jobs/imported-<field-mtime>/job.json` (`WorkType=Other`, `OtherLabel=Imported`, `Status=Done`).
+1. Create `jobs/imported-<field-mtime>/job.json` (`WorkType="imported"`, `Notes="Imported from legacy field"`, `Status=Done`).
 2. Move `Coverage.bin` → `jobs/imported-<...>/coverage.bin`.
 3. Idempotent (check for `jobs/` first).
 
@@ -167,11 +180,11 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
     public ObservableCollection<JobSummary> JobsForSelectedField { get; }
 
     [ObservableProperty] private FieldRow? _selectedField;
-    [ObservableProperty] private WorkType _newJobWorkType;
-    [ObservableProperty] private string _newJobOtherLabel = "";
+    [ObservableProperty] private string _newJobWorkType = "";   // free-text + autocomplete
     [ObservableProperty] private string _newJobNotes = "";
     [ObservableProperty] private string _newJobTaskName = "";
     [ObservableProperty] private string? _statusMessage;
+    public ObservableCollection<string> WorkTypeSuggestions { get; }
 
     public ICommand OpenFieldOnlyCommand { get; }
     public ICommand StartNewJobCommand { get; }
@@ -253,7 +266,7 @@ Notes: First pass, north section…              <-- 12pt SubHeader, truncated 8
 
 - **Active state plumbing.** `ConfigurationStore.ActiveVehicleProfileName` already exists; `ActiveJobTaskName` follows the same `SetProperty` + `RaisePropertyChanged` pattern. The Active banner on `StartWorkSessionDialog` and the Configuration pill (#346) both bind to a new `MainViewModel.CurrentJobSummary` derived property `"<field> / <task>"`.
 
-- **Migration order.** M1 ships the new file format but leaves the legacy `Field.txt` write path alive (read both, write both). M2 adds the legacy-coverage migration. M5 cleanup drops the legacy `Field.txt` write path once we have rollout confidence (one release after M5 lands).
+- **Migration order.** M1 introduces the new `field.json` write path alongside legacy `Field.txt` / `field.geojson` (read either, write both). M2 adds the legacy-coverage-to-job migration. The legacy `Field.txt` write path stays alive after this feature ships; dropping it is a follow-up tracked separately under `FILE_FORMAT_MODERNIZATION_PLAN.md`.
 
 ## Test strategy summary
 

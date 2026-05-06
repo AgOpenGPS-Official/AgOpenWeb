@@ -21,11 +21,11 @@ using Avalonia.Input;
 
 namespace AgValoniaGPS.Views.Controls.Panels;
 
-public partial class JobMenuPanel : UserControl
+public partial class FieldOperationsPanel : UserControl
 {
     public event EventHandler<Vector>? DragMoved;
 
-    public JobMenuPanel()
+    public FieldOperationsPanel()
     {
         InitializeComponent();
         var fp = this.FindControl<FloatingPanel>("FP");

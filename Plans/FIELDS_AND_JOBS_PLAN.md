@@ -42,7 +42,7 @@ schema, and naming are ours to define.
 ### Job — one work session against a field
 - `TaskName` — default `<YYYY-MM-DD>_<work_type>[_<vehicle_or_sim>]`,
   user-editable
-- `WorkType` — see TBD #1
+- `WorkType` — free-text string with autocomplete (see Decision #1)
 - `Notes` — free-text, multi-line
 - `StartedAt`, `EndedAt`, `LastOpenedAt`
 - `Status` — `in_progress` | `done` | `abandoned`
@@ -95,12 +95,12 @@ ColumnDefinitions = "*, 1.5*"
 - `Jobs` history grid: `Task Name` | `Work Type` | `Last Opened` |
   `Status`. Tap row → resume that job.
 - `New Job` mini-form below the grid:
-  - `Work Type` dropdown (TBD #1)
+  - `Work Type` text box with autocomplete dropdown (Decision #1)
   - `Notes` multi-line box (`[Use Last]` button copies notes from most
     recent job for this field)
   - `Task Name` text box, auto-populated from the format above,
     user-editable
-  - Buttons: `[Open Field Only]` (TBD #2), `[Start New Job]`
+  - Buttons: `[Open Field Only]` (Decision #2), `[Start New Job]`
 
 ### `ResumeTaskDialogPanel`
 
@@ -158,21 +158,24 @@ For each existing field directory with coverage but no `jobs/`:
 Run on first open of a legacy field. Idempotent (skip if `jobs/`
 already exists).
 
-## TBDs (decide before implementation)
+## Decisions (formerly TBDs)
 
-1. **Work types** — fixed enum (`fertilizing`, `spraying`, `seeding`,
-   `cultivating`, `tillage`, `harvesting`, `other`) or free-text with
-   autocomplete? Prototype screencap shows free-text. Recommend fixed
-   enum + `other` so reports/filtering are tractable; revisit if
-   operators need custom labels.
-2. **Field-only open** — is it valid to open a Field with no active
-   Job (view geometry, no coverage paint)? Recommend yes — a "view-only
-   open" is useful for editing boundaries/tracks between sessions. New
-   `Job` would be required before any coverage or section-log writes.
-3. **Job archival** — does closing a Job lock it (read-only,
-   `Status=done`) or stay editable on resume? Recommend lock on close;
-   resume creates a continuation job referencing the parent if more work
-   is needed. Avoids ambiguous "is this the same session" semantics.
+1. **Work types — free-text with autocomplete.** Stored as a string on
+   `Job.WorkType`. Suggestion list is the distinct set of `WorkType`
+   values seen across all known jobs (recency-ordered). New labels are
+   accepted as-is; case-insensitive de-duping for suggestions. The seed
+   list (`fertilizing`, `spraying`, `seeding`, `cultivating`, `tillage`,
+   `harvesting`) ships as starter suggestions but is not enforced.
+2. **Field-only open — allowed.** Opening a Field with no active Job
+   shows geometry (boundary, headland, tracks, flags) and is read-only
+   for session data: coverage paint and section-log writes are blocked
+   until a Job is created or resumed. UI surface: `[Open Field Only]`
+   button on `StartWorkSessionDialog`.
+3. **Job archival — editable on resume.** Closing a Job sets
+   `Status=done` and `EndedAt`, but resuming the same Job clears
+   `EndedAt`, sets `Status=in_progress`, and appends to the existing
+   `coverage.bin` and `sections.log`. One logical work session can span
+   multiple physical resumes. No continuation/parent-job concept.
 
 ## Tests
 

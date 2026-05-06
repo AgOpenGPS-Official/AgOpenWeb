@@ -26,7 +26,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              IsVisible="{Binding HasActiveField}">
 
     <StackPanel Orientation="Horizontal" Spacing="12">
-        <TextBlock Text="{Binding CurrentFieldName}" Foreground="#3498DB" FontSize="13" FontWeight="Bold"
+        <TextBlock Text="{Binding CurrentFieldAndJobLabel}" Foreground="#3498DB" FontSize="13" FontWeight="Bold"
                    IsVisible="{Binding CurrentFieldName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         <Rectangle Width="1" Height="16" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}"
                    IsVisible="{Binding CurrentFieldName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

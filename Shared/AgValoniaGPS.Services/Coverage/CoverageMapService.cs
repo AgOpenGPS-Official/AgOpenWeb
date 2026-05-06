@@ -951,6 +951,25 @@ public class CoverageMapService : ICoverageMapService
         }
     }
 
+    public void SaveToFile(string fieldDirectory, string taskName)
+    {
+        var jobDir = ResolveJobDirectory(fieldDirectory, taskName);
+        Directory.CreateDirectory(jobDir);
+        SaveToFile(jobDir);
+    }
+
+    public void LoadFromFile(string fieldDirectory, string taskName) =>
+        LoadFromFile(ResolveJobDirectory(fieldDirectory, taskName));
+
+    private static string ResolveJobDirectory(string fieldDirectory, string taskName)
+    {
+        if (string.IsNullOrWhiteSpace(fieldDirectory))
+            throw new ArgumentException("fieldDirectory must be set", nameof(fieldDirectory));
+        if (string.IsNullOrWhiteSpace(taskName))
+            throw new ArgumentException("taskName must be set", nameof(taskName));
+        return Path.Combine(fieldDirectory, "jobs", taskName);
+    }
+
     /// <summary>
     /// Load legacy AgOpenGPS Sections.txt coverage data.
     /// Format: quad strips with vertex pairs (easting, northing, 0).

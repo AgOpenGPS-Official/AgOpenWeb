@@ -68,6 +68,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <dialogs:AutoSteerConfigPanel DataContext="{Binding AutoSteerConfigViewModel}"/>
         <dialogs:SmartWasDialogPanel/>
         <dialogs:LoadVehicleToolDialogPanel/>
+        <dialogs:StartWorkSessionDialogPanel/>
+        <dialogs:ResumeJobDialogPanel/>
 
         <!-- Wizards -->
         <wizards:WizardDialogPanel DataContext="{Binding SteerWizardViewModel}"/>
