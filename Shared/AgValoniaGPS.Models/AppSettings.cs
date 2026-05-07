@@ -59,6 +59,7 @@ namespace AgValoniaGPS.Models
         // Camera settings
         public double CameraZoom { get; set; } = 100.0;
         public double CameraPitch { get; set; } = -60.0;
+        public CameraMode CameraMode { get; set; } = CameraMode.Map;
 
         // Coverage display resolution multiplier (1.0 = Ultra, 1.5 = High,
         // 2.5 = Medium, 4.0 = Low, 6.0 = Minimum). Default mirrors the

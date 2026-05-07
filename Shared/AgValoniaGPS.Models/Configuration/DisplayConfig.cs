@@ -16,6 +16,7 @@
 
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using AgValoniaGPS.Models;
 
 namespace AgValoniaGPS.Models.Configuration;
 
@@ -74,6 +75,13 @@ public class DisplayConfig : ObservableObject
     {
         get => _isNorthUp;
         set => SetProperty(ref _isNorthUp, value);
+    }
+
+    private CameraMode _cameraMode = CameraMode.Map;
+    public CameraMode CameraMode
+    {
+        get => _cameraMode;
+        set => SetProperty(ref _cameraMode, value);
     }
 
     private bool _isDayMode = true;

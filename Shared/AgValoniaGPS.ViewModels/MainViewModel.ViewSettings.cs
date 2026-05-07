@@ -131,8 +131,8 @@ public partial class MainViewModel
 
     #region Camera Mode
 
-    private CameraMode _cameraMode = CameraMode.HeadingUp;
-    private CameraMode _previousCameraMode = CameraMode.HeadingUp;
+    private CameraMode _cameraMode = CameraMode.Map;
+    private CameraMode _previousCameraMode = CameraMode.Map;
     public CameraMode CameraMode
     {
         get => _cameraMode;
@@ -152,19 +152,21 @@ public partial class MainViewModel
     {
         CameraMode.NorthUp => "N",
         CameraMode.HeadingUp => "H",
+        CameraMode.Map => "M",
         CameraMode.Free => "C",  // "Center" -- tap to recenter on vehicle
         _ => "?"
     };
 
     private void ApplyCameraMode()
     {
-        // Set camera follow mode directly on map control: 0=NorthUp, 1=HeadingUp, 2=Free
+        // Set camera follow mode directly on map control: 0=NorthUp, 1=HeadingUp, 2=Free, 3=Map
         int mapMode = _cameraMode switch
         {
             CameraMode.NorthUp => 0,
             CameraMode.HeadingUp => 1,
             CameraMode.Free => 2,
-            _ => 0
+            CameraMode.Map => 3,
+            _ => 3
         };
         var camPos = _mapService.GetCameraCenter();
         Console.WriteLine($"[Camera] ApplyCameraMode: {_cameraMode} (mapMode={mapMode}) cam=({camPos.X:F1},{camPos.Y:F1}) vehicle=({Easting:F1},{Northing:F1})");
@@ -178,6 +180,11 @@ public partial class MainViewModel
         }
 
         IsNorthUp = _cameraMode == CameraMode.NorthUp;
+
+        // Persist last actively-chosen follow mode (Free is transient -- entered by
+        // pan, not a mode the user explicitly picks to keep).
+        if (_cameraMode != CameraMode.Free)
+            ConfigStore.Display.CameraMode = _cameraMode;
     }
 
     /// <summary>

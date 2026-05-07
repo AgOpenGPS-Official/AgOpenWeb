@@ -491,6 +491,10 @@ public partial class MainViewModel : ObservableObject
         // (setting _displaySettings directly doesn't trigger property change notification)
         OnPropertyChanged(nameof(IsGridOn));
 
+        // Restore last camera follow mode (Map / NorthUp / HeadingUp)
+        if (settings.CameraMode != CameraMode.Free)
+            CameraMode = settings.CameraMode;
+
         // Restore simulator settings (always restore coords, regardless of enabled state)
         _simulatorService.Initialize(new AgValoniaGPS.Models.Wgs84(
             settings.SimulatorLatitude,

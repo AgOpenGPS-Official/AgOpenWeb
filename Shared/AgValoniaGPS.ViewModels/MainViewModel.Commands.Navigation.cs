@@ -107,12 +107,14 @@ public partial class MainViewModel
         ToggleCameraModeCommand = new RelayCommand(() =>
         {
             var oldMode = CameraMode;
+            // Explicit 4-state cycle: H -> N -> M -> C -> H
             CameraMode = CameraMode switch
             {
-                Models.CameraMode.Free => _previousCameraMode, // Return to previous mode
-                Models.CameraMode.NorthUp => Models.CameraMode.HeadingUp,
                 Models.CameraMode.HeadingUp => Models.CameraMode.NorthUp,
-                _ => Models.CameraMode.NorthUp
+                Models.CameraMode.NorthUp => Models.CameraMode.Map,
+                Models.CameraMode.Map => Models.CameraMode.Free,
+                Models.CameraMode.Free => Models.CameraMode.HeadingUp,
+                _ => Models.CameraMode.Map
             };
             Console.WriteLine($"[Compass] {oldMode} -> {CameraMode}");
         });

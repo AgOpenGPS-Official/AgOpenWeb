@@ -153,7 +153,7 @@ public interface ISharedMapControl
     // Flag markers on the map
     void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags);
 
-    // Camera follow mode (0=NorthUp, 1=HeadingUp, 2=Free)
+    // Camera follow mode (0=NorthUp, 1=HeadingUp, 2=Free, 3=Map)
     int CameraFollowMode { get; set; }
 
     // Fired when user manually pans/drags the map
@@ -373,8 +373,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private bool _isNorthUp = false;
     private bool _isDayMode = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.IsDayMode;
 
-    // Camera follow mode: 0=NorthUp, 1=HeadingUp, 2=Free
-    private int _cameraFollowMode = 0;
+    // Camera follow mode: 0=NorthUp, 1=HeadingUp, 2=Free, 3=Map (held camera + auto-pan)
+    private int _cameraFollowMode = 3;
     public event Action? UserPanned;
 
     // Reverse indicator
@@ -2355,6 +2355,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 break;
             case 2: // Free: don't move camera at all
                 break;
+            case 3: // Map: hold camera position, auto-pan when vehicle nears edge
+                _rotation = 0;
+                if (Bounds.Width > 0 && Bounds.Height > 0)
+                    ApplyAutoPan();
+                break;
         }
 
         SendStateToHandler();
@@ -2393,6 +2398,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 _rotation = -vehicleHeading;
                 break;
             case 2: // Free
+                break;
+            case 3: // Map: hold camera, auto-pan when vehicle nears edge
+                _rotation = 0;
+                if (Bounds.Width > 0 && Bounds.Height > 0)
+                    ApplyAutoPan();
                 break;
         }
 
