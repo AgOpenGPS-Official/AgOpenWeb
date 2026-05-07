@@ -334,6 +334,7 @@ public class ConfigurationService(
         store.Display.ElevationLogEnabled = settings.ElevationLogEnabled;
         store.Display.CameraZoom = settings.CameraZoom;
         store.Display.CameraPitch = settings.CameraPitch;
+        store.Display.CameraMode = settings.CameraMode;
         store.Display.DisplayResolutionMultiplier = settings.DisplayResolutionMultiplier;
         store.Display.AutoDayNight = settings.AutoDayNight;
         store.Display.IsDayMode = settings.IsDayMode;
@@ -398,6 +399,7 @@ public class ConfigurationService(
         settings.ElevationLogEnabled = store.Display.ElevationLogEnabled;
         settings.CameraZoom = store.Display.CameraZoom;
         settings.CameraPitch = store.Display.CameraPitch;
+        settings.CameraMode = store.Display.CameraMode;
         settings.DisplayResolutionMultiplier = store.Display.DisplayResolutionMultiplier;
         settings.AutoDayNight = store.Display.AutoDayNight;
         settings.IsDayMode = store.Display.IsDayMode;
