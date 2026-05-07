@@ -49,9 +49,9 @@ public partial class MainViewModel
             IsConfigurationPanelVisible = !IsConfigurationPanelVisible;
         });
 
-        ToggleJobMenuPanelCommand = new RelayCommand(() =>
+        ToggleFieldOperationsPanelCommand = new RelayCommand(() =>
         {
-            IsJobMenuPanelVisible = !IsJobMenuPanelVisible;
+            IsFieldOperationsPanelVisible = !IsFieldOperationsPanelVisible;
         });
 
         ToggleFieldToolsPanelCommand = new RelayCommand(() =>

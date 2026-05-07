@@ -211,16 +211,32 @@ public interface ICoverageMapService
     void ResetUserArea();
 
     /// <summary>
-    /// Save coverage to Coverage.bin file (RLE-compressed bit array)
+    /// Save coverage to the field root (legacy / pre-#349 layout). New
+    /// callers should pass a task name so coverage lives under the
+    /// owning job; this overload is kept until <c>MainViewModel</c> is
+    /// wired through <c>IJobService</c>.
     /// </summary>
     /// <param name="fieldDirectory">Field directory path</param>
     void SaveToFile(string fieldDirectory);
 
     /// <summary>
-    /// Load coverage from Coverage.bin file
+    /// Load coverage from the field root (legacy / pre-#349 layout).
     /// </summary>
     /// <param name="fieldDirectory">Field directory path</param>
     void LoadFromFile(string fieldDirectory);
+
+    /// <summary>
+    /// Save the current coverage under the owning job's folder
+    /// (<c>&lt;fieldDirectory&gt;/jobs/&lt;taskName&gt;/</c>). Two jobs
+    /// against the same field write to separate folders, keeping their
+    /// painted coverage isolated.
+    /// </summary>
+    void SaveToFile(string fieldDirectory, string taskName);
+
+    /// <summary>
+    /// Load coverage from the owning job's folder.
+    /// </summary>
+    void LoadFromFile(string fieldDirectory, string taskName);
 
     /// <summary>
     /// Event fired when coverage is updated
