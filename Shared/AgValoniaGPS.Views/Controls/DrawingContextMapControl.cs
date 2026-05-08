@@ -4419,10 +4419,34 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         // Wheelbase and the depicted front wheels match TrackWidth/2; with
         // those constraints the AgOpen wheel-overlay formula (TrackWidth/2,
         // Wheelbase) lands directly on the depicted wheels.
-        private const double BitmapRearAxleYNorm = 0.30;          // depicted rear-axle position, fraction from bitmap bottom
+        private const double BitmapRearAxleYNorm = 0.245;         // depicted rear-axle position, fraction from bitmap bottom
         private const double BitmapFrontAxleYNorm = 0.75;         // depicted front-axle position, fraction from bitmap bottom
-        private const double BitmapFrontWheelHalfXNorm = 0.21;    // depicted front-wheel half-spacing, fraction of bitmap width
-        private const double BitmapAxleSpanYNorm = BitmapFrontAxleYNorm - BitmapRearAxleYNorm; // 0.45
+        private const double BitmapFrontWheelHalfXNorm = 0.245;   // depicted front-wheel half-spacing, fraction of bitmap width
+        private const double BitmapAxleSpanYNorm = BitmapFrontAxleYNorm - BitmapRearAxleYNorm;
+
+        // FrontWheels.png is a 128x128 bitmap with the actual tire content
+        // centered and transparent margins around it. The rect we draw the
+        // bitmap into is the FULL bitmap canvas, but only the tire-content
+        // fraction is visible — so to render a target visible tire we need a
+        // rect ~1/fraction larger. Tuned empirically against the cyan debug
+        // square.
+        private const double WheelBitmapContentWFraction = 0.27;
+        private const double WheelBitmapContentHFraction = 0.29;
+
+        // Reference tire footprints. Front: 14.9R28 → 14.9" wide section,
+        // 0.85 m overall diameter (per user's reference). Rear: 18.4R38 →
+        // 18.4" wide section, 1.84 m overall diameter. Used both for the
+        // front-wheel overlay sprite size and for the cyan debug squares.
+        private const double FrontTireWidthM = 0.378;
+        private const double FrontTireDiameterM = 0.85;
+        private const double RearTireWidthM = 0.467;
+        private const double RearTireDiameterM = 1.84;
+
+        // FrontWheels.png has the tire content shifted slightly off-center
+        // within its 128x128 canvas (more transparent space on one side).
+        // Shift the rendered overlay along Y so the visible tire centers on
+        // the cyan target square (= AgOpen front-axle pos). Negative = back.
+        private const double FrontWheelSpriteForwardOffsetM = -0.05;
 
         private static void BitmapTractorSize(MapRenderState s, out double widthWorld, out double heightWorld)
         {
@@ -4469,6 +4493,40 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     dc.DrawEllipse(vehicleBrush, null, new Point(0, wheelbase * 0.5), bodyHalfWidth * 0.5, bodyHalfWidth * 0.5);
                 }
 
+                // Debug overlay — see DrawVehicleSk for rationale.
+                //   Magenta: TrackWidth at front axle
+                //   Green: Wheelbase on centerline (rear→front axle)
+                //   Cyan hollow squares: where the front wheels should render
+                // Off by default; enable with DiagFlags.ShowVehicleDebug.
+                if (DiagFlags.ShowVehicleDebug)
+                {
+                var twPen = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(140, 255, 0, 255)), 0.08);
+                var wbPen = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(140, 0, 255, 0)), 0.08);
+                var wheelTargetPen = new ImmutablePen(new ImmutableSolidColorBrush(Color.FromArgb(140, 0, 255, 255)), 0.06);
+                var twTickBrush = new ImmutableSolidColorBrush(Color.FromArgb(140, 255, 0, 255));
+                var wbTickBrush = new ImmutableSolidColorBrush(Color.FromArgb(140, 0, 255, 0));
+                dc.DrawLine(twPen, new Point(-trackWidth / 2.0, wheelbase), new Point(trackWidth / 2.0, wheelbase));
+                dc.DrawEllipse(twTickBrush, null, new Point(-trackWidth / 2.0, wheelbase), 0.12, 0.12);
+                dc.DrawEllipse(twTickBrush, null, new Point(trackWidth / 2.0, wheelbase), 0.12, 0.12);
+                dc.DrawLine(twPen, new Point(-trackWidth / 2.0, 0), new Point(trackWidth / 2.0, 0));
+                dc.DrawEllipse(twTickBrush, null, new Point(-trackWidth / 2.0, 0), 0.12, 0.12);
+                dc.DrawEllipse(twTickBrush, null, new Point(trackWidth / 2.0, 0), 0.12, 0.12);
+                dc.DrawLine(wbPen, new Point(0, 0), new Point(0, wheelbase));
+                dc.DrawEllipse(wbTickBrush, null, new Point(0, 0), 0.12, 0.12);
+                dc.DrawEllipse(wbTickBrush, null, new Point(0, wheelbase), 0.12, 0.12);
+                // Front squares = 14.9R28, rear squares = 18.4R38.
+                double frontDbgW = FrontTireWidthM, frontDbgH = FrontTireDiameterM;
+                double rearDbgW = RearTireWidthM, rearDbgH = RearTireDiameterM;
+                dc.DrawRectangle(null, wheelTargetPen,
+                    new Rect(trackWidth / 2.0 - frontDbgW / 2, wheelbase - frontDbgH / 2, frontDbgW, frontDbgH));
+                dc.DrawRectangle(null, wheelTargetPen,
+                    new Rect(-trackWidth / 2.0 - frontDbgW / 2, wheelbase - frontDbgH / 2, frontDbgW, frontDbgH));
+                dc.DrawRectangle(null, wheelTargetPen,
+                    new Rect(trackWidth / 2.0 - rearDbgW / 2, -rearDbgH / 2, rearDbgW, rearDbgH));
+                dc.DrawRectangle(null, wheelTargetPen,
+                    new Rect(-trackWidth / 2.0 - rearDbgW / 2, -rearDbgH / 2, rearDbgW, rearDbgH));
+                }
+
                 // Heading unknown indicator — "?" placed off the right side of the body
                 if (!s.HasValidHeading)
                 {
@@ -4500,10 +4558,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     && s.VehicleWheelbase > 0.01 && s.VehicleTrackWidth > 0.01)
                 {
                     double wheelOffsetX = trackWidth / 2.0;
-                    double wheelOffsetY = wheelbase;
-                    // Depicted front wheel is ~16% of bitmap width × ~20% of bitmap height.
-                    double wheelWidth = 0.16 * bitmapWidthWorld;
-                    double wheelHeight = 0.20 * bitmapHeightWorld;
+                    double wheelOffsetY = wheelbase + FrontWheelSpriteForwardOffsetM;
+                    // Target visible tire footprint = 14.9R28 (~0.38 m × 1.40 m).
+                    // Upscale the rect by 1/contentFraction so the rendered
+                    // tire matches that target after the PNG's transparent
+                    // margins are accounted for.
+                    double wheelWidth = FrontTireWidthM / WheelBitmapContentWFraction;
+                    double wheelHeight = FrontTireDiameterM / WheelBitmapContentHFraction;
                     var wheelDst = new Rect(-wheelWidth / 2, -wheelHeight / 2, wheelWidth, wheelHeight);
 
                     // Right front wheel
@@ -4768,9 +4829,9 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             {
                 // AgOpen formula — bitmap rect is sized so this lands on the depicted wheels.
                 float wheelOffsetX = trackWidth / 2.0f;
-                float wheelOffsetY = wheelbase;
-                float wheelW = (float)(0.16 * bitmapWWorld);
-                float wheelH = (float)(0.20 * bitmapHWorld);
+                float wheelOffsetY = wheelbase + (float)FrontWheelSpriteForwardOffsetM;
+                float wheelW = (float)(FrontTireWidthM / WheelBitmapContentWFraction);
+                float wheelH = (float)(FrontTireDiameterM / WheelBitmapContentHFraction);
                 var wheelDst = new SKRect(-wheelW / 2, -wheelH / 2, wheelW / 2, wheelH / 2);
                 float steerDeg = -(float)(s.VehicleSteerAngle * 180.0 / Math.PI);
 
@@ -4789,6 +4850,60 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 canvas.Scale(1, -1);
                 canvas.DrawBitmap(_frontWheelSkBitmap, wheelDst);
                 canvas.Restore();
+            }
+
+            // Debug overlay: bright lines + target squares to visually
+            // verify the body-sprite + wheel-overlay scaling matches the
+            // vehicle config. Drawn inside the translate/rotate so the
+            // overlay stays attached to the tractor. Off by default; enable
+            // with a marker file (DiagFlags.ShowVehicleDebug).
+            //   - Magenta line: TrackWidth between front-wheel positions
+            //   - Green line: Wheelbase, rear axle to front axle on centerline
+            //   - Cyan hollow squares: where the front wheels SHOULD render
+            //     (at the AgOpen formula position ±TrackWidth/2, Wheelbase),
+            //     sized to the wheel-overlay rect for direct comparison.
+            if (DiagFlags.ShowVehicleDebug)
+            using (var twPaint = new SKPaint { Color = new SKColor(255, 0, 255, 140), Style = SKPaintStyle.Stroke, StrokeWidth = 0.08f, IsAntialias = true })
+            using (var wbPaint = new SKPaint { Color = new SKColor(0, 255, 0, 140), Style = SKPaintStyle.Stroke, StrokeWidth = 0.08f, IsAntialias = true })
+            using (var twTick = new SKPaint { Color = new SKColor(255, 0, 255, 140), Style = SKPaintStyle.Fill, IsAntialias = true })
+            using (var wbTick = new SKPaint { Color = new SKColor(0, 255, 0, 140), Style = SKPaintStyle.Fill, IsAntialias = true })
+            using (var wheelTargetPaint = new SKPaint { Color = new SKColor(0, 255, 255, 140), Style = SKPaintStyle.Stroke, StrokeWidth = 0.06f, IsAntialias = true })
+            {
+                // TrackWidth at front axle
+                canvas.DrawLine(-trackWidth / 2f, wheelbase, trackWidth / 2f, wheelbase, twPaint);
+                canvas.DrawCircle(-trackWidth / 2f, wheelbase, 0.12f, twTick);
+                canvas.DrawCircle(trackWidth / 2f, wheelbase, 0.12f, twTick);
+                // TrackWidth at rear axle
+                canvas.DrawLine(-trackWidth / 2f, 0, trackWidth / 2f, 0, twPaint);
+                canvas.DrawCircle(-trackWidth / 2f, 0, 0.12f, twTick);
+                canvas.DrawCircle(trackWidth / 2f, 0, 0.12f, twTick);
+                // Wheelbase on centerline
+                canvas.DrawLine(0, 0, 0, wheelbase, wbPaint);
+                canvas.DrawCircle(0, 0, 0.12f, wbTick);
+                canvas.DrawCircle(0, wheelbase, 0.12f, wbTick);
+                // Wheel target squares: front = 14.9R28, rear = 18.4R38.
+                float frontDbgW = (float)FrontTireWidthM;
+                float frontDbgH = (float)FrontTireDiameterM;
+                float rearDbgW = (float)RearTireWidthM;
+                float rearDbgH = (float)RearTireDiameterM;
+                // Front
+                canvas.DrawRect(
+                    new SKRect(trackWidth / 2f - frontDbgW / 2, wheelbase - frontDbgH / 2,
+                               trackWidth / 2f + frontDbgW / 2, wheelbase + frontDbgH / 2),
+                    wheelTargetPaint);
+                canvas.DrawRect(
+                    new SKRect(-trackWidth / 2f - frontDbgW / 2, wheelbase - frontDbgH / 2,
+                               -trackWidth / 2f + frontDbgW / 2, wheelbase + frontDbgH / 2),
+                    wheelTargetPaint);
+                // Rear
+                canvas.DrawRect(
+                    new SKRect(trackWidth / 2f - rearDbgW / 2, -rearDbgH / 2,
+                               trackWidth / 2f + rearDbgW / 2, rearDbgH / 2),
+                    wheelTargetPaint);
+                canvas.DrawRect(
+                    new SKRect(-trackWidth / 2f - rearDbgW / 2, -rearDbgH / 2,
+                               -trackWidth / 2f + rearDbgW / 2, rearDbgH / 2),
+                    wheelTargetPaint);
             }
 
             // Heading unknown "?" indicator — placed off the right side of the body

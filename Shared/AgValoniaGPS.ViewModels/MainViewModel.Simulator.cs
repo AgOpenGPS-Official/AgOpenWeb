@@ -125,6 +125,22 @@ public partial class MainViewModel
         get => _isSimulatorEnabled;
         set
         {
+            // Hardware parity stop: when DISABLING, emit one final stationary
+            // frame BEFORE flipping the flag. OnSimulatorGpsDataUpdated guards
+            // on !_isSimulatorEnabled and drops events once the flag flips,
+            // so a Tick after SetProperty would never reach the GPS pipeline.
+            // Without this, the position estimator's last snapshot retains
+            // non-zero speed, the 30 Hz vehicle render-pull tick dead-reckons
+            // the tractor forward up to MaxStaleSeconds (1 s), and the
+            // implement (which only updates on cycle results) sits frozen.
+            if (!value && _isSimulatorEnabled)
+            {
+                _simulatorService.StepDistance = 0;
+                _simulatorService.IsAcceleratingForward = false;
+                _simulatorService.IsAcceleratingBackward = false;
+                _simulatorService.Tick(SimulatorSteerAngle);
+            }
+
             if (SetProperty(ref _isSimulatorEnabled, value))
             {
                 // Update centralized state
