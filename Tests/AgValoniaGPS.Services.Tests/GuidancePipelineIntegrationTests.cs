@@ -195,17 +195,37 @@ public class GuidancePipelineIntegrationTests
             path.Add(new Vec3(10, 15 - i, Math.PI));
 
         bool turnComplete = false;
-        // Drive the pivot all the way to the last point (was capped at path.Count - 2,
-        // which only worked because YouTurnGuidanceService used to set IsTurnComplete
-        // any time the goal-point lookahead extended past the end of the path. That
-        // signal froze the goal point during the last few meters of the turn (#337);
-        // the lookahead-past-end branch now keeps publishing a forward-projected goal,
-        // so completion correctly requires the pivot itself to reach the end — matching
-        // YouTurnStateMachine's closest-approach detection in production.
+        bool sawGoalAtPathEnd = false;
+        // Drive the pivot through the path and a few meters past the endpoint along
+        // its heading. Two assertions matter under the post-#337 contract:
+        //   1. While the pivot is following the path (and even at the last point),
+        //      the guidance service must NOT report IsTurnComplete — it has to keep
+        //      publishing a forward-projected goal so the steering controller has
+        //      something to chase during the headland traverse. An earlier bail on
+        //      `B >= ptCount-1 && A > halfway` was the regression that froze the
+        //      goal dot at the path end and caused exit-of-turn wiggle.
+        //   2. Once the pivot drifts >4m off-path, the off-path safety net fires
+        //      and reports completion. Real production completion is owned by
+        //      YouTurnStateMachine.Tick's closest-approach detection (which uses
+        //      the actual tractor position and runs at 5m); this safety net is
+        //      a fallback for the case where the state machine isn't in the loop.
+        var lastPathPoint = path[path.Count - 1];
         for (int i = 0; i < 100 && !turnComplete; i++)
         {
-            int idx = Math.Min(i, path.Count - 1);
-            var pos = path[idx];
+            Vec3 pos;
+            if (i < path.Count)
+            {
+                pos = path[i];
+            }
+            else
+            {
+                // Continue forward along the endpoint heading past the last path point.
+                double extra = (i - path.Count + 1) * 1.0; // 1 m per step
+                pos = new Vec3(
+                    lastPathPoint.Easting + Math.Sin(lastPathPoint.Heading) * extra,
+                    lastPathPoint.Northing + Math.Cos(lastPathPoint.Heading) * extra,
+                    lastPathPoint.Heading);
+            }
 
             var output = guidanceService.CalculateGuidance(new AgValoniaGPS.Models.YouTurn.YouTurnGuidanceInput
             {
@@ -217,11 +237,20 @@ public class GuidancePipelineIntegrationTests
                 FixHeading = pos.Heading, AvgSpeed = 5, IsReverse = false, UTurnStyle = 0
             });
 
+            // While still following the path (or right at its end), goal must keep
+            // flowing — no premature completion that would freeze the goal dot.
+            if (i == path.Count - 1 && !output.IsTurnComplete)
+            {
+                sawGoalAtPathEnd = output.GoalPoint.Easting != 0 || output.GoalPoint.Northing != 0;
+            }
+
             turnComplete = output.IsTurnComplete;
             Assert.That(double.IsNaN(output.SteerAngle), Is.False);
         }
 
-        Assert.That(turnComplete, Is.True, "U-turn should complete");
+        Assert.That(sawGoalAtPathEnd, Is.True,
+            "Goal point must keep publishing when pivot reaches the last path point (no early bail freezing the dot)");
+        Assert.That(turnComplete, Is.True, "U-turn should complete once pivot drifts off-path");
     }
 
     #endregion

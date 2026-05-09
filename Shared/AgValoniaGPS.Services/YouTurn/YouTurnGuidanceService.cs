@@ -206,6 +206,21 @@ namespace AgValoniaGPS.Services.YouTurn
                 }
             }
 
+            // Off-path safety net: tractor abandoned the path entirely.
+            // Mirrors the Stanley check at line 85 (squared > 16 = > 4m off-path).
+            // The previous past-end heuristics (`distancePiv > 2`, `B >= ptCount-1
+            // && A > halfwayPoint`) bailed before the lookahead-walk could run,
+            // zeroing the goal point upstream and freezing the goal dot at the
+            // path end while the tractor was still completing the headland
+            // traverse — same failure mode as #337, just an earlier exit.
+            // Turn completion at the end of the arc is owned by
+            // YouTurnStateMachine.Tick's closest-approach check.
+            if (minDistA > 16)
+            {
+                output.IsTurnComplete = true;
+                return;
+            }
+
             // Make sure points continue ascending
             if (A > B)
             {
@@ -217,18 +232,6 @@ namespace AgValoniaGPS.Services.YouTurn
             if (B != A + 1 && A + 1 < ptCount)
             {
                 B = A + 1;
-            }
-
-            double distancePiv = Distance(input.TurnPath[A], pivot);
-
-            // Turn is complete when:
-            // - We're past the first point AND more than 2m from closest point, OR
-            // - We've reached the end of the path AND we're past the halfway point
-            int halfwayPoint = ptCount / 2;
-            if ((A > 0 && distancePiv > 2) || (B >= ptCount - 1 && A > halfwayPoint))
-            {
-                output.IsTurnComplete = true;
-                return;
             }
 
             // Get the distance from currently active line

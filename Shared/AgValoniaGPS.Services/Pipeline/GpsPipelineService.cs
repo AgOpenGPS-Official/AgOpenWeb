@@ -618,10 +618,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
 
         // Refresh the locals the downstream guidance branch reads — the tick
-        // (or a drained intent above) may have updated them.
+        // (or a drained intent above) may have updated them. CompleteTurn
+        // advances HowManyPathsAway to the next pass on the same tick that
+        // clears IsTriggered/TurnPath, so we MUST re-read passNumber and
+        // nudgeOffset here. Without the refresh, track guidance on the
+        // completion tick used the *previous* pass's offset — so pivot was
+        // ~one-pass-width off the wrong AB line and the algorithm produced
+        // a hard-side steer for one tick (visible front-wheel spike), which
+        // showed up as a leftward coverage curve at U-turn exit (worse at
+        // higher speed because lateral excursion scales with velocity).
         isYouTurnTriggered = _youTurn.IsTriggered;
         isInYouTurn = _youTurn.IsExecuting;
         youTurnPath = _youTurn.TurnPath;
+        passNumber = _guidanceWorking.HowManyPathsAway;
+        nudgeOffset = _guidanceWorking.NudgeOffset;
 
         // ── (3) Tool position ───────────────────────────────────────────
         // ToolPositionService is updated by ControlLoopService at 100 Hz
