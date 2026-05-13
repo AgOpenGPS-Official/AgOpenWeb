@@ -368,7 +368,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     private double _zoom = 1.0;
     private double _rotation = 0.0;
     private double _cameraPitch = 0.0;
-    private double _cameraDistance = 100.0;
     private bool _is3DMode = false;
     private bool _isNorthUp = false;
     private bool _isDayMode = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.IsDayMode;
@@ -2226,17 +2225,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
     }
 
     public void Zoom(double factor)
-    {
-        if (_is3DMode)
-        {
-            _cameraDistance *= (1.0 / factor);
-            _cameraDistance = Math.Clamp(_cameraDistance, 10.0, 500.0);
-        }
-        else
-        {
-            _zoom *= factor;
-            _zoom = Math.Clamp(_zoom, 0.02, 100.0);
-        }
+    { 
+        _zoom *= factor;
+        _zoom = Math.Clamp(_zoom, 0.02, 100.0);
+        
         SendStateToHandler();
     }
 
@@ -2263,7 +2255,6 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         if (_is3DMode)
         {
             _cameraPitch = Math.PI / 6.0;
-            _cameraDistance = 150.0;
         }
         else
         {
