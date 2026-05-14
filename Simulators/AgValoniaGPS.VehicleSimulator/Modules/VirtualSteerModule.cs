@@ -39,6 +39,20 @@ public class VirtualSteerModule : IDisposable
     public bool WorkSwitchActive { get; set; }
     public byte PwmDisplay { get; set; }
 
+    // === Virtual WAS hardware truth ===
+    // The *real* CPD and off-center counts of the simulated WAS sensor — separate
+    // from the host's Applied* guesses received via PGN 251/252. The host's
+    // wizard tries to discover these values via Zero WAS and CPD calibration;
+    // operator can dial them in to simulate a misconfigured hardware install.
+    public double VirtualCountsPerDegree { get; set; } = 100.0;
+    public short VirtualWasOffset { get; set; }
+
+    /// <summary>
+    /// Raw WAS counts the simulated sensor would output for the current wheel
+    /// angle, before the host applies its own calibration. Useful for debug.
+    /// </summary>
+    public double TruthRawCounts => ActualSteerAngleDeg * VirtualCountsPerDegree + VirtualWasOffset;
+
     // IMU (if separate module, typically embedded in $PANDA now)
     public double ImuHeadingDeg { get; set; }
     public double ImuRollDeg { get; set; }
@@ -65,6 +79,16 @@ public class VirtualSteerModule : IDisposable
 
     /// <summary>Below this absolute error, drive pwm to zero so the wheel can rest.</summary>
     public double AngleDeadbandDeg { get; set; } = 0.05;
+
+    /// <summary>
+    /// Physical limit of the simulated wheel angle. The PID can command
+    /// any setpoint; the simulator clamps the integrated WAS so the
+    /// reported angle plateaus at this value (matching a real tractor's
+    /// hydraulic stops). Operator-adjustable in the simulator UI so the
+    /// wizard's max-steering-angle test sees a natural plateau. Default
+    /// ±35° approximates a typical agricultural front-axle range.
+    /// </summary>
+    public double MaxPhysicalWheelAngleDeg { get; set; } = 35.0;
 
     // Counters
     public long ReceivedCommandCount { get; private set; }
@@ -128,17 +152,19 @@ public class VirtualSteerModule : IDisposable
 
     /// <summary>
     /// Calibrated WAS angle as a real Teensy would report it in PGN 253.
-    /// Treats ActualSteerAngleDeg as the physical wheel position, converts to
-    /// raw WAS counts, then applies the host's WasOffset / CountsPerDegree /
-    /// InvertWas calibration so any wizard re-zero shows up immediately.
+    /// The simulated sensor emits raw counts using its *virtual hardware truth*
+    /// (VirtualCountsPerDegree + VirtualWasOffset). The host then applies its
+    /// own guess at those values (the Applied* fields from PGN 251/252) plus
+    /// Invert WAS. If the host's guess matches truth, reported == wheel angle;
+    /// if it doesn't, the host sees a misconfigured WAS — which is exactly the
+    /// state the steer wizard's calibration step is supposed to detect and fix.
     /// </summary>
     public double ReportedSteerAngleDeg
     {
         get
         {
-            double cpd = CountsPerDegree > 0 ? CountsPerDegree : 1.0;
-            double rawCounts = ActualSteerAngleDeg * cpd;
-            double calibrated = (rawCounts - WasOffset) / cpd;
+            double appliedCpd = CountsPerDegree > 0 ? CountsPerDegree : 1.0;
+            double calibrated = (TruthRawCounts - WasOffset) / appliedCpd;
             return InvertWas ? -calibrated : calibrated;
         }
     }
@@ -383,6 +409,17 @@ public class VirtualSteerModule : IDisposable
             double dAngle = pwm * PwmToDegPerSec * dt;
             if (Math.Abs(dAngle) > Math.Abs(error)) dAngle = error;
             ActualSteerAngleDeg += dAngle;
+
+            // Clamp to the simulated mechanical stops. Without this the
+            // PID can drive the integrated WAS angle indefinitely if the
+            // setpoint is past the physical max — the wizard's max-angle
+            // test then never sees a plateau and can't capture a stable
+            // reading. Real steering systems plateau on hydraulic stops
+            // and this models that behaviour.
+            if (ActualSteerAngleDeg > MaxPhysicalWheelAngleDeg)
+                ActualSteerAngleDeg = MaxPhysicalWheelAngleDeg;
+            else if (ActualSteerAngleDeg < -MaxPhysicalWheelAngleDeg)
+                ActualSteerAngleDeg = -MaxPhysicalWheelAngleDeg;
         }
     }
 

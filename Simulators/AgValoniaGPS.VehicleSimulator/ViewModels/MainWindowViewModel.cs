@@ -37,6 +37,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
 
     // Sensors
     private double _wasAngle; // degrees
+    private double _maxPhysicalWheelAngle = 35.0; // degrees, ± clamp
     private double _rollAngle; // degrees
     private int _fixQuality = 4; // RTK Fixed
     private int _satelliteCount = 12;
@@ -60,6 +61,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private bool _appliedSteerSwitchEnabled;
     private bool _appliedWorkSwitchEnabled;
     private double _reportedSteerAngle;
+
+    // Virtual WAS hardware truth — operator-adjustable knobs that simulate the
+    // real CPD and off-center of the pretend WAS sensor. Persisted on the
+    // ViewModel so values survive Stop/Start cycles of the module.
+    private double _virtualCountsPerDegree = 100.0;
+    private short _virtualWasOffset;
+    private double _truthRawCounts;
 
     public double Speed
     {
@@ -89,6 +97,31 @@ public class MainWindowViewModel : INotifyPropertyChanged
     {
         get => _wasAngle;
         set { _wasAngle = Math.Clamp(value, -45, 45); OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Maximum physical wheel angle (±degrees) the simulated tractor
+    /// can reach. The internal steer module clamps its integrated WAS
+    /// at this value so the wizard's max-steering-angle test sees a
+    /// real plateau rather than a slowly-converging PID output. Default
+    /// 35° approximates a typical agricultural front axle; operator can
+    /// dial it up or down to test the wizard against different limits.
+    /// </summary>
+    public double MaxPhysicalWheelAngle
+    {
+        get => _maxPhysicalWheelAngle;
+        set
+        {
+            // Allow 5..60° to cover everything from articulated tractors
+            // (very tight) to forklift-style steering (very wide).
+            double clamped = Math.Clamp(value, 5.0, 60.0);
+            if (_maxPhysicalWheelAngle != clamped)
+            {
+                _maxPhysicalWheelAngle = clamped;
+                _hub.Steer.MaxPhysicalWheelAngleDeg = clamped;
+                OnPropertyChanged();
+            }
+        }
     }
 
     public double RollAngle
@@ -219,6 +252,36 @@ public class MainWindowViewModel : INotifyPropertyChanged
         private set { _reportedSteerAngle = value; OnPropertyChanged(); }
     }
 
+    // === Virtual WAS hardware truth (operator-adjustable knobs) ===
+
+    public double VirtualCountsPerDegree
+    {
+        get => _virtualCountsPerDegree;
+        set
+        {
+            _virtualCountsPerDegree = Math.Clamp(value, 1.0, 255.0);
+            OnPropertyChanged();
+            if (_hub != null) _hub.Steer.VirtualCountsPerDegree = _virtualCountsPerDegree;
+        }
+    }
+
+    public short VirtualWasOffset
+    {
+        get => _virtualWasOffset;
+        set
+        {
+            _virtualWasOffset = (short)Math.Clamp((int)value, -2000, 2000);
+            OnPropertyChanged();
+            if (_hub != null) _hub.Steer.VirtualWasOffset = _virtualWasOffset;
+        }
+    }
+
+    public double TruthRawCounts
+    {
+        get => _truthRawCounts;
+        private set { _truthRawCounts = value; OnPropertyChanged(); }
+    }
+
     /// <summary>
     /// Whether the UI's Steer-Switch toggle should accept input. When the host
     /// has not configured a physical steer switch, the module reports the bit
@@ -264,9 +327,18 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _hub.Gps.Satellites = SatelliteCount;
             _hub.Gps.RollDegrees = RollAngle;
             _hub.Steer.ActualSteerAngleDeg = WasAngle;
+            // Push the operator's mechanical-limit setting before Start
+            // so the synthetic PWM loop clamps the simulated wheel angle
+            // at the configured maximum from the first tick.
+            _hub.Steer.MaxPhysicalWheelAngleDeg = MaxPhysicalWheelAngle;
             // The module's synthetic PWM tick loop drives WAS when autosteer
             // is engaged; the legacy on-receive WAS-follow stays off.
             _hub.Steer.SimulateSteerResponse = false;
+            // Seed the module's virtual hardware truth from the operator-set VM
+            // values, so PGN 253 picks up the correct calibration on the first
+            // emit after Start (rather than the module defaults).
+            _hub.Steer.VirtualCountsPerDegree = VirtualCountsPerDegree;
+            _hub.Steer.VirtualWasOffset = VirtualWasOffset;
 
             _hub.Start();
 
@@ -380,6 +452,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         AppliedSteerSwitchEnabled = _hub.Steer.SteerSwitchEnabled;
         AppliedWorkSwitchEnabled = _hub.Steer.WorkSwitchEnabled;
         ReportedSteerAngle = _hub.Steer.ReportedSteerAngleDeg;
+        TruthRawCounts = _hub.Steer.TruthRawCounts;
 
         StatusText = $"Running, {_packetCount} packets sent";
     }
