@@ -50,6 +50,17 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private DriveMode _driveMode = DriveMode.Bicycle;
     private string _statusText = "Stopped";
 
+    // Applied module settings (mirrored from VirtualSteerModule for UI display)
+    private byte _appliedKp;
+    private byte _appliedCountsPerDegree;
+    private short _appliedWasOffset;
+    private byte _appliedHighPwm;
+    private bool _appliedInvertWas;
+    private bool _appliedIsDanfoss;
+    private bool _appliedSteerSwitchEnabled;
+    private bool _appliedWorkSwitchEnabled;
+    private double _reportedSteerAngle;
+
     public double Speed
     {
         get => _speed;
@@ -144,6 +155,78 @@ public class MainWindowViewModel : INotifyPropertyChanged
         set { _statusText = value; OnPropertyChanged(); }
     }
 
+    // === Applied-settings panel (read-only mirrors of VirtualSteerModule state) ===
+    // These reflect the most recent values applied from PGN 251 / 252 plus the
+    // live PWM and post-calibration angle, so the operator can sanity-check
+    // that the host's wizard config landed on the module.
+
+    public byte AppliedKp
+    {
+        get => _appliedKp;
+        private set { _appliedKp = value; OnPropertyChanged(); }
+    }
+
+    public byte AppliedCountsPerDegree
+    {
+        get => _appliedCountsPerDegree;
+        private set { _appliedCountsPerDegree = value; OnPropertyChanged(); }
+    }
+
+    public short AppliedWasOffset
+    {
+        get => _appliedWasOffset;
+        private set { _appliedWasOffset = value; OnPropertyChanged(); }
+    }
+
+    public byte AppliedHighPwm
+    {
+        get => _appliedHighPwm;
+        private set { _appliedHighPwm = value; OnPropertyChanged(); }
+    }
+
+    public bool AppliedInvertWas
+    {
+        get => _appliedInvertWas;
+        private set { _appliedInvertWas = value; OnPropertyChanged(); }
+    }
+
+    public bool AppliedIsDanfoss
+    {
+        get => _appliedIsDanfoss;
+        private set { _appliedIsDanfoss = value; OnPropertyChanged(); }
+    }
+
+    public bool AppliedSteerSwitchEnabled
+    {
+        get => _appliedSteerSwitchEnabled;
+        private set
+        {
+            _appliedSteerSwitchEnabled = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SteerSwitchToggleEnabled));
+        }
+    }
+
+    public bool AppliedWorkSwitchEnabled
+    {
+        get => _appliedWorkSwitchEnabled;
+        private set { _appliedWorkSwitchEnabled = value; OnPropertyChanged(); }
+    }
+
+    public double ReportedSteerAngle
+    {
+        get => _reportedSteerAngle;
+        private set { _reportedSteerAngle = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// Whether the UI's Steer-Switch toggle should accept input. When the host
+    /// has not configured a physical steer switch, the module reports the bit
+    /// as continuously active regardless of the toggle, so the toggle is
+    /// disabled in the UI to make that explicit.
+    /// </summary>
+    public bool SteerSwitchToggleEnabled => _appliedSteerSwitchEnabled;
+
     public string StartStopLabel => IsRunning ? "Stop" : "Start";
 
     public ICommand StartStopCommand { get; }
@@ -181,7 +264,9 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _hub.Gps.Satellites = SatelliteCount;
             _hub.Gps.RollDegrees = RollAngle;
             _hub.Steer.ActualSteerAngleDeg = WasAngle;
-            _hub.Steer.SimulateSteerResponse = false; // We control WAS directly
+            // The module's synthetic PWM tick loop drives WAS when autosteer
+            // is engaged; the legacy on-receive WAS-follow stays off.
+            _hub.Steer.SimulateSteerResponse = false;
 
             _hub.Start();
 
@@ -220,14 +305,15 @@ public class MainWindowViewModel : INotifyPropertyChanged
         if (_hub == null) return;
 
         // Mirror host's autosteer engagement to the read-only indicator. When
-        // engaged, the simulated WAS follows the commanded angle with lag.
+        // engaged, the module's synthetic PWM loop owns the WAS angle; reflect
+        // it back into the UI slider so the operator sees the simulated motor
+        // turning the wheel. When not engaged, the slider is the source of
+        // truth and we push it down to the module further below.
         bool engaged = _hub.Steer.LastCommand?.IsEngaged ?? false;
         AutoSteerEngaged = engaged;
         if (engaged)
         {
-            double commanded = _hub.Steer.CommandedSteerAngleDeg;
-            double responseRate = 0.3;
-            WasAngle += (commanded - WasAngle) * responseRate;
+            WasAngle = _hub.Steer.ActualSteerAngleDeg;
         }
 
         const double dt = 0.1; // 10 Hz tick
@@ -266,7 +352,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _hub.Gps.FixQuality = FixQuality;
         _hub.Gps.Satellites = SatelliteCount;
         _hub.Gps.RollDegrees = RollAngle;
-        _hub.Steer.ActualSteerAngleDeg = WasAngle;
+        // Only push slider → WAS when not engaged. When engaged the module's
+        // PWM loop is the source of truth (we already pulled it into WasAngle
+        // above), and pushing the slider value back would fight that loop.
+        if (!engaged)
+        {
+            _hub.Steer.ActualSteerAngleDeg = WasAngle;
+        }
         _hub.Steer.SteerSwitchActive = SteerSwitchOn;
 
         // Send GPS data
@@ -276,6 +368,18 @@ public class MainWindowViewModel : INotifyPropertyChanged
         // Read back commanded angle from steer module
         CommandedAngle = _hub.Steer.CommandedSteerAngleDeg;
         PwmDisplay = _hub.Steer.PwmDisplay;
+
+        // Refresh the applied-settings panel so operators can see PGN 251 / 252
+        // values landing on the module in real time.
+        AppliedKp = _hub.Steer.Kp;
+        AppliedCountsPerDegree = _hub.Steer.CountsPerDegree;
+        AppliedWasOffset = _hub.Steer.WasOffset;
+        AppliedHighPwm = _hub.Steer.HighPWM;
+        AppliedInvertWas = _hub.Steer.InvertWas;
+        AppliedIsDanfoss = _hub.Steer.IsDanfoss;
+        AppliedSteerSwitchEnabled = _hub.Steer.SteerSwitchEnabled;
+        AppliedWorkSwitchEnabled = _hub.Steer.WorkSwitchEnabled;
+        ReportedSteerAngle = _hub.Steer.ReportedSteerAngleDeg;
 
         StatusText = $"Running, {_packetCount} packets sent";
     }
