@@ -68,6 +68,69 @@ public partial class MainViewModel
         set => SetProperty(ref _isSkipWorkedMode, value);
     }
 
+    private bool _nextUTurnDirectionLeftOverride;
+    /// <summary>
+    /// When the user taps the U-turn direction toggle while no turn is currently
+    /// armed, this flag captures the desired direction for the *next* armed turn.
+    /// Mirrors legacy <c>FormGPS.SwapDirection</c> behavior of pre-flipping
+    /// <c>yt.isTurnLeft</c> before the next trigger. The setter forwards to the
+    /// cycle worker via <see cref="Services.Interfaces.IGpsPipelineService.SetNextUTurnDirectionLeftOverride"/>;
+    /// the state machine consumes and clears the override on the next
+    /// turn-creation tick.
+    /// </summary>
+    public bool NextUTurnDirectionLeftOverride
+    {
+        get => _nextUTurnDirectionLeftOverride;
+        set
+        {
+            if (SetProperty(ref _nextUTurnDirectionLeftOverride, value))
+            {
+                _gpsPipelineService.SetNextUTurnDirectionLeftOverride(value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when the U-turn distance-to-trigger widget should be shown.
+    /// Visible while YouTurn is enabled AND either:
+    ///   - the state machine has populated a meaningful approach distance
+    ///     (<c>DistanceToTrigger &gt; 0.5</c> m), OR
+    ///   - the turn is already armed (<c>IsTriggered</c>) or executing.
+    /// The original implementation gated only on <c>IsTriggered</c>, which
+    /// becomes true at the same instant the turn starts executing — the user
+    /// only ever saw the widget showing 0 m mid-turn. Showing during approach
+    /// matches legacy AgOpenGPS UTurn-button behavior.
+    /// </summary>
+    public bool IsUTurnDistanceVisible
+    {
+        get
+        {
+            var yt = State.YouTurn;
+            return yt.IsEnabled && (yt.DistanceToTrigger > 0.5 || yt.IsTriggered || yt.IsExecuting);
+        }
+    }
+
+    /// <summary>
+    /// Subscribe to <see cref="YouTurnState"/> property changes that affect
+    /// <see cref="IsUTurnDistanceVisible"/> so the bound AXAML re-evaluates
+    /// when the state machine snapshot lands.
+    /// Called once from the MainViewModel constructor.
+    /// </summary>
+    private void WireYouTurnDistanceVisibility()
+    {
+        State.YouTurn.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is
+                nameof(Models.State.YouTurnState.IsEnabled) or
+                nameof(Models.State.YouTurnState.IsTriggered) or
+                nameof(Models.State.YouTurnState.IsExecuting) or
+                nameof(Models.State.YouTurnState.DistanceToTrigger))
+            {
+                OnPropertyChanged(nameof(IsUTurnDistanceVisible));
+            }
+        };
+    }
+
     #endregion
 
     #region YouTurn Entry Points
@@ -85,6 +148,37 @@ public partial class MainViewModel
     public void TriggerManualYouTurnLeft() => _intents.RequestManualYouTurn(turnLeft: true);
 
     public void TriggerManualYouTurnRight() => _intents.RequestManualYouTurn(turnLeft: false);
+
+    /// <summary>
+    /// Toggle the U-turn direction. Mirrors legacy <c>FormGPS.SwapDirection</c>
+    /// (AgOpen_Snapshot/GPS/Forms/GUI.Designer.cs:1426).
+    ///
+    /// Behavior:
+    /// - Turn armed but not yet executing: flip <see cref="YouTurnState.IsTurnLeft"/>.
+    /// - Turn currently executing: no-op (unsafe to flip mid-turn).
+    /// - Idle (no armed turn): flip <see cref="NextUTurnDirectionLeftOverride"/>
+    ///   so the next armed turn picks up the user's intent.
+    /// </summary>
+    public void ToggleUTurnDirection()
+    {
+        if (State.YouTurn.IsExecuting)
+        {
+            StatusMessage = "Cannot flip U-turn direction while executing";
+            return;
+        }
+
+        if (State.YouTurn.IsTriggered)
+        {
+            State.YouTurn.IsTurnLeft = !State.YouTurn.IsTurnLeft;
+            StatusMessage = State.YouTurn.IsTurnLeft ? "U-turn direction: Left" : "U-turn direction: Right";
+            return;
+        }
+
+        NextUTurnDirectionLeftOverride = !NextUTurnDirectionLeftOverride;
+        StatusMessage = NextUTurnDirectionLeftOverride
+            ? "Next U-turn direction: Left"
+            : "Next U-turn direction: Right";
+    }
 
     #endregion
 

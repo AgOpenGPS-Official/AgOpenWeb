@@ -97,6 +97,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // when snap / nudge / set-active-track all become intents).
 
     private bool _youTurnEnabled;
+    // One-shot direction override for the next armed automatic turn. The UI
+    // toggle pre-flips this while idle; the cycle mirrors it into
+    // _youTurn.NextUTurnDirectionLeftOverride and the state machine consumes
+    // and clears it during turn creation. Mirrors legacy SwapDirection.
+    private bool? _nextUTurnDirectionLeftOverride;
     private int _uTurnSkipRows;
     private bool _isSkipWorkedMode;
     private double _headlandCalculatedWidth;
@@ -232,6 +237,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
     public void SetYouTurnEnabled(bool enabled)
     {
         lock (_stateLock) _youTurnEnabled = enabled;
+    }
+
+    /// <summary>
+    /// One-shot direction override for the *next* armed automatic U-turn. The
+    /// UI's direction toggle invokes this while idle; the cycle mirrors the
+    /// flag into <see cref="YouTurnWorkingState.NextUTurnDirectionLeftOverride"/>,
+    /// the state machine consumes it during the next turn-creation tick, and
+    /// then clears it. <c>null</c> means no override.
+    /// </summary>
+    public void SetNextUTurnDirectionLeftOverride(bool? leftOverride)
+    {
+        lock (_stateLock) _nextUTurnDirectionLeftOverride = leftOverride;
     }
 
     /// <summary>
@@ -415,6 +432,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         Boundary? boundary;
         double driftE, driftN;
         bool hasActiveField;
+        bool? nextUTurnDirectionOverride;
 
         lock (_stateLock)
         {
@@ -436,11 +454,30 @@ public sealed class GpsPipelineService : IGpsPipelineService
             driftE = _driftE;
             driftN = _driftN;
             hasActiveField = _hasActiveField;
+            // Snapshot the pending direction override and clear it so the UI
+            // can post a new one for the *next* turn even while this cycle
+            // hasn't yet armed the current one — last-wins.
+            nextUTurnDirectionOverride = _nextUTurnDirectionLeftOverride;
+            _nextUTurnDirectionLeftOverride = null;
         }
 
         // YouTurn working state is cycle-owned — no cross-thread writers.
         // TriggerManual (manual U-turn) and ClearState (field close / track
         // deselect) run on the cycle thread via intents drained above.
+        // Mirror the user's YouTurn-enabled toggle into the cycle-owned working
+        // state so the YouTurnSnapshot.IsEnabled flag (and therefore
+        // State.YouTurn.IsEnabled, used by the distance-to-trigger widget's
+        // visibility predicate) tracks the toggle. Without this the snapshot
+        // always reports IsEnabled=false because nothing else writes the
+        // working-state flag, hiding the distance widget on every cycle.
+        _youTurn.IsEnabled = youTurnEnabled;
+
+        // Mirror the UI's direction override (one-shot) into the cycle's
+        // working state. Only overwrite when the UI posted a new value —
+        // otherwise an unconsumed override (set on a prior cycle, not yet
+        // consumed because the tractor isn't in turn-creation range) survives.
+        if (nextUTurnDirectionOverride.HasValue)
+            _youTurn.NextUTurnDirectionLeftOverride = nextUTurnDirectionOverride;
         bool isYouTurnTriggered = _youTurn.IsTriggered;
         bool isInYouTurn = _youTurn.IsExecuting;
         List<Vec3>? youTurnPath = _youTurn.TurnPath;
@@ -633,6 +670,24 @@ public sealed class GpsPipelineService : IGpsPipelineService
         passNumber = _guidanceWorking.HowManyPathsAway;
         nudgeOffset = _guidanceWorking.NudgeOffset;
 
+        // U-turn lifecycle is bound to the YouTurn-enabled toggle: when the
+        // operator disables YouTurn the rendered turn path must clear so a
+        // stale arc doesn't linger on the map. The auto tick above is gated
+        // on youTurnEnabled, so without this clear the working state would
+        // freeze with IsTriggered/IsExecuting=true and the snapshot would
+        // keep emitting the old TurnPath every cycle — ApplyGpsCycleResult
+        // would then keep pushing it back to the map. Mirrors the
+        // autosteer-disengage clear; re-enabling rebuilds the turn from
+        // scratch via the auto tick or a manual trigger.
+        if (!youTurnEnabled
+            && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
+        {
+            YouTurnStateMachine.ClearState(_youTurn);
+            isYouTurnTriggered = false;
+            isInYouTurn = false;
+            youTurnPath = null;
+        }
+
         // ── (3) Tool position ───────────────────────────────────────────
         // ToolPositionService is updated by ControlLoopService at 100 Hz
         // (MainViewModel.OnControlLoopTicked). The pipeline used to call
@@ -665,6 +720,25 @@ public sealed class GpsPipelineService : IGpsPipelineService
             autoSteerDisengaged = true;
             disengageReason = "AutoSteer disengaged - outside boundary";
             lock (_stateLock) _autoSteerEngaged = false;
+        }
+
+        // U-turn lifecycle is bound to autosteer: when autosteer is not
+        // engaged (user toggled off, boundary kickout, far-from-field guard,
+        // or any other disengage path), the rendered turn path must clear so
+        // the operator doesn't see a stale arc on the map. The state machine
+        // tick is also gated on autoSteerEngaged, so without this clear the
+        // working state would freeze with IsTriggered/IsExecuting=true and
+        // the snapshot would keep emitting the old TurnPath every cycle —
+        // ApplyGpsCycleResult would then keep pushing it back to the map.
+        // Re-engaging autosteer rebuilds the turn from scratch via the auto
+        // tick or a manual trigger.
+        if (!autoSteerEngaged
+            && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
+        {
+            YouTurnStateMachine.ClearState(_youTurn);
+            isYouTurnTriggered = false;
+            isInYouTurn = false;
+            youTurnPath = null;
         }
 
         // ── (6) Guidance calculation ────────────────────────────────────
@@ -703,6 +777,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
+        int diagPathAnchorA = 0;
+        int diagPathAnchorB = 0;
+        int diagTurnPathCount = 0;
+        bool diagAntiTangentGuardFired = false;
+
         if (autoSteerEngaged && hasTrack)
         {
             if (isYouTurnTriggered && youTurnPath != null && youTurnPath.Count > 0)
@@ -719,6 +798,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     goalN = ytResult.Value.goalN;
                     youTurnCompleted = ytResult.Value.turnComplete;
                     hasGuidance = !youTurnCompleted;
+                    diagPathAnchorA = ytResult.Value.pointA;
+                    diagPathAnchorB = ytResult.Value.pointB;
+                    diagTurnPathCount = ytResult.Value.pathPointCount;
+                    diagAntiTangentGuardFired = ytResult.Value.antiTangentGuardFired;
                 }
             }
             else
@@ -892,7 +975,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             YouTurn = BuildYouTurnSnapshot(
                 _youTurn,
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
-            Guidance = BuildGuidanceSnapshot(_guidanceWorking, displayTrack, baseTrack, hasGuidance),
+            Guidance = BuildGuidanceSnapshot(
+                _guidanceWorking, displayTrack, baseTrack, hasGuidance,
+                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired),
 
             // Sections
             SectionStates = secStatesArr,
@@ -948,7 +1033,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         GuidanceWorkingState src,
         Models.Track.Track? displayTrack,
         Models.Track.Track? baseTrack,
-        bool hasGuidance) => new()
+        bool hasGuidance,
+        int pathAnchorA,
+        int pathAnchorB,
+        int turnPathPointCount,
+        bool antiTangentGuardFired) => new()
     {
         // GuidanceState-mirrored fields (all populated from the cycle's
         // working state — Phase D D2 writes them there at end-of-branch).
@@ -978,6 +1067,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         HasGuidance = hasGuidance,
         DisplayTrack = displayTrack,
         BaseTrack = baseTrack,
+        PathAnchorA = pathAnchorA,
+        PathAnchorB = pathAnchorB,
+        TurnPathPointCount = turnPathPointCount,
+        AntiTangentGuardFired = antiTangentGuardFired,
     };
 
     // ══════════════════════════════════════════════════════════════════════
@@ -1163,8 +1256,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     /// <summary>
     /// Calculate YouTurn path-following guidance. Returns null if no path.
+    /// Tuple includes diagnostic fields (anchor indices, anti-tangent guard
+    /// firings) that surface on the GuidanceSnapshot so the debug recorder
+    /// can correlate steering anomalies with the path-anchor advancement
+    /// pattern.
     /// </summary>
-    private (double steerAngle, double xte, double goalE, double goalN, bool turnComplete)?
+    private (double steerAngle, double xte, double goalE, double goalN, bool turnComplete,
+             int pointA, int pointB, int pathPointCount, bool antiTangentGuardFired)?
         CalculateYouTurnGuidance(Position currentPosition, List<Vec3> turnPath)
     {
         if (turnPath.Count == 0) return null;
@@ -1192,10 +1290,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var output = _youTurnGuidanceService.CalculateGuidance(input);
 
         if (output.IsTurnComplete)
-            return (0, 0, 0, 0, true);
+            return (0, 0, 0, 0, true, 0, 0, 0, false);
 
         return (output.SteerAngle, output.DistanceFromCurrentLine,
-            output.GoalPoint.Easting, output.GoalPoint.Northing, false);
+            output.GoalPoint.Easting, output.GoalPoint.Northing, false,
+            output.PointA, output.PointB, turnPath.Count, output.AntiTangentGuardFired);
     }
 
     // ══════════════════════════════════════════════════════════════════════

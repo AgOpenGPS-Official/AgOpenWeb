@@ -177,6 +177,31 @@ public sealed class YouTurnStateMachine
             canCreateTurn = _pathing.GetNextSnakePath(turn).HasValue;
         }
 
+        // Default: no armable trigger point — widget shows nothing meaningful.
+        // Recomputed below when a precomputed turn path exists and execution hasn't started.
+        turn.DistanceToTrigger = 0;
+
+        // ── DIRECTION-OVERRIDE RE-ARM ───────────────────────────────────
+        // If the operator pressed the swap-direction button while a turn
+        // was already rendered (TurnPath != null) but execution hasn't
+        // begun, drop the rendered path so the CREATE branch below
+        // recomputes it with the new direction this same cycle. The
+        // override flag itself is cleared inside HandleNormalCreation /
+        // HandleSnakeCreation after consumption — leave it set here.
+        // Mid-arc flips are unsafe and stay no-op.
+        if (turn.NextUTurnDirectionLeftOverride.HasValue
+            && turn.TurnPath != null
+            && !turn.IsExecuting)
+        {
+            _logger.LogDebug("[YouTurn] Direction override set with rendered path — re-arming with {Dir}",
+                turn.NextUTurnDirectionLeftOverride.Value ? "LEFT" : "RIGHT");
+            turn.TurnPath = null;
+            turn.NextTrack = null;
+            turn.IsTriggered = false;
+            effects.SyncTurnPathToMap = true;
+            effects.SyncNextTrackToMap = true;
+        }
+
         if (turn.TurnPath == null && !turn.IsExecuting && canCreateTurn && isAlignedWithABLine)
         {
             if (ctx.IsSkipWorkedMode)
@@ -191,6 +216,12 @@ public sealed class YouTurnStateMachine
             double distToTurnStart = Math.Sqrt(
                 (currentPosition.Easting - turnStart.Easting) * (currentPosition.Easting - turnStart.Easting) +
                 (currentPosition.Northing - turnStart.Northing) * (currentPosition.Northing - turnStart.Northing));
+
+            // Publish current pivot→trigger distance for the UI countdown widget.
+            // Only meaningful while a precomputed turn-start exists and we haven't
+            // begun executing yet; once IsExecuting flips, the widget is expected
+            // to switch to a "turning" state and we revert to 0 (set above).
+            turn.DistanceToTrigger = distToTurnStart;
 
             if (distToTurnStart <= TriggerProximityMeters)
             {
@@ -211,10 +242,14 @@ public sealed class YouTurnStateMachine
         }
 
         // ── TURN COMPLETION ─────────────────────────────────────────────
-        // Closest-approach detection: complete the turn when the tractor
-        // starts moving AWAY from the end point after being close enough.
-        // This is speed/GPS-rate independent — a fixed radius check misses
-        // the end point at high speeds because discrete GPS steps jump over it.
+        // Two-stage completion:
+        //   (1) Early-completion gated on remaining ARC LENGTH along the
+        //       path (not Euclidean distance to endpoint). Switches
+        //       guidance back to the regular track before the pure-
+        //       pursuit goal can collapse to zero on the final segment.
+        //   (2) Legacy closest-approach as a backstop for the case
+        //       where (1) misses (e.g., a very short path where the
+        //       arc-length never exceeds the lookahead).
         if (turn.IsExecuting && turn.TurnPath != null && turn.TurnPath.Count > 2)
         {
             var startPoint = turn.TurnPath[0];
@@ -227,8 +262,60 @@ public sealed class YouTurnStateMachine
                 (currentPosition.Easting - endPoint.Easting) * (currentPosition.Easting - endPoint.Easting) +
                 (currentPosition.Northing - endPoint.Northing) * (currentPosition.Northing - endPoint.Northing));
 
-            // Complete when: tractor was close to end, is now moving away,
-            // and has traveled far enough from the start.
+            // Early-completion: ARC-LENGTH-based, NOT Euclidean. On omega
+            // U-turns the path's start and end are physically close
+            // (~3 m apart on the v12 production geometry), so a
+            // Euclidean distToTurnEnd check fires the moment the path
+            // is plotted — the v14 break. Arc-length to the end via the
+            // pivot's closest path index correctly tracks actual
+            // progress along the loop and only crosses the lookahead
+            // threshold when the pivot really is in the last few
+            // segments.
+            //
+            // Magic number 4.0 m matches
+            // ConfigurationStore.Guidance.GoalPointLookAheadHold (the
+            // pure-pursuit lookahead in YouTurnGuidanceService). Once
+            // remaining arc-length falls below lookahead, the walk
+            // can't satisfy the configured lookahead anyway — the goal
+            // would collapse toward the path endpoint on subsequent
+            // ticks. Defense-in-depth backstop: the
+            // YouTurnGuidanceService collapsed-goal post-walk guard
+            // (commit 61674b59) still catches the corner case if this
+            // check misses.
+            const double EarlyCompletionLookahead = 4.0;
+            double remainingArc = ComputeRemainingArcLength(turn.TurnPath, currentPosition);
+            double totalArc = ComputeTotalArcLength(turn.TurnPath);
+            double traveledArc = totalArc - remainingArc;
+
+            // Fire when:
+            //   (a) less than lookahead of arc-length remains (the goal
+            //       would collapse on the final segment), AND
+            //   (b) at least lookahead of arc-length has been traversed
+            //       (the tractor has genuinely progressed; protects
+            //       against tick-0 fire on paths shorter than 2 ×
+            //       lookahead AND against fresh-path-pivot-near-end
+            //       cases where creation was wrong).
+            // Together these require the path itself to be longer than
+            // 2 × lookahead, which is true for any production U-turn
+            // path (the v12 omega is ~42 m) but false for synthetic
+            // test paths (~3-5 m). Short paths fall through to the
+            // legacy closest-approach detector.
+            if (remainingArc < EarlyCompletionLookahead
+                && traveledArc > EarlyCompletionLookahead)
+            {
+                _logger.LogDebug("[YouTurn] Early-completion (remaining arc {Arc:F1}m < {L:F1}m, "
+                    + "traveled {Tr:F1}m): distStart={DistStart:F2}m distEnd={DistEnd:F2}m",
+                    remainingArc, EarlyCompletionLookahead, traveledArc,
+                    distToTurnStart, distToTurnEnd);
+                CompleteTurn(in ctx, guidance, turn, effects);
+                return effects;
+            }
+
+            // Closest-approach backstop: complete when the tractor was
+            // close to end, is now moving away, and has traveled far
+            // enough from the start. Speed/GPS-rate independent — a
+            // fixed radius check misses the end point at high speeds
+            // because discrete GPS steps jump over it.
             bool wasClose = turn.PreviousDistToTurnEnd < ClosestApproachThreshold;
             bool movingAway = distToTurnEnd > turn.PreviousDistToTurnEnd;
             bool traveledEnough = distToTurnStart > CompletionMinTraveledMeters;
@@ -245,6 +332,57 @@ public sealed class YouTurnStateMachine
         }
 
         return effects;
+    }
+
+    /// <summary>
+    /// Sum of segment lengths from the closest path point to
+    /// <paramref name="pivot"/> through the path's last point. Returns
+    /// arc-length remaining "along the path", which is topology-aware
+    /// (handles omega U-turns where the path's start and end are
+    /// physically close but separated by the full loop's arc).
+    /// </summary>
+    private static double ComputeRemainingArcLength(
+        IReadOnlyList<Vec3> path, Position pivot)
+    {
+        if (path.Count < 2) return 0;
+
+        // Closest path index.
+        int closestIdx = 0;
+        double minDistSq = double.MaxValue;
+        for (int i = 0; i < path.Count; i++)
+        {
+            double dx = path[i].Easting - pivot.Easting;
+            double dy = path[i].Northing - pivot.Northing;
+            double d2 = dx * dx + dy * dy;
+            if (d2 < minDistSq) { minDistSq = d2; closestIdx = i; }
+        }
+
+        // Sum segment lengths from closestIdx to end.
+        double remaining = 0;
+        for (int i = closestIdx; i < path.Count - 1; i++)
+        {
+            double dx = path[i + 1].Easting - path[i].Easting;
+            double dy = path[i + 1].Northing - path[i].Northing;
+            remaining += Math.Sqrt(dx * dx + dy * dy);
+        }
+        return remaining;
+    }
+
+    /// <summary>
+    /// Total arc length of <paramref name="path"/>, computed as the sum of
+    /// pairwise distances between consecutive points. Used to gate the
+    /// early-completion check against short synthetic paths.
+    /// </summary>
+    private static double ComputeTotalArcLength(IReadOnlyList<Vec3> path)
+    {
+        double total = 0;
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            double dx = path[i + 1].Easting - path[i].Easting;
+            double dy = path[i + 1].Northing - path[i].Northing;
+            total += Math.Sqrt(dx * dx + dy * dy);
+        }
+        return total;
     }
 
     /// <summary>
@@ -389,6 +527,13 @@ public sealed class YouTurnStateMachine
         // skip logic — the sequence dictates pathDiff.
         bool positiveOffset = pathDiff > 0;
         turn.IsTurnLeft = positiveOffset ^ guidance.IsHeadingSameWay;
+        // Apply the UI's one-shot direction override before the snake geometry is
+        // committed; clear so the next snake step computes its own direction.
+        if (turn.NextUTurnDirectionLeftOverride is { } overrideLeft)
+        {
+            turn.IsTurnLeft = overrideLeft;
+            turn.NextUTurnDirectionLeftOverride = null;
+        }
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
         turn.NextTrackTurnOffset = Math.Abs(pathDiff) * widthMinusOverlap;
 
@@ -449,6 +594,16 @@ public sealed class YouTurnStateMachine
         // IsTurnLeft depends on which direction has cultivated area and the current heading.
         // positiveDirection ^ IsHeadingSameWay gives the correct turn direction.
         turn.IsTurnLeft = positiveDirection ^ guidance.IsHeadingSameWay;
+        // Apply the UI's one-shot direction override (set by the U-turn direction
+        // toggle while idle), then clear it so it doesn't leak into a later turn.
+        // Mirrors legacy FormGPS.SwapDirection — the user pre-selects which way
+        // the next U-turn should swing while still in the cultivated row.
+        if (turn.NextUTurnDirectionLeftOverride is { } overrideLeft)
+        {
+            turn.IsTurnLeft = overrideLeft;
+            turn.NextUTurnDirectionLeftOverride = null;
+            _logger.LogDebug("[YouTurn] Applied direction override: turnLeft={Left}", overrideLeft);
+        }
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
 
         _pathing.ComputeNextTrack(

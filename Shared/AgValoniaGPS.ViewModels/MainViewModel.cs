@@ -348,6 +348,10 @@ public partial class MainViewModel : ObservableObject
             }
         };
 
+        // Wire YouTurn state -> IsUTurnDistanceVisible computed property
+        // so the right-panel distance widget shows during approach, not just mid-turn.
+        WireYouTurnDistanceVisibility();
+
         // Subscribe to ConfigurationStore changes to update NumSections
         _numSections = Models.Configuration.ConfigurationStore.Instance.NumSections;
         Models.Configuration.ConfigurationStore.Instance.PropertyChanged += (s, e) =>
@@ -1406,6 +1410,11 @@ public partial class MainViewModel : ObservableObject
             // nothing to draw until the operator starts a job.
             RefreshCoverageStatistics();
 
+            // Start periodic coverage autosave. The timer no-ops on each
+            // tick when ActiveJob is null (field-only open), so it's safe
+            // to start unconditionally here.
+            StartCoverageAutosave();
+
             // Load tram lines
             try
             {
@@ -1484,6 +1493,12 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public async Task CloseFieldAsync()
     {
+        // Stop the autosave timer first so a tick can't fire mid-close
+        // and race the explicit close-save below. ClearFieldState also
+        // stops it, but stopping here covers both branches without
+        // depending on call order.
+        StopCoverageAutosave();
+
         if (ActiveField == null || string.IsNullOrEmpty(ActiveField.DirectoryPath))
         {
             // No field to close, just clear state
@@ -1569,6 +1584,10 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void ClearFieldState()
     {
+        // Stop autosave (idempotent if already stopped). Belt-and-braces
+        // for callers that bypass CloseFieldAsync.
+        StopCoverageAutosave();
+
         // Disengage autosteer first so the cycle stops emitting steer commands
         // before the track / boundary / U-turn state vanishes out from under it.
         // Without this the tractor keeps executing the last-sent steer angle
@@ -1615,14 +1634,24 @@ public partial class MainViewModel : ObservableObject
     {
         if (field == null || string.IsNullOrEmpty(field.DirectoryPath))
         {
-            // Clear headland if no field - update centralized state
+            // Clear headland if no field - update centralized state.
+            // All in-memory headland state must be wiped here, otherwise it
+            // leaks across field-switch boundaries (e.g. close field A,
+            // create field B → field A's headland reappears on B because
+            // segments / preview were never cleared).
             State.Field.HeadlandLine = null;
             State.Field.HeadlandDistance = 0;
 
             _currentHeadlandLine = null;
             _mapService.SetHeadlandLine(null);
+            _mapService.SetHeadlandVisible(false);
+            HeadlandSegments.Clear();
+            HeadlandPreviewLine = null; // setter pushes null to map service
+
             HasHeadland = false;
             IsHeadlandOn = false;
+            OnPropertyChanged(nameof(CurrentHeadlandLine));
+            OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
             return;
         }
 
@@ -3482,6 +3511,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleYouTurnCommand { get; private set; }
     public ICommand? ManualYouTurnLeftCommand { get; private set; }
     public ICommand? ManualYouTurnRightCommand { get; private set; }
+    public ICommand? ToggleUTurnDirectionCommand { get; private set; }
     public ICommand? ToggleAutoSteerCommand { get; private set; }
 
     // Chart Commands
