@@ -16,23 +16,30 @@ Licensed under GNU GPL v3. See LICENSE.md.
              IsHitTestVisible="{Binding State.UI.IsLoadVehicleToolDialogVisible}">
 
     <UserControl.Styles>
+        <Style Selector="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="Padding" Value="10,8"/>
+        </Style>
         <Style Selector="TextBlock.Header">
             <Setter Property="Foreground" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontSize" Value="19"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
         <Style Selector="TextBlock.SubHeader">
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontSize" Value="19"/>
             <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
         <Style Selector="Button.DialogButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
             <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="18,12"/>
+            <Setter Property="FontSize" Value="16"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="CornerRadius" Value="6"/>
@@ -56,9 +63,13 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="CornerRadius" Value="4"/>
         </Style>
         <Style Selector="ListBoxItem">
-            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Padding" Value="14,9"/>
             <Setter Property="Margin" Value="2"/>
             <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="FontSize" Value="18"/>
+        </Style>
+        <Style Selector="ListBoxItem TextBlock">
+            <Setter Property="FontSize" Value="18"/>
         </Style>
         <Style Selector="ListBoxItem:pointerover">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
@@ -69,8 +80,8 @@ Licensed under GNU GPL v3. See LICENSE.md.
         <Style Selector="Border.PreviewBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
             <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="10,8"/>
-            <Setter Property="MinHeight" Value="100"/>
+            <Setter Property="Padding" Value="14,12"/>
+            <Setter Property="MinHeight" Value="150"/>
         </Style>
     </UserControl.Styles>
 
@@ -84,10 +95,10 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 BorderThickness="1"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                MinWidth="640"
-                MaxWidth="900"
-                MaxHeight="640"
-                Padding="20"
+                MinWidth="960"
+                MaxWidth="1350"
+                MaxHeight="960"
+                Padding="30"
                 DataContext="{Binding LoadVehicleToolDialogVm}">
             <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" ColumnDefinitions="*,16,*">
                 <!-- Active combo banner — spans both columns so the loaded
@@ -99,7 +110,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                         Margin="0,0,0,12">
                     <TextBlock Text="{Binding CurrentSummary, StringFormat='Active: {0}'}"
                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                               FontSize="15"
+                               FontSize="18"
                                FontWeight="Bold"
                                HorizontalAlignment="Center"/>
                 </Border>
@@ -114,7 +125,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 <Grid Grid.Row="2" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
-                             MinHeight="180"
+                             MinHeight="270"
                              ItemsSource="{Binding Vehicles}"
                              SelectedItem="{Binding SelectedVehicle, Mode=TwoWay}"/>
                     <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
@@ -143,7 +154,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 <Grid Grid.Row="2" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
-                             MinHeight="180"
+                             MinHeight="270"
                              ItemsSource="{Binding Tools}"
                              SelectedItem="{Binding SelectedTool, Mode=TwoWay}"/>
                     <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
