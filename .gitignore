@@ -76,3 +76,6 @@ local.settings.json
 .fake
 .mcp.json
 pat.local
+
+# LSP / tooling per-csproj cache
+*.lscache
