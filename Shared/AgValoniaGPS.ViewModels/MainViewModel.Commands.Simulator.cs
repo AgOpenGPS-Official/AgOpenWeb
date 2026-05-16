@@ -86,14 +86,26 @@ public partial class MainViewModel
 
         SimulatorSteerLeftCommand = new RelayCommand(() =>
         {
-            SimulatorSteerAngle -= 5.0;
+            SimulatorSteerAngle -= 0.5;
             StatusMessage = $"Steer: {SimulatorSteerAngle:F1}";
         });
 
         SimulatorSteerRightCommand = new RelayCommand(() =>
         {
-            SimulatorSteerAngle += 5.0;
+            SimulatorSteerAngle += 0.5;
             StatusMessage = $"Steer: {SimulatorSteerAngle:F1}";
+        });
+
+        SimulatorSpeedDownCommand = new RelayCommand(() =>
+        {
+            SimulatorSpeedKph -= 0.5;
+            StatusMessage = $"Speed: {SimulatorSpeedKph:F1} kph";
+        });
+
+        SimulatorSpeedUpCommand = new RelayCommand(() =>
+        {
+            SimulatorSpeedKph += 0.5;
+            StatusMessage = $"Speed: {SimulatorSpeedKph:F1} kph";
         });
 
         // Simulator coordinates dialog commands

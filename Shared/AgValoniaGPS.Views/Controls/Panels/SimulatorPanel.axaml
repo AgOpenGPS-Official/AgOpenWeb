@@ -62,21 +62,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     </Button>
                 </Grid>
 
-                <!-- Steering L / Slider / R -->
+                <!-- Steering L / Slider / R — tap L/R for one 0.5° increment -->
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <Button Grid.Column="0" Width="40" Margin="0,0,8,0" ClickMode="Press"
                             Command="{Binding SimulatorSteerLeftCommand}"
-                            ToolTip.Tip="Steer left">
+                            ToolTip.Tip="Steer left 0.5°">
                         <TextBlock Text="L" FontSize="16" IsHitTestVisible="False"/>
                     </Button>
                     <Slider Grid.Column="1"
                             Minimum="-40" Maximum="40"
                             Value="{Binding SimulatorSteerAngle, Mode=TwoWay}"
-                            TickFrequency="5" IsSnapToTickEnabled="True"
-                            ToolTip.Tip="Steering angle"/>
+                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                            ToolTip.Tip="Steering angle (0.5° steps)"/>
                     <Button Grid.Column="2" Width="40" Margin="8,0,0,0" ClickMode="Press"
                             Command="{Binding SimulatorSteerRightCommand}"
-                            ToolTip.Tip="Steer right">
+                            ToolTip.Tip="Steer right 0.5°">
                         <TextBlock Text="R" FontSize="16" IsHitTestVisible="False"/>
                     </Button>
                 </Grid>
@@ -100,19 +100,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                               ToolTip.Tip="10x speed multiplier for large fields"/>
                 </Grid>
 
-                <!-- Speed -10 / Slider / 25 -->
+                <!-- Speed − / Slider / + — tap − or + for one 0.5 kph increment -->
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <TextBlock Grid.Column="0" Text="-10"
-                               Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                               FontSize="10" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <Button Grid.Column="0" Width="40" Margin="0,0,8,0" ClickMode="Press"
+                            Command="{Binding SimulatorSpeedDownCommand}"
+                            ToolTip.Tip="Decrease speed 0.5 kph (min -10)">
+                        <TextBlock Text="−" FontSize="16" IsHitTestVisible="False"/>
+                    </Button>
                     <Slider Grid.Column="1"
                             Minimum="-10" Maximum="25"
                             Value="{Binding SimulatorSpeedKph, Mode=TwoWay}"
-                            TickFrequency="5" IsSnapToTickEnabled="False"
-                            ToolTip.Tip="Speed in kph (-10 reverse to +25 forward)"/>
-                    <TextBlock Grid.Column="2" Text="25"
-                               Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                               FontSize="10" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                            ToolTip.Tip="Speed in kph (0.5 kph steps, -10 reverse to +25 forward)"/>
+                    <Button Grid.Column="2" Width="40" Margin="8,0,0,0" ClickMode="Press"
+                            Command="{Binding SimulatorSpeedUpCommand}"
+                            ToolTip.Tip="Increase speed 0.5 kph (max +25)">
+                        <TextBlock Text="+" FontSize="16" IsHitTestVisible="False"/>
+                    </Button>
                 </Grid>
 
                 <!-- Speed Display -->
