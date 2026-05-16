@@ -102,8 +102,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
     </UserControl.Styles>
 
-    <!-- Main container: Panel for proper layout measurement, Canvas overlay for flyouts -->
-    <Panel ClipToBounds="False" Background="{x:Null}">
+    <!-- Main container: Panel for proper layout measurement, Canvas overlay for flyouts.
+         Hidden whenever no field/job is open — no buttons do anything in that state. -->
+    <Panel ClipToBounds="False" Background="{x:Null}"
+           IsVisible="{Binding IsFieldOpen}">
         <!-- Main bottom bar -->
         <Border x:Name="MainPanel" Classes="FloatingPanel">
             <StackPanel x:Name="ButtonStack" Spacing="4" Orientation="Horizontal">

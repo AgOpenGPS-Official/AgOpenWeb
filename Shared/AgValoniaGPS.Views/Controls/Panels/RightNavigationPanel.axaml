@@ -76,8 +76,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
     </UserControl.Styles>
 
-    <!-- Navigation Button Bar -->
-    <Border x:Name="MainPanel" Classes="FloatingPanel">
+    <!-- Navigation Button Bar.
+         Hidden whenever no field/job is open — no buttons do anything in that state. -->
+    <Border x:Name="MainPanel" Classes="FloatingPanel"
+            IsVisible="{Binding IsFieldOpen}">
         <StackPanel x:Name="ButtonStack" Spacing="6" Orientation="Vertical">
             <!-- 1. Contour/Track Mode Toggle -->
             <Button Classes="RightPanelButton" ToolTip.Tip="Contour Mode On/Off"
