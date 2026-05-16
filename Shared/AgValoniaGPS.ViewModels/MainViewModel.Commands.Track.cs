@@ -860,17 +860,14 @@ public partial class MainViewModel
                 return;
             }
 
-            // If trying to engage, validate boundaries
+            // If trying to engage, validate preconditions.
+            // Note: an outer boundary is intentionally NOT required. A common
+            // workflow is AB lines on an open field with no boundary — the
+            // operator engages on a line, disengages at the end, turns
+            // manually, re-engages on the next line. Sections are tapped
+            // manually under that workflow.
             if (!IsAutoSteerEngaged)
             {
-                // Check for outer boundary
-                if (!HasBoundary || _currentBoundary?.OuterBoundary == null || !_currentBoundary.OuterBoundary.IsValid)
-                {
-                    ShowErrorDialog("Missing Boundary",
-                        "AutoSteer requires an outer boundary.\n\nPlease create or load a field boundary before engaging autosteer.");
-                    return;
-                }
-
                 // Headland is only required when U-turns are enabled
                 if (IsYouTurnEnabled && (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3))
                 {

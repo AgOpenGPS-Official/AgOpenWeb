@@ -93,10 +93,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </Button>
 
             <!-- 2. Manual Mode Toggle - All sections Manual On/Off -->
-            <!-- Hidden when no field open (#347): sections can't paint with no boundary anyway. -->
+            <!-- Available as soon as a field is open. Manual section control is
+                 a valid workflow with no boundary: operator drives AB lines and
+                 taps sections on/off themselves. -->
             <Button Classes="RightPanelButton" ToolTip.Tip="All Sections Manual On/Off"
                     Command="{Binding ToggleManualModeCommand}"
-                    IsVisible="{Binding HasBoundary}">
+                    IsVisible="{Binding IsFieldOpen}">
                 <Panel>
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ManualOn.png" Stretch="Uniform"
                            IsVisible="{Binding IsManualSectionMode}"/>
@@ -106,7 +108,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </Button>
 
             <!-- 3. Section Master Toggle - All sections Auto/Off -->
-            <!-- Hidden when no field open (#347). -->
+            <!-- Requires a boundary: auto-section logic only has meaningful
+                 input (coverage / boundary intersect) once a boundary exists.
+                 Operators in the no-boundary workflow use Manual Mode (#2). -->
             <Button Classes="RightPanelButton" ToolTip.Tip="All Sections Auto/Off"
                     Command="{Binding ToggleSectionMasterCommand}"
                     IsVisible="{Binding HasBoundary}">
@@ -118,10 +122,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Panel>
             </Button>
 
-            <!-- 4. YouTurn Toggle (visible when track active AND UTurn button enabled in config) -->
+            <!-- 4. YouTurn Toggle (auto U-Turn arming).
+                 Requires a boundary because auto U-turn needs a headland and
+                 outer-boundary geometry. Manual U-turn buttons (#4b) remain
+                 available without a boundary. -->
             <Button Classes="RightPanelButton" ToolTip.Tip="YouTurn Auto U-Turn"
-                    Command="{Binding ToggleYouTurnCommand}"
-                    IsVisible="{Binding IsUTurnButtonVisible}">
+                    Command="{Binding ToggleYouTurnCommand}">
+                <Button.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="IsUTurnButtonVisible"/>
+                        <Binding Path="HasBoundary"/>
+                    </MultiBinding>
+                </Button.IsVisible>
                 <Panel>
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/YouTurnYes.png" Stretch="Uniform"
                            IsVisible="{Binding IsYouTurnEnabled}"/>
@@ -132,11 +144,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
             <!-- 4a. U-Turn Direction Toggle + Distance to trigger.
                  Mirrors legacy AgOpenGPS UTurn button (FormGPS DrawUTurnBtn / SwapDirection):
-                 single tap-target showing the armed direction arrow with distance underneath. -->
+                 single tap-target showing the armed direction arrow with distance underneath.
+                 Same boundary gating as #4 — only meaningful when auto-uturn is active. -->
             <Button Classes="RightPanelButton" Width="64" Height="64"
                     ToolTip.Tip="Toggle U-Turn direction"
-                    Command="{Binding ToggleUTurnDirectionCommand}"
-                    IsVisible="{Binding IsUTurnButtonVisible}">
+                    Command="{Binding ToggleUTurnDirectionCommand}">
+                <Button.IsVisible>
+                    <MultiBinding Converter="{x:Static BoolConverters.And}">
+                        <Binding Path="IsUTurnButtonVisible"/>
+                        <Binding Path="HasBoundary"/>
+                    </MultiBinding>
+                </Button.IsVisible>
                 <Grid RowDefinitions="*,Auto" Margin="2">
                     <!-- Direction arrow.
                          When armed: bind to State.YouTurn.IsTurnLeft.
