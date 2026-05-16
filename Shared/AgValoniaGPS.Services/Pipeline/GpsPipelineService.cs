@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,6 +17,7 @@ using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Timing;
 using AgValoniaGPS.Models.YouTurn;
+using AgValoniaGPS.Services.Geometry;
 using AgValoniaGPS.Services.Gps;
 using AgValoniaGPS.Services.Headland;
 using AgValoniaGPS.Services.Interfaces;
@@ -111,6 +113,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private double _driftE;
     private double _driftN;
     private bool _hasActiveField;
+
+    // Synthetic headland for the no-headland-but-has-boundary workflow.
+    // Computed once per (boundary, UTurnRadius, UTurnDistanceFromBoundary)
+    // tuple by insetting the outer boundary so an auto-uturn arc's apex
+    // sits inside the outer boundary. Only consulted by ProcessCycle (worker
+    // thread) so no lock is needed on the cache itself.
+    private readonly PolygonOffsetService _syntheticHeadlandOffset = new();
+    private List<Vec3>? _syntheticHeadlandLine;
+    private Boundary? _syntheticHeadlandSourceBoundary;
+    private double _syntheticHeadlandConfigKey;
+    private double _syntheticHeadlandInsetUsed;
 
     // One-shot latch so the field-far warning fires once per loaded field.
     // SetHasActiveField clears it on the false->true transition (new field
@@ -459,6 +472,22 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // hasn't yet armed the current one — last-wins.
             nextUTurnDirectionOverride = _nextUTurnDirectionLeftOverride;
             _nextUTurnDirectionLeftOverride = null;
+        }
+
+        // No-headland workflow: substitute a synthetic headland line that
+        // sits one (turn radius + UTurnDistanceFromBoundary) inset from the
+        // outer boundary, so the auto-uturn arc's apex lands inside the
+        // outer boundary. headlandCalculatedWidth is set to the inset so
+        // downstream U-turn geometry (HeadlandWidth, leg lengths) is
+        // consistent with the synthesized line.
+        if (headlandLine == null && boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
+        {
+            var synth = GetOrComputeSyntheticHeadland(boundary);
+            if (synth.Line != null && synth.Line.Count >= 3)
+            {
+                headlandLine = synth.Line;
+                headlandCalculatedWidth = synth.Inset;
+            }
         }
 
         // YouTurn working state is cycle-owned — no cross-thread writers.
@@ -1407,6 +1436,41 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
             return signedDist;
         }
+    }
+
+    // Returns the synthetic headland line (inset of the outer boundary) plus
+    // the inset distance, recomputing only when the boundary reference or the
+    // relevant config values change. Called only from the cycle worker thread.
+    private (List<Vec3>? Line, double Inset) GetOrComputeSyntheticHeadland(Boundary boundary)
+    {
+        var guidanceConfig = ConfigurationStore.Instance.Guidance;
+        double turnRadius = guidanceConfig.UTurnRadius;
+        double distFromBoundary = guidanceConfig.UTurnDistanceFromBoundary;
+        double inset = turnRadius + distFromBoundary;
+        // Pack the two doubles into a single key. UTurnRadius is small (<20m)
+        // so multiplying by 1000 and adding distance keeps both contributions
+        // distinguishable for cache invalidation purposes.
+        double configKey = turnRadius * 1000.0 + distFromBoundary;
+
+        if (ReferenceEquals(boundary, _syntheticHeadlandSourceBoundary)
+            && Math.Abs(configKey - _syntheticHeadlandConfigKey) < 1e-9)
+        {
+            return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
+        }
+
+        var outerPoints = boundary.OuterBoundary!.Points
+            .Select(p => new Vec2(p.Easting, p.Northing))
+            .ToList();
+        var inwardOffset = _syntheticHeadlandOffset.CreateInwardOffset(outerPoints, inset);
+        _syntheticHeadlandLine = (inwardOffset != null && inwardOffset.Count >= 3)
+            ? _syntheticHeadlandOffset.CalculatePointHeadings(inwardOffset)
+            : null;
+        _syntheticHeadlandSourceBoundary = boundary;
+        _syntheticHeadlandConfigKey = configKey;
+        _syntheticHeadlandInsetUsed = inset;
+        _logger.LogDebug("[YouTurn] Synthesized headland (no user headland): inset={I:F1}m (turnR={R:F1}+dist={D:F1}), pts={P}",
+            inset, turnRadius, distFromBoundary, _syntheticHeadlandLine?.Count ?? 0);
+        return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
     }
 
     private void ComputeHeadlandProximity(

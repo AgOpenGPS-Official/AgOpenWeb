@@ -860,22 +860,12 @@ public partial class MainViewModel
                 return;
             }
 
-            // If trying to engage, validate preconditions.
-            // Note: an outer boundary is intentionally NOT required. A common
-            // workflow is AB lines on an open field with no boundary — the
-            // operator engages on a line, disengages at the end, turns
-            // manually, re-engages on the next line. Sections are tapped
-            // manually under that workflow.
-            if (!IsAutoSteerEngaged)
-            {
-                // Headland is only required when U-turns are enabled
-                if (IsYouTurnEnabled && (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3))
-                {
-                    ShowErrorDialog("Missing Headland",
-                        "U-Turn guidance requires a headland boundary.\n\nPlease create a headland using the Headland button in the boundary panel, or disable U-turns.");
-                    return;
-                }
-            }
+            // Engagement has no boundary/headland preconditions.
+            //  - No boundary: AB-lines-only workflow with manual sections.
+            //  - Boundary but no headland: auto-uturn still works against a
+            //    synthetic headland line inset from the outer boundary by
+            //    (UTurnRadius + UTurnDistanceFromBoundary). See
+            //    GpsPipelineService.GetOrComputeSyntheticHeadland.
 
             IsAutoSteerEngaged = !IsAutoSteerEngaged;
             _audioService.Play(IsAutoSteerEngaged
