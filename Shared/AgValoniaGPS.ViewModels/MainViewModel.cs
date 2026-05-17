@@ -3230,7 +3230,15 @@ public partial class MainViewModel : ObservableObject
     public bool IsFieldOpen
     {
         get => _isFieldOpen;
-        set => SetProperty(ref _isFieldOpen, value);
+        set
+        {
+            if (SetProperty(ref _isFieldOpen, value))
+            {
+                // Commands gated on having a field open need to refresh
+                // CanExecute when the field is opened or closed.
+                DeleteAppliedAreaCommand?.NotifyCanExecuteChanged();
+            }
+        }
     }
 
     private string _currentFieldName = string.Empty;
@@ -3448,7 +3456,8 @@ public partial class MainViewModel : ObservableObject
     // Right Navigation Panel Commands
     public ICommand? ToggleContourModeCommand { get; private set; }
     public ICommand? DeleteContoursCommand { get; private set; }
-    public ICommand? DeleteAppliedAreaCommand { get; private set; }
+    // IRelayCommand (not ICommand) so the IsFieldOpen setter can re-evaluate CanExecute.
+    public IRelayCommand? DeleteAppliedAreaCommand { get; private set; }
     public ICommand? ToggleTramDisplayCommand { get; private set; }
     public ICommand? BuildTramLinesCommand { get; private set; }
     public ICommand? CreateTrackFromBoundaryCommand { get; private set; }

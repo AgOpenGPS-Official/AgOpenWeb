@@ -972,7 +972,7 @@ public partial class MainViewModel
                     RefreshCoverageStatistics();
                     StatusMessage = "Applied area deleted";
                 });
-        });
+        }, () => IsFieldOpen);
 
         // Tram line commands
         ToggleTramDisplayCommand = new RelayCommand(() =>
