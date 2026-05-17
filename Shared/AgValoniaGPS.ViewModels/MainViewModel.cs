@@ -319,9 +319,16 @@ public partial class MainViewModel : ObservableObject
         // dead-reckoned forward to that tick's timestamp.
         if (_positionEstimator is not null)
         {
+            // Render-pull rate. Each tick clones 5 arrays, allocates an ~80-field
+            // MapRenderState, and pushes it to the Avalonia composition thread —
+            // which on iOS Metal stays saturated at 30 Hz on weaker hardware
+            // (e.g. iPad Pro 2nd gen drops to 24 FPS during paint). Drop to
+            // ~20 Hz on mobile to give the composition thread headroom; desktop
+            // keeps 30 Hz for smoother vehicle interpolation.
+            int intervalMs = (OperatingSystem.IsIOS() || OperatingSystem.IsAndroid()) ? 50 : 33;
             _renderPullTimer = new Avalonia.Threading.DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(33), // ~30 Hz
+                Interval = TimeSpan.FromMilliseconds(intervalMs),
             };
             _renderPullTimer.Tick += OnRenderPullTick;
             _renderPullTimer.Start();
