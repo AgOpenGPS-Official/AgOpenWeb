@@ -39,6 +39,8 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
     private readonly Action<string, string, string, string, string?> _openFieldStartingNewJob;
     private readonly Action<string, string, string> _openFieldResumingJob;
     private readonly Action<string, Action> _confirm;   // (message, onConfirm)
+    private readonly Action<string, string, string, bool, Action<bool>> _confirmWithOption;
+    // (title, message, checkboxLabel, defaultChecked, onConfirm(checked))
     private readonly double? _nearbyMaxKm;
 
     public StartWorkSessionDialogViewModel(
@@ -51,6 +53,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         Action<string, string, string, string, string?> openFieldStartingNewJob,
         Action<string, string, string> openFieldResumingJob,
         Action<string, Action> confirm,
+        Action<string, string, string, bool, Action<bool>> confirmWithOption,
         double? nearbyMaxKm = null)
     {
         _fieldService = fieldService;
@@ -62,12 +65,14 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         _openFieldStartingNewJob = openFieldStartingNewJob;
         _openFieldResumingJob = openFieldResumingJob;
         _confirm = confirm;
+        _confirmWithOption = confirmWithOption;
         _nearbyMaxKm = nearbyMaxKm;
 
         StartNewJobCommand = new RelayCommand(StartNewJob, () => SelectedField != null);
         OpenFieldOnlyCommand = new RelayCommand(OpenFieldOnly, () => SelectedField != null);
         ResumeJobCommand = new RelayCommand<JobSummary?>(ResumeJob);
         DeleteJobCommand = new RelayCommand<JobSummary?>(DeleteJob, CanDeleteJob);
+        DeleteFieldCommand = new RelayCommand(DeleteField, CanDeleteField);
         UseLastNotesCommand = new RelayCommand(UseLastNotes,
             () => JobsForSelectedField.Count > 0);
         CancelCommand = new RelayCommand(() => _close());
@@ -132,6 +137,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
     public RelayCommand OpenFieldOnlyCommand { get; }
     public RelayCommand<JobSummary?> ResumeJobCommand { get; }
     public RelayCommand<JobSummary?> DeleteJobCommand { get; }
+    public RelayCommand DeleteFieldCommand { get; }
     public RelayCommand UseLastNotesCommand { get; }
     public ICommand CancelCommand { get; }
 
@@ -225,6 +231,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
 
         StartNewJobCommand.NotifyCanExecuteChanged();
         OpenFieldOnlyCommand.NotifyCanExecuteChanged();
+        DeleteFieldCommand.NotifyCanExecuteChanged();
         UseLastNotesCommand.NotifyCanExecuteChanged();
     }
 
@@ -327,6 +334,66 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
                     StatusMessage = ex.Message;
                 }
             });
+    }
+
+    /// <summary>
+    /// Can't delete the field that's currently open — its job owns the
+    /// in-memory coverage, and the directory delete would race the
+    /// background coverage writer. Operator must close the field first.
+    /// </summary>
+    private bool CanDeleteField()
+    {
+        if (SelectedField == null) return false;
+        var active = _fieldService.ActiveField?.Name;
+        return active == null
+            || !string.Equals(active, SelectedField.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void DeleteField()
+    {
+        if (SelectedField == null) return;
+        var field = SelectedField;
+        var jobCount = JobsForSelectedField.Count;
+
+        // No jobs → plain confirm (no checkbox). With jobs → checkbox the
+        // operator must tick to acknowledge that delete also wipes them.
+        if (jobCount == 0)
+        {
+            _confirm(
+                $"Delete field '{field.Name}'? This permanently removes the field and all its files.",
+                () => DoDeleteField(field));
+            return;
+        }
+
+        _confirmWithOption(
+            "Delete Field",
+            $"Delete field '{field.Name}'? It contains {jobCount} job{(jobCount == 1 ? "" : "s")}.",
+            $"Also delete all {jobCount} job{(jobCount == 1 ? "" : "s")} in this field",
+            true,
+            alsoDeleteJobs =>
+            {
+                if (!alsoDeleteJobs)
+                {
+                    StatusMessage =
+                        "Jobs are stored inside the field folder — check the box to acknowledge deleting them too.";
+                    return;
+                }
+                DoDeleteField(field);
+            });
+    }
+
+    private void DoDeleteField(NearbyField field)
+    {
+        try
+        {
+            _fieldService.DeleteField(field.DirectoryPath);
+            StatusMessage = $"Deleted field '{field.Name}'.";
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = ex.Message;
+        }
     }
 
     private void ResumeJob(JobSummary? summary)

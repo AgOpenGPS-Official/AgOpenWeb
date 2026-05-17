@@ -562,6 +562,7 @@ public partial class MainViewModel
         {
             var prev = _previousDialogBeforeConfirmation;
             _confirmationDialogCallback = null;
+            _confirmationDialogCheckboxCallback = null;
             _previousDialogBeforeConfirmation = Models.State.DialogType.None;
             if (prev != Models.State.DialogType.None && prev != Models.State.DialogType.Confirmation)
                 State.UI.ShowDialog(prev);
@@ -572,14 +573,18 @@ public partial class MainViewModel
         ConfirmConfirmationDialogCommand = new RelayCommand(() =>
         {
             var callback = _confirmationDialogCallback;
+            var checkboxCallback = _confirmationDialogCheckboxCallback;
+            var checkboxState = ConfirmationDialogCheckboxChecked;
             var prev = _previousDialogBeforeConfirmation;
             _confirmationDialogCallback = null;
+            _confirmationDialogCheckboxCallback = null;
             _previousDialogBeforeConfirmation = Models.State.DialogType.None;
             if (prev != Models.State.DialogType.None && prev != Models.State.DialogType.Confirmation)
                 State.UI.ShowDialog(prev);
             else
                 State.UI.CloseDialog();
             callback?.Invoke();
+            checkboxCallback?.Invoke(checkboxState);
         });
 
         // Error Dialog Command

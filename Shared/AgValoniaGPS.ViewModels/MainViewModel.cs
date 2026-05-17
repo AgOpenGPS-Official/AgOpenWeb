@@ -2459,8 +2459,33 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _confirmationDialogMessage, value);
     }
 
-    // Callback to run when confirmation dialog is confirmed
+    // Optional checkbox shown above the buttons. Hidden when label is null/empty.
+    private string? _confirmationDialogCheckboxLabel;
+    public string? ConfirmationDialogCheckboxLabel
+    {
+        get => _confirmationDialogCheckboxLabel;
+        set
+        {
+            if (SetProperty(ref _confirmationDialogCheckboxLabel, value))
+                OnPropertyChanged(nameof(IsConfirmationDialogCheckboxVisible));
+        }
+    }
+
+    public bool IsConfirmationDialogCheckboxVisible =>
+        !string.IsNullOrEmpty(_confirmationDialogCheckboxLabel);
+
+    private bool _confirmationDialogCheckboxChecked;
+    public bool ConfirmationDialogCheckboxChecked
+    {
+        get => _confirmationDialogCheckboxChecked;
+        set => SetProperty(ref _confirmationDialogCheckboxChecked, value);
+    }
+
+    // Callbacks. Only one is set per ShowConfirmationDialog call. The
+    // checkbox variant receives the checkbox state at the time the user
+    // clicked Confirm.
     private Action? _confirmationDialogCallback;
+    private Action<bool>? _confirmationDialogCheckboxCallback;
     private Models.State.DialogType _previousDialogBeforeConfirmation;
 
     public ICommand? CancelConfirmationDialogCommand { get; private set; }
@@ -2475,7 +2500,32 @@ public partial class MainViewModel : ObservableObject
     {
         ConfirmationDialogTitle = title;
         ConfirmationDialogMessage = message;
+        ConfirmationDialogCheckboxLabel = null;
+        ConfirmationDialogCheckboxChecked = false;
         _confirmationDialogCallback = onConfirm;
+        _confirmationDialogCheckboxCallback = null;
+        _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        State.UI.ShowDialog(Models.State.DialogType.Confirmation);
+    }
+
+    /// <summary>
+    /// Confirmation dialog with an extra checkbox above the buttons.
+    /// The callback receives the checkbox state at confirm time so the
+    /// caller can branch on it (e.g. "also delete N jobs").
+    /// </summary>
+    public void ShowConfirmationDialog(
+        string title,
+        string message,
+        string checkboxLabel,
+        bool defaultChecked,
+        Action<bool> onConfirm)
+    {
+        ConfirmationDialogTitle = title;
+        ConfirmationDialogMessage = message;
+        ConfirmationDialogCheckboxLabel = checkboxLabel;
+        ConfirmationDialogCheckboxChecked = defaultChecked;
+        _confirmationDialogCallback = null;
+        _confirmationDialogCheckboxCallback = onConfirm;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }

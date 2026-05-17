@@ -51,7 +51,9 @@ public partial class MainViewModel
                     _ = OpenFieldStartingNewJobAsync(path, name, workType, notes, taskName),
                 openFieldResumingJob: (path, name, taskName) =>
                     _ = OpenFieldResumingJobAsync(path, name, taskName),
-                confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action));
+                confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action),
+                confirmWithOption: (title, msg, checkboxLabel, defaultChecked, action) =>
+                    ShowConfirmationDialog(title, msg, checkboxLabel, defaultChecked, action));
             StartWorkSessionDialogVm.Refresh();
             State.UI.ShowDialog(DialogType.StartWorkSession);
         });
@@ -767,6 +769,8 @@ public partial class MainViewModel
                 openFieldResumingJob: (path, name, taskName) =>
                     _ = OpenFieldResumingJobAsync(path, name, taskName),
                 confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action),
+                confirmWithOption: (title, msg, checkboxLabel, defaultChecked, action) =>
+                    ShowConfirmationDialog(title, msg, checkboxLabel, defaultChecked, action),
                 nearbyMaxKm: 0.5);
             StartWorkSessionDialogVm.Refresh();
             State.UI.ShowDialog(DialogType.StartWorkSession);
