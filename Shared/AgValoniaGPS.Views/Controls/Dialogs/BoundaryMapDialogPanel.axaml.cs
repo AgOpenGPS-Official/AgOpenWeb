@@ -93,10 +93,13 @@ public partial class BoundaryMapDialogPanel : UserControl
         // This ensures all layers use consistent coordinate system
         map.CRS = "EPSG:3857";
 
-        // Bing Maps aerial imagery via Virtual Earth tile servers
+        // Bing Maps aerial imagery via Virtual Earth tile servers.
+        // Schema bumped to L20 (default tops out at L19); Bing serves L20 across
+        // most populated regions and the imagery is generally sharper than Esri
+        // in agricultural areas.
         var bingSatelliteUrl = "https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587";
         var bingTileSource = new HttpTileSource(
-            new GlobalSphericalMercator(),
+            new GlobalSphericalMercator(YAxis.OSM, 0, 20),
             bingSatelliteUrl,
             name: "Bing Satellite");
         map.Layers.Add(new TileLayer(bingTileSource) { Name = "Satellite" });
@@ -564,70 +567,128 @@ public partial class BoundaryMapDialogPanel : UserControl
             double mercWidth = mercMaxX - mercMinX;
             double mercHeight = mercMaxY - mercMinY;
 
-            // Auto-pick the highest zoom level whose output bitmap stays under 4000 px on the long edge.
-            const int maxPixels = 4000;
-            var pick = PickAutoZoom(schema, mercWidth, mercHeight, maxPixels);
-            if (pick is null) return null;
-            var (level, resolution) = pick.Value;
-
-            int outWidth = Math.Max((int)Math.Ceiling(mercWidth / resolution), 1);
-            int outHeight = Math.Max((int)Math.Ceiling(mercHeight / resolution), 1);
+            // Pixel cap is a memory ceiling, not a quality target — 10000 px on the
+            // long edge keeps the worst-case raw RGBA buffer around 400 MB.
+            const int maxPixels = 10000;
 
             var extent = new Extent(mercMinX, mercMinY, mercMaxX, mercMaxY);
-            var tileInfos = schema.GetTileInfos(extent, level).ToList();
-            Console.WriteLine($"[Capture] Zoom {level}, resolution {resolution:F4} m/px, {tileInfos.Count} tiles, output {outWidth}x{outHeight}");
-            Console.WriteLine($"[Capture] bbox merc: X[{mercMinX:F2}..{mercMaxX:F2}] Y[{mercMinY:F2}..{mercMaxY:F2}]");
 
-            // Fetch tiles in parallel directly from the tile source. Some tile providers
-            // (Bing included) reject requests without a recognizable User-Agent.
+            // Tile providers (Esri included) return small "data not available" placeholders
+            // outside their actual imagery footprint. Detect placeholders by size and fall
+            // back to the next-lower zoom level — real aerial tiles are typically >5 KB,
+            // placeholders are ~2-3 KB.
+            const int placeholderByteThreshold = 4000;
+
             using var httpClient = new System.Net.Http.HttpClient();
             httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; AgValoniaGPS/1.0)");
             httpClient.Timeout = TimeSpan.FromSeconds(20);
 
-            var fetchTasks = tileInfos.Select<TileInfo, Task<(TileInfo Info, byte[]? Bytes)>>(async ti =>
+            // Candidate levels, finest first, that fit within the pixel cap.
+            var candidateLevels = schema.Resolutions
+                .OrderBy(kvp => kvp.Value.UnitsPerPixel)
+                .Where(kvp =>
+                {
+                    double w = mercWidth / kvp.Value.UnitsPerPixel;
+                    double h = mercHeight / kvp.Value.UnitsPerPixel;
+                    return Math.Max(w, h) <= maxPixels;
+                })
+                .ToList();
+            if (candidateLevels.Count == 0)
             {
-                try
-                {
-                    var bytes = await tileSource.GetTileAsync(httpClient, ti);
-                    return (ti, bytes);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Capture] Tile fetch failed ({ti.Index.Col},{ti.Index.Row},{ti.Index.Level}): {ex.Message}");
-                    return (ti, null);
-                }
-            });
-            var results = await Task.WhenAll(fetchTasks);
-            int fetched = results.Count(r => r.Bytes is { Length: > 0 });
-            Console.WriteLine($"[Capture] Fetched {fetched}/{results.Length} tiles");
+                // bbox is enormous — fall back to the coarsest level so we still produce something.
+                var coarsest = schema.Resolutions.OrderByDescending(kvp => kvp.Value.UnitsPerPixel).First();
+                candidateLevels.Add(coarsest);
+            }
 
-            // Composite tiles into a single bitmap whose extent matches the padded bbox exactly.
+            // Walk finest → coarsest, fetching tiles at each level. Stop when a level
+            // gives 100% real coverage — that level acts as the gap-filler beneath
+            // any partially-covered finer levels already fetched.
+            var fetchedLevels = new List<(int Level, double Resolution, (TileInfo Info, byte[]? Bytes)[] Tiles)>();
+
+            foreach (var kvp in candidateLevels)
+            {
+                var tileInfos = schema.GetTileInfos(extent, kvp.Key).ToList();
+                if (tileInfos.Count == 0) continue;
+
+                Console.WriteLine($"[Capture] Fetching L{kvp.Key} ({kvp.Value.UnitsPerPixel:F3} m/px, {tileInfos.Count} tiles)");
+
+                var fetchTasks = tileInfos.Select<TileInfo, Task<(TileInfo Info, byte[]? Bytes)>>(async ti =>
+                {
+                    try
+                    {
+                        var bytes = await tileSource.GetTileAsync(httpClient, ti);
+                        return (ti, bytes);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Capture] Tile fetch failed ({ti.Index.Col},{ti.Index.Row},{ti.Index.Level}): {ex.Message}");
+                        return (ti, null);
+                    }
+                });
+                var attempt = await Task.WhenAll(fetchTasks);
+
+                int realCount = attempt.Count(r => r.Bytes is { Length: > placeholderByteThreshold });
+                Console.WriteLine($"[Capture] L{kvp.Key}: {realCount}/{attempt.Length} real tiles");
+
+                fetchedLevels.Add((kvp.Key, kvp.Value.UnitsPerPixel, attempt));
+
+                if (realCount == attempt.Length)
+                    break; // full coverage — done fetching deeper fallbacks
+            }
+
+            // Use the finest level that returned any real tiles as the output resolution.
+            // Coarser levels are upscaled into the same buffer to fill gaps.
+            var finestWithCoverage = fetchedLevels
+                .FirstOrDefault(f => f.Tiles.Any(r => r.Bytes is { Length: > placeholderByteThreshold }));
+            if (finestWithCoverage.Tiles is null)
+            {
+                Debug.WriteLine("[Capture] No real tiles at any zoom level");
+                return null;
+            }
+
+            int level = finestWithCoverage.Level;
+            double resolution = finestWithCoverage.Resolution;
+            int outWidth = Math.Max((int)Math.Ceiling(mercWidth / resolution), 1);
+            int outHeight = Math.Max((int)Math.Ceiling(mercHeight / resolution), 1);
+            Console.WriteLine($"[Capture] Output L{level}, resolution {resolution:F4} m/px, {outWidth}x{outHeight}");
+            Console.WriteLine($"[Capture] bbox merc: X[{mercMinX:F2}..{mercMaxX:F2}] Y[{mercMinY:F2}..{mercMaxY:F2}]");
+
+            // Composite all fetched levels into one bitmap. Draw coarsest first so finer
+            // levels overdraw it where they have imagery — "best available per pixel."
+            // Use high-quality sampling so upscaled coarse tiles don't look blocky next to
+            // sharp finer tiles.
             int decoded = 0;
             using var fullBitmap = new SKBitmap(outWidth, outHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
             using (var canvas = new SKCanvas(fullBitmap))
+            using (var samplingPaint = new SKPaint { FilterQuality = SKFilterQuality.High })
             {
                 canvas.Clear(SKColors.Black);
-                foreach (var result in results)
+                foreach (var lvl in fetchedLevels.OrderBy(f => f.Level))
                 {
-                    if (result.Bytes is null || result.Bytes.Length == 0) continue;
-                    using var tileBitmap = SKBitmap.Decode(result.Bytes);
-                    if (tileBitmap is null)
+                    foreach (var result in lvl.Tiles)
                     {
-                        Console.WriteLine($"[Capture] Decode failed for tile ({result.Info.Index.Col},{result.Info.Index.Row}), {result.Bytes.Length} bytes");
-                        continue;
-                    }
-                    decoded++;
+                        if (result.Bytes is null || result.Bytes.Length == 0) continue;
+                        if (result.Bytes.Length <= placeholderByteThreshold) continue;
+                        using var tileBitmap = SKBitmap.Decode(result.Bytes);
+                        if (tileBitmap is null)
+                        {
+                            Console.WriteLine($"[Capture] Decode failed for tile L{lvl.Level} ({result.Info.Index.Col},{result.Info.Index.Row}), {result.Bytes.Length} bytes");
+                            continue;
+                        }
+                        decoded++;
 
-                    var tx = result.Info.Extent;
-                    float dstLeft = (float)((tx.MinX - mercMinX) / resolution);
-                    float dstRight = (float)((tx.MaxX - mercMinX) / resolution);
-                    // Pixel Y is inverted relative to Mercator Y (north is up in world, top is 0 in pixels).
-                    float dstTop = (float)((mercMaxY - tx.MaxY) / resolution);
-                    float dstBottom = (float)((mercMaxY - tx.MinY) / resolution);
-                    canvas.DrawBitmap(tileBitmap, new SKRect(dstLeft, dstTop, dstRight, dstBottom));
+                        var tx = result.Info.Extent;
+                        float dstLeft = (float)((tx.MinX - mercMinX) / resolution);
+                        float dstRight = (float)((tx.MaxX - mercMinX) / resolution);
+                        // Pixel Y is inverted relative to Mercator Y (north is up in world, top is 0 in pixels).
+                        float dstTop = (float)((mercMaxY - tx.MaxY) / resolution);
+                        float dstBottom = (float)((mercMaxY - tx.MinY) / resolution);
+                        canvas.DrawBitmap(tileBitmap, new SKRect(dstLeft, dstTop, dstRight, dstBottom), samplingPaint);
+                    }
                 }
             }
-            Console.WriteLine($"[Capture] Decoded + drawn {decoded}/{results.Length} tiles");
+            int totalFetched = fetchedLevels.Sum(f => f.Tiles.Length);
+            Console.WriteLine($"[Capture] Decoded + drawn {decoded} tiles across {fetchedLevels.Count} level(s) (of {totalFetched} total)");
 
             var tempDir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS_Mapsui");
             Directory.CreateDirectory(tempDir);
@@ -652,25 +713,6 @@ public partial class BoundaryMapDialogPanel : UserControl
             Debug.WriteLine($"[Capture] Tile assembly failed: {ex.Message}");
             return null;
         }
-    }
-
-    private static (int Level, double Resolution)? PickAutoZoom(ITileSchema schema, double mercWidth, double mercHeight, int maxPixels)
-    {
-        var sorted = schema.Resolutions
-            .OrderBy(kvp => kvp.Value.UnitsPerPixel)
-            .ToList();
-        if (sorted.Count == 0) return null;
-
-        foreach (var kvp in sorted)
-        {
-            double w = mercWidth / kvp.Value.UnitsPerPixel;
-            double h = mercHeight / kvp.Value.UnitsPerPixel;
-            if (Math.Max(w, h) <= maxPixels)
-                return (kvp.Key, kvp.Value.UnitsPerPixel);
-        }
-        // bbox is enormous — fall back to the coarsest level so we still produce something.
-        var coarsest = sorted.Last();
-        return (coarsest.Key, coarsest.Value.UnitsPerPixel);
     }
 
     private void ResetState()
