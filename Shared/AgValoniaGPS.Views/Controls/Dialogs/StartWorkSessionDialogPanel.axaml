@@ -284,14 +284,14 @@ Licensed under GNU GPL v3. See LICENSE.md.
                             HorizontalContentAlignment="Center"
                             Margin="6,0,6,0"/>
                     <Button Classes="DialogButton DangerButton"
-                            Content="Delete Selected Job"
+                            Content="Delete Job"
                             Command="{Binding DeleteJobCommand}"
                             CommandParameter="{Binding SelectedJob}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
                             Margin="6,0,6,0"/>
                     <Button Classes="DialogButton SecondaryButton"
-                            Content="Resume Selected Job"
+                            Content="Resume Job"
                             Command="{Binding ResumeJobCommand}"
                             CommandParameter="{Binding SelectedJob}"
                             HorizontalAlignment="Stretch"
