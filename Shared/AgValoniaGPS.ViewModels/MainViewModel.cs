@@ -3800,7 +3800,37 @@ public partial class MainViewModel : ObservableObject
             _boundaryFileService.SaveBoundary(boundary, fieldPath);
             RefreshBoundaryList();
             SetCurrentBoundary(boundary);
-            StatusMessage = "Boundary deleted";
+
+            // If that was the last boundary, drop the field-background image
+            // too — BackPic is georeferenced against the boundary, so leaving
+            // it on disk would float in space the next time the field opens.
+            bool hasOuter = boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid;
+            bool hasInner = boundary.InnerBoundaries.Any(b => b.IsValid);
+            if (!hasOuter && !hasInner)
+            {
+                DeleteBackgroundImage(fieldPath);
+                StatusMessage = "Boundary deleted; background image removed";
+            }
+            else
+            {
+                StatusMessage = "Boundary deleted";
+            }
+        }
+    }
+
+    private void DeleteBackgroundImage(string fieldPath)
+    {
+        try
+        {
+            var backPicPath = Path.Combine(fieldPath, "BackPic.png");
+            var backPicGeoPath = Path.Combine(fieldPath, "BackPic.txt");
+            if (File.Exists(backPicPath)) File.Delete(backPicPath);
+            if (File.Exists(backPicGeoPath)) File.Delete(backPicGeoPath);
+            _mapService.ClearBackground();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug($"[DeleteBackgroundImage] {ex.Message}");
         }
     }
 
