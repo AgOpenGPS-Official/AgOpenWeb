@@ -1309,6 +1309,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         _compositedForWidth = _bitmapWidth;
         _compositedForHeight = _bitmapHeight;
 
+        // Composite is done — the decoded pixel array (up to ~130 MB for a 47 MB PNG)
+        // is no longer needed unless bounds change and we re-composite. Release it so
+        // it doesn't sit in Gen 2 for the lifetime of the field. Re-composite (rare —
+        // only on bounds change) will redecode from disk.
+        _cachedBgPixels = null;
+        _cachedBgPath = null;
+        _cachedBgPixelW = 0;
+        _cachedBgPixelH = 0;
+
         // Sync display bitmap so background shows with proper transparency
         SyncDisplayBitmap();
         SyncSkBitmapFromDisplay();

@@ -27,6 +27,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
+using BruTile;
 using BruTile.Predefined;
 using BruTile.Web;
 using Mapsui;
@@ -37,9 +38,9 @@ using Mapsui.Projections;
 using Mapsui.Styles;
 using Mapsui.Tiling.Layers;
 using Mapsui.UI.Avalonia;
-using Mapsui.Rendering.Skia;
 using NetTopologySuite.Geometries;
 using NtsPoint = NetTopologySuite.Geometries.Point;
+using SkiaSharp;
 
 namespace AgValoniaGPS.Views.Controls.Dialogs;
 
@@ -92,10 +93,13 @@ public partial class BoundaryMapDialogPanel : UserControl
         // This ensures all layers use consistent coordinate system
         map.CRS = "EPSG:3857";
 
-        // Bing Maps aerial imagery via Virtual Earth tile servers
+        // Bing Maps aerial imagery via Virtual Earth tile servers.
+        // Schema bumped to L20 (default tops out at L19); Bing serves L20 across
+        // most populated regions and the imagery is generally sharper than Esri
+        // in agricultural areas.
         var bingSatelliteUrl = "https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587";
         var bingTileSource = new HttpTileSource(
-            new GlobalSphericalMercator(),
+            new GlobalSphericalMercator(YAxis.OSM, 0, 20),
             bingSatelliteUrl,
             name: "Bing Satellite");
         map.Layers.Add(new TileLayer(bingTileSource) { Name = "Satellite" });
@@ -533,86 +537,171 @@ public partial class BoundaryMapDialogPanel : UserControl
     {
         try
         {
-            // Get current viewport - this defines what area to capture
-            var viewport = MapControl.Map.Navigator.Viewport;
+            if (_boundaryPoints.Count < 3) return null;
 
-            // Compute Mercator bounds from viewport center and resolution
-            double halfWidthMeters = (viewport.Width / 2.0) * viewport.Resolution;
-            double halfHeightMeters = (viewport.Height / 2.0) * viewport.Resolution;
-            double mercMinX = viewport.CenterX - halfWidthMeters;
-            double mercMaxX = viewport.CenterX + halfWidthMeters;
-            double mercMinY = viewport.CenterY - halfHeightMeters;
-            double mercMaxY = viewport.CenterY + halfHeightMeters;
+            var tileLayer = MapControl.Map.Layers.FirstOrDefault(l => l.Name == "Satellite") as TileLayer;
+            if (tileLayer?.TileSource is not HttpTileSource tileSource)
+            {
+                Debug.WriteLine("[Capture] Satellite tile source not available");
+                return null;
+            }
+            var schema = tileSource.Schema;
 
-            // Convert extent corners to WGS84
-            var nw = SphericalMercator.ToLonLat(mercMinX, mercMaxY);  // NW = west X, north Y
-            var se = SphericalMercator.ToLonLat(mercMaxX, mercMinY);  // SE = east X, south Y
+            // Boundary bbox in WGS84, padded 10% (min 20 m on each side).
+            double minLat = _boundaryPoints.Min(p => p.Lat);
+            double maxLat = _boundaryPoints.Max(p => p.Lat);
+            double minLon = _boundaryPoints.Min(p => p.Lon);
+            double maxLon = _boundaryPoints.Max(p => p.Lon);
+            double midLat = (minLat + maxLat) / 2.0;
+            double latPad = Math.Max((maxLat - minLat) * 0.1, 20.0 / 111000.0);
+            double lonPad = Math.Max((maxLon - minLon) * 0.1, 20.0 / (111000.0 * Math.Cos(midLat * Math.PI / 180.0)));
+            minLat -= latPad; maxLat += latPad;
+            minLon -= lonPad; maxLon += lonPad;
 
-            // Export the map to a bitmap
+            var minMerc = SphericalMercator.FromLonLat(minLon, minLat);
+            var maxMerc = SphericalMercator.FromLonLat(maxLon, maxLat);
+            double mercMinX = minMerc.x;
+            double mercMinY = minMerc.y;
+            double mercMaxX = maxMerc.x;
+            double mercMaxY = maxMerc.y;
+            double mercWidth = mercMaxX - mercMinX;
+            double mercHeight = mercMaxY - mercMinY;
+
+            // Pixel cap is a memory ceiling, not a quality target — 10000 px on the
+            // long edge keeps the worst-case raw RGBA buffer around 400 MB.
+            const int maxPixels = 10000;
+
+            var extent = new Extent(mercMinX, mercMinY, mercMaxX, mercMaxY);
+
+            // Tile providers (Esri included) return small "data not available" placeholders
+            // outside their actual imagery footprint. Detect placeholders by size and fall
+            // back to the next-lower zoom level — real aerial tiles are typically >5 KB,
+            // placeholders are ~2-3 KB.
+            const int placeholderByteThreshold = 4000;
+
+            using var httpClient = new System.Net.Http.HttpClient();
+            httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (compatible; AgValoniaGPS/1.0)");
+            httpClient.Timeout = TimeSpan.FromSeconds(20);
+
+            // Candidate levels, finest first, that fit within the pixel cap.
+            var candidateLevels = schema.Resolutions
+                .OrderBy(kvp => kvp.Value.UnitsPerPixel)
+                .Where(kvp =>
+                {
+                    double w = mercWidth / kvp.Value.UnitsPerPixel;
+                    double h = mercHeight / kvp.Value.UnitsPerPixel;
+                    return Math.Max(w, h) <= maxPixels;
+                })
+                .ToList();
+            if (candidateLevels.Count == 0)
+            {
+                // bbox is enormous — fall back to the coarsest level so we still produce something.
+                var coarsest = schema.Resolutions.OrderByDescending(kvp => kvp.Value.UnitsPerPixel).First();
+                candidateLevels.Add(coarsest);
+            }
+
+            // Walk finest → coarsest, fetching tiles at each level. Stop when a level
+            // gives 100% real coverage — that level acts as the gap-filler beneath
+            // any partially-covered finer levels already fetched.
+            var fetchedLevels = new List<(int Level, double Resolution, (TileInfo Info, byte[]? Bytes)[] Tiles)>();
+
+            foreach (var kvp in candidateLevels)
+            {
+                var tileInfos = schema.GetTileInfos(extent, kvp.Key).ToList();
+                if (tileInfos.Count == 0) continue;
+
+                Console.WriteLine($"[Capture] Fetching L{kvp.Key} ({kvp.Value.UnitsPerPixel:F3} m/px, {tileInfos.Count} tiles)");
+
+                var fetchTasks = tileInfos.Select<TileInfo, Task<(TileInfo Info, byte[]? Bytes)>>(async ti =>
+                {
+                    try
+                    {
+                        var bytes = await tileSource.GetTileAsync(httpClient, ti);
+                        return (ti, bytes);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Capture] Tile fetch failed ({ti.Index.Col},{ti.Index.Row},{ti.Index.Level}): {ex.Message}");
+                        return (ti, null);
+                    }
+                });
+                var attempt = await Task.WhenAll(fetchTasks);
+
+                int realCount = attempt.Count(r => r.Bytes is { Length: > placeholderByteThreshold });
+                Console.WriteLine($"[Capture] L{kvp.Key}: {realCount}/{attempt.Length} real tiles");
+
+                fetchedLevels.Add((kvp.Key, kvp.Value.UnitsPerPixel, attempt));
+
+                if (realCount == attempt.Length)
+                    break; // full coverage — done fetching deeper fallbacks
+            }
+
+            // Use the finest level that returned any real tiles as the output resolution.
+            // Coarser levels are upscaled into the same buffer to fill gaps.
+            var finestWithCoverage = fetchedLevels
+                .FirstOrDefault(f => f.Tiles.Any(r => r.Bytes is { Length: > placeholderByteThreshold }));
+            if (finestWithCoverage.Tiles is null)
+            {
+                Debug.WriteLine("[Capture] No real tiles at any zoom level");
+                return null;
+            }
+
+            int level = finestWithCoverage.Level;
+            double resolution = finestWithCoverage.Resolution;
+            int outWidth = Math.Max((int)Math.Ceiling(mercWidth / resolution), 1);
+            int outHeight = Math.Max((int)Math.Ceiling(mercHeight / resolution), 1);
+            Console.WriteLine($"[Capture] Output L{level}, resolution {resolution:F4} m/px, {outWidth}x{outHeight}");
+            Console.WriteLine($"[Capture] bbox merc: X[{mercMinX:F2}..{mercMaxX:F2}] Y[{mercMinY:F2}..{mercMaxY:F2}]");
+
+            // Composite all fetched levels into one bitmap. Draw coarsest first so finer
+            // levels overdraw it where they have imagery — "best available per pixel."
+            // Use high-quality sampling so upscaled coarse tiles don't look blocky next to
+            // sharp finer tiles.
+            int decoded = 0;
+            using var fullBitmap = new SKBitmap(outWidth, outHeight, SKColorType.Rgba8888, SKAlphaType.Opaque);
+            using (var canvas = new SKCanvas(fullBitmap))
+            using (var samplingPaint = new SKPaint { FilterQuality = SKFilterQuality.High })
+            {
+                canvas.Clear(SKColors.Black);
+                foreach (var lvl in fetchedLevels.OrderBy(f => f.Level))
+                {
+                    foreach (var result in lvl.Tiles)
+                    {
+                        if (result.Bytes is null || result.Bytes.Length == 0) continue;
+                        if (result.Bytes.Length <= placeholderByteThreshold) continue;
+                        using var tileBitmap = SKBitmap.Decode(result.Bytes);
+                        if (tileBitmap is null)
+                        {
+                            Console.WriteLine($"[Capture] Decode failed for tile L{lvl.Level} ({result.Info.Index.Col},{result.Info.Index.Row}), {result.Bytes.Length} bytes");
+                            continue;
+                        }
+                        decoded++;
+
+                        var tx = result.Info.Extent;
+                        float dstLeft = (float)((tx.MinX - mercMinX) / resolution);
+                        float dstRight = (float)((tx.MaxX - mercMinX) / resolution);
+                        // Pixel Y is inverted relative to Mercator Y (north is up in world, top is 0 in pixels).
+                        float dstTop = (float)((mercMaxY - tx.MaxY) / resolution);
+                        float dstBottom = (float)((mercMaxY - tx.MinY) / resolution);
+                        canvas.DrawBitmap(tileBitmap, new SKRect(dstLeft, dstTop, dstRight, dstBottom), samplingPaint);
+                    }
+                }
+            }
+            int totalFetched = fetchedLevels.Sum(f => f.Tiles.Length);
+            Console.WriteLine($"[Capture] Decoded + drawn {decoded} tiles across {fetchedLevels.Count} level(s) (of {totalFetched} total)");
+
             var tempDir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS_Mapsui");
             Directory.CreateDirectory(tempDir);
             var savedBackgroundPath = Path.Combine(tempDir, "BackPic.png");
-
-            // Hide drawing and reference layers before capture
-            if (_pointsLayer != null) _pointsLayer.Enabled = false;
-            if (_polygonLayer != null) _polygonLayer.Enabled = false;
-            if (_existingBoundaryLayer != null) _existingBoundaryLayer.Enabled = false;
-            if (_tractorLayer != null) _tractorLayer.Enabled = false;
-            MapControl.Refresh();
-
-            // Wait for tile layer to finish loading
-            var tileLayer = MapControl.Map.Layers.FirstOrDefault(l => l.Name == "Satellite") as TileLayer;
-            if (tileLayer != null)
+            using (var data = fullBitmap.Encode(SKEncodedImageFormat.Png, 100))
+            using (var fileStream = File.Create(savedBackgroundPath))
             {
-                // Wait for tiles to load (max 10 seconds)
-                int waitCount = 0;
-                while (tileLayer.Busy && waitCount < 100)
-                {
-                    await Task.Delay(100);
-                    waitCount++;
-                }
+                data.SaveTo(fileStream);
             }
 
-            // Small additional delay for rendering to complete
-            await Task.Delay(200);
+            var nw = SphericalMercator.ToLonLat(mercMinX, mercMaxY);
+            var se = SphericalMercator.ToLonLat(mercMaxX, mercMinY);
 
-            // Get the actual pixel size accounting for DPI scaling
-            var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-
-            // Use Mapsui's MapRenderer to render directly - this ensures correct coordinate alignment
-            // because it uses Mapsui's internal rendering pipeline, not Avalonia's
-            var map = MapControl.Map;
-            var renderer = new MapRenderer();
-
-            using var bitmapStream = renderer.RenderToBitmapStream(map, pixelDensity: (float)scaling);
-
-            if (bitmapStream != null && bitmapStream.Length > 0)
-            {
-                bitmapStream.Position = 0;
-                using var fileStream = File.Create(savedBackgroundPath);
-                bitmapStream.CopyTo(fileStream);
-            }
-            else
-            {
-                Debug.WriteLine("[Capture] MapRenderer returned null/empty - falling back to RenderTargetBitmap");
-                // Fallback to Avalonia rendering if MapRenderer fails
-                var pixelWidth = (int)(viewport.Width * scaling);
-                var pixelHeight = (int)(viewport.Height * scaling);
-                var pixelSize = new PixelSize(pixelWidth, pixelHeight);
-                var dpi = new Vector(96 * scaling, 96 * scaling);
-                var renderTarget = new RenderTargetBitmap(pixelSize, dpi);
-                renderTarget.Render(MapControl);
-                renderTarget.Save(savedBackgroundPath);
-            }
-
-            // Re-enable drawing and reference layers
-            if (_pointsLayer != null) _pointsLayer.Enabled = true;
-            if (_polygonLayer != null) _polygonLayer.Enabled = true;
-            if (_existingBoundaryLayer != null) _existingBoundaryLayer.Enabled = true;
-            if (_tractorLayer != null) _tractorLayer.Enabled = true;
-            MapControl.Refresh();
-
-            // Create geo-reference file content (includes Mercator bounds)
             var geoPath = Path.Combine(tempDir, "BackPic.txt");
             var geoContent = $"$BackPic\ntrue\n{nw.lat.ToString(CultureInfo.InvariantCulture)}\n{nw.lon.ToString(CultureInfo.InvariantCulture)}\n{se.lat.ToString(CultureInfo.InvariantCulture)}\n{se.lon.ToString(CultureInfo.InvariantCulture)}\n{mercMinX.ToString(CultureInfo.InvariantCulture)}\n{mercMaxX.ToString(CultureInfo.InvariantCulture)}\n{mercMinY.ToString(CultureInfo.InvariantCulture)}\n{mercMaxY.ToString(CultureInfo.InvariantCulture)}";
             File.WriteAllText(geoPath, geoContent);
@@ -621,15 +710,7 @@ public partial class BoundaryMapDialogPanel : UserControl
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Error capturing background: {ex.Message}");
-
-            // Re-enable drawing and reference layers on error
-            if (_pointsLayer != null) _pointsLayer.Enabled = true;
-            if (_polygonLayer != null) _polygonLayer.Enabled = true;
-            if (_existingBoundaryLayer != null) _existingBoundaryLayer.Enabled = true;
-            if (_tractorLayer != null) _tractorLayer.Enabled = true;
-            MapControl.Refresh();
-
+            Debug.WriteLine($"[Capture] Tile assembly failed: {ex.Message}");
             return null;
         }
     }
