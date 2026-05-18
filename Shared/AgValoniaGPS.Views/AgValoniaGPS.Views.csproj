@@ -20,6 +20,9 @@
     <PackageReference Include="Mapsui.Rendering.Skia" Version="5.0.2" />
     <PackageReference Include="Mapsui.Tiling" Version="5.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <!-- SPIKE: Silk.NET.OpenGLES for cross-platform 3D rendering through ANGLE on
+         platforms without native GLES (Windows, macOS, iOS) and native GLES on Android. -->
+    <PackageReference Include="Silk.NET.OpenGLES" Version="2.23.0" />
   </ItemGroup>
 
   <!-- Project references -->

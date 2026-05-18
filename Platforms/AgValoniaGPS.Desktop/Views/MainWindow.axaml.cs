@@ -390,6 +390,11 @@ public partial class MainWindow : Window
                 MapControl?.Toggle3DMode();
                 e.Handled = true;
                 return;
+            case Key.F8:
+                // SPIKE: open Silk.NET + Avalonia OpenGL test window.
+                new GlSpikeWindow().Show();
+                e.Handled = true;
+                return;
             case Key.PageUp:
                 MapControl?.SetPitch(0.05);
                 e.Handled = true;
