@@ -61,6 +61,19 @@ public class MapService : IMapService
         if (_lastActiveTrack != null) glMapControl.SetActiveTrack(_lastActiveTrack);
         if (_lastBaseTrack != null) glMapControl.SetBaseTrack(_lastBaseTrack);
         if (_lastNextTrack != null) glMapControl.SetNextTrack(_lastNextTrack);
+        glMapControl.SetCameraPitchDegrees(_lastPitchDegrees);
+        glMapControl.SetCameraZoom(_zoomLevel);
+    }
+
+    /// <summary>
+    /// Phase-3 hook: push the current MainViewModel.CameraPitch (degrees,
+    /// -90 = overhead) to the GL renderer. Cached so the value is replayed
+    /// on register if MainViewModel updates it before the view binds.
+    /// </summary>
+    public void SetCameraPitchDegrees(double pitchDegrees)
+    {
+        _lastPitchDegrees = pitchDegrees;
+        _glMapControl?.SetCameraPitchDegrees(pitchDegrees);
     }
 
     // Cached snapshots of low-frequency pushes for replay when GL registers late.
@@ -68,6 +81,7 @@ public class MapService : IMapService
     private IReadOnlyList<Vec3>? _lastHeadlandLine;
     private bool _lastHeadlandVisible;
     private AgValoniaGPS.Models.Track.Track? _lastActiveTrack, _lastBaseTrack, _lastNextTrack;
+    private double _lastPitchDegrees = -60.0;
 
     public bool Is3DMode => _mapControl?.Is3DMode ?? _is3DMode;
     public double Pitch => _pitch;
@@ -122,6 +136,7 @@ public class MapService : IMapService
     {
         _zoomLevel *= factor;
         _mapControl?.Zoom(factor);
+        _glMapControl?.SetCameraZoom(_zoomLevel);
     }
 
     public void Rotate(double deltaRadians)

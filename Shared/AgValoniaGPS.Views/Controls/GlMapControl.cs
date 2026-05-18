@@ -59,6 +59,18 @@ public class GlMapControl : OpenGlControlBase
 
     public void SetHeadlandVisible(bool visible) => _isHeadlandVisible = visible;
 
+    /// <summary>
+    /// Camera pitch in degrees. -90 = looking straight down (matches 2D look),
+    /// -10 = nearly horizontal. Values outside [-90, -10] are clamped.
+    /// </summary>
+    public void SetCameraPitchDegrees(double degrees) => _pitchDegrees = Math.Clamp(degrees, -90.0, -10.0);
+
+    /// <summary>
+    /// Camera zoom level. 1.0 is the spike's reference distance (~80m above
+    /// target); higher values move closer, lower values pull back.
+    /// </summary>
+    public void SetCameraZoom(double zoomLevel) => _zoomLevel = Math.Max(0.05, zoomLevel);
+
     public void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady)
@@ -96,6 +108,18 @@ public class GlMapControl : OpenGlControlBase
     private double _vehicleX, _vehicleY, _vehicleHeading;
     private double _toolX, _toolY, _toolHeading, _toolWidth, _hitchX, _hitchY;
     private bool _toolReady, _hasVehicle, _toolDirty;
+
+    // Camera state — pitch in degrees (-90 overhead .. -10 near-horizon),
+    // zoom multiplier (1.0 = reference distance, higher = closer in).
+    private double _pitchDegrees = -60.0;
+    private double _zoomLevel = 1.0;
+    // Heading-up vs north-up. AOG default for the 3D view is heading-up
+    // (world rotates with the vehicle heading; vehicle stays pointing up).
+    // North-up is the legacy 2D fallback. Toggleable in Phase 3b.
+    private bool _followHeading = true;
+    // Manual pan offset applied between world-translate and view rotation —
+    // wired to gesture/mouse pan in a later phase. Defaults to 0.
+    private float _panX, _panY;
 
     // GPU buffers — one VAO/VBO per geometry stream. Each stream's vertex count
     // is the number of GL_LINES vertices uploaded (2 per line segment).
@@ -197,17 +221,23 @@ void main() { out_color = u_color; }
         gl.ClearColor(0.13f, 0.20f, 0.13f, 1f); // dark green field background
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
 
-        // Camera tracks vehicle (Phase 2). Phase 3 will replace this with a
-        // proper map-centric camera that the user can pan/zoom/rotate
-        // independently of vehicle motion (see project_map_centric memory).
-        // Eye 50m south of target, 80m up, looking at the target. World axes:
-        // X east, Y north, Z up. Fallback to boundary center then origin when
-        // no GPS fix yet so the scene is at least framed on loaded data.
+        // AOG camera model (ported from AgOpenGPS Camera.cs:41-54).
+        // Effective vertex pipeline for world geometry (read top-to-bottom):
+        //   v * T(-lookAt) * R_z(+heading)? * T(panX, panY) * R_x(aogPitch) * T(0,0,-dist)
+        // - T(-lookAt) puts the vehicle pivot at the GL origin.
+        // - R_z(+heading) (heading-up only) rotates the world so the vehicle's
+        //   heading direction is up on screen. Vehicle marker counter-rotates
+        //   by R_z(-heading) to stay upright.
+        // - T(pan) lets the user offset the camera independently.
+        // - R_x(aogPitch) tilts the world; 0 = overhead, -65 = AOG 3D default.
+        // - T(0,0,-dist) moves the camera back along Z.
+        //
+        // MainViewModel.CameraPitch uses -90 = overhead, -10 = horizon; AOG's
+        // PitchInDegrees uses 0 = overhead, -65 = tilted. Convert with
+        //   aogPitch = -(_pitchDegrees + 90)
+        // so MainVM -90 -> 0, -60 -> -30, -25 -> -65.
         float vx, vy;
-        if (_hasVehicle)
-        {
-            vx = (float)_vehicleX; vy = (float)_vehicleY;
-        }
+        if (_hasVehicle) { vx = (float)_vehicleX; vy = (float)_vehicleY; }
         else if (_boundary?.OuterBoundary?.Points is { Count: > 0 } b)
         {
             double sumE = 0, sumN = 0;
@@ -215,15 +245,26 @@ void main() { out_color = u_color; }
             vx = (float)(sumE / b.Count); vy = (float)(sumN / b.Count);
         }
         else { vx = 0; vy = 0; }
-        var view = Matrix4x4.CreateLookAt(
-            new Vector3(vx, vy - 50f, 80f),
-            new Vector3(vx, vy, 0f),
-            new Vector3(0f, 0f, 1f));
+
+        float aogPitchRad = MathF.PI * (-(float)_pitchDegrees - 90f) / 180f;
+        float distance = 80f / MathF.Max(0.05f, (float)_zoomLevel);
+        float headingRad = (float)_vehicleHeading;
+
+        var t1 = Matrix4x4.CreateTranslation(-vx, -vy, 0);
+        var rZ = _followHeading ? Matrix4x4.CreateRotationZ(headingRad) : Matrix4x4.Identity;
+        var pan = Matrix4x4.CreateTranslation(_panX, _panY, 0);
+        var rX = Matrix4x4.CreateRotationX(aogPitchRad);
+        var tBack = Matrix4x4.CreateTranslation(0, 0, -distance);
+        var view = t1 * rZ * pan * rX * tBack;
         var proj = Matrix4x4.CreatePerspectiveFieldOfView(
             MathF.PI * 50f / 180f,
             viewportW / (float)viewportH,
-            1f, 5000f);
+            0.1f, 5000f);
         var mvp = view * proj;
+
+        // For diagnostic compatibility: dummy eye/target retained.
+        var eye = new Vector3(vx, vy, distance);
+        var target = new Vector3(vx, vy, 0f);
 
         gl.UseProgram(_program);
         SetMvp(gl, mvp);
@@ -317,8 +358,28 @@ void main() { out_color = u_color; }
             Console.WriteLine($"[GlMap] Viewport={viewportW}x{viewportH} scaling={scaling:F2}");
         }
 
+        // Diagnostic for Phase-3: log camera state and vehicle position once
+        // per second so we can see whether forward motion is actually moving
+        // the camera (vy should change) or whether something else is happening.
+        _diagFrames++;
+        if (_diagFrames >= 30)
+        {
+            _diagFrames = 0;
+            // Project vehicle world (vx,vy,0.6) through MVP to NDC so we can
+            // tell whether the marker is actually centered on screen.
+            var vehWorld = new Vector4(vx, vy, 0.6f, 1f);
+            var clip = Vector4.Transform(vehWorld, mvp);
+            float ndcX = clip.W != 0 ? clip.X / clip.W : 0;
+            float ndcY = clip.W != 0 ? clip.Y / clip.W : 0;
+            float scrX = (ndcX + 1f) * 0.5f * viewportW;
+            float scrY = (1f - ndcY) * 0.5f * viewportH;
+            Console.WriteLine($"[GlMap] vp={viewportW}x{viewportH} pitch={_pitchDegrees:F1} zoom={_zoomLevel:F2} dist={distance:F1} eye=({eye.X:F1},{eye.Y:F1},{eye.Z:F1}) tgt=({target.X:F1},{target.Y:F1}) veh=({vx:F2},{vy:F2}) vehScrPx=({scrX:F0},{scrY:F0}) hasVeh={_hasVehicle}");
+        }
+
         RequestNextFrameRendering();
     }
+
+    private int _diagFrames;
 
     // ----- Geometry rebuild ------------------------------------------------------
 
