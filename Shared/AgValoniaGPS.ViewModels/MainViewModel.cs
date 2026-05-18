@@ -2196,6 +2196,8 @@ public partial class MainViewModel : ObservableObject
     public ICommand? CloseAppSettingsDialogCommand { get; private set; }
     public ICommand? ShowAboutDialogCommand { get; private set; }
     public ICommand? CloseAboutDialogCommand { get; private set; }
+    public ICommand? ShowGlSpikeCommand { get; private set; }
+    public ICommand? CloseGlSpikeCommand { get; private set; }
     public ICommand? ResetAllSettingsCommand { get; private set; }
 
     private ObservableCollection<AppDirectoryInfo> _appDirectories = new();

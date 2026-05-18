@@ -391,8 +391,8 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             case Key.F8:
-                // SPIKE: open Silk.NET + Avalonia OpenGL test window.
-                new GlSpikeWindow().Show();
+                // SPIKE: open the cross-platform Silk.NET + OpenGL overlay.
+                ViewModel?.ShowGlSpikeCommand?.Execute(null);
                 e.Handled = true;
                 return;
             case Key.PageUp:

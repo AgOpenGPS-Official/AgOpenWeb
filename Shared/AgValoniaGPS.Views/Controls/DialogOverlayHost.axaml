@@ -75,6 +75,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Wizards -->
         <wizards:WizardDialogPanel DataContext="{Binding SteerWizardViewModel}"/>
 
+        <!-- SPIKE: cross-platform GL evaluation overlay -->
+        <dialogs:GlSpikePanel/>
+
         <!-- Busy Overlay - shows during file operations -->
         <Border IsVisible="{Binding State.UI.IsBusy}"
                 Background="#80000000"

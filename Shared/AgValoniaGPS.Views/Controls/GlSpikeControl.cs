@@ -78,22 +78,31 @@ void main() { out_color = u_color; }
         };
         (_groundVao, _groundVbo) = BuildVao(_gl, groundVerts);
 
-        // Boundary outline — 60m × 40m rectangle, slightly above the ground.
+        // Boundary outline — 60m × 40m rectangle. Lifted to z=0.5 so the depth
+        // buffer at far=1000/near=1 has enough precision to keep horizontal
+        // segments visibly above the ground (previously z=0.05 was z-fighting
+        // and horizontal lines were losing the test on Apple GL).
+        // Drawn as 4 explicit LINES (8 vertices) — LINE_LOOP is also flaky on
+        // some drivers, plain LINES is the most portable primitive.
+        // 20m × 15m, shifted so the whole rect sits within the camera frustum.
+        // All edges traversed LEFT→RIGHT or BOTTOM→TOP (consistent winding).
+        // Mixing directions revealed an Apple GL driver quirk on M4 where
+        // right-to-left horizontal lines weren't rasterizing.
         float[] boundaryVerts =
         {
-            -30f, -20f, 0.05f,
-            +30f, -20f, 0.05f,
-            +30f, +20f, 0.05f,
-            -30f, +20f, 0.05f,
+            -10f, +20f, 0.5f,   +10f, +20f, 0.5f, // top    (W → E)
+            +10f,  +5f, 0.5f,   +10f, +20f, 0.5f, // right  (S → N)
+            -10f,  +5f, 0.5f,   +10f,  +5f, 0.5f, // bottom (W → E)
+            -10f,  +5f, 0.5f,   -10f, +20f, 0.5f, // left   (S → N)
         };
         (_boundaryVao, _boundaryVbo) = BuildVao(_gl, boundaryVerts);
         _boundaryVertexCount = boundaryVerts.Length / 3;
 
-        // Vehicle marker — small cross at origin.
+        // Vehicle marker — small cross at origin, raised above the boundary.
         float[] vehicleVerts =
         {
-            -3f, 0f, 0.1f,   +3f, 0f, 0.1f,
-            0f, -3f, 0.1f,   0f, +3f, 0.1f,
+            -3f, 0f, 1.0f,   +3f, 0f, 1.0f,
+            0f, -3f, 1.0f,   0f, +3f, 1.0f,
         };
         (_vehicleVao, _vehicleVbo) = BuildVao(_gl, vehicleVerts);
     }
@@ -146,17 +155,27 @@ void main() { out_color = u_color; }
         gl.BindVertexArray(_groundVao);
         gl.DrawArrays(GLEnum.Triangles, 0, 6);
 
+        gl.LineWidth(1f);
+
+        // Draw line overlays (boundary, vehicle, tracks, headland, etc.) with
+        // depth test disabled — they're a 2.5D-map "on top of the ground"
+        // layer, not real 3D geometry that should occlude. Skipping depth test
+        // also sidesteps Apple GL's aggressive depth quantization at far
+        // distances, which was hiding the boundary's south edge against the
+        // ground plane.
+        gl.Disable(EnableCap.DepthTest);
+
         // Boundary outline (yellow)
         SetColor(gl, 1.0f, 0.85f, 0.20f, 1f);
-        gl.LineWidth(3f);
         gl.BindVertexArray(_boundaryVao);
-        gl.DrawArrays(GLEnum.LineLoop, 0, (uint)_boundaryVertexCount);
+        gl.DrawArrays(GLEnum.Lines, 0, (uint)_boundaryVertexCount);
 
         // Vehicle cross (red)
         SetColor(gl, 1.0f, 0.30f, 0.30f, 1f);
-        gl.LineWidth(4f);
         gl.BindVertexArray(_vehicleVao);
         gl.DrawArrays(GLEnum.Lines, 0, 4);
+
+        gl.Enable(EnableCap.DepthTest);
 
         if (!_logged)
         {
@@ -173,13 +192,13 @@ void main() { out_color = u_color; }
 
     private unsafe void SetMvp(GL gl, Matrix4x4 m)
     {
-        // System.Numerics stores matrices in row-major order with row-vector
-        // semantics (world * view * proj). GLSL uses column-vector semantics
-        // (proj * view * pos), but the equivalent matrix is the transpose of
-        // the Numerics row-vector matrix. When GL is told transpose=false and
-        // reads our row-major bytes as column-major, that REINTERPRETATION
-        // already produces the transpose for us — no manual transpose needed.
-        gl.UniformMatrix4(_uniformMvp, 1, false, (float*)&m);
+        // Numerics stores matrices in row-major order. Tell GL to transpose
+        // on upload so the column-major shader matrix matches. This is the
+        // spec-compliant path and (unlike relying on byte-reinterpretation
+        // with transpose=false) renders identically on macOS-GL-4.1 and
+        // Android-GLES-3.0 — the Silk.NET bool marshaling for transpose=false
+        // was producing different results on the two platforms.
+        gl.UniformMatrix4(_uniformMvp, 1, true, (float*)&m);
     }
 
     private void SetColor(GL gl, float r, float g, float b, float a)

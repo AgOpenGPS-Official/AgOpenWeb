@@ -101,6 +101,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     </StackPanel>
                 </Button>
 
+                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
+
+                <!-- SPIKE: open Silk.NET + Avalonia OpenGL test scene. Cross-platform. -->
+                <Button Classes="VSButton" Margin="2" ClickMode="Press"
+                        Content="GL Spike"
+                        Command="{Binding ShowGlSpikeCommand}"
+                        ToolTip.Tip="Open the Silk.NET + OpenGL evaluation scene."/>
+
             </StackPanel>
         </controls:FloatingPanel.PanelContent>
     </controls:FloatingPanel>
