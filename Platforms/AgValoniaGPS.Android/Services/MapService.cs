@@ -29,6 +29,11 @@ namespace AgValoniaGPS.Android.Services;
 public class MapService : IMapService
 {
     private ISharedMapControl? _mapControl;
+    // Phase-2 GL renderer, registered alongside the 2D map and fed the same
+    // boundary / track / headland / vehicle data so the 3D toggle shows the
+    // same field. Camera and coverage paths still flow only through the 2D
+    // control until those phases land.
+    private GlMapControl? _glMapControl;
     private bool _is3DMode;
     private double _pitch;
     private double _zoomLevel = 1.0;
@@ -42,6 +47,27 @@ public class MapService : IMapService
     {
         _mapControl = mapControl;
     }
+
+    public void RegisterGlMapControl(GlMapControl glMapControl)
+    {
+        _glMapControl = glMapControl;
+        // MainViewModel is constructed before MainView on iOS/Android, so the
+        // initial field open and headland load fire SetBoundary / SetActiveTrack
+        // etc. before this register call. Replay cached values so the GL view
+        // matches the 2D view when 3D mode is toggled.
+        if (_lastBoundary != null) glMapControl.SetBoundary(_lastBoundary);
+        if (_lastHeadlandLine != null) glMapControl.SetHeadlandLine(_lastHeadlandLine);
+        glMapControl.SetHeadlandVisible(_lastHeadlandVisible);
+        if (_lastActiveTrack != null) glMapControl.SetActiveTrack(_lastActiveTrack);
+        if (_lastBaseTrack != null) glMapControl.SetBaseTrack(_lastBaseTrack);
+        if (_lastNextTrack != null) glMapControl.SetNextTrack(_lastNextTrack);
+    }
+
+    // Cached snapshots of low-frequency pushes for replay when GL registers late.
+    private Boundary? _lastBoundary;
+    private IReadOnlyList<Vec3>? _lastHeadlandLine;
+    private bool _lastHeadlandVisible;
+    private AgValoniaGPS.Models.Track.Track? _lastActiveTrack, _lastBaseTrack, _lastNextTrack;
 
     public bool Is3DMode => _mapControl?.Is3DMode ?? _is3DMode;
     public double Pitch => _pitch;
@@ -139,7 +165,9 @@ public class MapService : IMapService
 
     public void SetBoundary(Boundary? boundary)
     {
+        _lastBoundary = boundary;
         _mapControl?.SetBoundary(boundary);
+        _glMapControl?.SetBoundary(boundary);
     }
 
     public void SetVehiclePosition(double easting, double northing, double headingRadians)
@@ -157,6 +185,8 @@ public class MapService : IMapService
         double hitchX, double hitchY, bool toolReady)
     {
         _mapControl?.SetAllPositions(vehicleX, vehicleY, vehicleHeading,
+            toolX, toolY, toolHeading, toolWidth, hitchX, hitchY, toolReady);
+        _glMapControl?.SetAllPositions(vehicleX, vehicleY, vehicleHeading,
             toolX, toolY, toolHeading, toolWidth, hitchX, hitchY, toolReady);
     }
 
@@ -214,7 +244,9 @@ public class MapService : IMapService
     // Headland visualization
     public void SetHeadlandLine(IReadOnlyList<Vec3>? headlandPoints)
     {
+        _lastHeadlandLine = headlandPoints;
         _mapControl?.SetHeadlandLine(headlandPoints);
+        _glMapControl?.SetHeadlandLine(headlandPoints);
     }
 
     public void SetHeadlandPreview(IReadOnlyList<Vec2>? previewPoints)
@@ -224,7 +256,9 @@ public class MapService : IMapService
 
     public void SetHeadlandVisible(bool visible)
     {
+        _lastHeadlandVisible = visible;
         _mapControl?.SetHeadlandVisible(visible);
+        _glMapControl?.SetHeadlandVisible(visible);
     }
 
     // YouTurn path visualization
@@ -250,7 +284,9 @@ public class MapService : IMapService
     // Track visualization for U-turns
     public void SetNextTrack(AgValoniaGPS.Models.Track.Track? track)
     {
+        _lastNextTrack = track;
         _mapControl?.SetNextTrack(track);
+        _glMapControl?.SetNextTrack(track);
     }
 
     public void SetIsInYouTurn(bool isInTurn)
@@ -261,12 +297,16 @@ public class MapService : IMapService
     // Active Track for guidance
     public void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track)
     {
+        _lastActiveTrack = track;
         _mapControl?.SetActiveTrack(track);
+        _glMapControl?.SetActiveTrack(track);
     }
 
     public void SetBaseTrack(AgValoniaGPS.Models.Track.Track? track)
     {
+        _lastBaseTrack = track;
         _mapControl?.SetBaseTrack(track);
+        _glMapControl?.SetBaseTrack(track);
     }
 
     // Recorded path / contour strip visualization

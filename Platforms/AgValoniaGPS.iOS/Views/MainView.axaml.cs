@@ -39,6 +39,7 @@ namespace AgValoniaGPS.iOS.Views;
 public partial class MainView : UserControl
 {
     private DrawingContextMapControl? _mapControl;
+    private GlMapControl? _glMapControl;
     private MainViewModel? _viewModel;
 
     // Panels are now anchored (no position save/restore needed)
@@ -51,6 +52,7 @@ public partial class MainView : UserControl
 
         // Get reference to map control
         _mapControl = this.FindControl<DrawingContextMapControl>("MapControl");
+        _glMapControl = this.FindControl<GlMapControl>("GlMapControl");
 
         // Wire up chart panel drag events
         WireChartPanelDrag("SteerChartPanel");
@@ -111,6 +113,8 @@ public partial class MainView : UserControl
         if (_mapControl != null)
         {
             mapService.RegisterMapControl(_mapControl);
+            if (_glMapControl != null)
+                mapService.RegisterGlMapControl(_glMapControl);
             System.Diagnostics.Debug.WriteLine("[MainView] MapControl registered with MapService.");
 
             // Wire screenshot provider for debug dump (#127)

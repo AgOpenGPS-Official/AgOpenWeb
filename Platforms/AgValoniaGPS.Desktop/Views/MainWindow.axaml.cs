@@ -154,6 +154,7 @@ public partial class MainWindow : Window
         {
             var mapService = App.Services.GetRequiredService<AgValoniaGPS.Desktop.Services.MapService>();
             mapService.RegisterMapControl(MapControl);
+            mapService.RegisterGlMapControl(glMapControl);
 
             // Wire up coverage updates
             var coverageService = App.Services.GetRequiredService<ICoverageMapService>();
