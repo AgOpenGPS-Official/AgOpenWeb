@@ -48,7 +48,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- Main Content Area - Cross-platform DrawingContext Map with overlay panels -->
             <Grid Grid.Row="1" Background="Transparent">
                 <controls:DrawingContextMapControl x:Name="MapControl" Margin="5"
-                                                   IsGridVisible="{Binding IsGridOn}"/>
+                                                   IsGridVisible="{Binding IsGridOn}"
+                                                   IsVisible="{Binding Is2DMode}"/>
+
+                <!-- Phase-1 GL placeholder. Visible when 2D/3D toggle is in 3D mode.
+                     Subsequent phases replace the placeholder scene with the real map. -->
+                <controls:GlMapControl x:Name="GlMapControl" Margin="5"
+                                       IsVisible="{Binding !Is2DMode}"/>
 
                 <!-- LIGHT BAR: Centered at top (#144) -->
                 <panels:LightBarPanel x:Name="LightBarPanel"

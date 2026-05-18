@@ -1,7 +1,7 @@
-// SPIKE: minimal OpenGL ES rendering of a 3D scene via Avalonia's OpenGlControlBase,
-// using Silk.NET.OpenGLES for the GL API. Goal is to confirm the GL path renders
-// identically on Desktop / iOS / Android before committing to it as AgValoniaGPS's
-// 2.5D map renderer.
+// Phase-1 placeholder for the GL map view. Renders the validated spike scene
+// (green ground + yellow boundary + red vehicle cross) via Avalonia's
+// OpenGlControlBase and Silk.NET.OpenGLES. Subsequent phases replace the
+// hard-coded scene with the real map data sources.
 
 using System;
 using System.Numerics;
@@ -14,17 +14,17 @@ using Silk.NET.OpenGLES;
 
 namespace AgValoniaGPS.Views.Controls;
 
-public class GlSpikeControl : OpenGlControlBase
+public class GlMapControl : OpenGlControlBase
 {
-    public GlSpikeControl()
+    public GlMapControl()
     {
-        Console.WriteLine("[GlSpike] GlSpikeControl ctor");
-        AttachedToVisualTree += (_, _) => Console.WriteLine("[GlSpike] AttachedToVisualTree");
+        Console.WriteLine("[GlMap] GlMapControl ctor");
+        AttachedToVisualTree += (_, _) => Console.WriteLine("[GlMap] AttachedToVisualTree");
     }
 
     protected override void OnOpenGlLost()
     {
-        Console.WriteLine("[GlSpike] OnOpenGlLost — context was lost / not available");
+        Console.WriteLine("[GlMap] OnOpenGlLost — context was lost / not available");
     }
 
     private GL? _gl;
@@ -54,7 +54,7 @@ void main() { out_color = u_color; }
 
     protected override void OnOpenGlInit(GlInterface glInterface)
     {
-        Console.WriteLine($"[GlSpike] OnOpenGlInit called. GlVersion={GlVersion}");
+        Console.WriteLine($"[GlMap] OnOpenGlInit called. GlVersion={GlVersion}");
         // Bridge Avalonia's GlInterface (which only owns GetProcAddress for us
         // here) to Silk.NET via INativeContext. Silk.NET picks up the full GLES
         // 3.0 surface from this loader.
@@ -183,8 +183,8 @@ void main() { out_color = u_color; }
             var vendor = gl.GetStringS(StringName.Vendor);
             var renderer = gl.GetStringS(StringName.Renderer);
             var version = gl.GetStringS(StringName.Version);
-            Console.WriteLine($"[GlSpike] Vendor={vendor} Renderer={renderer} Version={version}");
-            Console.WriteLine($"[GlSpike] Viewport={viewportW}x{viewportH} scaling={scaling:F2}");
+            Console.WriteLine($"[GlMap] Vendor={vendor} Renderer={renderer} Version={version}");
+            Console.WriteLine($"[GlMap] Viewport={viewportW}x{viewportH} scaling={scaling:F2}");
         }
 
         RequestNextFrameRendering();
@@ -216,7 +216,7 @@ void main() { out_color = u_color; }
         gl.BindAttribLocation(prog, 0, "in_pos");
         gl.LinkProgram(prog);
         gl.GetProgram(prog, ProgramPropertyARB.LinkStatus, out int linked);
-        if (linked == 0) Console.WriteLine($"[GlSpike] Program link log: {gl.GetProgramInfoLog(prog)}");
+        if (linked == 0) Console.WriteLine($"[GlMap] Program link log: {gl.GetProgramInfoLog(prog)}");
         gl.DeleteShader(vsId);
         gl.DeleteShader(fsId);
         return prog;
@@ -228,7 +228,7 @@ void main() { out_color = u_color; }
         gl.ShaderSource(s, source);
         gl.CompileShader(s);
         gl.GetShader(s, ShaderParameterName.CompileStatus, out int ok);
-        if (ok == 0) Console.WriteLine($"[GlSpike] {type} compile error: {gl.GetShaderInfoLog(s)}");
+        if (ok == 0) Console.WriteLine($"[GlMap] {type} compile error: {gl.GetShaderInfoLog(s)}");
         return s;
     }
 

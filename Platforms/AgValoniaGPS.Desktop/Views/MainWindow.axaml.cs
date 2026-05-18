@@ -136,8 +136,15 @@ public partial class MainWindow : Window
         MapControl = mapControl;
         System.Diagnostics.Debug.WriteLine("Using DrawingContextMapControl (cross-platform)");
 
-        // Set the map control as the content of the container
-        MapControlContainer.Content = mapControl;
+        // Phase-1 GL placeholder, mounted alongside the 2D map. Toggle2D3DCommand
+        // flips Is2DMode; both controls bind their IsVisible to it for swap.
+        var glMapControl = new GlMapControl();
+        var mapHostGrid = new Grid();
+        mapControl.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(MainViewModel.Is2DMode)));
+        glMapControl.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(MainViewModel.Is2DMode)) { Converter = Avalonia.Data.Converters.BoolConverters.Not });
+        mapHostGrid.Children.Add(mapControl);
+        mapHostGrid.Children.Add(glMapControl);
+        MapControlContainer.Content = mapHostGrid;
 
         // Note: ViewModel is null here (DataContext set after CreateMapControl).
         // Initial view state applied in MainWindow_Opened after settings load.
@@ -388,11 +395,6 @@ public partial class MainWindow : Window
         {
             case Key.F3:
                 MapControl?.Toggle3DMode();
-                e.Handled = true;
-                return;
-            case Key.F8:
-                // SPIKE: open the cross-platform Silk.NET + OpenGL overlay.
-                ViewModel?.ShowGlSpikeCommand?.Execute(null);
                 e.Handled = true;
                 return;
             case Key.PageUp:

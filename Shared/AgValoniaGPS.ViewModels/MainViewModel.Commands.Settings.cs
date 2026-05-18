@@ -75,17 +75,6 @@ public partial class MainViewModel
             State.UI.CloseDialog();
         });
 
-        // SPIKE: cross-platform Silk.NET + OpenGL evaluation overlay
-        ShowGlSpikeCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(Models.State.DialogType.GlSpike);
-        });
-
-        CloseGlSpikeCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
         ResetAllSettingsCommand = new RelayCommand(() =>
         {
             ShowConfirmationDialog(
