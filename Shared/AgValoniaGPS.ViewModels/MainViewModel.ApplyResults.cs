@@ -127,7 +127,14 @@ public partial class MainViewModel
             sy.CurrentZone = yt.CurrentZone;
 
             _mapService.SetYouTurnPath(yt.TurnPath?.Select(p => (p.Easting, p.Northing)).ToList());
-            _mapService.SetNextTrack(yt.NextTrack);
+            // Reference-gate to match DisplayTrack/BaseTrack pattern below — yt.NextTrack
+            // is usually null and reused across cycles, so an unconditional push would
+            // re-dirty the GL track VBO every cycle and force a per-frame rebuild.
+            if (!ReferenceEquals(_lastMirroredNextTrack, yt.NextTrack))
+            {
+                _lastMirroredNextTrack = yt.NextTrack;
+                _mapService.SetNextTrack(yt.NextTrack);
+            }
             _mapService.SetIsInYouTurn(yt.IsExecuting);
 
             // One-shot direction override: the state machine consumes

@@ -150,99 +150,139 @@ keep both and ship the toggle indefinitely. Lower priority.
   reasoning in `memory/project_no_3d_rendering.md` still applies to
   terrain meshes — only the camera-tilt position has reversed.
 
-## Phase-3 status (2026-05-18) — paused, unresolved visual issue
+## Phase-3 status (2026-05-19) — RESOLVED
 
-Phase 3 (pitch + zoom wiring) is committed locally on the spike branch as
-`df4c7de` but **not pushed**. Camera math was rewritten to use AgOpenGPS's
-exact matrix-mode transform sequence (research notes below), with
-heading-up as the default mode matching AOG's "3D" button:
+Phase 3 (pitch + zoom wiring) shipped with a real perspective camera that
+tilts correctly, follows the vehicle, and produces visible foreshortening.
+The "world rotating about X axis" / "tractor never moves away from
+boundary" / "track diverging to perpendicular" visual artifacts that
+blocked Phase 3 for a week were all symptoms of **one** root-cause bug
+described below.
 
-```
-v * T(-vehicle) * R_z(+heading)? * T(pan) * R_x(aogPitch) * T(0,0,-dist)
-```
+### Root cause: matrix transpose convention mismatch
 
-The MainViewModel pitch convention (-90 overhead, -10 horizon) is converted
-to AOG's (0 overhead, -65 default 3D tilt) at use time. Vehicle marker
-counter-rotates by `R_z(-heading)` so it stays upright.
+`gl.UniformMatrix4(..., transpose: true, ...)` on the line shader's MVP
+upload was producing orthographic-like rendering. The math:
 
-**Unresolved issue:** the user reports small vehicle motion (~4.4 ft, lat
-delta ~2.4 m) producing dramatic visual change — far end of the field
-disappearing, geometry appearing to "rotate around the X axis." The
-diagnostic instrumentation logs viewport, pitch, zoom, distance, eye,
-target, and the projected vehicle screen-pixel position every render, and
-all of those stay constant across motion. The screenshots show effects
-the math doesn't predict. We exhausted the "iterate on camera variants"
-approach without resolving it.
+- `System.Numerics.Matrix4x4` is **row-major** with **row-vector**
+  multiplication (`v * M`). Translation lives in `M41, M42, M43`.
+- GLSL ES uses **column-vector** multiplication (`M * v_col`). Translation
+  lives in `M14, M24, M34`.
+- `glUniformMatrix4fv(transpose=GL_TRUE)` tells GL "input is row-major,
+  please store as column-major." The *logical* matrix in GLSL after this
+  is identical to our input — same `M_(i,j)` at row i, col j.
+- GLSL's `M * v_col` uses **rows** of the stored matrix. For our matrix,
+  ROW 4 is the translation row `(0, 0, 0, 40.5)` — pure W, no Y/Z
+  contribution to `clip.w`.
+- So `clip.w` came out constant regardless of vertex world position. No
+  perspective division → no foreshortening → everything renders as if
+  through an orthographic-leaning projection. Grid lines stayed parallel
+  to the horizon, near features didn't shift more than far features
+  during motion, the world appeared to slide bizarrely instead of
+  scrolling under the camera.
 
-**Suspect: Apple's deprecated OpenGL → Metal translation layer.** macOS GL
-was deprecated in 10.14 (2018) and iOS GLES in iOS 12 (same year). The
-spike already hit three Apple-GL-specific quirks (matrix transpose
-direction, depth-buffer quantization on line overlays, `RenderingMode`
-default flip to Metal). A fourth quirk causing motion artifacts when
-working with large-magnitude world coordinates is plausible — and would
-not appear on Android (native GLES) or Windows (ANGLE → D3D), neither of
-which is on Apple's deprecated path.
+The fix is `transpose=false`. With `transpose=false` GL interprets our
+row-major bytes as column-major and the logical matrix in GLSL becomes
+our matrix **transposed**. The shader's `M_transposed * v_col` then equals
+our `v_row * M` — i.e., true perspective.
 
-### Next step when resuming
+This is counterintuitive — tutorials usually say to use `transpose=true`
+for row-major libraries. That advice assumes the library's *math
+convention* matches GLSL's column-vector convention. System.Numerics
+doesn't (it uses row-vector math), so the transpose flag has to flip.
 
-**Android reproduction test (2026-05-18): same behavior as Mac.** The
-dramatic motion-vs-screen-change mismatch reproduces identically on the
-Samsung Tab S7 FE (native GLES, not the Apple deprecated path).
-**Conclusion: bug is in our cross-platform code, not Apple's GL
-translation.** A Metal port would carry the bug with it.
+See `reference_glsl_matrix_transpose` memory note for the long version.
 
-When resuming, debug on the **Windows laptop with RenderDoc**. The bug is
-in our cross-platform code, so it reproduces on Windows ANGLE-EGL, and
-RenderDoc captures native GL calls (your `UniformMatrix4` uploads,
-your VBO contents, your GLSL shaders) directly — no Metal-translation
-layer to mentally undo. The Mac would work too via Xcode GPU Frame
-Capture, but Frame Capture sees the Metal translation rather than the
-GL calls our C# code actually made.
+**Single-line fix:** `Shared/AgValoniaGPS.Views/Controls/GlMapControl.cs`,
+`SetMvp(...)` and the ground shader's `u_inv_mvp` upload both use
+`transpose=false`.
 
-### Windows laptop setup checklist
+### Misdiagnosis chain (so future debugging skips this)
 
-1. **.NET 10 SDK** — the project targets `net10.0`. If the laptop is on
-   .NET 8 or earlier, update first. Download:
-   <https://dotnet.microsoft.com/download> (pick the preview/RC channel
-   if .NET 10 hasn't reached GA yet on the laptop's installer page).
-2. **RenderDoc** — free, <https://renderdoc.org>. Default install.
-3. **Git** (probably already there) and the repo checked out at the
-   spike branch:
-   ```
-   git clone https://github.com/AgOpenGPS-Official/AgValoniaGPS.git
-   cd AgValoniaGPS
-   git checkout spike/angle-silk-opengl-eval
-   ```
-4. **Verify build:**
-   ```
-   dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
-   ```
+In the ~12 hours of debugging before finding the right answer, the
+following theories were explored and discarded — all wrong:
 
-### Repro + capture procedure
+1. **Apple OpenGL → Metal translation quirk.** Disproven: the same
+   artifact reproduces on Android (native GLES) and Windows (ANGLE → D3D).
+   Apple's deprecated GL path is not at fault.
+2. **ANGLE's D3D11 hooks corrupting matrix uploads.** Disproven via
+   `glGetUniformfv` readback after `glUniformMatrix4fv` — the GPU
+   received exactly the bytes we sent, bit-for-bit.
+3. **Per-frame VBO churn causing visual instability.** Real but minor.
+   Active track was being rebuilt every cycle because of an
+   unconditional `_mapService.SetNextTrack(yt.NextTrack)` in
+   `MainViewModel.ApplyResults.cs`. Fixed with a `ReferenceEquals` gate
+   and defense-in-depth `ReferenceEquals` checks inside the GL control's
+   `Set*` methods. Did not change the visual artifact at all.
+4. **Float32 precision loss at large world coordinates.** Not the cause.
+   World vertices have plenty of precision at field-scale magnitudes.
+5. **Auto-zoom putting the camera blind-spot underneath itself.** Real
+   contributor to one specific subjective complaint at extreme zoom-out
+   (camera 290m up + finite ground quad), but not the underlying bug.
+6. **Finite ground quad's negative-w clipping.** Real but tangential —
+   prompted the move to a fragment-shader ray-cast ground, which then
+   surfaced the actual convention bug because the ground shader's
+   inverse-MVP upload had the same `transpose=true` mistake.
 
-1. In RenderDoc, **Launch Application** → point at
-   `Platforms\AgValoniaGPS.Desktop\bin\Debug\net10.0\AgValoniaGPS.Desktop.exe`
-   (or use `dotnet run` and let RenderDoc auto-attach).
-2. Wait for the app to be running with the field open and 3D mode active.
-3. RenderDoc's overlay shows in the corner. **Press F12** to capture a
-   frame at the "start" (before motion). RenderDoc saves a `.rdc`.
-4. Start the simulator at 0.3 mph. After ~10 seconds, **press F12**
-   again for an "after-motion" frame capture.
-5. Open both captures side-by-side. Compare the `u_mvp` uniform values
-   for the boundary draw call in each capture. If they differ by more
-   than the expected `T(-vehicle)` shift, we've found the bug. Also
-   compare the boundary VBO vertex data — if it changed between
-   captures, something is rebuilding the geometry mid-motion.
+The thing that actually broke through: a fragment shader that ray-casts
+to Z=0 (sky/brown horizon test). It only showed correct ground orientation
+when both the line shader AND the ground shader switched to
+`transpose=false`. That forced an explanation of *why* `transpose=true`
+was being honored differently than expected — which is when the
+column-vector vs row-vector convention came into focus.
 
-The text-log approach (full MVP bytes per frame + VBO vertex counts) is
-the backup if RenderDoc setup hits a snag. Either way the next attempt
-should produce ground-truth data, not screenshot interpretations.
+### Other fixes landed during this session
+
+- **Pitch propagation on app startup.** `ConfigurationService` loads the
+  saved `CameraPitch` directly into `DisplayConfig.CameraPitch` (backing
+  field), bypassing the `MainViewModel.CameraPitch` setter that normally
+  calls `_mapService.SetCameraPitchDegrees(value)`. Result: the GL
+  renderer was stuck at its hardcoded default forever and the View
+  Settings tilt slider only affected the 2D DrawingContext path. Fixed
+  in `MainViewModel.RestoreSettings()` with an explicit
+  `_mapService.SetCameraPitchDegrees(_displaySettings.CameraPitch)` push.
+- **Window resize unlocked for dev sessions.** `MainWindow.axaml.cs`
+  DEBUG block now starts maximized and allows resize, instead of pinning
+  to 1200×720. The hard lock is commented out and can be restored if
+  small-viewport simulation work is needed.
+- **AOG-matched defaults.** FOV is now 0.7 rad (40°) to match AOG.
+  Distance formula is `0.5 * zoomScalar²` where `zoomScalar = 9 / zoom`,
+  so the default `zoom=1` gives `distance=40.5m` — same as AOG's default
+  3D camera at `ZoomValue=9`.
+- **World grid + horizon background.** GL control draws a 10m × 10m
+  world-aligned grid for motion reference, and a fragment-shader infinite
+  ground/sky plane so the horizon is always visible at moderate-to-high
+  tilt. Both stay underneath the boundary/track line overlays.
+
+### Still pending (for the next session)
+
+1. **Upstream Track allocation churn.** Even with the per-frame VBO
+   rebuild fix, a new `Track` instance is allocated per GPS cycle
+   somewhere in the guidance pipeline (~28/sec). The `Points` content
+   is bit-identical between cycles so the visual is fine, but the
+   defense-in-depth `ReferenceEquals` gate inside `GlMapControl` is
+   being defeated each tick. Worth chasing for perf — but it does not
+   affect rendering correctness. Source is somewhere in
+   `MainViewModel.ApplyResults` or the guidance service that produces
+   `DisplayTrack`.
+2. **Phase 4 (coverage).** With perspective working, coverage strips
+   under the vehicle are the next visible deliverable and the biggest
+   visual cue for "the world is moving" once you're in a field.
+3. **Phase 5 (tile imagery).** Aerial tiles as textured GL quads —
+   completes the AOG-like view.
+4. **Diagnostic logging cleanup.** `GlMapControl` currently logs
+   `[GlMap-FRAME]`, `[GlMap-MVP]`, `[GlMap-CNTS]`, `[GlMap-REB-*]`,
+   `[GlMap-SET-TRK]`, `[GlMap-SOUTH]`, `[GlMap-UPLOAD]`,
+   `[GlMap-GROUND]` per render. Most of this was for this session's
+   investigation; keep what's cheap and useful (`REB-*`, `CNTS` at 1Hz),
+   strip the per-frame spam (`FRAME`, `MVP`, `SOUTH`, `UPLOAD`,
+   `GROUND`) before merging.
 
 ### Apple-GL escape options (NOT NEEDED — kept for reference)
 
-The bug reproduces on Android, so Apple-GL deprecation is not the
-cause. The options below remain documented in case Apple GL becomes a
-blocker for a different reason later.
+The bug was a convention mismatch, not anything Apple-specific. The
+options below remain documented in case Apple GL becomes a blocker for
+a different reason later.
 
 Three rough levels of effort to leave Apple's deprecated GL behind:
 

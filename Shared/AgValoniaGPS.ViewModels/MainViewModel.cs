@@ -629,6 +629,13 @@ public partial class MainViewModel : ObservableObject
         if (settings.CameraMode != CameraMode.Free)
             CameraMode = settings.CameraMode;
 
+        // Phase-3 GL renderer: ConfigurationService loads CameraPitch directly
+        // into the DisplayConfig backing field, bypassing the CameraPitch
+        // setter that normally pushes to MapService. Without this explicit
+        // push, GlMapControl stays at its hardcoded default forever and the
+        // View Settings tilt slider only affects the 2D DrawingContext path.
+        _mapService.SetCameraPitchDegrees(_displaySettings.CameraPitch);
+
         // Restore simulator settings (always restore coords, regardless of enabled state)
         _simulatorService.Initialize(new AgValoniaGPS.Models.Wgs84(
             settings.SimulatorLatitude,

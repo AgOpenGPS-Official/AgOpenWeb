@@ -27,32 +27,43 @@ public class GlMapControl : OpenGlControlBase
 
     // ----- Phase-2 public data API ------------------------------------------------
 
+    // Reference-gate every Set* that owns a GPU buffer: callers (MainViewModel /
+    // MapService) may push the same instance repeatedly across GPS cycles, and a
+    // dirty-flag set here triggers a glDelete/glGen/glBufferData cycle each frame
+    // — ANGLE-D3D11 and mobile GLES drivers handle that churn badly. The gate
+    // makes "set what you already had" a no-op without depending on upstream
+    // discipline. Setting null when null is also a no-op.
     public void SetBoundary(Boundary? boundary)
     {
+        if (ReferenceEquals(_boundary, boundary)) return;
         _boundary = boundary;
         _boundaryDirty = true;
     }
 
     public void SetActiveTrack(Track? track)
     {
+        if (ReferenceEquals(_activeTrack, track)) return;
         _activeTrack = track;
         _tracksDirty = true;
     }
 
     public void SetBaseTrack(Track? track)
     {
+        if (ReferenceEquals(_baseTrack, track)) return;
         _baseTrack = track;
         _tracksDirty = true;
     }
 
     public void SetNextTrack(Track? track)
     {
+        if (ReferenceEquals(_nextTrack, track)) return;
         _nextTrack = track;
         _tracksDirty = true;
     }
 
     public void SetHeadlandLine(IReadOnlyList<Vec3>? headland)
     {
+        if (ReferenceEquals(_headlandLine, headland)) return;
         _headlandLine = headland;
         _headlandDirty = true;
     }
@@ -111,7 +122,10 @@ public class GlMapControl : OpenGlControlBase
 
     // Camera state — pitch in degrees (-90 overhead .. -10 near-horizon),
     // zoom multiplier (1.0 = reference distance, higher = closer in).
-    private double _pitchDegrees = -60.0;
+    // Default -62 matches AgOpenGPS's DisplaySettingsService 3D default
+    // (CameraPitch = -62.0), so a freshly-attached GlMapControl with no
+    // MainViewModel push yet starts at the same tilt as upstream AOG.
+    private double _pitchDegrees = -62.0;
     private double _zoomLevel = 1.0;
     // Heading-up vs north-up. AOG default for the 3D view is heading-up
     // (world rotates with the vehicle heading; vehicle stays pointing up).
@@ -120,6 +134,18 @@ public class GlMapControl : OpenGlControlBase
     // Manual pan offset applied between world-translate and view rotation —
     // wired to gesture/mouse pan in a later phase. Defaults to 0.
     private float _panX, _panY;
+
+    // Static 10m world-aligned grid covering 2 km × 2 km centred on origin.
+    // Renders under everything else so geographic translation reads as
+    // "grid lines scrolling south" instead of abstract perspective. Built once
+    // in OnOpenGlInit since the geometry is fixed in world space.
+    private uint _gridVao, _gridVbo; private int _gridCount;
+
+    // Brown ground quad (Z=0 plane) + sky-blue clear color. Diagnostic to
+    // verify world orientation: if the horizon (brown/blue boundary) appears
+    // visually correct (brown below the vehicle, blue above), the camera
+    // orientation is right. If blue ends up below brown, there's a flip.
+    private uint _groundVao, _groundVbo;
 
     // GPU buffers — one VAO/VBO per geometry stream. Each stream's vertex count
     // is the number of GL_LINES vertices uploaded (2 per line segment).
@@ -154,6 +180,54 @@ out vec4 out_color;
 void main() { out_color = u_color; }
 ";
 
+    // Ground shader: renders a fullscreen quad and for each pixel ray-casts
+    // from the camera through that pixel, intersects with the Z=0 ground
+    // plane. If the ray hits ground in front of the camera, fragment is brown
+    // (true ground). Otherwise, blue sky. This produces a real infinite-plane
+    // horizon without depending on a finite quad's edges.
+    private const string GroundVertexShaderBody = @"
+in vec3 in_pos;
+uniform mat4 u_inv_mvp;
+out vec3 v_near;
+out vec3 v_far;
+void main() {
+    // in_pos is in NDC already; pass through to clip space unchanged.
+    gl_Position = vec4(in_pos.xy, 0.0, 1.0);
+    // Reconstruct world-space ray endpoints by unprojecting near/far plane.
+    // System.Numerics CreatePerspectiveFieldOfView uses NDC Z in [0, 1]
+    // (DirectX style), so NDC Z = 0 is the near plane and NDC Z = 1 is far.
+    vec4 near4 = u_inv_mvp * vec4(in_pos.xy, 0.0, 1.0);
+    vec4 far4  = u_inv_mvp * vec4(in_pos.xy, 1.0, 1.0);
+    v_near = near4.xyz / near4.w;
+    v_far  = far4.xyz  / far4.w;
+}
+";
+
+    private const string GroundFragmentShaderBody = @"
+precision highp float;
+in vec3 v_near;
+in vec3 v_far;
+out vec4 out_color;
+void main() {
+    // Ray-cast from camera through this pixel, intersect with Z=0 plane.
+    // Ray hit in front of camera (t > 0) → ground. Otherwise → sky.
+    vec3 dir = v_far - v_near;
+    if (abs(dir.z) < 1e-6) {
+        out_color = vec4(0.45, 0.65, 0.85, 1.0);  // sky blue
+        return;
+    }
+    float t = -v_near.z / dir.z;
+    if (t > 0.0) {
+        out_color = vec4(0.55, 0.35, 0.18, 1.0);  // saddle brown ground
+    } else {
+        out_color = vec4(0.45, 0.65, 0.85, 1.0);  // sky blue
+    }
+}
+";
+
+    private uint _groundProgram;
+    private int _uniformGroundInvMvp;
+
     protected override void OnOpenGlInit(GlInterface glInterface)
     {
         Console.WriteLine($"[GlMap] OnOpenGlInit called. GlVersion={GlVersion}");
@@ -177,6 +251,45 @@ void main() { out_color = u_color; }
         };
         (_vehicleVao, _vehicleVbo) = BuildStaticVao(_gl, vehicleVerts);
         _vehicleCount = vehicleVerts.Length / 3;
+
+        // Build the static world grid: lines every 10m covering [-1000..1000]
+        // on both axes. 201 lines per axis × 2 verts × 3 floats = 1206 floats
+        // × 2 axes = 2412 floats. Plenty of motion reference, cheap to draw.
+        const int GridHalfExtent = 1000;
+        const int GridStep = 10;
+        const int Lines = (GridHalfExtent * 2 / GridStep) + 1; // 201
+        var grid = new float[Lines * 2 * 2 * 3]; // 2 verts per line, X and Y axes
+        int gi = 0;
+        // Vertical lines (constant X, varying Y)
+        for (int i = -GridHalfExtent; i <= GridHalfExtent; i += GridStep)
+        {
+            grid[gi++] = i; grid[gi++] = -GridHalfExtent; grid[gi++] = 0f;
+            grid[gi++] = i; grid[gi++] = +GridHalfExtent; grid[gi++] = 0f;
+        }
+        // Horizontal lines (constant Y, varying X)
+        for (int j = -GridHalfExtent; j <= GridHalfExtent; j += GridStep)
+        {
+            grid[gi++] = -GridHalfExtent; grid[gi++] = j; grid[gi++] = 0f;
+            grid[gi++] = +GridHalfExtent; grid[gi++] = j; grid[gi++] = 0f;
+        }
+        (_gridVao, _gridVbo) = BuildStaticVao(_gl, grid);
+        _gridCount = grid.Length / 3;
+
+        // Fullscreen quad in NDC for the ground shader. Just covers [-1,+1]²
+        // in clip space; the ground fragment shader does the per-pixel ray
+        // cast against the Z=0 world plane.
+        float[] groundVerts =
+        {
+            -1f, -1f, 0f,
+            +1f, -1f, 0f,
+            -1f, +1f, 0f,
+            +1f, +1f, 0f,
+        };
+        (_groundVao, _groundVbo) = BuildStaticVao(_gl, groundVerts);
+
+        // Compile the ground shader program (separate from the line shader).
+        _groundProgram = CompileAndLink(_gl, version + GroundVertexShaderBody, version + GroundFragmentShaderBody);
+        _uniformGroundInvMvp = _gl.GetUniformLocation(_groundProgram, "u_inv_mvp");
     }
 
     protected override void OnOpenGlDeinit(GlInterface glInterface)
@@ -192,7 +305,10 @@ void main() { out_color = u_color; }
         DeleteVao(gl, ref _nextTrackVao, ref _nextTrackVbo);
         DeleteVao(gl, ref _vehicleVao, ref _vehicleVbo);
         DeleteVao(gl, ref _toolVao, ref _toolVbo);
+        DeleteVao(gl, ref _gridVao, ref _gridVbo);
+        DeleteVao(gl, ref _groundVao, ref _groundVbo);
         if (_program != 0) { gl.DeleteProgram(_program); _program = 0; }
+        if (_groundProgram != 0) { gl.DeleteProgram(_groundProgram); _groundProgram = 0; }
         _gl = null;
     }
 
@@ -218,7 +334,11 @@ void main() { out_color = u_color; }
         int viewportH = Math.Max(1, (int)(Bounds.Height * scaling));
         gl.Viewport(0, 0, (uint)viewportW, (uint)viewportH);
 
-        gl.ClearColor(0.13f, 0.20f, 0.13f, 1f); // dark green field background
+        // Diagnostic clear color: sky blue. With the brown ground quad drawn
+        // below, anywhere the camera's view doesn't intersect Z=0 (i.e. "above
+        // the horizon") will show sky blue. Brown ground + sky blue makes the
+        // world orientation unambiguous in screenshots.
+        gl.ClearColor(0.45f, 0.65f, 0.85f, 1f); // sky blue
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
 
         // AOG camera model (ported from AgOpenGPS Camera.cs:41-54).
@@ -247,7 +367,16 @@ void main() { out_color = u_color; }
         else { vx = 0; vy = 0; }
 
         float aogPitchRad = MathF.PI * (-(float)_pitchDegrees - 90f) / 180f;
-        float distance = 80f / MathF.Max(0.05f, (float)_zoomLevel);
+        // AOG-matched distance formula: distance = 0.5 * zoomScalar^2 where
+        // zoomScalar ranges (4, 60). At zoomScalar=9 (AOG default 3D) we get
+        // distance=40.5m. We map MainViewModel's _zoomLevel (1.0 default) to
+        // zoomScalar via: zoomScalar = 9 / zoom. Higher zoom-out (smaller
+        // _zoomLevel) → bigger zoomScalar → much bigger distance, same curve
+        // AOG uses. At _zoomLevel=1.0 → zoomScalar=9 → distance=40.5m. At
+        // _zoomLevel=0.2 → zoomScalar=45 → distance=1012m (matching AOG when
+        // user dials its zoom out comparably).
+        float zoomScalar = MathF.Max(4f, MathF.Min(60f, 9f / MathF.Max(0.05f, (float)_zoomLevel)));
+        float distance = 0.5f * zoomScalar * zoomScalar;
         float headingRad = (float)_vehicleHeading;
 
         var t1 = Matrix4x4.CreateTranslation(-vx, -vy, 0);
@@ -256,24 +385,42 @@ void main() { out_color = u_color; }
         var rX = Matrix4x4.CreateRotationX(aogPitchRad);
         var tBack = Matrix4x4.CreateTranslation(0, 0, -distance);
         var view = t1 * rZ * pan * rX * tBack;
+        // FOV: AOG uses 0.7 rad (40°). Narrower than the previous 50°, which
+        // matches AOG's perspective behavior across zoom changes.
         var proj = Matrix4x4.CreatePerspectiveFieldOfView(
-            MathF.PI * 50f / 180f,
+            0.7f,
             viewportW / (float)viewportH,
-            0.1f, 5000f);
+            1f, MathF.Max(5000f, distance * 4f));
         var mvp = view * proj;
-
-        // For diagnostic compatibility: dummy eye/target retained.
-        var eye = new Vector3(vx, vy, distance);
-        var target = new Vector3(vx, vy, 0f);
-
-        gl.UseProgram(_program);
-        SetMvp(gl, mvp);
 
         // 2.5D map overlays: everything is essentially flat on top of the
         // ground. Skip depth so far-distance precision quantization on Apple
         // GL doesn't drop horizontal line edges (see spike findings).
         gl.Disable(EnableCap.DepthTest);
         gl.LineWidth(1f);
+
+        // Infinite ground plane via fragment-shader ray-cast: render a
+        // fullscreen quad, per-pixel intersect with Z=0 plane. Brown where
+        // ground is visible (ray hits Z=0 in front of camera), blue
+        // elsewhere. Produces a true horizon with no quad-edge ambiguity.
+        // Uses its own shader program with the inverse MVP as a uniform.
+        Matrix4x4.Invert(mvp, out var invMvp);
+        gl.UseProgram(_groundProgram);
+        unsafe { gl.UniformMatrix4(_uniformGroundInvMvp, 1, false, (float*)&invMvp); }
+        gl.BindVertexArray(_groundVao);
+        gl.DrawArrays(GLEnum.TriangleStrip, 0, 4);
+
+        // Switch to the line shader for all the boundary/track/vehicle overlays.
+        gl.UseProgram(_program);
+        SetMvp(gl, mvp);
+
+        // World-aligned 10m grid — drawn on top of the ground quad.
+        if (_gridCount > 0)
+        {
+            SetColor(gl, 0.30f, 0.20f, 0.10f, 1f); // darker brown for visibility on light brown
+            gl.BindVertexArray(_gridVao);
+            gl.DrawArrays(GLEnum.Lines, 0, (uint)_gridCount);
+        }
 
         // Outer boundary — yellow
         if (_outerCount > 0)
@@ -358,28 +505,30 @@ void main() { out_color = u_color; }
             Console.WriteLine($"[GlMap] Viewport={viewportW}x{viewportH} scaling={scaling:F2}");
         }
 
-        // Diagnostic for Phase-3: log camera state and vehicle position once
-        // per second so we can see whether forward motion is actually moving
-        // the camera (vy should change) or whether something else is happening.
+        // 1 Hz diagnostic: where is the vehicle projecting on screen + how
+        // many VBO rebuilds have we accumulated since startup. Cheap and
+        // useful for spotting per-frame churn regressions (rebBnd/rebHead/
+        // rebTracks should be flat once a field is open; rebTool ticks at
+        // GPS rate while the sim runs).
         _diagFrames++;
         if (_diagFrames >= 30)
         {
             _diagFrames = 0;
-            // Project vehicle world (vx,vy,0.6) through MVP to NDC so we can
-            // tell whether the marker is actually centered on screen.
             var vehWorld = new Vector4(vx, vy, 0.6f, 1f);
             var clip = Vector4.Transform(vehWorld, mvp);
             float ndcX = clip.W != 0 ? clip.X / clip.W : 0;
             float ndcY = clip.W != 0 ? clip.Y / clip.W : 0;
             float scrX = (ndcX + 1f) * 0.5f * viewportW;
             float scrY = (1f - ndcY) * 0.5f * viewportH;
-            Console.WriteLine($"[GlMap] vp={viewportW}x{viewportH} pitch={_pitchDegrees:F1} zoom={_zoomLevel:F2} dist={distance:F1} eye=({eye.X:F1},{eye.Y:F1},{eye.Z:F1}) tgt=({target.X:F1},{target.Y:F1}) veh=({vx:F2},{vy:F2}) vehScrPx=({scrX:F0},{scrY:F0}) hasVeh={_hasVehicle}");
+            Console.WriteLine($"[GlMap] vp={viewportW}x{viewportH} pitch={_pitchDegrees:F1} zoom={_zoomLevel:F2} dist={distance:F1} veh=({vx:F2},{vy:F2}) vehScrPx=({scrX:F0},{scrY:F0}) hasVeh={_hasVehicle}");
+            Console.WriteLine($"[GlMap-CNTS] rebBnd={_rebuildBndCount} rebHead={_rebuildHeadCount} rebTracks={_rebuildTracksCount} rebTool={_rebuildToolCount}");
         }
 
         RequestNextFrameRendering();
     }
 
     private int _diagFrames;
+    private int _rebuildBndCount, _rebuildHeadCount, _rebuildTracksCount, _rebuildToolCount;
 
     // ----- Geometry rebuild ------------------------------------------------------
 
@@ -394,6 +543,17 @@ void main() { out_color = u_color; }
         {
             var (vao, vbo, count) = BuildPolygonOutline(gl, outer);
             _outerVao = vao; _outerVbo = vbo; _outerCount = count;
+            // Diagnostic: confirm boundary VBO contents on each rebuild — if this
+            // fires per-frame the boundary is being uploaded every render (bug);
+            // if it fires once and the first-3-vert values stay stable that
+            // rules out world-coord churn as the motion-artifact source.
+            var p0 = outer[0]; var p1 = outer[1]; var pN = outer[outer.Count - 1];
+            Console.WriteLine($"[GlMap-REB-BND] #{++_rebuildBndCount} count={count} p0=({p0.Easting:F3},{p0.Northing:F3}) p1=({p1.Easting:F3},{p1.Northing:F3}) pN=({pN.Easting:F3},{pN.Northing:F3})");
+        }
+        else
+        {
+            _rebuildBndCount++;
+            Console.WriteLine($"[GlMap-REB-BND] #{_rebuildBndCount} (cleared)");
         }
 
         if (_boundary?.InnerBoundaries is { Count: > 0 } inners)
@@ -427,6 +587,8 @@ void main() { out_color = u_color; }
     {
         DeleteVao(gl, ref _headlandVao, ref _headlandVbo);
         _headlandCount = 0;
+        _rebuildHeadCount++;
+        Console.WriteLine($"[GlMap-REB-HEAD] #{_rebuildHeadCount} pts={_headlandLine?.Count ?? 0}");
         if (_headlandLine is not { Count: >= 2 } pts) return;
 
         // Closed polyline (the headland loops around the field interior).
@@ -449,6 +611,8 @@ void main() { out_color = u_color; }
         DeleteVao(gl, ref _activeTrackVao, ref _activeTrackVbo); _activeTrackCount = 0;
         DeleteVao(gl, ref _baseTrackVao,   ref _baseTrackVbo);   _baseTrackCount = 0;
         DeleteVao(gl, ref _nextTrackVao,   ref _nextTrackVbo);   _nextTrackCount = 0;
+        _rebuildTracksCount++;
+        Console.WriteLine($"[GlMap-REB-TRACKS] #{_rebuildTracksCount} active={_activeTrack?.Points.Count ?? 0} base={_baseTrack?.Points.Count ?? 0} next={_nextTrack?.Points.Count ?? 0}");
 
         if (_activeTrack is { Points.Count: >= 2 })
             (_activeTrackVao, _activeTrackVbo, _activeTrackCount) = BuildPolyline(gl, _activeTrack.Points, 0.3f);
@@ -479,6 +643,9 @@ void main() { out_color = u_color; }
     {
         DeleteVao(gl, ref _toolVao, ref _toolVbo);
         _toolCount = 0;
+        _rebuildToolCount++;
+        // Tool is expected to rebuild every GPS tick (vehicle/tool position
+        // pushed via SetAllPositions); counter shows up in the 1-Hz CNTS line.
         if (!_toolReady || _toolWidth <= 0) return;
 
         // Tool centerline → a transverse segment at the tool position
@@ -507,7 +674,15 @@ void main() { out_color = u_color; }
 
     private unsafe void SetMvp(GL gl, Matrix4x4 m)
     {
-        gl.UniformMatrix4(_uniformMvp, 1, true, (float*)&m);
+        // transpose=FALSE: we upload our row-major Matrix4x4 bytes; GL interprets
+        // them as column-major; GLSL sees our matrix transposed. Shader's
+        // column-vector M*v_col then equals our row-vector v*M, which gives
+        // correct perspective foreshortening. transpose=true (the previous
+        // setting) produces orthographic-like output where clip.w doesn't
+        // depend on world Y — the bug behind the "no horizon convergence",
+        // "tractor doesn't move away from boundary", and "world rotates"
+        // perceptions reported across the spike.
+        gl.UniformMatrix4(_uniformMvp, 1, false, (float*)&m);
     }
 
     private void SetColor(GL gl, float r, float g, float b, float a)
