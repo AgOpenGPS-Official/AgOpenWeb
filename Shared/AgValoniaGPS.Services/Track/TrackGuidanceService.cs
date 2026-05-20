@@ -42,6 +42,46 @@ public class TrackGuidanceService : ITrackGuidanceService
     /// <returns>Guidance output with steering angle and state</returns>
     public TrackGuidanceOutput CalculateGuidance(TrackGuidanceInput input)
     {
+        // PERF-05 #4 (track-side). Cycle = one CalculateGuidance call from
+        // GpsPipelineService.ProcessCycle. Marker: .perf_guidance (shared with
+        // YouTurnGuidanceService). Emits [TrackGuidance-PERF] at 1 Hz.
+        bool perf = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfGuidance;
+        if (!perf) return CalculateGuidanceCore(input);
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        long a0 = GC.GetAllocatedBytesForCurrentThread();
+        try { return CalculateGuidanceCore(input); }
+        finally
+        {
+            _perfCycleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            _perfCycleAllocs += GC.GetAllocatedBytesForCurrentThread() - a0;
+            _perfCycleCount++;
+            var elapsed = (DateTime.UtcNow - _perfWindowStart).TotalSeconds;
+            if (elapsed >= 1.0 && _perfCycleCount > 0)
+            {
+                double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+                Console.WriteLine(
+                    $"[TrackGuidance-PERF] cycles={_perfCycleCount}"
+                    + $" us/cycle={(_perfCycleTicks / ticksPerUs / _perfCycleCount):F1}"
+                    + $" alloc/cycle={(_perfCycleAllocs / _perfCycleCount)}B"
+                    + $" total_us={(long)(_perfCycleTicks / ticksPerUs)}"
+                    + $" total_alloc={_perfCycleAllocs}B"
+                    + $" window={elapsed:F2}s");
+                _perfCycleTicks = 0;
+                _perfCycleAllocs = 0;
+                _perfCycleCount = 0;
+                _perfWindowStart = DateTime.UtcNow;
+            }
+        }
+    }
+
+    // PERF-05 #4 accumulators (gated by DiagFlags.PerfGuidance).
+    private long _perfCycleTicks;
+    private long _perfCycleAllocs;
+    private int _perfCycleCount;
+    private DateTime _perfWindowStart = DateTime.UtcNow;
+
+    private TrackGuidanceOutput CalculateGuidanceCore(TrackGuidanceInput input)
+    {
         var output = new TrackGuidanceOutput
         {
             GoalPoint = new Vec2(),

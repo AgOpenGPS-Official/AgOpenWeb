@@ -33,6 +33,45 @@ namespace AgValoniaGPS.Services.YouTurn
         /// </summary>
         public YouTurnGuidanceOutput CalculateGuidance(YouTurnGuidanceInput input)
         {
+            // PERF-05 #4 (youturn-side). Shares .perf_guidance marker with
+            // TrackGuidanceService; emits as a separate [YouTurnGuidance-PERF]
+            // line so we can read them independently. Active only during U-turns.
+            bool perf = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfGuidance;
+            if (!perf) return CalculateGuidanceCore(input);
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
+            try { return CalculateGuidanceCore(input); }
+            finally
+            {
+                _perfCycleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                _perfCycleAllocs += GC.GetAllocatedBytesForCurrentThread() - a0;
+                _perfCycleCount++;
+                var elapsed = (DateTime.UtcNow - _perfWindowStart).TotalSeconds;
+                if (elapsed >= 1.0 && _perfCycleCount > 0)
+                {
+                    double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+                    Console.WriteLine(
+                        $"[YouTurnGuidance-PERF] cycles={_perfCycleCount}"
+                        + $" us/cycle={(_perfCycleTicks / ticksPerUs / _perfCycleCount):F1}"
+                        + $" alloc/cycle={(_perfCycleAllocs / _perfCycleCount)}B"
+                        + $" total_us={(long)(_perfCycleTicks / ticksPerUs)}"
+                        + $" total_alloc={_perfCycleAllocs}B"
+                        + $" window={elapsed:F2}s");
+                    _perfCycleTicks = 0;
+                    _perfCycleAllocs = 0;
+                    _perfCycleCount = 0;
+                    _perfWindowStart = DateTime.UtcNow;
+                }
+            }
+        }
+
+        private long _perfCycleTicks;
+        private long _perfCycleAllocs;
+        private int _perfCycleCount;
+        private DateTime _perfWindowStart = DateTime.UtcNow;
+
+        private YouTurnGuidanceOutput CalculateGuidanceCore(YouTurnGuidanceInput input)
+        {
             var output = new YouTurnGuidanceOutput();
 
             int ptCount = input.TurnPath.Count;
