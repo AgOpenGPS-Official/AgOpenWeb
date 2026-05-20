@@ -3284,6 +3284,42 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         private readonly SKPaint _clipLinePaint;
         private readonly SKPaint _youTurnPaint;
 
+        // Track / AB-line / U-turn paints — cached to avoid per-frame
+        // SKPaint/SKPathEffect/SKFont allocations in DrawTrackSk + DrawAbLabelSk.
+        // PERF-05 #403 sub-finding #3: an active AB line was costing ~4 ms/frame
+        // on iPad Pro 2nd gen, half from these allocations alone.
+        private readonly SKPaint _trackActivePaint;       // magenta, solid — current pass
+        private readonly SKPaint _trackBaseDashPaint;     // purple, dashed — source AB / curve
+        private readonly SKPaint _trackNextPaint;         // cyan, solid — U-turn next track
+        private readonly SKPaint _abMarkerAPaint;         // green fill — A square
+        private readonly SKPaint _abMarkerBPaint;         // red fill   — B square
+        private readonly SKPaint _abMarkerOutlinePaint;   // white stroke outline (both A & B)
+        private readonly SKPaint _pendingPointPaint;      // green fill — pending point A
+        private readonly SKPathEffect _trackDashEffect;   // 1.5 / 1.0 dash pattern
+        private readonly SKFont _abLabelFont;             // 1.6 m default typeface
+        private readonly SKPaint _abLabelTextPaint;       // white fill — A/B text
+        private readonly SKPaint _abLabelHaloPaint;       // black stroke — halo behind text
+
+        // Vehicle + tool paints — cached to avoid per-frame allocation churn in
+        // DrawVehicleSk + DrawToolSk. PERF-05 #403 sub-finding #4.
+        // Vehicle:
+        private readonly SKPaint _vehicleFallbackPaint;   // green triangle fallback
+        private readonly SKPaint _antennaPaint;           // blue antenna dot (every frame)
+        private readonly SKPaint _headingUnknownLinePaint;// red stroke for "?" marker
+        private readonly SKPaint _headingUnknownDotPaint; // red dot below "?" line
+        private readonly SKPaint _reverseIndicatorPaint;  // red filled triangle when reversing
+        // Tool / sections (section loop ran 2 SKPaint allocs per section per frame):
+        private readonly SKPaint _toolHitchPaint;         // yellow stroke (hitch + 3PT arms)
+        private readonly SKPaint _toolDrawbarPaint;       // black stroke (trailing drawbar)
+        private readonly SKPaint _toolCenterPaint;        // white stroke (tool centerline)
+        private readonly SKPaint _toolFullBarPaint;       // green fill (no-sections variant)
+        private readonly SKPaint _sectionOutlinePaint;    // black stroke (per-section outline)
+        // Section fills indexed by SectionButtonState (0..5); default state falls back to AutoOn.
+        private readonly SKPaint[] _sectionFillPaints;
+        // Tram dot colors:
+        private readonly SKPaint _tramOnPaint;            // bright green
+        private readonly SKPaint _tramOffPaint;           // dark gray
+
         // Coverage SKImage snapshot cache. The pipeline writes to SKBitmap every GPS
         // tick; Skia cannot cache a mutating bitmap on the GPU, so DrawBitmap re-uploads
         // the full 50 MB texture every frame. We snapshot the bitmap to an immutable
@@ -3381,6 +3417,146 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 Style = SKPaintStyle.Stroke,
                 StrokeWidth = 1,
                 IsAntialias = true
+            };
+
+            _trackDashEffect = SKPathEffect.CreateDash(new float[] { 1.5f, 1.0f }, 0f);
+            _trackActivePaint = new SKPaint
+            {
+                Color = new SKColor(252, 86, 186),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.5f,
+                IsAntialias = true,
+            };
+            _trackBaseDashPaint = new SKPaint
+            {
+                Color = new SKColor(180, 100, 255),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.3f,
+                IsAntialias = true,
+                PathEffect = _trackDashEffect,
+            };
+            _trackNextPaint = new SKPaint
+            {
+                Color = new SKColor(0, 200, 200),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.4f,
+                IsAntialias = true,
+            };
+            _abMarkerAPaint = new SKPaint
+            {
+                Color = new SKColor(0, 255, 0),
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true,
+            };
+            _abMarkerBPaint = new SKPaint
+            {
+                Color = new SKColor(255, 0, 0),
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true,
+            };
+            _abMarkerOutlinePaint = new SKPaint
+            {
+                Color = SKColors.White,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.15f,
+                IsAntialias = true,
+            };
+            _pendingPointPaint = new SKPaint
+            {
+                Color = new SKColor(0, 255, 0),
+                Style = SKPaintStyle.Fill,
+            };
+            _abLabelFont = new SKFont(SKTypeface.Default, 1.6f);
+            _abLabelTextPaint = new SKPaint
+            {
+                Color = SKColors.White,
+                IsAntialias = true,
+            };
+            _abLabelHaloPaint = new SKPaint
+            {
+                Color = SKColors.Black,
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.25f,
+            };
+
+            _vehicleFallbackPaint = new SKPaint
+            {
+                Color = new SKColor(0, 200, 0),
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true,
+            };
+            _antennaPaint = new SKPaint
+            {
+                Color = new SKColor(40, 120, 255),
+                Style = SKPaintStyle.Fill,
+            };
+            _headingUnknownLinePaint = new SKPaint
+            {
+                Color = SKColors.Red,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.3f,
+                IsAntialias = true,
+            };
+            _headingUnknownDotPaint = new SKPaint
+            {
+                Color = SKColors.Red,
+                Style = SKPaintStyle.Fill,
+            };
+            _reverseIndicatorPaint = new SKPaint
+            {
+                Color = SKColors.Red,
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true,
+            };
+
+            _toolHitchPaint = new SKPaint
+            {
+                Color = new SKColor(255, 255, 0),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.15f,
+            };
+            _toolDrawbarPaint = new SKPaint
+            {
+                Color = SKColors.Black,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.3f,
+            };
+            _toolCenterPaint = new SKPaint
+            {
+                Color = SKColors.White,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.1f,
+            };
+            _toolFullBarPaint = new SKPaint
+            {
+                Color = new SKColor(0, 242, 0, 191),
+                Style = SKPaintStyle.Fill,
+            };
+            _sectionOutlinePaint = new SKPaint
+            {
+                Color = SKColors.Black,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.1f,
+            };
+            _sectionFillPaints = new SKPaint[]
+            {
+                new SKPaint { Color = new SKColor(242, 51, 51),   Style = SKPaintStyle.Fill }, // 0 Off (red)
+                new SKPaint { Color = new SKColor(247, 247, 0),   Style = SKPaintStyle.Fill }, // 1 Manual ON (yellow)
+                new SKPaint { Color = new SKColor(0, 242, 0),     Style = SKPaintStyle.Fill }, // 2 Auto ON (green)
+                new SKPaint { Color = new SKColor(0, 222, 222),   Style = SKPaintStyle.Fill }, // 3 Turning OFF (cyan)
+                new SKPaint { Color = new SKColor(255, 165, 0),   Style = SKPaintStyle.Fill }, // 4 Turning ON (orange)
+                new SKPaint { Color = new SKColor(150, 150, 150), Style = SKPaintStyle.Fill }, // 5 Auto OFF (gray)
+            };
+            _tramOnPaint = new SKPaint
+            {
+                Color = new SKColor(0, 230, 0),
+                Style = SKPaintStyle.Fill,
+            };
+            _tramOffPaint = new SKPaint
+            {
+                Color = new SKColor(40, 40, 40),
+                Style = SKPaintStyle.Fill,
             };
         }
 
@@ -4905,18 +5081,16 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             else
             {
                 // Fallback triangle sized to body footprint
-                using var vehiclePaint = new SKPaint { Color = new SKColor(0, 200, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
                 using var path = new SKPath();
                 path.MoveTo(0, wheelbase);
                 path.LineTo(-bodyHalfWidth, 0);
                 path.LineTo(bodyHalfWidth, 0);
                 path.Close();
-                canvas.DrawPath(path, vehiclePaint);
+                canvas.DrawPath(path, _vehicleFallbackPaint);
             }
 
             // Antenna dot
-            using var antennaPaint = new SKPaint { Color = new SKColor(40, 120, 255), Style = SKPaintStyle.Fill };
-            canvas.DrawCircle((float)s.AntennaOffset, (float)s.AntennaPivot, 0.25f, antennaPaint);
+            canvas.DrawCircle((float)s.AntennaOffset, (float)s.AntennaPivot, 0.25f, _antennaPaint);
 
             // Front wheels (issue #336). Convert the Avalonia Bitmap to
             // SKBitmap once, then translate / rotate / scale per wheel. The
@@ -5018,23 +5192,20 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // Heading unknown "?" indicator — placed off the right side of the body
             if (!s.HasValidHeading)
             {
-                using var qPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f, IsAntialias = true };
                 float qx = bodyHalfWidth + 1;
-                canvas.DrawLine(qx, wheelbase, qx, wheelbase * 0.4f, qPaint);
-                using var dotPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill };
-                canvas.DrawCircle(qx, 0, 0.2f, dotPaint);
+                canvas.DrawLine(qx, wheelbase, qx, wheelbase * 0.4f, _headingUnknownLinePaint);
+                canvas.DrawCircle(qx, 0, 0.2f, _headingUnknownDotPaint);
             }
 
             // Reverse indicator (small triangle behind the rear axle)
             if (s.IsReversing)
             {
-                using var revPaint = new SKPaint { Color = SKColors.Red, Style = SKPaintStyle.Fill, IsAntialias = true };
                 using var revPath = new SKPath();
                 revPath.MoveTo(0, -1);
                 revPath.LineTo(-bodyHalfWidth * 0.4f, -2.5f);
                 revPath.LineTo(bodyHalfWidth * 0.4f, -2.5f);
                 revPath.Close();
-                canvas.DrawPath(revPath, revPaint);
+                canvas.DrawPath(revPath, _reverseIndicatorPaint);
             }
 
             canvas.Restore();
@@ -5045,15 +5216,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             float tx = (float)s.ToolX, ty = (float)s.ToolY;
             float toolDepth = 2.0f;
 
-            using var hitchPaint = new SKPaint { Color = new SKColor(255, 255, 0), Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f };
-
             if (s.IsToolTrailing)
             {
                 // Trailing/TBT: single drawbar (rear axle to hitch ball) + tongue (hitch to implement).
-                using var drawbarPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
                 canvas.DrawLine((float)s.ToolDrawbarBaseX, (float)s.ToolDrawbarBaseY,
-                    (float)s.HitchX, (float)s.HitchY, drawbarPaint);
-                canvas.DrawLine((float)s.HitchX, (float)s.HitchY, tx, ty, hitchPaint);
+                    (float)s.HitchX, (float)s.HitchY, _toolDrawbarPaint);
+                canvas.DrawLine((float)s.HitchX, (float)s.HitchY, tx, ty, _toolHitchPaint);
             }
             else
             {
@@ -5063,8 +5231,8 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 float baseX = (float)s.ToolArmBaseX;
                 float baseY = (float)s.ToolArmBaseY;
                 float armSpread = (float)s.ToolArmHalfSpread;
-                canvas.DrawLine(baseX + (-armSpread) * cosV, baseY + (-armSpread) * sinV, tx, ty, hitchPaint);
-                canvas.DrawLine(baseX + armSpread * cosV, baseY + armSpread * sinV, tx, ty, hitchPaint);
+                canvas.DrawLine(baseX + (-armSpread) * cosV, baseY + (-armSpread) * sinV, tx, ty, _toolHitchPaint);
+                canvas.DrawLine(baseX + armSpread * cosV, baseY + armSpread * sinV, tx, ty, _toolHitchPaint);
             }
 
             canvas.Save();
@@ -5082,35 +5250,23 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     float width = right - left;
                     if (width < 0.01f) continue;
 
-                    SKColor secColor = s.SectionButtonState[i] switch
-                    {
-                        0 => new SKColor(242, 51, 51),   // Off (red)
-                        1 => new SKColor(247, 247, 0),   // Manual ON (yellow)
-                        2 => new SKColor(0, 242, 0),     // Auto ON (green)
-                        3 => new SKColor(0, 222, 222),   // Turning OFF (cyan)
-                        4 => new SKColor(255, 165, 0),   // Turning ON (orange)
-                        5 => new SKColor(150, 150, 150), // Auto OFF (gray)
-                        _ => new SKColor(0, 242, 0)
-                    };
-
-                    using var secPaint = new SKPaint { Color = secColor, Style = SKPaintStyle.Fill };
+                    int state = s.SectionButtonState[i];
+                    var secPaint = (uint)state < (uint)_sectionFillPaints.Length
+                        ? _sectionFillPaints[state]
+                        : _sectionFillPaints[2]; // default → Auto ON (green)
                     canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, secPaint);
-
-                    using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
-                    canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, outlinePaint);
+                    canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, _sectionOutlinePaint);
                 }
             }
             else
             {
                 // No sections — draw single tool bar
                 float halfWidth = (float)(s.ToolWidth / 2);
-                using var toolPaint = new SKPaint { Color = new SKColor(0, 242, 0, 191), Style = SKPaintStyle.Fill };
-                canvas.DrawRect(-halfWidth, -toolDepth / 2, (float)s.ToolWidth, toolDepth, toolPaint);
+                canvas.DrawRect(-halfWidth, -toolDepth / 2, (float)s.ToolWidth, toolDepth, _toolFullBarPaint);
             }
 
             // Center line
-            using var centerPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
-            canvas.DrawLine(0, -toolDepth / 2, 0, toolDepth / 2, centerPaint);
+            canvas.DrawLine(0, -toolDepth / 2, 0, toolDepth / 2, _toolCenterPaint);
 
             // Tram wheel indicators (colored dots at wheel track positions)
             if (s.IsDisplayTramControl && s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off)
@@ -5120,21 +5276,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
                 // Right wheel: bit 0
                 bool rightOn = (s.TramControlByte & 1) != 0;
-                using var rightPaint = new SKPaint
-                {
-                    Color = rightOn ? new SKColor(0, 230, 0) : new SKColor(40, 40, 40),
-                    Style = SKPaintStyle.Fill
-                };
-                canvas.DrawCircle(halfTrack, 0, dotRadius, rightPaint);
+                canvas.DrawCircle(halfTrack, 0, dotRadius, rightOn ? _tramOnPaint : _tramOffPaint);
 
                 // Left wheel: bit 1
                 bool leftOn = (s.TramControlByte & 2) != 0;
-                using var leftPaint = new SKPaint
-                {
-                    Color = leftOn ? new SKColor(0, 230, 0) : new SKColor(40, 40, 40),
-                    Style = SKPaintStyle.Fill
-                };
-                canvas.DrawCircle(-halfTrack, 0, dotRadius, leftPaint);
+                canvas.DrawCircle(-halfTrack, 0, dotRadius, leftOn ? _tramOnPaint : _tramOffPaint);
             }
 
             canvas.Restore();
@@ -5148,20 +5294,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             // segment). For curves we draw the polyline as-is.
             if (s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
             {
-                using var trackPaint = new SKPaint
-                {
-                    Color = new SKColor(252, 86, 186),
-                    Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 0.5f,
-                    IsAntialias = true
-                };
                 if (s.ActiveTrack.Points.Count == 2)
                 {
-                    DrawExtendedABLineSk(canvas, s.ActiveTrack.Points[0], s.ActiveTrack.Points[1], trackPaint);
+                    DrawExtendedABLineSk(canvas, s.ActiveTrack.Points[0], s.ActiveTrack.Points[1], _trackActivePaint);
                 }
                 else
                 {
-                    DrawTrackPointsSk(canvas, s.ActiveTrack.Points, trackPaint);
+                    DrawTrackPointsSk(canvas, s.ActiveTrack.Points, _trackActivePaint);
                 }
             }
 
@@ -5179,18 +5318,10 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 var pA = sourceAb.Points[0];
                 var pB = sourceAb.Points[1];
 
-                using var dashPaint = new SKPaint
-                {
-                    Color = new SKColor(180, 100, 255),
-                    Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 0.3f,
-                    IsAntialias = true,
-                    PathEffect = SKPathEffect.CreateDash(new float[] { 1.5f, 1.0f }, 0f),
-                };
                 canvas.DrawLine(
                     (float)pA.Easting, (float)pA.Northing,
                     (float)pB.Easting, (float)pB.Northing,
-                    dashPaint);
+                    _trackBaseDashPaint);
 
                 // A/B markers (small filled squares) + text labels.
                 // World units: at default zoom the view is ~200m tall so a
@@ -5199,18 +5330,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 // transform inverts Y so text would otherwise render upside
                 // down — same trick as flag labels above).
                 float markerHalf = 0.6f;
-                using var markerPaint = new SKPaint { Color = new SKColor(0, 255, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
-                using var markerOutline = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f, IsAntialias = true };
                 var aRect = new SKRect((float)pA.Easting - markerHalf, (float)pA.Northing - markerHalf,
                     (float)pA.Easting + markerHalf, (float)pA.Northing + markerHalf);
-                canvas.DrawRect(aRect, markerPaint);
-                canvas.DrawRect(aRect, markerOutline);
+                canvas.DrawRect(aRect, _abMarkerAPaint);
+                canvas.DrawRect(aRect, _abMarkerOutlinePaint);
 
-                using var bPaint = new SKPaint { Color = new SKColor(255, 0, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
                 var bRect = new SKRect((float)pB.Easting - markerHalf, (float)pB.Northing - markerHalf,
                     (float)pB.Easting + markerHalf, (float)pB.Northing + markerHalf);
-                canvas.DrawRect(bRect, bPaint);
-                canvas.DrawRect(bRect, markerOutline);
+                canvas.DrawRect(bRect, _abMarkerBPaint);
+                canvas.DrawRect(bRect, _abMarkerOutlinePaint);
 
                 DrawAbLabelSk(canvas, "A", pA.Easting + markerHalf + 0.4, pA.Northing + markerHalf + 0.4);
                 DrawAbLabelSk(canvas, "B", pB.Easting + markerHalf + 0.4, pB.Northing + markerHalf + 0.4);
@@ -5218,42 +5346,26 @@ public class DrawingContextMapControl : Control, ISharedMapControl
             else if (sourceAb != null && sourceAb.Points.Count > 2)
             {
                 // Source curve — render dashed too so it's distinguishable.
-                using var basePaint = new SKPaint
-                {
-                    Color = new SKColor(180, 100, 255),
-                    Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 0.3f,
-                    IsAntialias = true,
-                    PathEffect = SKPathEffect.CreateDash(new float[] { 1.5f, 1.0f }, 0f),
-                };
-                DrawTrackPointsSk(canvas, sourceAb.Points, basePaint);
+                DrawTrackPointsSk(canvas, sourceAb.Points, _trackBaseDashPaint);
             }
 
             // Next track for U-turn (cyan)
             if (s.IsInYouTurn && s.NextTrack != null && s.NextTrack.Points.Count >= 2)
             {
-                using var nextPaint = new SKPaint
-                {
-                    Color = new SKColor(0, 200, 200),
-                    Style = SKPaintStyle.Stroke,
-                    StrokeWidth = 0.4f,
-                    IsAntialias = true
-                };
                 if (s.NextTrack.Points.Count == 2)
                 {
-                    DrawExtendedABLineSk(canvas, s.NextTrack.Points[0], s.NextTrack.Points[1], nextPaint);
+                    DrawExtendedABLineSk(canvas, s.NextTrack.Points[0], s.NextTrack.Points[1], _trackNextPaint);
                 }
                 else
                 {
-                    DrawTrackPointsSk(canvas, s.NextTrack.Points, nextPaint);
+                    DrawTrackPointsSk(canvas, s.NextTrack.Points, _trackNextPaint);
                 }
             }
 
             // Pending point A
             if (s.PendingPointA != null)
             {
-                using var pointPaint = new SKPaint { Color = new SKColor(0, 255, 0), Style = SKPaintStyle.Fill };
-                canvas.DrawCircle((float)s.PendingPointA.Easting, (float)s.PendingPointA.Northing, 1.0f, pointPaint);
+                canvas.DrawCircle((float)s.PendingPointA.Easting, (float)s.PendingPointA.Northing, 1.0f, _pendingPointPaint);
             }
         }
 
@@ -5314,22 +5426,13 @@ public class DrawingContextMapControl : Control, ISharedMapControl
         /// upright instead of mirrored. Mirrors the technique used for flag
         /// labels elsewhere in this file.
         /// </summary>
-        private static void DrawAbLabelSk(SKCanvas canvas, string text, double worldX, double worldY)
+        private void DrawAbLabelSk(SKCanvas canvas, string text, double worldX, double worldY)
         {
-            float fontSize = 1.6f; // ~1.6 m tall in world units
-            using var font = new SKFont(SKTypeface.Default, fontSize);
-            using var textPaint = new SKPaint(font) { Color = SKColors.White, IsAntialias = true };
-            using var halo = new SKPaint(font)
-            {
-                Color = SKColors.Black,
-                IsAntialias = true,
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 0.25f,
-            };
+            float fontSize = _abLabelFont.Size; // ~1.6 m tall in world units
             canvas.Save();
             canvas.Scale(1, -1, (float)worldX, (float)worldY);
-            canvas.DrawText(text, (float)worldX, (float)worldY + fontSize / 2, font, halo);
-            canvas.DrawText(text, (float)worldX, (float)worldY + fontSize / 2, font, textPaint);
+            canvas.DrawText(text, (float)worldX, (float)worldY + fontSize / 2, _abLabelFont, _abLabelHaloPaint);
+            canvas.DrawText(text, (float)worldX, (float)worldY + fontSize / 2, _abLabelFont, _abLabelTextPaint);
             canvas.Restore();
         }
 
