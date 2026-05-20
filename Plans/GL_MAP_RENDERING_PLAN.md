@@ -83,22 +83,46 @@ is fidelity.
 
 ### Phase 4 — Coverage map
 
-The largest design decision in the plan. Today coverage is a ~50 MB CPU
-bitmap with triangle strips drawn into it, then displayed as a
-`DrawingImage`. Two options for the GL path:
+**Approach: texture-based.** Coverage is already cell-based — see
+`memory/project_coverage_architecture.md`. `CoverageMapService` rasterizes
+the quad formed by previous + current section edges into a 1-bit-per-cell
+detection array at 0.1 m resolution; per-cell color was a separate RGB565
+bitmap living in `DrawingContextMapControl`. `CoveragePatch` /
+`GetPatches()` are vestigial (return empty) — patches were removed for
+mobile perf and must not come back.
 
-- **(a) Bitmap → GL texture, incremental upload via `glTexSubImage2D`.**
-  Lower lift, keeps the existing `ICoverageMapService` shape. But stays
-  CPU-side-bound, which is the existing bottleneck — doesn't really earn
-  the GL switch.
-- **(b) Render coverage as GL geometry directly.** Chunked VBOs of triangle
-  strips, append per GPS tick, draw what's visible. Skips the bitmap
-  entirely. Bigger phase, but this is where iPad / Android FPS could
-  actually improve.
+Concrete plan:
 
-**Recommended:** (b). Committing up front, since (a) doesn't move the
-bottleneck. Either way, iPad Pro 2nd gen (Eagl GLES, our perf floor)
-decides whether the choice was right.
+1. Move the RGB565 pixel buffer + bitmap-dimension state from
+   `DrawingContextMapControl` into `CoverageMapService` itself. The service
+   becomes self-contained: detection bits AND display pixels. The pixel-
+   access callback indirection (`SetPixelAccessCallbacks`,
+   `GetPixelBufferCallback`, `SetPixelBufferCallback`,
+   `GetDisplayBitmapInfoCallback`) is deleted from `ICoverageMapService`.
+2. The service paints into its own buffer when cells are marked covered
+   (today the 2D control polls and paints; for GL-only on this branch the
+   service is the one source of truth).
+3. The service exposes a dirty-rect since last query so the renderer can do
+   incremental uploads. Full-buffer access stays available for save/load
+   and for first-frame texture init.
+4. `GlMapControl` keeps one GL2D texture sized to the field bounds.
+   `glTexSubImage2D` uploads only the dirty rect each `CoverageUpdated`
+   event. One field-aligned quad draws coverage; fragment shader samples
+   the texture (texel == 0 → discard for transparency, else paint with the
+   texel color decoded from RGB565).
+5. On `BoundsExpanded`, allocate a new texture at the new size and re-
+   upload the full buffer. Same lifecycle the 2D control already handles.
+
+Earlier draft of this section recommended option (b) "render coverage as
+GL geometry directly, chunked VBOs of triangle strips" — that was stale
+guidance, written when patches still existed. See
+`memory/project_coverage_architecture.md`.
+
+This branch is GL-only (no toggle) — `DrawingContextMapControl` does not
+need to be maintained alongside. The 2D bitmap-painting code path inside
+that control can be removed once GL renders coverage correctly. iPad Pro
+2nd gen (Eagl GLES, our perf floor) decides whether the texture upload
+cadence works at field-coverage scale.
 
 ### Phase 5 — Tile imagery
 
@@ -115,9 +139,9 @@ keep both and ship the toggle indefinitely. Lower priority.
 
 ## Decisions to confirm before Phase 1
 
-1. **Coverage representation (Phase 4 option a vs b).** Affects buffer
-   management and shapes the entire 4-phase build. Default position is (b);
-   confirm or override before Phase 4 starts.
+1. **Coverage representation.** Resolved: texture-based with service-owned
+   RGB565 buffer. See Phase 4 section above and
+   `memory/project_coverage_architecture.md`.
 2. **In-scene text.** HUD elements (FPS counter, speed, heading) stay as
    regular Avalonia controls layered on top of the GL surface. Labels
    *inside* the world (waypoint annotations, etc.) — currently none, so

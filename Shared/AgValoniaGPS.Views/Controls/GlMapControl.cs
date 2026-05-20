@@ -8,6 +8,7 @@ using System.Numerics;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Track;
+using AgValoniaGPS.Services.Interfaces;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.OpenGL;
@@ -81,6 +82,26 @@ public class GlMapControl : OpenGlControlBase
     /// target); higher values move closer, lower values pull back.
     /// </summary>
     public void SetCameraZoom(double zoomLevel) => _zoomLevel = Math.Max(0.05, zoomLevel);
+
+    /// <summary>
+    /// Wire the coverage service so the renderer can pull display-resolution
+    /// pixels + dirty rects each frame. Idempotent — calling repeatedly with
+    /// the same service is a no-op; calling with a different instance swaps
+    /// (and forces a texture rebuild on the next render).
+    /// </summary>
+    public void RegisterCoverageService(ICoverageMapService service)
+    {
+        if (ReferenceEquals(_coverageService, service)) return;
+        _coverageService = service;
+        _coverageTexNeedsRebuild = true;
+    }
+
+    /// <summary>
+    /// Fired once per second with the GL control's measured frame rate.
+    /// Mirrors DrawingContextMapControl.FpsUpdated so the 3D path also
+    /// updates MainViewModel.CurrentFps when the 2D control is hidden.
+    /// </summary>
+    public event Action<double>? FpsUpdated;
 
     public void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
         double toolX, double toolY, double toolHeading, double toolWidth,
@@ -228,6 +249,48 @@ void main() {
     private uint _groundProgram;
     private int _uniformGroundInvMvp;
 
+    // ----- Coverage layer ---------------------------------------------------------
+    // Service-owned RGB565 buffer sampled as a texture and drawn on one
+    // field-aligned quad below boundary / track overlays. See Phase 4 in
+    // Plans/GL_MAP_RENDERING_PLAN.md and project_coverage_architecture memory.
+    private ICoverageMapService? _coverageService;
+    private uint _coverageProgram;
+    private int _coverageUniformMvp;
+    private int _coverageUniformTex;
+    private uint _coverageVao, _coverageVbo;
+    private uint _coverageTex;
+    private int _coverageTexWidth, _coverageTexHeight;
+    private double _coverageQuadMinE, _coverageQuadMinN, _coverageQuadMaxE, _coverageQuadMaxN;
+    private bool _coverageTexNeedsRebuild;
+
+    // Coverage shader: vertex carries (world XY, UV) — Z=0 since coverage
+    // paints flat on the ground plane. Fragment samples the RGB565 texture
+    // and discards near-black texels (uncovered cells encoded as 0).
+    private const string CoverageVertexShaderBody = @"
+layout(location = 0) in vec2 in_pos;
+layout(location = 1) in vec2 in_uv;
+out vec2 v_uv;
+uniform mat4 u_mvp;
+void main() {
+    v_uv = in_uv;
+    gl_Position = u_mvp * vec4(in_pos, 0.0, 1.0);
+}
+";
+
+    private const string CoverageFragmentShaderBody = @"
+precision mediump float;
+in vec2 v_uv;
+out vec4 out_color;
+uniform sampler2D u_tex;
+void main() {
+    vec4 c = texture(u_tex, v_uv);
+    // Texel value 0 = uncovered. RGB565 0 reads back as (0,0,0); test a tiny
+    // threshold for floating-point safety.
+    if (c.r + c.g + c.b < 0.003) discard;
+    out_color = vec4(c.rgb, 1.0);
+}
+";
+
     protected override void OnOpenGlInit(GlInterface glInterface)
     {
         Console.WriteLine($"[GlMap] OnOpenGlInit called. GlVersion={GlVersion}");
@@ -290,6 +353,13 @@ void main() {
         // Compile the ground shader program (separate from the line shader).
         _groundProgram = CompileAndLink(_gl, version + GroundVertexShaderBody, version + GroundFragmentShaderBody);
         _uniformGroundInvMvp = _gl.GetUniformLocation(_groundProgram, "u_inv_mvp");
+
+        // Coverage shader. Texture handle + quad VBO are allocated lazily once
+        // the coverage service reports field dimensions.
+        _coverageProgram = CompileAndLink(_gl, version + CoverageVertexShaderBody, version + CoverageFragmentShaderBody);
+        _coverageUniformMvp = _gl.GetUniformLocation(_coverageProgram, "u_mvp");
+        _coverageUniformTex = _gl.GetUniformLocation(_coverageProgram, "u_tex");
+        _coverageTexNeedsRebuild = true;
     }
 
     protected override void OnOpenGlDeinit(GlInterface glInterface)
@@ -307,8 +377,13 @@ void main() {
         DeleteVao(gl, ref _toolVao, ref _toolVbo);
         DeleteVao(gl, ref _gridVao, ref _gridVbo);
         DeleteVao(gl, ref _groundVao, ref _groundVbo);
+        DeleteVao(gl, ref _coverageVao, ref _coverageVbo);
+        if (_coverageTex != 0) { gl.DeleteTexture(_coverageTex); _coverageTex = 0; }
+        _coverageTexWidth = 0;
+        _coverageTexHeight = 0;
         if (_program != 0) { gl.DeleteProgram(_program); _program = 0; }
         if (_groundProgram != 0) { gl.DeleteProgram(_groundProgram); _groundProgram = 0; }
+        if (_coverageProgram != 0) { gl.DeleteProgram(_coverageProgram); _coverageProgram = 0; }
         _gl = null;
     }
 
@@ -422,6 +497,13 @@ void main() {
             gl.DrawArrays(GLEnum.Lines, 0, (uint)_gridCount);
         }
 
+        // Coverage layer — RGB565 texture sampled on a field-aligned quad.
+        // Drawn under the boundary/track overlays so worked area paints "below"
+        // the field outline. Switches shader to _coverageProgram and back.
+        DrawCoverage(gl, mvp);
+        gl.UseProgram(_program);
+        SetMvp(gl, mvp);
+
         // Outer boundary — yellow
         if (_outerCount > 0)
         {
@@ -505,6 +587,21 @@ void main() {
             Console.WriteLine($"[GlMap] Viewport={viewportW}x{viewportH} scaling={scaling:F2}");
         }
 
+        // FPS — count rendered frames, emit once per second on the UI thread.
+        _fpsFrames++;
+        var fpsNow = DateTime.UtcNow;
+        var fpsElapsed = (fpsNow - _fpsLastTick).TotalSeconds;
+        if (fpsElapsed >= 1.0)
+        {
+            double fps = _fpsFrames / fpsElapsed;
+            _fpsFrames = 0;
+            _fpsLastTick = fpsNow;
+            var handler = FpsUpdated;
+            if (handler != null)
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => handler(fps),
+                    Avalonia.Threading.DispatcherPriority.Background);
+        }
+
         // 1 Hz diagnostic: where is the vehicle projecting on screen + how
         // many VBO rebuilds have we accumulated since startup. Cheap and
         // useful for spotting per-frame churn regressions (rebBnd/rebHead/
@@ -529,6 +626,151 @@ void main() {
 
     private int _diagFrames;
     private int _rebuildBndCount, _rebuildHeadCount, _rebuildTracksCount, _rebuildToolCount;
+
+    // FPS counter — counts GL frames over a 1-second window and emits via
+    // FpsUpdated. MainWindow / MainView subscribes and pushes to
+    // MainViewModel.CurrentFps; mirrors DrawingContextMapControl's behavior
+    // so the HUD reads non-zero when the GL view is the visible one.
+    private int _fpsFrames;
+    private DateTime _fpsLastTick = DateTime.UtcNow;
+
+    // ----- Coverage texture ------------------------------------------------------
+
+    /// <summary>
+    /// Sync the GL texture from the service-owned RGB565 buffer and draw the
+    /// field-aligned coverage quad. Called between ground/grid and overlays.
+    /// Returns silently if no service / no field bounds yet.
+    /// </summary>
+    private unsafe void DrawCoverage(GL gl, Matrix4x4 mvp)
+    {
+        if (_coverageService == null || _coverageProgram == 0) return;
+
+        var dims = _coverageService.DisplayDimensions;
+        var pixels = _coverageService.GetDisplayPixels();
+        var worldBounds = _coverageService.DisplayBoundsWorld;
+        if (dims is null || pixels is null || worldBounds is null) return;
+
+        int w = dims.Value.Width;
+        int h = dims.Value.Height;
+        double minE = worldBounds.Value.MinE;
+        double minN = worldBounds.Value.MinN;
+        double maxE = worldBounds.Value.MaxE;
+        double maxN = worldBounds.Value.MaxN;
+
+        // (Re)allocate texture + quad when dimensions change.
+        bool dimsChanged = w != _coverageTexWidth || h != _coverageTexHeight;
+        bool quadChanged =
+            Math.Abs(minE - _coverageQuadMinE) > 1e-6 ||
+            Math.Abs(minN - _coverageQuadMinN) > 1e-6 ||
+            Math.Abs(maxE - _coverageQuadMaxE) > 1e-6 ||
+            Math.Abs(maxN - _coverageQuadMaxN) > 1e-6;
+
+        if (_coverageTex == 0 || _coverageTexNeedsRebuild || dimsChanged)
+        {
+            if (_coverageTex != 0) { gl.DeleteTexture(_coverageTex); _coverageTex = 0; }
+            _coverageTex = gl.GenTexture();
+            gl.BindTexture(TextureTarget.Texture2D, _coverageTex);
+            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
+            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
+            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+            // RGB565 rows are 2 bytes per pixel — default unpack alignment of
+            // 4 would skip bytes on odd widths.
+            gl.PixelStore(PixelStoreParameter.UnpackAlignment, 2);
+            fixed (ushort* p = pixels)
+            {
+                gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgb565,
+                    (uint)w, (uint)h, 0,
+                    PixelFormat.Rgb, PixelType.UnsignedShort565, p);
+            }
+            _coverageTexWidth = w;
+            _coverageTexHeight = h;
+            _coverageTexNeedsRebuild = false;
+            // Resizing the texture re-uploads the full buffer, so drain any
+            // pending dirty rect — otherwise we'd re-upload the same data.
+            _coverageService.ConsumeDirtyRect();
+        }
+        else
+        {
+            // Incremental upload: ask the service for the dirty rect since the
+            // last frame and upload only that. glPixelStorei with ROW_LENGTH
+            // lets us slice straight out of the full buffer.
+            var rect = _coverageService.ConsumeDirtyRect();
+            if (rect is not null)
+            {
+                gl.BindTexture(TextureTarget.Texture2D, _coverageTex);
+                gl.PixelStore(PixelStoreParameter.UnpackAlignment, 2);
+                gl.PixelStore(PixelStoreParameter.UnpackRowLength, w);
+                int rx = rect.Value.X, ry = rect.Value.Y, rw = rect.Value.Width, rh = rect.Value.Height;
+                // Point at the top-left pixel of the dirty rect inside the buffer.
+                fixed (ushort* p0 = pixels)
+                {
+                    ushort* p = p0 + (long)ry * w + rx;
+                    gl.TexSubImage2D(TextureTarget.Texture2D, 0,
+                        rx, ry, (uint)rw, (uint)rh,
+                        PixelFormat.Rgb, PixelType.UnsignedShort565, p);
+                }
+                gl.PixelStore(PixelStoreParameter.UnpackRowLength, 0);
+            }
+        }
+
+        if (quadChanged || _coverageVao == 0)
+        {
+            RebuildCoverageQuad(gl, (float)minE, (float)minN, (float)maxE, (float)maxN);
+            _coverageQuadMinE = minE;
+            _coverageQuadMinN = minN;
+            _coverageQuadMaxE = maxE;
+            _coverageQuadMaxN = maxN;
+        }
+
+        if (_coverageVao == 0) return;
+
+        gl.UseProgram(_coverageProgram);
+        unsafe { gl.UniformMatrix4(_coverageUniformMvp, 1, false, (float*)&mvp); }
+        gl.ActiveTexture(TextureUnit.Texture0);
+        gl.BindTexture(TextureTarget.Texture2D, _coverageTex);
+        gl.Uniform1(_coverageUniformTex, 0);
+        gl.BindVertexArray(_coverageVao);
+        gl.DrawArrays(GLEnum.TriangleStrip, 0, 4);
+    }
+
+    /// <summary>
+    /// Build (or rebuild) the 4-vertex field-aligned quad VBO. Each vertex is
+    /// (worldX, worldY, u, v) for a total of 16 floats. Vertex layout uses
+    /// attribute 0 = position (vec2), attribute 1 = uv (vec2).
+    /// </summary>
+    private void RebuildCoverageQuad(GL gl, float minE, float minN, float maxE, float maxN)
+    {
+        DeleteVao(gl, ref _coverageVao, ref _coverageVbo);
+
+        // Triangle-strip order: (minE,minN), (maxE,minN), (minE,maxN), (maxE,maxN)
+        float[] verts =
+        {
+            minE, minN, 0f, 0f,
+            maxE, minN, 1f, 0f,
+            minE, maxN, 0f, 1f,
+            maxE, maxN, 1f, 1f,
+        };
+
+        _coverageVao = gl.GenVertexArray();
+        _coverageVbo = gl.GenBuffer();
+        gl.BindVertexArray(_coverageVao);
+        gl.BindBuffer(BufferTargetARB.ArrayBuffer, _coverageVbo);
+        unsafe
+        {
+            fixed (float* p = verts)
+            {
+                gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(verts.Length * sizeof(float)),
+                    p, BufferUsageARB.StaticDraw);
+            }
+            uint stride = (uint)(4 * sizeof(float));
+            gl.EnableVertexAttribArray(0);
+            gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, stride, (void*)0);
+            gl.EnableVertexAttribArray(1);
+            gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, (void*)(2 * sizeof(float)));
+        }
+        gl.BindVertexArray(0);
+    }
 
     // ----- Geometry rebuild ------------------------------------------------------
 

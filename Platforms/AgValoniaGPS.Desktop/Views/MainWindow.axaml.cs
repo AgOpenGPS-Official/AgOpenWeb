@@ -41,6 +41,7 @@ public partial class MainWindow : Window
 {
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     private ISharedMapControl? MapControl;
+    private GlMapControl? _glMapControl;
     private bool _isDraggingRecPath = false;
     private Avalonia.Point _dragStartPoint;
 
@@ -92,10 +93,20 @@ public partial class MainWindow : Window
             };
         }
 
-        // Subscribe to FPS updates from map control (instance-based)
+        // Subscribe to FPS updates from both map controls. Only one renders
+        // at a time (Is2DMode toggles visibility), so whichever is active
+        // pushes its frame rate to the ViewModel.
         if (MapControl is DrawingContextMapControl dcMapControl)
         {
             dcMapControl.FpsUpdated += fps =>
+            {
+                if (ViewModel != null)
+                    ViewModel.CurrentFps = fps;
+            };
+        }
+        if (_glMapControl != null)
+        {
+            _glMapControl.FpsUpdated += fps =>
             {
                 if (ViewModel != null)
                     ViewModel.CurrentFps = fps;
@@ -138,7 +149,9 @@ public partial class MainWindow : Window
 
         // Phase-1 GL placeholder, mounted alongside the 2D map. Toggle2D3DCommand
         // flips Is2DMode; both controls bind their IsVisible to it for swap.
+        // Stored as a field so the constructor can wire FpsUpdated to the VM.
         var glMapControl = new GlMapControl();
+        _glMapControl = glMapControl;
         var mapHostGrid = new Grid();
         mapControl.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(MainViewModel.Is2DMode)));
         glMapControl.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(MainViewModel.Is2DMode)) { Converter = Avalonia.Data.Converters.BoolConverters.Not });
@@ -158,6 +171,7 @@ public partial class MainWindow : Window
 
             // Wire up coverage updates
             var coverageService = App.Services.GetRequiredService<ICoverageMapService>();
+            glMapControl.RegisterCoverageService(coverageService);
             coverageService.CoverageUpdated += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -183,19 +197,9 @@ public partial class MainWindow : Window
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
 
-            // Set up unified bitmap pixel access (PERF-004 Phase 4)
-            // Service writes directly to map control's WriteableBitmap
-            coverageService.SetPixelAccessCallbacks(
-                MapControl.GetCoveragePixel,
-                MapControl.SetCoveragePixel,
-                MapControl.ClearCoveragePixels);
-
-            // Set up buffer callbacks for save/load
-            coverageService.GetPixelBufferCallback = MapControl.GetCoveragePixelBuffer;
-            coverageService.SetPixelBufferCallback = MapControl.SetCoveragePixelBuffer;
-            coverageService.GetDisplayBitmapInfoCallback = MapControl.GetDisplayBitmapInfo;
-
-            // Mark dirty in case field was already loaded with coverage
+            // Coverage display pixels now live inside CoverageMapService; the
+            // GL map control reads them via GetDisplayPixels() / ConsumeDirtyRect().
+            // Mark dirty in case field was already loaded with coverage.
             MapControl.MarkCoverageDirty();
         }
 

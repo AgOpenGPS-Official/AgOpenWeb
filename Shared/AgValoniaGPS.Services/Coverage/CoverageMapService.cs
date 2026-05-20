@@ -37,21 +37,35 @@ namespace AgValoniaGPS.Services.Coverage;
 /// </summary>
 public class CoverageMapService : ICoverageMapService
 {
-    // ========== UNIFIED BITMAP LAYER ==========
-    // WriteableBitmap owned by map control is the single source of truth
-    // Service accesses it via callbacks - no separate storage here
+    // ========== DETECTION LAYER ==========
+    // 1 bit per cell at fixed 0.1m resolution. Authoritative coverage data.
+    // Powers IsPointCovered / GetSegmentCoverage / GetSegmentCoverageMulti.
     private const double BITMAP_CELL_SIZE = 0.1; // meters per cell (10cm = ~4in resolution)
 
-    // Pixel access callbacks (provided by map control)
-    private Func<int, int, ushort>? _getPixel;      // (localX, localY) -> rgb565
-    private Action<int, int, ushort>? _setPixel;    // (localX, localY, rgb565) -> void
-    private Action? _clearAllPixels;
-
-    // Bitmap dimensions (set when field bounds are established)
+    // Detection bitmap dimensions (at BITMAP_CELL_SIZE)
     private int _bitmapWidth;   // Number of cells in E direction
     private int _bitmapHeight;  // Number of cells in N direction
     private int _bitmapOriginE; // Cell coordinate of bitmap origin (E)
     private int _bitmapOriginN; // Cell coordinate of bitmap origin (N)
+
+    // ========== DISPLAY LAYER ==========
+    // RGB565 per cell at DISPLAY resolution (coarser than detection on large
+    // fields / low-end devices). Owned by the service; read by the GL renderer
+    // via GetDisplayPixels() / ConsumeDirtyRect() and uploaded to a GL texture
+    // via glTexSubImage2D. The 2D control's old WriteableBitmap is gone.
+    private ushort[]? _displayPixels;
+    private int _displayWidth;
+    private int _displayHeight;
+    private double _displayCellSize = BITMAP_CELL_SIZE;
+
+    // Display-resolution dirty rect since last ConsumeDirtyRect(), inclusive
+    // bounds in local display coords. Maintained under _coverageLock.
+    private int _dirtyMinX, _dirtyMinY, _dirtyMaxX, _dirtyMaxY;
+    private bool _dirtyValid;
+
+    // Cap detection-resolution bitmap at ~25M cells before scaling up display
+    // resolution. Matches the policy DrawingContextMapControl applied.
+    private const long MAX_DISPLAY_PIXELS = 25_000_000;
 
     // Per-zone cell counters for acreage calculation (zone index -> cell count)
     private readonly Dictionary<int, long> _cellCountPerZone = new();
@@ -109,28 +123,47 @@ public class CoverageMapService : ICoverageMapService
 
     public event EventHandler<CoverageUpdatedEventArgs>? CoverageUpdated;
 
-    // Callbacks for save/load operations on the bitmap buffer
-    public Func<ushort[]?>? GetPixelBufferCallback { get; set; }
-    public Action<ushort[]>? SetPixelBufferCallback { get; set; }
-
-    // Callback to get actual display bitmap dimensions (may differ from detection resolution)
-    public Func<(int Width, int Height, double CellSize)?>? GetDisplayBitmapInfoCallback { get; set; }
-
-    // Expose bitmap dimensions for coordinate calculations
+    // Detection-layer dimensions for coordinate calculations (0.1m cells).
     public (int Width, int Height, int OriginE, int OriginN)? BitmapDimensions =>
         _fieldBoundsSet ? (_bitmapWidth, _bitmapHeight, _bitmapOriginE, _bitmapOriginN) : null;
 
     /// <summary>
-    /// Set pixel access callbacks for unified WriteableBitmap storage.
+    /// Display-layer pixel buffer (RGB565, row-major, width-major). Returns null
+    /// if field bounds aren't set yet. The GL renderer uses this for first-frame
+    /// texture upload; incremental updates go through <see cref="ConsumeDirtyRect"/>.
     /// </summary>
-    public void SetPixelAccessCallbacks(
-        Func<int, int, ushort>? getPixel,
-        Action<int, int, ushort>? setPixel,
-        Action? clearAll)
+    public ushort[]? GetDisplayPixels() => _displayPixels;
+
+    /// <summary>
+    /// Display-layer dimensions (variable per field size + DisplayResolutionMultiplier).
+    /// Always coarser-or-equal to detection. Null if field bounds aren't set.
+    /// </summary>
+    public (int Width, int Height, double CellSize)? DisplayDimensions =>
+        _fieldBoundsSet ? (_displayWidth, _displayHeight, _displayCellSize) : null;
+
+    public (double MinE, double MinN, double MaxE, double MaxN)? DisplayBoundsWorld =>
+        _fieldBoundsSet
+            ? (_fieldMinE, _fieldMinN,
+               _fieldMinE + _displayWidth * _displayCellSize,
+               _fieldMinN + _displayHeight * _displayCellSize)
+            : null;
+
+    /// <summary>
+    /// Consume the dirty rect since the last call. Returns (x, y, w, h) in display
+    /// pixel coordinates, or null if nothing changed. Resets after return so the
+    /// next call sees only new writes. Lock-protected.
+    /// </summary>
+    public (int X, int Y, int Width, int Height)? ConsumeDirtyRect()
     {
-        _getPixel = getPixel;
-        _setPixel = setPixel;
-        _clearAllPixels = clearAll;
+        lock (_coverageLock)
+        {
+            if (!_dirtyValid) return null;
+            var result = (_dirtyMinX, _dirtyMinY,
+                          _dirtyMaxX - _dirtyMinX + 1,
+                          _dirtyMaxY - _dirtyMinY + 1);
+            _dirtyValid = false;
+            return result;
+        }
     }
 
     public void StartMapping(int zoneIndex, Vec2 leftEdge, Vec2 rightEdge, CoverageColor? color = null)
@@ -504,7 +537,9 @@ public class CoverageMapService : ICoverageMapService
 
     /// <summary>
     /// Mark a cell as covered. Returns true if cell was newly covered.
-    /// Uses bit array for fast detection, batched write via _newCells for rendering.
+    /// Uses bit array for fast detection; paints into the display pixel buffer
+    /// (one display pixel may receive paint from many detection cells — the
+    /// last writer wins, which matches the prior 2D-control behavior).
     /// </summary>
     private bool MarkCellCovered(int cellE, int cellN, int zone)
     {
@@ -526,8 +561,15 @@ public class CoverageMapService : ICoverageMapService
         byte mask = (byte)(1 << bitOffset);
 
         // Check if already covered using bit array (O(1), no bitmap lock)
-        if ((_detectionBits[byteIndex] & mask) != 0)
-            return false; // Already covered
+        bool wasAlreadyCovered = (_detectionBits[byteIndex] & mask) != 0;
+
+        // Always paint the display pixel — even if the detection bit was set
+        // by an earlier section pass, we want the most recent section color to
+        // win. (The 2D control behaved the same way.)
+        PaintDisplayPixel(cellE, cellN, zone);
+
+        if (wasAlreadyCovered)
+            return false;
 
         // Mark as covered in detection array
         _detectionBits[byteIndex] |= mask;
@@ -541,6 +583,65 @@ public class CoverageMapService : ICoverageMapService
         _cellCountPerZone[zone] = count + 1;
 
         return true;
+    }
+
+    /// <summary>
+    /// Map a detection cell (at 0.1m) to its display-resolution pixel and
+    /// paint the zone's RGB565 color there. Updates the dirty rect.
+    /// Caller must hold _coverageLock.
+    /// </summary>
+    private void PaintDisplayPixel(int cellE, int cellN, int zone)
+    {
+        if (_displayPixels == null) return;
+
+        // World-coord center of this detection cell
+        double worldX = (cellE + 0.5) * BITMAP_CELL_SIZE;
+        double worldY = (cellN + 0.5) * BITMAP_CELL_SIZE;
+
+        // Map to display-resolution pixel coords
+        int dx = (int)Math.Floor((worldX - _fieldMinE) / _displayCellSize);
+        int dy = (int)Math.Floor((worldY - _fieldMinN) / _displayCellSize);
+        if (dx < 0 || dx >= _displayWidth || dy < 0 || dy >= _displayHeight) return;
+
+        ushort rgb565 = GetZoneColorRgb565(zone);
+        _displayPixels[(long)dy * _displayWidth + dx] = rgb565;
+        ExpandDirty(dx, dy);
+    }
+
+    /// <summary>Expand the dirty rect to include the given display pixel. Caller holds lock.</summary>
+    private void ExpandDirty(int x, int y)
+    {
+        if (!_dirtyValid)
+        {
+            _dirtyMinX = _dirtyMaxX = x;
+            _dirtyMinY = _dirtyMaxY = y;
+            _dirtyValid = true;
+            return;
+        }
+        if (x < _dirtyMinX) _dirtyMinX = x;
+        if (x > _dirtyMaxX) _dirtyMaxX = x;
+        if (y < _dirtyMinY) _dirtyMinY = y;
+        if (y > _dirtyMaxY) _dirtyMaxY = y;
+    }
+
+    /// <summary>Mark the entire display buffer dirty (used after load/expand). Caller holds lock.</summary>
+    private void ExpandDirtyAll()
+    {
+        _dirtyMinX = 0;
+        _dirtyMinY = 0;
+        _dirtyMaxX = Math.Max(0, _displayWidth - 1);
+        _dirtyMaxY = Math.Max(0, _displayHeight - 1);
+        _dirtyValid = _displayWidth > 0 && _displayHeight > 0;
+    }
+
+    /// <summary>Compute RGB565 for a zone using the same policy as GetZoneColor (RGB888 → 565).</summary>
+    private static ushort GetZoneColorRgb565(int zoneIndex)
+    {
+        var tool = ConfigurationStore.Instance.Tool;
+        uint rgb888 = tool.IsMultiColoredSections
+            ? tool.GetSectionColor(zoneIndex)
+            : tool.SingleCoverageColor;
+        return Rgb888ToRgb565(rgb888);
     }
 
     /// <summary>
@@ -669,7 +770,7 @@ public class CoverageMapService : ICoverageMapService
     public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetCoverageBitmapCells(
         double cellSize, double viewMinE, double viewMaxE, double viewMinN, double viewMaxN)
     {
-        if (_getPixel == null || GetTotalCellCount() == 0)
+        if (GetTotalCellCount() == 0)
             yield break;
 
         // Determine origin for coordinate calculations
@@ -790,8 +891,10 @@ public class CoverageMapService : ICoverageMapService
 
     public void ClearAll()
     {
-        // Clear bitmap via callback
-        _clearAllPixels?.Invoke();
+        // Clear display pixel buffer and detection bits in lockstep
+        if (_displayPixels != null)
+            Array.Clear(_displayPixels, 0, _displayPixels.Length);
+        ExpandDirtyAll();
         _newCells.Clear();
         if (_detectionBits != null)
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
@@ -860,19 +963,63 @@ public class CoverageMapService : ICoverageMapService
         _bitmapWidth = (int)Math.Ceiling((maxE - minE) / BITMAP_CELL_SIZE);
         _bitmapHeight = (int)Math.Ceiling((maxN - minN) / BITMAP_CELL_SIZE);
 
-        long totalPixels = (long)_bitmapWidth * _bitmapHeight;
+        long totalDetectionCells = (long)_bitmapWidth * _bitmapHeight;
 
         // Allocate bit array for detection: 1 bit per cell
-        long totalBits = totalPixels;
-        long totalBytes = (totalBits + 7) / 8;
+        long totalBytes = (totalDetectionCells + 7) / 8;
         _detectionBits = new byte[totalBytes];
+
+        // Compute display resolution + dimensions (pillared on
+        // DisplayConfig.DisplayResolutionMultiplier and a 25M-pixel cap)
+        // then allocate the RGB565 display buffer.
+        _displayCellSize = ComputeDisplayCellSize(maxE - minE, maxN - minN);
+        _displayWidth = (int)Math.Ceiling((maxE - minE) / _displayCellSize);
+        _displayHeight = (int)Math.Ceiling((maxN - minN) / _displayCellSize);
+        long totalDisplayPixels = (long)_displayWidth * _displayHeight;
+        _displayPixels = new ushort[totalDisplayPixels];
+        _dirtyValid = false;
 
         double areaMSq = (maxE - minE) * (maxN - minN);
         double areaHa = areaMSq / 10000.0;
-        double bitmapMB = totalPixels * 2 / (1024.0 * 1024.0); // 2 bytes per pixel (Rgb565)
+        double displayMB = totalDisplayPixels * 2 / (1024.0 * 1024.0);
         double detectionMB = totalBytes / (1024.0 * 1024.0);
-        Console.WriteLine($"[Coverage] Field bounds set: E[{minE:F1}, {maxE:F1}] N[{minN:F1}, {maxN:F1}]");
-        Console.WriteLine($"[Coverage] {_bitmapWidth}x{_bitmapHeight} = {totalPixels:N0} cells, detection={detectionMB:F1}MB, bitmap=~{bitmapMB:F0}MB for {areaHa:F0}ha");
+        Console.WriteLine($"[Coverage] Field bounds set: E[{minE:F1}, {maxE:F1}] N[{minN:F1}, {maxN:F1}] {areaHa:F0}ha");
+        Console.WriteLine($"[Coverage] Detection {_bitmapWidth}x{_bitmapHeight} @ {BITMAP_CELL_SIZE}m = {totalDetectionCells:N0} cells / {detectionMB:F1}MB");
+        Console.WriteLine($"[Coverage] Display   {_displayWidth}x{_displayHeight} @ {_displayCellSize:F2}m = {totalDisplayPixels:N0} pixels / {displayMB:F1}MB");
+    }
+
+    /// <summary>
+    /// Pick a display-layer cell size. Detection is fixed at 0.1m; display
+    /// scales coarser when needed to keep the RGB565 buffer + GL texture
+    /// within budget. Logic mirrors the policy that used to live in
+    /// DrawingContextMapControl.GetCoverageBitmapInfo: cap at ~25M pixels,
+    /// then apply the user's DisplayResolutionMultiplier (Ultra=1.0,
+    /// High=1.5, Med=2.5, Low=4.0, Min=6.0).
+    /// </summary>
+    private static double ComputeDisplayCellSize(double worldWidthM, double worldHeightM)
+    {
+        double cellSize = BITMAP_CELL_SIZE;
+
+        long pixelsAtFullRes =
+            (long)Math.Ceiling(worldWidthM / BITMAP_CELL_SIZE) *
+            (long)Math.Ceiling(worldHeightM / BITMAP_CELL_SIZE);
+        if (pixelsAtFullRes > MAX_DISPLAY_PIXELS)
+        {
+            double scaleFactor = Math.Sqrt((double)pixelsAtFullRes / MAX_DISPLAY_PIXELS);
+            cellSize = BITMAP_CELL_SIZE * scaleFactor;
+            // Snap to discrete steps so save/load files share predictable cell sizes
+            if (cellSize <= 0.2) cellSize = 0.2;
+            else if (cellSize <= 0.25) cellSize = 0.25;
+            else if (cellSize <= 0.35) cellSize = 0.35;
+            else if (cellSize <= 0.5) cellSize = 0.5;
+            else if (cellSize <= 0.75) cellSize = 0.75;
+            else cellSize = Math.Ceiling(cellSize);
+        }
+
+        double multiplier = ConfigurationStore.Instance.Display.DisplayResolutionMultiplier;
+        if (multiplier > 1.0) cellSize *= multiplier;
+
+        return cellSize;
     }
 
     private const double EXPAND_MARGIN = 50.0; // Expand when within 50m of edge
@@ -900,17 +1047,26 @@ public class CoverageMapService : ICoverageMapService
 
         if (!needsExpand) return;
 
-        // Save old state
+        // Save old state — both detection (always at 0.1m) and display (at
+        // _displayCellSize). Detection origin is in 0.1m cells; display origin
+        // derives from world bounds since the policy could change cell size.
         var oldBits = _detectionBits;
         int oldWidth = _bitmapWidth;
         int oldHeight = _bitmapHeight;
         int oldOriginE = _bitmapOriginE;
         int oldOriginN = _bitmapOriginN;
 
+        var oldPixels = _displayPixels;
+        int oldDispWidth = _displayWidth;
+        int oldDispHeight = _displayHeight;
+        double oldDispCell = _displayCellSize;
+        double oldMinE = _fieldMinE;
+        double oldMinN = _fieldMinN;
+
         // Reallocate with new bounds
         SetFieldBounds(newMinE, newMaxE, newMinN, newMaxN);
 
-        // Copy old bits to new array
+        // Copy old detection bits to new array
         if (oldBits != null && _detectionBits != null)
         {
             int offsetE = oldOriginE - _bitmapOriginE;
@@ -933,9 +1089,46 @@ public class CoverageMapService : ICoverageMapService
                     }
                 }
             }
-
-            Console.WriteLine($"[Coverage] Bounds expanded: {oldWidth}x{oldHeight} -> {_bitmapWidth}x{_bitmapHeight}, copied existing coverage");
         }
+
+        // Copy old display pixels to new buffer. If the display cell size
+        // changed (rare — only when the new bounds cross a policy threshold),
+        // resample by mapping each old pixel through world coordinates.
+        if (oldPixels != null && _displayPixels != null)
+        {
+            bool sameCell = Math.Abs(oldDispCell - _displayCellSize) < 1e-9;
+            for (int oy = 0; oy < oldDispHeight; oy++)
+            {
+                for (int ox = 0; ox < oldDispWidth; ox++)
+                {
+                    ushort px = oldPixels[(long)oy * oldDispWidth + ox];
+                    if (px == 0) continue;
+
+                    int nx, ny;
+                    if (sameCell)
+                    {
+                        // Direct offset in display cells based on origin shift.
+                        double worldX = oldMinE + (ox + 0.5) * oldDispCell;
+                        double worldY = oldMinN + (oy + 0.5) * oldDispCell;
+                        nx = (int)Math.Floor((worldX - _fieldMinE) / _displayCellSize);
+                        ny = (int)Math.Floor((worldY - _fieldMinN) / _displayCellSize);
+                    }
+                    else
+                    {
+                        double worldX = oldMinE + (ox + 0.5) * oldDispCell;
+                        double worldY = oldMinN + (oy + 0.5) * oldDispCell;
+                        nx = (int)Math.Floor((worldX - _fieldMinE) / _displayCellSize);
+                        ny = (int)Math.Floor((worldY - _fieldMinN) / _displayCellSize);
+                    }
+                    if (nx < 0 || nx >= _displayWidth || ny < 0 || ny >= _displayHeight) continue;
+                    _displayPixels[(long)ny * _displayWidth + nx] = px;
+                }
+            }
+            // Whole buffer is potentially changed after a resize.
+            ExpandDirtyAll();
+        }
+
+        Console.WriteLine($"[Coverage] Bounds expanded: detection {oldWidth}x{oldHeight} -> {_bitmapWidth}x{_bitmapHeight}, display {oldDispWidth}x{oldDispHeight} -> {_displayWidth}x{_displayHeight}");
 
         // Notify listeners to resize their bitmaps
         BoundsExpanded?.Invoke(this, new BoundsExpandedEventArgs
@@ -952,9 +1145,12 @@ public class CoverageMapService : ICoverageMapService
         _fieldBoundsSet = false;
         _bitmapWidth = 0;
         _bitmapHeight = 0;
+        _displayWidth = 0;
+        _displayHeight = 0;
         _cellCountPerZone.Clear();
         _detectionBits = null;
-        _clearAllPixels?.Invoke();
+        _displayPixels = null;
+        _dirtyValid = false;
         Console.WriteLine("[Coverage] Field bounds cleared");
     }
 
@@ -1306,35 +1502,13 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     private void SaveSectionDisplay(string fieldDirectory)
     {
-        if (!_fieldBoundsSet || GetPixelBufferCallback == null)
+        if (!_fieldBoundsSet || _displayPixels == null || _displayPixels.Length == 0)
             return;
 
-        var pixels = GetPixelBufferCallback();
-        if (pixels == null || pixels.Length == 0)
-            return;
-
-        // Get actual display bitmap dimensions (may differ from detection resolution)
-        int dispWidth, dispHeight;
-        double dispCellSize;
-        if (GetDisplayBitmapInfoCallback != null)
-        {
-            var displayInfo = GetDisplayBitmapInfoCallback();
-            if (displayInfo == null)
-            {
-                Console.WriteLine("[Coverage] SaveSectionDisplay: Display bitmap not initialized");
-                return;
-            }
-            dispWidth = displayInfo.Value.Width;
-            dispHeight = displayInfo.Value.Height;
-            dispCellSize = displayInfo.Value.CellSize;
-        }
-        else
-        {
-            // Fallback to detection dimensions (legacy)
-            dispWidth = _bitmapWidth;
-            dispHeight = _bitmapHeight;
-            dispCellSize = BITMAP_CELL_SIZE;
-        }
+        var pixels = _displayPixels;
+        int dispWidth = _displayWidth;
+        int dispHeight = _displayHeight;
+        double dispCellSize = _displayCellSize;
 
         // Verify pixel count matches expected display dimensions
         long expectedPixels = (long)dispWidth * dispHeight;
@@ -1499,34 +1673,15 @@ public class CoverageMapService : ICoverageMapService
         if (!File.Exists(path))
             return false;
 
-        if (SetPixelBufferCallback == null)
+        if (_displayPixels == null)
         {
-            Console.WriteLine("[Coverage] LoadSectionDisplay: SetPixelBufferCallback not set");
+            Console.WriteLine("[Coverage] LoadSectionDisplay: display buffer not allocated (no field bounds)");
             return false;
         }
 
-        // Get actual display bitmap dimensions (may differ from detection resolution)
-        int targetWidth, targetHeight;
-        double targetCellSize;
-        if (GetDisplayBitmapInfoCallback != null)
-        {
-            var displayInfo = GetDisplayBitmapInfoCallback();
-            if (displayInfo == null)
-            {
-                Console.WriteLine("[Coverage] LoadSectionDisplay: Display bitmap not initialized");
-                return false;
-            }
-            targetWidth = displayInfo.Value.Width;
-            targetHeight = displayInfo.Value.Height;
-            targetCellSize = displayInfo.Value.CellSize;
-        }
-        else
-        {
-            // Fallback to service dimensions (legacy)
-            targetWidth = _bitmapWidth;
-            targetHeight = _bitmapHeight;
-            targetCellSize = BITMAP_CELL_SIZE;
-        }
+        int targetWidth = _displayWidth;
+        int targetHeight = _displayHeight;
+        double targetCellSize = _displayCellSize;
 
         try
         {
@@ -1591,9 +1746,11 @@ public class CoverageMapService : ICoverageMapService
                 return false;
             }
 
-            // Convert to RGB565 pixels, scaling if needed to match display bitmap
-            long totalTargetPixels = (long)targetWidth * targetHeight;
-            var pixels = new ushort[totalTargetPixels];
+            // Write decoded pixels directly into the service-owned buffer.
+            // (Earlier versions allocated a fresh ushort[] and handed it off via
+            // SetPixelBufferCallback to the 2D control; now we write in place.)
+            var pixels = _displayPixels!;
+            Array.Clear(pixels, 0, pixels.Length);
             long nonZeroPixels = 0;
 
             if (!needsScaling)
@@ -1642,9 +1799,7 @@ public class CoverageMapService : ICoverageMapService
                 }
             }
 
-            // Pass pixels to map control
-            SetPixelBufferCallback(pixels);
-
+            ExpandDirtyAll();
             Console.WriteLine($"[Coverage] Loaded section display: {nonZeroPixels:N0} covered pixels{(needsScaling ? " (scaled)" : "")}");
 
             // If the display file decoded to an empty canvas (no covered pixels) but the

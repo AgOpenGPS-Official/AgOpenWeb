@@ -114,7 +114,10 @@ public partial class MainView : UserControl
         {
             mapService.RegisterMapControl(_mapControl);
             if (_glMapControl != null)
+            {
                 mapService.RegisterGlMapControl(_glMapControl);
+                _glMapControl.RegisterCoverageService(coverageService);
+            }
             System.Diagnostics.Debug.WriteLine("[MainView] MapControl registered with MapService.");
 
             // Wire screenshot provider for debug dump (#127)
@@ -154,19 +157,9 @@ public partial class MainView : UserControl
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
 
-            // Set up unified bitmap pixel access (PERF-004 Phase 4)
-            // Service writes directly to map control's WriteableBitmap
-            coverageService.SetPixelAccessCallbacks(
-                _mapControl.GetCoveragePixel,
-                _mapControl.SetCoveragePixel,
-                _mapControl.ClearCoveragePixels);
-
-            // Set up buffer callbacks for save/load
-            coverageService.GetPixelBufferCallback = _mapControl.GetCoveragePixelBuffer;
-            coverageService.SetPixelBufferCallback = _mapControl.SetCoveragePixelBuffer;
-            coverageService.GetDisplayBitmapInfoCallback = _mapControl.GetDisplayBitmapInfo;
-
-            // Mark dirty in case field was already loaded with coverage
+            // Coverage display pixels now live inside CoverageMapService; the
+            // GL map control reads them via GetDisplayPixels() / ConsumeDirtyRect().
+            // Mark dirty in case field was already loaded with coverage.
             _mapControl.MarkCoverageDirty();
         }
 
@@ -182,10 +175,20 @@ public partial class MainView : UserControl
         // Note: Tool/vehicle position sync happens when simulator is enabled
         // (see IsSimulatorEnabled handler in OnViewModelPropertyChanged)
 
-        // Subscribe to FPS updates from map control (instance-based)
+        // Subscribe to FPS updates from both map controls. Only one renders
+        // at a time (Is2DMode toggles visibility) so whichever is active
+        // pushes its frame rate to the ViewModel.
         if (_mapControl != null)
         {
             _mapControl.FpsUpdated += fps =>
+            {
+                if (viewModel != null)
+                    viewModel.CurrentFps = fps;
+            };
+        }
+        if (_glMapControl != null)
+        {
+            _glMapControl.FpsUpdated += fps =>
             {
                 if (viewModel != null)
                     viewModel.CurrentFps = fps;
