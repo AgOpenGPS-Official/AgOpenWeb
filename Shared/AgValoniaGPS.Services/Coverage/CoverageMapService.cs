@@ -917,11 +917,17 @@ public class CoverageMapService : ICoverageMapService
         _coverageDirty = false;
         _pendingAreaAdded = 0;
 
+        // IsFullReload tells the 2D map control to drop its SKBitmap and
+        // repaint from the (now empty) service. Without this, ClearAll wipes
+        // the service-owned display buffer + detection bits, but the 2D
+        // control still shows the old paint until something else triggers a
+        // full rebuild.
         CoverageUpdated?.Invoke(this, new CoverageUpdatedEventArgs
         {
             TotalArea = 0,
             PatchCount = 0,
-            AreaAdded = 0
+            AreaAdded = 0,
+            IsFullReload = true
         });
     }
 

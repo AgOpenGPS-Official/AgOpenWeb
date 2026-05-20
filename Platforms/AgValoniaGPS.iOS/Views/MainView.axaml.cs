@@ -141,7 +141,17 @@ public partial class MainView : UserControl
                         _mapControl?.MarkCoverageDirty();
                     }
                     else if (args.IsFullReload)
+                    {
+                        // ClearCoveragePixels drops the existing SKBitmap paint
+                        // and re-composites the background; MarkCoverageFullRebuildNeeded
+                        // then repaints from whatever cells the service still has
+                        // (zero after ClearAll, populated after LoadFromFile).
+                        // Without the clear, ClearAll leaves stale coverage on
+                        // screen because UpdateCoverageBitmapFull's
+                        // _backgroundComposited short-circuit skips the wipe.
+                        _mapControl?.ClearCoveragePixels();
                         _mapControl?.MarkCoverageFullRebuildNeeded();
+                    }
                     else
                         _mapControl?.MarkCoverageDirty();
                     _viewModel?.RefreshCoverageStatistics();
