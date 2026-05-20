@@ -3239,6 +3239,12 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
         // Per-category render timing (only accumulates when DiagFlags.LogRenderTiming is true)
         private long _rtGround, _rtGrid, _rtCoverage, _rtBoundary, _rtTracks, _rtVehicle;
+        // Parallel allocation buckets — track bytes allocated per section via
+        // GC.GetAllocatedBytesForCurrentThread() so we can distinguish necessary
+        // compute (CPU time grows with input) from per-frame allocation churn
+        // (bytes/frame grows with frequency, not input). Same gate as the time
+        // buckets above. PERF-05.
+        private long _raGround, _raGrid, _raCoverage, _raBoundary, _raTracks, _raVehicle;
         private int _rtFrameCount;
         private DateTime _rtWindowStart = DateTime.UtcNow;
 
@@ -3484,6 +3490,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 using var cameraScope = drawingContext.PushPreTransform(cameraMatrix);
 
                 t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                long a0 = rt ? GC.GetAllocatedBytesForCurrentThread() : 0;
                 // Ground texture
                 if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
                 {
@@ -3496,7 +3503,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                 {
                     DrawBackgroundImage(drawingContext, s);
                 }
-                if (rt) _rtGround += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                if (rt)
+                {
+                    _rtGround += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                    _raGround += GC.GetAllocatedBytesForCurrentThread() - a0;
+                }
 
                 // Grid drawing moved into SKCanvas block below so all line segments
                 // batch into 2-3 DrawPath calls instead of hundreds of DrawLine calls.
@@ -3522,20 +3533,31 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                         // Grid (batched SKPath — was dominating zoom-out perf with
                         // hundreds of per-line DrawLine calls on ImmediateDrawingContext)
                         t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        a0 = rt ? GC.GetAllocatedBytesForCurrentThread() : 0;
                         if (s.IsGridVisible && !DiagFlags.SkipGrid)
                             DrawGridSk(canvas, s, viewWidth, viewHeight);
-                        if (rt) _rtGrid += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                        if (rt)
+                        {
+                            _rtGrid += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                            _raGrid += GC.GetAllocatedBytesForCurrentThread() - a0;
+                        }
 
                         // Coverage bitmap
                         t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        a0 = rt ? GC.GetAllocatedBytesForCurrentThread() : 0;
                         if (s.CoverageSkBitmap != null && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
                             && s.BitmapWidth > 0 && s.BitmapHeight > 0
                             && !DiagFlags.SkipCoverageDraw)
                             DrawCoverageBitmap(drawingContext, canvas, s);
-                        if (rt) _rtCoverage += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                        if (rt)
+                        {
+                            _rtCoverage += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                            _raCoverage += GC.GetAllocatedBytesForCurrentThread() - a0;
+                        }
 
                         // Boundary, headland, paths
                         t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        a0 = rt ? GC.GetAllocatedBytesForCurrentThread() : 0;
                         if (!DiagFlags.SkipBoundaryDraw)
                         {
                             if (s.Boundary != null)
@@ -3551,10 +3573,15 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                             DrawClipLineSk(canvas, s);
                         if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
                             DrawYouTurnPathSk(canvas, s);
-                        if (rt) _rtBoundary += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                        if (rt)
+                        {
+                            _rtBoundary += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                            _raBoundary += GC.GetAllocatedBytesForCurrentThread() - a0;
+                        }
 
                         // Tram lines + Tracks
                         t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                        a0 = rt ? GC.GetAllocatedBytesForCurrentThread() : 0;
                         if (s.TramDisplayMode != AgValoniaGPS.Models.Configuration.TramDisplayMode.Off
                             && !DiagFlags.SkipTracks)
                             DrawTramLinesSk(canvas, s);
@@ -3563,7 +3590,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                             || s.RecordedPaths.Count > 0 || s.ContourStrips.Count > 0)
                             && !DiagFlags.SkipTracks)
                             DrawTrackSk(canvas, s);
-                        if (rt) _rtTracks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                        if (rt)
+                        {
+                            _rtTracks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                            _raTracks += GC.GetAllocatedBytesForCurrentThread() - a0;
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -3572,6 +3603,7 @@ public class DrawingContextMapControl : Control, ISharedMapControl
 
                     // Vehicle/tool always draws even if above fails
                     t0 = rt ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+                    a0 = rt ? GC.GetAllocatedBytesForCurrentThread() : 0;
                     if (s.ExtraGuidelines && s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2
                         && !DiagFlags.SkipTracks)
                         DrawExtraGuidelinesSk(canvas, s);
@@ -3592,7 +3624,11 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                         DrawSelectionMarkersSk(canvas, s);
                     if (s.ShowBoundaryOffsetIndicator)
                         DrawBoundaryOffsetIndicatorSk(canvas, s);
-                    if (rt) _rtVehicle += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                    if (rt)
+                    {
+                        _rtVehicle += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                        _raVehicle += GC.GetAllocatedBytesForCurrentThread() - a0;
+                    }
                 }
 
                 if (rt)
@@ -3603,16 +3639,25 @@ public class DrawingContextMapControl : Control, ISharedMapControl
                     {
                         double toMsPerFrame(long t) =>
                             t * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _rtFrameCount;
+                        long toBytesPerFrame(long b) => b / _rtFrameCount;
+                        // Per-section format: <name>=<ms>/<bytes>. The bytes
+                        // figure is per-frame average. A section where bytes
+                        // grow per cycle without input change is churn (PERF-05
+                        // umbrella: GH #403).
+                        long totalAlloc = _raGround + _raGrid + _raCoverage
+                                        + _raBoundary + _raTracks + _raVehicle;
                         Console.WriteLine(
                             $"[RenderBudget] frames={_rtFrameCount}"
-                            + $" ground={toMsPerFrame(_rtGround):F2}ms"
-                            + $" grid={toMsPerFrame(_rtGrid):F2}ms"
-                            + $" cov={toMsPerFrame(_rtCoverage):F2}ms"
-                            + $" bnd={toMsPerFrame(_rtBoundary):F2}ms"
-                            + $" trk={toMsPerFrame(_rtTracks):F2}ms"
-                            + $" veh={toMsPerFrame(_rtVehicle):F2}ms"
+                            + $" ground={toMsPerFrame(_rtGround):F2}ms/{toBytesPerFrame(_raGround)}B"
+                            + $" grid={toMsPerFrame(_rtGrid):F2}ms/{toBytesPerFrame(_raGrid)}B"
+                            + $" cov={toMsPerFrame(_rtCoverage):F2}ms/{toBytesPerFrame(_raCoverage)}B"
+                            + $" bnd={toMsPerFrame(_rtBoundary):F2}ms/{toBytesPerFrame(_raBoundary)}B"
+                            + $" trk={toMsPerFrame(_rtTracks):F2}ms/{toBytesPerFrame(_raTracks)}B"
+                            + $" veh={toMsPerFrame(_rtVehicle):F2}ms/{toBytesPerFrame(_raVehicle)}B"
+                            + $" tot_alloc={toBytesPerFrame(totalAlloc)}B/frame"
                             + $" zoom={s.Zoom:F2}");
                         _rtGround = _rtGrid = _rtCoverage = _rtBoundary = _rtTracks = _rtVehicle = 0;
+                        _raGround = _raGrid = _raCoverage = _raBoundary = _raTracks = _raVehicle = 0;
                         _rtFrameCount = 0;
                         _rtWindowStart = now;
                     }
