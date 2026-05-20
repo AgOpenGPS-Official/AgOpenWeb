@@ -71,8 +71,8 @@ should be active. Useful as the "everything else" floor.
 Adds boundary + headland + coverage-bitmap-present (but no painting) to S1.
 
 ### S3 — Active AB track
-- S2 state, plus: tap A, drive forward a few meters (sim off, so move manually
-  by drag if needed — just need an A and a B point set), tap B.
+- S2 state, plus: tap A somewhere on the map, then tap B somewhere else.
+  No driving required — AB creation is just two taps.
 - Active AB line visible on screen.
 - No simulator running.
 - Hold steady.
