@@ -1,0 +1,2 @@
+# Raw capture logs are large and per-run; summarize findings in #403 instead.
+*.log
