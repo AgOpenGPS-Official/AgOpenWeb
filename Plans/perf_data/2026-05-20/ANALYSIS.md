@@ -1,4 +1,13 @@
-# PERF-05 Phase 1 — Analysis (2026-05-20)
+# PERF-05 — Analysis (2026-05-20)
+
+> **Status: audit complete.** All three phases (1 instrumentation,
+> 2a-b investigation, 2c #1+#2 fix) closed. Headline result: **iPad
+> S5 43 → 64 fps (+49%)**, main-thread CPU −44%, render-thread CPU
+> −12%. Remaining `#403` candidates (`DrawTrackSk` paint caching,
+> `DrawVehicleSk` paint caching, `Track` instance pooling,
+> render-thread audit) are tracked there for future iteration.
+
+## Phase 1 — Instrumentation pass
 
 Captured: iPad Pro 12.9" 2nd gen + Samsung Android tablet R52TB090VAK.
 Branch: `perf-05/instrumentation`.
