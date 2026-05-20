@@ -670,10 +670,14 @@ void main() {
             if (_coverageTex != 0) { gl.DeleteTexture(_coverageTex); _coverageTex = 0; }
             _coverageTex = gl.GenTexture();
             gl.BindTexture(TextureTarget.Texture2D, _coverageTex);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
-            gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+            // Use TexParameter (→ glTexParameteri, ES 2.0+) not TexParameterI
+            // (→ glTexParameterIiv, ES 3.1+). The iPad Pro 2nd gen (A10X) tops
+            // out at GLES 3.0, so TexParameterI's function pointer resolves to
+            // NULL and crashes when called.
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Nearest);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Nearest);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+            gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
             // RGB565 rows are 2 bytes per pixel — default unpack alignment of
             // 4 would skip bytes on odd widths.
             gl.PixelStore(PixelStoreParameter.UnpackAlignment, 2);
