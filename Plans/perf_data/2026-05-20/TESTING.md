@@ -125,6 +125,34 @@ skip if not set up today.
 
 ---
 
+## Phase 2 protocol (focused follow-up)
+
+Phase 2a added a `.perf_apply_gps_cycle` marker (the 8th subsystem,
+`ApplyGpsCycleResult`). Push it the same way as the other 7
+markers — `push-markers.sh` already includes it.
+
+### Phase 2b — Xcode Instruments Time Profiler on iPad during S5
+
+To chase the ~14 ms/frame iPad "outside-OnRender" cost that pure
+logging couldn't attribute (see ANALYSIS.md §7):
+
+1. Put iPad into the **S5 state** (sim driving, sections off, panel
+   closed) — same as the logging-side S5.
+2. Run [`instruments-trace-ipad.sh`](instruments-trace-ipad.sh). It
+   attaches Time Profiler to the running app and records for 30 s.
+3. Trace bundle lands in `instruments/<timestamp>_s5_time_profiler.trace`
+   (gitignored).
+4. Open in Instruments.app: `open instruments/<file>.trace`. Focus on
+   the main / UI thread inside the recording window. Look for big time
+   chunks in:
+   - Avalonia binding evaluation / `PropertyChanged` invocation
+   - Skia draw / Metal command submission
+   - GC pause samples (visible as time outside any frame)
+
+If Time Profiler points at allocations or PropertyChanged storms,
+swap the template for `Allocations` for stack-attributed allocation
+data, or `Metal System Trace` for GPU command timing.
+
 ## Post-flight
 
 1. Stop syslog captures.

@@ -26,6 +26,16 @@ public partial class MainViewModel
     /// </summary>
     public void ApplyGpsCycleResult(GpsCycleResult result)
     {
+        // PERF-05 Phase 2a. Cycle = one ApplyGpsCycleResult invocation on
+        // the UI thread (one per GpsCycleCompleted dispatch from the
+        // background pipeline). Captures everything from GpsDataRecorder
+        // through the final SetVehicleSteerAngle — all of the UI-thread
+        // state mirror + property change + binding-triggering work.
+        // Suspected source of the iPad "+13 ms outside OnRender" cost.
+        bool perfAgc = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfApplyGpsCycle;
+        long perfAgcT0 = perfAgc ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long perfAgcA0 = perfAgc ? GC.GetAllocatedBytesForCurrentThread() : 0;
+
         // Record for debug dump (ring buffer, last 60 seconds at 10Hz)
         AgValoniaGPS.Services.Logging.GpsDataRecorder.Instance.Record(result);
 
@@ -285,7 +295,36 @@ public partial class MainViewModel
             ? _simulatorService.SteerAngle
             : _autoSteerService.LastSteerData.ActualSteerAngle;
         _mapService.SetVehicleSteerAngle(steerDeg * Math.PI / 180.0);
+
+        if (perfAgc)
+        {
+            _perfAgcTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfAgcT0;
+            _perfAgcAllocs += GC.GetAllocatedBytesForCurrentThread() - perfAgcA0;
+            _perfAgcCount++;
+            var elapsed = (DateTime.UtcNow - _perfAgcWindowStart).TotalSeconds;
+            if (elapsed >= 1.0 && _perfAgcCount > 0)
+            {
+                double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+                Console.WriteLine(
+                    $"[ApplyGpsCycle-PERF] cycles={_perfAgcCount}"
+                    + $" us/cycle={(_perfAgcTicks / ticksPerUs / _perfAgcCount):F1}"
+                    + $" alloc/cycle={(_perfAgcAllocs / _perfAgcCount)}B"
+                    + $" total_us={(long)(_perfAgcTicks / ticksPerUs)}"
+                    + $" total_alloc={_perfAgcAllocs}B"
+                    + $" window={elapsed:F2}s");
+                _perfAgcTicks = 0;
+                _perfAgcAllocs = 0;
+                _perfAgcCount = 0;
+                _perfAgcWindowStart = DateTime.UtcNow;
+            }
+        }
     }
+
+    // PERF-05 Phase 2a accumulators (gated by DiagFlags.PerfApplyGpsCycle).
+    private long _perfAgcTicks;
+    private long _perfAgcAllocs;
+    private int _perfAgcCount;
+    private DateTime _perfAgcWindowStart = DateTime.UtcNow;
 
     private void UpdateSectionPropertiesFromResult(bool[] states, int[]? colorCodes)
     {

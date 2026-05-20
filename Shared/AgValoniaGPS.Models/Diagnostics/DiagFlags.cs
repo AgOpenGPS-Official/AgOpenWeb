@@ -50,6 +50,10 @@ public static class DiagFlags
     public static readonly bool PerfCoverage;
     public static readonly bool PerfUdp;
     public static readonly bool PerfAutoSteer;
+    // Phase 2a: UI-thread bridge from background GPS cycle to State updates.
+    // Suspected dominant source of the iPad "+13 ms outside OnRender" cost
+    // observed at S5 in Phase 1.
+    public static readonly bool PerfApplyGpsCycle;
 
     // Test-harness flags
     public static readonly bool AutoResumeField;
@@ -76,6 +80,7 @@ public static class DiagFlags
         PerfCoverage               = MarkerPresent(".perf_coverage");
         PerfUdp                    = MarkerPresent(".perf_udp");
         PerfAutoSteer              = MarkerPresent(".perf_autosteer");
+        PerfApplyGpsCycle          = MarkerPresent(".perf_apply_gps_cycle");
         AutoResumeField            = MarkerPresent(".auto_resume_field");
 
         AnySet = SkipCoverageDraw || SkipBoundaryDraw || SkipTracks
@@ -86,6 +91,7 @@ public static class DiagFlags
                || LogRenderTiming
                || PerfStateMirror || PerfGpsPipeline || PerfGuidance
                || PerfCoverage || PerfUdp || PerfAutoSteer
+               || PerfApplyGpsCycle
                || AutoResumeField;
     }
 
@@ -115,6 +121,7 @@ public static class DiagFlags
             + $" perfCoverage={PerfCoverage}"
             + $" perfUdp={PerfUdp}"
             + $" perfAutoSteer={PerfAutoSteer}"
+            + $" perfApplyGpsCycle={PerfApplyGpsCycle}"
             + $" autoResumeField={AutoResumeField}");
     }
 

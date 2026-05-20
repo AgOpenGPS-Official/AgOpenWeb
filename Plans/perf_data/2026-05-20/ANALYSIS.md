@@ -170,7 +170,71 @@ In rough priority order (biggest iPad relief, smallest blast radius):
 - Avalonia composition / Skia → Metal handoff cost (Xcode Instruments
   territory, not pure logging)
 
-## 7. Bugs filed during this audit
+## 7. Phase 2a — `ApplyGpsCycleResult` instrumentation result
+
+Hypothesis going in: the iPad "+13 ms outside OnRender" at S5 from
+Phase 1 lives inside `ApplyGpsCycleResult` (UI-thread bridge from the
+background GPS cycle to State updates).
+
+Result: **partial confirmation.** `ApplyGpsCycle` is a real allocator
+contributor and the largest single UI-thread allocator subsystem, but
+its **direct** CPU cost only explains ~1 ms/frame of the iPad outside
+gap — not the full ~14 ms.
+
+### Clean S5 (panel closed, sim driving, sections off) on Phase 2a build
+
+| Bucket | µs/cycle | KB/cycle | Rate | CPU ms/s | KB/s | ms/frame |
+|---|---|---|---|---|---|---|
+| iPad RenderBudget inside | — | 5.4 | 43 fps | 270 | 232 | 6.3 |
+| **iPad `ApplyGpsCycle-PERF`** | **1,299** | **9.37** | **30** | **39** | **281** | **0.9** |
+| iPad StateMirror | 179 | 1.78 | 20 | 4 | 36 | 0.08 |
+| iPad GpsPipeline (bg) | 696 | 3.38 | 30 | 21 | 101 | — |
+| iPad AutoSteerTx | 393 | 1.02 | 100 | 39 | 102 | 0.9 |
+| iPad UdpTx | 178 | 0.50 | 210 | 37 | 105 | 0.9 |
+| **Android `ApplyGpsCycle-PERF`** | **1,517** | **8.87** | **19** | **30** | **177** | **0.5** |
+
+Frame-time accounting on iPad at S5 (Phase 2a):
+- frame budget: 1000/43 = **23.3 ms/frame**
+- inside `OnRender`: **6.3 ms**
+- `ApplyGpsCycle` (UI thread): **0.9 ms**
+- `StateMirror` + `UdpTx` + `AutoSteerTx` on UI thread: **~1.9 ms**
+- **unaccounted "outside": ~14 ms/frame** ← still missing
+
+### What we learned that IS actionable
+
+1. **`ApplyGpsCycleResult` allocates 9.37 KB/cycle × 30 Hz = 281 KB/s.**
+   Biggest single UI-thread allocator subsystem. Worth pooling the
+   snapshot/DTO objects it produces even though it's not the +13 ms
+   answer.
+2. **Android `ApplyGpsCycle` is *slower per cycle* than iPad**
+   (1,517 µs vs 1,299 µs) but lower CPU/s because Android runs at
+   19 Hz vs iPad 30 Hz. This **confirms the GpsPipeline rate
+   asymmetry from Phase 1 is real and propagates downstream** — same
+   asymmetry in `ApplyGpsCycle` cycle rate.
+3. **Per-cycle allocation is the same shape on both platforms**
+   (9.37 KB vs 8.87 KB). The churn is in the code, not the platform.
+
+### What's still missing (Phase 2b → Instruments)
+
+The remaining ~14 ms/frame iPad outside cost can't be attributed to
+any of the now-9 instrumented subsystems. Suspect bucket:
+
+- **Avalonia binding / composition response** to the `PropertyChanged`
+  cascade fired *inside* `ApplyGpsCycle`'s bracket — the property
+  setter call is synchronous (inside our timing), but the
+  binding's effect on layout/composition is scheduled and runs on
+  the next compositor frame (outside our timing).
+- **GC pauses** from accumulated allocator pressure on the UI thread:
+  ApplyGps 281 + AutoSteerTx 102 + UdpTx 105 + StateMirror 36 + render
+  frame allocs 232 = **~756 KB/s flowing through the UI thread alone.**
+- **Skia → Metal handoff** per present, which pure C# logging can't
+  see.
+
+Phase 2b — Xcode Instruments Time Profiler on iPad during S5 — should
+isolate this. Setup script:
+[`instruments-trace-ipad.sh`](instruments-trace-ipad.sh).
+
+## 8. Bugs filed during this audit
 
 - **#404** — Android `AutoSteerService` not running (no PGN TX, breaks
   manual section painting)

@@ -17,6 +17,7 @@ MARKERS=(
   .perf_coverage          # subsystem 5
   .perf_udp               # subsystem 6 (UdpRx + UdpTx)
   .perf_autosteer         # subsystem 7 (AutoSteerRx + AutoSteerTx)
+  .perf_apply_gps_cycle   # Phase 2a — UI-thread ApplyGpsCycleResult
 )
 
 STAGE=$(mktemp -d)
