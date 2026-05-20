@@ -37,7 +37,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Floating Panel Style -->
         <Style Selector="Border.FloatingPanel">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -46,7 +46,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Right Panel Button Style -->
         <Style Selector="Button.RightPanelButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Width" Value="64"/>
             <Setter Property="Height" Value="64"/>
             <Setter Property="Padding" Value="8"/>

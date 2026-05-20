@@ -48,18 +48,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <StackPanel Spacing="6">
         <!-- Line 1: existing readouts on the left, G/I/A/M indicators on the right. -->
         <Grid ColumnDefinitions="*,Auto">
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="20">
                 <!-- Widths fixed so values don't reflow the bar as digits change (#277). -->
                 <Ellipse Width="12" Height="12"
                          Fill="{Binding State.Vehicle.FixQualityText, Converter={StaticResource FixQualityToColorConverter}}"/>
                 <TextBlock Width="75" Text="{Binding State.Vehicle.FixQualityText}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="14" FontWeight="Bold"/>
-                <Rectangle Width="1" Height="16" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="5,0"/>
                 <TextBlock Width="100" Text="{Binding SpeedKmh, StringFormat='{}{0:F1} km/h'}" Foreground="#E67E22" FontSize="14" FontWeight="Bold"/>
-                <Rectangle Width="1" Height="16" Fill="#555" Margin="5,0"/>
                 <TextBlock Width="70" Text="{Binding Heading, StringFormat='{}{0:F0}deg'}" Foreground="#E91E90" FontSize="14" FontWeight="Bold"/>
-                <Rectangle Width="1" Height="16" Fill="#555" Margin="5,0"/>
                 <TextBlock Width="95" Text="{Binding RollDegrees, StringFormat='Roll {0:F1}'}" Foreground="#9B59B6" FontSize="14" FontWeight="Bold"/>
-                <Rectangle Width="1" Height="16" Fill="#555" Margin="5,0"/>
                 <TextBlock Width="80" Text="{Binding CurrentTime}" Foreground="#95A5A6" FontSize="14"/>
             </StackPanel>
 
@@ -125,13 +121,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
         <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,2"/>
 
-        <StackPanel Orientation="Horizontal" Spacing="10">
+        <StackPanel Orientation="Horizontal" Spacing="20">
             <TextBlock Width="85"  Text="{Binding CurrentFps, StringFormat='FPS: {0:F0}'}" Foreground="#2ECC71" FontSize="14" FontWeight="Bold"/>
-            <Rectangle Width="1" Height="16" Fill="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="5,0"/>
             <TextBlock Width="110" Text="{Binding GpsToPgnLatencyMs, StringFormat='Lat: {0:F2}ms'}" Foreground="#F39C12" FontSize="14" FontWeight="Bold"/>
-            <Rectangle Width="1" Height="16" Fill="#555" Margin="5,0"/>
             <TextBlock Width="160" Text="{Binding Latitude, StringFormat='Lat: {0:F8}'}" Foreground="#3498DB" FontSize="14" FontWeight="Bold"/>
-            <Rectangle Width="1" Height="16" Fill="#555" Margin="5,0"/>
             <TextBlock Width="170" Text="{Binding Longitude, StringFormat='Lon: {0:F8}'}" Foreground="#3498DB" FontSize="14" FontWeight="Bold"/>
         </StackPanel>
     </StackPanel>

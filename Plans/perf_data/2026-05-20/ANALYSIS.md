@@ -509,7 +509,96 @@ indirect responsiveness gain (more slack for other UI work).
 4. **Cross-platform**: Android benefits proportionally; ApplyGpsCycle
    CPU dropped 63% there too.
 
-## 11. Bugs filed during this audit
+## 11. Phase 2c #6 results — render-thread audit (Tier 1/2/3)
+
+Starting from Phase 2c #2 (render thread at ~82% of one core, 11116 ms CPU
+in a 30 s window, FPS ~64 in S5), audited the render thread to find which
+specific work was paid every frame. Built three "tiers" of always-visible
+visual cuts and measured each with a fresh Time Profiler trace.
+
+### Three traces, four columns
+
+Each tier is cumulative on top of the previous one. Trace timestamps:
+baseline `134912`, Tier 1 `145157`, Tier 2 `151041`, Tier 3 `152648`. All
+captured iPad Pro 12.9" 2nd gen in S5 (sim driving, sections off, field +
+boundary loaded, panel closed), 30 s window.
+
+| Function (inclusive) | Base | T1 | T2 | T3 |
+|---|---:|---:|---:|---:|
+| `Avalonia_Skia_DrawingContextImpl` (all Skia) | 50.5% | 51.0% | **45.3%** | 45.5% |
+| `MapCompositionHandler_OnRender` | 23.2% | 23.3% | 23.9% | 24.5% |
+| `SkiaMetalRenderSession` | 18.8% | 18.9% | **16.2%** | 15.8% |
+| `BoxShadow` rendering path | 16.4% | 16.7% | **11.6%** | 11.5% |
+| `DrawingContextImpl_DrawRectangle` | 16.3% | 16.6% | **11.4%** | 11.4% |
+| `SKCanvas_Flush` (GPU submit) | 14.1% | 14.4% | **10.6%** | 10.3% |
+| `HandlePreGraphTransformClipOpacity` | 10.5% | 10.4% | 12.1% | 11.4% |
+| `SKCanvas_DrawRoundRect` | 7.3% | 8.0% | 4.4% | **0.2%** |
+| `SKCanvas_DrawRect` | 2.0% | 1.9% | 2.3% | **7.0%** |
+| `SKImageFilter` (blur filter path) | 0.9% | 0.9% | **0.0%** | 0.0% |
+| `Blur` | 0.6% | 0.6% | **0.0%** | 0.0% |
+
+**Render thread total CPU**: 11116 → 11156 → 10528 → **10520 ms** (−5.4%).
+**FPS in S5**: ~64 → 63-68 → 68-71 → **70-72**.
+**Per-frame render CPU** (total CPU / frames at FPS × 30s): 5.79 → 5.7 →
+5.1 → **4.94 ms (−14.7%)**.
+
+### What each tier did
+
+- **Tier 1: removed 14 decorative `<Rectangle Width="1">` separators and
+  `<Separator>` controls** in StatusBar (7), FieldStats (5), LeftNav (1),
+  BottomNav (1). Hypothesis: visual count = per-frame cost.
+- **Tier 2: removed `BoxShadow` from the shared `Border.FloatingPanel`
+  style and from `SectionControlPanel`'s outer Border** — 4 always-active
+  Gaussian-blur GPU passes per frame eliminated.
+- **Tier 3: squared all panel-button + outer-Border `CornerRadius`**
+  (`Border.FloatingPanel` 12 → 0; `LeftPanelButton/RightPanelButton/
+  BottomPanelButton/MenuButton` 8 → 0; `SectionButton` 4 → 0;
+  `ZoomButton` 8 → 0; camera-mode button 32 → 0).
+
+### Three structural learnings
+
+1. **Static visual count is NOT a reliable steady-state lever** on
+   Avalonia 12's compositor. Tier 1 removed 14 always-rendered visuals
+   and moved the render thread by +0.4% — pure noise. Best explanation:
+   the visuals were 1×16 px decorative dividers whose rasterization cost
+   was already below the per-sample noise floor.
+
+2. **Dynamic GPU effects like `BoxShadow` ARE the real lever for
+   steady-state cost.** Tier 2 cut 5.3% off render-thread CPU (−588 ms
+   in 30 s) and eliminated the entire `SKImageFilter` / `Blur` paths.
+   Drawing-list caching can't amortize blur passes because the blur is a
+   runtime Skia operation, not just static geometry replay.
+
+3. **Plain rect vs rounded rect of the same size costs about the same
+   on the GPU.** Tier 3 successfully converted `DrawRoundRect` calls
+   into `DrawRect` calls (−4.4 pp / +4.7 pp respectively) — proving
+   that static visuals DO render every frame, contrary to (1)'s naive
+   reading. But the work just transferred between Skia paths; total
+   per-frame cost only dropped marginally (~1-2 FPS, ~0.1% render CPU).
+   Static geometry is cheap; static *effects* are not.
+
+### The actual biggest remaining lever (next session)
+
+Empirically observed on the iPad during this audit: **when the tractor
+drives off the field-imagery PNG area, FPS jumps from ~70 to ~100 — a
++30 FPS / ~4-5 ms-per-frame swing.** That is 6× the impact of all three
+tiers above combined.
+
+`SKCanvas.DrawImage` shows only 4.4% inclusive on Time Profiler — Time
+Profiler is CPU-only and severely undercounts GPU-bound work like
+texture sampling, fragment shader cost, and bandwidth. The right tool
+for the imagery audit is **Metal System Trace** (already supported by
+`Plans/perf_data/2026-05-20/instruments-trace-ipad.sh` via
+`TEMPLATE='Metal System Trace' bash …`).
+
+Levers to investigate: texture resolution and tile size, mipmap
+presence, texture format (compressed ASTC/ETC2 vs raw RGBA),
+per-frame uploads vs cache, sampling mode (bilinear vs nearest), alpha
+blending mode (opaque vs semi-transparent).
+
+Memory pointer saved for next session: `project_imagery_render_cost`.
+
+## 12. Bugs filed during this audit
 
 - **#404** — Android `AutoSteerService` not running (no PGN TX, breaks
   manual section painting)
