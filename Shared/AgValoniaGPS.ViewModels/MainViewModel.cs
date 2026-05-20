@@ -490,6 +490,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (_positionEstimator?.GetLatestSnapshot() is null)
             return;
+
+        // PERF-05 #2: state-mirror cycle = one OnRenderPullTick after the
+        // early-return. Captures GetPose + SetAllPositions + SendStateToHandler.
+        bool sm = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfStateMirror;
+        long smT0 = sm ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long smA0 = sm ? GC.GetAllocatedBytesForCurrentThread() : 0;
+
         var p = _positionEstimator.GetPose(Clock.Current.GetTimestamp());
 
         var tool = ConfigStore.Tool;
@@ -533,7 +540,36 @@ public partial class MainViewModel : ObservableObject
             toolE, toolN, toolHeading,
             ConfigStore.ActualToolWidth, hitchE, hitchN,
             _toolPositionService.IsToolPositionReady);
+
+        if (sm)
+        {
+            _smCycleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - smT0;
+            _smCycleAllocs += GC.GetAllocatedBytesForCurrentThread() - smA0;
+            _smCycleCount++;
+            var elapsed = (DateTime.UtcNow - _smWindowStart).TotalSeconds;
+            if (elapsed >= 1.0 && _smCycleCount > 0)
+            {
+                double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+                Console.WriteLine(
+                    $"[StateMirror-PERF] cycles={_smCycleCount}"
+                    + $" us/cycle={(_smCycleTicks / ticksPerUs / _smCycleCount):F1}"
+                    + $" alloc/cycle={(_smCycleAllocs / _smCycleCount)}B"
+                    + $" total_us={(long)(_smCycleTicks / ticksPerUs)}"
+                    + $" total_alloc={_smCycleAllocs}B"
+                    + $" window={elapsed:F2}s");
+                _smCycleTicks = 0;
+                _smCycleAllocs = 0;
+                _smCycleCount = 0;
+                _smWindowStart = DateTime.UtcNow;
+            }
+        }
     }
+
+    // PERF-05 #2: state-mirror accumulators. Gated by DiagFlags.PerfStateMirror.
+    private long _smCycleTicks;
+    private long _smCycleAllocs;
+    private int _smCycleCount;
+    private DateTime _smWindowStart = DateTime.UtcNow;
 
     private void RestoreSettings()
     {
