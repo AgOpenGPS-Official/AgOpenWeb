@@ -286,6 +286,44 @@ This is "death by a thousand cuts" — no single function is more than
 ~23% of main thread, but the cascade adds up to dominate. The fix lever
 is **reducing the trigger rate**, not chasing Avalonia internals.
 
+### Render-thread (tid_7803) is the real bottleneck — pegged at ~93% CPU
+
+The main thread analysis above shows ~23% CPU. But the **render thread**
+captured **27,822 samples = ~27.8 s of CPU in a 30-second window =
+~93% of one core constantly busy**. That's the actual ceiling we're
+hitting, not the main thread.
+
+Top inclusive time on tid_7803 (Avalonia compositor / Skia / Metal):
+
+| % render | Where | What |
+|---|---|---|
+| 40% | `NSRunLoop` / `CADisplayLink` + `ServerCompositor.RenderCore` overhead | Compositor framework — drives the render loop |
+| 27% | `ServerCompositionTarget.RenderRootToContextWithClip` | Walk the visual tree, render the root |
+| 26.5% | `ServerCompositionVisual.Render` (each visual) | Per-visual render; **scales with visual tree size** |
+| 12.9% | `ServerCompositionDrawListVisual.RenderCore` | Drawing the draw lists per visual |
+| **9.5%** | **`Avalonia.Skia.DrawingContextImpl.DrawRectangle`** | Rectangle draw — panel/HUD backgrounds |
+| 7.7% | `ServerCompositionCustomVisual.RenderCore` | Custom-visual host (our `DrawingContextMapControl`) |
+| **7.6%** | **`MapCompositionHandler.OnRender`** | Our map render (matches PERF logging) |
+| 7.2% | `SkiaMetalRenderSession.Dispose` | Skia render-session teardown |
+| **5.8%** | **`SKCanvas.DrawRoundRect`** | Rounded rectangles — panel borders, buttons |
+| 5.7% | `SKCanvas.Flush` / `GRContext.Flush` | Skia → Metal command submission |
+
+### What this reframes
+
+- **Our map render is only 7.6% of render-thread CPU.** Even if every
+  `DrawTrackSk` / `DrawVehicleSk` allocation churn fix landed at 100%
+  effectiveness, render thread would still be ~85% pegged.
+- **Panels / HUD render together are ~15% of render-thread CPU**
+  (rectangle 9.5% + rounded rectangle 5.8%). Dovetails with the
+  empirical "simulator panel open costs ~8 fps" finding — open panels
+  add visuals the compositor must walk every frame.
+- **`SkiaMetalRenderSession.Dispose` is 7.2%** — a per-frame Skia
+  resource session is being torn down. May be amortizable.
+- **The +14 ms iPad-outside gap has two layers**: ~5 ms from
+  main-thread TextLayout (PropertyChanged cascade → text reshape), and
+  the rest from render-thread work the main thread is implicitly
+  blocked on or that drives the next frame's wait.
+
 ### Phase 2c fix candidates from this trace
 
 In priority order:
@@ -313,6 +351,19 @@ In priority order:
    cache `Track` instance upstream (#403 original finding). These are
    per-frame allocation churn fixes, independent of the binding
    cascade.
+6. **Render-thread audit — biggest long-term lever.** With render
+   thread pegged at ~93% CPU and the map only 7.6% of that, the win
+   isn't in the map render code — it's in reducing what the
+   compositor has to walk every frame:
+   - Audit which panels are *always rendered* even when not visually
+     active (the +8 fps "simulator panel open" finding suggests open
+     panels carry real per-frame cost).
+   - Look at the rectangle / rounded-rectangle hot draws (15% combined
+     of render thread). Could nested `Border` + `Rectangle` panel
+     decorations be replaced with fewer composited visuals?
+   - Investigate the 7.2% `SkiaMetalRenderSession.Dispose` — should
+     the render session be amortized across frames instead of torn
+     down each one?
 
 ## 9. Bugs filed during this audit
 
