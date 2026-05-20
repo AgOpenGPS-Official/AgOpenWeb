@@ -92,6 +92,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private bool _autoSteerEngaged;
     private Models.Track.Track? _activeTrack;
     private bool _isTrackOnBoundary;
+
+    // Cached offset-display-track. UpdateDisplayTrack used to allocate a fresh
+    // Models.Track.Track every GPS cycle while shifted off pass 0; the
+    // ReferenceEquals gate in MainViewModel.ApplyResults then fired on every
+    // cycle, defeating the VBO-rebuild gate downstream and re-uploading
+    // boundary/track buffers at GPS rate. PERF-05 #403 sub-finding #5.
+    // Cache key: (source track ref, distAway). Both must match to reuse.
+    private Models.Track.Track? _cachedOffsetTrack;
+    private Models.Track.Track? _cachedOffsetSourceTrack;
+    private double _cachedOffsetDistAway;
     // Phase D D3: passNumber / nudgeOffset live on _guidanceWorking as the single
     // source of truth. The separate _passNumber / _nudgeOffset fields used to be
     // pushed here by SetActiveTrack; that path now writes directly to the
@@ -1291,6 +1301,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // On the base track — show reference directly
             resultTrack = track;
         }
+        else if (ReferenceEquals(_cachedOffsetSourceTrack, track)
+                 && _cachedOffsetDistAway == distAway
+                 && _cachedOffsetTrack != null)
+        {
+            // Inputs unchanged — reuse last offset track so the downstream
+            // ReferenceEquals gate in ApplyResults can actually skip rebuild.
+            resultTrack = _cachedOffsetTrack;
+        }
         else
         {
             var (offsetPoints, _) = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway);
@@ -1302,6 +1320,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 IsVisible = true,
                 IsActive = true
             };
+            _cachedOffsetSourceTrack = track;
+            _cachedOffsetDistAway = distAway;
+            _cachedOffsetTrack = resultTrack;
         }
 
         // Update XTE display — actual pivot distance to the selected pass line.
