@@ -416,7 +416,91 @@ per-property cascade — 3× reduction on iPad sim, 0 cost on real
 - Tool/hitch position setters drive the map render path, not text;
   leave alone.
 
-## 10. Bugs filed during this audit
+## 10. Phase 2c results — unified 5 Hz status-display tick
+
+Two PRs landed:
+- **Phase 2c #1** (`91b6919`): decouple GPS-sourced display properties
+  from `ApplyGpsCycleResult`; sample from `State.Vehicle` at a 10 Hz
+  display tick.
+- **Phase 2c #2** (`d38eb00`): generalize to a single 5 Hz status tick
+  covering *every* MainViewModel property bound to the top status bar,
+  regardless of upstream source rate. Folded in `GpsToPgnLatencyMs`
+  (was written at 100 Hz from `OnAutoSteerStateUpdated`). Architectural
+  rule established: new status diagnostics use the cache → tick
+  pattern, no direct PropertyChanged firings at source rate.
+
+### Instruments confirmation (3 Time Profiler traces compared)
+
+Captured on iPad Pro 12.9" 2nd gen in S5 state (sim driving, sections
+off, panel closed), 30-second window each. Numbers below are %
+of main-thread samples.
+
+| Function | Phase 2b | Phase 2c#1 | Phase 2c#2 | Total Δ |
+|---|---|---|---|---|
+| **TextLayout.CreateTextLines** | 23% | 18.6% | **7.2%** | **−69%** |
+| TextLayout ctor | 23% | 18.6% | 7.2% | −69% |
+| BidiAlgorithm.Process | ~3% | 1.9% | 0.7% | −77% |
+| **set_GpsToPgnLatencyMs** | 5.6% | 5.9% | **0.5%** | **−91%** |
+| set_Latitude | 4.2% | 3.3% | 2.2% | −48% |
+| InpcPropertyAccessor.OnEvent | 8% | 7.7% | **3.9%** | −51% |
+| OnPropertyChanged | 16% | 15.1% | 12.9% | −19% |
+| WeakEvents dispatch | 15% | 15.1% | 12.0% | −20% |
+
+**Main-thread CPU**: 23.4% → 19% → **13%** (total: −44%).
+**Render-thread CPU**: ~93% → ~89% → **~82%** (total: −12%).
+
+The render thread benefits structurally: less binding work means less
+invalidation means fewer per-frame visual tree walks. Absolute Skia
+draw call counts:
+
+| Render-thread draw call | Phase 2b | Phase 2c#2 | Δ samples |
+|---|---|---|---|
+| `DrawRectangle` (panel/HUD bg) | 2,643 | 1,810 | −833 (~−31%) |
+| `DrawRoundRect` (panel borders) | 1,614 | 814 | −800 (~−50%) |
+
+The 3.2× reduction in TextLayout cost (23% → 7.2%) closely matches the
+trigger-rate ratio: GPS-sourced setters 30 Hz → 5 Hz (6×) and
+AutoSteer-sourced 100 Hz → 5 Hz (20×), weighted by their original
+contributions. The model predicted, the data confirmed.
+
+### S5 frame budget result (iPad)
+
+| Metric | Phase 2a baseline | **Phase 2c#2** | Δ |
+|---|---|---|---|
+| fps | 43 | **64** | +21 (+49%) |
+| frame time | 23.3 ms | 15.6 ms | −7.7 ms |
+| inside OnRender | 6.3 ms | 5.5 ms | −0.8 ms |
+| **outside OnRender** | **17.0 ms** | **10.1 ms** | **−6.9 ms** |
+| ApplyGpsCycle µs/cycle | 1,299 | 781 | −40% |
+| StateMirror µs/cycle | 185 | 135 | −27% |
+| Allocator throughput (UI thread) | ~770 KB/s | ~520 KB/s | ~−32% |
+
+Phase 1's *"+13 ms iPad outside cost when simulator runs"* mystery is
+now ~50% recovered (17 → 10 ms outside). The remaining ~3 ms is the
+unavoidable composition/Skia/Metal cost for the visual tree the
+compositor must still walk every frame — that's Phase 2c #6 territory
+(render-thread audit).
+
+### Android S5 (vsync-bound)
+
+Vsync ceiling at 61 fps hides the visible win, but `ApplyGpsCycle` CPU
+dropped 63% (1,517 → 557 µs/cycle). Battery / thermal benefit,
+indirect responsiveness gain (more slack for other UI work).
+
+### What Phase 2c #1+#2 actually shipped
+
+1. **A single architectural rule**: every status-bar-bound MainViewModel
+   property follows the cache → tick pattern. No future diagnostic
+   can re-introduce a 100-Hz PropertyChanged storm by accident.
+2. **`MainViewModel.cs` / `MainViewModel.GpsHandling.cs` /
+   `MainViewModel.Guidance.cs` / `MainViewModel.ApplyResults.cs`**:
+   `_statusTickTimer` (5 Hz), `OnStatusTick`, `_latestRollDegrees`,
+   `_latestGpsToPgnLatencyMs`. Setter calls removed from sources.
+3. **iPad recovers +21 fps in S5**, well above the 24 fps product floor.
+4. **Cross-platform**: Android benefits proportionally; ApplyGpsCycle
+   CPU dropped 63% there too.
+
+## 11. Bugs filed during this audit
 
 - **#404** — Android `AutoSteerService` not running (no PGN TX, breaks
   manual section painting)
