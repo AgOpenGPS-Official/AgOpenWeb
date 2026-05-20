@@ -142,10 +142,13 @@ In rough priority order (biggest iPad relief, smallest blast radius):
    not a fix, but the Phase-2 measurement that unblocks #C above. iPad
    +13 ms/frame outside is the biggest single recoverable cost in the
    whole audit.
-4. **Decouple `Coverage.AddCoveragePoint` cadence from
-   `AutoSteerTx`** — 1,616 paints/s is ~3× more than GPS-fix rate
-   requires. Painting at GPS rate (~30 Hz × 16 sections = 480/s) would
-   cut coverage CPU + churn ~3×.
+4. **Cut per-cycle allocation in `Coverage.AddCoveragePoint`** — at
+   1,616 cycles/s with 1.06 KB/cycle that's 1.7 MB/s of pure
+   allocator pressure. The cadence itself is intentional (AutoSteer
+   100 Hz tick is decoupled from GPS for accurate section control —
+   do not propose throttling it). Fix the *per-call* cost: pool the
+   intermediate quad/cell tuples, reuse rasterization buffers,
+   avoid `Dictionary` lookups that allocate boxed keys.
 5. **Cache `Track` instance upstream of `GpsCycleResult`** — the
    original #403 finding. Confirmed still present: 3.39 KB/cycle ×
    30 Hz = 102 KB/s of pure churn.
