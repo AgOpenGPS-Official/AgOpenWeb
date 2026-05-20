@@ -37,7 +37,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Floating Panel Style -->
         <Style Selector="Border.FloatingPanel">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
-            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="6"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -46,7 +46,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Bottom Panel Button Style -->
         <Style Selector="Button.BottomPanelButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Width" Value="64"/>
             <Setter Property="Height" Value="64"/>
             <Setter Property="Padding" Value="8"/>
@@ -71,7 +71,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Menu Button (opens flyout) -->
         <Style Selector="Button.MenuButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
-            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Width" Value="64"/>
             <Setter Property="Height" Value="64"/>
             <Setter Property="Padding" Value="8"/>
@@ -88,18 +88,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Flyout Panel Style -->
         <Style Selector="Border.FlyoutPanel">
             <Setter Property="Background" Value="#EE1E2A38"/>
-            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
         </Style>
 
-        <!-- Panel Separator -->
-        <Style Selector="Separator.BottomPanelSeparator">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-            <Setter Property="Width" Value="2"/>
-            <Setter Property="Margin" Value="4,8"/>
-        </Style>
     </UserControl.Styles>
 
     <!-- Main container: Panel for proper layout measurement, Canvas overlay for flyouts.
@@ -210,8 +204,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         IsVisible="{Binding IsFieldOpen}">
                     <Image Source="{Binding TramDisplayIcon, Converter={x:Static converters:StringToImageConverter.Instance}}" Stretch="Uniform"/>
                 </Button>
-
-                <Separator Classes="BottomPanelSeparator"/>
 
                 <!-- AB Line Menu Button (opens flyout) - always visible -->
                 <Button x:Name="ABLineMenuButton" Classes="MenuButton" ToolTip.Tip="AB Line Options">
