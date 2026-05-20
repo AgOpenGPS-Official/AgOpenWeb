@@ -43,6 +43,13 @@ public partial class MainViewModel
     private double _heading;
     private double _rollDegrees;
 
+    // PERF-05 Phase 2c #1: latest snapshot values for fields not on
+    // State.Vehicle. Written by ApplyGpsCycleResult at sensor arrival
+    // (10-30 Hz) and read by OnDisplayTick at the fixed 10 Hz display
+    // cadence. Single-double writes/reads are atomic on x86/ARM; no lock
+    // needed for diagnostic display.
+    private double _latestRollDegrees;
+
     #endregion
 
     #region GPS Properties
@@ -387,6 +394,44 @@ public partial class MainViewModel
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled);
         _gpsPipelineService.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
+    }
+
+    #endregion
+
+    #region Display Tick (PERF-05 Phase 2c #1)
+
+    /// <summary>
+    /// 10 Hz display sampler. Decouples MainViewModel display properties from
+    /// GPS sensor arrival — instead of being set inside ApplyGpsCycleResult
+    /// (at 10-30 Hz, the sensor rate), they're sampled from State.Vehicle
+    /// here at a fixed display rate. Matches the cadence architecture:
+    /// sensor arrival drives the state of record + control loop; display
+    /// refresh is independent and tuned for human readability.
+    ///
+    /// State.Vehicle is the system of record (already updated by
+    /// ApplyGpsCycleResult via State.Vehicle.UpdateFromGps). Fields not on
+    /// State.Vehicle (currently just RollDegrees) are cached by
+    /// ApplyGpsCycleResult into _latestRollDegrees and read here.
+    ///
+    /// SetProperty is a no-op when the new value equals the old via the
+    /// ref-comparer, so static or slow-changing values (FixQuality int once
+    /// quality is stable, etc.) won't fire PropertyChanged unnecessarily.
+    /// For double fields the comparer is reference-not-applicable; we don't
+    /// add per-property epsilon checks here because the 10 Hz cadence cap
+    /// is the primary lever — text re-format at 10 Hz is below the
+    /// human-readability threshold but still cheap.
+    /// </summary>
+    private void OnDisplayTick(object? sender, EventArgs e)
+    {
+        var v = State.Vehicle;
+        Latitude = v.Latitude;
+        Longitude = v.Longitude;
+        Easting = v.Easting;
+        Northing = v.Northing;
+        Heading = v.Heading;
+        Speed = v.Speed;
+        RollDegrees = _latestRollDegrees;
+        FixQuality = GetFixQualityString(v.FixQuality);
     }
 
     #endregion

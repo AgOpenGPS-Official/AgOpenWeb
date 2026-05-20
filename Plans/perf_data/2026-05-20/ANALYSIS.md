@@ -365,7 +365,58 @@ In priority order:
      the render session be amortized across frames instead of torn
      down each one?
 
-## 9. Bugs filed during this audit
+## 9. Phase 2c #1 implementation plan — decouple display from GPS arrival
+
+The earlier framing of "throttle GPS-display setters to 10 Hz" was the
+wrong shape. **GPS is just another sensor feeding the position
+estimator at its own 10 Hz arrival rate** — see the cadence design in
+[`UNIFIED_CONTROL_LOOP_PLAN`](../../Completed/UNIFIED_CONTROL_LOOP_PLAN.md)
+and [`UNIFIED_PACKET_PROTOCOL`](../../Completed/UNIFIED_PACKET_PROTOCOL.md).
+Control runs at 100 Hz consuming dead-reckoned pose; nothing should be
+*gated on GPS sensor arrival*.
+
+The mistake we're correcting: `ApplyGpsCycleResult` directly sets
+`MainViewModel.Latitude / Longitude / Easting / Northing / Heading /
+_speed / RollDegrees / FixQuality` from each GPS cycle's `result`.
+Each setter fires `PropertyChanged` → Avalonia binding cascade →
+TextBlock re-render → TextLayout recompute (Phase 2b finding). At sim
+30 Hz iPad rate that's 30 cascades/s; at real 10 Hz it's 10/s. Either
+way the architecture couples display refresh rate to sensor arrival —
+the same coupling we removed for control logic.
+
+### Fix shape
+
+- **`State.Vehicle` is already the system of record** — it has
+  `Latitude`, `Longitude`, `Easting`, `Northing`, `Heading`, `Speed`,
+  `FixQuality`, `SatelliteCount` as `ObservableObject` properties,
+  written by `ApplyGpsCycleResult` via `State.Vehicle.UpdateFromGps`.
+- **Add a 10 Hz display tick** (separate `DispatcherTimer` independent
+  of any sensor or control-loop tick) that reads from `State.Vehicle`
+  (plus a small cache for fields not yet on `State.Vehicle`, e.g.
+  `RollDegrees`) and sets the MainViewModel display properties.
+- **Remove the direct display-property setters from
+  `ApplyGpsCycleResult`** — keep `State.Vehicle.UpdateFromGps(...)`
+  (that's the canonical state update; control loop and renderer need
+  it at sensor rate). Drop the redundant `MainViewModel.Latitude = …`
+  / `MainViewModel.Heading = …` etc. block.
+
+Net effect: MainViewModel display PropertyChanged fires at exactly
+10 Hz regardless of sensor or sim rate. Bindings unchanged.
+TextLayout cost drops from ~30 Hz × per-property cascade to 10 Hz ×
+per-property cascade — 3× reduction on iPad sim, 0 cost on real
+10 Hz GPS (matched rate).
+
+### Out of scope for this PR
+
+- `GpsToPgnLatencyMs` setter (5.6% main-thread CPU in Phase 2b trace)
+  is written from AutoSteer 100 Hz tick, not from GPS cycle. Same
+  disease, separate fix — follow-up.
+- `StatusMessage` updates from `ApplyGpsCycleResult` are
+  event-driven (not every cycle) and don't need throttling.
+- Tool/hitch position setters drive the map render path, not text;
+  leave alone.
+
+## 10. Bugs filed during this audit
 
 - **#404** — Android `AutoSteerService` not running (no PGN TX, breaks
   manual section painting)

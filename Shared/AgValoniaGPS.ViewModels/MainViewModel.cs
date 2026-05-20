@@ -93,6 +93,8 @@ public partial class MainViewModel : ObservableObject
     private readonly ApplicationState _appState;
     private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
     private Avalonia.Threading.DispatcherTimer? _renderPullTimer;
+    // PERF-05 Phase 2c #1: 10 Hz display tick, decoupled from sensor arrival.
+    private Avalonia.Threading.DispatcherTimer? _displayTickTimer;
 
     /// <summary>
     /// Centralized application state - single source of truth for all runtime state.
@@ -333,6 +335,23 @@ public partial class MainViewModel : ObservableObject
             _renderPullTimer.Tick += OnRenderPullTick;
             _renderPullTimer.Start();
         }
+
+        // PERF-05 Phase 2c #1. Display values (Latitude, Heading, Speed, etc.)
+        // are decoupled from GPS sensor arrival and instead sampled at a fixed
+        // 10 Hz from State.Vehicle (the system of record, updated by
+        // ApplyGpsCycleResult). This matches the cadence design:
+        // sensor arrival drives State.Vehicle and the control loop, NOT the
+        // display refresh — the same pattern that decouples control from GPS.
+        // 10 Hz is sufficient for human readability of numeric text and cuts
+        // the PropertyChanged → Avalonia binding → TextLayout cascade from
+        // ~30 Hz (iPad sim) down to 10 Hz. See Plans/perf_data/2026-05-20/
+        // ANALYSIS.md §9.
+        _displayTickTimer = new Avalonia.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(100),
+        };
+        _displayTickTimer.Tick += OnDisplayTick;
+        _displayTickTimer.Start();
         _udpService.ModuleConnectionChanged += OnModuleConnectionChanged;
         _ntripService.ConnectionStatusChanged += OnNtripConnectionChanged;
         _ntripService.RtcmDataReceived += OnRtcmDataReceived;

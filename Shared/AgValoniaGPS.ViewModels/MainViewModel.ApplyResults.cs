@@ -43,15 +43,14 @@ public partial class MainViewModel
         if (result.GpsValid)
             _gpsService.MarkGpsReceived();
 
-        // GPS position
-        Latitude = result.Latitude;
-        Longitude = result.Longitude;
-        Easting = result.Easting;
-        Northing = result.Northing;
-        Heading = result.Heading;
-        _speed = result.Speed;
-        OnPropertyChanged(nameof(SpeedKmh));
-        RollDegrees = result.RollDegrees;
+        // PERF-05 Phase 2c #1: stop driving display-property PropertyChanged
+        // from sensor arrival. The MainViewModel.{Latitude, Longitude, Easting,
+        // Northing, Heading, _speed/SpeedKmh, RollDegrees, FixQuality} setters
+        // that used to live here have moved to OnDisplayTick (10 Hz, decoupled
+        // from sensor arrival). The cycle still writes State.Vehicle below —
+        // that's the canonical system of record the display tick samples from.
+        // For values not yet on State.Vehicle (RollDegrees), cache here.
+        _latestRollDegrees = result.RollDegrees;
 
         // Sole writer to State.Vehicle — Phase B completion. Was previously
         // also written from MainViewModel.HandleGpsUiUpdates on the
@@ -71,7 +70,6 @@ public partial class MainViewModel
             result.SatelliteCount,
             result.Hdop,
             result.DifferentialAge);
-        FixQuality = GetFixQualityString(result.FixQuality);
 
         // Tool position — set ToolEasting LAST to trigger map update
         ToolNorthing = result.ToolNorthing;
