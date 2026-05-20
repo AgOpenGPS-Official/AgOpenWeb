@@ -38,11 +38,20 @@ public partial class MainViewModel
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot state)
     {
-        // Update latency display and tram state from AutoSteer pipeline
-        // This fires at 10Hz from the GPS receive path
+        // AutoSteer fires StateUpdated at the unified control-loop rate
+        // (100 Hz, decoupled from GPS — see Plans/Completed/
+        // UNIFIED_CONTROL_LOOP_PLAN.md). Latency display can't sit on this
+        // path — at 100 Hz the PropertyChanged → TextLayout cascade for
+        // the status-bar "Lat: 0.00ms" readout was 5.9% main-thread CPU
+        // (Phase 2b trace). We cache the latest value here and let
+        // OnStatusTick publish it at 5 Hz.
+        //
+        // TramControlByte → map service is structural (not display) and
+        // stays on the source rate. Single-double / single-byte writes are
+        // atomic on x86/ARM — no lock needed.
+        _latestGpsToPgnLatencyMs = state.TotalLatencyMs;
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
         {
-            GpsToPgnLatencyMs = state.TotalLatencyMs;
             TramControlByte = state.TramState;
             _mapService.SetTramControlByte(state.TramState);
         }
@@ -50,7 +59,6 @@ public partial class MainViewModel
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
-                GpsToPgnLatencyMs = state.TotalLatencyMs;
                 TramControlByte = state.TramState;
                 _mapService.SetTramControlByte(state.TramState);
             });

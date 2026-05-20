@@ -1,0 +1,5 @@
+# Raw capture logs are large and per-run; summarize findings in #403 instead.
+*.log
+# Xcode Instruments trace bundles can be 100s of MB; analyze locally, summarize.
+*.trace
+instruments/

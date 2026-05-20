@@ -369,6 +369,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private void ProcessCycle(GpsData data)
     {
         _cycleCounter++;
+
+        // PERF-05 #3: GPS pipeline cycle = one full ProcessCycle invocation
+        // (background thread, fires per GPS fix). Captures everything from
+        // intent drain through the CycleCompleted event raise — guidance,
+        // youturn, snapshot build, etc. Marker: .perf_gps_pipeline.
+        bool perfGps = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfGpsPipeline;
+        long perfT0 = perfGps ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long perfA0 = perfGps ? GC.GetAllocatedBytesForCurrentThread() : 0;
+
         var config = ConfigurationStore.Instance;
 
         // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
@@ -1032,7 +1041,36 @@ public sealed class GpsPipelineService : IGpsPipelineService
         };
 
         CycleCompleted?.Invoke(result);
+
+        if (perfGps)
+        {
+            _perfGpsCycleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfT0;
+            _perfGpsCycleAllocs += GC.GetAllocatedBytesForCurrentThread() - perfA0;
+            _perfGpsCycleCount++;
+            var elapsed = (DateTime.UtcNow - _perfGpsWindowStart).TotalSeconds;
+            if (elapsed >= 1.0 && _perfGpsCycleCount > 0)
+            {
+                double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+                Console.WriteLine(
+                    $"[GpsPipeline-PERF] cycles={_perfGpsCycleCount}"
+                    + $" us/cycle={(_perfGpsCycleTicks / ticksPerUs / _perfGpsCycleCount):F1}"
+                    + $" alloc/cycle={(_perfGpsCycleAllocs / _perfGpsCycleCount)}B"
+                    + $" total_us={(long)(_perfGpsCycleTicks / ticksPerUs)}"
+                    + $" total_alloc={_perfGpsCycleAllocs}B"
+                    + $" window={elapsed:F2}s");
+                _perfGpsCycleTicks = 0;
+                _perfGpsCycleAllocs = 0;
+                _perfGpsCycleCount = 0;
+                _perfGpsWindowStart = DateTime.UtcNow;
+            }
+        }
     }
+
+    // PERF-05 #3: GPS pipeline accumulators. Gated by DiagFlags.PerfGpsPipeline.
+    private long _perfGpsCycleTicks;
+    private long _perfGpsCycleAllocs;
+    private int _perfGpsCycleCount;
+    private DateTime _perfGpsWindowStart = DateTime.UtcNow;
 
     private static YouTurnSnapshot BuildYouTurnSnapshot(YouTurnWorkingState src, bool justCompleted) => new()
     {

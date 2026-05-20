@@ -161,6 +161,13 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     {
         if (!IsConnected || _udpSocket == null) return;
 
+        // PERF-05 #6 (UDP TX). Cycle = one SendToModules invocation that
+        // passed the connected check. Marker .perf_udp shared with RX path;
+        // emit line is [UdpTx-PERF].
+        bool perf = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfUdp;
+        long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
+
         // Refresh discovery endpoints periodically
         if ((DateTime.UtcNow - _lastDiscoveryRefresh).TotalSeconds > DiscoveryRefreshSeconds)
         {
@@ -186,6 +193,14 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // Discovery: broadcast on all interfaces
             foreach (var ep in _discoveryEndpoints)
                 SendPacket(data, ep);
+        }
+
+        if (perf)
+        {
+            _perfTxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfT0;
+            _perfTxAllocs += GC.GetAllocatedBytesForCurrentThread() - perfA0;
+            _perfTxCount++;
+            EmitTxIfWindowElapsed();
         }
     }
 
@@ -308,38 +323,104 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private void ProcessReceivedData(byte[] data, IPEndPoint remoteEndPoint)
     {
-        // Check if this is a binary PGN message or text NMEA sentence
-        if (data.Length >= 2 && data[0] == PgnMessage.HEADER1 && data[1] == PgnMessage.HEADER2)
+        // PERF-05 #6 (UDP RX). Cycle = one inbound packet processed.
+        // Captures DataReceived subscriber cost (NMEA parse, GpsData alloc,
+        // PGN handler dispatch). Marker .perf_udp shared with TX.
+        bool perf = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfUdp;
+        long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
+        try
         {
-            // Binary PGN message
-            if (data.Length < 6) return;
-
-            byte pgn = data[3];
-
-            // Track module connections based on hello messages
-            UpdateModuleConnection(pgn, remoteEndPoint);
-
-            // Fire event
-            DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
+            // Check if this is a binary PGN message or text NMEA sentence
+            if (data.Length >= 2 && data[0] == PgnMessage.HEADER1 && data[1] == PgnMessage.HEADER2)
             {
-                Data = data,
-                RemoteEndPoint = remoteEndPoint,
-                PGN = pgn,
-                Timestamp = DateTime.Now
-            });
+                // Binary PGN message
+                if (data.Length < 6) return;
+
+                byte pgn = data[3];
+
+                // Track module connections based on hello messages
+                UpdateModuleConnection(pgn, remoteEndPoint);
+
+                // Fire event
+                DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
+                {
+                    Data = data,
+                    RemoteEndPoint = remoteEndPoint,
+                    PGN = pgn,
+                    Timestamp = DateTime.Now
+                });
+            }
+            else if (data.Length > 0 && data[0] == (byte)'$')
+            {
+                // Text NMEA sentence (starts with $)
+                // Fire event with PGN 0 to indicate NMEA text
+                DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
+                {
+                    Data = data,
+                    RemoteEndPoint = remoteEndPoint,
+                    PGN = 0, // Special PGN for NMEA text
+                    Timestamp = DateTime.Now
+                });
+            }
         }
-        else if (data.Length > 0 && data[0] == (byte)'$')
+        finally
         {
-            // Text NMEA sentence (starts with $)
-            // Fire event with PGN 0 to indicate NMEA text
-            DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
+            if (perf)
             {
-                Data = data,
-                RemoteEndPoint = remoteEndPoint,
-                PGN = 0, // Special PGN for NMEA text
-                Timestamp = DateTime.Now
-            });
+                _perfRxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfT0;
+                _perfRxAllocs += GC.GetAllocatedBytesForCurrentThread() - perfA0;
+                _perfRxCount++;
+                EmitRxIfWindowElapsed();
+            }
         }
+    }
+
+    // PERF-05 #6 accumulators (gated by DiagFlags.PerfUdp). RX runs on the
+    // socket receive thread; TX runs on whichever thread fires SendToModules
+    // (autosteer pipeline / UI). No lock — last writer wins on the counters
+    // is acceptable for diagnostic data.
+    private long _perfRxTicks, _perfRxAllocs;
+    private int _perfRxCount;
+    private DateTime _perfRxWindowStart = DateTime.UtcNow;
+    private long _perfTxTicks, _perfTxAllocs;
+    private int _perfTxCount;
+    private DateTime _perfTxWindowStart = DateTime.UtcNow;
+
+    private void EmitRxIfWindowElapsed()
+    {
+        var elapsed = (DateTime.UtcNow - _perfRxWindowStart).TotalSeconds;
+        if (elapsed < 1.0 || _perfRxCount == 0) return;
+        double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+        Console.WriteLine(
+            $"[UdpRx-PERF] packets={_perfRxCount}"
+            + $" us/packet={(_perfRxTicks / ticksPerUs / _perfRxCount):F1}"
+            + $" alloc/packet={(_perfRxAllocs / _perfRxCount)}B"
+            + $" total_us={(long)(_perfRxTicks / ticksPerUs)}"
+            + $" total_alloc={_perfRxAllocs}B"
+            + $" window={elapsed:F2}s");
+        _perfRxTicks = 0;
+        _perfRxAllocs = 0;
+        _perfRxCount = 0;
+        _perfRxWindowStart = DateTime.UtcNow;
+    }
+
+    private void EmitTxIfWindowElapsed()
+    {
+        var elapsed = (DateTime.UtcNow - _perfTxWindowStart).TotalSeconds;
+        if (elapsed < 1.0 || _perfTxCount == 0) return;
+        double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+        Console.WriteLine(
+            $"[UdpTx-PERF] sends={_perfTxCount}"
+            + $" us/send={(_perfTxTicks / ticksPerUs / _perfTxCount):F1}"
+            + $" alloc/send={(_perfTxAllocs / _perfTxCount)}B"
+            + $" total_us={(long)(_perfTxTicks / ticksPerUs)}"
+            + $" total_alloc={_perfTxAllocs}B"
+            + $" window={elapsed:F2}s");
+        _perfTxTicks = 0;
+        _perfTxAllocs = 0;
+        _perfTxCount = 0;
+        _perfTxWindowStart = DateTime.UtcNow;
     }
 
     private void UpdateModuleConnection(byte pgn, IPEndPoint remoteEndPoint)

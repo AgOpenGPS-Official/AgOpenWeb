@@ -43,6 +43,15 @@ public partial class MainViewModel
     private double _heading;
     private double _rollDegrees;
 
+    // PERF-05 Phase 2c #1/#2: latest snapshot values for status-display
+    // properties that aren't on State.Vehicle. Each is written by its
+    // upstream source at full source rate (GPS 10 Hz, control loop 100 Hz,
+    // AutoSteer 100 Hz) and read by OnStatusTick at the unified 5 Hz status
+    // cadence. Single-double writes/reads are atomic on x86/ARM; no lock
+    // needed for diagnostic display values.
+    private double _latestRollDegrees;
+    private double _latestGpsToPgnLatencyMs;
+
     #endregion
 
     #region GPS Properties
@@ -387,6 +396,52 @@ public partial class MainViewModel
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled);
         _gpsPipelineService.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
+    }
+
+    #endregion
+
+    #region Status Display Tick (PERF-05 Phase 2c #1/#2)
+
+    /// <summary>
+    /// Unified 5 Hz status-display sampler. The single tick that publishes
+    /// every MainViewModel property bound to the top status bar, regardless
+    /// of upstream source rate. Matches the cadence architecture:
+    /// each subsystem runs at its own appropriate rate (GPS 10 Hz, control
+    /// loop 100 Hz, AutoSteer 100 Hz) and updates State / caches; display
+    /// refresh is independent of all of them and tuned for human readability.
+    ///
+    /// Sources:
+    /// - <c>State.Vehicle</c> — system of record, updated by
+    ///   ApplyGpsCycleResult via State.Vehicle.UpdateFromGps (GPS rate).
+    /// - <c>_latestRollDegrees</c> — cached by ApplyGpsCycleResult.
+    /// - <c>_latestGpsToPgnLatencyMs</c> — cached by OnAutoSteerStateUpdated
+    ///   at the AutoSteer 100 Hz tick rate.
+    ///
+    /// 5 Hz (200 ms) is below the human perception threshold for numeric
+    /// text on a status bar and consolidates every status PropertyChanged
+    /// cascade to the same predictable rate — no future diagnostic readout
+    /// can accidentally re-introduce a 100-Hz PropertyChanged storm by
+    /// setting its MainViewModel property from its source event handler.
+    /// New status values just add a <c>_latest…</c> field and one line to
+    /// this method.
+    ///
+    /// SetProperty short-circuits when the new value equals the old (ref
+    /// comparison for strings, value comparison for primitives via the
+    /// CommunityToolkit equality helper), so unchanged values don't fire
+    /// PropertyChanged — no per-property epsilon check needed.
+    /// </summary>
+    private void OnStatusTick(object? sender, EventArgs e)
+    {
+        var v = State.Vehicle;
+        Latitude = v.Latitude;
+        Longitude = v.Longitude;
+        Easting = v.Easting;
+        Northing = v.Northing;
+        Heading = v.Heading;
+        Speed = v.Speed;
+        RollDegrees = _latestRollDegrees;
+        FixQuality = GetFixQualityString(v.FixQuality);
+        GpsToPgnLatencyMs = _latestGpsToPgnLatencyMs;
     }
 
     #endregion

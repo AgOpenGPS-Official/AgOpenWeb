@@ -40,6 +40,21 @@ public static class DiagFlags
     public static readonly bool LogSendStateFrequency;
     public static readonly bool LogRenderTiming;
 
+    // PERF-05 subsystem markers — each enables [<Subsystem>-PERF] emission
+    // (time + GC.GetAllocatedBytesForCurrentThread deltas at 1 Hz). See
+    // Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md. Subsystem 1 (2D render path)
+    // reuses LogRenderTiming above.
+    public static readonly bool PerfStateMirror;
+    public static readonly bool PerfGpsPipeline;
+    public static readonly bool PerfGuidance;
+    public static readonly bool PerfCoverage;
+    public static readonly bool PerfUdp;
+    public static readonly bool PerfAutoSteer;
+    // Phase 2a: UI-thread bridge from background GPS cycle to State updates.
+    // Suspected dominant source of the iPad "+13 ms outside OnRender" cost
+    // observed at S5 in Phase 1.
+    public static readonly bool PerfApplyGpsCycle;
+
     // Test-harness flags
     public static readonly bool AutoResumeField;
 
@@ -59,6 +74,13 @@ public static class DiagFlags
         DisableAnimationFrameUpdate = MarkerPresent(".disable_animation_frame_update");
         LogSendStateFrequency      = MarkerPresent(".log_send_state_frequency");
         LogRenderTiming            = MarkerPresent(".log_render_timing");
+        PerfStateMirror            = MarkerPresent(".perf_state_mirror");
+        PerfGpsPipeline            = MarkerPresent(".perf_gps_pipeline");
+        PerfGuidance               = MarkerPresent(".perf_guidance");
+        PerfCoverage               = MarkerPresent(".perf_coverage");
+        PerfUdp                    = MarkerPresent(".perf_udp");
+        PerfAutoSteer              = MarkerPresent(".perf_autosteer");
+        PerfApplyGpsCycle          = MarkerPresent(".perf_apply_gps_cycle");
         AutoResumeField            = MarkerPresent(".auto_resume_field");
 
         AnySet = SkipCoverageDraw || SkipBoundaryDraw || SkipTracks
@@ -66,7 +88,11 @@ public static class DiagFlags
                || ShowVehicleDebug
                || PanelsOpaque || HideAllPanels
                || DisableAnimationFrameUpdate || LogSendStateFrequency
-               || LogRenderTiming || AutoResumeField;
+               || LogRenderTiming
+               || PerfStateMirror || PerfGpsPipeline || PerfGuidance
+               || PerfCoverage || PerfUdp || PerfAutoSteer
+               || PerfApplyGpsCycle
+               || AutoResumeField;
     }
 
     /// <summary>
@@ -89,6 +115,13 @@ public static class DiagFlags
             + $" disableAnimFrame={DisableAnimationFrameUpdate}"
             + $" logSendState={LogSendStateFrequency}"
             + $" logRenderTiming={LogRenderTiming}"
+            + $" perfStateMirror={PerfStateMirror}"
+            + $" perfGpsPipeline={PerfGpsPipeline}"
+            + $" perfGuidance={PerfGuidance}"
+            + $" perfCoverage={PerfCoverage}"
+            + $" perfUdp={PerfUdp}"
+            + $" perfAutoSteer={PerfAutoSteer}"
+            + $" perfApplyGpsCycle={PerfApplyGpsCycle}"
             + $" autoResumeField={AutoResumeField}");
     }
 

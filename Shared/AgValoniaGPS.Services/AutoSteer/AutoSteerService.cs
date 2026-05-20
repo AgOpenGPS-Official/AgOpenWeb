@@ -438,19 +438,37 @@ public class AutoSteerService : IAutoSteerService
     {
         if (!_isEnabled) return;
 
-        // Parse directly into VehicleState (zero-copy). ParseIntoState marks
-        // its own parse-timing fields; no BeginNewCycle here because the
-        // cycle owns timing now.
-        ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
-        if (!NmeaParserServiceFast.ParseIntoState(data, ref _state))
+        // PERF-05 #7 (autosteer-RX). Cycle = one GPS buffer parsed.
+        // Marker .perf_autosteer shared with TX. Emits [AutoSteerRx-PERF].
+        bool perf = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfAutoSteer;
+        long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
+        try
         {
-            _parseFailures++;
-            return;
-        }
+            // Parse directly into VehicleState (zero-copy). ParseIntoState marks
+            // its own parse-timing fields; no BeginNewCycle here because the
+            // cycle owns timing now.
+            ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
+            if (!NmeaParserServiceFast.ParseIntoState(data, ref _state))
+            {
+                _parseFailures++;
+                return;
+            }
 
-        // Publish the parsed fix to GpsService. This is the sole event the
-        // cycle worker listens to; everything else runs there.
-        PublishGpsData();
+            // Publish the parsed fix to GpsService. This is the sole event the
+            // cycle worker listens to; everything else runs there.
+            PublishGpsData();
+        }
+        finally
+        {
+            if (perf)
+            {
+                _perfRxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfT0;
+                _perfRxAllocs += GC.GetAllocatedBytesForCurrentThread() - perfA0;
+                _perfRxCount++;
+                EmitAutoSteerRxIfWindowElapsed();
+            }
+        }
     }
 
     /// <summary>
@@ -609,7 +627,62 @@ public class AutoSteerService : IAutoSteerService
     public void SendPgnsForControlTick()
     {
         if (!_isEnabled) return;
-        SendPgns();
+        // PERF-05 #7 (autosteer-TX). Cycle = one PGN-send tick (outbound
+        // steering / config / hello). Emits [AutoSteerTx-PERF].
+        bool perf = AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfAutoSteer;
+        long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
+        try { SendPgns(); }
+        finally
+        {
+            if (perf)
+            {
+                _perfTxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfT0;
+                _perfTxAllocs += GC.GetAllocatedBytesForCurrentThread() - perfA0;
+                _perfTxCount++;
+                EmitAutoSteerTxIfWindowElapsed();
+            }
+        }
+    }
+
+    // PERF-05 #7 accumulators (gated by DiagFlags.PerfAutoSteer).
+    private long _perfRxTicks, _perfRxAllocs;
+    private int _perfRxCount;
+    private DateTime _perfRxWindowStart = DateTime.UtcNow;
+    private long _perfTxTicks, _perfTxAllocs;
+    private int _perfTxCount;
+    private DateTime _perfTxWindowStart = DateTime.UtcNow;
+
+    private void EmitAutoSteerRxIfWindowElapsed()
+    {
+        var elapsed = (DateTime.UtcNow - _perfRxWindowStart).TotalSeconds;
+        if (elapsed < 1.0 || _perfRxCount == 0) return;
+        double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+        Console.WriteLine(
+            $"[AutoSteerRx-PERF] cycles={_perfRxCount}"
+            + $" us/cycle={(_perfRxTicks / ticksPerUs / _perfRxCount):F1}"
+            + $" alloc/cycle={(_perfRxAllocs / _perfRxCount)}B"
+            + $" total_us={(long)(_perfRxTicks / ticksPerUs)}"
+            + $" total_alloc={_perfRxAllocs}B"
+            + $" window={elapsed:F2}s");
+        _perfRxTicks = 0; _perfRxAllocs = 0; _perfRxCount = 0;
+        _perfRxWindowStart = DateTime.UtcNow;
+    }
+
+    private void EmitAutoSteerTxIfWindowElapsed()
+    {
+        var elapsed = (DateTime.UtcNow - _perfTxWindowStart).TotalSeconds;
+        if (elapsed < 1.0 || _perfTxCount == 0) return;
+        double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+        Console.WriteLine(
+            $"[AutoSteerTx-PERF] cycles={_perfTxCount}"
+            + $" us/cycle={(_perfTxTicks / ticksPerUs / _perfTxCount):F1}"
+            + $" alloc/cycle={(_perfTxAllocs / _perfTxCount)}B"
+            + $" total_us={(long)(_perfTxTicks / ticksPerUs)}"
+            + $" total_alloc={_perfTxAllocs}B"
+            + $" window={elapsed:F2}s");
+        _perfTxTicks = 0; _perfTxAllocs = 0; _perfTxCount = 0;
+        _perfTxWindowStart = DateTime.UtcNow;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
