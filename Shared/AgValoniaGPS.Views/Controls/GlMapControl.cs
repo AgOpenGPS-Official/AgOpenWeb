@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
@@ -398,11 +399,26 @@ void main() {
         if (_gl == null) return;
         var gl = _gl;
 
+        // ---- PERF INSTRUMENTATION ----
+        // Time each block in this method with Stopwatch.GetTimestamp() (high
+        // resolution, ~ns granularity, very cheap). Accumulate into per-second
+        // buckets that get dumped alongside the existing 1-Hz FPS line so we
+        // can see where the GL render path actually spends its time on iPad
+        // vs Android. Also measures the "outside" time — wall clock between
+        // successive OnOpenGlRender calls minus our own time. If outside >>
+        // inside, the bottleneck is Avalonia composition / vsync, not GL.
+        long perfFrameStart = Stopwatch.GetTimestamp();
+        if (_perfLastFrameEnd != 0)
+            _perfOutsideTicks += perfFrameStart - _perfLastFrameEnd;
+
+        long t = perfFrameStart;
         // Rebuild dirty VBOs.
         if (_boundaryDirty) { RebuildBoundary(gl); _boundaryDirty = false; }
         if (_headlandDirty) { RebuildHeadland(gl); _headlandDirty = false; }
         if (_tracksDirty)   { RebuildTracks(gl);   _tracksDirty = false; }
         if (_toolDirty)     { RebuildTool(gl);     _toolDirty = false; }
+        long tAfterRebuilds = Stopwatch.GetTimestamp();
+        _perfRebuildsTicks += tAfterRebuilds - t;
 
         double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
         int viewportW = Math.Max(1, (int)(Bounds.Width * scaling));
@@ -415,6 +431,8 @@ void main() {
         // world orientation unambiguous in screenshots.
         gl.ClearColor(0.45f, 0.65f, 0.85f, 1f); // sky blue
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
+        long tAfterClear = Stopwatch.GetTimestamp();
+        _perfClearTicks += tAfterClear - tAfterRebuilds;
 
         // AOG camera model (ported from AgOpenGPS Camera.cs:41-54).
         // Effective vertex pipeline for world geometry (read top-to-bottom):
@@ -473,6 +491,8 @@ void main() {
         // GL doesn't drop horizontal line edges (see spike findings).
         gl.Disable(EnableCap.DepthTest);
         gl.LineWidth(1f);
+        long tAfterCam = Stopwatch.GetTimestamp();
+        _perfCamTicks += tAfterCam - tAfterClear;
 
         // Infinite ground plane via fragment-shader ray-cast: render a
         // fullscreen quad, per-pixel intersect with Z=0 plane. Brown where
@@ -484,6 +504,8 @@ void main() {
         unsafe { gl.UniformMatrix4(_uniformGroundInvMvp, 1, false, (float*)&invMvp); }
         gl.BindVertexArray(_groundVao);
         gl.DrawArrays(GLEnum.TriangleStrip, 0, 4);
+        long tAfterGround = Stopwatch.GetTimestamp();
+        _perfGroundTicks += tAfterGround - tAfterCam;
 
         // Switch to the line shader for all the boundary/track/vehicle overlays.
         gl.UseProgram(_program);
@@ -496,6 +518,8 @@ void main() {
             gl.BindVertexArray(_gridVao);
             gl.DrawArrays(GLEnum.Lines, 0, (uint)_gridCount);
         }
+        long tAfterGrid = Stopwatch.GetTimestamp();
+        _perfGridTicks += tAfterGrid - tAfterGround;
 
         // Coverage layer — RGB565 texture sampled on a field-aligned quad.
         // Drawn under the boundary/track overlays so worked area paints "below"
@@ -503,6 +527,8 @@ void main() {
         DrawCoverage(gl, mvp);
         gl.UseProgram(_program);
         SetMvp(gl, mvp);
+        long tAfterCoverage = Stopwatch.GetTimestamp();
+        _perfCoverageTicks += tAfterCoverage - tAfterGrid;
 
         // Outer boundary — yellow
         if (_outerCount > 0)
@@ -576,6 +602,8 @@ void main() {
             // Restore base MVP for any future draws.
             SetMvp(gl, mvp);
         }
+        long tAfterOverlays = Stopwatch.GetTimestamp();
+        _perfOverlaysTicks += tAfterOverlays - tAfterCoverage;
 
         if (!_logged)
         {
@@ -594,12 +622,42 @@ void main() {
         if (fpsElapsed >= 1.0)
         {
             double fps = _fpsFrames / fpsElapsed;
+            int framesThisWindow = _fpsFrames;
             _fpsFrames = 0;
             _fpsLastTick = fpsNow;
             var handler = FpsUpdated;
             if (handler != null)
                 Avalonia.Threading.Dispatcher.UIThread.Post(() => handler(fps),
                     Avalonia.Threading.DispatcherPriority.Background);
+
+            // Dump per-section timing breakdown for this 1-second window.
+            // Ticks → microseconds per frame so the numbers stay readable
+            // regardless of FPS. "out" = wall time between successive
+            // OnOpenGlRender calls minus the time spent inside this method,
+            // i.e. compositor / vsync / outside-our-code budget.
+            if (framesThisWindow > 0)
+            {
+                double ticksPerUs = Stopwatch.Frequency / 1_000_000.0;
+                double UsPerFrame(long ticks) => ticks / ticksPerUs / framesThisWindow;
+                long insideTicks = _perfRebuildsTicks + _perfClearTicks + _perfCamTicks
+                                 + _perfGroundTicks + _perfGridTicks
+                                 + _perfCoverageTicks + _perfOverlaysTicks;
+                double frameBudgetUs = 1_000_000.0 / fps;
+                Console.WriteLine(
+                    $"[GlMap-PERF] fps={fps:F1} budget={frameBudgetUs:F0}us/frame  " +
+                    $"in={UsPerFrame(insideTicks):F0}us " +
+                    $"(rebuilds={UsPerFrame(_perfRebuildsTicks):F0} " +
+                    $"clear={UsPerFrame(_perfClearTicks):F0} " +
+                    $"cam={UsPerFrame(_perfCamTicks):F0} " +
+                    $"ground={UsPerFrame(_perfGroundTicks):F0} " +
+                    $"grid={UsPerFrame(_perfGridTicks):F0} " +
+                    $"cov={UsPerFrame(_perfCoverageTicks):F0} " +
+                    $"overlays={UsPerFrame(_perfOverlaysTicks):F0}) " +
+                    $"out={UsPerFrame(_perfOutsideTicks):F0}us");
+            }
+            _perfRebuildsTicks = _perfClearTicks = _perfCamTicks = 0;
+            _perfGroundTicks = _perfGridTicks = _perfCoverageTicks = 0;
+            _perfOverlaysTicks = _perfOutsideTicks = 0;
         }
 
         // 1 Hz diagnostic: where is the vehicle projecting on screen + how
@@ -621,11 +679,23 @@ void main() {
             Console.WriteLine($"[GlMap-CNTS] rebBnd={_rebuildBndCount} rebHead={_rebuildHeadCount} rebTracks={_rebuildTracksCount} rebTool={_rebuildToolCount}");
         }
 
+        _perfLastFrameEnd = Stopwatch.GetTimestamp();
         RequestNextFrameRendering();
     }
 
     private int _diagFrames;
     private int _rebuildBndCount, _rebuildHeadCount, _rebuildTracksCount, _rebuildToolCount;
+
+    // Per-second timing accumulators (reset when the FPS line emits).
+    // *Ticks fields are Stopwatch ticks (high-res, ~ns); converted to
+    // microseconds-per-frame at emit time. _perfLastFrameEnd is the timestamp
+    // captured at the end of the previous OnOpenGlRender, used to measure
+    // "outside" time — time between successive frames spent in compositor /
+    // vsync / anything-but-our-render-method.
+    private long _perfRebuildsTicks, _perfClearTicks, _perfCamTicks;
+    private long _perfGroundTicks, _perfGridTicks, _perfCoverageTicks;
+    private long _perfOverlaysTicks, _perfOutsideTicks;
+    private long _perfLastFrameEnd;
 
     // FPS counter — counts GL frames over a 1-second window and emits via
     // FpsUpdated. MainWindow / MainView subscribes and pushes to
