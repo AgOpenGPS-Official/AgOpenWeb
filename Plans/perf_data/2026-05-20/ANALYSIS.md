@@ -144,10 +144,14 @@ In rough priority order (biggest iPad relief, smallest blast radius):
    whole audit.
 4. **Cut per-cycle allocation in `Coverage.AddCoveragePoint`** — at
    1,616 cycles/s with 1.06 KB/cycle that's 1.7 MB/s of pure
-   allocator pressure. The cadence itself is intentional (AutoSteer
-   100 Hz tick is decoupled from GPS for accurate section control —
-   do not propose throttling it). Fix the *per-call* cost: pool the
-   intermediate quad/cell tuples, reuse rasterization buffers,
+   allocator pressure. The cadence itself is intentional: control
+   loop runs at 100 Hz (matches firmware `taskAutosteer`), steer
+   packet exchange at 50 Hz, GPS at 10 Hz, on-screen tractor position
+   dead-reckoned between fixes. See
+   `Plans/Completed/UNIFIED_CONTROL_LOOP_PLAN.md` and
+   `Plans/Completed/UNIFIED_PACKET_PROTOCOL.md` — do NOT propose
+   collapsing back to GPS rate. Fix the *per-call* cost instead: pool
+   the intermediate quad/cell tuples, reuse rasterization buffers,
    avoid `Dictionary` lookups that allocate boxed keys.
 5. **Cache `Track` instance upstream of `GpsCycleResult`** — the
    original #403 finding. Confirmed still present: 3.39 KB/cycle ×
