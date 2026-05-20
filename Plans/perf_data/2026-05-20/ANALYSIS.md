@@ -234,7 +234,87 @@ Phase 2b — Xcode Instruments Time Profiler on iPad during S5 — should
 isolate this. Setup script:
 [`instruments-trace-ipad.sh`](instruments-trace-ipad.sh).
 
-## 8. Bugs filed during this audit
+## 8. Phase 2b — Xcode Instruments Time Profiler on iPad during S5
+
+Captured 2026-05-20 12:04 via [`instruments-trace-ipad.sh`](instruments-trace-ipad.sh).
+Trace bundle at `instruments/2026-05-20_120411_time_profiler_s5.trace`
+(gitignored, 20 MB). 30-second window with S5 state held on iPad.
+
+### Where the main thread spends its time
+
+Main thread received **7,037 CPU samples** over 30 s = ~7.0 s of main-thread
+CPU = **~23% of one core constantly busy**. Top inclusive-time call sites
+(% of all main-thread samples; any frame in stack counts):
+
+| % main | Where | What |
+|---|---|---|
+| **22-23%** | `Avalonia.Media.TextFormatting.TextLayout` ctor / `CreateTextLines` / `FormatLine` / `ShapeTextRuns` / `FetchTextRuns` / `BidiAlgorithm` / `LineBreakEnumerator` | **Text layouts being re-created every GPS cycle** for TextBlock-bound properties |
+| 16% | `CommunityToolkit.Mvvm.ObservableObject.OnPropertyChanged` (×2) | `PropertyChanged` event firing |
+| 15% | `Avalonia.Utilities.WeakEvents...OnEvent` + `WeakEvent.Subscription.OnEvent` | Weak-event dispatch to binding subscribers |
+| 14.9% | `MainViewModel.ApplyGpsCycleResult` | Phase-2a-instrumented bracket (matches the 39 ms/s measured at 30 Hz) |
+| 8% | `Avalonia.Markup.Xaml.MarkupExtensions.CompiledBindings.InpcPropertyAccessor.OnEvent` / `SendCurrentValue` | INPC binding accessor |
+| 6.5% | `Avalonia.Data.Core.BindingExpression.OnNodeValueChanged` / `ConvertAndPublishValue` | Avalonia binding pipeline |
+| 6% | `Avalonia.Utilities.WeakHashList.GetAlive` | Binding subscriber list enumeration |
+| 5.6% | `MainViewModel.set_GpsToPgnLatencyMs(double)` | One specific text-bound property setter |
+| 4.2% | `MainViewModel.set_Latitude(double)` | Another text-bound property setter |
+
+### The actual call chain on iPad main thread
+
+```
+ApplyGpsCycleResult (15%)
+  → set_Latitude / set_Heading / set_GpsToPgnLatencyMs / … (each ~3-5%)
+    → ObservableObject.OnPropertyChanged (16% total)
+      → WeakEvent dispatch (15%)
+        → CompiledBindings.InpcPropertyAccessor.OnEvent (8%)
+          → BindingExpression.ConvertAndPublishValue (6.5%)
+            → TextBlock re-render
+              → TextLayout.CreateTextLines (23%)
+                → BidiAlgorithm, LineBreakEnumerator, ShapeTextRuns
+```
+
+### What this confirms / resolves
+
+The Phase 1 finding "iPad +13 ms/frame outside OnRender when simulator
+runs" is **TextLayout cost driven by TextBlocks bound to high-frequency
+properties**. At 43 fps the 23% text layout cost translates to
+**~5 ms/frame** — about a third of the +14 ms iPad-outside gap, just
+from text re-shaping. The remaining ~9 ms/frame is the rest of the
+binding cascade (WeakEvent dispatch, BindingExpression, INPC accessor
+chain), all of which scale with the trigger rate.
+
+This is "death by a thousand cuts" — no single function is more than
+~23% of main thread, but the cascade adds up to dominate. The fix lever
+is **reducing the trigger rate**, not chasing Avalonia internals.
+
+### Phase 2c fix candidates from this trace
+
+In priority order:
+
+1. **Throttle GPS-display text-bound properties to ~5 Hz.** Speed,
+   lat/lon, heading, latency — none of these need to update visually
+   at 30 Hz. A 200 ms throttle is invisible to the eye and would cut
+   text layout cost ~6×. Quick fix: add a small DispatcherTimer-driven
+   mirror that updates the display-bound copies of these properties.
+2. **Compare-and-skip identical values in `ApplyGpsCycleResult`
+   setters.** Several setters call `CommunityToolkit.Mvvm.SetProperty`
+   which short-circuits on reference-equal — but on `double` setters
+   this never short-circuits because every double bit-pattern differs
+   from the last. Add `Math.Abs(new - old) < epsilon` checks for
+   display-only properties.
+3. **Audit which TextBlocks bind to high-frequency properties** and
+   replace direct bindings with `Formatted` properties that update from
+   the throttled tick instead of the raw GPS tick. Pairs well with #1.
+4. **Pool snapshot DTOs in `ApplyGpsCycleResult`** — 9.4 KB/cycle is
+   real GC pressure (281 KB/s on iPad). Even if the cascade is cheaper
+   after #1, less garbage = fewer GC pauses contributing to "outside"
+   time.
+5. **The earlier-priority items still hold**: `DrawTrackSk` paint
+   caching (lift from spike branch), `DrawVehicleSk` paint caching,
+   cache `Track` instance upstream (#403 original finding). These are
+   per-frame allocation churn fixes, independent of the binding
+   cascade.
+
+## 9. Bugs filed during this audit
 
 - **#404** — Android `AutoSteerService` not running (no PGN TX, breaks
   manual section painting)
