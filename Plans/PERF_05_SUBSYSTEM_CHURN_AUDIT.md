@@ -42,19 +42,24 @@ Explicit non-goals:
 
 ## Subsystems
 
-Eight subsystems on the first pass, in measurement priority order. Each gets
+Seven subsystems on the first pass, in measurement priority order. Each gets
 its own DiagFlags marker (so a single marker file flips it on, no rebuilds).
 
 | # | Subsystem | Code entry point | Measurement marker |
 |---|---|---|---|
 | 1 | 2D render path | `DrawingContextMapControl.OnRender` | `.perf_render_2d` (existing `.log_render_timing` covers part of this) |
-| 2 | GL render path | `GlMapControl.OnOpenGlRender` | `.perf_render_gl` (instrumentation already drafted on spike branch) |
-| 3 | State mirroring | `MainViewModel.SendStateToHandler` / render-pull tick | `.perf_state_mirror` |
-| 4 | GPS pipeline | `GpsService` → `PositionEstimator` → snapshot apply | `.perf_gps_pipeline` |
-| 5 | Guidance | `TrackGuidanceService` + `YouTurnGuidanceService` | `.perf_guidance` |
-| 6 | Coverage | `CoverageMapService.AddCoveragePoint` / cell mark / paint | `.perf_coverage` |
-| 7 | UDP | `IUdpCommunicationService` packet parse + send | `.perf_udp` |
-| 8 | AutoSteer | `IAutoSteerService` zero-copy pipeline | `.perf_autosteer` |
+| 2 | State mirroring | `MainViewModel.SendStateToHandler` / render-pull tick | `.perf_state_mirror` |
+| 3 | GPS pipeline | `GpsService` → `PositionEstimator` → snapshot apply | `.perf_gps_pipeline` |
+| 4 | Guidance | `TrackGuidanceService` + `YouTurnGuidanceService` | `.perf_guidance` |
+| 5 | Coverage | `CoverageMapService.AddCoveragePoint` / cell mark / paint | `.perf_coverage` |
+| 6 | UDP | `IUdpCommunicationService` packet parse + send | `.perf_udp` |
+| 7 | AutoSteer | `IAutoSteerService` zero-copy pipeline | `.perf_autosteer` |
+
+GL render path is intentionally excluded — it lives only on
+`spike/angle-silk-opengl-eval`, not develop, and the spike is parked. When
+the spike resumes, the same instrumentation pattern applies to
+`GlMapControl.OnOpenGlRender` (groundwork already done in the parked
+branch's `e9e3aee` commit).
 
 ## Standard instrumentation pattern
 
@@ -132,9 +137,9 @@ Logs streamed off-device:
 - **iPad:** `idevicesyslog -u <UDID> -m "PERF"`
 - **Android:** `adb -s <serial> logcat | grep PERF`
 
-Each measurement run captures all 8 markers active simultaneously. Output is
-one log file per (platform, scenario) — 16 files total — saved to
-`Plans/perf_data/<date>/<platform>/<scenario>.log`.
+Each measurement run captures all 7 markers active simultaneously. Output is
+one log file per (platform, scenario) — 16 files total (2 platforms × 8
+scenarios) — saved to `Plans/perf_data/<date>/<platform>/<scenario>.log`.
 
 ## Analysis framework
 
