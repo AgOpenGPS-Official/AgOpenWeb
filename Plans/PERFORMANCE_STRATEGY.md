@@ -161,3 +161,4 @@ Individual tactical plans are created as each prioritized item is picked up.
 - [ ] `Plans/PERF_02_YOUTURN_TO_SERVICE.md` — not yet drafted
 - [ ] `Plans/PERF_03_GROUND_TEXTURE.md` — not yet drafted
 - [ ] `Plans/PERF_04_STATE_PUSH_REFACTOR.md` — not yet drafted (may never be)
+- [x] [`Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md`](PERF_05_SUBSYSTEM_CHURN_AUDIT.md) — drafted 2026-05-20; subsystem-by-subsystem instrumentation to find unjustified time/alloc churn (iPad vs Android). Umbrella for churn fixes: #403.
