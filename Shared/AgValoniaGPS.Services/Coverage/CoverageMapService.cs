@@ -165,9 +165,59 @@ public class CoverageMapService : ICoverageMapService
     {
         lock (_coverageLock)
         {
-        if (!_activeSections.Contains(zoneIndex))
-            return;
+            if (!_activeSections.Contains(zoneIndex))
+                return;
 
+            // PERF-05 #5. Cycle = one AddCoveragePoint that gets past the
+            // activeSections gate (so unmapped sections don't pollute counts).
+            // Marker: .perf_coverage. Wraps rasterization + pixel paint +
+            // bounds expand. Up to N_sections × GPS_Hz calls/sec.
+            if (!AgValoniaGPS.Models.Diagnostics.DiagFlags.PerfCoverage)
+            {
+                AddCoveragePointCore(zoneIndex, leftEdge, rightEdge);
+                return;
+            }
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
+            try { AddCoveragePointCore(zoneIndex, leftEdge, rightEdge); }
+            finally
+            {
+                _perfCovTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+                _perfCovAllocs += GC.GetAllocatedBytesForCurrentThread() - a0;
+                _perfCovCount++;
+                var elapsed = (DateTime.UtcNow - _perfCovWindowStart).TotalSeconds;
+                if (elapsed >= 1.0 && _perfCovCount > 0)
+                {
+                    double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
+                    Console.WriteLine(
+                        $"[Coverage-PERF] cycles={_perfCovCount}"
+                        + $" us/cycle={(_perfCovTicks / ticksPerUs / _perfCovCount):F1}"
+                        + $" alloc/cycle={(_perfCovAllocs / _perfCovCount)}B"
+                        + $" total_us={(long)(_perfCovTicks / ticksPerUs)}"
+                        + $" total_alloc={_perfCovAllocs}B"
+                        + $" window={elapsed:F2}s");
+                    _perfCovTicks = 0;
+                    _perfCovAllocs = 0;
+                    _perfCovCount = 0;
+                    _perfCovWindowStart = DateTime.UtcNow;
+                }
+            }
+        } // lock
+    }
+
+    // PERF-05 #5 accumulators. Gated by DiagFlags.PerfCoverage. Mutated under
+    // _coverageLock (same lock as AddCoveragePoint body).
+    private long _perfCovTicks;
+    private long _perfCovAllocs;
+    private int _perfCovCount;
+    private DateTime _perfCovWindowStart = DateTime.UtcNow;
+
+    /// <summary>
+    /// Core body of AddCoveragePoint. Caller holds _coverageLock and has
+    /// already verified the section is active.
+    /// </summary>
+    private void AddCoveragePointCore(int zoneIndex, Vec2 leftEdge, Vec2 rightEdge)
+    {
         // Check if we need to expand bounds (auto-initialized, vehicle near edge)
         if (_fieldBoundsSet)
         {
@@ -202,7 +252,6 @@ public class CoverageMapService : ICoverageMapService
         _lastEdgesPerSection[zoneIndex] = (
             (leftEdge.Easting, leftEdge.Northing),
             (rightEdge.Easting, rightEdge.Northing));
-        } // lock
     }
 
     /// <summary>
