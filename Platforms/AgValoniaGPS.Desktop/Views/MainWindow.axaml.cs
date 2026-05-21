@@ -422,17 +422,24 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             case Key.F9:
-                // Phase 0 spike (Plans/GL_MAP_PIVOT_PLAN.md): swap window
-                // content to the SKMatrix44 perspective spike. F9 again
-                // restores the map.
+                // Phase 0 Q1 spike: SKMatrix44 perspective.
                 if (Content is AgValoniaGPS.Views.Controls.Spikes.PerspectiveSkiaSpike)
-                {
                     Content = _spikeSavedContent;
-                }
                 else
                 {
-                    _spikeSavedContent = Content as Control;
+                    _spikeSavedContent ??= Content as Control;
                     Content = new AgValoniaGPS.Views.Controls.Spikes.PerspectiveSkiaSpike();
+                }
+                e.Handled = true;
+                return;
+            case Key.F10:
+                // Phase 0 Q3 spike: coverage SKImage upload cost.
+                if (Content is AgValoniaGPS.Views.Controls.Spikes.CoverageUploadSpike)
+                    Content = _spikeSavedContent;
+                else
+                {
+                    _spikeSavedContent ??= Content as Control;
+                    Content = new AgValoniaGPS.Views.Controls.Spikes.CoverageUploadSpike();
                 }
                 e.Handled = true;
                 return;
