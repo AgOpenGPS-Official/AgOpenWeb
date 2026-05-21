@@ -389,15 +389,21 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private void EmitRxIfWindowElapsed()
     {
+        // #412: Snapshot the accumulators first so a concurrent caller can't
+        // reset _perfRxCount to 0 between our guard check and the integer
+        // division below (which would throw DivideByZeroException).
+        int count = _perfRxCount;
+        long ticks = _perfRxTicks;
+        long allocs = _perfRxAllocs;
         var elapsed = (DateTime.UtcNow - _perfRxWindowStart).TotalSeconds;
-        if (elapsed < 1.0 || _perfRxCount == 0) return;
+        if (elapsed < 1.0 || count == 0) return;
         double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
         Console.WriteLine(
-            $"[UdpRx-PERF] packets={_perfRxCount}"
-            + $" us/packet={(_perfRxTicks / ticksPerUs / _perfRxCount):F1}"
-            + $" alloc/packet={(_perfRxAllocs / _perfRxCount)}B"
-            + $" total_us={(long)(_perfRxTicks / ticksPerUs)}"
-            + $" total_alloc={_perfRxAllocs}B"
+            $"[UdpRx-PERF] packets={count}"
+            + $" us/packet={(ticks / ticksPerUs / count):F1}"
+            + $" alloc/packet={(allocs / count)}B"
+            + $" total_us={(long)(ticks / ticksPerUs)}"
+            + $" total_alloc={allocs}B"
             + $" window={elapsed:F2}s");
         _perfRxTicks = 0;
         _perfRxAllocs = 0;
@@ -407,15 +413,21 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private void EmitTxIfWindowElapsed()
     {
+        // #412: Snapshot the accumulators first so a concurrent caller can't
+        // reset _perfTxCount to 0 between our guard check and the integer
+        // division below (which would throw DivideByZeroException).
+        int count = _perfTxCount;
+        long ticks = _perfTxTicks;
+        long allocs = _perfTxAllocs;
         var elapsed = (DateTime.UtcNow - _perfTxWindowStart).TotalSeconds;
-        if (elapsed < 1.0 || _perfTxCount == 0) return;
+        if (elapsed < 1.0 || count == 0) return;
         double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
         Console.WriteLine(
-            $"[UdpTx-PERF] sends={_perfTxCount}"
-            + $" us/send={(_perfTxTicks / ticksPerUs / _perfTxCount):F1}"
-            + $" alloc/send={(_perfTxAllocs / _perfTxCount)}B"
-            + $" total_us={(long)(_perfTxTicks / ticksPerUs)}"
-            + $" total_alloc={_perfTxAllocs}B"
+            $"[UdpTx-PERF] sends={count}"
+            + $" us/send={(ticks / ticksPerUs / count):F1}"
+            + $" alloc/send={(allocs / count)}B"
+            + $" total_us={(long)(ticks / ticksPerUs)}"
+            + $" total_alloc={allocs}B"
             + $" window={elapsed:F2}s");
         _perfTxTicks = 0;
         _perfTxAllocs = 0;
