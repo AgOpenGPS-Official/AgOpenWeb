@@ -412,6 +412,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _guidanceWorking.HowManyPathsAway += delta;
             _guidanceWorking.NudgeOffset = 0;
             _trackGuidanceState = null;
+
+            // #408. If a u-turn is plotted but not yet executing, drop it
+            // so the state machine re-arms for the new pass direction on
+            // the next tick. Without this the tractor enters the already-
+            // armed arc and lands on the *old* NextTrack (the original
+            // exit pass) instead of replanning for the just-snapped pass.
+            // Mirrors the direction-override re-arm in YouTurnStateMachine.
+            // Mid-arc snaps are unsafe and stay no-op.
+            if (_youTurn.TurnPath != null && !_youTurn.IsExecuting)
+            {
+                _youTurn.TurnPath = null;
+                _youTurn.NextTrack = null;
+                _youTurn.IsTriggered = false;
+            }
         }
         // Phase D D5. Nudge accumulates (multiple clicks between drains sum).
         // Heading-same-way flips the sign so "left" always means left from the
