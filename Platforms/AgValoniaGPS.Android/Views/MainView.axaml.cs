@@ -40,6 +40,7 @@ public partial class MainView : UserControl
 {
     private DrawingContextMapControl? _mapControl;
     private GlMapControl? _glMapControl;
+    private Grid? _mapHostGrid;
     private MainViewModel? _viewModel;
 
     // Panels are now anchored (no position save/restore needed)
@@ -53,6 +54,7 @@ public partial class MainView : UserControl
         // Get reference to map control
         _mapControl = this.FindControl<DrawingContextMapControl>("MapControl");
         _glMapControl = this.FindControl<GlMapControl>("GlMapControl");
+        _mapHostGrid = this.FindControl<Grid>("MapHostGrid");
 
         // Wire up chart panel drag events
         WireChartPanelDrag("SteerChartPanel");
@@ -182,9 +184,14 @@ public partial class MainView : UserControl
         // Note: Tool/vehicle position sync happens when simulator is enabled
         // (see IsSimulatorEnabled handler in OnViewModelPropertyChanged)
 
-        // Subscribe to FPS updates from both map controls. Only one renders
-        // at a time (Is2DMode toggles visibility) so whichever is active
-        // pushes its frame rate to the ViewModel.
+        // Apply initial 2D/3D child mount based on saved Is2DMode.
+        // Self-rendering controls don't pause on IsVisible=false, so we
+        // swap them in/out of the host grid instead. See [[visibility-toggle-rule]].
+        ApplyMapModeChildren(viewModel.Is2DMode);
+
+        // Subscribe to FPS updates from both map controls. Only the
+        // currently-mounted one ticks (the other is removed from the
+        // visual tree), so whichever is active pushes its frame rate.
         if (_mapControl != null)
         {
             _mapControl.FpsUpdated += fps =>
@@ -338,6 +345,7 @@ public partial class MainView : UserControl
             {
                 // Is2DMode = true means 3D is off, so invert the value
                 _mapControl.Set3DMode(!_viewModel.Is2DMode);
+                ApplyMapModeChildren(_viewModel.Is2DMode);
             }
             else if (e.PropertyName == nameof(MainViewModel.CameraPitch))
             {
@@ -376,6 +384,19 @@ public partial class MainView : UserControl
                     hasGuidance, false);
             }
         }
+    }
+
+    private void ApplyMapModeChildren(bool is2D)
+    {
+        if (_mapHostGrid == null) return;
+        Control? dc = _mapControl;
+        Control? gl = _glMapControl;
+        var active = is2D ? dc : gl;
+        var inactive = is2D ? gl : dc;
+        if (inactive != null && _mapHostGrid.Children.Contains(inactive))
+            _mapHostGrid.Children.Remove(inactive);
+        if (active != null && !_mapHostGrid.Children.Contains(active))
+            _mapHostGrid.Children.Add(active);
     }
 
     private void WireChartPanelDrag(string panelName)

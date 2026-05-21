@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     private ISharedMapControl? MapControl;
     private GlMapControl? _glMapControl;
+    private Grid? _mapHostGrid;
     private bool _isDraggingRecPath = false;
     private Avalonia.Point _dragStartPoint;
     private Control? _spikeSavedContent;
@@ -94,9 +95,15 @@ public partial class MainWindow : Window
             };
         }
 
-        // Subscribe to FPS updates from both map controls. Only one renders
-        // at a time (Is2DMode toggles visibility), so whichever is active
-        // pushes its frame rate to the ViewModel.
+        // Apply initial 2D/3D child mount based on saved Is2DMode.
+        // Self-rendering controls don't pause on IsVisible=false, so we
+        // swap them in/out of the host grid instead. See [[visibility-toggle-rule]].
+        if (ViewModel != null)
+            ApplyMapModeChildren(ViewModel.Is2DMode);
+
+        // Subscribe to FPS updates from both map controls. Only the
+        // currently-mounted one ticks (the other is removed from the
+        // visual tree), so whichever is active pushes its frame rate.
         if (MapControl is DrawingContextMapControl dcMapControl)
         {
             dcMapControl.FpsUpdated += fps =>
@@ -129,6 +136,19 @@ public partial class MainWindow : Window
             XTEChartPanel.DragMoved += (_, delta) => MovePanel(XTEChartPanel, delta);
     }
 
+    private void ApplyMapModeChildren(bool is2D)
+    {
+        if (_mapHostGrid == null) return;
+        var dc = MapControl as Control;
+        var gl = (Control?)_glMapControl;
+        var active = is2D ? dc : gl;
+        var inactive = is2D ? gl : dc;
+        if (inactive != null && _mapHostGrid.Children.Contains(inactive))
+            _mapHostGrid.Children.Remove(inactive);
+        if (active != null && !_mapHostGrid.Children.Contains(active))
+            _mapHostGrid.Children.Add(active);
+    }
+
     private void MovePanel(Control panel, Vector delta)
     {
         double newLeft = Canvas.GetLeft(panel) + delta.X;
@@ -149,16 +169,15 @@ public partial class MainWindow : Window
         System.Diagnostics.Debug.WriteLine("Using DrawingContextMapControl (cross-platform)");
 
         // Phase-1 GL placeholder, mounted alongside the 2D map. Toggle2D3DCommand
-        // flips Is2DMode; both controls bind their IsVisible to it for swap.
+        // flips Is2DMode; the host grid swaps Children in response so the
+        // inactive control's render handler is fully torn down (not just hidden).
         // Stored as a field so the constructor can wire FpsUpdated to the VM.
         var glMapControl = new GlMapControl();
         _glMapControl = glMapControl;
-        var mapHostGrid = new Grid();
-        mapControl.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(MainViewModel.Is2DMode)));
-        glMapControl.Bind(IsVisibleProperty, new Avalonia.Data.Binding(nameof(MainViewModel.Is2DMode)) { Converter = Avalonia.Data.Converters.BoolConverters.Not });
-        mapHostGrid.Children.Add(mapControl);
-        mapHostGrid.Children.Add(glMapControl);
-        MapControlContainer.Content = mapHostGrid;
+        _mapHostGrid = new Grid();
+        _mapHostGrid.Children.Add(mapControl);
+        _mapHostGrid.Children.Add(glMapControl);
+        MapControlContainer.Content = _mapHostGrid;
 
         // Note: ViewModel is null here (DataContext set after CreateMapControl).
         // Initial view state applied in MainWindow_Opened after settings load.
@@ -572,6 +591,7 @@ public partial class MainWindow : Window
             {
                 // Is2DMode = true means 3D is off, so invert the value
                 MapControl.Set3DMode(!ViewModel.Is2DMode);
+                ApplyMapModeChildren(ViewModel.Is2DMode);
             }
         }
         else if (e.PropertyName == nameof(MainViewModel.IsDayMode))
