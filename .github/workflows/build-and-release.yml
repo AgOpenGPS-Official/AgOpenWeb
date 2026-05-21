@@ -240,13 +240,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select Xcode 26.5
-        # .NET for iOS 26.5.x requires Xcode 26.5. macos-26 runner has it as
-        # Xcode_26.5_beta_2.app with /Applications/Xcode_26.5.app as a symlink.
-        # If this breaks again because the runner image rotated, run
+        # .NET for iOS 26.5.x requires Xcode 26.5. macos-26 runner ships it
+        # as the *_beta_2.app variant; the Xcode_26.5.app symlink exists but
+        # ibtool can't find MacOSX.sdk through it (the symlink is partial).
+        # Always pin the highest-precision path, not a symlink. If this
+        # breaks because the runner image rotated to a different beta build,
+        # run
         #   ls -d /Applications/Xcode*
-        # in a workflow step to see what's available and pin to the highest
-        # Xcode_X.Y.Z.app that satisfies the .NET iOS SDK currently in use.
-        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+        # in a workflow step to see what's available.
+        run: sudo xcode-select -s /Applications/Xcode_26.5_beta_2.app
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
