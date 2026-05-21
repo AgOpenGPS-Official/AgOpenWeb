@@ -39,9 +39,13 @@ namespace AgValoniaGPS.Android.Views;
 public partial class MainView : UserControl
 {
     private DrawingContextMapControl? _mapControl;
+    private SkiaMapControl? _skiaMapControl;
     private GlMapControl? _glMapControl;
     private Grid? _mapHostGrid;
     private MainViewModel? _viewModel;
+    // The 2D path the platform routes to MapService — DCMC by default, SkiaMap
+    // when the .use_skia_map DiagFlag is set. Phase 1 of the GL pivot.
+    private ISharedMapControl? _active2DMapControl;
 
     // Panels are now anchored (no position save/restore needed)
 
@@ -53,8 +57,13 @@ public partial class MainView : UserControl
 
         // Get reference to map control
         _mapControl = this.FindControl<DrawingContextMapControl>("MapControl");
+        _skiaMapControl = this.FindControl<SkiaMapControl>("SkiaMapControl");
         _glMapControl = this.FindControl<GlMapControl>("GlMapControl");
         _mapHostGrid = this.FindControl<Grid>("MapHostGrid");
+
+        _active2DMapControl = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl
+            ? (ISharedMapControl?)_skiaMapControl
+            : _mapControl;
 
         // Wire up chart panel drag events
         WireChartPanelDrag("SteerChartPanel");
@@ -111,24 +120,28 @@ public partial class MainView : UserControl
         DataContext = viewModel;
         _viewModel = viewModel;
 
-        // Register the map control with the MapService so it can receive commands
-        if (_mapControl != null)
+        // Register the active 2D map control with the MapService so it can receive
+        // commands. MapClicked / coverage providers are DCMC-specific and stay on
+        // DCMC even when the SkiaMapControl is the visible 2D control — Phase 1
+        // doesn't exercise tracks/coverage in S1/S2.
+        if (_active2DMapControl != null)
         {
-            mapService.RegisterMapControl(_mapControl);
+            mapService.RegisterMapControl(_active2DMapControl);
             if (_glMapControl != null)
             {
                 mapService.RegisterGlMapControl(_glMapControl);
                 _glMapControl.RegisterCoverageService(coverageService);
             }
-            System.Diagnostics.Debug.WriteLine("[MainView] MapControl registered with MapService.");
+            System.Diagnostics.Debug.WriteLine($"[MainView] {_active2DMapControl.GetType().Name} registered with MapService.");
 
             // Wire screenshot provider for debug dump (#127)
             viewModel.ScreenshotProvider = () =>
                 AgValoniaGPS.Views.ScreenshotHelper.CaptureScreenshotPng(this);
 
-            // Wire up MapClicked event for AB line creation
-            _mapControl.MapClicked += OnMapClicked;
-            _mapControl.UserPanned += () => _viewModel?.OnUserPan();
+            // Wire up MapClicked event for AB line creation (DCMC only)
+            if (_mapControl != null)
+                _mapControl.MapClicked += OnMapClicked;
+            _active2DMapControl.UserPanned += () => _viewModel?.OnUserPan();
 
             // Wire up coverage updates
             coverageService.CoverageUpdated += (sender, args) =>
@@ -189,12 +202,20 @@ public partial class MainView : UserControl
         // swap them in/out of the host grid instead. See [[visibility-toggle-rule]].
         ApplyMapModeChildren(viewModel.Is2DMode);
 
-        // Subscribe to FPS updates from both map controls. Only the
-        // currently-mounted one ticks (the other is removed from the
+        // Subscribe to FPS updates from each map control. Only the
+        // currently-mounted one ticks (the others are removed from the
         // visual tree), so whichever is active pushes its frame rate.
         if (_mapControl != null)
         {
             _mapControl.FpsUpdated += fps =>
+            {
+                if (viewModel != null)
+                    viewModel.CurrentFps = fps;
+            };
+        }
+        if (_skiaMapControl != null)
+        {
+            _skiaMapControl.FpsUpdated += fps =>
             {
                 if (viewModel != null)
                     viewModel.CurrentFps = fps;
@@ -390,13 +411,28 @@ public partial class MainView : UserControl
     {
         if (_mapHostGrid == null) return;
         Control? dc = _mapControl;
+        Control? sk = _skiaMapControl;
         Control? gl = _glMapControl;
-        var active = is2D ? dc : gl;
-        var inactive = is2D ? gl : dc;
-        if (inactive != null && _mapHostGrid.Children.Contains(inactive))
-            _mapHostGrid.Children.Remove(inactive);
-        if (active != null && !_mapHostGrid.Children.Contains(active))
-            _mapHostGrid.Children.Add(active);
+        Control? active;
+        if (is2D)
+            active = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl ? sk : dc;
+        else
+            active = gl;
+        Control?[] all = new Control?[] { dc, sk, gl };
+        foreach (var c in all)
+        {
+            if (c == null) continue;
+            if (ReferenceEquals(c, active))
+            {
+                if (!_mapHostGrid.Children.Contains(c))
+                    _mapHostGrid.Children.Add(c);
+            }
+            else
+            {
+                if (_mapHostGrid.Children.Contains(c))
+                    _mapHostGrid.Children.Remove(c);
+            }
+        }
     }
 
     private void WireChartPanelDrag(string panelName)

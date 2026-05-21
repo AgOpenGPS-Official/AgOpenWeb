@@ -41,6 +41,8 @@ public partial class MainWindow : Window
 {
     private MainViewModel? ViewModel => DataContext as MainViewModel;
     private ISharedMapControl? MapControl;
+    private DrawingContextMapControl? _dcMapControl;
+    private SkiaMapControl? _skiaMapControl;
     private GlMapControl? _glMapControl;
     private Grid? _mapHostGrid;
     private bool _isDraggingRecPath = false;
@@ -101,12 +103,20 @@ public partial class MainWindow : Window
         if (ViewModel != null)
             ApplyMapModeChildren(ViewModel.Is2DMode);
 
-        // Subscribe to FPS updates from both map controls. Only the
-        // currently-mounted one ticks (the other is removed from the
+        // Subscribe to FPS updates from each map control. Only the
+        // currently-mounted one ticks (the others are removed from the
         // visual tree), so whichever is active pushes its frame rate.
-        if (MapControl is DrawingContextMapControl dcMapControl)
+        if (_dcMapControl != null)
         {
-            dcMapControl.FpsUpdated += fps =>
+            _dcMapControl.FpsUpdated += fps =>
+            {
+                if (ViewModel != null)
+                    ViewModel.CurrentFps = fps;
+            };
+        }
+        if (_skiaMapControl != null)
+        {
+            _skiaMapControl.FpsUpdated += fps =>
             {
                 if (ViewModel != null)
                     ViewModel.CurrentFps = fps;
@@ -139,14 +149,31 @@ public partial class MainWindow : Window
     private void ApplyMapModeChildren(bool is2D)
     {
         if (_mapHostGrid == null) return;
-        var dc = MapControl as Control;
-        var gl = (Control?)_glMapControl;
-        var active = is2D ? dc : gl;
-        var inactive = is2D ? gl : dc;
-        if (inactive != null && _mapHostGrid.Children.Contains(inactive))
-            _mapHostGrid.Children.Remove(inactive);
-        if (active != null && !_mapHostGrid.Children.Contains(active))
-            _mapHostGrid.Children.Add(active);
+        Control? dc = _dcMapControl;
+        Control? sk = _skiaMapControl;
+        Control? gl = _glMapControl;
+        // 2D mode picks between DCMC and SkiaMapControl via DiagFlags.UseSkiaMapControl.
+        // 3D mode is always GlMapControl (Phase 1 of the pivot doesn't replace 3D yet).
+        Control? active;
+        if (is2D)
+            active = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl ? sk : dc;
+        else
+            active = gl;
+        Control?[] all = new Control?[] { dc, sk, gl };
+        foreach (var c in all)
+        {
+            if (c == null) continue;
+            if (ReferenceEquals(c, active))
+            {
+                if (!_mapHostGrid.Children.Contains(c))
+                    _mapHostGrid.Children.Add(c);
+            }
+            else
+            {
+                if (_mapHostGrid.Children.Contains(c))
+                    _mapHostGrid.Children.Remove(c);
+            }
+        }
     }
 
     private void MovePanel(Control panel, Vector delta)
@@ -163,10 +190,17 @@ public partial class MainWindow : Window
 
     private void CreateMapControl()
     {
-        // Use the shared DrawingContextMapControl (cross-platform)
-        var mapControl = new DrawingContextMapControl();
-        MapControl = mapControl;
-        System.Diagnostics.Debug.WriteLine("Using DrawingContextMapControl (cross-platform)");
+        // 2D path: DrawingContextMapControl (default) or SkiaMapControl (Phase 1 of
+        // the GL pivot, opted-in via the .use_skia_map DiagFlag). Both implement
+        // ISharedMapControl so MapService can route to whichever is active.
+        _dcMapControl = new DrawingContextMapControl();
+        if (AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl)
+            _skiaMapControl = new SkiaMapControl();
+        ISharedMapControl active2D = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl
+            ? (ISharedMapControl)_skiaMapControl!
+            : _dcMapControl;
+        MapControl = active2D;
+        System.Diagnostics.Debug.WriteLine($"2D map control: {active2D.GetType().Name}");
 
         // Phase-1 GL placeholder, mounted alongside the 2D map. Toggle2D3DCommand
         // flips Is2DMode; the host grid swaps Children in response so the
@@ -175,7 +209,7 @@ public partial class MainWindow : Window
         var glMapControl = new GlMapControl();
         _glMapControl = glMapControl;
         _mapHostGrid = new Grid();
-        _mapHostGrid.Children.Add(mapControl);
+        _mapHostGrid.Children.Add((Control)active2D);
         _mapHostGrid.Children.Add(glMapControl);
         MapControlContainer.Content = _mapHostGrid;
 
@@ -233,11 +267,14 @@ public partial class MainWindow : Window
             MapControl.MarkCoverageDirty();
         }
 
-        // Wire up MapClicked event for AB line creation
-        mapControl.MapClicked += OnMapClicked;
-
-        // Wire UserPanned event for camera Free mode
-        mapControl.UserPanned += () => ViewModel?.OnUserPan();
+        // MapClicked is DCMC-specific (not on ISharedMapControl). When the
+        // SkiaMapControl is active in Phase 1 the AB-creation click path is
+        // disabled — Phase 1 targets idle scenarios S1/S2. Tracks land in
+        // Phase 2. UserPanned is on the interface so we can wire it either way.
+        if (_dcMapControl != null)
+            _dcMapControl.MapClicked += OnMapClicked;
+        if (MapControl != null)
+            MapControl.UserPanned += () => ViewModel?.OnUserPan();
     }
 
     private void OnMapClicked(object? sender, MapClickEventArgs e)

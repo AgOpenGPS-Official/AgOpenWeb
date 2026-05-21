@@ -58,6 +58,11 @@ public static class DiagFlags
     // Test-harness flags
     public static readonly bool AutoResumeField;
 
+    // GL map pivot: when set, the 2D map path mounts SkiaMapControl instead of
+    // DrawingContextMapControl for A/B comparison. Phase 1 of the pivot — see
+    // Plans/GL_MAP_PIVOT_PLAN.md and Plans/NEXT_SESSION_PROMPT_PHASE1.md.
+    public static readonly bool UseSkiaMapControl;
+
     public static readonly bool AnySet;
 
     static DiagFlags()
@@ -82,6 +87,7 @@ public static class DiagFlags
         PerfAutoSteer              = MarkerPresent(".perf_autosteer");
         PerfApplyGpsCycle          = MarkerPresent(".perf_apply_gps_cycle");
         AutoResumeField            = MarkerPresent(".auto_resume_field");
+        UseSkiaMapControl          = MarkerPresent(".use_skia_map");
 
         AnySet = SkipCoverageDraw || SkipBoundaryDraw || SkipTracks
                || SkipGroundTexture || SkipGrid || SkipVehicle
@@ -92,7 +98,8 @@ public static class DiagFlags
                || PerfStateMirror || PerfGpsPipeline || PerfGuidance
                || PerfCoverage || PerfUdp || PerfAutoSteer
                || PerfApplyGpsCycle
-               || AutoResumeField;
+               || AutoResumeField
+               || UseSkiaMapControl;
     }
 
     /// <summary>
@@ -122,7 +129,8 @@ public static class DiagFlags
             + $" perfUdp={PerfUdp}"
             + $" perfAutoSteer={PerfAutoSteer}"
             + $" perfApplyGpsCycle={PerfApplyGpsCycle}"
-            + $" autoResumeField={AutoResumeField}");
+            + $" autoResumeField={AutoResumeField}"
+            + $" useSkiaMap={UseSkiaMapControl}");
     }
 
     private static string? ResolveDiagDir()
