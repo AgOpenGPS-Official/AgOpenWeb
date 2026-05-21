@@ -12,7 +12,7 @@ Cross-platform rewrite of [AgOpenGPS](https://github.com/farmerbriantee/AgOpenGP
 
 ## Tech Stack
 
-- **UI:** Avalonia 11, ReactiveUI
+- **UI:** Avalonia 12, ReactiveUI
 - **Runtime:** .NET 10
 - **Architecture:** MVVM with dependency injection
 - **Testing:** NUnit, Avalonia.Headless
