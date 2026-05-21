@@ -443,6 +443,18 @@ public partial class MainWindow : Window
                 }
                 e.Handled = true;
                 return;
+            case Key.F4:
+                // Phase 0 Q4 spike: hidden visual animation-frame behavior.
+                // F11 is taken by macOS Show Desktop, so we use F4.
+                if (Content is AgValoniaGPS.Views.Controls.Spikes.HiddenVisualSpike)
+                    Content = _spikeSavedContent;
+                else
+                {
+                    _spikeSavedContent ??= Content as Control;
+                    Content = new AgValoniaGPS.Views.Controls.Spikes.HiddenVisualSpike();
+                }
+                e.Handled = true;
+                return;
         }
 
         // Configurable hotkeys
