@@ -239,26 +239,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Select Xcode 26.5
-        # .NET for iOS 26.5.x requires Xcode 26.5. macos-26 runner ships it
-        # as the *_beta_2.app variant; the Xcode_26.5.app symlink exists but
-        # ibtool can't find MacOSX.sdk through it (the symlink is partial).
-        # Always pin the highest-precision path, not a symlink. If this
-        # breaks because the runner image rotated to a different beta build,
-        # run
-        #   ls -d /Applications/Xcode*
-        # in a workflow step to see what's available.
-        run: sudo xcode-select -s /Applications/Xcode_26.5_beta_2.app
+      - name: Select Xcode 26.4.1
+        # The .NET for iOS workload is pinned to 26.4.x via
+        # .github/workflows/dotnet-ios-rollback.json so it matches the
+        # Xcode_26.4.1.app that's fully installed on macos-26. The runner
+        # also has Xcode_26.5_beta_2.app, but its iOS 26.5 platform isn't
+        # actually downloaded ("iOS 26.5 Platform Not Installed" from
+        # ibtool), so the 26.5 track is unusable. Roll forward when Apple
+        # ships Xcode 26.5 GA and the runner image installs it complete.
+        run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install iOS workload
+      - name: Install iOS workload (pinned to 26.4.x)
         run: |
           for i in 1 2 3; do
-            dotnet workload install ios && break
+            dotnet workload install ios \
+              --from-rollback-file .github/workflows/dotnet-ios-rollback.json \
+              && break
             echo "Attempt $i failed, retrying in 10s..."
             sleep 10
           done
