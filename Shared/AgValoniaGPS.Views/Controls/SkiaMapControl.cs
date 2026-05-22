@@ -39,7 +39,7 @@ namespace AgValoniaGPS.Views.Controls;
 /// background fill, grid, ground texture, boundary, headland, vehicle.
 /// Track/section/coverage/tram/youturn rendering is deferred to Phase 2.
 /// </summary>
-public class SkiaMapControl : Control, ISharedMapControl
+public partial class SkiaMapControl : Control, ISharedMapControl
 {
     // ------------------------------------------------------------------
     // Avalonia styled properties (mirror DCMC for binding parity)
@@ -80,6 +80,9 @@ public class SkiaMapControl : Control, ISharedMapControl
     }
     public event Action? UserPanned;
     public bool AutoPanEnabled { get; set; } = true;
+    // Auto-pan tuning — matches DCMC so camera behavior is identical.
+    private const double AutoPanSafeZone = 0.65;
+    private const double AutoPanSmoothing = 0.15;
 
     // ------------------------------------------------------------------
     // Vehicle / tool / section state
@@ -88,6 +91,10 @@ public class SkiaMapControl : Control, ISharedMapControl
     private double _vehicleX, _vehicleY, _vehicleHeading, _vehicleSteerAngle;
     private bool _hasValidHeading;
     private bool _isReversing;
+    // First valid vehicle position snaps the camera to it so the user doesn't
+    // need to cycle through NorthUp at startup — DCMC's Map mode smooths in
+    // over many ticks from (0,0), which is jarring on a freshly opened field.
+    private bool _cameraInitialized;
     public bool IsReversing { get => _isReversing; set { _isReversing = value; SendStateToHandler(); } }
 
     private double _toolX, _toolY, _toolHeading, _toolWidth, _hitchX, _hitchY;
@@ -289,6 +296,8 @@ public class SkiaMapControl : Control, ISharedMapControl
     {
         if (_customVisual == null || _handler == null) return;
 
+        EnsureCoverageBitmapReady();
+
         var displayCfg = ConfigurationStore.Instance.Display;
         var vehicleCfg = ConfigurationStore.Instance.Vehicle;
         var toolCfg = ConfigurationStore.Instance.Tool;
@@ -345,6 +354,16 @@ public class SkiaMapControl : Control, ISharedMapControl
             SectionRight = (double[])_sectionRight.Clone(),
             SectionButtonState = (int[])_sectionButtonState.Clone(),
             NumSections = _numSections,
+
+            CoverageSkBitmap = _coverageSkBitmap,
+            BitmapMinE = _bitmapMinE,
+            BitmapMinN = _bitmapMinN,
+            BitmapMaxE = _bitmapMaxE,
+            BitmapMaxN = _bitmapMaxN,
+            BitmapWidth = _bitmapWidth,
+            BitmapHeight = _bitmapHeight,
+            BitmapHasContent = _bitmapHasContent,
+            BitmapExplicitlyInitialized = _bitmapExplicitlyInitialized,
 
             Boundary = _boundary,
             HeadlandLine = _headlandLine,
@@ -459,9 +478,105 @@ public class SkiaMapControl : Control, ISharedMapControl
 
     public void SetVehiclePosition(double x, double y, double heading)
     {
+        if (!_hasValidHeading && (Math.Abs(x) > 0.1 || Math.Abs(y) > 0.1))
+            _hasValidHeading = true;
+
         _vehicleX = x; _vehicleY = y; _vehicleHeading = heading;
-        _hasValidHeading = true;
+
+        ApplyCameraFollow();
         SendStateToHandler();
+    }
+
+    /// <summary>
+    /// Camera follow switch — mirrors DCMC so map tracks the vehicle in
+    /// NorthUp / HeadingUp / Map (auto-pan) modes. Free (mode 2) leaves the
+    /// camera where the user dragged it.
+    /// </summary>
+    private void ApplyCameraFollow()
+    {
+        // First vehicle position after a field load (or app start): snap the
+        // camera to the vehicle so the tractor is centered. Without this,
+        // the VM's PanTo(boundaryCenter) leaves the camera where it parked
+        // and Map-mode auto-pan smooths in only when the vehicle eventually
+        // moves — which doesn't happen if the sim/GPS isn't running yet.
+        if (!_cameraInitialized)
+        {
+            _cameraX = _vehicleX;
+            _cameraY = _vehicleY;
+            _cameraInitialized = true;
+        }
+        switch (_cameraFollowMode)
+        {
+            case 0:
+                _cameraX = _vehicleX;
+                _cameraY = _vehicleY;
+                _rotation = 0;
+                break;
+            case 1:
+                _cameraX = _vehicleX;
+                _cameraY = _vehicleY;
+                _rotation = -_vehicleHeading;
+                break;
+            case 2:
+                break;
+            case 3:
+                _rotation = 0;
+                if (Bounds.Width > 0 && Bounds.Height > 0)
+                {
+                    // If the vehicle is fully outside the current viewport
+                    // (e.g. field-open PanTo parked the camera at a distant
+                    // boundary center), snap to vehicle. AutoPan's 0.15
+                    // smoothing factor takes many GPS ticks to converge,
+                    // which looks broken when the sim isn't running yet.
+                    double aspect = Bounds.Width / Bounds.Height;
+                    double viewWidth = 200.0 * aspect / _zoom;
+                    double viewHeight = 200.0 / _zoom;
+                    double dx = _vehicleX - _cameraX;
+                    double dy = _vehicleY - _cameraY;
+                    if (Math.Abs(dx) > viewWidth / 2 || Math.Abs(dy) > viewHeight / 2)
+                    {
+                        _cameraX = _vehicleX;
+                        _cameraY = _vehicleY;
+                    }
+                    else
+                    {
+                        ApplyAutoPan();
+                    }
+                }
+                break;
+        }
+    }
+
+    private void ApplyAutoPan()
+    {
+        double aspect = Bounds.Width / Bounds.Height;
+        double viewWidth = 200.0 * aspect / _zoom;
+        double viewHeight = 200.0 / _zoom;
+
+        double safeHalfWidth = (viewWidth / 2) * AutoPanSafeZone;
+        double safeHalfHeight = (viewHeight / 2) * AutoPanSafeZone;
+
+        double relX = _vehicleX - _cameraX;
+        double relY = _vehicleY - _cameraY;
+
+        double cos = Math.Cos(-_rotation);
+        double sin = Math.Sin(-_rotation);
+        double screenRelX = relX * cos - relY * sin;
+        double screenRelY = relX * sin + relY * cos;
+
+        double panX = 0, panY = 0;
+        if (screenRelX > safeHalfWidth) panX = screenRelX - safeHalfWidth;
+        else if (screenRelX < -safeHalfWidth) panX = screenRelX + safeHalfWidth;
+        if (screenRelY > safeHalfHeight) panY = screenRelY - safeHalfHeight;
+        else if (screenRelY < -safeHalfHeight) panY = screenRelY + safeHalfHeight;
+
+        if (Math.Abs(panX) > 0.01 || Math.Abs(panY) > 0.01)
+        {
+            double worldPanX = panX * Math.Cos(_rotation) - panY * Math.Sin(_rotation);
+            double worldPanY = panX * Math.Sin(_rotation) + panY * Math.Cos(_rotation);
+            _cameraX += worldPanX * AutoPanSmoothing;
+            _cameraY += worldPanY * AutoPanSmoothing;
+        }
     }
 
     public void SetVehicleSteerAngle(double radians)
@@ -482,10 +597,16 @@ public class SkiaMapControl : Control, ISharedMapControl
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady)
     {
+        if (!_hasValidHeading && (Math.Abs(vehicleX) > 0.1 || Math.Abs(vehicleY) > 0.1))
+            _hasValidHeading = true;
+
         _vehicleX = vehicleX; _vehicleY = vehicleY; _vehicleHeading = vehicleHeading;
-        _hasValidHeading = true;
         _toolX = toolX; _toolY = toolY; _toolHeading = toolHeading; _toolWidth = toolWidth;
         _hitchX = hitchX; _hitchY = hitchY; _toolPositionReady = toolReady;
+
+        ApplyCameraFollow();
+        _isReversing = vehicleHeading < 0;
+
         SendStateToHandler();
     }
 
@@ -546,25 +667,13 @@ public class SkiaMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
-    public void SetBackgroundImage(string imagePath, double minX, double maxY, double maxX, double minY)
-    {
-        // Phase 1: imagery overlay deferred (per [[imagery-png-render-cost]] this is the
-        // single largest remaining FPS lever — pulled into Phase 2/3 with measurement).
-    }
-
-    public void SetBackgroundImageWithMercator(string imagePath, double minX, double maxY, double maxX, double minY,
-        double mercMinX, double mercMaxX, double mercMinY, double mercMaxY,
-        double originLat, double originLon)
-    {
-        // Phase 1: deferred (see SetBackgroundImage).
-    }
-
-    public void ClearBackground() { /* Phase 1: no imagery yet */ }
-
     public void SetBoundaryOffsetIndicator(bool show, double offsetMeters = 0.0)
     {
         // Phase 1: boundary recording UX deferred until Phase 2's input wiring.
     }
+    // SetBackgroundImage / SetBackgroundImageWithMercator / ClearBackground
+    // are in SkiaMapControl.Coverage.cs (Phase 2b — imagery composites into
+    // the coverage bitmap).
 
     public void SetHeadlandLine(IReadOnlyList<Vec3>? headlandPoints)
     {
@@ -622,29 +731,9 @@ public class SkiaMapControl : Control, ISharedMapControl
     public void SetRecordedPaths(IReadOnlyList<Track> paths) { _recordedPaths = paths; SendStateToHandler(); }
     public void SetContourStrips(IReadOnlyList<Track> strips) { _contourStrips = strips; SendStateToHandler(); }
 
-    // ------------------------------------------------------------------
-    // Coverage — Phase 1 stores nothing; ICoverageMapService just talks to
-    // the live DCMC instance. Once SkiaMapControl handles coverage (Phase 2)
-    // these will route into the renderer.
-    // ------------------------------------------------------------------
-
+    // Coverage subsystem (Phase 2b) is in SkiaMapControl.Coverage.cs.
+    // CoveragePatches is dead code per [[coverage-architecture]] — kept as no-op.
     public void SetCoveragePatches(IReadOnlyList<CoveragePatch> patches) { }
-
-    public void SetCoverageBitmapProviders(
-        Func<(double MinE, double MaxE, double MinN, double MaxN)?>? boundsProvider,
-        Func<double, double, double, double, double, IEnumerable<(int CellX, int CellY, CoverageColor Color)>>? allCellsProvider,
-        Func<double, IEnumerable<(int CellX, int CellY, CoverageColor Color)>>? newCellsProvider)
-    { }
-
-    public void MarkCoverageDirty() { }
-    public void MarkCoverageFullRebuildNeeded() { }
-    public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) { }
-    public ushort GetCoveragePixel(int localX, int localY) => 0;
-    public void SetCoveragePixel(int localX, int localY, ushort rgb565) { }
-    public void ClearCoveragePixels() { }
-    public ushort[]? GetCoveragePixelBuffer() => null;
-    public void SetCoveragePixelBuffer(ushort[] pixels) { }
-    public (int Width, int Height, double CellSize)? GetDisplayBitmapInfo() => null;
 
     public void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags)
     {
@@ -852,6 +941,22 @@ public class SkiaMapControl : Control, ISharedMapControl
         private SKBitmap? _vehicleSkBitmap;
         private SKBitmap? _frontWheelSkBitmap;
 
+        // Coverage SKImage snapshot cache (same pattern as DCMC). Skia can't cache
+        // a mutating SKBitmap as a GPU texture across frames, so we snapshot it to
+        // an immutable SKImage on a throttled cadence and draw that. The copy runs
+        // on a background task; the render thread always draws the latest finished
+        // snapshot.
+        private SKImage? _coverageSnapshot;
+        private SKImage? _coverageSnapshotPending;
+        private SKBitmap? _coverageSnapshotSource;
+        private DateTime _coverageSnapshotTime = DateTime.MinValue;
+        private int _coverageSnapshotInFlight;
+        private const double CoverageSnapshotIntervalMs = 200.0;
+        private static readonly SKSamplingOptions _coverageSamplingNearest =
+            new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None);
+        private static readonly SKSamplingOptions _coverageSamplingLinear =
+            new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None);
+
         // Vehicle bitmap proportions — same constants DCMC uses so the sprite
         // sits on the configured wheelbase / track-width regardless of zoom.
         private const double BitmapRearAxleYNorm = 0.245;
@@ -991,6 +1096,14 @@ public class SkiaMapControl : Control, ISharedMapControl
                     {
                         if (s.IsGridVisible && !DiagFlags.SkipGrid)
                             DrawGridSk(canvas, s, viewWidth, viewHeight);
+
+                        if (s.CoverageSkBitmap != null
+                            && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
+                            && s.BitmapWidth > 0 && s.BitmapHeight > 0
+                            && !DiagFlags.SkipCoverageDraw)
+                        {
+                            DrawCoverageBitmap(canvas, s);
+                        }
 
                         if (!DiagFlags.SkipBoundaryDraw)
                         {
@@ -1203,6 +1316,69 @@ public class SkiaMapControl : Control, ISharedMapControl
             _gridPaintMinorThickness = minorThickness;
             _gridPaintMajorThickness = majorThickness;
             _gridPaintAxisThickness = axisThickness;
+        }
+
+        // ----------------- Coverage -----------------
+
+        private void DrawCoverageBitmap(SKCanvas canvas, MapRenderState s)
+        {
+            var bitmap = s.CoverageSkBitmap;
+            if (bitmap == null || s.BitmapWidth == 0 || s.BitmapHeight == 0) return;
+            if (bitmap.Handle == IntPtr.Zero) return;
+
+            // Pick up any pending snapshot the background task finished.
+            var pending = System.Threading.Interlocked.Exchange(ref _coverageSnapshotPending, null);
+            if (pending != null)
+            {
+                var old = _coverageSnapshot;
+                _coverageSnapshot = pending;
+                old?.Dispose();
+            }
+
+            var now = DateTime.UtcNow;
+            bool bitmapChanged = !ReferenceEquals(_coverageSnapshotSource, bitmap);
+            bool dueForRefresh = _coverageSnapshot == null
+                || bitmapChanged
+                || (now - _coverageSnapshotTime).TotalMilliseconds >= CoverageSnapshotIntervalMs;
+
+            if (dueForRefresh
+                && System.Threading.Interlocked.CompareExchange(ref _coverageSnapshotInFlight, 1, 0) == 0)
+            {
+                _coverageSnapshotSource = bitmap;
+                _coverageSnapshotTime = now;
+                var captured = bitmap;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try
+                    {
+                        if (captured.Handle == IntPtr.Zero) return;
+                        using var pixmap = captured.PeekPixels();
+                        if (pixmap == null) return;
+                        var img = SKImage.FromPixelCopy(pixmap);
+                        var displaced = System.Threading.Interlocked.Exchange(ref _coverageSnapshotPending, img);
+                        displaced?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[CoverageSnapshot] bg refresh failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        System.Threading.Volatile.Write(ref _coverageSnapshotInFlight, 0);
+                    }
+                });
+            }
+
+            if (_coverageSnapshot == null) return;
+
+            double worldWidth = s.BitmapMaxE - s.BitmapMinE;
+            double worldHeight = s.BitmapMaxN - s.BitmapMinN;
+            var src = new SKRect(0, 0, bitmap.Width, bitmap.Height);
+            var dst = new SKRect(
+                (float)s.BitmapMinE, (float)s.BitmapMinN,
+                (float)(s.BitmapMinE + worldWidth), (float)(s.BitmapMinN + worldHeight));
+            var sampling = s.LineSmoothEnabled ? _coverageSamplingLinear : _coverageSamplingNearest;
+            canvas.DrawImage(_coverageSnapshot, src, dst, sampling);
         }
 
         // ----------------- Boundary -----------------

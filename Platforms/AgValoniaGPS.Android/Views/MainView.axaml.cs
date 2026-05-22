@@ -147,46 +147,33 @@ public partial class MainView : UserControl
                 _skiaMapControl.MapClicked += OnMapClicked;
             _active2DMapControl.UserPanned += () => _viewModel?.OnUserPan();
 
-            // Wire up coverage updates
+            // Coverage updates route through the active 2D control so SkiaMap
+            // receives the cell-paint signals when it's mounted.
             coverageService.CoverageUpdated += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    // Skip full rebuild if pixels were loaded directly from file
                     if (args.PixelsAlreadyLoaded)
                     {
-                        // Just mark dirty to refresh display - pixels already in bitmap
-                        _mapControl?.MarkCoverageDirty();
+                        _active2DMapControl?.MarkCoverageDirty();
                     }
                     else if (args.IsFullReload)
                     {
-                        // ClearCoveragePixels drops the existing SKBitmap paint
-                        // and re-composites the background; MarkCoverageFullRebuildNeeded
-                        // then repaints from whatever cells the service still has
-                        // (zero after ClearAll, populated after LoadFromFile).
-                        // Without the clear, ClearAll leaves stale coverage on
-                        // screen because UpdateCoverageBitmapFull's
-                        // _backgroundComposited short-circuit skips the wipe.
-                        _mapControl?.ClearCoveragePixels();
-                        _mapControl?.MarkCoverageFullRebuildNeeded();
+                        _active2DMapControl?.ClearCoveragePixels();
+                        _active2DMapControl?.MarkCoverageFullRebuildNeeded();
                     }
                     else
-                        _mapControl?.MarkCoverageDirty();
+                        _active2DMapControl?.MarkCoverageDirty();
                     _viewModel?.RefreshCoverageStatistics();
                 });
             };
 
-            // Set up bitmap-based coverage rendering (PERF-004)
-            // allCellsProvider takes viewport bounds for spatial queries - O(viewport) not O(total coverage)
-            _mapControl.SetCoverageBitmapProviders(
+            _active2DMapControl.SetCoverageBitmapProviders(
                 coverageService.GetCoverageBounds,
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
 
-            // Coverage display pixels now live inside CoverageMapService; the
-            // GL map control reads them via GetDisplayPixels() / ConsumeDirtyRect().
-            // Mark dirty in case field was already loaded with coverage.
-            _mapControl.MarkCoverageDirty();
+            _active2DMapControl.MarkCoverageDirty();
         }
 
         // Wire up position updates - when ViewModel properties change, update map control
