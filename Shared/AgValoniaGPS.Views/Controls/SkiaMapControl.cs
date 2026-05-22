@@ -1207,6 +1207,11 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                 Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
             }
 
+            // Temp render-thread time probe: log any frame that takes >50ms.
+            // Confirms whether the beach-ball hang lives on the render thread
+            // (this log fires near the hang) or the UI thread (silent here).
+            var renderStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
             try
             {
                 // Background fill (screen space — before camera transform)
@@ -1270,6 +1275,15 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SkiaMapVisualHandler] OnRender outer error: {ex.Message}");
+            }
+
+            renderStopwatch.Stop();
+            if (renderStopwatch.ElapsedMilliseconds >= 50)
+            {
+                bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
+                Console.WriteLine($"[SkiaMap] slow frame: {renderStopwatch.ElapsedMilliseconds} ms" +
+                                  $" perspective={perspective} hasField={s.Boundary != null}" +
+                                  $" hasCoverage={s.BitmapHasContent}");
             }
         }
 
