@@ -152,11 +152,16 @@ public partial class MainWindow : Window
         Control? dc = _dcMapControl;
         Control? sk = _skiaMapControl;
         Control? gl = _glMapControl;
-        // 2D mode picks between DCMC and SkiaMapControl via DiagFlags.UseSkiaMapControl.
-        // 3D mode is always GlMapControl (Phase 1 of the pivot doesn't replace 3D yet).
+        // SkiaMap handles 2D + perspective in-place via pitch (Phase 3 of the
+        // pivot), so the SkiaMap path no longer swaps to GlMapControl on the
+        // 2D↔3D toggle — the toggle becomes a CameraPitch change that
+        // SetPitchAbsolute animates. GlMapControl stays in the grid as a
+        // parked fallback for the non-SkiaMap path.
         Control? active;
-        if (is2D)
-            active = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl ? sk : dc;
+        if (AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl)
+            active = sk;
+        else if (is2D)
+            active = dc;
         else
             active = gl;
         Control?[] all = new Control?[] { dc, sk, gl };
@@ -350,6 +355,26 @@ public partial class MainWindow : Window
             MapControl.Set3DMode(!ViewModel.Is2DMode);
             double pitchRadians = (90.0 + ViewModel.CameraPitch) * Math.PI / 180.0;
             MapControl.SetPitchAbsolute(pitchRadians);
+
+            // Push the loaded camera follow mode to the map control.
+            // VM.CameraMode setter fires _mapService.SetCameraFollowMode during
+            // LoadSettings, but the call is a no-op when MapControl hasn't been
+            // registered yet (iOS) — and the setter only runs ApplyCameraMode
+            // when the value changes from its default. Either path can leave
+            // MapControl in default Map(3) mode while VM shows H/N/etc.
+            MapControl.CameraFollowMode = ViewModel.CameraMode switch
+            {
+                AgValoniaGPS.Models.CameraMode.NorthUp => 0,
+                AgValoniaGPS.Models.CameraMode.HeadingUp => 1,
+                AgValoniaGPS.Models.CameraMode.Free => 2,
+                _ => 3,
+            };
+
+            // Fire OnPropertyChanged for properties that ConfigurationService
+            // loaded directly into the backing field (bypassing the setter,
+            // so no binding refresh happened). The display panel binding
+            // otherwise stays on its empty default until the first user tap.
+            ViewModel.NotifyDisplayLabelsAfterStartup();
         }
     }
 

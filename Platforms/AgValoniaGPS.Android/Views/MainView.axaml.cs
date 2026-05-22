@@ -193,6 +193,29 @@ public partial class MainView : UserControl
         // swap them in/out of the host grid instead. See [[visibility-toggle-rule]].
         ApplyMapModeChildren(viewModel.Is2DMode);
 
+        // Push initial state to the active map control. VM.LoadSettings
+        // ran before MapControl was registered, so map-targeted calls
+        // were no-ops then. Re-push here so camera mode and pitch match the
+        // loaded settings.
+        if (_active2DMapControl != null)
+        {
+            _active2DMapControl.Set3DMode(!viewModel.Is2DMode);
+            double pitchRadians = (90.0 + viewModel.CameraPitch) * Math.PI / 180.0;
+            _active2DMapControl.SetPitchAbsolute(pitchRadians);
+            _active2DMapControl.CameraFollowMode = viewModel.CameraMode switch
+            {
+                AgValoniaGPS.Models.CameraMode.NorthUp => 0,
+                AgValoniaGPS.Models.CameraMode.HeadingUp => 1,
+                AgValoniaGPS.Models.CameraMode.Free => 2,
+                _ => 3,
+            };
+        }
+
+        // Fire missing OnPropertyChanged for properties that
+        // ConfigurationService loaded directly into the backing field — the
+        // display panel binding otherwise stays empty/stale until first tap.
+        viewModel.NotifyDisplayLabelsAfterStartup();
+
         // Subscribe to FPS updates from each map control. Only the
         // currently-mounted one ticks (the others are removed from the
         // visual tree), so whichever is active pushes its frame rate.
@@ -385,9 +408,16 @@ public partial class MainView : UserControl
         Control? dc = _mapControl;
         Control? sk = _skiaMapControl;
         Control? gl = _glMapControl;
+        // SkiaMap handles 2D + perspective in-place via pitch (Phase 3 of the
+        // pivot), so the SkiaMap path no longer swaps to GlMapControl on the
+        // 2D↔3D toggle — the toggle becomes a CameraPitch change that
+        // SetPitchAbsolute animates. GlMapControl stays in the grid as a
+        // parked fallback for the non-SkiaMap path.
         Control? active;
-        if (is2D)
-            active = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl ? sk : dc;
+        if (AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl)
+            active = sk;
+        else if (is2D)
+            active = dc;
         else
             active = gl;
         Control?[] all = new Control?[] { dc, sk, gl };

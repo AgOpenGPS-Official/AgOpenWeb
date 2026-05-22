@@ -72,6 +72,18 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     private double _rotation;
     private bool _isNorthUp;
     private bool _isDayMode = ConfigurationStore.Instance.Display.IsDayMode;
+
+    // Phase 3 perspective state. Pitch is AOG convention: 0 = top-down,
+    // π/2 = horizon. Receives radians from the platform code's
+    // (90 + MainVM.CameraPitch) * π/180 conversion at MainWindow.axaml.cs:622
+    // and MainView.axaml.cs:352. Below TopDownEpsilon the renderer falls back
+    // to the 2D-affine fast path; at or above it the handler builds an
+    // SKMatrix44 MVP per [[skiasharp-skmatrix44]].
+    private double _cameraPitch;
+    private bool _is3DMode;
+    private const double TopDownEpsilon = 1e-3;
+    private const double Default3DPitchRadians = Math.PI / 3.0; // 60°
+    private const double MaxPitchRadians = Math.PI * 80.0 / 180.0; // 80°, matches GL clamp
     private int _cameraFollowMode = 3;
     public int CameraFollowMode
     {
@@ -304,13 +316,12 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         var state = new MapRenderState
         {
-            // Phase 1: top-down camera only — no perspective math, no 3D fork.
             CameraX = _cameraX,
             CameraY = _cameraY,
             Zoom = _zoom,
             Rotation = _rotation,
-            CameraPitch = 0.0,
-            Is3DMode = false,
+            CameraPitch = _cameraPitch,
+            Is3DMode = _is3DMode,
             IsNorthUp = _isNorthUp,
             IsDayMode = _isDayMode,
 
@@ -417,12 +428,35 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     // ISharedMapControl — camera / view
     // ------------------------------------------------------------------
 
-    public bool Is3DMode => false; // Phase 1: top-down only
+    public bool Is3DMode => _is3DMode;
 
-    public void Toggle3DMode() { /* Phase 1: no 3D fork */ }
-    public void Set3DMode(bool is3D) { /* Phase 1: no 3D fork */ }
-    public void SetPitch(double deltaRadians) { /* Phase 1: top-down only */ }
-    public void SetPitchAbsolute(double pitchRadians) { /* Phase 1: top-down only */ }
+    public void Toggle3DMode()
+    {
+        _is3DMode = !_is3DMode;
+        if (_is3DMode && _cameraPitch < TopDownEpsilon)
+            _cameraPitch = Default3DPitchRadians;
+        SendStateToHandler();
+    }
+
+    public void Set3DMode(bool is3D)
+    {
+        _is3DMode = is3D;
+        if (is3D && _cameraPitch < TopDownEpsilon)
+            _cameraPitch = Default3DPitchRadians;
+        SendStateToHandler();
+    }
+
+    public void SetPitch(double deltaRadians)
+    {
+        _cameraPitch = Math.Clamp(_cameraPitch + deltaRadians, 0.0, MaxPitchRadians);
+        SendStateToHandler();
+    }
+
+    public void SetPitchAbsolute(double pitchRadians)
+    {
+        _cameraPitch = Math.Clamp(pitchRadians, 0.0, MaxPitchRadians);
+        SendStateToHandler();
+    }
 
     public void PanTo(double x, double y)
     {
@@ -436,9 +470,35 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
+    // Zoom range matches PointerWheelChanged so on-screen zoom buttons stop
+    // mutating _zoom past visual limits (otherwise grid stroke widths balloon
+    // because they scale with worldPerPixel = 1/zoom).
+    private const double MinZoom = 0.02;
+    private const double MaxZoom = 100.0;
+
+    // AOG zoom→distance curve plateaus at zoomScalar=4 (zoom-in) and 60
+    // (zoom-out), so tapping past those points doesn't change the 3D visual
+    // but would silently drift _zoom toward the hard clamp. Bail when the
+    // underlying scalar is already pinned.
+    private const double Min3DZoomScalar = 4.0;
+    private const double Max3DZoomScalar = 60.0;
+
     public void Zoom(double factor)
     {
-        _zoom *= factor;
+        // 2D hard clamp — refuse the tap if we're already at the limit
+        // so _zoom doesn't multiply past it (prevents stroke ballooning).
+        if (factor > 1.0 && _zoom >= MaxZoom) return;
+        if (factor < 1.0 && _zoom <= MinZoom) return;
+
+        // 3D plateau — same bail condition keyed off the zoomScalar curve.
+        if (_is3DMode && _cameraPitch > TopDownEpsilon)
+        {
+            double currentScalar = 9.0 / _zoom;
+            if (factor > 1.0 && currentScalar <= Min3DZoomScalar) return;
+            if (factor < 1.0 && currentScalar >= Max3DZoomScalar) return;
+        }
+
+        _zoom = Math.Clamp(_zoom * factor, MinZoom, MaxZoom);
         SendStateToHandler();
     }
 
@@ -448,7 +508,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
     public void SetCamera(double x, double y, double zoom, double rotation)
     {
-        _cameraX = x; _cameraY = y; _zoom = zoom; _rotation = rotation;
+        _cameraX = x; _cameraY = y;
+        _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        _rotation = rotation;
         SendStateToHandler();
     }
 
@@ -849,7 +911,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
         double zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
-        _zoom = Math.Clamp(_zoom * zoomFactor, 0.02, 100.0);
+        _zoom = Math.Clamp(_zoom * zoomFactor, MinZoom, MaxZoom);
         SendStateToHandler();
         e.Handled = true;
     }
@@ -858,6 +920,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     {
         if (Bounds.Width <= 0 || Bounds.Height <= 0)
             return (_cameraX, _cameraY);
+
+        if (_is3DMode && _cameraPitch > TopDownEpsilon)
+            return ScreenToWorldPerspective(screenX, screenY);
 
         double aspect = Bounds.Width / Bounds.Height;
         double viewWidth = 200.0 * aspect / _zoom;
@@ -869,12 +934,58 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         double worldOffsetX = normalizedX * viewWidth;
         double worldOffsetY = normalizedY * viewHeight;
 
-        // Phase 1 is top-down only — no pitch inverse needed; Phase 3 perspective
-        // will reintroduce that step here.
         double cos = Math.Cos(_rotation), sin = Math.Sin(_rotation);
         double rotatedX = worldOffsetX * cos - worldOffsetY * sin;
         double rotatedY = worldOffsetX * sin + worldOffsetY * cos;
         return (_cameraX + rotatedX, _cameraY + rotatedY);
+    }
+
+    // Inverse-project a screen point through the perspective MVP to the
+    // ground plane (z=0). Mirrors GlMapControl's ground ray-cast at line 502.
+    // MVP construction here MUST match BuildPerspectiveScreenMatrix exactly,
+    // or AB tap creation will land off the click point at tilted view.
+    private (double Easting, double Northing) ScreenToWorldPerspective(double screenX, double screenY)
+    {
+        float vx = (float)_cameraX;
+        float vy = (float)_cameraY;
+        float aogPitchRad = -(float)_cameraPitch;
+        float zoomScalar = MathF.Max(4f, MathF.Min(60f, 9f / MathF.Max(0.05f, (float)_zoom)));
+        float distance = 0.5f * zoomScalar * zoomScalar;
+        float rotationRad = -(float)_rotation;
+
+        var t1 = System.Numerics.Matrix4x4.CreateTranslation(-vx, -vy, 0);
+        var rZ = System.Numerics.Matrix4x4.CreateRotationZ(rotationRad);
+        var rX = System.Numerics.Matrix4x4.CreateRotationX(aogPitchRad);
+        var tBack = System.Numerics.Matrix4x4.CreateTranslation(0, 0, -distance);
+        var view = t1 * rZ * rX * tBack;
+        float aspect = (float)(Bounds.Width / Bounds.Height);
+        var proj = System.Numerics.Matrix4x4.CreatePerspectiveFieldOfView(
+            0.7f, aspect, 1f, MathF.Max(5000f, distance * 4f));
+        var mvp = view * proj;
+        if (!System.Numerics.Matrix4x4.Invert(mvp, out var inv))
+            return (_cameraX, _cameraY);
+
+        // Screen → NDC. Y flips (screen y-down, NDC y-up).
+        float ndcX = (float)(2.0 * screenX / Bounds.Width - 1.0);
+        float ndcY = (float)(1.0 - 2.0 * screenY / Bounds.Height);
+        // DirectX-style NDC Z: near plane = 0, far plane = 1 (matches
+        // CreatePerspectiveFieldOfView's output range).
+        var nearH = System.Numerics.Vector4.Transform(
+            new System.Numerics.Vector4(ndcX, ndcY, 0f, 1f), inv);
+        var farH = System.Numerics.Vector4.Transform(
+            new System.Numerics.Vector4(ndcX, ndcY, 1f, 1f), inv);
+        if (Math.Abs(nearH.W) < 1e-6 || Math.Abs(farH.W) < 1e-6)
+            return (_cameraX, _cameraY);
+        var near = new System.Numerics.Vector3(nearH.X / nearH.W, nearH.Y / nearH.W, nearH.Z / nearH.W);
+        var far  = new System.Numerics.Vector3(farH.X  / farH.W,  farH.Y  / farH.W,  farH.Z  / farH.W);
+        var dir = far - near;
+        if (Math.Abs(dir.Z) < 1e-6)
+            return (_cameraX, _cameraY);
+        float t = -near.Z / dir.Z;
+        if (t < 0)
+            return (_cameraX, _cameraY);
+        var hit = near + t * dir;
+        return (hit.X, hit.Y);
     }
 
     // ==================================================================
@@ -937,9 +1048,42 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         private readonly SKPaint _tramOnPaint;
         private readonly SKPaint _tramOffPaint;
 
+        // Stroke widths in world meters get foreshortened under perspective —
+        // a 1m-wide boundary at 500m depth becomes sub-pixel. The handler
+        // applies a uniform 3× to all strokes in both 2D and 3D (user prefers
+        // bolder lines even in top-down), with an extra 2× on grid so it
+        // stays visible at high zoom-out.
+        private float _strokeMult = 1f;
+        private const float BaseStrokeMult = 3f;
+        private const float GridExtraStrokeMult = 2f;
+
+        // Set in DrawSkiaScene's perspective branch. Lets draw methods
+        // (DrawExtendedABLineSk, AB markers) clip geometry to the view
+        // near plane before Skia projects — endpoints behind the camera
+        // produce W < 0 and Skia draws wild artifacts from the screen corner.
+        private bool _perspective;
+        private System.Numerics.Matrix4x4 _perspectiveView;
+        // Match CreatePerspectiveFieldOfView's near=1f but clip a couple
+        // meters past the projection near plane so float precision at UTM
+        // coord magnitudes (millions of meters) can't put a clipped endpoint
+        // back on the wrong side. View-space Z is negative for visible
+        // geometry; vis means z <= NearPlaneClipZ.
+        private const float NearPlaneClipZ = -3f;
+
         // Vehicle bitmap shadow caches (decode once on first frame)
         private SKBitmap? _vehicleSkBitmap;
         private SKBitmap? _frontWheelSkBitmap;
+
+        // Ground texture shadow cache — perspective path draws ground inside
+        // the Skia lease, so it needs an SKBitmap, not an Avalonia.Bitmap.
+        // Re-decode when the IImage reference changes (day/night swap on
+        // SetDayMode swaps _groundTexture to the other Avalonia.Bitmap).
+        // Shader + paint are cached alongside; allocating per-frame collapsed
+        // 3D field-open FPS from ~96 to 65 on iPad.
+        private SKBitmap? _groundSkBitmap;
+        private object? _groundSkBitmapSource;
+        private SKShader? _groundShader;
+        private SKPaint? _groundPaint;
 
         // Coverage SKImage snapshot cache (same pattern as DCMC). Skia can't cache
         // a mutating SKBitmap as a GPU texture across frames, so we snapshot it to
@@ -1073,80 +1217,53 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                     new ImmutableSolidColorBrush(bgColor),
                     new Rect(0, 0, s.BoundsWidth, s.BoundsHeight));
 
-                // Camera transform → world space
                 double aspect = s.BoundsWidth / s.BoundsHeight;
                 double viewWidth = 200.0 * aspect / s.Zoom;
                 double viewHeight = 200.0 / s.Zoom;
-                var cameraMatrix = GetCameraTransform(s, viewWidth, viewHeight);
-                using var cameraScope = drawingContext.PushPreTransform(cameraMatrix);
 
-                // Ground texture via DrawingContext (no Skia lease needed)
-                if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
-                    DrawGroundTexture(drawingContext, s, viewWidth, viewHeight);
-
-                // Everything else through SkiaSharp lease — batched paths,
-                // identical to the DCMC pattern that ships parity-stable.
-                var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
-                if (skiaFeature != null)
+                bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
+                if (!perspective)
                 {
-                    using var skiaLease = skiaFeature.Lease();
-                    var canvas = skiaLease.SkCanvas;
+                    // === Top-down 2D-affine fast path (unchanged from Phase 2) ===
+                    var cameraMatrix = GetCameraTransform(s, viewWidth, viewHeight);
+                    using var cameraScope = drawingContext.PushPreTransform(cameraMatrix);
 
-                    try
+                    if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
+                        DrawGroundTexture(drawingContext, s, viewWidth, viewHeight);
+
+                    var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                    if (skiaFeature != null)
                     {
-                        if (s.IsGridVisible && !DiagFlags.SkipGrid)
-                            DrawGridSk(canvas, s, viewWidth, viewHeight);
-
-                        if (s.CoverageSkBitmap != null
-                            && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
-                            && s.BitmapWidth > 0 && s.BitmapHeight > 0
-                            && !DiagFlags.SkipCoverageDraw)
-                        {
-                            DrawCoverageBitmap(canvas, s);
-                        }
-
-                        if (!DiagFlags.SkipBoundaryDraw)
-                        {
-                            if (s.Boundary != null)
-                                DrawBoundary(canvas, s);
-                            if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
-                                DrawHeadlandLine(canvas, s);
-                            if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
-                                DrawHeadlandPreview(canvas, s);
-                            if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
-                                DrawYouTurnPathSk(canvas, s);
-                        }
-
-                        if (s.TramDisplayMode != TramDisplayMode.Off && !DiagFlags.SkipTracks)
-                            DrawTramLinesSk(canvas, s);
-
-                        if (!DiagFlags.SkipTracks)
-                        {
-                            DrawRecordedPathsSk(canvas, s);
-                            DrawContourStripsSk(canvas, s);
-                            DrawTrackSk(canvas, s);
-                        }
-
-                        if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
-                            DrawRecordingPointsSk(canvas, s);
-
-                        if (s.Flags.Count > 0)
-                            DrawFlagsSk(canvas, s);
-
-                        if (!DiagFlags.SkipVehicle)
-                        {
-                            // Match DCMC's gate: ToolWidth > 0.1 means tool config is loaded.
-                            // Using s.ToolReady (full-init flag) was too strict and hid the
-                            // tool/sections even when ToolWidth was set.
-                            if (s.ShowVehicle && s.ToolWidth > 0.1)
-                                DrawToolSk(canvas, s);
-                            if (s.ShowVehicle)
-                                DrawVehicleSk(canvas, s);
-                        }
+                        using var skiaLease = skiaFeature.Lease();
+                        DrawSkiaScene(skiaLease.SkCanvas, s, viewWidth, viewHeight, perspective: false);
                     }
-                    catch (Exception ex)
+                }
+                else
+                {
+                    // === Perspective path — everything through Skia under an SKMatrix44 MVP ===
+                    // Avalonia's 2D Matrix can't represent perspective, so we skip
+                    // PushPreTransform and set the canvas matrix directly inside the lease.
+                    var skiaFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                    if (skiaFeature != null)
                     {
-                        Debug.WriteLine($"[SkiaMapVisualHandler] Render error: {ex.Message}");
+                        using var skiaLease = skiaFeature.Lease();
+                        var canvas = skiaLease.SkCanvas;
+                        var screen33 = BuildPerspectiveScreenMatrix(s);
+                        canvas.Save();
+                        try
+                        {
+                            // Concat (not SetMatrix) so Avalonia's existing
+                            // logical→physical DPI scale stays in the chain.
+                            // Without this, iPad retina renders at half resolution.
+                            canvas.Concat(screen33);
+                            if (s.GroundTexture != null && s.FieldTextureVisible && !DiagFlags.SkipGroundTexture)
+                                DrawGroundTextureSk(canvas, s);
+                            DrawSkiaScene(canvas, s, viewWidth, viewHeight, perspective: true);
+                        }
+                        finally
+                        {
+                            canvas.Restore();
+                        }
                     }
                 }
             }
@@ -1156,12 +1273,78 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             }
         }
 
+        // Top-down and perspective paths share this draw block. With perspective:true
+        // the canvas already has the SKMatrix44 MVP set; with false the canvas
+        // inherits Avalonia's PushPreTransform 2D-affine camera matrix.
+        private void DrawSkiaScene(SKCanvas canvas, MapRenderState s, double viewWidth, double viewHeight, bool perspective)
+        {
+            _strokeMult = BaseStrokeMult;
+            _perspective = perspective;
+            try
+            {
+                // Coverage bitmap (includes field imagery PNG composite) draws
+                // before grid so grid stays visible on top of imagery.
+                if (s.CoverageSkBitmap != null
+                    && (s.BitmapHasContent || s.BitmapExplicitlyInitialized)
+                    && s.BitmapWidth > 0 && s.BitmapHeight > 0
+                    && !DiagFlags.SkipCoverageDraw)
+                {
+                    DrawCoverageBitmap(canvas, s);
+                }
+
+                if (s.IsGridVisible && !DiagFlags.SkipGrid)
+                    DrawGridSk(canvas, s, viewWidth, viewHeight);
+
+                if (!DiagFlags.SkipBoundaryDraw)
+                {
+                    if (s.Boundary != null)
+                        DrawBoundary(canvas, s);
+                    if (s.IsHeadlandVisible && s.HeadlandLine != null && s.HeadlandLine.Count > 2)
+                        DrawHeadlandLine(canvas, s);
+                    if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
+                        DrawHeadlandPreview(canvas, s);
+                    if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
+                        DrawYouTurnPathSk(canvas, s);
+                }
+
+                if (s.TramDisplayMode != TramDisplayMode.Off && !DiagFlags.SkipTracks)
+                    DrawTramLinesSk(canvas, s);
+
+                if (!DiagFlags.SkipTracks)
+                {
+                    DrawRecordedPathsSk(canvas, s);
+                    DrawContourStripsSk(canvas, s);
+                    DrawTrackSk(canvas, s);
+                }
+
+                if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
+                    DrawRecordingPointsSk(canvas, s);
+
+                if (s.Flags.Count > 0)
+                    DrawFlagsSk(canvas, s);
+
+                if (!DiagFlags.SkipVehicle)
+                {
+                    // ToolWidth > 0.1 means tool config is loaded; matches DCMC.
+                    if (s.ShowVehicle && s.ToolWidth > 0.1)
+                        DrawToolSk(canvas, s);
+                    if (s.ShowVehicle)
+                        DrawVehicleSk(canvas, s);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SkiaMapVisualHandler] Render error: {ex.Message}");
+            }
+        }
+
         // ----------------- Camera transform -----------------
 
         private static Matrix GetCameraTransform(MapRenderState s, double viewWidth, double viewHeight)
         {
-            // Phase 1 == top-down only, so no pitch foreshortening. Y is mirrored
-            // because world coordinates are Y-up but screen coordinates are Y-down.
+            // Top-down 2D-affine. Y is mirrored because world is Y-up but
+            // screen is Y-down. Used when pitch < TopDownEpsilon — anything
+            // higher routes through BuildPerspectiveScreenMatrix instead.
             double scaleX = s.BoundsWidth / viewWidth;
             double scaleY = -s.BoundsHeight / viewHeight;
 
@@ -1172,6 +1355,126 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                 matrix = Matrix.CreateRotation(-s.Rotation) * matrix;
             matrix = Matrix.CreateTranslation(-s.CameraX, -s.CameraY) * matrix;
             return matrix;
+        }
+
+        // AOG-turntable perspective MVP, mirroring GlMapControl.cs:475-487 so
+        // SkiaMap and GL share the camera UX (same zoom/pitch curves).
+        // System.Numerics is row-vector; implicit cast to SKMatrix44 handles
+        // the transposition to Skia's column-vector convention. The 4×4 →
+        // 3×3 collapse via .Matrix is the official Skia path per
+        // [[skiasharp-skmatrix44]].
+        private SKMatrix BuildPerspectiveScreenMatrix(MapRenderState s)
+        {
+            float vx = (float)s.CameraX;
+            float vy = (float)s.CameraY;
+
+            // aogPitchRad is negative for non-overhead views. Matches GL's
+            // `aogPitchRad = π * (-pitchDegrees - 90) / 180`: at our
+            // _cameraPitch=0 (top-down) → 0; at _cameraPitch=π·80/180 (horizon)
+            // → -π·80/180. So aogPitchRad = -_cameraPitch.
+            float aogPitchRad = -(float)s.CameraPitch;
+
+            // Zoom curve: zoomScalar = clamp(9 / zoom, 4, 60); distance = ½·s².
+            // Same formula GL uses so 3D distance feels the same with either renderer.
+            float zoomScalar = MathF.Max(4f, MathF.Min(60f, 9f / MathF.Max(0.05f, (float)s.Zoom)));
+            float distance = 0.5f * zoomScalar * zoomScalar;
+
+            // Camera rotation about Z. The 2D path uses CreateRotation(-_rotation);
+            // mirror that here so heading-up / north-up behaves identically.
+            float rotationRad = -(float)s.Rotation;
+
+            var t1 = System.Numerics.Matrix4x4.CreateTranslation(-vx, -vy, 0);
+            var rZ = System.Numerics.Matrix4x4.CreateRotationZ(rotationRad);
+            var rX = System.Numerics.Matrix4x4.CreateRotationX(aogPitchRad);
+            var tBack = System.Numerics.Matrix4x4.CreateTranslation(0, 0, -distance);
+            var view = t1 * rZ * rX * tBack;
+            _perspectiveView = view;
+
+            float aspect = (float)(s.BoundsWidth / s.BoundsHeight);
+            // FOV 0.7 rad ≈ 40°, matching GL.
+            var proj = System.Numerics.Matrix4x4.CreatePerspectiveFieldOfView(
+                0.7f, aspect, 1f, MathF.Max(5000f, distance * 4f));
+
+            var mvp = view * proj;
+            SKMatrix44 mvp44 = mvp;
+
+            // Viewport: NDC (-1..+1, y-up) → pixel (0..W, 0..H, y-down).
+            // Row-vector form (v · M); m30/m31 carry the translation.
+            float halfW = (float)(s.BoundsWidth * 0.5);
+            float halfH = (float)(s.BoundsHeight * 0.5);
+            var viewport44 = new SKMatrix44(
+                halfW, 0f,     0f, 0f,
+                0f,    -halfH, 0f, 0f,
+                0f,    0f,     1f, 0f,
+                halfW, halfH,  0f, 1f);
+
+            // Apply mvp first (world → NDC) then viewport (NDC → pixel).
+            var screen44 = SKMatrix44.Concat(mvp44, viewport44);
+            return screen44.Matrix;
+        }
+
+        // Ground texture under perspective. The non-moveable 2D mode draws a
+        // single rect of the bitmap; in 3D we always tile-repeat because the
+        // visible ground stretches to the horizon (~5 km) and a single
+        // bitmap stretched that wide is unusable. Single Skia draw call via
+        // a cached repeat-tile SKShader.
+        private const float GroundTileSizeMeters = 50f;
+        private const float GroundRectRadiusMeters = 5000f;
+
+        private void DrawGroundTextureSk(SKCanvas canvas, MapRenderState s)
+        {
+            EnsureGroundSkBitmap(s);
+            if (_groundSkBitmap == null || _groundPaint == null) return;
+
+            float minX = (float)s.CameraX - GroundRectRadiusMeters;
+            float minY = (float)s.CameraY - GroundRectRadiusMeters;
+            float maxX = (float)s.CameraX + GroundRectRadiusMeters;
+            float maxY = (float)s.CameraY + GroundRectRadiusMeters;
+            canvas.DrawRect(new SKRect(minX, minY, maxX, maxY), _groundPaint);
+        }
+
+        private void EnsureGroundSkBitmap(MapRenderState s)
+        {
+            if (s.GroundTexture == null) return;
+            if (ReferenceEquals(_groundSkBitmapSource, s.GroundTexture) && _groundSkBitmap != null)
+                return;
+
+            // Same decode trick as the tractor sprite below — round-trip
+            // through PNG bytes since SkiaSharp can't consume an Avalonia
+            // Bitmap directly.
+            if (s.GroundTexture is Bitmap avBitmap)
+            {
+                try
+                {
+                    using var ms = new System.IO.MemoryStream();
+                    avBitmap.Save(ms);
+                    ms.Position = 0;
+                    var oldBitmap = _groundSkBitmap;
+                    var oldShader = _groundShader;
+                    var oldPaint = _groundPaint;
+                    _groundSkBitmap = SKBitmap.Decode(ms);
+                    _groundSkBitmapSource = s.GroundTexture;
+
+                    // Shader localMatrix scales shader-space → bitmap-pixel space
+                    // so one tile (50m) covers one bitmap width.
+                    float sx = _groundSkBitmap.Width / GroundTileSizeMeters;
+                    float sy = _groundSkBitmap.Height / GroundTileSizeMeters;
+                    var localMatrix = SKMatrix.CreateScale(sx, sy);
+                    _groundShader = SKShader.CreateBitmap(
+                        _groundSkBitmap,
+                        SKShaderTileMode.Repeat, SKShaderTileMode.Repeat,
+                        localMatrix);
+                    _groundPaint = new SKPaint { Shader = _groundShader, IsAntialias = false };
+
+                    oldPaint?.Dispose();
+                    oldShader?.Dispose();
+                    oldBitmap?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[SkiaMapVisualHandler] Ground texture decode failed: {ex.Message}");
+                }
+            }
         }
 
         // ----------------- Ground texture -----------------
@@ -1232,11 +1535,21 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
             double screenHeight = s.BoundsHeight > 0 ? s.BoundsHeight : 600;
             double worldPerPixel = viewHeight / screenHeight;
-            double minorThickness = Math.Max(0.3 * worldPerPixel, 0.05);
-            double majorThickness = Math.Max(0.6 * worldPerPixel, 0.1);
-            double axisThickness = Math.Max(0.9 * worldPerPixel, 0.15);
+            double gridMult = _strokeMult * GridExtraStrokeMult;
+            double minorThickness = Math.Max(0.3 * worldPerPixel, 0.05) * gridMult;
+            double majorThickness = Math.Max(0.6 * worldPerPixel, 0.1) * gridMult;
+            double axisThickness = Math.Max(0.9 * worldPerPixel, 0.15) * gridMult;
 
             EnsureGridPaintsSk(s.IsDayMode, minorThickness, majorThickness, axisThickness);
+
+            // Anti-alias grid in 3D — sub-pixel camera shifts under perspective
+            // make unaliased far lines flicker. Costs ~17 FPS on iPad; the
+            // post-Phase-3 perf audit ([[task #16]]) will look at recovering this.
+            bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
+            _gridMinorPaintSk!.IsAntialias = perspective;
+            _gridMajorPaintSk!.IsAntialias = perspective;
+            _gridAxisXPaintSk!.IsAntialias = perspective;
+            _gridAxisYPaintSk!.IsAntialias = perspective;
 
             double minX = Math.Max(s.CameraX - viewWidth, -gridSize);
             double maxX = Math.Min(s.CameraX + viewWidth, gridSize);
@@ -1250,35 +1563,67 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             float lineYStart = (float)Math.Max(minY, -gridSize);
             float lineYEnd = (float)Math.Min(maxY, gridSize);
 
-            using var minorPath = new SKPath();
-            using var majorPath = new SKPath();
-            bool hasAxisY = false, hasAxisX = false;
-
-            for (double x = startX; x <= maxX; x += spacing)
+            if (!_perspective)
             {
-                if (x < -gridSize || x > gridSize) continue;
-                if (Math.Abs(x) < 0.1) { hasAxisY = true; continue; }
-                bool isMajor = Math.Abs(x % majorEvery) < 0.1;
-                var path = isMajor ? majorPath : minorPath;
-                path.MoveTo((float)x, lineYStart);
-                path.LineTo((float)x, lineYEnd);
-            }
-            for (double y = startY; y <= maxY; y += spacing)
-            {
-                if (y < -gridSize || y > gridSize) continue;
-                if (Math.Abs(y) < 0.1) { hasAxisX = true; continue; }
-                bool isMajor = Math.Abs(y % majorEvery) < 0.1;
-                var path = isMajor ? majorPath : minorPath;
-                path.MoveTo(lineXStart, (float)y);
-                path.LineTo(lineXEnd, (float)y);
-            }
+                using var minorPath = new SKPath();
+                using var majorPath = new SKPath();
+                bool hasAxisY = false, hasAxisX = false;
 
-            canvas.DrawPath(minorPath, _gridMinorPaintSk!);
-            canvas.DrawPath(majorPath, _gridMajorPaintSk!);
-            if (hasAxisY)
-                canvas.DrawLine(0, lineYStart, 0, lineYEnd, _gridAxisYPaintSk!);
-            if (hasAxisX)
-                canvas.DrawLine(lineXStart, 0, lineXEnd, 0, _gridAxisXPaintSk!);
+                for (double x = startX; x <= maxX; x += spacing)
+                {
+                    if (x < -gridSize || x > gridSize) continue;
+                    if (Math.Abs(x) < 0.1) { hasAxisY = true; continue; }
+                    bool isMajor = Math.Abs(x % majorEvery) < 0.1;
+                    var path = isMajor ? majorPath : minorPath;
+                    path.MoveTo((float)x, lineYStart);
+                    path.LineTo((float)x, lineYEnd);
+                }
+                for (double y = startY; y <= maxY; y += spacing)
+                {
+                    if (y < -gridSize || y > gridSize) continue;
+                    if (Math.Abs(y) < 0.1) { hasAxisX = true; continue; }
+                    bool isMajor = Math.Abs(y % majorEvery) < 0.1;
+                    var path = isMajor ? majorPath : minorPath;
+                    path.MoveTo(lineXStart, (float)y);
+                    path.LineTo(lineXEnd, (float)y);
+                }
+
+                canvas.DrawPath(minorPath, _gridMinorPaintSk!);
+                canvas.DrawPath(majorPath, _gridMajorPaintSk!);
+                if (hasAxisY)
+                    canvas.DrawLine(0, lineYStart, 0, lineYEnd, _gridAxisYPaintSk!);
+                if (hasAxisX)
+                    canvas.DrawLine(lineXStart, 0, lineXEnd, 0, _gridAxisXPaintSk!);
+            }
+            else
+            {
+                // 3D: each grid line is one segment; clip to near plane.
+                // Drawing per-line is slower than one DrawPath but avoids
+                // W<0 artifacts (white flashes from night-mode major grid
+                // when world-aligned lines cross the camera plane).
+                for (double x = startX; x <= maxX; x += spacing)
+                {
+                    if (x < -gridSize || x > gridSize) continue;
+                    var paint = Math.Abs(x) < 0.1
+                        ? _gridAxisYPaintSk!
+                        : (Math.Abs(x % majorEvery) < 0.1 ? _gridMajorPaintSk! : _gridMinorPaintSk!);
+                    float gx1 = (float)x, gy1 = lineYStart;
+                    float gx2 = (float)x, gy2 = lineYEnd;
+                    if (ClipSegmentToNearPlane(ref gx1, ref gy1, ref gx2, ref gy2))
+                        canvas.DrawLine(gx1, gy1, gx2, gy2, paint);
+                }
+                for (double y = startY; y <= maxY; y += spacing)
+                {
+                    if (y < -gridSize || y > gridSize) continue;
+                    var paint = Math.Abs(y) < 0.1
+                        ? _gridAxisXPaintSk!
+                        : (Math.Abs(y % majorEvery) < 0.1 ? _gridMajorPaintSk! : _gridMinorPaintSk!);
+                    float gx1 = lineXStart, gy1 = (float)y;
+                    float gx2 = lineXEnd, gy2 = (float)y;
+                    if (ClipSegmentToNearPlane(ref gx1, ref gy1, ref gx2, ref gy2))
+                        canvas.DrawLine(gx1, gy1, gx2, gy2, paint);
+                }
+            }
         }
 
         private void EnsureGridPaintsSk(bool isDayMode, double minorThickness, double majorThickness, double axisThickness)
@@ -1377,7 +1722,14 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             var dst = new SKRect(
                 (float)s.BitmapMinE, (float)s.BitmapMinN,
                 (float)(s.BitmapMinE + worldWidth), (float)(s.BitmapMinN + worldHeight));
-            var sampling = s.LineSmoothEnabled ? _coverageSamplingLinear : _coverageSamplingNearest;
+            // Linear sampling under perspective regardless of LineSmoothEnabled
+            // — foreshortened nearest-neighbor pixels moire badly (visible as
+            // tree-detail flicker in the field PNG). 2D path keeps its
+            // nearest-neighbor fast path so coverage paint stays crisp.
+            bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
+            var sampling = (s.LineSmoothEnabled || perspective)
+                ? _coverageSamplingLinear
+                : _coverageSamplingNearest;
             canvas.DrawImage(_coverageSnapshot, src, dst, sampling);
         }
 
@@ -1387,71 +1739,164 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         {
             if (s.Boundary == null) return;
 
+            _boundaryOuterPaint.StrokeWidth = 1f * _strokeMult;
+            _boundaryInnerPaint.StrokeWidth = 1f * _strokeMult;
+            // AA on in all modes. With the -3 clip margin past the projection
+            // near plane, AA-stroke artifacts near the plane shouldn't trigger
+            // any more, and far edges need AA to avoid jaggy/dashed appearance
+            // at high tilt.
+            _boundaryOuterPaint.IsAntialias = true;
+            _boundaryInnerPaint.IsAntialias = true;
+
             if (s.Boundary.OuterBoundary != null && s.Boundary.OuterBoundary.IsValid
                 && s.Boundary.OuterBoundary.Points.Count > 1)
             {
-                var points = s.Boundary.OuterBoundary.Points;
-                using var path = new SKPath();
-                path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
-                for (int i = 1; i < points.Count; i++)
-                    path.LineTo((float)points[i].Easting, (float)points[i].Northing);
-                path.Close();
-                canvas.DrawPath(path, _boundaryOuterPaint);
+                DrawBoundaryRingSk(canvas, s.Boundary.OuterBoundary.Points, _boundaryOuterPaint);
             }
 
             foreach (var inner in s.Boundary.InnerBoundaries)
             {
                 if (inner.IsValid && inner.Points.Count > 1)
-                {
-                    var points = inner.Points;
-                    using var path = new SKPath();
-                    path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
-                    for (int i = 1; i < points.Count; i++)
-                        path.LineTo((float)points[i].Easting, (float)points[i].Northing);
-                    path.Close();
-                    canvas.DrawPath(path, _boundaryInnerPaint);
-                }
+                    DrawBoundaryRingSk(canvas, inner.Points, _boundaryInnerPaint);
             }
 
             if (s.Boundary.HeadlandPolygon != null && s.Boundary.HeadlandPolygon.IsValid
                 && s.Boundary.HeadlandPolygon.Points.Count > 1)
             {
-                var points = s.Boundary.HeadlandPolygon.Points;
+                DrawBoundaryRingSk(canvas, s.Boundary.HeadlandPolygon.Points, _boundaryInnerPaint);
+            }
+        }
+
+        // Closed polygon draw. 2D: build SKPath, single DrawPath (fast).
+        // 3D: per-segment DrawLine with near-plane clip — slower but the
+        // SKPath route produces W<0 artifacts (orange/white flashing) for
+        // segments that span the camera plane.
+        private void DrawBoundaryRingSk(SKCanvas canvas, IReadOnlyList<BoundaryPoint> points, SKPaint paint)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            if (!_perspective)
+            {
                 using var path = new SKPath();
                 path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
-                for (int i = 1; i < points.Count; i++)
+                for (int i = 1; i < n; i++)
                     path.LineTo((float)points[i].Easting, (float)points[i].Northing);
                 path.Close();
-                canvas.DrawPath(path, _boundaryInnerPaint);
+                canvas.DrawPath(path, paint);
+                return;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % n];
+                float x1 = (float)a.Easting, y1 = (float)a.Northing;
+                float x2 = (float)b.Easting, y2 = (float)b.Northing;
+                if (ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, paint);
             }
         }
 
         private void DrawHeadlandLine(SKCanvas canvas, MapRenderState s)
         {
             if (s.HeadlandLine == null || s.HeadlandLine.Count < 3) return;
-            using var path = new SKPath();
-            path.MoveTo((float)s.HeadlandLine[0].Easting, (float)s.HeadlandLine[0].Northing);
-            for (int i = 1; i < s.HeadlandLine.Count; i++)
-                path.LineTo((float)s.HeadlandLine[i].Easting, (float)s.HeadlandLine[i].Northing);
-            path.Close();
-            canvas.DrawPath(path, _headlandPaint);
+            _headlandPaint.StrokeWidth = 1f * _strokeMult;
+            DrawVec3RingSk(canvas, s.HeadlandLine, _headlandPaint);
         }
 
         private void DrawHeadlandPreview(SKCanvas canvas, MapRenderState s)
         {
             if (s.HeadlandPreview == null || s.HeadlandPreview.Count < 3) return;
-            using var path = new SKPath();
-            path.MoveTo((float)s.HeadlandPreview[0].Easting, (float)s.HeadlandPreview[0].Northing);
-            for (int i = 1; i < s.HeadlandPreview.Count; i++)
-                path.LineTo((float)s.HeadlandPreview[i].Easting, (float)s.HeadlandPreview[i].Northing);
-            path.Close();
-            canvas.DrawPath(path, _headlandPreviewPaint);
+            _headlandPreviewPaint.StrokeWidth = 1.5f * _strokeMult;
+            DrawVec2RingSk(canvas, s.HeadlandPreview, _headlandPreviewPaint);
+        }
+
+        // Closed Vec3 polygon (headland line). Same 2D fast-path / 3D
+        // per-segment-clip pattern as DrawBoundaryRingSk.
+        private void DrawVec3RingSk(SKCanvas canvas, IReadOnlyList<Vec3> points, SKPaint paint)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            if (!_perspective)
+            {
+                using var path = new SKPath();
+                path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
+                for (int i = 1; i < n; i++)
+                    path.LineTo((float)points[i].Easting, (float)points[i].Northing);
+                path.Close();
+                canvas.DrawPath(path, paint);
+                return;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % n];
+                float x1 = (float)a.Easting, y1 = (float)a.Northing;
+                float x2 = (float)b.Easting, y2 = (float)b.Northing;
+                if (ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, paint);
+            }
+        }
+
+        // Open Vec2 polyline (tram parallel/boundary lines).
+        private void DrawVec2PolylineSk(SKCanvas canvas, IReadOnlyList<Vec2> points, SKPaint paint)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            if (!_perspective)
+            {
+                using var path = new SKPath();
+                path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
+                for (int i = 1; i < n; i++)
+                    path.LineTo((float)points[i].Easting, (float)points[i].Northing);
+                canvas.DrawPath(path, paint);
+                return;
+            }
+            for (int i = 0; i < n - 1; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                float x1 = (float)a.Easting, y1 = (float)a.Northing;
+                float x2 = (float)b.Easting, y2 = (float)b.Northing;
+                if (ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, paint);
+            }
+        }
+
+        // Closed Vec2 polygon (headland preview).
+        private void DrawVec2RingSk(SKCanvas canvas, IReadOnlyList<Vec2> points, SKPaint paint)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            if (!_perspective)
+            {
+                using var path = new SKPath();
+                path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
+                for (int i = 1; i < n; i++)
+                    path.LineTo((float)points[i].Easting, (float)points[i].Northing);
+                path.Close();
+                canvas.DrawPath(path, paint);
+                return;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                var a = points[i];
+                var b = points[(i + 1) % n];
+                float x1 = (float)a.Easting, y1 = (float)a.Northing;
+                float x2 = (float)b.Easting, y2 = (float)b.Northing;
+                if (ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, paint);
+            }
         }
 
         // ----------------- Tool / sections -----------------
 
         private void DrawToolSk(SKCanvas canvas, MapRenderState s)
         {
+            _toolHitchPaint.StrokeWidth = 0.15f * _strokeMult;
+            _toolDrawbarPaint.StrokeWidth = 0.3f * _strokeMult;
+            _toolCenterPaint.StrokeWidth = 0.1f * _strokeMult;
+            _sectionOutlinePaint.StrokeWidth = 0.1f * _strokeMult;
+
             float tx = (float)s.ToolX, ty = (float)s.ToolY;
             float toolDepth = 2.0f;
 
@@ -1518,6 +1963,11 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         private void DrawTrackSk(SKCanvas canvas, MapRenderState s)
         {
+            _trackActivePaint.StrokeWidth = 0.5f * _strokeMult;
+            _trackBaseDashPaint.StrokeWidth = 0.3f * _strokeMult;
+            _trackNextPaint.StrokeWidth = 0.4f * _strokeMult;
+            _abMarkerOutlinePaint.StrokeWidth = 0.15f * _strokeMult;
+
             if (s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
             {
                 if (s.ActiveTrack.Points.Count == 2)
@@ -1531,22 +1981,39 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             {
                 var pA = sourceAb.Points[0];
                 var pB = sourceAb.Points[1];
-                canvas.DrawLine((float)pA.Easting, (float)pA.Northing,
-                    (float)pB.Easting, (float)pB.Northing, _trackBaseDashPaint);
+                // Dashed A→B base line — clip to near plane in perspective.
+                {
+                    float dx1 = (float)pA.Easting, dy1 = (float)pA.Northing;
+                    float dx2 = (float)pB.Easting, dy2 = (float)pB.Northing;
+                    if (!_perspective || ClipSegmentToNearPlane(ref dx1, ref dy1, ref dx2, ref dy2))
+                        canvas.DrawLine(dx1, dy1, dx2, dy2, _trackBaseDashPaint);
+                }
 
-                float markerHalf = 0.6f;
-                var aRect = new SKRect((float)pA.Easting - markerHalf, (float)pA.Northing - markerHalf,
-                    (float)pA.Easting + markerHalf, (float)pA.Northing + markerHalf);
-                canvas.DrawRect(aRect, _abMarkerAPaint);
-                canvas.DrawRect(aRect, _abMarkerOutlinePaint);
+                float markerHalf = 1.8f;
+                // Skip marker draw if center is behind the camera — DrawRect's
+                // 4 corner verts would all have W < 0 and Skia rasterizes them
+                // as wild geometry from the screen corner (the "white lines
+                // from top-left" artifact).
+                bool drawA = !_perspective || IsPointInFrontOfNearPlane(pA.Easting, pA.Northing);
+                bool drawB = !_perspective || IsPointInFrontOfNearPlane(pB.Easting, pB.Northing);
 
-                var bRect = new SKRect((float)pB.Easting - markerHalf, (float)pB.Northing - markerHalf,
-                    (float)pB.Easting + markerHalf, (float)pB.Northing + markerHalf);
-                canvas.DrawRect(bRect, _abMarkerBPaint);
-                canvas.DrawRect(bRect, _abMarkerOutlinePaint);
+                if (drawA)
+                {
+                    var aRect = new SKRect((float)pA.Easting - markerHalf, (float)pA.Northing - markerHalf,
+                        (float)pA.Easting + markerHalf, (float)pA.Northing + markerHalf);
+                    canvas.DrawRect(aRect, _abMarkerAPaint);
+                    canvas.DrawRect(aRect, _abMarkerOutlinePaint);
+                    DrawAbLabelSk(canvas, "A", pA.Easting + markerHalf + 0.4, pA.Northing + markerHalf + 0.4);
+                }
 
-                DrawAbLabelSk(canvas, "A", pA.Easting + markerHalf + 0.4, pA.Northing + markerHalf + 0.4);
-                DrawAbLabelSk(canvas, "B", pB.Easting + markerHalf + 0.4, pB.Northing + markerHalf + 0.4);
+                if (drawB)
+                {
+                    var bRect = new SKRect((float)pB.Easting - markerHalf, (float)pB.Northing - markerHalf,
+                        (float)pB.Easting + markerHalf, (float)pB.Northing + markerHalf);
+                    canvas.DrawRect(bRect, _abMarkerBPaint);
+                    canvas.DrawRect(bRect, _abMarkerOutlinePaint);
+                    DrawAbLabelSk(canvas, "B", pB.Easting + markerHalf + 0.4, pB.Northing + markerHalf + 0.4);
+                }
             }
             else if (sourceAb != null && sourceAb.Points.Count > 2)
             {
@@ -1562,7 +2029,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             }
 
             if (s.PendingPointA != null)
-                canvas.DrawCircle((float)s.PendingPointA.Easting, (float)s.PendingPointA.Northing, 1.0f, _pendingPointPaint);
+                canvas.DrawCircle((float)s.PendingPointA.Easting, (float)s.PendingPointA.Northing, 3.0f, _pendingPointPaint);
         }
 
         private static Track? ResolveSourceAbTrack(MapRenderState s)
@@ -1574,7 +2041,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             return null;
         }
 
-        private static void DrawExtendedABLineSk(SKCanvas canvas, Vec3 a, Vec3 b, SKPaint paint)
+        private void DrawExtendedABLineSk(SKCanvas canvas, Vec3 a, Vec3 b, SKPaint paint)
         {
             double dx = b.Easting - a.Easting;
             double dy = b.Northing - a.Northing;
@@ -1590,17 +2057,72 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             float y1 = (float)(a.Northing - ny * ext);
             float x2 = (float)(b.Easting + nx * ext);
             float y2 = (float)(b.Northing + ny * ext);
+
+            // In 3D the 5000m extension almost certainly puts one endpoint
+            // behind the camera; Skia would draw wild artifacts. CPU-clip
+            // to the view near plane before submitting.
+            if (_perspective && !ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                return;
             canvas.DrawLine(x1, y1, x2, y2, paint);
         }
 
-        private static void DrawTrackPointsSk(SKCanvas canvas, IReadOnlyList<Vec3> points, SKPaint paint)
+        // Returns true if the segment is at least partly in front of the
+        // view near plane. Mutates endpoints in place to clip the segment
+        // when one endpoint is behind. Standard NDC-style near-plane clip
+        // in view space — far simpler than full frustum culling, and the
+        // near plane is where projection actually breaks.
+        private bool ClipSegmentToNearPlane(ref float x1, ref float y1, ref float x2, ref float y2)
         {
-            if (points.Count < 2) return;
-            using var path = new SKPath();
-            path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
-            for (int i = 1; i < points.Count; i++)
-                path.LineTo((float)points[i].Easting, (float)points[i].Northing);
-            canvas.DrawPath(path, paint);
+            var v1 = System.Numerics.Vector3.Transform(
+                new System.Numerics.Vector3(x1, y1, 0f), _perspectiveView);
+            var v2 = System.Numerics.Vector3.Transform(
+                new System.Numerics.Vector3(x2, y2, 0f), _perspectiveView);
+            bool vis1 = v1.Z <= NearPlaneClipZ;
+            bool vis2 = v2.Z <= NearPlaneClipZ;
+            if (vis1 && vis2) return true;
+            if (!vis1 && !vis2) return false;
+
+            float t = (NearPlaneClipZ - v1.Z) / (v2.Z - v1.Z);
+            float clipX = x1 + t * (x2 - x1);
+            float clipY = y1 + t * (y2 - y1);
+            if (vis1) { x2 = clipX; y2 = clipY; }
+            else      { x1 = clipX; y1 = clipY; }
+            return true;
+        }
+
+        private bool IsPointInFrontOfNearPlane(double worldX, double worldY)
+        {
+            var v = System.Numerics.Vector3.Transform(
+                new System.Numerics.Vector3((float)worldX, (float)worldY, 0f),
+                _perspectiveView);
+            return v.Z <= NearPlaneClipZ;
+        }
+
+        private void DrawTrackPointsSk(SKCanvas canvas, IReadOnlyList<Vec3> points, SKPaint paint)
+        {
+            int n = points.Count;
+            if (n < 2) return;
+            if (!_perspective)
+            {
+                using var path = new SKPath();
+                path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
+                for (int i = 1; i < n; i++)
+                    path.LineTo((float)points[i].Easting, (float)points[i].Northing);
+                canvas.DrawPath(path, paint);
+                return;
+            }
+            // Open polyline with near-plane clipping. Multi-point curves can
+            // dip behind the camera mid-stretch (e.g. recorded paths that
+            // loop around the vehicle); clip each segment independently.
+            for (int i = 0; i < n - 1; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                float x1 = (float)a.Easting, y1 = (float)a.Northing;
+                float x2 = (float)b.Easting, y2 = (float)b.Northing;
+                if (ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, paint);
+            }
         }
 
         private void DrawAbLabelSk(SKCanvas canvas, string text, double worldX, double worldY)
@@ -1616,11 +2138,26 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         private void DrawYouTurnPathSk(SKCanvas canvas, MapRenderState s)
         {
             if (s.YouTurnPath == null || s.YouTurnPath.Count < 2) return;
-            using var path = new SKPath();
-            path.MoveTo((float)s.YouTurnPath[0].Easting, (float)s.YouTurnPath[0].Northing);
-            for (int i = 1; i < s.YouTurnPath.Count; i++)
-                path.LineTo((float)s.YouTurnPath[i].Easting, (float)s.YouTurnPath[i].Northing);
-            canvas.DrawPath(path, _youTurnPaint);
+            _youTurnPaint.StrokeWidth = 1f * _strokeMult;
+            int n = s.YouTurnPath.Count;
+            if (!_perspective)
+            {
+                using var path = new SKPath();
+                path.MoveTo((float)s.YouTurnPath[0].Easting, (float)s.YouTurnPath[0].Northing);
+                for (int i = 1; i < n; i++)
+                    path.LineTo((float)s.YouTurnPath[i].Easting, (float)s.YouTurnPath[i].Northing);
+                canvas.DrawPath(path, _youTurnPaint);
+                return;
+            }
+            for (int i = 0; i < n - 1; i++)
+            {
+                var a = s.YouTurnPath[i];
+                var b = s.YouTurnPath[i + 1];
+                float x1 = (float)a.Easting, y1 = (float)a.Northing;
+                float x2 = (float)b.Easting, y2 = (float)b.Northing;
+                if (ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, _youTurnPaint);
+            }
         }
 
         private void DrawTramLinesSk(SKCanvas canvas, MapRenderState s)
@@ -1635,7 +2172,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             {
                 Color = new SKColor(237, 140, 150, alpha),
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 0.6f,
+                StrokeWidth = 0.6f * _strokeMult,
                 IsAntialias = true
             };
 
@@ -1645,46 +2182,32 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                  || s.TramDisplayMode == TramDisplayMode.LinesOnly) && hasLines)
             {
                 foreach (var line in s.TramParallelLines!)
-                {
-                    if (line.Count < 2) continue;
-                    using var path = new SKPath();
-                    path.MoveTo((float)line[0].Easting, (float)line[0].Northing);
-                    for (int i = 1; i < line.Count; i++)
-                        path.LineTo((float)line[i].Easting, (float)line[i].Northing);
-                    canvas.DrawPath(path, tramPaint);
-                }
+                    DrawVec2PolylineSk(canvas, line, tramPaint);
             }
 
             if ((s.TramDisplayMode == TramDisplayMode.All
                  || s.TramDisplayMode == TramDisplayMode.OuterOnly) && hasBoundary)
             {
-                void DrawTramTrack(IReadOnlyList<Vec2> track)
-                {
-                    if (track.Count < 2) return;
-                    using var path = new SKPath();
-                    path.MoveTo((float)track[0].Easting, (float)track[0].Northing);
-                    for (int i = 1; i < track.Count; i++)
-                        path.LineTo((float)track[i].Easting, (float)track[i].Northing);
-                    canvas.DrawPath(path, tramPaint);
-                }
-                if (s.TramOuterTrack != null) DrawTramTrack(s.TramOuterTrack);
-                if (s.TramInnerTrack != null) DrawTramTrack(s.TramInnerTrack);
+                if (s.TramOuterTrack != null) DrawVec2PolylineSk(canvas, s.TramOuterTrack, tramPaint);
+                if (s.TramInnerTrack != null) DrawVec2PolylineSk(canvas, s.TramInnerTrack, tramPaint);
                 if (hasBoundaryExtra)
                     foreach (var line in s.TramBoundaryExtraLines!)
-                        DrawTramTrack(line);
+                        DrawVec2PolylineSk(canvas, line, tramPaint);
             }
         }
 
         private void DrawRecordingPointsSk(SKCanvas canvas, MapRenderState s)
         {
             if (s.RecordingPoints == null) return;
-            using var linePaint = new SKPaint { Color = new SKColor(0, 255, 255), Style = SKPaintStyle.Stroke, StrokeWidth = 0.5f, IsAntialias = true };
+            using var linePaint = new SKPaint { Color = new SKColor(0, 255, 255), Style = SKPaintStyle.Stroke, StrokeWidth = 0.5f * _strokeMult, IsAntialias = true };
             using var pointPaint = new SKPaint { Color = new SKColor(255, 128, 0), Style = SKPaintStyle.Fill };
             for (int i = 1; i < s.RecordingPoints.Count; i++)
             {
                 var (e1, n1) = s.RecordingPoints[i - 1];
                 var (e2, n2) = s.RecordingPoints[i];
-                canvas.DrawLine((float)e1, (float)n1, (float)e2, (float)n2, linePaint);
+                float x1 = (float)e1, y1 = (float)n1, x2 = (float)e2, y2 = (float)n2;
+                if (!_perspective || ClipSegmentToNearPlane(ref x1, ref y1, ref x2, ref y2))
+                    canvas.DrawLine(x1, y1, x2, y2, linePaint);
             }
             if (s.RecordingPoints.Count > 0)
             {
@@ -1695,7 +2218,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         private void DrawFlagsSk(SKCanvas canvas, MapRenderState s)
         {
-            using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+            using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f * _strokeMult };
             foreach (var (easting, northing, color, name) in s.Flags)
             {
                 var skColor = color switch
