@@ -106,6 +106,9 @@ public interface ISharedMapControl
     void SetIsInYouTurn(bool isInTurn);
     void SetActiveTrack(AgValoniaGPS.Models.Track.Track? track);
     void SetBaseTrack(AgValoniaGPS.Models.Track.Track? track);
+    void SetPendingPointA(AgValoniaGPS.Models.Position? pointA);
+    bool EnableClickSelection { get; set; }
+    (double Easting, double Northing) ScreenToWorld(double screenX, double screenY);
 
     // Tram line visualization
     void SetTramLines(

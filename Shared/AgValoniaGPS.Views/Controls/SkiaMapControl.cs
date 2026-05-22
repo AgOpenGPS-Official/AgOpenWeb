@@ -101,6 +101,29 @@ public class SkiaMapControl : Control, ISharedMapControl
     private int _numSections;
 
     // ------------------------------------------------------------------
+    // Pointer interaction (pan / rotate / click) — mirrors DCMC
+    // ------------------------------------------------------------------
+
+    private bool _isPanning;
+    private bool _isRotating;
+    private Point _lastMousePosition;
+    private Point _panStartPosition;
+    private bool _hasDraggedPastThreshold;
+    private double _rotationOnPanStart;
+    private const double DragThreshold = 5.0;
+
+    public static readonly StyledProperty<bool> EnableClickSelectionProperty =
+        AvaloniaProperty.Register<SkiaMapControl, bool>(nameof(EnableClickSelection), defaultValue: false);
+
+    public bool EnableClickSelection
+    {
+        get => GetValue(EnableClickSelectionProperty);
+        set => SetValue(EnableClickSelectionProperty, value);
+    }
+
+    public event EventHandler<MapClickEventArgs>? MapClicked;
+
+    // ------------------------------------------------------------------
     // Data we render in Phase 1
     // ------------------------------------------------------------------
 
@@ -131,6 +154,16 @@ public class SkiaMapControl : Control, ISharedMapControl
         = Array.Empty<(double, double, string, string)>();
     private double _goalEasting, _goalNorthing;
     private bool _guidanceActive;
+
+    // YouTurn path
+    private IReadOnlyList<(double Easting, double Northing)>? _youTurnPath;
+
+    // Tram lines
+    private IReadOnlyList<Vec2>? _tramOuterTrack;
+    private IReadOnlyList<Vec2>? _tramInnerTrack;
+    private IReadOnlyList<IReadOnlyList<Vec2>>? _tramParallelLines;
+    private IReadOnlyList<IReadOnlyList<Vec2>>? _tramBoundaryExtraLines;
+    private byte _tramControlByte;
 
     // ------------------------------------------------------------------
     // Composition visual
@@ -200,6 +233,11 @@ public class SkiaMapControl : Control, ISharedMapControl
         }
 
         PropertyChanged += OnControlPropertyChanged;
+
+        PointerPressed += OnPointerPressed;
+        PointerMoved += OnPointerMoved;
+        PointerReleased += OnPointerReleased;
+        PointerWheelChanged += OnPointerWheelChanged;
     }
 
     public override void Render(DrawingContext context)
@@ -291,16 +329,63 @@ public class SkiaMapControl : Control, ISharedMapControl
             HitchX = _hitchX,
             HitchY = _hitchY,
             ToolReady = _toolPositionReady,
+            HitchLength = toolCfg.HitchLength,
+            IsToolTrailing = toolCfg.IsToolTrailing || toolCfg.IsToolTBT,
+            ToolArmHalfSpread = vehicleCfg.TrackWidth * 0.5 * 0.6,
+            ToolArmBaseX = _vehicleX + (toolCfg.IsToolFrontFixed
+                ? Math.Sin(_vehicleHeading) * vehicleCfg.Wheelbase : 0),
+            ToolArmBaseY = _vehicleY + (toolCfg.IsToolFrontFixed
+                ? Math.Cos(_vehicleHeading) * vehicleCfg.Wheelbase : 0),
+            ToolDrawbarBaseX = _vehicleX,
+            ToolDrawbarBaseY = _vehicleY,
+
+            SectionOn = (bool[])_sectionOn.Clone(),
+            SectionWidths = (double[])_sectionWidths.Clone(),
+            SectionLeft = (double[])_sectionLeft.Clone(),
+            SectionRight = (double[])_sectionRight.Clone(),
+            SectionButtonState = (int[])_sectionButtonState.Clone(),
+            NumSections = _numSections,
 
             Boundary = _boundary,
             HeadlandLine = _headlandLine,
             HeadlandPreview = _headlandPreview,
             IsHeadlandVisible = _isHeadlandVisible,
 
+            YouTurnPath = _youTurnPath,
+            IsInYouTurn = _isInYouTurn,
+
+            ActiveTrack = _activeTrack,
+            BaseTrack = _baseTrack,
+            NextTrack = _nextTrack,
+            PendingPointA = _pendingPointA,
+            RecordedPaths = _recordedPaths,
+            ContourStrips = _contourStrips,
+
+            RecordingPoints = _recordingPoints != null
+                ? new List<(double, double)>(_recordingPoints) : null,
+
+            Flags = _flags,
+
+            GoalEasting = _goalEasting,
+            GoalNorthing = _goalNorthing,
+            GuidanceActive = _guidanceActive,
+
             GroundTexture = _groundTexture,
             FieldTextureVisible = displayCfg.FieldTextureVisible,
             GroundTextureMoveable = displayCfg.FieldTextureMoveable,
             LineSmoothEnabled = displayCfg.LineSmoothEnabled,
+            ExtraGuidelines = displayCfg.ExtraGuidelines,
+            ExtraGuidelinesCount = displayCfg.ExtraGuidelinesCount,
+
+            TramOuterTrack = _tramOuterTrack,
+            TramInnerTrack = _tramInnerTrack,
+            TramParallelLines = _tramParallelLines,
+            TramBoundaryExtraLines = _tramBoundaryExtraLines,
+            TramDisplayMode = ConfigurationStore.Instance.Tram.DisplayMode,
+            TramAlpha = (float)ConfigurationStore.Instance.Tram.Alpha,
+            TramControlByte = _tramControlByte,
+            HalfWheelTrack = vehicleCfg.TrackWidth / 2.0,
+            IsDisplayTramControl = ConfigurationStore.Instance.Tram.IsDisplayTramControl,
 
             IsGridVisible = IsGridVisible,
             IsMetric = ConfigurationStore.Instance.IsMetric,
@@ -408,13 +493,25 @@ public class SkiaMapControl : Control, ISharedMapControl
         int[]? buttonStates = null)
     {
         _numSections = Math.Min(numSections, 16);
-        for (int i = 0; i < _numSections && i < sectionOn.Length; i++)
-            _sectionOn[i] = sectionOn[i];
-        for (int i = 0; i < _numSections && i < sectionWidths.Length; i++)
-            _sectionWidths[i] = sectionWidths[i];
-        if (buttonStates != null)
-            for (int i = 0; i < _numSections && i < buttonStates.Length; i++)
-                _sectionButtonState[i] = buttonStates[i];
+        for (int i = 0; i < _numSections; i++)
+        {
+            _sectionOn[i] = i < sectionOn.Length && sectionOn[i];
+            _sectionButtonState[i] = buttonStates != null && i < buttonStates.Length ? buttonStates[i] : 1;
+            _sectionWidths[i] = i < sectionWidths.Length ? sectionWidths[i] : 1.0;
+        }
+
+        // Cumulative left/right positions centered on the tool — matches DCMC layout
+        // so the same DrawToolSk geometry renders identically here.
+        double totalWidth = 0;
+        for (int i = 0; i < _numSections; i++) totalWidth += _sectionWidths[i];
+        double pos = -totalWidth / 2.0;
+        for (int i = 0; i < _numSections; i++)
+        {
+            _sectionLeft[i] = pos;
+            _sectionRight[i] = pos + _sectionWidths[i];
+            pos += _sectionWidths[i];
+        }
+
         SendStateToHandler();
     }
 
@@ -489,13 +586,19 @@ public class SkiaMapControl : Control, ISharedMapControl
 
     public void SetYouTurnPath(IReadOnlyList<(double Easting, double Northing)>? turnPath)
     {
-        // Phase 2: u-turn path drawing.
+        _youTurnPath = turnPath;
+        SendStateToHandler();
     }
 
-    public void SetNextTrack(Track? track) { _nextTrack = track; }
-    public void SetIsInYouTurn(bool isInTurn) { _isInYouTurn = isInTurn; }
-    public void SetActiveTrack(Track? track) { _activeTrack = track; }
-    public void SetBaseTrack(Track? track) { _baseTrack = track; }
+    public void SetNextTrack(Track? track) { _nextTrack = track; SendStateToHandler(); }
+    public void SetIsInYouTurn(bool isInTurn) { _isInYouTurn = isInTurn; SendStateToHandler(); }
+    public void SetActiveTrack(Track? track) { _activeTrack = track; SendStateToHandler(); }
+    public void SetBaseTrack(Track? track) { _baseTrack = track; SendStateToHandler(); }
+    public void SetPendingPointA(AgValoniaGPS.Models.Position? pointA)
+    {
+        _pendingPointA = pointA;
+        SendStateToHandler();
+    }
 
     public void SetTramLines(
         IReadOnlyList<Vec2>? outerTrack,
@@ -503,13 +606,21 @@ public class SkiaMapControl : Control, ISharedMapControl
         IReadOnlyList<IReadOnlyList<Vec2>>? parallelLines,
         IReadOnlyList<IReadOnlyList<Vec2>>? boundaryExtraLines = null)
     {
-        // Phase 2: tram lines.
+        _tramOuterTrack = outerTrack;
+        _tramInnerTrack = innerTrack;
+        _tramParallelLines = parallelLines;
+        _tramBoundaryExtraLines = boundaryExtraLines;
+        SendStateToHandler();
     }
 
-    public void SetTramControlByte(byte controlByte) { /* Phase 2 */ }
+    public void SetTramControlByte(byte controlByte)
+    {
+        _tramControlByte = controlByte;
+        SendStateToHandler();
+    }
 
-    public void SetRecordedPaths(IReadOnlyList<Track> paths) { _recordedPaths = paths; }
-    public void SetContourStrips(IReadOnlyList<Track> strips) { _contourStrips = strips; }
+    public void SetRecordedPaths(IReadOnlyList<Track> paths) { _recordedPaths = paths; SendStateToHandler(); }
+    public void SetContourStrips(IReadOnlyList<Track> strips) { _contourStrips = strips; SendStateToHandler(); }
 
     // ------------------------------------------------------------------
     // Coverage — Phase 1 stores nothing; ICoverageMapService just talks to
@@ -544,6 +655,137 @@ public class SkiaMapControl : Control, ISharedMapControl
     public void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive)
     {
         _goalEasting = goalEasting; _goalNorthing = goalNorthing; _guidanceActive = isActive;
+    }
+
+    // ------------------------------------------------------------------
+    // Pointer input — pan / rotate / wheel-zoom / click. Same shape as
+    // DCMC so EnableClickSelection (boundary editor) and AB-creation
+    // click handling work uniformly across both 2D control paths.
+    // ------------------------------------------------------------------
+
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var point = e.GetCurrentPoint(this);
+        if (point.Properties.IsLeftButtonPressed)
+        {
+            if (EnableClickSelection)
+            {
+                var world = ScreenToWorld(point.Position.X, point.Position.Y);
+                MapClicked?.Invoke(this, new MapClickEventArgs(world.Easting, world.Northing));
+                e.Handled = true;
+                return;
+            }
+            _isPanning = true;
+            _panStartPosition = point.Position;
+            _hasDraggedPastThreshold = false;
+            _rotationOnPanStart = _rotation;
+            _lastMousePosition = point.Position;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+        }
+        else if (point.Properties.IsRightButtonPressed)
+        {
+            _isRotating = true;
+            _lastMousePosition = point.Position;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+        }
+    }
+
+    private void OnPointerMoved(object? sender, PointerEventArgs e)
+    {
+        var point = e.GetCurrentPoint(this);
+        var currentPos = point.Position;
+        if (_isPanning)
+        {
+            _rotation = _rotationOnPanStart;
+            double deltaX = currentPos.X - _lastMousePosition.X;
+            double deltaY = currentPos.Y - _lastMousePosition.Y;
+            double aspect = Bounds.Width / Bounds.Height;
+            double viewWidth = 200.0 * aspect / _zoom;
+            double viewHeight = 200.0 / _zoom;
+            double worldDeltaX = -deltaX * viewWidth / Bounds.Width;
+            double worldDeltaY = deltaY * viewHeight / Bounds.Height;
+            double cos = Math.Cos(_rotation), sin = Math.Sin(_rotation);
+            double rotatedDeltaX = worldDeltaX * cos - worldDeltaY * sin;
+            double rotatedDeltaY = worldDeltaX * sin + worldDeltaY * cos;
+            _cameraX += rotatedDeltaX;
+            _cameraY += rotatedDeltaY;
+            if (!_hasDraggedPastThreshold)
+            {
+                double dist = Math.Sqrt(Math.Pow(currentPos.X - _panStartPosition.X, 2)
+                    + Math.Pow(currentPos.Y - _panStartPosition.Y, 2));
+                if (dist > DragThreshold) _hasDraggedPastThreshold = true;
+            }
+            if (_hasDraggedPastThreshold)
+            {
+                _cameraFollowMode = 2;
+                UserPanned?.Invoke();
+            }
+            _lastMousePosition = currentPos;
+            SendStateToHandler();
+            e.Handled = true;
+        }
+        else if (_isRotating)
+        {
+            double deltaX = currentPos.X - _lastMousePosition.X;
+            _rotation += deltaX * 0.01;
+            _cameraFollowMode = 2;
+            _lastMousePosition = currentPos;
+            UserPanned?.Invoke();
+            SendStateToHandler();
+            e.Handled = true;
+        }
+    }
+
+    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        // Treat a tap-without-drag as a click. Phase 2 enables AB-line creation
+        // by tapping the map: short presses fire MapClicked with the world coord.
+        if (_isPanning && !_hasDraggedPastThreshold)
+        {
+            var pos = e.GetCurrentPoint(this).Position;
+            var world = ScreenToWorld(pos.X, pos.Y);
+            MapClicked?.Invoke(this, new MapClickEventArgs(world.Easting, world.Northing));
+        }
+        if (_isPanning || _isRotating)
+        {
+            _isPanning = false;
+            _isRotating = false;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        }
+    }
+
+    private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        double zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
+        _zoom = Math.Clamp(_zoom * zoomFactor, 0.02, 100.0);
+        SendStateToHandler();
+        e.Handled = true;
+    }
+
+    public (double Easting, double Northing) ScreenToWorld(double screenX, double screenY)
+    {
+        if (Bounds.Width <= 0 || Bounds.Height <= 0)
+            return (_cameraX, _cameraY);
+
+        double aspect = Bounds.Width / Bounds.Height;
+        double viewWidth = 200.0 * aspect / _zoom;
+        double viewHeight = 200.0 / _zoom;
+
+        double normalizedX = (screenX / Bounds.Width) - 0.5;
+        double normalizedY = 0.5 - (screenY / Bounds.Height);
+
+        double worldOffsetX = normalizedX * viewWidth;
+        double worldOffsetY = normalizedY * viewHeight;
+
+        // Phase 1 is top-down only — no pitch inverse needed; Phase 3 perspective
+        // will reintroduce that step here.
+        double cos = Math.Cos(_rotation), sin = Math.Sin(_rotation);
+        double rotatedX = worldOffsetX * cos - worldOffsetY * sin;
+        double rotatedY = worldOffsetX * sin + worldOffsetY * cos;
+        return (_cameraX + rotatedX, _cameraY + rotatedY);
     }
 
     // ==================================================================
@@ -582,6 +824,30 @@ public class SkiaMapControl : Control, ISharedMapControl
         private readonly SKPaint _headingUnknownDotPaint;
         private readonly SKPaint _reverseIndicatorPaint;
 
+        // Track paints (mirror DCMC PERF-05 cached set)
+        private readonly SKPaint _trackActivePaint;
+        private readonly SKPaint _trackBaseDashPaint;
+        private readonly SKPaint _trackNextPaint;
+        private readonly SKPaint _abMarkerAPaint;
+        private readonly SKPaint _abMarkerBPaint;
+        private readonly SKPaint _abMarkerOutlinePaint;
+        private readonly SKPaint _pendingPointPaint;
+        private readonly SKPathEffect _trackDashEffect;
+        private readonly SKFont _abLabelFont;
+        private readonly SKPaint _abLabelTextPaint;
+        private readonly SKPaint _abLabelHaloPaint;
+        private readonly SKPaint _youTurnPaint;
+
+        // Tool / section paints
+        private readonly SKPaint _toolHitchPaint;
+        private readonly SKPaint _toolDrawbarPaint;
+        private readonly SKPaint _toolCenterPaint;
+        private readonly SKPaint _toolFullBarPaint;
+        private readonly SKPaint _sectionOutlinePaint;
+        private readonly SKPaint[] _sectionFillPaints;
+        private readonly SKPaint _tramOnPaint;
+        private readonly SKPaint _tramOffPaint;
+
         // Vehicle bitmap shadow caches (decode once on first frame)
         private SKBitmap? _vehicleSkBitmap;
         private SKBitmap? _frontWheelSkBitmap;
@@ -612,6 +878,39 @@ public class SkiaMapControl : Control, ISharedMapControl
             _headingUnknownLinePaint = new SKPaint { Color = new SKColor(255, 0, 0), Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f, IsAntialias = true };
             _headingUnknownDotPaint = new SKPaint { Color = new SKColor(255, 0, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
             _reverseIndicatorPaint = new SKPaint { Color = new SKColor(255, 60, 60), Style = SKPaintStyle.Fill, IsAntialias = true };
+
+            _trackDashEffect = SKPathEffect.CreateDash(new float[] { 1.5f, 1.0f }, 0f);
+            // Round joins on the polyline paints — curve segments otherwise show
+            // hard miter corners between points and look like jointed line
+            // segments instead of a smooth curve.
+            _trackActivePaint = new SKPaint { Color = new SKColor(252, 86, 186), Style = SKPaintStyle.Stroke, StrokeWidth = 0.5f, IsAntialias = true, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round };
+            _trackBaseDashPaint = new SKPaint { Color = new SKColor(180, 100, 255), Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f, IsAntialias = true, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round, PathEffect = _trackDashEffect };
+            _trackNextPaint = new SKPaint { Color = new SKColor(0, 200, 200), Style = SKPaintStyle.Stroke, StrokeWidth = 0.4f, IsAntialias = true, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round };
+            _abMarkerAPaint = new SKPaint { Color = new SKColor(0, 255, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
+            _abMarkerBPaint = new SKPaint { Color = new SKColor(255, 0, 0), Style = SKPaintStyle.Fill, IsAntialias = true };
+            _abMarkerOutlinePaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f, IsAntialias = true };
+            _pendingPointPaint = new SKPaint { Color = new SKColor(0, 255, 0), Style = SKPaintStyle.Fill };
+            _abLabelFont = new SKFont(SKTypeface.Default, 1.6f);
+            _abLabelTextPaint = new SKPaint { Color = SKColors.White, IsAntialias = true };
+            _abLabelHaloPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 0.25f };
+            _youTurnPaint = new SKPaint { Color = new SKColor(77, 242, 77), Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
+
+            _toolHitchPaint = new SKPaint { Color = new SKColor(255, 255, 0), Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f };
+            _toolDrawbarPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
+            _toolCenterPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+            _toolFullBarPaint = new SKPaint { Color = new SKColor(0, 242, 0, 191), Style = SKPaintStyle.Fill };
+            _sectionOutlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+            _sectionFillPaints = new SKPaint[]
+            {
+                new SKPaint { Color = new SKColor(242, 51, 51),   Style = SKPaintStyle.Fill }, // 0 Off
+                new SKPaint { Color = new SKColor(247, 247, 0),   Style = SKPaintStyle.Fill }, // 1 Manual ON
+                new SKPaint { Color = new SKColor(0, 242, 0),     Style = SKPaintStyle.Fill }, // 2 Auto ON
+                new SKPaint { Color = new SKColor(0, 222, 222),   Style = SKPaintStyle.Fill }, // 3 Turning OFF
+                new SKPaint { Color = new SKColor(255, 165, 0),   Style = SKPaintStyle.Fill }, // 4 Turning ON
+                new SKPaint { Color = new SKColor(150, 150, 150), Style = SKPaintStyle.Fill }, // 5 Auto OFF
+            };
+            _tramOnPaint = new SKPaint { Color = new SKColor(0, 230, 0), Style = SKPaintStyle.Fill };
+            _tramOffPaint = new SKPaint { Color = new SKColor(40, 40, 40), Style = SKPaintStyle.Fill };
         }
 
         public override Rect GetRenderBounds()
@@ -701,10 +1000,36 @@ public class SkiaMapControl : Control, ISharedMapControl
                                 DrawHeadlandLine(canvas, s);
                             if (s.HeadlandPreview != null && s.HeadlandPreview.Count > 2)
                                 DrawHeadlandPreview(canvas, s);
+                            if (s.YouTurnPath != null && s.YouTurnPath.Count > 1)
+                                DrawYouTurnPathSk(canvas, s);
                         }
 
-                        if (s.ShowVehicle && !DiagFlags.SkipVehicle)
-                            DrawVehicleSk(canvas, s);
+                        if (s.TramDisplayMode != TramDisplayMode.Off && !DiagFlags.SkipTracks)
+                            DrawTramLinesSk(canvas, s);
+
+                        if (!DiagFlags.SkipTracks)
+                        {
+                            DrawRecordedPathsSk(canvas, s);
+                            DrawContourStripsSk(canvas, s);
+                            DrawTrackSk(canvas, s);
+                        }
+
+                        if (s.RecordingPoints != null && s.RecordingPoints.Count > 0)
+                            DrawRecordingPointsSk(canvas, s);
+
+                        if (s.Flags.Count > 0)
+                            DrawFlagsSk(canvas, s);
+
+                        if (!DiagFlags.SkipVehicle)
+                        {
+                            // Match DCMC's gate: ToolWidth > 0.1 means tool config is loaded.
+                            // Using s.ToolReady (full-init flag) was too strict and hid the
+                            // tool/sections even when ToolWidth was set.
+                            if (s.ShowVehicle && s.ToolWidth > 0.1)
+                                DrawToolSk(canvas, s);
+                            if (s.ShowVehicle)
+                                DrawVehicleSk(canvas, s);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -945,6 +1270,284 @@ public class SkiaMapControl : Control, ISharedMapControl
                 path.LineTo((float)s.HeadlandPreview[i].Easting, (float)s.HeadlandPreview[i].Northing);
             path.Close();
             canvas.DrawPath(path, _headlandPreviewPaint);
+        }
+
+        // ----------------- Tool / sections -----------------
+
+        private void DrawToolSk(SKCanvas canvas, MapRenderState s)
+        {
+            float tx = (float)s.ToolX, ty = (float)s.ToolY;
+            float toolDepth = 2.0f;
+
+            if (s.IsToolTrailing)
+            {
+                canvas.DrawLine((float)s.ToolDrawbarBaseX, (float)s.ToolDrawbarBaseY,
+                    (float)s.HitchX, (float)s.HitchY, _toolDrawbarPaint);
+                canvas.DrawLine((float)s.HitchX, (float)s.HitchY, tx, ty, _toolHitchPaint);
+            }
+            else
+            {
+                float cosV = (float)Math.Cos(-s.VehicleHeading);
+                float sinV = (float)Math.Sin(-s.VehicleHeading);
+                float baseX = (float)s.ToolArmBaseX;
+                float baseY = (float)s.ToolArmBaseY;
+                float armSpread = (float)s.ToolArmHalfSpread;
+                canvas.DrawLine(baseX + (-armSpread) * cosV, baseY + (-armSpread) * sinV, tx, ty, _toolHitchPaint);
+                canvas.DrawLine(baseX + armSpread * cosV, baseY + armSpread * sinV, tx, ty, _toolHitchPaint);
+            }
+
+            canvas.Save();
+            canvas.Translate(tx, ty);
+            canvas.RotateRadians(-(float)s.ToolHeading);
+
+            if (s.NumSections > 0)
+            {
+                float sectionGap = 0.05f;
+                for (int i = 0; i < s.NumSections; i++)
+                {
+                    float left = (float)s.SectionLeft[i] + sectionGap / 2;
+                    float right = (float)s.SectionRight[i] - sectionGap / 2;
+                    float width = right - left;
+                    if (width < 0.01f) continue;
+                    int state = s.SectionButtonState[i];
+                    var secPaint = (uint)state < (uint)_sectionFillPaints.Length
+                        ? _sectionFillPaints[state]
+                        : _sectionFillPaints[2];
+                    canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, secPaint);
+                    canvas.DrawRect(left, -toolDepth / 2, width, toolDepth, _sectionOutlinePaint);
+                }
+            }
+            else
+            {
+                float halfWidth = (float)(s.ToolWidth / 2);
+                canvas.DrawRect(-halfWidth, -toolDepth / 2, (float)s.ToolWidth, toolDepth, _toolFullBarPaint);
+            }
+
+            canvas.DrawLine(0, -toolDepth / 2, 0, toolDepth / 2, _toolCenterPaint);
+
+            if (s.IsDisplayTramControl && s.TramDisplayMode != TramDisplayMode.Off)
+            {
+                float dotRadius = 0.3f;
+                float halfTrack = (float)s.HalfWheelTrack;
+                bool rightOn = (s.TramControlByte & 1) != 0;
+                bool leftOn  = (s.TramControlByte & 2) != 0;
+                canvas.DrawCircle(halfTrack, 0, dotRadius, rightOn ? _tramOnPaint : _tramOffPaint);
+                canvas.DrawCircle(-halfTrack, 0, dotRadius, leftOn  ? _tramOnPaint : _tramOffPaint);
+            }
+
+            canvas.Restore();
+        }
+
+        // ----------------- Tracks -----------------
+
+        private void DrawTrackSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
+            {
+                if (s.ActiveTrack.Points.Count == 2)
+                    DrawExtendedABLineSk(canvas, s.ActiveTrack.Points[0], s.ActiveTrack.Points[1], _trackActivePaint);
+                else
+                    DrawTrackPointsSk(canvas, s.ActiveTrack.Points, _trackActivePaint);
+            }
+
+            var sourceAb = ResolveSourceAbTrack(s);
+            if (sourceAb != null && sourceAb.Points.Count == 2)
+            {
+                var pA = sourceAb.Points[0];
+                var pB = sourceAb.Points[1];
+                canvas.DrawLine((float)pA.Easting, (float)pA.Northing,
+                    (float)pB.Easting, (float)pB.Northing, _trackBaseDashPaint);
+
+                float markerHalf = 0.6f;
+                var aRect = new SKRect((float)pA.Easting - markerHalf, (float)pA.Northing - markerHalf,
+                    (float)pA.Easting + markerHalf, (float)pA.Northing + markerHalf);
+                canvas.DrawRect(aRect, _abMarkerAPaint);
+                canvas.DrawRect(aRect, _abMarkerOutlinePaint);
+
+                var bRect = new SKRect((float)pB.Easting - markerHalf, (float)pB.Northing - markerHalf,
+                    (float)pB.Easting + markerHalf, (float)pB.Northing + markerHalf);
+                canvas.DrawRect(bRect, _abMarkerBPaint);
+                canvas.DrawRect(bRect, _abMarkerOutlinePaint);
+
+                DrawAbLabelSk(canvas, "A", pA.Easting + markerHalf + 0.4, pA.Northing + markerHalf + 0.4);
+                DrawAbLabelSk(canvas, "B", pB.Easting + markerHalf + 0.4, pB.Northing + markerHalf + 0.4);
+            }
+            else if (sourceAb != null && sourceAb.Points.Count > 2)
+            {
+                DrawTrackPointsSk(canvas, sourceAb.Points, _trackBaseDashPaint);
+            }
+
+            if (s.IsInYouTurn && s.NextTrack != null && s.NextTrack.Points.Count >= 2)
+            {
+                if (s.NextTrack.Points.Count == 2)
+                    DrawExtendedABLineSk(canvas, s.NextTrack.Points[0], s.NextTrack.Points[1], _trackNextPaint);
+                else
+                    DrawTrackPointsSk(canvas, s.NextTrack.Points, _trackNextPaint);
+            }
+
+            if (s.PendingPointA != null)
+                canvas.DrawCircle((float)s.PendingPointA.Easting, (float)s.PendingPointA.Northing, 1.0f, _pendingPointPaint);
+        }
+
+        private static Track? ResolveSourceAbTrack(MapRenderState s)
+        {
+            if (s.BaseTrack != null && s.BaseTrack.Points.Count >= 2 && s.BaseTrack != s.ActiveTrack)
+                return s.BaseTrack;
+            if (s.ActiveTrack != null && s.ActiveTrack.Points.Count >= 2)
+                return s.ActiveTrack;
+            return null;
+        }
+
+        private static void DrawExtendedABLineSk(SKCanvas canvas, Vec3 a, Vec3 b, SKPaint paint)
+        {
+            double dx = b.Easting - a.Easting;
+            double dy = b.Northing - a.Northing;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 0.01)
+            {
+                canvas.DrawPoint((float)a.Easting, (float)a.Northing, paint);
+                return;
+            }
+            double nx = dx / len, ny = dy / len;
+            const double ext = 5000.0;
+            float x1 = (float)(a.Easting - nx * ext);
+            float y1 = (float)(a.Northing - ny * ext);
+            float x2 = (float)(b.Easting + nx * ext);
+            float y2 = (float)(b.Northing + ny * ext);
+            canvas.DrawLine(x1, y1, x2, y2, paint);
+        }
+
+        private static void DrawTrackPointsSk(SKCanvas canvas, IReadOnlyList<Vec3> points, SKPaint paint)
+        {
+            if (points.Count < 2) return;
+            using var path = new SKPath();
+            path.MoveTo((float)points[0].Easting, (float)points[0].Northing);
+            for (int i = 1; i < points.Count; i++)
+                path.LineTo((float)points[i].Easting, (float)points[i].Northing);
+            canvas.DrawPath(path, paint);
+        }
+
+        private void DrawAbLabelSk(SKCanvas canvas, string text, double worldX, double worldY)
+        {
+            float fontSize = _abLabelFont.Size;
+            canvas.Save();
+            canvas.Scale(1, -1, (float)worldX, (float)worldY);
+            canvas.DrawText(text, (float)worldX, (float)worldY + fontSize / 2, _abLabelFont, _abLabelHaloPaint);
+            canvas.DrawText(text, (float)worldX, (float)worldY + fontSize / 2, _abLabelFont, _abLabelTextPaint);
+            canvas.Restore();
+        }
+
+        private void DrawYouTurnPathSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.YouTurnPath == null || s.YouTurnPath.Count < 2) return;
+            using var path = new SKPath();
+            path.MoveTo((float)s.YouTurnPath[0].Easting, (float)s.YouTurnPath[0].Northing);
+            for (int i = 1; i < s.YouTurnPath.Count; i++)
+                path.LineTo((float)s.YouTurnPath[i].Easting, (float)s.YouTurnPath[i].Northing);
+            canvas.DrawPath(path, _youTurnPaint);
+        }
+
+        private void DrawTramLinesSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.TramDisplayMode == TramDisplayMode.Off) return;
+            bool hasBoundary = (s.TramOuterTrack?.Count > 1 || s.TramInnerTrack?.Count > 1);
+            bool hasLines = s.TramParallelLines?.Count > 0;
+            if (!hasBoundary && !hasLines) return;
+
+            byte alpha = (byte)(s.TramAlpha * 160);
+            using var tramPaint = new SKPaint
+            {
+                Color = new SKColor(237, 140, 150, alpha),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 0.6f,
+                IsAntialias = true
+            };
+
+            bool hasBoundaryExtra = s.TramBoundaryExtraLines?.Count > 0;
+
+            if ((s.TramDisplayMode == TramDisplayMode.All
+                 || s.TramDisplayMode == TramDisplayMode.LinesOnly) && hasLines)
+            {
+                foreach (var line in s.TramParallelLines!)
+                {
+                    if (line.Count < 2) continue;
+                    using var path = new SKPath();
+                    path.MoveTo((float)line[0].Easting, (float)line[0].Northing);
+                    for (int i = 1; i < line.Count; i++)
+                        path.LineTo((float)line[i].Easting, (float)line[i].Northing);
+                    canvas.DrawPath(path, tramPaint);
+                }
+            }
+
+            if ((s.TramDisplayMode == TramDisplayMode.All
+                 || s.TramDisplayMode == TramDisplayMode.OuterOnly) && hasBoundary)
+            {
+                void DrawTramTrack(IReadOnlyList<Vec2> track)
+                {
+                    if (track.Count < 2) return;
+                    using var path = new SKPath();
+                    path.MoveTo((float)track[0].Easting, (float)track[0].Northing);
+                    for (int i = 1; i < track.Count; i++)
+                        path.LineTo((float)track[i].Easting, (float)track[i].Northing);
+                    canvas.DrawPath(path, tramPaint);
+                }
+                if (s.TramOuterTrack != null) DrawTramTrack(s.TramOuterTrack);
+                if (s.TramInnerTrack != null) DrawTramTrack(s.TramInnerTrack);
+                if (hasBoundaryExtra)
+                    foreach (var line in s.TramBoundaryExtraLines!)
+                        DrawTramTrack(line);
+            }
+        }
+
+        private void DrawRecordingPointsSk(SKCanvas canvas, MapRenderState s)
+        {
+            if (s.RecordingPoints == null) return;
+            using var linePaint = new SKPaint { Color = new SKColor(0, 255, 255), Style = SKPaintStyle.Stroke, StrokeWidth = 0.5f, IsAntialias = true };
+            using var pointPaint = new SKPaint { Color = new SKColor(255, 128, 0), Style = SKPaintStyle.Fill };
+            for (int i = 1; i < s.RecordingPoints.Count; i++)
+            {
+                var (e1, n1) = s.RecordingPoints[i - 1];
+                var (e2, n2) = s.RecordingPoints[i];
+                canvas.DrawLine((float)e1, (float)n1, (float)e2, (float)n2, linePaint);
+            }
+            if (s.RecordingPoints.Count > 0)
+            {
+                var (e, n) = s.RecordingPoints[s.RecordingPoints.Count - 1];
+                canvas.DrawCircle((float)e, (float)n, 0.3f, pointPaint);
+            }
+        }
+
+        private void DrawFlagsSk(SKCanvas canvas, MapRenderState s)
+        {
+            using var outlinePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
+            foreach (var (easting, northing, color, name) in s.Flags)
+            {
+                var skColor = color switch
+                {
+                    "Red" => SKColors.Red,
+                    "Green" => SKColors.Green,
+                    "Blue" => SKColors.Blue,
+                    "Yellow" => SKColors.Yellow,
+                    _ => SKColors.White
+                };
+                using var paint = new SKPaint { Color = skColor, Style = SKPaintStyle.Fill };
+                canvas.DrawCircle((float)easting, (float)northing, 0.8f, paint);
+                canvas.DrawCircle((float)easting, (float)northing, 0.8f, outlinePaint);
+            }
+        }
+
+        private void DrawRecordedPathsSk(SKCanvas canvas, MapRenderState s)
+        {
+            foreach (var p in s.RecordedPaths)
+                if (p.Points.Count > 1)
+                    DrawTrackPointsSk(canvas, p.Points, _trackBaseDashPaint);
+        }
+
+        private void DrawContourStripsSk(SKCanvas canvas, MapRenderState s)
+        {
+            foreach (var p in s.ContourStrips)
+                if (p.Points.Count > 1)
+                    DrawTrackPointsSk(canvas, p.Points, _trackBaseDashPaint);
         }
 
         // ----------------- Vehicle -----------------

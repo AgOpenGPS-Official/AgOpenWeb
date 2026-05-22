@@ -138,9 +138,13 @@ public partial class MainView : UserControl
             viewModel.ScreenshotProvider = () =>
                 AgValoniaGPS.Views.ScreenshotHelper.CaptureScreenshotPng(this);
 
-            // Wire up MapClicked event for AB line creation (DCMC only)
+            // MapClicked is concrete-typed on each 2D control. Both DCMC and
+            // SkiaMap fire it with the same signature — wire both so AB-line
+            // creation works regardless of which one is mounted.
             if (_mapControl != null)
                 _mapControl.MapClicked += OnMapClicked;
+            if (_skiaMapControl != null)
+                _skiaMapControl.MapClicked += OnMapClicked;
             _active2DMapControl.UserPanned += () => _viewModel?.OnUserPan();
 
 
@@ -289,21 +293,21 @@ public partial class MainView : UserControl
 
     private void UpdateActiveTrack()
     {
-        if (_mapControl != null && _viewModel != null)
+        if (_active2DMapControl != null && _viewModel != null)
         {
             // Only show track on map if explicitly active (no fallback)
             var activeTrack = _viewModel.SavedTracks.FirstOrDefault(t => t.IsActive);
-            _mapControl.SetActiveTrack(activeTrack);
+            _active2DMapControl.SetActiveTrack(activeTrack);
         }
     }
 
     private void SyncInitialPositions()
     {
-        if (_mapControl == null || _viewModel == null) return;
+        if (_active2DMapControl == null || _viewModel == null) return;
 
         // Sync vehicle position
         double headingRadians = _viewModel.Heading * Math.PI / 180.0;
-        _mapControl.SetVehiclePosition(_viewModel.Easting, _viewModel.Northing, headingRadians);
+        _active2DMapControl.SetVehiclePosition(_viewModel.Easting, _viewModel.Northing, headingRadians);
 
         // Get tool config (ViewModel's tool values are 0 until first simulator update)
         var configStore = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
@@ -332,8 +336,8 @@ public partial class MainView : UserControl
         }
 
         // Sync tool position and section states
-        _mapControl.SetToolPosition(toolX, toolY, toolHeading, toolWidth, hitchX, hitchY);
-        _mapControl.SetSectionStates(
+        _active2DMapControl.SetToolPosition(toolX, toolY, toolHeading, toolWidth, hitchX, hitchY);
+        _active2DMapControl.SetSectionStates(
             _viewModel.GetSectionStates(),
             _viewModel.GetSectionWidths(),
             _viewModel.NumSections,
@@ -348,13 +352,12 @@ public partial class MainView : UserControl
         // visible tool/hitch oscillation: SetVehiclePosition moves the camera
         // and triggers a render with stale tool state, then SetAllPositions
         // snaps the tool forward — once per GPS tick.
-        if (_mapControl != null && _viewModel != null)
+        if (_active2DMapControl != null && _viewModel != null)
         {
             if (e.PropertyName?.StartsWith("Section") == true &&
                      (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
             {
-                // Section state or color code changed - update map control
-                _mapControl.SetSectionStates(
+                _active2DMapControl.SetSectionStates(
                     _viewModel.GetSectionStates(),
                     _viewModel.GetSectionWidths(),
                     _viewModel.NumSections,
@@ -362,30 +365,22 @@ public partial class MainView : UserControl
             }
             else if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
             {
-                // Update map control click selection mode
-                _mapControl.EnableClickSelection = _viewModel.EnableABClickSelection;
+                _active2DMapControl.EnableClickSelection = _viewModel.EnableABClickSelection;
             }
             else if (e.PropertyName == nameof(MainViewModel.Is2DMode))
             {
-                // Is2DMode = true means 3D is off, so invert the value
-                _mapControl.Set3DMode(!_viewModel.Is2DMode);
+                _active2DMapControl.Set3DMode(!_viewModel.Is2DMode);
                 ApplyMapModeChildren(_viewModel.Is2DMode);
             }
             else if (e.PropertyName == nameof(MainViewModel.CameraPitch))
             {
-                // CameraPitch: -90 = overhead, -10 = horizontal
-                // Map: 0 rad = overhead, PI/2.5 = horizontal
                 double pitchRadians = (90.0 + _viewModel.CameraPitch) * Math.PI / 180.0;
-                _mapControl.SetPitchAbsolute(pitchRadians);
+                _active2DMapControl.SetPitchAbsolute(pitchRadians);
             }
             else if (e.PropertyName == nameof(MainViewModel.IsSimulatorEnabled))
             {
-                // When simulator is enabled, sync positions after a short delay
-                // to ensure the first simulator tick has updated tool position
                 if (_viewModel.IsSimulatorEnabled)
                 {
-                    // Wait for simulator's first tick (runs at ~10Hz = 100ms interval)
-                    // Use 300ms to ensure at least one update has occurred
                     _ = Task.Delay(300).ContinueWith(_ =>
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Post(SyncInitialPositions);
@@ -394,8 +389,7 @@ public partial class MainView : UserControl
             }
             else if (e.PropertyName == nameof(MainViewModel.PendingPointA))
             {
-                // Update map with pending Point A marker
-                _mapControl.SetPendingPointA(_viewModel.PendingPointA);
+                _active2DMapControl.SetPendingPointA(_viewModel.PendingPointA);
             }
             else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))
             {

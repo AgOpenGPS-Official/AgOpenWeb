@@ -267,12 +267,13 @@ public partial class MainWindow : Window
             MapControl.MarkCoverageDirty();
         }
 
-        // MapClicked is DCMC-specific (not on ISharedMapControl). When the
-        // SkiaMapControl is active in Phase 1 the AB-creation click path is
-        // disabled — Phase 1 targets idle scenarios S1/S2. Tracks land in
-        // Phase 2. UserPanned is on the interface so we can wire it either way.
+        // MapClicked is concrete-typed (not on ISharedMapControl). Both 2D
+        // controls fire it with the same signature — wire both so AB-line
+        // creation works regardless of which one is mounted.
         if (_dcMapControl != null)
             _dcMapControl.MapClicked += OnMapClicked;
+        if (_skiaMapControl != null)
+            _skiaMapControl.MapClicked += OnMapClicked;
         if (MapControl != null)
             MapControl.UserPanned += () => ViewModel?.OnUserPan();
     }
@@ -647,18 +648,12 @@ public partial class MainWindow : Window
         }
         else if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
         {
-            if (MapControl is DrawingContextMapControl dcMapControl)
-            {
-                dcMapControl.EnableClickSelection = ViewModel?.EnableABClickSelection ?? false;
-            }
+            if (MapControl != null)
+                MapControl.EnableClickSelection = ViewModel?.EnableABClickSelection ?? false;
         }
         else if (e.PropertyName == nameof(MainViewModel.PendingPointA))
         {
-            // Update map with pending Point A marker
-            if (MapControl is DrawingContextMapControl dcMapControl)
-            {
-                dcMapControl.SetPendingPointA(ViewModel?.PendingPointA);
-            }
+            MapControl?.SetPendingPointA(ViewModel?.PendingPointA);
         }
         else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))
         {
@@ -684,11 +679,10 @@ public partial class MainWindow : Window
 
     private void UpdateActiveTrack()
     {
-        if (MapControl is DrawingContextMapControl dcMapControl && ViewModel != null)
+        if (MapControl != null && ViewModel != null)
         {
-            // Only show track on map if explicitly active (no fallback)
             var activeTrack = ViewModel.SavedTracks.FirstOrDefault(t => t.IsActive);
-            dcMapControl.SetActiveTrack(activeTrack);
+            MapControl.SetActiveTrack(activeTrack);
         }
     }
 
@@ -709,11 +703,10 @@ public partial class MainWindow : Window
             if (point.Properties.IsLeftButtonPressed)
             {
                 // In AB creation mode, handle tap for setting points instead of panning
-                if (ViewModel?.EnableABClickSelection == true && MapControl is DrawingContextMapControl dcMapControl)
+                if (ViewModel?.EnableABClickSelection == true && MapControl != null)
                 {
-                    // Get the world position from the click and fire MapClicked event
-                    var worldPos = dcMapControl.ScreenToWorld(point.Position.X, point.Position.Y);
-                    OnMapClicked(dcMapControl, new MapClickEventArgs(worldPos.Easting, worldPos.Northing));
+                    var worldPos = MapControl.ScreenToWorld(point.Position.X, point.Position.Y);
+                    OnMapClicked(MapControl, new MapClickEventArgs(worldPos.Easting, worldPos.Northing));
                     e.Handled = true;
                     return;
                 }
