@@ -304,7 +304,28 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     // State snapshot
     // ------------------------------------------------------------------
 
+    // Coalesce multiple setter calls in the same UI tick into a single
+    // state build + send. ApplyGpsCycleResult fires N setters per GPS cycle
+    // (sections, you-turn, tracks, etc.); each used to build a fresh
+    // MapRenderState (large class) and clone 5 arrays, dominating
+    // ApplyGpsCycle's 11 KB/cycle allocation. Coalescing collapses that to
+    // one build per cycle. Render-thread timing is unchanged — the
+    // CustomVisual.SendHandlerMessage queue was already async.
+    private bool _sendStatePending;
+
     internal void SendStateToHandler()
+    {
+        if (_customVisual == null || _handler == null) return;
+        if (_sendStatePending) return;
+        _sendStatePending = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _sendStatePending = false;
+            SendStateToHandlerNow();
+        }, DispatcherPriority.Background);
+    }
+
+    private void SendStateToHandlerNow()
     {
         if (_customVisual == null || _handler == null) return;
 
@@ -1207,11 +1228,6 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                 Dispatcher.UIThread.Post(() => _owner.ReportFps(fps), DispatcherPriority.Background);
             }
 
-            // Temp render-thread time probe: log any frame that takes >50ms.
-            // Confirms whether the beach-ball hang lives on the render thread
-            // (this log fires near the hang) or the UI thread (silent here).
-            var renderStopwatch = System.Diagnostics.Stopwatch.StartNew();
-
             try
             {
                 // Background fill (screen space — before camera transform)
@@ -1275,15 +1291,6 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SkiaMapVisualHandler] OnRender outer error: {ex.Message}");
-            }
-
-            renderStopwatch.Stop();
-            if (renderStopwatch.ElapsedMilliseconds >= 50)
-            {
-                bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
-                Console.WriteLine($"[SkiaMap] slow frame: {renderStopwatch.ElapsedMilliseconds} ms" +
-                                  $" perspective={perspective} hasField={s.Boundary != null}" +
-                                  $" hasCoverage={s.BitmapHasContent}");
             }
         }
 
