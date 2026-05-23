@@ -394,6 +394,12 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             BitmapHasContent = _bitmapHasContent,
             BitmapExplicitlyInitialized = _bitmapExplicitlyInitialized,
 
+            BackgroundImagePath = _backgroundImagePath,
+            BgMinX = _bgMinX,
+            BgMaxX = _bgMaxX,
+            BgMinY = _bgMinY,
+            BgMaxY = _bgMaxY,
+
             Boundary = _boundary,
             HeadlandLine = _headlandLine,
             HeadlandPreview = _headlandPreview,
@@ -1103,6 +1109,15 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         private SKShader? _groundShader;
         private SKPaint? _groundPaint;
 
+        // Field imagery cache. Lazy-decoded on the render thread so the GPU
+        // upload + mipmap chain build happen in the right graphics context
+        // (UI-thread-decoded SKImages were falling back to CPU rasterization
+        // on iPad, dragging us to 11 FPS). Re-decoded only when the path
+        // changes.
+        private SKImage? _backgroundSkImage;
+        private string? _backgroundSkImagePath;
+        private const int BackgroundMaxDim = 2048;
+
         // Coverage SKImage snapshot cache (same pattern as DCMC). Skia can't cache
         // a mutating SKBitmap as a GPU texture across frames, so we snapshot it to
         // an immutable SKImage on a throttled cadence and draw that. The copy runs
@@ -1116,8 +1131,19 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         private const double CoverageSnapshotIntervalMs = 200.0;
         private static readonly SKSamplingOptions _coverageSamplingNearest =
             new SKSamplingOptions(SKFilterMode.Nearest, SKMipmapMode.None);
+        // Apple path (composite imagery + coverage in one SKBitmap): coverage
+        // snapshot carries imagery pixels, so it needs trilinear/mipmap to fix
+        // far-field shimmer. Worth the per-snapshot mipmap rebuild cost on
+        // iPad's Metal-backed Skia.
+        private static readonly SKSamplingOptions _coverageSamplingMipped =
+            new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
+        // Non-Apple path (split layers): coverage holds only painted cells
+        // (transparent elsewhere), no mips needed; imagery is the layer below
+        // and uses its own mipped sampling.
         private static readonly SKSamplingOptions _coverageSamplingLinear =
             new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None);
+        private static readonly SKSamplingOptions _imageryMipmappedSampling =
+            new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear);
 
         // Vehicle bitmap proportions — same constants DCMC uses so the sprite
         // sits on the configured wheelbase / track-width regardless of zoom.
@@ -1449,6 +1475,52 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             canvas.DrawRect(new SKRect(minX, minY, maxX, maxY), _groundPaint);
         }
 
+        private void EnsureBackgroundSkImage(MapRenderState s)
+        {
+            var path = s.BackgroundImagePath;
+            if (string.IsNullOrEmpty(path))
+            {
+                if (_backgroundSkImage != null)
+                {
+                    _backgroundSkImage.Dispose();
+                    _backgroundSkImage = null;
+                    _backgroundSkImagePath = null;
+                }
+                return;
+            }
+            if (string.Equals(_backgroundSkImagePath, path, StringComparison.Ordinal)
+                && _backgroundSkImage != null)
+                return;
+            try
+            {
+                using var codec = SKCodec.Create(path);
+                if (codec == null) return;
+                var info = codec.Info;
+                int sampleSize = 1;
+                while ((info.Width / sampleSize) > BackgroundMaxDim
+                    || (info.Height / sampleSize) > BackgroundMaxDim)
+                    sampleSize *= 2;
+                var scaledSize = codec.GetScaledDimensions(1.0f / sampleSize);
+                var targetInfo = new SKImageInfo(
+                    scaledSize.Width, scaledSize.Height,
+                    SKColorType.Rgba8888, SKAlphaType.Premul);
+                using var bmp = new SKBitmap(targetInfo);
+                var result = codec.GetPixels(targetInfo, bmp.GetPixels());
+                if (result != SKCodecResult.Success && result != SKCodecResult.IncompleteInput)
+                    return;
+                using var pixmap = bmp.PeekPixels();
+                if (pixmap == null) return;
+                var old = _backgroundSkImage;
+                _backgroundSkImage = SKImage.FromPixelCopy(pixmap);
+                _backgroundSkImagePath = path;
+                old?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SkiaMapVisualHandler] Imagery decode failed: {ex.Message}");
+            }
+        }
+
         private void EnsureGroundSkBitmap(MapRenderState s)
         {
             if (s.GroundTexture == null) return;
@@ -1683,6 +1755,21 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         private void DrawCoverageBitmap(SKCanvas canvas, MapRenderState s)
         {
+            // Non-Apple platforms: imagery layer first, static + mipped.
+            // EnsureBackgroundSkImage decodes lazily on the render thread so
+            // the GPU upload + mip chain land in the right context.
+            if (UseSeparateImageryLayer)
+            {
+                EnsureBackgroundSkImage(s);
+                if (_backgroundSkImage != null && s.BgMaxX > s.BgMinX && s.BgMaxY > s.BgMinY)
+                {
+                    var bgDst = new SKRect(
+                        (float)s.BgMinX, (float)s.BgMinY,
+                        (float)s.BgMaxX, (float)s.BgMaxY);
+                    canvas.DrawImage(_backgroundSkImage, bgDst, _imageryMipmappedSampling);
+                }
+            }
+
             var bitmap = s.CoverageSkBitmap;
             if (bitmap == null || s.BitmapWidth == 0 || s.BitmapHeight == 0) return;
             if (bitmap.Handle == IntPtr.Zero) return;
@@ -1742,10 +1829,18 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             // — foreshortened nearest-neighbor pixels moire badly (visible as
             // tree-detail flicker in the field PNG). 2D path keeps its
             // nearest-neighbor fast path so coverage paint stays crisp.
+            // On the Apple composite path the coverage snapshot carries
+            // imagery pixels too, so we need mipmap sampling here to fix the
+            // far-field shimmer. Non-Apple split-layer path keeps coverage
+            // mip-free because imagery is its own layer drawn underneath.
             bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
-            var sampling = (s.LineSmoothEnabled || perspective)
-                ? _coverageSamplingLinear
-                : _coverageSamplingNearest;
+            SKSamplingOptions sampling;
+            if (perspective && !UseSeparateImageryLayer)
+                sampling = _coverageSamplingMipped;
+            else if (s.LineSmoothEnabled || perspective)
+                sampling = _coverageSamplingLinear;
+            else
+                sampling = _coverageSamplingNearest;
             canvas.DrawImage(_coverageSnapshot, src, dst, sampling);
         }
 

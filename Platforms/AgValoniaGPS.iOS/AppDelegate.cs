@@ -37,13 +37,14 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
             // Explicitly configure for iOS - this ensures no desktop window chrome.
             // Skia's default GPU cache is ~28 MB; our coverage bitmap alone is ~50 MB,
             // so without a bump the texture is re-uploaded every frame (~20+ FPS cost
-            // on iPad). 128 MB comfortably fits coverage + other textures.
+            // on iPad). 192 MB fits coverage + its mipmap chain + other textures
+            // comfortably on 4 GB tablets.
             var result = base.CustomizeAppBuilder(builder)
                 .UseiOS()
                 .LogToTrace()
                 .With(new SkiaOptions
                 {
-                    MaxGpuResourceSizeBytes = 128L * 1024 * 1024
+                    MaxGpuResourceSizeBytes = 192L * 1024 * 1024
                 });
             Console.WriteLine("[AppDelegate] CustomizeAppBuilder completed.");
             return result;

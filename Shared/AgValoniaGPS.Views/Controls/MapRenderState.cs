@@ -109,6 +109,10 @@ internal class MapRenderState
 
     // Background image
     public Bitmap? BackgroundImage;
+    // Imagery PNG path — handler lazy-decodes into its own SKImage on the
+    // render thread so the GPU upload + mipmap chain happen in the right
+    // graphics context. Same lifecycle pattern as the ground texture.
+    public string? BackgroundImagePath;
     public double BgMinX, BgMaxY, BgMaxX, BgMinY;
     public bool BackgroundComposited;
 

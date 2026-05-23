@@ -49,7 +49,12 @@ public partial class SkiaMapControl
     private Func<double, double, double, double, double, IEnumerable<(int CellX, int CellY, CoverageColor Color)>>? _coverageAllCellsProvider;
     private Func<double, IEnumerable<(int CellX, int CellY, CoverageColor Color)>>? _coverageNewCellsProvider;
 
-    // Background image (composited into the coverage bitmap)
+    // Background image — drawn as its own GPU-uploaded layer with mipmaps so
+    // the far field doesn't shimmer. Decoupled from the coverage bitmap so the
+    // 200 ms coverage snapshot doesn't rebuild the imagery mip chain. The
+    // SKImage itself is lazy-built on the render thread inside the handler
+    // (see EnsureBackgroundSkImage) so the GPU upload lands in the right
+    // graphics context — same pattern as the ground texture.
     private string? _backgroundImagePath;
     private Bitmap? _backgroundImage;
     private double _bgMinX, _bgMaxY, _bgMaxX, _bgMinY;
@@ -72,6 +77,20 @@ public partial class SkiaMapControl
 
     private const double MIN_BITMAP_CELL_SIZE = 0.1;
     private const bool USE_RGB565_FULL_RESOLUTION = false;
+
+    // Imagery rendering strategy. Two paths produce identical visual quality
+    // (shimmer-free far field via trilinear/mipmap sampling) but Skia's
+    // backend behaves very differently per platform:
+    //   - Apple (Metal-backed Skia): composite imagery into the coverage
+    //     SKBitmap and draw the result as one mipped texture. The Phase 2
+    //     two-layer perspective draw collapsed iPad to 11 FPS regardless of
+    //     decode location or downsampling.
+    //   - Android (GL/Adreno), Desktop: draw imagery as its own static mipped
+    //     SKImage layer; coverage layer stays transparent on unpainted cells.
+    //     Avoids rebuilding the imagery mip chain on every 200 ms coverage
+    //     snapshot (which cost Android 12 FPS on the composite path).
+    private static readonly bool UseSeparateImageryLayer =
+        !OperatingSystem.IsIOS() && !OperatingSystem.IsMacOS();
 
     // ------------------------------------------------------------------
     // ISharedMapControl coverage entry points
@@ -203,13 +222,17 @@ public partial class SkiaMapControl
             }
         }
 
-        if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+        if (UseSeparateImageryLayer)
         {
-            // Re-compositing the field PNG into a 367 ha bitmap is a ~700 ms
-            // per-cell loop that used to run synchronously here, producing a
-            // 1-2 s UI beach ball on first-accelerate. Run it on a background
-            // thread; the marshal-back blit is just a memcpy of ~28 MB which
-            // is fast enough to fit in one frame.
+            // Imagery draws as its own GPU layer; no re-bake needed.
+            _backgroundComposited = true;
+        }
+        else if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+        {
+            // Apple path: re-bake imagery into the cleared coverage bitmap so
+            // the next composite snapshot has both layers in one texture. The
+            // bake runs on a background thread to avoid a UI freeze on
+            // large fields.
             _backgroundComposited = false;
             ScheduleBackgroundCompositeAsync();
         }
@@ -439,7 +462,8 @@ public partial class SkiaMapControl
             try
             {
                 _backgroundImage = new Bitmap(imagePath);
-                if (_coverageWriteableBitmap != null && _bitmapWidth > 0 && _bitmapHeight > 0)
+                if (!UseSeparateImageryLayer
+                    && _coverageWriteableBitmap != null && _bitmapWidth > 0 && _bitmapHeight > 0)
                 {
                     CompositeBackgroundIntoBitmap();
                     SyncSkBitmapFromDisplay();
@@ -528,7 +552,8 @@ public partial class SkiaMapControl
 
         if (!_backgroundComposited)
         {
-            if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+            if (!UseSeparateImageryLayer
+                && !string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
             {
                 CompositeBackgroundIntoBitmap();
                 SyncSkBitmapFromDisplay();
@@ -635,8 +660,17 @@ public partial class SkiaMapControl
         using (var fb = _coverageDisplayBitmap.Lock())
             new Span<byte>((byte*)fb.Address, fb.RowBytes * _bitmapHeight).Clear();
 
-        if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+        if (UseSeparateImageryLayer)
         {
+            // Imagery draws as a separate mipped GPU layer. Coverage starts
+            // fully transparent.
+            _backgroundComposited = true;
+            _bitmapHasContent = false;
+        }
+        else if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+        {
+            // Apple path: bake imagery into the coverage bitmap so the
+            // composite mipmap fix carries through.
             _backgroundComposited = false;
             CompositeBackgroundIntoBitmap();
             SyncSkBitmapFromDisplay();
@@ -659,10 +693,15 @@ public partial class SkiaMapControl
             using (var fb = _coverageWriteableBitmap.Lock())
                 new Span<byte>((byte*)fb.Address, fb.RowBytes * _bitmapHeight).Clear();
 
-            if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
+            if (!UseSeparateImageryLayer
+                && !string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
             {
                 CompositeBackgroundIntoBitmap();
                 SyncSkBitmapFromDisplay();
+            }
+            else
+            {
+                _backgroundComposited = true;
             }
         }
 
