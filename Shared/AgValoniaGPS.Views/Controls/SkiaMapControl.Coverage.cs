@@ -495,9 +495,13 @@ public partial class SkiaMapControl
         _backgroundComposited = false;
         _useMercatorSampling = false;
         _bgMinX = _bgMaxX = _bgMinY = _bgMaxY = 0;
-        _cachedBgPixels = null;
-        _cachedBgPath = null;
         _compositedForPath = null;
+        // Intentionally leave _cachedBgPixels/_cachedBgPath alive across close.
+        // CloseFieldAsync → ClearBackground fires on every field close; nulling
+        // here forced a fresh 80 MB LOH decode on every re-open of the same
+        // field, which is the reliable beach-ball repro. SetBackgroundImage
+        // (line 426) already invalidates the cache when a DIFFERENT path is
+        // set, which is the only correctness requirement.
     }
 
     // ------------------------------------------------------------------
@@ -791,11 +795,13 @@ public partial class SkiaMapControl
         _compositedForWidth = _bitmapWidth;
         _compositedForHeight = _bitmapHeight;
 
-        // The decoded pixel array can be 100+ MB — release once composite is done.
-        _cachedBgPixels = null;
-        _cachedBgPath = null;
-        _cachedBgPixelW = 0;
-        _cachedBgPixelH = 0;
+        // Keep _cachedBgPixels alive until the path changes (SetBackgroundImage)
+        // or the background is cleared (ClearBackground). The original code
+        // nulled it here to "release once composite is done", but that meant
+        // each close + reopen of the same field re-decoded the 64+ MB PNG into
+        // LOH and the GC eventually paused for 1-3 s — the reliable beach-ball
+        // repro. Holding ~80 MB while a field is open is cheaper than the
+        // accumulated LOH churn it would otherwise create.
 
         SyncDisplayBitmap();
         SyncSkBitmapFromDisplay();

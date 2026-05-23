@@ -971,18 +971,29 @@ public class CoverageMapService : ICoverageMapService
 
         long totalDetectionCells = (long)_bitmapWidth * _bitmapHeight;
 
-        // Allocate bit array for detection: 1 bit per cell
+        // Allocate bit array for detection: 1 bit per cell.
+        // REUSE when size matches — these arrays are ~44 MB on LOH for a
+        // 367 ha field; allocating fresh on every field open and abandoning
+        // the previous one builds up enough garbage that Gen2 collection
+        // eventually fires for 1-3 s when ~3 close/open cycles accumulate.
+        // User repro: close + reopen field 3x → beach ball.
         long totalBytes = (totalDetectionCells + 7) / 8;
-        _detectionBits = new byte[totalBytes];
+        if (_detectionBits != null && _detectionBits.LongLength == totalBytes)
+            Array.Clear(_detectionBits, 0, _detectionBits.Length);
+        else
+            _detectionBits = new byte[totalBytes];
 
         // Compute display resolution + dimensions (pillared on
         // DisplayConfig.DisplayResolutionMultiplier and a 25M-pixel cap)
-        // then allocate the RGB565 display buffer.
+        // then allocate (or reuse) the RGB565 display buffer.
         _displayCellSize = ComputeDisplayCellSize(maxE - minE, maxN - minN);
         _displayWidth = (int)Math.Ceiling((maxE - minE) / _displayCellSize);
         _displayHeight = (int)Math.Ceiling((maxN - minN) / _displayCellSize);
         long totalDisplayPixels = (long)_displayWidth * _displayHeight;
-        _displayPixels = new ushort[totalDisplayPixels];
+        if (_displayPixels != null && _displayPixels.LongLength == totalDisplayPixels)
+            Array.Clear(_displayPixels, 0, _displayPixels.Length);
+        else
+            _displayPixels = new ushort[totalDisplayPixels];
         _dirtyValid = false;
 
         double areaMSq = (maxE - minE) * (maxN - minN);
