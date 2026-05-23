@@ -367,6 +367,7 @@ public partial class MainViewModel
     // Prevents per-cycle SendStateToHandler churn.
     private AgValoniaGPS.Models.Track.Track? _lastMirroredDisplayTrack;
     private AgValoniaGPS.Models.Track.Track? _lastMirroredBaseTrack;
+    private AgValoniaGPS.Models.Track.Track? _lastMirroredNextTrack;
 
     /// <summary>
     /// Sync all guidance-relevant state to the pipeline service.

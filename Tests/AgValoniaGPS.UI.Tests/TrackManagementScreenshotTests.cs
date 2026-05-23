@@ -104,7 +104,7 @@ public class TrackManagementScreenshotTests
     [AvaloniaTest]
     public void Map_RecordedPaths_Visible()
     {
-        var mapControl = new DrawingContextMapControl();
+        var mapControl = new SkiaMapControl();
         mapControl.Width = 800;
         mapControl.Height = 600;
 
@@ -137,7 +137,7 @@ public class TrackManagementScreenshotTests
     [AvaloniaTest]
     public void Map_ContourStrips_Visible()
     {
-        var mapControl = new DrawingContextMapControl();
+        var mapControl = new SkiaMapControl();
         mapControl.Width = 800;
         mapControl.Height = 600;
 
@@ -162,7 +162,7 @@ public class TrackManagementScreenshotTests
     [AvaloniaTest]
     public void Map_MixedTracks_AllTypes()
     {
-        var mapControl = new DrawingContextMapControl();
+        var mapControl = new SkiaMapControl();
         mapControl.Width = 800;
         mapControl.Height = 600;
 

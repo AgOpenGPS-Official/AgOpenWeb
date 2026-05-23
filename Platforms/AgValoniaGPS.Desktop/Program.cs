@@ -39,10 +39,10 @@ sealed class Program
             .UseHotReload()
             // Matches Android/iOS: prevent the 50 MB coverage texture from being
             // re-uploaded every frame when the default 28 MB Skia GPU cache is
-            // exceeded. Desktop has plenty of headroom here anyway, included
-            // mainly for cross-platform parity.
+            // exceeded. 192 MB fits coverage + its mipmap chain + other
+            // textures comfortably.
             .With(new SkiaOptions
             {
-                MaxGpuResourceSizeBytes = 128L * 1024 * 1024
+                MaxGpuResourceSizeBytes = 192L * 1024 * 1024
             });
 }

@@ -25,8 +25,7 @@ using AgValoniaGPS.Views.Controls;
 namespace AgValoniaGPS.Desktop.Services;
 
 /// <summary>
-/// Desktop implementation of IMapService.
-/// Wraps the platform-specific map control (OpenGL, Skia, or DrawingContext).
+/// Desktop implementation of IMapService. Routes service calls to SkiaMapControl.
 /// </summary>
 public class MapService : IMapService
 {
@@ -89,7 +88,6 @@ public class MapService : IMapService
 
     public void SetBoundary(Boundary? boundary)
     {
-        Console.WriteLine($"[MapService] SetBoundary called: boundary={boundary != null}, mapControl={_mapControl != null}");
         if (_mapControl != null)
             _mapControl.SetBoundary(boundary);
         else

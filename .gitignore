@@ -29,6 +29,11 @@ bld/
 *.swp
 *~
 
+# RenderDoc capture artifacts (per-machine debug files)
+RenderDoc/
+*.rdc
+*.cap
+
 # NuGet
 *.nupkg
 *.snupkg

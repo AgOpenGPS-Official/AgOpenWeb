@@ -332,7 +332,7 @@ public class StringToImageConverter : IValueConverter
 
 /// <summary>
 /// Converts section color code to background brush for section buttons.
-/// Mirrors the renderer's 6-state palette in DrawingContextMapControl:
+/// Mirrors the renderer's 6-state palette:
 ///   0 = Off (red)
 ///   1 = Manual ON (yellow)
 ///   2 = Auto ON (green)
@@ -344,7 +344,7 @@ public class SectionColorCodeToBackgroundConverter : IValueConverter
 {
     public static readonly SectionColorCodeToBackgroundConverter Instance = new();
 
-    // Match the exact colors used in DrawingContextMapControl
+    // Match the exact colors used by the map renderer
     private static readonly IBrush RedBrush         = new SolidColorBrush(Color.FromRgb(242,  51,  51)); // #F23333 - Off
     private static readonly IBrush YellowBrush      = new SolidColorBrush(Color.FromRgb(247, 247,   0)); // #F7F700 - Manual On
     private static readonly IBrush GreenBrush       = new SolidColorBrush(Color.FromRgb(  0, 242,   0)); // #00F200 - Auto On

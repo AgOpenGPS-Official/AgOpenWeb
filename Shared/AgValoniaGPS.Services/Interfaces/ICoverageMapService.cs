@@ -250,39 +250,40 @@ public interface ICoverageMapService
     event EventHandler<BoundsExpandedEventArgs>? BoundsExpanded;
 
     /// <summary>
-    /// Set pixel access callbacks for unified WriteableBitmap storage.
-    /// The map control provides these callbacks to allow the service to read/write
-    /// directly to the bitmap without maintaining a separate copy.
-    /// </summary>
-    /// <param name="getPixel">Read pixel at (localX, localY) - returns Rgb565 value (0 = uncovered)</param>
-    /// <param name="setPixel">Write pixel at (localX, localY) with Rgb565 value</param>
-    /// <param name="clearAll">Clear all pixels to 0</param>
-    void SetPixelAccessCallbacks(
-        Func<int, int, ushort>? getPixel,
-        Action<int, int, ushort>? setPixel,
-        Action? clearAll);
-
-    /// <summary>
-    /// Get the raw pixel buffer for save/load operations.
-    /// Returns null if no bitmap is allocated.
-    /// </summary>
-    Func<ushort[]?>? GetPixelBufferCallback { get; set; }
-
-    /// <summary>
-    /// Set the raw pixel buffer after loading from file.
-    /// </summary>
-    Action<ushort[]>? SetPixelBufferCallback { get; set; }
-
-    /// <summary>
-    /// Get actual display bitmap dimensions (may differ from detection resolution due to dynamic scaling).
-    /// </summary>
-    Func<(int Width, int Height, double CellSize)?>? GetDisplayBitmapInfoCallback { get; set; }
-
-    /// <summary>
-    /// Get bitmap dimensions for coordinate calculations.
+    /// Detection-layer dimensions for coordinate calculations (cells at 0.1m).
     /// Returns (width, height, originE, originN) or null if not set.
     /// </summary>
     (int Width, int Height, int OriginE, int OriginN)? BitmapDimensions { get; }
+
+    /// <summary>
+    /// Display-layer pixel buffer (RGB565, row-major). Owned by the service.
+    /// The GL renderer uses this for first-frame texture upload; incremental
+    /// updates go through <see cref="ConsumeDirtyRect"/>. Null if no field
+    /// bounds are set.
+    /// </summary>
+    ushort[]? GetDisplayPixels();
+
+    /// <summary>
+    /// Display-layer dimensions (variable per field size + user
+    /// DisplayResolutionMultiplier). Always coarser-or-equal to detection.
+    /// Returns null if no field bounds are set.
+    /// </summary>
+    (int Width, int Height, double CellSize)? DisplayDimensions { get; }
+
+    /// <summary>
+    /// World-space bounds of the display-layer pixel grid. The texture's
+    /// (0,0) texel center lies at (MinE + CellSize/2, MinN + CellSize/2) in
+    /// world coords; the full quad spans [MinE, MaxE] × [MinN, MaxN] where
+    /// MaxE = MinE + Width × CellSize. Returns null if bounds aren't set.
+    /// </summary>
+    (double MinE, double MinN, double MaxE, double MaxN)? DisplayBoundsWorld { get; }
+
+    /// <summary>
+    /// Consume the dirty rect (in display pixel coords) accumulated since
+    /// the last call. Returns null if nothing changed. Resets the rect so
+    /// the next call only sees newer writes.
+    /// </summary>
+    (int X, int Y, int Width, int Height)? ConsumeDirtyRect();
 }
 
 /// <summary>

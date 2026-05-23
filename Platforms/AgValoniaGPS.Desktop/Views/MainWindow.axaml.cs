@@ -40,7 +40,7 @@ namespace AgValoniaGPS.Desktop.Views;
 public partial class MainWindow : Window
 {
     private MainViewModel? ViewModel => DataContext as MainViewModel;
-    private ISharedMapControl? MapControl;
+    private SkiaMapControl? MapControl;
     private bool _isDraggingRecPath = false;
     private Avalonia.Point _dragStartPoint;
 
@@ -92,10 +92,9 @@ public partial class MainWindow : Window
             };
         }
 
-        // Subscribe to FPS updates from map control (instance-based)
-        if (MapControl is DrawingContextMapControl dcMapControl)
+        if (MapControl != null)
         {
-            dcMapControl.FpsUpdated += fps =>
+            MapControl.FpsUpdated += fps =>
             {
                 if (ViewModel != null)
                     ViewModel.CurrentFps = fps;
@@ -131,71 +130,50 @@ public partial class MainWindow : Window
 
     private void CreateMapControl()
     {
-        // Use the shared DrawingContextMapControl (cross-platform)
-        var mapControl = new DrawingContextMapControl();
-        MapControl = mapControl;
-        System.Diagnostics.Debug.WriteLine("Using DrawingContextMapControl (cross-platform)");
-
-        // Set the map control as the content of the container
-        MapControlContainer.Content = mapControl;
+        MapControl = new SkiaMapControl();
+        MapControlContainer.Content = MapControl;
 
         // Note: ViewModel is null here (DataContext set after CreateMapControl).
         // Initial view state applied in MainWindow_Opened after settings load.
 
-        // Wire up the MapService with the MapControl
-        if (App.Services != null && MapControl != null)
+        if (App.Services != null)
         {
             var mapService = App.Services.GetRequiredService<AgValoniaGPS.Desktop.Services.MapService>();
             mapService.RegisterMapControl(MapControl);
 
-            // Wire up coverage updates
             var coverageService = App.Services.GetRequiredService<ICoverageMapService>();
             coverageService.CoverageUpdated += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    // Skip full rebuild if pixels were loaded directly from file
                     if (args.PixelsAlreadyLoaded)
                     {
-                        // Just mark dirty to refresh display - pixels already in bitmap
-                        MapControl?.MarkCoverageDirty();
+                        MapControl.MarkCoverageDirty();
                     }
                     else if (args.IsFullReload)
-                        MapControl?.MarkCoverageFullRebuildNeeded();
+                    {
+                        // ClearCoveragePixels drops the existing SKBitmap paint
+                        // and re-composites the background; MarkCoverageFullRebuildNeeded
+                        // then repaints from whatever cells the service still has
+                        // (zero after ClearAll, populated after LoadFromFile).
+                        MapControl.ClearCoveragePixels();
+                        MapControl.MarkCoverageFullRebuildNeeded();
+                    }
                     else
-                        MapControl?.MarkCoverageDirty();
+                        MapControl.MarkCoverageDirty();
                     ViewModel?.RefreshCoverageStatistics();
                 });
             };
 
-            // Set up bitmap-based coverage rendering (PERF-004)
-            // allCellsProvider takes viewport bounds for spatial queries - O(viewport) not O(total coverage)
             MapControl.SetCoverageBitmapProviders(
                 coverageService.GetCoverageBounds,
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
-
-            // Set up unified bitmap pixel access (PERF-004 Phase 4)
-            // Service writes directly to map control's WriteableBitmap
-            coverageService.SetPixelAccessCallbacks(
-                MapControl.GetCoveragePixel,
-                MapControl.SetCoveragePixel,
-                MapControl.ClearCoveragePixels);
-
-            // Set up buffer callbacks for save/load
-            coverageService.GetPixelBufferCallback = MapControl.GetCoveragePixelBuffer;
-            coverageService.SetPixelBufferCallback = MapControl.SetCoveragePixelBuffer;
-            coverageService.GetDisplayBitmapInfoCallback = MapControl.GetDisplayBitmapInfo;
-
-            // Mark dirty in case field was already loaded with coverage
             MapControl.MarkCoverageDirty();
+
+            MapControl.MapClicked += OnMapClicked;
+            MapControl.UserPanned += () => ViewModel?.OnUserPan();
         }
-
-        // Wire up MapClicked event for AB line creation
-        mapControl.MapClicked += OnMapClicked;
-
-        // Wire UserPanned event for camera Free mode
-        mapControl.UserPanned += () => ViewModel?.OnUserPan();
     }
 
     private void OnMapClicked(object? sender, MapClickEventArgs e)
@@ -270,6 +248,26 @@ public partial class MainWindow : Window
             MapControl.Set3DMode(!ViewModel.Is2DMode);
             double pitchRadians = (90.0 + ViewModel.CameraPitch) * Math.PI / 180.0;
             MapControl.SetPitchAbsolute(pitchRadians);
+
+            // Push the loaded camera follow mode to the map control.
+            // VM.CameraMode setter fires _mapService.SetCameraFollowMode during
+            // LoadSettings, but the call is a no-op when MapControl hasn't been
+            // registered yet (iOS) — and the setter only runs ApplyCameraMode
+            // when the value changes from its default. Either path can leave
+            // MapControl in default Map(3) mode while VM shows H/N/etc.
+            MapControl.CameraFollowMode = ViewModel.CameraMode switch
+            {
+                AgValoniaGPS.Models.CameraMode.NorthUp => 0,
+                AgValoniaGPS.Models.CameraMode.HeadingUp => 1,
+                AgValoniaGPS.Models.CameraMode.Free => 2,
+                _ => 3,
+            };
+
+            // Fire OnPropertyChanged for properties that ConfigurationService
+            // loaded directly into the backing field (bypassing the setter,
+            // so no binding refresh happened). The display panel binding
+            // otherwise stays on its empty default until the first user tap.
+            ViewModel.NotifyDisplayLabelsAfterStartup();
         }
     }
 
@@ -513,7 +511,7 @@ public partial class MainWindow : Window
         {
             if (ViewModel != null && MapControl != null)
             {
-                // Is2DMode = true means 3D is off, so invert the value
+                // SkiaMap toggles pitch in-place; nothing to swap in the visual tree.
                 MapControl.Set3DMode(!ViewModel.Is2DMode);
             }
         }
@@ -533,18 +531,12 @@ public partial class MainWindow : Window
         }
         else if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
         {
-            if (MapControl is DrawingContextMapControl dcMapControl)
-            {
-                dcMapControl.EnableClickSelection = ViewModel?.EnableABClickSelection ?? false;
-            }
+            if (MapControl != null)
+                MapControl.EnableClickSelection = ViewModel?.EnableABClickSelection ?? false;
         }
         else if (e.PropertyName == nameof(MainViewModel.PendingPointA))
         {
-            // Update map with pending Point A marker
-            if (MapControl is DrawingContextMapControl dcMapControl)
-            {
-                dcMapControl.SetPendingPointA(ViewModel?.PendingPointA);
-            }
+            MapControl?.SetPendingPointA(ViewModel?.PendingPointA);
         }
         else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))
         {
@@ -570,11 +562,10 @@ public partial class MainWindow : Window
 
     private void UpdateActiveTrack()
     {
-        if (MapControl is DrawingContextMapControl dcMapControl && ViewModel != null)
+        if (MapControl != null && ViewModel != null)
         {
-            // Only show track on map if explicitly active (no fallback)
             var activeTrack = ViewModel.SavedTracks.FirstOrDefault(t => t.IsActive);
-            dcMapControl.SetActiveTrack(activeTrack);
+            MapControl.SetActiveTrack(activeTrack);
         }
     }
 
@@ -595,11 +586,10 @@ public partial class MainWindow : Window
             if (point.Properties.IsLeftButtonPressed)
             {
                 // In AB creation mode, handle tap for setting points instead of panning
-                if (ViewModel?.EnableABClickSelection == true && MapControl is DrawingContextMapControl dcMapControl)
+                if (ViewModel?.EnableABClickSelection == true && MapControl != null)
                 {
-                    // Get the world position from the click and fire MapClicked event
-                    var worldPos = dcMapControl.ScreenToWorld(point.Position.X, point.Position.Y);
-                    OnMapClicked(dcMapControl, new MapClickEventArgs(worldPos.Easting, worldPos.Northing));
+                    var worldPos = MapControl.ScreenToWorld(point.Position.X, point.Position.Y);
+                    OnMapClicked(MapControl, new MapClickEventArgs(worldPos.Easting, worldPos.Northing));
                     e.Handled = true;
                     return;
                 }

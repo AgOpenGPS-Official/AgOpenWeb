@@ -44,9 +44,9 @@ public class DisplayWiringScreenshots
         Assert.That(new FileInfo(filePath).Length, Is.GreaterThan(0));
     }
 
-    private static DrawingContextMapControl CreateMapWithTrack()
+    private static SkiaMapControl CreateMapWithTrack()
     {
-        var map = new DrawingContextMapControl();
+        var map = new SkiaMapControl();
         map.SetVehiclePosition(0, 0, 0);
         map.SetToolPosition(0, -3, 0, 6.0, 0, -3);
         map.SetCamera(0, 0, 2.0, 0);
@@ -60,7 +60,7 @@ public class DisplayWiringScreenshots
         return map;
     }
 
-    private static Window CreateMapWindow(DrawingContextMapControl map)
+    private static Window CreateMapWindow(SkiaMapControl map)
     {
         return new Window
         {

@@ -45,10 +45,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Grid>
             </Border>
 
-            <!-- Main Content Area - Cross-platform DrawingContext Map with overlay panels -->
+            <!-- Main Content Area - SkiaMap with overlay panels -->
             <Grid Grid.Row="1" Background="Transparent">
-                <controls:DrawingContextMapControl x:Name="MapControl" Margin="5"
-                                                   IsGridVisible="{Binding IsGridOn}"/>
+                <controls:SkiaMapControl x:Name="MapControl" Margin="5"
+                                         IsGridVisible="{Binding IsGridOn}"/>
 
                 <!-- LIGHT BAR: Centered at top (#144) -->
                 <panels:LightBarPanel x:Name="LightBarPanel"

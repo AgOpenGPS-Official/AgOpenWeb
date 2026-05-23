@@ -38,10 +38,8 @@ namespace AgValoniaGPS.iOS.Views;
 /// </summary>
 public partial class MainView : UserControl
 {
-    private DrawingContextMapControl? _mapControl;
+    private SkiaMapControl? _mapControl;
     private MainViewModel? _viewModel;
-
-    // Panels are now anchored (no position save/restore needed)
 
     public MainView()
     {
@@ -49,18 +47,13 @@ public partial class MainView : UserControl
         InitializeComponent();
         System.Diagnostics.Debug.WriteLine("[MainView] InitializeComponent completed.");
 
-        // Get reference to map control
-        _mapControl = this.FindControl<DrawingContextMapControl>("MapControl");
+        _mapControl = this.FindControl<SkiaMapControl>("MapControl");
 
-        // Wire up chart panel drag events
         WireChartPanelDrag("SteerChartPanel");
         WireChartPanelDrag("HeadingChartPanel");
         WireChartPanelDrag("XTEChartPanel");
 
-        // Handle window resize to keep panels in view
         this.PropertyChanged += MainView_PropertyChanged;
-
-        // Save coverage and settings when view is unloaded (app exit/backgrounded)
         this.Unloaded += MainView_Unloaded;
     }
 
@@ -107,86 +100,72 @@ public partial class MainView : UserControl
         DataContext = viewModel;
         _viewModel = viewModel;
 
-        // Register the map control with the MapService so it can receive commands
         if (_mapControl != null)
         {
             mapService.RegisterMapControl(_mapControl);
-            System.Diagnostics.Debug.WriteLine("[MainView] MapControl registered with MapService.");
 
-            // Wire screenshot provider for debug dump (#127)
             viewModel.ScreenshotProvider = () =>
                 AgValoniaGPS.Views.ScreenshotHelper.CaptureScreenshotPng(this);
 
-            // Wire up MapClicked event for AB line creation
             _mapControl.MapClicked += OnMapClicked;
             _mapControl.UserPanned += () => _viewModel?.OnUserPan();
 
-
-            // Wire up coverage updates
             coverageService.CoverageUpdated += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    // Skip full rebuild if pixels were loaded directly from file
                     if (args.PixelsAlreadyLoaded)
                     {
-                        // Just mark dirty to refresh display - pixels already in bitmap
-                        _mapControl?.MarkCoverageDirty();
+                        _mapControl.MarkCoverageDirty();
                     }
                     else if (args.IsFullReload)
-                        _mapControl?.MarkCoverageFullRebuildNeeded();
+                    {
+                        _mapControl.ClearCoveragePixels();
+                        _mapControl.MarkCoverageFullRebuildNeeded();
+                    }
                     else
-                        _mapControl?.MarkCoverageDirty();
+                        _mapControl.MarkCoverageDirty();
                     _viewModel?.RefreshCoverageStatistics();
                 });
             };
-            // Mark dirty in case field was already loaded with coverage
-            _mapControl.MarkCoverageDirty();
 
-            // Set up bitmap-based coverage rendering (PERF-004)
-            // allCellsProvider takes viewport bounds for spatial queries - O(viewport) not O(total coverage)
             _mapControl.SetCoverageBitmapProviders(
                 coverageService.GetCoverageBounds,
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
-
-            // Set up unified bitmap pixel access (PERF-004 Phase 4)
-            // Service writes directly to map control's WriteableBitmap
-            coverageService.SetPixelAccessCallbacks(
-                _mapControl.GetCoveragePixel,
-                _mapControl.SetCoveragePixel,
-                _mapControl.ClearCoveragePixels);
-
-            // Set up buffer callbacks for save/load
-            coverageService.GetPixelBufferCallback = _mapControl.GetCoveragePixelBuffer;
-            coverageService.SetPixelBufferCallback = _mapControl.SetCoveragePixelBuffer;
-            coverageService.GetDisplayBitmapInfoCallback = _mapControl.GetDisplayBitmapInfo;
-
-            // Mark dirty in case field was already loaded with coverage
             _mapControl.MarkCoverageDirty();
-        }
 
-        // Wire up position updates - when ViewModel properties change, update map control
-        viewModel.PropertyChanged += OnViewModelPropertyChanged;
-
-        // Subscribe to track collection changes to update active track display
-        viewModel.SavedTracks.CollectionChanged += SavedTracks_CollectionChanged;
-
-        // Update active track immediately in case field was already loaded
-        UpdateActiveTrack();
-
-        // Note: Tool/vehicle position sync happens when simulator is enabled
-        // (see IsSimulatorEnabled handler in OnViewModelPropertyChanged)
-
-        // Subscribe to FPS updates from map control (instance-based)
-        if (_mapControl != null)
-        {
             _mapControl.FpsUpdated += fps =>
             {
-                if (viewModel != null)
-                    viewModel.CurrentFps = fps;
+                if (_viewModel != null)
+                    _viewModel.CurrentFps = fps;
             };
         }
+
+        viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        viewModel.SavedTracks.CollectionChanged += SavedTracks_CollectionChanged;
+        UpdateActiveTrack();
+
+        // Push initial state to the map control. VM.LoadSettings ran before
+        // MapControl was registered, so map-targeted calls were no-ops then.
+        // Re-push here so the camera mode and pitch match the loaded settings.
+        if (_mapControl != null)
+        {
+            _mapControl.Set3DMode(!viewModel.Is2DMode);
+            double pitchRadians = (90.0 + viewModel.CameraPitch) * Math.PI / 180.0;
+            _mapControl.SetPitchAbsolute(pitchRadians);
+            _mapControl.CameraFollowMode = viewModel.CameraMode switch
+            {
+                AgValoniaGPS.Models.CameraMode.NorthUp => 0,
+                AgValoniaGPS.Models.CameraMode.HeadingUp => 1,
+                AgValoniaGPS.Models.CameraMode.Free => 2,
+                _ => 3,
+            };
+        }
+
+        // Fire missing OnPropertyChanged for properties ConfigurationService
+        // loaded directly into the backing field.
+        viewModel.NotifyDisplayLabelsAfterStartup();
 
         System.Diagnostics.Debug.WriteLine("[MainView] DataContext set.");
     }
@@ -308,7 +287,6 @@ public partial class MainView : UserControl
             if (e.PropertyName?.StartsWith("Section") == true &&
                      (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
             {
-                // Section state or color code changed - update map control
                 _mapControl.SetSectionStates(
                     _viewModel.GetSectionStates(),
                     _viewModel.GetSectionWidths(),
@@ -317,29 +295,21 @@ public partial class MainView : UserControl
             }
             else if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
             {
-                // Update map control click selection mode
                 _mapControl.EnableClickSelection = _viewModel.EnableABClickSelection;
             }
             else if (e.PropertyName == nameof(MainViewModel.Is2DMode))
             {
-                // Is2DMode = true means 3D is off, so invert the value
                 _mapControl.Set3DMode(!_viewModel.Is2DMode);
             }
             else if (e.PropertyName == nameof(MainViewModel.CameraPitch))
             {
-                // CameraPitch: -90 = overhead, -10 = horizontal
-                // Map: 0 rad = overhead, PI/2.5 = horizontal
                 double pitchRadians = (90.0 + _viewModel.CameraPitch) * Math.PI / 180.0;
                 _mapControl.SetPitchAbsolute(pitchRadians);
             }
             else if (e.PropertyName == nameof(MainViewModel.IsSimulatorEnabled))
             {
-                // When simulator is enabled, sync positions after a short delay
-                // to ensure the first simulator tick has updated tool position
                 if (_viewModel.IsSimulatorEnabled)
                 {
-                    // Wait for simulator's first tick (runs at ~10Hz = 100ms interval)
-                    // Use 300ms to ensure at least one update has occurred
                     _ = Task.Delay(300).ContinueWith(_ =>
                     {
                         Avalonia.Threading.Dispatcher.UIThread.Post(SyncInitialPositions);
@@ -348,7 +318,6 @@ public partial class MainView : UserControl
             }
             else if (e.PropertyName == nameof(MainViewModel.PendingPointA))
             {
-                // Update map with pending Point A marker
                 _mapControl.SetPendingPointA(_viewModel.PendingPointA);
             }
             else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))

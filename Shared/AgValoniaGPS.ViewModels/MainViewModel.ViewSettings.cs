@@ -157,6 +157,23 @@ public partial class MainViewModel
         _ => "?"
     };
 
+    /// <summary>
+    /// Fires OnPropertyChanged for the display-bound properties that
+    /// ConfigurationService loaded directly into <see cref="_displaySettings"/>
+    /// at startup (bypassing the property setters and their automatic
+    /// notification). Called once from each platform's view code-behind
+    /// after MapControl registration so the display panel binding picks up
+    /// the saved values instead of staying on its empty/default state.
+    /// </summary>
+    public void NotifyDisplayLabelsAfterStartup()
+    {
+        OnPropertyChanged(nameof(CameraPitch));
+        OnPropertyChanged(nameof(CameraPitchDisplay));
+        OnPropertyChanged(nameof(Is2DMode));
+        OnPropertyChanged(nameof(CameraMode));
+        OnPropertyChanged(nameof(CameraModeLabel));
+    }
+
     private void ApplyCameraMode()
     {
         // Set camera follow mode directly on map control: 0=NorthUp, 1=HeadingUp, 2=Free, 3=Map

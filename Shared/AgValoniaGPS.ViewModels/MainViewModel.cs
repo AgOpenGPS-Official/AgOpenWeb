@@ -629,6 +629,13 @@ public partial class MainViewModel : ObservableObject
         if (settings.CameraMode != CameraMode.Free)
             CameraMode = settings.CameraMode;
 
+        // Prime _last3DPitch from the saved CameraPitch so the 2D/3D toggle
+        // restores the user's prior tilt instead of the hard-coded -60° default.
+        // ConfigurationService loads CameraPitch directly into the backing
+        // field, bypassing the setter that would otherwise capture this.
+        if (_displaySettings.CameraPitch > -89.0)
+            _last3DPitch = _displaySettings.CameraPitch;
+
         // Restore simulator settings (always restore coords, regardless of enabled state)
         _simulatorService.Initialize(new AgValoniaGPS.Models.Wgs84(
             settings.SimulatorLatitude,
@@ -1471,9 +1478,17 @@ public partial class MainViewModel : ObservableObject
                 _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
                 _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
             }
-            // Field-only opens skip coverage load — the bitmap was already
-            // cleared by ClearFieldState during CloseFieldAsync, so there's
-            // nothing to draw until the operator starts a job.
+            else
+            {
+                // Field-only opens skip coverage load — but they still need to
+                // fire CoverageUpdated(IsFullReload=true) so the map control's
+                // handler runs ClearCoveragePixels + MarkCoverageFullRebuildNeeded
+                // during the busy overlay. Resume Job gets this for free via
+                // LoadFromFile; without parity here, the coverage-bitmap
+                // rebuild gets deferred until the first non-stationary GPS
+                // cycle and lands on the UI thread as a 2-3 s freeze.
+                _coverageMapService.ClearAll();
+            }
             RefreshCoverageStatistics();
 
             // Start periodic coverage autosave. The timer no-ops on each
