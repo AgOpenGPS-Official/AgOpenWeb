@@ -208,10 +208,151 @@ public partial class SkiaMapControl
 
         if (!string.IsNullOrEmpty(_backgroundImagePath) && File.Exists(_backgroundImagePath))
         {
+            // Re-compositing the field PNG into a 367 ha bitmap is a ~700 ms
+            // per-cell loop that used to run synchronously here, producing a
+            // 1-2 s UI beach ball on first-accelerate. Run it on a background
+            // thread; the marshal-back blit is just a memcpy of ~28 MB which
+            // is fast enough to fit in one frame.
             _backgroundComposited = false;
-            CompositeBackgroundIntoBitmap();
-            SyncSkBitmapFromDisplay();
+            ScheduleBackgroundCompositeAsync();
         }
+        SendStateToHandler();
+    }
+
+    private int _compositeInFlight; // 0 = idle, 1 = running (Interlocked)
+    private int _compositeStale;    // 1 = a re-schedule came in while running
+
+    private void ScheduleBackgroundCompositeAsync()
+    {
+        if (System.Threading.Interlocked.CompareExchange(ref _compositeInFlight, 1, 0) != 0)
+        {
+            // Another composite is mid-flight; mark its result stale so the
+            // completion path re-schedules with the current state.
+            System.Threading.Volatile.Write(ref _compositeStale, 1);
+            return;
+        }
+        System.Threading.Volatile.Write(ref _compositeStale, 0);
+
+        // Snapshot UI-thread state so the background task works against a
+        // stable view; the UI thread can keep mutating these between now and
+        // marshal-back.
+        int w = _bitmapWidth;
+        int h = _bitmapHeight;
+        double minE = _bitmapMinE;
+        double minN = _bitmapMinN;
+        double maxE = _bitmapMaxE;
+        double maxN = _bitmapMaxN;
+        double cellSize = _actualBitmapCellSize;
+        double bgMinX = _bgMinX, bgMaxX = _bgMaxX, bgMinY = _bgMinY, bgMaxY = _bgMaxY;
+        string? path = _backgroundImagePath;
+
+        if (path == null || w <= 0 || h <= 0)
+        {
+            System.Threading.Volatile.Write(ref _compositeInFlight, 0);
+            return;
+        }
+
+        double overlapMinE = Math.Max(bgMinX, minE);
+        double overlapMaxE = Math.Min(bgMaxX, maxE);
+        double overlapMinN = Math.Max(bgMinY, minN);
+        double overlapMaxN = Math.Min(bgMaxY, maxN);
+        if (overlapMinE >= overlapMaxE || overlapMinN >= overlapMaxN)
+        {
+            System.Threading.Volatile.Write(ref _compositeInFlight, 0);
+            return;
+        }
+
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                // Decode + RGB-pack the PNG off the UI thread (was 100+ MB and
+                // synchronous before). Uses the existing cache field so a
+                // repeat composite for the same path is a no-decode hit.
+                var bgPixels = LoadBackgroundPixelsCached(out int bgW, out int bgH);
+                if (bgPixels == null || bgW <= 0 || bgH <= 0) return;
+
+                double bgWorldWidth = bgMaxX - bgMinX;
+                double bgWorldHeight = bgMaxY - bgMinY;
+                if (bgWorldWidth <= 0 || bgWorldHeight <= 0) return;
+                double bgPixelsPerMeterX = bgW / bgWorldWidth;
+                double bgPixelsPerMeterY = bgH / bgWorldHeight;
+                double halfCell = cellSize / 2.0;
+
+                var buf = new ushort[w * h];
+                for (int cy = 0; cy < h; cy++)
+                {
+                    double worldN = minN + cy * cellSize + halfCell;
+                    if (worldN < overlapMinN || worldN >= overlapMaxN) continue;
+                    int rowBase = cy * w;
+                    for (int cx = 0; cx < w; cx++)
+                    {
+                        double worldE = minE + cx * cellSize + halfCell;
+                        if (worldE < overlapMinE || worldE >= overlapMaxE) continue;
+                        int bgX = (int)((worldE - bgMinX) * bgPixelsPerMeterX);
+                        int bgY = (int)((bgMaxY - worldN) * bgPixelsPerMeterY);
+                        if (bgX < 0 || bgX >= bgW || bgY < 0 || bgY >= bgH) continue;
+                        int bgIdx = (bgY * bgW + bgX) * 4;
+                        byte b = bgPixels[bgIdx];
+                        byte g = bgPixels[bgIdx + 1];
+                        byte r = bgPixels[bgIdx + 2];
+                        buf[rowBase + cx] = (ushort)(((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3));
+                    }
+                }
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try
+                    {
+                        BlitCompositeBuffer(buf, w, h, minE, minN);
+                    }
+                    finally
+                    {
+                        bool stale = System.Threading.Interlocked.Exchange(ref _compositeStale, 0) == 1;
+                        System.Threading.Volatile.Write(ref _compositeInFlight, 0);
+                        if (stale) ScheduleBackgroundCompositeAsync();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[SkiaMapControl] Async composite failed: {ex.Message}");
+                System.Threading.Volatile.Write(ref _compositeInFlight, 0);
+            }
+        });
+    }
+
+    private unsafe void BlitCompositeBuffer(ushort[] src, int w, int h, double snapMinE, double snapMinN)
+    {
+        // Verify the bitmap state hasn't shifted out from under the async
+        // composite (field changed, bitmap resized, path swapped). If it has,
+        // the buffer is stale — discard and let the next schedule run.
+        if (_coverageWriteableBitmap == null
+            || _bitmapWidth != w
+            || _bitmapHeight != h
+            || Math.Abs(_bitmapMinE - snapMinE) > 0.01
+            || Math.Abs(_bitmapMinN - snapMinN) > 0.01)
+            return;
+
+        using (var fb = _coverageWriteableBitmap.Lock())
+        {
+            ushort* dst = (ushort*)fb.Address;
+            int dstStride = fb.RowBytes / 2;
+            fixed (ushort* srcPtr = src)
+            {
+                for (int y = 0; y < h; y++)
+                    System.Buffer.MemoryCopy(srcPtr + y * w, dst + y * dstStride, w * 2L, w * 2L);
+            }
+        }
+
+        _backgroundComposited = true;
+        _compositedForPath = _backgroundImagePath;
+        _compositedForMinE = _bitmapMinE;
+        _compositedForMinN = _bitmapMinN;
+        _compositedForWidth = _bitmapWidth;
+        _compositedForHeight = _bitmapHeight;
+        SyncDisplayBitmap();
+        SyncSkBitmapFromDisplay();
         SendStateToHandler();
     }
 
