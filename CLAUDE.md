@@ -102,15 +102,18 @@ dotnet test Tests/
 
 ## Key Design Decisions
 
-### Rendering: DrawingContext (not OpenGL/SkiaSharp)
-All platforms use Avalonia's `DrawingContext` for map rendering via `DrawingContextMapControl`. This provides:
-- Consistent rendering across all platforms
-- No platform-specific graphics APIs needed
-- 30 FPS default (configurable in `DrawingContextMapControl.cs`)
+### Rendering: SkiaMapControl via CompositionCustomVisualHandler
+All platforms render the map through `SkiaMapControl`, which leases the Skia
+GPU surface inside a `CompositionCustomVisualHandler` and re-arms via
+`RegisterForNextAnimationFrameUpdate`. This bucket sits outside the Av12
+commit throttle that capped `OpenGlControlBase` at ~32 FPS on iPad
+([issue #21409](https://github.com/AvaloniaUI/Avalonia/issues/21409)).
+True perspective comes from `SKMatrix44`; top-down mode is just
+`pitch = 90°` on the same control — no second renderer behind a toggle.
 
 ### Shared UI Components
 All panels, dialogs, and controls live in `AgValoniaGPS.Views`:
-- `Controls/DrawingContextMapControl.cs` - Main map rendering
+- `Controls/SkiaMapControl.cs` - Main map rendering
 - `Controls/DialogOverlayHost.axaml` - Hosts all modal dialog overlays (shared across platforms)
 - `Controls/Panels/` - LeftNavigationPanel, SimulatorPanel, SectionControlPanel, etc.
 - `Controls/Dialogs/` - All modal dialogs (FieldSelection, DataIO, AgShare, etc.)
@@ -228,7 +231,7 @@ AgValoniaGPS may use different/improved formats from AgOpenGPS when it benefits 
 | File | Purpose |
 |------|---------|
 | `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` | Main application state, constructor, DI |
-| `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs` | Map rendering (30 FPS) |
+| `Shared/AgValoniaGPS.Views/Controls/SkiaMapControl.cs` | Map rendering (Skia via CompositionCustomVisualHandler) |
 | `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml` | All dialog overlay registrations |
 | `Shared/AgValoniaGPS.Views/Controls/Panels/LeftNavigationPanel.axaml` | Main navigation sidebar |
 | `Shared/AgValoniaGPS.Models/Track/Track.cs` | Unified track model (AB lines + curves) |
@@ -309,14 +312,12 @@ Platform projects contain only what **must** differ per platform. All UI, dialog
 2. Add to `LeftNavigationPanel.axaml` if it's a sub-panel
 3. Or add directly to platform views if standalone
 
-### Modifying Frame Rate
-Edit `DrawingContextMapControl.cs`:
-```csharp
-_renderTimer = new DispatcherTimer
-{
-    Interval = TimeSpan.FromMilliseconds(33)  // 33ms = 30 FPS
-};
-```
+### Frame Rate
+`SkiaMapControl` drives frames via `RegisterForNextAnimationFrameUpdate`,
+which runs at the platform's display refresh rate (60 Hz on most devices,
+120 Hz on ProMotion iPad). There is no fixed-rate `DispatcherTimer`. To
+gate redraws on state changes (instead of every animation tick), see
+`SendStateToHandler` and the `_pendingComposite` coalescing logic.
 
 ## NTRIP Connection Format
 The NTRIP client uses HTTP/1.1 format:

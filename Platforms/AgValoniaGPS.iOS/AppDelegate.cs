@@ -41,13 +41,6 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
             var result = base.CustomizeAppBuilder(builder)
                 .UseiOS()
                 .LogToTrace()
-                .With(new iOSPlatformOptions
-                {
-                    // Spike: prefer OpenGL so OpenGlControlBase can acquire a context.
-                    // Avalonia 12 defaults to Metal on iOS; OpenGlControlBase only works
-                    // through the Eagl (OpenGL ES) backend.
-                    RenderingMode = new[] { iOSRenderingMode.OpenGl, iOSRenderingMode.Metal }
-                })
                 .With(new SkiaOptions
                 {
                     MaxGpuResourceSizeBytes = 128L * 1024 * 1024

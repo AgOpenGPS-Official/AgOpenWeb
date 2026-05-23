@@ -28,15 +28,12 @@ using Vec3 = AgValoniaGPS.Models.Base.Vec3;
 namespace AgValoniaGPS.Views.Controls;
 
 /// <summary>
-/// Phase-1 skeleton of the new map control that the GL pivot lands on.
-/// Mirrors the CompositionCustomVisualHandler scheduling pattern used by
-/// <see cref="DrawingContextMapControl"/> — which the spike confirmed is the
-/// only uncapped path on iPad (issue #21409). Reuses the existing
-/// <see cref="MapRenderState"/> snapshot so the data contract from the
-/// services and ViewModel doesn't change between the old and new control.
-///
-/// Phase 1 scope: top-down only (CameraPitch=0, Is3DMode=false). Renders
-/// background fill, grid, ground texture, boundary, headland, vehicle.
+/// Cross-platform map control. Renders on the compositor render thread via
+/// <see cref="MapRenderState"/> snapshots posted from the UI thread. Uses
+/// CompositionCustomVisualHandler + RegisterForNextAnimationFrameUpdate to
+/// stay outside the Av12 commit throttle that caps OpenGlControlBase on
+/// iPad (issue #21409). Renders boundary, headland, tracks, vehicle, tool,
+/// coverage, ground texture, and supports real perspective via SKMatrix44.
 /// Track/section/coverage/tram/youturn rendering is deferred to Phase 2.
 /// </summary>
 public partial class SkiaMapControl : Control, ISharedMapControl
@@ -962,9 +959,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     }
 
     // Inverse-project a screen point through the perspective MVP to the
-    // ground plane (z=0). Mirrors GlMapControl's ground ray-cast at line 502.
-    // MVP construction here MUST match BuildPerspectiveScreenMatrix exactly,
-    // or AB tap creation will land off the click point at tilted view.
+    // ground plane (z=0). MVP construction here MUST match
+    // BuildPerspectiveScreenMatrix exactly, or AB tap creation will land
+    // off the click point at tilted view.
     private (double Easting, double Northing) ScreenToWorldPerspective(double screenX, double screenY)
     {
         float vx = (float)_cameraX;
@@ -1378,12 +1375,10 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             return matrix;
         }
 
-        // AOG-turntable perspective MVP, mirroring GlMapControl.cs:475-487 so
-        // SkiaMap and GL share the camera UX (same zoom/pitch curves).
-        // System.Numerics is row-vector; implicit cast to SKMatrix44 handles
-        // the transposition to Skia's column-vector convention. The 4×4 →
-        // 3×3 collapse via .Matrix is the official Skia path per
-        // [[skiasharp-skmatrix44]].
+        // AOG-turntable perspective MVP. System.Numerics is row-vector;
+        // implicit cast to SKMatrix44 handles the transposition to Skia's
+        // column-vector convention. The 4×4 → 3×3 collapse via .Matrix is
+        // the official Skia path per [[skiasharp-skmatrix44]].
         private SKMatrix BuildPerspectiveScreenMatrix(MapRenderState s)
         {
             float vx = (float)s.CameraX;

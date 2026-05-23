@@ -25,7 +25,7 @@ namespace AgValoniaGPS.Desktop;
 public class ViewLocator : IDataTemplate
 {
     // Cache the Views assembly for faster lookups
-    private static readonly Assembly ViewsAssembly = typeof(AgValoniaGPS.Views.Controls.DrawingContextMapControl).Assembly;
+    private static readonly Assembly ViewsAssembly = typeof(AgValoniaGPS.Views.Controls.SkiaMapControl).Assembly;
 
     public Control? Build(object? param)
     {

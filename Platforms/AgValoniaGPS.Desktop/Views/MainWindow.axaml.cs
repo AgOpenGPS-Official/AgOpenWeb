@@ -40,14 +40,9 @@ namespace AgValoniaGPS.Desktop.Views;
 public partial class MainWindow : Window
 {
     private MainViewModel? ViewModel => DataContext as MainViewModel;
-    private ISharedMapControl? MapControl;
-    private DrawingContextMapControl? _dcMapControl;
-    private SkiaMapControl? _skiaMapControl;
-    private GlMapControl? _glMapControl;
-    private Grid? _mapHostGrid;
+    private SkiaMapControl? MapControl;
     private bool _isDraggingRecPath = false;
     private Avalonia.Point _dragStartPoint;
-    private Control? _spikeSavedContent;
 
     public MainWindow()
     {
@@ -97,34 +92,9 @@ public partial class MainWindow : Window
             };
         }
 
-        // Apply initial 2D/3D child mount based on saved Is2DMode.
-        // Self-rendering controls don't pause on IsVisible=false, so we
-        // swap them in/out of the host grid instead. See [[visibility-toggle-rule]].
-        if (ViewModel != null)
-            ApplyMapModeChildren(ViewModel.Is2DMode);
-
-        // Subscribe to FPS updates from each map control. Only the
-        // currently-mounted one ticks (the others are removed from the
-        // visual tree), so whichever is active pushes its frame rate.
-        if (_dcMapControl != null)
+        if (MapControl != null)
         {
-            _dcMapControl.FpsUpdated += fps =>
-            {
-                if (ViewModel != null)
-                    ViewModel.CurrentFps = fps;
-            };
-        }
-        if (_skiaMapControl != null)
-        {
-            _skiaMapControl.FpsUpdated += fps =>
-            {
-                if (ViewModel != null)
-                    ViewModel.CurrentFps = fps;
-            };
-        }
-        if (_glMapControl != null)
-        {
-            _glMapControl.FpsUpdated += fps =>
+            MapControl.FpsUpdated += fps =>
             {
                 if (ViewModel != null)
                     ViewModel.CurrentFps = fps;
@@ -146,41 +116,6 @@ public partial class MainWindow : Window
             XTEChartPanel.DragMoved += (_, delta) => MovePanel(XTEChartPanel, delta);
     }
 
-    private void ApplyMapModeChildren(bool is2D)
-    {
-        if (_mapHostGrid == null) return;
-        Control? dc = _dcMapControl;
-        Control? sk = _skiaMapControl;
-        Control? gl = _glMapControl;
-        // SkiaMap handles 2D + perspective in-place via pitch (Phase 3 of the
-        // pivot), so the SkiaMap path no longer swaps to GlMapControl on the
-        // 2D↔3D toggle — the toggle becomes a CameraPitch change that
-        // SetPitchAbsolute animates. GlMapControl stays in the grid as a
-        // parked fallback for the non-SkiaMap path.
-        Control? active;
-        if (AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl)
-            active = sk;
-        else if (is2D)
-            active = dc;
-        else
-            active = gl;
-        Control?[] all = new Control?[] { dc, sk, gl };
-        foreach (var c in all)
-        {
-            if (c == null) continue;
-            if (ReferenceEquals(c, active))
-            {
-                if (!_mapHostGrid.Children.Contains(c))
-                    _mapHostGrid.Children.Add(c);
-            }
-            else
-            {
-                if (_mapHostGrid.Children.Contains(c))
-                    _mapHostGrid.Children.Remove(c);
-            }
-        }
-    }
-
     private void MovePanel(Control panel, Vector delta)
     {
         double newLeft = Canvas.GetLeft(panel) + delta.X;
@@ -195,51 +130,25 @@ public partial class MainWindow : Window
 
     private void CreateMapControl()
     {
-        // 2D path: DrawingContextMapControl (default) or SkiaMapControl (Phase 1 of
-        // the GL pivot, opted-in via the .use_skia_map DiagFlag). Both implement
-        // ISharedMapControl so MapService can route to whichever is active.
-        _dcMapControl = new DrawingContextMapControl();
-        if (AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl)
-            _skiaMapControl = new SkiaMapControl();
-        ISharedMapControl active2D = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl
-            ? (ISharedMapControl)_skiaMapControl!
-            : _dcMapControl;
-        MapControl = active2D;
-        System.Diagnostics.Debug.WriteLine($"2D map control: {active2D.GetType().Name}");
-
-        // Phase-1 GL placeholder, mounted alongside the 2D map. Toggle2D3DCommand
-        // flips Is2DMode; the host grid swaps Children in response so the
-        // inactive control's render handler is fully torn down (not just hidden).
-        // Stored as a field so the constructor can wire FpsUpdated to the VM.
-        var glMapControl = new GlMapControl();
-        _glMapControl = glMapControl;
-        _mapHostGrid = new Grid();
-        _mapHostGrid.Children.Add((Control)active2D);
-        _mapHostGrid.Children.Add(glMapControl);
-        MapControlContainer.Content = _mapHostGrid;
+        MapControl = new SkiaMapControl();
+        MapControlContainer.Content = MapControl;
 
         // Note: ViewModel is null here (DataContext set after CreateMapControl).
         // Initial view state applied in MainWindow_Opened after settings load.
 
-        // Wire up the MapService with the MapControl
-        if (App.Services != null && MapControl != null)
+        if (App.Services != null)
         {
             var mapService = App.Services.GetRequiredService<AgValoniaGPS.Desktop.Services.MapService>();
             mapService.RegisterMapControl(MapControl);
-            mapService.RegisterGlMapControl(glMapControl);
 
-            // Wire up coverage updates
             var coverageService = App.Services.GetRequiredService<ICoverageMapService>();
-            glMapControl.RegisterCoverageService(coverageService);
             coverageService.CoverageUpdated += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    // Skip full rebuild if pixels were loaded directly from file
                     if (args.PixelsAlreadyLoaded)
                     {
-                        // Just mark dirty to refresh display - pixels already in bitmap
-                        MapControl?.MarkCoverageDirty();
+                        MapControl.MarkCoverageDirty();
                     }
                     else if (args.IsFullReload)
                     {
@@ -247,40 +156,24 @@ public partial class MainWindow : Window
                         // and re-composites the background; MarkCoverageFullRebuildNeeded
                         // then repaints from whatever cells the service still has
                         // (zero after ClearAll, populated after LoadFromFile).
-                        // Without the clear, ClearAll leaves stale coverage on
-                        // screen because UpdateCoverageBitmapFull's
-                        // _backgroundComposited short-circuit skips the wipe.
-                        MapControl?.ClearCoveragePixels();
-                        MapControl?.MarkCoverageFullRebuildNeeded();
+                        MapControl.ClearCoveragePixels();
+                        MapControl.MarkCoverageFullRebuildNeeded();
                     }
                     else
-                        MapControl?.MarkCoverageDirty();
+                        MapControl.MarkCoverageDirty();
                     ViewModel?.RefreshCoverageStatistics();
                 });
             };
 
-            // Set up bitmap-based coverage rendering (PERF-004)
-            // allCellsProvider takes viewport bounds for spatial queries - O(viewport) not O(total coverage)
             MapControl.SetCoverageBitmapProviders(
                 coverageService.GetCoverageBounds,
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
-
-            // Coverage display pixels now live inside CoverageMapService; the
-            // GL map control reads them via GetDisplayPixels() / ConsumeDirtyRect().
-            // Mark dirty in case field was already loaded with coverage.
             MapControl.MarkCoverageDirty();
-        }
 
-        // MapClicked is concrete-typed (not on ISharedMapControl). Both 2D
-        // controls fire it with the same signature — wire both so AB-line
-        // creation works regardless of which one is mounted.
-        if (_dcMapControl != null)
-            _dcMapControl.MapClicked += OnMapClicked;
-        if (_skiaMapControl != null)
-            _skiaMapControl.MapClicked += OnMapClicked;
-        if (MapControl != null)
+            MapControl.MapClicked += OnMapClicked;
             MapControl.UserPanned += () => ViewModel?.OnUserPan();
+        }
     }
 
     private void OnMapClicked(object? sender, MapClickEventArgs e)
@@ -503,40 +396,6 @@ public partial class MainWindow : Window
                 MapControl?.SetPitch(-0.05);
                 e.Handled = true;
                 return;
-            case Key.F9:
-                // Phase 0 Q1 spike: SKMatrix44 perspective.
-                if (Content is AgValoniaGPS.Views.Controls.Spikes.PerspectiveSkiaSpike)
-                    Content = _spikeSavedContent;
-                else
-                {
-                    _spikeSavedContent ??= Content as Control;
-                    Content = new AgValoniaGPS.Views.Controls.Spikes.PerspectiveSkiaSpike();
-                }
-                e.Handled = true;
-                return;
-            case Key.F10:
-                // Phase 0 Q3 spike: coverage SKImage upload cost.
-                if (Content is AgValoniaGPS.Views.Controls.Spikes.CoverageUploadSpike)
-                    Content = _spikeSavedContent;
-                else
-                {
-                    _spikeSavedContent ??= Content as Control;
-                    Content = new AgValoniaGPS.Views.Controls.Spikes.CoverageUploadSpike();
-                }
-                e.Handled = true;
-                return;
-            case Key.F4:
-                // Phase 0 Q4 spike: hidden visual animation-frame behavior.
-                // F11 is taken by macOS Show Desktop, so we use F4.
-                if (Content is AgValoniaGPS.Views.Controls.Spikes.HiddenVisualSpike)
-                    Content = _spikeSavedContent;
-                else
-                {
-                    _spikeSavedContent ??= Content as Control;
-                    Content = new AgValoniaGPS.Views.Controls.Spikes.HiddenVisualSpike();
-                }
-                e.Handled = true;
-                return;
         }
 
         // Configurable hotkeys
@@ -652,9 +511,8 @@ public partial class MainWindow : Window
         {
             if (ViewModel != null && MapControl != null)
             {
-                // Is2DMode = true means 3D is off, so invert the value
+                // SkiaMap toggles pitch in-place; nothing to swap in the visual tree.
                 MapControl.Set3DMode(!ViewModel.Is2DMode);
-                ApplyMapModeChildren(ViewModel.Is2DMode);
             }
         }
         else if (e.PropertyName == nameof(MainViewModel.IsDayMode))

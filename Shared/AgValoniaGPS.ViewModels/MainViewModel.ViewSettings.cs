@@ -258,10 +258,6 @@ public partial class MainViewModel
             // Remember last 3D pitch for restoring when toggling back from 2D
             if (value > -89.0)
                 _last3DPitch = value;
-            // Phase-3 GL camera: push the pitch through MapService so the GL
-            // renderer can match the user-selected tilt. The 2D control reads
-            // its own _cameraPitch via a separate code path, unaffected here.
-            _mapService.SetCameraPitchDegrees(value);
         }
     }
 

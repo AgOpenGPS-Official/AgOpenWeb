@@ -189,9 +189,9 @@ public sealed class YouTurnPathingService
         double perpAngle = abHeading + Math.PI / 2;
 
         // Sample the offset pass line along the AB direction across the full rendered extent
-        // (pass lines are drawn 2000 m beyond A and B in each direction — see
-        // DrawingContextMapControl.DrawSingleTrack). Spacing 5 m gives ~800 samples across a
-        // 4 km line — trivial cost, and won't miss a field whose narrowest usable span is > 5 m.
+        // (pass lines are drawn 2000 m beyond A and B in each direction). Spacing 5 m gives
+        // ~800 samples across a 4 km line — trivial cost, and won't miss a field whose
+        // narrowest usable span is > 5 m.
         const double SampleSpacing = 5.0;
         const double LineExtent = 2000.0;
         double abDx = pointB.Easting - pointA.Easting;

@@ -37,18 +37,6 @@ sealed class Program
             .WithInterFont()
             .LogToTrace()
             .UseHotReload()
-            // SPIKE: force native macOS rendering to use OpenGL first so
-            // OpenGlControlBase can acquire a context. On Apple Silicon
-            // Avalonia 12 was silently defaulting to Metal, leaving GL
-            // controls unable to initialize.
-            .With(new AvaloniaNativePlatformOptions
-            {
-                RenderingMode = new[]
-                {
-                    AvaloniaNativeRenderingMode.OpenGl,
-                    AvaloniaNativeRenderingMode.Software,
-                }
-            })
             // Matches Android/iOS: prevent the 50 MB coverage texture from being
             // re-uploaded every frame when the default 28 MB Skia GPU cache is
             // exceeded. Desktop has plenty of headroom here anyway, included

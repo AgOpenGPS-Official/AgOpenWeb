@@ -1,18 +1,7 @@
 // AgValoniaGPS
-// Copyright (C) 2024-2025 AgValoniaGPS Contributors
+// Copyright (C) 2024-2026 AgValoniaGPS Contributors
 //
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// Licensed under GNU GPL v3. See LICENSE.md.
 
 using System;
 using System.Collections.Specialized;
@@ -38,16 +27,8 @@ namespace AgValoniaGPS.Android.Views;
 /// </summary>
 public partial class MainView : UserControl
 {
-    private DrawingContextMapControl? _mapControl;
-    private SkiaMapControl? _skiaMapControl;
-    private GlMapControl? _glMapControl;
-    private Grid? _mapHostGrid;
+    private SkiaMapControl? _mapControl;
     private MainViewModel? _viewModel;
-    // The 2D path the platform routes to MapService — DCMC by default, SkiaMap
-    // when the .use_skia_map DiagFlag is set. Phase 1 of the GL pivot.
-    private ISharedMapControl? _active2DMapControl;
-
-    // Panels are now anchored (no position save/restore needed)
 
     public MainView()
     {
@@ -55,25 +36,13 @@ public partial class MainView : UserControl
         InitializeComponent();
         System.Diagnostics.Debug.WriteLine("[MainView] InitializeComponent completed.");
 
-        // Get reference to map control
-        _mapControl = this.FindControl<DrawingContextMapControl>("MapControl");
-        _skiaMapControl = this.FindControl<SkiaMapControl>("SkiaMapControl");
-        _glMapControl = this.FindControl<GlMapControl>("GlMapControl");
-        _mapHostGrid = this.FindControl<Grid>("MapHostGrid");
+        _mapControl = this.FindControl<SkiaMapControl>("MapControl");
 
-        _active2DMapControl = AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl
-            ? (ISharedMapControl?)_skiaMapControl
-            : _mapControl;
-
-        // Wire up chart panel drag events
         WireChartPanelDrag("SteerChartPanel");
         WireChartPanelDrag("HeadingChartPanel");
         WireChartPanelDrag("XTEChartPanel");
 
-        // Handle view resize to keep panels in bounds
         this.PropertyChanged += MainView_PropertyChanged;
-
-        // Save coverage and settings when view is unloaded (app exit/backgrounded)
         this.Unloaded += MainView_Unloaded;
     }
 
@@ -87,7 +56,6 @@ public partial class MainView : UserControl
             display.GridVisible = _viewModel.IsGridOn;
         }
 
-        // Save on background thread — never block the UI thread on app close
         Task.Run(() =>
         {
             try
@@ -120,89 +88,58 @@ public partial class MainView : UserControl
         DataContext = viewModel;
         _viewModel = viewModel;
 
-        // Register the active 2D map control with the MapService so it can receive
-        // commands. MapClicked / coverage providers are DCMC-specific and stay on
-        // DCMC even when the SkiaMapControl is the visible 2D control — Phase 1
-        // doesn't exercise tracks/coverage in S1/S2.
-        if (_active2DMapControl != null)
+        if (_mapControl != null)
         {
-            mapService.RegisterMapControl(_active2DMapControl);
-            if (_glMapControl != null)
-            {
-                mapService.RegisterGlMapControl(_glMapControl);
-                _glMapControl.RegisterCoverageService(coverageService);
-            }
-            System.Diagnostics.Debug.WriteLine($"[MainView] {_active2DMapControl.GetType().Name} registered with MapService.");
+            mapService.RegisterMapControl(_mapControl);
 
-            // Wire screenshot provider for debug dump (#127)
             viewModel.ScreenshotProvider = () =>
                 AgValoniaGPS.Views.ScreenshotHelper.CaptureScreenshotPng(this);
 
-            // MapClicked is concrete-typed on each 2D control. Both DCMC and
-            // SkiaMap fire it with the same signature — wire both so AB-line
-            // creation works regardless of which one is mounted.
-            if (_mapControl != null)
-                _mapControl.MapClicked += OnMapClicked;
-            if (_skiaMapControl != null)
-                _skiaMapControl.MapClicked += OnMapClicked;
-            _active2DMapControl.UserPanned += () => _viewModel?.OnUserPan();
+            _mapControl.MapClicked += OnMapClicked;
+            _mapControl.UserPanned += () => _viewModel?.OnUserPan();
 
-            // Coverage updates route through the active 2D control so SkiaMap
-            // receives the cell-paint signals when it's mounted.
             coverageService.CoverageUpdated += (sender, args) =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
                     if (args.PixelsAlreadyLoaded)
                     {
-                        _active2DMapControl?.MarkCoverageDirty();
+                        _mapControl.MarkCoverageDirty();
                     }
                     else if (args.IsFullReload)
                     {
-                        _active2DMapControl?.ClearCoveragePixels();
-                        _active2DMapControl?.MarkCoverageFullRebuildNeeded();
+                        _mapControl.ClearCoveragePixels();
+                        _mapControl.MarkCoverageFullRebuildNeeded();
                     }
                     else
-                        _active2DMapControl?.MarkCoverageDirty();
+                        _mapControl.MarkCoverageDirty();
                     _viewModel?.RefreshCoverageStatistics();
                 });
             };
 
-            _active2DMapControl.SetCoverageBitmapProviders(
+            _mapControl.SetCoverageBitmapProviders(
                 coverageService.GetCoverageBounds,
                 (cellSize, minE, maxE, minN, maxN) => coverageService.GetCoverageBitmapCells(cellSize, minE, maxE, minN, maxN),
                 coverageService.GetNewCoverageBitmapCells);
+            _mapControl.MarkCoverageDirty();
 
-            _active2DMapControl.MarkCoverageDirty();
+            _mapControl.FpsUpdated += fps =>
+            {
+                if (_viewModel != null)
+                    _viewModel.CurrentFps = fps;
+            };
         }
 
-        // Wire up position updates - when ViewModel properties change, update map control
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
-
-        // Subscribe to track collection changes to update active track display
         viewModel.SavedTracks.CollectionChanged += SavedTracks_CollectionChanged;
-
-        // Update active track immediately in case field was already loaded
         UpdateActiveTrack();
 
-        // Note: Tool/vehicle position sync happens when simulator is enabled
-        // (see IsSimulatorEnabled handler in OnViewModelPropertyChanged)
-
-        // Apply initial 2D/3D child mount based on saved Is2DMode.
-        // Self-rendering controls don't pause on IsVisible=false, so we
-        // swap them in/out of the host grid instead. See [[visibility-toggle-rule]].
-        ApplyMapModeChildren(viewModel.Is2DMode);
-
-        // Push initial state to the active map control. VM.LoadSettings
-        // ran before MapControl was registered, so map-targeted calls
-        // were no-ops then. Re-push here so camera mode and pitch match the
-        // loaded settings.
-        if (_active2DMapControl != null)
+        if (_mapControl != null)
         {
-            _active2DMapControl.Set3DMode(!viewModel.Is2DMode);
+            _mapControl.Set3DMode(!viewModel.Is2DMode);
             double pitchRadians = (90.0 + viewModel.CameraPitch) * Math.PI / 180.0;
-            _active2DMapControl.SetPitchAbsolute(pitchRadians);
-            _active2DMapControl.CameraFollowMode = viewModel.CameraMode switch
+            _mapControl.SetPitchAbsolute(pitchRadians);
+            _mapControl.CameraFollowMode = viewModel.CameraMode switch
             {
                 AgValoniaGPS.Models.CameraMode.NorthUp => 0,
                 AgValoniaGPS.Models.CameraMode.HeadingUp => 1,
@@ -211,38 +148,7 @@ public partial class MainView : UserControl
             };
         }
 
-        // Fire missing OnPropertyChanged for properties that
-        // ConfigurationService loaded directly into the backing field — the
-        // display panel binding otherwise stays empty/stale until first tap.
         viewModel.NotifyDisplayLabelsAfterStartup();
-
-        // Subscribe to FPS updates from each map control. Only the
-        // currently-mounted one ticks (the others are removed from the
-        // visual tree), so whichever is active pushes its frame rate.
-        if (_mapControl != null)
-        {
-            _mapControl.FpsUpdated += fps =>
-            {
-                if (viewModel != null)
-                    viewModel.CurrentFps = fps;
-            };
-        }
-        if (_skiaMapControl != null)
-        {
-            _skiaMapControl.FpsUpdated += fps =>
-            {
-                if (viewModel != null)
-                    viewModel.CurrentFps = fps;
-            };
-        }
-        if (_glMapControl != null)
-        {
-            _glMapControl.FpsUpdated += fps =>
-            {
-                if (viewModel != null)
-                    viewModel.CurrentFps = fps;
-            };
-        }
 
         System.Diagnostics.Debug.WriteLine("[MainView] DataContext set.");
     }
@@ -257,17 +163,12 @@ public partial class MainView : UserControl
             return;
         }
 
-        // For DriveAB mode, we use current GPS position (not the clicked position)
-        // For DrawAB mode, we use the clicked map position
-        // For Curve mode, tap finishes recording
         if (_viewModel.CurrentABCreationMode == ABCreationMode.DriveAB)
         {
-            // In DriveAB mode, any tap triggers setting the point at current GPS position
             _viewModel.SetABPointCommand?.Execute(null);
         }
         else if (_viewModel.CurrentABCreationMode == ABCreationMode.DrawAB)
         {
-            // In DrawAB mode, pass the clicked map coordinates
             var mapPosition = new Position
             {
                 Easting = e.Easting,
@@ -277,12 +178,10 @@ public partial class MainView : UserControl
         }
         else if (_viewModel.CurrentABCreationMode == ABCreationMode.Curve)
         {
-            // In Curve mode, tap finishes recording
             _viewModel.SetABPointCommand?.Execute(null);
         }
         else if (_viewModel.CurrentABCreationMode == ABCreationMode.DrawCurve)
         {
-            // In DrawCurve mode, pass the clicked map coordinates to add a point
             var mapPosition = new Position
             {
                 Easting = e.Easting,
@@ -294,31 +193,28 @@ public partial class MainView : UserControl
 
     private void SavedTracks_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        // When a new track is added, show the most recently active one
         UpdateActiveTrack();
     }
 
     private void UpdateActiveTrack()
     {
-        if (_active2DMapControl != null && _viewModel != null)
+        if (_mapControl != null && _viewModel != null)
         {
             var activeTrack = _viewModel.SavedTracks.FirstOrDefault(t => t.IsActive);
-            _active2DMapControl.SetActiveTrack(activeTrack);
+            _mapControl.SetActiveTrack(activeTrack);
         }
     }
 
     private void SyncInitialPositions()
     {
-        if (_active2DMapControl == null || _viewModel == null) return;
+        if (_mapControl == null || _viewModel == null) return;
 
         double headingRadians = _viewModel.Heading * Math.PI / 180.0;
-        _active2DMapControl.SetVehiclePosition(_viewModel.Easting, _viewModel.Northing, headingRadians);
+        _mapControl.SetVehiclePosition(_viewModel.Easting, _viewModel.Northing, headingRadians);
 
-        // Get tool config (ViewModel's tool values are 0 until first simulator update)
         var configStore = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
         double toolWidth = _viewModel.ToolWidth > 0 ? _viewModel.ToolWidth : configStore.ActualToolWidth;
 
-        // Calculate tool position from vehicle position if not yet set
         double toolX = _viewModel.ToolEasting;
         double toolY = _viewModel.ToolNorthing;
         double toolHeading = _viewModel.ToolHeadingRadians;
@@ -327,7 +223,6 @@ public partial class MainView : UserControl
 
         if (Math.Abs(toolX) < 0.001 && Math.Abs(toolY) < 0.001)
         {
-            // Tool position not yet calculated - compute from vehicle position
             var tool = configStore.Tool;
             double hitchDist = tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT
                 ? -Math.Abs(tool.HitchLength)
@@ -340,8 +235,8 @@ public partial class MainView : UserControl
             toolHeading = headingRadians;
         }
 
-        _active2DMapControl.SetToolPosition(toolX, toolY, toolHeading, toolWidth, hitchX, hitchY);
-        _active2DMapControl.SetSectionStates(
+        _mapControl.SetToolPosition(toolX, toolY, toolHeading, toolWidth, hitchX, hitchY);
+        _mapControl.SetSectionStates(
             _viewModel.GetSectionStates(),
             _viewModel.GetSectionWidths(),
             _viewModel.NumSections,
@@ -350,12 +245,12 @@ public partial class MainView : UserControl
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (_active2DMapControl != null && _viewModel != null)
+        if (_mapControl != null && _viewModel != null)
         {
             if (e.PropertyName?.StartsWith("Section") == true &&
                      (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
             {
-                _active2DMapControl.SetSectionStates(
+                _mapControl.SetSectionStates(
                     _viewModel.GetSectionStates(),
                     _viewModel.GetSectionWidths(),
                     _viewModel.NumSections,
@@ -363,17 +258,16 @@ public partial class MainView : UserControl
             }
             else if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
             {
-                _active2DMapControl.EnableClickSelection = _viewModel.EnableABClickSelection;
+                _mapControl.EnableClickSelection = _viewModel.EnableABClickSelection;
             }
             else if (e.PropertyName == nameof(MainViewModel.Is2DMode))
             {
-                _active2DMapControl.Set3DMode(!_viewModel.Is2DMode);
-                ApplyMapModeChildren(_viewModel.Is2DMode);
+                _mapControl.Set3DMode(!_viewModel.Is2DMode);
             }
             else if (e.PropertyName == nameof(MainViewModel.CameraPitch))
             {
                 double pitchRadians = (90.0 + _viewModel.CameraPitch) * Math.PI / 180.0;
-                _active2DMapControl.SetPitchAbsolute(pitchRadians);
+                _mapControl.SetPitchAbsolute(pitchRadians);
             }
             else if (e.PropertyName == nameof(MainViewModel.IsSimulatorEnabled))
             {
@@ -387,7 +281,7 @@ public partial class MainView : UserControl
             }
             else if (e.PropertyName == nameof(MainViewModel.PendingPointA))
             {
-                _active2DMapControl.SetPendingPointA(_viewModel.PendingPointA);
+                _mapControl.SetPendingPointA(_viewModel.PendingPointA);
             }
             else if (e.PropertyName == nameof(MainViewModel.CrossTrackError))
             {
@@ -398,41 +292,6 @@ public partial class MainView : UserControl
                     _viewModel.CrossTrackError / 100.0,
                     _viewModel.SimulatorSteerAngle,
                     hasGuidance, false);
-            }
-        }
-    }
-
-    private void ApplyMapModeChildren(bool is2D)
-    {
-        if (_mapHostGrid == null) return;
-        Control? dc = _mapControl;
-        Control? sk = _skiaMapControl;
-        Control? gl = _glMapControl;
-        // SkiaMap handles 2D + perspective in-place via pitch (Phase 3 of the
-        // pivot), so the SkiaMap path no longer swaps to GlMapControl on the
-        // 2D↔3D toggle — the toggle becomes a CameraPitch change that
-        // SetPitchAbsolute animates. GlMapControl stays in the grid as a
-        // parked fallback for the non-SkiaMap path.
-        Control? active;
-        if (AgValoniaGPS.Models.Diagnostics.DiagFlags.UseSkiaMapControl)
-            active = sk;
-        else if (is2D)
-            active = dc;
-        else
-            active = gl;
-        Control?[] all = new Control?[] { dc, sk, gl };
-        foreach (var c in all)
-        {
-            if (c == null) continue;
-            if (ReferenceEquals(c, active))
-            {
-                if (!_mapHostGrid.Children.Contains(c))
-                    _mapHostGrid.Children.Add(c);
-            }
-            else
-            {
-                if (_mapHostGrid.Children.Contains(c))
-                    _mapHostGrid.Children.Remove(c);
             }
         }
     }
@@ -456,6 +315,4 @@ public partial class MainView : UserControl
             }));
         }
     }
-
-    // Section control is now anchored (no drag needed)
 }

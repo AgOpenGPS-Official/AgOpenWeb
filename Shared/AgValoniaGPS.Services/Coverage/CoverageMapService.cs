@@ -29,7 +29,7 @@ namespace AgValoniaGPS.Services.Coverage;
 ///
 /// Architecture:
 /// - DETECTION LAYER: Bit array with 0.1m cells for O(1) coverage detection (~65MB for 520ha)
-/// - DISPLAY LAYER: WriteableBitmap rendered from bit array (handled by DrawingContextMapControl)
+/// - DISPLAY LAYER: RGB565 pixel buffer rendered from bit array (handled by SkiaMapControl)
 ///
 /// This replaces the old patch-based system which stored 50,000+ triangle strips
 /// and iterated through them for coverage detection (280-330ms per check).
@@ -64,7 +64,7 @@ public class CoverageMapService : ICoverageMapService
     private bool _dirtyValid;
 
     // Cap detection-resolution bitmap at ~25M cells before scaling up display
-    // resolution. Matches the policy DrawingContextMapControl applied.
+    // resolution.
     private const long MAX_DISPLAY_PIXELS = 25_000_000;
 
     // Per-zone cell counters for acreage calculation (zone index -> cell count)
@@ -962,8 +962,7 @@ public class CoverageMapService : ICoverageMapService
         _fieldMaxN = maxN;
         _fieldBoundsSet = true;
 
-        // Calculate bitmap dimensions - MUST match DrawingContextMapControl's calculation exactly
-        // Map control uses: (int)Math.Ceiling((max - min) / cellSize)
+        // Calculate bitmap dimensions: (int)Math.Ceiling((max - min) / cellSize)
         _bitmapOriginE = (int)Math.Floor(minE / BITMAP_CELL_SIZE);
         _bitmapOriginN = (int)Math.Floor(minN / BITMAP_CELL_SIZE);
         _bitmapWidth = (int)Math.Ceiling((maxE - minE) / BITMAP_CELL_SIZE);
@@ -1007,11 +1006,9 @@ public class CoverageMapService : ICoverageMapService
 
     /// <summary>
     /// Pick a display-layer cell size. Detection is fixed at 0.1m; display
-    /// scales coarser when needed to keep the RGB565 buffer + GL texture
-    /// within budget. Logic mirrors the policy that used to live in
-    /// DrawingContextMapControl.GetCoverageBitmapInfo: cap at ~25M pixels,
-    /// then apply the user's DisplayResolutionMultiplier (Ultra=1.0,
-    /// High=1.5, Med=2.5, Low=4.0, Min=6.0).
+    /// scales coarser when needed to keep the RGB565 buffer within budget:
+    /// cap at ~25M pixels, then apply the user's DisplayResolutionMultiplier
+    /// (Ultra=1.0, High=1.5, Med=2.5, Low=4.0, Min=6.0).
     /// </summary>
     private static double ComputeDisplayCellSize(double worldWidthM, double worldHeightM)
     {

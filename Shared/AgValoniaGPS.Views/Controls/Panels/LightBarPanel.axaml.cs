@@ -170,7 +170,7 @@ public partial class LightBarPanel : UserControl
 
     /// <summary>
     /// Update light bar with current guidance values.
-    /// Called from DrawingContextMapControl or platform code on each GPS update.
+    /// Called from platform code on each GPS update.
     /// </summary>
     public void Update(double crossTrackErrorMeters, double steerAngleDegrees,
                        bool hasActiveGuidance, bool isInDeadZone)

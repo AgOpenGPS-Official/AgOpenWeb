@@ -3,13 +3,10 @@
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
 //
-// Coverage bitmap subsystem for SkiaMapControl — ported from
-// DrawingContextMapControl during Phase 2b of the GL map pivot.
-// Mirrors the dual-bitmap (Rgb565 data + Bgra8888 display + SKBitmap shadow)
-// layout used by DCMC so saved coverage round-trips identically and the
-// background-image composite math stays consistent. The duplication is
-// intentional for the transition window; Phase 4 deletes DCMC and the two
-// files collapse to one canonical impl.
+// Coverage bitmap subsystem for SkiaMapControl: dual-bitmap layout
+// (Rgb565 data + Bgra8888 display + SKBitmap shadow) so saved coverage
+// round-trips identically and the background-image composite math stays
+// consistent.
 
 using System;
 using System.Collections.Generic;

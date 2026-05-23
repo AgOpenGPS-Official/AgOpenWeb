@@ -45,21 +45,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Grid>
             </Border>
 
-            <!-- Main Content Area - Cross-platform DrawingContext Map with overlay panels -->
+            <!-- Main Content Area - SkiaMap with overlay panels -->
             <Grid Grid.Row="1" Background="Transparent">
-                <!-- Map controls live in a dedicated host grid so code-behind can
-                     swap Children to fully pause the inactive renderer (IsVisible
-                     alone doesn't stop self-rendering controls — see
-                     [[visibility-toggle-rule]]). The SkiaMapControl is the
-                     GL-pivot Phase 1 alternate 2D path; the .use_skia_map
-                     DiagFlag picks DCMC vs Skia at startup. -->
-                <Grid x:Name="MapHostGrid">
-                    <controls:DrawingContextMapControl x:Name="MapControl" Margin="5"
-                                                       IsGridVisible="{Binding IsGridOn}"/>
-                    <controls:SkiaMapControl x:Name="SkiaMapControl" Margin="5"
-                                             IsGridVisible="{Binding IsGridOn}"/>
-                    <controls:GlMapControl x:Name="GlMapControl" Margin="5"/>
-                </Grid>
+                <controls:SkiaMapControl x:Name="MapControl" Margin="5"
+                                         IsGridVisible="{Binding IsGridOn}"/>
 
                 <!-- LIGHT BAR: Centered at top (#144) -->
                 <panels:LightBarPanel x:Name="LightBarPanel"

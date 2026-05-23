@@ -37,13 +37,6 @@ public interface IMapService
     void SetPitchAbsolute(double pitchRadians);
     double Pitch { get; }
 
-    /// <summary>
-    /// Phase-3 GL camera pitch (MainViewModel.CameraPitch convention:
-    /// degrees, -90 = overhead, -10 = nearly horizontal). Routed only to the
-    /// GL renderer; the 2D control owns its own pitch via SetPitchAbsolute.
-    /// </summary>
-    void SetCameraPitchDegrees(double pitchDegrees);
-
     void Pan(double deltaX, double deltaY);
     void PanTo(double x, double y);
 
