@@ -1478,9 +1478,17 @@ public partial class MainViewModel : ObservableObject
                 _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
                 _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
             }
-            // Field-only opens skip coverage load — the bitmap was already
-            // cleared by ClearFieldState during CloseFieldAsync, so there's
-            // nothing to draw until the operator starts a job.
+            else
+            {
+                // Field-only opens skip coverage load — but they still need to
+                // fire CoverageUpdated(IsFullReload=true) so the map control's
+                // handler runs ClearCoveragePixels + MarkCoverageFullRebuildNeeded
+                // during the busy overlay. Resume Job gets this for free via
+                // LoadFromFile; without parity here, the coverage-bitmap
+                // rebuild gets deferred until the first non-stationary GPS
+                // cycle and lands on the UI thread as a 2-3 s freeze.
+                _coverageMapService.ClearAll();
+            }
             RefreshCoverageStatistics();
 
             // Start periodic coverage autosave. The timer no-ops on each

@@ -1165,8 +1165,10 @@ public class CoverageMapService : ICoverageMapService
         _displayWidth = 0;
         _displayHeight = 0;
         _cellCountPerZone.Clear();
-        _detectionBits = null;
-        _displayPixels = null;
+        // Keep _detectionBits and _displayPixels alive — SetFieldBounds
+        // reuses them when LongLength matches (the reuse fix at lines
+        // 981-996). Nulling here silently defeats the reuse on every
+        // close+reopen and forces a fresh ~73 MB LOH alloc.
         _dirtyValid = false;
         Console.WriteLine("[Coverage] Field bounds cleared");
     }
