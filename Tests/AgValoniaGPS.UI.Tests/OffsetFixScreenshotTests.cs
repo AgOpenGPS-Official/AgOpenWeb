@@ -42,7 +42,7 @@ public class OffsetFixScreenshotTests
 
         var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
 
-        var mapControl = new DrawingContextMapControl
+        var mapControl = new SkiaMapControl
         {
             Width = 600,
             Height = 600,

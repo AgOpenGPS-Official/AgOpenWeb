@@ -71,7 +71,7 @@ public class ScreenshotCaptureTests
     // Layout builders
     // ---------------------------------------------------------------
 
-    private static (Window window, DrawingContextMapControl map) CreateFullUI()
+    private static (Window window, SkiaMapControl map) CreateFullUI()
     {
         var vm = new MainViewModelBuilder().Build();
         var mapControl = CreateMapControlWithMockData();
@@ -106,7 +106,7 @@ public class ScreenshotCaptureTests
         return (window, mapControl);
     }
 
-    private static (Window window, DrawingContextMapControl map) CreateMapOnly()
+    private static (Window window, SkiaMapControl map) CreateMapOnly()
     {
         var mapControl = CreateMapControlWithMockData();
 
@@ -274,9 +274,9 @@ public class ScreenshotCaptureTests
     // Mock data
     // ---------------------------------------------------------------
 
-    private static DrawingContextMapControl CreateMapControlWithMockData()
+    private static SkiaMapControl CreateMapControlWithMockData()
     {
-        var control = new DrawingContextMapControl();
+        var control = new SkiaMapControl();
 
         var boundary = new Boundary
         {
@@ -381,8 +381,8 @@ public class ScreenshotCaptureTests
     private static void CaptureToggle(
         string toggleName,
         CaptureMode modes,
-        Action<DrawingContextMapControl> setOn,
-        Action<DrawingContextMapControl> setOff)
+        Action<SkiaMapControl> setOn,
+        Action<SkiaMapControl> setOff)
     {
         var baseDir = ScreenshotBaseDir;
 
@@ -453,7 +453,7 @@ public class ScreenshotCaptureTests
     }
 
     // ---------------------------------------------------------------
-    // Toggle tests -- implemented in DrawingContextMapControl
+    // Toggle tests -- implemented in SkiaMapControl
     // Map-only toggles: capture map + full (UI panels don't change)
     // ---------------------------------------------------------------
 
@@ -501,7 +501,7 @@ public class ScreenshotCaptureTests
     }
 
     // ---------------------------------------------------------------
-    // Toggle tests -- NOT YET implemented in DrawingContextMapControl
+    // Toggle tests -- NOT YET implemented in SkiaMapControl
     // These exist in DisplayConfig but the renderer does not read them yet.
     // Each test is marked [Explicit] so it does not fail CI.
     // Remove [Explicit] once the renderer implements the toggle.
@@ -511,7 +511,7 @@ public class ScreenshotCaptureTests
     // ---------------------------------------------------------------
 
     [AvaloniaTest]
-    [Explicit("SectionLinesVisible not yet wired in DrawingContextMapControl")]
+    [Explicit("SectionLinesVisible not yet wired in SkiaMapControl")]
     public void Capture_SectionLinesVisible_Toggle()
     {
         CaptureToggle(
@@ -522,7 +522,7 @@ public class ScreenshotCaptureTests
     }
 
     [AvaloniaTest]
-    [Explicit("SvennArrowVisible not yet wired in DrawingContextMapControl")]
+    [Explicit("SvennArrowVisible not yet wired in SkiaMapControl")]
     public void Capture_SvennArrowVisible_Toggle()
     {
         CaptureToggle(
@@ -533,7 +533,7 @@ public class ScreenshotCaptureTests
     }
 
     [AvaloniaTest]
-    [Explicit("PolygonsVisible not yet wired in DrawingContextMapControl")]
+    [Explicit("PolygonsVisible not yet wired in SkiaMapControl")]
     public void Capture_PolygonsVisible_Toggle()
     {
         CaptureToggle(
@@ -544,7 +544,7 @@ public class ScreenshotCaptureTests
     }
 
     [AvaloniaTest]
-    [Explicit("DirectionMarkersVisible not yet wired in DrawingContextMapControl")]
+    [Explicit("DirectionMarkersVisible not yet wired in SkiaMapControl")]
     public void Capture_DirectionMarkersVisible_Toggle()
     {
         CaptureToggle(
