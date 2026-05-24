@@ -18,6 +18,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using AgValoniaGPS.Models.Ntrip;
 using AgValoniaGPS.Services.Interfaces;
+using AgValoniaGPS.Services.Storage;
 
 namespace AgValoniaGPS.Services;
 
@@ -87,19 +88,25 @@ public class NtripProfileService : INtripProfileService
         var jsonFiles = Directory.GetFiles(ProfilesDirectory, "*.json");
         foreach (var file in jsonFiles)
         {
-            try
+            // Crash-safe load: a damaged primary transparently recovers from its
+            // .bak last-known-good copy. NTRIP recovery is silent + logged
+            // (unlike vehicle/tool/settings, which prompt) since profiles load
+            // asynchronously and there may be several.
+            var result = AtomicJsonFile.Read<NtripProfile>(file, _jsonOptions);
+            if (result.Loaded && result.Value != null)
             {
-                var json = await File.ReadAllTextAsync(file);
-                var profile = JsonSerializer.Deserialize<NtripProfile>(json, _jsonOptions);
-                if (profile != null)
+                if (result.Recovered)
                 {
-                    profile.FilePath = file;
-                    _profiles.Add(profile);
+                    _logger.LogWarning(
+                        "NTRIP profile '{File}' was damaged; recovered from backup (saved {Time}).",
+                        file, result.BackupTimestamp);
                 }
+                result.Value.FilePath = file;
+                _profiles.Add(result.Value);
             }
-            catch (Exception ex)
+            else if (result.Outcome == LoadOutcome.CorruptNoBackup)
             {
-                _logger.LogError(ex, "Error loading NTRIP profile from '{File}'", file);
+                _logger.LogError("NTRIP profile '{File}' is damaged and has no usable backup.", file);
             }
         }
 
@@ -246,10 +253,12 @@ public class NtripProfileService : INtripProfileService
             .ToList()!;
     }
 
-    private async Task SaveProfileToFileAsync(NtripProfile profile)
+    private Task SaveProfileToFileAsync(NtripProfile profile)
     {
-        var json = JsonSerializer.Serialize(profile, _jsonOptions);
-        await File.WriteAllTextAsync(profile.FilePath, json);
+        // Atomic write + .bak last-known-good (see AtomicJsonFile). These files
+        // are tiny, so the synchronous write is negligible.
+        AtomicJsonFile.WriteJson(profile.FilePath, profile, _jsonOptions);
+        return Task.CompletedTask;
     }
 
     private static string SanitizeFileName(string fileName)

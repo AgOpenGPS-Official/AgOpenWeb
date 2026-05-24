@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Services.Profile;
 
 namespace AgValoniaGPS.Services.Interfaces;
 
@@ -56,8 +57,24 @@ public interface IConfigurationService
 
     /// <summary>
     /// Loads a vehicle profile and a tool profile by name (#346 split).
+    /// Transparently recovers from each file's <c>.bak</c> last-known-good copy
+    /// when the primary is damaged; <see cref="LastRecovery"/> reports whether
+    /// a recovery occurred.
     /// </summary>
     bool LoadProfiles(string vehicleName, string toolName);
+
+    /// <summary>
+    /// Read-only corruption probe of a vehicle+tool pair (no store mutation, no
+    /// quarantine). The picker calls this to decide whether to prompt the user
+    /// before committing to a switch.
+    /// </summary>
+    ProfileLoadProbe ProbeProfiles(string vehicleName, string toolName);
+
+    /// <summary>
+    /// Recovery summary from the most recent <see cref="LoadProfiles"/>, or
+    /// <c>null</c> if nothing was damaged.
+    /// </summary>
+    ProfileLoadProbe? LastRecovery { get; }
 
     /// <summary>
     /// Saves the current ConfigurationStore to a vehicle profile and a

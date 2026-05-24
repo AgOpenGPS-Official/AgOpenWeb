@@ -8,6 +8,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Services.Storage;
 
 namespace AgValoniaGPS.Services.Profile;
 
@@ -36,24 +37,57 @@ public static class ToolProfileJsonService
         if (!Directory.Exists(toolsDirectory))
             Directory.CreateDirectory(toolsDirectory);
 
-        var dto = ToDto(store);
-        var json = JsonSerializer.Serialize(dto, Options);
-        File.WriteAllText(GetJsonPath(toolsDirectory, profileName), json);
+        // Atomic write + .bak last-known-good (see AtomicJsonFile).
+        AtomicJsonFile.WriteJson(GetJsonPath(toolsDirectory, profileName), ToDto(store), Options);
     }
 
     public static bool Load(string toolsDirectory, string profileName, ConfigurationStore store)
+        => Load(toolsDirectory, profileName, store, out _, out _);
+
+    /// <summary>
+    /// Load, transparently recovering from the <c>.bak</c> last-known-good copy
+    /// if the primary file is damaged. <paramref name="outcome"/> reports how
+    /// the file resolved so callers can surface a recovery prompt.
+    /// </summary>
+    public static bool Load(
+        string toolsDirectory,
+        string profileName,
+        ConfigurationStore store,
+        out LoadOutcome outcome,
+        out DateTime? backupTimestamp,
+        bool quarantineOnFailure = true)
     {
         var path = GetJsonPath(toolsDirectory, profileName);
-        if (!File.Exists(path))
+        var result = AtomicJsonFile.Read<ToolProfileDto>(path, Options, quarantineOnFailure: quarantineOnFailure);
+        outcome = result.Outcome;
+        backupTimestamp = result.BackupTimestamp;
+
+        if (!result.Loaded || result.Value is null)
             return false;
 
-        var json = File.ReadAllText(path);
-        var dto = JsonSerializer.Deserialize<ToolProfileDto>(json, Options);
-        if (dto == null)
-            return false;
-
-        ApplyDtoToStore(dto, profileName, path, store);
+        ApplyDtoToStore(result.Value, profileName, path, store);
         return true;
+    }
+
+    /// <summary>
+    /// Read-only corruption probe — no store mutation, no quarantine.
+    /// </summary>
+    public static ProfileFileProbe Probe(string toolsDirectory, string profileName)
+    {
+        var path = GetJsonPath(toolsDirectory, profileName);
+        var label = $"tool '{profileName}'";
+
+        if (!File.Exists(path) && !File.Exists(path + AtomicJsonFile.BackupSuffix))
+            return new ProfileFileProbe { Kind = ProfileKind.Tool, Label = label, Outcome = LoadOutcome.Missing };
+
+        var result = AtomicJsonFile.Read<ToolProfileDto>(path, Options, quarantineOnFailure: false);
+        return new ProfileFileProbe
+        {
+            Kind = ProfileKind.Tool,
+            Label = label,
+            Outcome = result.Outcome,
+            BackupTimestamp = result.BackupTimestamp,
+        };
     }
 
     private static string GetJsonPath(string toolsDirectory, string profileName)

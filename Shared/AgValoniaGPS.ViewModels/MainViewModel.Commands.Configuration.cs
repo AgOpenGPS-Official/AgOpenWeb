@@ -52,7 +52,9 @@ public partial class MainViewModel
             LoadVehicleToolDialogVm = new LoadVehicleToolDialogViewModel(
                 _configurationService,
                 onClose: () => State.UI.CloseDialog(),
-                confirm: (msg, action) => ShowConfirmationDialog("Confirm", msg, action));
+                confirm: (msg, action) => ShowConfirmationDialog("Confirm", msg, action),
+                confirmChoice: (msg, confirmLabel, cancelLabel, action) =>
+                    ShowConfirmationDialog("Profile Damaged", msg, confirmLabel, cancelLabel, action));
             State.UI.ShowDialog(DialogType.LoadVehicleTool);
         });
 

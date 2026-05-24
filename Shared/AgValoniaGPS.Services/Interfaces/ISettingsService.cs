@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Services.Storage;
 using System;
 
 namespace AgValoniaGPS.Services.Interfaces
@@ -28,6 +29,21 @@ namespace AgValoniaGPS.Services.Interfaces
         /// Current application settings
         /// </summary>
         AppSettings Settings { get; }
+
+        /// <summary>
+        /// How the most recent <see cref="Load"/> resolved the settings file.
+        /// <see cref="LoadOutcome.RecoveredFromBackup"/> or
+        /// <see cref="LoadOutcome.CorruptNoBackup"/> means the primary file was
+        /// damaged; the UI surfaces a recovery prompt on these.
+        /// </summary>
+        LoadOutcome LastLoadStatus { get; }
+
+        /// <summary>
+        /// Last-write time of the backup that <see cref="Load"/> recovered from,
+        /// when <see cref="LastLoadStatus"/> is
+        /// <see cref="LoadOutcome.RecoveredFromBackup"/>; otherwise <c>null</c>.
+        /// </summary>
+        DateTime? RecoveredBackupTime { get; }
 
         /// <summary>
         /// Raised when settings are loaded

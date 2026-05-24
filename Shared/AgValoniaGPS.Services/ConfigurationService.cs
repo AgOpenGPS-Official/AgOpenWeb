@@ -43,6 +43,14 @@ public class ConfigurationService(
     public event EventHandler<string>? ProfileLoaded;
     public event EventHandler<string>? ProfileSaved;
 
+    /// <summary>
+    /// Recovery summary from the most recent <see cref="LoadProfiles"/>, or
+    /// <c>null</c> if nothing was damaged. The startup recovery prompt reads
+    /// this once; the runtime picker drives its own prompt via
+    /// <see cref="ProbeProfiles"/> instead.
+    /// </summary>
+    public ProfileLoadProbe? LastRecovery { get; private set; }
+
     #region Profile Management
 
     public IReadOnlyList<string> GetAvailableProfiles()
@@ -64,10 +72,36 @@ public class ConfigurationService(
     /// Load a vehicle profile and (independently) a tool profile. The
     /// picker dialog (#346) calls this with mismatched names.
     /// </summary>
+    /// <summary>
+    /// Read-only corruption probe of the v2 files behind a vehicle+tool pair,
+    /// without mutating the store. The runtime picker calls this to decide
+    /// whether to prompt before committing to a switch.
+    /// </summary>
+    public ProfileLoadProbe ProbeProfiles(string vehicleName, string toolName)
+    {
+        return new ProfileLoadProbe
+        {
+            Files = new[]
+            {
+                VehicleProfileJsonService.Probe(profileService.VehiclesDirectory, vehicleName),
+                ToolProfileJsonService.Probe(toolProfileService.ToolsDirectory, toolName),
+            },
+        };
+    }
+
     public bool LoadProfiles(string vehicleName, string toolName)
     {
+        // Capture corruption status up-front (no mutation, no quarantine) so we
+        // can record it for the startup recovery prompt after the load.
+        var probe = ProbeProfiles(vehicleName, toolName);
+
+        // profileService.Load transparently recovers from the .bak
+        // last-known-good copy when the primary v2 file is damaged.
         if (!profileService.Load(vehicleName, Store))
+        {
+            LastRecovery = probe.NeedsPrompt ? probe : null;
             return false;
+        }
 
         // Tool side is best-effort: a matching tool file may not exist yet
         // (pre-#346 user, no migration run, fresh install with no tool yet).
@@ -84,6 +118,17 @@ public class ConfigurationService(
         ReconcileIsMetricAfterProfileLoad();
 
         Store.HasUnsavedChanges = false;
+
+        LastRecovery = probe.NeedsPrompt ? probe : null;
+
+        // Heal forward: if a primary file was damaged but recovered from its
+        // backup, rewrite a fresh, healthy primary from the now-correct store
+        // so the user isn't re-prompted on every subsequent load. (The damaged
+        // primary was quarantined during the recovering read.)
+        if (probe.AnyRecovered)
+        {
+            SaveProfiles(vehicleName, toolName);
+        }
 
         // Persist the active pair so the next startup restores the same
         // combo instead of falling through to LoadProfile(name) and pairing
