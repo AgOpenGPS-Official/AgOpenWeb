@@ -935,9 +935,11 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
-        double zoomFactor = e.Delta.Y > 0 ? 1.1 : 0.9;
-        _zoom = Math.Clamp(_zoom * zoomFactor, MinZoom, MaxZoom);
-        SendStateToHandler();
+        // Route through Zoom() so the wheel honors the same 3D plateau bail as the
+        // zoom buttons. A raw clamp here let _zoom keep dropping past the 3D visual
+        // limit (camera pinned at the zoomScalar cap), which kept coarsening the
+        // grid spacing (200/_zoom) several more steps after max zoom-out (#430).
+        Zoom(e.Delta.Y > 0 ? 1.1 : 0.9);
         e.Handled = true;
     }
 
