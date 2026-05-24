@@ -73,6 +73,13 @@ public class TrackGuidanceState
     public int CurrentLocationIndex { get; set; }
 
     /// <summary>
+    /// Last-resolved along-track travel direction (true = same way the track was
+    /// recorded). Frozen while actively steering and only re-evaluated on
+    /// (re)acquire, so the direction can't thrash mid-curve (#422).
+    /// </summary>
+    public bool IsHeadingSameWay { get; set; } = true;
+
+    /// <summary>
     /// Create a fresh state for starting guidance.
     /// </summary>
     public static TrackGuidanceState Initial() => new();
@@ -91,6 +98,7 @@ public class TrackGuidanceState
         DistSteerError = DistSteerError,
         LastDistSteerError = LastDistSteerError,
         DerivativeDistError = DerivativeDistError,
-        CurrentLocationIndex = CurrentLocationIndex
+        CurrentLocationIndex = CurrentLocationIndex,
+        IsHeadingSameWay = IsHeadingSameWay
     };
 }

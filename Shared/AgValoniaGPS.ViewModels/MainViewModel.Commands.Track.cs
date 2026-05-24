@@ -1258,25 +1258,52 @@ public partial class MainViewModel
             }
 
             var pts = boundary.Points;
-            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>();
+
+            // Offset the boundary inward by half the tool width so the guidance line
+            // sits half-an-implement inside the fence: following it rides the tool's
+            // OUTER edge along the boundary with the whole implement in the field. The
+            // raw boundary edge would put the vehicle (and line) on the fence, hanging
+            // half the sections out of bounds on the first pass (#422).
+            double halfTool = ConfigStore.ActualToolWidth / 2.0;
+            var boundaryVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(pts.Count);
             for (int i = 0; i < pts.Count; i++)
-            {
-                curvePoints.Add(new Models.Base.Vec3(pts[i].Easting, pts[i].Northing, pts[i].Heading));
-            }
+                boundaryVec2.Add(new Models.Base.Vec2(pts[i].Easting, pts[i].Northing));
+
+            var offset = halfTool > 0.05
+                ? _polygonOffsetService.CreateInwardOffset(boundaryVec2, halfTool)
+                : null;
+
+            // Fall back to the raw boundary if the offset failed (e.g. tool wider than
+            // the field can accommodate at that point).
+            var ring = (offset != null && offset.Count >= 3) ? offset : boundaryVec2;
+
+            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>(ring.Count + 1);
+            for (int i = 0; i < ring.Count; i++)
+                curvePoints.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
             // Close the loop
-            curvePoints.Add(new Models.Base.Vec3(pts[0].Easting, pts[0].Northing, pts[0].Heading));
+            curvePoints.Add(new Models.Base.Vec3(ring[0].Easting, ring[0].Northing, 0));
+
+            // Recompute per-point headings in the curve-segment convention
+            // (atan2(dEast,dNorth)). Guidance's "which way is forward" test keys
+            // entirely off these headings; copying the boundary's stored heading
+            // (often 0 or a different convention) made the direction decision
+            // random and the vehicle spin/reverse on the curve (#422).
+            curvePoints = Models.Guidance.CurveProcessing.CalculateHeadings(curvePoints);
 
             var track = new Models.Track.Track
             {
                 Name = "Boundary Curve",
                 Points = curvePoints,
                 Type = Models.Track.TrackType.Curve,
-                IsVisible = true
+                IsVisible = true,
+                // The boundary curve is a closed loop; guidance must wrap at the
+                // seam instead of treating it as an open polyline that "ends".
+                IsClosed = true
             };
 
             SavedTracks.Add(track);
             SelectedTrack = track;
-            StatusMessage = $"Created boundary curve ({curvePoints.Count} points)";
+            StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
         });
 
         CreateTracksFromAllEdgesCommand = new RelayCommand(() =>
