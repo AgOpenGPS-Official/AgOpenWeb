@@ -1610,16 +1610,38 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         // ----------------- Grid -----------------
 
+        /// <summary>
+        /// Rounds up to the next value in the 1-2-5 × 10ⁿ series
+        /// (1, 2, 5, 10, 20, 50, …), with a floor of 1. Gives a grid level-of-
+        /// detail whose steps are at most ~2.5× apart, so spacing changes as
+        /// the view zooms feel gradual rather than snapping.
+        /// </summary>
+        private static double NiceStep125(double x)
+        {
+            if (x <= 1.0) return 1.0;
+            double pow = Math.Pow(10, Math.Floor(Math.Log10(x)));
+            double f = x / pow; // [1, 10)
+            double niceF = f <= 2.0 ? 2.0 : f <= 5.0 ? 5.0 : 10.0;
+            return niceF * pow;
+        }
+
         private void DrawGridSk(SKCanvas canvas, MapRenderState s, double viewWidth, double viewHeight)
         {
             const double gridSize = 2000.0;
             double toolW = s.ToolWidth > 0.5 ? s.ToolWidth : 6.0;
             double viewSpan = Math.Max(viewWidth, viewHeight);
 
-            double spacing, majorEvery;
-            if (viewSpan < toolW * 30) { spacing = toolW; majorEvery = toolW * 10; }
-            else if (viewSpan < toolW * 100) { spacing = toolW * 5; majorEvery = toolW * 50; }
-            else { spacing = toolW * 10; majorEvery = toolW * 100; }
+            // Grid spacing is a multiple of the tool width (each square ≈ one
+            // swath). Pick the multiplier on a smooth 1-2-5 series keyed off
+            // how many tool widths span the view, so zooming out steps the
+            // spacing gently (≤2.5×) instead of the old hard 1×→5× jump that
+            // made the grid snap dramatically. Clamped to ≥1 so the grid never
+            // subdivides below a single tool width — the zoomed-in look where
+            // each square is one swath stays correct (#417).
+            const double targetDivisions = 30.0;
+            double mult = NiceStep125(viewSpan / (toolW * targetDivisions));
+            double spacing = toolW * mult;
+            double majorEvery = spacing * 10;
 
             double screenHeight = s.BoundsHeight > 0 ? s.BoundsHeight : 600;
             double worldPerPixel = viewHeight / screenHeight;
