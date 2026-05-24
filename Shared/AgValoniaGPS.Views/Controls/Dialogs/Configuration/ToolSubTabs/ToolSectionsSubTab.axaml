@@ -95,8 +95,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         <TextBlock Text="Width applied to new sections (or all sections in zone mode)" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12"/>
                     </StackPanel>
                     <controls:EditableNumericField Grid.Column="1"
-                        Value="{Binding Tool.DefaultSectionWidth, Mode=TwoWay}"
-                        Unit="cm" FormatString="F0"
+                        Value="{Binding DefaultSectionWidthDisplay, Mode=TwoWay}"
+                        Unit="{Binding SectionWidthUnit}" FormatString="{Binding SectionWidthFormat}"
                         EditCommand="{Binding EditDefaultSectionWidthCommand}"/>
                 </Grid>
             </Border>
@@ -116,56 +116,56 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=0}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="1" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section1Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section1Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection2WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=1}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="2" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section2Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section2Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection3WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=2}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="3" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section3Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section3Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection4WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=3}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="4" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section4Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section4Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection5WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=4}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="5" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section5Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section5Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection6WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=5}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="6" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section6Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section6Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection7WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=6}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="7" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section7Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section7Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection8WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=7}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="8" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section8Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section8Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -176,62 +176,62 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=8}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="9" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section9Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section9Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection10WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=9}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="10" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section10Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section10Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection11WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=10}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="11" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section11Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section11Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection12WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=11}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="12" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section12Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section12Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection13WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=12}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="13" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section13Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section13Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection14WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=13}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="14" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section14Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section14Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection15WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=14}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="15" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section15Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section15Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                             <Button Classes="SectionWidthBtn" Command="{Binding EditSection16WidthCommand}"
                                     Margin="4" IsVisible="{Binding Config.NumSections, Converter={StaticResource GreaterThanConverter}, ConverterParameter=15}">
                                 <StackPanel HorizontalAlignment="Center">
                                     <TextBlock Text="16" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Section16Width, StringFormat='{}{0:F0}'}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Section16Width}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
                     </StackPanel>
 
-                    <TextBlock Text="All widths in cm" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                    <TextBlock Text="{Binding SectionWidthUnitLabel}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center" Margin="0,8,0,0"/>
                 </StackPanel>
             </Border>
 
@@ -340,7 +340,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         <TextBlock Text="Calculated Total Width" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold"/>
                         <TextBlock Text="(sum of active section widths)" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11"/>
                     </StackPanel>
-                    <TextBlock Grid.Column="1" Text="{Binding CalculatedSectionTotal, StringFormat='{}{0:F2} m'}"
+                    <TextBlock Grid.Column="1" Text="{Binding CalculatedTotalWidthText}"
                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" VerticalAlignment="Center"/>
                 </Grid>
             </Border>

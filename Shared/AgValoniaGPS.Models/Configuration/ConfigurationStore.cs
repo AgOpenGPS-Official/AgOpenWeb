@@ -106,7 +106,23 @@ public class ConfigurationStore : ObservableObject
     public int NumSections
     {
         get => _numSections;
-        set => SetProperty(ref _numSections, Math.Clamp(value, 1, 16));
+        set
+        {
+            int clamped = Math.Clamp(value, 1, 16);
+            int previous = _numSections;
+            // Seed newly-activated sections with the current Default Section
+            // Width ("Width applied to new sections") BEFORE raising the
+            // NumSections change, so listeners that re-read section widths see
+            // the seeded values. Sections that already existed keep their
+            // individually-set widths. Profile load sets explicit per-section
+            // widths AFTER NumSections, so those overwrite this seed (#417).
+            if (clamped > previous)
+            {
+                for (int i = previous; i < clamped; i++)
+                    Tool.SetSectionWidth(i, Tool.DefaultSectionWidth);
+            }
+            SetProperty(ref _numSections, clamped);
+        }
     }
 
     /// <summary>

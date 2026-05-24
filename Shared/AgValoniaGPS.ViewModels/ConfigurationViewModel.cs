@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
 using CommunityToolkit.Mvvm.Input;
@@ -659,8 +660,54 @@ public partial class ConfigurationViewModel : ObservableObject
         }
     }
 
+    // ── Units (#417) ──────────────────────────────────────────────────
+    // Widths are stored in cm; totals in meters. When the user selects
+    // Imperial, section widths display/edit in inches and totals in feet.
+    // Conversion happens only here at the display/input boundary — the
+    // model stays metric. All of these are reactive: raised on IsMetric,
+    // NumSections, DefaultSectionWidth, and individual width edits.
+
+    /// <summary>Unit suffix for individual section widths ("cm" / "in").</summary>
+    public string SectionWidthUnit => Config.IsMetric ? "cm" : "in";
+
+    /// <summary>Numeric format for section widths (cm whole, inches 1 dp).</summary>
+    public string SectionWidthFormat => Config.IsMetric ? "F0" : "F1";
+
+    /// <summary>Footer caption under the section-width grid.</summary>
+    public string SectionWidthUnitLabel => Config.IsMetric ? "All widths in cm" : "All widths in inches";
+
+    /// <summary>Default section width in the current display unit (TwoWay).</summary>
+    public double DefaultSectionWidthDisplay
+    {
+        get => Config.IsMetric
+            ? Tool.DefaultSectionWidth
+            : UnitConversion.CmToInches(Tool.DefaultSectionWidth);
+        set
+        {
+            Tool.DefaultSectionWidth = Config.IsMetric ? value : UnitConversion.InchesToCm(value);
+        }
+    }
+
+    /// <summary>Formatted total tool width with unit ("16.00 m" / "52.49 ft").
+    /// Used by both the in-tab total and the dialog footer — replaces the
+    /// stale, non-notifying Config.ActualToolWidth binding (#417 math bug).</summary>
+    public string CalculatedTotalWidthText
+    {
+        get
+        {
+            double meters = CalculatedSectionTotal;
+            return Config.IsMetric
+                ? $"{meters:F2} m"
+                : $"{UnitConversion.MetersToFeet(meters):F2} ft";
+        }
+    }
+
+    private string FormatSectionWidth(double cm) => Config.IsMetric
+        ? cm.ToString("F0", CultureInfo.InvariantCulture)
+        : UnitConversion.CmToInches(cm).ToString("F1", CultureInfo.InvariantCulture);
+
     /// <summary>
-    /// Gets the width of a specific section for display (1-based index).
+    /// Gets the width of a specific section for display (1-based index), in cm.
     /// </summary>
     public double GetSectionWidthForDisplay(int sectionNumber)
     {
@@ -669,24 +716,24 @@ public partial class ConfigurationViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Section width display properties for binding (1-based).
+    /// Section width display strings for binding (1-based), in current units.
     /// </summary>
-    public double Section1Width => Tool.GetSectionWidth(0);
-    public double Section2Width => Tool.GetSectionWidth(1);
-    public double Section3Width => Tool.GetSectionWidth(2);
-    public double Section4Width => Tool.GetSectionWidth(3);
-    public double Section5Width => Tool.GetSectionWidth(4);
-    public double Section6Width => Tool.GetSectionWidth(5);
-    public double Section7Width => Tool.GetSectionWidth(6);
-    public double Section8Width => Tool.GetSectionWidth(7);
-    public double Section9Width => Tool.GetSectionWidth(8);
-    public double Section10Width => Tool.GetSectionWidth(9);
-    public double Section11Width => Tool.GetSectionWidth(10);
-    public double Section12Width => Tool.GetSectionWidth(11);
-    public double Section13Width => Tool.GetSectionWidth(12);
-    public double Section14Width => Tool.GetSectionWidth(13);
-    public double Section15Width => Tool.GetSectionWidth(14);
-    public double Section16Width => Tool.GetSectionWidth(15);
+    public string Section1Width => FormatSectionWidth(Tool.GetSectionWidth(0));
+    public string Section2Width => FormatSectionWidth(Tool.GetSectionWidth(1));
+    public string Section3Width => FormatSectionWidth(Tool.GetSectionWidth(2));
+    public string Section4Width => FormatSectionWidth(Tool.GetSectionWidth(3));
+    public string Section5Width => FormatSectionWidth(Tool.GetSectionWidth(4));
+    public string Section6Width => FormatSectionWidth(Tool.GetSectionWidth(5));
+    public string Section7Width => FormatSectionWidth(Tool.GetSectionWidth(6));
+    public string Section8Width => FormatSectionWidth(Tool.GetSectionWidth(7));
+    public string Section9Width => FormatSectionWidth(Tool.GetSectionWidth(8));
+    public string Section10Width => FormatSectionWidth(Tool.GetSectionWidth(9));
+    public string Section11Width => FormatSectionWidth(Tool.GetSectionWidth(10));
+    public string Section12Width => FormatSectionWidth(Tool.GetSectionWidth(11));
+    public string Section13Width => FormatSectionWidth(Tool.GetSectionWidth(12));
+    public string Section14Width => FormatSectionWidth(Tool.GetSectionWidth(13));
+    public string Section15Width => FormatSectionWidth(Tool.GetSectionWidth(14));
+    public string Section16Width => FormatSectionWidth(Tool.GetSectionWidth(15));
 
     // Section color properties (for color preview display)
     public uint SectionColor1 => Tool.GetSectionColor(0);
@@ -733,6 +780,21 @@ public partial class ConfigurationViewModel : ObservableObject
         OnPropertyChanged(nameof(Section15Width));
         OnPropertyChanged(nameof(Section16Width));
         OnPropertyChanged(nameof(CalculatedSectionTotal));
+        OnPropertyChanged(nameof(CalculatedTotalWidthText));
+    }
+
+    /// <summary>
+    /// Re-raise every unit-dependent display property after a metric/imperial
+    /// switch so widths and totals re-render in the new unit (#417).
+    /// </summary>
+    private void RefreshUnitDependentProperties()
+    {
+        OnPropertyChanged(nameof(SectionWidthUnit));
+        OnPropertyChanged(nameof(SectionWidthFormat));
+        OnPropertyChanged(nameof(SectionWidthUnitLabel));
+        OnPropertyChanged(nameof(DefaultSectionWidthDisplay));
+        OnPropertyChanged(nameof(CalculatedTotalWidthText));
+        RefreshSectionWidthProperties();
     }
 
     // Zone end section properties (for binding in zone mode)
@@ -974,10 +1036,17 @@ public partial class ConfigurationViewModel : ObservableObject
             {
                 OnPropertyChanged(nameof(HasUnsavedChanges));
             }
-            // Update calculated section total when NumSections changes
+            // Update calculated section total when NumSections changes.
+            // Also refresh the per-section displays so sections newly seeded
+            // with the Default Section Width render their seeded value (#417).
             if (e.PropertyName == nameof(ConfigurationStore.NumSections))
             {
-                OnPropertyChanged(nameof(CalculatedSectionTotal));
+                RefreshSectionWidthProperties();
+            }
+            // Re-render all widths/totals in the new unit on metric switch (#417)
+            if (e.PropertyName == nameof(ConfigurationStore.IsMetric))
+            {
+                RefreshUnitDependentProperties();
             }
         };
 
@@ -987,6 +1056,8 @@ public partial class ConfigurationViewModel : ObservableObject
             if (e.PropertyName == nameof(ToolConfig.DefaultSectionWidth))
             {
                 OnPropertyChanged(nameof(CalculatedSectionTotal));
+                OnPropertyChanged(nameof(CalculatedTotalWidthText));
+                OnPropertyChanged(nameof(DefaultSectionWidthDisplay));
             }
         };
 
@@ -1130,9 +1201,16 @@ public partial class ConfigurationViewModel : ObservableObject
                 "s", integerOnly: false, allowNegative: false, min: 0, max: 5));
 
         EditDefaultSectionWidthCommand = new RelayCommand(() =>
-            ShowNumericInput("Default Section Width", Tool.DefaultSectionWidth,
-                v => Tool.DefaultSectionWidth = v,
-                "cm", integerOnly: false, allowNegative: false, min: 10, max: 500));
+        {
+            bool metric = Config.IsMetric;
+            // Stored cm bounds 10..500 → inches 3.9..196.9
+            ShowNumericInput("Default Section Width",
+                metric ? Tool.DefaultSectionWidth : UnitConversion.CmToInches(Tool.DefaultSectionWidth),
+                v => Tool.DefaultSectionWidth = metric ? v : UnitConversion.InchesToCm(v),
+                metric ? "cm" : "in", integerOnly: false, allowNegative: false,
+                min: metric ? 10 : UnitConversion.CmToInches(10),
+                max: metric ? 500 : UnitConversion.CmToInches(500));
+        });
 
         EditMinCoverageCommand = new RelayCommand(() =>
             ShowNumericInput("Minimum Coverage", Tool.MinCoverage,
@@ -1190,14 +1268,19 @@ public partial class ConfigurationViewModel : ObservableObject
     private void EditSectionWidth(int sectionNumber)
     {
         int index = sectionNumber - 1;
-        double currentWidth = Tool.GetSectionWidth(index);
-        ShowNumericInput($"Section {sectionNumber} Width", currentWidth,
+        bool metric = Config.IsMetric;
+        double currentCm = Tool.GetSectionWidth(index);
+        // Stored cm bounds 1..500 → inches 0.4..196.9
+        ShowNumericInput($"Section {sectionNumber} Width",
+            metric ? currentCm : UnitConversion.CmToInches(currentCm),
             v =>
             {
-                Tool.SetSectionWidth(index, v);
+                Tool.SetSectionWidth(index, metric ? v : UnitConversion.InchesToCm(v));
                 RefreshSectionWidthProperties();
             },
-            "cm", integerOnly: false, allowNegative: false, min: 1, max: 500);
+            metric ? "cm" : "in", integerOnly: false, allowNegative: false,
+            min: metric ? 1 : UnitConversion.CmToInches(1),
+            max: metric ? 500 : UnitConversion.CmToInches(500));
     }
 
     /// <summary>
