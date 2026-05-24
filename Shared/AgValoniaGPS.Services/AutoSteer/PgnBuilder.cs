@@ -38,6 +38,7 @@ public static class PgnBuilder
     // PGN identifiers (from PgnNumbers)
     public const byte PGN_AUTOSTEER = 0xFE;      // 254 - AutoSteer Data
     public const byte PGN_MACHINE = 0xEF;        // 239 - Machine Data
+    public const byte PGN_SECTIONS_64 = 0xE5;    // 229 - 64-section on/off + L/R speed
     public const byte PGN_STEER_SETTINGS = 0xFC; // 252 - Steer Settings
     public const byte PGN_STEER_CONFIG = 0xFB;   // 251 - Steer Config
     public const byte PGN_MACHINE_CONFIG = 0xEE;  // 238 - Machine Config
@@ -48,6 +49,7 @@ public static class PgnBuilder
     // Buffer sizes: header(2) + source(1) + pgn(1) + length(1) + data(N) + crc(1)
     public const int AUTOSTEER_PGN_SIZE = 14;       // 5 header + 8 data + 1 crc
     public const int MACHINE_PGN_SIZE = 14;         // 5 header + 8 data + 1 crc
+    public const int SECTIONS_64_PGN_SIZE = 16;     // 5 header + 10 data + 1 crc
     public const int STEER_SETTINGS_PGN_SIZE = 14;  // 5 header + 8 data + 1 crc
     public const int STEER_CONFIG_PGN_SIZE = 11;    // 5 header + 5 data + 1 crc
     public const int MACHINE_CONFIG_PGN_SIZE = 14;  // 5 header + 8 data + 1 crc
@@ -59,6 +61,9 @@ public static class PgnBuilder
 
     [ThreadStatic]
     private static byte[]? _machineBuffer;
+
+    [ThreadStatic]
+    private static byte[]? _sections64Buffer;
 
     [ThreadStatic]
     private static byte[]? _steerSettingsBuffer;
@@ -222,6 +227,52 @@ public static class PgnBuilder
 
         // CRC
         buf[13] = CalculateCrc(buf, 2, 11);
+
+        return buf;
+    }
+
+    /// <summary>
+    /// Build PGN 229 (0xE5) — 64-section on/off plus left/right speed.
+    /// Sent in addition to PGN 239 when more than 16 sections are configured;
+    /// the firmware reconciles the overlap on sections 1–16.
+    ///
+    /// Byte 5:  SC1to8   (sections 1–8 bitmask)
+    /// Byte 6:  SC9to16  (sections 9–16)
+    /// Byte 7:  SC17to24
+    /// Byte 8:  SC25to32
+    /// Byte 9:  SC33to40
+    /// Byte 10: SC41to48
+    /// Byte 11: SC49to56
+    /// Byte 12: SC57to64
+    /// Byte 13: Lspeed (speed * 10, clamped 0–255)
+    /// Byte 14: Rspeed (speed * 10, clamped 0–255)
+    /// Byte 15: CRC
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static byte[] BuildSection64Pgn(ref VehicleState state)
+    {
+        _sections64Buffer ??= new byte[SECTIONS_64_PGN_SIZE];
+        var buf = _sections64Buffer;
+
+        // Header
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_SECTIONS_64;
+        buf[4] = 10;  // Data length
+
+        // 64 section bits, little-endian (section 1 = bit 0 of byte 5)
+        ulong sections = state.SectionStates;
+        for (int i = 0; i < 8; i++)
+            buf[5 + i] = (byte)((sections >> (8 * i)) & 0xFF);
+
+        // L/R speed mirror PGN 239's speed byte (speed * 10, clamped to a byte)
+        byte speed = (byte)Math.Clamp((int)(state.SpeedKmh * 10), 0, 255);
+        buf[13] = speed;
+        buf[14] = speed;
+
+        // CRC: sum of bytes 2 through 14 (source through last data byte)
+        buf[15] = CalculateCrc(buf, 2, 13);
 
         return buf;
     }

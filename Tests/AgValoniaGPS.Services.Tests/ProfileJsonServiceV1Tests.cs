@@ -193,8 +193,8 @@ public class ProfileJsonServiceV1Tests
         _store.Tool.IsWorkSwitchManualSections = true;
         _store.Tool.IsSteerSwitchEnabled = true;
         _store.Tool.IsSteerSwitchManualSections = true;
-        var customColors = new uint[16];
-        for (int i = 0; i < 16; i++) customColors[i] = 0x010203 + (uint)i;
+        var customColors = new uint[AgValoniaGPS.Models.Configuration.ToolConfig.MaxSections];
+        for (int i = 0; i < customColors.Length; i++) customColors[i] = 0x010203 + (uint)i;
         _store.Tool.SectionColors = customColors;
 
         ProfileJsonServiceV1.Save(_tempDir, "ToolFields", _store);

@@ -15,260 +15,102 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
-
-using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgValoniaGPS.ViewModels;
 
 /// <summary>
 /// MainViewModel partial class containing Section Control state and event handling.
-/// Manages section on/off states, color codes, and synchronization with ISectionControlService.
+/// Manages the section control bar (one button per configured section, laid out
+/// into rows) and synchronization with ISectionControlService.
 /// </summary>
 public partial class MainViewModel
 {
-    #region Section State Fields
+    #region Section Bar State
 
-    // Section states (backing fields)
-    private bool _section1Active;
-    private bool _section2Active;
-    private bool _section3Active;
-    private bool _section4Active;
-    private bool _section5Active;
-    private bool _section6Active;
-    private bool _section7Active;
-    private bool _section8Active;
-    private bool _section9Active;
-    private bool _section10Active;
-    private bool _section11Active;
-    private bool _section12Active;
-    private bool _section13Active;
-    private bool _section14Active;
-    private bool _section15Active;
-    private bool _section16Active;
+    // Stable button objects keyed by section index. Reused across row rebuilds
+    // so only ColorCode changes as sections cycle Off → Auto → On.
+    private readonly List<SectionButtonViewModel> _sectionButtons = new();
 
-    // Section color codes (0=Red/Off, 1=Yellow/ManualOn, 2=Green/AutoOn, 3=Gray/AutoOff)
-    private int _section1ColorCode;
-    private int _section2ColorCode;
-    private int _section3ColorCode;
-    private int _section4ColorCode;
-    private int _section5ColorCode;
-    private int _section6ColorCode;
-    private int _section7ColorCode;
-    private int _section8ColorCode;
-    private int _section9ColorCode;
-    private int _section10ColorCode;
-    private int _section11ColorCode;
-    private int _section12ColorCode;
-    private int _section13ColorCode;
-    private int _section14ColorCode;
-    private int _section15ColorCode;
-    private int _section16ColorCode;
-
-    // Cached section count for binding
+    // Cached section count for binding/layout.
     private int _numSections;
 
-    #endregion
+    /// <summary>
+    /// Section buttons laid out into rows. One row for up to 16 sections; above
+    /// 16 the sections split into evenly-sized rows (ceil(N/16), max 4 rows,
+    /// max 16 buttons per row). When N doesn't divide evenly, earlier rows take
+    /// the extra so the top row holds the greater count.
+    /// </summary>
+    public ObservableCollection<SectionRowViewModel> SectionRows { get; } = new();
 
-    #region Section Active Properties
-
-    public bool Section1Active
+    /// <summary>
+    /// Number of configured sections (map rendering + bar layout).
+    /// </summary>
+    public int NumSections
     {
-        get => _section1Active;
-        set => SetProperty(ref _section1Active, value);
+        get => _numSections;
+        private set
+        {
+            if (SetProperty(ref _numSections, value))
+            {
+                RebuildSectionRows();
+                RefreshSectionButtonColors();
+                // The renderer picks up the new section count/layout on the
+                // next GPS cycle via ApplyGpsCycleResult (matching prior
+                // behavior); no direct push here, which can run before the
+                // map control is registered.
+            }
+        }
     }
 
-    public bool Section2Active
+    /// <summary>
+    /// The section control bar is shown only when a field is open AND at least
+    /// one master is engaged (Auto or Manual). With both masters off the bar is
+    /// hidden; the master toggles already force every section off in that case.
+    /// </summary>
+    public bool IsSectionBarVisible => IsFieldOpen && (IsManualSectionMode || IsSectionMasterOn);
+
+    /// <summary>
+    /// Build the initial section bar. Called once from the constructor because
+    /// the initial NumSections is seeded directly into the backing field.
+    /// </summary>
+    private void InitializeSectionBar()
     {
-        get => _section2Active;
-        set => SetProperty(ref _section2Active, value);
+        RebuildSectionRows();
+        RefreshSectionButtonColors();
     }
 
-    public bool Section3Active
+    private void RebuildSectionRows()
     {
-        get => _section3Active;
-        set => SetProperty(ref _section3Active, value);
-    }
+        int n = Math.Clamp(NumSections, 1, ToolConfig.MaxSections);
 
-    public bool Section4Active
-    {
-        get => _section4Active;
-        set => SetProperty(ref _section4Active, value);
-    }
+        // Ensure a stable button object exists for every visible section.
+        while (_sectionButtons.Count < n)
+        {
+            int index = _sectionButtons.Count;
+            _sectionButtons.Add(new SectionButtonViewModel(index, i => ToggleSectionCommand.Execute(i)));
+        }
 
-    public bool Section5Active
-    {
-        get => _section5Active;
-        set => SetProperty(ref _section5Active, value);
-    }
+        const int maxPerRow = 16;
+        int rows = (n + maxPerRow - 1) / maxPerRow;  // ceil(n / 16), 1..4
+        int baseCount = n / rows;
+        int remainder = n % rows;  // first `remainder` rows get one extra (top larger)
 
-    public bool Section6Active
-    {
-        get => _section6Active;
-        set => SetProperty(ref _section6Active, value);
-    }
-
-    public bool Section7Active
-    {
-        get => _section7Active;
-        set => SetProperty(ref _section7Active, value);
-    }
-
-    public bool Section8Active
-    {
-        get => _section8Active;
-        set => SetProperty(ref _section8Active, value);
-    }
-
-    public bool Section9Active
-    {
-        get => _section9Active;
-        set => SetProperty(ref _section9Active, value);
-    }
-
-    public bool Section10Active
-    {
-        get => _section10Active;
-        set => SetProperty(ref _section10Active, value);
-    }
-
-    public bool Section11Active
-    {
-        get => _section11Active;
-        set => SetProperty(ref _section11Active, value);
-    }
-
-    public bool Section12Active
-    {
-        get => _section12Active;
-        set => SetProperty(ref _section12Active, value);
-    }
-
-    public bool Section13Active
-    {
-        get => _section13Active;
-        set => SetProperty(ref _section13Active, value);
-    }
-
-    public bool Section14Active
-    {
-        get => _section14Active;
-        set => SetProperty(ref _section14Active, value);
-    }
-
-    public bool Section15Active
-    {
-        get => _section15Active;
-        set => SetProperty(ref _section15Active, value);
-    }
-
-    public bool Section16Active
-    {
-        get => _section16Active;
-        set => SetProperty(ref _section16Active, value);
-    }
-
-    #endregion
-
-    #region Section Color Code Properties
-
-    // Section color codes for panel buttons (0=Red/Off, 1=Yellow/ManualOn, 2=Green/AutoOn, 3=Gray/AutoOff)
-    public int Section1ColorCode
-    {
-        get => _section1ColorCode;
-        set => SetProperty(ref _section1ColorCode, value);
-    }
-
-    public int Section2ColorCode
-    {
-        get => _section2ColorCode;
-        set => SetProperty(ref _section2ColorCode, value);
-    }
-
-    public int Section3ColorCode
-    {
-        get => _section3ColorCode;
-        set => SetProperty(ref _section3ColorCode, value);
-    }
-
-    public int Section4ColorCode
-    {
-        get => _section4ColorCode;
-        set => SetProperty(ref _section4ColorCode, value);
-    }
-
-    public int Section5ColorCode
-    {
-        get => _section5ColorCode;
-        set => SetProperty(ref _section5ColorCode, value);
-    }
-
-    public int Section6ColorCode
-    {
-        get => _section6ColorCode;
-        set => SetProperty(ref _section6ColorCode, value);
-    }
-
-    public int Section7ColorCode
-    {
-        get => _section7ColorCode;
-        set => SetProperty(ref _section7ColorCode, value);
-    }
-
-    public int Section8ColorCode
-    {
-        get => _section8ColorCode;
-        set => SetProperty(ref _section8ColorCode, value);
-    }
-
-    public int Section9ColorCode
-    {
-        get => _section9ColorCode;
-        set => SetProperty(ref _section9ColorCode, value);
-    }
-
-    public int Section10ColorCode
-    {
-        get => _section10ColorCode;
-        set => SetProperty(ref _section10ColorCode, value);
-    }
-
-    public int Section11ColorCode
-    {
-        get => _section11ColorCode;
-        set => SetProperty(ref _section11ColorCode, value);
-    }
-
-    public int Section12ColorCode
-    {
-        get => _section12ColorCode;
-        set => SetProperty(ref _section12ColorCode, value);
-    }
-
-    public int Section13ColorCode
-    {
-        get => _section13ColorCode;
-        set => SetProperty(ref _section13ColorCode, value);
-    }
-
-    public int Section14ColorCode
-    {
-        get => _section14ColorCode;
-        set => SetProperty(ref _section14ColorCode, value);
-    }
-
-    public int Section15ColorCode
-    {
-        get => _section15ColorCode;
-        set => SetProperty(ref _section15ColorCode, value);
-    }
-
-    public int Section16ColorCode
-    {
-        get => _section16ColorCode;
-        set => SetProperty(ref _section16ColorCode, value);
+        SectionRows.Clear();
+        int idx = 0;
+        for (int r = 0; r < rows; r++)
+        {
+            int count = baseCount + (r < remainder ? 1 : 0);
+            var buttons = new List<SectionButtonViewModel>(count);
+            for (int k = 0; k < count; k++)
+                buttons.Add(_sectionButtons[idx++]);
+            SectionRows.Add(new SectionRowViewModel(buttons));
+        }
     }
 
     #endregion
@@ -276,58 +118,46 @@ public partial class MainViewModel
     #region Section Helper Methods
 
     /// <summary>
-    /// Get section on/off states for map rendering.
+    /// Get section on/off states for map rendering, sized to the configured
+    /// section count.
     /// </summary>
     public bool[] GetSectionStates()
     {
         var states = _sectionControlService.SectionStates;
-        var result = new bool[16];
-        for (int i = 0; i < Math.Min(states.Count, 16); i++)
-        {
+        int n = Math.Min(NumSections, ToolConfig.MaxSections);
+        var result = new bool[Math.Max(n, 0)];
+        for (int i = 0; i < result.Length && i < states.Count; i++)
             result[i] = states[i].IsOn;
-        }
         return result;
     }
 
     /// <summary>
     /// Get per-section color codes for renderer + control bar. Returns the
     /// pipeline's 6-state palette: 0=Off, 1=Manual On, 2=Auto On,
-    /// 3=Turning Off, 4=Turning On, 5=Auto Off. Method name is historical;
-    /// the renderer's section-bar switch and the SectionColorCodeToBackground
-    /// converter both consume these codes.
+    /// 3=Turning Off, 4=Turning On, 5=Auto Off.
     /// </summary>
     public int[] GetSectionButtonStates()
     {
         var states = _sectionControlService.SectionStates;
-        var result = new int[16];
-        for (int i = 0; i < Math.Min(states.Count, 16); i++)
-        {
+        int n = Math.Min(NumSections, ToolConfig.MaxSections);
+        var result = new int[Math.Max(n, 0)];
+        for (int i = 0; i < result.Length && i < states.Count; i++)
             result[i] = GetSectionColorCode(states[i]);
-        }
         return result;
     }
 
     /// <summary>
-    /// Get section widths in meters for map rendering.
+    /// Get section widths in meters for map rendering, sized to the configured
+    /// section count.
     /// </summary>
     public double[] GetSectionWidths()
     {
-        var config = Models.Configuration.ConfigurationStore.Instance;
-        var result = new double[16];
-        for (int i = 0; i < 16; i++)
-        {
+        var config = ConfigurationStore.Instance;
+        int n = Math.Min(NumSections, ToolConfig.MaxSections);
+        var result = new double[Math.Max(n, 0)];
+        for (int i = 0; i < result.Length; i++)
             result[i] = config.Tool.GetSectionWidth(i) / 100.0; // cm to meters
-        }
         return result;
-    }
-
-    /// <summary>
-    /// Number of configured sections for map rendering.
-    /// </summary>
-    public int NumSections
-    {
-        get => _numSections;
-        private set => SetProperty(ref _numSections, value);
     }
 
     #endregion
@@ -392,53 +222,44 @@ public partial class MainViewModel
         // Marshal to UI thread
         if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
         {
-            UpdateSectionActiveProperties();
+            UpdateSectionStates();
         }
         else
         {
-            Avalonia.Threading.Dispatcher.UIThread.Post(UpdateSectionActiveProperties);
+            Avalonia.Threading.Dispatcher.UIThread.Post(UpdateSectionStates);
         }
     }
 
-    private void UpdateSectionActiveProperties()
+    /// <summary>
+    /// Refresh each section button's color code from the service. Safe to call
+    /// before the map control is registered (no renderer push).
+    /// </summary>
+    private void RefreshSectionButtonColors()
     {
-        // Sync Section*Active properties with service state
         var states = _sectionControlService.SectionStates;
-        Section1Active = states.Count > 0 && states[0].IsOn;
-        Section2Active = states.Count > 1 && states[1].IsOn;
-        Section3Active = states.Count > 2 && states[2].IsOn;
-        Section4Active = states.Count > 3 && states[3].IsOn;
-        Section5Active = states.Count > 4 && states[4].IsOn;
-        Section6Active = states.Count > 5 && states[5].IsOn;
-        Section7Active = states.Count > 6 && states[6].IsOn;
-        Section8Active = states.Count > 7 && states[7].IsOn;
-        Section9Active = states.Count > 8 && states[8].IsOn;
-        Section10Active = states.Count > 9 && states[9].IsOn;
-        Section11Active = states.Count > 10 && states[10].IsOn;
-        Section12Active = states.Count > 11 && states[11].IsOn;
-        Section13Active = states.Count > 12 && states[12].IsOn;
-        Section14Active = states.Count > 13 && states[13].IsOn;
-        Section15Active = states.Count > 14 && states[14].IsOn;
-        Section16Active = states.Count > 15 && states[15].IsOn;
+        for (int i = 0; i < _sectionButtons.Count; i++)
+            _sectionButtons[i].ColorCode = i < states.Count ? GetSectionColorCode(states[i]) : 0;
+    }
 
-        // Update color codes for panel buttons (matching map rendering colors)
-        // 0=Red (Off), 1=Yellow (Manual On), 2=Green (Auto On), 3=Gray (Auto Off)
-        Section1ColorCode = states.Count > 0 ? GetSectionColorCode(states[0]) : 0;
-        Section2ColorCode = states.Count > 1 ? GetSectionColorCode(states[1]) : 0;
-        Section3ColorCode = states.Count > 2 ? GetSectionColorCode(states[2]) : 0;
-        Section4ColorCode = states.Count > 3 ? GetSectionColorCode(states[3]) : 0;
-        Section5ColorCode = states.Count > 4 ? GetSectionColorCode(states[4]) : 0;
-        Section6ColorCode = states.Count > 5 ? GetSectionColorCode(states[5]) : 0;
-        Section7ColorCode = states.Count > 6 ? GetSectionColorCode(states[6]) : 0;
-        Section8ColorCode = states.Count > 7 ? GetSectionColorCode(states[7]) : 0;
-        Section9ColorCode = states.Count > 8 ? GetSectionColorCode(states[8]) : 0;
-        Section10ColorCode = states.Count > 9 ? GetSectionColorCode(states[9]) : 0;
-        Section11ColorCode = states.Count > 10 ? GetSectionColorCode(states[10]) : 0;
-        Section12ColorCode = states.Count > 11 ? GetSectionColorCode(states[11]) : 0;
-        Section13ColorCode = states.Count > 12 ? GetSectionColorCode(states[12]) : 0;
-        Section14ColorCode = states.Count > 13 ? GetSectionColorCode(states[13]) : 0;
-        Section15ColorCode = states.Count > 14 ? GetSectionColorCode(states[14]) : 0;
-        Section16ColorCode = states.Count > 15 ? GetSectionColorCode(states[15]) : 0;
+    /// <summary>
+    /// Refresh button colors and push the layout/state to the renderer. The
+    /// push covers non-cycle changes (e.g. a manual toggle while GPS/sim isn't
+    /// running); the GPS pipeline also pushes every cycle from
+    /// ApplyGpsCycleResult. Called only from the runtime section-changed event,
+    /// after the map control has been registered.
+    /// </summary>
+    private void UpdateSectionStates()
+    {
+        RefreshSectionButtonColors();
+
+        if (NumSections > 0)
+        {
+            _mapService.SetSectionStates(
+                GetSectionStates(),
+                GetSectionWidths(),
+                NumSections,
+                GetSectionButtonStates());
+        }
     }
 
     /// <summary>

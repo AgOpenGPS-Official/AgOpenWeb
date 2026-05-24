@@ -284,16 +284,10 @@ public partial class MainView : UserControl
         // snaps the tool forward — once per GPS tick.
         if (_mapControl != null && _viewModel != null)
         {
-            if (e.PropertyName?.StartsWith("Section") == true &&
-                     (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
-            {
-                _mapControl.SetSectionStates(
-                    _viewModel.GetSectionStates(),
-                    _viewModel.GetSectionWidths(),
-                    _viewModel.NumSections,
-                    _viewModel.GetSectionButtonStates());
-            }
-            else if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
+            // Section state/layout is pushed to the map directly by the
+            // ViewModel (MainViewModel.UpdateSectionStates) and every GPS cycle
+            // by ApplyGpsCycleResult, so there is no per-property section bridge.
+            if (e.PropertyName == nameof(MainViewModel.EnableABClickSelection))
             {
                 _mapControl.EnableClickSelection = _viewModel.EnableABClickSelection;
             }

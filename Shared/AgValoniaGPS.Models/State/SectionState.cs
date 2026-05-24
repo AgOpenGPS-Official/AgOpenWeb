@@ -24,7 +24,7 @@ namespace AgValoniaGPS.Models.State;
 /// </summary>
 public class SectionState : ObservableObject
 {
-    public const int MaxSections = 16;
+    public const int MaxSections = 64;
 
     // Section on/off states
     private readonly bool[] _sectionActive = new bool[MaxSections];
@@ -117,24 +117,24 @@ public class SectionState : ObservableObject
     /// <summary>
     /// Set all sections at once (from UDP message bitmask)
     /// </summary>
-    public void SetAllSections(ushort sectionBits)
+    public void SetAllSections(ulong sectionBits)
     {
         for (int i = 0; i < MaxSections; i++)
         {
-            SetSectionActive(i, (sectionBits & (1 << i)) != 0);
+            SetSectionActive(i, (sectionBits & (1UL << i)) != 0);
         }
     }
 
     /// <summary>
     /// Get all sections as a bitmask
     /// </summary>
-    public ushort GetAllSectionsAsBits()
+    public ulong GetAllSectionsAsBits()
     {
-        ushort bits = 0;
+        ulong bits = 0;
         for (int i = 0; i < MaxSections; i++)
         {
             if (_sectionActive[i])
-                bits |= (ushort)(1 << i);
+                bits |= 1UL << i;
         }
         return bits;
     }

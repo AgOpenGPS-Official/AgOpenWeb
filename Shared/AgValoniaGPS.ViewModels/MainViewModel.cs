@@ -369,6 +369,10 @@ public partial class MainViewModel : ObservableObject
         _sectionControlService.SectionStateChanged += OnSectionStateChanged;
         _coverageMapService.BoundsExpanded += OnCoverageBoundsExpanded;
 
+        // Build the initial section bar (rows + colors) from the seeded
+        // NumSections; subsequent NumSections changes rebuild it.
+        InitializeSectionBar();
+
         // Sync drift compensation to AutoSteerService when edited via TextBox
         State.Field.PropertyChanged += (s, e) =>
         {
@@ -928,13 +932,21 @@ public partial class MainViewModel : ObservableObject
     public bool IsManualSectionMode
     {
         get => _isManualAllOn;
-        set => SetProperty(ref _isManualAllOn, value);
+        set
+        {
+            if (SetProperty(ref _isManualAllOn, value))
+                OnPropertyChanged(nameof(IsSectionBarVisible));
+        }
     }
 
     public bool IsSectionMasterOn
     {
         get => _isAutoAllOn;
-        set => SetProperty(ref _isAutoAllOn, value);
+        set
+        {
+            if (SetProperty(ref _isAutoAllOn, value))
+                OnPropertyChanged(nameof(IsSectionBarVisible));
+        }
     }
 
     public bool IsAutoSteerAvailable
@@ -3311,6 +3323,7 @@ public partial class MainViewModel : ObservableObject
                 // Commands gated on having a field open need to refresh
                 // CanExecute when the field is opened or closed.
                 DeleteAppliedAreaCommand?.NotifyCanExecuteChanged();
+                OnPropertyChanged(nameof(IsSectionBarVisible));
             }
         }
     }

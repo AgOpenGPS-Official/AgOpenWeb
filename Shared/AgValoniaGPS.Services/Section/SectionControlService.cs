@@ -171,8 +171,8 @@ public class SectionControlService : ISectionControlService
         _state = state;
 
         // Initialize section states
-        _sectionStates = new SectionControlState[16];
-        for (int i = 0; i < 16; i++)
+        _sectionStates = new SectionControlState[ToolConfig.MaxSections];
+        for (int i = 0; i < _sectionStates.Length; i++)
         {
             _sectionStates[i] = new SectionControlState { Index = i };
         }
@@ -938,7 +938,7 @@ public class SectionControlService : ISectionControlService
 
     public (Vec2 left, Vec2 right) GetSectionWorldPosition(int sectionIndex, Vec3 toolPosition, double toolHeading)
     {
-        if (sectionIndex < 0 || sectionIndex >= 16)
+        if (sectionIndex < 0 || sectionIndex >= _sectionStates.Length)
             return (new Vec2(0, 0), new Vec2(0, 0));
 
         var section = _sectionStates[sectionIndex];
@@ -961,7 +961,7 @@ public class SectionControlService : ISectionControlService
 
     public void SetSectionState(int sectionIndex, SectionButtonState state)
     {
-        if (sectionIndex < 0 || sectionIndex >= 16) return;
+        if (sectionIndex < 0 || sectionIndex >= _sectionStates.Length) return;
 
         _sectionStates[sectionIndex].ButtonState = state;
 
@@ -987,7 +987,7 @@ public class SectionControlService : ISectionControlService
 
     public void SetAllSections(SectionButtonState state)
     {
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < _sectionStates.Length; i++)
         {
             _sectionStates[i].ButtonState = state;
 
@@ -1011,7 +1011,7 @@ public class SectionControlService : ISectionControlService
 
     public void TurnAllOff()
     {
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < _sectionStates.Length; i++)
         {
             UpdateSectionOff(i);
         }
@@ -1065,7 +1065,7 @@ public class SectionControlService : ISectionControlService
         }
 
         // Clear positions for unused sections
-        for (int i = numSections; i < 16; i++)
+        for (int i = numSections; i < _sectionStates.Length; i++)
         {
             _sectionStates[i].PositionLeft = 0;
             _sectionStates[i].PositionRight = 0;
@@ -1080,6 +1080,25 @@ public class SectionControlService : ISectionControlService
             if (_sectionStates[i].IsOn)
             {
                 bits |= (ushort)(1 << i);
+            }
+        }
+        return bits;
+    }
+
+    /// <summary>
+    /// Section on/off as a 64-bit mask (sections 1–64 in bits 0–63). The low
+    /// 16 bits match <see cref="GetSectionBits"/>. Used to build PGN 229 when
+    /// more than 16 sections are configured.
+    /// </summary>
+    public ulong GetSectionBits64()
+    {
+        ulong bits = 0;
+        int count = Math.Min(_sectionStates.Length, ToolConfig.MaxSections);
+        for (int i = 0; i < count; i++)
+        {
+            if (_sectionStates[i].IsOn)
+            {
+                bits |= 1UL << i;
             }
         }
         return bits;

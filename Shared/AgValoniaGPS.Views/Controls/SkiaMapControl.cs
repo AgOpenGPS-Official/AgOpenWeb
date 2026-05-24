@@ -109,11 +109,12 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     private double _toolX, _toolY, _toolHeading, _toolWidth, _hitchX, _hitchY;
     private bool _toolPositionReady;
 
-    private bool[] _sectionOn = new bool[16];
-    private int[] _sectionButtonState = new int[16];
-    private double[] _sectionWidths = new double[16];
-    private double[] _sectionLeft = new double[16];
-    private double[] _sectionRight = new double[16];
+    private const int MaxSections = AgValoniaGPS.Models.Configuration.ToolConfig.MaxSections;
+    private bool[] _sectionOn = new bool[MaxSections];
+    private int[] _sectionButtonState = new int[MaxSections];
+    private double[] _sectionWidths = new double[MaxSections];
+    private double[] _sectionLeft = new double[MaxSections];
+    private double[] _sectionRight = new double[MaxSections];
     private int _numSections;
 
     // ------------------------------------------------------------------
@@ -699,7 +700,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     public void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections,
         int[]? buttonStates = null)
     {
-        _numSections = Math.Min(numSections, 16);
+        _numSections = Math.Min(numSections, MaxSections);
         for (int i = 0; i < _numSections; i++)
         {
             _sectionOn[i] = i < sectionOn.Length && sectionOn[i];

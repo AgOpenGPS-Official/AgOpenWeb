@@ -299,15 +299,23 @@ public static class ProfileJsonServiceV1
         store.Tool.IsWorkSwitchManualSections = dto.Tool?.IsWorkSwitchManualSections ?? false;
         store.Tool.IsSteerSwitchEnabled = dto.Tool?.IsSteerSwitchEnabled ?? false;
         store.Tool.IsSteerSwitchManualSections = dto.Tool?.IsSteerSwitchManualSections ?? false;
-        if (dto.Tool?.SectionColors != null && dto.Tool.SectionColors.Length == 16)
-            store.Tool.SectionColors = (uint[])dto.Tool.SectionColors.Clone();
+        // Overlay saved colors onto the full MaxSections-length array so older
+        // 16-color profiles keep palette defaults for sections 17–64.
+        if (dto.Tool?.SectionColors != null && dto.Tool.SectionColors.Length > 0)
+        {
+            var colors = (uint[])store.Tool.SectionColors.Clone();
+            Array.Copy(dto.Tool.SectionColors, colors,
+                Math.Min(dto.Tool.SectionColors.Length, colors.Length));
+            store.Tool.SectionColors = colors;
+        }
 
         // Section config — set NumSections first so width-derivation knows how
         // many sections to populate.
         store.NumSections = dto.Sections?.Count ?? 1;
-        var sectionPositions = new double[17];
+        var sectionPositions = new double[Models.Configuration.ToolConfig.MaxSections + 1];
         if (dto.Sections?.Positions != null)
-            Array.Copy(dto.Sections.Positions, sectionPositions, Math.Min(dto.Sections.Positions.Length, 17));
+            Array.Copy(dto.Sections.Positions, sectionPositions,
+                Math.Min(dto.Sections.Positions.Length, sectionPositions.Length));
         store.SectionPositions = sectionPositions;
 
         // Restore Tool.SectionWidths — the runtime source of truth that the
