@@ -889,13 +889,21 @@ public class SectionControlService : ISectionControlService
     {
         var boundary = _state.Field.CurrentBoundary;
         if (boundary == null || !boundary.IsValid)
-            // No field open → treat every section as fully outside.
-            // shouldBeOn requires lookOnInBoundary, so this gates Auto sections off.
-            // The strict isInBoundary check (>= 95 %) also fails, so the early
-            // UpdateSectionOff in UpdateAutoSection fires and forces IsOn=false.
-            // Issue #347: spraying outside a defined field is never the
-            // intended operation; the firmware on AiO already enforces this.
-            return BoundaryResult.FullyOutside;
+        {
+            // No usable boundary. Two cases:
+            //  • A field IS open but has no boundary yet (#419): Auto must
+            //    still work — coverage drives on/off so sections turn off
+            //    when crossing previously-applied area while free driving.
+            //    Treat every section as fully inside so the boundary gate is
+            //    a no-op and the coverage check is the only authority.
+            //  • No field open at all (#347): spraying with no field defined
+            //    is never intended (AiO firmware enforces the same), so treat
+            //    every section as fully outside, which gates Auto off and
+            //    forces IsOn=false via the strict isInBoundary check.
+            return _state.Field.HasActiveField
+                ? BoundaryResult.FullyInside
+                : BoundaryResult.FullyOutside;
+        }
 
         return boundary.GetSegmentBoundaryStatus(sectionCenter, heading, halfWidth);
     }
