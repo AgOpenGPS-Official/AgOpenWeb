@@ -66,10 +66,17 @@ public class BoundaryBuilderService : IBoundaryBuilderService
         if (polygon.Count < MinPolygonPoints)
             return null;
 
-        // Convert to BoundaryPolygon
-        var boundaryPolygon = new BoundaryPolygon();
+        // Convert to BoundaryPolygon, then normalize resolution once at the source so
+        // the 0.5 m build-segment density doesn't propagate downstream. See
+        // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+        var raw = new List<BoundaryPoint>(polygon.Count);
         foreach (var point in polygon)
-            boundaryPolygon.Points.Add(new BoundaryPoint(point.Easting, point.Northing, 0));
+            raw.Add(new BoundaryPoint(point.Easting, point.Northing, 0));
+
+        var boundaryPolygon = new BoundaryPolygon
+        {
+            Points = Models.Base.BoundaryResolution.Normalize(raw)
+        };
 
         return boundaryPolygon;
     }

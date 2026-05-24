@@ -114,11 +114,14 @@ public class BoundaryRecordingService : IBoundaryRecordingService
             return null;
         }
 
-        // Create the polygon from recorded points
+        // Normalize resolution once at the source: GPS capture records at a fixed
+        // ~1 m spacing; collapse near-collinear runs (keeping curve detail) so the
+        // dense capture density doesn't propagate into storage, derived geometry, and
+        // rendering. See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
         var polygon = new BoundaryPolygon
         {
             IsDriveThrough = false,
-            Points = new List<BoundaryPoint>(_recordedPoints)
+            Points = Models.Base.BoundaryResolution.Normalize(_recordedPoints)
         };
 
         // Update bounding box cache for fast boundary checks

@@ -1015,12 +1015,13 @@ public partial class MainViewModel
 
         BuildTramLinesCommand = new RelayCommand(() =>
         {
-            // Systems resolve their own references; only require selected track for legacy mode
-            if (ConfigStore.Tram.Systems.Count == 0 &&
-                (SelectedTrack == null || SelectedTrack.Points.Count < 2))
+            // Systems resolve their own references. Without systems we build
+            // controlled-traffic lanes parallel to the field boundary, so a boundary
+            // is required (no guidance track needed).
+            if (ConfigStore.Tram.Systems.Count == 0 && !HasBoundary)
             {
-                ShowErrorDialog("No Track Selected",
-                    "Select an AB line or curve track before building tram lines.");
+                ShowErrorDialog("No Boundary",
+                    "Create a field boundary before building tram lines.");
                 return;
             }
 

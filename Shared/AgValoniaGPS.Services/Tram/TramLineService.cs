@@ -35,6 +35,12 @@ public class TramLineService(
     ITramLineOffsetService offsetService,
     ILogger<TramLineService> logger) : ITramLineService
 {
+    // Decimation tolerance for tram lines on save/load. Tram lines built from a dense
+    // boundary inherit ~1 m point spacing; simplifying to this deviation collapses the
+    // file (and per-frame render cost) with no visible change. See
+    // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+    private const double TramSimplifyToleranceMeters = 0.1;
+
     private readonly List<Vec2> _outerBoundaryTrack = new();
     private readonly List<Vec2> _innerBoundaryTrack = new();
     private readonly List<List<Vec2>> _parallelTramLines = new();
@@ -206,6 +212,49 @@ public class TramLineService(
             if (seg.Count > 1) result.Add(seg);
         foreach (var seg in OffsetTrackLaterallySegmented(track, centerOffset + halfWheelTrack, fence))
             if (seg.Count > 1) result.Add(seg);
+    }
+
+    /// <summary>
+    /// Generate controlled-traffic tram lanes as clean concentric offsets of the
+    /// field boundary, spaced at the tram (sprayer/CTF) width, each lane a pair of
+    /// wheel tracks. Uses Clipper inward offsetting, which is concave-safe and removes
+    /// the self-intersections that the per-point lateral offset produced on curved
+    /// fields (the "web"). Offsets march inward until the field is consumed.
+    /// See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md (Phase 2).
+    /// </summary>
+    public void GenerateConcentricTramLanes(double tramWidthOverride = 0)
+    {
+        var fence = _boundaryFence;
+        if (fence == null || fence.Count < 3)
+            return;
+
+        var config = ConfigurationStore.Instance;
+        double tramWidth = tramWidthOverride > 0 ? tramWidthOverride : config.Tram.TramWidth;
+        if (tramWidth <= 0.1) return;
+        double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
+
+        _parallelTramLines.Clear();
+
+        // Cap iterations so a misconfigured tiny tram width can't spin; inward
+        // offsetting converges to the field's medial axis well before this.
+        const int maxPasses = 500;
+        for (int k = 1; k <= maxPasses; k++)
+        {
+            double laneCenter = tramWidth * k;
+
+            var outer = offsetService.GenerateClipperOffsetPublic(fence, laneCenter - halfWheelTrack);
+            var inner = offsetService.GenerateClipperOffsetPublic(fence, laneCenter + halfWheelTrack);
+
+            bool anyThisPass = false;
+            if (outer.Count > 2) { outer.Add(outer[0]); _parallelTramLines.Add(outer); anyThisPass = true; }
+            if (inner.Count > 2) { inner.Add(inner[0]); _parallelTramLines.Add(inner); anyThisPass = true; }
+
+            // Once an inward pass yields nothing the field interior is consumed.
+            if (!anyThisPass)
+                break;
+        }
+
+        TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
@@ -652,28 +701,31 @@ public class TramLineService(
         {
             using var writer = new StreamWriter(filePath);
 
-            // Write outer boundary track
-            writer.WriteLine($"$OuterTrack,{_outerBoundaryTrack.Count}");
-            foreach (var point in _outerBoundaryTrack)
+            // Write outer boundary track (decimated)
+            var outer = GeometryMath.SimplifyPolyline(_outerBoundaryTrack, TramSimplifyToleranceMeters);
+            writer.WriteLine($"$OuterTrack,{outer.Count}");
+            foreach (var point in outer)
             {
                 writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
                     "{0:F4},{1:F4}", point.Easting, point.Northing));
             }
 
-            // Write inner boundary track
-            writer.WriteLine($"$InnerTrack,{_innerBoundaryTrack.Count}");
-            foreach (var point in _innerBoundaryTrack)
+            // Write inner boundary track (decimated)
+            var inner = GeometryMath.SimplifyPolyline(_innerBoundaryTrack, TramSimplifyToleranceMeters);
+            writer.WriteLine($"$InnerTrack,{inner.Count}");
+            foreach (var point in inner)
             {
                 writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
                     "{0:F4},{1:F4}", point.Easting, point.Northing));
             }
 
-            // Write parallel tram lines
+            // Write parallel tram lines (each decimated)
             writer.WriteLine($"$TramLines,{_parallelTramLines.Count}");
             foreach (var tramLine in _parallelTramLines)
             {
-                writer.WriteLine($"$Line,{tramLine.Count}");
-                foreach (var point in tramLine)
+                var line = GeometryMath.SimplifyPolyline(tramLine, TramSimplifyToleranceMeters);
+                writer.WriteLine($"$Line,{line.Count}");
+                foreach (var point in line)
                 {
                     writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
                         "{0:F4},{1:F4}", point.Easting, point.Northing));
@@ -711,12 +763,16 @@ public class TramLineService(
                 if (line.StartsWith("$OuterTrack,"))
                 {
                     int count = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    ReadPoints(reader, _outerBoundaryTrack, count);
+                    var pts = new List<Vec2>(count);
+                    ReadPoints(reader, pts, count);
+                    _outerBoundaryTrack.AddRange(GeometryMath.SimplifyPolyline(pts, TramSimplifyToleranceMeters));
                 }
                 else if (line.StartsWith("$InnerTrack,"))
                 {
                     int count = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    ReadPoints(reader, _innerBoundaryTrack, count);
+                    var pts = new List<Vec2>(count);
+                    ReadPoints(reader, pts, count);
+                    _innerBoundaryTrack.AddRange(GeometryMath.SimplifyPolyline(pts, TramSimplifyToleranceMeters));
                 }
                 else if (line.StartsWith("$TramLines,"))
                 {
@@ -727,11 +783,14 @@ public class TramLineService(
                         if (line != null && line.StartsWith("$Line,"))
                         {
                             int pointCount = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                            var tramLine = new List<Vec2>();
+                            var tramLine = new List<Vec2>(pointCount);
                             ReadPoints(reader, tramLine, pointCount);
-                            if (tramLine.Count > 0)
+                            // Decimate on load so legacy dense files (the 14 MB case)
+                            // render fast without regeneration.
+                            var simplified = GeometryMath.SimplifyPolyline(tramLine, TramSimplifyToleranceMeters);
+                            if (simplified.Count > 0)
                             {
-                                _parallelTramLines.Add(tramLine);
+                                _parallelTramLines.Add(simplified);
                             }
                         }
                     }

@@ -80,6 +80,14 @@ public interface ITramLineService
     void GenerateParallelTramLines(Models.Track.Track referenceTrack, double fieldWidth);
 
     /// <summary>
+    /// Generate controlled-traffic tram lanes as clean concentric Clipper offsets of
+    /// the field boundary, spaced at the tram (sprayer/CTF) width. Concave-safe;
+    /// avoids the self-intersecting "web" of per-point lateral offsets on curved fields.
+    /// </summary>
+    /// <param name="tramWidthOverride">Override tram width (m); 0 = use config TramWidth.</param>
+    void GenerateConcentricTramLanes(double tramWidthOverride = 0);
+
+    /// <summary>
     /// Add a tram line at the current position (for manual recording)
     /// </summary>
     /// <param name="points">Points defining the tram line</param>
