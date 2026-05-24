@@ -2804,7 +2804,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private double _boundaryOffset;
+    private double _boundaryOffset = 100.0;
     public double BoundaryOffset
     {
         get => _boundaryOffset;

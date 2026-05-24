@@ -31,7 +31,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <StackPanel Spacing="4">
 
                 <!-- Offset Distance Input -->
-                <Grid ColumnDefinitions="Auto,*" Margin="8,4">
+                <TextBlock Text="Recording Offset" FontSize="14" FontWeight="Bold"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                           Margin="8,4,8,0"/>
+                <Grid ColumnDefinitions="Auto,*" Margin="8,0,8,4">
                     <Button Grid.Column="0" Background="AliceBlue" CornerRadius="4" Padding="8,4" MinWidth="100"
                             ClickMode="Press" Command="{Binding ShowBoundaryOffsetDialogCommand}" Cursor="Hand"
                             ToolTip.Tip="Click to enter offset distance">
