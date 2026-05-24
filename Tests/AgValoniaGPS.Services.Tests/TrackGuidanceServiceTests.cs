@@ -371,6 +371,89 @@ public class TrackGuidanceServiceTests
 
     #endregion
 
+    #region Curve direction stability (#422)
+
+    // Build a gentle arc curve (radius ~200 m) with proper per-point headings,
+    // travelling roughly +North then curving east.
+    private static TrackModel BuildArcCurve()
+    {
+        var pts = new System.Collections.Generic.List<Vec3>();
+        double r = 200;
+        for (int i = 0; i <= 60; i++)
+        {
+            double a = i * (Math.PI / 180.0); // 0..60 degrees around the arc
+            pts.Add(new Vec3(r - r * Math.Cos(a), r * Math.Sin(a), 0));
+        }
+        var withHeadings = AgValoniaGPS.Models.Guidance.CurveProcessing.CalculateHeadings(pts);
+        return new TrackModel { Name = "Arc", Points = withHeadings, Type = TrackType.Curve };
+    }
+
+    [Test]
+    public void Curve_DirectionFrozenWhileSteering_DoesNotFlipOnHeadingSpike()
+    {
+        var track = BuildArcCurve();
+
+        // Frame 1: acquire globally, travelling along the curve (same way).
+        var p0 = track.Points[10];
+        var input1 = new TrackGuidanceInput
+        {
+            Track = track,
+            PivotPosition = new Vec3(p0.Easting, p0.Northing, p0.Heading),
+            SteerPosition = new Vec3(p0.Easting, p0.Northing, p0.Heading),
+            UseStanley = false, Wheelbase = 2.5, MaxSteerAngle = 35, GoalPointDistance = 5,
+            FixHeading = p0.Heading, AvgSpeed = 10, IsAutoSteerOn = true, FindGlobalNearest = true
+        };
+        var out1 = _service.CalculateGuidance(input1);
+        Assert.That(out1.State.IsHeadingSameWay, Is.True, "should acquire travelling same-way");
+
+        // Frame 2: a momentary heading spike ~120 deg off (noise / sharp transient),
+        // still steering, local search. Direction must stay frozen, not flip.
+        var p1 = track.Points[11];
+        double spiked = p1.Heading + 120 * Math.PI / 180.0;
+        var input2 = new TrackGuidanceInput
+        {
+            Track = track,
+            PivotPosition = new Vec3(p1.Easting, p1.Northing, spiked),
+            SteerPosition = new Vec3(p1.Easting, p1.Northing, spiked),
+            UseStanley = false, Wheelbase = 2.5, MaxSteerAngle = 35, GoalPointDistance = 5,
+            FixHeading = spiked, AvgSpeed = 10, IsAutoSteerOn = true,
+            FindGlobalNearest = false,
+            PreviousState = out1.State,
+            CurrentLocationIndex = out1.CurrentLocationIndex
+        };
+        var out2 = _service.CalculateGuidance(input2);
+
+        Assert.That(out2.State.IsHeadingSameWay, Is.True,
+            "direction must stay frozen while steering despite a heading spike (#422)");
+    }
+
+    [Test]
+    public void Curve_DirectionReevaluatedOnGlobalReacquire()
+    {
+        var track = BuildArcCurve();
+        var p = track.Points[10];
+
+        // Genuinely travelling the opposite way (heading reversed ~180 deg) with a
+        // global re-acquire requested: the frozen value must be overridden.
+        double reversed = p.Heading + Math.PI;
+        var input = new TrackGuidanceInput
+        {
+            Track = track,
+            PivotPosition = new Vec3(p.Easting, p.Northing, reversed),
+            SteerPosition = new Vec3(p.Easting, p.Northing, reversed),
+            UseStanley = false, Wheelbase = 2.5, MaxSteerAngle = 35, GoalPointDistance = 5,
+            FixHeading = reversed, AvgSpeed = 10, IsAutoSteerOn = true,
+            FindGlobalNearest = true,
+            PreviousState = new TrackGuidanceState { IsHeadingSameWay = true }
+        };
+        var output = _service.CalculateGuidance(input);
+
+        Assert.That(output.State.IsHeadingSameWay, Is.False,
+            "a global re-acquire must re-evaluate direction (here: reversed)");
+    }
+
+    #endregion
+
     #region Helpers
 
     private static TrackGuidanceInput CreateDefaultInput(TrackModel track)

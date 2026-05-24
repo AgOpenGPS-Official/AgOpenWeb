@@ -142,6 +142,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
+    // Previous along-track travel direction; a change forces a global nearest
+    // re-acquire so a stranded local index can recover (#422).
+    private bool _lastHeadingSameWay = true;
     private double _simulatorSteerAngle;
 
     // Phase E: cycle-local cache of a LocalPlane auto-created from the first
@@ -1231,7 +1234,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 Points = offsetPoints,
                 Type = track.Type,
                 IsVisible = true,
-                IsActive = true
+                IsActive = true,
+                // Preserve closed-loop flag so guidance wraps at the seam rather
+                // than treating an offset boundary loop as an open polyline (#422).
+                IsClosed = track.IsClosed
             };
         }
 
@@ -1269,9 +1275,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
             IsYouTurnTriggered = isYouTurnTriggered,
             ImuRoll = 88888,
             PreviousState = _trackGuidanceState,
-            FindGlobalNearest = _trackGuidanceState == null,
+            // Re-acquire the nearest segment globally on engage AND whenever the
+            // travel direction along the track flips — otherwise a stranded local
+            // index can't recover and the vehicle keeps steering off the wrong
+            // part of the loop (#422). Steady-state stays local.
+            FindGlobalNearest = _trackGuidanceState == null || isHeadingSameWay != _lastHeadingSameWay,
             CurrentLocationIndex = _trackGuidanceState?.CurrentLocationIndex ?? 0
         };
+        _lastHeadingSameWay = isHeadingSameWay;
 
         var output = _trackGuidanceService.CalculateGuidance(input);
 

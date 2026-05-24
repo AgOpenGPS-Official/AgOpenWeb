@@ -5440,6 +5440,29 @@ public partial class MainViewModel : ObservableObject
     /// Load tracks from field directory.
     /// Supports WinForms TrackLines.txt format (primary) and legacy ABLines.txt format (fallback).
     /// </summary>
+    /// <summary>
+    /// Migrate a loaded curve track to the resolution-independent guidance
+    /// conventions: recompute per-point headings (atan2(dEast,dNorth)) and flag
+    /// closed loops. Tracks saved before #422's fix carried boundary-convention or
+    /// zero headings and IsClosed=false, which made the "which way is forward"
+    /// decision random (spin/reverse). Idempotent for correctly-built tracks.
+    /// </summary>
+    private static void MigrateCurveTrack(Track track)
+    {
+        if (track == null || !track.IsCurve || track.Points.Count < 3)
+            return;
+
+        // Closed loop if the first and last points coincide.
+        var first = track.Points[0];
+        var last = track.Points[^1];
+        double de = first.Easting - last.Easting;
+        double dn = first.Northing - last.Northing;
+        if (de * de + dn * dn < 1.0)
+            track.IsClosed = true;
+
+        track.Points = Models.Guidance.CurveProcessing.CalculateHeadings(track.Points);
+    }
+
     private void LoadTracksFromField(Field? field)
     {
         // Clear existing tracks from both state and legacy collection
@@ -5465,6 +5488,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     // Ensure all tracks start inactive (SelectedTrack setter will activate)
                     track.IsActive = false;
+                    MigrateCurveTrack(track);
                     State.Field.Tracks.Add(track);
                     SavedTracks.Add(track);
 

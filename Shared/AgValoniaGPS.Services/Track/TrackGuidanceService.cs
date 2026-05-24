@@ -147,7 +147,19 @@ public class TrackGuidanceService : ITrackGuidanceService
         double headingDiff = input.PivotPosition.Heading - segmentHeading;
         while (headingDiff > Math.PI) headingDiff -= TwoPI;
         while (headingDiff < -Math.PI) headingDiff += TwoPI;
-        bool isHeadingSameWay = Math.Abs(headingDiff) < PIBy2;
+        bool computedSameWay = Math.Abs(headingDiff) < PIBy2;
+
+        // Freeze the travel-direction decision while actively steering: only
+        // (re)evaluate it on acquire / global re-acquire (engage or a pipeline-
+        // detected direction flip) or when not steering. Recomputing every frame
+        // from the instantaneous nearest point let a momentarily-behind point flip
+        // the direction mid-curve, which steered the vehicle away and spun it (#422).
+        // Mirrors AgOpenGPS CABCurve's throttled isHeadingSameWay.
+        bool isHeadingSameWay =
+            (input.IsAutoSteerOn && !input.FindGlobalNearest && input.PreviousState != null)
+                ? input.PreviousState.IsHeadingSameWay
+                : computedSameWay;
+        output.State.IsHeadingSameWay = isHeadingSameWay;
 
         // Now determine effective heading direction using the locally calculated value
         bool reverseHeading = input.IsReverse ? !isHeadingSameWay : isHeadingSameWay;
@@ -543,10 +555,21 @@ public class TrackGuidanceService : ITrackGuidanceService
         }
         else
         {
-            // Local search - check segments around current index
+            // Local search - check segments around current index.
             int searchRadius = (int)(searchDistance / 2) + 8; // Approximate segment count to check
+
+            // Anti-loop-jump guard (#422): on a closed/curved track, two parts of the
+            // loop can pass close to each other, so the perpendicular-nearest segment in
+            // the window may sit on the *other* side of the loop. Jumping there strands
+            // the index and flips the travel direction → the vehicle spins. So we track
+            // the best candidate NEAR the current index separately and only accept a
+            // far jump if it is decisively closer (>20%). Mirrors AgOpenGPS's penalized
+            // backward jump. The near window still allows normal forward advance.
+            const int nearRadius = 3;
             double minDist = double.MaxValue;
             int nearestSegment = currentIndex;
+            double nearMinDist = double.MaxValue;
+            int nearSegment = currentIndex;
 
             for (int offset = -searchRadius; offset <= searchRadius; offset++)
             {
@@ -567,9 +590,20 @@ public class TrackGuidanceService : ITrackGuidanceService
                     minDist = dist;
                     nearestSegment = segIdx;
                 }
+                if (Math.Abs(offset) <= nearRadius && dist < nearMinDist)
+                {
+                    nearMinDist = dist;
+                    nearSegment = segIdx;
+                }
             }
 
-            return (nearestSegment, (nearestSegment + 1) % points.Count);
+            // Reject a far jump that isn't decisively closer than staying near the
+            // current index.
+            int chosen = (nearestSegment != nearSegment && minDist >= nearMinDist * 0.8)
+                ? nearSegment
+                : nearestSegment;
+
+            return (chosen, (chosen + 1) % points.Count);
         }
     }
 
