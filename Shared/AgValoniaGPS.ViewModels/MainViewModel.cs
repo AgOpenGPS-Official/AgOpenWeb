@@ -1399,6 +1399,11 @@ public partial class MainViewModel : ObservableObject
             var boundary = _boundaryFileService.LoadBoundary(fieldPath);
             if (boundary != null)
             {
+                // Migrate legacy/imported dense boundaries to normalized resolution
+                // in-memory so derived geometry (tram/headland), inside-tests, and
+                // rendering operate on a sane point count. Persisted on the next
+                // explicit boundary save. See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+                NormalizeBoundaryInPlace(boundary);
                 SetCurrentBoundary(boundary);
                 CenterMapOnBoundary(boundary);
 
@@ -1508,23 +1513,18 @@ public partial class MainViewModel : ObservableObject
             // to start unconditionally here.
             StartCoverageAutosave();
 
-            // Load tram lines
-            try
-            {
-                _tramLineService.LoadFromFile(fieldPath);
-                if (_tramLineService.HasTramLines)
-                {
-                    _mapService.SetTramLines(
-                        _tramLineService.OuterBoundaryTrack,
-                        _tramLineService.InnerBoundaryTrack,
-                        _tramLineService.ParallelTramLines);
-                    _logger.LogDebug($"[Tram] Loaded tram lines from {fieldPath}");
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to load tram lines");
-            }
+            // Tram lines are computed on demand (when the user presses Build/Toggle
+            // tram), not eagerly on field open: they are rarely used and parsing a
+            // large saved TramLines.txt was costing seconds on the open critical path.
+            // The tram buttons regenerate via UpdateTramLines from the current track/
+            // systems, so the on-disk file is only a persistence cache. Start clean so
+            // a prior field's lines don't linger. See
+            // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+            _tramLineService.Clear();
+            _mapService.SetTramLines(
+                _tramLineService.OuterBoundaryTrack,
+                _tramLineService.InnerBoundaryTrack,
+                _tramLineService.ParallelTramLines);
 
             // Load tram systems
             try
@@ -2119,14 +2119,13 @@ public partial class MainViewModel : ObservableObject
                 _tramSystemLineRanges[sys.Name] = (startIdx, lines.Count, false);
             }
         }
-        else if (!_hasTramSystemsEverUsed && track != null && track.Points.Count >= 2)
+        else if (!_hasTramSystemsEverUsed)
         {
-            // Legacy: single track mode (only if systems have never been used in this field)
-            _tramLineService.GenerateParallelTramLines(track, fieldWidth);
-
-            // Legacy: also generate boundary tram tracks from headland
-            if (_currentHeadlandLine != null && _currentHeadlandLine.Count >= 3)
-                _tramLineService.GenerateBoundaryTramTracks(_currentHeadlandLine);
+            // Controlled-traffic lanes parallel to the field boundary, spaced at the
+            // tram (sprayer/CTF) width. Clean concentric Clipper offsets — replaces the
+            // legacy per-point lateral offset of the guidance curve, which folded into a
+            // self-intersecting "web" on irregular/curved fields.
+            _tramLineService.GenerateConcentricTramLanes();
         }
 
         // Snapshot collections for thread-safe rendering
@@ -3928,6 +3927,32 @@ public partial class MainViewModel : ObservableObject
         {
             _logger.LogDebug($"[DeleteBackgroundImage] {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Normalize a loaded boundary's outer and inner polygons to a
+    /// resolution-independent point set (Douglas-Peucker + max-gap densify). Dense
+    /// GPS-captured or imported boundaries (e.g. ~3431 points at ~1 m for a 440-acre
+    /// field) otherwise propagate that density into tram/headland generation,
+    /// inside-tests, and rendering. Idempotent: an already-sparse boundary is left
+    /// essentially unchanged. See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+    /// </summary>
+    private void NormalizeBoundaryInPlace(Boundary boundary)
+    {
+        void NormalizePolygon(BoundaryPolygon? poly)
+        {
+            if (poly?.Points == null || poly.Points.Count < 4) return;
+            int before = poly.Points.Count;
+            poly.Points = Models.Base.BoundaryResolution.Normalize(poly.Points);
+            poly.UpdateBounds();
+            if (poly.Points.Count != before)
+                _logger.LogDebug("[Boundary] Normalized polygon {Before} -> {After} points", before, poly.Points.Count);
+        }
+
+        NormalizePolygon(boundary.OuterBoundary);
+        if (boundary.InnerBoundaries != null)
+            foreach (var inner in boundary.InnerBoundaries)
+                NormalizePolygon(inner);
     }
 
     /// <summary>

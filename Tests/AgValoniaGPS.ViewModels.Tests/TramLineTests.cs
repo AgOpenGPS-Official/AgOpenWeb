@@ -294,10 +294,12 @@ public class TramLineTests
         Directory.CreateDirectory(tempDir);
         try
         {
-            // Add some tram lines
+            // Add some tram lines. Save/load decimates (Douglas-Peucker) to drop
+            // redundant collinear points, so use a line with a real bend at the
+            // middle vertex — all three points are meaningful and must round-trip.
             _service.AddTramLine(new List<Vec2>
             {
-                new Vec2(10, 0), new Vec2(10, 100), new Vec2(10, 200)
+                new Vec2(10, 0), new Vec2(15, 100), new Vec2(10, 200)
             });
             _service.AddTramLine(new List<Vec2>
             {

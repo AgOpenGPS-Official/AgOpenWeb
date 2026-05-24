@@ -189,6 +189,75 @@ namespace AgValoniaGPS.Models.Base
 
         #endregion
 
+        #region Polyline simplification
+
+        /// <summary>
+        /// Douglas-Peucker simplification of an open polyline (iterative; safe for very
+        /// large inputs). Drops points whose perpendicular deviation from the retained
+        /// chord is within <paramref name="tolerance"/> meters, preserving endpoints and
+        /// curve detail. Used to decimate dense derived geometry (e.g. tram lines built
+        /// from a dense boundary) for storage and rendering.
+        /// </summary>
+        public static List<Vec2> SimplifyPolyline(IReadOnlyList<Vec2> points, double tolerance)
+        {
+            int n = points?.Count ?? 0;
+            if (points == null || n < 3)
+                return points == null ? new List<Vec2>() : new List<Vec2>(points);
+
+            var keep = new bool[n];
+            keep[0] = true;
+            keep[n - 1] = true;
+
+            double tolSq = tolerance * tolerance;
+            var stack = new Stack<(int start, int end)>();
+            stack.Push((0, n - 1));
+
+            while (stack.Count > 0)
+            {
+                var (start, end) = stack.Pop();
+                if (end - start < 2) continue;
+
+                var a = points[start];
+                var b = points[end];
+                double dx = b.Easting - a.Easting;
+                double dy = b.Northing - a.Northing;
+                double lenSq = dx * dx + dy * dy;
+
+                double maxDistSq = -1;
+                int maxIdx = -1;
+                for (int i = start + 1; i < end; i++)
+                {
+                    var p = points[i];
+                    double distSq;
+                    if (lenSq < 1e-12)
+                    {
+                        double ddx = p.Easting - a.Easting, ddy = p.Northing - a.Northing;
+                        distSq = ddx * ddx + ddy * ddy;
+                    }
+                    else
+                    {
+                        double cross = (p.Easting - a.Easting) * dy - (p.Northing - a.Northing) * dx;
+                        distSq = (cross * cross) / lenSq;
+                    }
+                    if (distSq > maxDistSq) { maxDistSq = distSq; maxIdx = i; }
+                }
+
+                if (maxIdx >= 0 && maxDistSq > tolSq)
+                {
+                    keep[maxIdx] = true;
+                    stack.Push((start, maxIdx));
+                    stack.Push((maxIdx, end));
+                }
+            }
+
+            var result = new List<Vec2>(n);
+            for (int i = 0; i < n; i++)
+                if (keep[i]) result.Add(points[i]);
+            return result;
+        }
+
+        #endregion
+
         #region Catmull-Rom Spline
 
         /// <summary>
