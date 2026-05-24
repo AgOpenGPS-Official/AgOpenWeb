@@ -181,8 +181,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Grid>
             </Button>
 
-            <!-- 4b. Manual U-Turn Left/Right buttons (only visible when autosteer engaged) -->
-            <Grid ColumnDefinitions="*,*" IsVisible="{Binding IsAutoSteerEngaged}">
+            <!-- 4b. Manual U-Turn Left/Right buttons (visible when steering, hidden on polygon tracks #421) -->
+            <Grid ColumnDefinitions="*,*" IsVisible="{Binding IsManualUTurnVisible}">
                 <Button Grid.Column="0" Classes="RightPanelButton" Width="30" Height="32"
                         ToolTip.Tip="Manual U-Turn Left"
                         Command="{Binding ManualYouTurnLeftCommand}"

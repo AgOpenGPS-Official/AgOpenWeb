@@ -962,7 +962,11 @@ public partial class MainViewModel : ObservableObject
     public bool IsAutoSteerEngaged
     {
         get => _isAutoSteerEngaged;
-        set => SetProperty(ref _isAutoSteerEngaged, value);
+        set
+        {
+            if (SetProperty(ref _isAutoSteerEngaged, value))
+                OnPropertyChanged(nameof(IsManualUTurnVisible));
+        }
     }
 
     // IsYouTurnEnabled is now in MainViewModel.YouTurn.cs
@@ -2041,6 +2045,14 @@ public partial class MainViewModel : ObservableObject
                 // Update guidance availability
                 HasActiveTrack = value != null;
                 IsAutoSteerAvailable = value != null;
+
+                // No U-turns on a closed/polygon track — turn the toggle off and
+                // refresh the dependent UI (button visibility) (#421).
+                if (IsActiveTrackClosed && IsYouTurnEnabled)
+                    IsYouTurnEnabled = false;
+                OnPropertyChanged(nameof(IsActiveTrackClosed));
+                OnPropertyChanged(nameof(IsManualUTurnVisible));
+                RaiseUTurnButtonVisibleChanged();
 
                 // Sync to pipeline so guidance computes on background thread
                 SyncGuidanceStateToPipeline();

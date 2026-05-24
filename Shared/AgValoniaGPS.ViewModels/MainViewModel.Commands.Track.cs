@@ -840,6 +840,14 @@ public partial class MainViewModel
 
         ToggleYouTurnCommand = new RelayCommand(() =>
         {
+            // No U-turns on a closed/polygon track — there's no field end to turn at (#421).
+            if (IsActiveTrackClosed)
+            {
+                IsYouTurnEnabled = false;
+                StatusMessage = "U-turns aren't available on a closed (polygon) track";
+                return;
+            }
+
             IsYouTurnEnabled = !IsYouTurnEnabled;
             SyncGuidanceStateToPipeline();
             StatusMessage = IsYouTurnEnabled ? "YouTurn enabled" : "YouTurn disabled";

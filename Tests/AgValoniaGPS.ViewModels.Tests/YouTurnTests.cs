@@ -270,4 +270,55 @@ public class YouTurnTests
             Assert.That(vm.State.Guidance.IsHeadingSameWay, Is.True);
         });
     }
+
+    // ---- #421: no U-turns on a closed (polygon) track ----
+
+    private static Track ClosedCurve() => new()
+    {
+        Name = "Polygon",
+        Type = TrackType.Curve,
+        IsClosed = true,
+        Points = new List<Vec3>
+        {
+            new(0, 0, 0), new(100, 0, GeometryMath.PIBy2),
+            new(100, 100, Math.PI), new(0, 100, Math.PI + GeometryMath.PIBy2),
+            new(0, 0, 0)
+        }
+    };
+
+    [Test]
+    public void ClosedTrack_HidesUTurnButton_AndFlagsClosed()
+    {
+        var vm = new MainViewModelBuilder().Build();
+        vm.SelectedTrack = ClosedCurve();
+
+        Assert.That(vm.IsActiveTrackClosed, Is.True);
+        Assert.That(vm.IsUTurnButtonVisible, Is.False, "U-turn button must be hidden on a polygon track");
+    }
+
+    [Test]
+    public void ToggleYouTurn_OnClosedTrack_StaysDisabled()
+    {
+        var vm = new MainViewModelBuilder().Build();
+        vm.SelectedTrack = ClosedCurve();
+
+        vm.ToggleYouTurnCommand!.Execute(null);
+
+        Assert.That(vm.IsYouTurnEnabled, Is.False, "toggling must not enable U-turns on a polygon track");
+        Assert.That(vm.StatusMessage, Does.Contain("polygon"));
+    }
+
+    [Test]
+    public void SelectingClosedTrack_DisablesActiveYouTurn()
+    {
+        var vm = new MainViewModelBuilder().Build();
+
+        // Enable on an open AB line, then switch to a closed track.
+        vm.SelectedTrack = new Track { Name = "AB", Points = new List<Vec3> { new(0, 0, 0), new(0, 100, 0) } };
+        vm.IsYouTurnEnabled = true;
+
+        vm.SelectedTrack = ClosedCurve();
+
+        Assert.That(vm.IsYouTurnEnabled, Is.False, "selecting a polygon track must turn U-turns off");
+    }
 }

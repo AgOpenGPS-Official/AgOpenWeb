@@ -42,6 +42,14 @@ public partial class MainViewModel
         set => SetProperty(ref _isYouTurnEnabled, value);
     }
 
+    /// <summary>
+    /// True when the active track is a closed loop (polygon / boundary curve /
+    /// water pivot). U-turns make no sense on a closed track — there's no field
+    /// end to turn at, you just drive the loop continuously — so they're disabled
+    /// and the U-turn button is hidden in that case (#421).
+    /// </summary>
+    public bool IsActiveTrackClosed => SelectedTrack?.IsClosed == true;
+
     private int _uTurnSkipRows;
     /// <summary>Number of rows to skip during U-turn (0–9).</summary>
     public int UTurnSkipRows
@@ -153,9 +161,17 @@ public partial class MainViewModel
     /// <summary>Clear all U-turn state — called on field close or track deselect.</summary>
     public void ClearYouTurnState() => _intents.RequestClearYouTurn();
 
-    public void TriggerManualYouTurnLeft() => _intents.RequestManualYouTurn(turnLeft: true);
+    public void TriggerManualYouTurnLeft()
+    {
+        if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        _intents.RequestManualYouTurn(turnLeft: true);
+    }
 
-    public void TriggerManualYouTurnRight() => _intents.RequestManualYouTurn(turnLeft: false);
+    public void TriggerManualYouTurnRight()
+    {
+        if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        _intents.RequestManualYouTurn(turnLeft: false);
+    }
 
     /// <summary>
     /// Toggle the U-turn direction. Mirrors legacy <c>FormGPS.SwapDirection</c>
