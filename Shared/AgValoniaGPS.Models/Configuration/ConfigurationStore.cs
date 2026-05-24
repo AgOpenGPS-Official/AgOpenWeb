@@ -108,7 +108,7 @@ public class ConfigurationStore : ObservableObject
         get => _numSections;
         set
         {
-            int clamped = Math.Clamp(value, 1, 16);
+            int clamped = Math.Clamp(value, 1, ToolConfig.MaxSections);
             int previous = _numSections;
             // Seed newly-activated sections with the current Default Section
             // Width ("Width applied to new sections") BEFORE raising the
@@ -134,7 +134,7 @@ public class ConfigurationStore : ObservableObject
         get
         {
             double total = 0;
-            for (int i = 0; i < _numSections && i < 16; i++)
+            for (int i = 0; i < _numSections && i < ToolConfig.MaxSections; i++)
             {
                 total += Tool.GetSectionWidth(i) / 100.0; // cm to meters
             }
@@ -142,7 +142,7 @@ public class ConfigurationStore : ObservableObject
         }
     }
 
-    private double[] _sectionPositions = new double[17];
+    private double[] _sectionPositions = new double[ToolConfig.MaxSections + 1];
     public double[] SectionPositions
     {
         get => _sectionPositions;

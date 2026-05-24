@@ -949,7 +949,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // build in (9) reads them.
         byte hydLiftState = ComputeHydLiftState(toolPos, pos.Speed, headlandLine);
         _autoSteerService.SetMachineState(
-            _sectionControlService.GetSectionBits(),
+            _sectionControlService.GetSectionBits64(),
             isInYouTurn,
             hydLiftState);
 

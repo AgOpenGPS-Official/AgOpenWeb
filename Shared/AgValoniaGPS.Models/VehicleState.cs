@@ -125,8 +125,12 @@ public struct VehicleState
     // Section Control (updated by section control logic)
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>Section states as a bitmask (bit 0 = section 1, etc.)</summary>
-    public ushort SectionStates;
+    /// <summary>
+    /// Section states as a 64-bit bitmask (bit 0 = section 1, … bit 63 = section 64).
+    /// Low 16 bits ship in PGN 239/254; the full mask ships in PGN 229 when
+    /// more than 16 sections are configured.
+    /// </summary>
+    public ulong SectionStates;
 
     /// <summary>Master section switch state</summary>
     public bool MasterSectionOn;

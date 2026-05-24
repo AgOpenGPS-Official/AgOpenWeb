@@ -648,7 +648,7 @@ public partial class ConfigurationViewModel : ObservableObject
             {
                 // Individual sections mode - sum actual widths
                 double total = 0;
-                for (int i = 0; i < Config.NumSections && i < 16; i++)
+                for (int i = 0; i < Config.NumSections && i < Models.Configuration.ToolConfig.MaxSections; i++)
                     total += Tool.GetSectionWidth(i);
                 return total / 100.0; // cm to meters
             }
@@ -1183,7 +1183,8 @@ public partial class ConfigurationViewModel : ObservableObject
         EditNumSectionsCommand = new RelayCommand(() =>
             ShowNumericInput("Number of Sections", Config.NumSections,
                 v => Config.NumSections = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 16));
+                "", integerOnly: true, allowNegative: false, min: 1,
+                max: Models.Configuration.ToolConfig.MaxSections));
 
         EditLookAheadOnCommand = new RelayCommand(() =>
             ShowNumericInput("Look Ahead On", Tool.LookAheadOnSetting,

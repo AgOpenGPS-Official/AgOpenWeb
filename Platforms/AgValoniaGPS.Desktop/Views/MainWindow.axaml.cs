@@ -476,20 +476,10 @@ public partial class MainWindow : Window
         // visible tool/hitch oscillation: SetVehiclePosition moves the camera
         // and triggers a render with stale tool state, then SetAllPositions
         // snaps the tool forward — once per GPS tick.
-        if (e.PropertyName?.StartsWith("Section") == true &&
-                 (e.PropertyName.EndsWith("Active") || e.PropertyName.EndsWith("ColorCode")))
-        {
-            // Section state or color code changed - update map control
-            if (ViewModel != null && MapControl != null)
-            {
-                MapControl.SetSectionStates(
-                    ViewModel.GetSectionStates(),
-                    ViewModel.GetSectionWidths(),
-                    ViewModel.NumSections,
-                    ViewModel.GetSectionButtonStates());
-            }
-        }
-        else if (e.PropertyName == nameof(MainViewModel.IsGridOn))
+        // Section state/layout is pushed to the map directly by the ViewModel
+        // (MainViewModel.UpdateSectionStates) and every GPS cycle by
+        // ApplyGpsCycleResult, so there is no per-property section bridge here.
+        if (e.PropertyName == nameof(MainViewModel.IsGridOn))
         {
             if (ViewModel != null && MapControl != null)
             {

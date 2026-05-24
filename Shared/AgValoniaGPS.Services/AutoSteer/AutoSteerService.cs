@@ -399,7 +399,7 @@ public class AutoSteerService : IAutoSteerService
         _udpService.SendToModules(pgn);
     }
 
-    public void SetMachineState(ushort sectionBits, bool isInUTurn, byte hydLiftState = 0)
+    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0)
     {
         _state.SectionStates = sectionBits;
         _state.IsInUTurn = isInUTurn;
@@ -613,6 +613,16 @@ public class AutoSteerService : IAutoSteerService
             tram: _state.TramState,
             geoStop: _state.GeoStopState);
         _udpService.SendToModules(machinePgn);
+
+        // Send PGN 229 (64-section on/off) alongside PGN 239 only when more
+        // than 16 sections are configured. PGN 239 still carries sections 1–16;
+        // the firmware reconciles the overlap. Below 17 sections, 239 is
+        // sufficient and 229 is skipped to keep the bus quiet.
+        if (ConfigurationStore.Instance.NumSections > 16)
+        {
+            var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
+            _udpService.SendToModules(sections64Pgn);
+        }
     }
 
     /// <summary>

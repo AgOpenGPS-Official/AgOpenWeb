@@ -101,6 +101,13 @@ public interface ISectionControlService
     ushort GetSectionBits();
 
     /// <summary>
+    /// Get section bits as a 64-bit mask (for PGN 229 when more than 16
+    /// sections are configured). Low 16 bits match <see cref="GetSectionBits"/>.
+    /// </summary>
+    /// <returns>Bitmask where bit N = section N state (0..63)</returns>
+    ulong GetSectionBits64();
+
+    /// <summary>
     /// Event fired when any section state changes
     /// </summary>
     event EventHandler<SectionStateChangedEventArgs>? SectionStateChanged;

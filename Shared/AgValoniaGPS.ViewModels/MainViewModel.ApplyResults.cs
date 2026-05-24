@@ -333,54 +333,12 @@ public partial class MainViewModel
 
     private void UpdateSectionPropertiesFromResult(bool[] states, int[]? colorCodes)
     {
-        int count = Math.Min(states.Length, 16);
+        // The section bar binds to per-button ColorCode. The pipeline supplies
+        // the authoritative 6-state codes each cycle; apply them to the stable
+        // button objects (sized to NumSections by RebuildSectionRows).
+        if (colorCodes == null) return;
+        int count = Math.Min(_sectionButtons.Count, colorCodes.Length);
         for (int i = 0; i < count; i++)
-        {
-            switch (i)
-            {
-                case 0: Section1Active = states[0]; break;
-                case 1: Section2Active = states[1]; break;
-                case 2: Section3Active = states[2]; break;
-                case 3: Section4Active = states[3]; break;
-                case 4: Section5Active = states[4]; break;
-                case 5: Section6Active = states[5]; break;
-                case 6: Section7Active = states[6]; break;
-                case 7: Section8Active = states[7]; break;
-                case 8: Section9Active = states[8]; break;
-                case 9: Section10Active = states[9]; break;
-                case 10: Section11Active = states[10]; break;
-                case 11: Section12Active = states[11]; break;
-                case 12: Section13Active = states[12]; break;
-                case 13: Section14Active = states[13]; break;
-                case 14: Section15Active = states[14]; break;
-                case 15: Section16Active = states[15]; break;
-            }
-        }
-
-        if (colorCodes != null)
-        {
-            for (int i = 0; i < Math.Min(colorCodes.Length, count); i++)
-            {
-                switch (i)
-                {
-                    case 0: Section1ColorCode = colorCodes[0]; break;
-                    case 1: Section2ColorCode = colorCodes[1]; break;
-                    case 2: Section3ColorCode = colorCodes[2]; break;
-                    case 3: Section4ColorCode = colorCodes[3]; break;
-                    case 4: Section5ColorCode = colorCodes[4]; break;
-                    case 5: Section6ColorCode = colorCodes[5]; break;
-                    case 6: Section7ColorCode = colorCodes[6]; break;
-                    case 7: Section8ColorCode = colorCodes[7]; break;
-                    case 8: Section9ColorCode = colorCodes[8]; break;
-                    case 9: Section10ColorCode = colorCodes[9]; break;
-                    case 10: Section11ColorCode = colorCodes[10]; break;
-                    case 11: Section12ColorCode = colorCodes[11]; break;
-                    case 12: Section13ColorCode = colorCodes[12]; break;
-                    case 13: Section14ColorCode = colorCodes[13]; break;
-                    case 14: Section15ColorCode = colorCodes[14]; break;
-                    case 15: Section16ColorCode = colorCodes[15]; break;
-                }
-            }
-        }
+            _sectionButtons[i].ColorCode = colorCodes[i];
     }
 }

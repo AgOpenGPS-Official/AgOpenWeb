@@ -1,3 +1,7 @@
+using System.Linq;
+
+using AgValoniaGPS.Models.Configuration;
+
 namespace AgValoniaGPS.ViewModels.Tests;
 
 [TestFixture]
@@ -26,18 +30,47 @@ public class SectionControlTests
     }
 
     [Test]
-    public void SectionActiveProperties_AreAccessible()
+    public void SectionRows_ButtonsMatchSectionCount()
     {
         var vm = new MainViewModelBuilder().Build();
 
-        // All section active properties should be false by default
-        Assert.That(vm.Section1Active, Is.False);
-        Assert.That(vm.Section2Active, Is.False);
-        Assert.That(vm.Section3Active, Is.False);
-        Assert.That(vm.Section4Active, Is.False);
+        // Whatever NumSections is, the rows together hold exactly that many
+        // buttons, numbered 1..N in order.
+        var buttons = vm.SectionRows.SelectMany(r => r.Buttons).ToList();
+        Assert.That(buttons.Count, Is.EqualTo(vm.NumSections));
+        for (int i = 0; i < buttons.Count; i++)
+            Assert.That(buttons[i].Number, Is.EqualTo(i + 1));
+    }
 
-        // Can set them
-        vm.Section1Active = true;
-        Assert.That(vm.Section1Active, Is.True);
+    [Test]
+    public void SectionRows_SplitIntoEvenRows_TopRowLargerWhenOdd()
+    {
+        var store = ConfigurationStore.Instance;
+        int original = store.NumSections;
+        try
+        {
+            var vm = new MainViewModelBuilder().Build();
+
+            // ≤16 sections: a single row.
+            store.NumSections = 16;
+            Assert.That(vm.NumSections, Is.EqualTo(16));
+            Assert.That(vm.SectionRows.Count, Is.EqualTo(1));
+            Assert.That(vm.SectionRows[0].Buttons.Count, Is.EqualTo(16));
+
+            // 17 sections: two rows, top row holds the greater count (9 + 8).
+            store.NumSections = 17;
+            Assert.That(vm.SectionRows.Count, Is.EqualTo(2));
+            Assert.That(vm.SectionRows[0].Buttons.Count, Is.EqualTo(9));
+            Assert.That(vm.SectionRows[1].Buttons.Count, Is.EqualTo(8));
+
+            // 64 sections: four even rows of 16, never more than 16 per row.
+            store.NumSections = 64;
+            Assert.That(vm.SectionRows.Count, Is.EqualTo(4));
+            Assert.That(vm.SectionRows.All(r => r.Buttons.Count == 16), Is.True);
+        }
+        finally
+        {
+            store.NumSections = original;
+        }
     }
 }
