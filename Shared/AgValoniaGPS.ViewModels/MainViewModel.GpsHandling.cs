@@ -394,7 +394,8 @@ public partial class MainViewModel
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
-        _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled);
+        // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
+        _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);
         _gpsPipelineService.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
     }

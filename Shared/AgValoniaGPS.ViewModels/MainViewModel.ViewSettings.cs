@@ -361,10 +361,18 @@ public partial class MainViewModel
     #region ConfigurationStore Display Forwarding
 
     /// <summary>
-    /// UTurn button visible when track available AND config allows it.
+    /// UTurn button visible when track available AND config allows it AND the
+    /// active track isn't a closed loop (no U-turns on polygon tracks, #421).
     /// </summary>
     public bool IsUTurnButtonVisible =>
-        IsAutoSteerAvailable && ConfigurationStore.Instance.Display.UTurnButtonVisible;
+        IsAutoSteerAvailable && ConfigurationStore.Instance.Display.UTurnButtonVisible
+        && !IsActiveTrackClosed;
+
+    /// <summary>
+    /// Manual U-turn left/right buttons: visible only while steering AND not on a
+    /// closed (polygon) track (#421).
+    /// </summary>
+    public bool IsManualUTurnVisible => IsAutoSteerEngaged && !IsActiveTrackClosed;
 
     /// <summary>
     /// Notify IsUTurnButtonVisible when IsAutoSteerAvailable changes.
