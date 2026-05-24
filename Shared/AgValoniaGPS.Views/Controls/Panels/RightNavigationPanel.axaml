@@ -108,12 +108,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </Button>
 
             <!-- 3. Section Master Toggle - All sections Auto/Off -->
-            <!-- Requires a boundary: auto-section logic only has meaningful
-                 input (coverage / boundary intersect) once a boundary exists.
-                 Operators in the no-boundary workflow use Manual Mode (#2). -->
+            <!-- Available as soon as a field is open (#419). Auto section
+                 control is valid with no boundary: coverage alone drives
+                 on/off, so sections turn off when crossing previously-applied
+                 area while free driving. A boundary just adds boundary/headland
+                 gating on top when one exists. -->
             <Button Classes="RightPanelButton" ToolTip.Tip="All Sections Auto/Off"
                     Command="{Binding ToggleSectionMasterCommand}"
-                    IsVisible="{Binding HasBoundary}">
+                    IsVisible="{Binding IsFieldOpen}">
                 <Panel>
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/SectionMasterOn.png" Stretch="Uniform"
                            IsVisible="{Binding IsSectionMasterOn}"/>
