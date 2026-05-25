@@ -56,8 +56,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                           HorizontalAlignment="Center"
                           Margin="0,0,0,4"/>
 
-                <!-- Action Buttons -->
-                <Grid ColumnDefinitions="*,*" Margin="0,12,0,0">
+                <!-- Action Buttons: default localized Yes/No -->
+                <Grid ColumnDefinitions="*,*" Margin="0,12,0,0"
+                      IsVisible="{Binding !HasCustomConfirmationButtons}">
                     <Button Grid.Column="0" Content="{loc:Localize No}" Margin="0,0,8,0"
                             Command="{Binding CancelConfirmationDialogCommand}"
                             Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
@@ -70,6 +71,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             HorizontalAlignment="Stretch" Height="50" FontSize="18" FontWeight="Bold"
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                             Padding="0" CornerRadius="6"/>
+                </Grid>
+
+                <!-- Action Buttons: explicit choice labels (e.g. recovery prompt).
+                     Cancel (left) is the safe/neutral choice; Confirm (right) is
+                     the affirmative action. -->
+                <Grid ColumnDefinitions="*,*" Margin="0,12,0,0"
+                      IsVisible="{Binding HasCustomConfirmationButtons}">
+                    <Button Grid.Column="0" Content="{Binding ConfirmationDialogCancelLabel}" Margin="0,0,8,0"
+                            Command="{Binding CancelConfirmationDialogCommand}"
+                            Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            HorizontalAlignment="Stretch" Height="50" FontSize="16" FontWeight="Bold"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Padding="4" CornerRadius="6"/>
+                    <Button Grid.Column="1" Content="{Binding ConfirmationDialogConfirmLabel}" Margin="8,0,0,0"
+                            Command="{Binding ConfirmConfirmationDialogCommand}"
+                            Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            HorizontalAlignment="Stretch" Height="50" FontSize="16" FontWeight="Bold"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Padding="4" CornerRadius="6"/>
                 </Grid>
             </StackPanel>
         </Border>

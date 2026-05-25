@@ -665,6 +665,13 @@ public partial class MainViewModel : ObservableObject
             initialToolWidth += config.Tool.GetSectionWidth(i) / 100.0;
         if (initialToolWidth > 0.1)
             ToolWidth = initialToolWidth;
+
+        // Surface any crash-recovery that happened while loading settings or
+        // the active profile pair. Deferred to the dispatcher so the dialog
+        // host is ready (RestoreSettings runs during construction).
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            CheckStartupRecovery,
+            Avalonia.Threading.DispatcherPriority.Background);
     }
 
     private void LoadDefaultVehicleProfile()
@@ -2578,6 +2585,36 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _confirmationDialogCheckboxChecked, value);
     }
 
+    // Optional explicit button labels. When both are set, the dialog shows
+    // buttons captioned with the actual choices (e.g. "Use Restored" /
+    // "New From Defaults") instead of the generic localized Yes/No, so a
+    // two-action prompt is unambiguous. Null/empty falls back to Yes/No.
+    private string? _confirmationDialogConfirmLabel;
+    public string? ConfirmationDialogConfirmLabel
+    {
+        get => _confirmationDialogConfirmLabel;
+        set
+        {
+            if (SetProperty(ref _confirmationDialogConfirmLabel, value))
+                OnPropertyChanged(nameof(HasCustomConfirmationButtons));
+        }
+    }
+
+    private string? _confirmationDialogCancelLabel;
+    public string? ConfirmationDialogCancelLabel
+    {
+        get => _confirmationDialogCancelLabel;
+        set
+        {
+            if (SetProperty(ref _confirmationDialogCancelLabel, value))
+                OnPropertyChanged(nameof(HasCustomConfirmationButtons));
+        }
+    }
+
+    public bool HasCustomConfirmationButtons =>
+        !string.IsNullOrEmpty(_confirmationDialogConfirmLabel) &&
+        !string.IsNullOrEmpty(_confirmationDialogCancelLabel);
+
     // Callbacks. Only one is set per ShowConfirmationDialog call. The
     // checkbox variant receives the checkbox state at the time the user
     // clicked Confirm.
@@ -2599,6 +2636,34 @@ public partial class MainViewModel : ObservableObject
         ConfirmationDialogMessage = message;
         ConfirmationDialogCheckboxLabel = null;
         ConfirmationDialogCheckboxChecked = false;
+        ConfirmationDialogConfirmLabel = null;
+        ConfirmationDialogCancelLabel = null;
+        _confirmationDialogCallback = onConfirm;
+        _confirmationDialogCheckboxCallback = null;
+        _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        State.UI.ShowDialog(Models.State.DialogType.Confirmation);
+    }
+
+    /// <summary>
+    /// Confirmation dialog whose buttons are captioned with the actual choices
+    /// (e.g. "Use Restored" / "New From Defaults") so a two-action decision is
+    /// unambiguous. <paramref name="confirmLabel"/> is the affirmative
+    /// (right-hand) button; <paramref name="cancelLabel"/> is the dismiss
+    /// (left-hand) button and also what a backdrop click selects.
+    /// </summary>
+    public void ShowConfirmationDialog(
+        string title,
+        string message,
+        string confirmLabel,
+        string cancelLabel,
+        Action onConfirm)
+    {
+        ConfirmationDialogTitle = title;
+        ConfirmationDialogMessage = message;
+        ConfirmationDialogCheckboxLabel = null;
+        ConfirmationDialogCheckboxChecked = false;
+        ConfirmationDialogConfirmLabel = confirmLabel;
+        ConfirmationDialogCancelLabel = cancelLabel;
         _confirmationDialogCallback = onConfirm;
         _confirmationDialogCheckboxCallback = null;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
@@ -2621,6 +2686,8 @@ public partial class MainViewModel : ObservableObject
         ConfirmationDialogMessage = message;
         ConfirmationDialogCheckboxLabel = checkboxLabel;
         ConfirmationDialogCheckboxChecked = defaultChecked;
+        ConfirmationDialogConfirmLabel = null;
+        ConfirmationDialogCancelLabel = null;
         _confirmationDialogCallback = null;
         _confirmationDialogCheckboxCallback = onConfirm;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;

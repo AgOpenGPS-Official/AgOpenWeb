@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Services.Storage;
 
 namespace AgValoniaGPS.Services.Profile;
 
@@ -37,24 +38,61 @@ public static class VehicleProfileJsonService
         if (!Directory.Exists(vehiclesDirectory))
             Directory.CreateDirectory(vehiclesDirectory);
 
-        var dto = ToDto(store);
-        var json = JsonSerializer.Serialize(dto, Options);
-        File.WriteAllText(GetJsonPath(vehiclesDirectory, profileName), json);
+        // Atomic write + .bak last-known-good (see AtomicJsonFile): a crash
+        // mid-write can never leave a truncated profile that loads as defaults.
+        AtomicJsonFile.WriteJson(GetJsonPath(vehiclesDirectory, profileName), ToDto(store), Options);
     }
 
     public static bool Load(string vehiclesDirectory, string profileName, ConfigurationStore store)
+        => Load(vehiclesDirectory, profileName, store, out _, out _);
+
+    /// <summary>
+    /// Load, transparently recovering from the <c>.bak</c> last-known-good copy
+    /// if the primary file is damaged. <paramref name="outcome"/> reports how
+    /// the file resolved so callers can surface a recovery prompt.
+    /// </summary>
+    public static bool Load(
+        string vehiclesDirectory,
+        string profileName,
+        ConfigurationStore store,
+        out LoadOutcome outcome,
+        out DateTime? backupTimestamp,
+        bool quarantineOnFailure = true)
     {
         var path = GetJsonPath(vehiclesDirectory, profileName);
-        if (!File.Exists(path))
+        var result = AtomicJsonFile.Read<VehicleProfileDto>(path, Options, quarantineOnFailure: quarantineOnFailure);
+        outcome = result.Outcome;
+        backupTimestamp = result.BackupTimestamp;
+
+        if (!result.Loaded || result.Value is null)
             return false;
+        if (result.Value.FormatVersion < 2)
+            return false; // pre-v2 file (parsed fine); legacy reader handles it
 
-        var json = File.ReadAllText(path);
-        var dto = JsonSerializer.Deserialize<VehicleProfileDto>(json, Options);
-        if (dto == null || dto.FormatVersion < 2)
-            return false; // pre-v2 file; legacy reader handles it
-
-        ApplyDtoToStore(dto, profileName, path, store);
+        ApplyDtoToStore(result.Value, profileName, path, store);
         return true;
+    }
+
+    /// <summary>
+    /// Read-only corruption probe — no store mutation, no quarantine. Lets the
+    /// UI decide whether to prompt before committing to a load.
+    /// </summary>
+    public static ProfileFileProbe Probe(string vehiclesDirectory, string profileName)
+    {
+        var path = GetJsonPath(vehiclesDirectory, profileName);
+        var label = $"vehicle '{profileName}'";
+
+        if (!File.Exists(path) && !File.Exists(path + AtomicJsonFile.BackupSuffix))
+            return new ProfileFileProbe { Kind = ProfileKind.Vehicle, Label = label, Outcome = LoadOutcome.Missing };
+
+        var result = AtomicJsonFile.Read<VehicleProfileDto>(path, Options, quarantineOnFailure: false);
+        return new ProfileFileProbe
+        {
+            Kind = ProfileKind.Vehicle,
+            Label = label,
+            Outcome = result.Outcome,
+            BackupTimestamp = result.BackupTimestamp,
+        };
     }
 
     private static string GetJsonPath(string vehiclesDirectory, string profileName)

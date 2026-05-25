@@ -11,6 +11,7 @@ using System.Windows.Input;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Services.Profile;
+using AgValoniaGPS.Services.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -27,15 +28,18 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
     private readonly IConfigurationService _configurationService;
     private readonly Action _onClose;
     private readonly Action<string, Action> _confirm;
+    private readonly Action<string, string, string, Action> _confirmChoice;
 
     public LoadVehicleToolDialogViewModel(
         IConfigurationService configurationService,
         Action onClose,
-        Action<string, Action> confirm)
+        Action<string, Action> confirm,
+        Action<string, string, string, Action> confirmChoice)
     {
         _configurationService = configurationService;
         _onClose = onClose;
         _confirm = confirm;
+        _confirmChoice = confirmChoice;
 
         Refresh();
 
@@ -156,6 +160,49 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     private void Load()
     {
+        var v = SelectedVehicle ?? CurrentVehicle;
+        var t = SelectedTool ?? CurrentTool;
+
+        // Probe the target pair for corruption before touching the live store,
+        // so a damaged profile prompts the operator first instead of silently
+        // swapping (or resetting) the running config.
+        var probe = _configurationService.ProbeProfiles(v, t);
+
+        if (probe.AnyUnrecoverable)
+        {
+            // No backup to fall back on — refuse to load and stay put.
+            var names = string.Join(", ", probe.Damaged
+                .Where(d => d.Outcome == LoadOutcome.CorruptNoBackup)
+                .Select(d => d.Label));
+            StatusMessage = $"Cannot load — {names} damaged with no backup. Staying on {CurrentSummary}.";
+            return;
+        }
+
+        if (probe.AnyRecovered)
+        {
+            var d = probe.Damaged.First(x => x.Outcome == LoadOutcome.RecoveredFromBackup);
+            var when = d.BackupTimestamp.HasValue ? $" (saved {d.BackupTimestamp.Value:g})" : "";
+
+            // Name the profile you'd stay on — the *current* one of the same
+            // kind as the damaged target (e.g. switching to a damaged tool keeps
+            // your current tool).
+            var keepWord = d.Kind == ProfileKind.Vehicle ? "vehicle" : "tool";
+            var keepName = d.Kind == ProfileKind.Vehicle ? CurrentVehicle : CurrentTool;
+
+            _confirmChoice(
+                $"The {d.Label} file is damaged on disk.\n\n" +
+                $"Load its last good backup{when}, or stay on your current {keepWord} '{keepName}'?",
+                "Load Backup",
+                $"Keep '{keepName}'",
+                () => DoLoad(v, t));
+            return;
+        }
+
+        DoLoad(v, t);
+    }
+
+    private void DoLoad(string v, string t)
+    {
         // Save current store state before switching so unsaved edits in the
         // outgoing pair are not lost. Use the active *pair*: writing the
         // live tool config under the vehicle name (the legacy
@@ -163,8 +210,6 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         // vehicle and tool are independently named.
         _configurationService.SaveProfiles(CurrentVehicle, CurrentTool);
 
-        var v = SelectedVehicle ?? CurrentVehicle;
-        var t = SelectedTool ?? CurrentTool;
         if (_configurationService.LoadProfiles(v, t))
         {
             StatusMessage = $"Loaded {v} / {t}";
@@ -343,8 +388,10 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         // Preview a non-active profile by reading its file into a throwaway
         // store so the live one isn't perturbed. Falls back to v1 reader for
         // pre-#346 files that haven't been migrated yet.
+        // Preview must be side-effect-free: pass quarantineOnFailure: false so
+        // merely selecting a damaged profile doesn't move its file aside.
         var temp = new ConfigurationStore();
-        bool ok = VehicleProfileJsonService.Load(_configurationService.ProfilesDirectory, name, temp)
+        bool ok = VehicleProfileJsonService.Load(_configurationService.ProfilesDirectory, name, temp, out _, out _, quarantineOnFailure: false)
                || ProfileJsonServiceV1.Load(_configurationService.ProfilesDirectory, name, temp);
         if (!ok)
             return $"Vehicle profile '{name}'\n(file not found / unreadable)";
@@ -356,8 +403,9 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         if (IsActiveTool(name))
             return FormatTool(_configurationService.Store);
 
+        // Preview must be side-effect-free (see BuildVehiclePreview).
         var temp = new ConfigurationStore();
-        bool ok = ToolProfileJsonService.Load(_configurationService.ToolsDirectory, name, temp)
+        bool ok = ToolProfileJsonService.Load(_configurationService.ToolsDirectory, name, temp, out _, out _, quarantineOnFailure: false)
                || ProfileJsonServiceV1.Load(_configurationService.ProfilesDirectory, name, temp);
         if (!ok)
             return $"Tool profile '{name}'\n(file not found / unreadable)";
