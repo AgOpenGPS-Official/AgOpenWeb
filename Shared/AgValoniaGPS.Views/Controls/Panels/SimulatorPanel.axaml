@@ -19,128 +19,157 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
-             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Panels.SimulatorPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding IsSimulatorPanelVisible}"
              IsHitTestVisible="{Binding IsSimulatorPanelVisible}">
 
-    <controls:FloatingPanel x:Name="FP"
-                            MinWidth="320"
-                            Title="{loc:Localize GpsSimulator}"
-                            CloseCommand="{Binding ToggleSimulatorPanelCommand}">
-        <controls:FloatingPanel.PanelContent>
-            <StackPanel Spacing="8" Margin="12">
+    <UserControl.Styles>
+        <Style Selector="Button.SimButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="MinWidth" Value="40"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <Style Selector="Button.SimButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+        <Style Selector="Button.SimButton:pressed">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumBrush}"/>
+        </Style>
+    </UserControl.Styles>
 
-                <!-- Enable/Disable -->
-                <CheckBox Content="{loc:Localize SimulatorEnabled}"
-                          IsChecked="{Binding IsSimulatorEnabled}"
-                          FontWeight="Bold" FontSize="13"
-                          Margin="0,0,0,4"/>
+    <!-- Single-row horizontal simulator bar; sits above the bottom nav/section bars, close via the × -->
+    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+            CornerRadius="12" Padding="6"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1">
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
 
-                <!-- Enter Coords -->
-                <Button ClickMode="Press" HorizontalAlignment="Stretch"
-                        Command="{Binding ShowSimCoordsDialogCommand}"
-                        IsEnabled="{Binding !IsSimulatorEnabled}"
-                        ToolTip.Tip="Enter starting GPS coordinates (disable simulator first)">
-                    <TextBlock Text="{loc:Localize EnterSimCoords}" FontSize="12" IsHitTestVisible="False"/>
+            <!-- Simulator On/Off -->
+            <CheckBox IsChecked="{Binding IsSimulatorEnabled}"
+                      VerticalAlignment="Center" Margin="4,0"
+                      ToolTip.Tip="{loc:Localize SimulatorEnabled}">
+                <TextBlock Text="SIM" FontSize="11" FontWeight="Bold"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            </CheckBox>
+
+            <Separator Width="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="2,4"/>
+
+            <!-- Enter Sim Coords (only when simulator is disabled) -->
+            <Button Classes="SimButton" ClickMode="Press"
+                    Command="{Binding ShowSimCoordsDialogCommand}"
+                    IsEnabled="{Binding !IsSimulatorEnabled}"
+                    ToolTip.Tip="{loc:Localize EnterSimCoords}">
+                <TextBlock Text="GPS" FontSize="11" IsHitTestVisible="False"/>
+            </Button>
+
+            <!-- Reset Position -->
+            <Button Classes="SimButton" ClickMode="Press"
+                    Command="{Binding ResetSimulatorCommand}"
+                    ToolTip.Tip="{loc:Localize Reset}">
+                <TextBlock Text="RST" FontSize="11" IsHitTestVisible="False"/>
+            </Button>
+
+            <Separator Width="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="2,4"/>
+
+            <!-- Steer Left 0.5 -->
+            <Button Classes="SimButton" Width="36" ClickMode="Press"
+                    Command="{Binding SimulatorSteerLeftCommand}"
+                    ToolTip.Tip="Steer left 0.5°">
+                <TextBlock Text="L" FontSize="14" IsHitTestVisible="False"/>
+            </Button>
+
+            <!-- Steering Slider (0.5° steps) -->
+            <Slider Minimum="-40" Maximum="40" Width="160"
+                    Value="{Binding SimulatorSteerAngle, Mode=TwoWay}"
+                    TickFrequency="0.5" IsSnapToTickEnabled="True"
+                    VerticalAlignment="Center"
+                    ToolTip.Tip="Steering angle (0.5° steps)"/>
+
+            <!-- Steer Right 0.5 -->
+            <Button Classes="SimButton" Width="36" ClickMode="Press"
+                    Command="{Binding SimulatorSteerRightCommand}"
+                    ToolTip.Tip="Steer right 0.5°">
+                <TextBlock Text="R" FontSize="14" IsHitTestVisible="False"/>
+            </Button>
+
+            <!-- Steer Angle Display (fixed width so per-frame text changes don't resize the bar) -->
+            <TextBlock Text="{Binding SimulatorSteerAngleDisplay, Mode=OneWay}"
+                       VerticalAlignment="Center" FontSize="11" Width="48"
+                       TextAlignment="Center"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+
+            <!-- Reset Steering -->
+            <Button Classes="SimButton" ClickMode="Press"
+                    Command="{Binding ResetSteerAngleCommand}"
+                    ToolTip.Tip="Reset steering to 0">
+                <TextBlock Text="&gt;0&lt;" FontSize="13" IsHitTestVisible="False"/>
+            </Button>
+
+            <Separator Width="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="2,4"/>
+
+            <!-- Speed −/readout/+ grouped tightly; readout fixed width fits a 3-digit
+                 speed (e.g. "250.0 kph") so per-frame value changes don't resize the bar -->
+            <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Classes="SimButton" Width="36" ClickMode="Press"
+                        Command="{Binding SimulatorSpeedDownCommand}"
+                        ToolTip.Tip="Decrease speed 0.5 kph (min -10)">
+                    <TextBlock Text="&#x25BC;" FontSize="14" IsHitTestVisible="False"/>
                 </Button>
-
-                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
-
-                <!-- Reset / Reset Steering -->
-                <Grid ColumnDefinitions="*,*">
-                    <Button Grid.Column="0" Margin="0,0,4,0" ClickMode="Press"
-                            Command="{Binding ResetSimulatorCommand}"
-                            ToolTip.Tip="Reset to starting position">
-                        <TextBlock Text="{loc:Localize Reset}" FontSize="12" IsHitTestVisible="False"/>
-                    </Button>
-                    <Button Grid.Column="1" Margin="4,0,0,0" ClickMode="Press"
-                            Command="{Binding ResetSteerAngleCommand}"
-                            ToolTip.Tip="Reset steering to 0 (straight ahead)">
-                        <TextBlock Text="&gt;0&lt;" FontSize="14" FontWeight="Bold" IsHitTestVisible="False"/>
-                    </Button>
-                </Grid>
-
-                <!-- Steering L / Slider / R — tap L/R for one 0.5° increment -->
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Button Grid.Column="0" Width="40" Margin="0,0,8,0" ClickMode="Press"
-                            Command="{Binding SimulatorSteerLeftCommand}"
-                            ToolTip.Tip="Steer left 0.5°">
-                        <TextBlock Text="L" FontSize="16" IsHitTestVisible="False"/>
-                    </Button>
-                    <Slider Grid.Column="1"
-                            Minimum="-40" Maximum="40"
-                            Value="{Binding SimulatorSteerAngle, Mode=TwoWay}"
-                            TickFrequency="0.5" IsSnapToTickEnabled="True"
-                            ToolTip.Tip="Steering angle (0.5° steps)"/>
-                    <Button Grid.Column="2" Width="40" Margin="8,0,0,0" ClickMode="Press"
-                            Command="{Binding SimulatorSteerRightCommand}"
-                            ToolTip.Tip="Steer right 0.5°">
-                        <TextBlock Text="R" FontSize="16" IsHitTestVisible="False"/>
-                    </Button>
-                </Grid>
-
-                <!-- Steer Angle Display -->
-                <TextBlock Text="{Binding SimulatorSteerAngleDisplay, Mode=OneWay}"
-                           HorizontalAlignment="Center" FontSize="12"
-                           Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-
-                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
-
-                <!-- Speed label + 10x toggle -->
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Grid.Column="0" Text="{loc:Localize Speed}"
-                               Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                               FontSize="11" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                    <CheckBox Grid.Column="1" Content="10x"
-                              IsChecked="{Binding IsSimulatorSpeed10x}"
-                              FontSize="10"
-                              Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                              ToolTip.Tip="10x speed multiplier for large fields"/>
-                </Grid>
-
-                <!-- Speed − / Slider / + — tap − or + for one 0.5 kph increment -->
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Button Grid.Column="0" Width="40" Margin="0,0,8,0" ClickMode="Press"
-                            Command="{Binding SimulatorSpeedDownCommand}"
-                            ToolTip.Tip="Decrease speed 0.5 kph (min -10)">
-                        <TextBlock Text="−" FontSize="16" IsHitTestVisible="False"/>
-                    </Button>
-                    <Slider Grid.Column="1"
-                            Minimum="-10" Maximum="25"
-                            Value="{Binding SimulatorSpeedKph, Mode=TwoWay}"
-                            TickFrequency="0.5" IsSnapToTickEnabled="True"
-                            ToolTip.Tip="Speed in kph (0.5 kph steps, -10 reverse to +25 forward)"/>
-                    <Button Grid.Column="2" Width="40" Margin="8,0,0,0" ClickMode="Press"
-                            Command="{Binding SimulatorSpeedUpCommand}"
-                            ToolTip.Tip="Increase speed 0.5 kph (max +25)">
-                        <TextBlock Text="+" FontSize="16" IsHitTestVisible="False"/>
-                    </Button>
-                </Grid>
-
-                <!-- Speed Display -->
                 <TextBlock Text="{Binding SimulatorSpeedDisplay, Mode=OneWay}"
-                           HorizontalAlignment="Center" FontSize="12"
-                           Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-
-                <!-- Stop -->
-                <Button ClickMode="Press"
-                        Command="{Binding SimulatorStopCommand}"
-                        ToolTip.Tip="Stop (set speed to 0)"
-                        HorizontalAlignment="Center" Width="80">
-                    <TextBlock Text="STOP" FontSize="14" FontWeight="Bold" IsHitTestVisible="False"/>
+                           VerticalAlignment="Center" FontSize="12" FontWeight="Bold"
+                           Width="84" TextAlignment="Center"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                <Button Classes="SimButton" Width="36" ClickMode="Press"
+                        Command="{Binding SimulatorSpeedUpCommand}"
+                        ToolTip.Tip="Increase speed 0.5 kph (max +25)">
+                    <TextBlock Text="&#x25B2;" FontSize="14" IsHitTestVisible="False"/>
                 </Button>
-
-                <!-- Reverse Direction -->
-                <Button ClickMode="Press"
-                        Command="{Binding SimulatorReverseDirectionCommand}"
-                        ToolTip.Tip="Reverse direction (180 turn)">
-                    <TextBlock Text="{loc:Localize ReverseDirection}" FontSize="12" IsHitTestVisible="False"/>
-                </Button>
-
             </StackPanel>
-        </controls:FloatingPanel.PanelContent>
-    </controls:FloatingPanel>
+
+            <!-- STOP -->
+            <Button Classes="SimButton" ClickMode="Press"
+                    Command="{Binding SimulatorStopCommand}"
+                    ToolTip.Tip="Stop (set speed to 0)"
+                    Background="#44E74C3C">
+                <TextBlock Text="STOP" FontSize="12" FontWeight="Bold" IsHitTestVisible="False"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            </Button>
+
+            <!-- 10x Speed Toggle -->
+            <CheckBox IsChecked="{Binding IsSimulatorSpeed10x}"
+                      VerticalAlignment="Center" Margin="2,0"
+                      ToolTip.Tip="10x speed multiplier for large fields">
+                <TextBlock Text="10x" FontSize="10"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+            </CheckBox>
+
+            <Separator Width="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="2,4"/>
+
+            <!-- Reverse Direction (flips vehicle heading 180°) -->
+            <Button Classes="SimButton" ClickMode="Press"
+                    Command="{Binding SimulatorReverseDirectionCommand}"
+                    ToolTip.Tip="{loc:Localize ReverseDirection}">
+                <TextBlock Text="&#x21C5;" FontSize="16" IsHitTestVisible="False"/>
+            </Button>
+
+            <!-- Close -->
+            <Button Classes="SimButton" Width="32" ClickMode="Press"
+                    Command="{Binding ToggleSimulatorPanelCommand}"
+                    Background="Transparent"
+                    ToolTip.Tip="Close">
+                <TextBlock Text="&#x2715;" FontSize="13" IsHitTestVisible="False"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+            </Button>
+
+        </StackPanel>
+    </Border>
 
 </UserControl>

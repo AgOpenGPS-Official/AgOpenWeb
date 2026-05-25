@@ -52,6 +52,7 @@ public partial class MainView : UserControl
         WireChartPanelDrag("SteerChartPanel");
         WireChartPanelDrag("HeadingChartPanel");
         WireChartPanelDrag("XTEChartPanel");
+        // SimulatorBarPanel is a fixed layout child of the bottom stack — no drag/positioning needed.
 
         this.PropertyChanged += MainView_PropertyChanged;
         this.Unloaded += MainView_Unloaded;

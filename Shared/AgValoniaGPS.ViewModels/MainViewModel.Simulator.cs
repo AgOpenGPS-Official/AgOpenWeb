@@ -188,7 +188,7 @@ public partial class MainViewModel
         }
     }
 
-    public string SimulatorSteerAngleDisplay => $"Steer Angle: {_simulatorSteerAngle:F1}°";
+    public string SimulatorSteerAngleDisplay => $"{_simulatorSteerAngle:F1}°";
 
     /// <summary>
     /// Simulator speed in kph. Range: -10 to +25 kph (or -100 to +250 with 10x enabled).
@@ -240,12 +240,14 @@ public partial class MainViewModel
     {
         get
         {
+            // No "(10x)" suffix — the 10x toggle sits beside this readout and the
+            // value already reflects the multiplier, so the readout stays compact
+            // enough to hug the speed arrows while fitting a 3-digit speed.
             double speed = _isSimulatorSpeed10x ? _simulatorSpeedKph * 10 : _simulatorSpeedKph;
-            string suffix = _isSimulatorSpeed10x ? " (10x)" : "";
             if (ConfigStore.IsMetric)
-                return $"Speed: {speed:F1} kph{suffix}";
+                return $"{speed:F1} kph";
             else
-                return $"Speed: {speed * 0.621371:F1} mph{suffix}";
+                return $"{speed * 0.621371:F1} mph";
         }
     }
 
