@@ -27,7 +27,7 @@ public partial class LeftNavigationPanel : UserControl
         InitializeComponent();
 
         // Wire up sub-panel drag events
-        WireUpSubPanelDrag<SimulatorPanel>("SimulatorPanelControl");
+        // SimulatorPanel moved to the window-level floating canvas (see platform views)
         WireUpSubPanelDrag<ViewSettingsPanel>("ViewSettingsPanelControl");
         WireUpSubPanelDrag<FileMenuPanel>("FileMenuPanelControl");
         WireUpSubPanelDrag<ToolsPanel>("ToolsPanelControl");

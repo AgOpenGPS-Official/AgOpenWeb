@@ -114,6 +114,7 @@ public partial class MainWindow : Window
             HeadingChartPanel.DragMoved += (_, delta) => MovePanel(HeadingChartPanel, delta);
         if (XTEChartPanel != null)
             XTEChartPanel.DragMoved += (_, delta) => MovePanel(XTEChartPanel, delta);
+        // SimulatorBarPanel is a fixed layout child of the bottom stack — no drag/positioning needed.
     }
 
     private void MovePanel(Control panel, Vector delta)
@@ -650,7 +651,7 @@ public partial class MainWindow : Window
         var position = e.GetPosition(this);
 
         // Check anchored panels using their actual rendered bounds
-        Control[] panels = { LeftNavPanel, RightNavPanel, SectionControlPanel, BottomNavPanel };
+        Control[] panels = { LeftNavPanel, RightNavPanel, SectionControlPanel, BottomNavPanel, SimulatorBarPanel };
         foreach (var panel in panels)
         {
             if (panel?.IsVisible == true && panel.Bounds.Width > 0)

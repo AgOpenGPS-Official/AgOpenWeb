@@ -99,12 +99,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             </Button>
         </StackPanel>
 
-        <!-- BOTTOM: Section control stacked above bottom navigation -->
+        <!-- BOTTOM: Simulator bar above section control above bottom navigation -->
         <StackPanel ZIndex="10"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Bottom"
                     Margin="0,0,0,8"
                     Spacing="4">
+            <panels:SimulatorPanel x:Name="SimulatorBarPanel"
+                                   HorizontalAlignment="Center"
+                                   DataContext="{Binding}"/>
             <panels:SectionControlPanel x:Name="SectionControlPanel"
                                         HorizontalAlignment="Center"
                                         DataContext="{Binding}"/>

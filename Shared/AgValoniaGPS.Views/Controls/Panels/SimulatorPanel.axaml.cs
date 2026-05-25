@@ -14,20 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-using Avalonia;
 using Avalonia.Controls;
 
 namespace AgValoniaGPS.Views.Controls.Panels;
 
+// Fixed horizontal bar hosted in the bottom stack (above the section/nav bars).
 public partial class SimulatorPanel : UserControl
 {
-    public event EventHandler<Vector>? DragMoved;
-
     public SimulatorPanel()
     {
         InitializeComponent();
-        var fp = this.FindControl<FloatingPanel>("FP");
-        if (fp != null)
-            fp.DragMoved += (s, delta) => DragMoved?.Invoke(this, delta);
     }
 }
