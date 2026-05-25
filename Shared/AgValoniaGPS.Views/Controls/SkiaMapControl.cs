@@ -1655,14 +1655,12 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
             EnsureGridPaintsSk(s.IsDayMode, minorThickness, majorThickness, axisThickness);
 
-            // Anti-alias grid in 3D — sub-pixel camera shifts under perspective
-            // make unaliased far lines flicker. Costs ~17 FPS on iPad; the
-            // post-Phase-3 perf audit ([[task #16]]) will look at recovering this.
-            bool perspective = s.Is3DMode && s.CameraPitch > TopDownEpsilon;
-            _gridMinorPaintSk!.IsAntialias = perspective;
-            _gridMajorPaintSk!.IsAntialias = perspective;
-            _gridAxisXPaintSk!.IsAntialias = perspective;
-            _gridAxisYPaintSk!.IsAntialias = perspective;
+            // Grid paints are anti-aliased (set in EnsureGridPaintsSk). AA matters in
+            // both modes: in 3D, sub-pixel camera shifts under perspective make far
+            // lines flicker; in 2D north-up, axis-aligned lines perpendicular to travel
+            // scroll across pixel rows/cols and flicker as the vehicle drives. The 2D
+            // grid is one batched DrawPath, so AA is cheap there (the ~17 FPS iPad cost
+            // was the 3D per-line path). No per-frame IsAntialias override here.
 
             double minX = Math.Max(s.CameraX - viewWidth, -gridSize);
             double maxX = Math.Min(s.CameraX + viewWidth, gridSize);
@@ -1765,10 +1763,14 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                 majorColor = new SKColor(200, 200, 200, 120);
             }
 
-            _gridMinorPaintSk = new SKPaint { Color = minorColor, Style = SKPaintStyle.Stroke, StrokeWidth = (float)minorThickness, IsAntialias = false };
-            _gridMajorPaintSk = new SKPaint { Color = majorColor, Style = SKPaintStyle.Stroke, StrokeWidth = (float)majorThickness, IsAntialias = false };
-            _gridAxisXPaintSk = new SKPaint { Color = new SKColor(204, 51, 51, 70), Style = SKPaintStyle.Stroke, StrokeWidth = (float)axisThickness, IsAntialias = false };
-            _gridAxisYPaintSk = new SKPaint { Color = new SKColor(51, 204, 51, 70), Style = SKPaintStyle.Stroke, StrokeWidth = (float)axisThickness, IsAntialias = false };
+            // Anti-aliased: axis-aligned grid lines in 2D north-up flicker badly as the
+            // camera pans when AA is off (a 1px line snaps between pixel rows/cols each
+            // frame). AA lets them move sub-pixel-smoothly. Became obvious once the grid
+            // LOD went finer (0dc1b13); the 3D skew hid it because the lines aren't axis-aligned.
+            _gridMinorPaintSk = new SKPaint { Color = minorColor, Style = SKPaintStyle.Stroke, StrokeWidth = (float)minorThickness, IsAntialias = true };
+            _gridMajorPaintSk = new SKPaint { Color = majorColor, Style = SKPaintStyle.Stroke, StrokeWidth = (float)majorThickness, IsAntialias = true };
+            _gridAxisXPaintSk = new SKPaint { Color = new SKColor(204, 51, 51, 70), Style = SKPaintStyle.Stroke, StrokeWidth = (float)axisThickness, IsAntialias = true };
+            _gridAxisYPaintSk = new SKPaint { Color = new SKColor(51, 204, 51, 70), Style = SKPaintStyle.Stroke, StrokeWidth = (float)axisThickness, IsAntialias = true };
 
             _gridPaintIsDayMode = isDayMode;
             _gridPaintMinorThickness = minorThickness;
