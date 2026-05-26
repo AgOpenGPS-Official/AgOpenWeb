@@ -147,21 +147,7 @@ public partial class MainWindow : Window
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    if (args.PixelsAlreadyLoaded)
-                    {
-                        MapControl.MarkCoverageDirty();
-                    }
-                    else if (args.IsFullReload)
-                    {
-                        // ClearCoveragePixels drops the existing SKBitmap paint
-                        // and re-composites the background; MarkCoverageFullRebuildNeeded
-                        // then repaints from whatever cells the service still has
-                        // (zero after ClearAll, populated after LoadFromFile).
-                        MapControl.ClearCoveragePixels();
-                        MapControl.MarkCoverageFullRebuildNeeded();
-                    }
-                    else
-                        MapControl.MarkCoverageDirty();
+                    CoverageRefreshDispatcher.Apply(MapControl, args.IsFullReload);
                     ViewModel?.RefreshCoverageStatistics();
                 });
             };

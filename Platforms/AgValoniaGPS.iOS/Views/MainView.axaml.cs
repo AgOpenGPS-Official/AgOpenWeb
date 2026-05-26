@@ -115,17 +115,7 @@ public partial class MainView : UserControl
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    if (args.PixelsAlreadyLoaded)
-                    {
-                        _mapControl.MarkCoverageDirty();
-                    }
-                    else if (args.IsFullReload)
-                    {
-                        _mapControl.ClearCoveragePixels();
-                        _mapControl.MarkCoverageFullRebuildNeeded();
-                    }
-                    else
-                        _mapControl.MarkCoverageDirty();
+                    CoverageRefreshDispatcher.Apply(_mapControl, args.IsFullReload);
                     _viewModel?.RefreshCoverageStatistics();
                 });
             };
