@@ -307,14 +307,10 @@ public class CoverageUpdatedEventArgs : EventArgs
     public double AreaAdded { get; init; }
 
     /// <summary>
-    /// True if this is a full reload (e.g., from file), requiring full bitmap rebuild
+    /// True if this is a full reload (field load from file, or clear on close),
+    /// requiring the map control to drop and fully rebuild its coverage bitmap.
     /// </summary>
     public bool IsFullReload { get; init; }
-
-    /// <summary>
-    /// True if bitmap pixels were loaded directly from file - skip repainting
-    /// </summary>
-    public bool PixelsAlreadyLoaded { get; init; }
 }
 
 /// <summary>
