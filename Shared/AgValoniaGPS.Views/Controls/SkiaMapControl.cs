@@ -80,6 +80,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     // SKMatrix44 MVP per [[skiasharp-skmatrix44]].
     private double _cameraPitch;
     private bool _is3DMode;
+    // False until the first Set3DMode call (startup state-restore). That first
+    // call adopts the persisted _zoom as-is; later flips convert it (#438).
+    private bool _modeInitialized;
     private const double TopDownEpsilon = 1e-3;
     private const double Default3DPitchRadians = Math.PI / 3.0; // 60°
     private const double MaxPitchRadians = Math.PI * 80.0 / 180.0; // 80°, matches GL clamp
@@ -459,7 +462,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
     public void Toggle3DMode()
     {
+        ConvertZoomForModeFlip(!_is3DMode);
         _is3DMode = !_is3DMode;
+        _modeInitialized = true;
         if (_is3DMode && _cameraPitch < TopDownEpsilon)
             _cameraPitch = Default3DPitchRadians;
         SendStateToHandler();
@@ -467,11 +472,74 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
     public void Set3DMode(bool is3D)
     {
+        // The first call is startup state-restore: the persisted _zoom is
+        // already in the active mode's units, so adopt it without converting.
+        // Every later flip preserves apparent ground scale across the toggle.
+        if (_modeInitialized)
+            ConvertZoomForModeFlip(is3D);
+        _modeInitialized = true;
         _is3DMode = is3D;
         if (is3D && _cameraPitch < TopDownEpsilon)
             _cameraPitch = Default3DPitchRadians;
         SendStateToHandler();
     }
+
+    // 2D↔3D apparent-scale continuity (#438). The two modes feed _zoom through
+    // different projections, so an identical _zoom frames a ~10× different
+    // ground footprint. On a genuine mode flip we re-express _zoom so the
+    // ground extent at the vehicle is preserved instead of the raw value.
+    //
+    //   2D ortho: visible extent          = OrthoViewExtent / _zoom
+    //   3D persp: camera distance d        = ½·zoomScalar²  (see render path),
+    //             zoomScalar               = clamp(9/_zoom, Min/Max3DZoomScalar),
+    //             ground footprint across screen-x at the vehicle
+    //                                       = 2·d·tan(fov/2) = zoomScalar²·tan(fov/2)
+    //
+    // The X-axis tilt leaves screen-x parallel to the ground, so that
+    // horizontal footprint is pitch-independent — matching it keeps the
+    // vehicle the same on-screen width regardless of the 3D pitch angle.
+    //
+    // The 3D zoomScalar range is defined (below) as the exact reciprocal of
+    // the 2D [MinZoom, MaxZoom] range, so the two projections span the same
+    // set of ground extents. That makes this conversion a lossless bijection:
+    // 2D→3D→2D returns the original zoom, and 3D can frame anything 2D can.
+    private const double OrthoViewExtent = 200.0;     // mirrors 200.0/_zoom in render
+    private const double ZoomScalarNumerator = 9.0;   // mirrors the 9/zoom curve
+    private const double PerspectiveFovRadians = 0.7; // mirrors CreatePerspectiveFieldOfView
+    private static readonly double TanHalfPerspectiveFov = Math.Tan(PerspectiveFovRadians * 0.5);
+
+    private void ConvertZoomForModeFlip(bool newIs3D)
+    {
+        if (newIs3D == _is3DMode) return; // not an actual flip — nothing to do
+        _zoom = newIs3D ? ConvertZoom2DTo3D(_zoom) : ConvertZoom3DTo2D(_zoom);
+        PersistentAppState.Instance.CameraZoom = _zoom; // persisted on close
+    }
+
+    private static double ConvertZoom2DTo3D(double zoom2D)
+    {
+        // Solve zoomScalar²·tan(fov/2) = OrthoViewExtent/zoom2D for zoomScalar.
+        double scalar = Math.Clamp(
+            OrthoZoomToScalar(zoom2D), Min3DZoomScalar, Max3DZoomScalar);
+        return Math.Clamp(ZoomScalarNumerator / scalar, MinZoom, MaxZoom);
+    }
+
+    private static double ConvertZoom3DTo2D(double zoom3D)
+    {
+        double scalar = PerspectiveZoomScalar(zoom3D);
+        double perspExtent = scalar * scalar * TanHalfPerspectiveFov;
+        return Math.Clamp(OrthoViewExtent / perspExtent, MinZoom, MaxZoom);
+    }
+
+    // The 3D zoomScalar whose ground footprint equals the 2D visible extent at
+    // the given ortho zoom: footprint = scalar²·tan(fov/2) = OrthoViewExtent/zoom.
+    private static double OrthoZoomToScalar(double orthoZoom)
+        => Math.Sqrt((OrthoViewExtent / orthoZoom) / TanHalfPerspectiveFov);
+
+    // The clamped 3D zoom→scalar curve. Single source of truth shared by the
+    // render path (BuildPerspectiveScreenMatrix, ScreenToWorldPerspective),
+    // the mode-flip conversion, and the Zoom() plateau bail.
+    private static double PerspectiveZoomScalar(double zoom)
+        => Math.Clamp(ZoomScalarNumerator / Math.Max(0.05, zoom), Min3DZoomScalar, Max3DZoomScalar);
 
     public void SetPitch(double deltaRadians)
     {
@@ -503,12 +571,13 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     private const double MinZoom = 0.02;
     private const double MaxZoom = 100.0;
 
-    // AOG zoom→distance curve plateaus at zoomScalar=4 (zoom-in) and 60
-    // (zoom-out), so tapping past those points doesn't change the 3D visual
-    // but would silently drift _zoom toward the hard clamp. Bail when the
-    // underlying scalar is already pinned.
-    private const double Min3DZoomScalar = 4.0;
-    private const double Max3DZoomScalar = 60.0;
+    // 3D zoom→distance curve limits. Defined as the reciprocal of the 2D
+    // [MinZoom, MaxZoom] range so 3D spans the exact same ground extents as 2D
+    // (#438) — i.e. 3D can zoom out far enough to frame a whole large boundary,
+    // and the 2D↔3D conversion never has to clamp away information. Past these
+    // the camera distance is pinned, so Zoom() bails to stop _zoom drifting.
+    private static readonly double Min3DZoomScalar = OrthoZoomToScalar(MaxZoom); // most zoomed-in
+    private static readonly double Max3DZoomScalar = OrthoZoomToScalar(MinZoom); // most zoomed-out
 
     public void Zoom(double factor)
     {
@@ -520,7 +589,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         // 3D plateau — same bail condition keyed off the zoomScalar curve.
         if (_is3DMode && _cameraPitch > TopDownEpsilon)
         {
-            double currentScalar = 9.0 / _zoom;
+            double currentScalar = ZoomScalarNumerator / _zoom;
             if (factor > 1.0 && currentScalar <= Min3DZoomScalar) return;
             if (factor < 1.0 && currentScalar >= Max3DZoomScalar) return;
         }
@@ -980,7 +1049,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         float vx = (float)_cameraX;
         float vy = (float)_cameraY;
         float aogPitchRad = -(float)_cameraPitch;
-        float zoomScalar = MathF.Max(4f, MathF.Min(60f, 9f / MathF.Max(0.05f, (float)_zoom)));
+        float zoomScalar = (float)PerspectiveZoomScalar(_zoom);
         float distance = 0.5f * zoomScalar * zoomScalar;
         float rotationRad = -(float)_rotation;
 
@@ -1423,9 +1492,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             // → -π·80/180. So aogPitchRad = -_cameraPitch.
             float aogPitchRad = -(float)s.CameraPitch;
 
-            // Zoom curve: zoomScalar = clamp(9 / zoom, 4, 60); distance = ½·s².
-            // Same formula GL uses so 3D distance feels the same with either renderer.
-            float zoomScalar = MathF.Max(4f, MathF.Min(60f, 9f / MathF.Max(0.05f, (float)s.Zoom)));
+            // Zoom curve: distance = ½·zoomScalar²; zoomScalar clamped to the
+            // 2D-reciprocal range (see PerspectiveZoomScalar / Min/Max3DZoomScalar).
+            float zoomScalar = (float)PerspectiveZoomScalar(s.Zoom);
             float distance = 0.5f * zoomScalar * zoomScalar;
 
             // Camera rotation about Z. The 2D path uses CreateRotation(-_rotation);
@@ -1464,11 +1533,14 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         // Ground texture under perspective. The non-moveable 2D mode draws a
         // single rect of the bitmap; in 3D we always tile-repeat because the
-        // visible ground stretches to the horizon (~5 km) and a single
-        // bitmap stretched that wide is unusable. Single Skia draw call via
-        // a cached repeat-tile SKShader.
+        // visible ground stretches to the horizon and a single bitmap stretched
+        // that wide is unusable. Single Skia draw call via a cached repeat-tile
+        // SKShader, so a generous radius is essentially free. Sized to cover the
+        // widest 3D zoom-out (#438), where the matched ground extent reaches the
+        // 2D MinZoom extent (~10 km) — 20 km radius keeps ground under the
+        // boundary instead of revealing void.
         private const float GroundTileSizeMeters = 50f;
-        private const float GroundRectRadiusMeters = 5000f;
+        private const float GroundRectRadiusMeters = 20000f;
 
         private void DrawGroundTextureSk(SKCanvas canvas, MapRenderState s)
         {
