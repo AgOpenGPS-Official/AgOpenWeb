@@ -227,13 +227,26 @@ Replace the AppSettings-only completeness test with **bidirectional, store-drive
 4. **YouTurnState.IsEnabled** → **ephemeral** (tier 3, unchanged). **BoundaryRec draw prefs** → **Tier 2**.
 5. **`appstate.json`** → **separate file** (own `AtomicJsonFile`, mirrors `appsettings.json`).
 
-## 10. Deliverables checklist (post-approval)
-- [ ] `ApplicationStateSnapshot` model + `IApplicationStateService`/`ApplicationStateService`
-- [ ] `appstate.json` via `AtomicJsonFile`; load/save wired on all 3 platforms
-- [ ] One-way migration from legacy `appsettings.json`
-- [ ] Tier-2 values removed from `AppSettings` + `Apply*`
-- [ ] 12 Display toggles + Tram given config homes
-- [ ] AgShare / SimulatorEnabled / sim-coords routed through central store
-- [ ] Desktop exit → `SaveAppSettings()` + `SaveState()`
-- [ ] Bidirectional config + state completeness guards; no-bypass CI check
-- [ ] All existing tests green; new round-trip tests for tier 2
+## 10. Deliverables checklist — COMPLETE (2026-05-27)
+Implemented as named below (the snapshot/service ended up as `PersistentAppState` +
+`PersistentStateService`, serializing the store object directly rather than a separate DTO).
+- [x] `PersistentAppState` store + `IPersistentStateService`/`PersistentStateService`
+- [x] `appstate.json` via `AtomicJsonFile`; load/save wired on all 3 platforms
+- [x] One-way migration from legacy `appsettings.json`
+- [x] Tier-2 values removed from `AppSettings`/`DisplayConfig`/`SimulatorConfig` + `Apply*`
+- [x] 10 tier-1 Display toggles given AppSettings homes; **Tram persisted per-field**
+      (`TramConfigFileService` → `TramConfig.json`, loaded on field-open / saved on field-close,
+      alongside the pre-existing per-field `TramSystems.json`)
+- [x] AgShare / SimulatorEnabled / sim-coords routed through the central store; `Language`
+      uses `SaveAppSettings`
+- [x] Desktop exit → `SaveAppSettings()` + state `Save()`
+- [x] Bidirectional config (`DisplayConfig`/`SimulatorConfig`) + state completeness guards;
+      no-bypass guard (`NoBypassWritesTests` scans VM/Views for `*.Settings.<X> =`)
+- [x] All tests green; new tier-2 round-trip + legacy-migration tests
+
+**Note on Tram:** the audit assumed all of `ConfigStore.Tram` was unpersisted. In fact tram
+*Systems* already persisted per-field, and `Passes`/`DisplayMode` mirror `ConfigStore.Guidance`
+(vehicle-profile config). Only the remaining scalars (`TramWidth`, `StartPass`, `IsOuterInverted`,
+`Alpha`, `IsDisplayTramControl`, `IsEnabled`) lacked a home; those now persist per-field.
+`Passes`/`DisplayMode` were intentionally left on the Guidance sync to avoid double-sourcing —
+a smaller follow-up could consolidate them if desired.

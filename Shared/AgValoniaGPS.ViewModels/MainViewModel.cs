@@ -1548,6 +1548,9 @@ public partial class MainViewModel : ObservableObject
                 _tramLineService.InnerBoundaryTrack,
                 _tramLineService.ParallelTramLines);
 
+            // Load field-scoped tram scalar settings (resets to defaults if absent).
+            Services.Tram.TramConfigFileService.Load(fieldPath, ConfigStore.Tram);
+
             // Load tram systems
             try
             {
@@ -1663,6 +1666,9 @@ public partial class MainViewModel : ObservableObject
                 Services.Tram.TramSystemFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram.Systems);
                 _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
             }
+
+            // Save field-scoped tram scalar settings.
+            Services.Tram.TramConfigFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram);
 
             // Flush elevation log
             _elevationLogService.Flush(ActiveField.DirectoryPath);
