@@ -715,15 +715,25 @@ public partial class MainViewModel
         // Field close and resume commands
         CloseFieldCommand = new AsyncRelayCommand(async () =>
         {
-            await CloseFieldAsync();
-
-            // Disconnect NTRIP if connected
-            if (_ntripService.IsConnected)
+            async Task FinishCloseAsync()
             {
-                await _ntripService.DisconnectAsync();
+                await CloseFieldAsync();
+
+                // Disconnect NTRIP if connected
+                if (_ntripService.IsConnected)
+                {
+                    await _ntripService.DisconnectAsync();
+                }
+
+                StatusMessage = "Field closed";
             }
 
-            StatusMessage = "Field closed";
+            // Warn before dropping coverage painted with no active job. If the
+            // guard shows its prompt, the close runs from one of its buttons.
+            if (!TryShowUnsavedCoverageGuard(() => _ = FinishCloseAsync()))
+            {
+                await FinishCloseAsync();
+            }
         });
 
         // "Drive In" — AgOpen-style nearby-field shortcut. Looks for fields

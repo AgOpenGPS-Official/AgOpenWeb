@@ -444,6 +444,7 @@ public partial class MainViewModel : ObservableObject
         InitializeSettingsCommands();
         InitializeHotkeyCommands();
         InitializeChartCommands();
+        InitializeCoverageGuardCommands();
 
         // Load display settings first, then restore our app settings on top
         // This ensures AppSettings takes precedence over DisplaySettings

@@ -329,6 +329,20 @@ public partial class MainWindow : Window
         if (ViewModel?.HasActiveField == true)
         {
             e.Cancel = true;
+
+            // Warn before quitting drops coverage painted with no active job
+            // (same loss vector as the in-app Close Field command). If the guard
+            // shows its prompt, the quit resumes from the Save/Discard button;
+            // Cancel leaves the window open.
+            if (ViewModel.TryShowUnsavedCoverageGuard(() =>
+                {
+                    _closeSaveInProgress = true;
+                    _ = SaveAndCloseAsync();
+                }))
+            {
+                return;
+            }
+
             _closeSaveInProgress = true;
             _ = SaveAndCloseAsync();
             return;

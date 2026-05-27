@@ -77,6 +77,7 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsSmartWasDialogVisible));
                 OnPropertyChanged(nameof(IsLoadVehicleToolDialogVisible));
                 OnPropertyChanged(nameof(IsAppSettingsDialogVisible));
+                OnPropertyChanged(nameof(IsUnsavedCoverageDialogVisible));
 
                 DialogChanged?.Invoke(this, new DialogChangedEventArgs(previous, value));
             }
@@ -124,6 +125,7 @@ public class UIState : ObservableObject
     public bool IsSmartWasDialogVisible => ActiveDialog == DialogType.SmartWas;
     public bool IsLoadVehicleToolDialogVisible => ActiveDialog == DialogType.LoadVehicleTool;
     public bool IsAppSettingsDialogVisible => ActiveDialog == DialogType.AppSettings;
+    public bool IsUnsavedCoverageDialogVisible => ActiveDialog == DialogType.UnsavedCoverage;
 
     // Panel visibility (non-modal, can have multiple open)
     private bool _isSimulatorPanelVisible;
@@ -260,6 +262,7 @@ public enum DialogType
     StartWorkSession,
     ResumeJob,
     AppSettings,
+    UnsavedCoverage,
 }
 
 /// <summary>
