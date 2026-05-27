@@ -56,6 +56,7 @@ public partial class MainViewModel : ObservableObject
     private readonly AgValoniaGPS.Services.Interfaces.IFieldStatisticsService _fieldStatistics;
     private readonly AgValoniaGPS.Services.Interfaces.IGpsSimulationService _simulatorService;
     private readonly ISettingsService _settingsService;
+    private readonly IPersistentStateService _persistentStateService;
     private readonly IMapService _mapService;
     private readonly IBoundaryRecordingService _boundaryRecordingService;
     private readonly IBoundaryBuilderService _boundaryBuilderService;
@@ -104,6 +105,14 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public ApplicationState State => _appState;
     public DisplayConfig Display => ConfigurationStore.Instance.Display;
+
+    /// <summary>
+    /// Persistent application state — window/last-view/last-field/sim position
+    /// and other "where the app was" values that survive restart via
+    /// appstate.json. Distinct from <see cref="State"/> (ephemeral) and
+    /// configuration. Same object as <see cref="PersistentAppState.Instance"/>.
+    /// </summary>
+    public PersistentAppState PersistentState => PersistentAppState.Instance;
 
     // Convenience accessors for ConfigurationStore (replaces _vehicleConfig usage)
     private static ConfigurationStore ConfigStore => ConfigurationStore.Instance;
@@ -212,10 +221,12 @@ public partial class MainViewModel : ObservableObject
         IPipelineIntents intents,
         ILogger<MainViewModel> logger,
         ApplicationState appState,
+        IPersistentStateService persistentStateService,
         ISteerMachineLoopService? controlLoop = null,
         IPositionEstimator? positionEstimator = null)
     {
         _logger = logger;
+        _persistentStateService = persistentStateService;
         _tramLineService = tramLineService;
 
         // Sync GuidanceConfig.TramDisplay -> TramConfig.DisplayMode and regenerate
@@ -629,9 +640,9 @@ public partial class MainViewModel : ObservableObject
         // (setting _displaySettings directly doesn't trigger property change notification)
         OnPropertyChanged(nameof(IsGridOn));
 
-        // Restore last camera follow mode (Map / NorthUp / HeadingUp)
-        if (settings.CameraMode != CameraMode.Free)
-            CameraMode = settings.CameraMode;
+        // Restore last camera follow mode (Map / NorthUp / HeadingUp) — state.
+        if (PersistentState.CameraMode != CameraMode.Free)
+            CameraMode = PersistentState.CameraMode;
 
         // Prime _last3DPitch from the saved CameraPitch so the 2D/3D toggle
         // restores the user's prior tilt instead of the hard-coded -60° default.
@@ -640,17 +651,17 @@ public partial class MainViewModel : ObservableObject
         if (_displaySettings.CameraPitch > -89.0)
             _last3DPitch = _displaySettings.CameraPitch;
 
-        // Restore simulator settings (always restore coords, regardless of enabled state)
+        // Restore simulator position (state). Always restore coords regardless
+        // of enabled state so map dialogs work at startup.
         _simulatorService.Initialize(new AgValoniaGPS.Models.Wgs84(
-            settings.SimulatorLatitude,
-            settings.SimulatorLongitude));
-        _simulatorService.StepDistance = settings.SimulatorSpeed;
+            PersistentState.SimulatorLatitude,
+            PersistentState.SimulatorLongitude));
+        _simulatorService.StepDistance = PersistentState.SimulatorSpeed;
 
-        // Also set Latitude/Longitude so map dialogs work correctly at startup
-        Latitude = settings.SimulatorLatitude;
-        Longitude = settings.SimulatorLongitude;
+        Latitude = PersistentState.SimulatorLatitude;
+        Longitude = PersistentState.SimulatorLongitude;
 
-        _logger.LogDebug("Restored simulator: {Lat},{Lon}", settings.SimulatorLatitude, settings.SimulatorLongitude);
+        _logger.LogDebug("Restored simulator: {Lat},{Lon}", PersistentState.SimulatorLatitude, PersistentState.SimulatorLongitude);
 
         // Restore simulator enabled state and panel visibility.
         // hide_all_panels diagnostic flag suppresses the auto-open so baseline
@@ -1537,6 +1548,9 @@ public partial class MainViewModel : ObservableObject
                 _tramLineService.InnerBoundaryTrack,
                 _tramLineService.ParallelTramLines);
 
+            // Load field-scoped tram scalar settings (resets to defaults if absent).
+            Services.Tram.TramConfigFileService.Load(fieldPath, ConfigStore.Tram);
+
             // Load tram systems
             try
             {
@@ -1559,9 +1573,9 @@ public partial class MainViewModel : ObservableObject
             // Sync elevation log enabled state from config
             _elevationLogService.IsEnabled = Models.Configuration.ConfigurationStore.Instance.Display.ElevationLogEnabled;
 
-            // Save as last opened field
-            _settingsService.Settings.LastOpenedField = fieldName;
-            _settingsService.Save();
+            // Save as last opened field (persistent state → appstate.json)
+            PersistentState.LastOpenedField = fieldName;
+            _persistentStateService.Save();
 
             // Force simulator ticks so vehicle position updates to field origin
             if (IsSimulatorEnabled)
@@ -1652,6 +1666,9 @@ public partial class MainViewModel : ObservableObject
                 Services.Tram.TramSystemFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram.Systems);
                 _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
             }
+
+            // Save field-scoped tram scalar settings.
+            Services.Tram.TramConfigFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram);
 
             // Flush elevation log
             _elevationLogService.Flush(ActiveField.DirectoryPath);
@@ -2871,47 +2888,52 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool _isDrawRightSide = true;
+    // Boundary-recording setup is persistent STATE (last-used setup, restored
+    // for continuity). These VM properties delegate to PersistentAppState and
+    // raise change notifications for the bound UI.
     public bool IsDrawRightSide
     {
-        get => _isDrawRightSide;
+        get => PersistentState.BoundaryDrawRightSide;
         set
         {
-            SetProperty(ref _isDrawRightSide, value);
+            if (PersistentState.BoundaryDrawRightSide == value) return;
+            PersistentState.BoundaryDrawRightSide = value;
+            OnPropertyChanged();
             StatusMessage = value ? "Boundary on right side" : "Boundary on left side";
             UpdateBoundaryOffsetIndicator();
         }
     }
 
-    private bool _isDrawAtPivot;
     public bool IsDrawAtPivot
     {
-        get => _isDrawAtPivot;
+        get => PersistentState.BoundaryDrawAtPivot;
         set
         {
-            SetProperty(ref _isDrawAtPivot, value);
+            if (PersistentState.BoundaryDrawAtPivot == value) return;
+            PersistentState.BoundaryDrawAtPivot = value;
+            OnPropertyChanged();
             StatusMessage = value ? "Recording at pivot point" : "Recording at tool";
         }
     }
 
-    private double _boundaryOffset = 100.0;
     public double BoundaryOffset
     {
-        get => _boundaryOffset;
+        get => PersistentState.BoundaryOffset;
         set
         {
-            var oldValue = _boundaryOffset;
-            SetProperty(ref _boundaryOffset, value);
-            if (Math.Abs(oldValue - value) > 0.0001)
-                UpdateBoundaryOffsetIndicator();
+            var oldValue = PersistentState.BoundaryOffset;
+            if (Math.Abs(oldValue - value) < 0.0001) return;
+            PersistentState.BoundaryOffset = value;
+            OnPropertyChanged();
+            UpdateBoundaryOffsetIndicator();
         }
     }
 
     private void UpdateBoundaryOffsetIndicator()
     {
         // Apply direction: right side = positive offset, left side = negative offset
-        double signedOffsetMeters = _boundaryOffset / 100.0;
-        if (!_isDrawRightSide)
+        double signedOffsetMeters = PersistentState.BoundaryOffset / 100.0;
+        if (!PersistentState.BoundaryDrawRightSide)
         {
             signedOffsetMeters = -signedOffsetMeters;
         }
@@ -2924,14 +2946,14 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private (double easting, double northing) CalculateOffsetPosition(double easting, double northing, double headingRadians)
     {
-        if (_boundaryOffset == 0)
+        if (PersistentState.BoundaryOffset == 0)
             return (easting, northing);
 
         // Offset in meters (input is cm)
-        double offsetMeters = _boundaryOffset / 100.0;
+        double offsetMeters = PersistentState.BoundaryOffset / 100.0;
 
         // If drawing on left side, negate the offset
-        if (!_isDrawRightSide)
+        if (!PersistentState.BoundaryDrawRightSide)
             offsetMeters = -offsetMeters;
 
         // Calculate perpendicular offset (90 degrees to the right of heading)

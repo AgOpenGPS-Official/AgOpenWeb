@@ -19,6 +19,7 @@ using SkiaSharp;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Diagnostics;
 using AgValoniaGPS.Models.Track;
 using AssetLoader = Avalonia.Platform.AssetLoader;
@@ -65,10 +66,11 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     // ------------------------------------------------------------------
 
     private double _cameraX, _cameraY;
-    private double _zoom = 1.0;
+    // Seed from persisted state so the last zoom is restored on launch.
+    private double _zoom = PersistentAppState.Instance.CameraZoom;
     private double _rotation;
     private bool _isNorthUp;
-    private bool _isDayMode = ConfigurationStore.Instance.Display.IsDayMode;
+    private bool _isDayMode = PersistentAppState.Instance.IsDayMode;
 
     // Phase 3 perspective state. Pitch is AOG convention: 0 = top-down,
     // π/2 = horizon. Receives radians from the platform code's
@@ -524,6 +526,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         }
 
         _zoom = Math.Clamp(_zoom * factor, MinZoom, MaxZoom);
+        PersistentAppState.Instance.CameraZoom = _zoom; // persisted on close
         SendStateToHandler();
     }
 
@@ -535,6 +538,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     {
         _cameraX = x; _cameraY = y;
         _zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        PersistentAppState.Instance.CameraZoom = _zoom; // persisted on close
         _rotation = rotation;
         SendStateToHandler();
     }

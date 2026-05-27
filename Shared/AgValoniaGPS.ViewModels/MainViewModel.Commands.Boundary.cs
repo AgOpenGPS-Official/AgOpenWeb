@@ -178,9 +178,10 @@ public partial class MainViewModel
 
         ShowAgShareSettingsDialogCommand = new RelayCommand(() =>
         {
-            AgShareSettingsServerUrl = _settingsService.Settings.AgShareServer;
-            AgShareSettingsApiKey = _settingsService.Settings.AgShareApiKey;
-            AgShareSettingsEnabled = _settingsService.Settings.AgShareEnabled;
+            // Seed the dialog from the store (single source of truth).
+            AgShareSettingsServerUrl = ConfigStore.Connections.AgShareServer;
+            AgShareSettingsApiKey = ConfigStore.Connections.AgShareApiKey;
+            AgShareSettingsEnabled = ConfigStore.Connections.AgShareEnabled;
             State.UI.ShowDialog(DialogType.AgShareSettings);
         });
 
@@ -191,10 +192,11 @@ public partial class MainViewModel
 
         ConfirmAgShareSettingsDialogCommand = new RelayCommand(() =>
         {
-            _settingsService.Settings.AgShareServer = AgShareSettingsServerUrl;
-            _settingsService.Settings.AgShareApiKey = AgShareSettingsApiKey;
-            _settingsService.Settings.AgShareEnabled = AgShareSettingsEnabled;
-            _settingsService.Save();
+            // Write through the store, then persist store→DTO→disk. No DTO bypass.
+            ConfigStore.Connections.AgShareServer = AgShareSettingsServerUrl;
+            ConfigStore.Connections.AgShareApiKey = AgShareSettingsApiKey;
+            ConfigStore.Connections.AgShareEnabled = AgShareSettingsEnabled;
+            _configurationService.SaveAppSettings();
             State.UI.CloseDialog();
             StatusMessage = "AgShare settings saved";
         });

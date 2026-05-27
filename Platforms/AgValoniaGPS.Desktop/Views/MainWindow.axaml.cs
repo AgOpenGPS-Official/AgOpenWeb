@@ -260,26 +260,28 @@ public partial class MainWindow : Window
 
     private void LoadWindowSettings()
     {
-        // Load all settings from ConfigurationStore.Display (synced from AppSettings at startup)
+        // StartFullscreen is a preference (config); window geometry is
+        // persistent state (appstate.json).
         var display = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display;
+        var state = AgValoniaGPS.Models.State.PersistentAppState.Instance;
 
         // Apply window size and position
-        if (display.WindowWidth > 0 && display.WindowHeight > 0)
+        if (state.WindowWidth > 0 && state.WindowHeight > 0)
         {
-            Width = display.WindowWidth;
-            Height = display.WindowHeight;
+            Width = state.WindowWidth;
+            Height = state.WindowHeight;
         }
 
-        if (display.WindowX >= 0 && display.WindowY >= 0)
+        if (state.WindowX >= 0 && state.WindowY >= 0)
         {
-            Position = new PixelPoint((int)display.WindowX, (int)display.WindowY);
+            Position = new PixelPoint((int)state.WindowX, (int)state.WindowY);
         }
 
         if (display.StartFullscreen)
         {
             WindowState = WindowState.FullScreen;
         }
-        else if (display.WindowMaximized)
+        else if (state.WindowMaximized)
         {
             WindowState = WindowState.Maximized;
         }
@@ -299,13 +301,14 @@ public partial class MainWindow : Window
         // Window geometry + UI toggles — capture synchronously on every close attempt.
         // Cheap and small, never a good reason to skip.
         var display = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display;
-        display.WindowMaximized = WindowState == WindowState.Maximized;
+        var state = AgValoniaGPS.Models.State.PersistentAppState.Instance;
+        state.WindowMaximized = WindowState == WindowState.Maximized;
         if (WindowState == WindowState.Normal)
         {
-            display.WindowWidth = Width;
-            display.WindowHeight = Height;
-            display.WindowX = Position.X;
-            display.WindowY = Position.Y;
+            state.WindowWidth = Width;
+            state.WindowHeight = Height;
+            state.WindowX = Position.X;
+            state.WindowY = Position.Y;
         }
         if (ViewModel != null)
             display.GridVisible = ViewModel.IsGridOn;

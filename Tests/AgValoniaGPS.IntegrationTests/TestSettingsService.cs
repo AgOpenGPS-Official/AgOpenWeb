@@ -44,7 +44,6 @@ public class TestSettingsService : ISettingsService
             {
                 Settings = new AppSettings
                 {
-                    IsFirstRun = true,
                     FieldsDirectory = Path.Combine(_basePath, "Fields")
                 };
                 return false;
@@ -62,7 +61,6 @@ public class TestSettingsService : ISettingsService
             if (loaded != null)
             {
                 Settings = loaded;
-                Settings.IsFirstRun = false;
 
                 // Override fields directory to point at our test data
                 Settings.FieldsDirectory = Path.Combine(_basePath, "Fields");
@@ -94,7 +92,6 @@ public class TestSettingsService : ISettingsService
     {
         Settings = new AppSettings
         {
-            IsFirstRun = false,
             FieldsDirectory = Path.Combine(_basePath, "Fields")
         };
     }

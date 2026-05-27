@@ -81,6 +81,11 @@ public partial class App : Application
         var configService = Services.GetRequiredService<IConfigurationService>();
         configService.LoadAppSettings();
 
+        // Load persistent application state (window/last-view/last-field/sim
+        // position). Migrates from legacy appsettings.json on first run of this
+        // build. Tier-2 store, separate from config.
+        Services.GetRequiredService<IPersistentStateService>().Load();
+
         // Apply saved language (#40)
         var savedLang = settingsService.Settings.Language;
         if (!string.IsNullOrEmpty(savedLang) && savedLang != "en")
@@ -115,8 +120,11 @@ public partial class App : Application
 
             desktop.Exit += (sender, args) =>
             {
-                // Save settings on exit
-                settingsService.Save();
+                // Persist config (store→DTO→disk) and application state on exit.
+                // Use SaveAppSettings (not raw settingsService.Save) so the
+                // ConfigurationStore is the source of truth for the written file.
+                configService.SaveAppSettings();
+                Services.GetRequiredService<IPersistentStateService>().Save();
                 _host?.Dispose();
             };
 

@@ -102,8 +102,9 @@ namespace AgValoniaGPS.Services
 
             if (result.Outcome == LoadOutcome.Missing)
             {
-                // First run - use defaults and set up fields directory
-                Settings = new AppSettings { IsFirstRun = true };
+                // First run - use defaults and set up fields directory.
+                // (First-run / last-run tracking lives in PersistentAppState.)
+                Settings = new AppSettings();
                 InitializeFieldsDirectory();
                 return false;
             }
@@ -118,9 +119,6 @@ namespace AgValoniaGPS.Services
                 {
                     System.Diagnostics.Debug.WriteLine($"[Settings] Validation fix: {fix}");
                 }
-
-                Settings.IsFirstRun = false;
-                Settings.LastRunDate = DateTime.Now;
 
                 // Ensure fields directory is set and points to current app container
                 // On iOS, the app container path can change on reinstall, so we need to
@@ -148,7 +146,7 @@ namespace AgValoniaGPS.Services
             // CorruptNoBackup: the file existed but neither it nor a backup was
             // usable. Fall back to defaults (not a fresh install) and let the UI
             // inform the user via LastLoadStatus.
-            Settings = new AppSettings { IsFirstRun = false };
+            Settings = new AppSettings();
             InitializeFieldsDirectory();
             return false;
         }
@@ -178,9 +176,6 @@ namespace AgValoniaGPS.Services
                 {
                     Directory.CreateDirectory(_settingsDirectory);
                 }
-
-                // Update last run date
-                Settings.LastRunDate = DateTime.Now;
 
                 // Serialize with indentation for readability
                 var options = new JsonSerializerOptions
@@ -213,11 +208,7 @@ namespace AgValoniaGPS.Services
 
         public void ResetToDefaults()
         {
-            Settings = new AppSettings
-            {
-                IsFirstRun = false,
-                LastRunDate = DateTime.Now
-            };
+            Settings = new AppSettings();
         }
 
         public string GetSettingsFilePath()

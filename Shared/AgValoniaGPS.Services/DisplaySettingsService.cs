@@ -16,20 +16,23 @@
 
 using System;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.Services;
 
 /// <summary>
-/// Service for managing display and navigation settings.
-/// Delegates to ConfigurationStore.Instance.Display for state.
+/// Service for managing display and navigation settings. Grid visibility is a
+/// display PREFERENCE (ConfigStore.Display); the camera view, day/night value,
+/// and 2D/north-up orientation are persistent STATE (PersistentAppState).
 /// </summary>
 public class DisplaySettingsService : IDisplaySettingsService
 {
     private const double CameraPitchStep = 5.0;
 
-    // Access display config directly from the store
+    // Grid visibility is config; the view/orientation values are persistent state.
     private static DisplayConfig Display => ConfigurationStore.Instance.Display;
+    private static PersistentAppState Persistent => PersistentAppState.Instance;
 
     // Grid display - delegates to DisplayConfig
     public bool IsGridOn
@@ -49,12 +52,12 @@ public class DisplaySettingsService : IDisplaySettingsService
     // Day/Night mode - delegates to DisplayConfig
     public bool IsDayMode
     {
-        get => Display.IsDayMode;
+        get => Persistent.IsDayMode;
         set
         {
-            if (Display.IsDayMode != value)
+            if (Persistent.IsDayMode != value)
             {
-                Display.IsDayMode = value;
+                Persistent.IsDayMode = value;
                 DayNightModeChanged?.Invoke(this, value);
             }
         }
@@ -64,14 +67,14 @@ public class DisplaySettingsService : IDisplaySettingsService
     // Camera settings - delegates to DisplayConfig
     public double CameraPitch
     {
-        get => Display.CameraPitch;
+        get => Persistent.CameraPitch;
         set
         {
             // Clamp pitch between -90 (overhead/0 deg) and -20 (max tilt/70 deg)
             var clampedValue = Math.Max(-90, Math.Min(-20, value));
-            if (Math.Abs(Display.CameraPitch - clampedValue) > 0.01)
+            if (Math.Abs(Persistent.CameraPitch - clampedValue) > 0.01)
             {
-                Display.CameraPitch = clampedValue;
+                Persistent.CameraPitch = clampedValue;
                 CameraPitchChanged?.Invoke(this, clampedValue);
             }
         }
@@ -80,12 +83,12 @@ public class DisplaySettingsService : IDisplaySettingsService
 
     public bool Is2DMode
     {
-        get => Display.Is2DMode;
+        get => Persistent.Is2DMode;
         set
         {
-            if (Display.Is2DMode != value)
+            if (Persistent.Is2DMode != value)
             {
-                Display.Is2DMode = value;
+                Persistent.Is2DMode = value;
                 // When switching to 2D, set pitch to -90 (straight down)
                 // When switching to 3D, restore previous pitch or default
                 if (value)
@@ -103,12 +106,12 @@ public class DisplaySettingsService : IDisplaySettingsService
 
     public bool IsNorthUp
     {
-        get => Display.IsNorthUp;
+        get => Persistent.IsNorthUp;
         set
         {
-            if (Display.IsNorthUp != value)
+            if (Persistent.IsNorthUp != value)
             {
-                Display.IsNorthUp = value;
+                Persistent.IsNorthUp = value;
                 ViewModeChanged?.Invoke(this, value);
             }
         }
@@ -153,9 +156,9 @@ public class DisplaySettingsService : IDisplaySettingsService
 
         // Fire events to notify UI of current values
         GridVisibilityChanged?.Invoke(this, Display.GridVisible);
-        DayNightModeChanged?.Invoke(this, Display.IsDayMode);
-        CameraPitchChanged?.Invoke(this, Display.CameraPitch);
-        ViewModeChanged?.Invoke(this, Display.Is2DMode);
+        DayNightModeChanged?.Invoke(this, Persistent.IsDayMode);
+        CameraPitchChanged?.Invoke(this, Persistent.CameraPitch);
+        ViewModeChanged?.Invoke(this, Persistent.Is2DMode);
     }
 
     public void SaveSettings()

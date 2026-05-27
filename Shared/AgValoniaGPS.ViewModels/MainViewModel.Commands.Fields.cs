@@ -272,8 +272,8 @@ public partial class MainViewModel
                 if (Models.Configuration.ConfigurationStore.Instance.Display.ElevationLogEnabled)
                     _elevationLogService.CreateHeader(fieldPath, NewFieldLatitude, NewFieldLongitude);
 
-                _settingsService.Settings.LastOpenedField = NewFieldName;
-                _settingsService.Save();
+                PersistentState.LastOpenedField = NewFieldName;
+                _persistentStateService.Save();
 
                 State.UI.CloseDialog();
                 IsFieldOperationsPanelVisible = false;
@@ -413,8 +413,8 @@ public partial class MainViewModel
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
 
-                _settingsService.Settings.LastOpenedField = newFieldName;
-                _settingsService.Save();
+                PersistentState.LastOpenedField = newFieldName;
+                _persistentStateService.Save();
 
                 State.UI.CloseDialog();
                 IsFieldOperationsPanelVisible = false;
@@ -581,8 +581,8 @@ public partial class MainViewModel
                 _fieldStatistics.UpdateBoundaryAreas(boundaryAreas);
                 OnPropertyChanged(nameof(BoundaryAreaDisplay));
 
-                _settingsService.Settings.LastOpenedField = newFieldName;
-                _settingsService.Save();
+                PersistentState.LastOpenedField = newFieldName;
+                _persistentStateService.Save();
 
                 RefreshBoundaryList();
                 SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
@@ -679,8 +679,8 @@ public partial class MainViewModel
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
 
-                _settingsService.Settings.LastOpenedField = newFieldName;
-                _settingsService.Save();
+                PersistentState.LastOpenedField = newFieldName;
+                _persistentStateService.Save();
 
                 State.UI.CloseDialog();
                 IsFieldOperationsPanelVisible = false;
@@ -778,7 +778,7 @@ public partial class MainViewModel
 
         ResumeFieldCommand = new AsyncRelayCommand(async () =>
         {
-            var lastField = _settingsService.Settings.LastOpenedField;
+            var lastField = PersistentState.LastOpenedField;
             if (string.IsNullOrEmpty(lastField))
             {
                 StatusMessage = "No previous field to resume";

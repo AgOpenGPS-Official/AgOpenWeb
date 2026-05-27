@@ -23,6 +23,7 @@ using System.Windows.Input;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
 using CommunityToolkit.Mvvm.Input;
 
@@ -505,6 +506,9 @@ public partial class ConfigurationViewModel : ObservableObject
     public GuidanceConfig Guidance => Config.Guidance;
     public DisplayConfig Display => Config.Display;
     public SimulatorConfig Simulator => Config.Simulator;
+
+    /// <summary>Persistent application state (day/night value, etc.) — survives restart.</summary>
+    public PersistentAppState PersistentState => PersistentAppState.Instance;
     public ConnectionConfig Connections => Config.Connections;
     public AhrsConfig Ahrs => Config.Ahrs;
     public MachineConfig Machine => Config.Machine;
@@ -1674,9 +1678,9 @@ public partial class ConfigurationViewModel : ObservableObject
 
         ToggleDayNightThemeCommand = new RelayCommand(() =>
         {
-            Display.IsDayMode = !Display.IsDayMode;
-            MainViewModel.ApplyThemeVariant(Display.IsDayMode);
-            Config.MarkChanged();
+            // Day/night current value is persistent STATE, not config.
+            PersistentState.IsDayMode = !PersistentState.IsDayMode;
+            MainViewModel.ApplyThemeVariant(PersistentState.IsDayMode);
         });
 
         SetMetricUnitsCommand = new RelayCommand(() =>

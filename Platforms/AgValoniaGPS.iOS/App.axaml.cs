@@ -76,6 +76,7 @@ public partial class App : Avalonia.Application
             {
                 var configService = Services.GetRequiredService<IConfigurationService>();
                 configService.LoadAppSettings();
+                Services.GetRequiredService<IPersistentStateService>().Load();
                 System.Diagnostics.Debug.WriteLine("[App] Settings loaded and synced to ConfigurationStore.");
             }
             catch (Exception ex)
