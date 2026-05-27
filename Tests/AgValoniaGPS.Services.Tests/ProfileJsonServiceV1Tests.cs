@@ -325,8 +325,7 @@ public class ProfileJsonServiceV1Tests
         SetupTestStore("GeneralTest");
         _store.IsMetric = true;
         _store.Simulator.Enabled = false;
-        _store.Simulator.Latitude = 48.8566;
-        _store.Simulator.Longitude = 2.3522;
+        // Sim position is no longer per-profile (device state now).
 
         ProfileJsonServiceV1.Save(_tempDir, "GeneralTest", _store);
         var loadStore = new ConfigurationStore();

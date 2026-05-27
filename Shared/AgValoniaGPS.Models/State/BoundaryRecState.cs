@@ -60,27 +60,8 @@ public class BoundaryRecState : ObservableObject
         set => SetProperty(ref _areaAcres, value);
     }
 
-    // Recording options
-    private bool _isDrawRightSide = true;
-    public bool IsDrawRightSide
-    {
-        get => _isDrawRightSide;
-        set => SetProperty(ref _isDrawRightSide, value);
-    }
-
-    private bool _isDrawAtPivot;
-    public bool IsDrawAtPivot
-    {
-        get => _isDrawAtPivot;
-        set => SetProperty(ref _isDrawAtPivot, value);
-    }
-
-    private double _boundaryOffset;
-    public double BoundaryOffset
-    {
-        get => _boundaryOffset;
-        set => SetProperty(ref _boundaryOffset, value);
-    }
+    // Recording options (IsDrawRightSide / IsDrawAtPivot / BoundaryOffset) are
+    // the last-used recording setup → persistent state, in PersistentAppState.
 
     // Current recording points
     public ObservableCollection<Vec2> RecordingPoints { get; } = new();

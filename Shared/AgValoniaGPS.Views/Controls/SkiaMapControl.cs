@@ -19,6 +19,7 @@ using SkiaSharp;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Models.Diagnostics;
 using AgValoniaGPS.Models.Track;
 using AssetLoader = Avalonia.Platform.AssetLoader;
@@ -68,7 +69,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     private double _zoom = 1.0;
     private double _rotation;
     private bool _isNorthUp;
-    private bool _isDayMode = ConfigurationStore.Instance.Display.IsDayMode;
+    private bool _isDayMode = PersistentAppState.Instance.IsDayMode;
 
     // Phase 3 perspective state. Pitch is AOG convention: 0 = top-down,
     // π/2 = horizon. Receives radians from the platform code's

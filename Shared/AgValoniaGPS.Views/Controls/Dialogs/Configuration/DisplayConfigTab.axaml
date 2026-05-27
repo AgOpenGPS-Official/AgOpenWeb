@@ -279,8 +279,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         <!-- Row 4: App Theme -->
                         <StackPanel Grid.Row="4" Grid.Column="0" Spacing="4" HorizontalAlignment="Center">
                             <Button Classes="DisplayToggle"
-                                    Background="{Binding Display.IsDayMode, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
-                                    BorderBrush="{Binding Display.IsDayMode, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
+                                    Background="{Binding PersistentState.IsDayMode, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
+                                    BorderBrush="{Binding PersistentState.IsDayMode, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
                                     Command="{Binding ToggleDayNightThemeCommand}">
                                 <TextBlock Text="Light" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="14" FontWeight="Bold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -290,8 +290,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                         <StackPanel Grid.Row="4" Grid.Column="1" Spacing="4" HorizontalAlignment="Center">
                             <Button Classes="DisplayToggle"
-                                    Background="{Binding !Display.IsDayMode, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
-                                    BorderBrush="{Binding !Display.IsDayMode, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
+                                    Background="{Binding !PersistentState.IsDayMode, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
+                                    BorderBrush="{Binding !PersistentState.IsDayMode, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
                                     Command="{Binding ToggleDayNightThemeCommand}">
                                 <TextBlock Text="Dark" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="14" FontWeight="Bold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>

@@ -84,6 +84,7 @@ public class MainViewModelBuilder
             gpsPipelineService: GpsPipelineService,
             intents: Intents,
             logger: NullLogger<MainViewModel>.Instance,
-            appState: new ApplicationState());
+            appState: new ApplicationState(),
+            persistentStateService: Substitute.For<IPersistentStateService>());
     }
 }

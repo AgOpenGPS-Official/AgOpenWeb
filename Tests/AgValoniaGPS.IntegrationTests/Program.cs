@@ -1514,8 +1514,8 @@ if frames:
         // Starting at N=-50 and driving 100m to N=50 stays fully within headland
         Console.Write("[Cov 1] Position tractor at (0,-50) heading north... ");
         // Use field origin lat/lon but offset south by ~50m
-        double originLat = settingsService.Settings.SimulatorLatitude;
-        double originLon = settingsService.Settings.SimulatorLongitude;
+        double originLat = AgValoniaGPS.Models.State.PersistentAppState.Instance.SimulatorLatitude;
+        double originLon = AgValoniaGPS.Models.State.PersistentAppState.Instance.SimulatorLongitude;
         // 50m south: ~0.00045 degrees latitude
         vm.SetSimulatorCoordinates(originLat - 0.00045, originLon);
         simService.SetHeading(0); // Face north
@@ -2118,9 +2118,9 @@ if frames:
     static async Task ResetTractorPosition(MainViewModel vm, IGpsSimulationService simService,
         ISettingsService settingsService, double latOffset = 0, double lonOffset = 0)
     {
-        var settings = settingsService.Settings;
-        vm.SetSimulatorCoordinates(settings.SimulatorLatitude + latOffset,
-                                    settings.SimulatorLongitude + lonOffset);
+        var simState = AgValoniaGPS.Models.State.PersistentAppState.Instance;
+        vm.SetSimulatorCoordinates(simState.SimulatorLatitude + latOffset,
+                                    simState.SimulatorLongitude + lonOffset);
         simService.SetHeading(0);
         vm.SimulatorSteerAngle = 0;
         await Delay(50);

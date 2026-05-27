@@ -308,14 +308,13 @@ public class FileIOTests
     public void Settings_ResetToDefaults_ClearsSettings()
     {
         var service = new SettingsService(MakeIsolatedSettingsDir());
-        service.Settings.WindowWidth = 1920;
-        service.Settings.WindowHeight = 1080;
+        service.Settings.KeyboardEnabled = true; // non-default
 
         service.ResetToDefaults();
 
         // After reset, settings should be fresh defaults
         Assert.That(service.Settings, Is.Not.Null);
-        Assert.That(service.Settings.IsFirstRun, Is.False);
+        Assert.That(service.Settings.KeyboardEnabled, Is.False);
     }
 
     [Test]
@@ -335,10 +334,9 @@ public class FileIOTests
     {
         var dir = MakeIsolatedSettingsDir();
         var service = new SettingsService(dir);
-        service.Settings.WindowWidth = 1600;
-        service.Settings.WindowHeight = 900;
+        service.Settings.KeyboardEnabled = true;
         service.Settings.SimulatorEnabled = true;
-        service.Settings.GpsUpdateRate = 10;
+        service.Settings.GpsUpdateRate = 20;
 
         var saveResult = service.Save();
         Assert.That(saveResult, Is.True);
@@ -348,10 +346,9 @@ public class FileIOTests
         var loadResult = service2.Load();
         Assert.That(loadResult, Is.True);
 
-        Assert.That(service2.Settings.WindowWidth, Is.EqualTo(1600));
-        Assert.That(service2.Settings.WindowHeight, Is.EqualTo(900));
+        Assert.That(service2.Settings.KeyboardEnabled, Is.True);
         Assert.That(service2.Settings.SimulatorEnabled, Is.True);
-        Assert.That(service2.Settings.GpsUpdateRate, Is.EqualTo(10));
+        Assert.That(service2.Settings.GpsUpdateRate, Is.EqualTo(20));
     }
 
     #endregion

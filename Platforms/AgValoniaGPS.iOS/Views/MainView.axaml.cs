@@ -75,6 +75,7 @@ public partial class MainView : UserControl
             {
                 var configService = App.Services.GetRequiredService<IConfigurationService>();
                 configService.SaveAppSettings();
+                App.Services.GetRequiredService<IPersistentStateService>().Save();
 
                 var fieldService = App.Services.GetRequiredService<IFieldService>();
                 var coverageService = App.Services.GetRequiredService<ICoverageMapService>();

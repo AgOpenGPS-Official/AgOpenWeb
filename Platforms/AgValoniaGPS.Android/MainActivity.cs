@@ -76,6 +76,7 @@ public class MainActivity : AvaloniaMainActivity
             {
                 var configService = App.Services.GetService<IConfigurationService>();
                 configService?.SaveAppSettings();
+                App.Services.GetService<IPersistentStateService>()?.Save();
             }
         }
         catch (System.Exception ex)

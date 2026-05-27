@@ -176,8 +176,11 @@ public partial class MainViewModel
         SetLanguageCommand = new RelayCommand<string>(code =>
         {
             if (string.IsNullOrEmpty(code)) return;
+            // Language lives only in AppSettings (no store mirror); set it on the
+            // DTO, then persist via SaveAppSettings so the rest of the file stays
+            // in sync with the store (avoids writing a stale DTO).
             _settingsService.Settings.Language = code;
-            _settingsService.Save();
+            _configurationService.SaveAppSettings();
 
             // Notify that language changed - Views layer applies via LanguageChanged event
             LanguageChanged?.Invoke(code);

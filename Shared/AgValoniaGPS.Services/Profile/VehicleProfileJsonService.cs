@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Storage;
 
 namespace AgValoniaGPS.Services.Profile;
@@ -151,8 +152,10 @@ public static class VehicleProfileJsonService
             // pre-migration profiles still parse; new writes elide it.
             IsMetric = null,
             IsSimulatorOn = store.Simulator.Enabled,
-            SimLatitude = store.Simulator.Latitude,
-            SimLongitude = store.Simulator.Longitude,
+            // Sim position is device STATE (PersistentAppState); these DTO
+            // fields are vestigial but kept populated for back-compat.
+            SimLatitude = PersistentAppState.Instance.SimulatorLatitude,
+            SimLongitude = PersistentAppState.Instance.SimulatorLongitude,
         },
     };
 

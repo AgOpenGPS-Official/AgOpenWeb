@@ -86,6 +86,7 @@ public partial class AppDelegate : AvaloniaAppDelegate<App>
             // Save configuration
             var configService = App.Services.GetRequiredService<IConfigurationService>();
             configService.SaveAppSettings();
+            App.Services.GetRequiredService<IPersistentStateService>().Save();
             Console.WriteLine("[AppDelegate] Saved configuration on app background/terminate");
 
             // Save coverage to active field

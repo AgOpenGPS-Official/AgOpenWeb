@@ -255,7 +255,7 @@ public class QuickWinScreenshotTests
         store.Vehicle.Wheelbase = 3.2;
         store.Tool.Width = 12.0;
         store.Guidance.UTurnRadius = 6.0;
-        store.Display.IsDayMode = true;
+        AgValoniaGPS.Models.State.PersistentAppState.Instance.IsDayMode = true;
         store.Display.GridVisible = true;
         store.IsMetric = true;
         store.NumSections = 5;

@@ -199,9 +199,9 @@ public partial class MainViewModel
         IsNorthUp = _cameraMode == CameraMode.NorthUp;
 
         // Persist last actively-chosen follow mode (Free is transient -- entered by
-        // pan, not a mode the user explicitly picks to keep).
+        // pan, not a mode the user explicitly picks to keep). State, not config.
         if (_cameraMode != CameraMode.Free)
-            ConfigStore.Display.CameraMode = _cameraMode;
+            PersistentState.CameraMode = _cameraMode;
     }
 
     /// <summary>

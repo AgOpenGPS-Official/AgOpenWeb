@@ -32,38 +32,14 @@ public class SimulatorConfig : ObservableObject
         set => SetProperty(ref _enabled, value);
     }
 
-    private double _latitude = 40.7128;
-    public double Latitude
-    {
-        get => _latitude;
-        set => SetProperty(ref _latitude, Math.Clamp(value, -90, 90));
-    }
-
-    private double _longitude = -74.0060;
-    public double Longitude
-    {
-        get => _longitude;
-        set => SetProperty(ref _longitude, Math.Clamp(value, -180, 180));
-    }
+    // NOTE: the last simulator POSITION (Latitude/Longitude/Speed/SteerAngle)
+    // is persistent state → PersistentAppState. Only the Enabled preference
+    // (and the transient Heading) remain here.
 
     private double _heading;
     public double Heading
     {
         get => _heading;
         set => SetProperty(ref _heading, value);
-    }
-
-    private double _speed;
-    public double Speed
-    {
-        get => _speed;
-        set => SetProperty(ref _speed, value);
-    }
-
-    private double _steerAngle;
-    public double SteerAngle
-    {
-        get => _steerAngle;
-        set => SetProperty(ref _steerAngle, value);
     }
 }

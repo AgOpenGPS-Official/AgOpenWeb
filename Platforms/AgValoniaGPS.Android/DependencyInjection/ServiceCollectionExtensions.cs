@@ -53,7 +53,8 @@ public static class ServiceCollectionExtensions
         });
 
         // Centralized application state (single source of truth)
-        services.AddSingleton<ApplicationState>();
+        services.AddSingleton<ApplicationState>();           // ephemeral, in-memory only
+        services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
 
         // Register ViewModels
         services.AddTransient<MainViewModel>();
@@ -72,6 +73,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFieldService, FieldService>();
         services.AddSingleton<INtripClientService, NtripClientService>();
         services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<IPersistentStateService, PersistentStateService>();
 
         // Per-session jobs (#349). Reads FieldsRoot through ISettingsService
         // so changes to the user's Documents path are picked up live.

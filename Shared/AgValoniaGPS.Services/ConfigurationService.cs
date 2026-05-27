@@ -391,12 +391,8 @@ public class ConfigurationService(
     {
         var store = Store;
 
-        // Display config
-        store.Display.WindowWidth = settings.WindowWidth;
-        store.Display.WindowHeight = settings.WindowHeight;
-        store.Display.WindowX = settings.WindowX;
-        store.Display.WindowY = settings.WindowY;
-        store.Display.WindowMaximized = settings.WindowMaximized;
+        // Display config (preferences only — window/camera/day-night/panel
+        // STATE moved to PersistentAppState).
         store.Display.StartFullscreen = settings.StartFullscreen;
         store.Display.SvennArrowVisible = settings.SvennArrowVisible;
         store.Display.KeyboardEnabled = settings.KeyboardEnabled;
@@ -410,19 +406,22 @@ public class ConfigurationService(
         store.Display.UTurnSound = settings.UTurnSound;
         store.Display.HydraulicSound = settings.HydraulicSound;
         store.Display.SectionsSound = settings.SectionsSound;
-        store.Display.SimulatorPanelX = settings.SimulatorPanelX;
-        store.Display.SimulatorPanelY = settings.SimulatorPanelY;
-        store.Display.SimulatorPanelVisible = settings.SimulatorPanelVisible;
         store.Display.GridVisible = settings.GridVisible;
         store.Display.CompassVisible = settings.CompassVisible;
         store.Display.SpeedVisible = settings.SpeedVisible;
         store.Display.ElevationLogEnabled = settings.ElevationLogEnabled;
-        store.Display.CameraZoom = settings.CameraZoom;
-        store.Display.CameraPitch = settings.CameraPitch;
-        store.Display.CameraMode = settings.CameraMode;
+        store.Display.PolygonsVisible = settings.PolygonsVisible;
+        store.Display.SpeedometerVisible = settings.SpeedometerVisible;
+        store.Display.LineSmoothEnabled = settings.LineSmoothEnabled;
+        store.Display.DirectionMarkersVisible = settings.DirectionMarkersVisible;
+        store.Display.SectionLinesVisible = settings.SectionLinesVisible;
+        store.Display.UTurnButtonVisible = settings.UTurnButtonVisible;
+        store.Display.LateralButtonVisible = settings.LateralButtonVisible;
+        store.Display.HardwareMessagesEnabled = settings.HardwareMessagesEnabled;
+        store.Display.DayStartHour = settings.DayStartHour;
+        store.Display.NightStartHour = settings.NightStartHour;
         store.Display.DisplayResolutionMultiplier = settings.DisplayResolutionMultiplier;
         store.Display.AutoDayNight = settings.AutoDayNight;
-        store.Display.IsDayMode = settings.IsDayMode;
 
         // Connection config
         store.Connections.NtripCasterHost = settings.NtripCasterIp;
@@ -443,12 +442,9 @@ public class ConfigurationService(
             store.Hotkeys.LoadFromDictionary(settings.HotkeyBindings);
         }
 
-        // Simulator config - always restore from settings
+        // Simulator config — only the Enabled preference is config. The last
+        // simulator POSITION is persistent state (PersistentAppState).
         store.Simulator.Enabled = settings.SimulatorEnabled;
-        store.Simulator.Latitude = settings.SimulatorLatitude;
-        store.Simulator.Longitude = settings.SimulatorLongitude;
-        store.Simulator.Speed = settings.SimulatorSpeed;
-        store.Simulator.SteerAngle = settings.SimulatorSteerAngle;
     }
 
     /// <summary>
@@ -458,12 +454,8 @@ public class ConfigurationService(
     {
         var store = Store;
 
-        // Display config
-        settings.WindowWidth = store.Display.WindowWidth;
-        settings.WindowHeight = store.Display.WindowHeight;
-        settings.WindowX = store.Display.WindowX;
-        settings.WindowY = store.Display.WindowY;
-        settings.WindowMaximized = store.Display.WindowMaximized;
+        // Display config (preferences only — window/camera/day-night/panel
+        // STATE is persisted by PersistentStateService).
         settings.StartFullscreen = store.Display.StartFullscreen;
         settings.SvennArrowVisible = store.Display.SvennArrowVisible;
         settings.KeyboardEnabled = store.Display.KeyboardEnabled;
@@ -477,19 +469,22 @@ public class ConfigurationService(
         settings.UTurnSound = store.Display.UTurnSound;
         settings.HydraulicSound = store.Display.HydraulicSound;
         settings.SectionsSound = store.Display.SectionsSound;
-        settings.SimulatorPanelX = store.Display.SimulatorPanelX;
-        settings.SimulatorPanelY = store.Display.SimulatorPanelY;
-        settings.SimulatorPanelVisible = store.Display.SimulatorPanelVisible;
         settings.GridVisible = store.Display.GridVisible;
         settings.CompassVisible = store.Display.CompassVisible;
         settings.SpeedVisible = store.Display.SpeedVisible;
         settings.ElevationLogEnabled = store.Display.ElevationLogEnabled;
-        settings.CameraZoom = store.Display.CameraZoom;
-        settings.CameraPitch = store.Display.CameraPitch;
-        settings.CameraMode = store.Display.CameraMode;
+        settings.PolygonsVisible = store.Display.PolygonsVisible;
+        settings.SpeedometerVisible = store.Display.SpeedometerVisible;
+        settings.LineSmoothEnabled = store.Display.LineSmoothEnabled;
+        settings.DirectionMarkersVisible = store.Display.DirectionMarkersVisible;
+        settings.SectionLinesVisible = store.Display.SectionLinesVisible;
+        settings.UTurnButtonVisible = store.Display.UTurnButtonVisible;
+        settings.LateralButtonVisible = store.Display.LateralButtonVisible;
+        settings.HardwareMessagesEnabled = store.Display.HardwareMessagesEnabled;
+        settings.DayStartHour = store.Display.DayStartHour;
+        settings.NightStartHour = store.Display.NightStartHour;
         settings.DisplayResolutionMultiplier = store.Display.DisplayResolutionMultiplier;
         settings.AutoDayNight = store.Display.AutoDayNight;
-        settings.IsDayMode = store.Display.IsDayMode;
 
         // Connection config
         settings.NtripCasterIp = store.Connections.NtripCasterHost;
@@ -504,12 +499,8 @@ public class ConfigurationService(
         settings.GpsUpdateRate = store.Connections.GpsUpdateRate;
         settings.UseRtk = store.Connections.UseRtk;
 
-        // Simulator config
+        // Simulator config — only the Enabled preference (position is state).
         settings.SimulatorEnabled = store.Simulator.Enabled;
-        settings.SimulatorLatitude = store.Simulator.Latitude;
-        settings.SimulatorLongitude = store.Simulator.Longitude;
-        settings.SimulatorSpeed = store.Simulator.Speed;
-        settings.SimulatorSteerAngle = store.Simulator.SteerAngle;
 
         // Hotkey bindings
         settings.HotkeyBindings = store.Hotkeys.ToDictionary();
