@@ -163,7 +163,9 @@ public class PersistentStateService : IPersistentStateService
             if (TryDouble(root, "simulatorPanelX", out d)) State.SimulatorPanelX = d;
             if (TryDouble(root, "simulatorPanelY", out d)) State.SimulatorPanelY = d;
             if (TryBool(root, "simulatorPanelVisible", out b)) State.SimulatorPanelVisible = b;
-            if (TryDouble(root, "cameraZoom", out d)) State.CameraZoom = d;
+            // cameraZoom is intentionally NOT migrated: the legacy field was a
+            // dead value never wired to the live map zoom, so importing it would
+            // restore a meaningless zoom. New installs start at the 1.0 default.
             if (TryDouble(root, "cameraPitch", out d)) State.CameraPitch = d;
             if (TryInt(root, "cameraMode", out var i)) State.CameraMode = (CameraMode)i;
             if (TryBool(root, "isDayMode", out b)) State.IsDayMode = b;

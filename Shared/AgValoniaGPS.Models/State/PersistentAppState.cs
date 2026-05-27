@@ -77,7 +77,8 @@ public class PersistentAppState : ObservableObject
     public bool SimulatorPanelVisible { get => _simulatorPanelVisible; set => SetProperty(ref _simulatorPanelVisible, value); }
 
     // ---- Last camera view ----
-    private double _cameraZoom = 100.0;
+    // Map zoom scalar (SkiaMapControl._zoom space, ~0.02–100, default 1.0).
+    private double _cameraZoom = 1.0;
     public double CameraZoom { get => _cameraZoom; set => SetProperty(ref _cameraZoom, value); }
 
     private double _cameraPitch = -60.0;
