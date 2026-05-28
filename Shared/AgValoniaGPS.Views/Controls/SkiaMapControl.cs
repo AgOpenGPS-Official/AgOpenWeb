@@ -1869,14 +1869,15 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                     var bgDst = new SKRect(
                         (float)s.BgMinX, (float)s.BgMinY,
                         (float)s.BgMaxX, (float)s.BgMaxY);
-                    // Android (#439): the GL/Adreno Skia build decodes this PNG
-                    // SKImage with the opposite row order from the Desktop build,
-                    // so the raw blit lands N↔S inverted. Coverage is unaffected
-                    // (it's our own bitmap, row 0 = south, and paints correctly
-                    // under the vehicle), so the flip is specific to the decoded
-                    // imagery SKImage on this one platform. V-flip the draw about
-                    // the rect's vertical midpoint to cancel it. Desktop/Apple are
-                    // correct already and must not be flipped.
+                    // #439: on Android (GL/Adreno) and Windows Desktop
+                    // (ANGLE/D3D) the Skia build decodes this PNG SKImage with the
+                    // opposite row order, so the raw blit lands N↔S inverted.
+                    // Coverage is unaffected (it's our own bitmap, row 0 = south,
+                    // and paints correctly under the vehicle), so the flip is
+                    // specific to the decoded imagery SKImage on those backends.
+                    // V-flip the draw about the rect's vertical midpoint to cancel
+                    // it. macOS/Linux Desktop and Apple are correct already and
+                    // must not be flipped (see ImageryNeedsVerticalFlip).
                     if (ImageryNeedsVerticalFlip)
                     {
                         float bgMidY = (float)((s.BgMinY + s.BgMaxY) * 0.5);
