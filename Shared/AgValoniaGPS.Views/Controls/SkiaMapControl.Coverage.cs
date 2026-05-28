@@ -92,13 +92,15 @@ public partial class SkiaMapControl
     private static readonly bool UseSeparateImageryLayer =
         !OperatingSystem.IsIOS() && !OperatingSystem.IsMacOS();
 
-    // #439: only the Android Skia build decodes the separate-layer imagery
-    // SKImage with the opposite row order, so its raw blit renders N↔S
-    // inverted. Coverage (our own row-0-is-south bitmap) is correct on every
-    // platform, so this is isolated to the decoded PNG on Android. The draw in
+    // #439: the Android Skia build decodes the separate-layer imagery SKImage
+    // with the opposite row order, so its raw blit renders N↔S inverted. The
+    // Windows Desktop Skia build (ANGLE/D3D backend) decodes the same way and
+    // is inverted too; macOS/Linux Desktop and iPad are correct. Coverage (our
+    // own row-0-is-south bitmap) is correct on every platform, so this is
+    // isolated to the decoded PNG on the affected backends. The draw in
     // DrawCoverageBitmap applies a vertical flip only when this is set.
     private static readonly bool ImageryNeedsVerticalFlip =
-        OperatingSystem.IsAndroid();
+        OperatingSystem.IsAndroid() || OperatingSystem.IsWindows();
 
     // ------------------------------------------------------------------
     // ISharedMapControl coverage entry points
