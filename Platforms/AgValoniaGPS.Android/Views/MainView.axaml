@@ -84,7 +84,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             ZIndex="9"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Top"
-                                            Margin="8,10,0,0"
+                                            Margin="0,10,0,0"
                                             DataContext="{Binding}"/>
 
                 <!-- HEADING + RIGHT SIDEBAR + Roll gauge + Camera pad.
@@ -92,7 +92,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                      it and above the camera-pad spacer so its bottom
                      position stays fixed regardless of nav visibility. -->
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                            ZIndex="10" Margin="0,0,8,8" Spacing="4">
+                            ZIndex="10" Margin="0,0,0,8" Spacing="4">
                     <panels:HeadingReadout x:Name="HeadingReadout"
                                            HorizontalAlignment="Right"
                                            DataContext="{Binding}"/>
@@ -103,18 +103,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                              HorizontalAlignment="Right"
                                              DataContext="{Binding}"/>
                     <Border Height="12"/>
-                    <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"
-                            HorizontalAlignment="Center"/>
-                    <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"
-                            HorizontalAlignment="Center"/>
-                    <Button Command="{Binding ToggleCameraModeCommand}"
-                            Width="64" Height="64"
-                            HorizontalAlignment="Center"
-                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                            CornerRadius="0" Background="#4A90D9">
-                        <TextBlock Text="{Binding CameraModeLabel}" FontSize="20" FontWeight="Bold"
-                                   Foreground="White" HorizontalAlignment="Center"/>
-                    </Button>
+                    <!-- On-map 4-way camera pad: tilt (vertical) / zoom (horizontal) /
+                         mode cycle (center). Replaces the old zoom +/- + mode cluster. -->
+                    <panels:CameraPadControl x:Name="CameraPad"
+                                             HorizontalAlignment="Right"
+                                             DataContext="{Binding}"/>
                 </StackPanel>
 
                 <!-- Time. Transparent; sits just above the bottom nav, left
@@ -130,7 +123,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <StackPanel ZIndex="10"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Bottom"
-                            Margin="0,0,0,8"
+                            Margin="0,0,0,0"
                             Spacing="4">
                     <panels:SimulatorPanel x:Name="SimulatorBarPanel"
                                            HorizontalAlignment="Center"

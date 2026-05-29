@@ -30,6 +30,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         Title="AgValoniaGPS"
         ToolTip.ServiceEnabled="False"
         SystemDecorations="BorderOnly"
+        MinWidth="1200" MinHeight="720"
         Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
 
     <!-- Styles are now in shared SharedStyles.axaml -->
@@ -127,7 +128,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     ZIndex="9"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Top"
-                                    Margin="8,8,0,0"
+                                    Margin="0,8,0,0"
                                     DataContext="{Binding}"/>
 
         <!-- HEADING + RIGHT SIDEBAR + Roll gauge + Camera pad. Heading sits
@@ -135,7 +136,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              and ABOVE the spacer/camera pad so its bottom position stays
              fixed regardless of whether the right nav is shown. -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    ZIndex="10" Margin="0,0,8,8" Spacing="4">
+                    ZIndex="10" Margin="0,0,0,8" Spacing="4">
             <!-- Heading readout — sits just above the right nav. -->
             <panels:HeadingReadout x:Name="HeadingReadout"
                                    HorizontalAlignment="Right"
@@ -144,26 +145,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <panels:RightNavigationPanel x:Name="RightNavPanel"
                                          HorizontalAlignment="Right"
                                          DataContext="{Binding}"/>
-            <!-- Roll gauge — just above the zoom-control spacer. -->
+            <!-- Roll gauge — just above the camera-pad spacer. -->
             <panels:RollGaugeReadout x:Name="RollGauge"
                                      HorizontalAlignment="Right"
                                      DataContext="{Binding}"/>
-            <!-- Spacer before zoom controls -->
+            <!-- Spacer before the camera pad -->
             <Border Height="12"/>
-            <!-- Zoom and compass controls -->
-            <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"
-                    HorizontalAlignment="Center"/>
-            <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"
-                    HorizontalAlignment="Center"/>
-            <Button Command="{Binding ToggleCameraModeCommand}"
-                    Width="64" Height="64"
-                    HorizontalAlignment="Center"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    CornerRadius="0" Background="#4A90D9"
-                    ToolTip.Tip="Camera mode: North-Up / Heading-Up / Free">
-                <TextBlock Text="{Binding CameraModeLabel}" FontSize="20" FontWeight="Bold"
-                           Foreground="White" HorizontalAlignment="Center"/>
-            </Button>
+            <!-- On-map 4-way camera pad: tilt (vertical) / zoom (horizontal) /
+                 mode cycle (center). Replaces the old zoom +/- + mode cluster. -->
+            <panels:CameraPadControl x:Name="CameraPad"
+                                     HorizontalAlignment="Right"
+                                     DataContext="{Binding}"/>
         </StackPanel>
 
         <!-- Time. Transparent; sits just above the bottom nav, left of the
@@ -179,7 +171,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <StackPanel ZIndex="10"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Bottom"
-                    Margin="0,0,0,8"
+                    Margin="0,0,0,0"
                     Spacing="4">
             <panels:SimulatorPanel x:Name="SimulatorBarPanel"
                                    HorizontalAlignment="Center"
