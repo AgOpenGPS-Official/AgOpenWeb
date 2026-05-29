@@ -40,6 +40,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
               Data="M 80,12 A 22,28 0 0 0 80,68
                     M 69,20 L 61,20
                     M 62,30 L 54,30
+                    M 58,40 L 50,40
                     M 62,50 L 54,50
                     M 69,60 L 61,60"/>
 
@@ -48,6 +49,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
               Data="M 120,12 A 22,28 0 0 1 120,68
                     M 131,20 L 139,20
                     M 138,30 L 146,30
+                    M 142,40 L 150,40
                     M 138,50 L 146,50
                     M 131,60 L 139,60"/>
 

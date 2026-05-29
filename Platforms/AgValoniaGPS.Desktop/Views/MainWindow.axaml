@@ -131,16 +131,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     Margin="0,8,0,0"
                                     DataContext="{Binding}"/>
 
-        <!-- HEADING + RIGHT SIDEBAR + Roll gauge + Camera pad. Heading sits
-             just above the right nav; the gauge sits BELOW the right nav
-             and ABOVE the spacer/camera pad so its bottom position stays
-             fixed regardless of whether the right nav is shown. -->
+        <!-- Heading now lives in the top status strip, right of speed. -->
+
+        <!-- RIGHT SIDEBAR + Roll gauge + Camera pad. Lifted off the bottom so the
+             camera pad's tilt-down clears the bottom bar when the nav is full. -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    ZIndex="10" Margin="0,0,0,8" Spacing="4">
-            <!-- Heading readout — sits just above the right nav. -->
-            <panels:HeadingReadout x:Name="HeadingReadout"
-                                   HorizontalAlignment="Right"
-                                   DataContext="{Binding}"/>
+                    ZIndex="10" Margin="0,0,0,70" Spacing="4">
             <!-- Right navigation buttons (collapses when no field). -->
             <panels:RightNavigationPanel x:Name="RightNavPanel"
                                          HorizontalAlignment="Right"
@@ -148,6 +144,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- Roll gauge — just above the camera-pad spacer. -->
             <panels:RollGaugeReadout x:Name="RollGauge"
                                      HorizontalAlignment="Right"
+                                     RenderTransformOrigin="0.5,0.5"
+                                     RenderTransform="translate(15px,-5px) scale(1.175,1.4375)"
                                      DataContext="{Binding}"/>
             <!-- Spacer before the camera pad -->
             <Border Height="12"/>
