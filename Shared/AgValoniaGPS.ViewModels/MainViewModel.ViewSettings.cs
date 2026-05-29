@@ -17,6 +17,7 @@
 using System;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services;
 using Avalonia.Threading;
 
@@ -375,13 +376,140 @@ public partial class MainViewModel
     public bool IsManualUTurnVisible => IsAutoSteerEngaged && !IsActiveTrackClosed;
 
     /// <summary>
-    /// Notify IsUTurnButtonVisible when IsAutoSteerAvailable changes.
-    /// Called from MainViewModel.Guidance.cs when track state changes.
+    /// On-map U-Turn overlay (the two yellow manual-turn arrows). Same conditions
+    /// as the manual U-turn buttons, additionally gated by the Screen &amp; Alerts
+    /// "U-Turn" on-screen-button toggle (<see cref="DisplayConfig.UTurnButtonVisible"/>).
+    /// </summary>
+    public bool IsUTurnOverlayVisible =>
+        ConfigurationStore.Instance.Display.UTurnButtonVisible && IsManualUTurnVisible;
+
+    /// <summary>
+    /// On-map Lateral overlay (the two cyan shift arrows). Shown only while
+    /// autosteer is engaged (same gate as the U-turn overlay), additionally
+    /// gated by the Screen &amp; Alerts "Lateral" on-screen-button toggle
+    /// (<see cref="DisplayConfig.LateralButtonVisible"/>) — previously orphaned.
+    /// </summary>
+    public bool IsLateralOverlayVisible =>
+        ConfigurationStore.Instance.Display.LateralButtonVisible && IsManualUTurnVisible;
+
+    /// <summary>
+    /// Notify IsUTurnButtonVisible and the on-map overlay visibilities when their
+    /// inputs change. Called from MainViewModel.Guidance.cs when track state
+    /// changes and from the ConfigStore.Display subscription when the on-screen-
+    /// button toggles flip.
     /// </summary>
     private void RaiseUTurnButtonVisibleChanged()
     {
         OnPropertyChanged(nameof(IsUTurnButtonVisible));
+        OnPropertyChanged(nameof(IsUTurnOverlayVisible));
+        OnPropertyChanged(nameof(IsLateralOverlayVisible));
     }
+
+    /// <summary>
+    /// Aggregate of the four module-status flags shown in the top status strip,
+    /// replacing the per-letter G/I/A/M cluster. Configured set comes from
+    /// <see cref="ConnectionConfig.IsGpsConfigured"/> etc.; presence comes from
+    /// <see cref="ConnectionState.IsGpsDataOk"/> etc.
+    /// </summary>
+    public ModuleStatusKind ModuleStatusKind
+    {
+        get
+        {
+            var cfg = ConfigurationStore.Instance.Connections;
+            var st = State.Connections;
+            int configured = 0;
+            int present = 0;
+
+            if (cfg.IsGpsConfigured)       { configured++; if (st.IsGpsDataOk)       present++; }
+            if (cfg.IsImuConfigured)       { configured++; if (st.IsImuDataOk)       present++; }
+            if (cfg.IsAutoSteerConfigured) { configured++; if (st.IsAutoSteerDataOk) present++; }
+            if (cfg.IsMachineConfigured)   { configured++; if (st.IsMachineDataOk)   present++; }
+
+            if (configured == 0 || present == 0) return ModuleStatusKind.NonePresent;
+            if (present == configured) return ModuleStatusKind.AllPresent;
+            return ModuleStatusKind.PartiallyPresent;
+        }
+    }
+
+    private void RaiseModuleStatusKindChanged()
+    {
+        OnPropertyChanged(nameof(ModuleStatusKind));
+    }
+
+    /// <summary>
+    /// On-map Dev overlay (FPS / Latency / Lat / Lon). Read once at startup
+    /// from a file-flag in the AgValoniaGPS Documents folder so the toggle
+    /// works on iPad/Android (where hotkeys aren't available) without
+    /// surfacing in the UI.
+    /// </summary>
+    public bool IsDevOverlayVisible { get; } = Services.DevOverlayMarker.IsEnabled();
+
+    private BatteryStatus _batteryStatus;
+
+    /// <summary>
+    /// Latest battery reading from the per-platform <see cref="IBatteryService"/>.
+    /// The status-strip battery icon binds to the derived properties below.
+    /// </summary>
+    public BatteryStatus BatteryStatus => _batteryStatus;
+
+    /// <summary>Battery level as a 0-1 fraction. Meaningless when <see cref="IsBatteryAvailable"/> is false.</summary>
+    public double BatteryLevel => _batteryStatus.Level;
+
+    /// <summary>True when the device is currently plugged in.</summary>
+    public bool IsBatteryCharging => _batteryStatus.IsCharging;
+
+    /// <summary>True when the platform exposed a real reading. The icon hides when this is false.</summary>
+    public bool IsBatteryAvailable => _batteryStatus.IsAvailable;
+
+    /// <summary>
+    /// On-map field-stats detail card. Replaces the old auto-show-when-active
+    /// top-right strip; toggled from the strip button. Persists via
+    /// <see cref="DisplayConfig.FieldStatsOnMapVisible"/>.
+    /// </summary>
+    public bool IsFieldStatsOnMapVisible
+    {
+        get => ConfigurationStore.Instance.Display.FieldStatsOnMapVisible;
+        set
+        {
+            if (ConfigurationStore.Instance.Display.FieldStatsOnMapVisible != value)
+            {
+                ConfigurationStore.Instance.Display.FieldStatsOnMapVisible = value;
+                OnPropertyChanged();
+                _settingsService.Save();
+            }
+        }
+    }
+
+    /// <summary>Strip button: flips <see cref="IsFieldStatsOnMapVisible"/>.</summary>
+    public CommunityToolkit.Mvvm.Input.IRelayCommand ToggleFieldStatsOnMapCommand =>
+        _toggleFieldStatsOnMapCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(
+            () => IsFieldStatsOnMapVisible = !IsFieldStatsOnMapVisible);
+    private CommunityToolkit.Mvvm.Input.IRelayCommand? _toggleFieldStatsOnMapCommand;
+
+    /// <summary>
+    /// On-map GPS detail card. Toggled by tapping the strip's Modules
+    /// aggregate button (the button still shows the aggregate dot colour).
+    /// Shares the on-map slot with the Field-Stats card.
+    /// </summary>
+    public bool IsGpsDetailOverlayVisible
+    {
+        get => ConfigurationStore.Instance.Display.GpsDetailOverlayVisible;
+        set
+        {
+            if (ConfigurationStore.Instance.Display.GpsDetailOverlayVisible != value)
+            {
+                ConfigurationStore.Instance.Display.GpsDetailOverlayVisible = value;
+                OnPropertyChanged();
+                _settingsService.Save();
+            }
+        }
+    }
+
+    /// <summary>Modules button: flips <see cref="IsGpsDetailOverlayVisible"/>.</summary>
+    public CommunityToolkit.Mvvm.Input.IRelayCommand ToggleGpsDetailOverlayCommand =>
+        _toggleGpsDetailOverlayCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(
+            () => IsGpsDetailOverlayVisible = !IsGpsDetailOverlayVisible);
+    private CommunityToolkit.Mvvm.Input.IRelayCommand? _toggleGpsDetailOverlayCommand;
 
     #endregion
 }

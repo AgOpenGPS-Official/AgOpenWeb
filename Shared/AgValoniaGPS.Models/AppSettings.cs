@@ -81,6 +81,13 @@ namespace AgValoniaGPS.Models
         public int DayStartHour { get; set; } = 6;
         public int NightStartHour { get; set; } = 20;
 
+        // On-map field-stats detail card. Toggled from the strip; default OFF.
+        public bool FieldStatsOnMapVisible { get; set; } = false;
+
+        // On-map GPS detail card. Toggled from the strip's Modules button;
+        // default OFF. Shares the same on-map slot as the field-stats card.
+        public bool GpsDetailOverlayVisible { get; set; } = false;
+
         // Camera view (CameraZoom/Pitch/Mode) and the current day/night value
         // (IsDayMode) are "where the app was" → persistent state, in
         // PersistentAppState. The AutoDayNight *preference* below stays config.
@@ -112,6 +119,15 @@ namespace AgValoniaGPS.Models
         // GPS settings
         public int GpsUpdateRate { get; set; } = 10; // Hz
         public bool UseRtk { get; set; } = true;
+
+        // Module presence — which modules the user expects to be present.
+        // Drives the aggregate Module-status indicator in the top status strip.
+        // Toggle UI ships with the Network panel (next commit); defaults match
+        // the previous behavior of always expecting all four.
+        public bool IsGpsConfigured { get; set; } = true;
+        public bool IsImuConfigured { get; set; } = true;
+        public bool IsAutoSteerConfigured { get; set; } = true;
+        public bool IsMachineConfigured { get; set; } = true;
 
         // Field management. The Fields directory is a storage-location
         // preference (config); the open-field / last-field POINTER is state →
