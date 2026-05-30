@@ -117,6 +117,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             <TextBlock Text="AgShare Download" VerticalAlignment="Center" FontSize="12"/>
                         </StackPanel>
                     </Button>
+                    <Button Classes="ModernButton" Command="{Binding ShowAgShareSettingsDialogCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AgShare.png" Width="28" Height="28"/>
+                            <TextBlock Text="{loc:Localize AgShareApi}" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
                 </UniformGrid>
 
                 <!-- Active field/job pill at the bottom so showing / hiding it
