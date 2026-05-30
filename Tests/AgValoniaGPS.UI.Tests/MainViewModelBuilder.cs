@@ -41,6 +41,12 @@ public class MainViewModelBuilder
 
     public MainViewModel Build()
     {
+        // ConfigurationViewModel (lazily built by config-backed dialogs such as
+        // App Settings) reads IConfigurationService.Store in its ctor, so the
+        // mock must return the real singleton store.
+        var configurationService = Substitute.For<IConfigurationService>();
+        configurationService.Store.Returns(AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
+
         return new MainViewModel(
             udpService: Substitute.For<IUdpCommunicationService>(),
             gpsService: Substitute.For<AgValoniaGPS.Services.Interfaces.IGpsService>(),
@@ -64,7 +70,7 @@ public class MainViewModelBuilder
             polygonOffsetService: Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
             turnAreaService: Substitute.For<AgValoniaGPS.Services.Interfaces.ITurnAreaService>(),
             vehicleProfileService: VehicleProfileService,
-            configurationService: Substitute.For<IConfigurationService>(),
+            configurationService: configurationService,
             autoSteerService: AutoSteerService,
             smartWasService: Substitute.For<ISmartWasCalibrationService>(),
             trackCopierService: Substitute.For<ITrackCopierService>(),

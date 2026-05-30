@@ -16,30 +16,30 @@ public class UIStateDialogTests
     [Test]
     public void ShowDialog_SetsActiveDialog()
     {
-        _ui.ShowDialog(DialogType.AppDirectories);
-        Assert.That(_ui.ActiveDialog, Is.EqualTo(DialogType.AppDirectories));
+        _ui.ShowDialog(DialogType.AppSettings);
+        Assert.That(_ui.ActiveDialog, Is.EqualTo(DialogType.AppSettings));
     }
 
     [Test]
     public void CloseDialog_ResetsToNone()
     {
-        _ui.ShowDialog(DialogType.AppDirectories);
+        _ui.ShowDialog(DialogType.AppSettings);
         _ui.CloseDialog();
         Assert.That(_ui.ActiveDialog, Is.EqualTo(DialogType.None));
     }
 
     [Test]
-    public void IsAppDirectoriesDialogVisible_TrueWhenActive()
+    public void IsAppSettingsDialogVisible_TrueWhenActive()
     {
-        _ui.ShowDialog(DialogType.AppDirectories);
-        Assert.That(_ui.IsAppDirectoriesDialogVisible, Is.True);
+        _ui.ShowDialog(DialogType.AppSettings);
+        Assert.That(_ui.IsAppSettingsDialogVisible, Is.True);
     }
 
     [Test]
-    public void IsAppDirectoriesDialogVisible_FalseWhenOtherDialogOpen()
+    public void IsAppSettingsDialogVisible_FalseWhenOtherDialogOpen()
     {
         _ui.ShowDialog(DialogType.Confirmation);
-        Assert.That(_ui.IsAppDirectoriesDialogVisible, Is.False);
+        Assert.That(_ui.IsAppSettingsDialogVisible, Is.False);
     }
 
     [Test]
@@ -48,18 +48,18 @@ public class UIStateDialogTests
         var changed = new List<string>();
         _ui.PropertyChanged += (_, e) => changed.Add(e.PropertyName ?? "");
 
-        _ui.ShowDialog(DialogType.AppDirectories);
+        _ui.ShowDialog(DialogType.AppSettings);
 
-        Assert.That(changed, Contains.Item(nameof(UIState.IsAppDirectoriesDialogVisible)));
+        Assert.That(changed, Contains.Item(nameof(UIState.IsAppSettingsDialogVisible)));
         Assert.That(changed, Contains.Item(nameof(UIState.IsDialogOpen)));
     }
 
     [Test]
     public void OnlyOneDialogVisibleAtATime()
     {
-        _ui.ShowDialog(DialogType.AppDirectories);
+        _ui.ShowDialog(DialogType.AppSettings);
 
-        Assert.That(_ui.IsAppDirectoriesDialogVisible, Is.True);
+        Assert.That(_ui.IsAppSettingsDialogVisible, Is.True);
         Assert.That(_ui.IsConfirmationDialogVisible, Is.False);
         Assert.That(_ui.IsNtripProfilesDialogVisible, Is.False);
     }
@@ -73,7 +73,7 @@ public class UIStateDialogTests
     [Test]
     public void IsDialogOpen_TrueWhenAnyDialogShown()
     {
-        _ui.ShowDialog(DialogType.AppDirectories);
+        _ui.ShowDialog(DialogType.AppSettings);
         Assert.That(_ui.IsDialogOpen, Is.True);
     }
 }
