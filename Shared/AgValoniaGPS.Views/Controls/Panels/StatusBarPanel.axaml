@@ -205,9 +205,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- Large Speed slot — AgOpen-style. Value tracks the user's
                  metric/imperial preference. Units sit small beside it. -->
             <StackPanel Spacing="0" VerticalAlignment="Center" Margin="6,0,0,0">
+                <!-- Fixed width + centred text so the number's changing digits
+                     don't shift the strip layout to its right. -->
                 <TextBlock Text="{Binding SpeedLargeValue, StringFormat='{}{0:F1}'}"
                            Foreground="#E67E22"
                            FontSize="26" FontWeight="Bold"
+                           Width="66" TextAlignment="Center"
                            HorizontalAlignment="Center"/>
                 <!-- Unit below the number to match the heading readout's layout. -->
                 <TextBlock Text="{Binding SpeedLargeUnit}"

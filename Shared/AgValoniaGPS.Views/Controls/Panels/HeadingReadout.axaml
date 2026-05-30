@@ -36,6 +36,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <TextBlock Text="{Binding Heading, StringFormat='{}{0:000.0}°'}"
                    Foreground="#E91E90"
                    FontSize="26" FontWeight="Bold"
+                   Width="94" TextAlignment="Center"
                    HorizontalAlignment="Center"/>
         <TextBlock Text="HDG"
                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
