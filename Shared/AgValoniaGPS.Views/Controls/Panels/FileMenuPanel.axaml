@@ -60,10 +60,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                 <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
 
-                <!-- NTRIP Profiles -->
-                <Button Classes="MenuListButton" Content="{loc:Localize NtripProfiles}"    HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowNtripProfilesDialogCommand}"/>
-
-                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
+                <!-- NTRIP moved to the Network IO panel (left-nav). -->
 
                 <!-- Simulator -->
                 <Button Classes="MenuListButton" Content="{loc:Localize Simulator}"        HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ToggleSimulatorPanelCommand}"/>

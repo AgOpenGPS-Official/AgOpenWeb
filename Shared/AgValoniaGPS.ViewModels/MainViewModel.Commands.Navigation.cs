@@ -87,6 +87,13 @@ public partial class MainViewModel
             IsFieldToolsPanelVisible = open;
         });
 
+        ToggleNetworkIoPanelCommand = new RelayCommand(() =>
+        {
+            bool open = !IsNetworkIoPanelVisible;
+            CloseAllNavFlyouts();
+            IsNetworkIoPanelVisible = open;
+        });
+
         // The fly-out close (X) is a pure close, not a toggle: a toggle would
         // re-open the panel because the bubbling item-close already shut it.
         CloseAllNavFlyoutsCommand = new RelayCommand(CloseAllNavFlyouts);

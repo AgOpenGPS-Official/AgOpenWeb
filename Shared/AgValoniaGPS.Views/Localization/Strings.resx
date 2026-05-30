@@ -483,6 +483,27 @@
   <data xml:space="preserve" name="ViewSettings">
     <value>View Settings</value>
   </data>
+  <data xml:space="preserve" name="NetworkIo">
+    <value>Network IO</value>
+  </data>
+  <data xml:space="preserve" name="Modules">
+    <value>Modules</value>
+  </data>
+  <data xml:space="preserve" name="ScanModules">
+    <value>Scan for Modules</value>
+  </data>
+  <data xml:space="preserve" name="ModuleSubnet">
+    <value>Subnet</value>
+  </data>
+  <data xml:space="preserve" name="HostIps">
+    <value>Host IPs</value>
+  </data>
+  <data xml:space="preserve" name="SendSubnetToModules">
+    <value>Send Subnet to Modules</value>
+  </data>
+  <data xml:space="preserve" name="Ntrip">
+    <value>NTRIP</value>
+  </data>
   <data xml:space="preserve" name="ScreenAndAlerts">
     <value>Screen &amp; Alerts</value>
   </data>

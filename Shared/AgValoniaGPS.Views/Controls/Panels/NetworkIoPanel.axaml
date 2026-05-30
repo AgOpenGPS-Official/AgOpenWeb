@@ -1,0 +1,203 @@
+<!--
+AgValoniaGPS
+Copyright (C) 2024-2026 AgValoniaGPS Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
+             xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
+             xmlns:conv="clr-namespace:AgValoniaGPS.Views.Converters;assembly=AgValoniaGPS.Views"
+             x:Class="AgValoniaGPS.Views.Controls.Panels.NetworkIoPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding IsNetworkIoPanelVisible}"
+             IsHitTestVisible="{Binding IsNetworkIoPanelVisible}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.NioHeader">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#4A9A7E"/>
+            <Setter Property="Margin" Value="2,2,0,2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.NioModule">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.NioIp">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontFamily" Value="Consolas,Menlo,monospace"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="Ellipse.NioDot">
+            <Setter Property="Width" Value="12"/>
+            <Setter Property="Height" Value="12"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="2,0,8,0"/>
+        </Style>
+        <Style Selector="TextBox.NioOctet">
+            <Setter Property="Width" Value="48"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <controls:FloatingPanel x:Name="FP"
+                            Title="{loc:Localize NetworkIo}"
+                            CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
+        <controls:FloatingPanel.PanelContent>
+            <!-- Sized to roughly the left-nav height; the three '*' gap rows
+                 spread the sections out vertically. -->
+            <Grid Width="380" Height="510"
+                  RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto,*,Auto,Auto,*,Auto,Auto,Auto,Auto">
+
+                <!-- ===== Modules ===== -->
+                <TextBlock Grid.Row="0" Text="{loc:Localize Modules}" Classes="NioHeader"/>
+
+                <!-- Checkbox = "module should be present" (persistent config). The
+                     status dot is green only when configured AND responding. -->
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
+                      Margin="2,0" ColumnSpacing="4">
+                    <!-- GPS -->
+                    <CheckBox Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"
+                              IsChecked="{Binding ConnectionConfig.IsGpsConfigured, Mode=TwoWay}"
+                              ToolTip.Tip="GPS module should be present"/>
+                    <Ellipse Grid.Row="0" Grid.Column="1" Classes="NioDot">
+                        <Ellipse.Fill>
+                            <MultiBinding Converter="{x:Static conv:ModulePresenceToColorConverter.Instance}">
+                                <Binding Path="ConnectionConfig.IsGpsConfigured"/>
+                                <Binding Path="State.Connections.IsGpsDataOk"/>
+                            </MultiBinding>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Classes="NioModule" Text="GPS"/>
+                    <TextBlock Grid.Row="0" Grid.Column="3" Classes="NioIp"
+                               Text="{Binding State.Connections.GpsIpAddress, TargetNullValue=—}"/>
+                    <!-- AutoSteer -->
+                    <CheckBox Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"
+                              IsChecked="{Binding ConnectionConfig.IsAutoSteerConfigured, Mode=TwoWay}"
+                              ToolTip.Tip="AutoSteer module should be present"/>
+                    <Ellipse Grid.Row="1" Grid.Column="1" Classes="NioDot">
+                        <Ellipse.Fill>
+                            <MultiBinding Converter="{x:Static conv:ModulePresenceToColorConverter.Instance}">
+                                <Binding Path="ConnectionConfig.IsAutoSteerConfigured"/>
+                                <Binding Path="State.Connections.IsAutoSteerDataOk"/>
+                            </MultiBinding>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Classes="NioModule" Text="AutoSteer"/>
+                    <TextBlock Grid.Row="1" Grid.Column="3" Classes="NioIp"
+                               Text="{Binding State.Connections.AutoSteerIpAddress, TargetNullValue=—}"/>
+                    <!-- Machine -->
+                    <CheckBox Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"
+                              IsChecked="{Binding ConnectionConfig.IsMachineConfigured, Mode=TwoWay}"
+                              ToolTip.Tip="Machine module should be present"/>
+                    <Ellipse Grid.Row="2" Grid.Column="1" Classes="NioDot">
+                        <Ellipse.Fill>
+                            <MultiBinding Converter="{x:Static conv:ModulePresenceToColorConverter.Instance}">
+                                <Binding Path="ConnectionConfig.IsMachineConfigured"/>
+                                <Binding Path="State.Connections.IsMachineDataOk"/>
+                            </MultiBinding>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Classes="NioModule" Text="Machine"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3" Classes="NioIp"
+                               Text="{Binding State.Connections.MachineIpAddress, TargetNullValue=—}"/>
+                    <!-- IMU -->
+                    <CheckBox Grid.Row="3" Grid.Column="0" VerticalAlignment="Center"
+                              IsChecked="{Binding ConnectionConfig.IsImuConfigured, Mode=TwoWay}"
+                              ToolTip.Tip="IMU module should be present"/>
+                    <Ellipse Grid.Row="3" Grid.Column="1" Classes="NioDot">
+                        <Ellipse.Fill>
+                            <MultiBinding Converter="{x:Static conv:ModulePresenceToColorConverter.Instance}">
+                                <Binding Path="ConnectionConfig.IsImuConfigured"/>
+                                <Binding Path="State.Connections.IsImuDataOk"/>
+                            </MultiBinding>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <TextBlock Grid.Row="3" Grid.Column="2" Classes="NioModule" Text="IMU"/>
+                    <TextBlock Grid.Row="3" Grid.Column="3" Classes="NioIp"
+                               Text="{Binding State.Connections.ImuIpAddress, TargetNullValue=—}"/>
+                </Grid>
+
+                <Button Grid.Row="2" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="2,4,2,0"
+                        ClickMode="Press" Command="{Binding ScanModulesCommand}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <TextBlock Text="{loc:Localize ScanModules}" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+
+                <!-- (Grid.Row 3 is a flexible gap) -->
+
+                <!-- ===== Subnet (global IP change, PGN 201) — label inline ===== -->
+                <Grid Grid.Row="4" ColumnDefinitions="Auto,*" Margin="2,0">
+                    <TextBlock Grid.Column="0" Text="{loc:Localize ModuleSubnet}" Classes="NioHeader" Margin="0,0,8,0"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <TextBox Classes="NioOctet" Text="{Binding SubnetOctet1, Mode=TwoWay}"/>
+                        <TextBlock Text="." VerticalAlignment="Center" Margin="3,0" FontWeight="Bold"/>
+                        <TextBox Classes="NioOctet" Text="{Binding SubnetOctet2, Mode=TwoWay}"/>
+                        <TextBlock Text="." VerticalAlignment="Center" Margin="3,0" FontWeight="Bold"/>
+                        <TextBox Classes="NioOctet" Text="{Binding SubnetOctet3, Mode=TwoWay}"/>
+                        <TextBlock Text=".x" VerticalAlignment="Center" Margin="3,0"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                    </StackPanel>
+                </Grid>
+                <Button Grid.Row="5" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="2,4,2,0"
+                        ClickMode="Press" Command="{Binding SendSubnetCommand}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <TextBlock Text="{loc:Localize SendSubnetToModules}" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+                <TextBlock Grid.Row="6" Text="Changes ALL modules at once, then restarts them."
+                           FontSize="11" TextWrapping="Wrap" Margin="2,2,2,0"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+
+                <!-- (Grid.Row 7 is a flexible gap) -->
+
+                <!-- ===== Host IPs ===== -->
+                <TextBlock Grid.Row="8" Text="{loc:Localize HostIps}" Classes="NioHeader"/>
+                <TextBlock Grid.Row="9" Text="{Binding HostIpAddressesText}" Classes="NioIp"
+                           HorizontalAlignment="Left" Margin="2,0,2,0"/>
+
+                <!-- (Grid.Row 10 is a flexible gap) -->
+
+                <!-- Rule between Host IPs and NTRIP -->
+                <Separator Grid.Row="11" Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,2"/>
+
+                <!-- ===== NTRIP — label inline with status ===== -->
+                <Grid Grid.Row="12" ColumnDefinitions="Auto,Auto,*" Margin="2,4,2,0">
+                    <TextBlock Grid.Column="0" Text="{loc:Localize Ntrip}" Classes="NioHeader" Margin="0,0,8,0"/>
+                    <Ellipse Grid.Column="1" Classes="NioDot"
+                             Fill="{Binding State.Connections.IsNtripConnected, Converter={StaticResource BoolToColorConverter}}"/>
+                    <TextBlock Grid.Column="2" Classes="NioModule" Text="{Binding NtripStatus}"/>
+                </Grid>
+                <TextBlock Grid.Row="13" Text="{Binding NtripBytesReceived}" FontSize="12" Margin="2,0,2,0"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                <Button Grid.Row="14" Classes="ModernButton" HorizontalAlignment="Stretch" Margin="2,4,2,0"
+                        ClickMode="Press" Command="{Binding ShowNtripProfilesDialogCommand}"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                    <TextBlock Text="{loc:Localize NtripProfiles}" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Button>
+
+            </Grid>
+        </controls:FloatingPanel.PanelContent>
+    </controls:FloatingPanel>
+
+</UserControl>

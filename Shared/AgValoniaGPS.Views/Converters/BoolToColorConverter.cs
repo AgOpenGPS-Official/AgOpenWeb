@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using AgValoniaGPS.Models.State;
 using Avalonia.Data;
@@ -24,6 +25,29 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 
 namespace AgValoniaGPS.Views.Converters;
+
+/// <summary>
+/// Network IO module status dot: inputs [configured, present].
+/// Not configured → gray (don't care); configured &amp; present → green;
+/// configured &amp; absent → red. "Present" = the module is responding
+/// (data-ok / scan reply).
+/// </summary>
+public class ModulePresenceToColorConverter : IMultiValueConverter
+{
+    public static readonly ModulePresenceToColorConverter Instance = new();
+
+    private static readonly IBrush PresentBrush = new SolidColorBrush(Color.Parse("#2ECC71")); // green
+    private static readonly IBrush AbsentBrush = new SolidColorBrush(Color.Parse("#E74C3C"));  // red
+    private static readonly IBrush NotConfiguredBrush = new SolidColorBrush(Color.Parse("#5A6473")); // gray
+
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        bool configured = values.Count > 0 && values[0] is bool c && c;
+        bool present = values.Count > 1 && values[1] is bool p && p;
+        if (!configured) return NotConfiguredBrush;
+        return present ? PresentBrush : AbsentBrush;
+    }
+}
 
 public class BoolToColorConverter : IValueConverter
 {
