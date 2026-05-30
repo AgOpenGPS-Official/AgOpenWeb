@@ -71,9 +71,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/fileMenu.png" Stretch="Uniform"/>
                 </Button>
 
-                <!-- 2. View Settings -->
-                <Button Classes="LeftPanelButton" ToolTip.Tip="View Settings"
-                        Command="{Binding ToggleViewSettingsPanelCommand}">
+                <!-- 2. Screen & Alerts (display/sounds/buttons/messages settings) -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Screen &amp; Alerts"
+                        Command="{Binding ToggleScreenAlertsPanelCommand}">
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/NavigationSettings.png" Stretch="Uniform"/>
                 </Button>
 
@@ -111,8 +111,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
         <!-- Sub-panels Canvas overlay (absolute positioning relative to nav bar) -->
         <Canvas ClipToBounds="False">
-        <!-- View Settings Panel -->
-        <controls:ViewSettingsPanel x:Name="ViewSettingsPanelControl"
+        <!-- Screen & Alerts Panel -->
+        <controls:ScreenAlertsPanel x:Name="ScreenAlertsPanelControl"
                                     Canvas.Left="90" Canvas.Top="0"
                                     ZIndex="15"
                                     DataContext="{Binding}"/>

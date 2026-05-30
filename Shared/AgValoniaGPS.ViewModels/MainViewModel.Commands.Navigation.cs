@@ -38,11 +38,18 @@ public partial class MainViewModel
 
         // Panel toggle commands. Only one left-nav fly-out is open at a time:
         // each toggle closes the others first, then opens (or closes) its own.
-        ToggleViewSettingsPanelCommand = new RelayCommand(() =>
+        ToggleScreenAlertsPanelCommand = new RelayCommand(() =>
         {
-            bool open = !IsViewSettingsPanelVisible;
+            bool open = !IsScreenAlertsPanelVisible;
             CloseAllNavFlyouts();
-            IsViewSettingsPanelVisible = open;
+            // The panel's display/sounds/buttons sections bind to
+            // ConfigurationViewModel, which is created lazily; mirror the
+            // config-backed dialogs so the bindings resolve on first open.
+            if (open && ConfigurationViewModel == null)
+            {
+                ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
+            }
+            IsScreenAlertsPanelVisible = open;
         });
 
         ToggleFileMenuPanelCommand = new RelayCommand(() =>

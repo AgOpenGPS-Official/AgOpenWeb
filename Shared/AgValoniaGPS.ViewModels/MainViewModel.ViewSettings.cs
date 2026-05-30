@@ -34,7 +34,7 @@ public partial class MainViewModel
 {
     #region Panel Visibility Fields
 
-    private bool _isViewSettingsPanelVisible;
+    private bool _isScreenAlertsPanelVisible;
     private bool _isFileMenuPanelVisible;
     private bool _isToolsPanelVisible;
     private bool _isConfigurationPanelVisible;
@@ -49,10 +49,10 @@ public partial class MainViewModel
 
     #region Panel Visibility Properties
 
-    public bool IsViewSettingsPanelVisible
+    public bool IsScreenAlertsPanelVisible
     {
-        get => _isViewSettingsPanelVisible;
-        set { SetProperty(ref _isViewSettingsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
+        get => _isScreenAlertsPanelVisible;
+        set { SetProperty(ref _isScreenAlertsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
     public bool IsFileMenuPanelVisible
@@ -88,7 +88,7 @@ public partial class MainViewModel
     /// <summary>True while any left-nav fly-out is open. Drives the light-dismiss
     /// scrim that closes the open menu when the operator taps outside it.</summary>
     public bool IsAnyNavFlyoutOpen =>
-        IsViewSettingsPanelVisible || IsFileMenuPanelVisible || IsToolsPanelVisible
+        IsScreenAlertsPanelVisible || IsFileMenuPanelVisible || IsToolsPanelVisible
         || IsConfigurationPanelVisible || IsFieldOperationsPanelVisible || IsFieldToolsPanelVisible;
 
     public bool IsSimulatorPanelVisible
@@ -122,7 +122,7 @@ public partial class MainViewModel
     /// </summary>
     public void CloseAllNavFlyouts()
     {
-        IsViewSettingsPanelVisible = false;
+        IsScreenAlertsPanelVisible = false;
         IsFileMenuPanelVisible = false;
         IsToolsPanelVisible = false;
         IsConfigurationPanelVisible = false;
