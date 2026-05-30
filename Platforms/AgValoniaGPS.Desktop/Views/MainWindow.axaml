@@ -29,6 +29,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         Icon="/Assets/avalonia-logo.ico"
         Title="AgValoniaGPS"
         ToolTip.ServiceEnabled="False"
+        SystemDecorations="BorderOnly"
+        MinWidth="1200" MinHeight="720"
         Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
 
     <!-- Styles are now in shared SharedStyles.axaml -->
@@ -46,19 +48,47 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         PointerReleased="MapOverlay_PointerReleased"
                         PointerWheelChanged="MapOverlay_PointerWheelChanged" />
 
-        <!-- Row 0: Top status bar area -->
-        <Grid Grid.Row="0" ZIndex="20" Margin="8,8,8,4" ColumnDefinitions="Auto,*,Auto">
-            <Border Classes="FloatingPanel" Grid.Column="0" IsHitTestVisible="True">
-                <panels:StatusBarPanel DataContext="{Binding}"/>
-            </Border>
-            <Border Classes="FloatingPanel" Grid.Column="2" IsHitTestVisible="True"
-                    IsVisible="{Binding HasActiveField}">
-                <panels:FieldStatsPanel DataContext="{Binding}"/>
-            </Border>
-        </Grid>
+        <!-- Row 0: Top status bar area. SystemDecorations is BorderOnly so we
+             provide our own Min/Max/Close on the right end of the strip; the
+             rest of the strip background acts as a drag handle for moving the
+             window. The strip background spans edge-to-edge so the window
+             controls visually sit on the same surface as the readouts. -->
+        <Border Grid.Row="0" Classes="FloatingPanel" ZIndex="20"
+                IsHitTestVisible="True"
+                PointerPressed="StatusBar_OnPointerPressed"
+                Padding="0">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- Margin shrunk top/bottom from 15 → 5 to drop the strip
+                     20 px (10 each side) without changing element sizes. -->
+                <panels:StatusBarPanel Grid.Column="0" Margin="15,5" DataContext="{Binding}"/>
+                <!-- Custom window controls (frameless build). -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="0"
+                            VerticalAlignment="Stretch">
+                    <Button Classes="WindowControl" Click="WindowMinimize_Click"
+                            ToolTip.Tip="Minimize">
+                        <TextBlock Text="—" FontSize="14" FontWeight="Bold"/>
+                    </Button>
+                    <Button Classes="WindowControl" Click="WindowMaximize_Click"
+                            ToolTip.Tip="Maximize / Restore">
+                        <TextBlock Text="☐" FontSize="14" FontWeight="Bold"/>
+                    </Button>
+                    <Button Classes="WindowControl WindowControlClose" Click="WindowClose_Click"
+                            ToolTip.Tip="Close">
+                        <TextBlock Text="✕" FontSize="14" FontWeight="Bold"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
 
         <!-- Row 1: All panels live here, below the status bar -->
         <Grid Grid.Row="1">
+
+        <!-- Light-dismiss scrim: present only while a left-nav fly-out is open; a
+             tap on the map area closes the open menu. ZIndex 8 keeps it below the
+             left nav (9) so the nav bar + fly-outs stay clickable. -->
+        <Border ZIndex="8" Background="Transparent"
+                IsVisible="{Binding IsAnyNavFlyoutOpen}"
+                PointerPressed="NavScrim_PointerPressed"/>
 
         <!-- LIGHT BAR: Centered below status bar (#144) -->
         <panels:LightBarPanel x:Name="LightBarPanel"
@@ -67,43 +97,86 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                               VerticalAlignment="Top"
                               Margin="0,4,0,0"/>
 
+
+        <!-- DEV OVERLAY: FPS / latency / raw Lat / raw Lon. Gated by a
+             file-flag (.show_dev_overlay) in the AgValoniaGPS Documents
+             folder so dev users can toggle it without it appearing in the UI. -->
+        <panels:DevOverlayPanel x:Name="DevOverlay"
+                                ZIndex="6"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="0,4,8,0"
+                                IsVisible="{Binding IsDevOverlayVisible}"
+                                DataContext="{Binding}"/>
+
+        <!-- FIELD STATS DETAIL: AgOpen-style vertical card. Anchored on the
+             LEFT, just right of the LeftNavigationPanel and stacked below the
+             on-map HeadingReadout so the two don't collide. -->
+        <panels:FieldStatsPanel x:Name="FieldStats"
+                                ZIndex="6"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Margin="68,72,0,0"
+                                DataContext="{Binding}"/>
+
+        <!-- GPS DETAIL: AgOpen-style vertical card. Shares the same slot as
+             the Field-Stats card (below the HeadingReadout); if both are
+             toggled on they overlap and the user picks which one to keep
+             open. Toggled from the strip's fix dot / RTK label. -->
+        <panels:GpsDetailPanel x:Name="GpsDetail"
+                               ZIndex="7"
+                               HorizontalAlignment="Left"
+                               VerticalAlignment="Top"
+                               Margin="68,72,0,0"
+                               DataContext="{Binding}"/>
+
         <!-- LEFT SIDEBAR: Anchored to left edge -->
         <panels:LeftNavigationPanel x:Name="LeftNavPanel"
                                     ZIndex="9"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Top"
-                                    Margin="8,8,0,0"
+                                    Margin="0,8,0,0"
                                     DataContext="{Binding}"/>
 
-        <!-- RIGHT SIDEBAR + Zoom/Compass stacked vertically on right edge -->
+        <!-- Heading now lives in the top status strip, right of speed. -->
+
+        <!-- RIGHT SIDEBAR + Roll gauge + Camera pad. Lifted off the bottom so the
+             camera pad's tilt-down clears the bottom bar when the nav is full. -->
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    ZIndex="10" Margin="0,0,8,8" Spacing="4">
-            <!-- Right navigation buttons -->
+                    ZIndex="10" Margin="0,0,0,70" Spacing="4">
+            <!-- Right navigation buttons (collapses when no field). -->
             <panels:RightNavigationPanel x:Name="RightNavPanel"
+                                         HorizontalAlignment="Right"
                                          DataContext="{Binding}"/>
-            <!-- Spacer before zoom controls -->
+            <!-- Roll gauge — just above the camera-pad spacer. -->
+            <panels:RollGaugeReadout x:Name="RollGauge"
+                                     HorizontalAlignment="Right"
+                                     RenderTransformOrigin="0.5,0.5"
+                                     RenderTransform="translate(15px,-5px) scale(1.175,1.4375)"
+                                     DataContext="{Binding}"/>
+            <!-- Spacer before the camera pad -->
             <Border Height="12"/>
-            <!-- Zoom and compass controls -->
-            <Button Classes="ZoomButton" Content="+" Command="{Binding ZoomInCommand}" ClickMode="Press"
-                    HorizontalAlignment="Center"/>
-            <Button Classes="ZoomButton" Content="-" Command="{Binding ZoomOutCommand}" ClickMode="Press"
-                    HorizontalAlignment="Center"/>
-            <Button Command="{Binding ToggleCameraModeCommand}"
-                    Width="64" Height="64"
-                    HorizontalAlignment="Center"
-                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                    CornerRadius="0" Background="#4A90D9"
-                    ToolTip.Tip="Camera mode: North-Up / Heading-Up / Free">
-                <TextBlock Text="{Binding CameraModeLabel}" FontSize="20" FontWeight="Bold"
-                           Foreground="White" HorizontalAlignment="Center"/>
-            </Button>
+            <!-- On-map 4-way camera pad: tilt (vertical) / zoom (horizontal) /
+                 mode cycle (center). Replaces the old zoom +/- + mode cluster. -->
+            <panels:CameraPadControl x:Name="CameraPad"
+                                     HorizontalAlignment="Right"
+                                     DataContext="{Binding}"/>
         </StackPanel>
+
+        <!-- Time. Transparent; sits just above the bottom nav, left of the
+             camera-pad column. -->
+        <panels:TimeReadout x:Name="TimeReadout"
+                            ZIndex="10"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,144,8"
+                            DataContext="{Binding}"/>
 
         <!-- BOTTOM: Simulator bar above section control above bottom navigation -->
         <StackPanel ZIndex="10"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Bottom"
-                    Margin="0,0,0,8"
+                    Margin="0,0,0,0"
                     Spacing="4">
             <panels:SimulatorPanel x:Name="SimulatorBarPanel"
                                    HorizontalAlignment="Center"
@@ -140,6 +213,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <!-- Map Banners (Flag Placement, AB Creation) -->
     <panels:MapBannersPanel DataContext="{Binding}" ZIndex="20"/>
+
+    <!-- On-map U-Turn + Lateral overlay (manual turn / lateral-shift arrows) -->
+    <panels:TurnLateralOverlayPanel DataContext="{Binding}" ZIndex="15"/>
 
     <!-- Modal Dialog Overlays (shared across platforms) -->
     <controls:DialogOverlayHost DataContext="{Binding}" ZIndex="100"/>

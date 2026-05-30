@@ -41,7 +41,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     </UserControl.Styles>
     <controls:FloatingPanel x:Name="FP"
                             Title="{loc:Localize ApplicationSettings}"
-                            CloseCommand="{Binding ToggleFileMenuPanelCommand}">
+                            CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
         <controls:FloatingPanel.PanelContent>
             <StackPanel Spacing="4">
 

@@ -57,6 +57,7 @@ public partial class MainViewModel : ObservableObject
     private readonly AgValoniaGPS.Services.Interfaces.IGpsSimulationService _simulatorService;
     private readonly ISettingsService _settingsService;
     private readonly IPersistentStateService _persistentStateService;
+    private readonly IBatteryService _batteryService;
     private readonly IMapService _mapService;
     private readonly IBoundaryRecordingService _boundaryRecordingService;
     private readonly IBoundaryBuilderService _boundaryBuilderService;
@@ -222,12 +223,31 @@ public partial class MainViewModel : ObservableObject
         ILogger<MainViewModel> logger,
         ApplicationState appState,
         IPersistentStateService persistentStateService,
+        IBatteryService batteryService,
         ISteerMachineLoopService? controlLoop = null,
         IPositionEstimator? positionEstimator = null)
     {
         _logger = logger;
         _persistentStateService = persistentStateService;
+        _batteryService = batteryService;
         _tramLineService = tramLineService;
+
+        // Battery icon in the strip — start the per-platform reader, prime with
+        // its initial reading, and refresh on each StatusChanged notification.
+        _batteryService.StatusChanged += (_, status) =>
+        {
+            _batteryStatus = status;
+            OnPropertyChanged(nameof(BatteryStatus));
+            OnPropertyChanged(nameof(BatteryLevel));
+            OnPropertyChanged(nameof(IsBatteryCharging));
+            OnPropertyChanged(nameof(IsBatteryAvailable));
+        };
+        _batteryService.Start();
+        _batteryStatus = _batteryService.CurrentStatus;
+
+        // Status-strip rotator: cycles the bottom of the two-line text stack
+        // through field name / stats / AB-line every 5 s, with a pause button.
+        InitializeStatusStripRotation();
 
         // Sync GuidanceConfig.TramDisplay -> TramConfig.DisplayMode and regenerate
         ConfigStore.Guidance.PropertyChanged += (_, e) =>
@@ -243,6 +263,38 @@ public partial class MainViewModel : ObservableObject
             {
                 ConfigStore.Tram.Passes = ConfigStore.Guidance.TramPasses;
                 UpdateTramLines(SelectedTrack);
+            }
+        };
+
+        // The Screen & Alerts "On-Screen Buttons" toggles gate the on-map U-Turn
+        // and Lateral overlays. Refresh those computed visibilities when the user
+        // flips a toggle so the overlays appear/disappear live.
+        ConfigStore.Display.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.UTurnButtonVisible))
+            {
+                OnPropertyChanged(nameof(IsUTurnButtonVisible));
+                OnPropertyChanged(nameof(IsUTurnOverlayVisible));
+            }
+            else if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.LateralButtonVisible))
+            {
+                OnPropertyChanged(nameof(IsLateralOverlayVisible));
+            }
+        };
+
+        // Aggregate module-status indicator (replaces the four-letter G/I/A/M
+        // cluster). Refresh when either the configured set or the live data-ok
+        // flags change. State.Connections is wired in the post-_appState block.
+        ConfigStore.Connections.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(Models.Configuration.ConnectionConfig.IsGpsConfigured):
+                case nameof(Models.Configuration.ConnectionConfig.IsImuConfigured):
+                case nameof(Models.Configuration.ConnectionConfig.IsAutoSteerConfigured):
+                case nameof(Models.Configuration.ConnectionConfig.IsMachineConfigured):
+                    RaiseModuleStatusKindChanged();
+                    break;
             }
         };
         _udpService = udpService;
@@ -290,6 +342,7 @@ public partial class MainViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(CurrentJobTaskName));
             OnPropertyChanged(nameof(CurrentFieldAndJobLabel));
+            RaiseStatusStripChanged();
         };
         _gpsPipelineService = gpsPipelineService;
         _controlLoop = controlLoop;
@@ -297,6 +350,23 @@ public partial class MainViewModel : ObservableObject
         _intents = intents;
         _appState = appState;
         _fieldPlaneFileService = new FieldPlaneFileService();
+
+        // Live half of the aggregate module-status indicator (see the
+        // ConfigStore.Connections subscription above for the configured-set
+        // half). Only the four data-ok flags participate; IP and engaged flags
+        // do not affect the colour.
+        _appState.Connections.PropertyChanged += (_, e) =>
+        {
+            switch (e.PropertyName)
+            {
+                case nameof(Models.State.ConnectionState.IsGpsDataOk):
+                case nameof(Models.State.ConnectionState.IsImuDataOk):
+                case nameof(Models.State.ConnectionState.IsAutoSteerDataOk):
+                case nameof(Models.State.ConnectionState.IsMachineDataOk):
+                    RaiseModuleStatusKindChanged();
+                    break;
+            }
+        };
 
         // Subscribe to events
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
@@ -412,6 +482,9 @@ public partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(BoundaryAreaDisplay));
                 OnPropertyChanged(nameof(WorkRateDisplay));
                 OnPropertyChanged(nameof(SimulatorSpeedDisplay));
+                OnPropertyChanged(nameof(SpeedLargeValue));
+                OnPropertyChanged(nameof(SpeedLargeUnit));
+                RaiseStatusStripChanged();
             }
         };
 
@@ -1227,6 +1300,50 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Worked area minus overlap, formatted for the AgOpen-style stats card.</summary>
+    public string ActualAreaDisplay => FormatArea(_fieldStatistics.ActualAreaCovered);
+
+    /// <summary>Remaining boundary area = total minus worked, formatted.</summary>
+    public string RemainingAreaDisplay
+    {
+        get
+        {
+            double remaining = WorkableAreaSqM - _coverageMapService.TotalWorkedArea;
+            return FormatArea(Math.Max(0, remaining));
+        }
+    }
+
+    /// <summary>Percentage of the boundary that has been worked.</summary>
+    public double WorkedPercent
+    {
+        get
+        {
+            double workable = WorkableAreaSqM;
+            if (workable <= 0) return 0;
+            return Math.Clamp((_coverageMapService.TotalWorkedArea / workable) * 100.0, 0, 100);
+        }
+    }
+
+    /// <summary>Overlap percent from the field-statistics service.</summary>
+    public double OverlapPercent => _fieldStatistics.OverlapPercent;
+
+    /// <summary>
+    /// Hours remaining at the current work rate. Returns <c>∞</c> when the
+    /// instantaneous rate is zero (stopped) so the card mirrors AgOpen's
+    /// readout instead of showing a confusing 0.
+    /// </summary>
+    public string HoursRemainingDisplay
+    {
+        get
+        {
+            double rateSqMPerHour = Speed * 3600 * ToolWidth;
+            if (rateSqMPerHour <= 0) return "∞";
+            double remainingSqM = Math.Max(0, WorkableAreaSqM - _coverageMapService.TotalWorkedArea);
+            double hours = remainingSqM / rateSqMPerHour;
+            return $"{hours:F1}";
+        }
+    }
+
     // Helper method to format area with metric/imperial support
     private string FormatArea(double squareMeters)
     {
@@ -1245,6 +1362,12 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkedAreaDisplay));
         OnPropertyChanged(nameof(RemainingPercent));
         OnPropertyChanged(nameof(WorkRateDisplay));
+        OnPropertyChanged(nameof(ActualAreaDisplay));
+        OnPropertyChanged(nameof(RemainingAreaDisplay));
+        OnPropertyChanged(nameof(WorkedPercent));
+        OnPropertyChanged(nameof(OverlapPercent));
+        OnPropertyChanged(nameof(HoursRemainingDisplay));
+        RaiseStatusStripChanged();
     }
 
     /// <summary>
@@ -1275,6 +1398,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveFieldName));
         OnPropertyChanged(nameof(ActiveFieldArea));
         OnPropertyChanged(nameof(HasActiveField));
+        RaiseStatusStripChanged();
     }
 
     // Pending intents consumed by the next OpenFieldAsync. Set by the
@@ -2078,6 +2202,7 @@ public partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsActiveTrackClosed));
                 OnPropertyChanged(nameof(IsManualUTurnVisible));
                 RaiseUTurnButtonVisibleChanged();
+                RaiseStatusStripChanged();
 
                 // Sync to pipeline so guidance computes on background thread
                 SyncGuidanceStateToPipeline();
@@ -3468,6 +3593,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleConfigurationPanelCommand { get; private set; }
     public ICommand? ToggleFieldOperationsPanelCommand { get; private set; }
     public ICommand? ToggleFieldToolsPanelCommand { get; private set; }
+    public ICommand? CloseAllNavFlyoutsCommand { get; private set; }
     public ICommand? ToggleAutoTrackCommand { get; private set; }
     public ICommand? ToggleGridCommand { get; private set; }
     public ICommand? ToggleDayNightCommand { get; private set; }

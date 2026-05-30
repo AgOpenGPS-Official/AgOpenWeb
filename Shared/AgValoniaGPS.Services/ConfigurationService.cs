@@ -420,6 +420,8 @@ public class ConfigurationService(
         store.Display.HardwareMessagesEnabled = settings.HardwareMessagesEnabled;
         store.Display.DayStartHour = settings.DayStartHour;
         store.Display.NightStartHour = settings.NightStartHour;
+        store.Display.FieldStatsOnMapVisible = settings.FieldStatsOnMapVisible;
+        store.Display.GpsDetailOverlayVisible = settings.GpsDetailOverlayVisible;
         store.Display.DisplayResolutionMultiplier = settings.DisplayResolutionMultiplier;
         store.Display.AutoDayNight = settings.AutoDayNight;
 
@@ -435,6 +437,10 @@ public class ConfigurationService(
         store.Connections.AgShareEnabled = settings.AgShareEnabled;
         store.Connections.GpsUpdateRate = settings.GpsUpdateRate;
         store.Connections.UseRtk = settings.UseRtk;
+        store.Connections.IsGpsConfigured = settings.IsGpsConfigured;
+        store.Connections.IsImuConfigured = settings.IsImuConfigured;
+        store.Connections.IsAutoSteerConfigured = settings.IsAutoSteerConfigured;
+        store.Connections.IsMachineConfigured = settings.IsMachineConfigured;
 
         // Hotkey bindings
         if (settings.HotkeyBindings.Count > 0)
@@ -483,6 +489,8 @@ public class ConfigurationService(
         settings.HardwareMessagesEnabled = store.Display.HardwareMessagesEnabled;
         settings.DayStartHour = store.Display.DayStartHour;
         settings.NightStartHour = store.Display.NightStartHour;
+        settings.FieldStatsOnMapVisible = store.Display.FieldStatsOnMapVisible;
+        settings.GpsDetailOverlayVisible = store.Display.GpsDetailOverlayVisible;
         settings.DisplayResolutionMultiplier = store.Display.DisplayResolutionMultiplier;
         settings.AutoDayNight = store.Display.AutoDayNight;
 
@@ -498,6 +506,10 @@ public class ConfigurationService(
         settings.AgShareEnabled = store.Connections.AgShareEnabled;
         settings.GpsUpdateRate = store.Connections.GpsUpdateRate;
         settings.UseRtk = store.Connections.UseRtk;
+        settings.IsGpsConfigured = store.Connections.IsGpsConfigured;
+        settings.IsImuConfigured = store.Connections.IsImuConfigured;
+        settings.IsAutoSteerConfigured = store.Connections.IsAutoSteerConfigured;
+        settings.IsMachineConfigured = store.Connections.IsMachineConfigured;
 
         // Simulator config — only the Enabled preference (position is state).
         settings.SimulatorEnabled = store.Simulator.Enabled;

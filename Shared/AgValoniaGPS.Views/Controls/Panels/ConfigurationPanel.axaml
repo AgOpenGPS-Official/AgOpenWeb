@@ -30,7 +30,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Main Panel -->
         <controls:FloatingPanel x:Name="FP"
                                 Title="{loc:Localize VehicleConfiguration}"
-                                CloseCommand="{Binding ToggleConfigurationPanelCommand}">
+                                CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
 
             <controls:FloatingPanel.PanelContent>
                 <Border Background="#DD1E8449" CornerRadius="6" Padding="8,4" Margin="0,8,0,0">

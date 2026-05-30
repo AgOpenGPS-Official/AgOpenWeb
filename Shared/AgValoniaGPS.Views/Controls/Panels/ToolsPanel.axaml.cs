@@ -18,6 +18,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 
 namespace AgValoniaGPS.Views.Controls.Panels;
 
@@ -31,5 +32,10 @@ public partial class ToolsPanel : UserControl
         var fp = this.FindControl<FloatingPanel>("FP");
         if (fp != null)
             fp.DragMoved += (s, delta) => DragMoved?.Invoke(this, delta);
+        // Picking any item dismisses the menu (command still runs — not handled).
+        AddHandler(Button.ClickEvent, CloseOnItemClick, RoutingStrategies.Bubble);
     }
+
+    private void CloseOnItemClick(object? sender, RoutedEventArgs e)
+        => (DataContext as AgValoniaGPS.ViewModels.MainViewModel)?.CloseAllNavFlyouts();
 }
