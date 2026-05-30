@@ -83,6 +83,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Row 1: All panels live here, below the status bar -->
         <Grid Grid.Row="1">
 
+        <!-- Light-dismiss scrim: present only while a left-nav fly-out is open; a
+             tap on the map area closes the open menu. ZIndex 8 keeps it below the
+             left nav (9) so the nav bar + fly-outs stay clickable. -->
+        <Border ZIndex="8" Background="Transparent"
+                IsVisible="{Binding IsAnyNavFlyoutOpen}"
+                PointerPressed="NavScrim_PointerPressed"/>
+
         <!-- LIGHT BAR: Centered below status bar (#144) -->
         <panels:LightBarPanel x:Name="LightBarPanel"
                               ZIndex="5"

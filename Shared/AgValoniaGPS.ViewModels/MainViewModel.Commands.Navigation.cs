@@ -28,36 +28,61 @@ public partial class MainViewModel
 {
     private void InitializeNavigationCommands()
     {
-        // Panel toggle commands
+        // When any dialog opens (e.g. a fly-out item launches one), dismiss the
+        // open left-nav fly-out so menus don't linger behind the dialog.
+        State.UI.DialogChanged += (_, e) =>
+        {
+            if (e.Current != Models.State.DialogType.None)
+                CloseAllNavFlyouts();
+        };
+
+        // Panel toggle commands. Only one left-nav fly-out is open at a time:
+        // each toggle closes the others first, then opens (or closes) its own.
         ToggleViewSettingsPanelCommand = new RelayCommand(() =>
         {
-            IsViewSettingsPanelVisible = !IsViewSettingsPanelVisible;
+            bool open = !IsViewSettingsPanelVisible;
+            CloseAllNavFlyouts();
+            IsViewSettingsPanelVisible = open;
         });
 
         ToggleFileMenuPanelCommand = new RelayCommand(() =>
         {
-            IsFileMenuPanelVisible = !IsFileMenuPanelVisible;
+            bool open = !IsFileMenuPanelVisible;
+            CloseAllNavFlyouts();
+            IsFileMenuPanelVisible = open;
         });
 
         ToggleToolsPanelCommand = new RelayCommand(() =>
         {
-            IsToolsPanelVisible = !IsToolsPanelVisible;
+            bool open = !IsToolsPanelVisible;
+            CloseAllNavFlyouts();
+            IsToolsPanelVisible = open;
         });
 
         ToggleConfigurationPanelCommand = new RelayCommand(() =>
         {
-            IsConfigurationPanelVisible = !IsConfigurationPanelVisible;
+            bool open = !IsConfigurationPanelVisible;
+            CloseAllNavFlyouts();
+            IsConfigurationPanelVisible = open;
         });
 
         ToggleFieldOperationsPanelCommand = new RelayCommand(() =>
         {
-            IsFieldOperationsPanelVisible = !IsFieldOperationsPanelVisible;
+            bool open = !IsFieldOperationsPanelVisible;
+            CloseAllNavFlyouts();
+            IsFieldOperationsPanelVisible = open;
         });
 
         ToggleFieldToolsPanelCommand = new RelayCommand(() =>
         {
-            IsFieldToolsPanelVisible = !IsFieldToolsPanelVisible;
+            bool open = !IsFieldToolsPanelVisible;
+            CloseAllNavFlyouts();
+            IsFieldToolsPanelVisible = open;
         });
+
+        // The fly-out close (X) is a pure close, not a toggle: a toggle would
+        // re-open the panel because the bubbling item-close already shut it.
+        CloseAllNavFlyoutsCommand = new RelayCommand(CloseAllNavFlyouts);
 
         ToggleAutoTrackCommand = new RelayCommand(() =>
         {

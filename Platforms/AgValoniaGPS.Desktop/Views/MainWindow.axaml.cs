@@ -576,6 +576,14 @@ public partial class MainWindow : Window
         BeginMoveDrag(e);
     }
 
+    // Light-dismiss: tapping the map area while a left-nav fly-out is open
+    // closes the menu (the scrim is only hit-testable while one is open).
+    private void NavScrim_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        ViewModel?.CloseAllNavFlyouts();
+        e.Handled = true;
+    }
+
     private void WindowMinimize_Click(object? sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;

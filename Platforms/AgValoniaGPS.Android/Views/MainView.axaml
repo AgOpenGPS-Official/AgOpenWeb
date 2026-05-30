@@ -44,6 +44,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <controls:SkiaMapControl x:Name="MapControl" Margin="5"
                                          IsGridVisible="{Binding IsGridOn}"/>
 
+                <!-- Light-dismiss scrim: present only while a left-nav fly-out is
+                     open; a tap on the map closes the open menu. ZIndex 8 keeps it
+                     below the left nav (9) so menus stay clickable. -->
+                <Border ZIndex="8" Background="Transparent"
+                        IsVisible="{Binding IsAnyNavFlyoutOpen}"
+                        PointerPressed="NavScrim_PointerPressed"/>
+
                 <!-- LIGHT BAR: Centered at top (#144) -->
                 <panels:LightBarPanel x:Name="LightBarPanel"
                                       ZIndex="5"

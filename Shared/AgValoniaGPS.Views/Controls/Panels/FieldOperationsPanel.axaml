@@ -27,7 +27,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <controls:FloatingPanel x:Name="FP"
                             Title="Field Operations"
-                            CloseCommand="{Binding ToggleFieldOperationsPanelCommand}">
+                            CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
 
         <!-- All UI moves into PanelContent so we can group buttons into the
              three sections (Create Field / Work Field / AgShare) with

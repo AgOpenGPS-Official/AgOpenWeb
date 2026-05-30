@@ -3593,6 +3593,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleConfigurationPanelCommand { get; private set; }
     public ICommand? ToggleFieldOperationsPanelCommand { get; private set; }
     public ICommand? ToggleFieldToolsPanelCommand { get; private set; }
+    public ICommand? CloseAllNavFlyoutsCommand { get; private set; }
     public ICommand? ToggleAutoTrackCommand { get; private set; }
     public ICommand? ToggleGridCommand { get; private set; }
     public ICommand? ToggleDayNightCommand { get; private set; }

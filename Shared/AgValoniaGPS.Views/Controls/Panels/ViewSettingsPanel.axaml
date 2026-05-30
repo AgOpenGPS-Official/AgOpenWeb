@@ -28,7 +28,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <controls:FloatingPanel x:Name="FP"
                             MinWidth="200"
                             Title="{loc:Localize ViewSettings}"
-                            CloseCommand="{Binding ToggleViewSettingsPanelCommand}">
+                            CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
         <controls:FloatingPanel.PanelContent>
             <StackPanel Spacing="4">
 

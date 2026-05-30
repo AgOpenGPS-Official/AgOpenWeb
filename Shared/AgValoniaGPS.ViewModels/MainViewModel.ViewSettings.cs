@@ -52,38 +52,44 @@ public partial class MainViewModel
     public bool IsViewSettingsPanelVisible
     {
         get => _isViewSettingsPanelVisible;
-        set => SetProperty(ref _isViewSettingsPanelVisible, value);
+        set { SetProperty(ref _isViewSettingsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
     public bool IsFileMenuPanelVisible
     {
         get => _isFileMenuPanelVisible;
-        set => SetProperty(ref _isFileMenuPanelVisible, value);
+        set { SetProperty(ref _isFileMenuPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
     public bool IsToolsPanelVisible
     {
         get => _isToolsPanelVisible;
-        set => SetProperty(ref _isToolsPanelVisible, value);
+        set { SetProperty(ref _isToolsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
     public bool IsConfigurationPanelVisible
     {
         get => _isConfigurationPanelVisible;
-        set => SetProperty(ref _isConfigurationPanelVisible, value);
+        set { SetProperty(ref _isConfigurationPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
     public bool IsFieldOperationsPanelVisible
     {
         get => _isFieldOperationsPanelVisible;
-        set => SetProperty(ref _isFieldOperationsPanelVisible, value);
+        set { SetProperty(ref _isFieldOperationsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
     public bool IsFieldToolsPanelVisible
     {
         get => _isFieldToolsPanelVisible;
-        set => SetProperty(ref _isFieldToolsPanelVisible, value);
+        set { SetProperty(ref _isFieldToolsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
+
+    /// <summary>True while any left-nav fly-out is open. Drives the light-dismiss
+    /// scrim that closes the open menu when the operator taps outside it.</summary>
+    public bool IsAnyNavFlyoutOpen =>
+        IsViewSettingsPanelVisible || IsFileMenuPanelVisible || IsToolsPanelVisible
+        || IsConfigurationPanelVisible || IsFieldOperationsPanelVisible || IsFieldToolsPanelVisible;
 
     public bool IsSimulatorPanelVisible
     {
@@ -107,6 +113,21 @@ public partial class MainViewModel
     {
         get => _isXTEChartPanelVisible;
         set => SetProperty(ref _isXTEChartPanelVisible, value);
+    }
+
+    /// <summary>
+    /// Close every left-nav fly-out menu. Used to enforce "one menu open at a
+    /// time" (a toggle closes the others first) and to dismiss the open menu
+    /// when one of its items launches a dialog.
+    /// </summary>
+    public void CloseAllNavFlyouts()
+    {
+        IsViewSettingsPanelVisible = false;
+        IsFileMenuPanelVisible = false;
+        IsToolsPanelVisible = false;
+        IsConfigurationPanelVisible = false;
+        IsFieldOperationsPanelVisible = false;
+        IsFieldToolsPanelVisible = false;
     }
 
     #endregion

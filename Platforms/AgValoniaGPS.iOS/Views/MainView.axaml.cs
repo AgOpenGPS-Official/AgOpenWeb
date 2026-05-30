@@ -342,4 +342,11 @@ public partial class MainView : UserControl
 
     // Section control is now anchored (no drag needed)
 
+    // Light-dismiss: tapping the map area while a left-nav fly-out is open
+    // closes the menu (the scrim is only hit-testable while one is open).
+    private void NavScrim_PointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _viewModel?.CloseAllNavFlyouts();
+        e.Handled = true;
+    }
 }

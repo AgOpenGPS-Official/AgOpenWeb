@@ -27,7 +27,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
   <controls:FloatingPanel x:Name="FP"
                           Title="{loc:Localize FieldTools}"
-                          CloseCommand="{Binding ToggleFieldToolsPanelCommand}">
+                          CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
 
     <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/Headache.png"
                          Text="Field Builder"

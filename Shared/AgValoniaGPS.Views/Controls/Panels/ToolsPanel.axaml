@@ -27,7 +27,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
   <controls:FloatingPanel x:Name="FP"
                           Title="Tools"
-                          CloseCommand="{Binding ToggleToolsPanelCommand}">
+                          CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
     <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/WizardWand.png"
                          Text="{loc:Localize SteerWizard}"
                          Command="{Binding ShowSteerWizardCommand}"/>
