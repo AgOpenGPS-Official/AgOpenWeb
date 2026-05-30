@@ -36,27 +36,17 @@ public partial class MainViewModel
 {
     private void InitializeSettingsCommands()
     {
-        ShowAppDirectoriesDialogCommand = new RelayCommand(() =>
-        {
-            RefreshAppDirectories();
-            State.UI.ShowDialog(Models.State.DialogType.AppDirectories);
-        });
-
-        CloseAppDirectoriesDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
         ShowAppSettingsDialogCommand = new RelayCommand(() =>
         {
-            // Tabs inside the App Settings dialog (DisplayConfigTab,
-            // AdditionalOptionsConfigTab) bind to ConfigurationViewModel.
-            // Mirror ShowConfigurationDialogCommand's lazy-init so the
-            // tabs work even if the user never opened Configuration first.
+            // Units/System toggles bind to ConfigurationViewModel; lazy-init it
+            // (mirrors ShowConfigurationDialogCommand) so they work even if the
+            // user never opened Configuration first. App Directories (folded in
+            // from the old separate dialog) needs its list refreshed.
             if (ConfigurationViewModel == null)
             {
                 ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
             }
+            RefreshAppDirectories();
             State.UI.ShowDialog(Models.State.DialogType.AppSettings);
         });
 

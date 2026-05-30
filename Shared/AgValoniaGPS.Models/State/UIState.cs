@@ -60,7 +60,6 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsNtripProfileEditorDialogVisible));
                 OnPropertyChanged(nameof(IsConfirmationDialogVisible));
                 OnPropertyChanged(nameof(IsErrorDialogVisible));
-                OnPropertyChanged(nameof(IsAppDirectoriesDialogVisible));
                 OnPropertyChanged(nameof(IsHotkeyConfigDialogVisible));
                 OnPropertyChanged(nameof(IsAboutDialogVisible));
                 OnPropertyChanged(nameof(IsLogViewerDialogVisible));
@@ -108,7 +107,6 @@ public class UIState : ObservableObject
     public bool IsNtripProfileEditorDialogVisible => ActiveDialog == DialogType.NtripProfileEditor;
     public bool IsConfirmationDialogVisible => ActiveDialog == DialogType.Confirmation;
     public bool IsErrorDialogVisible => ActiveDialog == DialogType.Error;
-    public bool IsAppDirectoriesDialogVisible => ActiveDialog == DialogType.AppDirectories;
     public bool IsHotkeyConfigDialogVisible => ActiveDialog == DialogType.HotkeyConfig;
     public bool IsAboutDialogVisible => ActiveDialog == DialogType.About;
     public bool IsLogViewerDialogVisible => ActiveDialog == DialogType.LogViewer;
@@ -243,7 +241,6 @@ public enum DialogType
     NtripProfileEditor,
     Confirmation,
     Error,
-    AppDirectories,
     HotkeyConfig,
     About,
     LogViewer,

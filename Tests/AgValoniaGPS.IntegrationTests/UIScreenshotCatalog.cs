@@ -79,7 +79,6 @@ public static class UIScreenshotCatalog
                 (DialogType.DrawAB, "draw_ab"),
                 (DialogType.NtripProfiles, "ntrip_profiles"),
                 (DialogType.AgShareSettings, "agshare_settings"),
-                (DialogType.AppDirectories, "app_directories"),
                 (DialogType.HotkeyConfig, "hotkey_config"),
                 (DialogType.About, "about"),
                 (DialogType.LogViewer, "log_viewer"),

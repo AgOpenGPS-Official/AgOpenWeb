@@ -2393,8 +2393,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? TestNtripConnectionCommand { get; private set; }
 
     // Settings Commands
-    public ICommand? ShowAppDirectoriesDialogCommand { get; private set; }
-    public ICommand? CloseAppDirectoriesDialogCommand { get; private set; }
     public ICommand? ShowAppSettingsDialogCommand { get; private set; }
     public ICommand? CloseAppSettingsDialogCommand { get; private set; }
     public ICommand? ShowAboutDialogCommand { get; private set; }
