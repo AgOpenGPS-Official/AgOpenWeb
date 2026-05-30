@@ -71,7 +71,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
 
                 <!-- Help & Info -->
-                <Button Classes="MenuListButton" Content="{loc:Localize AgShareApi}"       HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowAgShareSettingsDialogCommand}"/>
                 <Button Classes="MenuListButton" Content="{loc:Localize Help}"             HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowHelpDialogCommand}"/>
                 <Button Classes="MenuListButton" Content="{loc:Localize About}"            HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowAboutDialogCommand}"/>
                 <Button Classes="MenuListButton" Content="{loc:Localize BugReportDump}"    HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowBugReportDialogCommand}"/>
