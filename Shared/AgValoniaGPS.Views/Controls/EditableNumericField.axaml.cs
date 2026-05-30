@@ -37,6 +37,13 @@ public partial class EditableNumericField : UserControl
     public static readonly StyledProperty<ICommand?> EditCommandProperty =
         AvaloniaProperty.Register<EditableNumericField, ICommand?>(nameof(EditCommand));
 
+    /// <summary>
+    /// Width of the inline edit box. Defaults to 100 (the original fixed width);
+    /// hosts that want the box to match an adjacent button can widen it.
+    /// </summary>
+    public static readonly StyledProperty<double> BoxWidthProperty =
+        AvaloniaProperty.Register<EditableNumericField, double>(nameof(BoxWidth), 100);
+
     public double Value
     {
         get => GetValue(ValueProperty);
@@ -59,6 +66,12 @@ public partial class EditableNumericField : UserControl
     {
         get => GetValue(EditCommandProperty);
         set => SetValue(EditCommandProperty, value);
+    }
+
+    public double BoxWidth
+    {
+        get => GetValue(BoxWidthProperty);
+        set => SetValue(BoxWidthProperty, value);
     }
 
     public EditableNumericField()

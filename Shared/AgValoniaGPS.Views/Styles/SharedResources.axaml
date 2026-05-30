@@ -59,6 +59,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <SolidColorBrush x:Key="WarningPanelBackgroundBrush" Color="#F5F1DC"/>
             <SolidColorBrush x:Key="SecondaryButtonBackgroundBrush" Color="#E8DCD8"/>
             <SolidColorBrush x:Key="AccentForegroundBrush" Color="#1E8449"/>
+
+            <!-- Toggle states (Screen & Alerts rows): light blue-gray off,
+                 dark blue-gray on, with light text on the active fill. -->
+            <SolidColorBrush x:Key="ToggleOffBrush" Color="#C2CBD4"/>
+            <SolidColorBrush x:Key="ToggleOnBrush" Color="#44566A"/>
+            <SolidColorBrush x:Key="ToggleOnForegroundBrush" Color="#F5F7FA"/>
         </ResourceDictionary>
         <!-- Dark: use dark blue-gray instead of pure black -->
         <ResourceDictionary x:Key="Dark">
@@ -77,6 +83,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <SolidColorBrush x:Key="WarningPanelBackgroundBrush" Color="#DD3A3A2A"/>
             <SolidColorBrush x:Key="SecondaryButtonBackgroundBrush" Color="#DD4A3A3A"/>
             <SolidColorBrush x:Key="AccentForegroundBrush" Color="#4A9A7E"/>
+
+            <!-- Toggle states (Screen & Alerts rows): blue-gray off, deeper
+                 blue-gray on, with light text on the active fill. -->
+            <SolidColorBrush x:Key="ToggleOffBrush" Color="#515C6B"/>
+            <SolidColorBrush x:Key="ToggleOnBrush" Color="#34495E"/>
+            <SolidColorBrush x:Key="ToggleOnForegroundBrush" Color="#F5F7FA"/>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 
