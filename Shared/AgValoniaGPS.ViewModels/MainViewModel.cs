@@ -3587,7 +3587,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     // Commands
-    public ICommand? ToggleViewSettingsPanelCommand { get; private set; }
+    public ICommand? ToggleScreenAlertsPanelCommand { get; private set; }
     public ICommand? ToggleFileMenuPanelCommand { get; private set; }
     public ICommand? ToggleToolsPanelCommand { get; private set; }
     public ICommand? ToggleConfigurationPanelCommand { get; private set; }
