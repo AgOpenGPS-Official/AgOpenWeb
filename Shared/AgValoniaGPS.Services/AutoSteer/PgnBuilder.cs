@@ -359,6 +359,50 @@ public static class PgnBuilder
         return crc;
     }
 
+    // ===== Module network config (AgIO parity: FormUDP.cs / UDP.designer.cs) =====
+    // These reproduce AgIO's exact wire bytes so the existing AiO board install
+    // base responds correctly. AgIO hardcodes the trailing CRC byte (0x47) for
+    // the scan (202) and set-subnet (201) packets and the modules validate only
+    // the magic bytes (data[5]/[6]), not the CRC — so we keep 0x47 verbatim.
+
+    /// <summary>
+    /// Build PGN 202 — "scan request" broadcast that asks every module to reply
+    /// with its IP/subnet (PGN 203). Exact AgIO bytes:
+    /// { 0x80, 0x81, 0x7F, 202, 3, 202, 202, 5, 0x47 }.
+    /// </summary>
+    public static byte[] BuildScanRequest()
+        => new byte[] { HEADER1, HEADER2, SOURCE, PgnNumbers.SCAN_REQUEST, 3, 202, 202, 5, 0x47 };
+
+    /// <summary>
+    /// Build PGN 201 — "set subnet" broadcast. Changes the first three IP octets
+    /// (the /24) on ALL modules at once; the host octet is preserved by each
+    /// module. There is no per-module selector — this is global, matching AgIO.
+    /// Exact AgIO bytes: { 0x80, 0x81, 0x7F, 201, 5, 201, 201, o1, o2, o3, 0x47 }.
+    /// </summary>
+    public static byte[] BuildSubnetChange(byte octet1, byte octet2, byte octet3)
+        => new byte[] { HEADER1, HEADER2, SOURCE, PgnNumbers.SET_SUBNET, 5, 201, 201, octet1, octet2, octet3, 0x47 };
+
+    /// <summary>
+    /// Parse a PGN 203 scan reply (13 bytes): module id at [2], full module IP at
+    /// [5..8], subnet (3 octets) at [9..11]. Returns false if not a well-formed
+    /// scan reply. Pure so it can be unit-tested without sockets.
+    /// </summary>
+    public static bool TryParseScanReply(byte[] data, out byte moduleId, out string ip, out string subnet)
+    {
+        moduleId = 0;
+        ip = string.Empty;
+        subnet = string.Empty;
+
+        if (data == null || data.Length < 12) return false;
+        if (data[0] != HEADER1 || data[1] != HEADER2) return false;
+        if (data[3] != PgnNumbers.SCAN_REPLY) return false;
+
+        moduleId = data[2];
+        ip = $"{data[5]}.{data[6]}.{data[7]}.{data[8]}";
+        subnet = $"{data[9]}.{data[10]}.{data[11]}";
+        return true;
+    }
+
     /// <summary>
     /// Validate a received PGN checksum.
     /// </summary>

@@ -146,9 +146,19 @@ public static class PgnNumbers
     public const byte HELLO_FROM_AGIO = 200;
 
     /// <summary>
-    /// Scan reply (0xCB = 203)
+    /// Scan reply FROM module — carries module IP + subnet (0xCB = 203)
     /// </summary>
     public const byte SCAN_REPLY = 203;
+
+    /// <summary>
+    /// Scan request / "who's out there" broadcast TO modules (0xCA = 202)
+    /// </summary>
+    public const byte SCAN_REQUEST = 202;
+
+    /// <summary>
+    /// Set module subnet (IP change) broadcast TO modules (0xC9 = 201)
+    /// </summary>
+    public const byte SET_SUBNET = 201;
 
     /// <summary>
     /// AutoSteer data (0xFD = 253)

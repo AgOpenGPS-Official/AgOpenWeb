@@ -23,6 +23,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Services.AutoSteer;
 using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.Services;
@@ -73,10 +74,13 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private DateTime _lastDataFromIMU = DateTime.MinValue;
 
     // Per-module remote IP from the most recent inbound packet. Populated from
-    // HELLO_FROM_* (and AutoSteer data PGNs, which also identify the module).
+    // HELLO_FROM_* (and AutoSteer data PGNs, which also identify the module), and
+    // authoritatively from a PGN 203 scan reply (which also carries GPS + subnet).
     private string? _autoSteerIp;
     private string? _machineIp;
     private string? _imuIp;
+    private string? _gpsIp;
+    private string? _moduleSubnet;
 
     private const int HELLO_TIMEOUT_MS = 2000; // 2 seconds for hello response
     private const int DATA_TIMEOUT_STEER_MACHINE_MS = 100; // 50Hz data = 20ms cycle, allow 100ms
@@ -347,7 +351,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 byte pgn = data[3];
 
                 // Track module connections based on hello messages
-                UpdateModuleConnection(pgn, remoteEndPoint);
+                UpdateModuleConnection(data, remoteEndPoint);
 
                 // Fire event
                 DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
@@ -442,14 +446,32 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         _perfTxWindowStart = DateTime.UtcNow;
     }
 
-    private void UpdateModuleConnection(byte pgn, IPEndPoint remoteEndPoint)
+    private void UpdateModuleConnection(byte[] data, IPEndPoint remoteEndPoint)
     {
         var now = DateTime.Now;
         var remoteIp = remoteEndPoint.Address.ToString();
+        byte pgn = data[3];
 
         // Track ALL PGNs as data - if we're getting any PGN from a module, it's sending data
         switch (pgn)
         {
+            // Scan reply: the module self-reports its full IP + subnet (and is the
+            // only inbound PGN that carries the GPS module's IP).
+            case PgnNumbers.SCAN_REPLY: // 203
+                if (PgnBuilder.TryParseScanReply(data, out byte moduleId, out string scanIp, out string scanSubnet))
+                {
+                    _moduleSubnet = scanSubnet;
+                    switch (moduleId)
+                    {
+                        case 126: _autoSteerIp = scanIp; break;
+                        case 123: _machineIp = scanIp; break;
+                        case 121: _imuIp = scanIp; break;
+                        case 120: _gpsIp = scanIp; break;
+                    }
+                    _lastModuleResponse = DateTime.UtcNow;
+                }
+                break;
+
             // AutoSteer PGNs
             case PgnNumbers.HELLO_FROM_AUTOSTEER: // 126
                 _lastHelloFromAutoSteer = now;
@@ -500,8 +522,94 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         ModuleType.AutoSteer => _autoSteerIp,
         ModuleType.Machine   => _machineIp,
         ModuleType.IMU       => _imuIp,
+        ModuleType.GPS       => _gpsIp,
         _                    => null,
     };
+
+    /// <summary>
+    /// The /24 subnet (first three octets) most recently reported by a module in
+    /// a PGN 203 scan reply, or null if no scan reply has been seen.
+    /// </summary>
+    public string? GetModuleSubnet() => _moduleSubnet;
+
+    /// <summary>
+    /// Broadcast a scan request (PGN 202). Modules reply with PGN 203 (parsed in
+    /// <see cref="UpdateModuleConnection"/> into per-module IP + subnet).
+    /// </summary>
+    public void ScanModules() => SendModuleConfig(PgnBuilder.BuildScanRequest());
+
+    /// <summary>
+    /// Broadcast a set-subnet command (PGN 201, global /24 change), then re-arm
+    /// discovery so the next module hellos re-lock the new subnet.
+    /// </summary>
+    public void SetModuleSubnet(byte octet1, byte octet2, byte octet3)
+    {
+        SendModuleConfig(PgnBuilder.BuildSubnetChange(octet1, octet2, octet3));
+        ResetDiscovery();
+    }
+
+    /// <summary>
+    /// Send a module-config packet (scan request 202 / set-subnet 201) to the
+    /// GLOBAL broadcast 255.255.255.255:8888, once per up IPv4 NIC — matching
+    /// AgIO's FormUDP behaviour. Global (not directed subnet.255) broadcast is
+    /// deliberate so the packet reaches modules that are currently on a different
+    /// or unknown subnet. Also hits localhost for the simulator/ModSim.
+    /// </summary>
+    private void SendModuleConfig(byte[] data)
+    {
+        if (!IsConnected) return;
+
+        // Simulator / ModSim listens on loopback.
+        try { _udpSocket?.SendTo(data, _localhostEndpoint); } catch { }
+
+        var dest = new IPEndPoint(IPAddress.Broadcast, 8888);
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (!nic.Supports(NetworkInterfaceComponent.IPv4)) continue;
+
+                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    if (IPAddress.IsLoopback(addr.Address)) continue;
+
+                    try
+                    {
+                        // Bind a transient socket to this NIC so the broadcast
+                        // actually egresses it (multi-homed tablets), exactly as
+                        // AgIO does. ReuseAddress lets us co-bind :9999 with the
+                        // main receive socket; replies still arrive on it.
+                        using var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                        s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
+                        s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                        s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontRoute, true);
+                        s.Bind(new IPEndPoint(addr.Address, 9999));
+                        s.SendTo(data, dest);
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[UDP] SendModuleConfig failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Drop the locked send endpoint and refresh discovery so the next module
+    /// hellos re-lock the (possibly new) subnet. Call right after a subnet change
+    /// so the app follows the modules to their new /24 instead of waiting out the
+    /// module-timeout.
+    /// </summary>
+    private void ResetDiscovery()
+    {
+        _lockedEndpoint = null;
+        _discoveryEndpoints = GetBroadcastEndpoints();
+        _lastDiscoveryRefresh = DateTime.UtcNow;
+    }
 
     /// <summary>
     /// Lock outgoing packets to the subnet of a responding module.
@@ -579,6 +687,34 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         catch { }
 
         return null;
+    }
+
+    /// <summary>
+    /// All non-loopback IPv4 addresses of the host's up network interfaces.
+    /// Lets the operator see which subnet the host is on so they can match the
+    /// modules' subnet.
+    /// </summary>
+    public IReadOnlyList<string> GetLocalIpAddresses()
+    {
+        var list = new List<string>();
+        try
+        {
+            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus != OperationalStatus.Up) continue;
+                if (!nic.Supports(NetworkInterfaceComponent.IPv4)) continue;
+
+                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
+                {
+                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
+                    if (IPAddress.IsLoopback(addr.Address)) continue;
+                    var s = addr.Address.ToString();
+                    if (!list.Contains(s)) list.Add(s);
+                }
+            }
+        }
+        catch { }
+        return list;
     }
 
     public void Dispose()

@@ -106,6 +106,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         Command="{Binding ShowAutoSteerConfigCommand}">
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerConf.png" Stretch="Uniform"/>
                 </Button>
+
+                <!-- 8. Network IO (modules + NTRIP). Vector network glyph (hub +
+                     nodes) using the theme foreground so it contrasts on the
+                     blue/gray button in both light and dark themes. -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Network IO"
+                        Command="{Binding ToggleNetworkIoPanelCommand}">
+                    <Viewbox Stretch="Uniform">
+                        <Canvas Width="48" Height="48">
+                            <Canvas.Styles>
+                                <Style Selector="Line">
+                                    <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                    <Setter Property="StrokeThickness" Value="2.5"/>
+                                </Style>
+                                <Style Selector="Ellipse">
+                                    <Setter Property="Fill" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                </Style>
+                            </Canvas.Styles>
+                            <!-- spokes from the hub to each node -->
+                            <Line StartPoint="24,24" EndPoint="24,10"/>
+                            <Line StartPoint="24,24" EndPoint="11,37"/>
+                            <Line StartPoint="24,24" EndPoint="37,37"/>
+                            <!-- hub -->
+                            <Ellipse Canvas.Left="17" Canvas.Top="17" Width="14" Height="14"/>
+                            <!-- nodes -->
+                            <Ellipse Canvas.Left="18" Canvas.Top="4" Width="12" Height="12"/>
+                            <Ellipse Canvas.Left="5" Canvas.Top="31" Width="12" Height="12"/>
+                            <Ellipse Canvas.Left="31" Canvas.Top="31" Width="12" Height="12"/>
+                        </Canvas>
+                    </Viewbox>
+                </Button>
             </StackPanel>
         </Border>
 
@@ -116,6 +146,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     Canvas.Left="90" Canvas.Top="0"
                                     ZIndex="15"
                                     DataContext="{Binding}"/>
+
+        <!-- Network IO Panel -->
+        <controls:NetworkIoPanel x:Name="NetworkIoPanelControl"
+                                 Canvas.Left="90" Canvas.Top="0"
+                                 ZIndex="15"
+                                 DataContext="{Binding}"/>
 
         <!-- File Menu Panel -->
         <controls:FileMenuPanel x:Name="FileMenuPanelControl"

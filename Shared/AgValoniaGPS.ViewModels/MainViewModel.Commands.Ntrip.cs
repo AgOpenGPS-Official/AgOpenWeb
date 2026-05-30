@@ -44,6 +44,17 @@ public partial class MainViewModel
             SelectedNtripProfile = null;
         });
 
+        // Back: dismiss the dialog and reopen the Network IO panel it was
+        // launched from (CloseDialog fires DialogChanged with Current=None, so
+        // it does NOT re-close the fly-out we open here).
+        BackFromNtripProfilesCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+            SelectedNtripProfile = null;
+            CloseAllNavFlyouts();
+            IsNetworkIoPanelVisible = true;
+        });
+
         AddNtripProfileCommand = new RelayCommand(() =>
         {
             EditingNtripProfile = _ntripProfileService.CreateNewProfile("New Profile");

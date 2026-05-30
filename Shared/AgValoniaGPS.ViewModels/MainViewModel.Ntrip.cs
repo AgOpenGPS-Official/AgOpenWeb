@@ -127,6 +127,58 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Loads NTRIP profiles then, if a default profile exists with auto-connect
+    /// enabled, connects to it at startup. Keeps corrections flowing to the GPS
+    /// from app launch so there is no wait when a field is opened.
+    /// </summary>
+    private async Task LoadProfilesThenAutoConnectAsync()
+    {
+        try
+        {
+            await _ntripProfileService.LoadProfilesAsync();
+            await ConnectDefaultNtripProfileOnStartupAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading NTRIP profiles / startup auto-connect");
+        }
+    }
+
+    /// <summary>
+    /// Connects to the default NTRIP profile at startup (if one is set and its
+    /// auto-connect is enabled, and we are not already connected). A field-loaded
+    /// later that has its own profile will switch via <see cref="HandleNtripProfileForFieldAsync"/>.
+    /// </summary>
+    private async Task ConnectDefaultNtripProfileOnStartupAsync()
+    {
+        var profile = _ntripProfileService.DefaultProfile;
+        if (profile == null)
+        {
+            _logger.LogDebug("No default NTRIP profile; skipping startup auto-connect");
+            return;
+        }
+
+        if (!profile.AutoConnectOnFieldLoad)
+        {
+            _logger.LogDebug("Default NTRIP profile '{ProfileName}' has auto-connect disabled", profile.Name);
+            return;
+        }
+
+        if (_ntripService.IsConnected)
+            return;
+
+        // Mirror the field-load path: reflect the profile in the display props.
+        NtripCasterAddress = profile.CasterHost;
+        NtripCasterPort = profile.CasterPort;
+        NtripMountPoint = profile.MountPoint;
+        NtripUsername = profile.Username;
+        NtripPassword = profile.Password;
+
+        _logger.LogInformation("Auto-connecting default NTRIP profile '{ProfileName}' at startup", profile.Name);
+        await ConnectToNtripAsync();
+    }
+
+    /// <summary>
     /// Handles NTRIP profile connection when a field is loaded.
     /// Checks for field-specific profile or falls back to default profile.
     /// </summary>
@@ -145,6 +197,18 @@ public partial class MainViewModel
             if (!profile.AutoConnectOnFieldLoad)
             {
                 _logger.LogDebug("NTRIP profile '{ProfileName}' has auto-connect disabled", profile.Name);
+                return;
+            }
+
+            // Already connected to this exact caster (e.g. the default connected at
+            // startup, and this field uses the default) — leave it alone so
+            // corrections keep flowing without a disconnect/reconnect blip.
+            if (_ntripService.IsConnected &&
+                profile.CasterHost == NtripCasterAddress &&
+                profile.CasterPort == NtripCasterPort &&
+                profile.MountPoint == NtripMountPoint)
+            {
+                _logger.LogDebug("NTRIP already connected to '{ProfileName}' caster; keeping it", profile.Name);
                 return;
             }
 

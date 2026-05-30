@@ -40,6 +40,7 @@ public partial class MainViewModel
     private bool _isConfigurationPanelVisible;
     private bool _isFieldOperationsPanelVisible;
     private bool _isFieldToolsPanelVisible;
+    private bool _isNetworkIoPanelVisible;
     private bool _isSimulatorPanelVisible;
     private bool _isSteerChartPanelVisible;
     private bool _isHeadingChartPanelVisible;
@@ -85,11 +86,18 @@ public partial class MainViewModel
         set { SetProperty(ref _isFieldToolsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
+    public bool IsNetworkIoPanelVisible
+    {
+        get => _isNetworkIoPanelVisible;
+        set { SetProperty(ref _isNetworkIoPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
+    }
+
     /// <summary>True while any left-nav fly-out is open. Drives the light-dismiss
     /// scrim that closes the open menu when the operator taps outside it.</summary>
     public bool IsAnyNavFlyoutOpen =>
         IsScreenAlertsPanelVisible || IsFileMenuPanelVisible || IsToolsPanelVisible
-        || IsConfigurationPanelVisible || IsFieldOperationsPanelVisible || IsFieldToolsPanelVisible;
+        || IsConfigurationPanelVisible || IsFieldOperationsPanelVisible || IsFieldToolsPanelVisible
+        || IsNetworkIoPanelVisible;
 
     public bool IsSimulatorPanelVisible
     {
@@ -128,6 +136,7 @@ public partial class MainViewModel
         IsConfigurationPanelVisible = false;
         IsFieldOperationsPanelVisible = false;
         IsFieldToolsPanelVisible = false;
+        IsNetworkIoPanelVisible = false;
     }
 
     #endregion

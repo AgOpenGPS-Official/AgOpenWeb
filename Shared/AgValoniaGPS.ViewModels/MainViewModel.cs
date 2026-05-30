@@ -294,6 +294,10 @@ public partial class MainViewModel : ObservableObject
                 case nameof(Models.Configuration.ConnectionConfig.IsAutoSteerConfigured):
                 case nameof(Models.Configuration.ConnectionConfig.IsMachineConfigured):
                     RaiseModuleStatusKindChanged();
+                    // Module-present checkboxes (Network IO panel) are persistent
+                    // config. Save on user change only — never during the initial
+                    // settings load (guarded by _configReady).
+                    if (_configReady) _configurationService.SaveAppSettings();
                     break;
             }
         };
@@ -513,6 +517,7 @@ public partial class MainViewModel : ObservableObject
         InitializeTrackManagementCommands();
         InitializeRecordedPathCommands();
         InitializeNtripCommands();
+        InitializeNetworkIoCommands();
         InitializeWizardCommands();
         InitializeSettingsCommands();
         InitializeHotkeyCommands();
@@ -524,6 +529,11 @@ public partial class MainViewModel : ObservableObject
         // IMPORTANT: Run synchronously to ensure settings are loaded before any save can occur
         _displaySettings.LoadSettings();
         RestoreSettings();
+
+        // Settings are now loaded; subsequent ConnectionConfig changes are
+        // user-driven and should persist (see the ConfigStore.Connections
+        // subscription above).
+        _configReady = true;
 
         // Apply theme variant based on saved day/night mode
         ApplyThemeVariant(IsDayMode);
@@ -690,8 +700,9 @@ public partial class MainViewModel : ObservableObject
         // Restore vehicle profile settings
         LoadDefaultVehicleProfile();
 
-        // Load NTRIP profiles
-        _ = _ntripProfileService.LoadProfilesAsync();
+        // Load NTRIP profiles, then auto-connect the default caster at startup so
+        // GPS gets RTCM corrections immediately (no wait when opening a field).
+        _ = LoadProfilesThenAutoConnectAsync();
 
         // Restore legacy NTRIP settings (used if no profiles exist)
         NtripCasterAddress = settings.NtripCasterIp;
@@ -881,6 +892,9 @@ public partial class MainViewModel : ObservableObject
                 State.Connections.AutoSteerIpAddress = _udpService.GetModuleIpAddress(ModuleType.AutoSteer);
                 State.Connections.MachineIpAddress = _udpService.GetModuleIpAddress(ModuleType.Machine);
                 State.Connections.ImuIpAddress = _udpService.GetModuleIpAddress(ModuleType.IMU);
+                // GPS IP + subnet are only known after a PGN 203 scan reply.
+                State.Connections.GpsIpAddress = _udpService.GetModuleIpAddress(ModuleType.GPS);
+                State.Connections.ModuleSubnet = _udpService.GetModuleSubnet();
 
                 // Legacy property updates (for existing bindings - will be removed in Phase 5)
                 IsAutoSteerDataOk = steerOk;
@@ -2369,6 +2383,7 @@ public partial class MainViewModel : ObservableObject
     // NTRIP Profiles commands
     public ICommand? ShowNtripProfilesDialogCommand { get; private set; }
     public ICommand? CloseNtripProfilesDialogCommand { get; private set; }
+    public ICommand? BackFromNtripProfilesCommand { get; private set; }
     public ICommand? AddNtripProfileCommand { get; private set; }
     public ICommand? EditNtripProfileCommand { get; private set; }
     public ICommand? DeleteNtripProfileCommand { get; private set; }
@@ -3593,6 +3608,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleConfigurationPanelCommand { get; private set; }
     public ICommand? ToggleFieldOperationsPanelCommand { get; private set; }
     public ICommand? ToggleFieldToolsPanelCommand { get; private set; }
+    public ICommand? ToggleNetworkIoPanelCommand { get; private set; }
     public ICommand? CloseAllNavFlyoutsCommand { get; private set; }
     public ICommand? ToggleAutoTrackCommand { get; private set; }
     public ICommand? ToggleGridCommand { get; private set; }

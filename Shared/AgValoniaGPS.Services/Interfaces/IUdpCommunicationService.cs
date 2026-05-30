@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -45,6 +46,11 @@ public interface IUdpCommunicationService
     /// Local IP address being used
     /// </summary>
     string? LocalIPAddress { get; }
+
+    /// <summary>
+    /// All non-loopback IPv4 addresses of the host's up network interfaces.
+    /// </summary>
+    IReadOnlyList<string> GetLocalIpAddresses();
 
     /// <summary>
     /// Start UDP communication service
@@ -84,6 +90,25 @@ public interface IUdpCommunicationService
     /// has been received from it yet. Dotted-quad string (no port).
     /// </summary>
     string? GetModuleIpAddress(ModuleType moduleType);
+
+    /// <summary>
+    /// The /24 subnet (first three octets, e.g. "192.168.5") most recently
+    /// reported by a module in a PGN 203 scan reply, or null if none seen.
+    /// </summary>
+    string? GetModuleSubnet();
+
+    /// <summary>
+    /// Broadcast a scan request (PGN 202) asking every module to reply with its
+    /// IP + subnet (PGN 203). Matches AgIO's FormUDP "Scan" button.
+    /// </summary>
+    void ScanModules();
+
+    /// <summary>
+    /// Broadcast a set-subnet command (PGN 201) changing the first three IP octets
+    /// (/24) on ALL modules at once, then re-arm discovery so the app follows the
+    /// modules onto their new subnet. Matches AgIO's "Send Subnet" button.
+    /// </summary>
+    void SetModuleSubnet(byte octet1, byte octet2, byte octet3);
 }
 
 /// <summary>

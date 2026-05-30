@@ -67,6 +67,13 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _isGpsDataOk, value);
     }
 
+    private string? _gpsIpAddress;
+    public string? GpsIpAddress
+    {
+        get => _gpsIpAddress;
+        set => SetProperty(ref _gpsIpAddress, value);
+    }
+
     // NTRIP
     private bool _isNtripConnected;
     public bool IsNtripConnected
@@ -160,6 +167,15 @@ public class ConnectionState : ObservableObject
     {
         get => _imuIpAddress;
         set => SetProperty(ref _imuIpAddress, value);
+    }
+
+    // Detected module /24 subnet (first three octets, e.g. "192.168.5"), learned
+    // from a PGN 203 scan reply. Seeds the Network IO subnet-change entry.
+    private string? _moduleSubnet;
+    public string? ModuleSubnet
+    {
+        get => _moduleSubnet;
+        set => SetProperty(ref _moduleSubnet, value);
     }
 
     // Overall status
