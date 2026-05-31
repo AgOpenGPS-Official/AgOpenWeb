@@ -47,7 +47,7 @@ public partial class MainViewModel
                 ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
             }
             RefreshAppDirectories();
-            State.UI.ShowDialog(Models.State.DialogType.AppSettings);
+            OpenChainDialog(Models.State.DialogType.AppSettings);
         });
 
         CloseAppSettingsDialogCommand = new RelayCommand(() =>
@@ -57,7 +57,7 @@ public partial class MainViewModel
 
         ShowAboutDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(Models.State.DialogType.About);
+            OpenChainDialog(Models.State.DialogType.About);
         });
 
         CloseAboutDialogCommand = new RelayCommand(() =>
@@ -83,9 +83,15 @@ public partial class MainViewModel
         ShowLogViewerDialogCommand = new RelayCommand(() =>
         {
             RefreshLogEntries();
-            _logStoreSubscribed = true;
-            LogStore.Instance.LogAdded += OnLogStoreUpdated;
-            State.UI.ShowDialog(Models.State.DialogType.LogViewer);
+            // Guard against a double subscription: with the chain model the dialog
+            // can be dismissed via Back/Close (cleanup runs on hide), so only wire
+            // the LogStore handler when not already subscribed.
+            if (!_logStoreSubscribed)
+            {
+                LogStore.Instance.LogAdded += OnLogStoreUpdated;
+                _logStoreSubscribed = true;
+            }
+            OpenChainDialog(Models.State.DialogType.LogViewer);
         });
 
         CloseLogViewerDialogCommand = new RelayCommand(() =>
@@ -133,7 +139,7 @@ public partial class MainViewModel
         ShowViewSettingsDialogCommand = new RelayCommand(() =>
         {
             RefreshSettingsTree();
-            State.UI.ShowDialog(Models.State.DialogType.ViewSettings);
+            OpenChainDialog(Models.State.DialogType.ViewSettings);
         });
 
         CloseViewSettingsDialogCommand = new RelayCommand(() =>
@@ -144,7 +150,7 @@ public partial class MainViewModel
         // Help (#16)
         ShowHelpDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(Models.State.DialogType.Help);
+            OpenChainDialog(Models.State.DialogType.Help);
         });
 
         CloseHelpDialogCommand = new RelayCommand(() =>
@@ -155,7 +161,7 @@ public partial class MainViewModel
         // Language Selection (#40)
         ShowLanguageDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(Models.State.DialogType.Language);
+            OpenChainDialog(Models.State.DialogType.Language);
         });
 
         CloseLanguageDialogCommand = new RelayCommand(() =>
@@ -235,7 +241,7 @@ public partial class MainViewModel
                 StatusMessage = $"Bug report capture failed: {ex.Message}";
             }
 
-            State.UI.ShowDialog(Models.State.DialogType.BugReport);
+            OpenChainDialog(Models.State.DialogType.BugReport);
         });
 
         CloseBugReportDialogCommand = new RelayCommand(() =>

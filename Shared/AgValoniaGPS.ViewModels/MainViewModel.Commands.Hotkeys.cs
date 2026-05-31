@@ -48,8 +48,7 @@ public partial class MainViewModel
     {
         ShowHotkeyConfigDialogCommand = new RelayCommand(() =>
         {
-            IsFileMenuPanelVisible = false;
-            State.UI.ShowDialog(DialogType.HotkeyConfig);
+            OpenChainDialog(DialogType.HotkeyConfig);
         });
 
         CloseHotkeyConfigDialogCommand = new RelayCommand(() =>
