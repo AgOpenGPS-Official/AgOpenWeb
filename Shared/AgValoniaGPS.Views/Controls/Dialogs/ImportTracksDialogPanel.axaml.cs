@@ -30,7 +30,7 @@ public partial class ImportTracksDialogPanel : UserControl
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.State.UI.CloseDialog();
+            vm.NavCloseChainCommand?.Execute(null);
         }
     }
 

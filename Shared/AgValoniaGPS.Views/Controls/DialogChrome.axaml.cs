@@ -64,6 +64,18 @@ public partial class DialogChrome : UserControl
         set => SetValue(ShowBackButtonProperty, value);
     }
 
+    // When true (default) the panel opens at the chain anchor and is header-draggable.
+    // Set false for full-screen workspace dialogs (Field Builder, Vehicle Config,
+    // AutoSteer) that fill their parent — there is no position to anchor or drag.
+    public static readonly StyledProperty<bool> AnchoredProperty =
+        AvaloniaProperty.Register<DialogChrome, bool>(nameof(Anchored), true);
+
+    public bool Anchored
+    {
+        get => GetValue(AnchoredProperty);
+        set => SetValue(AnchoredProperty, value);
+    }
+
     public static readonly StyledProperty<ICommand?> BackCommandProperty =
         AvaloniaProperty.Register<DialogChrome, ICommand?>(nameof(BackCommand));
 
@@ -150,6 +162,7 @@ public partial class DialogChrome : UserControl
     /// </summary>
     private void PositionAtChainAnchor()
     {
+        if (!Anchored) return; // full-screen workspaces fill their parent
         var top = TopLevel.GetTopLevel(this);
         if (top == null || this.Parent is not Visual parent) return;
         var parentOrigin = parent.TranslatePoint(new Point(0, 0), top) ?? default;
@@ -185,6 +198,7 @@ public partial class DialogChrome : UserControl
 
     private void Handle_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (!Anchored) return; // full-screen workspaces don't drag
         if (sender is Grid handle)
         {
             _isDragging = false;

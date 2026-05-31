@@ -21,6 +21,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="350"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.ImportTracksDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -73,31 +74,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     </UserControl.Styles>
 
     <Grid>
-        <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog panel -->
-        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                MinWidth="380"
-                MaxWidth="480"
-                MaxHeight="420"
-                Padding="16">
-            <Grid RowDefinitions="Auto,Auto,*,Auto">
-                <!-- Header -->
-                <TextBlock Grid.Row="0" Classes="Header" Text="{loc:Localize ImportTracksFromField}"/>
+        <controls:DialogChrome Title="{loc:Localize ImportTracksFromField}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MinWidth="380" MaxWidth="480" MaxHeight="420">
+            <Grid RowDefinitions="Auto,*">
 
                 <!-- Description -->
-                <TextBlock Grid.Row="1" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="13" Margin="0,0,0,8"
+                <TextBlock Grid.Row="0" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="13" Margin="0,0,0,8"
                            TextWrapping="Wrap"
                            Text="{loc:Localize SelectAFieldToImportItsTracksIntoTheCurrentField}"/>
 
                 <!-- Field list -->
-                <ScrollViewer Grid.Row="2" MinHeight="150" MaxHeight="250">
+                <ScrollViewer Grid.Row="1" MinHeight="150" MaxHeight="250">
                     <ItemsControl x:Name="FieldsListBox"
                                   ItemsSource="{Binding ImportFieldsList}">
                         <ItemsControl.ItemTemplate>
@@ -112,13 +103,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     </ItemsControl>
                 </ScrollViewer>
 
-                <!-- Buttons -->
-                <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
-                    <Border Grid.Column="0"/>
-                    <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="{loc:Localize Cancel}"
-                            Command="{Binding CloseImportTracksDialogCommand}"/>
-                </Grid>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

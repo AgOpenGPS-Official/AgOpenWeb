@@ -146,7 +146,7 @@ public partial class FieldBuilderDialogPanel : UserControl
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is MainViewModel vm)
-            vm.State.UI.CloseDialog();
+            vm.NavCloseChainCommand?.Execute(null);
     }
 
     private void AddTrackBtn_Click(object? sender, RoutedEventArgs e)

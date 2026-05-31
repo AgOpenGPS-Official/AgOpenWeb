@@ -1239,7 +1239,7 @@ public partial class MainViewModel
 
         // Field Builder dialog
         ShowFieldBuilderCommand = new RelayCommand(() =>
-            State.UI.ShowDialog(Models.State.DialogType.FieldBuilder));
+            OpenChainDialog(Models.State.DialogType.FieldBuilder));
 
         CloseFieldBuilderCommand = new RelayCommand(() =>
             State.UI.CloseDialog());

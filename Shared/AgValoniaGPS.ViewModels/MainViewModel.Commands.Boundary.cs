@@ -214,7 +214,7 @@ public partial class MainViewModel
                 StatusMessage = "Open a field first";
                 return;
             }
-            State.UI.ShowDialog(DialogType.FieldBuilder);
+            OpenChainDialog(DialogType.FieldBuilder);
             UpdateHeadlandPreview();
         });
 
@@ -315,7 +315,7 @@ public partial class MainViewModel
         // Headland Dialog - now opens Field Builder
         ShowHeadlandDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.FieldBuilder);
+            OpenChainDialog(DialogType.FieldBuilder);
             UpdateHeadlandPreview();
         });
 
