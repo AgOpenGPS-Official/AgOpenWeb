@@ -51,6 +51,13 @@ public partial class MainViewModel
     // once the dialog back-stack is exhausted.
     private NavFlyout _chainOriginFlyout = NavFlyout.None;
 
+    // The fly-out most recently closed by CloseAllNavFlyouts. Menu fly-outs close
+    // themselves on item-click (CloseOnItemClick) BEFORE the item's command runs,
+    // so by the time OpenChainDialog reads CurrentFlyout() the fly-out is already
+    // gone. This remembers it so the origin can still be captured. Consumed (set
+    // to None) by OpenChainDialog so it can't go stale across unrelated opens.
+    private NavFlyout _lastClosedFlyout = NavFlyout.None;
+
     private void InitializeChainNavigationCommands()
     {
         NavBackCommand = new RelayCommand(NavigateBack);
@@ -63,7 +70,14 @@ public partial class MainViewModel
     /// </summary>
     private void OpenChainDialog(DialogType dialog)
     {
-        _chainOriginFlyout = CurrentFlyout();
+        // Prefer a still-open fly-out; fall back to the one just closed by an
+        // item-click. Consume the fallback so a later non-fly-out open (e.g. a
+        // hotkey) doesn't inherit a stale origin.
+        var origin = CurrentFlyout();
+        if (origin == NavFlyout.None)
+            origin = _lastClosedFlyout;
+        _chainOriginFlyout = origin;
+        _lastClosedFlyout = NavFlyout.None;
         State.UI.PushDialog(dialog);
     }
 

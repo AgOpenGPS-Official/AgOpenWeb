@@ -27,7 +27,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
   <controls:FloatingPanel x:Name="FP"
                           Width="420"
-                          Title="{loc:Localize SteerChart}"
+                          Title="{loc:Localize XteChart}"
                           CloseCommand="{Binding ToggleXTEChartPanelCommand}">
     <controls:FloatingPanel.PanelContent>
       <controls:ChartControl x:Name="XTEChart" Height="192"/>
