@@ -158,7 +158,7 @@ public partial class MainViewModel
         // AgShare Dialogs
         ShowAgShareDownloadDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.AgShareDownload);
+            OpenChainDialog(DialogType.AgShareDownload);
         });
 
         CancelAgShareDownloadDialogCommand = new RelayCommand(() =>
@@ -168,7 +168,7 @@ public partial class MainViewModel
 
         ShowAgShareUploadDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.AgShareUpload);
+            OpenChainDialog(DialogType.AgShareUpload);
         });
 
         CancelAgShareUploadDialogCommand = new RelayCommand(() =>
@@ -182,7 +182,7 @@ public partial class MainViewModel
             AgShareSettingsServerUrl = ConfigStore.Connections.AgShareServer;
             AgShareSettingsApiKey = ConfigStore.Connections.AgShareApiKey;
             AgShareSettingsEnabled = ConfigStore.Connections.AgShareEnabled;
-            State.UI.ShowDialog(DialogType.AgShareSettings);
+            OpenChainDialog(DialogType.AgShareSettings);
         });
 
         CancelAgShareSettingsDialogCommand = new RelayCommand(() =>

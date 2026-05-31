@@ -30,7 +30,7 @@ public partial class IsoXmlImportDialogPanel : UserControl
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CancelIsoXmlImportDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
         e.Handled = true;
     }

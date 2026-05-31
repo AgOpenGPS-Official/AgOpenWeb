@@ -18,10 +18,9 @@ public partial class ResumeJobDialogPanel : UserControl
 
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (DataContext is MainViewModel vm
-            && vm.CancelResumeJobDialogCommand?.CanExecute(null) == true)
+        if (DataContext is MainViewModel vm)
         {
-            vm.CancelResumeJobDialogCommand.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
         e.Handled = true;
     }

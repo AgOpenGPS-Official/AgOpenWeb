@@ -30,7 +30,7 @@ public partial class KmlImportDialogPanel : UserControl
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CancelKmlImportDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
         e.Handled = true;
     }
