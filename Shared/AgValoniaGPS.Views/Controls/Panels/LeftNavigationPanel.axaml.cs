@@ -17,6 +17,9 @@
 using System;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Reactive;
+using Avalonia.VisualTree;
+using AgValoniaGPS.Views.Controls;
 
 namespace AgValoniaGPS.Views.Controls.Panels;
 
@@ -44,6 +47,23 @@ public partial class LeftNavigationPanel : UserControl
         var panel = this.FindControl<T>(controlName);
         if (panel == null) return;
 
+        // Remember the panel's home position (its XAML Canvas.Left/Top) and snap
+        // back to it each time the panel is shown, so a fly-out always reopens at
+        // home rather than wherever it was last dragged.
+        var homeLeft = Canvas.GetLeft(panel);
+        var homeTop = Canvas.GetTop(panel);
+        panel.GetObservable(Visual.IsVisibleProperty).Subscribe(new AnonymousObserver<bool>(visible =>
+        {
+            if (visible)
+            {
+                Canvas.SetLeft(panel, homeLeft);
+                Canvas.SetTop(panel, homeTop);
+                // This fly-out is the chain root; publish its home position so the
+                // first dialog opens aligned over it.
+                PublishFlyoutAnchor(panel);
+            }
+        }));
+
         // Use reflection to check for DragMoved event
         var dragMovedEvent = typeof(T).GetEvent("DragMoved");
         if (dragMovedEvent != null)
@@ -58,8 +78,28 @@ public partial class LeftNavigationPanel : UserControl
                     if (double.IsNaN(top)) top = 0;
                     Canvas.SetLeft(control, left + delta.X);
                     Canvas.SetTop(control, top + delta.Y);
+                    // Keep the chain anchor in sync so a child opens over the
+                    // dragged fly-out rather than at its old home.
+                    PublishFlyoutAnchor(control);
                 }
             }));
+        }
+    }
+
+    /// <summary>
+    /// Publish a fly-out's current on-screen upper-left to <see cref="ChainPanelAnchor"/>.
+    /// Computed from the host Canvas origin plus the panel's Canvas.Left/Top so it is
+    /// free of layout lag (the attached coords are already up to date during a drag).
+    /// </summary>
+    private static void PublishFlyoutAnchor(Control panel)
+    {
+        var top = TopLevel.GetTopLevel(panel);
+        if (top == null || panel.Parent is not Visual canvas) return;
+        if (canvas.TranslatePoint(new Point(0, 0), top) is { } origin)
+        {
+            var l = Canvas.GetLeft(panel); if (double.IsNaN(l)) l = 0;
+            var t = Canvas.GetTop(panel); if (double.IsNaN(t)) t = 0;
+            ChainPanelAnchor.Current = new Point(origin.X + l, origin.Y + t);
         }
     }
 }

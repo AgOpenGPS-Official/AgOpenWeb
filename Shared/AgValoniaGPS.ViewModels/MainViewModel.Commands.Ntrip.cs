@@ -32,34 +32,19 @@ public partial class MainViewModel
 {
     private void InitializeNtripCommands()
     {
+        // First level of the chain: opens from the Network IO fly-out, which the
+        // shared chain navigation records so Back can reopen it.
         ShowNtripProfilesDialogCommand = new RelayCommand(() =>
         {
             RefreshNtripProfiles();
-            State.UI.ShowDialog(DialogType.NtripProfiles);
-        });
-
-        CloseNtripProfilesDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            SelectedNtripProfile = null;
-        });
-
-        // Back: dismiss the dialog and reopen the Network IO panel it was
-        // launched from (CloseDialog fires DialogChanged with Current=None, so
-        // it does NOT re-close the fly-out we open here).
-        BackFromNtripProfilesCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            SelectedNtripProfile = null;
-            CloseAllNavFlyouts();
-            IsNetworkIoPanelVisible = true;
+            OpenChainDialog(DialogType.NtripProfiles);
         });
 
         AddNtripProfileCommand = new RelayCommand(() =>
         {
             EditingNtripProfile = _ntripProfileService.CreateNewProfile("New Profile");
             PopulateAvailableFieldsForProfile(EditingNtripProfile);
-            State.UI.ShowDialog(DialogType.NtripProfileEditor);
+            PushChainDialog(DialogType.NtripProfileEditor);
         });
 
         EditNtripProfileCommand = new RelayCommand(() =>
@@ -81,7 +66,7 @@ public partial class MainViewModel
                     FilePath = SelectedNtripProfile.FilePath
                 };
                 PopulateAvailableFieldsForProfile(EditingNtripProfile);
-                State.UI.ShowDialog(DialogType.NtripProfileEditor);
+                PushChainDialog(DialogType.NtripProfileEditor);
             }
         });
 
@@ -126,7 +111,7 @@ public partial class MainViewModel
                 RefreshNtripProfiles();
                 EditingNtripProfile = null;
                 AvailableFieldsForProfile.Clear();
-                State.UI.ShowDialog(DialogType.NtripProfiles);
+                NavigateBack(); // pop the editor back to the profiles list
                 StatusMessage = "NTRIP profile saved";
             }
         });
@@ -136,7 +121,7 @@ public partial class MainViewModel
             EditingNtripProfile = null;
             AvailableFieldsForProfile.Clear();
             NtripTestStatus = string.Empty;
-            State.UI.ShowDialog(DialogType.NtripProfiles);
+            NavigateBack(); // pop the editor back to the profiles list
         });
 
         TestNtripConnectionCommand = new AsyncRelayCommand(async () =>

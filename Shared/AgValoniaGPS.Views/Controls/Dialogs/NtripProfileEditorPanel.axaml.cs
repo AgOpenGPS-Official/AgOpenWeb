@@ -28,6 +28,8 @@ public partial class NtripProfileEditorPanel : UserControl
 
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // Don't close on backdrop click - user must use Cancel or Save
+        // Light-dismiss: an outside tap closes the whole chain back to the map.
+        if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
+            vm.NavCloseChainCommand?.Execute(null);
     }
 }

@@ -1,0 +1,93 @@
+<!--
+AgValoniaGPS
+Copyright (C) 2024-2025 AgValoniaGPS Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:AgValoniaGPS.Views.Controls"
+             x:Class="AgValoniaGPS.Views.Controls.DialogChrome"
+             HorizontalAlignment="Left" VerticalAlignment="Top"
+             Margin="90,8,0,0">
+
+    <UserControl.Styles>
+        <!-- Header chrome button (Back / Close): flat, square, hover-lit.
+             Matches the FloatingPanel header close button so fly-outs and
+             dialogs read as the same control family. -->
+        <Style Selector="Button.ChromeButton">
+            <Setter Property="Width" Value="28"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.ChromeButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Rounded card; clip so the header background respects the corners. The
+         card uses AltHigh (matching the app's dialogs) so ChromeMedium fields and
+         lists inside keep their contrast; the header bar takes the distinct
+         ChromeMedium shade. The template is wrapped in an explicit
+         UserControl.Content so the [Content] PanelContent property is reserved
+         for the consumer's dialog body (same pattern as FloatingPanel). -->
+  <UserControl.Content>
+    <Border x:Name="Card"
+            Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+            BorderThickness="1"
+            CornerRadius="12"
+            ClipToBounds="True">
+        <DockPanel LastChildFill="True">
+
+            <!-- Header bar (also the drag handle): Back · Title · Close -->
+            <Grid x:Name="DragHandle" DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Height="40"
+                  Cursor="SizeAll" ToolTip.Tip="Drag to move"
+                  Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}">
+                <Button Grid.Column="0" Classes="ChromeButton" Content="&#x2190;"
+                        Margin="8,0,0,0"
+                        ToolTip.Tip="Back"
+                        IsVisible="{Binding ShowBackButton, RelativeSource={RelativeSource AncestorType=local:DialogChrome}}"
+                        Command="{Binding BackCommand, RelativeSource={RelativeSource AncestorType=local:DialogChrome}}"/>
+
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Title, RelativeSource={RelativeSource AncestorType=local:DialogChrome}}"
+                           FontSize="16" FontWeight="Bold"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+
+                <Button Grid.Column="2" Classes="ChromeButton" Content="&#x2715;"
+                        Margin="0,0,8,0"
+                        ToolTip.Tip="Close"
+                        Command="{Binding CloseCommand, RelativeSource={RelativeSource AncestorType=local:DialogChrome}}"/>
+            </Grid>
+
+            <Separator DockPanel.Dock="Top" Height="1"
+                       Background="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+
+            <!-- Dialog body -->
+            <ContentPresenter Margin="16"
+                              Content="{Binding PanelContent, RelativeSource={RelativeSource AncestorType=local:DialogChrome}}"/>
+        </DockPanel>
+    </Border>
+  </UserControl.Content>
+</UserControl>
