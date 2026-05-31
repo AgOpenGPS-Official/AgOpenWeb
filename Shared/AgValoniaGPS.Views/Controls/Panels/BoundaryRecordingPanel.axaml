@@ -33,6 +33,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <controls:FloatingPanel x:Name="FP"
                             MinWidth="480"
                             Title="{Binding BoundaryRecordingHeaderText}"
+                            BackCommand="{Binding BackToFieldToolsCommand}"
                             CloseCommand="{Binding ToggleBoundaryPanelCommand}">
         <controls:FloatingPanel.PanelContent>
             <StackPanel Spacing="4">

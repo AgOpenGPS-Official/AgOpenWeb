@@ -49,15 +49,19 @@ Licensed under GNU GPL v3.
             BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1">
         <StackPanel Spacing="8">
             <!-- Drag Handle Header -->
-            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,*,Auto" Height="28"
+            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,Auto,*,Auto" Height="28"
                   Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Cursor="Hand"
                   ToolTip.Tip="Drag to move">
-                <TextBlock Grid.Column="0" Text="=" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                           FontSize="18" FontWeight="Bold" VerticalAlignment="Center" Margin="8,0,8,0" IsHitTestVisible="False"/>
-                <TextBlock Grid.Column="1" Text="Recorded Path"
+                <Button Grid.Column="0" Content="&#x2190;" Width="24" Height="24" Padding="0" BorderThickness="0"
+                        Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                        FontSize="16" Cursor="Hand" ToolTip.Tip="Back"
+                        Command="{Binding BackToFieldToolsCommand}" Margin="4,0,2,0"/>
+                <TextBlock Grid.Column="1" Text="=" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                           FontSize="18" FontWeight="Bold" VerticalAlignment="Center" Margin="4,0,8,0" IsHitTestVisible="False"/>
+                <TextBlock Grid.Column="2" Text="Recorded Path"
                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                            FontSize="14" FontWeight="Bold" VerticalAlignment="Center" IsHitTestVisible="False"/>
-                <Button Grid.Column="2" Content="X" Width="22" Height="22" Padding="0" BorderThickness="0"
+                <Button Grid.Column="3" Content="X" Width="22" Height="22" Padding="0" BorderThickness="0"
                         Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
                         FontSize="14" Cursor="Hand" Command="{Binding CloseRecordedPathDialogCommand}" Margin="4,0,4,0"/>
             </Grid>

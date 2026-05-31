@@ -86,6 +86,18 @@ public partial class FloatingPanel : UserControl
         set => SetValue(CloseCommandProperty, value);
     }
 
+    // Optional Back Command. When set, a Back (←) button appears in the header,
+    // left of the title — used by Field Tools tool overlays to return to the
+    // Field Tools fly-out. Fly-out menus and charts leave this null (no Back).
+    public static readonly StyledProperty<ICommand?> BackCommandProperty =
+        AvaloniaProperty.Register<FloatingPanel, ICommand?>(nameof(BackCommand));
+
+    public ICommand? BackCommand
+    {
+        get => GetValue(BackCommandProperty);
+        set => SetValue(BackCommandProperty, value);
+    }
+
     // Menu items — default [Content] property
     public static readonly StyledProperty<IList<MenuButton>> MenuItemsProperty =
         AvaloniaProperty.Register<FloatingPanel, IList<MenuButton>>(nameof(MenuItems));

@@ -2386,6 +2386,12 @@ public partial class MainViewModel : ObservableObject
     public ICommand? NavBackCommand { get; private set; }
     public ICommand? NavCloseChainCommand { get; private set; }
 
+    // Back from a Field Tools tool overlay to the Field Tools fly-out.
+    public ICommand? BackToFieldToolsCommand { get; private set; }
+
+    // Back from a fly-out-launched confirmation to its originating fly-out.
+    public ICommand? BackFromConfirmationCommand { get; private set; }
+
     // NTRIP Profiles commands
     public ICommand? ShowNtripProfilesDialogCommand { get; private set; }
     public ICommand? AddNtripProfileCommand { get; private set; }

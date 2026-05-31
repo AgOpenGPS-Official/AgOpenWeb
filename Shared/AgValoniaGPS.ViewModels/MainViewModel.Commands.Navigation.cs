@@ -34,6 +34,10 @@ public partial class MainViewModel
         {
             if (e.Current != Models.State.DialogType.None)
                 CloseAllNavFlyouts();
+            // Re-evaluate whether a confirmation can offer a Back-to-fly-out button
+            // (it depends on which fly-out, if any, was just closed).
+            if (e.Current == Models.State.DialogType.Confirmation)
+                OnPropertyChanged(nameof(IsConfirmationBackVisible));
         };
 
         // Panel toggle commands. Only one left-nav fly-out is open at a time:
@@ -97,6 +101,20 @@ public partial class MainViewModel
         // The fly-out close (X) is a pure close, not a toggle: a toggle would
         // re-open the panel because the bubbling item-close already shut it.
         CloseAllNavFlyoutsCommand = new RelayCommand(CloseAllNavFlyouts);
+
+        // Back from a Field Tools tool overlay (boundary recording, recorded path,
+        // offset-fix pad): close the overlays and reopen the Field Tools fly-out.
+        // These are bool-visibility panels, not DialogType dialogs, so they use
+        // this dedicated command rather than the dialog back-stack.
+        BackToFieldToolsCommand = new RelayCommand(() =>
+        {
+            IsBoundaryPanelVisible = false;
+            IsRecordedPathPanelVisible = false;
+            State.UI.IsOffsetFixPanelVisible = false;
+            // Route through the chain Back path so Field Tools reopens where the
+            // chain currently is (flagged reopen) rather than snapping home.
+            ReopenFlyout(NavFlyout.FieldTools);
+        });
 
         ToggleAutoTrackCommand = new RelayCommand(() =>
         {

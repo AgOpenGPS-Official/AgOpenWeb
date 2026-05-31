@@ -30,4 +30,13 @@ public partial class BoundaryRecordingPanel : UserControl
         if (fp != null)
             fp.DragMoved += (s, delta) => DragMoved?.Invoke(this, delta);
     }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        // Open over the fly-out that launched it (the chain anchor) like a chain
+        // child, rather than at its fixed Canvas home.
+        if (change.Property == IsVisibleProperty && change.GetNewValue<bool>())
+            AgValoniaGPS.Views.Controls.ChainPanelAnchor.PositionAtAnchor(this);
+    }
 }

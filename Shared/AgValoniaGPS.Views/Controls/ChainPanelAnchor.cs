@@ -15,6 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.VisualTree;
 
 namespace AgValoniaGPS.Views.Controls;
 
@@ -33,4 +36,29 @@ public static class ChainPanelAnchor
 {
     /// <summary>Upper-left of the active chain panel, or null if none captured.</summary>
     public static Point? Current { get; set; }
+
+    /// <summary>
+    /// Position a tool overlay so its upper-left lands at the current chain anchor
+    /// (over the fly-out that launched it). Handles both Canvas-hosted overlays
+    /// (boundary recording, recorded path) and alignment/Panel-hosted ones
+    /// (offset-fix pad). No-op when no anchor has been captured.
+    /// </summary>
+    public static void PositionAtAnchor(Control panel)
+    {
+        if (Current is not { } anchor) return;
+        var top = TopLevel.GetTopLevel(panel);
+        if (top is null || panel.Parent is not Visual parent) return;
+        var origin = parent.TranslatePoint(new Point(0, 0), top) ?? default;
+        if (parent is Canvas)
+        {
+            Canvas.SetLeft(panel, anchor.X - origin.X);
+            Canvas.SetTop(panel, anchor.Y - origin.Y);
+        }
+        else
+        {
+            panel.HorizontalAlignment = HorizontalAlignment.Left;
+            panel.VerticalAlignment = VerticalAlignment.Top;
+            panel.Margin = new Thickness(anchor.X - origin.X, anchor.Y - origin.Y, 0, 0);
+        }
+    }
 }
