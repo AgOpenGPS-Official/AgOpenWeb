@@ -52,31 +52,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <Style Selector="TextBox:focus">
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.TestButton">
-            <Setter Property="Background" Value="#27AE60"/>
-        </Style>
-        <Style Selector="Button.TestButton:pointerover">
-            <Setter Property="Background" Value="#219A52"/>
-        </Style>
         <Style Selector="CheckBox">
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
             <Setter Property="FontSize" Value="14"/>
@@ -137,7 +112,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                 <!-- Test Connection -->
                 <Grid ColumnDefinitions="Auto,*">
-                    <Button Grid.Column="0" Classes="DialogButton TestButton" Content="{loc:Localize TestConnection}"
+                    <Button Grid.Column="0" Classes="SecondaryButton" Content="{loc:Localize TestConnection}"
                             Command="{Binding TestNtripConnectionCommand}"
                             IsEnabled="{Binding !IsTestingNtripConnection}"/>
                     <TextBlock Grid.Column="1" Text="{Binding NtripTestStatus}"

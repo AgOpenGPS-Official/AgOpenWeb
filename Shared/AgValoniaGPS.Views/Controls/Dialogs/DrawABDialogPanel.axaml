@@ -42,11 +42,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
         </Style>
         <Style Selector="Button.ModeButton:pressed">
-            <Setter Property="Background" Value="#1ABC9C"/>
+            <Setter Property="Background" Value="{DynamicResource InfoAccentBrush}"/>
         </Style>
 
         <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="#C0392B"/>
+            <Setter Property="Background" Value="{DynamicResource DangerButtonHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="12"/>
@@ -56,13 +56,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="#E74C3C"/>
+            <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}"/>
         </Style>
     </UserControl.Styles>
 
     <Grid>
         <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Draw AB panel - centered -->
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12"

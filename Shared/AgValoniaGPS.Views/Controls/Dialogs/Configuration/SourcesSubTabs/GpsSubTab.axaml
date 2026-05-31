@@ -40,7 +40,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
         </Style>
         <Style Selector="Border.AntennaCard.Selected">
-            <Setter Property="BorderBrush" Value="#4A9A7E"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StatusOkBrush}"/>
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
         </Style>
 
@@ -48,7 +48,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <Style Selector="TextBlock.SectionHeader">
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#4A9A7E"/>
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
             <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
 

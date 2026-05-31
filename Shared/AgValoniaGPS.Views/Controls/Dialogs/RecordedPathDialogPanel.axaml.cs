@@ -12,6 +12,15 @@ public partial class RecordedPathDialogPanel : UserControl
     public RecordedPathDialogPanel()
     {
         InitializeComponent();
+
+        // Hosted in a Panel (DialogOverlayHost), not a Canvas, so move the whole
+        // control via its Margin when the FloatingPanel header is dragged
+        // (same pattern as OffsetFixDialogPanel).
+        var fp = this.FindControl<AgValoniaGPS.Views.Controls.FloatingPanel>("FP");
+        if (fp != null)
+            fp.DragMoved += (_, delta) =>
+                Margin = new Thickness(Margin.Left + delta.X, Margin.Top + delta.Y,
+                                       Margin.Right, Margin.Bottom);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)

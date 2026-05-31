@@ -5,11 +5,10 @@ Licensed under GNU GPL v3.
 -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              xmlns:converters="clr-namespace:AgValoniaGPS.Views.Converters;assembly=AgValoniaGPS.Views"
-             mc:Ignorable="d"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.RecordedPathDialogPanel"
              x:DataType="vm:MainViewModel"
              x:Name="RecPathRoot"
@@ -44,27 +43,16 @@ Licensed under GNU GPL v3.
         </Style>
     </UserControl.Styles>
 
-    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-            CornerRadius="12" Padding="12" MinWidth="340"
-            BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1">
+    <!-- Non-modal draggable tool overlay. FloatingPanel supplies the shared
+         Back · Title · Close header (same control family as the other tool
+         fly-outs); the record/playback body is the PanelContent. -->
+    <controls:FloatingPanel x:Name="FP"
+                            MinWidth="340"
+                            Title="Recorded Path"
+                            BackCommand="{Binding BackToFieldToolsCommand}"
+                            CloseCommand="{Binding CloseRecordedPathDialogCommand}">
+      <controls:FloatingPanel.PanelContent>
         <StackPanel Spacing="8">
-            <!-- Drag Handle Header -->
-            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,Auto,*,Auto" Height="28"
-                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Cursor="Hand"
-                  ToolTip.Tip="Drag to move">
-                <Button Grid.Column="0" Content="&#x2190;" Width="24" Height="24" Padding="0" BorderThickness="0"
-                        Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        FontSize="16" Cursor="Hand" ToolTip.Tip="Back"
-                        Command="{Binding BackToFieldToolsCommand}" Margin="4,0,2,0"/>
-                <TextBlock Grid.Column="1" Text="=" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                           FontSize="18" FontWeight="Bold" VerticalAlignment="Center" Margin="4,0,8,0" IsHitTestVisible="False"/>
-                <TextBlock Grid.Column="2" Text="Recorded Path"
-                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                           FontSize="14" FontWeight="Bold" VerticalAlignment="Center" IsHitTestVisible="False"/>
-                <Button Grid.Column="3" Content="X" Width="22" Height="22" Padding="0" BorderThickness="0"
-                        Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                        FontSize="14" Cursor="Hand" Command="{Binding CloseRecordedPathDialogCommand}" Margin="4,0,4,0"/>
-            </Grid>
 
             <!-- Tab selector: active tab gets accent background -->
             <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
@@ -120,12 +108,12 @@ Licensed under GNU GPL v3.
                     <TextBox Text="{Binding RecordedPathName}" Watermark="RecPath name..." FontSize="14"/>
                     <Button Classes="RPWide" Content="Save" ClickMode="Press"
                             Command="{Binding SaveNamedRecordedPathCommand}"
-                            Background="#27AE60" Foreground="White" FontWeight="Bold"/>
+                            Background="{DynamicResource SuccessButtonBrush}" Foreground="White" FontWeight="Bold"/>
                 </StackPanel>
 
                 <TextBlock Text="Open a field to enable recording."
                            FontSize="12" TextWrapping="Wrap" IsVisible="{Binding !IsFieldOpen}"
-                           Foreground="#E74C3C"/>
+                           Foreground="{DynamicResource DangerButtonBrush}"/>
                 <TextBlock Text="Drive your route, then press Stop to save."
                            FontSize="12" TextWrapping="Wrap" IsVisible="{Binding IsFieldOpen}"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
@@ -192,6 +180,8 @@ Licensed under GNU GPL v3.
                 <TextBlock Text="{Binding RecordedPathInfo}" FontSize="12" TextWrapping="Wrap"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
             </StackPanel>
+
         </StackPanel>
-    </Border>
+      </controls:FloatingPanel.PanelContent>
+    </controls:FloatingPanel>
 </UserControl>

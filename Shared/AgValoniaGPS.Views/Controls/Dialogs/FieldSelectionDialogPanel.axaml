@@ -34,31 +34,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.DangerButton">
-            <Setter Property="Background" Value="#E74C3C"/>
-        </Style>
-        <Style Selector="Button.DangerButton:pointerover">
-            <Setter Property="Background" Value="#C0392B"/>
-        </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -81,7 +56,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <!-- Semi-transparent overlay background -->
     <Grid>
         <!-- Backdrop that dims the rest of the UI -->
-        <Border Background="#80000000" IsHitTestVisible="True"
+        <Border Background="{DynamicResource ModalBackdropBrush}" IsHitTestVisible="True"
                 PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Dialog panel -->

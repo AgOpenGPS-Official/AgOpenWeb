@@ -24,7 +24,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <UserControl.Styles>
         <Style Selector="Border.FloatingPanelBorder">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
             <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -54,7 +54,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
             <!-- Title bar / drag handle -->
             <Grid x:Name="DragHandle" ColumnDefinitions="Auto,Auto,*,Auto" Height="32"
-                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                  Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
                   Cursor="Hand" ToolTip.Tip="Drag to move">
                 <!-- Optional Back button (only when BackCommand is set). -->
                 <Button Grid.Column="0" Content="&#x2190;"

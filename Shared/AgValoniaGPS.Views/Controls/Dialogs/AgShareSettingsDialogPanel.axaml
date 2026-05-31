@@ -48,39 +48,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="MinHeight" Value="40"/>
         </Style>
         <Style Selector="Border.InputField.Selected">
-            <Setter Property="BorderBrush" Value="#1ABC9C"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource InfoAccentBrush}"/>
             <Setter Property="BorderThickness" Value="2"/>
-        </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="24,12"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-        </Style>
-        <Style Selector="Button.TestButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="4"/>
-        </Style>
-        <Style Selector="Button.TestButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
         </Style>
     </UserControl.Styles>
 
@@ -123,7 +92,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                 <!-- Test Connection & Enable -->
                 <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
-                    <Button Grid.Column="0" Classes="TestButton" Click="TestConnection_Click">
+                    <Button Grid.Column="0" Classes="SecondaryButton" Click="TestConnection_Click">
                         <TextBlock Text="{loc:Localize TestConnection}"/>
                     </Button>
                     <TextBlock x:Name="ConnectionStatusLabel" Grid.Column="1"

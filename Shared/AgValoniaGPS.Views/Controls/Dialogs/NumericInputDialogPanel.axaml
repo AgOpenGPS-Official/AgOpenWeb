@@ -36,7 +36,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <!-- Full screen overlay with backdrop -->
     <Grid>
         <!-- Semi-transparent backdrop - clicking dismisses -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Centered dialog -->
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="16"
@@ -45,7 +45,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <StackPanel Spacing="12">
                 <!-- Title -->
                 <TextBlock Text="{Binding NumericInputDialogTitle}" FontSize="18" FontWeight="Bold"
-                           Foreground="#1ABC9C" HorizontalAlignment="Center"/>
+                           Foreground="{DynamicResource InfoAccentBrush}" HorizontalAlignment="Center"/>
 
                 <!-- Current Value Display (shown with on-screen keyboard) -->
                 <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="12,8"
@@ -76,12 +76,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
                     <Button Grid.Column="0" Content="{loc:Localize Cancel}" Margin="0,0,4,0"
                             Command="{Binding CancelNumericInputDialogCommand}"
-                            Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                             HorizontalAlignment="Stretch" Height="44" FontSize="16"
                             HorizontalContentAlignment="Center" CornerRadius="6"/>
                     <Button Grid.Column="1" Content="{loc:Localize OK}" Margin="4,0,0,0"
                             Command="{Binding ConfirmNumericInputDialogCommand}"
-                            Background="#1ABC9C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Background="{DynamicResource InfoAccentBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                             HorizontalAlignment="Stretch" Height="44" FontSize="16"
                             HorizontalContentAlignment="Center" CornerRadius="6"/>
                 </Grid>

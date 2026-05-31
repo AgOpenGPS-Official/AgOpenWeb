@@ -51,7 +51,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
         <Style Selector="Button.SectionWidthBtn:pointerover">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-            <Setter Property="BorderBrush" Value="#4A9A7E"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StatusOkBrush}"/>
         </Style>
     </UserControl.Styles>
 

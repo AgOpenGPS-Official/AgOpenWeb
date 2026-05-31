@@ -36,13 +36,13 @@ the Free Software Foundation, either version 3 of the License, or
                                 Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
                                 Command="{Binding SetLogFilterCommand}" CommandParameter="Debug"/>
                         <Button Content="{loc:Localize Info}" Padding="10,4" CornerRadius="4"
-                                Background="#2980B9" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Background="{DynamicResource PrimaryButtonHoverBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
                                 Command="{Binding SetLogFilterCommand}" CommandParameter="Information"/>
                         <Button Content="{loc:Localize Warning}" Padding="10,4" CornerRadius="4"
                                 Background="#F39C12" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
                                 Command="{Binding SetLogFilterCommand}" CommandParameter="Warning"/>
                         <Button Content="{loc:Localize Error}" Padding="10,4" CornerRadius="4"
-                                Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
                                 Command="{Binding SetLogFilterCommand}" CommandParameter="Error"/>
                         <Border Width="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="4,0"/>
                         <Button Content="{loc:Localize Clear}" Padding="10,4" CornerRadius="4"

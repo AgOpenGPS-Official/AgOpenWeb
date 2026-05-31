@@ -65,6 +65,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <SolidColorBrush x:Key="ToggleOffBrush" Color="#C2CBD4"/>
             <SolidColorBrush x:Key="ToggleOnBrush" Color="#44566A"/>
             <SolidColorBrush x:Key="ToggleOnForegroundBrush" Color="#F5F7FA"/>
+
+            <!-- Semantic button + status brushes (menu-system standardization).
+                 Primary buttons keep using the live theme accent
+                 (SystemControlHighlightAccentBrush) so it remains the single
+                 accent source; only the hover shade is named here. The success
+                 / danger colors are saturated brand colors (white text on fill)
+                 and are theme-independent, so the Light and Dark values match. -->
+            <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="#2980B9"/>
+            <SolidColorBrush x:Key="SuccessButtonBrush" Color="#27AE60"/>
+            <SolidColorBrush x:Key="SuccessButtonHoverBrush" Color="#229954"/>
+            <SolidColorBrush x:Key="DangerButtonBrush" Color="#E74C3C"/>
+            <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="#C0392B"/>
+            <SolidColorBrush x:Key="StatusOkBrush" Color="#4A9A7E"/>
+            <SolidColorBrush x:Key="InfoAccentBrush" Color="#1ABC9C"/>
+            <SolidColorBrush x:Key="ModalBackdropBrush" Color="#80000000"/>
         </ResourceDictionary>
         <!-- Dark: use dark blue-gray instead of pure black -->
         <ResourceDictionary x:Key="Dark">
@@ -89,6 +104,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <SolidColorBrush x:Key="ToggleOffBrush" Color="#515C6B"/>
             <SolidColorBrush x:Key="ToggleOnBrush" Color="#34495E"/>
             <SolidColorBrush x:Key="ToggleOnForegroundBrush" Color="#F5F7FA"/>
+
+            <!-- Semantic button + status brushes (menu-system standardization).
+                 Saturated brand colors match the Light variant (white text on
+                 the fill reads correctly in both themes); the primary hover is
+                 the same accent-darkened blue. -->
+            <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="#2980B9"/>
+            <SolidColorBrush x:Key="SuccessButtonBrush" Color="#27AE60"/>
+            <SolidColorBrush x:Key="SuccessButtonHoverBrush" Color="#229954"/>
+            <SolidColorBrush x:Key="DangerButtonBrush" Color="#E74C3C"/>
+            <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="#C0392B"/>
+            <SolidColorBrush x:Key="StatusOkBrush" Color="#4A9A7E"/>
+            <SolidColorBrush x:Key="InfoAccentBrush" Color="#1ABC9C"/>
+            <SolidColorBrush x:Key="ModalBackdropBrush" Color="#80000000"/>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 

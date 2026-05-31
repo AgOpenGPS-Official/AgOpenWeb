@@ -30,7 +30,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <Style Selector="TextBlock.SectionHeader">
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#4A9A7E"/>
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
             <Setter Property="Margin" Value="0,16,0,8"/>
         </Style>
 
@@ -45,7 +45,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Action Button Style -->
         <Style Selector="Button.ActionButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="BorderBrush" Value="#4A9A7E"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StatusOkBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="4"/>
             <Setter Property="Padding" Value="16,8"/>

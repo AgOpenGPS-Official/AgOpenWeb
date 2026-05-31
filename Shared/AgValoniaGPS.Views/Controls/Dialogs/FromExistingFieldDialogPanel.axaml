@@ -35,31 +35,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="#C0392B"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="#E74C3C"/>
-        </Style>
-        <Style Selector="Button.OkButton">
-            <Setter Property="Background" Value="#27AE60"/>
-        </Style>
-        <Style Selector="Button.OkButton:pointerover">
-            <Setter Property="Background" Value="#2ECC71"/>
-        </Style>
         <Style Selector="Button.ToolButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
@@ -73,13 +48,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
         </Style>
         <Style Selector="Button.ToolButton:pressed">
-            <Setter Property="Background" Value="#1ABC9C"/>
+            <Setter Property="Background" Value="{DynamicResource InfoAccentBrush}"/>
         </Style>
         <Style Selector="Button.ToggleOn">
-            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
         </Style>
         <Style Selector="Button.ToggleOn:pointerover">
-            <Setter Property="Background" Value="#2ECC71"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonHoverBrush}"/>
         </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
@@ -137,9 +112,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <!-- Column Headers -->
                 <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" CornerRadius="4,4,0,0" Padding="12,8">
                     <Grid ColumnDefinitions="*,80,80">
-                        <TextBlock Grid.Column="0" Text="{loc:Localize FieldName}" Foreground="#E74C3C" FontWeight="Bold" FontSize="14"/>
-                        <TextBlock Grid.Column="1" Text="{loc:Localize Distance}" Foreground="#E74C3C" FontWeight="Bold" FontSize="14" TextAlignment="Right"/>
-                        <TextBlock Grid.Column="2" Text="{loc:Localize AreaHa}" Foreground="#E74C3C" FontWeight="Bold" FontSize="14" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="0" Text="{loc:Localize FieldName}" Foreground="{DynamicResource DangerButtonBrush}" FontWeight="Bold" FontSize="14"/>
+                        <TextBlock Grid.Column="1" Text="{loc:Localize Distance}" Foreground="{DynamicResource DangerButtonBrush}" FontWeight="Bold" FontSize="14" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="2" Text="{loc:Localize AreaHa}" Foreground="{DynamicResource DangerButtonBrush}" FontWeight="Bold" FontSize="14" TextAlignment="Right"/>
                     </Grid>
                 </Border>
 

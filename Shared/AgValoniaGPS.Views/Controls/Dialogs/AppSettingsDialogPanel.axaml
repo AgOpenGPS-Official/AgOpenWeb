@@ -50,7 +50,7 @@ the Free Software Foundation, either version 3 of the License, or
         <Style Selector="TextBlock.AppGroupHeader">
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#4A9A7E"/>
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
             <Setter Property="Margin" Value="0,0,0,10"/>
         </Style>
         <Style Selector="Border.VRule">

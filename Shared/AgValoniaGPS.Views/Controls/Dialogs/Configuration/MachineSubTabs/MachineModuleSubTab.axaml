@@ -72,7 +72,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <Style Selector="TextBlock.SectionHeader">
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#4A9A7E"/>
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
             <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
     </UserControl.Styles>
@@ -158,7 +158,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="Send + Save" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                         <TextBlock Text="&#x2699;" FontSize="18" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Text="&#x2192;" FontSize="18" Foreground="#4A9A7E" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#x2192;" FontSize="18" Foreground="{DynamicResource StatusOkBrush}" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
             </StackPanel>

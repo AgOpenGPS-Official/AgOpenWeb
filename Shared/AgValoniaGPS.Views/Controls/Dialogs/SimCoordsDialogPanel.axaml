@@ -53,34 +53,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="MinHeight" Value="48"/>
         </Style>
         <Style Selector="Border.InputField.Selected">
-            <Setter Property="BorderBrush" Value="#1ABC9C"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource InfoAccentBrush}"/>
             <Setter Property="BorderThickness" Value="2"/>
-        </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="24,12"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
         </Style>
     </UserControl.Styles>
 
     <!-- Semi-transparent overlay background -->
     <Grid>
         <!-- Backdrop that dims the rest of the UI -->
-        <Border Background="#80000000" IsHitTestVisible="True"
+        <Border Background="{DynamicResource ModalBackdropBrush}" IsHitTestVisible="True"
                 PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Dialog panel positioned near top for mobile -->

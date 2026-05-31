@@ -17,7 +17,7 @@ Licensed under GNU GPL v3.
 
     <Grid>
         <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Dialog panel -->
         <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
@@ -107,7 +107,7 @@ Licensed under GNU GPL v3.
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                     <Button Grid.Column="1" Content="Build" Width="100" Height="40"
                             Command="{Binding BuildTramLinesCommand}"
-                            Background="#27AE60" Foreground="White" FontWeight="Bold"
+                            Background="{DynamicResource SuccessButtonBrush}" Foreground="White" FontWeight="Bold"
                             CornerRadius="6"/>
                     <Button Grid.Column="2" Content="Close" Width="100" Height="40"
                             Command="{Binding CloseTramSettingsCommand}"

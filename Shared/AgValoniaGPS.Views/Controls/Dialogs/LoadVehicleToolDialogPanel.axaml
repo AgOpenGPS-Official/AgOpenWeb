@@ -34,28 +34,6 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="FontSize" Value="19"/>
             <Setter Property="Margin" Value="0,0,0,8"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="18,12"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.DangerButton">
-            <Setter Property="Background" Value="#E74C3C"/>
-        </Style>
-        <Style Selector="Button.DangerButton:pointerover">
-            <Setter Property="Background" Value="#C0392B"/>
-        </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -75,7 +53,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
         </Style>
         <Style Selector="ListBoxItem:selected">
-            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
         </Style>
         <Style Selector="Border.PreviewBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
@@ -86,7 +64,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
     </UserControl.Styles>
 
     <Grid>
-        <Border Background="#80000000" IsHitTestVisible="True"
+        <Border Background="{DynamicResource ModalBackdropBrush}" IsHitTestVisible="True"
                 PointerPressed="Backdrop_PointerPressed"/>
 
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
