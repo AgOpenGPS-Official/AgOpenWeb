@@ -214,7 +214,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     </StackPanel>
 
                     <!-- Selection display -->
-                    <Border Background="#4A9A7E" CornerRadius="8" Padding="16,12"
+                    <Border Background="{DynamicResource StatusOkBrush}" CornerRadius="8" Padding="16,12"
                             HorizontalAlignment="Center" Margin="0,24,0,0">
                         <TextBlock Text="{Binding Vehicle.VehicleTypeDisplayName, StringFormat='Selected: {0}'}"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16"/>
@@ -314,7 +314,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                 Command="{Binding SetAntennaOffsetLeftCommand}">
                             <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaLeftOffset.png" Stretch="Uniform"/>
                         </Button>
-                        <Button Width="50" Height="36" Padding="4" Background="#4A9A7E" ToolTip.Tip="Antenna on Centerline"
+                        <Button Width="50" Height="36" Padding="4" Background="{DynamicResource StatusOkBrush}" ToolTip.Tip="Antenna on Centerline"
                                 Command="{Binding SetAntennaOffsetCenterCommand}">
                             <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaNoOffset.png" Stretch="Uniform"/>
                         </Button>

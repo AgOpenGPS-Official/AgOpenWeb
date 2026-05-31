@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgValoniaGPS.Models.State;
@@ -25,6 +26,11 @@ namespace AgValoniaGPS.Models.State;
 /// </summary>
 public class UIState : ObservableObject
 {
+    // Back-stack of parent dialogs in the current navigation chain. Only the
+    // chain dialog layers live here; the chain's originating left-nav fly-out is
+    // tracked separately in the ViewModel (it is not a DialogType).
+    private readonly Stack<DialogType> _dialogStack = new();
+
     // Active dialog (only one modal at a time)
     private DialogType _activeDialog = DialogType.None;
     public DialogType ActiveDialog
@@ -193,8 +199,37 @@ public class UIState : ObservableObject
         ActiveDialog = dialog;
     }
 
+    /// <summary>
+    /// Push the current dialog (if any) onto the back-stack and show the next one.
+    /// Use for chain navigation so <see cref="GoBack"/> can return to the parent.
+    /// </summary>
+    public void PushDialog(DialogType dialog)
+    {
+        if (_activeDialog != DialogType.None)
+            _dialogStack.Push(_activeDialog);
+        ActiveDialog = dialog;
+    }
+
+    /// <summary>
+    /// Pop back to the previous dialog in the chain. Returns true if a parent
+    /// dialog was surfaced; false if the stack was empty (the caller then reopens
+    /// the originating fly-out).
+    /// </summary>
+    public bool GoBack()
+    {
+        if (_dialogStack.Count > 0)
+        {
+            ActiveDialog = _dialogStack.Pop();
+            return true;
+        }
+        ActiveDialog = DialogType.None;
+        SelectedItem = null;
+        return false;
+    }
+
     public void CloseDialog()
     {
+        _dialogStack.Clear();
         ActiveDialog = DialogType.None;
         SelectedItem = null;
     }

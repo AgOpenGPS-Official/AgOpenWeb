@@ -508,6 +508,7 @@ public partial class MainViewModel : ObservableObject
         _simulatorTimer.Tick += OnSimulatorTick;
 
         // Initialize commands (split into partial class files for organization)
+        InitializeChainNavigationCommands();
         InitializeNavigationCommands();
         InitializeSimulatorCommands();
         InitializeConfigurationCommands();
@@ -2380,10 +2381,19 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public ObservableCollection<FieldAssociationItem> AvailableFieldsForProfile { get; } = new();
 
+    // Shared chain navigation (Back / Close) for every fly-out → dialog chain.
+    // See MainViewModel.Navigation.Chain.cs.
+    public ICommand? NavBackCommand { get; private set; }
+    public ICommand? NavCloseChainCommand { get; private set; }
+
+    // Back from a Field Tools tool overlay to the Field Tools fly-out.
+    public ICommand? BackToFieldToolsCommand { get; private set; }
+
+    // Back from a fly-out-launched confirmation to its originating fly-out.
+    public ICommand? BackFromConfirmationCommand { get; private set; }
+
     // NTRIP Profiles commands
     public ICommand? ShowNtripProfilesDialogCommand { get; private set; }
-    public ICommand? CloseNtripProfilesDialogCommand { get; private set; }
-    public ICommand? BackFromNtripProfilesCommand { get; private set; }
     public ICommand? AddNtripProfileCommand { get; private set; }
     public ICommand? EditNtripProfileCommand { get; private set; }
     public ICommand? DeleteNtripProfileCommand { get; private set; }

@@ -22,6 +22,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.IsoXmlImportDialogPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding State.UI.IsIsoXmlImportDialogVisible}"
@@ -29,35 +30,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <UserControl.Styles>
         <Style Selector="TextBlock.Header">
-            <Setter Property="Foreground" Value="#E67E22"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
             <Setter Property="FontSize" Value="20"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
-        </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="#C0392B"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="#E74C3C"/>
-        </Style>
-        <Style Selector="Button.OkButton">
-            <Setter Property="Background" Value="#27AE60"/>
-        </Style>
-        <Style Selector="Button.OkButton:pointerover">
-            <Setter Property="Background" Value="#2ECC71"/>
         </Style>
         <Style Selector="Button.ToolButton">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
@@ -116,24 +92,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     </UserControl.Styles>
 
     <Grid>
-        <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog panel -->
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                MaxWidth="500"
-                MaxHeight="480"
-                Margin="20"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                BoxShadow="0 8 32 #40000000">
-            <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="20">
-                <!-- Header -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
-                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Boundary.png" Width="24" Height="24"/>
-                    <TextBlock Classes="Header" Text="{loc:Localize ImportFieldFromIsoXml}"/>
-                </StackPanel>
+        <controls:DialogChrome Title="{loc:Localize ImportFieldFromIsoXml}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MaxWidth="500" MaxHeight="480">
+            <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
 
                 <!-- Info text -->
                 <TextBlock Grid.Row="1" Text="{loc:Localize PlaceIsoXmlFoldersContainingTaskdataxmlInDocumentsAgvaloniagpsImport}"
@@ -191,17 +156,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                     </StackPanel>
                 </Grid>
 
-                <!-- Action Buttons -->
-                <Grid Grid.Row="5" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
-                    <Border Grid.Column="0"/>
-                    <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="{loc:Localize Cancel}"
-                            MinWidth="80" MinHeight="44"
-                            Command="{Binding CancelIsoXmlImportDialogCommand}"/>
-                    <Button Grid.Column="2" Classes="DialogButton OkButton" Content="{loc:Localize Import}"
-                            MinWidth="80" MinHeight="44" Margin="12,0,0,0"
-                            Command="{Binding ConfirmIsoXmlImportDialogCommand}"/>
-                </Grid>
+                <!-- Import (Back/Close live in the header chrome). -->
+                <Button Grid.Row="5" Classes="DialogButton OkButton" Content="{loc:Localize Import}"
+                        MinWidth="80" MinHeight="44" HorizontalAlignment="Right" Margin="0,16,0,0"
+                        Command="{Binding ConfirmIsoXmlImportDialogCommand}"/>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

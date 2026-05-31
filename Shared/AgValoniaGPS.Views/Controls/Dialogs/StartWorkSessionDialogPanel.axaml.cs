@@ -19,10 +19,9 @@ public partial class StartWorkSessionDialogPanel : UserControl
 
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (DataContext is MainViewModel vm
-            && vm.CancelStartWorkSessionDialogCommand?.CanExecute(null) == true)
+        if (DataContext is MainViewModel vm)
         {
-            vm.CancelStartWorkSessionDialogCommand.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
         e.Handled = true;
     }

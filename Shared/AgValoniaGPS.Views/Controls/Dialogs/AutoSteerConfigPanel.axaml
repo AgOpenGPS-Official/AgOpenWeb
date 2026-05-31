@@ -55,7 +55,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
         <Style Selector="Button.TappableValue:pointerover">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-            <Setter Property="BorderBrush" Value="#4A9A7E"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StatusOkBrush}"/>
         </Style>
 
         <!-- Toggle Button -->
@@ -109,7 +109,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     </UserControl.Styles>
 
     <!-- Full screen modal overlay -->
-    <Grid Background="#80000000">
+    <Grid Background="{DynamicResource ModalBackdropBrush}">
         <!-- Main dialog container -->
         <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
                 CornerRadius="8"
@@ -166,17 +166,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             <!-- Pure Pursuit Controls -->
                                             <StackPanel Spacing="12" IsVisible="{Binding !AutoSteer.IsStanleyMode}">
                                                 <!-- Algorithm Label -->
-                                                <TextBlock Text="{loc:Localize PurePursuit}" FontSize="18" FontWeight="Bold" Foreground="#4A9A7E"
+                                                <TextBlock Text="{loc:Localize PurePursuit}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
                                                            HorizontalAlignment="Center"/>
 
                                                 <!-- Steer Response -->
                                                 <Border Classes="ParamCard">
                                                     <StackPanel Spacing="8">
                                                         <Grid ColumnDefinitions="Auto,*,Auto">
-                                                            <TextBlock Text="{loc:Localize Fast}" Foreground="#4A9A7E" FontSize="12"/>
+                                                            <TextBlock Text="{loc:Localize Fast}" Foreground="{DynamicResource StatusOkBrush}" FontSize="12"/>
                                                             <TextBlock Grid.Column="1" Text="{loc:Localize SteerResponse}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                                                        HorizontalAlignment="Center" FontWeight="SemiBold"/>
-                                                            <TextBlock Grid.Column="2" Text="{loc:Localize Slow}" Foreground="#E74C3C" FontSize="12"/>
+                                                            <TextBlock Grid.Column="2" Text="{loc:Localize Slow}" Foreground="{DynamicResource DangerButtonBrush}" FontSize="12"/>
                                                         </Grid>
                                                         <Grid ColumnDefinitions="Auto,*">
                                                             <Button Classes="TappableValue" Command="{Binding EditSteerResponseCommand}"
@@ -290,10 +290,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             <Border Classes="ParamCard">
                                                 <StackPanel Spacing="8" HorizontalAlignment="Center">
                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-                                                        <TextBlock Text="{loc:Localize }" Foreground="#4A9A7E"/>
+                                                        <TextBlock Text="{loc:Localize }" Foreground="{DynamicResource StatusOkBrush}"/>
                                                         <TextBlock Text="{Binding AutoSteer.WasOffset}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                                                    FontWeight="Bold" FontSize="18"/>
-                                                        <TextBlock Text="{loc:Localize lt}" Foreground="#4A9A7E"/>
+                                                        <TextBlock Text="{loc:Localize lt}" Foreground="{DynamicResource StatusOkBrush}"/>
                                                     </StackPanel>
                                                     <TextBlock Text="{loc:Localize WasZero}" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" HorizontalAlignment="Center"/>
                                                     <Button Content="{loc:Localize ZeroWas}" Command="{Binding ZeroWasCommand}"
@@ -439,7 +439,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     <!-- Tab 4 Content: Gain -->
                                     <ScrollViewer Padding="8">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Text="{loc:Localize Gain}" FontSize="18" FontWeight="Bold" Foreground="#4A9A7E"
+                                            <TextBlock Text="{loc:Localize Gain}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
                                                        HorizontalAlignment="Center"/>
 
                                             <!-- Proportional Gain -->
@@ -587,7 +587,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             <!-- Turn Sensor -->
                                             <Border Classes="ParamCard">
                                                 <StackPanel Spacing="8">
-                                                    <TextBlock Text="{loc:Localize TurnSensor}" FontSize="14" FontWeight="Bold" Foreground="#4A9A7E"/>
+                                                    <TextBlock Text="{loc:Localize TurnSensor}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"/>
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Border Grid.Column="0" CornerRadius="4" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1"
                                                                 Margin="0,0,8,0"
@@ -615,7 +615,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             <!-- Pressure Turn -->
                                             <Border Classes="ParamCard">
                                                 <StackPanel Spacing="8">
-                                                    <TextBlock Text="{loc:Localize PressureTurn}" FontSize="14" FontWeight="Bold" Foreground="#4A9A7E"/>
+                                                    <TextBlock Text="{loc:Localize PressureTurn}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"/>
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Border Grid.Column="0" CornerRadius="4" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1"
                                                                 Margin="0,0,8,0"
@@ -650,7 +650,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             <!-- Current Turn -->
                                             <Border Classes="ParamCard">
                                                 <StackPanel Spacing="8">
-                                                    <TextBlock Text="{loc:Localize CurrentTurn}" FontSize="14" FontWeight="Bold" Foreground="#4A9A7E"/>
+                                                    <TextBlock Text="{loc:Localize CurrentTurn}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"/>
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Border Grid.Column="0" CornerRadius="4" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1"
                                                                 Margin="0,0,8,0"
@@ -693,7 +693,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     </TabItem.Header>
                                     <ScrollViewer Padding="8">
                                         <StackPanel Spacing="8">
-                                            <TextBlock Text="{loc:Localize HardwareConfig}" FontSize="16" FontWeight="Bold" Foreground="#4A9A7E"
+                                            <TextBlock Text="{loc:Localize HardwareConfig}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
                                                        HorizontalAlignment="Center"/>
 
                                             <!-- Toggle buttons for hardware settings -->
@@ -806,7 +806,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     </TabItem.Header>
                                     <ScrollViewer Padding="8">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Text="{loc:Localize SteeringAlgorithm}" FontSize="16" FontWeight="Bold" Foreground="#4A9A7E"
+                                            <TextBlock Text="{loc:Localize SteeringAlgorithm}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
                                                        HorizontalAlignment="Center"/>
 
                                             <!-- Stanley/Pure toggle -->
@@ -816,7 +816,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                                     <Grid ColumnDefinitions="*,Auto">
                                                         <TextBlock Text="{loc:Localize Algorithm}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                                                         <Grid Grid.Column="1">
-                                                            <TextBlock Text="{loc:Localize Stanley}" Foreground="#4A9A7E" FontWeight="Bold"
+                                                            <TextBlock Text="{loc:Localize Stanley}" Foreground="{DynamicResource StatusOkBrush}" FontWeight="Bold"
                                                                        IsVisible="{Binding AutoSteer.IsStanleyMode}"/>
                                                             <TextBlock Text="{loc:Localize PurePursuit}" Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontWeight="Bold"
                                                                        IsVisible="{Binding !AutoSteer.IsStanleyMode}"/>
@@ -829,10 +829,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             <Border Classes="ParamCard">
                                                 <StackPanel Spacing="4">
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
-                                                        <TextBlock Text="{loc:Localize Out}" Foreground="#E74C3C" FontSize="11"/>
+                                                        <TextBlock Text="{loc:Localize Out}" Foreground="{DynamicResource DangerButtonBrush}" FontSize="11"/>
                                                         <TextBlock Grid.Column="1" Text="{loc:Localize UTurnCompensation}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                                                    HorizontalAlignment="Center" FontWeight="SemiBold"/>
-                                                        <TextBlock Grid.Column="2" Text="{loc:Localize In}" Foreground="#4A9A7E" FontSize="11"/>
+                                                        <TextBlock Grid.Column="2" Text="{loc:Localize In}" Foreground="{DynamicResource StatusOkBrush}" FontSize="11"/>
                                                     </Grid>
                                                     <Grid ColumnDefinitions="Auto,*">
                                                         <Button Classes="TappableValue" Command="{Binding EditUTurnCompensationCommand}">
@@ -870,9 +870,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                                     <Grid ColumnDefinitions="*,Auto">
                                                         <TextBlock Text="{loc:Localize SteerInReverse}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                                                         <Grid Grid.Column="1">
-                                                            <TextBlock Text="{loc:Localize On2}" Foreground="#4A9A7E" FontWeight="Bold"
+                                                            <TextBlock Text="{loc:Localize On2}" Foreground="{DynamicResource StatusOkBrush}" FontWeight="Bold"
                                                                        IsVisible="{Binding AutoSteer.SteerInReverse}"/>
-                                                            <TextBlock Text="{loc:Localize Off2}" Foreground="#E74C3C" FontWeight="Bold"
+                                                            <TextBlock Text="{loc:Localize Off2}" Foreground="{DynamicResource DangerButtonBrush}" FontWeight="Bold"
                                                                        IsVisible="{Binding !AutoSteer.SteerInReverse}"/>
                                                         </Grid>
                                                     </Grid>
@@ -890,7 +890,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     </TabItem.Header>
                                     <ScrollViewer Padding="8">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Text="{loc:Localize SpeedLimits}" FontSize="16" FontWeight="Bold" Foreground="#4A9A7E"
+                                            <TextBlock Text="{loc:Localize SpeedLimits}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
                                                        HorizontalAlignment="Center"/>
 
                                             <!-- Speed Settings -->
@@ -955,7 +955,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                     </TabItem.Header>
                                     <ScrollViewer Padding="8">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Text="{loc:Localize DisplaySettings}" FontSize="16" FontWeight="Bold" Foreground="#4A9A7E"
+                                            <TextBlock Text="{loc:Localize DisplaySettings}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource StatusOkBrush}"
                                                        HorizontalAlignment="Center"/>
 
                                             <!-- Numeric inputs row 1: Line Width & Nudge Distance -->
@@ -1143,7 +1143,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             <StackPanel Orientation="Horizontal" Width="80">
                                 <TextBlock Text="{loc:Localize Err}" Classes="StatusLabel" VerticalAlignment="Center" Width="30"/>
                                 <TextBlock Text="{Binding SteerError, StringFormat='{}{0:F1}°'}"
-                                           Foreground="#E74C3C" FontWeight="Bold" FontSize="14"
+                                           Foreground="{DynamicResource DangerButtonBrush}" FontWeight="Bold" FontSize="14"
                                            VerticalAlignment="Center" Width="50" TextAlignment="Right"/>
                             </StackPanel>
                         </StackPanel>
@@ -1225,7 +1225,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="12" Padding="24"
                     Width="320"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                    BorderBrush="#E74C3C" BorderThickness="2">
+                    BorderBrush="{DynamicResource DangerButtonBrush}" BorderThickness="2">
                 <StackPanel Spacing="16">
                     <!-- Warning Icon and Title -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">

@@ -55,7 +55,7 @@ public partial class MainViewModel
                 confirmWithOption: (title, msg, checkboxLabel, defaultChecked, action) =>
                     ShowConfirmationDialog(title, msg, checkboxLabel, defaultChecked, action));
             StartWorkSessionDialogVm.Refresh();
-            State.UI.ShowDialog(DialogType.StartWorkSession);
+            OpenChainDialog(DialogType.StartWorkSession);
         });
 
         CancelStartWorkSessionDialogCommand = new RelayCommand(() =>
@@ -73,7 +73,7 @@ public partial class MainViewModel
                 openFieldResumingJob: (path, name, taskName) =>
                     _ = OpenFieldResumingJobAsync(path, name, taskName));
             ResumeJobDialogVm.Refresh();
-            State.UI.ShowDialog(DialogType.ResumeJob);
+            OpenChainDialog(DialogType.ResumeJob);
         });
 
         CancelResumeJobDialogCommand = new RelayCommand(() =>
@@ -190,7 +190,7 @@ public partial class MainViewModel
             NewFieldLatitude = Latitude != 0 ? Latitude : 40.7128;
             NewFieldLongitude = Longitude != 0 ? Longitude : -74.0060;
             NewFieldName = string.Empty;
-            State.UI.ShowDialog(DialogType.NewField);
+            OpenChainDialog(DialogType.NewField);
         });
 
         CancelNewFieldDialogCommand = new RelayCommand(() =>
@@ -310,7 +310,7 @@ public partial class MainViewModel
                 FromExistingSelectedField = AvailableFields[0];
             }
 
-            State.UI.ShowDialog(DialogType.FromExistingField);
+            OpenChainDialog(DialogType.FromExistingField);
         });
 
         CancelFromExistingFieldDialogCommand = new RelayCommand(() =>
@@ -479,7 +479,7 @@ public partial class MainViewModel
                 SelectedKmlFile = AvailableKmlFiles[0];
             }
 
-            State.UI.ShowDialog(DialogType.KmlImport);
+            OpenChainDialog(DialogType.KmlImport);
         });
 
         CancelKmlImportDialogCommand = new RelayCommand(() =>
@@ -631,7 +631,7 @@ public partial class MainViewModel
                 SelectedIsoXmlFile = AvailableIsoXmlFiles[0];
             }
 
-            State.UI.ShowDialog(DialogType.IsoXmlImport);
+            OpenChainDialog(DialogType.IsoXmlImport);
         });
 
         CancelIsoXmlImportDialogCommand = new RelayCommand(() =>
@@ -783,7 +783,7 @@ public partial class MainViewModel
                     ShowConfirmationDialog(title, msg, checkboxLabel, defaultChecked, action),
                 nearbyMaxKm: 0.5);
             StartWorkSessionDialogVm.Refresh();
-            State.UI.ShowDialog(DialogType.StartWorkSession);
+            OpenChainDialog(DialogType.StartWorkSession);
         });
 
         ResumeFieldCommand = new AsyncRelayCommand(async () =>

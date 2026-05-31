@@ -33,7 +33,7 @@ public partial class HelpDialogPanel : UserControl
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
-            vm.CloseHelpDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
     }
 
     private static void OpenUrl(string url)

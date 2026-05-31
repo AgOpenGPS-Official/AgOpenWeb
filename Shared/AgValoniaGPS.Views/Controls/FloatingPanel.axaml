@@ -24,7 +24,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <UserControl.Styles>
         <Style Selector="Border.FloatingPanelBorder">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
             <Setter Property="CornerRadius" Value="12"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -53,20 +53,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <StackPanel Spacing="4">
 
             <!-- Title bar / drag handle -->
-            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,*,Auto" Height="32"
-                  Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+            <Grid x:Name="DragHandle" ColumnDefinitions="Auto,Auto,*,Auto" Height="32"
+                  Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
                   Cursor="Hand" ToolTip.Tip="Drag to move">
-                <TextBlock Grid.Column="0" Text="=" VerticalAlignment="Center"
+                <!-- Optional Back button (only when BackCommand is set). -->
+                <Button Grid.Column="0" Content="&#x2190;"
+                        Width="24" Height="24" Padding="0" BorderThickness="0"
+                        Background="Transparent" FontSize="18" Cursor="Hand"
+                        Margin="6,0,0,0"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        ToolTip.Tip="Back"
+                        IsVisible="{Binding BackCommand, Converter={x:Static ObjectConverters.IsNotNull}, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}"
+                        Command="{Binding BackCommand, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}"/>
+                <TextBlock Grid.Column="1" Text="=" VerticalAlignment="Center"
                            Margin="8,0" IsHitTestVisible="False"
                            Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}"
                            FontSize="20" FontWeight="Bold"/>
-                <TextBlock Grid.Column="1"
+                <TextBlock Grid.Column="2"
                            Text="{Binding Title, RelativeSource={RelativeSource AncestorType=local:FloatingPanel}}"
                            FontWeight="Bold" VerticalAlignment="Center"
                            IsHitTestVisible="False"
                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                            FontSize="16"/>
-                <Button Grid.Column="2" Content="X"
+                <Button Grid.Column="3" Content="X"
                         Width="24" Height="24" Padding="0" BorderThickness="0"
                         Background="Transparent" FontSize="16" Cursor="Hand"
                         Margin="8,0"

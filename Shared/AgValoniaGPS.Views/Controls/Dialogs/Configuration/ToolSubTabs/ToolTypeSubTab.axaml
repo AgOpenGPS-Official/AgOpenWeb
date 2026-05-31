@@ -51,7 +51,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
         <Style Selector="RadioButton.TypeCard:checked /template/ Border#PART_Border">
             <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="BorderBrush" Value="#4A9A7E"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource StatusOkBrush}"/>
         </Style>
     </UserControl.Styles>
 

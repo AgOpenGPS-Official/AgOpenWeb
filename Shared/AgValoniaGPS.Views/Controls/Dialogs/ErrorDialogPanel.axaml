@@ -30,7 +30,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <!-- Full screen overlay with backdrop -->
     <Grid>
         <!-- Semi-transparent backdrop - clicking dismisses -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Centered dialog -->
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="20"
@@ -39,7 +39,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <StackPanel Spacing="16">
                 <!-- Title -->
                 <TextBlock Text="{Binding ErrorDialogTitle}" FontSize="20" FontWeight="Bold"
-                           Foreground="#E74C3C" HorizontalAlignment="Center"/>
+                           Foreground="{DynamicResource DangerButtonBrush}" HorizontalAlignment="Center"/>
 
                 <!-- Message -->
                 <TextBlock Text="{Binding ErrorDialogMessage}" FontSize="14"

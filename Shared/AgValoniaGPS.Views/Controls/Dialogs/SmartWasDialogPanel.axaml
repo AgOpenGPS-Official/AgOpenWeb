@@ -7,7 +7,7 @@
              IsHitTestVisible="{Binding State.UI.IsSmartWasDialogVisible}">
 
     <!-- Semi-transparent backdrop -->
-    <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed">
+    <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed">
 
         <!-- Inner panel: switch DataContext to the SmartWasViewModel -->
         <Border DataContext="{Binding SmartWasViewModel}"

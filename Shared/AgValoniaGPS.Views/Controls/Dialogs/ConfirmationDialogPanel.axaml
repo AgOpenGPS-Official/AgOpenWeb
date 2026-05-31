@@ -30,16 +30,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <!-- Full screen overlay with backdrop -->
     <Grid>
         <!-- Semi-transparent backdrop - clicking dismisses (cancels) -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Centered dialog -->
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="20"
                 HorizontalAlignment="Center" VerticalAlignment="Center"
                 MinWidth="320" MaxWidth="400">
             <StackPanel Spacing="16">
-                <!-- Title -->
-                <TextBlock Text="{Binding ConfirmationDialogTitle}" FontSize="20" FontWeight="Bold"
-                           Foreground="#E74C3C" HorizontalAlignment="Center"/>
+                <!-- Title, with an optional Back arrow when the confirmation was
+                     raised from a fly-out item (e.g. Field Tools → Delete Applied
+                     Area) so it can return to that fly-out instead of the map. -->
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Button Grid.Column="0" Content="&#x2190;" Width="28" Height="28" Padding="0"
+                            Background="Transparent" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            FontSize="18" BorderThickness="0" Cursor="Hand" ToolTip.Tip="Back"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            IsVisible="{Binding IsConfirmationBackVisible}"
+                            Command="{Binding BackFromConfirmationCommand}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding ConfirmationDialogTitle}" FontSize="20" FontWeight="Bold"
+                               Foreground="{DynamicResource DangerButtonBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <Border Grid.Column="2" Width="28"/>
+                </Grid>
 
                 <!-- Message -->
                 <TextBlock Text="{Binding ConfirmationDialogMessage}" FontSize="14"
@@ -67,7 +78,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             Padding="0" CornerRadius="6"/>
                     <Button Grid.Column="1" Content="{loc:Localize Yes}" Margin="8,0,0,0"
                             Command="{Binding ConfirmConfirmationDialogCommand}"
-                            Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                             HorizontalAlignment="Stretch" Height="50" FontSize="18" FontWeight="Bold"
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                             Padding="0" CornerRadius="6"/>
@@ -86,7 +97,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             Padding="4" CornerRadius="6"/>
                     <Button Grid.Column="1" Content="{Binding ConfirmationDialogConfirmLabel}" Margin="8,0,0,0"
                             Command="{Binding ConfirmConfirmationDialogCommand}"
-                            Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                             HorizontalAlignment="Stretch" Height="50" FontSize="16" FontWeight="Bold"
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                             Padding="4" CornerRadius="6"/>

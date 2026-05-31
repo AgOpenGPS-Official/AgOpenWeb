@@ -9,6 +9,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.StartWorkSessionDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -39,33 +40,6 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="Margin" Value="0,8,0,2"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="18,12"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.SecondaryButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-        </Style>
-        <Style Selector="Button.DangerButton">
-            <Setter Property="Background" Value="#E74C3C"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-        </Style>
-        <Style Selector="Button.DangerButton:pointerover">
-            <Setter Property="Background" Value="#C0392B"/>
-        </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -85,31 +59,19 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
         </Style>
         <Style Selector="ListBoxItem:selected">
-            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
         </Style>
     </UserControl.Styles>
 
     <Grid>
-        <Border Background="#80000000" IsHitTestVisible="True"
-                PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                MinWidth="960"
-                MaxWidth="1350"
-                MaxHeight="960"
-                Padding="30"
-                DataContext="{Binding StartWorkSessionDialogVm}">
-            <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,1.5*">
-
-                <!-- Title row spans both columns -->
-                <TextBlock Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
-                           Classes="Header" Text="Start Work Session"
-                           FontSize="24" Margin="0,0,0,16"/>
+        <controls:DialogChrome Title="Start Work Session"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MinWidth="960" MaxWidth="1350" MaxHeight="960">
+            <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,1.5*"
+                  DataContext="{Binding StartWorkSessionDialogVm}">
 
                 <!-- LEFT: Fields list -->
                 <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="Auto,Auto,*">
@@ -252,7 +214,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 <!-- Status / error message -->
                 <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                            Text="{Binding StatusMessage}"
-                           Foreground="#E74C3C"
+                           Foreground="{DynamicResource DangerButtonBrush}"
                            FontSize="14"
                            IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
                            Margin="0,10,0,0"/>
@@ -265,12 +227,6 @@ Licensed under GNU GPL v3. See LICENSE.md.
                 <UniformGrid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
                              Rows="1"
                              Margin="0,16,0,0">
-                    <Button Classes="DialogButton CancelButton"
-                            Content="Cancel"
-                            Command="{Binding CancelCommand}"
-                            HorizontalAlignment="Stretch"
-                            HorizontalContentAlignment="Center"
-                            Margin="0,0,6,0"/>
                     <Button Classes="DialogButton SecondaryButton"
                             Content="Open Field Only"
                             Command="{Binding OpenFieldOnlyCommand}"
@@ -305,6 +261,6 @@ Licensed under GNU GPL v3. See LICENSE.md.
                             Margin="6,0,0,0"/>
                 </UniformGrid>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

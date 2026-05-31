@@ -43,14 +43,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
         </Style>
         <Style Selector="Button.ToolButton:pressed">
-            <Setter Property="Background" Value="#1ABC9C"/>
+            <Setter Property="Background" Value="{DynamicResource InfoAccentBrush}"/>
         </Style>
         <Style Selector="Button.ToolButton.active">
-            <Setter Property="Background" Value="#1ABC9C"/>
+            <Setter Property="Background" Value="{DynamicResource InfoAccentBrush}"/>
         </Style>
 
         <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="#C0392B"/>
+            <Setter Property="Background" Value="{DynamicResource DangerButtonHoverBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
             <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="MinWidth" Value="80"/>
@@ -59,11 +59,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="#E74C3C"/>
+            <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}"/>
         </Style>
 
         <Style Selector="Button.OkButton">
-            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
             <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="MinWidth" Value="80"/>
@@ -72,7 +72,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style Selector="Button.OkButton:pointerover">
-            <Setter Property="Background" Value="#2ECC71"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonHoverBrush}"/>
         </Style>
         <Style Selector="Button.OkButton:disabled">
             <Setter Property="Opacity" Value="0.5"/>
@@ -85,7 +85,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <Grid>
         <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Dialog panel - full screen with margin for touch targets -->
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
@@ -99,7 +99,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         <StackPanel Grid.Column="0">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Boundary.png" Width="24" Height="24"/>
-                                <TextBlock Text="{loc:Localize DrawFieldBoundary}" Foreground="#1ABC9C" FontWeight="Bold" FontSize="18"/>
+                                <TextBlock Text="{loc:Localize DrawFieldBoundary}" Foreground="{DynamicResource InfoAccentBrush}" FontWeight="Bold" FontSize="18"/>
                                 <Border Background="#F5F54D" CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
                                         IsVisible="{Binding IsInnerBoundaryMode}">
                                     <TextBlock Text="INNER" FontSize="12" FontWeight="Bold" Foreground="#333333"/>
@@ -110,7 +110,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
                             <TextBlock x:Name="PointCountLabel" Text="{Binding BoundaryMapPointCount, StringFormat='Points: {0}'}"
-                                       Foreground="#1ABC9C" FontSize="14"
+                                       Foreground="{DynamicResource InfoAccentBrush}" FontSize="14"
                                        FontWeight="Bold" VerticalAlignment="Center"/>
                             <TextBlock x:Name="CoordinateLabel" Text="{Binding BoundaryMapCoordinateText}"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12"
@@ -123,7 +123,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <mapsui:MapControl x:Name="MapControl" Grid.Row="1"/>
 
                 <!-- Bottom toolbar -->
-                <Border Grid.Row="1" Background="#80000000" Padding="10"
+                <Border Grid.Row="1" Background="{DynamicResource ModalBackdropBrush}" Padding="10"
                         VerticalAlignment="Top" HorizontalAlignment="Left"
                         CornerRadius="0,0,8,0" Margin="0">
                     <StackPanel Orientation="Horizontal" Spacing="8">

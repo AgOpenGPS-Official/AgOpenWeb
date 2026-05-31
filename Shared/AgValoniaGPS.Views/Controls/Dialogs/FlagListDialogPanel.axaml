@@ -24,7 +24,7 @@ the Free Software Foundation, either version 3 of the License, or
 
     <Grid>
         <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <!-- Dialog panel -->
         <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"

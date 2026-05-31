@@ -22,7 +22,7 @@ public partial class ViewSettingsDialogPanel : UserControl
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CloseViewSettingsDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
     }
 }

@@ -98,6 +98,6 @@ public partial class LanguageDialogPanel : UserControl
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
-            vm.CloseLanguageDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
     }
 }

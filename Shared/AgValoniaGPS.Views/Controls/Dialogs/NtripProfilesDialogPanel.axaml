@@ -22,6 +22,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
              xmlns:ntrip="clr-namespace:AgValoniaGPS.Models.Ntrip;assembly=AgValoniaGPS.Models"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d" d:DesignWidth="550" d:DesignHeight="450"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.NtripProfilesDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -34,44 +35,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="FontSize" Value="18"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,12"/>
-        </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.DangerButton">
-            <Setter Property="Background" Value="#E74C3C"/>
-        </Style>
-        <Style Selector="Button.DangerButton:pointerover">
-            <Setter Property="Background" Value="#C0392B"/>
-        </Style>
-        <Style Selector="Button.ToolbarButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Width" Value="48"/>
-            <Setter Property="Height" Value="48"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.ToolbarButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
         </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
@@ -92,27 +55,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         </Style>
     </UserControl.Styles>
 
+    <!-- Non-modal: a fully transparent light-dismiss scrim (not a darkening
+         backdrop) lets the map show through while still catching an outside tap
+         to close the chain — matching the left-nav fly-outs. Drag the header to
+         move the card aside for a wider peek. -->
     <Grid>
-        <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog panel -->
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
+        <!-- Dialog panel: standardized Back/Title/Close chrome. Back is at the
+             bottom of the dialog stack, so it reopens the Network IO fly-out;
+             Close exits the whole chain to the map. Drag the header to peek. -->
+        <controls:DialogChrome
+                Title="{loc:Localize NtripProfiles}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
                 MinWidth="480"
                 MaxWidth="600"
-                MaxHeight="550"
-                Padding="16">
-            <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
-                <!-- Header -->
-                <TextBlock Grid.Row="0" Classes="Header" Text="{loc:Localize NtripProfiles}"/>
+                MaxHeight="550">
+            <Grid RowDefinitions="Auto,Auto,*">
 
                 <!-- Toolbar -->
-                <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" CornerRadius="6" Padding="4" Margin="0,0,0,12">
+                <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" CornerRadius="6" Padding="4" Margin="0,0,0,12">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <!-- Add Profile -->
                         <Button Classes="ToolbarButton" ToolTip.Tip="Add New Profile"
@@ -147,7 +110,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Border>
 
                 <!-- Column Headers -->
-                <Border Grid.Row="2" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" CornerRadius="4,4,0,0" Padding="12,8" Margin="0,0,0,0">
+                <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" CornerRadius="4,4,0,0" Padding="12,8" Margin="0,0,0,0">
                     <Grid ColumnDefinitions="*,150,60">
                         <TextBlock Grid.Column="0" Text="{loc:Localize ProfileName}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontWeight="SemiBold"/>
                         <TextBlock Grid.Column="1" Text="{loc:Localize Caster}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontWeight="SemiBold"/>
@@ -157,7 +120,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                 <!-- Profiles ListBox -->
                 <ListBox x:Name="ProfilesListBox"
-                         Grid.Row="3"
+                         Grid.Row="2"
                          SelectionMode="Single"
                          MinHeight="200"
                          MaxHeight="350"
@@ -180,17 +143,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-
-                <!-- Action Buttons: Back (to Network IO) · Close (dismiss) -->
-                <Grid Grid.Row="4" ColumnDefinitions="Auto,*,Auto" Margin="0,12,0,0">
-                    <Button Grid.Column="0" Classes="DialogButton CancelButton" Content="Back"
-                            Command="{Binding BackFromNtripProfilesCommand}"/>
-
-                    <!-- Close Button -->
-                    <Button Grid.Column="2" Classes="DialogButton CancelButton" Content="{loc:Localize Close}"
-                            Command="{Binding CloseNtripProfilesDialogCommand}"/>
-                </Grid>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

@@ -48,69 +48,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="MinHeight" Value="40"/>
         </Style>
         <Style Selector="Border.InputField.Selected">
-            <Setter Property="BorderBrush" Value="#1ABC9C"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource InfoAccentBrush}"/>
             <Setter Property="BorderThickness" Value="2"/>
-        </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="24,12"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-        </Style>
-        <Style Selector="Button.TestButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,8"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="4"/>
-        </Style>
-        <Style Selector="Button.TestButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
         </Style>
     </UserControl.Styles>
 
-    <!-- Semi-transparent overlay background -->
     <Grid>
-        <!-- Backdrop that dims the rest of the UI -->
-        <Border Background="#80000000" IsHitTestVisible="True"
-                PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog panel positioned near top for mobile -->
-        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                Margin="0,20,0,0"
-                MinWidth="380"
-                MaxWidth="420"
-                Padding="16">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                <!-- Title -->
-                <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,12">
-                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AgShare.png" Width="24" Height="24" Margin="0,0,8,0"/>
-                    <TextBlock Text="{loc:Localize AgshareSettings}"
-                               FontSize="18"
-                               FontWeight="Bold"
-                               Foreground="#1ABC9C"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
+        <controls:DialogChrome Title="{loc:Localize AgshareSettings}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MinWidth="380" MaxWidth="420">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
 
                 <!-- Server URL Field -->
                 <StackPanel Grid.Row="1" Margin="0,0,0,8">
@@ -142,7 +92,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                 <!-- Test Connection & Enable -->
                 <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
-                    <Button Grid.Column="0" Classes="TestButton" Click="TestConnection_Click">
+                    <Button Grid.Column="0" Classes="SecondaryButton" Click="TestConnection_Click">
                         <TextBlock Text="{loc:Localize TestConnection}"/>
                     </Button>
                     <TextBlock x:Name="ConnectionStatusLabel" Grid.Column="1"
@@ -162,22 +112,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                                     MaxLength="200"
                                                     Margin="0,0,0,12"/>
 
-                <!-- Buttons -->
-                <Grid Grid.Row="5" ColumnDefinitions="*,*" Margin="0,4,0,0">
-                    <Button Grid.Column="0"
-                            Classes="DialogButton CancelButton"
-                            Content="{loc:Localize Cancel}"
-                            HorizontalAlignment="Stretch"
-                            Click="Cancel_Click"
-                            Margin="0,0,6,0"/>
-                    <Button Grid.Column="1"
-                            Classes="DialogButton"
-                            Content="{loc:Localize Save}"
-                            HorizontalAlignment="Stretch"
-                            Click="Save_Click"
-                            Margin="6,0,0,0"/>
-                </Grid>
+                <!-- Save (Back/Close live in the header chrome). -->
+                <Button Grid.Row="5" Classes="DialogButton"
+                        Content="{loc:Localize Save}" HorizontalAlignment="Right" Margin="0,4,0,0"
+                        Click="Save_Click"/>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

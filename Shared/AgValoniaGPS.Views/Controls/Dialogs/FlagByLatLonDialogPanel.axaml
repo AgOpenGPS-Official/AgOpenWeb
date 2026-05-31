@@ -20,7 +20,7 @@ the Free Software Foundation, either version 3 of the License, or
              IsHitTestVisible="{Binding State.UI.IsFlagByLatLonDialogVisible}">
 
     <Grid>
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
 
         <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
                 CornerRadius="12" Padding="24"
@@ -59,7 +59,7 @@ the Free Software Foundation, either version 3 of the License, or
 
                 <!-- Error message -->
                 <TextBlock Text="{Binding FlagByLatLonError}"
-                           Foreground="#E74C3C" FontSize="12"
+                           Foreground="{DynamicResource DangerButtonBrush}" FontSize="12"
                            IsVisible="{Binding FlagByLatLonError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                            HorizontalAlignment="Center"/>
 
@@ -74,7 +74,7 @@ the Free Software Foundation, either version 3 of the License, or
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="6"/>
                     <Button Grid.Column="2" Content="{loc:Localize PlaceFlag}"
                             Command="{Binding PlaceFlagByLatLonCommand}"
-                            Background="#27AE60" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Background="{DynamicResource SuccessButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                             HorizontalAlignment="Stretch" Height="40" FontSize="14" FontWeight="Bold"
                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="6"/>
                 </Grid>

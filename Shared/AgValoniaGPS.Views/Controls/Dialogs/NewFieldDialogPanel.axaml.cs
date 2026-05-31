@@ -31,7 +31,7 @@ public partial class NewFieldDialogPanel : UserControl
         // Clicking backdrop cancels the dialog
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CancelNewFieldDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
     }
 }

@@ -28,26 +28,55 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
   <controls:FloatingPanel x:Name="FP"
                           Title="Tools"
                           CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
-    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/WizardWand.png"
-                         Text="{loc:Localize SteerWizard}"
-                         Command="{Binding ShowSteerWizardCommand}"/>
+    <!-- Explicit two-column layout so the three chart buttons all sit in the
+         right column (the default MenuItems UniformGrid auto-flows and would
+         split them across columns). -->
+    <controls:FloatingPanel.PanelContent>
+      <Grid ColumnDefinitions="*,*" ColumnSpacing="4">
+        <!-- Left: non-chart tools -->
+        <StackPanel Grid.Column="0" Spacing="4">
+          <Button Classes="ModernButton" Command="{Binding ShowSteerWizardCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+              <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/WizardWand.png" Width="28" Height="28"/>
+              <TextBlock Text="{loc:Localize SteerWizard}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+          <Button Classes="ModernButton">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+              <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ABTracks.png" Width="28" Height="28"/>
+              <TextBlock Text="{loc:Localize LogViewer}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+          <Button Classes="ModernButton">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+              <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesRoll.png" Width="28" Height="28"/>
+              <TextBlock Text="{loc:Localize RollCorrection}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
 
-    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/ABTracks.png"
-                         Text="{loc:Localize LogViewer}"/>
-
-    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerOn.png"
-                         Text="{loc:Localize SteerChart}"
-                         Command="{Binding ToggleSteerChartPanelCommand}"/>
-
-    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesHeading.png"
-                         Text="{loc:Localize HeadingChart}"
-                         Command="{Binding ToggleHeadingChartPanelCommand}"/>
-
-    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/AutoManualIsAuto.png"
-                         Text="{loc:Localize XteChart}"
-                         Command="{Binding ToggleXTEChartPanelCommand}"/>
-
-    <controls:MenuButton Icon="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesRoll.png"
-                         Text="{loc:Localize RollCorrection}"/>
+        <!-- Right: the three diagnostic charts -->
+        <StackPanel Grid.Column="1" Spacing="4">
+          <Button Classes="ModernButton" Command="{Binding ToggleSteerChartPanelCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+              <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerOn.png" Width="28" Height="28"/>
+              <TextBlock Text="{loc:Localize SteerChart}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+          <Button Classes="ModernButton" Command="{Binding ToggleHeadingChartPanelCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+              <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/ConS_SourcesHeading.png" Width="28" Height="28"/>
+              <TextBlock Text="{loc:Localize HeadingChart}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+          <Button Classes="ModernButton" Command="{Binding ToggleXTEChartPanelCommand}">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+              <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoManualIsAuto.png" Width="28" Height="28"/>
+              <TextBlock Text="{loc:Localize XteChart}" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Grid>
+    </controls:FloatingPanel.PanelContent>
     </controls:FloatingPanel>
 </UserControl>

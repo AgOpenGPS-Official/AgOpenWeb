@@ -158,7 +158,7 @@ public partial class MainViewModel
         // AgShare Dialogs
         ShowAgShareDownloadDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.AgShareDownload);
+            OpenChainDialog(DialogType.AgShareDownload);
         });
 
         CancelAgShareDownloadDialogCommand = new RelayCommand(() =>
@@ -168,7 +168,7 @@ public partial class MainViewModel
 
         ShowAgShareUploadDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.AgShareUpload);
+            OpenChainDialog(DialogType.AgShareUpload);
         });
 
         CancelAgShareUploadDialogCommand = new RelayCommand(() =>
@@ -182,7 +182,7 @@ public partial class MainViewModel
             AgShareSettingsServerUrl = ConfigStore.Connections.AgShareServer;
             AgShareSettingsApiKey = ConfigStore.Connections.AgShareApiKey;
             AgShareSettingsEnabled = ConfigStore.Connections.AgShareEnabled;
-            State.UI.ShowDialog(DialogType.AgShareSettings);
+            OpenChainDialog(DialogType.AgShareSettings);
         });
 
         CancelAgShareSettingsDialogCommand = new RelayCommand(() =>
@@ -214,7 +214,7 @@ public partial class MainViewModel
                 StatusMessage = "Open a field first";
                 return;
             }
-            State.UI.ShowDialog(DialogType.FieldBuilder);
+            OpenChainDialog(DialogType.FieldBuilder);
             UpdateHeadlandPreview();
         });
 
@@ -315,7 +315,7 @@ public partial class MainViewModel
         // Headland Dialog - now opens Field Builder
         ShowHeadlandDialogCommand = new RelayCommand(() =>
         {
-            State.UI.ShowDialog(DialogType.FieldBuilder);
+            OpenChainDialog(DialogType.FieldBuilder);
             UpdateHeadlandPreview();
         });
 

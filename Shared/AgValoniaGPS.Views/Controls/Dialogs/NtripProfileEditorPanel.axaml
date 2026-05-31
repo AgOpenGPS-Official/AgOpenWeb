@@ -22,6 +22,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
              xmlns:ntrip="clr-namespace:AgValoniaGPS.Models.Ntrip;assembly=AgValoniaGPS.Models"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="650"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.NtripProfileEditorPanel"
              x:DataType="vm:MainViewModel"
@@ -51,54 +52,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <Style Selector="TextBox:focus">
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
-        <Style Selector="Button.TestButton">
-            <Setter Property="Background" Value="#27AE60"/>
-        </Style>
-        <Style Selector="Button.TestButton:pointerover">
-            <Setter Property="Background" Value="#219A52"/>
-        </Style>
         <Style Selector="CheckBox">
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
             <Setter Property="FontSize" Value="14"/>
         </Style>
     </UserControl.Styles>
 
+    <!-- Non-modal: fully transparent light-dismiss scrim — map shows through, an
+         outside tap closes the chain. Drag the header to move the editor aside. -->
     <Grid>
-        <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog panel -->
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
+        <!-- Dialog panel: standardized chrome supplies the Back/Title/Close header.
+             Back keeps the editor's field-cleanup (CancelNtripProfileEditCommand,
+             which ends in NavigateBack); Close exits the whole chain. -->
+        <controls:DialogChrome
+                Title="{loc:Localize EditNtripProfile}"
+                BackCommand="{Binding CancelNtripProfileEditCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
                 MinWidth="420"
-                MaxWidth="500"
-                Padding="20">
+                MaxWidth="500">
             <StackPanel Spacing="8">
-                <!-- Header -->
-                <TextBlock Classes="Header" Text="{loc:Localize EditNtripProfile}" Margin="0,0,0,4"/>
 
                 <!-- Profile Name (label inline to save vertical space) -->
                 <Grid ColumnDefinitions="62,*">
@@ -138,7 +112,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                 <!-- Test Connection -->
                 <Grid ColumnDefinitions="Auto,*">
-                    <Button Grid.Column="0" Classes="DialogButton TestButton" Content="{loc:Localize TestConnection}"
+                    <Button Grid.Column="0" Classes="SecondaryButton" Content="{loc:Localize TestConnection}"
                             Command="{Binding TestNtripConnectionCommand}"
                             IsEnabled="{Binding !IsTestingNtripConnection}"/>
                     <TextBlock Grid.Column="1" Text="{Binding NtripTestStatus}"
@@ -175,16 +149,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <CheckBox IsChecked="{Binding EditingNtripProfile.IsDefault, FallbackValue=False}"
                           Content="{loc:Localize SetAsDefaultProfileForFieldsWithoutSpecificAssociation}"/>
 
-                <!-- Action Buttons: Back (to profile list) · Close (dismiss) · Save -->
-                <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,6,0,0">
-                    <Button Grid.Column="0" Classes="DialogButton CancelButton" Content="Back"
-                            Command="{Binding CancelNtripProfileEditCommand}" Margin="0,0,8,0"/>
-                    <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="Close"
-                            Command="{Binding CloseNtripProfilesDialogCommand}"/>
-                    <Button Grid.Column="3" Classes="DialogButton" Content="{loc:Localize SaveProfile}"
-                            Command="{Binding SaveNtripProfileCommand}"/>
-                </Grid>
+                <!-- Primary action; Back/Close are in the header chrome above. -->
+                <Button HorizontalAlignment="Right" Classes="DialogButton" Margin="0,6,0,0"
+                        Content="{loc:Localize SaveProfile}"
+                        Command="{Binding SaveNtripProfileCommand}"/>
             </StackPanel>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

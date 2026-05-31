@@ -131,16 +131,123 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <Setter Property="Margin" Value="0,80,0,0"/>
     </Style>
 
-    <!-- Cancel Button Style (red) -->
-    <Style Selector="Button.CancelButton">
-        <Setter Property="Background" Value="#DD3333"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="Padding" Value="12,4"/>
-        <Setter Property="CornerRadius" Value="4"/>
+    <!-- ===== Dialog button family (menu-system standardization) =====
+         Shared across every dialog and fly-out so confirms, cancels, and
+         destructive actions read identically app-wide. Geometry is uniform
+         (CornerRadius 6 / Padding 16,10 / FontSize 14 / SemiBold). The modifier
+         classes (OkButton / DangerButton / DeleteButton / CancelButton) are
+         self-contained AND declared AFTER DialogButton, so when combined as
+         Classes="DialogButton CancelButton" the modifier's fill wins (Avalonia
+         resolves equal-specificity setters in document order). Primary uses the
+         live theme accent; hover/semantic colors come from the named brushes in
+         SharedResources.axaml. -->
+    <Style Selector="Button.DialogButton">
+        <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="16,10"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.DialogButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource PrimaryButtonHoverBrush}"/>
+    </Style>
+    <Style Selector="Button.DialogButton:disabled">
+        <Setter Property="Opacity" Value="0.5"/>
+    </Style>
+
+    <!-- Success / confirm (green) -->
+    <Style Selector="Button.OkButton">
+        <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="16,10"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.OkButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SuccessButtonHoverBrush}"/>
+    </Style>
+
+    <!-- Destructive, full size (red) -->
+    <Style Selector="Button.DangerButton">
+        <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="16,10"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.DangerButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource DangerButtonHoverBrush}"/>
+    </Style>
+
+    <!-- Destructive, compact (inline list-row delete) -->
+    <Style Selector="Button.DeleteButton">
+        <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.DeleteButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource DangerButtonHoverBrush}"/>
+    </Style>
+
+    <!-- Secondary / cancel (neutral mid-gray, full size) -->
+    <Style Selector="Button.CancelButton">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="16,10"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
     </Style>
     <Style Selector="Button.CancelButton:pointerover">
-        <Setter Property="Background" Value="#EE4444"/>
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumBrush}"/>
+    </Style>
+
+    <!-- Secondary neutral action (lighter surface) — Refresh / Test / etc.
+         Visually a sibling of CancelButton; separate name so non-cancel
+         secondary actions don't read as "cancel". -->
+    <Style Selector="Button.SecondaryButton">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="16,10"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.SecondaryButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+    </Style>
+
+    <!-- Square icon toolbar button (48x48) — list-row / header icon actions -->
+    <Style Selector="Button.ToolbarButton">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Width" Value="48"/>
+        <Setter Property="Height" Value="48"/>
+        <Setter Property="Padding" Value="8"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+    </Style>
+    <Style Selector="Button.ToolbarButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
     </Style>
 
     <!-- Zoom Button Style -->

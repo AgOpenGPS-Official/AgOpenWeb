@@ -13,6 +13,7 @@ the Free Software Foundation, either version 3 of the License, or
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="600"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.ViewSettingsDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -20,24 +21,19 @@ the Free Software Foundation, either version 3 of the License, or
              IsHitTestVisible="{Binding State.UI.IsViewSettingsDialogVisible}">
 
     <Grid>
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="0"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+        <controls:DialogChrome Title="{loc:Localize AllSettings}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
                 Width="650" Height="520">
-            <Grid RowDefinitions="Auto,*,Auto">
-                <!-- Header -->
-                <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="12,12,0,0" Padding="16,12">
-                    <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <TextBlock Text="{loc:Localize AllSettings}" FontSize="18" FontWeight="Bold"
-                                   Foreground="{DynamicResource SystemControlHighlightAccentBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="{loc:Localize ReadOnlyViewOfCurrentConfigurationValues}"
-                                   FontSize="11" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" HorizontalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
+            <Grid RowDefinitions="Auto,*">
+                <TextBlock Grid.Row="0" Text="{loc:Localize ReadOnlyViewOfCurrentConfigurationValues}"
+                           FontSize="11" Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           HorizontalAlignment="Center" Margin="0,0,0,8"/>
 
                 <!-- Settings tree -->
-                <Border Grid.Row="1" Margin="8" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="4">
+                <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="4">
                     <ScrollViewer>
                         <ItemsControl ItemsSource="{Binding SettingsTree}">
                             <ItemsControl.ItemTemplate>
@@ -72,13 +68,7 @@ the Free Software Foundation, either version 3 of the License, or
                     </ScrollViewer>
                 </Border>
 
-                <!-- Close button -->
-                <Button Grid.Row="2" Content="{loc:Localize Close}" Margin="16,4,16,12"
-                        Command="{Binding CloseViewSettingsDialogCommand}"
-                        Background="{DynamicResource SystemControlHighlightAccentBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        HorizontalAlignment="Stretch" Height="40" FontSize="14" FontWeight="Bold"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center" CornerRadius="6"/>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

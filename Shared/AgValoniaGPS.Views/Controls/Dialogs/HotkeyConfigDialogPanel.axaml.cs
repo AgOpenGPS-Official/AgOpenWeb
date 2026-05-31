@@ -232,11 +232,20 @@ public partial class HotkeyConfigDialogPanel : UserControl
         return null;
     }
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        // Persist hotkey edits (and clear the pending reassignment) whenever the
+        // dialog is dismissed by ANY means — Back, Close, or backdrop — not just
+        // an OK button. Tied to visibility so changes are never lost on Back.
+        if (change.Property == IsVisibleProperty && !change.GetNewValue<bool>())
+        {
+            _vm?.CloseHotkeyConfigDialogCommand?.Execute(null);
+        }
+    }
+
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_vm != null)
-        {
-            _vm.CloseHotkeyConfigDialogCommand?.Execute(null);
-        }
+        _vm?.NavCloseChainCommand?.Execute(null);
     }
 }

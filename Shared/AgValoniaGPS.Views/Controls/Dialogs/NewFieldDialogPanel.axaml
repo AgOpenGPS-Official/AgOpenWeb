@@ -22,44 +22,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.NewFieldDialogPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding State.UI.IsNewFieldDialogVisible}"
              IsHitTestVisible="{Binding State.UI.IsNewFieldDialogVisible}">
 
     <UserControl.Styles>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="MinWidth" Value="100"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pressed">
-            <Setter Property="Background" Value="#1F6391"/>
-        </Style>
-
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="MinWidth" Value="100"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-        </Style>
-        <Style Selector="Button.CancelButton:pressed">
-            <Setter Property="Background" Value="#6B7B7C"/>
-        </Style>
-
         <Style Selector="TextBox.DialogInput">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
@@ -88,30 +57,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     </UserControl.Styles>
 
     <Grid>
-        <!-- Semi-transparent backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog panel -->
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                MaxWidth="450"
-                MaxHeight="380"
-                Margin="20"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                BoxShadow="0 8 32 #40000000">
-            <Grid RowDefinitions="Auto,*,Auto" Margin="24">
-                <!-- Header -->
-                <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,20">
-                    <TextBlock Text="{loc:Localize CreateNewField}"
-                               FontSize="24"
-                               FontWeight="Bold"
-                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                    <TextBlock Text="{loc:Localize EnterFieldNameOriginWillBeSetToCurrentGpsPosition}"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
-                               FontSize="14"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
+        <controls:DialogChrome Title="{loc:Localize CreateNewField}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MaxWidth="450" MaxHeight="380">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Subtitle -->
+                <TextBlock Grid.Row="0" Text="{loc:Localize EnterFieldNameOriginWillBeSetToCurrentGpsPosition}"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                           FontSize="14" TextWrapping="Wrap" Margin="0,0,0,16"/>
 
                 <!-- Form -->
                 <StackPanel Grid.Row="1" Spacing="16">
@@ -159,20 +115,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                TextWrapping="Wrap"/>
                 </StackPanel>
 
-                <!-- Buttons -->
-                <StackPanel Grid.Row="2"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            Spacing="12"
-                            Margin="0,24,0,0">
-                    <Button Classes="CancelButton"
-                            Content="{loc:Localize Cancel}"
-                            Command="{Binding CancelNewFieldDialogCommand}"/>
-                    <Button Classes="DialogButton"
-                            Content="{loc:Localize Create}"
-                            Command="{Binding ConfirmNewFieldDialogCommand}"/>
-                </StackPanel>
+                <!-- Create (Back/Close live in the header chrome). -->
+                <Button Grid.Row="2" Classes="DialogButton"
+                        Content="{loc:Localize Create}" HorizontalAlignment="Right" Margin="0,24,0,0"
+                        Command="{Binding ConfirmNewFieldDialogCommand}"/>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

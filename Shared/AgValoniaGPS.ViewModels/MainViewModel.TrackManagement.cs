@@ -161,7 +161,7 @@ public partial class MainViewModel
                 return;
             }
 
-            State.UI.ShowDialog(DialogType.ImportTracks);
+            OpenChainDialog(DialogType.ImportTracks);
         });
 
         ImportTracksFromFieldCommand = new RelayCommand<string>(fieldName =>

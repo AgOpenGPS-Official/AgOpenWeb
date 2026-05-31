@@ -28,10 +28,8 @@ public partial class NtripProfilesDialogPanel : UserControl
 
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // Close dialog when clicking the backdrop
+        // Light-dismiss: an outside tap closes the whole chain back to the map.
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
-        {
-            vm.State.UI.CloseDialog();
-        }
+            vm.NavCloseChainCommand?.Execute(null);
     }
 }

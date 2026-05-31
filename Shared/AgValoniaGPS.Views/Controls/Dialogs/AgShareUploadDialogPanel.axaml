@@ -20,36 +20,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:loc="clr-namespace:AgValoniaGPS.Views.Localization;assembly=AgValoniaGPS.Views"
              xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
              xmlns:local="clr-namespace:AgValoniaGPS.Views.Controls.Dialogs;assembly=AgValoniaGPS.Views"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.AgShareUploadDialogPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding State.UI.IsAgShareUploadDialogVisible}"
              IsHitTestVisible="{Binding State.UI.IsAgShareUploadDialogVisible}">
 
     <UserControl.Styles>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Padding" Value="16,10"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
         <Style Selector="CheckBox">
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
         </Style>
     </UserControl.Styles>
 
     <Grid>
-        <!-- Backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog Content -->
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="20"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+        <controls:DialogChrome Title="{loc:Localize UploadToAgshare}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
                 MinWidth="400" MaxWidth="500" MaxHeight="600">
             <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
-                <!-- Header -->
-                <TextBlock Grid.Row="0" Text="{loc:Localize UploadToAgshare}"
-                           FontSize="20" FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                           HorizontalAlignment="Center" Margin="0,0,0,15"/>
 
                 <!-- Field List -->
                 <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6"
@@ -102,17 +92,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                HorizontalAlignment="Center" Margin="0,5"/>
                 </StackPanel>
 
-                <!-- Action Buttons -->
-                <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" Margin="0,10,0,0">
-                    <Button Grid.Column="1" x:Name="BtnUpload" Content="{loc:Localize Upload}"
-                            Classes="DialogButton" IsEnabled="False"
-                            Background="#27AE60" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                            Click="Upload_Click" Margin="0,0,10,0"/>
-                    <Button Grid.Column="2" Content="{loc:Localize Cancel}" Classes="DialogButton"
-                            Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                            Click="Cancel_Click"/>
-                </Grid>
+                <!-- Upload (Back/Close live in the header chrome). -->
+                <Button Grid.Row="4" x:Name="BtnUpload" Content="{loc:Localize Upload}"
+                        Classes="OkButton" IsEnabled="False" HorizontalAlignment="Right" Margin="0,10,0,0"
+                        Click="Upload_Click"/>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

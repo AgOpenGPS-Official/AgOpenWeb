@@ -1,23 +1,20 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.HelpDialogPanel"
              x:DataType="vm:MainViewModel"
              IsVisible="{Binding State.UI.IsHelpDialogVisible}"
              IsHitTestVisible="{Binding State.UI.IsHelpDialogVisible}">
 
-    <!-- Semi-transparent backdrop -->
-    <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed">
-        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-                CornerRadius="12" Padding="24"
-                MaxWidth="420"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
-                BoxShadow="0 4 16 #40000000">
+    <Grid>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
+        <controls:DialogChrome Title="Help"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MaxWidth="420">
             <StackPanel Spacing="16">
-                <TextBlock Text="Help" FontSize="22" FontWeight="Bold"
-                           HorizontalAlignment="Center"/>
-
                 <TextBlock Text="AgValoniaGPS - Agricultural GPS Guidance"
                            FontSize="14" HorizontalAlignment="Center"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
@@ -53,10 +50,7 @@
                     </Button>
                 </StackPanel>
 
-                <Button Content="Close" Classes="ModernButton"
-                        HorizontalAlignment="Center" MinWidth="120"
-                        Command="{Binding CloseHelpDialogCommand}"/>
             </StackPanel>
-        </Border>
-    </Border>
+        </controls:DialogChrome>
+    </Grid>
 </UserControl>

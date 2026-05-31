@@ -9,6 +9,7 @@ Licensed under GNU GPL v3.
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
              xmlns:converters="clr-namespace:AgValoniaGPS.Views.Converters;assembly=AgValoniaGPS.Views"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.FieldBuilderDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -30,7 +31,7 @@ Licensed under GNU GPL v3.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
         </Style>
         <Style Selector="Button.ActionBtn">
-            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="CornerRadius" Value="6"/>
             <Setter Property="Padding" Value="12,8"/>
@@ -40,35 +41,23 @@ Licensed under GNU GPL v3.
             <Setter Property="HorizontalAlignment" Value="Stretch"/>
         </Style>
         <Style Selector="Button.ActionBtn:pointerover">
-            <Setter Property="Background" Value="#2ECC71"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonHoverBrush}"/>
         </Style>
     </UserControl.Styles>
 
     <Grid>
-        <!-- Backdrop -->
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <!-- Dialog - full screen -->
-        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
-                CornerRadius="0" Padding="16"
-                HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+        <!-- Full-screen workspace: Anchored=False so DialogChrome fills the parent
+             and skips the drag/anchor behaviour; just supplies the Back/Close header. -->
+        <controls:DialogChrome Title="Field Builder" Anchored="False"
+                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="0"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}">
             <Panel>
-            <Grid RowDefinitions="Auto,*">
-                <!-- Header -->
-                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                    <TextBlock Text="Field Builder" FontSize="24" FontWeight="Bold"
-                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                    <Button Grid.Column="1" Width="44" Height="44" Padding="0"
-                            Background="#C0392B" Foreground="White" CornerRadius="8"
-                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                            Cursor="Hand" Command="{Binding CloseFieldBuilderCommand}">
-                        <TextBlock Text="X" FontSize="20" FontWeight="Bold"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Button>
-                </Grid>
-
+            <Grid>
                 <!-- Main: Visualizer + Right Panel -->
-                <Grid Grid.Row="1" ColumnDefinitions="*,340" ColumnSpacing="12">
+                <Grid ColumnDefinitions="*,340" ColumnSpacing="12">
 
                     <!-- LEFT: Boundary/Track Visualizer -->
                     <Border Grid.Column="0" CornerRadius="8" ClipToBounds="True"
@@ -212,7 +201,7 @@ Licensed under GNU GPL v3.
                                                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                                            VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="2" Text="{Binding Offset, StringFormat='{}{0:F1}m'}" FontSize="12"
-                                                           Foreground="#1ABC9C" VerticalAlignment="Center"/>
+                                                           Foreground="{DynamicResource InfoAccentBrush}" VerticalAlignment="Center"/>
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -265,7 +254,7 @@ Licensed under GNU GPL v3.
                                     </StackPanel>
                                     <StackPanel Spacing="2">
                                         <Button Width="56" Height="56" CornerRadius="8" Cursor="Hand" Padding="0"
-                                                Background="#C0392B" BorderThickness="0"
+                                                Background="{DynamicResource DangerButtonHoverBrush}" BorderThickness="0"
                                                 ToolTip.Tip="Delete Selected" Click="DeleteHeadlandSegment_Click">
                                             <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Trash.png"
                                                    Width="36" Height="36" Stretch="Uniform"/>
@@ -350,7 +339,7 @@ Licensed under GNU GPL v3.
                                     </StackPanel>
                                     <StackPanel Spacing="2">
                                         <Button Width="56" Height="56" CornerRadius="8" Cursor="Hand" Padding="0"
-                                                Background="#C0392B" BorderThickness="0"
+                                                Background="{DynamicResource DangerButtonHoverBrush}" BorderThickness="0"
                                                 ToolTip.Tip="Delete Selected" Click="DeleteTramSystem_Click">
                                             <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Trash.png"
                                                    Width="36" Height="36" Stretch="Uniform"/>
@@ -486,7 +475,7 @@ Licensed under GNU GPL v3.
 
                                 <StackPanel Spacing="2" HorizontalAlignment="Center" Margin="0,6,0,0">
                                     <Button Width="56" Height="56" CornerRadius="8" Cursor="Hand" Padding="0"
-                                            Background="#27AE60" BorderThickness="0"
+                                            Background="{DynamicResource SuccessButtonBrush}" BorderThickness="0"
                                             Click="TramSystemEditDone_Click">
                                         <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/OK64.png"
                                                Width="36" Height="36" Stretch="Uniform"/>
@@ -618,7 +607,7 @@ Licensed under GNU GPL v3.
                             <TextBlock x:Name="DrawInstructionText" Text="" FontSize="14" TextWrapping="Wrap"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
                             <TextBlock x:Name="DrawPointCountText" Text="Points: 0" FontSize="14" FontWeight="Bold"
-                                       Foreground="#1ABC9C"/>
+                                       Foreground="{DynamicResource InfoAccentBrush}"/>
 
                             <!-- Heading input for A+ Line -->
                             <StackPanel x:Name="HeadingInputPanel" IsVisible="False" Orientation="Horizontal"
@@ -650,13 +639,13 @@ Licensed under GNU GPL v3.
                                                Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
                                 </StackPanel>
                                 <TextBlock x:Name="ToolWidthResultText" Text="" FontSize="14" HorizontalAlignment="Center"
-                                           Foreground="#1ABC9C"/>
+                                           Foreground="{DynamicResource InfoAccentBrush}"/>
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,8,0,0">
                                 <StackPanel x:Name="CreateABBtnPanel" Spacing="2" IsVisible="False">
                                     <Button x:Name="CreateABBtn" Width="56" Height="56" CornerRadius="8" Cursor="Hand" Padding="0"
-                                            Background="#27AE60" BorderThickness="0" Click="CreateAB_Click">
+                                            Background="{DynamicResource SuccessButtonBrush}" BorderThickness="0" Click="CreateAB_Click">
                                         <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/OK64.png"
                                                Width="36" Height="36" Stretch="Uniform"/>
                                     </Button>
@@ -665,7 +654,7 @@ Licensed under GNU GPL v3.
                                 </StackPanel>
                                 <StackPanel x:Name="FinishDrawBtnPanel" Spacing="2" IsVisible="False">
                                     <Button x:Name="FinishDrawBtn" Width="56" Height="56" CornerRadius="8" Cursor="Hand" Padding="0"
-                                            Background="#27AE60" BorderThickness="0" Click="FinishDraw_Click">
+                                            Background="{DynamicResource SuccessButtonBrush}" BorderThickness="0" Click="FinishDraw_Click">
                                         <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/OK64.png"
                                                Width="36" Height="36" Stretch="Uniform"/>
                                     </Button>
@@ -690,7 +679,7 @@ Licensed under GNU GPL v3.
                                                Width="36" Height="36" Stretch="Uniform"/>
                                     </Button>
                                     <TextBlock Text="Cancel" FontSize="12" HorizontalAlignment="Center"
-                                               Foreground="#E74C3C"/>
+                                               Foreground="{DynamicResource DangerButtonBrush}"/>
                                 </StackPanel>
                             </StackPanel>
 
@@ -709,7 +698,7 @@ Licensed under GNU GPL v3.
                         BoxShadow="0 8 32 #80000000">
                     <StackPanel Spacing="12">
                         <TextBlock x:Name="InlineConfirmTitle" FontSize="18" FontWeight="Bold"
-                                   Foreground="#E74C3C"/>
+                                   Foreground="{DynamicResource DangerButtonBrush}"/>
                         <TextBlock x:Name="InlineConfirmMessage" FontSize="14" TextWrapping="Wrap"
                                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,8,0,0">
@@ -719,7 +708,7 @@ Licensed under GNU GPL v3.
                                     CornerRadius="6" BorderThickness="0" Cursor="Hand"
                                     Click="InlineConfirmNo_Click"/>
                             <Button Grid.Column="1" Content="Yes" HorizontalAlignment="Stretch" Height="40"
-                                    Background="#E74C3C" Foreground="White"
+                                    Background="{DynamicResource DangerButtonBrush}" Foreground="White"
                                     CornerRadius="6" BorderThickness="0" Cursor="Hand"
                                     Click="InlineConfirmYes_Click"/>
                         </Grid>
@@ -747,7 +736,7 @@ Licensed under GNU GPL v3.
                                     CornerRadius="6" BorderThickness="0" Cursor="Hand"
                                     Click="RenameCancel_Click"/>
                             <Button Grid.Column="1" Content="Rename" HorizontalAlignment="Stretch" Height="40"
-                                    Background="#27AE60" Foreground="White"
+                                    Background="{DynamicResource SuccessButtonBrush}" Foreground="White"
                                     CornerRadius="6" BorderThickness="0" Cursor="Hand"
                                     Click="RenameConfirm_Click"/>
                         </Grid>
@@ -755,6 +744,6 @@ Licensed under GNU GPL v3.
                 </Border>
             </Border>
             </Panel>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

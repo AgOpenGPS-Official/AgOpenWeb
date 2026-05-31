@@ -100,7 +100,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     </UserControl.Resources>
 
     <!-- Full screen modal overlay -->
-    <Grid Background="#80000000">
+    <Grid Background="{DynamicResource ModalBackdropBrush}">
         <!-- Main dialog container - fixed size to prevent resizing on tab switch -->
         <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
                 CornerRadius="8"
@@ -266,13 +266,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                             <!-- Action Buttons -->
                             <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="8">
-                                <Button Grid.Column="0" Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                <Button Grid.Column="0" Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                         FontSize="16" FontWeight="Bold" CornerRadius="8" Height="48"
                                         Command="{Binding CancelNumericInputCommand}"
                                         HorizontalContentAlignment="Center">
                                     <TextBlock Text="{loc:Localize Cancel}"/>
                                 </Button>
-                                <Button Grid.Column="1" Background="#4A9A7E" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                <Button Grid.Column="1" Background="{DynamicResource StatusOkBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                         FontSize="16" FontWeight="Bold" CornerRadius="8" Height="48"
                                         Command="{Binding ConfirmNumericInputCommand}"
                                         HorizontalContentAlignment="Center">
@@ -402,13 +402,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                             <!-- Action Buttons -->
                             <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="8">
-                                <Button Grid.Column="0" Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                <Button Grid.Column="0" Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                         FontSize="16" FontWeight="Bold" CornerRadius="8" Height="48"
                                         Command="{Binding CancelTextInputCommand}"
                                         HorizontalContentAlignment="Center">
                                     <TextBlock Text="{loc:Localize Cancel}"/>
                                 </Button>
-                                <Button Grid.Column="1" Background="#4A9A7E" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                <Button Grid.Column="1" Background="{DynamicResource StatusOkBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                         FontSize="16" FontWeight="Bold" CornerRadius="8" Height="48"
                                         Command="{Binding ConfirmTextInputCommand}"
                                         HorizontalContentAlignment="Center">
@@ -486,7 +486,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             </UniformGrid>
 
                             <!-- Cancel Button -->
-                            <Button Grid.Row="2" Background="#E74C3C" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            <Button Grid.Row="2" Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                     FontSize="16" FontWeight="Bold" CornerRadius="8" Height="48"
                                     Command="{Binding CancelColorPickerCommand}"
                                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
@@ -519,7 +519,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
                         <!-- Apply button (checkmark) -->
                         <Button Grid.Column="5" Width="48" Height="48"
-                                Background="#4A9A7E" CornerRadius="24"
+                                Background="{DynamicResource StatusOkBrush}" CornerRadius="24"
                                 Command="{Binding ApplyCommand}"
                                 ToolTip.Tip="Apply and Close">
                             <TextBlock Text="✓" FontSize="24" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold"

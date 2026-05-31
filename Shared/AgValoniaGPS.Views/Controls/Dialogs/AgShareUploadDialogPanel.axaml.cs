@@ -406,7 +406,7 @@ public partial class AgShareUploadDialogPanel : UserControl
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CancelAgShareUploadDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
     }
 }

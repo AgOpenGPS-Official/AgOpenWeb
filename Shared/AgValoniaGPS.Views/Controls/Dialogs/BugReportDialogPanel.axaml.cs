@@ -24,7 +24,7 @@ public partial class BugReportDialogPanel : UserControl
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
-            vm.CloseBugReportDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
     }
 
     // Stop pointer events on the dialog body chrome from bubbling up to

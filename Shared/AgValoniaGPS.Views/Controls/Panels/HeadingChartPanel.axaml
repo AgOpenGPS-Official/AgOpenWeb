@@ -30,7 +30,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                           Title="{loc:Localize HeadingChart}"
                           CloseCommand="{Binding ToggleHeadingChartPanelCommand}">
     <controls:FloatingPanel.PanelContent>
-      <controls:ChartControl x:Name="HeadingChart" Height="192"/>
+      <controls:ChartControl x:Name="HeadingChart" Height="150"/>
     </controls:FloatingPanel.PanelContent>
   </controls:FloatingPanel>
 

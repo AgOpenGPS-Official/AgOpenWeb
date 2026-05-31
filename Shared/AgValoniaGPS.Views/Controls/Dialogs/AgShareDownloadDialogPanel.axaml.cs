@@ -259,7 +259,7 @@ public partial class AgShareDownloadDialogPanel : UserControl
     {
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CancelAgShareDownloadDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
     }
 }

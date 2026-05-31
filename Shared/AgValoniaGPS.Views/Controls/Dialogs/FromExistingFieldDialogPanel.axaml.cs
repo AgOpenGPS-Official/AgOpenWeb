@@ -31,7 +31,7 @@ public partial class FromExistingFieldDialogPanel : UserControl
         // Cancel the dialog when clicking/tapping the backdrop
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
-            vm.CancelFromExistingFieldDialogCommand?.Execute(null);
+            vm.NavCloseChainCommand?.Execute(null);
         }
         e.Handled = true;
     }

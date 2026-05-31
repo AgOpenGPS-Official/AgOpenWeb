@@ -13,6 +13,7 @@ the Free Software Foundation, either version 3 of the License, or
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:AgValoniaGPS.ViewModels;assembly=AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.AboutDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -20,10 +21,11 @@ the Free Software Foundation, either version 3 of the License, or
              IsHitTestVisible="{Binding State.UI.IsAboutDialogVisible}">
 
     <Grid>
-        <Border Background="#80000000" PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="24"
-                HorizontalAlignment="Center" VerticalAlignment="Center"
+        <controls:DialogChrome Title="{loc:Localize About}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
                 MinWidth="420" MaxWidth="550">
             <StackPanel Spacing="12">
                 <TextBlock Text="{loc:Localize Agvaloniagps}" FontSize="22" FontWeight="Bold"
@@ -59,12 +61,7 @@ the Free Software Foundation, either version 3 of the License, or
                                Foreground="{DynamicResource SystemControlHighlightAccentBrush}" FontSize="12"/>
                 </StackPanel>
 
-                <Button Content="{loc:Localize Close}" Margin="0,8,0,0"
-                        Command="{Binding CloseAboutDialogCommand}"
-                        Background="{DynamicResource SystemControlHighlightAccentBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                        HorizontalAlignment="Stretch" Height="44" FontSize="16" FontWeight="Bold"
-                        HorizontalContentAlignment="Center" CornerRadius="6"/>
             </StackPanel>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

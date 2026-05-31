@@ -130,6 +130,12 @@ public partial class MainViewModel
     /// </summary>
     public void CloseAllNavFlyouts()
     {
+        // Remember which fly-out we're closing so a chain dialog launched by the
+        // same item-click can still capture it as its origin (see OpenChainDialog).
+        var open = CurrentFlyout();
+        if (open != NavFlyout.None)
+            _lastClosedFlyout = open;
+
         IsScreenAlertsPanelVisible = false;
         IsFileMenuPanelVisible = false;
         IsToolsPanelVisible = false;

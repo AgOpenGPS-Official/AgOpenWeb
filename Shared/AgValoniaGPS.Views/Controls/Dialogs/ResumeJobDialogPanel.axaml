@@ -9,6 +9,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.ResumeJobDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -36,22 +37,6 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
         </Style>
-        <Style Selector="Button.DialogButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
-            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="12,8"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="CornerRadius" Value="6"/>
-        </Style>
-        <Style Selector="Button.DialogButton:pointerover">
-            <Setter Property="Background" Value="#2980B9"/>
-        </Style>
-        <Style Selector="Button.CancelButton">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
-        </Style>
         <Style Selector="ListBox">
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
             <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -67,27 +52,19 @@ Licensed under GNU GPL v3. See LICENSE.md.
             <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
         </Style>
         <Style Selector="ListBoxItem:selected">
-            <Setter Property="Background" Value="#27AE60"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
         </Style>
     </UserControl.Styles>
 
     <Grid>
-        <Border Background="#80000000" IsHitTestVisible="True"
-                PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                MinWidth="540"
-                MaxWidth="720"
-                MaxHeight="600"
-                Padding="20"
-                DataContext="{Binding ResumeJobDialogVm}">
-            <Grid RowDefinitions="Auto,*,Auto,Auto">
-                <TextBlock Grid.Row="0" Classes="Header" Text="Resume Job"/>
+        <controls:DialogChrome Title="Resume Job"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MinWidth="540" MaxWidth="720" MaxHeight="600">
+            <Grid RowDefinitions="Auto,*,Auto,Auto"
+                  DataContext="{Binding ResumeJobDialogVm}">
 
                 <ListBox Grid.Row="1" x:Name="JobsListBox"
                          ItemsSource="{Binding Jobs}"
@@ -117,22 +94,17 @@ Licensed under GNU GPL v3. See LICENSE.md.
 
                 <TextBlock Grid.Row="2"
                            Text="{Binding StatusMessage}"
-                           Foreground="#E74C3C"
+                           Foreground="{DynamicResource DangerButtonBrush}"
                            FontSize="12"
                            IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
                            Margin="0,8,0,0"/>
 
-                <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,16,0,0">
-                    <Button Grid.Column="0" Classes="DialogButton CancelButton"
-                            Content="Cancel"
-                            Command="{Binding CancelCommand}"/>
-                    <Border Grid.Column="1"/>
-                    <Button Grid.Column="2" Classes="DialogButton"
-                            Content="Resume Selected Job"
-                            Command="{Binding ResumeJobCommand}"
-                            CommandParameter="{Binding SelectedJob}"/>
-                </Grid>
+                <!-- Resume (Back/Close live in the header chrome). -->
+                <Button Grid.Row="3" Classes="DialogButton" HorizontalAlignment="Right" Margin="0,16,0,0"
+                        Content="Resume Selected Job"
+                        Command="{Binding ResumeJobCommand}"
+                        CommandParameter="{Binding SelectedJob}"/>
             </Grid>
-        </Border>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>
