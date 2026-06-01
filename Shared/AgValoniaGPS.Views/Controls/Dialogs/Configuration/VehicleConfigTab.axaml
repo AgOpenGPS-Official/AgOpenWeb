@@ -240,10 +240,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
                 <Grid Grid.Row="1" ColumnDefinitions="*,*,*" Margin="0,16,0,0">
-                    <!-- Hitch Length -->
+                    <!-- Tractor Hitch Length (#1): rear axle -> tractor hitch pin -->
                     <StackPanel Grid.Column="0" HorizontalAlignment="Center">
                         <controls:EditableNumericField
-                            Value="{Binding Tool.HitchLength, Mode=TwoWay}"
+                            Value="{Binding Vehicle.HitchLength, Mode=TwoWay}"
                             Unit="m" FormatString="F2"
                             EditCommand="{Binding EditHitchLengthCommand}"/>
                         <TextBlock Text="Hitch Length" Classes="SectionLabel" Margin="0,4,0,0"/>

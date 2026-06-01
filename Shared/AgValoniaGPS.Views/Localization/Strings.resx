@@ -474,6 +474,9 @@
   <data xml:space="preserve" name="Upload">
     <value>Upload</value>
   </data>
+  <data xml:space="preserve" name="ToolConfiguration">
+    <value>Tool Configuration</value>
+  </data>
   <data xml:space="preserve" name="VehicleConfiguration">
     <value>Vehicle Configuration</value>
   </data>

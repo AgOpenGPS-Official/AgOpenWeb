@@ -39,16 +39,9 @@ public partial class ConfigurationViewModel : ObservableObject
 {
     private readonly IConfigurationService _configService;
 
-    #region Dialog Visibility
-
-    private bool _isDialogVisible;
-    public bool IsDialogVisible
-    {
-        get => _isDialogVisible;
-        set => SetProperty(ref _isDialogVisible, value);
-    }
-
-    #endregion
+    // Dialog visibility is driven by UIState.ActiveDialog (chain navigation);
+    // the split Vehicle/Tool config dialogs bind to State.UI.IsVehicleConfigDialogVisible /
+    // IsToolConfigDialogVisible. This VM only owns the config data + Apply/Cancel.
 
     #region Numeric Input Dialog
 
@@ -1080,10 +1073,12 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Vehicle.TrackWidth = v,
                 "m", integerOnly: false, allowNegative: false, min: 0.5, max: 5));
 
+        // Vehicle hitch (#1): rear axle center -> tractor hitch pin. Used by trailing/TBT
+        // tools. Positive distance behind the axle; geometry applies the sign.
         EditHitchLengthCommand = new RelayCommand(() =>
-            ShowNumericInput("Hitch Length", Tool.HitchLength,
-                v => Tool.HitchLength = v,
-                "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
+            ShowNumericInput("Tractor Hitch Length", Vehicle.HitchLength,
+                v => Vehicle.HitchLength = v,
+                "m", integerOnly: false, allowNegative: false, min: 0, max: 15));
 
         EditAntennaPivotCommand = new RelayCommand(() =>
             ShowNumericInput("Antenna Pivot", Vehicle.AntennaPivot,
@@ -1142,8 +1137,10 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Tool.Offset = v,
                 "m", integerOnly: false, allowNegative: true, min: -5, max: 5));
 
+        // Rigid tool (#2/#3): axle center -> implement working center (tiller/disc shaft).
+        // Tool-dependent; used only by front/rear-fixed tools.
         EditToolHitchLengthCommand = new RelayCommand(() =>
-            ShowNumericInput("Hitch Length", Tool.HitchLength,
+            ShowNumericInput("Working Center Distance", Tool.HitchLength,
                 v => Tool.HitchLength = v,
                 "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
 

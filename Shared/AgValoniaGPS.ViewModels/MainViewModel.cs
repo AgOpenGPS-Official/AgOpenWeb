@@ -623,7 +623,11 @@ public partial class MainViewModel : ObservableObject
         var p = _positionEstimator.GetPose(Clock.Current.GetTimestamp());
 
         var tool = ConfigStore.Tool;
-        double hitchDistance = Math.Abs(tool.HitchLength);
+        // Rigid tools use Tool.HitchLength (axle -> working center); trailing/TBT use
+        // Vehicle.HitchLength (axle -> tractor hitch pin). Matches ToolPositionService.
+        double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
+            ? Math.Abs(tool.HitchLength)
+            : Math.Abs(ConfigStore.Vehicle.HitchLength);
         if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
             hitchDistance = -hitchDistance;
 
@@ -3163,8 +3167,8 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _resumeJobDialogVm, value);
     }
 
-    public ICommand? ShowConfigurationDialogCommand { get; private set; }
-    public ICommand? CancelConfigurationDialogCommand { get; private set; }
+    public ICommand? ShowVehicleConfigDialogCommand { get; private set; }
+    public ICommand? ShowToolConfigDialogCommand { get; private set; }
     public ICommand? ShowLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? CancelLoadVehicleToolDialogCommand { get; private set; }
     public ICommand? ShowStartWorkSessionDialogCommand { get; private set; }
@@ -3613,7 +3617,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleScreenAlertsPanelCommand { get; private set; }
     public ICommand? ToggleFileMenuPanelCommand { get; private set; }
     public ICommand? ToggleToolsPanelCommand { get; private set; }
-    public ICommand? ToggleConfigurationPanelCommand { get; private set; }
     public ICommand? ToggleFieldOperationsPanelCommand { get; private set; }
     public ICommand? ToggleFieldToolsPanelCommand { get; private set; }
     public ICommand? ToggleNetworkIoPanelCommand { get; private set; }

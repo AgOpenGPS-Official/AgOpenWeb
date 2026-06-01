@@ -41,7 +41,6 @@ public partial class MainViewModel
         ScreenAlerts,
         FileMenu,
         Tools,
-        Configuration,
         FieldOperations,
         FieldTools,
         NetworkIo,
@@ -147,7 +146,6 @@ public partial class MainViewModel
         if (IsScreenAlertsPanelVisible) return NavFlyout.ScreenAlerts;
         if (IsFileMenuPanelVisible) return NavFlyout.FileMenu;
         if (IsToolsPanelVisible) return NavFlyout.Tools;
-        if (IsConfigurationPanelVisible) return NavFlyout.Configuration;
         if (IsFieldOperationsPanelVisible) return NavFlyout.FieldOperations;
         if (IsFieldToolsPanelVisible) return NavFlyout.FieldTools;
         if (IsNetworkIoPanelVisible) return NavFlyout.NetworkIo;
@@ -177,7 +175,6 @@ public partial class MainViewModel
             case NavFlyout.ScreenAlerts: IsScreenAlertsPanelVisible = true; break;
             case NavFlyout.FileMenu: IsFileMenuPanelVisible = true; break;
             case NavFlyout.Tools: IsToolsPanelVisible = true; break;
-            case NavFlyout.Configuration: IsConfigurationPanelVisible = true; break;
             case NavFlyout.FieldOperations: IsFieldOperationsPanelVisible = true; break;
             case NavFlyout.FieldTools: IsFieldToolsPanelVisible = true; break;
             case NavFlyout.NetworkIo: IsNetworkIoPanelVisible = true; break;

@@ -85,7 +85,7 @@ public partial class MainViewModel
             { HotkeyAction.SnapPivot, SnapToPivotCommand },
             { HotkeyAction.NudgeLeft, NudgeLeftCommand },
             { HotkeyAction.NudgeRight, NudgeRightCommand },
-            { HotkeyAction.VehicleSettings, ShowConfigurationDialogCommand },
+            { HotkeyAction.VehicleSettings, ShowVehicleConfigDialogCommand },
             { HotkeyAction.SteerWizard, ShowSteerWizardCommand },
         };
     }

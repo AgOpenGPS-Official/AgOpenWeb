@@ -50,12 +50,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Panel>
             </Border>
 
-            <!-- Hitch Length (shown for Front/Rear Fixed) -->
+            <!-- Working Center Distance (shown for Front/Rear Fixed rigid tools) -->
             <Border Classes="SettingRow" IsVisible="{Binding !Tool.IsToolTrailing}">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel>
-                        <TextBlock Text="Hitch Length" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold"/>
-                        <TextBlock Text="Distance from rear axle to hitch point" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12"/>
+                        <TextBlock Text="Working Center Distance" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Rear axle to implement working center (e.g. tiller/disc shaft)" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12"/>
                     </StackPanel>
                     <controls:EditableNumericField Grid.Column="1"
                         Value="{Binding Tool.HitchLength, Mode=TwoWay}"

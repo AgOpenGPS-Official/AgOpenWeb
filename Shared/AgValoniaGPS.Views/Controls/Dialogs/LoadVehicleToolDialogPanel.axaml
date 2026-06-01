@@ -9,6 +9,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:AgValoniaGPS.ViewModels"
+             xmlns:controls="using:AgValoniaGPS.Views.Controls"
              mc:Ignorable="d"
              x:Class="AgValoniaGPS.Views.Controls.Dialogs.LoadVehicleToolDialogPanel"
              x:DataType="vm:MainViewModel"
@@ -64,43 +65,36 @@ Licensed under GNU GPL v3. See LICENSE.md.
     </UserControl.Styles>
 
     <Grid>
-        <Border Background="{DynamicResource ModalBackdropBrush}" IsHitTestVisible="True"
-                PointerPressed="Backdrop_PointerPressed"/>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
 
-        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                CornerRadius="12"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="1"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                MinWidth="960"
-                MaxWidth="1350"
-                MaxHeight="960"
-                Padding="30"
-                DataContext="{Binding LoadVehicleToolDialogVm}">
-            <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" ColumnDefinitions="*,16,*">
-                <!-- Active combo banner — spans both columns so the loaded
-                     pair is the first thing the operator sees. -->
-                <Border Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3"
+        <controls:DialogChrome Title="Vehicle &amp; Tool"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MinWidth="960" MaxWidth="1350" MaxHeight="960">
+            <DockPanel DataContext="{Binding LoadVehicleToolDialogVm}" MinWidth="928">
+                <!-- Active combo banner — docked at the top, full width, so the
+                     selected pair is always visible above the columns. -->
+                <Border DockPanel.Dock="Top"
                         Background="#DD1E8449"
                         CornerRadius="6"
                         Padding="12,6"
                         Margin="0,0,0,12">
-                    <TextBlock Text="{Binding CurrentSummary, StringFormat='Active: {0}'}"
+                    <TextBlock Text="{Binding SelectedSummary, StringFormat='Selected: {0}'}"
                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
                                FontSize="18"
                                FontWeight="Bold"
                                HorizontalAlignment="Center"/>
                 </Border>
 
+                <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,*" Margin="0,80,0,0">
                 <!-- Vehicle column -->
-                <StackPanel Grid.Row="1" Grid.Column="0">
+                <StackPanel Grid.Row="0" Grid.Column="0">
                     <TextBlock Classes="Header" Text="Vehicle"/>
                     <TextBlock Classes="SubHeader"
                                Text="{Binding CurrentVehicle, StringFormat='Current: {0}'}"/>
                 </StackPanel>
 
-                <Grid Grid.Row="2" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto,Auto">
+                <Grid Grid.Row="1" Grid.Column="0" RowDefinitions="*,Auto,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
                              MinHeight="270"
@@ -109,27 +103,30 @@ Licensed under GNU GPL v3. See LICENSE.md.
                     <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
                         <TextBlock Text="{Binding VehiclePreview}" TextWrapping="Wrap"/>
                     </Border>
-                    <TextBox Grid.Row="2"
+                    <Button Grid.Row="2" Classes="DialogButton" Content="Configure Vehicle…"
+                            Command="{Binding ConfigureVehicleCommand}"
+                            Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBox Grid.Row="3"
                              Text="{Binding VehicleNameInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             Watermark="Profile name (for New / Rename)"
+                             Watermark="Vehicle name"
                              Margin="0,8,0,0"/>
-                    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
                         <Button Classes="DialogButton" Content="New" Command="{Binding NewVehicleCommand}"/>
                         <Button Classes="DialogButton DangerButton" Content="Delete" Command="{Binding DeleteVehicleCommand}"/>
                         <Button Classes="DialogButton" Content="Rename" Command="{Binding RenameVehicleCommand}"/>
                     </StackPanel>
-                    <Button Grid.Row="4" Classes="DialogButton CancelButton" Content="Reset to Default"
+                    <Button Grid.Row="5" Classes="DialogButton CancelButton" Content="Reset to Default"
                             Command="{Binding ResetVehicleCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
                 </Grid>
 
                 <!-- Tool column -->
-                <StackPanel Grid.Row="1" Grid.Column="2">
+                <StackPanel Grid.Row="0" Grid.Column="2">
                     <TextBlock Classes="Header" Text="Tool"/>
                     <TextBlock Classes="SubHeader"
                                Text="{Binding CurrentTool, StringFormat='Current: {0}'}"/>
                 </StackPanel>
 
-                <Grid Grid.Row="2" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto,Auto">
+                <Grid Grid.Row="1" Grid.Column="2" RowDefinitions="*,Auto,Auto,Auto,Auto,Auto">
                     <ListBox Grid.Row="0"
                              SelectionMode="Single"
                              MinHeight="270"
@@ -138,35 +135,39 @@ Licensed under GNU GPL v3. See LICENSE.md.
                     <Border Grid.Row="1" Classes="PreviewBox" Margin="0,8,0,0">
                         <TextBlock Text="{Binding ToolPreview}" TextWrapping="Wrap"/>
                     </Border>
-                    <TextBox Grid.Row="2"
+                    <Button Grid.Row="2" Classes="DialogButton" Content="Configure Tool…"
+                            Command="{Binding ConfigureToolCommand}"
+                            Margin="0,8,0,0" HorizontalAlignment="Stretch"/>
+                    <TextBox Grid.Row="3"
                              Text="{Binding ToolNameInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                             Watermark="Profile name (for New / Rename)"
+                             Watermark="Tool name"
                              Margin="0,8,0,0"/>
-                    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+                    <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
                         <Button Classes="DialogButton" Content="New" Command="{Binding NewToolCommand}"/>
                         <Button Classes="DialogButton DangerButton" Content="Delete" Command="{Binding DeleteToolCommand}"/>
                         <Button Classes="DialogButton" Content="Rename" Command="{Binding RenameToolCommand}"/>
                     </StackPanel>
-                    <Button Grid.Row="4" Classes="DialogButton CancelButton" Content="Reset to Default"
+                    <Button Grid.Row="5" Classes="DialogButton CancelButton" Content="Reset to Default"
                             Command="{Binding ResetToolCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
                 </Grid>
 
                 <!-- Status row spans both columns -->
-                <TextBlock Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3"
+                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
                            Text="{Binding StatusMessage}"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
                            Margin="0,12,0,0"
                            HorizontalAlignment="Left"/>
 
                 <!-- Action buttons -->
-                <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
                     <Border Grid.Column="0"/>
                     <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="Cancel"
                             Command="{Binding CancelCommand}"/>
-                    <Button Grid.Column="2" Classes="DialogButton" Content="Load"
+                    <Button Grid.Column="2" Classes="DialogButton" Content="Load Selected"
                             Command="{Binding LoadCommand}" Margin="8,0,0,0"/>
                 </Grid>
-            </Grid>
-        </Border>
+                </Grid>
+            </DockPanel>
+        </controls:DialogChrome>
     </Grid>
 </UserControl>

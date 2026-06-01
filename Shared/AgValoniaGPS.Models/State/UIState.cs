@@ -49,7 +49,8 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsStartWorkSessionDialogVisible));
                 OnPropertyChanged(nameof(IsResumeJobDialogVisible));
                 OnPropertyChanged(nameof(IsTracksDialogVisible));
-                OnPropertyChanged(nameof(IsConfigurationDialogVisible));
+                OnPropertyChanged(nameof(IsVehicleConfigDialogVisible));
+                OnPropertyChanged(nameof(IsToolConfigDialogVisible));
                 OnPropertyChanged(nameof(IsNewFieldDialogVisible));
                 OnPropertyChanged(nameof(IsFromExistingFieldDialogVisible));
                 OnPropertyChanged(nameof(IsKmlImportDialogVisible));
@@ -96,7 +97,8 @@ public class UIState : ObservableObject
     public bool IsStartWorkSessionDialogVisible => ActiveDialog == DialogType.StartWorkSession;
     public bool IsResumeJobDialogVisible => ActiveDialog == DialogType.ResumeJob;
     public bool IsTracksDialogVisible => ActiveDialog == DialogType.Tracks;
-    public bool IsConfigurationDialogVisible => ActiveDialog == DialogType.Configuration;
+    public bool IsVehicleConfigDialogVisible => ActiveDialog == DialogType.VehicleConfig;
+    public bool IsToolConfigDialogVisible => ActiveDialog == DialogType.ToolConfig;
     public bool IsNewFieldDialogVisible => ActiveDialog == DialogType.NewField;
     public bool IsFromExistingFieldDialogVisible => ActiveDialog == DialogType.FromExistingField;
     public bool IsKmlImportDialogVisible => ActiveDialog == DialogType.KmlImport;
@@ -257,7 +259,8 @@ public enum DialogType
     None,
     FieldSelection,
     Tracks,
-    Configuration,
+    VehicleConfig,
+    ToolConfig,
     NewField,
     FromExistingField,
     KmlImport,

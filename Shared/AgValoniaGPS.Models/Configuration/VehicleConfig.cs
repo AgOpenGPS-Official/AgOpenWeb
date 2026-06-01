@@ -97,6 +97,18 @@ public class VehicleConfig : ObservableObject
         set => SetProperty(ref _antennaOffset, value);
     }
 
+    // Hitch (vehicle): rear axle center -> tractor hitch pin. This is the trailer
+    // attach point and is used ONLY by trailing/TBT tools to place the hitch.
+    // Rigid front/rear-fixed tools instead use Tool.HitchLength (axle -> implement
+    // working center, which is tool-dependent). Stored unsigned/positive; the tool
+    // position geometry applies the rear sign and takes Math.Abs().
+    private double _hitchLength = 1.8;
+    public double HitchLength
+    {
+        get => _hitchLength;
+        set => SetProperty(ref _hitchLength, value);
+    }
+
     // Steering limits
     private double _maxSteerAngle = 35.0;
     public double MaxSteerAngle

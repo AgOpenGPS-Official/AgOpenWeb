@@ -151,6 +151,7 @@ public class OffsetFixTests
     public void ToolPositionService_ResetAfterLargeJump_SnapsImmediately()
     {
         var config = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
+        config.Vehicle.HitchLength = 2.0; // trailing pin distance (axle -> tractor hitch pin)
         config.Tool.HitchLength = 2.0;
         config.Tool.TrailingHitchLength = 3.0;
         config.Tool.IsToolTrailing = true;
@@ -196,6 +197,7 @@ public class OffsetFixTests
     {
         // Bug: ResetTrailingState used +HitchLength (ahead) instead of -HitchLength (behind)
         var config = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
+        config.Vehicle.HitchLength = 5.0; // trailing pin distance (axle -> tractor hitch pin)
         config.Tool.HitchLength = 5.0;
         config.Tool.TrailingHitchLength = 15.0;
         config.Tool.IsToolTrailing = true;
@@ -227,6 +229,7 @@ public class OffsetFixTests
     {
         // After reset + one Update frame, tool should be near vehicle
         var config = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
+        config.Vehicle.HitchLength = 5.0; // trailing pin distance (axle -> tractor hitch pin)
         config.Tool.HitchLength = 5.0;
         config.Tool.TrailingHitchLength = 15.0;
         config.Tool.IsToolTrailing = true;
@@ -264,6 +267,7 @@ public class OffsetFixTests
         // Bug: jump detection was comparing hitch to toolPivot (always ~15m apart)
         // causing the tool to snap rigid every frame instead of trailing
         var config = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
+        config.Vehicle.HitchLength = 2.0; // trailing pin distance (axle -> tractor hitch pin)
         config.Tool.HitchLength = 2.0;
         config.Tool.TrailingHitchLength = 15.0; // Large trailing distance
         config.Tool.IsToolTrailing = true;
