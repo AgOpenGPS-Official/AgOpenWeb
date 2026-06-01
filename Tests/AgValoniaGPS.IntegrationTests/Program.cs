@@ -442,7 +442,7 @@ sealed class Program
             config.Display.AutoDayNight = false;
             config.Tool.Width = 6.0;
             vm.State.UI.CloseDialog();
-            if (vm.ConfigurationViewModel != null) vm.ConfigurationViewModel.IsDialogVisible = false;
+            if (vm.ConfigurationViewModel != null) vm.State.UI.CloseDialog();
             await Delay(300);
 
             // Load field
@@ -649,7 +649,7 @@ if frames:
         // Close all dialogs and wait for clean state
         vm.State.UI.CloseDialog();
         if (vm.ConfigurationViewModel != null)
-            vm.ConfigurationViewModel.IsDialogVisible = false;
+            vm.State.UI.CloseDialog();
         await Delay(300);
         Dispatcher.UIThread.RunJobs();
         await Delay(300);
@@ -815,19 +815,19 @@ if frames:
 
         // Step 6: Open configuration dialog
         Console.Write("[Step 6] Configuration dialog... ");
-        vm.ShowConfigurationDialogCommand?.Execute(null);
+        vm.ShowVehicleConfigDialogCommand?.Execute(null);
         await Delay(800);
         CaptureScreenshot(window, "06_configuration");
         // Configuration dialog uses its own visibility mechanism (not State.UI)
         if (vm.ConfigurationViewModel != null)
-            vm.ConfigurationViewModel.IsDialogVisible = false;
+            vm.State.UI.CloseDialog();
         Console.WriteLine("OK");
 
         // Step 6b: Test zoom buttons (#98 fix) -- after all dialogs closed
         Console.Write("[Step 6b] Zoom test... ");
         vm.State.UI.CloseDialog();
         if (vm.ConfigurationViewModel != null)
-            vm.ConfigurationViewModel.IsDialogVisible = false;
+            vm.State.UI.CloseDialog();
         await Delay(500);
         Dispatcher.UIThread.RunJobs();
         CaptureScreenshot(window, "06b_zoom_before");

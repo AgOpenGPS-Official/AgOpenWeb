@@ -373,7 +373,8 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             HitchX = _hitchX,
             HitchY = _hitchY,
             ToolReady = _toolPositionReady,
-            HitchLength = toolCfg.HitchLength,
+            HitchLength = (toolCfg.IsToolFrontFixed || toolCfg.IsToolRearFixed)
+                ? toolCfg.HitchLength : vehicleCfg.HitchLength,
             IsToolTrailing = toolCfg.IsToolTrailing || toolCfg.IsToolTBT,
             ToolArmHalfSpread = vehicleCfg.TrackWidth * 0.5 * 0.6,
             ToolArmBaseX = _vehicleX + (toolCfg.IsToolFrontFixed

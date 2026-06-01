@@ -35,7 +35,6 @@ public partial class LeftNavigationPanel : UserControl
         WireUpSubPanelDrag<NetworkIoPanel>("NetworkIoPanelControl");
         WireUpSubPanelDrag<FileMenuPanel>("FileMenuPanelControl");
         WireUpSubPanelDrag<ToolsPanel>("ToolsPanelControl");
-        WireUpSubPanelDrag<ConfigurationPanel>("ConfigurationPanelControl");
         WireUpSubPanelDrag<FieldOperationsPanel>("FieldOperationsPanelControl");
         WireUpSubPanelDrag<FieldToolsPanel>("FieldToolsPanelControl");
         // Boundary recording / player are independent tool overlays, not chain

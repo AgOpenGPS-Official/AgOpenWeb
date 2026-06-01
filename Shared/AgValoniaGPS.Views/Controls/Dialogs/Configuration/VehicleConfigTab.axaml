@@ -70,6 +70,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
         </Style>
+
+        <!-- Dimension cards: each field sits with its own focused diagram, so the
+             input is read next to the measurement it controls (mirrors the steer
+             wizard's vehicle-dimensions step). -->
+        <Style Selector="Border.DimCard">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Border.DimImage">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="6"/>
+        </Style>
+        <Style Selector="TextBlock.DimTitle">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.DimSub">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
     </UserControl.Styles>
 
     <!-- Nested TabControl for vehicle sub-sections -->
@@ -233,41 +261,66 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <TabItem.Header>
                 <Border Width="40" Height="40" Background="{DynamicResource IconHitch}"/>
             </TabItem.Header>
-            <Grid RowDefinitions="*,Auto" Margin="16">
-                <Image Grid.Row="0"
-                       Source="{Binding Vehicle.WheelbaseImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
-                       Stretch="Uniform" MaxHeight="280"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <ScrollViewer>
+                <Grid ColumnDefinitions="*,*,*" Margin="12,12,12,16">
+                    <!-- Hitch: coupling type + tractor hitch length, with the full
+                         vehicle diagram (the hitch sits at the rear of it) -->
+                    <Border Grid.Column="0" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Hitch.png"
+                                       Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Hitch" Classes="DimTitle"/>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Hitch length (rear axle &#x2192; pin)" Classes="DimSub"/>
+                                <controls:EditableNumericField HorizontalAlignment="Center"
+                                    Value="{Binding Vehicle.HitchLength, Mode=TwoWay}"
+                                    Unit="m" FormatString="F2"
+                                    EditCommand="{Binding EditHitchLengthCommand}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Coupling type" Classes="DimSub"/>
+                                <ComboBox HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding HitchTypeOptions}"
+                                          SelectedItem="{Binding SelectedVehicleHitchType, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
 
-                <Grid Grid.Row="1" ColumnDefinitions="*,*,*" Margin="0,16,0,0">
-                    <!-- Hitch Length -->
-                    <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                        <controls:EditableNumericField
-                            Value="{Binding Tool.HitchLength, Mode=TwoWay}"
-                            Unit="m" FormatString="F2"
-                            EditCommand="{Binding EditHitchLengthCommand}"/>
-                        <TextBlock Text="Hitch Length" Classes="SectionLabel" Margin="0,4,0,0"/>
-                    </StackPanel>
+                    <!-- Wheelbase: focused crop + field -->
+                    <Border Grid.Column="1" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.WheelbaseCropImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Wheelbase" Classes="DimTitle"/>
+                            <TextBlock Text="Front to rear axle" Classes="DimSub"/>
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Vehicle.Wheelbase, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditWheelbaseCommand}"/>
+                        </StackPanel>
+                    </Border>
 
-                    <!-- Wheelbase -->
-                    <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                        <controls:EditableNumericField
-                            Value="{Binding Vehicle.Wheelbase, Mode=TwoWay}"
-                            Unit="m" FormatString="F2"
-                            EditCommand="{Binding EditWheelbaseCommand}"/>
-                        <TextBlock Text="Wheelbase" Classes="SectionLabel" Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <!-- Track -->
-                    <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                        <controls:EditableNumericField
-                            Value="{Binding Vehicle.TrackWidth, Mode=TwoWay}"
-                            Unit="m" FormatString="F2"
-                            EditCommand="{Binding EditTrackWidthCommand}"/>
-                        <TextBlock Text="Track" Classes="SectionLabel" Margin="0,4,0,0"/>
-                    </StackPanel>
+                    <!-- Track width: focused diagram + field -->
+                    <Border Grid.Column="2" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.TrackWidthImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Track" Classes="DimTitle"/>
+                            <TextBlock Text="Left to right wheel center" Classes="DimSub"/>
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Vehicle.TrackWidth, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditTrackWidthCommand}"/>
+                        </StackPanel>
+                    </Border>
                 </Grid>
-            </Grid>
+            </ScrollViewer>
         </TabItem>
 
         <!-- Antenna Position Tab -->

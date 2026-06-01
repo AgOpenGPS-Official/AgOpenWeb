@@ -59,7 +59,10 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _offset, value);
     }
 
-    // Hitch configuration
+    // Hitch (rigid tool): axle center -> implement working center (e.g. tiller rotary
+    // shaft, disc shaft). Tool-dependent, so it lives with the tool. Used ONLY by
+    // front/rear-fixed rigid tools. Trailing/TBT tools instead use Vehicle.HitchLength
+    // for the tractor hitch pin. Front tools use this positive (ahead), rear negative.
     private double _hitchLength = 1.8;
     public double HitchLength
     {
@@ -90,6 +93,16 @@ public class ToolConfig : ObservableObject
     {
         get => _trailingToolToPivotLength;
         set => SetProperty(ref _trailingToolToPivotLength, value);
+    }
+
+    // ISO 11783 hitch/coupling type code (-1 = not available, 0 = unknown/default,
+    // 1..10 = specific ISO coupling standards). Stored as the ISO integer; the UI
+    // shows the text description. Informational metadata for now (export/PGN).
+    private int _hitchType;
+    public int HitchType
+    {
+        get => _hitchType;
+        set => SetProperty(ref _hitchType, value);
     }
 
     // Tool type flags

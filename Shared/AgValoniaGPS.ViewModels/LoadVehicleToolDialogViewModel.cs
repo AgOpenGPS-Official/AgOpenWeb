@@ -29,22 +29,30 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
     private readonly Action _onClose;
     private readonly Action<string, Action> _confirm;
     private readonly Action<string, string, string, Action> _confirmChoice;
+    private readonly Action? _onConfigureVehicle;
+    private readonly Action? _onConfigureTool;
 
     public LoadVehicleToolDialogViewModel(
         IConfigurationService configurationService,
         Action onClose,
         Action<string, Action> confirm,
-        Action<string, string, string, Action> confirmChoice)
+        Action<string, string, string, Action> confirmChoice,
+        Action? onConfigureVehicle = null,
+        Action? onConfigureTool = null)
     {
         _configurationService = configurationService;
         _onClose = onClose;
         _confirm = confirm;
         _confirmChoice = confirmChoice;
+        _onConfigureVehicle = onConfigureVehicle;
+        _onConfigureTool = onConfigureTool;
 
         Refresh();
 
         LoadCommand = new RelayCommand(Load, () => CanLoad);
         CancelCommand = new RelayCommand(Cancel);
+        ConfigureVehicleCommand = new RelayCommand(ConfigureVehicle);
+        ConfigureToolCommand = new RelayCommand(ConfigureTool);
         NewVehicleCommand = new RelayCommand(() => NewVehicle(VehicleNameInput));
         DeleteVehicleCommand = new RelayCommand(DeleteVehicle, () => SelectedVehicle != null && !IsActiveVehicle(SelectedVehicle));
         RenameVehicleCommand = new RelayCommand(() => RenameVehicle(VehicleNameInput));
@@ -53,6 +61,10 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         DeleteToolCommand = new RelayCommand(DeleteTool, () => SelectedTool != null && !IsActiveTool(SelectedTool));
         RenameToolCommand = new RelayCommand(() => RenameTool(ToolNameInput));
         ResetToolCommand = new RelayCommand(ResetTool);
+
+        // Pre-select the active pair so the lists open highlighting what's loaded.
+        // (Done after commands are constructed; the SelectedX setters notify them.)
+        SyncSelectionToActive();
     }
 
     public ObservableCollection<string> Vehicles { get; } = new();
@@ -96,6 +108,23 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// The vehicle/tool pair the operator currently has highlighted (falling
+    /// back to the active one per column). Updates live as list selection
+    /// changes; shown in the picker's top banner so "Load Selected" / "Configure"
+    /// clearly act on this combination.
+    /// </summary>
+    public string SelectedSummary
+    {
+        get
+        {
+            var v = SelectedVehicle ?? CurrentVehicle;
+            var t = SelectedTool ?? CurrentTool;
+            if (string.IsNullOrEmpty(t)) return v;
+            return $"{v} / {t}";
+        }
+    }
+
     public string VehiclePreview => SelectedVehicle is null
         ? string.Empty
         : BuildVehiclePreview(SelectedVehicle);
@@ -110,6 +139,8 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
 
     public ICommand LoadCommand { get; }
     public ICommand CancelCommand { get; }
+    public ICommand ConfigureVehicleCommand { get; }
+    public ICommand ConfigureToolCommand { get; }
     public ICommand NewVehicleCommand { get; }
     public ICommand DeleteVehicleCommand { get; }
     public ICommand RenameVehicleCommand { get; }
@@ -122,6 +153,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
     partial void OnSelectedVehicleChanged(string? value)
     {
         OnPropertyChanged(nameof(VehiclePreview));
+        OnPropertyChanged(nameof(SelectedSummary));
         OnPropertyChanged(nameof(CanLoad));
         ((RelayCommand)LoadCommand).NotifyCanExecuteChanged();
         ((RelayCommand)DeleteVehicleCommand).NotifyCanExecuteChanged();
@@ -130,6 +162,7 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
     partial void OnSelectedToolChanged(string? value)
     {
         OnPropertyChanged(nameof(ToolPreview));
+        OnPropertyChanged(nameof(SelectedSummary));
         OnPropertyChanged(nameof(CanLoad));
         ((RelayCommand)LoadCommand).NotifyCanExecuteChanged();
         ((RelayCommand)DeleteToolCommand).NotifyCanExecuteChanged();
@@ -222,6 +255,65 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
     }
 
     private void Cancel() => _onClose();
+
+    /// <summary>
+    /// Highlight the currently-loaded vehicle/tool in their lists (no-op if a
+    /// list doesn't contain the active name, e.g. an unsaved profile).
+    /// </summary>
+    private void SyncSelectionToActive()
+    {
+        SelectedVehicle = Vehicles.FirstOrDefault(IsActiveVehicle);
+        SelectedTool = Tools.FirstOrDefault(IsActiveTool);
+    }
+
+    /// <summary>
+    /// Open the Vehicle config dialog for the selected vehicle. The config
+    /// dialog edits the live store, so make the selected profile active first
+    /// (saving the outgoing pair) — that's what the operator expects when they
+    /// pick a vehicle and click Configure.
+    /// </summary>
+    private void ConfigureVehicle()
+    {
+        var v = SelectedVehicle ?? CurrentVehicle;
+        if (!IsActiveVehicle(v))
+        {
+            _configurationService.SaveProfiles(CurrentVehicle, CurrentTool);
+            if (!_configurationService.LoadProfiles(v, CurrentTool))
+            {
+                StatusMessage = $"Could not load vehicle '{v}'";
+                return;
+            }
+            AfterActivePairChanged();
+        }
+        _onConfigureVehicle?.Invoke();
+    }
+
+    /// <summary>Symmetric to <see cref="ConfigureVehicle"/> for the tool side.</summary>
+    private void ConfigureTool()
+    {
+        var t = SelectedTool ?? CurrentTool;
+        if (!IsActiveTool(t))
+        {
+            _configurationService.SaveProfiles(CurrentVehicle, CurrentTool);
+            if (!_configurationService.LoadProfiles(CurrentVehicle, t))
+            {
+                StatusMessage = $"Could not load tool '{t}'";
+                return;
+            }
+            AfterActivePairChanged();
+        }
+        _onConfigureTool?.Invoke();
+    }
+
+    /// <summary>Re-publish the active-pair labels and re-sync list highlighting
+    /// after a load triggered from Configure.</summary>
+    private void AfterActivePairChanged()
+    {
+        OnPropertyChanged(nameof(CurrentVehicle));
+        OnPropertyChanged(nameof(CurrentTool));
+        OnPropertyChanged(nameof(CurrentSummary));
+        SyncSelectionToActive();
+    }
 
     private void NewVehicle(string? name)
     {

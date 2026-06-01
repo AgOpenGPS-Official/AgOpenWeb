@@ -57,7 +57,7 @@ public static class UIScreenshotCatalog
             // 1. Main view (clean, no dialogs)
             vm.State.UI.CloseDialog();
             if (vm.ConfigurationViewModel != null)
-                vm.ConfigurationViewModel.IsDialogVisible = false;
+                vm.State.UI.CloseDialog();
             vm.State.UI.IsSimulatorPanelVisible = false;
             await Pump(200);
             Capture(window, themeDir, "00_main_view");
@@ -112,7 +112,7 @@ public static class UIScreenshotCatalog
             // 4. Configuration dialog with each tab
             try
             {
-                vm.ShowConfigurationDialogCommand?.Execute(null);
+                vm.ShowVehicleConfigDialogCommand?.Execute(null);
                 await Pump(300);
 
                 if (vm.ConfigurationViewModel != null)
@@ -136,7 +136,7 @@ public static class UIScreenshotCatalog
                         Capture(window, themeDir, $"config_tab_{i}_{tabNames[i]}");
                     }
 
-                    vm.ConfigurationViewModel.IsDialogVisible = false;
+                    vm.State.UI.CloseDialog();
                     await Pump(100);
                 }
             }
@@ -144,7 +144,7 @@ public static class UIScreenshotCatalog
             {
                 Console.WriteLine($"  [SKIP] config tabs: {ex.Message}");
                 if (vm.ConfigurationViewModel != null)
-                    vm.ConfigurationViewModel.IsDialogVisible = false;
+                    vm.State.UI.CloseDialog();
                 await Pump(100);
             }
 

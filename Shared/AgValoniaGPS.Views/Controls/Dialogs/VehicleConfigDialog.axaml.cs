@@ -8,17 +8,16 @@ using Avalonia.Input;
 
 namespace AgValoniaGPS.Views.Controls.Dialogs;
 
-public partial class LoadVehicleToolDialogPanel : UserControl
+public partial class VehicleConfigDialog : UserControl
 {
-    public LoadVehicleToolDialogPanel()
+    public VehicleConfigDialog()
     {
         InitializeComponent();
     }
 
     private void Backdrop_PointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // Non-modal chain dialog: clicking off the card dismisses the whole chain
-        // back to the map (matches StartWorkSessionDialogPanel).
+        // Non-modal chain dialog: clicking off the card dismisses the whole chain.
         if (DataContext is AgValoniaGPS.ViewModels.MainViewModel vm)
         {
             vm.NavCloseChainCommand?.Execute(null);

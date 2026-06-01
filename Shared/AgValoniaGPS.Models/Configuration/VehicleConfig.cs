@@ -46,6 +46,8 @@ public class VehicleConfig : ObservableObject
             {
                 // Notify computed properties that depend on Type
                 OnPropertyChanged(nameof(WheelbaseImageSource));
+                OnPropertyChanged(nameof(WheelbaseCropImageSource));
+                OnPropertyChanged(nameof(TrackWidthImageSource));
                 OnPropertyChanged(nameof(AntennaImageSource));
                 OnPropertyChanged(nameof(VehicleTypeDisplayName));
             }
@@ -97,6 +99,28 @@ public class VehicleConfig : ObservableObject
         set => SetProperty(ref _antennaOffset, value);
     }
 
+    // Hitch (vehicle): rear axle center -> tractor hitch pin. This is the trailer
+    // attach point and is used ONLY by trailing/TBT tools to place the hitch.
+    // Rigid front/rear-fixed tools instead use Tool.HitchLength (axle -> implement
+    // working center, which is tool-dependent). Stored unsigned/positive; the tool
+    // position geometry applies the rear sign and takes Math.Abs().
+    private double _hitchLength = 1.8;
+    public double HitchLength
+    {
+        get => _hitchLength;
+        set => SetProperty(ref _hitchLength, value);
+    }
+
+    // ISO 11783 hitch/coupling type code on the tractor side (-1 = not available,
+    // 0 = unknown/default, 1..10 = specific ISO coupling standards). Stored as the
+    // ISO integer; the UI shows the text description. Informational metadata for now.
+    private int _hitchType;
+    public int HitchType
+    {
+        get => _hitchType;
+        set => SetProperty(ref _hitchType, value);
+    }
+
     // Steering limits
     private double _maxSteerAngle = 35.0;
     public double MaxSteerAngle
@@ -131,6 +155,26 @@ public class VehicleConfig : ObservableObject
         VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/RadiusWheelBaseHarvester.png",
         VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/RadiusWheelBaseArticulated.png",
         _ => "avares://AgValoniaGPS.Views/Assets/Icons/RadiusWheelBase.png"
+    };
+
+    /// <summary>
+    /// Cropped wheelbase diagram (focused on the axle span) for the dimensions UI.
+    /// </summary>
+    public string WheelbaseCropImageSource => Type switch
+    {
+        VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/WheelbaseHarvester.png",
+        VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/WheelbaseArticulated.png",
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/WheelbaseTractor.png"
+    };
+
+    /// <summary>
+    /// Track-width diagram (left-to-right wheel centers) for the dimensions UI.
+    /// </summary>
+    public string TrackWidthImageSource => Type switch
+    {
+        VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/TrackWidthHarvester.png",
+        VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/TrackWidthArticulated.png",
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/TrackWidthTractor.png"
     };
 
     /// <summary>

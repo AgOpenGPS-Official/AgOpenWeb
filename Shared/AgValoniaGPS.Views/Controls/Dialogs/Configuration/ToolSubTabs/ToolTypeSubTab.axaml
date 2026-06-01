@@ -31,7 +31,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="Padding" Value="16"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <!-- Fill the uniform grid cell so all four cards are the same size
+                 regardless of description length. -->
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border Background="{TemplateBinding Background}"

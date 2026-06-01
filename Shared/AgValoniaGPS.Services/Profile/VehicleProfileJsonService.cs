@@ -114,6 +114,8 @@ public static class VehicleProfileJsonService
             Type = (int)store.Vehicle.Type,
             MaxSteerAngle = store.Vehicle.MaxSteerAngle,
             MaxAngularVelocity = store.Vehicle.MaxAngularVelocity,
+            HitchLength = store.Vehicle.HitchLength,
+            HitchType = store.Vehicle.HitchType,
         },
         Guidance = new GuidanceDto
         {
@@ -173,6 +175,10 @@ public static class VehicleProfileJsonService
         store.Vehicle.Type = (VehicleType)(dto.Vehicle?.Type ?? 0);
         store.Vehicle.MaxSteerAngle = dto.Vehicle?.MaxSteerAngle ?? 35.0;
         store.Vehicle.MaxAngularVelocity = dto.Vehicle?.MaxAngularVelocity ?? 35.0;
+        // NaN sentinel = "not present in this file" → ConfigurationService.LoadProfiles
+        // seeds it from the legacy Tool.HitchLength after the tool also loads.
+        store.Vehicle.HitchLength = dto.Vehicle?.HitchLength ?? double.NaN;
+        store.Vehicle.HitchType = dto.Vehicle?.HitchType ?? 0;
 
         // Guidance
         store.Guidance.IsPurePursuit = dto.Guidance?.IsPurePursuit ?? true;
@@ -236,6 +242,10 @@ public static class VehicleProfileJsonService
         public int Type { get; set; }
         public double MaxSteerAngle { get; set; }
         public double MaxAngularVelocity { get; set; }
+        // Nullable so a pre-split profile (no hitchLength) is detectable for one-way
+        // migration from the legacy Tool.HitchLength (see ConfigurationService.LoadProfiles).
+        public double? HitchLength { get; set; }
+        public int HitchType { get; set; }
     }
 
     internal class GuidanceDto

@@ -39,16 +39,9 @@ public partial class ConfigurationViewModel : ObservableObject
 {
     private readonly IConfigurationService _configService;
 
-    #region Dialog Visibility
-
-    private bool _isDialogVisible;
-    public bool IsDialogVisible
-    {
-        get => _isDialogVisible;
-        set => SetProperty(ref _isDialogVisible, value);
-    }
-
-    #endregion
+    // Dialog visibility is driven by UIState.ActiveDialog (chain navigation);
+    // the split Vehicle/Tool config dialogs bind to State.UI.IsVehicleConfigDialogVisible /
+    // IsToolConfigDialogVisible. This VM only owns the config data + Apply/Cancel.
 
     #region Numeric Input Dialog
 
@@ -522,6 +515,60 @@ public partial class ConfigurationViewModel : ObservableObject
         "Section 13", "Section 14", "Section 15", "Section 16",
         "Hyd Up", "Hyd Down", "Tram Left", "Tram Right", "Geo Stop"
     };
+
+    // ISO 11783 hitch/coupling types, in code order (list index = ISO code + 1, so
+    // index 0 = code -1 "Not available", index 1 = code 0 "Unknown", ...). The combo
+    // shows these descriptions; SelectedHitchType maps to/from Tool.HitchType (the code).
+    public ObservableCollection<string> HitchTypeOptions { get; } = new()
+    {
+        "Not available",
+        "Unknown",
+        "ISO 6489-3 Tractor drawbar",
+        "ISO 730 Three-point-hitch semi-mounted",
+        "ISO 730 Three-point-hitch mounted",
+        "ISO 6489-1 Hitch-hook",
+        "ISO 6489-2 Clevis coupling 40",
+        "ISO 6489-4 Piton type coupling",
+        "ISO 6489-5 CUNA hitch",
+        "ISO 24347 Ball type hitch",
+        "Chassis Mounted - Self-Propelled",
+        "ISO 5692-2 Pivot wagon hitch"
+    };
+
+    public string SelectedHitchType
+    {
+        get
+        {
+            int index = Tool.HitchType + 1; // code -1 -> index 0
+            return index >= 0 && index < HitchTypeOptions.Count
+                ? HitchTypeOptions[index]
+                : HitchTypeOptions[1]; // fall back to "Unknown"
+        }
+        set
+        {
+            int index = HitchTypeOptions.IndexOf(value);
+            Tool.HitchType = index >= 0 ? index - 1 : 0;
+            OnPropertyChanged();
+        }
+    }
+
+    // Tractor-side hitch/coupling type (same ISO list as the tool side).
+    public string SelectedVehicleHitchType
+    {
+        get
+        {
+            int index = Vehicle.HitchType + 1;
+            return index >= 0 && index < HitchTypeOptions.Count
+                ? HitchTypeOptions[index]
+                : HitchTypeOptions[1];
+        }
+        set
+        {
+            int index = HitchTypeOptions.IndexOf(value);
+            Vehicle.HitchType = index >= 0 ? index - 1 : 0;
+            OnPropertyChanged();
+        }
+    }
 
     // Individual pin function properties for binding
     public string Pin1Function { get => GetPinFunctionName(0); set => SetPinFunctionByName(0, value); }
@@ -1080,10 +1127,12 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Vehicle.TrackWidth = v,
                 "m", integerOnly: false, allowNegative: false, min: 0.5, max: 5));
 
+        // Vehicle hitch (#1): rear axle center -> tractor hitch pin. Used by trailing/TBT
+        // tools. Positive distance behind the axle; geometry applies the sign.
         EditHitchLengthCommand = new RelayCommand(() =>
-            ShowNumericInput("Hitch Length", Tool.HitchLength,
-                v => Tool.HitchLength = v,
-                "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
+            ShowNumericInput("Tractor Hitch Length", Vehicle.HitchLength,
+                v => Vehicle.HitchLength = v,
+                "m", integerOnly: false, allowNegative: false, min: 0, max: 15));
 
         EditAntennaPivotCommand = new RelayCommand(() =>
             ShowNumericInput("Antenna Pivot", Vehicle.AntennaPivot,
@@ -1142,8 +1191,10 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Tool.Offset = v,
                 "m", integerOnly: false, allowNegative: true, min: -5, max: 5));
 
+        // Rigid tool (#2/#3): axle center -> implement working center (tiller/disc shaft).
+        // Tool-dependent; used only by front/rear-fixed tools.
         EditToolHitchLengthCommand = new RelayCommand(() =>
-            ShowNumericInput("Hitch Length", Tool.HitchLength,
+            ShowNumericInput("Working Center Distance", Tool.HitchLength,
                 v => Tool.HitchLength = v,
                 "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
 

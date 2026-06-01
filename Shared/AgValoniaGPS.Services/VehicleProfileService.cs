@@ -216,6 +216,7 @@ public class VehicleProfileService : IVehicleProfileService
         store.Vehicle.AntennaOffset = 0.0;
         store.Vehicle.Wheelbase = 2.5;
         store.Vehicle.TrackWidth = 1.8;
+        store.Vehicle.HitchLength = 1.8;
         store.Vehicle.MaxSteerAngle = 35.0;
         store.Vehicle.MaxAngularVelocity = 35.0;
 
@@ -313,7 +314,12 @@ public class VehicleProfileService : IVehicleProfileService
         store.Tool.Width = GetDouble(settings, "setVehicle_toolWidth", 6.0);
         store.Tool.Overlap = GetDouble(settings, "setVehicle_toolOverlap", 0.0);
         store.Tool.Offset = GetDouble(settings, "setVehicle_toolOffset", 0.0);
-        store.Tool.HitchLength = GetDouble(settings, "setVehicle_hitchLength", 1.8);
+        // AOG's single setVehicle_hitchLength is the tractor hitch pin (now a vehicle
+        // property, used by trailing/TBT) AND doubles as the rigid working-center distance.
+        // Import into both so the value is present whichever tool type the profile uses.
+        double xmlHitch = GetDouble(settings, "setVehicle_hitchLength", 1.8);
+        store.Vehicle.HitchLength = xmlHitch;
+        store.Tool.HitchLength = xmlHitch;
         // Legacy AOG XML profiles often store TrailingHitchLength as a negative value due to
         // a historical sign convention. Migrate to "positive = behind hitch" by taking abs.
         store.Tool.TrailingHitchLength = Math.Abs(GetDouble(settings, "setTool_toolTrailingHitchLength", 2.5));

@@ -37,7 +37,6 @@ public partial class MainViewModel
     private bool _isScreenAlertsPanelVisible;
     private bool _isFileMenuPanelVisible;
     private bool _isToolsPanelVisible;
-    private bool _isConfigurationPanelVisible;
     private bool _isFieldOperationsPanelVisible;
     private bool _isFieldToolsPanelVisible;
     private bool _isNetworkIoPanelVisible;
@@ -68,12 +67,6 @@ public partial class MainViewModel
         set { SetProperty(ref _isToolsPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
     }
 
-    public bool IsConfigurationPanelVisible
-    {
-        get => _isConfigurationPanelVisible;
-        set { SetProperty(ref _isConfigurationPanelVisible, value); OnPropertyChanged(nameof(IsAnyNavFlyoutOpen)); }
-    }
-
     public bool IsFieldOperationsPanelVisible
     {
         get => _isFieldOperationsPanelVisible;
@@ -96,7 +89,7 @@ public partial class MainViewModel
     /// scrim that closes the open menu when the operator taps outside it.</summary>
     public bool IsAnyNavFlyoutOpen =>
         IsScreenAlertsPanelVisible || IsFileMenuPanelVisible || IsToolsPanelVisible
-        || IsConfigurationPanelVisible || IsFieldOperationsPanelVisible || IsFieldToolsPanelVisible
+        || IsFieldOperationsPanelVisible || IsFieldToolsPanelVisible
         || IsNetworkIoPanelVisible;
 
     public bool IsSimulatorPanelVisible
@@ -139,7 +132,6 @@ public partial class MainViewModel
         IsScreenAlertsPanelVisible = false;
         IsFileMenuPanelVisible = false;
         IsToolsPanelVisible = false;
-        IsConfigurationPanelVisible = false;
         IsFieldOperationsPanelVisible = false;
         IsFieldToolsPanelVisible = false;
         IsNetworkIoPanelVisible = false;

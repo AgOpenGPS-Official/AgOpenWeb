@@ -106,12 +106,18 @@ public class ToolPositionService : IToolPositionService
         lock (_writeLock)
         {
             var tool = ConfigurationStore.Instance.Tool;
+            var vehicle = ConfigurationStore.Instance.Vehicle;
 
-            // Calculate hitch point on vehicle
-            // HitchLength is stored as positive distance; sign determined by tool type
-            // Front tools: positive direction (ahead of pivot)
-            // Rear tools: negative direction (behind pivot)
-            double hitchDistance = Math.Abs(tool.HitchLength);
+            // Calculate hitch point on vehicle.
+            // Two distinct measurements feed this, chosen by tool type:
+            //  - Rigid front/rear-fixed: Tool.HitchLength = axle -> implement working
+            //    center (tool-dependent).
+            //  - Trailing/TBT: Vehicle.HitchLength = axle -> tractor hitch pin
+            //    (the trailer attach point).
+            // Stored positive; sign applied by direction (front ahead, rest behind).
+            double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
+                ? Math.Abs(tool.HitchLength)
+                : Math.Abs(vehicle.HitchLength);
             if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
             {
                 hitchDistance = -hitchDistance; // Behind the vehicle
@@ -449,10 +455,14 @@ public class ToolPositionService : IToolPositionService
             _startCounter = STARTUP_FRAMES - 5; // Brief snap period (5 frames) then resume trailing
 
             var tool = ConfigurationStore.Instance.Tool;
+            var vehicle = ConfigurationStore.Instance.Vehicle;
 
-            // Calculate hitch position - must match Update() sign convention:
-            // negative distance for rear/trailing tools (behind vehicle)
-            double hitchDistance = Math.Abs(tool.HitchLength);
+            // Calculate hitch position - must match Update() sign convention and
+            // tool-type hitch reference: rigid tools use Tool.HitchLength (working
+            // center), trailing/TBT use Vehicle.HitchLength (tractor hitch pin).
+            double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
+                ? Math.Abs(tool.HitchLength)
+                : Math.Abs(vehicle.HitchLength);
             if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
             {
                 hitchDistance = -hitchDistance;

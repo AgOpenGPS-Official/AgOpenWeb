@@ -562,9 +562,14 @@ public class AutoSteerService : IAutoSteerService
         if (_tramLineService != null && _tramLineService.HasTramLines &&
             ConfigurationStore.Instance.Tram.DisplayMode != Models.Configuration.TramDisplayMode.Off)
         {
-            // Use approximate tool position so detection matches implement indicators
+            // Use approximate tool position so detection matches implement indicators.
+            // Rigid tools sit at Tool.HitchLength (working center); trailing/TBT project
+            // from Vehicle.HitchLength (tractor hitch pin) plus the trailing arm.
             var config = ConfigurationStore.Instance;
-            double hitchLen = config.Tool.HitchLength + config.Tool.TrailingHitchLength;
+            double hitchBase = (config.Tool.IsToolFrontFixed || config.Tool.IsToolRearFixed)
+                ? config.Tool.HitchLength
+                : config.Vehicle.HitchLength;
+            double hitchLen = hitchBase + config.Tool.TrailingHitchLength;
             double toolE = _state.Easting + Math.Sin(_state.HeadingRadians) * hitchLen;
             double toolN = _state.Northing + Math.Cos(_state.HeadingRadians) * hitchLen;
 

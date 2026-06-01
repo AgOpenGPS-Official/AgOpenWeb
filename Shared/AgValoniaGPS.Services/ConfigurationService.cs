@@ -109,6 +109,19 @@ public class ConfigurationService(
         // CreateDefaultProfile path) populated it.
         toolProfileService.Load(toolName, Store);
 
+        // One-way hitch migration (vehicle/tool config split): pre-split profiles stored
+        // the trailing/TBT tractor hitch-pin distance under Tool.HitchLength. It is now a
+        // vehicle property (Vehicle.HitchLength = axle -> hitch pin). When the vehicle file
+        // predates the split it loads as NaN (sentinel); seed it from the legacy tool value
+        // so existing trailing/TBT setups keep working, then it persists under the vehicle on
+        // next save. Rigid setups keep their own Tool.HitchLength regardless; a stray vehicle
+        // value is harmless because rigid geometry never reads it. Must run after BOTH files
+        // load (vehicle loads first), so the legacy Tool.HitchLength is available here.
+        if (double.IsNaN(Store.Vehicle.HitchLength))
+        {
+            Store.Vehicle.HitchLength = Store.Tool.HitchLength;
+        }
+
         LoadAutoSteerConfig(vehicleName);
 
         // IsMetric source-of-truth lives in AppSettings. A legacy profile

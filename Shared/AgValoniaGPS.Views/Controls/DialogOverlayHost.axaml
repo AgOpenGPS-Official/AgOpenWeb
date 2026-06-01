@@ -64,11 +64,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <dialogs:TramSettingsDialogPanel/>
         <dialogs:FieldBuilderDialogPanel/>
         <dialogs:BugReportDialogPanel/>
-        <dialogs:ConfigurationDialog DataContext="{Binding ConfigurationViewModel}"/>
         <dialogs:AppSettingsDialogPanel/>
         <dialogs:AutoSteerConfigPanel DataContext="{Binding AutoSteerConfigViewModel}"/>
         <dialogs:SmartWasDialogPanel/>
         <dialogs:LoadVehicleToolDialogPanel/>
+        <!-- Split Vehicle/Tool config dialogs render on top of the picker hub.
+             Root DataContext stays MainViewModel (for chain Back/Close + State);
+             each dialog scopes its body to ConfigurationViewModel internally. -->
+        <dialogs:VehicleConfigDialog/>
+        <dialogs:ToolConfigDialog/>
         <dialogs:StartWorkSessionDialogPanel/>
         <dialogs:ResumeJobDialogPanel/>
 

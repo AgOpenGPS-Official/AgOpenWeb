@@ -29,24 +29,24 @@ public partial class MainViewModel
 {
     private void InitializeConfigurationCommands()
     {
-        // Configuration Dialog
-        ShowConfigurationDialogCommand = new RelayCommand(() =>
+        // Split Vehicle / Tool configuration dialogs — chained sub-dialogs of the
+        // picker. A single ConfigurationViewModel backs both (they edit the same live
+        // store). Pushed onto the chain so Back returns to the picker.
+        ShowVehicleConfigDialogCommand = new RelayCommand(() =>
         {
-            ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
-            ConfigurationViewModel.CloseRequested += (s, e) =>
-            {
-                ConfigurationViewModel.IsDialogVisible = false;
-            };
-            ConfigurationViewModel.IsDialogVisible = true;
+            EnsureConfigurationViewModel();
+            PushChainDialog(DialogType.VehicleConfig);
         });
 
-        CancelConfigurationDialogCommand = new RelayCommand(() =>
+        ShowToolConfigDialogCommand = new RelayCommand(() =>
         {
-            if (ConfigurationViewModel != null)
-                ConfigurationViewModel.IsDialogVisible = false;
+            EnsureConfigurationViewModel();
+            PushChainDialog(DialogType.ToolConfig);
         });
 
-        // Load Vehicle / Tool picker (#346)
+        // Load Vehicle / Tool picker (#346) — the hub, opened directly from the gear
+        // icon as the root of the config chain. Its "Configure Vehicle" / "Configure
+        // Tool" buttons push the split dialogs onto the chain.
         ShowLoadVehicleToolDialogCommand = new RelayCommand(() =>
         {
             LoadVehicleToolDialogVm = new LoadVehicleToolDialogViewModel(
@@ -54,8 +54,10 @@ public partial class MainViewModel
                 onClose: () => State.UI.CloseDialog(),
                 confirm: (msg, action) => ShowConfirmationDialog("Confirm", msg, action),
                 confirmChoice: (msg, confirmLabel, cancelLabel, action) =>
-                    ShowConfirmationDialog("Profile Damaged", msg, confirmLabel, cancelLabel, action));
-            State.UI.ShowDialog(DialogType.LoadVehicleTool);
+                    ShowConfirmationDialog("Profile Damaged", msg, confirmLabel, cancelLabel, action),
+                onConfigureVehicle: () => ShowVehicleConfigDialogCommand!.Execute(null),
+                onConfigureTool: () => ShowToolConfigDialogCommand!.Execute(null));
+            OpenChainDialog(DialogType.LoadVehicleTool);
         });
 
         CancelLoadVehicleToolDialogCommand = new RelayCommand(() =>
@@ -90,5 +92,21 @@ public partial class MainViewModel
         {
             State.UI.CloseDialog();
         });
+    }
+
+    /// <summary>
+    /// Lazily construct the shared ConfigurationViewModel that backs both the
+    /// Vehicle and Tool dialogs, wiring CloseRequested (Apply/Cancel) to hide
+    /// whichever split dialog is open.
+    /// </summary>
+    private void EnsureConfigurationViewModel()
+    {
+        if (ConfigurationViewModel != null)
+            return;
+
+        ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
+        // Apply/Cancel inside the config dialog dismiss the whole config chain back
+        // to the map (the picker has already applied the profile selection).
+        ConfigurationViewModel.CloseRequested += (s, e) => CloseChain();
     }
 }

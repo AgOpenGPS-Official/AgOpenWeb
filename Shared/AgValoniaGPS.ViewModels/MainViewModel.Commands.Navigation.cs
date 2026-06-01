@@ -38,6 +38,16 @@ public partial class MainViewModel
             // (it depends on which fly-out, if any, was just closed).
             if (e.Current == Models.State.DialogType.Confirmation)
                 OnPropertyChanged(nameof(IsConfirmationBackVisible));
+            // The Vehicle/Tool config dialogs edit the live store and have no Apply
+            // button; persist the active profiles to disk when navigating away from
+            // them (Back to the picker or Close to the map) so edits aren't lost.
+            if (e.Previous is Models.State.DialogType.VehicleConfig
+                or Models.State.DialogType.ToolConfig)
+            {
+                _configurationService.SaveProfiles(
+                    _configurationService.Store.ActiveVehicleProfileName,
+                    _configurationService.Store.ActiveToolProfileName);
+            }
         };
 
         // Panel toggle commands. Only one left-nav fly-out is open at a time:
@@ -68,13 +78,6 @@ public partial class MainViewModel
             bool open = !IsToolsPanelVisible;
             CloseAllNavFlyouts();
             IsToolsPanelVisible = open;
-        });
-
-        ToggleConfigurationPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsConfigurationPanelVisible;
-            CloseAllNavFlyouts();
-            IsConfigurationPanelVisible = open;
         });
 
         ToggleFieldOperationsPanelCommand = new RelayCommand(() =>
