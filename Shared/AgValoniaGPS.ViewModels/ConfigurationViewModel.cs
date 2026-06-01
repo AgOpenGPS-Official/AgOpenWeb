@@ -516,6 +516,60 @@ public partial class ConfigurationViewModel : ObservableObject
         "Hyd Up", "Hyd Down", "Tram Left", "Tram Right", "Geo Stop"
     };
 
+    // ISO 11783 hitch/coupling types, in code order (list index = ISO code + 1, so
+    // index 0 = code -1 "Not available", index 1 = code 0 "Unknown", ...). The combo
+    // shows these descriptions; SelectedHitchType maps to/from Tool.HitchType (the code).
+    public ObservableCollection<string> HitchTypeOptions { get; } = new()
+    {
+        "Not available",
+        "Unknown",
+        "ISO 6489-3 Tractor drawbar",
+        "ISO 730 Three-point-hitch semi-mounted",
+        "ISO 730 Three-point-hitch mounted",
+        "ISO 6489-1 Hitch-hook",
+        "ISO 6489-2 Clevis coupling 40",
+        "ISO 6489-4 Piton type coupling",
+        "ISO 6489-5 CUNA hitch",
+        "ISO 24347 Ball type hitch",
+        "Chassis Mounted - Self-Propelled",
+        "ISO 5692-2 Pivot wagon hitch"
+    };
+
+    public string SelectedHitchType
+    {
+        get
+        {
+            int index = Tool.HitchType + 1; // code -1 -> index 0
+            return index >= 0 && index < HitchTypeOptions.Count
+                ? HitchTypeOptions[index]
+                : HitchTypeOptions[1]; // fall back to "Unknown"
+        }
+        set
+        {
+            int index = HitchTypeOptions.IndexOf(value);
+            Tool.HitchType = index >= 0 ? index - 1 : 0;
+            OnPropertyChanged();
+        }
+    }
+
+    // Tractor-side hitch/coupling type (same ISO list as the tool side).
+    public string SelectedVehicleHitchType
+    {
+        get
+        {
+            int index = Vehicle.HitchType + 1;
+            return index >= 0 && index < HitchTypeOptions.Count
+                ? HitchTypeOptions[index]
+                : HitchTypeOptions[1];
+        }
+        set
+        {
+            int index = HitchTypeOptions.IndexOf(value);
+            Vehicle.HitchType = index >= 0 ? index - 1 : 0;
+            OnPropertyChanged();
+        }
+    }
+
     // Individual pin function properties for binding
     public string Pin1Function { get => GetPinFunctionName(0); set => SetPinFunctionByName(0, value); }
     public string Pin2Function { get => GetPinFunctionName(1); set => SetPinFunctionByName(1, value); }

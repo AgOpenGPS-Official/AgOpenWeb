@@ -86,7 +86,7 @@ Licensed under GNU GPL v3. See LICENSE.md.
                                HorizontalAlignment="Center"/>
                 </Border>
 
-                <Grid RowDefinitions="Auto,*,Auto,Auto" ColumnDefinitions="*,16,*" Margin="0,80,0,0">
+                <Grid RowDefinitions="Auto,*,Auto" ColumnDefinitions="*,16,*" Margin="0,80,0,0">
                 <!-- Vehicle column -->
                 <StackPanel Grid.Row="0" Grid.Column="0">
                     <TextBlock Classes="Header" Text="Vehicle"/>
@@ -151,16 +151,15 @@ Licensed under GNU GPL v3. See LICENSE.md.
                             Command="{Binding ResetToolCommand}" Margin="0,6,0,0" HorizontalAlignment="Stretch"/>
                 </Grid>
 
-                <!-- Status row spans both columns -->
-                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3"
-                           Text="{Binding StatusMessage}"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
-                           Margin="0,12,0,0"
-                           HorizontalAlignment="Left"/>
-
-                <!-- Action buttons -->
-                <Grid Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
-                    <Border Grid.Column="0"/>
+                <!-- Action buttons; the transient status message rides in the left
+                     of the bar so it never overlaps the column buttons above. -->
+                <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding StatusMessage}"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Margin="0,0,12,0"/>
                     <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="Cancel"
                             Command="{Binding CancelCommand}"/>
                     <Button Grid.Column="2" Classes="DialogButton" Content="Load Selected"

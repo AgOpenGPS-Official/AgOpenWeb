@@ -95,6 +95,16 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _trailingToolToPivotLength, value);
     }
 
+    // ISO 11783 hitch/coupling type code (-1 = not available, 0 = unknown/default,
+    // 1..10 = specific ISO coupling standards). Stored as the ISO integer; the UI
+    // shows the text description. Informational metadata for now (export/PGN).
+    private int _hitchType;
+    public int HitchType
+    {
+        get => _hitchType;
+        set => SetProperty(ref _hitchType, value);
+    }
+
     // Tool type flags
     private bool _isToolTrailing;
     public bool IsToolTrailing

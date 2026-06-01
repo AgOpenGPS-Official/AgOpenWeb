@@ -50,6 +50,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Panel>
             </Border>
 
+            <!-- Hitch / coupling type (ISO 11783) -->
+            <Border Classes="SettingRow">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Hitch Type" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Coupling standard between tractor and implement" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12"/>
+                    </StackPanel>
+                    <ComboBox Grid.Column="1" MinWidth="260"
+                              VerticalAlignment="Center"
+                              ItemsSource="{Binding HitchTypeOptions}"
+                              SelectedItem="{Binding SelectedHitchType, Mode=TwoWay}"/>
+                </Grid>
+            </Border>
+
             <!-- Working Center Distance (shown for Front/Rear Fixed rigid tools) -->
             <Border Classes="SettingRow" IsVisible="{Binding !Tool.IsToolTrailing}">
                 <Grid ColumnDefinitions="*,Auto">
