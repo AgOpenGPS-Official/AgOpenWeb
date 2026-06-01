@@ -71,7 +71,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <!-- Two-line text stack: Fix/Age on top, rotating field info on the
              bottom. Width fixed so the live readouts to the right don't
              reflow when the rotating line changes pages. -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,Auto" Margin="6,0,12,0" Width="350"
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto" Margin="6,0,12,0" Width="520"
               VerticalAlignment="Center">
             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6">
                 <!-- Fix dot + RTK label form one tap target that toggles the
