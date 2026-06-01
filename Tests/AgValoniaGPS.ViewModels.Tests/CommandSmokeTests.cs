@@ -25,7 +25,8 @@ public class CommandSmokeTests
             [nameof(vm.StartBoundaryRecordingCommand)] = vm.StartBoundaryRecordingCommand,
             [nameof(vm.StopBoundaryRecordingCommand)] = vm.StopBoundaryRecordingCommand,
             [nameof(vm.ShowFieldSelectionDialogCommand)] = vm.ShowFieldSelectionDialogCommand,
-            [nameof(vm.ShowConfigurationDialogCommand)] = vm.ShowConfigurationDialogCommand,
+            [nameof(vm.ShowVehicleConfigDialogCommand)] = vm.ShowVehicleConfigDialogCommand,
+            [nameof(vm.ShowToolConfigDialogCommand)] = vm.ShowToolConfigDialogCommand,
             [nameof(vm.ShowHeadlandBuilderCommand)] = vm.ShowHeadlandBuilderCommand,
             [nameof(vm.ToggleNorthUpCommand)] = vm.ToggleNorthUpCommand,
         };
