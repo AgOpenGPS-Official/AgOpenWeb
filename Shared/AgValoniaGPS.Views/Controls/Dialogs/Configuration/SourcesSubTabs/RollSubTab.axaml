@@ -68,15 +68,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- ROLL CALIBRATION SECTION -->
             <TextBlock Text="ROLL CALIBRATION" Classes="SectionHeader" Margin="0,0,0,8"/>
 
-            <!-- Roll Helper Graphic with explanation -->
-            <Grid ColumnDefinitions="Auto,*">
+            <!-- Roll Helper Graphic with explanation + zero offset on the same row -->
+            <Grid ColumnDefinitions="Auto,*,Auto">
                 <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Width="160" Height="120" Margin="0,0,12,0">
                     <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConD_RollHelper.png" Stretch="Uniform"/>
                 </Border>
                 <StackPanel Grid.Column="1" Spacing="8" VerticalAlignment="Center">
                     <TextBlock Text="Roll Correction" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold"/>
-                    <TextBlock Text="Adjust roll offset to compensate for IMU mounting angle. Park on level ground and use 'Set Zero' to calibrate."
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="Adjust roll offset to compensate for&#x0a;IMU mounting angle. Park on level&#x0a;ground and use 'Set Zero' to calibrate."
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" TextWrapping="Wrap" MaxWidth="260"/>
                     <Button Classes="ActionButton" Command="{Binding SetRollZeroCommand}" HorizontalAlignment="Left">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConDa_RollSetZero.png" Width="24" Height="24"/>
@@ -84,24 +84,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                         </StackPanel>
                     </Button>
                 </StackPanel>
-            </Grid>
 
-            <!-- Roll Zero Offset -->
-            <Border Classes="SettingRow" Margin="0,12,0,0">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="4" Padding="4" Width="48" Height="48" Margin="0,0,12,0">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConDa_RollSetZero.png" Stretch="Uniform"/>
-                    </Border>
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Roll Zero Offset" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-                        <TextBlock Text="Manual offset adjustment" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10"/>
+                <!-- Roll Zero Offset moved onto this row -->
+                <Border Grid.Column="2" Classes="SettingRow" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <StackPanel Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="4" Padding="4" Width="40" Height="40">
+                                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConDa_RollSetZero.png" Stretch="Uniform"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Roll Zero Offset" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                <TextBlock Text="Manual offset adjustment" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <controls:EditableNumericField HorizontalAlignment="Left"
+                            Value="{Binding Ahrs.RollZero, Mode=TwoWay}"
+                            Unit="deg" FormatString="F1"
+                            EditCommand="{Binding EditRollZeroCommand}"/>
                     </StackPanel>
-                    <controls:EditableNumericField Grid.Column="2"
-                        Value="{Binding Ahrs.RollZero, Mode=TwoWay}"
-                        Unit="deg" FormatString="F1"
-                        EditCommand="{Binding EditRollZeroCommand}"/>
-                </Grid>
-            </Border>
+                </Border>
+            </Grid>
 
             <!-- ROLL FILTERING SECTION -->
             <TextBlock Text="ROLL FILTERING" Classes="SectionHeader"/>

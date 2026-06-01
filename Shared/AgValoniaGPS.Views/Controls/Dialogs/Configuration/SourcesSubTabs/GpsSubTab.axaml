@@ -115,27 +115,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <ScrollViewer>
         <StackPanel Spacing="12" Margin="16,8,16,16">
 
-            <!-- ANTENNA TYPE -->
-            <TextBlock Text="Antenna Type" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
-
-            <Grid ColumnDefinitions="*,16,*">
+            <Grid ColumnDefinitions="*,12,*">
                 <!-- Dual Antenna Card -->
-                <Border Grid.Column="0" Classes="AntennaCard"
+                <Border Grid.Column="0" Classes="AntennaCard" Padding="10,6"
                         Classes.Selected="{Binding Connections.IsDualGps}"
                         PointerPressed="OnDualGpsCardPressed">
-                    <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Border Width="80" Height="50" Background="{DynamicResource IconGPSDual}"/>
-                        <TextBlock Text="Dual" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Width="56" Height="35" Background="{DynamicResource IconGPSDual}"/>
+                        <TextBlock Text="Dual Antenna" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 
                 <!-- Single (Fix) Antenna Card -->
-                <Border Grid.Column="2" Classes="AntennaCard"
+                <Border Grid.Column="2" Classes="AntennaCard" Padding="10,6"
                         Classes.Selected="{Binding !Connections.IsDualGps}"
                         PointerPressed="OnSingleGpsCardPressed">
-                    <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Border Width="80" Height="50" Background="{DynamicResource IconGPSSingle}"/>
-                        <TextBlock Text="Fix" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Width="56" Height="35" Background="{DynamicResource IconGPSSingle}"/>
+                        <TextBlock Text="Single Antenna" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
             </Grid>
@@ -145,17 +142,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <!-- DUAL ANTENNA SETTINGS (Left Column) -->
                 <Border Grid.Column="0" Classes="SettingsPanel">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Dual Antenna Settings"
-                                   Classes.SectionHeader="{Binding Connections.IsDualGps}"
-                                   Classes.SectionHeaderDisabled="{Binding !Connections.IsDualGps}"/>
-
-                        <!-- Dual Antenna Graphic -->
-                        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="4" Padding="4" Height="80" HorizontalAlignment="Center"
-                                IsEnabled="{Binding Connections.IsDualGps}">
-                            <Border Background="{DynamicResource IconSourcesHead}"
-                                    Opacity="{Binding Connections.IsDualGps, Converter={x:Static conv:BoolToOpacityConverter.Instance}, ConverterParameter=1|0.3}"/>
-                        </Border>
-
                         <!-- Heading Offset -->
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Heading Offset (Degree)" Foreground="{Binding Connections.IsDualGps, Converter={StaticResource BoolToColorConverter}, ConverterParameter=White|#555}" FontSize="11" VerticalAlignment="Center"/>
@@ -200,10 +186,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <!-- SINGLE ANTENNA SETTINGS (Right Column) -->
                 <Border Grid.Column="2" Classes="SettingsPanel">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Single Antenna Settings"
-                                   Classes.SectionHeader="{Binding !Connections.IsDualGps}"
-                                   Classes.SectionHeaderDisabled="{Binding Connections.IsDualGps}"/>
-
                         <!-- Minimum GPS Step -->
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Minimum GPS Step" Foreground="{Binding !Connections.IsDualGps, Converter={StaticResource BoolToColorConverter}, ConverterParameter=White|#555}" FontSize="11" VerticalAlignment="Center"/>
@@ -261,24 +243,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <!-- RTK SETTINGS (Always Active) -->
             <Grid ColumnDefinitions="*,12,*">
                 <!-- RTK Fix Alarm -->
-                <Button Grid.Column="0" Classes="ToggleButton"
+                <Button Grid.Column="0" Classes="ToggleButton" Padding="10,4"
                         Background="{Binding Connections.RtkLostAlarm, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
                         BorderBrush="{Binding Connections.RtkLostAlarm, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
-                        Command="{Binding ToggleRtkAlarmCommand}" HorizontalAlignment="Stretch" Height="70">
-                    <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Border Width="32" Height="32" Background="{DynamicResource IconRTKAlarm}"/>
-                        <TextBlock Text="RTK Fix Alarm" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        Command="{Binding ToggleRtkAlarmCommand}" HorizontalAlignment="Stretch" Height="35">
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Width="24" Height="24" Background="{DynamicResource IconRTKAlarm}"/>
+                        <TextBlock Text="RTK Fix Alarm" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="11" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
 
                 <!-- Alarm Stops Autosteer -->
-                <Button Grid.Column="2" Classes="ToggleButton"
+                <Button Grid.Column="2" Classes="ToggleButton" Padding="10,4"
                         Background="{Binding Connections.RtkLostAction, Converter={x:Static conv:IntToToggleBackgroundConverter.Instance}, ConverterParameter=1}"
                         BorderBrush="{Binding Connections.RtkLostAction, Converter={x:Static conv:IntToToggleBorderConverter.Instance}, ConverterParameter=1}"
-                        Command="{Binding ToggleAlarmStopsAutosteerCommand}" HorizontalAlignment="Stretch" Height="70">
-                    <StackPanel Spacing="4" HorizontalAlignment="Center">
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerOff.png" Width="32" Height="32"/>
-                        <TextBlock Text="Alarm Stops Autosteer" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        Command="{Binding ToggleAlarmStopsAutosteerCommand}" HorizontalAlignment="Stretch" Height="35">
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AutoSteerOff.png" Width="24" Height="24"/>
+                        <TextBlock Text="Alarm Stops Autosteer" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="11" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Button>
             </Grid>

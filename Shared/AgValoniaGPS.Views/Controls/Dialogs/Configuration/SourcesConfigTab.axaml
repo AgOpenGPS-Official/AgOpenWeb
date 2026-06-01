@@ -48,7 +48,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <Grid RowDefinitions="Auto,*">
         <!-- Header -->
-        <TextBlock Text="GPS / Data Sources" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Margin="16,12,16,8"/>
+        <TextBlock Text="GPS and Roll" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Margin="16,12,16,8"/>
 
         <!-- Sub-Tab Control -->
         <TabControl Grid.Row="1" Classes="SubTabs" Margin="8,0,8,8">

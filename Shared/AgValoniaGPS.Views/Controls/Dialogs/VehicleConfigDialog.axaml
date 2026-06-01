@@ -88,16 +88,9 @@ ConfigurationViewModel + ConfigInputOverlays with the Tool dialog.
 
                 <!-- Footer with profile info -->
                 <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="16,12" Margin="0,8,0,0">
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                        <TextBlock Text="{Binding Config.ActiveVehicleProfileName, StringFormat='Vehicle: {0}'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" VerticalAlignment="Center"/>
-
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{loc:Localize Units}" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding Config.IsMetric, Converter={x:Static conv:BoolToStringConverter.Instance}, ConverterParameter='Metric|Imperial'}"
-                                       Foreground="#4A9" FontWeight="Bold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Grid>
+                    <TextBlock Text="{Binding Config.ActiveVehicleProfileName, StringFormat='Vehicle: {0}'}"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
             </Grid>
         </controls:DialogChrome>
