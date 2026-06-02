@@ -47,8 +47,12 @@ public class VehicleConfig : ObservableObject
                 // Notify computed properties that depend on Type
                 OnPropertyChanged(nameof(WheelbaseImageSource));
                 OnPropertyChanged(nameof(WheelbaseCropImageSource));
+                OnPropertyChanged(nameof(HitchCropImageSource));
+                OnPropertyChanged(nameof(HasHitchImage));
                 OnPropertyChanged(nameof(TrackWidthImageSource));
                 OnPropertyChanged(nameof(AntennaImageSource));
+                OnPropertyChanged(nameof(AntennaSideImageSource));
+                OnPropertyChanged(nameof(AntennaOffsetImageSource));
                 OnPropertyChanged(nameof(VehicleTypeDisplayName));
             }
         }
@@ -178,6 +182,23 @@ public class VehicleConfig : ObservableObject
     };
 
     /// <summary>
+    /// Top-down hitch diagram (rear axle &#8594; hitch pin) for the dimensions UI card.
+    /// Tractor and articulated have their own top-down art; harvester has no hitch
+    /// diagram (matches AgOpen, which shows none for harvesters).
+    /// </summary>
+    public string HitchCropImageSource => Type switch
+    {
+        VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/HitchArticulated.png",
+        VehicleType.Harvester => string.Empty,
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/Hitch.png"
+    };
+
+    /// <summary>
+    /// Whether a hitch diagram exists for the current vehicle type (false for harvester).
+    /// </summary>
+    public bool HasHitchImage => Type != VehicleType.Harvester;
+
+    /// <summary>
     /// Gets the image source for the antenna position diagram based on vehicle type
     /// </summary>
     public string AntennaImageSource => Type switch
@@ -185,6 +206,27 @@ public class VehicleConfig : ObservableObject
         VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaHarvester.png",
         VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaArticulated.png",
         _ => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaTractor.png"
+    };
+
+    /// <summary>
+    /// Side-view antenna diagram (fore/aft pivot distance + antenna height) for the
+    /// dimensions UI card.
+    /// </summary>
+    public string AntennaSideImageSource => Type switch
+    {
+        VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaHarvesterTop.png",
+        VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaArticulatedTop.png",
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaTractorTop.png"
+    };
+
+    /// <summary>
+    /// Top-down antenna diagram (left/right offset from centerline) for the dimensions UI card.
+    /// </summary>
+    public string AntennaOffsetImageSource => Type switch
+    {
+        VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaHarvesterOffset.png",
+        VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaArticulatedOffset.png",
+        _ => "avares://AgValoniaGPS.Views/Assets/Icons/AntennaTractorOffset.png"
     };
 
     /// <summary>

@@ -102,69 +102,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
     <!-- Nested TabControl for vehicle sub-sections -->
     <TabControl Classes="VehicleSubTabs" TabStripPlacement="Left" Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
-        <!-- Summary Tab -->
-        <TabItem ToolTip.Tip="Vehicle Summary">
-            <TabItem.Header>
-                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_VehicleMenu.png"
-                       Width="40" Height="40" Stretch="Uniform"/>
-            </TabItem.Header>
-            <ScrollViewer>
-                <StackPanel Spacing="8" Margin="16">
-                    <TextBlock Text="{Binding Config.ActiveVehicleProfileName, StringFormat='Current: {0}'}"
-                               FontSize="24" FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
-                               HorizontalAlignment="Center" Margin="0,0,0,20"/>
-
-                    <!-- Summary grid -->
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-                          HorizontalAlignment="Center" Width="400">
-                        <TextBlock Grid.Row="0" Text="Units:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Grid.Row="0" Grid.Column="1"
-                                   Text="{Binding Config.IsMetric, Converter={x:Static conv:BoolToStringConverter.Instance}, ConverterParameter='Metric|Imperial'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16"/>
-
-                        <TextBlock Grid.Row="1" Text="Width:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Tool.Width, StringFormat='{}{0:F2} m'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="2" Text="Sections:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Config.NumSections}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="3" Text="Offset:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Tool.Offset, StringFormat='{}{0:F2} m'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="4" Text="Overlap:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Tool.Overlap, StringFormat='{}{0:F2} m'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="5" Text="Look Ahead:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Tool.LookAheadOnSetting, StringFormat='{}{0:F1} s'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="6" Text="Nudge:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="6" Grid.Column="1" Text="7.9 in"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="7" Text="Tram Width:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding Vehicle.TrackWidth, StringFormat='{}{0:F2} m'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-
-                        <TextBlock Grid.Row="8" Text="Wheelbase:" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding Vehicle.Wheelbase, StringFormat='{}{0:F2} m'}"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16" Margin="0,8,0,0"/>
-                    </Grid>
-
-                    <!-- Info banner -->
-                    <Border Background="{DynamicResource SystemControlHighlightAccentBrush}" CornerRadius="8" Padding="16,12" Margin="0,24,0,0"
-                            HorizontalAlignment="Center">
-                        <TextBlock Text="Vehicle settings are now called &quot;profiles&quot; and can be&#x0a;created/loaded in the main menu (top left)."
-                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" TextAlignment="Center" FontSize="14"/>
-                    </Border>
-                </StackPanel>
-            </ScrollViewer>
-        </TabItem>
-
         <!-- Vehicle Type Tab -->
         <TabItem ToolTip.Tip="Vehicle Type">
             <TabItem.Header>
@@ -267,8 +204,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                          vehicle diagram (the hitch sits at the rear of it) -->
                     <Border Grid.Column="0" Classes="DimCard">
                         <StackPanel Spacing="8">
-                            <Border Classes="DimImage">
-                                <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Hitch.png"
+                            <Border Classes="DimImage" IsVisible="{Binding Vehicle.HasHitchImage}">
+                                <Image Source="{Binding Vehicle.HitchCropImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
                                        Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
                             </Border>
                             <TextBlock Text="Hitch" Classes="DimTitle"/>
@@ -328,56 +265,67 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <TabItem.Header>
                 <Border Width="40" Height="40" Background="{DynamicResource IconAntenna}"/>
             </TabItem.Header>
-            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,*,Auto" Margin="16">
-                <!-- Pivot Distance -->
-                <StackPanel Grid.Row="0" Grid.Column="0" HorizontalAlignment="Center" Margin="0,0,0,8">
-                    <controls:EditableNumericField
-                        Value="{Binding Vehicle.AntennaPivot, Mode=TwoWay}"
-                        Unit="m" FormatString="F2"
-                        EditCommand="{Binding EditAntennaPivotCommand}"/>
-                    <TextBlock Text="Pivot Distance" Classes="SectionLabel" Margin="0,4,0,0"/>
-                </StackPanel>
+            <ScrollViewer>
+                <Grid ColumnDefinitions="*,*" Margin="12,12,12,16">
+                    <!-- Side view: pivot (fore/aft) + height are both measured on this view,
+                         so they share the one diagram. -->
+                    <Border Grid.Column="0" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.AntennaSideImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="180" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Pivot &amp; Height" Classes="DimTitle"/>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Pivot distance (axle &#x2192; antenna)" Classes="DimSub"/>
+                                <controls:EditableNumericField HorizontalAlignment="Center"
+                                    Value="{Binding Vehicle.AntennaPivot, Mode=TwoWay}"
+                                    Unit="m" FormatString="F2"
+                                    EditCommand="{Binding EditAntennaPivotCommand}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Antenna height (above ground)" Classes="DimSub"/>
+                                <controls:EditableNumericField HorizontalAlignment="Center"
+                                    Value="{Binding Vehicle.AntennaHeight, Mode=TwoWay}"
+                                    Unit="m" FormatString="F2"
+                                    EditCommand="{Binding EditAntennaHeightCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Main diagram -->
-                <Image Grid.Row="1" Grid.Column="0"
-                       Source="{Binding Vehicle.AntennaImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
-                       Stretch="Uniform" MaxHeight="260"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <!-- Top-down view: left/right offset from centerline -->
+                    <Border Grid.Column="1" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.AntennaOffsetImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="180" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Offset" Classes="DimTitle"/>
+                            <TextBlock Text="Left / right of centerline" Classes="DimSub"/>
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Vehicle.AntennaOffset, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditAntennaOffsetCommand}"/>
 
-                <!-- Antenna Height -->
-                <StackPanel Grid.Row="1" Grid.Column="1" VerticalAlignment="Top" Margin="16,20,0,0">
-                    <controls:EditableNumericField
-                        Value="{Binding Vehicle.AntennaHeight, Mode=TwoWay}"
-                        Unit="m" FormatString="F2"
-                        EditCommand="{Binding EditAntennaHeightCommand}"/>
-                    <TextBlock Text="Antenna Height" Classes="SectionLabel" Margin="0,4,0,0"/>
-                </StackPanel>
-
-                <!-- Antenna Offset -->
-                <StackPanel Grid.Row="2" Grid.Column="0" HorizontalAlignment="Left" Margin="10,8,0,0">
-                    <controls:EditableNumericField
-                        Value="{Binding Vehicle.AntennaOffset, Mode=TwoWay}"
-                        Unit="m" FormatString="F2"
-                        EditCommand="{Binding EditAntennaOffsetCommand}"/>
-                    <TextBlock Text="Antenna Offset" Classes="SectionLabel" HorizontalAlignment="Left" Margin="0,4,0,0"/>
-
-                    <!-- Offset selector buttons: Left = antenna left of center (negative), Right = antenna right of center (positive) -->
-                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left" Margin="0,8,0,0">
-                        <Button Width="50" Height="36" Padding="4" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" ToolTip.Tip="Antenna Left of Center"
-                                Command="{Binding SetAntennaOffsetLeftCommand}">
-                            <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaLeftOffset.png" Stretch="Uniform"/>
-                        </Button>
-                        <Button Width="50" Height="36" Padding="4" Background="{DynamicResource StatusOkBrush}" ToolTip.Tip="Antenna on Centerline"
-                                Command="{Binding SetAntennaOffsetCenterCommand}">
-                            <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaNoOffset.png" Stretch="Uniform"/>
-                        </Button>
-                        <Button Width="50" Height="36" Padding="4" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" ToolTip.Tip="Antenna Right of Center"
-                                Command="{Binding SetAntennaOffsetRightCommand}">
-                            <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaRightOffset.png" Stretch="Uniform"/>
-                        </Button>
-                    </StackPanel>
-                </StackPanel>
-            </Grid>
+                            <!-- Offset selector buttons: Left = antenna left of center (negative), Right = antenna right of center (positive) -->
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                <Button Width="50" Height="36" Padding="4" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" ToolTip.Tip="Antenna Left of Center"
+                                        Command="{Binding SetAntennaOffsetLeftCommand}">
+                                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaLeftOffset.png" Stretch="Uniform"/>
+                                </Button>
+                                <Button Width="50" Height="36" Padding="4" Background="{DynamicResource StatusOkBrush}" ToolTip.Tip="Antenna on Centerline"
+                                        Command="{Binding SetAntennaOffsetCenterCommand}">
+                                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaNoOffset.png" Stretch="Uniform"/>
+                                </Button>
+                                <Button Width="50" Height="36" Padding="4" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" ToolTip.Tip="Antenna Right of Center"
+                                        Command="{Binding SetAntennaOffsetRightCommand}">
+                                    <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/AntennaRightOffset.png" Stretch="Uniform"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
         </TabItem>
     </TabControl>
 </UserControl>
