@@ -215,11 +215,11 @@ jobs:
 
       - name: Find and rename APK
         run: |
-          APK=$(find publish/android -name "*.apk" | head -1)
+          APK=$(find publish/android -type f -name "*-Signed.apk" | head -1)
           if [ -n "$APK" ]; then
             cp "$APK" AgValoniaGPS-Android.apk
           else
-            echo "No APK found!"
+            echo "No signed APK found!"
             exit 1
           fi
 
