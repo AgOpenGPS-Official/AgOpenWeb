@@ -84,3 +84,7 @@ pat.local
 
 # LSP / tooling per-csproj cache
 *.lscache
+
+# Android signing keystores — NEVER commit. Supplied to CI via secrets.
+*.keystore
+*.jks
