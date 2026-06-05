@@ -243,7 +243,7 @@ jobs:
         run: |
           APK=$(find publish/android -type f -name "*-Signed.apk" | head -1)
           if [ -n "$APK" ]; then
-            cp "$APK" AgValoniaGPS-Android.apk
+            cp "$APK" AgValoniaGPS-Android-Signed.apk
           else
             echo "No signed APK found!"
             exit 1
@@ -253,7 +253,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AgValoniaGPS-Android
-          path: AgValoniaGPS-Android.apk
+          path: AgValoniaGPS-Android-Signed.apk
           retention-days: 30
 
   # Build iOS (simulator .app bundle)
@@ -388,7 +388,7 @@ jobs:
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
             | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
-            | Android | `AgValoniaGPS-Android.apk` |
+            | Android | `AgValoniaGPS-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
             ### Installation Notes
@@ -429,7 +429,7 @@ jobs:
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
             | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
-            | Android | `AgValoniaGPS-Android.apk` |
+            | Android | `AgValoniaGPS-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
             ### Installation Notes
