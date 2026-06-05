@@ -206,18 +206,44 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore Platforms/AgValoniaGPS.Android/AgValoniaGPS.Android.csproj
 
-      - name: Build Android APK
+      - name: Decode signing keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          dotnet publish Platforms/AgValoniaGPS.Android/AgValoniaGPS.Android.csproj \
-            -c Release \
-            -f net10.0-android \
-            -o publish/android
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/agvalonia-release.keystore"
+            echo "path=$RUNNER_TEMP/agvalonia-release.keystore" >> "$GITHUB_OUTPUT"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Using committed release keystore for a stable signing identity."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set — falling back to the runner's ephemeral debug key. The resulting APK will NOT update over installs signed by a different build."
+          fi
+
+      - name: Build Android APK
+        env:
+          # Read by AndroidSigning*Pass=env: below (keeps secrets off the command line)
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ARGS=(publish Platforms/AgValoniaGPS.Android/AgValoniaGPS.Android.csproj
+                -c Release
+                -f net10.0-android
+                -o publish/android)
+          if [ "${{ steps.keystore.outputs.present }}" = "true" ]; then
+            ARGS+=(-p:AndroidKeyStore=true
+                   "-p:AndroidSigningKeyStore=${{ steps.keystore.outputs.path }}"
+                   -p:AndroidSigningKeyAlias=agvalonia
+                   -p:AndroidSigningStorePass=env:KS_PASS
+                   -p:AndroidSigningKeyPass=env:KS_PASS)
+          fi
+          dotnet "${ARGS[@]}"
 
       - name: Find and rename APK
         run: |
           APK=$(find publish/android -type f -name "*-Signed.apk" | head -1)
           if [ -n "$APK" ]; then
-            cp "$APK" AgValoniaGPS-Android.apk
+            cp "$APK" AgValoniaGPS-Android-Signed.apk
           else
             echo "No signed APK found!"
             exit 1
@@ -227,7 +253,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AgValoniaGPS-Android
-          path: AgValoniaGPS-Android.apk
+          path: AgValoniaGPS-Android-Signed.apk
           retention-days: 30
 
   # Build iOS (simulator .app bundle)
@@ -362,7 +388,7 @@ jobs:
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
             | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
-            | Android | `AgValoniaGPS-Android.apk` |
+            | Android | `AgValoniaGPS-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
             ### Installation Notes
@@ -403,7 +429,7 @@ jobs:
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
             | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
-            | Android | `AgValoniaGPS-Android.apk` |
+            | Android | `AgValoniaGPS-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
             ### Installation Notes
