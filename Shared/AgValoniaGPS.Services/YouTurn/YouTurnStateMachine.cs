@@ -630,6 +630,9 @@ public sealed class YouTurnStateMachine
             guidance, turn,
             ctx.UTurnSkipRows, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance);
 
+        if (result.ClearanceBlocked && effects.StatusMessage == null)
+            effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
+
         if (result.Path == null) return;
 
         turn.TurnPath = result.Path;

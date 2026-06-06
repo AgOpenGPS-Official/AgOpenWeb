@@ -912,6 +912,7 @@ public partial class ConfigurationViewModel : ObservableObject
     public ICommand EditToolOverlapCommand { get; private set; } = null!;
     public ICommand EditToolOffsetCommand { get; private set; } = null!;
     public ICommand EditToolHitchLengthCommand { get; private set; } = null!;
+    public ICommand EditToolLengthCommand { get; private set; } = null!;
     public ICommand EditTrailingHitchLengthCommand { get; private set; } = null!;
     public ICommand EditTankHitchLengthCommand { get; private set; } = null!;
     public ICommand EditToolPivotCommand { get; private set; } = null!;
@@ -1208,6 +1209,11 @@ public partial class ConfigurationViewModel : ObservableObject
             ShowNumericInput("Working Center Distance", Tool.HitchLength,
                 v => Tool.HitchLength = v,
                 "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
+
+        EditToolLengthCommand = new RelayCommand(() =>
+            ShowNumericInput("Implement Length", Tool.Length,
+                v => Tool.Length = v,
+                "m", integerOnly: false, allowNegative: false, min: 0, max: 30));
 
         EditTrailingHitchLengthCommand = new RelayCommand(() =>
             ShowNumericInput("Trailing Hitch Length", Tool.TrailingHitchLength,

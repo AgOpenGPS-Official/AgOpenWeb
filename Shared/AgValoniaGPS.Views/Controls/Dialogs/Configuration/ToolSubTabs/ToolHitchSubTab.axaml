@@ -120,6 +120,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Grid>
             </Border>
 
+            <!-- Implement Length (all tool types) - used by hard-boundary U-turn clearance -->
+            <Border Classes="SettingRow">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                        <TextBlock Text="Implement Length" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Text="Attachment to rearmost point. Keeps a long mounted tool's rear corners off a hard boundary in turns. 0 = unspecified."
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <controls:EditableNumericField Grid.Column="1"
+                        Value="{Binding Tool.Length, Mode=TwoWay}"
+                        Unit="m" FormatString="F2"
+                        EditCommand="{Binding EditToolLengthCommand}"/>
+                </Grid>
+            </Border>
+
             <!-- Info box -->
             <Border Background="{DynamicResource InfoPanelBackgroundBrush}" CornerRadius="6" Padding="12" Margin="0,8,0,0">
                 <StackPanel Spacing="4">

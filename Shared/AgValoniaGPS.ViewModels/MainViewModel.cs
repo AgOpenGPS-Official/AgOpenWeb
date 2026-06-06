@@ -3709,6 +3709,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? DriveAroundInnerBoundaryCommand { get; private set; }
     public ICommand? DrawMapInnerBoundaryCommand { get; private set; }
     public ICommand? ToggleDriveThroughCommand { get; private set; }
+    public ICommand? ToggleHardCommand { get; private set; }
     public ICommand? ToggleRecordingCommand { get; private set; }
     public ICommand? ToggleBoundaryLeftRightCommand { get; private set; }
     public ICommand? ToggleBoundaryAntennaToolCommand { get; private set; }
@@ -4070,7 +4071,8 @@ public partial class MainViewModel : ObservableObject
                 Index = index++,
                 BoundaryType = "Outer",
                 AreaAcres = boundary.OuterBoundary.AreaAcres,
-                IsDriveThrough = boundary.OuterBoundary.IsDriveThrough
+                IsDriveThrough = boundary.OuterBoundary.IsDriveThrough,
+                IsHard = boundary.OuterBoundary.IsHard
             });
         }
 
@@ -4085,7 +4087,8 @@ public partial class MainViewModel : ObservableObject
                     Index = index++,
                     BoundaryType = $"Inner {i + 1}",
                     AreaAcres = inner.AreaAcres,
-                    IsDriveThrough = inner.IsDriveThrough
+                    IsDriveThrough = inner.IsDriveThrough,
+                    IsHard = inner.IsHard
                 });
             }
         }
@@ -5866,8 +5869,10 @@ public class BoundaryListItem
     public string BoundaryType { get; set; } = string.Empty;
     public double AreaAcres { get; set; }
     public bool IsDriveThrough { get; set; }
+    public bool IsHard { get; set; }
     public string AreaDisplay => $"{AreaAcres:F2} Ac";
     public string DriveThruDisplay => IsDriveThrough ? "Yes" : "--";
+    public string HardDisplay => IsHard ? "Hard" : "Soft";
 }
 
 /// <summary>

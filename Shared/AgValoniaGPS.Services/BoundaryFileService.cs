@@ -149,6 +149,14 @@ public class BoundaryFileService
 
         if (line == null) return null;
 
+        // AgValonia-specific hard-boundary marker (optional, labeled).
+        if (line.Trim().Equals("hard", StringComparison.OrdinalIgnoreCase))
+        {
+            polygon.IsHard = true;
+            line = reader.ReadLine();
+            if (line == null) return null;
+        }
+
         // Read point count
         if (!int.TryParse(line.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
         {
@@ -223,6 +231,11 @@ public class BoundaryFileService
     {
         // Write isDriveThru flag
         writer.WriteLine(polygon.IsDriveThrough.ToString());
+
+        // AgValonia-specific: hard boundary marker (labeled so it can't be confused
+        // with the bool/count lines and stays compatible with AgOpen import).
+        if (polygon.IsHard)
+            writer.WriteLine("hard");
 
         // Write point count
         writer.WriteLine(polygon.Points.Count.ToString(CultureInfo.InvariantCulture));

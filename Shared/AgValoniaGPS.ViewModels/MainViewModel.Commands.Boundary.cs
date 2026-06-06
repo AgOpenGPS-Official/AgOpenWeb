@@ -777,5 +777,53 @@ public partial class MainViewModel
                 }
             }
         });
+
+        ToggleHardCommand = new RelayCommand(() =>
+        {
+            if (SelectedBoundaryIndex < 0)
+            {
+                StatusMessage = "Select a boundary first";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(CurrentFieldName)) return;
+
+            var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+            var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+            if (boundary == null) return;
+
+            int currentIndex = 0;
+
+            if (boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid)
+            {
+                if (currentIndex == SelectedBoundaryIndex)
+                {
+                    boundary.OuterBoundary.IsHard = !boundary.OuterBoundary.IsHard;
+                    _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                    SetCurrentBoundary(boundary);
+                    RefreshBoundaryList();
+                    StatusMessage = $"Outer boundary hard: {(boundary.OuterBoundary.IsHard ? "On" : "Off")}";
+                    return;
+                }
+                currentIndex++;
+            }
+
+            for (int i = 0; i < boundary.InnerBoundaries.Count; i++)
+            {
+                if (boundary.InnerBoundaries[i].IsValid)
+                {
+                    if (currentIndex == SelectedBoundaryIndex)
+                    {
+                        boundary.InnerBoundaries[i].IsHard = !boundary.InnerBoundaries[i].IsHard;
+                        _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                        SetCurrentBoundary(boundary);
+                        RefreshBoundaryList();
+                        StatusMessage = $"Inner {i + 1} hard: {(boundary.InnerBoundaries[i].IsHard ? "On" : "Off")}";
+                        return;
+                    }
+                    currentIndex++;
+                }
+            }
+        });
     }
 }
