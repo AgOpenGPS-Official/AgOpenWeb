@@ -32,6 +32,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
             <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="Padding" Value="12"/>
         </Style>
+
+        <!-- Turn-style selector card -->
+        <Style Selector="Border.StyleCard">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Border.StyleCard:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+        </Style>
+        <Style Selector="Border.StyleCard.Selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid RowDefinitions="Auto,*">
@@ -39,6 +56,42 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
         <TextBlock Text="U-Turn Settings" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Margin="16,12,16,8"/>
 
         <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="4">
+
+            <!-- Turn Style Selector -->
+            <Border Classes="ParamCard" Margin="16,0,16,4">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Turn Style" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                    <Grid ColumnDefinitions="*,*">
+                        <!-- Omega -->
+                        <Border Grid.Column="0" Classes="StyleCard" Margin="0,0,4,0"
+                                Classes.Selected="{Binding IsOmegaTurnStyle}"
+                                PointerPressed="OnOmegaTurnStylePressed">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Omega" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                <TextBlock Text="Tight constant-radius semicircle. Sharper leg-to-arc transition."
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                           FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <!-- Sagitta -->
+                        <Border Grid.Column="1" Classes="StyleCard" Margin="4,0,0,0"
+                                Classes.Selected="{Binding IsSagittaTurnStyle}"
+                                PointerPressed="OnSagittaTurnStylePressed">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Sagitta" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                <TextBlock Text="Smoother offset arc with tangential entry. Gentler on the operator."
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                           FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- 3-Column Layout matching AgOpenGPS -->
             <Grid ColumnDefinitions="*,*,*" Margin="12,8,12,16">
 
@@ -120,6 +173,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </StackPanel>
 
             </Grid>
+          </StackPanel>
         </ScrollViewer>
     </Grid>
 </UserControl>

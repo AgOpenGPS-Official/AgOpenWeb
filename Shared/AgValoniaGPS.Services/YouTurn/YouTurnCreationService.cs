@@ -150,7 +150,11 @@ namespace AgValoniaGPS.Services.YouTurn
 
         private bool CreateCurveTurn(YouTurnCreationInput input, double turnOffset)
         {
-            if (input.TurnType == YouTurnType.AlbinStyle)
+            if (input.TurnType == YouTurnType.SagittaStyle)
+            {
+                return CreateCurveSagittaTurn(input, turnOffset);
+            }
+            else if (input.TurnType == YouTurnType.AlbinStyle)
             {
                 // Omega (narrow) or Wide turn based on offset
                 if (turnOffset > (input.TurnRadius * 2.0))
@@ -381,6 +385,122 @@ namespace AgValoniaGPS.Services.YouTurn
                     youTurnPhase = 10;
                     return true;
             }
+            return true;
+        }
+
+        /// <summary>
+        /// Sagitta-style curve turn (Brian Tischler's AOG dev-fork geometry).
+        /// Mirrors the omega curve turn's single-call behaviour (find crossing,
+        /// build an arc that lands inside the boundary, snap to the turn line),
+        /// but replaces the Dubins constant-radius arc with a sagitta offset arc
+        /// (<see cref="GetOffsetSemicirclePoints"/>) so the path meets the row
+        /// tangentially instead of stepping curvature from 0 to 1/R.
+        /// </summary>
+        private bool CreateCurveSagittaTurn(YouTurnCreationInput input, double turnOffset)
+        {
+            // Keep from making turns constantly - wait 1.5 seconds
+            if (input.MakeUTurnCounter < 4)
+            {
+                youTurnPhase = 0;
+                return true;
+            }
+
+            // Check for valid track mode
+            if (input.TrackMode == 64 || input.TrackMode == 32) // waterPivot or bndCurve
+            {
+                youTurnPhase = 11; // Ignore
+                return false;
+            }
+
+            // A single sagitta semicircle of radius R reaches at most 2R sideways.
+            // Wider rows need straight connectors, so fall back to the omega turn.
+            if (Math.Abs(turnOffset) > input.TurnRadius * 2.0)
+            {
+                return CreateCurveOmegaTurn(input, turnOffset);
+            }
+
+            // Find the crossing point
+            if (!FindCurveTurnPoint(input, false))
+            {
+                FailCreate();
+                return false;
+            }
+
+            inClosestTurnPt = new TurnClosePoint(closestTurnPt);
+            ytList?.Clear();
+
+            int count = input.IsHeadingSameWay ? -1 : 1;
+            int curveIndex = inClosestTurnPt.CurveIndex;
+
+            // Pull the arc back from a full 2R semicircle so it lands exactly on the
+            // next row: landing lateral = 2R - pullback, hence pullback = 2R - turnOffset.
+            double sagittaPullback = input.TurnRadius * 2.0 - Math.Abs(turnOffset);
+            bool isTurningRight = !input.IsTurnLeft;
+
+            isOutOfBounds = true;
+            int stopIfWayOut = 0;
+            double head = 0;
+
+            // Walk the start index inward until the generated arc sits inside the turn area
+            while (isOutOfBounds)
+            {
+                stopIfWayOut++;
+                isOutOfBounds = false;
+
+                ytList.Clear();
+                curveIndex += count;
+
+                if (stopIfWayOut == 300 || curveIndex < 1 || curveIndex > (input.GuidancePoints.Count - 2))
+                {
+                    FailCreate();
+                    return false;
+                }
+
+                Vec3 currentPos = input.GuidancePoints[curveIndex];
+                if (!input.IsHeadingSameWay) currentPos.Heading += Math.PI;
+                if (currentPos.Heading >= TWO_PI) currentPos.Heading -= TWO_PI;
+                head = currentPos.Heading;
+
+                ytList = SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
+                if (ytList.Count == 0)
+                {
+                    FailCreate();
+                    return false;
+                }
+
+                for (int i = 0; i < ytList.Count; i++)
+                {
+                    if (input.IsPointInsideTurnArea(ytList[i]) != 0)
+                    {
+                        isOutOfBounds = true;
+                        break;
+                    }
+                }
+            }
+            inClosestTurnPt.CurveIndex = curveIndex;
+
+            // Remove closely spaced points
+            int cnt = ytList.Count;
+            for (int i = 1; i < cnt - 2; i++)
+            {
+                if (DistanceSquared(ytList[i], ytList[i + 1]) < pointSpacing)
+                {
+                    ytList.RemoveAt(i + 1);
+                    i--;
+                    cnt = ytList.Count;
+                }
+            }
+
+            // Snap the turn to the turn line
+            ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
+            if (ytList.Count == 0)
+            {
+                FailCreate();
+                return false;
+            }
+
+            isOutOfBounds = false;
+            youTurnPhase = 10;
             return true;
         }
 
@@ -909,7 +1029,11 @@ namespace AgValoniaGPS.Services.YouTurn
 
         private bool CreateABTurn(YouTurnCreationInput input, double turnOffset)
         {
-            if (input.TurnType == YouTurnType.AlbinStyle)
+            if (input.TurnType == YouTurnType.SagittaStyle)
+            {
+                return CreateABSagittaTurn(input, turnOffset);
+            }
+            else if (input.TurnType == YouTurnType.AlbinStyle)
             {
                 // Always use OmegaTurn - it uses Dubins paths which handle any turnOffset
                 // The wide turn multi-phase approach doesn't work with single-call pattern
@@ -1015,6 +1139,96 @@ namespace AgValoniaGPS.Services.YouTurn
             // Phase 1: Move turn inside boundary and add sequence lines
             ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
 
+            if (ytList.Count == 0)
+            {
+                FailCreate();
+                return false;
+            }
+
+            isOutOfBounds = false;
+            youTurnPhase = 10;
+
+            // Add the entry and exit legs
+            if (!AddABSequenceLines(input))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Sagitta-style AB turn (Brian Tischler's AOG dev-fork geometry).
+        /// Mirrors <see cref="CreateABOmegaTurn"/> exactly (find turn point, snap
+        /// inside the turn line, add entry/exit legs) but builds the arc with the
+        /// sagitta offset construction instead of a Dubins constant-radius arc.
+        /// </summary>
+        private bool CreateABSagittaTurn(YouTurnCreationInput input, double turnOffset)
+        {
+            // Keep from making turns constantly
+            if (input.MakeUTurnCounter < 4)
+            {
+                youTurnPhase = 0;
+                return true;
+            }
+
+            // A single sagitta semicircle of radius R reaches at most 2R sideways.
+            // Wider rows need straight connectors, so fall back to the omega turn.
+            if (Math.Abs(turnOffset) > input.TurnRadius * 2.0)
+            {
+                return CreateABOmegaTurn(input, turnOffset);
+            }
+
+            double head = input.ABHeading;
+            if (!input.IsHeadingSameWay) head += Math.PI;
+            if (head >= TWO_PI) head -= TWO_PI;
+
+            // Find turn point where the current AB track crosses the turn boundary
+            Vec3 onPurePoint = new Vec3(input.ABReferencePoint.Easting, input.ABReferencePoint.Northing, head);
+            FindABTurnPoint(input, onPurePoint);
+
+            if (closestTurnPt.TurnLineIndex == -1)
+            {
+                _logger.LogDebug("Sagitta FindABTurnPoint failed: no intersection. RefPoint=({E}, {N}), head={Head}°",
+                    onPurePoint.Easting, onPurePoint.Northing, head * 180 / Math.PI);
+                FailCreate();
+                return false;
+            }
+
+            inClosestTurnPt = new TurnClosePoint(closestTurnPt);
+
+            Vec3 start = inClosestTurnPt.ClosePt;
+            start.Heading = head;
+
+            // Pull the arc back from a full 2R semicircle so it lands exactly on the
+            // next row: landing lateral = 2R - pullback, hence pullback = 2R - turnOffset.
+            double sagittaPullback = input.TurnRadius * 2.0 - Math.Abs(turnOffset);
+            bool isTurningRight = !input.IsTurnLeft;
+
+            // Generate the sagitta arc
+            ytList = SagittaTurnGeometry.BuildOffsetArc(start, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
+            isOutOfBounds = true;
+
+            if (ytList.Count == 0)
+            {
+                FailCreate();
+                return false;
+            }
+
+            // Clean up closely spaced points
+            int cnt = ytList.Count;
+            for (int i = 1; i < cnt - 2; i++)
+            {
+                if (DistanceSquared(ytList[i], ytList[i + 1]) < pointSpacing)
+                {
+                    ytList.RemoveAt(i + 1);
+                    i--;
+                    cnt = ytList.Count;
+                }
+            }
+
+            // Move turn inside boundary
+            ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
             if (ytList.Count == 0)
             {
                 FailCreate();

@@ -15,6 +15,8 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using Avalonia.Controls;
+using Avalonia.Input;
+using AgValoniaGPS.ViewModels;
 
 namespace AgValoniaGPS.Views.Controls.Dialogs.Configuration;
 
@@ -23,5 +25,17 @@ public partial class UTurnConfigTab : UserControl
     public UTurnConfigTab()
     {
         InitializeComponent();
+    }
+
+    private void OnOmegaTurnStylePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is ConfigurationViewModel vm)
+            vm.SetOmegaTurnStyleCommand.Execute(null);
+    }
+
+    private void OnSagittaTurnStylePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is ConfigurationViewModel vm)
+            vm.SetSagittaTurnStyleCommand.Execute(null);
     }
 }
