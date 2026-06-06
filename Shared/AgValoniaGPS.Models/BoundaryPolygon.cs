@@ -181,6 +181,14 @@ public class BoundaryPolygon
     public bool IsDriveThrough { get; set; } = false;
 
     /// <summary>
+    /// Hard boundary: there are obstacles/objects (fence, building, trees) right
+    /// at this edge, so the implement's swept path must not cross it during a
+    /// U-turn. Soft boundaries (default) allow the implement to swing close, as
+    /// today. Used by the U-turn clearance check to keep the implement clear.
+    /// </summary>
+    public bool IsHard { get; set; } = false;
+
+    /// <summary>
     /// Area in square meters (calculated from points)
     /// </summary>
     public double AreaSquareMeters
