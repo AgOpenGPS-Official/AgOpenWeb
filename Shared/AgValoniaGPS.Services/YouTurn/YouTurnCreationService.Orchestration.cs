@@ -47,6 +47,18 @@ public partial class YouTurnCreationService
     public readonly record struct TurnPathResult(List<Vec3>? Path, bool UsedFallback);
 
     /// <summary>
+    /// Maps the persisted <see cref="GuidanceConfig.UTurnStyle"/> integer onto the
+    /// creation <see cref="YouTurnType"/>. 0 = Omega/Wide (Albin), 1 = K-style,
+    /// 2 = Sagitta. Unknown values fall back to the Albin default.
+    /// </summary>
+    private static YouTurnType MapTurnStyle(int uTurnStyle) => uTurnStyle switch
+    {
+        (int)YouTurnType.KStyle => YouTurnType.KStyle,
+        (int)YouTurnType.SagittaStyle => YouTurnType.SagittaStyle,
+        _ => YouTurnType.AlbinStyle,
+    };
+
+    /// <summary>
     /// Build a complete U-turn path for the current vehicle state.
     /// The returned path is smoothed per <see cref="GuidanceConfig.UTurnSmoothing"/>.
     /// </summary>
@@ -208,7 +220,7 @@ public partial class YouTurnCreationService
 
         var input = new YouTurnCreationInput
         {
-            TurnType = YouTurnType.AlbinStyle,
+            TurnType = MapTurnStyle(config.Guidance.UTurnStyle),
             IsTurnLeft = turnLeft,
             GuidanceType = GuidanceLineType.ABLine,
             BoundaryTurnLines = boundaryTurnLines,

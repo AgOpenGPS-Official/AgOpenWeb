@@ -31,7 +31,17 @@ namespace AgValoniaGPS.Models.YouTurn
         /// K-style turn.
         /// Creates a more squared-off turn pattern.
         /// </summary>
-        KStyle = 1
+        KStyle = 1,
+
+        /// <summary>
+        /// Sagitta turn (Brian Tischler's AOG dev-fork "sagitta" U-turn).
+        /// A single offset arc with a short counter-arc lead-in so the path
+        /// meets the crop row tangentially, eliminating the straight-leg→arc
+        /// curvature step that makes Omega turns feel sharp. The sagitta
+        /// (extra arc depth) lets it connect rows closer than twice the turn
+        /// radius without falling back to a teardrop.
+        /// </summary>
+        SagittaStyle = 2
     }
 
     /// <summary>

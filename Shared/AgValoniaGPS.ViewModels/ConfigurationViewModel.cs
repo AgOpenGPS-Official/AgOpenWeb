@@ -23,6 +23,7 @@ using System.Windows.Input;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
 using AgValoniaGPS.Models.Configuration;
+using AgValoniaGPS.Models.YouTurn;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
 using CommunityToolkit.Mvvm.Input;
@@ -964,6 +965,16 @@ public partial class ConfigurationViewModel : ObservableObject
     public ICommand EditUTurnSkipWidthCommand { get; private set; } = null!;
     public ICommand EditUTurnSmoothingCommand { get; private set; } = null!;
 
+    // U-Turn style selector (0 = Omega/Albin, 2 = Sagitta)
+    public ICommand SetOmegaTurnStyleCommand { get; private set; } = null!;
+    public ICommand SetSagittaTurnStyleCommand { get; private set; } = null!;
+
+    /// <summary>True when the active U-turn style is Omega (or any non-Sagitta style).</summary>
+    public bool IsOmegaTurnStyle => Guidance.UTurnStyle != (int)YouTurnType.SagittaStyle;
+
+    /// <summary>True when the active U-turn style is Sagitta.</summary>
+    public bool IsSagittaTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.SagittaStyle;
+
     // GPS Tab Commands
     public ICommand SetSingleGpsCommand { get; private set; } = null!;
     public ICommand SetDualGpsCommand { get; private set; } = null!;
@@ -1385,6 +1396,21 @@ public partial class ConfigurationViewModel : ObservableObject
             ShowNumericInput("Smoothing", Guidance.UTurnSmoothing,
                 v => Guidance.UTurnSmoothing = (int)v,
                 "", integerOnly: true, allowNegative: false, min: 1, max: 50));
+
+        SetOmegaTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.AlbinStyle));
+        SetSagittaTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.SagittaStyle));
+    }
+
+    /// <summary>
+    /// Sets the persisted U-turn style, persists the change, and refreshes the
+    /// selector's bound state so the cards re-highlight.
+    /// </summary>
+    private void SetTurnStyle(int style)
+    {
+        Guidance.UTurnStyle = style;
+        Config.MarkChanged();
+        OnPropertyChanged(nameof(IsOmegaTurnStyle));
+        OnPropertyChanged(nameof(IsSagittaTurnStyle));
     }
 
     private void InitializeGpsEditCommands()
