@@ -70,6 +70,18 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _hitchLength, Math.Max(0, value));
     }
 
+    // Fore-aft length of the implement body, from its attachment (hitch for rigid
+    // tools, tool pivot for trailing) to the rearmost point. Used by the hard-
+    // boundary U-turn clearance check so a long mounted implement's rear corners
+    // don't swing into a fence. 0 = unspecified (clearance falls back to the
+    // working-width line only).
+    private double _length;
+    public double Length
+    {
+        get => _length;
+        set => SetProperty(ref _length, Math.Max(0, value));
+    }
+
     // Distance from hitch to trailing tool, measured behind the hitch.
     // Convention: positive = tool is behind hitch (the only physically valid direction
     // for a trailing implement). Sign-agnostic at runtime; legacy profiles with

@@ -24,6 +24,7 @@ using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Guidance;
 using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Models.State;
+using AgValoniaGPS.Models.Tool;
 using AgValoniaGPS.Models.YouTurn;
 
 using Microsoft.Extensions.Logging;
@@ -44,7 +45,15 @@ public partial class YouTurnCreationService
     /// is true when the primary Dubins-based algorithm returned a spiral or failed outright
     /// and the simple geometric fallback was substituted.
     /// </summary>
-    public readonly record struct TurnPathResult(List<Vec3>? Path, bool UsedFallback);
+    public readonly record struct TurnPathResult(List<Vec3>? Path, bool UsedFallback)
+    {
+        /// <summary>
+        /// True when no forward turn could keep the implement clear of a hard
+        /// boundary, so <see cref="Path"/> is null and the turn must not be
+        /// auto-engaged — the operator should be warned to take over.
+        /// </summary>
+        public bool ClearanceBlocked { get; init; }
+    }
 
     /// <summary>
     /// Maps the persisted <see cref="GuidanceConfig.UTurnStyle"/> integer onto the
@@ -83,70 +92,153 @@ public partial class YouTurnCreationService
         _logger.LogDebug("[YouTurn] Creating turn: direction={Dir}, sameWay={SameWay}, pathsAway={Away}",
             turnLeft ? "LEFT" : "RIGHT", guidance.IsHeadingSameWay, guidance.HowManyPathsAway);
 
-        var input = BuildCreationInput(
-            currentPosition, selectedTrack, headingRadians, abHeading, turnLeft,
-            boundary, headlandLine, guidance, turn, uTurnSkipRows, headlandCalculatedWidth);
-
-        if (input == null)
-        {
-            _logger.LogWarning("[YouTurn] Failed to build creation input - no boundary available?");
-            return new TurnPathResult(null, false);
-        }
-
-        var output = CreateTurn(input);
         var config = ConfigurationStore.Instance;
 
-        if (output.Success && output.TurnPath != null && output.TurnPath.Count > 10)
+        // Hard outer boundary: the implement's swept path (including a long
+        // mounted tool's rear corners) must stay clear of the fence/obstacle
+        // edge. When set, we shift the turn inward and regenerate until the
+        // implement clears, or give up and refuse to auto-engage.
+        bool hardOuter = boundary?.OuterBoundary?.IsHard == true && boundary.OuterBoundary.IsValid;
+        var outerPolygon = hardOuter
+            ? boundary!.OuterBoundary!.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList()
+            : null;
+        ToolGeometry toolGeom = hardOuter ? BuildToolGeometry(config) : default;
+        double clearanceMargin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
+
+        const double SetbackStep = 0.5;
+        const double MaxExtraSetback = 30.0;
+        double extraSetback = 0.0;
+
+        while (true)
         {
-            var path = output.TurnPath;
+            var input = BuildCreationInput(
+                currentPosition, selectedTrack, headingRadians, abHeading, turnLeft,
+                boundary, headlandLine, guidance, turn, uTurnSkipRows, headlandCalculatedWidth,
+                extraSetback);
 
-            // Spiral / pretzel guard. The original check summed |ΔHeading| per step and
-            // rejected anything > 1.5π (270°) — but a legit Dubins RLR/LRL arc-arc-arc
-            // solution can accumulate 300°+ of absolute turning while ending at the correct
-            // 180° reversal. That false-rejected valid paths (#289 F2) and dropped the run
-            // to the less-optimal simple fallback.
-            //
-            // New guard:
-            //   - Primary check: start-to-end heading delta should be ~π (180°) for a U-turn.
-            //   - Secondary safety: cumulative |ΔHeading| capped at 4π (720°) to still catch
-            //     actual infinite-loop spirals, without rejecting loopy-but-valid paths.
-            double netHeadingChange = path[^1].Heading - path[0].Heading;
-            while (netHeadingChange > Math.PI) netHeadingChange -= 2 * Math.PI;
-            while (netHeadingChange < -Math.PI) netHeadingChange += 2 * Math.PI;
-
-            double totalHeadingChange = 0;
-            for (int i = 1; i < path.Count; i++)
+            if (input == null)
             {
-                double delta = path[i].Heading - path[i - 1].Heading;
-                while (delta > Math.PI) delta -= 2 * Math.PI;
-                while (delta < -Math.PI) delta += 2 * Math.PI;
-                totalHeadingChange += Math.Abs(delta);
+                _logger.LogWarning("[YouTurn] Failed to build creation input - no boundary available?");
+                return new TurnPathResult(null, false);
             }
 
-            // ~π expected for U-turn; tolerate ±30° slack to account for approach angle.
-            bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - Math.PI) < Math.PI / 6.0;
-            bool cumulativeRunaway = totalHeadingChange > Math.PI * 4.0;
+            var output = CreateTurn(input);
 
-            if (!netIsUTurnLike || cumulativeRunaway)
+            if (output.Success && output.TurnPath != null && output.TurnPath.Count > 10)
             {
-                _logger.LogWarning("[YouTurn] Service path rejected: net={Net:F0}° cumulative={Cum:F0}° - using simple fallback",
-                    netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
-                var fallback = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
-                    guidance, turn, uTurnSkipRows, headlandDistance);
-                return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
+                var path = output.TurnPath;
+
+                // Spiral / pretzel guard. The original check summed |ΔHeading| per step and
+                // rejected anything > 1.5π (270°) — but a legit Dubins RLR/LRL arc-arc-arc
+                // solution can accumulate 300°+ of absolute turning while ending at the correct
+                // 180° reversal. That false-rejected valid paths (#289 F2) and dropped the run
+                // to the less-optimal simple fallback.
+                //
+                // New guard:
+                //   - Primary check: start-to-end heading delta should be ~π (180°) for a U-turn.
+                //   - Secondary safety: cumulative |ΔHeading| capped at 4π (720°) to still catch
+                //     actual infinite-loop spirals, without rejecting loopy-but-valid paths.
+                double netHeadingChange = path[^1].Heading - path[0].Heading;
+                while (netHeadingChange > Math.PI) netHeadingChange -= 2 * Math.PI;
+                while (netHeadingChange < -Math.PI) netHeadingChange += 2 * Math.PI;
+
+                double totalHeadingChange = 0;
+                for (int i = 1; i < path.Count; i++)
+                {
+                    double delta = path[i].Heading - path[i - 1].Heading;
+                    while (delta > Math.PI) delta -= 2 * Math.PI;
+                    while (delta < -Math.PI) delta += 2 * Math.PI;
+                    totalHeadingChange += Math.Abs(delta);
+                }
+
+                // ~π expected for U-turn; tolerate ±30° slack to account for approach angle.
+                bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - Math.PI) < Math.PI / 6.0;
+                bool cumulativeRunaway = totalHeadingChange > Math.PI * 4.0;
+
+                if (!netIsUTurnLike || cumulativeRunaway)
+                {
+                    if (hardOuter)
+                    {
+                        _logger.LogWarning("[YouTurn] Turn near hard boundary was malformed; not engaging.");
+                        return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true };
+                    }
+                    _logger.LogWarning("[YouTurn] Service path rejected: net={Net:F0}° cumulative={Cum:F0}° - using simple fallback",
+                        netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
+                    var fallback = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
+                        guidance, turn, uTurnSkipRows, headlandDistance);
+                    return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
+                }
+
+                TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
+
+                // Implement clearance against the hard outer boundary, checked on
+                // the final (smoothed) path that will actually be driven.
+                if (hardOuter)
+                {
+                    var swept = ImplementSweptPath.Compute(path, toolGeom);
+                    var clearance = TurnClearance.Evaluate(swept, outerPolygon!,
+                        TurnClearance.KeepSide.Inside, clearanceMargin);
+
+                    if (!clearance.IsClear)
+                    {
+                        extraSetback += Math.Max(SetbackStep, clearance.MaxIntrusion);
+                        if (extraSetback <= MaxExtraSetback)
+                        {
+                            _logger.LogDebug("[YouTurn] Implement intrudes hard boundary by {I:F2}m; shifting turn inward (setback {S:F2}m) and retrying",
+                                clearance.MaxIntrusion, extraSetback);
+                            continue;
+                        }
+
+                        _logger.LogWarning("[YouTurn] No forward turn keeps the implement clear of the hard boundary (intrusion {I:F2}m); not engaging.",
+                            clearance.MaxIntrusion);
+                        return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true };
+                    }
+                }
+
+                _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m)",
+                    path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback);
+                return new TurnPathResult(path, UsedFallback: false);
             }
 
-            TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
-            _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}°",
-                path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
-            return new TurnPathResult(path, UsedFallback: false);
+            // Creation failed outright.
+            if (hardOuter)
+            {
+                _logger.LogWarning("[YouTurn] Turn creation failed near a hard boundary ({Reason}); not engaging.",
+                    output.FailureReason ?? "unknown");
+                return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true };
+            }
+
+            _logger.LogWarning("[YouTurn] Service failed: {Reason} - using simple fallback",
+                output.FailureReason ?? "unknown");
+            var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
+                guidance, turn, uTurnSkipRows, headlandDistance);
+            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
         }
+    }
 
-        _logger.LogWarning("[YouTurn] Service failed: {Reason} - using simple fallback",
-            output.FailureReason ?? "unknown");
-        var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
-            guidance, turn, uTurnSkipRows, headlandDistance);
-        return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
+    /// <summary>
+    /// Maps the runtime tool/vehicle config onto the pure <see cref="ToolGeometry"/>
+    /// used by the implement swept-path clearance check.
+    /// </summary>
+    private static ToolGeometry BuildToolGeometry(ConfigurationStore config)
+    {
+        var tool = config.Tool;
+        ToolMount mount =
+            tool.IsToolFrontFixed ? ToolMount.FrontFixed :
+            tool.IsToolTBT ? ToolMount.TBT :
+            tool.IsToolTrailing ? ToolMount.Trailing :
+            ToolMount.RearFixed; // rear-fixed is the default
+
+        return new ToolGeometry(
+            Mount: mount,
+            Width: tool.Width,
+            Offset: tool.Offset,
+            VehicleHitchLength: config.Vehicle.HitchLength,
+            ToolHitchLength: tool.HitchLength,
+            TrailingHitchLength: tool.TrailingHitchLength,
+            TrailingToolToPivotLength: tool.TrailingToolToPivotLength,
+            TankTrailingHitchLength: tool.TankTrailingHitchLength,
+            Length: tool.Length);
     }
 
     // ── Input builder ───────────────────────────────────────────────────
@@ -162,7 +254,8 @@ public partial class YouTurnCreationService
         GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         int uTurnSkipRows,
-        double headlandCalculatedWidth)
+        double headlandCalculatedWidth,
+        double extraInwardSetback = 0.0)
     {
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
@@ -182,7 +275,9 @@ public partial class YouTurnCreationService
         //  > 0: turn stays that far inside the field
         //  = 0: turn may touch the outer boundary
         //  < 0: turn may extend past the outer boundary
-        double distanceFromBoundary = config.Guidance.UTurnDistanceFromBoundary;
+        // Base setback, plus any extra the clearance loop asked for to pull the
+        // turn further inside a hard boundary.
+        double distanceFromBoundary = config.Guidance.UTurnDistanceFromBoundary + extraInwardSetback;
         List<Vec2>? turnBoundaryVec2;
         if (distanceFromBoundary > 0.1)
             turnBoundaryVec2 = _polygonOffsetService.CreateInwardOffset(outerPoints, distanceFromBoundary);
