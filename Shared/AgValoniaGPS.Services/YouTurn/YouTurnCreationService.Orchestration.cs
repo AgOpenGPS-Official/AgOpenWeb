@@ -241,6 +241,28 @@ public partial class YouTurnCreationService
             Length: tool.Length);
     }
 
+    /// <summary>
+    /// True when the implement swept along <paramref name="path"/> stays clear of a
+    /// hard outer boundary by the configured margin — or when there is no hard
+    /// boundary (in which case it is always "clear"). <paramref name="intrusion"/>
+    /// is how far the worst implement point pushes past the margin (&gt; 0 = violated).
+    /// </summary>
+    private static bool ImplementClearsHardBoundary(
+        IReadOnlyList<Vec3> path, Boundary? boundary, ConfigurationStore config, out double intrusion)
+    {
+        intrusion = 0.0;
+        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid
+            || !boundary.OuterBoundary.IsHard || path == null || path.Count < 2)
+            return true;
+
+        var outerPolygon = boundary.OuterBoundary.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+        var swept = ImplementSweptPath.Compute(path, BuildToolGeometry(config));
+        double margin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
+        var clearance = TurnClearance.Evaluate(swept, outerPolygon, TurnClearance.KeepSide.Inside, margin);
+        intrusion = clearance.MaxIntrusion;
+        return clearance.IsClear;
+    }
+
     // ── Input builder ───────────────────────────────────────────────────
 
     private YouTurnCreationInput? BuildCreationInput(
@@ -849,6 +871,16 @@ public partial class YouTurnCreationService
         }
 
         TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
+
+        // Hard boundary: a manual arc is anchored at the tractor, so it can't be
+        // shifted inward — if the implement would swing into the fence, refuse it.
+        if (!ImplementClearsHardBoundary(path, boundary, config, out double intrusion))
+        {
+            _logger.LogWarning("[ManualYouTurn] Implement would swing into hard boundary (intrusion {I:F2}m) — refusing",
+                intrusion);
+            path.Clear();
+            return path;
+        }
 
         _logger.LogDebug("[ManualYouTurn] Arc path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
             path.Count, turnRadius, turnOffset, turnLeft);

@@ -473,7 +473,7 @@ public sealed class YouTurnStateMachine
         }
         else
         {
-            effects.StatusMessage = "Not enough room — turn would leave the field";
+            effects.StatusMessage = "Not enough room — turn would put the tool past the boundary";
         }
 
         return effects;
