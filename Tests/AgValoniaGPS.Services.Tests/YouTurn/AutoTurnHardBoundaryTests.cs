@@ -28,7 +28,11 @@ public class AutoTurnHardBoundaryTests
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var c = ConfigurationStore.Instance;
-        c.Tool.Width = 16;               // 16 m wide
+        // Deliberately leave the stored Tool.Width at the small default — the real
+        // 16 m width must come from the active sections (ActualToolWidth). This
+        // guards the bug where clearance used Tool.Width (6 m) and under-modelled
+        // the implement, letting a 16 m boom hit the fence.
+        c.Tool.Width = 6;
         c.Tool.Overlap = 0;
         c.Tool.HitchLength = 4.5;        // working-centre distance
         c.Tool.Length = 3.5;             // overall implement length
@@ -37,7 +41,7 @@ public class AutoTurnHardBoundaryTests
         c.Tool.IsToolTBT = false;
         c.Tool.IsToolFrontFixed = false;
         c.NumSections = 1;
-        c.Tool.SetSectionWidth(0, 1600);
+        c.Tool.SetSectionWidth(0, 1600); // 16 m via sections -> ActualToolWidth = 16
         c.Guidance.UTurnDistanceFromBoundary = 1.0;
         c.Guidance.UTurnRadius = 8.0;
         c.Guidance.UTurnSmoothing = 3;

@@ -28,7 +28,9 @@ public class ManualTurnHardBoundaryTests
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var config = ConfigurationStore.Instance;
-        config.Tool.Width = 16;          // wide implement
+        config.Tool.Width = 16;          // stored width (fallback only)
+        config.NumSections = 1;
+        config.Tool.SetSectionWidth(0, 1600); // 16 m via sections -> ActualToolWidth = 16
         config.Tool.Overlap = 0;
         config.Tool.HitchLength = 2;
         config.Tool.IsToolRearFixed = true;
