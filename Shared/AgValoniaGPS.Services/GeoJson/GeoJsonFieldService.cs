@@ -155,6 +155,8 @@ public class GeoJsonFieldService
             {
                 case FeatureRoles.OuterBoundary:
                     boundary.OuterBoundary = ReadBoundaryPolygon(geo, feature);
+                    if (boundary.OuterBoundary != null)
+                        boundary.OuterBoundary.IsHard = GetBoolProp(feature, FieldPropertyKeys.IsHard);
                     break;
 
                 case FeatureRoles.InnerBoundary:
@@ -162,6 +164,7 @@ public class GeoJsonFieldService
                     if (inner != null)
                     {
                         inner.IsDriveThrough = GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough);
+                        inner.IsHard = GetBoolProp(feature, FieldPropertyKeys.IsHard);
                         boundary.InnerBoundaries.Add(inner);
                     }
                     break;
@@ -229,6 +232,7 @@ public class GeoJsonFieldService
             {
                 [FieldPropertyKeys.Role] = role,
                 [FieldPropertyKeys.IsDriveThrough] = polygon.IsDriveThrough,
+                [FieldPropertyKeys.IsHard] = polygon.IsHard,
                 [FieldPropertyKeys.AreaHectares] = polygon.AreaHectares,
             }
         };

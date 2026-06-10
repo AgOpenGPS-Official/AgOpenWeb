@@ -103,12 +103,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 </Grid>
 
                 <!-- Column Headers -->
-                <Grid ColumnDefinitions="*,*,*" Background="{DynamicResource SystemControlHighlightAccentBrush}" Margin="4,0,4,0">
+                <Grid ColumnDefinitions="*,*,*,*" Background="{DynamicResource SystemControlHighlightAccentBrush}" Margin="4,0,4,0">
                     <TextBlock Grid.Column="0" Text="{loc:Localize Boundary}" HorizontalAlignment="Center"
                                FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
                     <TextBlock Grid.Column="1" Text="{loc:Localize Area}" HorizontalAlignment="Center"
                                FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
                     <TextBlock Grid.Column="2" Text="{loc:Localize DriveThru}" HorizontalAlignment="Center"
+                               FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                    <TextBlock Grid.Column="3" Text="Hard" HorizontalAlignment="Center"
                                FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
                 </Grid>
 
@@ -120,7 +122,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                              BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid ColumnDefinitions="*,*,*">
+                                <Grid ColumnDefinitions="*,*,*,*">
                                     <TextBlock Grid.Column="0" Text="{Binding BoundaryType}"
                                                HorizontalAlignment="Center" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
                                     <TextBlock Grid.Column="1" Text="{Binding AreaDisplay}"
@@ -130,6 +132,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                                             Foreground="{Binding IsDriveThrough, Converter={StaticResource BoolToColorConverter}}"
                                             Background="Transparent" BorderThickness="0" Cursor="Hand"
                                             Command="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).ToggleDriveThroughCommand}"/>
+                                    <Button Grid.Column="3" Content="{Binding HardDisplay}"
+                                            HorizontalAlignment="Center" Padding="8,6"
+                                            Foreground="{Binding IsHard, Converter={StaticResource BoolToColorConverter}}"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                            Command="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).ToggleHardCommand}"/>
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>

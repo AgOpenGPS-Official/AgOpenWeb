@@ -473,7 +473,7 @@ public sealed class YouTurnStateMachine
         }
         else
         {
-            effects.StatusMessage = "Not enough room — turn would leave the field";
+            effects.StatusMessage = "Not enough room — turn would put the tool past the boundary";
         }
 
         return effects;
@@ -629,6 +629,9 @@ public sealed class YouTurnStateMachine
             ctx.Boundary, ctx.HeadlandLine,
             guidance, turn,
             ctx.UTurnSkipRows, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance);
+
+        if (result.ClearanceBlocked && effects.StatusMessage == null)
+            effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
 
         if (result.Path == null) return;
 

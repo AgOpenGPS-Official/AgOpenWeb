@@ -201,6 +201,33 @@ public class FileIOTests
     }
 
     [Test]
+    public void Boundary_SaveAndLoad_IsHard_RoundTrip()
+    {
+        var service = new BoundaryFileService();
+        var outer = CreateSquarePolygon(0, 0, 200);
+        outer.IsHard = true;
+        var innerSoft = CreateSquarePolygon(50, 50, 30);
+        var innerHard = CreateSquarePolygon(120, 120, 20);
+        innerHard.IsHard = true;
+
+        var boundary = new Boundary
+        {
+            OuterBoundary = outer,
+            InnerBoundaries = new List<BoundaryPolygon> { innerSoft, innerHard }
+        };
+
+        service.SaveBoundary(boundary, _tempDir);
+        var loaded = service.LoadBoundary(_tempDir);
+
+        Assert.That(loaded.OuterBoundary!.IsHard, Is.True, "outer hard flag should persist");
+        Assert.That(loaded.InnerBoundaries[0].IsHard, Is.False, "soft inner stays soft");
+        Assert.That(loaded.InnerBoundaries[1].IsHard, Is.True, "hard inner flag should persist");
+        // Points must still round-trip (the hard marker must not corrupt parsing).
+        Assert.That(loaded.OuterBoundary.Points, Has.Count.EqualTo(4));
+        Assert.That(loaded.InnerBoundaries[1].Points, Has.Count.EqualTo(4));
+    }
+
+    [Test]
     public void Boundary_SaveAndLoad_WithInnerBoundaries_RoundTrip()
     {
         var service = new BoundaryFileService();

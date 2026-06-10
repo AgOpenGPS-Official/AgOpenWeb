@@ -122,6 +122,7 @@ public static class ToolProfileJsonService
                 Overlap = store.Tool.Overlap,
                 Offset = store.Tool.Offset,
                 HitchLength = store.Tool.HitchLength,
+                Length = store.Tool.Length,
                 TrailingHitchLength = store.Tool.TrailingHitchLength,
                 TankTrailingHitchLength = store.Tool.TankTrailingHitchLength,
                 TrailingToolToPivotLength = store.Tool.TrailingToolToPivotLength,
@@ -171,6 +172,7 @@ public static class ToolProfileJsonService
         store.Tool.Overlap = dto.Tool?.Overlap ?? 0.0;
         store.Tool.Offset = dto.Tool?.Offset ?? 0.0;
         store.Tool.HitchLength = dto.Tool?.HitchLength ?? 1.8;
+        store.Tool.Length = dto.Tool?.Length ?? 0.0;
         // Legacy AOG sign convention used negative TrailingHitchLength; canonicalize.
         store.Tool.TrailingHitchLength = Math.Abs(dto.Tool?.TrailingHitchLength ?? 2.5);
         store.Tool.TankTrailingHitchLength = dto.Tool?.TankTrailingHitchLength ?? 3.0;
@@ -257,6 +259,7 @@ public static class ToolProfileJsonService
         public double Overlap { get; set; }
         public double Offset { get; set; }
         public double HitchLength { get; set; }
+        public double Length { get; set; }
         public double TrailingHitchLength { get; set; }
         public double TankTrailingHitchLength { get; set; }
         public double TrailingToolToPivotLength { get; set; }
