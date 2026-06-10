@@ -105,6 +105,14 @@ public partial class YouTurnCreationService
         ToolGeometry toolGeom = hardOuter ? BuildToolGeometry(config) : default;
         double clearanceMargin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
 
+        // Diagnostic (#hard-boundary): one line per turn build so we can see whether
+        // the clearance path is actually armed at runtime and with what geometry.
+        _logger.LogWarning(
+            "[YouTurn][HardBoundary] hardOuter={Hard} isHard={IsHard} validOuter={Valid} width={W:F1} rearFixed={RF} trailing={TR} tbt={TBT} frontFixed={FF} length={L:F1} margin={M:F1}",
+            hardOuter, boundary?.OuterBoundary?.IsHard, boundary?.OuterBoundary?.IsValid,
+            config.Tool.Width, config.Tool.IsToolRearFixed, config.Tool.IsToolTrailing,
+            config.Tool.IsToolTBT, config.Tool.IsToolFrontFixed, config.Tool.Length, clearanceMargin);
+
         const double SetbackStep = 0.5;
         const double MaxExtraSetback = 30.0;
         double extraSetback = 0.0;
