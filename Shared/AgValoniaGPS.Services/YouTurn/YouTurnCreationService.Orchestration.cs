@@ -201,6 +201,11 @@ public partial class YouTurnCreationService
                             clearance.MaxIntrusion);
                         return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true };
                     }
+
+                    // Cleared. MaxIntrusion <= 0; the worst implement point sits
+                    // (margin - MaxIntrusion) m inside the fence — log the achieved gap.
+                    _logger.LogDebug("[YouTurn][HardBoundary] CLEARED: nearest implement point {C:F2}m inside fence (margin {M:F2}m, setback {S:F2}m)",
+                        clearanceMargin - clearance.MaxIntrusion, clearanceMargin, extraSetback);
                 }
 
                 _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m)",
