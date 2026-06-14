@@ -176,7 +176,6 @@ public partial class MainViewModel : ObservableObject
     private double _hitchNorthing;
 
     // Field properties
-    private Field? _activeField;
     private string _fieldsRootDirectory = string.Empty;
 
     public MainViewModel(
@@ -1213,10 +1212,18 @@ public partial class MainViewModel : ObservableObject
 
 
     // Field management properties
+    // Active field — single home is State.Field.ActiveField (§12.1). Pass-through.
     public Field? ActiveField
     {
-        get => _activeField;
-        set => SetProperty(ref _activeField, value);
+        get => State.Field.ActiveField;
+        set
+        {
+            if (!ReferenceEquals(State.Field.ActiveField, value))
+            {
+                State.Field.ActiveField = value;
+                OnPropertyChanged();
+            }
+        }
     }
 
     public string FieldsRootDirectory

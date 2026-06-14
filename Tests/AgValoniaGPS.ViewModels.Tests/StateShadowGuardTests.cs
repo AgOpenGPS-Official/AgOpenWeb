@@ -47,8 +47,8 @@ public class StateShadowGuardTests
         ["_selectedTrack"] = "VM-LOCAL: sole home for track selection (FieldState.SelectedTrack deleted §12.2)",
         ["_simulatorLocalPlane"] = "VM-LOCAL: simulator's own plane; may overlap State.Field.LocalPlane when a field is open — review under §12.4",
 
-        // --- Known shadow tracked for cleanup ---
-        ["_activeField"] = "SHADOW §12.1: duplicates State.Field.ActiveField; collapse to the single home (follow-up)",
+        // No domain shadows remain — the field-geometry cluster (incl. _activeField)
+        // was collapsed to State.Field in §12.1. New entries here should be VM-LOCAL.
     };
 
     [Test]
