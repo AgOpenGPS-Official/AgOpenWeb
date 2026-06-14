@@ -39,6 +39,14 @@ public sealed class SceneProjector
                 t.Points.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList()))
             .ToList();
 
+        // Headland (the green inner line) — the live one the app draws lives on
+        // State.Field.HeadlandLine, set in lockstep with the VM's _currentHeadlandLine
+        // (NOT Boundary.HeadlandPolygon, which is only seeded on file load).
+        IReadOnlyList<Vec2Dto>? headland = null;
+        var hl = f.HeadlandLine;
+        if (hl != null && hl.Count >= 3)
+            headland = hl.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -46,7 +54,8 @@ public sealed class SceneProjector
             f.FieldName,
             f.ActiveField != null,
             boundaries,
-            tracks);
+            tracks,
+            headland);
     }
 
     private static void AddRing(List<IReadOnlyList<Vec2Dto>> rings, BoundaryPolygon? poly)
@@ -83,6 +92,7 @@ public sealed class SceneProjector
         h = h * 31 + (bnd?.OuterBoundary?.Points.Count ?? 0);
         if (bnd?.InnerBoundaries != null)
             foreach (var inner in bnd.InnerBoundaries.ToArray()) h = h * 31 + inner.Points.Count;
+        h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + f.Tracks.Count;
         foreach (var t in f.Tracks.ToArray()) h = h * 31 + t.Points.Count;
         return h;

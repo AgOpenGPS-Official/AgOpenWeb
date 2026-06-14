@@ -10,6 +10,8 @@ window.RemoteTransport = {
   /**
    * @param {{ onScene?: (scene:object)=>void,
    *           onTick?:  (tick:object)=>void,
+   *           onCoverageInit?: (init:object)=>void,
+   *           onCoverageCells?: (cells:object)=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -22,6 +24,8 @@ window.RemoteTransport = {
 
     conn.on('scene', s => handlers.onScene && handlers.onScene(s));
     conn.on('tick', t => handlers.onTick && handlers.onTick(t));
+    conn.on('coverageInit', m => handlers.onCoverageInit && handlers.onCoverageInit(m));
+    conn.on('coverageCells', m => handlers.onCoverageCells && handlers.onCoverageCells(m));
     conn.onreconnecting(() => status('reconnecting…'));
     conn.onreconnected(() => status('connected'));
     conn.onclose(() => status('disconnected'));

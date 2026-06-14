@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgValoniaGPS.Models\AgValoniaGPS.Models.csproj" />
+    <!-- Phase 2: coverage streaming reads ICoverageMapService (Avalonia-free). -->
+    <ProjectReference Include="..\AgValoniaGPS.Services\AgValoniaGPS.Services.csproj" />
   </ItemGroup>
 
   <!-- Client assets shipped inside the assembly (no content-root/copy plumbing). -->

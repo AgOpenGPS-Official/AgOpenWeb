@@ -16,6 +16,15 @@ public sealed class MapHub : Hub
     public override async Task OnConnectedAsync()
     {
         await Clients.Caller.SendAsync("scene", _broadcaster.CurrentScene());
+
+        // Seed coverage: grid geometry + a full snapshot of what's painted so far.
+        if (_broadcaster.CurrentCoverageInit() is { } init)
+        {
+            await Clients.Caller.SendAsync("coverageInit", init);
+            if (_broadcaster.CoverageSnapshot() is { } snap)
+                await Clients.Caller.SendAsync("coverageCells", snap);
+        }
+
         await base.OnConnectedAsync();
     }
 }

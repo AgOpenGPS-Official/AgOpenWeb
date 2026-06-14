@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using AgValoniaGPS.Models.State;
+using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.RemoteServer;
 
@@ -19,7 +20,7 @@ public sealed class RemoteServerHost
 
     /// <param name="state">The live DI ApplicationState the app/pipeline updates.</param>
     /// <param name="port">Bound on 0.0.0.0 so LAN clients (tablets) can connect.</param>
-    public async Task StartAsync(ApplicationState state, int port = 5174)
+    public async Task StartAsync(ApplicationState state, ICoverageMapService coverage, int port = 5174)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -27,7 +28,9 @@ public sealed class RemoteServerHost
 
         builder.Services.AddSignalR();
         builder.Services.AddSingleton(state);
+        builder.Services.AddSingleton(coverage);
         builder.Services.AddSingleton<SceneProjector>();
+        builder.Services.AddSingleton<CoverageProjector>();
         builder.Services.AddSingleton<MapBroadcaster>();
 
         var app = builder.Build();

@@ -78,7 +78,8 @@ public partial class App : Application
         // Browse to http://localhost:5174 (or the LAN IP) to see the live map.
         _remoteServer = new AgValoniaGPS.RemoteServer.RemoteServerHost();
         _ = _remoteServer.StartAsync(
-            Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>());
+            Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
+            Services.GetRequiredService<ICoverageMapService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);

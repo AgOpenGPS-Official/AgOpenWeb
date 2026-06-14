@@ -17,6 +17,11 @@ let tick = null;       // TickDto (latest — for sections/HUD)
 let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + receipt time, for DR
 let connState = 'connecting…';
 
+// ---- coverage offscreen (Phase 2): cells painted into a cell-grid canvas,
+//      blitted to world space each frame. Snapshot on connect, deltas after. ----
+let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
+let covCells = 0;
+
 // ---- client-owned camera (never crosses the wire) ----
 let pxPerM = 4.0;
 let follow = true;
@@ -36,6 +41,28 @@ const transport = RemoteTransport.create({
     tick = t;
     if (t.pose) {
       lastTick = { e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed, t: performance.now() };
+    }
+  },
+  onCoverageInit(init) {
+    const canvas = document.createElement('canvas');
+    canvas.width = init.width;
+    canvas.height = init.height;
+    cov = {
+      cellSize: init.cellSize, originE: init.originE, originN: init.originN,
+      width: init.width, height: init.height,
+      canvas, cctx: canvas.getContext('2d'),
+    };
+    covCells = 0;
+  },
+  onCoverageCells(msg) {
+    if (!cov || !msg.cells) return;
+    const c = msg.cells, H = cov.height, cctx = cov.cctx;
+    let lastRgb = -1;
+    for (let i = 0; i + 2 < c.length; i += 3) {
+      const x = c[i], y = c[i + 1], rgb = c[i + 2];
+      if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
+      cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
+      covCells++;
     }
   },
   onStatus(s) { connState = s; },
@@ -96,15 +123,27 @@ function renderPose() {
     speed: lastTick.speed,
   };
 }
+// Blit the coverage offscreen (cell grid) into world space, under the vectors.
+function drawCoverage() {
+  if (!cov) return;
+  const cs = cov.cellSize;
+  const [tlx, tly] = w2s(cov.originE, cov.originN + cov.height * cs); // (minE, maxN)
+  const [brx, bry] = w2s(cov.originE + cov.width * cs, cov.originN);  // (maxE, minN)
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(cov.canvas, tlx, tly, brx - tlx, bry - tly);
+}
 function draw() {
   ctx.clearRect(0, 0, cv.width, cv.height);
 
   const rp = renderPose();
   if (rp && follow) { camE = rp.e; camN = rp.n; }
 
+  drawCoverage();
+
   if (scene) {
     ctx.lineWidth = 2; ctx.strokeStyle = '#46a0ff';
     for (const ring of scene.boundaries) strokePts(ring, true);
+    if (scene.headland) { ctx.lineWidth = 1.5; ctx.strokeStyle = '#5fd35f'; strokePts(scene.headland, true); }
     ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffd24a';
     for (const tr of scene.tracks) strokePts(tr.points, false);
   }
@@ -115,7 +154,8 @@ function draw() {
   hud.textContent =
     `${connState}\n` +
     (scene ? `field: ${scene.fieldName}\nboundaries: ${scene.boundaries.length}  tracks: ${scene.tracks.length}\n` : 'waiting for scene…\n') +
-    `speed: ${spd}   sections on: ${secs}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)`;
+    `speed: ${spd}   sections on: ${secs}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
+    `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}`;
 
   requestAnimationFrame(draw);
 }
