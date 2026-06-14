@@ -32,8 +32,6 @@ public partial class MainViewModel
     #region Boundary Recording Fields
 
     private bool _isBoundaryRecording;
-    private int _boundaryPointCount;
-    private double _boundaryAreaHectares;
 
     #endregion
 
@@ -45,16 +43,32 @@ public partial class MainViewModel
         set => SetProperty(ref _isBoundaryRecording, value);
     }
 
+    // PointCount/AreaHectares — single home is State.BoundaryRec (§12.3). These
+    // VM properties are thin pass-throughs for AXAML binding; no local copy.
     public int BoundaryPointCount
     {
-        get => _boundaryPointCount;
-        set => SetProperty(ref _boundaryPointCount, value);
+        get => State.BoundaryRec.PointCount;
+        private set
+        {
+            if (State.BoundaryRec.PointCount != value)
+            {
+                State.BoundaryRec.PointCount = value;
+                OnPropertyChanged();
+            }
+        }
     }
 
     public double BoundaryAreaHectares
     {
-        get => _boundaryAreaHectares;
-        set => SetProperty(ref _boundaryAreaHectares, value);
+        get => State.BoundaryRec.AreaHectares;
+        private set
+        {
+            if (State.BoundaryRec.AreaHectares != value)
+            {
+                State.BoundaryRec.AreaHectares = value;
+                OnPropertyChanged();
+            }
+        }
     }
 
     #endregion
@@ -65,14 +79,11 @@ public partial class MainViewModel
     {
         _dispatcher.Post(() =>
         {
-            // Update centralized state
-            State.BoundaryRec.PointCount = e.TotalPoints;
-            State.BoundaryRec.AreaHectares = e.AreaHectares;
-            State.BoundaryRec.AreaAcres = e.AreaHectares * 2.47105;
-
-            // Legacy properties
+            // Update centralized state (BoundaryPointCount/AreaHectares pass
+            // through to State.BoundaryRec and notify bindings).
             BoundaryPointCount = e.TotalPoints;
             BoundaryAreaHectares = e.AreaHectares;
+            State.BoundaryRec.AreaAcres = e.AreaHectares * 2.47105;
 
             // Update map with recorded points
             var points = _boundaryRecordingService.RecordedPoints
@@ -89,11 +100,9 @@ public partial class MainViewModel
             // Update centralized state
             State.BoundaryRec.IsRecording = e.State == BoundaryRecordingState.Recording;
             State.BoundaryRec.IsPaused = e.State == BoundaryRecordingState.Paused;
-            State.BoundaryRec.PointCount = e.PointCount;
-            State.BoundaryRec.AreaHectares = e.AreaHectares;
             State.BoundaryRec.AreaAcres = e.AreaHectares * 2.47105;
 
-            // Legacy properties
+            // Pass-through properties (write State.BoundaryRec + notify bindings)
             IsBoundaryRecording = e.State == BoundaryRecordingState.Recording;
             BoundaryPointCount = e.PointCount;
             BoundaryAreaHectares = e.AreaHectares;

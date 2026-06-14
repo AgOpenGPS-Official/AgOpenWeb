@@ -151,9 +151,7 @@ public partial class MainViewModel : ObservableObject
 
     // Guidance/Steering status
     private double _crossTrackError;
-    private string _currentGuidanceLine = "1L";
     private bool _isAutoSteerActive;
-    private int _activeSections;
 
     // Hello status (connection health)
     private bool _isAutoSteerHelloOk;
@@ -958,22 +956,10 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _crossTrackError, value);
     }
 
-    public string CurrentGuidanceLine
-    {
-        get => _currentGuidanceLine;
-        set => SetProperty(ref _currentGuidanceLine, value);
-    }
-
     public bool IsAutoSteerActive
     {
         get => _isAutoSteerActive;
         set => SetProperty(ref _isAutoSteerActive, value);
-    }
-
-    public int ActiveSections
-    {
-        get => _activeSections;
-        set => SetProperty(ref _activeSections, value);
     }
 
     // AutoSteer Hello and Data properties
