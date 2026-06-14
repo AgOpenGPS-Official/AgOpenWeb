@@ -227,7 +227,7 @@ public partial class MainViewModel
     private bool IsTrackOnBoundary(Track? track, double threshold = 5.0, double minOverlapPercent = 0.5)
     {
         if (track == null || track.Points.Count == 0) return false;
-        if (_currentBoundary?.OuterBoundary == null || !_currentBoundary.OuterBoundary.IsValid) return false;
+        if (State.Field.CurrentBoundary?.OuterBoundary == null || !State.Field.CurrentBoundary.OuterBoundary.IsValid) return false;
 
         int pointsNearBoundary = 0;
         foreach (var point in track.Points)
@@ -241,10 +241,10 @@ public partial class MainViewModel
 
     private double DistanceToBoundary(double easting, double northing)
     {
-        if (_currentBoundary?.OuterBoundary == null || !_currentBoundary.OuterBoundary.IsValid)
+        if (State.Field.CurrentBoundary?.OuterBoundary == null || !State.Field.CurrentBoundary.OuterBoundary.IsValid)
             return double.MaxValue;
 
-        var points = _currentBoundary.OuterBoundary.Points;
+        var points = State.Field.CurrentBoundary.OuterBoundary.Points;
         double minDist = double.MaxValue;
         for (int i = 0; i < points.Count; i++)
         {

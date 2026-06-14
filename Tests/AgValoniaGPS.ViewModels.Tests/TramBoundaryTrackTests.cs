@@ -430,9 +430,7 @@ public class TramBoundaryTrackTests
             }
         };
         bndModel.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, bndModel);
+        vm.State.Field.CurrentBoundary = bndModel;
 
         var seg = new AgValoniaGPS.Models.Headland.HeadlandSegment
         {
@@ -475,9 +473,7 @@ public class TramBoundaryTrackTests
             }
         };
         bndModel.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, bndModel);
+        vm.State.Field.CurrentBoundary = bndModel;
 
         var seg = new AgValoniaGPS.Models.Headland.HeadlandSegment
         {
@@ -529,9 +525,7 @@ public class TramBoundaryTrackTests
             }
         };
         bndModel.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, bndModel);
+        vm.State.Field.CurrentBoundary = bndModel;
 
         var seg = new AgValoniaGPS.Models.Headland.HeadlandSegment
         {

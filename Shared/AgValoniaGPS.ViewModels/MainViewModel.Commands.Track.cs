@@ -1155,7 +1155,7 @@ public partial class MainViewModel
 
         CreateTrackFromBoundaryCommand = new RelayCommand(() =>
         {
-            var boundary = _currentBoundary?.OuterBoundary;
+            var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points == null || boundary.Points.Count < 3)
             {
                 ShowErrorDialog("No Boundary", "Load a field with a boundary first.");
@@ -1258,7 +1258,7 @@ public partial class MainViewModel
 
         CreateCurveFromBoundaryCommand = new RelayCommand(() =>
         {
-            var boundary = _currentBoundary?.OuterBoundary;
+            var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points == null || boundary.Points.Count < 3)
             {
                 ShowErrorDialog("No Boundary", "Load a field with a boundary first.");
@@ -1316,7 +1316,7 @@ public partial class MainViewModel
 
         CreateTracksFromAllEdgesCommand = new RelayCommand(() =>
         {
-            var boundary = _currentBoundary?.OuterBoundary;
+            var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points == null || boundary.Points.Count < 3)
             {
                 ShowErrorDialog("No Boundary", "Load a field with a boundary first.");
@@ -1393,9 +1393,9 @@ public partial class MainViewModel
         double extendA = marginMeters;
         double extendB = marginMeters;
 
-        if (_currentBoundary?.OuterBoundary != null && _currentBoundary.OuterBoundary.IsValid)
+        if (State.Field.CurrentBoundary?.OuterBoundary != null && State.Field.CurrentBoundary.OuterBoundary.IsValid)
         {
-            var boundaryPts = _currentBoundary.OuterBoundary.Points;
+            var boundaryPts = State.Field.CurrentBoundary.OuterBoundary.Points;
             int count = boundaryPts.Count;
 
             // Raycast from pointA backwards to find boundary intersection
@@ -1489,9 +1489,9 @@ public partial class MainViewModel
         double extendStart = marginMeters;
         double extendEnd = marginMeters;
 
-        if (_currentBoundary?.OuterBoundary != null && _currentBoundary.OuterBoundary.IsValid)
+        if (State.Field.CurrentBoundary?.OuterBoundary != null && State.Field.CurrentBoundary.OuterBoundary.IsValid)
         {
-            var boundaryPts = _currentBoundary.OuterBoundary.Points;
+            var boundaryPts = State.Field.CurrentBoundary.OuterBoundary.Points;
             int count = boundaryPts.Count;
 
             // Raycast from first point backwards to find boundary intersection

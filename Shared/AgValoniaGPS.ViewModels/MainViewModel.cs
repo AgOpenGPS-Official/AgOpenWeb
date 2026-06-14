@@ -123,18 +123,12 @@ public partial class MainViewModel : ObservableObject
     private static ToolConfig Tool => ConfigurationStore.Instance.Tool;
     private static GuidanceConfig Guidance => ConfigurationStore.Instance.Guidance;
 
-    // Current field origin (for map centering when GPS not active)
-    private double _fieldOriginLatitude;
-    private double _fieldOriginLongitude;
-
     /// <summary>
-    /// Sets the field origin and propagates it into centralized FieldState so
-    /// non-ViewModel consumers (map control, services) can read the LocalPlane.
+    /// Sets the field origin in centralized FieldState — the single home (§12.1) —
+    /// so all consumers (VM, map control, services) read State.Field.Origin*.
     /// </summary>
     private void SetFieldOrigin(double latitude, double longitude)
     {
-        _fieldOriginLatitude = latitude;
-        _fieldOriginLongitude = longitude;
         _simulatorLocalPlane = null;
 
         State.Field.OriginLatitude = latitude;
@@ -182,7 +176,6 @@ public partial class MainViewModel : ObservableObject
     private double _hitchNorthing;
 
     // Field properties
-    private Field? _activeField;
     private string _fieldsRootDirectory = string.Empty;
 
     public MainViewModel(
@@ -1219,10 +1212,18 @@ public partial class MainViewModel : ObservableObject
 
 
     // Field management properties
+    // Active field — single home is State.Field.ActiveField (§12.1). Pass-through.
     public Field? ActiveField
     {
-        get => _activeField;
-        set => SetProperty(ref _activeField, value);
+        get => State.Field.ActiveField;
+        set
+        {
+            if (!ReferenceEquals(State.Field.ActiveField, value))
+            {
+                State.Field.ActiveField = value;
+                OnPropertyChanged();
+            }
+        }
     }
 
     public string FieldsRootDirectory
@@ -1547,13 +1548,13 @@ public partial class MainViewModel : ObservableObject
                 if (fieldInfo.Origin != null)
                 {
                     SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
-                    _logger.LogDebug($"[Field] Set origin: {_fieldOriginLatitude}, {_fieldOriginLongitude}");
+                    _logger.LogDebug($"[Field] Set origin: {State.Field.OriginLatitude}, {State.Field.OriginLongitude}");
                     // Only reposition the simulator if the field has a real (non-zero)
                     // georeference. Fields that were never georeferenced persist an
                     // origin of (0, 0), which otherwise clobbers the user's
                     // simulator coords (saved to appsettings on window close).
-                    if (_fieldOriginLatitude != 0 || _fieldOriginLongitude != 0)
-                        SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
+                    if (State.Field.OriginLatitude != 0 || State.Field.OriginLongitude != 0)
+                        SetSimulatorCoordinates(State.Field.OriginLatitude, State.Field.OriginLongitude);
                 }
             }
             catch (Exception ex)
@@ -1592,8 +1593,8 @@ public partial class MainViewModel : ObservableObject
                 Boundary = boundary,
                 Origin = new Position
                 {
-                    Latitude = _fieldOriginLatitude,
-                    Longitude = _fieldOriginLongitude,
+                    Latitude = State.Field.OriginLatitude,
+                    Longitude = State.Field.OriginLongitude,
                 }
             };
 
@@ -1907,7 +1908,7 @@ public partial class MainViewModel : ObservableObject
             State.Field.HeadlandLine = null;
             State.Field.HeadlandDistance = 0;
 
-            _currentHeadlandLine = null;
+            State.Field.HeadlandLine = null;
             _mapService.SetHeadlandLine(null);
             _mapService.SetHeadlandVisible(false);
             HeadlandSegments.Clear();
@@ -1931,22 +1932,22 @@ public partial class MainViewModel : ObservableObject
                 State.Field.HeadlandDistance = headlandLine.Tracks[0].MoveDistance;
 
                 // Use direct field assignment to avoid triggering save
-                _currentHeadlandLine = headlandLine.Tracks[0].TrackPoints;
-                _mapService.SetHeadlandLine(_currentHeadlandLine);
+                State.Field.HeadlandLine = headlandLine.Tracks[0].TrackPoints;
+                _mapService.SetHeadlandLine(State.Field.HeadlandLine);
                 OnPropertyChanged(nameof(CurrentHeadlandLine));
 
                 HasHeadland = true;
                 IsHeadlandOn = true;
                 HeadlandDistance = headlandLine.Tracks[0].MoveDistance;
 
-                _logger.LogDebug($"[Headland] Loaded headland from {field.DirectoryPath} ({_currentHeadlandLine.Count} points)");
+                _logger.LogDebug($"[Headland] Loaded headland from {field.DirectoryPath} ({State.Field.HeadlandLine.Count} points)");
             }
             else
             {
                 State.Field.HeadlandLine = null;
                 State.Field.HeadlandDistance = 0;
 
-                _currentHeadlandLine = null;
+                State.Field.HeadlandLine = null;
                 _mapService.SetHeadlandLine(null);
                 HasHeadland = false;
                 IsHeadlandOn = false;
@@ -1959,7 +1960,7 @@ public partial class MainViewModel : ObservableObject
             State.Field.HeadlandLine = null;
             State.Field.HeadlandDistance = 0;
 
-            _currentHeadlandLine = null;
+            State.Field.HeadlandLine = null;
             _mapService.SetHeadlandLine(null);
             HasHeadland = false;
             IsHeadlandOn = false;
@@ -2239,17 +2240,17 @@ public partial class MainViewModel : ObservableObject
         var config = ConfigurationStore.Instance.Tram;
 
         // Set boundary fence for clipping tram lines
-        if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count >= 3)
+        if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null && State.Field.CurrentBoundary.OuterBoundary.Points.Count >= 3)
         {
-            var fencePts = _currentBoundary.OuterBoundary.Points
+            var fencePts = State.Field.CurrentBoundary.OuterBoundary.Points
                 .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
             _tramLineService.SetBoundaryFence(fencePts);
         }
 
         double fieldWidth = 500;
-        if (_currentBoundary?.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count > 0)
+        if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null && State.Field.CurrentBoundary.OuterBoundary.Points.Count > 0)
         {
-            var pts = _currentBoundary.OuterBoundary.Points;
+            var pts = State.Field.CurrentBoundary.OuterBoundary.Points;
             double maxE = pts.Max(p => p.Easting), minE = pts.Min(p => p.Easting);
             double maxN = pts.Max(p => p.Northing), minN = pts.Min(p => p.Northing);
             fieldWidth = Math.Max(maxE - minE, maxN - minN) * 1.2;
@@ -2276,10 +2277,10 @@ public partial class MainViewModel : ObservableObject
                     hasBoundarySystem = true;
                     int passes = sys.PassCount > 0 ? sys.PassCount : 1;
                     int bndStartIdx = _tramLineService.ParallelTramLines.Count;
-                    if (_currentBoundary?.OuterBoundary?.Points != null &&
-                        _currentBoundary.OuterBoundary.Points.Count >= 3)
+                    if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null &&
+                        State.Field.CurrentBoundary.OuterBoundary.Points.Count >= 3)
                     {
-                        var bndPts = _currentBoundary.OuterBoundary.Points
+                        var bndPts = State.Field.CurrentBoundary.OuterBoundary.Points
                             .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
                         _tramLineService.GenerateBoundaryTramTracks(bndPts, passes, sys.Mode, sys.TramWidth);
                     }
@@ -3253,13 +3254,14 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _headlandPasses, Math.Max(1, Math.Min(5, value)));
     }
 
-    private List<Models.Base.Vec3>? _currentHeadlandLine;
+    // Headland — single home is State.Field.HeadlandLine (§12.1). Pass-through.
     public List<Models.Base.Vec3>? CurrentHeadlandLine
     {
-        get => _currentHeadlandLine;
+        get => State.Field.HeadlandLine;
         set
         {
-            SetProperty(ref _currentHeadlandLine, value);
+            State.Field.HeadlandLine = value;
+            OnPropertyChanged();
             _mapService.SetHeadlandLine(value);
             SaveHeadlandToFile(value);
 
@@ -3323,11 +3325,19 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Gets the current field's boundary for use in the headland editor.
     /// </summary>
-    private Boundary? _currentBoundary;
+    // Boundary — single home is State.Field.CurrentBoundary (§12.1). This VM
+    // property is a thin pass-through for binding; no local copy.
     public Boundary? CurrentBoundary
     {
-        get => _currentBoundary;
-        private set => SetProperty(ref _currentBoundary, value);
+        get => State.Field.CurrentBoundary;
+        private set
+        {
+            if (!ReferenceEquals(State.Field.CurrentBoundary, value))
+            {
+                State.Field.CurrentBoundary = value;
+                OnPropertyChanged();
+            }
+        }
     }
 
     // Headland undo state
@@ -3811,16 +3821,16 @@ public partial class MainViewModel : ObservableObject
     public ICommand? IncreaseHeadlandDistanceCommand { get; private set; }
     public ICommand? DecreaseHeadlandDistanceCommand { get; private set; }
 
-    public System.Collections.Generic.IReadOnlyList<Models.Base.Vec3>? CurrentHeadlandLineForPreview => _currentHeadlandLine;
+    public System.Collections.Generic.IReadOnlyList<Models.Base.Vec3>? CurrentHeadlandLineForPreview => State.Field.HeadlandLine;
 
     public string HeadlandStatusText
     {
         get
         {
-            if (!HasHeadland || _currentHeadlandLine == null || _currentHeadlandLine.Count < 3)
+            if (!HasHeadland || State.Field.HeadlandLine == null || State.Field.HeadlandLine.Count < 3)
                 return HeadlandSegments.Count > 0 ? $"{HeadlandSegments.Count} lines (no intersections)" : "No headland lines";
 
-            double area = System.Math.Abs(CalculateSignedArea(_currentHeadlandLine)) / 10000.0; // m2 -> hectares
+            double area = System.Math.Abs(CalculateSignedArea(State.Field.HeadlandLine)) / 10000.0; // m2 -> hectares
             return $"{area:F2} ha ({HeadlandSegments.Count} lines)";
         }
     }
@@ -4006,11 +4016,11 @@ public partial class MainViewModel : ObservableObject
 
             // Use field origin for LocalPlane (same origin used for boundary coordinates)
             // This ensures the background image aligns with the boundary
-            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
             var localPlane = new LocalPlane(origin, sharedProps);
 
-            _logger.LogDebug($"[LoadBG] Field origin from ViewModel: ({_fieldOriginLatitude:F8}, {_fieldOriginLongitude:F8})");
+            _logger.LogDebug($"[LoadBG] Field origin from ViewModel: ({State.Field.OriginLatitude:F8}, {State.Field.OriginLongitude:F8})");
             _logger.LogDebug($"[LoadBG] LocalPlane origin: ({localPlane.Origin.Latitude:F8}, {localPlane.Origin.Longitude:F8})");
             _logger.LogDebug($"[LoadBG] WGS84 bounds: NW=({nwLat:F8}, {nwLon:F8}), SE=({seLat:F8}, {seLon:F8})");
 
@@ -4023,7 +4033,7 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug($"[LoadBG] Local bounds: NW=({nwLocal.Easting:F2}, {nwLocal.Northing:F2}), SE=({seLocal.Easting:F2}, {seLocal.Northing:F2})");
 
             // Verify field origin converts to (0,0) in local coords
-            var originWgs = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var originWgs = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var originLocal = localPlane.ConvertWgs84ToGeoCoord(originWgs);
             _logger.LogDebug($"[LoadBG] Field origin in local coords (should be ~0,0): ({originLocal.Easting:F2}, {originLocal.Northing:F2})");
 
@@ -4033,7 +4043,7 @@ public partial class MainViewModel : ObservableObject
                 _mapService.SetBackgroundImageWithMercator(backPicPath,
                     nwLocal.Easting, nwLocal.Northing, seLocal.Easting, seLocal.Northing,
                     mercMinX, mercMaxX, mercMinY, mercMaxY,
-                    _fieldOriginLatitude, _fieldOriginLongitude);
+                    State.Field.OriginLatitude, State.Field.OriginLongitude);
             }
             else
             {
@@ -4286,7 +4296,7 @@ public partial class MainViewModel : ObservableObject
                 headlandPoints.Add(new Vec3(point.Easting, point.Northing, point.Heading));
             }
             State.Field.HeadlandLine = headlandPoints;
-            _currentHeadlandLine = headlandPoints;
+            State.Field.HeadlandLine = headlandPoints;
             _mapService.SetHeadlandLine(headlandPoints);
             HasHeadland = true;
             IsHeadlandOn = true;
@@ -4516,20 +4526,20 @@ public partial class MainViewModel : ObservableObject
     {
         BoundaryMapExistingPolygons.Clear();
 
-        if (_currentBoundary == null || (_fieldOriginLatitude == 0 && _fieldOriginLongitude == 0))
+        if (State.Field.CurrentBoundary == null || (State.Field.OriginLatitude == 0 && State.Field.OriginLongitude == 0))
             return;
 
         try
         {
-            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
             var localPlane = new LocalPlane(origin, sharedProps);
 
             // Add outer boundary
-            if (_currentBoundary.OuterBoundary?.Points != null && _currentBoundary.OuterBoundary.Points.Count >= 3)
+            if (State.Field.CurrentBoundary.OuterBoundary?.Points != null && State.Field.CurrentBoundary.OuterBoundary.Points.Count >= 3)
             {
                 var wgs84Points = new List<(double Latitude, double Longitude)>();
-                foreach (var pt in _currentBoundary.OuterBoundary.Points)
+                foreach (var pt in State.Field.CurrentBoundary.OuterBoundary.Points)
                 {
                     var geoCoord = new GeoCoord(pt.Northing, pt.Easting);
                     var wgs84 = localPlane.ConvertGeoCoordToWgs84(geoCoord);
@@ -4539,7 +4549,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             // Add inner boundaries
-            foreach (var inner in _currentBoundary.InnerBoundaries)
+            foreach (var inner in State.Field.CurrentBoundary.InnerBoundaries)
             {
                 if (inner.Points.Count >= 3)
                 {
@@ -4573,7 +4583,7 @@ public partial class MainViewModel : ObservableObject
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
             var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
 
-            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
             var localPlane = new LocalPlane(origin, sharedProps);
 
@@ -4728,7 +4738,7 @@ public partial class MainViewModel : ObservableObject
         System.Diagnostics.Debug.WriteLine($"[Headland] Result points: {result.OuterHeadlandLine?.Count ?? 0}");
 
         // Save undo state before applying
-        _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+        _previousHeadlandLine = State.Field.HeadlandLine != null ? new List<Vec3>(State.Field.HeadlandLine) : null;
         _previousHasHeadland = HasHeadland;
 
         CurrentHeadlandLine = result.OuterHeadlandLine;
@@ -4736,10 +4746,10 @@ public partial class MainViewModel : ObservableObject
         HasHeadland = true;
         IsHeadlandOn = true;
 
-        // Update _currentHeadlandLine for YouTurn zone detection (same as SetCurrentBoundary does on field load)
+        // Update State.Field.HeadlandLine for YouTurn zone detection (same as SetCurrentBoundary does on field load)
         if (result.OuterHeadlandLine != null && result.OuterHeadlandLine.Count >= 3)
         {
-            _currentHeadlandLine = result.OuterHeadlandLine;
+            State.Field.HeadlandLine = result.OuterHeadlandLine;
             State.Field.HeadlandLine = result.OuterHeadlandLine;
             _mapService.SetHeadlandLine(result.OuterHeadlandLine);
             _mapService.SetHeadlandVisible(true);

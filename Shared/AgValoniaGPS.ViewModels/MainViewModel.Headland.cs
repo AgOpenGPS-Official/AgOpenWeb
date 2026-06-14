@@ -65,7 +65,7 @@ public partial class MainViewModel
         else if (segment.BoundaryPoints.Count >= 2)
         {
             // Open segment: determine which side faces the field center
-            var boundary = _currentBoundary?.OuterBoundary;
+            var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points != null && boundary.Points.Count >= 3)
             {
                 // Calculate boundary centroid
@@ -238,7 +238,7 @@ public partial class MainViewModel
         if (HeadlandSegments.Count == 0)
         {
             // Default: headland = boundary
-            var boundary = _currentBoundary?.OuterBoundary;
+            var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points != null && boundary.Points.Count >= 3)
             {
                 var bndPoints = new List<Vec3>();
@@ -246,7 +246,7 @@ public partial class MainViewModel
                     bndPoints.Add(new Vec3(pt.Easting, pt.Northing, pt.Heading));
                 bndPoints.Add(new Vec3(boundary.Points[0].Easting, boundary.Points[0].Northing, boundary.Points[0].Heading));
 
-                _currentHeadlandLine = bndPoints;
+                State.Field.HeadlandLine = bndPoints;
                 CurrentHeadlandLine = bndPoints;
                 State.Field.HeadlandLine = bndPoints;
                 HasHeadland = true;
@@ -258,7 +258,7 @@ public partial class MainViewModel
             {
                 HasHeadland = false;
                 IsHeadlandOn = false;
-                _currentHeadlandLine = null;
+                State.Field.HeadlandLine = null;
                 CurrentHeadlandLine = null;
                 State.Field.HeadlandLine = null;
                 _mapService.SetHeadlandVisible(false);
@@ -269,7 +269,7 @@ public partial class MainViewModel
         }
 
         // Start with headland = boundary
-        var bnd = _currentBoundary?.OuterBoundary;
+        var bnd = State.Field.CurrentBoundary?.OuterBoundary;
         if (bnd?.Points == null || bnd.Points.Count < 3)
         {
             StatusMessage = "No boundary for headland";
@@ -704,7 +704,7 @@ public partial class MainViewModel
         }
 
         // Apply headland
-        _currentHeadlandLine = headland;
+        State.Field.HeadlandLine = headland;
         CurrentHeadlandLine = headland;
         State.Field.HeadlandLine = headland;
         HasHeadland = true;

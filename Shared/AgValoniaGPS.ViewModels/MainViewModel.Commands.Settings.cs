@@ -558,7 +558,7 @@ public partial class MainViewModel
             return;
         }
 
-        if (_fieldOriginLatitude == 0 && _fieldOriginLongitude == 0 &&
+        if (State.Field.OriginLatitude == 0 && State.Field.OriginLongitude == 0 &&
             Latitude == 0 && Longitude == 0)
         {
             FlagByLatLonError = "No field or GPS origin available";
@@ -566,8 +566,8 @@ public partial class MainViewModel
         }
 
         // Use field origin if available, else current GPS position as origin
-        double originLat = _fieldOriginLatitude != 0 ? _fieldOriginLatitude : Latitude;
-        double originLon = _fieldOriginLongitude != 0 ? _fieldOriginLongitude : Longitude;
+        double originLat = State.Field.OriginLatitude != 0 ? State.Field.OriginLatitude : Latitude;
+        double originLon = State.Field.OriginLongitude != 0 ? State.Field.OriginLongitude : Longitude;
 
         var converter = new Models.Base.GeoConversion(originLat, originLon);
         var local = converter.ToLocal(lat, lon);

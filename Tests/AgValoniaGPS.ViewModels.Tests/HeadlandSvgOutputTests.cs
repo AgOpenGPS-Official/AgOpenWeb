@@ -150,9 +150,7 @@ public class HeadlandSvgOutputTests
             }
         };
         bndModel.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, bndModel);
+        vm.State.Field.CurrentBoundary = bndModel;
 
         // Create a full-boundary headland segment
         var seg = new HeadlandSegment
@@ -172,9 +170,7 @@ public class HeadlandSvgOutputTests
         Assert.That(vm.HasHeadland, Is.True);
 
         // Get headland line
-        var headland = (List<Vec3>?)typeof(MainViewModel).GetField("_currentHeadlandLine",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .GetValue(vm);
+        var headland = vm.State.Field.HeadlandLine;
         Assert.That(headland, Is.Not.Null);
         Assert.That(headland!.Count, Is.GreaterThan(10));
 
