@@ -365,12 +365,21 @@ detours on the web client). Findings below are **grep-verified** (Explore sweep 
 - **`FieldState.Boundaries`** (ObservableCollection) + **`FieldState.HasBoundary`** — **0 writers, 0 readers** (verified). The lone `AgShareFieldParser` write targets a *result* object, not state.
 - **`FieldState.SelectedTrack`** — **0 references** anywhere (verified). All selection flows through VM `SelectedTrack`.
 
-### 12.3 VM display-shadow fields — bind directly to state, delete the field
+### 12.3 VM display-shadow fields — bind directly to state, delete the field ✅ DONE
 
-`MainViewModel` mirrors several read-only state values purely for binding (kept in sync by hand):
-- `_activeSections` ↔ `SectionState.ActiveSectionCount`
-- `_currentGuidanceLine` ↔ `GuidanceState.CurrentLineLabel`
+`MainViewModel` mirrored several read-only state values purely for binding. Investigation
+split these into two cases — collapse the genuine mirrors, **delete** the dead ones:
 - `_boundaryPointCount` / `_boundaryAreaHectares` ↔ `BoundaryRecState.PointCount/AreaHectares`
+  — genuine hand-synced mirrors (bound in `BoundaryPlayerPanel` + `StartWorkSessionDialogPanel`).
+  **Collapsed** to pass-through properties on `State.BoundaryRec` (getter reads state; private
+  setter writes state + `OnPropertyChanged`); backing fields removed; the recording handlers no
+  longer write state twice.
+- `_activeSections` (`ActiveSections`) and `_currentGuidanceLine` (`CurrentGuidanceLine`) — turned
+  out to be **dead**: never written, never read/bound anywhere (the only `ActiveSections` hits in
+  the repo are an unrelated `VirtualMachineModule`). `SectionState.ActiveSectionCount` is *computed*
+  from the section array, not a hand-synced mirror. Both VM properties + backing fields **deleted**.
+
+Resolved in `audit/state-sot-fix-12-3` (v26.5.46); 1502 tests green.
 
 ### 12.4 Cross-state / simulator duplication — note (partly known)
 
@@ -392,9 +401,9 @@ Verified single-owner / not duplicated — **do not touch**:
 
 ### 12.6 Fix order
 
-1. **Field-geometry cluster (12.1)** + delete dead (12.2): collapse boundary/headland/origin/name to
+1. ✅ **Field-geometry cluster (12.1)** + delete dead (12.2): collapse boundary/headland/origin/name to
    their canonical home, remove the VM shadows, delete `FieldState.Boundaries`/`HasBoundary`/`SelectedTrack`.
-2. **VM display shadows (12.3):** rebind to state, delete fields.
+2. ✅ **VM display shadows (12.3):** rebind to state, delete fields.
 3. **Cross-state/sim dedupe (12.4).**
 Each ships with the `NoBypassWritesTests`-style guard extended to flag *runtime-state* local copies,
 so this class can't silently regrow.

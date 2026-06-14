@@ -17,9 +17,9 @@ namespace AgValoniaGPS.ViewModels.Tests;
 /// the class of cruft that caused the field-geometry duplication. Every such field
 /// must be classified below as either genuine VM-local state or a known shadow
 /// tracked for cleanup. A NEW unclassified one fails this test, so shadows can't
-/// silently regrow. (Name-divergent shadows on primitives, e.g. _activeSections vs
-/// SectionState.ActiveSectionCount, can't be caught mechanically — those stay in
-/// the §12 catalog. This guard covers the high-value DOMAIN-typed shadows.)
+/// silently regrow. (Name-divergent shadows on primitives can't be caught
+/// mechanically — those stay in the §12 catalog; §12.3 collapsed the last of them.
+/// This guard covers the high-value DOMAIN-typed shadows.)
 /// </summary>
 [TestFixture]
 public class StateShadowGuardTests
