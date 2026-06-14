@@ -52,6 +52,15 @@ namespace AgValoniaGPS.Models.YouTurn
         public int CurrentLocationIndex { get; set; }
 
         /// <summary>
+        /// For curves: the BASE (path 0) reference curve points with headings.
+        /// <see cref="GuidancePoints"/> is the current pass — this base track offset
+        /// by <see cref="HowManyPathsAway"/> — whereas the destination pass for the
+        /// exit leg is built by offsetting THIS reference curve (matches AgOpen's
+        /// CABCurve.BuildNewOffsetList, which always offsets the reference curve).
+        /// </summary>
+        public List<Vec3> ReferenceCurvePoints { get; set; } = new List<Vec3>();
+
+        /// <summary>
         /// For curves: Is vehicle heading same way as curve direction?
         /// For AB: Is vehicle heading same way as AB line direction?
         /// </summary>

@@ -136,27 +136,44 @@ public partial class YouTurnCreationService
             {
                 var path = output.TurnPath;
 
-                // Spiral / pretzel guard. The original check summed |ΔHeading| per step and
-                // rejected anything > 1.5π (270°) — but a legit Dubins RLR/LRL arc-arc-arc
-                // solution can accumulate 300°+ of absolute turning while ending at the correct
-                // 180° reversal. That false-rejected valid paths (#289 F2) and dropped the run
-                // to the less-optimal simple fallback.
-                //
-                // New guard:
-                //   - Primary check: start-to-end heading delta should be ~π (180°) for a U-turn.
-                //   - Secondary safety: cumulative |ΔHeading| capped at 4π (720°) to still catch
-                //     actual infinite-loop spirals, without rejecting loopy-but-valid paths.
-                double netHeadingChange = path[^1].Heading - path[0].Heading;
-                while (netHeadingChange > Math.PI) netHeadingChange -= 2 * Math.PI;
-                while (netHeadingChange < -Math.PI) netHeadingChange += 2 * Math.PI;
+                // Smooth FIRST, then validate. The spiral/pretzel guard must judge the path
+                // that is actually driven, not raw construction artifacts: the curve generator
+                // can leave sub-metre folds at arc/leg seams that produce spurious 180° heading
+                // flips. Those inflate the cumulative-turn metric and false-reject a perfectly
+                // good curved U-turn (net 180°), dropping it to the straight fallback — the
+                // "south end misaligned" report. Smoothing removes the folds; a genuine spiral
+                // survives it.
+                TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
 
-                double totalHeadingChange = 0;
+                // Measure turning from SEGMENT DIRECTIONS (positions), not the stored per-point
+                // headings — smoothing only moves positions (it preserves the stale headings),
+                // and the generator's recomputed headings are exactly what's noisy.
+                //   - Primary check: net start→end direction change should be ~π (180°).
+                //   - Secondary safety: cumulative |Δdir| capped at 4π (720°) to still catch
+                //     actual infinite-loop spirals, without rejecting loopy-but-valid paths.
+                var dirs = new List<double>(path.Count);
                 for (int i = 1; i < path.Count; i++)
                 {
-                    double delta = path[i].Heading - path[i - 1].Heading;
-                    while (delta > Math.PI) delta -= 2 * Math.PI;
-                    while (delta < -Math.PI) delta += 2 * Math.PI;
-                    totalHeadingChange += Math.Abs(delta);
+                    double de = path[i].Easting - path[i - 1].Easting;
+                    double dn = path[i].Northing - path[i - 1].Northing;
+                    if ((de * de + dn * dn) < 1e-4) continue; // skip near-duplicate points
+                    dirs.Add(Math.Atan2(de, dn));
+                }
+
+                double netHeadingChange = 0, totalHeadingChange = 0;
+                if (dirs.Count >= 2)
+                {
+                    netHeadingChange = dirs[^1] - dirs[0];
+                    while (netHeadingChange > Math.PI) netHeadingChange -= 2 * Math.PI;
+                    while (netHeadingChange < -Math.PI) netHeadingChange += 2 * Math.PI;
+
+                    for (int i = 1; i < dirs.Count; i++)
+                    {
+                        double delta = dirs[i] - dirs[i - 1];
+                        while (delta > Math.PI) delta -= 2 * Math.PI;
+                        while (delta < -Math.PI) delta += 2 * Math.PI;
+                        totalHeadingChange += Math.Abs(delta);
+                    }
                 }
 
                 // ~π expected for U-turn; tolerate ±30° slack to account for approach angle.
@@ -176,8 +193,6 @@ public partial class YouTurnCreationService
                         guidance, turn, uTurnSkipRows, headlandDistance);
                     return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
                 }
-
-                TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
 
                 // Implement clearance against the hard outer boundary, checked on
                 // the final (smoothed) path that will actually be driven.
@@ -350,16 +365,58 @@ public partial class YouTurnCreationService
 
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
+        // ONE turn generator. "An AB line is just a curve with 2 points": a 2-point AB
+        // line is densified into a straight poly-curve so it flows through the SAME
+        // curve-aware generator as recorded curves — there is no separate analytic AB path.
+        //
+        // CRITICAL: offset FIRST, then extend the OFFSET RESULT. The in-field portion of the
+        // U-turn's current pass must be byte-for-byte identical to the guidance line the
+        // tractor steers to (GpsPipelineService offsets the NON-extended track), so the
+        // track→turn handoff has zero lateral step. Extending the base BEFORE offsetting
+        // shifts the in-field offset points by up to ~1 m (different point set → different
+        // pruning/spacing) — that step is what made the tractor "get lost" entering the turn.
+        // The tangent extension is added on TOP only so FindCurveTurnPoint can see the curve
+        // cross the boundary (a bare offset curve stops at the field edge → generator fails →
+        // straight fallback).
+        List<Vec3> basePoints = track.Points.Count > 2
+            ? new List<Vec3>(track.Points)
+            : DensifyAbLine(track.Points);
+
+        double widthMinusOverlap = toolWidth - config.Tool.Overlap;
+        double offsetDistance = guidance.HowManyPathsAway * widthMinusOverlap + guidance.NudgeOffset;
+        List<Vec3> offsetCurve = Math.Abs(offsetDistance) < 0.01
+            ? new List<Vec3>(basePoints)
+            : CurveProcessing.CreateOffsetCurve(basePoints, offsetDistance);
+        List<Vec3> currentCurvePoints = CurveProcessing.ExtendCurveEnds(offsetCurve);
+
+        int currentLocationIndex = 0;
+        double minDistSq = double.MaxValue;
+        for (int i = 0; i < currentCurvePoints.Count; i++)
+        {
+            double dx = currentCurvePoints[i].Easting - pivotPosition.Easting;
+            double dy = currentCurvePoints[i].Northing - pivotPosition.Northing;
+            double distSq = dx * dx + dy * dy;
+            if (distSq < minDistSq) { minDistSq = distSq; currentLocationIndex = i; }
+        }
+
         var input = new YouTurnCreationInput
         {
             TurnType = MapTurnStyle(config.Guidance.UTurnStyle),
             IsTurnLeft = turnLeft,
-            GuidanceType = GuidanceLineType.ABLine,
+            // Always the unified curve generator (AB lines are densified 2-point curves).
+            GuidanceType = GuidanceLineType.Curve,
             BoundaryTurnLines = boundaryTurnLines,
             IsPointInsideTurnArea = isPointInsideTurnArea,
 
-            // Curves: use the heading at the point where the current offset track crosses the headland
-            // (not the vehicle's local heading).
+            // The single generator walks these points (the current offset pass).
+            GuidancePoints = currentCurvePoints,
+            CurrentLocationIndex = currentLocationIndex,
+            // Non-extended base; the destination (exit) curve is offset+extended from this in
+            // BuildNewOffsetCurveList so its in-field portion matches the next guidance line.
+            ReferenceCurvePoints = basePoints,
+
+            // Retained for diagnostics / reference-point helpers; the curve generator
+            // anchors on GuidancePoints, not these.
             ABHeading = track.Points.Count > 2
                 ? FindTrackHeadingAtHeadland(track, pivotPosition, headlandLine, guidance)
                 : abHeading,
@@ -377,7 +434,10 @@ public partial class YouTurnCreationService
             RowSkipsWidth = uTurnSkipRows,
             TurnStartOffset = 0,
             HowManyPathsAway = guidance.HowManyPathsAway,
-            NudgeDistance = 0.0,
+            // Carry the nudge so the destination offset curve (exit leg) lands on the
+            // nudged next pass, matching the current pass built above (and AgOpen, whose
+            // BuildNewOffsetList distAway includes track.nudgeDistance).
+            NudgeDistance = guidance.NudgeOffset,
             TrackMode = 0,
 
             MakeUTurnCounter = turn.YouTurnCounter + 10,
@@ -391,6 +451,35 @@ public partial class YouTurnCreationService
             toolWidth, totalHeadlandWidth, headlandWidthForTurn, turnBoundaryVec3.Count, headlandBoundaryVec3.Count);
 
         return input;
+    }
+
+    /// <summary>
+    /// Densifies a 2-point AB line into an evenly-spaced poly-curve (heading = A→B) so it
+    /// can flow through the unified curve turn generator. Without dense points,
+    /// FindCurveTurnPoint (which tests boundary crossing per point) could step over the
+    /// turn boundary in one long segment.
+    /// </summary>
+    private static List<Vec3> DensifyAbLine(IReadOnlyList<Vec3> ab)
+    {
+        var a = ab[0];
+        var b = ab[1];
+        double dE = b.Easting - a.Easting;
+        double dN = b.Northing - a.Northing;
+        double len = Math.Sqrt(dE * dE + dN * dN);
+        if (len < 0.01)
+            return new List<Vec3> { a, b };
+
+        double head = Math.Atan2(dE, dN);
+        if (head < 0) head += Math.PI * 2;
+
+        int n = Math.Max(2, (int)(len / 2.0)); // ~2 m spacing
+        var pts = new List<Vec3>(n + 1);
+        for (int i = 0; i <= n; i++)
+        {
+            double t = (double)i / n;
+            pts.Add(new Vec3(a.Easting + dE * t, a.Northing + dN * t, head));
+        }
+        return pts;
     }
 
     // ── Reference-point helpers ─────────────────────────────────────────

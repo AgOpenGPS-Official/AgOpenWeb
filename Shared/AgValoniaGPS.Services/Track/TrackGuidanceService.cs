@@ -758,10 +758,29 @@ public class TrackGuidanceService : ITrackGuidanceService
             }
             else
             {
-                // Stop at ends for open curves
+                // Open curve ran off the end. An AB line is just a 2-point curve, and the
+                // AB branch projects its goal point along the *infinite* line (so the tractor
+                // keeps following it past the field edge into the U-turn). Match that here:
+                // project the remaining look-ahead along the LAST segment's tangent instead
+                // of clamping at the endpoint. Clamping froze the goal at the last point, so
+                // the tractor reached it and spun 180° instead of driving on to the turn.
                 if (i < 0 || i >= count)
                 {
-                    return new Vec2(current.Easting, current.Northing);
+                    int lastIdx = i - direction;        // endpoint just consumed (== current)
+                    int prevIdx = lastIdx - direction;  // point before it → travel tangent
+                    if (prevIdx < 0 || prevIdx >= count)
+                        return new Vec2(current.Easting, current.Northing); // too few points
+
+                    double tx = points[lastIdx].Easting - points[prevIdx].Easting;
+                    double tz = points[lastIdx].Northing - points[prevIdx].Northing;
+                    double tlen = Math.Sqrt(tx * tx + tz * tz);
+                    if (tlen < 1e-6)
+                        return new Vec2(current.Easting, current.Northing);
+
+                    double remaining = goalDistance - distSoFar;
+                    return new Vec2(
+                        current.Easting + (tx / tlen) * remaining,
+                        current.Northing + (tz / tlen) * remaining);
                 }
             }
         }

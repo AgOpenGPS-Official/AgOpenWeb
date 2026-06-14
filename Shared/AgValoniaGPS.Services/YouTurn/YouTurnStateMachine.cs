@@ -552,7 +552,11 @@ public sealed class YouTurnStateMachine
         }
         else
         {
-            var offsetPoints = CurveProcessing.CreateOffsetCurve(track.Points, nextDistAway);
+            // Offset then EXTEND the ends so the cyan next-track curve matches the
+            // exit leg and the post-turn magenta line (no gap at the exit handoff).
+            // Mirrors YouTurnPathingService.ComputeNextTrack; no-op on closed loops.
+            var offsetPoints = CurveProcessing.ExtendCurveEnds(
+                CurveProcessing.CreateOffsetCurve(track.Points, nextDistAway));
             turn.NextTrack = Models.Track.Track.FromCurve($"Path {nextPath.Value}", offsetPoints, track.IsClosed);
         }
         turn.NextTrack.IsActive = false;

@@ -88,7 +88,9 @@ public sealed class YouTurnPathingService
         int nextPathsAway = guidance.HowManyPathsAway + offsetChange;
 
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double nextDistAway = widthMinusOverlap * nextPathsAway;
+        // Include the nudge so the cyan next-track line matches the U-turn exit leg and the
+        // line the tractor steers after completion exactly (all use base*pathsAway + nudge).
+        double nextDistAway = widthMinusOverlap * nextPathsAway + guidance.NudgeOffset;
 
         // Authoritative perpendicular width for the U-turn arc — direction lives in IsTurnLeft.
         turn.NextTrackTurnOffset = Math.Abs(pathsToMove * widthMinusOverlap);
@@ -107,7 +109,13 @@ public sealed class YouTurnPathingService
         }
         else
         {
-            var offsetPoints = CurveProcessing.CreateOffsetCurve(referenceTrack.Points, nextDistAway);
+            // Offset then EXTEND the ends — same order as the U-turn exit leg
+            // (BuildNewOffsetCurveList) and the post-turn active line — so the cyan
+            // next-track curve reaches the exit leg's end (no gap) and is the same
+            // length as the magenta line that replaces it after the turn completes.
+            // ExtendCurveEnds is a no-op on closed loops.
+            var offsetPoints = CurveProcessing.ExtendCurveEnds(
+                CurveProcessing.CreateOffsetCurve(referenceTrack.Points, nextDistAway));
             nextTrack = Models.Track.Track.FromCurve($"Path {nextPathsAway}", offsetPoints, referenceTrack.IsClosed);
         }
         nextTrack.IsActive = false;
