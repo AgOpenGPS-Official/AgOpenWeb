@@ -94,12 +94,13 @@ public partial class MainViewModel : ObservableObject
     private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
-    private readonly Avalonia.Threading.DispatcherTimer _simulatorTimer;
-    private Avalonia.Threading.DispatcherTimer? _renderPullTimer;
+    private readonly IUiTimerFactory _timerFactory;
+    private readonly IUiTimer _simulatorTimer;
+    private IUiTimer? _renderPullTimer;
     // PERF-05 Phase 2c #2: unified 5 Hz status-display tick, decoupled from
     // every data source (GPS 10 Hz, control loop 100 Hz, AutoSteer 100 Hz).
     // Drives every MainViewModel property bound to the top status bar.
-    private Avalonia.Threading.DispatcherTimer? _statusTickTimer;
+    private IUiTimer? _statusTickTimer;
 
     /// <summary>
     /// Centralized application state - single source of truth for all runtime state.
@@ -226,6 +227,7 @@ public partial class MainViewModel : ObservableObject
         IPersistentStateService persistentStateService,
         IBatteryService batteryService,
         IUiDispatcher uiDispatcher,
+        IUiTimerFactory uiTimerFactory,
         ISteerMachineLoopService? controlLoop = null,
         IPositionEstimator? positionEstimator = null)
     {
@@ -233,6 +235,7 @@ public partial class MainViewModel : ObservableObject
         _persistentStateService = persistentStateService;
         _batteryService = batteryService;
         _dispatcher = uiDispatcher;
+        _timerFactory = uiTimerFactory;
         _tramLineService = tramLineService;
 
         // Battery icon in the strip — start the per-platform reader, prime with
@@ -418,10 +421,8 @@ public partial class MainViewModel : ObservableObject
             // ~20 Hz on mobile to give the composition thread headroom; desktop
             // keeps 30 Hz for smoother vehicle interpolation.
             int intervalMs = (OperatingSystem.IsIOS() || OperatingSystem.IsAndroid()) ? 50 : 33;
-            _renderPullTimer = new Avalonia.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(intervalMs),
-            };
+            _renderPullTimer = _timerFactory.Create();
+            _renderPullTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
             _renderPullTimer.Tick += OnRenderPullTick;
             _renderPullTimer.Start();
         }
@@ -438,10 +439,8 @@ public partial class MainViewModel : ObservableObject
         // half the rate, and now also includes diagnostics like
         // GpsToPgnLatencyMs that AutoSteer was writing at 100 Hz.
         // See Plans/perf_data/2026-05-20/ANALYSIS.md.
-        _statusTickTimer = new Avalonia.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(200),
-        };
+        _statusTickTimer = _timerFactory.Create();
+        _statusTickTimer.Interval = TimeSpan.FromMilliseconds(200);
         _statusTickTimer.Tick += OnStatusTick;
         _statusTickTimer.Start();
         _udpService.ModuleConnectionChanged += OnModuleConnectionChanged;
@@ -504,10 +503,8 @@ public partial class MainViewModel : ObservableObject
         // Note: Simulator coordinates are restored in RestoreSettings() from saved app settings
         // Default values only used if no settings exist (first run)
 
-        _simulatorTimer = new Avalonia.Threading.DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(33) // ~30Hz — pipeline back-pressure skips if processing is slow
-        };
+        _simulatorTimer = _timerFactory.Create();
+        _simulatorTimer.Interval = TimeSpan.FromMilliseconds(33); // ~30Hz — pipeline back-pressure skips if processing is slow
         _simulatorTimer.Tick += OnSimulatorTick;
 
         // Initialize commands (split into partial class files for organization)

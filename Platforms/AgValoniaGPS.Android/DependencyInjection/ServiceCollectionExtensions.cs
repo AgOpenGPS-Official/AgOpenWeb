@@ -61,6 +61,10 @@ public static class ServiceCollectionExtensions
         // in the VM layer — see Plans/CONFIG_STATE_AUDIT.md §11).
         services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
 
+        // UI-thread timer abstraction (replaces direct DispatcherTimer in the
+        // VM layer — see Plans/CONFIG_STATE_AUDIT.md §11.3).
+        services.AddSingleton<IUiTimerFactory, AvaloniaUiTimerFactory>();
+
         // Register ViewModels
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();

@@ -317,6 +317,16 @@ stands as a standalone follow-up.
 **Status:**
 - §11.1 `IUiDispatcher` — **DONE**, merged to `develop` (PR #470, 2026-06-14).
 - §11.2 static store de-static-ing — scoped, not scheduled (larger blast-radius).
-- §11.3 `ITimer`/scheduler — scoped, not scheduled; do it inside the web-UI headless-host work if that proceeds.
+- §11.3 `ITimer`/scheduler — **DONE** (PR #471). `IUiTimer` + `IUiTimerFactory`
+  (Services); impls: `AvaloniaUiTimer` (Views, wraps `DispatcherTimer` — the 3
+  platforms), `ManualUiTimer` (tests, framework-free, non-firing), `ThreadingUiTimer`
+  (headless host, `System.Threading.Timer`-based, fires with no Avalonia). All 7
+  VM `DispatcherTimer` sites (status-strip, clock, auto-day/night, autosave,
+  simulator, render-pull, status-tick) now go through the injected factory.
 
-All three surfaced by the remote/web-UI Phase 0 spike + retest.
+With §11.1 + §11.3 done, the VM no longer instantiates **any** Avalonia type at
+runtime that a headless boot would trip on (dispatcher + timers both abstracted).
+§11.2 (de-static `ConfigurationStore.Instance` / `ApplicationState.Instance`)
+remains the only open de-ambient item, and it's not a headless blocker.
+
+All surfaced by the remote/web-UI Phase 0 spike + retest.
