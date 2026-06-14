@@ -348,7 +348,7 @@ public partial class MainViewModel
         ResetHeadlandCommand = new RelayCommand(() =>
         {
             // Save for undo
-            _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+            _previousHeadlandLine = State.Field.HeadlandLine != null ? new List<Vec3>(State.Field.HeadlandLine) : null;
             _previousHasHeadland = HasHeadland;
 
             ClearHeadlandCommand?.Execute(null);
@@ -390,14 +390,14 @@ public partial class MainViewModel
 
             if (_previousHeadlandLine != null && _previousHeadlandLine.Count >= 3)
             {
-                _currentHeadlandLine = _previousHeadlandLine;
+                State.Field.HeadlandLine = _previousHeadlandLine;
                 State.Field.HeadlandLine = _previousHeadlandLine;
                 _mapService.SetHeadlandLine(_previousHeadlandLine);
                 _mapService.SetHeadlandVisible(true);
             }
             else
             {
-                _currentHeadlandLine = null;
+                State.Field.HeadlandLine = null;
                 State.Field.HeadlandLine = null;
                 _mapService.SetHeadlandVisible(false);
             }
@@ -413,14 +413,14 @@ public partial class MainViewModel
         TurnOffHeadlandCommand = new RelayCommand(() =>
         {
             // Save for undo
-            _previousHeadlandLine = _currentHeadlandLine != null ? new List<Vec3>(_currentHeadlandLine) : null;
+            _previousHeadlandLine = State.Field.HeadlandLine != null ? new List<Vec3>(State.Field.HeadlandLine) : null;
             _previousHasHeadland = HasHeadland;
 
             IsHeadlandOn = false;
             HasHeadland = false;
             CurrentHeadlandLine = null;
             HeadlandPreviewLine = null;
-            _currentHeadlandLine = null;
+            State.Field.HeadlandLine = null;
             State.Field.HeadlandLine = null;
             _mapService.SetHeadlandVisible(false);
             OnPropertyChanged(nameof(HeadlandStatusText));

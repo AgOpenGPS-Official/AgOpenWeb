@@ -31,9 +31,7 @@ public class HeadlandChainTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
         return vm;
     }
 
@@ -42,9 +40,7 @@ public class HeadlandChainTests
     /// </summary>
     private static List<Vec3>? GetHeadlandLine(MainViewModel vm)
     {
-        return (List<Vec3>?)typeof(MainViewModel).GetField("_currentHeadlandLine",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .GetValue(vm);
+        return vm.State.Field.HeadlandLine;
     }
 
     // ---------------------------------------------------------------
@@ -900,9 +896,7 @@ public class HeadlandChainTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Horizontal line through the bottom wide section at y=50
         // Should cross left boundary at x=0 and right boundary at x=200

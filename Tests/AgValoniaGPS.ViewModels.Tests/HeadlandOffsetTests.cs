@@ -183,7 +183,7 @@ public class HeadlandOffsetTests
         boundary.OuterBoundary.UpdateBounds();
 
         // Set the boundary on the VM
-        typeof(MainViewModel).GetField("_currentBoundary", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Create a headland line in the middle that is too short to reach the edges
         var seg = new HeadlandSegment
@@ -226,7 +226,7 @@ public class HeadlandOffsetTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         var seg = new HeadlandSegment
         {
@@ -269,7 +269,7 @@ public class HeadlandOffsetTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Line A: vertical on left side at x=20, from y=20 to y=50
         // Extension reaches boundary at y=0, other end meets Line B
@@ -336,7 +336,7 @@ public class HeadlandOffsetTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Curve entirely inside field, short extensions, doesn't reach boundary
         var seg = new HeadlandSegment
@@ -383,7 +383,7 @@ public class HeadlandOffsetTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // 4 lines forming a square inside the field (50,50)-(150,150)
         // None touch the boundary, but they form a closed loop together
@@ -456,9 +456,7 @@ public class HeadlandOffsetTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Segment 1: full boundary headland at 20m offset
         var bndSeg = new HeadlandSegment
@@ -531,9 +529,7 @@ public class HeadlandOffsetTests
             OuterBoundary = new Models.BoundaryPolygon { Points = bndPts }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Segment 1: full boundary headland (closed curve, Clipper2 offset)
         var bndVec3 = bndPts.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
@@ -630,9 +626,7 @@ public class HeadlandOffsetTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Boundary headland segment (closed, uses headland polygon directly)
         var bndSeg = new HeadlandSegment

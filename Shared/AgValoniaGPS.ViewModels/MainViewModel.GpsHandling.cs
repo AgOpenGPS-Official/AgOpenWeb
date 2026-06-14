@@ -406,7 +406,7 @@ public partial class MainViewModel
         _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
         _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset, isOnBoundary);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
-        _gpsPipelineService.SetHeadlandLine(_currentHeadlandLine);
+        _gpsPipelineService.SetHeadlandLine(State.Field.HeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);

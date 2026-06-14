@@ -40,9 +40,7 @@ public class HeadlandRealFieldTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(_vm, boundary);
+        _vm.State.Field.CurrentBoundary = boundary;
     }
 
     [Test]
@@ -257,9 +255,7 @@ public class HeadlandRealFieldTests
             }
         };
         boundary.OuterBoundary.UpdateBounds();
-        typeof(MainViewModel).GetField("_currentBoundary",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
-            .SetValue(vm, boundary);
+        vm.State.Field.CurrentBoundary = boundary;
 
         // Long curve along the bottom + right edges (many points)
         var curvePts = new List<Vec3>();
