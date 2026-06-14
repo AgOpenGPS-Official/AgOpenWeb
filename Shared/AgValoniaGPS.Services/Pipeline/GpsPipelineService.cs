@@ -823,13 +823,34 @@ public sealed class GpsPipelineService : IGpsPipelineService
             double widthMinusOverlap = config2.ActualToolWidth - config2.Tool.Overlap;
             double distAway = widthMinusOverlap * passNumber + nudgeOffset;
 
+            // Curve tracks: extend the displayed (magenta) line straight to the U-turn so
+            // there's no visible gap between the guidance line and the turn (the line the
+            // tractor follows, CalculateTrackGuidance, is extended the same way). No-op for
+            // closed loops.
+            bool extendDisp = track!.Points.Count > 2 && !track.IsClosed;
+
             if (Math.Abs(distAway) < 0.01)
             {
-                displayTrack = track;
+                if (extendDisp)
+                {
+                    // Pass 0: extended curve IS the reference line — leave baseTrack null so
+                    // it isn't drawn twice at the same position.
+                    displayTrack = new Models.Track.Track
+                    {
+                        Name = $"{track.Name} (path {passNumber})",
+                        Points = CurveProcessing.ExtendCurveEnds(track.Points),
+                        Type = track.Type, IsVisible = true, IsActive = true, IsClosed = track.IsClosed
+                    };
+                }
+                else
+                {
+                    displayTrack = track;
+                }
             }
             else
             {
-                var offsetPoints = CurveProcessing.CreateOffsetCurve(track!.Points, distAway);
+                var offsetPoints = CurveProcessing.CreateOffsetCurve(track.Points, distAway);
+                if (extendDisp) offsetPoints = CurveProcessing.ExtendCurveEnds(offsetPoints);
                 displayTrack = new Models.Track.Track
                 {
                     Name = $"{track.Name} (path {passNumber})",
@@ -1206,13 +1227,30 @@ public sealed class GpsPipelineService : IGpsPipelineService
         Models.Track.Track currentTrack;
         string? statusMessage = null;
 
+        // Curve tracks are extended along their (smoothed) end tangents so the STEERING
+        // line is the SAME extended curve the U-turn is built from. Otherwise the offset
+        // guidance line stops at the recorded curve's end and the tractor approaches at the
+        // curve's local heading, while the U-turn entry leg sits on the straight tangent
+        // extension — a heading step at the algorithm handoff (the entry "hunt"). Extending
+        // the steering line lets the tractor commit to the extension direction during the
+        // (smooth) approach instead. No-op for closed loops.
+        bool extendCurve = track.Points.Count > 2 && !track.IsClosed;
+
         if (Math.Abs(distAway) < 0.01)
         {
-            currentTrack = track;
+            currentTrack = extendCurve
+                ? new Models.Track.Track
+                {
+                    Name = $"{track.Name} (path {passNumber})",
+                    Points = CurveProcessing.ExtendCurveEnds(track.Points),
+                    Type = track.Type, IsVisible = true, IsActive = true, IsClosed = track.IsClosed
+                }
+                : track;
         }
         else
         {
             var (offsetPoints, percentRemoved) = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway);
+            if (extendCurve) offsetPoints = CurveProcessing.ExtendCurveEnds(offsetPoints);
 
             // Warn on tight curves
             if (percentRemoved > 10 && passNumber != _lastWarnedPathsAway)
@@ -1385,6 +1423,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double headingRad = currentPosition.Heading * Math.PI / 180.0;
         double speedKmh = currentPosition.Speed * 3.6;
 
+        // Use the SAME speed-scaled look-ahead as track guidance (CalculateTrackGuidance).
+        // A fixed hold value here is smaller than the track follower's dynamic look-ahead
+        // while moving, so the goal point jumped CLOSER at the track→turn handoff — a sudden
+        // sharper steer that made the tractor hunt for ~½ s on entry (exit was gentler
+        // because the goal jumped farther). Matching them makes the handoff seamless.
+        double lookAhead = config.Guidance.GoalPointLookAheadHold;
+        if (speedKmh > 1)
+        {
+            lookAhead = Math.Max(
+                config.Guidance.MinLookAheadDistance,
+                config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
+        }
+
         var input = new YouTurnGuidanceInput
         {
             TurnPath = turnPath,
@@ -1393,7 +1444,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             UseStanley = false,
-            GoalPointDistance = config.Guidance.GoalPointLookAheadHold,
+            GoalPointDistance = lookAhead,
             UTurnCompensation = config.Guidance.UTurnCompensation,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,

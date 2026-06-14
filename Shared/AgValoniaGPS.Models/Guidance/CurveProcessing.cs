@@ -264,6 +264,73 @@ namespace AgValoniaGPS.Models.Guidance
         }
 
         /// <summary>
+        /// Extends a curve straight along its end tangents at both ends so it behaves like
+        /// an (effectively infinite) AB line near the field edges. Without this, an offset
+        /// curve stops "parallel to the end of the base track" — at the field boundary — so
+        /// U-turn geometry and the displayed guidance line never reach into the turn the way
+        /// a straight track does. Mirrors AgOpenGPS CABCurve.GetExtendedReferenceCurve.
+        /// </summary>
+        /// <param name="points">Curve points with headings (heading = atan2(dEasting, dNorthing)).</param>
+        /// <param name="lengthMeters">How far to extend past each end.</param>
+        /// <param name="spacing">Spacing between added extension points.</param>
+        public static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
+            double lengthMeters = 200.0, double spacing = 1.0)
+        {
+            if (points == null || points.Count < 2 || lengthMeters <= 0 || spacing <= 0)
+                return points != null ? new List<Vec3>(points) : new List<Vec3>();
+
+            // Closed loops (boundary curves / water pivots) must not be extended.
+            var first = points[0];
+            var last = points[points.Count - 1];
+            double closeSq = (first.Easting - last.Easting) * (first.Easting - last.Easting)
+                + (first.Northing - last.Northing) * (first.Northing - last.Northing);
+            if (closeSq < 1.0)
+                return new List<Vec3>(points);
+
+            int steps = (int)(lengthMeters / spacing);
+            var extended = new List<Vec3>(points.Count + steps * 2);
+
+            // Extend along a SMOOTHED end direction measured from point POSITIONS over a span,
+            // not the single endpoint's stored heading. Recorded-curve endpoints frequently
+            // carry a noisy/abrupt last-point heading; extending along it sends the straight
+            // lead-in/out (and the U-turn entry/exit legs built on it) off at a wrong angle,
+            // ~20° from the curve's actual direction — the operator's "tractor points 20° off
+            // the entry leg and hunts" symptom.
+            int span = Math.Min(5, points.Count - 1);
+
+            // Lead-out direction: from points[N-1-span] toward points[N-1].
+            var outFrom = points[points.Count - 1 - span];
+            double outHead = Math.Atan2(last.Easting - outFrom.Easting, last.Northing - outFrom.Northing);
+            // Lead-in direction (pointing INTO the curve): from points[span] back toward points[0].
+            var inTo = points[span];
+            double inHead = Math.Atan2(inTo.Easting - first.Easting, inTo.Northing - first.Northing);
+
+            // Lead-in: walk backward from the first point (opposite the into-curve direction).
+            double sinH = Math.Sin(inHead), cosH = Math.Cos(inHead);
+            for (int i = steps; i >= 1; i--)
+            {
+                extended.Add(new Vec3(
+                    first.Easting - sinH * (i * spacing),
+                    first.Northing - cosH * (i * spacing),
+                    inHead));
+            }
+
+            extended.AddRange(points);
+
+            // Lead-out: walk forward from the last point along the smoothed end direction.
+            sinH = Math.Sin(outHead); cosH = Math.Cos(outHead);
+            for (int i = 1; i <= steps; i++)
+            {
+                extended.Add(new Vec3(
+                    last.Easting + sinH * (i * spacing),
+                    last.Northing + cosH * (i * spacing),
+                    outHead));
+            }
+
+            return extended;
+        }
+
+        /// <summary>
         /// Creates a clean offset curve and returns information about whether points were removed.
         /// Uses AgOpenGPS collision detection: if an offset point is within offset² distance
         /// of ANY original curve point, it indicates self-intersection and the point is skipped.
