@@ -40,7 +40,7 @@ public partial class MainViewModel
         AbLine,
     }
 
-    private DispatcherTimer? _statusStripRotationTimer;
+    private AgValoniaGPS.Services.Interfaces.IUiTimer? _statusStripRotationTimer;
     private StatusStripPage _statusStripPage = StatusStripPage.Field;
     private bool _isStatusStripRotationPaused;
 
@@ -114,10 +114,8 @@ public partial class MainViewModel
         ToggleStatusStripRotationCommand = new RelayCommand(() =>
             IsStatusStripRotationPaused = !IsStatusStripRotationPaused);
 
-        _statusStripRotationTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(RotationIntervalSeconds),
-        };
+        _statusStripRotationTimer = _timerFactory.Create();
+        _statusStripRotationTimer.Interval = TimeSpan.FromSeconds(RotationIntervalSeconds);
         _statusStripRotationTimer.Tick += (_, _) => AdvanceStatusStripPage();
         _statusStripRotationTimer.Start();
     }

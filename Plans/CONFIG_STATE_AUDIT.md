@@ -290,4 +290,43 @@ The same "ambient, not injected" smell applies to `ConfigurationStore.Instance` 
 would complete the "de-ambient the VM" pass — but it's larger blast-radius and can be sequenced
 separately. Keep §11.1 as the committed first step.
 
-**Status:** scoped, not scheduled. Surfaced by the remote/web-UI Phase 0 spike.
+### 11.3 Injectable `ITimer` / scheduler (the remaining headless blocker)
+The same axis again — an ambient Avalonia type instantiated *inside* the VM, this time
+`Avalonia.Threading.DispatcherTimer`. The `MainViewModel` ctor creates ~5 of them (status-strip
+rotation, clock, autosave, auto-day/night, simulator). `DispatcherTimer` captures
+`Dispatcher.UIThread` at construction, so it **throws in a process with no Avalonia dispatcher** —
+which is the concrete reason a headless host still needs `Avalonia.Headless` even after §11.1.
+After the marshalling calls were abstracted, this is the last thing that *functionally* ties a
+headless boot to Avalonia (the remaining `Avalonia.Point`/`Color`/`Application.Current` uses are
+value-type math or null-guarded and don't block headless execution).
+
+- Define `ITimer` / `IScheduler` (create a periodic callback with an interval; start/stop; change
+  interval) and inject it like `IUiDispatcher`. Richer than the dispatcher because timers have
+  lifecycle (start/stop/interval changes), so the interface is a little larger.
+- Avalonia-backed impl wraps `DispatcherTimer` (Views, alongside `AvaloniaUiDispatcher`); a
+  threaded/`PeriodicTimer`-based impl serves headless hosts and tests.
+- Replace the ~5 ctor `DispatcherTimer` sites; `DispatcherTimer` then exists only in the View layer.
+
+**Why now / why noted:** surfaced by the remote/web-UI **Phase 0 retest** after §11.1 merged — the
+marshalling hurdle cleared, but the spike still had to keep `Avalonia.Headless` purely for these
+timers. It is **not** blocking Phase 1 "alongside the Avalonia app" (the live app supplies a real
+dispatcher + timers); it is the prerequisite for the **fully Avalonia-free cab-PC host**
+(`Plans/REMOTE_WEB_UI_SPLIT.md` Phase 4/5). If the web-UI work proceeds, fix it there; otherwise it
+stands as a standalone follow-up.
+
+**Status:**
+- §11.1 `IUiDispatcher` — **DONE**, merged to `develop` (PR #470, 2026-06-14).
+- §11.2 static store de-static-ing — scoped, not scheduled (larger blast-radius).
+- §11.3 `ITimer`/scheduler — **DONE** (PR #471). `IUiTimer` + `IUiTimerFactory`
+  (Services); impls: `AvaloniaUiTimer` (Views, wraps `DispatcherTimer` — the 3
+  platforms), `ManualUiTimer` (tests, framework-free, non-firing), `ThreadingUiTimer`
+  (headless host, `System.Threading.Timer`-based, fires with no Avalonia). All 7
+  VM `DispatcherTimer` sites (status-strip, clock, auto-day/night, autosave,
+  simulator, render-pull, status-tick) now go through the injected factory.
+
+With §11.1 + §11.3 done, the VM no longer instantiates **any** Avalonia type at
+runtime that a headless boot would trip on (dispatcher + timers both abstracted).
+§11.2 (de-static `ConfigurationStore.Instance` / `ApplicationState.Instance`)
+remains the only open de-ambient item, and it's not a headless blocker.
+
+All surfaced by the remote/web-UI Phase 0 spike + retest.

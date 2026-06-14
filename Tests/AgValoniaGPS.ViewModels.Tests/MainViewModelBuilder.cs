@@ -88,6 +88,7 @@ public class MainViewModelBuilder
             appState: new ApplicationState(),
             persistentStateService: Substitute.For<IPersistentStateService>(),
             batteryService: new NullBatteryService(),
-            uiDispatcher: new AgValoniaGPS.Services.Threading.InlineUiDispatcher());
+            uiDispatcher: new AgValoniaGPS.Services.Threading.InlineUiDispatcher(),
+            uiTimerFactory: new AgValoniaGPS.Services.Threading.ManualUiTimerFactory());
     }
 }

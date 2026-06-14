@@ -27,7 +27,7 @@ public partial class MainViewModel
     /// </summary>
     private const int CoverageAutosaveIntervalSeconds = 30;
 
-    private DispatcherTimer? _coverageAutosaveTimer;
+    private AgValoniaGPS.Services.Interfaces.IUiTimer? _coverageAutosaveTimer;
 
     /// <summary>
     /// Re-entrancy guard: if a save is already running on the background
@@ -45,10 +45,8 @@ public partial class MainViewModel
         if (_coverageAutosaveTimer != null)
             return;
 
-        _coverageAutosaveTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(CoverageAutosaveIntervalSeconds)
-        };
+        _coverageAutosaveTimer = _timerFactory.Create();
+        _coverageAutosaveTimer.Interval = TimeSpan.FromSeconds(CoverageAutosaveIntervalSeconds);
         _coverageAutosaveTimer.Tick += OnCoverageAutosaveTick;
         _coverageAutosaveTimer.Start();
         _logger.LogDebug("[Coverage] Autosave timer started ({Interval}s)", CoverageAutosaveIntervalSeconds);

@@ -151,7 +151,8 @@ public partial class MainViewModel
     private void InitializeClock()
     {
         CurrentTime = DateTime.Now.ToString("HH:mm:ss");
-        var clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        var clockTimer = _timerFactory.Create();
+        clockTimer.Interval = TimeSpan.FromSeconds(1);
         clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss");
         clockTimer.Start();
     }
@@ -336,15 +337,13 @@ public partial class MainViewModel
 
     #region Auto Day/Night
 
-    private DispatcherTimer? _autoDayNightTimer;
+    private AgValoniaGPS.Services.Interfaces.IUiTimer? _autoDayNightTimer;
 
     private void InitializeAutoDayNight()
     {
         CheckAutoDayNight();
-        _autoDayNightTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(60)
-        };
+        _autoDayNightTimer = _timerFactory.Create();
+        _autoDayNightTimer.Interval = TimeSpan.FromSeconds(60);
         _autoDayNightTimer.Tick += (_, _) => CheckAutoDayNight();
         _autoDayNightTimer.Start();
     }
