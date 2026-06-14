@@ -58,7 +58,7 @@ public class CurveTurnRobustnessTests
 
         _offset = new PolygonOffsetService();
         _log = new CaptureLogger();
-        _creation = new YouTurnCreationService(_log, _offset);
+        _creation = new YouTurnCreationService(_log, _offset, c);
     }
 
     private const double EdgeBase = 50.0;

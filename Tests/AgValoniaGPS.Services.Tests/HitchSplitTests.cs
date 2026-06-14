@@ -53,9 +53,9 @@ public class HitchSplitTests
         _settingsService = Substitute.For<ISettingsService>();
         _settingsService.Settings.Returns(_settings);
 
-        _configService = new ConfigurationService(_vehicleService, _toolService, _settingsService);
-
         ConfigurationStore.SetInstance(new ConfigurationStore());
+
+        _configService = new ConfigurationService(_vehicleService, _toolService, _settingsService, ConfigurationStore.Instance);
     }
 
     [TearDown]
@@ -78,7 +78,7 @@ public class HitchSplitTests
         store.Tool.HitchLength = 3.0;   // rigid working center — should drive the hitch
         store.Vehicle.HitchLength = 99.0; // vehicle pin — must be ignored for rigid
 
-        var service = new ToolPositionService();
+        var service = new ToolPositionService(store);
         service.Update(new Vec3(0, 0, 0), 0); // heading 0 = +North
 
         // Rear tool → hitch is behind the pivot by Tool.HitchLength.
@@ -98,7 +98,7 @@ public class HitchSplitTests
         store.Tool.HitchLength = 99.0;   // must be ignored for trailing
         store.Vehicle.HitchLength = 3.0; // tractor hitch pin — should drive the hitch
 
-        var service = new ToolPositionService();
+        var service = new ToolPositionService(store);
         service.Update(new Vec3(0, 0, 0), 0);
 
         // Trailing → hitch (the tractor pin) is behind the pivot by Vehicle.HitchLength.

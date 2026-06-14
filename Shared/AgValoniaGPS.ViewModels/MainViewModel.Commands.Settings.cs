@@ -73,9 +73,16 @@ public partial class MainViewModel
                 "Are you sure you want to reset all settings to their defaults? This cannot be undone.",
                 () =>
                 {
+                    // Reset to defaults IN PLACE — persist the default DTO, then
+                    // reload it into the *existing* ConfigurationStore object.
+                    // Must not swap the store instance (SetInstance(new …)): every
+                    // service/VM now receives the store by injection and would be
+                    // left holding the old object. LoadAppSettings reapplies the
+                    // saved defaults into the same instance, preserving identity
+                    // and PropertyChanged subscriptions.
                     _settingsService.ResetToDefaults();
-                    ConfigurationStore.SetInstance(new ConfigurationStore());
                     _settingsService.Save();
+                    _configurationService.LoadAppSettings();
                     StatusMessage = "All settings reset to defaults. Restart recommended.";
                 });
         });
@@ -203,7 +210,7 @@ public partial class MainViewModel
                 catch { /* screenshot is optional */ }
 
                 var zipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, screenshotPng: screenshot);
+                    _settingsService, _appState, _configStore, screenshotPng: screenshot);
                 StatusMessage = $"Debug dump saved: {zipPath}";
                 _logger.LogInformation($"Debug dump created: {zipPath}");
             }
@@ -234,7 +241,7 @@ public partial class MainViewModel
             try
             {
                 _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, screenshotPng: _bugReportScreenshot);
+                    _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot);
             }
             catch (Exception ex)
             {
@@ -340,6 +347,7 @@ public partial class MainViewModel
                     zipPath = Services.DebugDumpService.CreateDump(
                         _settingsService,
                         _appState,
+                        _configStore,
                         additionalNotes: notes,
                         screenshotPng: _bugReportScreenshot,
                         outputDirectory: bugReportsDir,
@@ -595,7 +603,7 @@ public partial class MainViewModel
     private void RefreshSettingsTree()
     {
         SettingsTree.Clear();
-        var store = ConfigurationStore.Instance;
+        var store = _configStore;
 
         AddConfigGroup("Vehicle", store.Vehicle);
         AddConfigGroup("Tool", store.Tool);

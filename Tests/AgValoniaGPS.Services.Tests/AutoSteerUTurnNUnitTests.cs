@@ -94,10 +94,10 @@ public class AutoSteerUTurnNUnitTests
         _gpsService = new GpsService();
         _gpsService.Start();
 
-        _toolPosition = new ToolPositionService();
+        _toolPosition = new ToolPositionService(config);
         var guidance = new TrackGuidanceService();
-        _coverage = new CoverageMapService();
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState);
+        _coverage = new CoverageMapService(config);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, config);
 
         // Enable sections for coverage painting
         _sectionControl.MasterState = SectionMasterState.Auto;
@@ -113,7 +113,7 @@ public class AutoSteerUTurnNUnitTests
 
         _autoSteer = new AutoSteerService(guidance,
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState);
+            _gpsService, _appState, config);
 
         _results = new List<GpsCycleResult>();
         // Pipeline created per test via CreateFreshPipeline()
@@ -136,9 +136,9 @@ public class AutoSteerUTurnNUnitTests
         _gpsService.Start();
 
         // Re-init coverage with fresh state
-        _coverage = new CoverageMapService();
-        _toolPosition = new ToolPositionService();
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState);
+        _coverage = new CoverageMapService(ConfigurationStore.Instance);
+        _toolPosition = new ToolPositionService(ConfigurationStore.Instance);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, ConfigurationStore.Instance);
         _sectionControl.MasterState = SectionMasterState.Auto;
         _sectionControl.SetAllAuto();
         _coverage.SetFieldBounds(-10, FIELD_W + 10, -10, FIELD_H + 10);
@@ -146,7 +146,7 @@ public class AutoSteerUTurnNUnitTests
         // Fresh AutoSteerService bound to the new GpsService
         _autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState);
+            _gpsService, _appState, ConfigurationStore.Instance);
 
         _intents = new PipelineIntents();
 
@@ -201,13 +201,15 @@ public class AutoSteerUTurnNUnitTests
             _sectionControl, _coverage,
             _autoSteer, new YouTurnGuidanceService(),
             new YouTurnStateMachine(
-                new YouTurnCreationService(logFactory.CreateLogger<YouTurnCreationService>(), polygonOffset),
-                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-                logFactory.CreateLogger<YouTurnStateMachine>()),
+                new YouTurnCreationService(logFactory.CreateLogger<YouTurnCreationService>(), polygonOffset, ConfigurationStore.Instance),
+                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, ConfigurationStore.Instance),
+                logFactory.CreateLogger<YouTurnStateMachine>(),
+                ConfigurationStore.Instance),
             Substitute.For<IAudioService>(),
             _intents,
             headingFusion,
             NullLogger<GpsPipelineService>.Instance, _appState,
+            ConfigurationStore.Instance,
             _estimator);
 
         // Mirror production control loop in tests (#313 commit 5c). Section

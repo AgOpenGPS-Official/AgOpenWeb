@@ -40,7 +40,7 @@ public class AutoSteerSteerSwitchChainTests
         var guidance = Substitute.For<ITrackGuidanceService>();
         var gps = Substitute.For<IGpsService>();
         var appState = new ApplicationState();
-        _service = new AutoSteerService(guidance, _udp, gps, appState);
+        _service = new AutoSteerService(guidance, _udp, gps, appState, ConfigurationStore.Instance);
         _service.Start();
     }
 

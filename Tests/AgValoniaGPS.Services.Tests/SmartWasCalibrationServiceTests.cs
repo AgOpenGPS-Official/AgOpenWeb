@@ -32,7 +32,7 @@ public class SmartWasCalibrationServiceTests
         _appState.Vehicle.Speed = IN_BOUND_SPEED_MPS;
         _appState.Guidance.CrossTrackError = IN_BOUND_XTE_M;
 
-        _service = new SmartWasCalibrationService(_autoSteer, _appState);
+        _service = new SmartWasCalibrationService(_autoSteer, _appState, ConfigurationStore.Instance);
         _service.Start();
     }
 

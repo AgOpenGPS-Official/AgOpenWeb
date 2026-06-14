@@ -25,13 +25,20 @@ namespace AgValoniaGPS.Services
     /// Core module communication service.
     /// Handles work switch and steer switch logic, raising events when UI actions are needed.
     /// Replaces FormGPS.PerformClick() calls with clean event-based architecture.
-    /// Reads switch configuration from ConfigurationStore.Instance.Tool.
+    /// Reads switch configuration from the injected ConfigurationStore's Tool config.
     /// </summary>
     public class ModuleCommunicationService : IModuleCommunicationService
     {
+        private readonly ConfigurationStore _configStore;
+
+        public ModuleCommunicationService(ConfigurationStore configStore)
+        {
+            _configStore = configStore;
+        }
+
         // Access config from ConfigurationStore
-        private static ToolConfig Tool => ConfigurationStore.Instance.Tool;
-        private static MachineConfig Machine => ConfigurationStore.Instance.Machine;
+        private ToolConfig Tool => _configStore.Tool;
+        private MachineConfig Machine => _configStore.Machine;
 
         // Section control data
         public byte[] SectionControlBytes { get; } = new byte[9];
@@ -79,7 +86,7 @@ namespace AgValoniaGPS.Services
         public int User4Value => Machine.User4Value;
 
         // AHRS config accessor
-        private static AhrsConfig Ahrs => ConfigurationStore.Instance.Ahrs;
+        private AhrsConfig Ahrs => _configStore.Ahrs;
         public bool AlarmStopsAutoSteer => Ahrs.AlarmStopsAutoSteer;
 
         // Switch states (runtime, from hardware)

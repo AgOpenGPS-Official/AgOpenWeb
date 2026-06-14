@@ -55,6 +55,7 @@ public static class ServiceCollectionExtensions
 
         // Centralized application state (single source of truth)
         services.AddSingleton<ApplicationState>();           // ephemeral, in-memory only
+        services.AddSingleton(_ => AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
         services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
 
         // UI-thread dispatcher abstraction (replaces direct Dispatcher.UIThread

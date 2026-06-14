@@ -40,7 +40,8 @@ public class ManualTurnHardBoundaryTests
         config.Guidance.UTurnDistanceFromBoundary = 1.0; // clearance margin
 
         _creation = new YouTurnCreationService(
-            NullLogger<YouTurnCreationService>.Instance, new PolygonOffsetService());
+            NullLogger<YouTurnCreationService>.Instance, new PolygonOffsetService(),
+            config);
     }
 
     // 100×100 m square boundary centred on origin (edges at ±50).

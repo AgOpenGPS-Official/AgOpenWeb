@@ -5,6 +5,7 @@
 
 using System.Text;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.AutoSteer;
 using AgValoniaGPS.Services.Interfaces;
@@ -50,7 +51,7 @@ public class UnifiedPipelineTests
         appState.Field.LocalPlane = new LocalPlane(
             new Wgs84(48.117, 11.517), new SharedFieldProperties());
 
-        var autoSteer = new AutoSteerService(mockGuidance, mockUdp, mockGps, appState);
+        var autoSteer = new AutoSteerService(mockGuidance, mockUdp, mockGps, appState, ConfigurationStore.Instance);
         autoSteer.Start();
         // Start() now emits a baseline PGN 251 + PGN 252 pair; that
         // happens off the receive thread so it doesn't violate C4, but
@@ -91,7 +92,7 @@ public class UnifiedPipelineTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             Substitute.For<IGpsService>(),
-            appState);
+            appState, ConfigurationStore.Instance);
         autoSteer.Start();
 
         autoSteer.ProcessGpsBuffer(Bytes, Bytes.Length);
@@ -114,7 +115,7 @@ public class UnifiedPipelineTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             Substitute.For<IGpsService>(),
-            appState);
+            appState, ConfigurationStore.Instance);
         autoSteer.Start();
 
         autoSteer.ProcessGpsBuffer(Bytes, Bytes.Length);

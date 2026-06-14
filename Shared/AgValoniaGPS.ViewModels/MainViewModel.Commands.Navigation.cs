@@ -137,7 +137,7 @@ public partial class MainViewModel
             _mapService.SetDayMode(IsDayMode);
             ApplyThemeVariant(IsDayMode);
             // Disable auto day/night when user manually toggles theme
-            ConfigurationStore.Instance.Display.AutoDayNight = false;
+            _configStore.Display.AutoDayNight = false;
         });
 
         Toggle2D3DCommand = new RelayCommand(() =>

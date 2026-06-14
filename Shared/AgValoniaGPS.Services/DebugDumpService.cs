@@ -38,6 +38,7 @@ public class DebugDumpService
     public static string CreateDump(
         ISettingsService settingsService,
         ApplicationState appState,
+        ConfigurationStore configStore,
         string? additionalNotes = null,
         byte[]? screenshotPng = null,
         string? outputDirectory = null,
@@ -70,7 +71,7 @@ public class DebugDumpService
         // 3. Configuration store snapshot
         try
         {
-            var configSnapshot = BuildConfigSnapshot();
+            var configSnapshot = BuildConfigSnapshot(configStore);
             AddTextEntry(archive, "configuration.json", configSnapshot);
         }
         catch (Exception ex)
@@ -166,7 +167,7 @@ public class DebugDumpService
         // 7. Current vehicle profile
         try
         {
-            var profileName = ConfigurationStore.Instance.ActiveVehicleProfileName;
+            var profileName = configStore.ActiveVehicleProfileName;
             if (!string.IsNullOrEmpty(profileName))
             {
                 AddTextEntry(archive, "active_profile_name.txt", profileName);
@@ -317,9 +318,8 @@ public class DebugDumpService
         return sb.ToString();
     }
 
-    private static string BuildConfigSnapshot()
+    private static string BuildConfigSnapshot(ConfigurationStore store)
     {
-        var store = ConfigurationStore.Instance;
         var snapshot = new
         {
             Vehicle = new

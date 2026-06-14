@@ -94,6 +94,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
+    private readonly ConfigurationStore _configStore;
     private readonly IUiTimerFactory _timerFactory;
     private readonly IUiTimer _simulatorTimer;
     private IUiTimer? _renderPullTimer;
@@ -107,7 +108,7 @@ public partial class MainViewModel : ObservableObject
     /// Use this for new code. Existing properties will gradually migrate to use State.
     /// </summary>
     public ApplicationState State => _appState;
-    public DisplayConfig Display => ConfigurationStore.Instance.Display;
+    public DisplayConfig Display => _configStore.Display;
 
     /// <summary>
     /// Persistent application state — window/last-view/last-field/sim position
@@ -117,11 +118,12 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public PersistentAppState PersistentState => PersistentAppState.Instance;
 
-    // Convenience accessors for ConfigurationStore (replaces _vehicleConfig usage)
-    private static ConfigurationStore ConfigStore => ConfigurationStore.Instance;
-    private static VehicleConfig Vehicle => ConfigurationStore.Instance.Vehicle;
-    private static ToolConfig Tool => ConfigurationStore.Instance.Tool;
-    private static GuidanceConfig Guidance => ConfigurationStore.Instance.Guidance;
+    // Convenience accessors for the injected ConfigurationStore (§11.2 — no
+    // ambient _configStore access in the VM/services).
+    private ConfigurationStore ConfigStore => _configStore;
+    private VehicleConfig Vehicle => _configStore.Vehicle;
+    private ToolConfig Tool => _configStore.Tool;
+    private GuidanceConfig Guidance => _configStore.Guidance;
 
     /// <summary>
     /// Sets the field origin in centralized FieldState — the single home (§12.1) —
@@ -215,6 +217,7 @@ public partial class MainViewModel : ObservableObject
         IPipelineIntents intents,
         ILogger<MainViewModel> logger,
         ApplicationState appState,
+        ConfigurationStore configStore,
         IPersistentStateService persistentStateService,
         IBatteryService batteryService,
         IUiDispatcher uiDispatcher,
@@ -223,6 +226,7 @@ public partial class MainViewModel : ObservableObject
         IPositionEstimator? positionEstimator = null)
     {
         _logger = logger;
+        _configStore = configStore;
         _persistentStateService = persistentStateService;
         _batteryService = batteryService;
         _dispatcher = uiDispatcher;
@@ -465,12 +469,12 @@ public partial class MainViewModel : ObservableObject
         WireYouTurnDistanceVisibility();
 
         // Subscribe to ConfigurationStore changes to update NumSections
-        _numSections = Models.Configuration.ConfigurationStore.Instance.NumSections;
-        Models.Configuration.ConfigurationStore.Instance.PropertyChanged += (s, e) =>
+        _numSections = _configStore.NumSections;
+        _configStore.PropertyChanged += (s, e) =>
         {
             if (e.PropertyName == nameof(Models.Configuration.ConfigurationStore.NumSections))
             {
-                NumSections = Models.Configuration.ConfigurationStore.Instance.NumSections;
+                NumSections = _configStore.NumSections;
             }
             else if (e.PropertyName == nameof(Models.Configuration.ConfigurationStore.IsMetric))
             {
@@ -751,7 +755,7 @@ public partial class MainViewModel : ObservableObject
         IsSimulatorPanelVisible = settings.SimulatorEnabled && !DiagFlags.HideAllPanels;
 
         // Initialize tool width from config so implement renders before GPS data flows
-        var config = Models.Configuration.ConfigurationStore.Instance;
+        var config = _configStore;
         double initialToolWidth = 0;
         for (int i = 0; i < config.NumSections && i < 16; i++)
             initialToolWidth += config.Tool.GetSectionWidth(i) / 100.0;
@@ -1702,7 +1706,7 @@ public partial class MainViewModel : ObservableObject
             _ = HandleNtripProfileForFieldAsync(fieldName);
 
             // Sync elevation log enabled state from config
-            _elevationLogService.IsEnabled = Models.Configuration.ConfigurationStore.Instance.Display.ElevationLogEnabled;
+            _elevationLogService.IsEnabled = _configStore.Display.ElevationLogEnabled;
 
             // Save as last opened field (persistent state → appstate.json)
             PersistentState.LastOpenedField = fieldName;
@@ -2223,7 +2227,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void UpdateTramLines(Track? track)
     {
-        var config = ConfigurationStore.Instance.Tram;
+        var config = _configStore.Tram;
 
         // Set boundary fence for clipping tram lines
         if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null && State.Field.CurrentBoundary.OuterBoundary.Points.Count >= 3)

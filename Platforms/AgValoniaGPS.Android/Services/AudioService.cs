@@ -16,6 +16,9 @@ public class AudioService : AudioServiceBase
 {
     private MediaPlayer? _mediaPlayer;
 
+    public AudioService(AgValoniaGPS.Models.Configuration.ConfigurationStore configStore)
+        : base(configStore) { }
+
     protected override void PlayFile(string filePath)
     {
         _mediaPlayer?.Release();

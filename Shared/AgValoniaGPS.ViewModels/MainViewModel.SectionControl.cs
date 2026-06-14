@@ -152,7 +152,7 @@ public partial class MainViewModel
     /// </summary>
     public double[] GetSectionWidths()
     {
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         int n = Math.Min(NumSections, ToolConfig.MaxSections);
         var result = new double[Math.Max(n, 0)];
         for (int i = 0; i < result.Length; i++)

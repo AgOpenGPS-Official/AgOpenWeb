@@ -25,7 +25,8 @@ public class GpsFixQualityValidatorTests
     public void Accepts_a_good_fix()
     {
         bool ok = GpsFixQualityValidator.IsAcceptable(
-            fixQuality: 4, hdop: 0.8, differentialAge: 1.0, out var reason);
+            fixQuality: 4, hdop: 0.8, differentialAge: 1.0, out var reason,
+            ConfigurationStore.Instance);
 
         Assert.Multiple(() =>
         {
@@ -38,7 +39,8 @@ public class GpsFixQualityValidatorTests
     public void Rejects_fix_quality_below_minimum()
     {
         bool ok = GpsFixQualityValidator.IsAcceptable(
-            fixQuality: 1, hdop: 0.8, differentialAge: 1.0, out var reason);
+            fixQuality: 1, hdop: 0.8, differentialAge: 1.0, out var reason,
+            ConfigurationStore.Instance);
 
         Assert.Multiple(() =>
         {
@@ -52,7 +54,8 @@ public class GpsFixQualityValidatorTests
     public void Rejects_hdop_above_maximum()
     {
         bool ok = GpsFixQualityValidator.IsAcceptable(
-            fixQuality: 4, hdop: 3.0, differentialAge: 1.0, out var reason);
+            fixQuality: 4, hdop: 3.0, differentialAge: 1.0, out var reason,
+            ConfigurationStore.Instance);
 
         Assert.Multiple(() =>
         {
@@ -66,7 +69,8 @@ public class GpsFixQualityValidatorTests
     public void Rejects_differential_age_above_maximum()
     {
         bool ok = GpsFixQualityValidator.IsAcceptable(
-            fixQuality: 4, hdop: 0.8, differentialAge: 10.0, out var reason);
+            fixQuality: 4, hdop: 0.8, differentialAge: 10.0, out var reason,
+            ConfigurationStore.Instance);
 
         Assert.Multiple(() =>
         {
@@ -80,7 +84,8 @@ public class GpsFixQualityValidatorTests
     {
         // differentialAge=0 means "no differential fix", not "age expired".
         bool ok = GpsFixQualityValidator.IsAcceptable(
-            fixQuality: 4, hdop: 0.8, differentialAge: 0.0, out var reason);
+            fixQuality: 4, hdop: 0.8, differentialAge: 0.0, out var reason,
+            ConfigurationStore.Instance);
 
         Assert.Multiple(() =>
         {

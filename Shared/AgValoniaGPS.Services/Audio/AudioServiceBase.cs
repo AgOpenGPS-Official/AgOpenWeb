@@ -20,6 +20,7 @@ namespace AgValoniaGPS.Services.Audio;
 public abstract class AudioServiceBase : IAudioService
 {
     private readonly Dictionary<SoundEffect, string> _soundPaths = new();
+    private readonly ConfigurationStore _configStore;
     private bool _isEnabled = true;
 
     public bool IsEnabled
@@ -28,8 +29,9 @@ public abstract class AudioServiceBase : IAudioService
         set => _isEnabled = value;
     }
 
-    public AudioServiceBase()
+    public AudioServiceBase(ConfigurationStore configStore)
     {
+        _configStore = configStore;
         ExtractSoundFiles();
     }
 
@@ -38,7 +40,7 @@ public abstract class AudioServiceBase : IAudioService
         if (!_isEnabled) return;
 
         // Check per-sound config toggles
-        var display = ConfigurationStore.Instance.Display;
+        var display = _configStore.Display;
         switch (sound)
         {
             case SoundEffect.AutoSteerOn:

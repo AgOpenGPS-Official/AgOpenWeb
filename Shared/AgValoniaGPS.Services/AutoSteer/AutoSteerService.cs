@@ -46,6 +46,7 @@ public class AutoSteerService : IAutoSteerService
     private readonly IUdpCommunicationService _udpService;
     private readonly IGpsService _gpsService;
     private readonly ApplicationState _appState;
+    private readonly ConfigurationStore _configStore;
     private ITramLineService? _tramLineService;
     private ISmartWasCalibrationService? _smartWas;
 
@@ -104,12 +105,14 @@ public class AutoSteerService : IAutoSteerService
         ITrackGuidanceService guidanceService,
         IUdpCommunicationService udpService,
         IGpsService gpsService,
-        ApplicationState appState)
+        ApplicationState appState,
+        ConfigurationStore configStore)
     {
         _guidanceService = guidanceService;
         _udpService = udpService;
         _gpsService = gpsService;
         _appState = appState;
+        _configStore = configStore;
 
         // Initialize state
         _state = new VehicleState();
@@ -172,8 +175,8 @@ public class AutoSteerService : IAutoSteerService
     private void SubscribeToConfigChanges()
     {
         if (_configSubscribed) return;
-        _subscribedAutoSteer = ConfigurationStore.Instance.AutoSteer;
-        _subscribedTool = ConfigurationStore.Instance.Tool;
+        _subscribedAutoSteer = _configStore.AutoSteer;
+        _subscribedTool = _configStore.Tool;
         _subscribedAutoSteer.PropertyChanged += OnConfigPropertyChanged;
         _subscribedTool.PropertyChanged += OnConfigPropertyChanged;
         _configSubscribed = true;
@@ -207,7 +210,7 @@ public class AutoSteerService : IAutoSteerService
         if (!_isEnabled) return; // raced past Stop()
         try
         {
-            var cfg = ConfigurationStore.Instance.AutoSteer;
+            var cfg = _configStore.AutoSteer;
             _udpService.SendToModules(PgnBuilder.BuildSteerConfigPgn(cfg));
             _udpService.SendToModules(PgnBuilder.BuildSteerSettingsPgn(cfg));
         }
@@ -315,7 +318,7 @@ public class AutoSteerService : IAutoSteerService
         _sensorPercent = sensorData.SensorValue / 255.0 * 100.0;
 
         // Get config for sensor settings
-        var config = ConfigurationStore.Instance.AutoSteer;
+        var config = _configStore.AutoSteer;
 
         // Check pressure sensor trip point (hydraulic kickout)
         if (config.PressureSensorEnabled && config.PressureTripPoint > 0)
@@ -387,14 +390,14 @@ public class AutoSteerService : IAutoSteerService
 
     public void SendMachineConfig()
     {
-        var config = ConfigurationStore.Instance.Machine;
+        var config = _configStore.Machine;
         var pgn = PgnBuilder.BuildMachineConfigPgn(config);
         _udpService.SendToModules(pgn);
     }
 
     public void SendMachinePinConfig()
     {
-        var config = ConfigurationStore.Instance.Machine;
+        var config = _configStore.Machine;
         var pgn = PgnBuilder.BuildMachinePinsPgn(config);
         _udpService.SendToModules(pgn);
     }
@@ -449,7 +452,7 @@ public class AutoSteerService : IAutoSteerService
             // its own parse-timing fields; no BeginNewCycle here because the
             // cycle owns timing now.
             ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
-            if (!NmeaParserServiceFast.ParseIntoState(data, ref _state))
+            if (!NmeaParserServiceFast.ParseIntoState(data, ref _state, _configStore))
             {
                 _parseFailures++;
                 return;
@@ -560,12 +563,12 @@ public class AutoSteerService : IAutoSteerService
     private void UpdateTramState()
     {
         if (_tramLineService != null && _tramLineService.HasTramLines &&
-            ConfigurationStore.Instance.Tram.DisplayMode != Models.Configuration.TramDisplayMode.Off)
+            _configStore.Tram.DisplayMode != Models.Configuration.TramDisplayMode.Off)
         {
             // Use approximate tool position so detection matches implement indicators.
             // Rigid tools sit at Tool.HitchLength (working center); trailing/TBT project
             // from Vehicle.HitchLength (tractor hitch pin) plus the trailing arm.
-            var config = ConfigurationStore.Instance;
+            var config = _configStore;
             double hitchBase = (config.Tool.IsToolFrontFixed || config.Tool.IsToolRearFixed)
                 ? config.Tool.HitchLength
                 : config.Vehicle.HitchLength;
@@ -623,7 +626,7 @@ public class AutoSteerService : IAutoSteerService
         // than 16 sections are configured. PGN 239 still carries sections 1–16;
         // the firmware reconciles the overlap. Below 17 sections, 239 is
         // sufficient and 229 is skipped to keep the bus quiet.
-        if (ConfigurationStore.Instance.NumSections > 16)
+        if (_configStore.NumSections > 16)
         {
             var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
             _udpService.SendToModules(sections64Pgn);

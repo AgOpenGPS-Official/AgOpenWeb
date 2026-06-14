@@ -355,7 +355,7 @@ public partial class MainViewModel
     /// </summary>
     private void CheckAutoDayNight()
     {
-        var display = ConfigurationStore.Instance.Display;
+        var display = _configStore.Display;
         if (!display.AutoDayNight) return;
         
         bool shouldBeDay = false;
@@ -393,7 +393,7 @@ public partial class MainViewModel
     /// active track isn't a closed loop (no U-turns on polygon tracks, #421).
     /// </summary>
     public bool IsUTurnButtonVisible =>
-        IsAutoSteerAvailable && ConfigurationStore.Instance.Display.UTurnButtonVisible
+        IsAutoSteerAvailable && _configStore.Display.UTurnButtonVisible
         && !IsActiveTrackClosed;
 
     /// <summary>
@@ -408,7 +408,7 @@ public partial class MainViewModel
     /// "U-Turn" on-screen-button toggle (<see cref="DisplayConfig.UTurnButtonVisible"/>).
     /// </summary>
     public bool IsUTurnOverlayVisible =>
-        ConfigurationStore.Instance.Display.UTurnButtonVisible && IsManualUTurnVisible;
+        _configStore.Display.UTurnButtonVisible && IsManualUTurnVisible;
 
     /// <summary>
     /// On-map Lateral overlay (the two cyan shift arrows). Shown only while
@@ -417,7 +417,7 @@ public partial class MainViewModel
     /// (<see cref="DisplayConfig.LateralButtonVisible"/>) — previously orphaned.
     /// </summary>
     public bool IsLateralOverlayVisible =>
-        ConfigurationStore.Instance.Display.LateralButtonVisible && IsManualUTurnVisible;
+        _configStore.Display.LateralButtonVisible && IsManualUTurnVisible;
 
     /// <summary>
     /// Notify IsUTurnButtonVisible and the on-map overlay visibilities when their
@@ -442,7 +442,7 @@ public partial class MainViewModel
     {
         get
         {
-            var cfg = ConfigurationStore.Instance.Connections;
+            var cfg = _configStore.Connections;
             var st = State.Connections;
             int configured = 0;
             int present = 0;
@@ -495,12 +495,12 @@ public partial class MainViewModel
     /// </summary>
     public bool IsFieldStatsOnMapVisible
     {
-        get => ConfigurationStore.Instance.Display.FieldStatsOnMapVisible;
+        get => _configStore.Display.FieldStatsOnMapVisible;
         set
         {
-            if (ConfigurationStore.Instance.Display.FieldStatsOnMapVisible != value)
+            if (_configStore.Display.FieldStatsOnMapVisible != value)
             {
-                ConfigurationStore.Instance.Display.FieldStatsOnMapVisible = value;
+                _configStore.Display.FieldStatsOnMapVisible = value;
                 OnPropertyChanged();
                 _settingsService.Save();
             }
@@ -520,12 +520,12 @@ public partial class MainViewModel
     /// </summary>
     public bool IsGpsDetailOverlayVisible
     {
-        get => ConfigurationStore.Instance.Display.GpsDetailOverlayVisible;
+        get => _configStore.Display.GpsDetailOverlayVisible;
         set
         {
-            if (ConfigurationStore.Instance.Display.GpsDetailOverlayVisible != value)
+            if (_configStore.Display.GpsDetailOverlayVisible != value)
             {
-                ConfigurationStore.Instance.Display.GpsDetailOverlayVisible = value;
+                _configStore.Display.GpsDetailOverlayVisible = value;
                 OnPropertyChanged();
                 _settingsService.Save();
             }

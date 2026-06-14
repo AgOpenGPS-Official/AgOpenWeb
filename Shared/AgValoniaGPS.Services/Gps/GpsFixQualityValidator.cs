@@ -25,10 +25,11 @@ public static class GpsFixQualityValidator
     /// Zero means no differential, which passes the age check.</param>
     /// <param name="rejectionReason">Populated with a human-readable reason
     /// when the method returns false; null on success.</param>
+    /// <param name="configStore">Configuration store providing the connection thresholds.</param>
     public static bool IsAcceptable(int fixQuality, double hdop, double differentialAge,
-        out string? rejectionReason)
+        out string? rejectionReason, ConfigurationStore configStore)
     {
-        var config = ConfigurationStore.Instance.Connections;
+        var config = configStore.Connections;
 
         if (fixQuality < config.MinFixQuality)
         {

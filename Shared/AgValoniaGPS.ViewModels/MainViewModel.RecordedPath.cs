@@ -321,7 +321,7 @@ public partial class MainViewModel
             headingRad);
 
         var dubins = new DubinsPathService(0.5);
-        var youTurnRadius = ConfigurationStore.Instance.Guidance.UTurnRadius;
+        var youTurnRadius = _configStore.Guidance.UTurnRadius;
         dubins.TurningRadius = Math.Max(youTurnRadius * 1.2, 5.0);
 
         var dubinsPath = dubins.GeneratePath(start, goal);
@@ -446,14 +446,14 @@ public partial class MainViewModel
             double localX = dxLook * cosH - dyLook * sinH;  // lateral (right+)
             double localY = dxLook * sinH + dyLook * cosH;  // forward
 
-            double wheelbase = Math.Max(ConfigurationStore.Instance.Vehicle.Wheelbase, 2.0);
+            double wheelbase = Math.Max(_configStore.Vehicle.Wheelbase, 2.0);
             double steerAngle;
             if (localY > 0.1)
                 steerAngle = Math.Atan2(2.0 * wheelbase * localX, lookDistSq);
             else
                 steerAngle = localX > 0 ? 0.5 : -0.5;
 
-            double maxSteer = ConfigurationStore.Instance.Vehicle.MaxSteerAngle * Math.PI / 180.0;
+            double maxSteer = _configStore.Vehicle.MaxSteerAngle * Math.PI / 180.0;
             steerAngle = Math.Clamp(steerAngle, -maxSteer, maxSteer);
 
             SimulatorSteerAngle = steerAngle * 180.0 / Math.PI;
@@ -520,14 +520,14 @@ public partial class MainViewModel
             double localY = dxLook * sinH + dyLook * cosH;  // forward
 
             // Pure Pursuit formula: steer = atan(2 * wheelbase * localX / L^2)
-            double wheelbase = Math.Max(ConfigurationStore.Instance.Vehicle.Wheelbase, 2.0);
+            double wheelbase = Math.Max(_configStore.Vehicle.Wheelbase, 2.0);
             double steerAngle;
             if (localY > 0.1)
                 steerAngle = Math.Atan2(2.0 * wheelbase * localX, lookDistSq);
             else
                 steerAngle = localX > 0 ? 0.5 : -0.5; // goal behind, turn toward it
 
-            double maxSteer = ConfigurationStore.Instance.Vehicle.MaxSteerAngle * Math.PI / 180.0;
+            double maxSteer = _configStore.Vehicle.MaxSteerAngle * Math.PI / 180.0;
             steerAngle = Math.Clamp(steerAngle, -maxSteer, maxSteer);
 
             SimulatorSteerAngle = steerAngle * 180.0 / Math.PI;
@@ -603,7 +603,7 @@ public partial class MainViewModel
             headingRad);
 
         var dubins = new DubinsPathService(0.5);
-        var youTurnRadius = ConfigurationStore.Instance.Guidance.UTurnRadius;
+        var youTurnRadius = _configStore.Guidance.UTurnRadius;
         dubins.TurningRadius = Math.Max(youTurnRadius * 1.2, 5.0);
 
         var dubinsPath = dubins.GeneratePath(start, goal);

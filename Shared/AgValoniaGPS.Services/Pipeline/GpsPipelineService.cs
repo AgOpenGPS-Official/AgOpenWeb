@@ -62,6 +62,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IGpsHeadingFusionService _headingFusion;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
+    private readonly ConfigurationStore _configStore;
 
     // ── Events ──────────────────────────────────────────────────────────
     public event Action<GpsCycleResult>? CycleCompleted;
@@ -195,6 +196,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         IGpsHeadingFusionService headingFusion,
         ILogger<GpsPipelineService> logger,
         ApplicationState appState,
+        ConfigurationStore configStore,
         IPositionEstimator? positionEstimator = null)
     {
         _gpsService = gpsService;
@@ -210,6 +212,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _headingFusion = headingFusion;
         _logger = logger;
         _appState = appState;
+        _configStore = configStore;
         _positionEstimator = positionEstimator;
     }
 
@@ -391,7 +394,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         long perfT0 = perfGps ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perfGps ? GC.GetAllocatedBytesForCurrentThread() : 0;
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
 
         // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
         // Phase C consumes ManualYouTurn + ClearYouTurn here; Phase D extends
@@ -461,7 +464,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // data.IsValid or result.FixQuality.
         string? fixRejectionReason = null;
         if (!GpsFixQualityValidator.IsAcceptable(
-                data.FixQuality, data.Hdop, data.DifferentialAge, out fixRejectionReason))
+                data.FixQuality, data.Hdop, data.DifferentialAge, out fixRejectionReason, _configStore))
         {
             data.IsValid = false;
         }
@@ -637,7 +640,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             ref posEasting,
             ref posNorthing,
             pos.Heading * Math.PI / 180.0,
-            ConfigurationStore.Instance.Vehicle,
+            _configStore.Vehicle,
             data.ImuRoll);
 
         // ── (2) Apply drift compensation ────────────────────────────────
@@ -819,7 +822,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Always compute the display track when we have a track (for map visualization)
         if (hasTrack)
         {
-            var config2 = ConfigurationStore.Instance;
+            var config2 = _configStore;
             double widthMinusOverlap = config2.ActualToolWidth - config2.Tool.Overlap;
             double distAway = widthMinusOverlap * passNumber + nudgeOffset;
 
@@ -927,7 +930,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // onto the reference line instead of the raw pivot. Produces the "track jumps
             // ahead of the tractor" behavior operators expect in free-drive.
             double lookDist = Math.Max(
-                ConfigurationStore.Instance.ActualToolWidth * 0.5,
+                _configStore.ActualToolWidth * 0.5,
                 pos.Speed * GuidanceLookAheadSeconds);
             double hRad = pos.Heading * Math.PI / 180.0;
             double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
@@ -1199,7 +1202,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             double driftedEasting, double driftedNorthing, double headingRad,
             bool isYouTurnTriggered)
     {
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
 
         // Calculate dynamic look-ahead
         double speedKmh = currentPosition.Speed * 3.6;
@@ -1342,7 +1345,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double pivotEasting, double pivotNorthing,
         double sampleEasting, double sampleNorthing)
     {
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         if (widthMinusOverlap < 0.1) widthMinusOverlap = 1.0;
 
@@ -1419,7 +1422,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         if (turnPath.Count == 0) return null;
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         double headingRad = currentPosition.Heading * Math.PI / 180.0;
         double speedKmh = currentPosition.Speed * 3.6;
 
@@ -1578,7 +1581,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // relevant config values change. Called only from the cycle worker thread.
     private (List<Vec3>? Line, double Inset) GetOrComputeSyntheticHeadland(Boundary boundary)
     {
-        var guidanceConfig = ConfigurationStore.Instance.Guidance;
+        var guidanceConfig = _configStore.Guidance;
         double turnRadius = guidanceConfig.UTurnRadius;
         double distFromBoundary = guidanceConfig.UTurnDistanceFromBoundary;
         double inset = turnRadius + distFromBoundary;
@@ -1646,7 +1649,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// </summary>
     private byte ComputeHydLiftState(Vec3 toolPosition, double speed, List<Vec3>? headlandLine)
     {
-        var machine = ConfigurationStore.Instance.Machine;
+        var machine = _configStore.Machine;
         if (!machine.HydraulicLiftEnabled) return 0;
 
         // Don't operate at very low speed or in reverse

@@ -20,7 +20,14 @@ namespace AgValoniaGPS.Services.Gps;
 /// </summary>
 public class GpsHeadingFusionService : IGpsHeadingFusionService
 {
-    private static ConnectionConfig Connections => ConfigurationStore.Instance.Connections;
+    private readonly ConfigurationStore _configStore;
+
+    public GpsHeadingFusionService(ConfigurationStore configStore)
+    {
+        _configStore = configStore;
+    }
+
+    private ConnectionConfig Connections => _configStore.Connections;
 
     private double _previousEasting;
     private double _previousNorthing;

@@ -44,9 +44,9 @@ public class ClosedLoopEntryTests
         c.Guidance.UTurnStyle = 2;
 
         var offset = new PolygonOffsetService();
-        var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset);
-        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance);
-        var sm = new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance);
+        var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c);
+        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c);
+        var sm = new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, c);
         var guidance = new YouTurnGuidanceService();
         var trackGuidance = new AgValoniaGPS.Services.Track.TrackGuidanceService();
 

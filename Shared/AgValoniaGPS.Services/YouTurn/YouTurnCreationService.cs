@@ -39,13 +39,16 @@ namespace AgValoniaGPS.Services.YouTurn
         private readonly DubinsPathService _dubinsService = new DubinsPathService(1.0);
         private readonly ILogger<YouTurnCreationService> _logger;
         private readonly IPolygonOffsetService _polygonOffsetService;
+        private readonly AgValoniaGPS.Models.Configuration.ConfigurationStore _configStore;
 
         public YouTurnCreationService(
             ILogger<YouTurnCreationService> logger,
-            IPolygonOffsetService polygonOffsetService)
+            IPolygonOffsetService polygonOffsetService,
+            AgValoniaGPS.Models.Configuration.ConfigurationStore configStore)
         {
             _logger = logger;
             _polygonOffsetService = polygonOffsetService;
+            _configStore = configStore;
         }
 
         // Current input being processed (for helper methods)

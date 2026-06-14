@@ -307,7 +307,8 @@ public class NmeaParserServiceFast
     /// <param name="state">VehicleState struct to populate (passed by ref)</param>
     /// <returns>True if parsed successfully</returns>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static bool ParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state)
+    public static bool ParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
+        Models.Configuration.ConfigurationStore configStore)
     {
         state.MarkParseStart();
 
@@ -337,7 +338,7 @@ public class NmeaParserServiceFast
         else return false;
 
         // Parse directly into state
-        if (!ParsePandaFieldsIntoState(data.Slice(0, asterisk), ref state, isPanda))
+        if (!ParsePandaFieldsIntoState(data.Slice(0, asterisk), ref state, isPanda, configStore))
             return false;
 
         state.MarkParseEnd();
@@ -351,7 +352,8 @@ public class NmeaParserServiceFast
     /// heading; PAOGI sends them as floats with no scaling.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static bool ParsePandaFieldsIntoState(ReadOnlySpan<byte> data, ref VehicleState state, bool isPanda)
+    private static bool ParsePandaFieldsIntoState(ReadOnlySpan<byte> data, ref VehicleState state, bool isPanda,
+        Models.Configuration.ConfigurationStore configStore)
     {
         // Find all comma positions (up to 20 fields)
         Span<int> commas = stackalloc int[20];
@@ -470,7 +472,7 @@ public class NmeaParserServiceFast
                 && Utf8Parser.TryParse(rollField, out int rawRoll, out _))
             {
                 state.Roll = rawRoll * 0.1;
-                ApplyAhrsRollCalibration(ref state.Roll);
+                ApplyAhrsRollCalibration(ref state.Roll, configStore);
             }
             else
             {
@@ -496,7 +498,7 @@ public class NmeaParserServiceFast
             if (rollField.Length > 0)
             {
                 Utf8Parser.TryParse(rollField, out state.Roll, out _);
-                ApplyAhrsRollCalibration(ref state.Roll);
+                ApplyAhrsRollCalibration(ref state.Roll, configStore);
             }
             else
             {
@@ -572,9 +574,9 @@ public class NmeaParserServiceFast
     /// raw uncalibrated IMU roll, and the operator's "Zero Roll" tap in
     /// the Roll-calibration wizard step has no effect on live readings.
     /// </summary>
-    private static void ApplyAhrsRollCalibration(ref double roll)
+    private static void ApplyAhrsRollCalibration(ref double roll, Models.Configuration.ConfigurationStore configStore)
     {
-        var ahrs = Models.Configuration.ConfigurationStore.Instance.Ahrs;
+        var ahrs = configStore.Ahrs;
         if (ahrs.IsRollInvert) roll = -roll;
         roll -= ahrs.RollZero;
     }

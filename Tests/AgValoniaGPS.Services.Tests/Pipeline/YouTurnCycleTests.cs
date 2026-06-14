@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Pipeline;
 using AgValoniaGPS.Services.Interfaces;
 using AgValoniaGPS.Services.Pipeline;
@@ -168,9 +169,9 @@ public class YouTurnCycleTests
     {
         var polygonOffset = Substitute.For<Services.Geometry.IPolygonOffsetService>();
         var creation = new YouTurnCreationService(
-            NullLogger<YouTurnCreationService>.Instance, polygonOffset);
-        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance);
-        return new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance);
+            NullLogger<YouTurnCreationService>.Instance, polygonOffset, ConfigurationStore.Instance);
+        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, ConfigurationStore.Instance);
+        return new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, ConfigurationStore.Instance);
     }
 
     private static YouTurnStateMachine.TickContext BuildTickContext()

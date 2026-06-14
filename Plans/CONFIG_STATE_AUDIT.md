@@ -282,13 +282,32 @@ consumer was an Avalonia View on a real UI thread, so `Dispatcher.UIThread` was 
 and an abstraction would have had exactly one implementation. Defensible YAGNI; the web UI is the
 forcing function that makes it earn its keep.
 
-### 11.2 Sibling: static store access (optional, same pass)
-The same "ambient, not injected" smell applies to `ConfigurationStore.Instance` and
+### 11.2 Sibling: static store access ✅ DONE
+The same "ambient, not injected" smell applied to `ConfigurationStore.Instance` and
 `ApplicationState.Instance`, read statically across services and VMs (also flagged in
 `ARCHITECTURE.md`). The storage audit (§1–§10) made these the enforced SoT but left them as
-**statics**. De-static-ing them (inject the store instances) is the natural companion to §11.1 and
-would complete the "de-ambient the VM" pass — but it's larger blast-radius and can be sequenced
-separately. Keep §11.1 as the committed first step.
+**statics**. Resolved on `audit/de-static-configstore` (v26.5.48):
+
+- **`ConfigurationStore`** is now registered in DI on all 3 platforms
+  (`services.AddSingleton(_ => ConfigurationStore.Instance)` — DI-resolved instance ≡ `.Instance`,
+  one object) and **injected via constructor** into all 26 Services/ViewModels that previously grabbed
+  the static (`MainViewModel` + 8 partials via a `_configStore` field behind the existing
+  `ConfigStore`/`Vehicle`/`Tool`/`Guidance` accessors; 18 service classes). A few static helpers that
+  could not hold a field got a trailing `ConfigurationStore` parameter
+  (`NmeaParserServiceFast.ParseIntoState`, `GpsFixQualityValidator.IsAcceptable`,
+  `DebugDumpService.CreateDump`); `AudioServiceBase` threads it through the 3 platform subclass ctors.
+- **Reset-settings hot-swap removed.** "Reset All Settings" used to call
+  `ConfigurationStore.SetInstance(new ConfigurationStore())` — *replacing the object*, which would
+  strand every injected reference. It now resets **in place**: `ResetToDefaults()` → `Save()` →
+  `LoadAppSettings()` reapplies the default DTO into the *same* store instance (identity + PropertyChanged
+  subscriptions preserved). This is the correct model regardless of injection.
+- **`ApplicationState`** was already injected in production (the VM takes it via ctor); its `.Instance`
+  survived only in tests, so no production change was needed.
+- The static `Instance`/`SetInstance` accessors remain **only** as the seam for framework-instantiated
+  Avalonia Views (the XAML loader news them up outside DI — 7 View files keep reading the shared
+  singleton) and for test setup. A new guard test `NoAmbientStoreAccessTests` source-scans
+  `Shared/AgValoniaGPS.{Services,ViewModels}` and fails CI if `ConfigurationStore.Instance` /
+  `ApplicationState.Instance` regrows in business logic. 1502 tests green.
 
 ### 11.3 Injectable `ITimer` / scheduler (the remaining headless blocker)
 The same axis again — an ambient Avalonia type instantiated *inside* the VM, this time
@@ -316,7 +335,9 @@ stands as a standalone follow-up.
 
 **Status:**
 - §11.1 `IUiDispatcher` — **DONE**, merged to `develop` (PR #470, 2026-06-14).
-- §11.2 static store de-static-ing — scoped, not scheduled (larger blast-radius).
+- §11.2 static store de-static-ing — **DONE** (`audit/de-static-configstore`, v26.5.48). `ConfigurationStore`
+  registered in DI + injected into all 26 Services/VMs; reset-settings hot-swap replaced with in-place
+  reload; static `Instance` kept only as the View + test seam, guarded by `NoAmbientStoreAccessTests`.
 - §11.3 `ITimer`/scheduler — **DONE** (PR #471). `IUiTimer` + `IUiTimerFactory`
   (Services); impls: `AvaloniaUiTimer` (Views, wraps `DispatcherTimer` — the 3
   platforms), `ManualUiTimer` (tests, framework-free, non-firing), `ThreadingUiTimer`
@@ -326,8 +347,9 @@ stands as a standalone follow-up.
 
 With §11.1 + §11.3 done, the VM no longer instantiates **any** Avalonia type at
 runtime that a headless boot would trip on (dispatcher + timers both abstracted).
-§11.2 (de-static `ConfigurationStore.Instance` / `ApplicationState.Instance`)
-remains the only open de-ambient item, and it's not a headless blocker.
+With §11.2 done, the business logic no longer reaches for the ambient store
+singletons either — **§11 is complete**. The remaining `ConfigurationStore.Instance`
+uses live only in framework-instantiated Views and test setup (the sanctioned seam).
 
 All surfaced by the remote/web-UI Phase 0 spike + retest.
 

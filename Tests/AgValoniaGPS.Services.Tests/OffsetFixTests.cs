@@ -109,7 +109,8 @@ public class OffsetFixTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             Substitute.For<IGpsService>(),
-            new AgValoniaGPS.Models.State.ApplicationState());
+            new AgValoniaGPS.Models.State.ApplicationState(),
+            AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         autoSteer.SetDriftCompensation(5.0, -10.0);
 
@@ -122,7 +123,7 @@ public class OffsetFixTests
     public void ToolPositionService_FollowsVehicle()
     {
         // Verify that tool position is relative to vehicle
-        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService(AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         // Configure a rear-fixed hitch at 2m behind
         var config = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance;
@@ -159,7 +160,7 @@ public class OffsetFixTests
         config.Tool.IsToolFrontFixed = false;
         config.Tool.IsToolTBT = false;
 
-        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService(AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         // Drive normally for 60 frames to establish trailing
         for (int i = 0; i < 60; i++)
@@ -205,7 +206,7 @@ public class OffsetFixTests
         config.Tool.IsToolFrontFixed = false;
         config.Tool.IsToolTBT = false;
 
-        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService(AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         // Vehicle at origin heading north (0 rad)
         var pos = new AgValoniaGPS.Models.Base.Vec3(100, 200, 0);
@@ -237,7 +238,7 @@ public class OffsetFixTests
         config.Tool.IsToolFrontFixed = false;
         config.Tool.IsToolTBT = false;
 
-        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService(AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         // Drive north to establish trailing
         for (int i = 0; i < 60; i++)
@@ -275,7 +276,7 @@ public class OffsetFixTests
         config.Tool.IsToolFrontFixed = false;
         config.Tool.IsToolTBT = false;
 
-        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService(AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         // Drive straight north for 60 frames at 1m/frame (36 km/h at 10Hz)
         for (int i = 0; i < 60; i++)

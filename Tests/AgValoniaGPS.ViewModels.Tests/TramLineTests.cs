@@ -22,7 +22,7 @@ public class TramLineTests
     {
         var offsetService = new TramLineOffsetService();
         var logger = NullLogger<TramLineService>.Instance;
-        _service = new TramLineService(offsetService, logger);
+        _service = new TramLineService(offsetService, logger, ConfigurationStore.Instance);
 
         // Set up config for tests
         var config = ConfigurationStore.Instance;
@@ -311,7 +311,7 @@ public class TramLineTests
             // Create new service and load
             var offsetService2 = new TramLineOffsetService();
             var logger2 = NullLogger<TramLineService>.Instance;
-            var service2 = new TramLineService(offsetService2, logger2);
+            var service2 = new TramLineService(offsetService2, logger2, ConfigurationStore.Instance);
 
             service2.LoadFromFile(tempDir);
 

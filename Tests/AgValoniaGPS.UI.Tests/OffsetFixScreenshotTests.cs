@@ -40,7 +40,8 @@ public class OffsetFixScreenshotTests
         config.Tool.IsToolTBT = false;
         config.Tool.Width = 6.0;
 
-        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolService = new AgValoniaGPS.Services.Tool.ToolPositionService(
+            AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance);
 
         var mapControl = new SkiaMapControl
         {

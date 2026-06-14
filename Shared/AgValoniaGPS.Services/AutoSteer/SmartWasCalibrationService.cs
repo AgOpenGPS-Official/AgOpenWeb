@@ -56,6 +56,7 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
 
     private readonly IAutoSteerService _autoSteerService;
     private readonly ApplicationState _appState;
+    private readonly ConfigurationStore _configStore;
 
     private readonly List<double> _history = new(MAX_SAMPLES + 1);
     private readonly object _dataLock = new();
@@ -68,10 +69,11 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
     private bool _hasValidCalibration;
     private bool _isCollecting;
 
-    public SmartWasCalibrationService(IAutoSteerService autoSteerService, ApplicationState appState)
+    public SmartWasCalibrationService(IAutoSteerService autoSteerService, ApplicationState appState, ConfigurationStore configStore)
     {
         _autoSteerService = autoSteerService;
         _appState = appState;
+        _configStore = configStore;
     }
 
     public bool IsCollecting => _isCollecting;
@@ -125,7 +127,7 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
 
         // WAS inversion: flip the sample sign so the recommended offset
         // direction matches the module's expected counts polarity.
-        if (ConfigurationStore.Instance.AutoSteer.InvertWas)
+        if (_configStore.AutoSteer.InvertWas)
             steerAngleDegrees = -steerAngleDegrees;
 
         SmartWasSnapshot snap;

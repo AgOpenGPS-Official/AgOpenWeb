@@ -34,7 +34,7 @@ public class AutoSteerControlTickTests
         _udp = Substitute.For<IUdpCommunicationService>();
         var gps = new GpsService();
         gps.Start();
-        _autoSteer = new AutoSteerService(new TrackGuidanceService(), _udp, gps, appState);
+        _autoSteer = new AutoSteerService(new TrackGuidanceService(), _udp, gps, appState, ConfigurationStore.Instance);
         _autoSteer.Start();
 
         // AutoSteerService now emits a baseline PGN 251 + PGN 252 pair on

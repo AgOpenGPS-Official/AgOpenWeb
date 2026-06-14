@@ -38,7 +38,7 @@ public class ResetAllSettingsTests
     }
 
     [Test]
-    public void ResetCommand_WhenConfirmed_ResetsConfigurationStore()
+    public void ResetCommand_WhenConfirmed_ReloadsStoreInPlace()
     {
         var original = ConfigurationStore.Instance;
         var vm = new MainViewModelBuilder().Build();
@@ -46,8 +46,11 @@ public class ResetAllSettingsTests
         vm.ResetAllSettingsCommand!.Execute(null);
         vm.ConfirmConfirmationDialogCommand!.Execute(null);
 
-        // ConfigurationStore.Instance should be a fresh instance
-        Assert.That(ConfigurationStore.Instance, Is.Not.SameAs(original));
+        // §11.2: reset is IN PLACE — the store object identity is preserved
+        // (every service/VM now holds an injected reference to it), and defaults
+        // are re-applied via ResetToDefaults + Save + LoadAppSettings rather than
+        // swapping the singleton out from under those injected references.
+        Assert.That(ConfigurationStore.Instance, Is.SameAs(original));
     }
 
     [Test]

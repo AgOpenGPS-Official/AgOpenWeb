@@ -81,6 +81,13 @@ public class ToolPositionService : IToolPositionService
     // construction.
     private readonly object _writeLock = new();
 
+    private readonly ConfigurationStore _configStore;
+
+    public ToolPositionService(ConfigurationStore configStore)
+    {
+        _configStore = configStore;
+    }
+
     public Vec3 ToolPosition => Volatile.Read(ref _snapshot).ToolPosition;
     public Vec3 ToolPivotPosition => Volatile.Read(ref _snapshot).ToolPivotPosition;
     public double ToolHeading => Volatile.Read(ref _snapshot).ToolHeading;
@@ -105,8 +112,8 @@ public class ToolPositionService : IToolPositionService
     {
         lock (_writeLock)
         {
-            var tool = ConfigurationStore.Instance.Tool;
-            var vehicle = ConfigurationStore.Instance.Vehicle;
+            var tool = _configStore.Tool;
+            var vehicle = _configStore.Vehicle;
 
             // Calculate hitch point on vehicle.
             // Two distinct measurements feed this, chosen by tool type:
@@ -407,7 +414,7 @@ public class ToolPositionService : IToolPositionService
 
     public (Vec3 left, Vec3 right) GetToolEdgePositions()
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         double halfWidth = tool.Width / 2.0;
 
         return GetSectionEdgePositions(-halfWidth, halfWidth);
@@ -454,8 +461,8 @@ public class ToolPositionService : IToolPositionService
         {
             _startCounter = STARTUP_FRAMES - 5; // Brief snap period (5 frames) then resume trailing
 
-            var tool = ConfigurationStore.Instance.Tool;
-            var vehicle = ConfigurationStore.Instance.Vehicle;
+            var tool = _configStore.Tool;
+            var vehicle = _configStore.Vehicle;
 
             // Calculate hitch position - must match Update() sign convention and
             // tool-type hitch reference: rigid tools use Tool.HitchLength (working

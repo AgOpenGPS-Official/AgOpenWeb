@@ -40,7 +40,8 @@ public class ConfigurationServiceMappingTests
         _service = new ConfigurationService(
             Substitute.For<IVehicleProfileService>(),
             Substitute.For<IToolProfileService>(),
-            _settingsService);
+            _settingsService,
+            ConfigurationStore.Instance);
     }
 
     // ── Representative round-trips ────────────────────────────────────────
