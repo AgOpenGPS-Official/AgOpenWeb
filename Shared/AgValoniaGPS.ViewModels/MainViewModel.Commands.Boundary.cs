@@ -37,10 +37,10 @@ public partial class MainViewModel
         // Boundary Map Dialog Commands (satellite map boundary drawing)
         ShowBoundaryMapDialogCommand = new RelayCommand(() =>
         {
-            if (_fieldOriginLatitude != 0 || _fieldOriginLongitude != 0)
+            if (State.Field.OriginLatitude != 0 || State.Field.OriginLongitude != 0)
             {
-                BoundaryMapCenterLatitude = _fieldOriginLatitude;
-                BoundaryMapCenterLongitude = _fieldOriginLongitude;
+                BoundaryMapCenterLatitude = State.Field.OriginLatitude;
+                BoundaryMapCenterLongitude = State.Field.OriginLongitude;
             }
             else if (Latitude != 0 || Longitude != 0)
             {
@@ -74,8 +74,8 @@ public partial class MainViewModel
                     // Use the EXISTING field origin for LocalPlane conversion - do NOT change it!
                     // The field origin is set when the field is created and should remain constant.
                     // Changing it would break all local coordinate systems.
-                    var originLat = _fieldOriginLatitude;
-                    var originLon = _fieldOriginLongitude;
+                    var originLat = State.Field.OriginLatitude;
+                    var originLon = State.Field.OriginLongitude;
 
                     _logger.LogDebug($"[BoundaryMap] Using existing field origin: ({originLat:F8}, {originLon:F8})");
                     _logger.LogDebug($"[BoundaryMap] Current simulator position: ({Latitude:F8}, {Longitude:F8})");

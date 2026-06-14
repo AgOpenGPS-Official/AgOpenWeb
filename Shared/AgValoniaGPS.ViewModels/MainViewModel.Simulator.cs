@@ -70,11 +70,11 @@ public partial class MainViewModel
             var sharedProps = new AgValoniaGPS.Models.SharedFieldProperties();
             AgValoniaGPS.Models.Wgs84 origin;
 
-            if (_fieldOriginLatitude != 0 && _fieldOriginLongitude != 0)
+            if (State.Field.OriginLatitude != 0 && State.Field.OriginLongitude != 0)
             {
                 // Use field origin so coordinates match the field's boundary/track data
-                origin = new AgValoniaGPS.Models.Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
-                _logger.LogDebug("[Simulator] Using field origin: {FieldOriginLatitude}, {FieldOriginLongitude}", _fieldOriginLatitude, _fieldOriginLongitude);
+                origin = new AgValoniaGPS.Models.Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
+                _logger.LogDebug("[Simulator] Using field origin: {FieldOriginLatitude}, {FieldOriginLongitude}", State.Field.OriginLatitude, State.Field.OriginLongitude);
             }
             else
             {

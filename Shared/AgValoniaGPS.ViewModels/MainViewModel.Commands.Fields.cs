@@ -585,7 +585,7 @@ public partial class MainViewModel
                 _persistentStateService.Save();
 
                 RefreshBoundaryList();
-                SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
+                SetSimulatorCoordinates(State.Field.OriginLatitude, State.Field.OriginLongitude);
 
                 State.UI.CloseDialog();
                 IsFieldOperationsPanelVisible = false;

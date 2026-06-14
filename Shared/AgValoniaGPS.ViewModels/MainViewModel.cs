@@ -123,18 +123,12 @@ public partial class MainViewModel : ObservableObject
     private static ToolConfig Tool => ConfigurationStore.Instance.Tool;
     private static GuidanceConfig Guidance => ConfigurationStore.Instance.Guidance;
 
-    // Current field origin (for map centering when GPS not active)
-    private double _fieldOriginLatitude;
-    private double _fieldOriginLongitude;
-
     /// <summary>
-    /// Sets the field origin and propagates it into centralized FieldState so
-    /// non-ViewModel consumers (map control, services) can read the LocalPlane.
+    /// Sets the field origin in centralized FieldState — the single home (§12.1) —
+    /// so all consumers (VM, map control, services) read State.Field.Origin*.
     /// </summary>
     private void SetFieldOrigin(double latitude, double longitude)
     {
-        _fieldOriginLatitude = latitude;
-        _fieldOriginLongitude = longitude;
         _simulatorLocalPlane = null;
 
         State.Field.OriginLatitude = latitude;
@@ -1547,13 +1541,13 @@ public partial class MainViewModel : ObservableObject
                 if (fieldInfo.Origin != null)
                 {
                     SetFieldOrigin(fieldInfo.Origin.Latitude, fieldInfo.Origin.Longitude);
-                    _logger.LogDebug($"[Field] Set origin: {_fieldOriginLatitude}, {_fieldOriginLongitude}");
+                    _logger.LogDebug($"[Field] Set origin: {State.Field.OriginLatitude}, {State.Field.OriginLongitude}");
                     // Only reposition the simulator if the field has a real (non-zero)
                     // georeference. Fields that were never georeferenced persist an
                     // origin of (0, 0), which otherwise clobbers the user's
                     // simulator coords (saved to appsettings on window close).
-                    if (_fieldOriginLatitude != 0 || _fieldOriginLongitude != 0)
-                        SetSimulatorCoordinates(_fieldOriginLatitude, _fieldOriginLongitude);
+                    if (State.Field.OriginLatitude != 0 || State.Field.OriginLongitude != 0)
+                        SetSimulatorCoordinates(State.Field.OriginLatitude, State.Field.OriginLongitude);
                 }
             }
             catch (Exception ex)
@@ -1592,8 +1586,8 @@ public partial class MainViewModel : ObservableObject
                 Boundary = boundary,
                 Origin = new Position
                 {
-                    Latitude = _fieldOriginLatitude,
-                    Longitude = _fieldOriginLongitude,
+                    Latitude = State.Field.OriginLatitude,
+                    Longitude = State.Field.OriginLongitude,
                 }
             };
 
@@ -4006,11 +4000,11 @@ public partial class MainViewModel : ObservableObject
 
             // Use field origin for LocalPlane (same origin used for boundary coordinates)
             // This ensures the background image aligns with the boundary
-            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
             var localPlane = new LocalPlane(origin, sharedProps);
 
-            _logger.LogDebug($"[LoadBG] Field origin from ViewModel: ({_fieldOriginLatitude:F8}, {_fieldOriginLongitude:F8})");
+            _logger.LogDebug($"[LoadBG] Field origin from ViewModel: ({State.Field.OriginLatitude:F8}, {State.Field.OriginLongitude:F8})");
             _logger.LogDebug($"[LoadBG] LocalPlane origin: ({localPlane.Origin.Latitude:F8}, {localPlane.Origin.Longitude:F8})");
             _logger.LogDebug($"[LoadBG] WGS84 bounds: NW=({nwLat:F8}, {nwLon:F8}), SE=({seLat:F8}, {seLon:F8})");
 
@@ -4023,7 +4017,7 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug($"[LoadBG] Local bounds: NW=({nwLocal.Easting:F2}, {nwLocal.Northing:F2}), SE=({seLocal.Easting:F2}, {seLocal.Northing:F2})");
 
             // Verify field origin converts to (0,0) in local coords
-            var originWgs = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var originWgs = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var originLocal = localPlane.ConvertWgs84ToGeoCoord(originWgs);
             _logger.LogDebug($"[LoadBG] Field origin in local coords (should be ~0,0): ({originLocal.Easting:F2}, {originLocal.Northing:F2})");
 
@@ -4033,7 +4027,7 @@ public partial class MainViewModel : ObservableObject
                 _mapService.SetBackgroundImageWithMercator(backPicPath,
                     nwLocal.Easting, nwLocal.Northing, seLocal.Easting, seLocal.Northing,
                     mercMinX, mercMaxX, mercMinY, mercMaxY,
-                    _fieldOriginLatitude, _fieldOriginLongitude);
+                    State.Field.OriginLatitude, State.Field.OriginLongitude);
             }
             else
             {
@@ -4516,12 +4510,12 @@ public partial class MainViewModel : ObservableObject
     {
         BoundaryMapExistingPolygons.Clear();
 
-        if (_currentBoundary == null || (_fieldOriginLatitude == 0 && _fieldOriginLongitude == 0))
+        if (_currentBoundary == null || (State.Field.OriginLatitude == 0 && State.Field.OriginLongitude == 0))
             return;
 
         try
         {
-            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
             var localPlane = new LocalPlane(origin, sharedProps);
 
@@ -4573,7 +4567,7 @@ public partial class MainViewModel : ObservableObject
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
             var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
 
-            var origin = new Wgs84(_fieldOriginLatitude, _fieldOriginLongitude);
+            var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
             var localPlane = new LocalPlane(origin, sharedProps);
 
