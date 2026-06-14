@@ -39,8 +39,8 @@ namespace AgValoniaGPS.Models.State;
 /// <list type="table">
 ///   <listheader><term>Property</term><description>Written by</description></listheader>
 ///   <item><term>ActiveField / FieldsRootDirectory</term>            <description>UI — field open/close commands</description></item>
-///   <item><term>Boundaries / CurrentBoundary</term>                 <description>UI — boundary load/edit commands</description></item>
-///   <item><term>Tracks / ActiveTrack / SelectedTrack</term>         <description>UI — track load + selection</description></item>
+///   <item><term>CurrentBoundary</term>                              <description>UI — boundary load/edit commands</description></item>
+///   <item><term>Tracks / ActiveTrack</term>                         <description>UI — track load + selection</description></item>
 ///   <item><term>HeadlandLine / HeadlandDistance</term>              <description>UI — headland load/build commands</description></item>
 ///   <item><term>HeadlandProximityDistance / …Warning</term>         <description>UI mirror of cycle output in <c>ApplyGpsCycleResult</c></description></item>
 ///   <item><term>OriginLatitude / OriginLongitude</term>             <description>UI — <c>SetFieldOrigin</c></description></item>
@@ -79,17 +79,14 @@ public class FieldState : ObservableObject
         set => SetProperty(ref _fieldsRootDirectory, value);
     }
 
-    // Boundaries
-    public ObservableCollection<Boundary> Boundaries { get; } = new();
-
+    // Boundary — the field's active boundary. Services (guidance, section
+    // control) read this directly; it is the runtime SoT (CONFIG_STATE_AUDIT §12.1).
     private Boundary? _currentBoundary;
     public Boundary? CurrentBoundary
     {
         get => _currentBoundary;
         set => SetProperty(ref _currentBoundary, value);
     }
-
-    public bool HasBoundary => Boundaries.Count > 0;
 
     // Tracks (unified Track model)
     public ObservableCollection<Track.Track> Tracks { get; } = new();
@@ -99,13 +96,6 @@ public class FieldState : ObservableObject
     {
         get => _activeTrack;
         set => SetProperty(ref _activeTrack, value);
-    }
-
-    private Track.Track? _selectedTrack;
-    public Track.Track? SelectedTrack
-    {
-        get => _selectedTrack;
-        set => SetProperty(ref _selectedTrack, value);
     }
 
     public bool HasActiveTrack => ActiveTrack != null;
@@ -193,11 +183,9 @@ public class FieldState : ObservableObject
     public void Reset()
     {
         ActiveField = null;
-        Boundaries.Clear();
         CurrentBoundary = null;
         Tracks.Clear();
         ActiveTrack = null;
-        SelectedTrack = null;
         HeadlandLine = null;
         HeadlandDistance = 0;
         HeadlandProximityDistance = null;
