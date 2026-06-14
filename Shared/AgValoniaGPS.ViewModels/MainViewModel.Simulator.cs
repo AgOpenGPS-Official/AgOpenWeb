@@ -143,9 +143,6 @@ public partial class MainViewModel
 
             if (SetProperty(ref _isSimulatorEnabled, value))
             {
-                // Update centralized state
-                State.Simulator.IsEnabled = value;
-
                 // Persist the "simulator is the GPS source" preference through
                 // the store (config), not by writing the DTO directly.
                 ConfigStore.Simulator.Enabled = value;
@@ -159,13 +156,11 @@ public partial class MainViewModel
                         PersistentState.SimulatorLatitude,
                         PersistentState.SimulatorLongitude));
 
-                    State.Simulator.IsRunning = true;
                     _simulatorTimer.Start();
                     StatusMessage = $"Simulator ON at {PersistentState.SimulatorLatitude:F8}, {PersistentState.SimulatorLongitude:F8}";
                 }
                 else
                 {
-                    State.Simulator.IsRunning = false;
                     _simulatorTimer.Stop();
                     StatusMessage = "Simulator OFF";
                 }
@@ -179,7 +174,6 @@ public partial class MainViewModel
         set
         {
             SetProperty(ref _simulatorSteerAngle, value);
-            State.Simulator.SteerAngle = value;
             PersistentState.SimulatorSteerAngle = value; // persisted on close
             OnPropertyChanged(nameof(SimulatorSteerAngleDisplay)); // Notify display property
             if (_isSimulatorEnabled)
@@ -224,8 +218,6 @@ public partial class MainViewModel
     private void UpdateSimulatorSpeed()
     {
         double effectiveSpeed = _isSimulatorSpeed10x ? _simulatorSpeedKph * 10 : _simulatorSpeedKph;
-        State.Simulator.Speed = effectiveSpeed;
-        State.Simulator.TargetSpeed = effectiveSpeed;
         PersistentState.SimulatorSpeed = effectiveSpeed; // persisted on close
         OnPropertyChanged(nameof(SimulatorSpeedDisplay));
         if (_isSimulatorEnabled)
