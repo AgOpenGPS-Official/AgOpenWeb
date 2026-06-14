@@ -330,3 +330,73 @@ runtime that a headless boot would trip on (dispatcher + timers both abstracted)
 remains the only open de-ambient item, and it's not a headless blocker.
 
 All surfaced by the remote/web-UI Phase 0 spike + retest.
+
+---
+
+## 12. Runtime field-geometry/selection SoT — NOT covered by §1–§10 (added 2026-06-14)
+
+**Different axis again.** §1–§10 audited *config & persisted* values; §11 audited *ambient
+framework coupling*. This section is the gap both missed: **runtime domain state** (the field's
+boundary, headland, origin, tracks, active/selected track, section/recording readouts). The
+audit's own §2 Rule — *"read from the central store at point of use; never keep a local copy"* —
+was enforced for config but **never for runtime state**, so the same datum is copied across up to
+three layers:
+
+- **Layer 1 — the `Field` model (`ActiveField`):** the persisted form (`Boundary`, `Origin`, `Name`).
+- **Layer 2 — `ApplicationState` sub-states (`FieldState`, `GuidanceState`, …):** the service-read form.
+- **Layer 3 — `MainViewModel` private fields:** a UI-bindable copy (`_currentBoundary`, `_currentHeadlandLine`, …).
+
+This is why every remote/web-UI projection of a datum was a guessing game (it cost two debugging
+detours on the web client). Findings below are **grep-verified** (Explore sweep + manual confirm).
+
+### 12.1 Field-geometry/selection cluster — collapse to one canonical home
+
+| Datum | Homes (file) | Canonical (services read) | Action |
+|---|---|---|---|
+| **Boundary** | `Field.Boundary` · `FieldState.CurrentBoundary` · VM `_currentBoundary` | **`FieldState.CurrentBoundary`** (GpsPipelineService:1657, SectionControlService:878/890/927) | keep `Field.Boundary` for save; **drop VM copy** — bind to state |
+| **Headland** | `Boundary.HeadlandPolygon` · `FieldState.HeadlandLine` · VM `_currentHeadlandLine` | **`FieldState.HeadlandLine`** (SectionControlService:922) | keep polygon for save; **drop VM copy**. (`_previousHeadlandLine` = undo, separate, keep) |
+| **Field origin** | `Field.Origin` · `FieldState.OriginLatitude/Longitude` + `LocalPlane` · VM `_fieldOriginLatitude/Longitude` | **`FieldState` Origin + `LocalPlane`** (pipeline/AutoSteer coord conversion) | **drop VM copy** |
+| **Field name** | `Field.Name` · `FieldState.FieldName` (computed) · VM `_currentFieldName` | **`Field.Name`** (FieldState.FieldName computes from it — fine) | **drop VM copy** |
+| **Tracks** | `FieldState.Tracks` · VM `SavedTracks` (hand-synced on field load) | pick one (likely `FieldState.Tracks`) | collapse to one collection |
+| **Active track** | `FieldState.ActiveTrack` · `GuidanceState.ActiveTrack` · `GpsPipelineService._activeTrack` (cycle-local, lock-guarded) · VM `SelectedTrack` | pipeline `_activeTrack` is legit working copy; **`FieldState.ActiveTrack`** is the state SoT | dedupe the `FieldState`/`GuidanceState` mirror; keep pipeline working copy |
+
+### 12.2 Dead state — delete
+
+- **`FieldState.Boundaries`** (ObservableCollection) + **`FieldState.HasBoundary`** — **0 writers, 0 readers** (verified). The lone `AgShareFieldParser` write targets a *result* object, not state.
+- **`FieldState.SelectedTrack`** — **0 references** anywhere (verified). All selection flows through VM `SelectedTrack`.
+
+### 12.3 VM display-shadow fields — bind directly to state, delete the field
+
+`MainViewModel` mirrors several read-only state values purely for binding (kept in sync by hand):
+- `_activeSections` ↔ `SectionState.ActiveSectionCount`
+- `_currentGuidanceLine` ↔ `GuidanceState.CurrentLineLabel`
+- `_boundaryPointCount` / `_boundaryAreaHectares` ↔ `BoundaryRecState.PointCount/AreaHectares`
+
+### 12.4 Cross-state / simulator duplication — note (partly known)
+
+- **Active track in both `GuidanceState` and `FieldState`** (12.1) — a genuine cross-state copy.
+- **Vehicle ↔ Simulator position** (`VehicleState` E/N/heading/speed/fix vs `SimulatorState`) — the
+  audit's §5C already flagged sim coords as multi-home/"defended not absent"; folds in here.
+  (`GpsCycleResult` carrying a pose copy is a **transient immutable cycle-output DTO — legit**, not a home.)
+- **`GuidanceState.SteerAngle` → `SimulatorState.SteerAngle`** feedback sync — circular; review.
+
+### 12.5 Confirmed CLEAN — out of scope (so the target list is bounded)
+
+Verified single-owner / not duplicated — **do not touch**:
+- Working-state classes: `GuidanceWorkingState`, `YouTurnWorkingState` (cycle-worker-owned),
+  `TrackGuidanceState` (per-loop PID/filter), `ModuleSwitchState` (IPC DTO), `SensorState` (live IMU singleton).
+- `ConnectionState`, `RecordedPathState`, most of `YouTurnState` — clean.
+- **`UIState` dialog-visibility properties are LIVE** — **39 `State.UI.IsXVisible` bindings in AXAML**
+  (an Explore sweep miscalled these "dead" by not grepping `.axaml`; corrected here).
+- Genuine VM-local UI state (tab index, wizard step, dialog selections, `_pending*`, perf counters, `_currentFps/_currentTime`).
+
+### 12.6 Fix order
+
+1. **Field-geometry cluster (12.1)** + delete dead (12.2): collapse boundary/headland/origin/name to
+   their canonical home, remove the VM shadows, delete `FieldState.Boundaries`/`HasBoundary`/`SelectedTrack`.
+2. **VM display shadows (12.3):** rebind to state, delete fields.
+3. **Cross-state/sim dedupe (12.4).**
+Each ships with the `NoBypassWritesTests`-style guard extended to flag *runtime-state* local copies,
+so this class can't silently regrow.
+
+**Status:** catalogued (verified). Fix not yet scheduled — to be done as a dedicated cleanup, not folded into feature work.
