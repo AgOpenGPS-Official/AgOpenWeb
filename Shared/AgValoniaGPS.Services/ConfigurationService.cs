@@ -33,9 +33,10 @@ namespace AgValoniaGPS.Services;
 public class ConfigurationService(
     IVehicleProfileService profileService,
     IToolProfileService toolProfileService,
-    ISettingsService settingsService) : IConfigurationService
+    ISettingsService settingsService,
+    ConfigurationStore configStore) : IConfigurationService
 {
-    public ConfigurationStore Store => ConfigurationStore.Instance;
+    public ConfigurationStore Store => configStore;
 
     public string ProfilesDirectory => profileService.VehiclesDirectory;
     public string ToolsDirectory => toolProfileService.ToolsDirectory;

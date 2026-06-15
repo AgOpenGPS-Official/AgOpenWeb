@@ -40,7 +40,7 @@ public class SectionControlServiceTests
         _toolPosition = Substitute.For<IToolPositionService>();
         _appState = new ApplicationState();
 
-        _service = new SectionControlService(_toolPosition, _coverageMap, _appState);
+        _service = new SectionControlService(_toolPosition, _coverageMap, _appState, ConfigurationStore.Instance);
     }
 
     #region Slow Speed

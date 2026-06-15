@@ -1,3 +1,4 @@
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Coverage;
 
 namespace AgValoniaGPS.Services.Tests;
@@ -22,7 +23,7 @@ public class CoverageMapServicePerJobTests
 
     private static CoverageMapService NewService()
     {
-        var svc = new CoverageMapService();
+        var svc = new CoverageMapService(ConfigurationStore.Instance);
         svc.SetFieldBounds(-100, 100, -100, 100);
         return svc;
     }

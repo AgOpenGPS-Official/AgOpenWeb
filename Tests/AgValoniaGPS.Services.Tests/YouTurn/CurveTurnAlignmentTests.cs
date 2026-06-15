@@ -52,7 +52,7 @@ public class CurveTurnAlignmentTests
         c.Guidance.UTurnStyle = 0; // Albin/omega
 
         _log = new CaptureLogger();
-        _creation = new YouTurnCreationService(_log, new PolygonOffsetService());
+        _creation = new YouTurnCreationService(_log, new PolygonOffsetService(), c);
     }
 
     // A gentle S-ish curve running south->north, points every 2 m, with headings.
@@ -245,7 +245,8 @@ public class CurveTurnAlignmentTests
         var track = Models.Track.Track.FromCurve("c", curve);
 
         var pathing = new YouTurnPathingService(
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<YouTurnPathingService>.Instance);
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<YouTurnPathingService>.Instance,
+            ConfigurationStore.Instance);
         var guidance = new GuidanceWorkingState { IsHeadingSameWay = true, HowManyPathsAway = 0 };
         var turn = new YouTurnWorkingState { IsTurnLeft = true };
 

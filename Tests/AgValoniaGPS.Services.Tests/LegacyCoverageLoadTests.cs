@@ -3,6 +3,7 @@
 // Licensed under GNU GPL v3.
 
 using System.IO;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Services.Coverage;
 
 namespace AgValoniaGPS.Services.Tests;
@@ -18,7 +19,7 @@ public class LegacyCoverageLoadTests
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"CoverageTest_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
-        _service = new CoverageMapService();
+        _service = new CoverageMapService(ConfigurationStore.Instance);
         // Initialize bounds so the service can accept coverage data
         _service.SetFieldBounds(-100, 100, -100, 100);
     }

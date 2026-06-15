@@ -43,7 +43,7 @@ public class ToolPositionServiceConcurrencyTests
         // mid-write read would split bytes from two writes and produce a
         // garbage value. Writer flips between two well-separated positions;
         // the reader observation must match one of them exactly.
-        var service = new ToolPositionService();
+        var service = new ToolPositionService(ConfigurationStore.Instance);
 
         var poseA = new Vec3(100, 200, 0);
         var poseB = new Vec3(500, 600, 0);
@@ -88,7 +88,7 @@ public class ToolPositionServiceConcurrencyTests
         // Concurrent Update + ResetTrailingState shouldn't corrupt the snapshot.
         // Smoke: run both for a short burst, verify no exception and final
         // snapshot reflects one of the two writers' poses.
-        var service = new ToolPositionService();
+        var service = new ToolPositionService(ConfigurationStore.Instance);
         service.Update(new Vec3(0, 0, 0), 0);
 
         using var cts = new CancellationTokenSource();

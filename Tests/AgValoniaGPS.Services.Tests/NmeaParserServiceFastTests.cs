@@ -191,7 +191,7 @@ public class NmeaParserServiceFastTests
             heading: 90.5, roll: 0, pitch: 0, yawRate: 0);
         var state = new VehicleState();
 
-        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
         Assert.That(ok, Is.True);
         Assert.That(state.ImuValid, Is.True);
@@ -208,7 +208,7 @@ public class NmeaParserServiceFastTests
             heading: 90.0, roll: 5.7, pitch: 0, yawRate: 0);
         var state = new VehicleState();
 
-        NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
         Assert.That(state.Roll, Is.EqualTo(5.7).Within(1e-6));
     }
@@ -219,7 +219,7 @@ public class NmeaParserServiceFastTests
         byte[] sentence = BuildPandaBytesNoImu(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5);
         var state = new VehicleState();
 
-        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
         Assert.That(ok, Is.True);
         Assert.That(state.ImuValid, Is.False);
@@ -247,7 +247,7 @@ public class NmeaParserServiceFastTests
             byte[] sentence = BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
                 heading: 90.0, roll: 5.7, pitch: 0, yawRate: 0);
             var state = new VehicleState();
-            NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+            NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
             Assert.That(state.Roll, Is.EqualTo(-5.7).Within(1e-6),
                 "IsRollInvert flips the sign of the parsed roll before downstream consumers.");
@@ -273,7 +273,7 @@ public class NmeaParserServiceFastTests
             byte[] sentence = BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
                 heading: 90.0, roll: 5.7, pitch: 0, yawRate: 0);
             var state = new VehicleState();
-            NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+            NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
             Assert.That(state.Roll, Is.EqualTo(3.7).Within(1e-6),
                 "RollZero offset is subtracted from the raw IMU roll.");
@@ -301,7 +301,7 @@ public class NmeaParserServiceFastTests
             byte[] sentence = BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
                 heading: 90.0, roll: 5.7, pitch: 0, yawRate: 0);
             var state = new VehicleState();
-            NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+            NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
             // -5.7 - 2.0 = -7.7
             Assert.That(state.Roll, Is.EqualTo(-7.7).Within(1e-6),
@@ -330,7 +330,7 @@ public class NmeaParserServiceFastTests
             byte[] sentence = BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
                 heading: 90.5, roll: 1.25, pitch: 0, yawRate: 0);
             var state = new VehicleState();
-            NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+            NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
             // -1.25 - 1.0 = -2.25
             Assert.That(state.Roll, Is.EqualTo(-2.25).Within(1e-6));
@@ -349,7 +349,7 @@ public class NmeaParserServiceFastTests
             heading: 90.5, roll: 1.25, pitch: 0, yawRate: 0);
         var state = new VehicleState();
 
-        NmeaParserServiceFast.ParseIntoState(sentence, ref state);
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
 
         Assert.That(state.Heading, Is.EqualTo(90.5).Within(1e-6));
         Assert.That(state.Roll, Is.EqualTo(1.25).Within(1e-6));

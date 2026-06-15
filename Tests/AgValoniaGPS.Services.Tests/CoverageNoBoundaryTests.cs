@@ -1,4 +1,5 @@
 using AgValoniaGPS.Models.Base;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.Coverage;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Coverage;
@@ -16,7 +17,7 @@ public class CoverageNoBoundaryTests
     [SetUp]
     public void SetUp()
     {
-        _service = new CoverageMapService();
+        _service = new CoverageMapService(ConfigurationStore.Instance);
     }
 
     [Test]

@@ -30,8 +30,15 @@ public class DisplaySettingsService : IDisplaySettingsService
 {
     private const double CameraPitchStep = 5.0;
 
+    private readonly ConfigurationStore _configStore;
+
+    public DisplaySettingsService(ConfigurationStore configStore)
+    {
+        _configStore = configStore;
+    }
+
     // Grid visibility is config; the view/orientation values are persistent state.
-    private static DisplayConfig Display => ConfigurationStore.Instance.Display;
+    private DisplayConfig Display => _configStore.Display;
     private static PersistentAppState Persistent => PersistentAppState.Instance;
 
     // Grid display - delegates to DisplayConfig

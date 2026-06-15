@@ -49,7 +49,7 @@ public class ProfileMigrationTests
         _settingsService = Substitute.For<ISettingsService>();
         _settingsService.Settings.Returns(_settings);
 
-        _configService = new ConfigurationService(_vehicleService, _toolService, _settingsService);
+        _configService = new ConfigurationService(_vehicleService, _toolService, _settingsService, ConfigurationStore.Instance);
 
         // Isolate the singleton so production code's ConfigurationStore.Instance
         // doesn't bleed test state.

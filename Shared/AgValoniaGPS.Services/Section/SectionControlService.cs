@@ -39,6 +39,7 @@ public class SectionControlService : ISectionControlService
     private readonly IToolPositionService _toolPositionService;
     private readonly ICoverageMapService _coverageMapService;
     private readonly ApplicationState _state;
+    private readonly ConfigurationStore _configStore;
 
     private readonly SectionControlState[] _sectionStates;
     private SectionMasterState _masterState = SectionMasterState.Off;
@@ -157,18 +158,20 @@ public class SectionControlService : ISectionControlService
         }
     }
 
-    public int NumSections => ConfigurationStore.Instance.NumSections;
+    public int NumSections => _configStore.NumSections;
 
     public event EventHandler<SectionStateChangedEventArgs>? SectionStateChanged;
 
     public SectionControlService(
         IToolPositionService toolPositionService,
         ICoverageMapService coverageMapService,
-        ApplicationState state)
+        ApplicationState state,
+        ConfigurationStore configStore)
     {
         _toolPositionService = toolPositionService;
         _coverageMapService = coverageMapService;
         _state = state;
+        _configStore = configStore;
 
         // Initialize section states
         _sectionStates = new SectionControlState[ToolConfig.MaxSections];
@@ -181,7 +184,7 @@ public class SectionControlService : ISectionControlService
         RecalculateSectionPositions();
 
         // Listen for configuration changes to recalculate section positions
-        ConfigurationStore.Instance.PropertyChanged += (sender, e) =>
+        _configStore.PropertyChanged += (sender, e) =>
         {
             if (e.PropertyName == nameof(ConfigurationStore.NumSections) ||
                 e.PropertyName == nameof(ConfigurationStore.Tool))
@@ -191,7 +194,7 @@ public class SectionControlService : ISectionControlService
         };
 
         // Also listen for ToolConfig changes (section width changes don't trigger store-level event)
-        ConfigurationStore.Instance.Tool.PropertyChanged += (sender, e) =>
+        _configStore.Tool.PropertyChanged += (sender, e) =>
         {
             if (e.PropertyName == nameof(ToolConfig.SectionWidths) ||
                 e.PropertyName == nameof(ToolConfig.TotalSectionWidth) ||
@@ -204,7 +207,7 @@ public class SectionControlService : ISectionControlService
 
     public void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         int numSections = NumSections;
 
         // Calculate tool vs vehicle heading difference (for trailed implements)
@@ -306,7 +309,7 @@ public class SectionControlService : ISectionControlService
     private void UpdateSection(int index, Vec3 toolPosition, double toolHeading, double speed)
     {
         var section = _sectionStates[index];
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
 
         // Get section world position
         var (leftEdge, rightEdge) = GetSectionWorldPosition(index, toolPosition, toolHeading);
@@ -693,7 +696,7 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     private (Vec2 left, Vec2 right) ApplyCoverageMarginStraight(Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         double margin = tool.CoverageMarginMeters;
 
         if (margin <= 0)
@@ -726,7 +729,7 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     private (Vec2 left, Vec2 right) ApplyCoverageMargin(Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         double margin = tool.CoverageMarginMeters;
 
         if (margin <= 0)
@@ -780,7 +783,7 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     private int GetZoneIndex(int sectionIndex)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         if (tool.IsSectionsNotZones)
         {
             return sectionIndex;
@@ -913,7 +916,7 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     private bool IsPointInHeadland(Vec2 point)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
 
         // Check if headland section control is enabled
         if (!tool.IsHeadlandSectionControl)
@@ -1043,7 +1046,7 @@ public class SectionControlService : ISectionControlService
 
     public void RecalculateSectionPositions()
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         int numSections = NumSections;
 
         // Calculate total width from section widths

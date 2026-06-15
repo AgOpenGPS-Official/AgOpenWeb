@@ -33,7 +33,8 @@ namespace AgValoniaGPS.Services.Tram;
 /// </summary>
 public class TramLineService(
     ITramLineOffsetService offsetService,
-    ILogger<TramLineService> logger) : ITramLineService
+    ILogger<TramLineService> logger,
+    ConfigurationStore configStore) : ITramLineService
 {
     // Decimation tolerance for tram lines on save/load. Tram lines built from a dense
     // boundary inherit ~1 m point spacing; simplifying to this deviation collapses the
@@ -96,7 +97,7 @@ public class TramLineService(
         if (fenceLine == null || fenceLine.Count < 3)
             return;
 
-        var config = ConfigurationStore.Instance;
+        var config = configStore;
         double tramWidth = tramWidthOverride > 0 ? tramWidthOverride : config.Tram.TramWidth;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
 
@@ -161,7 +162,7 @@ public class TramLineService(
         if (referenceTrack == null || referenceTrack.Points.Count < 2)
             return new List<List<Vec2>>();
 
-        var config = ConfigurationStore.Instance;
+        var config = configStore;
         double tramWidth = system.TramWidth;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
         double systemOffset = system.Offset;
@@ -228,7 +229,7 @@ public class TramLineService(
         if (fence == null || fence.Count < 3)
             return;
 
-        var config = ConfigurationStore.Instance;
+        var config = configStore;
         double tramWidth = tramWidthOverride > 0 ? tramWidthOverride : config.Tram.TramWidth;
         if (tramWidth <= 0.1) return;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
@@ -267,7 +268,7 @@ public class TramLineService(
         if (referenceTrack == null || referenceTrack.Points.Count < 2)
             return;
 
-        var config = ConfigurationStore.Instance;
+        var config = configStore;
         double tramWidth = config.Tram.TramWidth;
         int passes = config.Tram.Passes;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
@@ -586,7 +587,7 @@ public class TramLineService(
     /// </summary>
     public byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance)
     {
-        var config = ConfigurationStore.Instance;
+        var config = configStore;
         double halfTrack = config.Vehicle.TrackWidth / 2.0;
 
         // Calculate left and right wheel positions

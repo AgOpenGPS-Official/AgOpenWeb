@@ -58,11 +58,11 @@ public class YouTurnEarlyCompletionTests
 
         var polygonOffset = new PolygonOffsetService();
         var creation = new YouTurnCreationService(
-            NullLogger<YouTurnCreationService>.Instance, polygonOffset);
+            NullLogger<YouTurnCreationService>.Instance, polygonOffset, config);
         var pathing = new YouTurnPathingService(
-            NullLogger<YouTurnPathingService>.Instance);
+            NullLogger<YouTurnPathingService>.Instance, config);
         _stateMachine = new YouTurnStateMachine(
-            creation, pathing, NullLogger<YouTurnStateMachine>.Instance);
+            creation, pathing, NullLogger<YouTurnStateMachine>.Instance, config);
 
         _boundary = new Boundary
         {

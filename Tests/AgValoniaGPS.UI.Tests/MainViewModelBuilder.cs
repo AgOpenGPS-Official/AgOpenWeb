@@ -64,9 +64,12 @@ public class MainViewModelBuilder
             trackGuidanceService: Substitute.For<ITrackGuidanceService>(),
             youTurnCreationService: new YouTurnCreationService(
                 NullLogger<YouTurnCreationService>.Instance,
-                Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
+                Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
+                AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance),
             youTurnGuidanceService: new YouTurnGuidanceService(),
-            youTurnPathingService: new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
+            youTurnPathingService: new YouTurnPathingService(
+                NullLogger<YouTurnPathingService>.Instance,
+                AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance),
             polygonOffsetService: Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
             turnAreaService: Substitute.For<AgValoniaGPS.Services.Interfaces.ITurnAreaService>(),
             vehicleProfileService: VehicleProfileService,
@@ -88,6 +91,7 @@ public class MainViewModelBuilder
             intents: Intents,
             logger: NullLogger<MainViewModel>.Instance,
             appState: new ApplicationState(),
+            configStore: AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance,
             persistentStateService: Substitute.For<IPersistentStateService>(),
             batteryService: new NullBatteryService(),
             uiDispatcher: new AgValoniaGPS.Services.Threading.InlineUiDispatcher(),

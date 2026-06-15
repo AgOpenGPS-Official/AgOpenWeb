@@ -22,7 +22,7 @@ public class TramBoundaryTrackTests
     {
         var offsetService = new TramLineOffsetService();
         var logger = NullLogger<TramLineService>.Instance;
-        _service = new TramLineService(offsetService, logger);
+        _service = new TramLineService(offsetService, logger, ConfigurationStore.Instance);
 
         ConfigurationStore.Instance.Tram.TramWidth = 24.0;
         ConfigurationStore.Instance.Vehicle.TrackWidth = 1.8;

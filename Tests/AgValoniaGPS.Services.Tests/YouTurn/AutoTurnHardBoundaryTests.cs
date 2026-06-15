@@ -47,7 +47,8 @@ public class AutoTurnHardBoundaryTests
         c.Guidance.UTurnSmoothing = 3;
 
         _creation = new YouTurnCreationService(
-            NullLogger<YouTurnCreationService>.Instance, new PolygonOffsetService());
+            NullLogger<YouTurnCreationService>.Instance, new PolygonOffsetService(),
+            ConfigurationStore.Instance);
     }
 
     private static Boundary Square(bool hard)

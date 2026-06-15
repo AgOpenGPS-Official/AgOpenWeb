@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading.Tasks;
 using AgValoniaGPS.IntegrationTests.VirtualModules;
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.AutoSteer;
@@ -42,7 +43,7 @@ public class SimulatorDataFlowTests
         _mockUdp = Substitute.For<IUdpCommunicationService>();
         _mockGps = Substitute.For<IGpsService>();
         _appState = new ApplicationState();
-        _autoSteer = new AutoSteerService(_mockGuidance, _mockUdp, _mockGps, _appState);
+        _autoSteer = new AutoSteerService(_mockGuidance, _mockUdp, _mockGps, _appState, ConfigurationStore.Instance);
         _autoSteer.Start();
     }
 

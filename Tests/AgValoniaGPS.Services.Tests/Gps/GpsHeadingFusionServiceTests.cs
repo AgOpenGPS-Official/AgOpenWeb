@@ -17,7 +17,7 @@ public class GpsHeadingFusionServiceTests
     [SetUp]
     public void SetUp()
     {
-        _service = new GpsHeadingFusionService();
+        _service = new GpsHeadingFusionService(ConfigurationStore.Instance);
 
         // Reset config to a known default state.
         var c = ConfigurationStore.Instance.Connections;

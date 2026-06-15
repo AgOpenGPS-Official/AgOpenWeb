@@ -15,6 +15,9 @@ public class AudioService : AudioServiceBase
 {
     private readonly Player _player = new();
 
+    public AudioService(AgValoniaGPS.Models.Configuration.ConfigurationStore configStore)
+        : base(configStore) { }
+
     protected override void PlayFile(string filePath)
     {
         // Fire and forget - don't await, don't block

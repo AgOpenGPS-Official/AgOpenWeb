@@ -92,7 +92,7 @@ public partial class YouTurnCreationService
         _logger.LogDebug("[YouTurn] Creating turn: direction={Dir}, sameWay={SameWay}, pathsAway={Away}",
             turnLeft ? "LEFT" : "RIGHT", guidance.IsHeadingSameWay, guidance.HowManyPathsAway);
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
 
         // Hard outer boundary: the implement's swept path (including a long
         // mounted tool's rear corners) must stay clear of the fence/obstacle
@@ -315,7 +315,7 @@ public partial class YouTurnCreationService
             return null;
         }
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         double toolWidth = config.ActualToolWidth;
         double totalHeadlandWidth = headlandCalculatedWidth;
 
@@ -497,7 +497,7 @@ public partial class YouTurnCreationService
     {
         if (headlandLine.Count < 3) return track.Points[0].Heading;
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         double offsetDistance = guidance.HowManyPathsAway * widthMinusOverlap;
 
@@ -557,7 +557,7 @@ public partial class YouTurnCreationService
         if (track.Points.Count < 2)
             return new Vec2(vehiclePosition.Easting, vehiclePosition.Northing);
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         double offsetDistance = guidance.HowManyPathsAway * widthMinusOverlap;
 
@@ -719,7 +719,7 @@ public partial class YouTurnCreationService
         double headlandDistance)
     {
         var path = new List<Vec3>();
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
 
         const double pointSpacing = 0.5;
         double turnOffset = turn.NextTrackTurnOffset;
@@ -904,7 +904,7 @@ public partial class YouTurnCreationService
         int uTurnSkipRows)
     {
         var path = new List<Vec3>();
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
 
         const double pointSpacing = 0.5;
         double trackWidth = config.ActualToolWidth - config.Tool.Overlap;

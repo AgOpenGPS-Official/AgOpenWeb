@@ -17,6 +17,9 @@ public class AudioService : AudioServiceBase
 {
     private AVAudioPlayer? _currentPlayer;
 
+    public AudioService(AgValoniaGPS.Models.Configuration.ConfigurationStore configStore)
+        : base(configStore) { }
+
     protected override void PlayFile(string filePath)
     {
         _currentPlayer?.Dispose();

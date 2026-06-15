@@ -60,15 +60,18 @@ public sealed class YouTurnStateMachine
     private readonly YouTurnCreationService _creation;
     private readonly YouTurnPathingService _pathing;
     private readonly ILogger<YouTurnStateMachine> _logger;
+    private readonly ConfigurationStore _configStore;
 
     public YouTurnStateMachine(
         YouTurnCreationService creation,
         YouTurnPathingService pathing,
-        ILogger<YouTurnStateMachine> logger)
+        ILogger<YouTurnStateMachine> logger,
+        ConfigurationStore configStore)
     {
         _creation = creation;
         _pathing = pathing;
         _logger = logger;
+        _configStore = configStore;
     }
 
     /// <summary>
@@ -518,7 +521,7 @@ public sealed class YouTurnStateMachine
             return;
         }
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         double nextDistAway = widthMinusOverlap * nextPath.Value;
         int pathDiff = nextPath.Value - guidance.HowManyPathsAway;
@@ -660,7 +663,7 @@ public sealed class YouTurnStateMachine
             return;
         }
 
-        var config = ConfigurationStore.Instance;
+        var config = _configStore;
 
         if (turn.ReturnPassTargetPath.HasValue)
         {

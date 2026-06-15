@@ -61,7 +61,8 @@ public class TractorPathTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             _gpsService,
-            new ApplicationState());
+            new ApplicationState(),
+            config);
         _autoSteer.Start();
     }
 
@@ -181,8 +182,8 @@ public class TractorPathTests
         ApplicationState appState)
     {
         var guidance = new TrackGuidanceService();
-        var coverage = new CoverageMapService();
-        var sectionControl = new SectionControlService(toolPosition, coverage, appState);
+        var coverage = new CoverageMapService(ConfigurationStore.Instance);
+        var sectionControl = new SectionControlService(toolPosition, coverage, appState, ConfigurationStore.Instance);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
@@ -195,13 +196,14 @@ public class TractorPathTests
             new YouTurnStateMachine(
                 new YouTurnCreationService(
                     NullLogger<YouTurnCreationService>.Instance,
-                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
-                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-                NullLogger<YouTurnStateMachine>.Instance),
+                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
+                    ConfigurationStore.Instance),
+                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, ConfigurationStore.Instance),
+                NullLogger<YouTurnStateMachine>.Instance, ConfigurationStore.Instance),
             Substitute.For<IAudioService>(),
             new AgValoniaGPS.Services.Pipeline.PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, appState);
+            NullLogger<GpsPipelineService>.Instance, appState, ConfigurationStore.Instance);
     }
 
     private static double LatDiffMeters(double lat1, double lat2) =>
@@ -424,7 +426,7 @@ public class TractorPathTests
         config.Tool.TrailingHitchLength = trailing ? 2.0 : 0;
 
         var appState = new ApplicationState();
-        var toolPosition = new AgValoniaGPS.Services.Tool.ToolPositionService();
+        var toolPosition = new AgValoniaGPS.Services.Tool.ToolPositionService(config);
 
         var pipeline = BuildFullPipeline(toolPosition, appState);
         pipeline.Start();

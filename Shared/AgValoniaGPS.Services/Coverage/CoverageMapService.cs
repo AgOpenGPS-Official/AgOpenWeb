@@ -37,6 +37,13 @@ namespace AgValoniaGPS.Services.Coverage;
 /// </summary>
 public class CoverageMapService : ICoverageMapService
 {
+    private readonly ConfigurationStore _configStore;
+
+    public CoverageMapService(ConfigurationStore configStore)
+    {
+        _configStore = configStore;
+    }
+
     // ========== DETECTION LAYER ==========
     // 1 bit per cell at fixed 0.1m resolution. Authoritative coverage data.
     // Powers IsPointCovered / GetSegmentCoverage / GetSegmentCoverageMulti.
@@ -635,9 +642,9 @@ public class CoverageMapService : ICoverageMapService
     }
 
     /// <summary>Compute RGB565 for a zone using the same policy as GetZoneColor (RGB888 → 565).</summary>
-    private static ushort GetZoneColorRgb565(int zoneIndex)
+    private ushort GetZoneColorRgb565(int zoneIndex)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         uint rgb888 = tool.IsMultiColoredSections
             ? tool.GetSectionColor(zoneIndex)
             : tool.SingleCoverageColor;
@@ -1010,7 +1017,7 @@ public class CoverageMapService : ICoverageMapService
     /// cap at ~25M pixels, then apply the user's DisplayResolutionMultiplier
     /// (Ultra=1.0, High=1.5, Med=2.5, Low=4.0, Min=6.0).
     /// </summary>
-    private static double ComputeDisplayCellSize(double worldWidthM, double worldHeightM)
+    private double ComputeDisplayCellSize(double worldWidthM, double worldHeightM)
     {
         double cellSize = BITMAP_CELL_SIZE;
 
@@ -1030,7 +1037,7 @@ public class CoverageMapService : ICoverageMapService
             else cellSize = Math.Ceiling(cellSize);
         }
 
-        double multiplier = ConfigurationStore.Instance.Display.DisplayResolutionMultiplier;
+        double multiplier = _configStore.Display.DisplayResolutionMultiplier;
         if (multiplier > 1.0) cellSize *= multiplier;
 
         return cellSize;
@@ -1536,7 +1543,7 @@ public class CoverageMapService : ICoverageMapService
         var filename = Path.Combine(fieldDirectory, "coverage_disp.bin");
 
         // Build palette from current tool config
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
         var palette = new List<ushort>();
         var colorToIndex = new Dictionary<ushort, byte>();
 
@@ -1884,7 +1891,7 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     private CoverageColor GetZoneColor(int zoneIndex)
     {
-        var tool = ConfigurationStore.Instance.Tool;
+        var tool = _configStore.Tool;
 
         if (!tool.IsMultiColoredSections)
         {

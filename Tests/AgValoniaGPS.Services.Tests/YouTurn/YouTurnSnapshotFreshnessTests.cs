@@ -73,13 +73,13 @@ public class YouTurnSnapshotFreshnessTests
         _gpsService = new GpsService();
         _gpsService.Start();
 
-        var toolPosition = new ToolPositionService();
-        var coverage = new CoverageMapService();
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState);
+        var toolPosition = new ToolPositionService(config);
+        var coverage = new CoverageMapService(config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
         var autoSteer = new AutoSteerService(
             new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState);
+            _gpsService, _appState, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(
@@ -94,13 +94,15 @@ public class YouTurnSnapshotFreshnessTests
             new YouTurnStateMachine(
                 new YouTurnCreationService(
                     NullLogger<YouTurnCreationService>.Instance,
-                    new PolygonOffsetService()),
-                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-                NullLogger<YouTurnStateMachine>.Instance),
+                    new PolygonOffsetService(),
+                    config),
+                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, config),
+                NullLogger<YouTurnStateMachine>.Instance, config),
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
             NullLogger<GpsPipelineService>.Instance, _appState,
+            config,
             new PositionEstimator());
 
         _pipeline.SynchronousMode = true;

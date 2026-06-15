@@ -55,11 +55,11 @@ public class GpsPipelinePositionEstimatorTests
         _gpsService = new GpsService();
         _gpsService.Start();
 
-        var toolPosition = new ToolPositionService();
-        var coverage = new CoverageMapService();
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState);
+        var toolPosition = new ToolPositionService(config);
+        var coverage = new CoverageMapService(config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
@@ -74,13 +74,14 @@ public class GpsPipelinePositionEstimatorTests
             new YouTurnGuidanceService(),
             new YouTurnStateMachine(
                 new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance,
-                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
-                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-                NullLogger<YouTurnStateMachine>.Instance),
+                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(), config),
+                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, config),
+                NullLogger<YouTurnStateMachine>.Instance, config),
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
             NullLogger<GpsPipelineService>.Instance, _appState,
+            config,
             _estimator);
 
         _pipeline.SynchronousMode = true;

@@ -78,11 +78,11 @@ public class YouTurnEndToEndSimulationTests
 
         var polygonOffset = new PolygonOffsetService();
         var creation = new YouTurnCreationService(
-            NullLogger<YouTurnCreationService>.Instance, polygonOffset);
+            NullLogger<YouTurnCreationService>.Instance, polygonOffset, config);
         var pathing = new YouTurnPathingService(
-            NullLogger<YouTurnPathingService>.Instance);
+            NullLogger<YouTurnPathingService>.Instance, config);
         _stateMachine = new YouTurnStateMachine(
-            creation, pathing, NullLogger<YouTurnStateMachine>.Instance);
+            creation, pathing, NullLogger<YouTurnStateMachine>.Instance, config);
         _guidance = new YouTurnGuidanceService();
 
         // 100×100 m boundary centered on origin; headland line inset 10 m.

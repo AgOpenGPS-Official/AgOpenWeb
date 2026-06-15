@@ -87,9 +87,9 @@ public class AsymmetricSectionTurnTests
         _gpsService = new GpsService();
         _gpsService.Start();
 
-        _toolPosition = new ToolPositionService();
-        _coverage = new CoverageMapService();
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState);
+        _toolPosition = new ToolPositionService(config);
+        _coverage = new CoverageMapService(config);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, config);
         _sectionControl.MasterState = SectionMasterState.Auto;
         _sectionControl.SetAllAuto();
         _coverage.SetFieldBounds(-10, FIELD_SIZE + 10, -10, FIELD_SIZE + 10);
@@ -101,7 +101,7 @@ public class AsymmetricSectionTurnTests
 
         _autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState);
+            _gpsService, _appState, config);
 
         _estimator = new PositionEstimator();
 
@@ -111,13 +111,16 @@ public class AsymmetricSectionTurnTests
             _autoSteer, new YouTurnGuidanceService(),
             new YouTurnStateMachine(
                 new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance,
-                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>()),
-                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance),
-                NullLogger<YouTurnStateMachine>.Instance),
+                    Substitute.For<AgValoniaGPS.Services.Geometry.IPolygonOffsetService>(),
+                    config),
+                new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, config),
+                NullLogger<YouTurnStateMachine>.Instance,
+                config),
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
             NullLogger<GpsPipelineService>.Instance, _appState,
+            config,
             _estimator);
 
         _pipeline.SynchronousMode = true;

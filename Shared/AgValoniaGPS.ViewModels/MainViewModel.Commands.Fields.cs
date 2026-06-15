@@ -269,7 +269,7 @@ public partial class MainViewModel
                 _fieldService.SetActiveField(field);
 
                 // Create elevation log header if enabled (#120)
-                if (Models.Configuration.ConfigurationStore.Instance.Display.ElevationLogEnabled)
+                if (_configStore.Display.ElevationLogEnabled)
                     _elevationLogService.CreateHeader(fieldPath, NewFieldLatitude, NewFieldLongitude);
 
                 PersistentState.LastOpenedField = NewFieldName;

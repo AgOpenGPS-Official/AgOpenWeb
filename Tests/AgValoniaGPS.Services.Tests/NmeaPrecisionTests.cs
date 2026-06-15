@@ -44,7 +44,8 @@ public class NmeaPrecisionTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             _gpsService,
-            new ApplicationState());
+            new ApplicationState(),
+            configStore);
         _autoSteer.Start();
     }
 

@@ -46,7 +46,7 @@ public class ProfileRenameDeleteTests
         _settingsService = Substitute.For<ISettingsService>();
         _settingsService.Settings.Returns(_settings);
 
-        _configService = new ConfigurationService(_vehicleService, _toolService, _settingsService);
+        _configService = new ConfigurationService(_vehicleService, _toolService, _settingsService, ConfigurationStore.Instance);
         ConfigurationStore.SetInstance(new ConfigurationStore());
     }
 
