@@ -381,13 +381,34 @@ split these into two cases — collapse the genuine mirrors, **delete** the dead
 
 Resolved in `audit/state-sot-fix-12-3` (v26.5.46); 1502 tests green.
 
-### 12.4 Cross-state / simulator duplication — note (partly known)
+### 12.4 Cross-state / simulator duplication ✅ DONE
 
-- **Active track in both `GuidanceState` and `FieldState`** (12.1) — a genuine cross-state copy.
-- **Vehicle ↔ Simulator position** (`VehicleState` E/N/heading/speed/fix vs `SimulatorState`) — the
-  audit's §5C already flagged sim coords as multi-home/"defended not absent"; folds in here.
-  (`GpsCycleResult` carrying a pose copy is a **transient immutable cycle-output DTO — legit**, not a home.)
-- **`GuidanceState.SteerAngle` → `SimulatorState.SteerAngle`** feedback sync — circular; review.
+Investigated each flagged copy; outcome was **delete dead state + confirm one legit mirror** —
+no risky cross-state collapse was warranted.
+
+- **Active track in `GuidanceState` and `FieldState`** — *not* cruft. `FieldState.ActiveTrack`
+  is the selection SoT (set by the `SelectedTrack` command, read by the map/pipeline/DebugDump).
+  `GuidanceState.ActiveTrack` is the **observable mirror of `GuidanceWorkingState`** (the Phase D D7
+  property-for-property snapshot mirror, enforced by `GuidanceWorkingStateTests`) — semantically "the
+  track the *cycle* is guiding on," which lags selection by one cycle *by design*. Distinct semantics,
+  correct-by-design, part of a live + tested contract → **kept**, reclassified clean (§12.5).
+- **Vehicle ↔ Simulator position** — there was **no real runtime copy**. `SimulatorState`
+  (`ApplicationState.Simulator`) turned out to be **entirely dead**: every field write-only or
+  unreferenced (`Latitude/Longitude/Easting/Northing/Heading/FixQuality/SatelliteCount` had zero refs;
+  `IsEnabled/IsRunning/Speed/TargetSpeed/SteerAngle` were write-only). It was superseded during §1–§10
+  by `PersistentState.Simulator*` (appstate.json) + `_simulatorService` (live pose) — the sim feeds
+  `VehicleState` through the GPS pipeline like a real receiver (a legit producer→consumer flow, not a
+  shadow). **Deleted `SimulatorState`** + its `ApplicationState` property + `Reset()` call + all dead
+  write sites in `MainViewModel.Simulator.cs`.
+- **`GuidanceState.SteerAngle` → `SimulatorState.SteerAngle`** feedback "sync" — wrote into the dead
+  `SimulatorState`; **removed** with the deletion above. (The real steer feedback to the sim goes
+  through `_simulatorService.Tick(SimulatorSteerAngle)`.)
+- **`_simulatorLocalPlane`** (VM-local, flagged for review) — reviewed: a legit input-stage bootstrap
+  helper. It converts the sim's synthetic WGS84 → local coords *before* the cycle has created
+  `State.Field.LocalPlane`, already uses the field origin when one exists (value-consistent), and is
+  reset on field/coord changes. Not a competing home → stays VM-local.
+
+Resolved in `audit/state-sot-fix-12-4` (v26.5.47); 1502 tests green.
 
 ### 12.5 Confirmed CLEAN — out of scope (so the target list is bounded)
 
@@ -398,14 +419,21 @@ Verified single-owner / not duplicated — **do not touch**:
 - **`UIState` dialog-visibility properties are LIVE** — **39 `State.UI.IsXVisible` bindings in AXAML**
   (an Explore sweep miscalled these "dead" by not grepping `.axaml`; corrected here).
 - Genuine VM-local UI state (tab index, wizard step, dialog selections, `_pending*`, perf counters, `_currentFps/_currentTime`).
+- **`GuidanceState.ActiveTrack`** — the Phase D D7 observable mirror of `GuidanceWorkingState.ActiveTrack`
+  (the track the cycle is guiding on); distinct from `FieldState.ActiveTrack` (selection SoT). Kept (§12.4).
+- **`_simulatorLocalPlane`** (VM-local) — input-stage bootstrap plane for the sim's WGS84→local
+  conversion; reviewed clean under §12.4 (uses field origin when present, reset on field/coord change).
 
 ### 12.6 Fix order
 
 1. ✅ **Field-geometry cluster (12.1)** + delete dead (12.2): collapse boundary/headland/origin/name to
    their canonical home, remove the VM shadows, delete `FieldState.Boundaries`/`HasBoundary`/`SelectedTrack`.
 2. ✅ **VM display shadows (12.3):** rebind to state, delete fields.
-3. **Cross-state/sim dedupe (12.4).**
+3. ✅ **Cross-state/sim dedupe (12.4):** delete dead `SimulatorState`; confirm `GuidanceState.ActiveTrack` legit.
 Each ships with the `NoBypassWritesTests`-style guard extended to flag *runtime-state* local copies,
 so this class can't silently regrow.
 
-**Status:** catalogued (verified). Fix not yet scheduled — to be done as a dedicated cleanup, not folded into feature work.
+**Status:** ✅ **COMPLETE.** §12.1/§12.2 (field-geometry + dead deletion), §12.3 (primitive display
+mirrors), and §12.4 (cross-state/sim) all resolved. Domain-typed VM shadows **and** primitive display
+mirrors are now zero; the only remaining intentional cross-state reference (`GuidanceState.ActiveTrack`)
+is a documented, tested observable-mirror. `StateShadowGuardTests` guards domain-typed regrowth in CI.
