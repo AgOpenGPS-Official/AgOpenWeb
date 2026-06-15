@@ -6,21 +6,30 @@
 
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
+const ckcv = document.getElementById('ck'); // CanvasKit (Skia) renderer canvas
 const hud = document.getElementById('hud');
 
 // Logical (CSS-pixel) canvas size. The backing store is scaled by the device
 // pixel ratio so vectors render at native resolution on hi-DPI screens (tablets,
 // retina) — otherwise thin strokes look faint and shimmer when panning. All draw
-// code works in these logical coordinates; the dpr scale is baked into ctx.
-let vw = innerWidth, vh = innerHeight;
+// code works in these logical coordinates; the dpr scale is baked into ctx (2D)
+// or the Skia canvas (scale(dpr) per frame).
+let vw = innerWidth, vh = innerHeight, dpr = 1;
+// Skia/CanvasKit renderer state — declared before resize() (which calls
+// recreateSkSurface) to avoid a temporal-dead-zone ReferenceError.
+let CK = null, skSurface = null, skTri = null, SKP = null;
+let useSkia = false;
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
+  dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
   vw = innerWidth; vh = innerHeight;
-  cv.width = Math.round(vw * dpr);
-  cv.height = Math.round(vh * dpr);
-  cv.style.width = vw + 'px';
-  cv.style.height = vh + 'px';
+  for (const c of [cv, ckcv]) {
+    c.width = Math.round(vw * dpr);
+    c.height = Math.round(vh * dpr);
+    c.style.width = vw + 'px';
+    c.style.height = vh + 'px';
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // sticky; save/restore in draw preserve it
+  recreateSkSurface(); // the GL surface is tied to the canvas size
 }
 addEventListener('resize', resize); resize();
 
@@ -85,6 +94,7 @@ const transport = RemoteTransport.create({
       cellSize: init.cellSize, originE: init.originE, originN: init.originN,
       width: init.width, height: init.height,
       canvas, cctx: canvas.getContext('2d'),
+      dirty: true, skImg: null, // Skia snapshot of the offscreen, rebuilt when dirty
     };
     covCells = 0;
   },
@@ -98,23 +108,87 @@ const transport = RemoteTransport.create({
       cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
       covCells++;
     }
+    cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
   },
   onStatus(s) { connState = s; },
 });
 transport.start();
 
-// CanvasKit load de-risk (Phase A prep): init the WASM + a WebGL surface to prove
-// it loads and runs in this browser before porting the renderer. No visual change
-// yet — the Canvas2D map below keeps rendering. Status shows in the HUD.
+// ---- CanvasKit (Skia) renderer — built alongside Canvas2D for A/B (toggle K).
+//      Phase A: vector layers at parity; coverage/imagery/tool/lightbar next.
+//      (State declared near the top so resize() can call recreateSkSurface.) ----
+function recreateSkSurface() {
+  if (!CK) return;
+  if (skSurface) { skSurface.delete(); skSurface = null; }
+  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent
+  // fills (section footprint, lightbar) in encoded sRGB space — matching the 2D
+  // canvas. The default MakeWebGLCanvasSurface attaches an sRGB color space and
+  // blends in LINEAR space, which lightens/washes out transparent colors. Build
+  // via the explicit GL path; fall back to the color-managed helper if needed.
+  const ctxHandle = CK.GetWebGLContext(ckcv);
+  if (ctxHandle) {
+    const grCtx = CK.MakeWebGLContext(ctxHandle);
+    if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
+  }
+  if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
+}
+// Hex (#rrggbb) or rgb(a)(...) → CanvasKit color (CK.Color: r,g,b 0-255, a 0-1).
+function ckColor(s) {
+  if (s[0] === '#') return CK.Color(parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16), 1);
+  const m = s.match(/\(([^)]+)\)/)[1].split(',').map(Number);
+  return CK.Color(m[0], m[1], m[2], m.length > 3 ? m[3] : 1);
+}
+function buildSkPaints() {
+  const mk = (color, w, dash) => {
+    const p = new CK.Paint();
+    p.setStyle(CK.PaintStyle.Stroke);
+    p.setColor(ckColor(color));
+    p.setStrokeWidth(w);
+    p.setAntiAlias(true);
+    p.setStrokeJoin(CK.StrokeJoin.Round);
+    p.setStrokeCap(CK.StrokeCap.Round);
+    if (dash) p.setPathEffect(CK.PathEffect.MakeDash(dash, 0));
+    return p;
+  };
+  const fill = (color) => { const p = new CK.Paint(); p.setStyle(CK.PaintStyle.Fill); p.setColor(ckColor(color)); p.setAntiAlias(true); return p; };
+  SKP = {
+    boundary: mk('#46a0ff', 5), headland: mk('#5fd35f', 4),
+    track: mk('#ffd24a', 4), reference: mk('#a86bff', 5, [9, 7]),
+    guidance: mk('#fc56ba', 5), uturn: mk('#4df24d', 5), next: mk('#00c8c8', 4),
+    gridMinor: mk('rgba(255,255,255,0.055)', 1), gridMajor: mk('rgba(255,255,255,0.13)', 1),
+    axisX: mk('rgba(204,51,51,0.5)', 1.5), axisY: mk('rgba(51,204,51,0.5)', 1.5),
+    vehicle: fill('#39FF6A'),
+  };
+  // Section footprint bars: one stroke paint per ColorCode (butt cap so adjacent
+  // sections abut without rounded overhang), matching the 2D SECTION_COLORS.
+  SKP.section = SECTION_COLORS.map((c) => {
+    const p = new CK.Paint();
+    p.setStyle(CK.PaintStyle.Stroke);
+    p.setColor(ckColor(c));
+    p.setStrokeWidth(7);
+    p.setStrokeCap(CK.StrokeCap.Butt);
+    p.setAntiAlias(true);
+    return p;
+  });
+  // Lightbar LED fill — one reusable paint, recoloured per cell (crisp rects, no AA).
+  SKP.lbFill = new CK.Paint();
+  SKP.lbFill.setStyle(CK.PaintStyle.Fill);
+  SKP.lbFill.setAntiAlias(false);
+  // Vehicle triangle in marker-local px (drawn under canvas translate+rotate).
+  skTri = CK.Path.MakeFromSVGString('M 0 -14 L 9 11 L -9 11 Z');
+}
+function applyRenderer() {
+  cv.style.display = useSkia ? 'none' : 'block';
+  ckcv.style.display = useSkia ? 'block' : 'none';
+}
+
 if (typeof CanvasKitInit === 'function') {
-  CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(CK => {
-    try {
-      const test = document.createElement('canvas');
-      test.width = test.height = 2;
-      const surf = CK.MakeWebGLCanvasSurface(test);
-      ckStatus = surf ? `ready (Skia ${CK.Version ? CK.Version() : 'WebGL'})` : 'no WebGL surface';
-      window.CanvasKit = CK; // hand off to the renderer once Phase A lands
-    } catch (e) { ckStatus = 'init error: ' + e.message; }
+  CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(ck => {
+    CK = ck;
+    buildSkPaints();
+    recreateSkSurface();
+    ckStatus = skSurface ? 'ready (Skia WebGL)' : 'no WebGL surface';
+    requestAnimationFrame(skFrame);
   }).catch(e => { ckStatus = 'load error: ' + e.message; });
 } else {
   ckStatus = 'loader missing';
@@ -136,7 +210,10 @@ addEventListener('pointermove', e => {
   camN += (e.clientY - lastY) / pxPerM;
   lastX = e.clientX; lastY = e.clientY;
 });
-addEventListener('keydown', e => { if (e.key === 'f' || e.key === 'F') follow = true; });
+addEventListener('keydown', e => {
+  if (e.key === 'f' || e.key === 'F') follow = true;
+  else if (e.key === 'k' || e.key === 'K') { useSkia = !useSkia; applyRenderer(); }
+});
 
 // ---- sim drive controls (client→host commands) ----
 // Keys for desktop; the on-screen #ctl buttons for touch. The host maps these
@@ -282,15 +359,19 @@ function lightbar() {
     ctx.fillStyle = on ? col : '#1c2230';
     ctx.fillRect(x, top, W, H);
   }
-
-  const cm = Math.abs(xte) * 100;
-  const arrow = onLine ? '●' : steerLeft ? '◀' : '▶'; // arrow = steer direction
-  ctx.save();
-  ctx.fillStyle = '#cfe3ff';
-  ctx.font = '600 15px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(`${arrow} ${cm.toFixed(0)} cm   ${tick.lineLabel || ''}`, vw / 2, top + H + 17);
-  ctx.restore();
+  // The readout text (arrow + cm + label) is a DOM overlay (#lb) shared by both
+  // renderers — see updateLightbarText(), driven from the always-running draw().
+}
+// Lightbar readout text → DOM overlay, so it shows under both the 2D and Skia map
+// renderers. Updated every frame from the latest tick; hidden when guidance is off.
+const lbEl = document.getElementById('lb');
+function updateLightbarText() {
+  if (!tick || !tick.guidanceActive) { lbEl.style.display = 'none'; return; }
+  const xte = tick.crossTrackError || 0;
+  const onLine = Math.abs(xte) < 0.05;
+  const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
+  lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   ${tick.lineLabel || ''}`;
+  lbEl.style.display = 'block';
 }
 
 // Background imagery (BackPic.png) — the bottom layer, drawn at its world rect.
@@ -410,6 +491,7 @@ function draw() {
   toolFootprint();
   if (rp) vehicle(rp);
   lightbar();
+  updateLightbarText(); // DOM overlay — shared by both renderers (draw() always runs)
 
   const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
   // "on" = codes 1 (manual on) / 2 (auto on) / 3 (turning off, still flowing).
@@ -424,8 +506,178 @@ function draw() {
     `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
     `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}\n` +
     `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}\n` +
-    `canvaskit: ${ckStatus}`;
+    `canvaskit: ${ckStatus}   renderer: ${useSkia ? 'skia' : '2d'}`;
 
   requestAnimationFrame(draw);
 }
 draw();
+
+// ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
+//      px (canvas.scale(dpr)), reusing w2s. Coverage/imagery/tool/lightbar TODO. ----
+// CanvasKit 0.41: Path is immutable (no moveTo/reset) — build via MakeFromCmds
+// (flat [VERB,x,y,...]) for polylines; drawLine for single segments.
+function strokePtsSk(canvas, pts, close, paint) {
+  if (!pts || pts.length < 2) return;
+  const cmds = [];
+  for (let i = 0; i < pts.length; i++) {
+    const xy = w2s(pts[i].e, pts[i].n);
+    cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, xy[0], xy[1]);
+  }
+  if (close) cmds.push(CK.CLOSE_VERB);
+  const path = CK.Path.MakeFromCmds(cmds);
+  if (path) { canvas.drawPath(path, paint); path.delete(); }
+}
+function segSk(canvas, e1, n1, e2, n2, paint) {
+  const a = w2s(e1, n1), b = w2s(e2, n2);
+  canvas.drawLine(a[0], a[1], b[0], b[1], paint);
+}
+function drawGridSk(canvas) {
+  const G = 2000, halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
+  const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
+  const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
+  if (minE >= maxE || minN >= maxN) return;
+  const toolW = toolWidthM();
+  const spacing = toolW * Math.max(1, niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30)));
+  for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
+    segSk(canvas, k * spacing, minN, k * spacing, maxN, k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor);
+  for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
+    segSk(canvas, minE, k * spacing, maxE, k * spacing, k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor);
+  if (0 >= minE && 0 <= maxE) segSk(canvas, 0, minN, 0, maxN, SKP.axisY);
+  if (0 >= minN && 0 <= maxN) segSk(canvas, minE, 0, maxE, 0, SKP.axisX);
+}
+function vehicleSk(canvas, p) {
+  const xy = w2s(p.e, p.n);
+  canvas.save();
+  canvas.translate(xy[0], xy[1]);
+  canvas.rotate(p.heading * 180 / Math.PI, 0, 0); // CanvasKit rotate is degrees
+  if (skTri) canvas.drawPath(skTri, SKP.vehicle);
+  canvas.restore();
+}
+// Background imagery as an SkImage — decoded once from the loaded <img> and
+// cached, re-decoded only when the imagery version changes (same trigger as the
+// 2D path's <img> swap). drawImageRectOptions with Linear filtering = the 2D
+// path's imageSmoothingEnabled=true.
+let skImagery = null, skImageryVer = null;
+function drawImagerySk(canvas) {
+  if (!imageryImg || !imageryRect) return;
+  if (skImageryVer !== imageryVer || !skImagery) {
+    if (skImagery) skImagery.delete();
+    skImagery = CK.MakeImageFromCanvasImageSource(imageryImg);
+    skImageryVer = imageryVer;
+  }
+  if (!skImagery) return;
+  const r = imageryRect;
+  const tl = w2s(r.minE, r.maxN), br = w2s(r.maxE, r.minN); // (minE,maxN)→(maxE,minN)
+  const dest = CK.LTRBRect(tl[0], tl[1], br[0], br[1]);
+  const src = CK.LTRBRect(0, 0, skImagery.width(), skImagery.height());
+  canvas.drawImageRectOptions(skImagery, src, dest, CK.FilterMode.Linear, CK.MipmapMode.None, null);
+}
+// Coverage offscreen → SkImage, re-snapshotted only when the cell grid changed
+// (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
+// cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
+// cov object so a new coverage-init naturally starts with a fresh (null) image.
+function drawCoverageSk(canvas) {
+  if (!cov) return;
+  if (cov.dirty || !cov.skImg) {
+    if (cov.skImg) cov.skImg.delete();
+    cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);
+    cov.dirty = false;
+  }
+  if (!cov.skImg) return;
+  const cs = cov.cellSize;
+  const tl = w2s(cov.originE, cov.originN + cov.height * cs); // (minE, maxN)
+  const br = w2s(cov.originE + cov.width * cs, cov.originN);  // (maxE, minN)
+  const dest = CK.LTRBRect(tl[0], tl[1], br[0], br[1]);
+  const src = CK.LTRBRect(0, 0, cov.width, cov.height);
+  canvas.drawImageRectOptions(cov.skImg, src, dest, CK.FilterMode.Nearest, CK.MipmapMode.None, null);
+}
+// Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
+// heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
+function toolFootprintSk(canvas) {
+  const t = renderTool();
+  if (!t || !scene || !scene.toolSections || !scene.toolSections.length) return;
+  if (!t.e && !t.n) return;
+  const perp = t.heading + Math.PI / 2;
+  const ps = Math.sin(perp), pc = Math.cos(perp);
+  const secs = (tick && tick.sections) || [];
+  for (let i = 0; i < scene.toolSections.length; i++) {
+    const span = scene.toolSections[i];
+    const a = w2s(t.e + ps * span.left, t.n + pc * span.left);
+    const b = w2s(t.e + ps * span.right, t.n + pc * span.right);
+    canvas.drawLine(a[0], a[1], b[0], b[1], SKP.section[secs[i]] || SKP.section[5]);
+  }
+}
+// Lightbar — screen-space LED strip, identical logic/geometry to the 2D
+// lightbar(). The cm/label text lives in the HUD div (no CanvasKit font bundled),
+// so here we draw the LEDs plus a directional arrow triangle. Drawn in CSS px
+// (under renderSkia's scale(dpr)), so it must run before canvas.restore().
+function lightbarSk(canvas) {
+  if (!tick || !tick.guidanceActive) return;
+  const xte = tick.crossTrackError || 0;        // + = right of line
+  const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
+  const mid = (SEG - 1) / 2;
+  const totalW = SEG * (W + GAP) - GAP;
+  const x0 = (vw - totalW) / 2, top = 22;
+  const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
+  const onLine = Math.abs(xte) < PER;
+  const steerLeft = xte > 0; // lights point the way to STEER (native convention)
+  const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
+  const p = SKP.lbFill;
+  for (let i = 0; i < SEG; i++) {
+    const idx = i - mid;
+    const x = x0 + i * (W + GAP);
+    let on = false, col = '#1c2230';
+    if (idx === 0) { on = onLine; col = on ? '#39FF6A' : '#2a3550'; }
+    else if (steerLeft ? (idx < 0 && -idx <= lit) : (idx > 0 && idx <= lit)) { on = true; col = litCol; }
+    p.setColor(ckColor(on ? col : '#1c2230'));
+    canvas.drawRect(CK.XYWHRect(x, top, W, H), p);
+  }
+  // Directional arrow under the strip: ◀ steer-left / ▶ steer-right / ● on-line.
+  const cx = vw / 2, ay = top + H + 11;
+  p.setColor(ckColor(onLine ? '#39FF6A' : litCol));
+  if (onLine) {
+    canvas.drawCircle(cx, ay, 5, p);
+  } else {
+    const d = steerLeft ? -1 : 1; // tip points the steer direction
+    const tri = CK.Path.MakeFromCmds([
+      CK.MOVE_VERB, cx + d * 8, ay,
+      CK.LINE_VERB, cx - d * 6, ay - 6,
+      CK.LINE_VERB, cx - d * 6, ay + 6,
+      CK.CLOSE_VERB,
+    ]);
+    if (tri) { canvas.drawPath(tri, p); tri.delete(); }
+  }
+}
+function renderSkia(canvas) {
+  canvas.clear(ckColor('#0f1115'));
+  canvas.save();
+  canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match the 2D path
+  const rp = renderPose();
+  if (rp && follow) { camE = rp.e; camN = rp.n; }
+  drawImagerySk(canvas); // bottom layer
+  drawCoverageSk(canvas);
+  drawGridSk(canvas);
+  if (scene) {
+    for (const ring of scene.boundaries) strokePtsSk(canvas, ring, true, SKP.boundary);
+    if (scene.headland) strokePtsSk(canvas, scene.headland, true, SKP.headland);
+    const activeName = tick ? tick.activeTrackName : null;
+    for (const tr of scene.tracks)
+      strokePtsSk(canvas, tr.points, false, (activeName && tr.name === activeName) ? SKP.reference : SKP.track);
+    if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
+    if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
+    if (scene.guidanceLine) strokePtsSk(canvas, scene.guidanceLine, false, SKP.guidance);
+  }
+  toolFootprintSk(canvas);
+  if (rp) vehicleSk(canvas, rp);
+  lightbarSk(canvas); // screen-space overlay, still inside the dpr scale
+  canvas.restore();
+}
+function skFrame() {
+  // Window rAF (not surface.requestAnimationFrame) so the loop survives surface
+  // recreation on resize; re-reads the global skSurface each frame.
+  if (useSkia && skSurface) {
+    try { renderSkia(skSurface.getCanvas()); skSurface.flush(); }
+    catch (e) { ckStatus = 'render err: ' + (e && e.message || e); useSkia = false; applyRenderer(); }
+  }
+  requestAnimationFrame(skFrame);
+}

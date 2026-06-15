@@ -6,13 +6,22 @@
   <title>AgValonia Remote Map (Phase 1)</title>
   <style>
     html, body { margin: 0; height: 100%; background: #0f1115; overflow: hidden; }
-    #c { display: block; touch-action: none; }
+    #c, #ck { position: fixed; inset: 0; display: block; touch-action: none; }
+    #ck { display: none; } /* CanvasKit renderer (toggle with K); hidden until parity */
     #hud {
       position: fixed; top: 8px; left: 8px; color: #7CFC9A;
       font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
     #help { position: fixed; bottom: 8px; left: 8px; color: #668; font: 11px ui-monospace, monospace; }
+    /* Lightbar readout (arrow + cm + line label) — DOM overlay so it renders
+       identically under both the 2D and Skia map renderers (CanvasKit has no
+       bundled font). Sits just below the LED strip. */
+    #lb {
+      position: fixed; top: 44px; left: 0; right: 0; text-align: center; display: none;
+      color: #cfe3ff; font: 600 15px system-ui, sans-serif; pointer-events: none;
+      text-shadow: 0 1px 2px #000;
+    }
     /* Sim drive controls (client→host commands). Touch-friendly bottom bar. */
     #ctl { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
            display: flex; gap: 10px; touch-action: manipulation; }
@@ -26,8 +35,10 @@
 </head>
 <body>
   <canvas id="c"></canvas>
+  <canvas id="ck"></canvas>
   <div id="hud">connecting…</div>
-  <div id="help">wheel/pinch = zoom · drag = pan · F = follow · ←→ steer · ↑↓ speed · space stop</div>
+  <div id="lb"></div>
+  <div id="help">wheel/pinch = zoom · drag = pan · F = follow · K = renderer (2D/Skia) · ←→ steer · ↑↓ speed · space stop</div>
   <div id="ctl">
     <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>
     <button data-cmd="sim.speedDown" title="slower (↓)">−</button>
