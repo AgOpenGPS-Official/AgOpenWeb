@@ -12,6 +12,7 @@ window.RemoteTransport = {
    *           onTick?:  (tick:object)=>void,
    *           onCoverageInit?: (init:object)=>void,
    *           onCoverageCells?: (cells:object)=>void,
+   *           onStatusBar?:(status:object)=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -20,7 +21,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -72,6 +73,20 @@ window.RemoteTransport = {
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool,
+          });
+          break;
+        }
+        case TYPE.STATUS: {
+          const fixQuality = i32(), fixText = str(), age = f32(), sats = i32();
+          const isMetric = !!u8();
+          const gpsOk = !!u8(), imuOk = !!u8(), autoSteerOk = !!u8(), machineOk = !!u8();
+          const imuIp = str(), autoSteerIp = str(), machineIp = str();
+          const gpsConf = !!u8(), imuConf = !!u8(), autoSteerConf = !!u8(), machineConf = !!u8();
+          const jobName = str(), workedAreaSqM = f64();
+          handlers.onStatusBar && handlers.onStatusBar({
+            fixQuality, fixText, age, sats, isMetric,
+            gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
+            gpsConf, imuConf, autoSteerConf, machineConf, jobName, workedAreaSqM,
           });
           break;
         }

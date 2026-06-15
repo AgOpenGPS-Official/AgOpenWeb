@@ -81,7 +81,9 @@ public partial class App : Application
             Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
             Services.GetRequiredService<ICoverageMapService>(),
             Services.GetRequiredService<ISectionControlService>(),
-            Services.GetRequiredService<IToolPositionService>());
+            Services.GetRequiredService<IToolPositionService>(),
+            Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
+            Services.GetRequiredService<IJobService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);

@@ -3,6 +3,7 @@
 // needs is filled from the pipeline/state, never from view-state.
 
 using AgValoniaGPS.Models;
+using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services.Interfaces;
 
@@ -13,12 +14,20 @@ public sealed class SceneProjector
     private readonly ApplicationState _state;
     private readonly ISectionControlService _sections;
     private readonly IToolPositionService _tool;
+    private readonly ConfigurationStore _config;
+    private readonly ICoverageMapService _coverage;
+    private readonly IJobService _jobs;
 
-    public SceneProjector(ApplicationState state, ISectionControlService sections, IToolPositionService tool)
+    public SceneProjector(ApplicationState state, ISectionControlService sections,
+        IToolPositionService tool, ConfigurationStore config,
+        ICoverageMapService coverage, IJobService jobs)
     {
         _state = state;
         _sections = sections;
         _tool = tool;
+        _config = config;
+        _coverage = coverage;
+        _jobs = jobs;
     }
 
     public SceneDto BuildScene(long version)
@@ -160,6 +169,34 @@ public sealed class SceneProjector
             _tool.ToolPosition.Northing,
             _tool.ToolHeading,
             _tool.IsToolPositionReady);
+    }
+
+    // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
+    // VehicleState, module health + IPs from ConnectionState, units from config.
+    public StatusDto BuildStatus()
+    {
+        var v = _state.Vehicle;
+        var c = _state.Connections;
+        var cfg = _config.Connections;
+        return new StatusDto(
+            v.FixQuality,
+            v.FixQualityText,
+            v.Age,
+            v.SatelliteCount,
+            _config.IsMetric,
+            c.IsGpsDataOk,
+            c.IsImuDataOk,
+            c.IsAutoSteerDataOk,
+            c.IsMachineDataOk,
+            c.ImuIpAddress ?? "",
+            c.AutoSteerIpAddress ?? "",
+            c.MachineIpAddress ?? "",
+            cfg.IsGpsConfigured,
+            cfg.IsImuConfigured,
+            cfg.IsAutoSteerConfigured,
+            cfg.IsMachineConfigured,
+            _jobs.ActiveJob?.TaskName ?? "",
+            _coverage.TotalWorkedArea);
     }
 
     /// <summary>

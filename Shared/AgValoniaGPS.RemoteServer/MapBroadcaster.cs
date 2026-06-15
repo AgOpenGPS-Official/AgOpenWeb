@@ -22,6 +22,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private SceneDto _currentScene;
     private Task? _loop;
 
+    private int _statusTick;
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
     private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
@@ -42,7 +43,11 @@ public sealed class MapBroadcaster : IAsyncDisposable
     // sent-bitset the broadcast loop uses for everyone else).
     private IReadOnlyList<byte[]> BuildSeed()
     {
-        var frames = new List<byte[]> { WireCodec.EncodeScene(_currentScene) };
+        var frames = new List<byte[]>
+        {
+            WireCodec.EncodeScene(_currentScene),
+            WireCodec.EncodeStatus(_projector.BuildStatus()),
+        };
         if (_coverageProjector.BuildInit() is { } init)
         {
             frames.Add(WireCodec.EncodeCoverageInit(init));
@@ -116,6 +121,15 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
                     .ConfigureAwait(false);
+
+                // Status bar changes slowly (fix/age/modules) — send at ~2 Hz, not
+                // every 10 Hz tick. Speed (which updates fast) rides the Tick.
+                if (++_statusTick >= 5)
+                {
+                    _statusTick = 0;
+                    await _ws.BroadcastAsync(WireCodec.EncodeStatus(_projector.BuildStatus()), ct)
+                        .ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException) { break; }
             catch

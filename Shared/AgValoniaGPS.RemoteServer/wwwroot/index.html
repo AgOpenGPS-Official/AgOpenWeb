@@ -9,16 +9,48 @@
     #c, #ck { position: fixed; inset: 0; display: block; touch-action: none; }
     #ck { display: none; } /* CanvasKit renderer (toggle with K); hidden until parity */
     #hud {
-      position: fixed; top: 8px; left: 8px; color: #7CFC9A;
+      position: fixed; top: 54px; left: 8px; color: #7CFC9A;
       font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
+    /* Top status bar (Phase 1) — mirrors the native StatusBarPanel: pause + two-line
+       left stack (Fix/Age over a rotating Field/Stats/AB line), aggregate Modules
+       (with per-module popup), and big Speed on the right. */
+    #statusbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 46px; display: none;
+      align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
+      background: rgba(15,17,21,0.85); border-bottom: 1px solid #222a38;
+      color: #cfe3ff; font: 600 15px system-ui, sans-serif;
+      user-select: none; -webkit-user-select: none;
+    }
+    #statusbar button { background: transparent; border: 0; color: inherit; cursor: pointer;
+      font: inherit; padding: 2px 6px; display: inline-flex; align-items: center; gap: 6px; }
+    #statusbar button:hover { background: rgba(255,255,255,0.06); border-radius: 6px; }
+    #statusbar .dot { width: 13px; height: 13px; border-radius: 50%; display: inline-block;
+      background: #6b7280; vertical-align: middle; }
+    #sb-pause { font-size: 12px; color: #cfe3ff; }
+    .sb-left { display: flex; flex-direction: column; justify-content: center; line-height: 1.25; min-width: 360px; }
+    .sb-row1 { display: flex; align-items: center; gap: 8px; }
+    .sb-sec { color: #9fb3cc; font-weight: 500; }
+    .sb-rot { color: #3498DB; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sb-spacer { flex: 1; }
+    .sb-mods-wrap { position: relative; }
+    #sb-modpop { display: none; position: absolute; top: 36px; right: 0; min-width: 230px;
+      background: #161b24; border: 1px solid #2a3550; border-radius: 8px; padding: 8px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; }
+    .sb-modrow { display: grid; grid-template-columns: 16px 84px 1fr; align-items: center;
+      gap: 6px; padding: 3px 2px; font-weight: 500; font-size: 13px; }
+    .sb-modname { color: #cfe3ff; }
+    .sb-modd { color: #9fb3cc; text-align: right; font-size: 12px; }
+    .sb-speed-wrap { display: flex; flex-direction: column; align-items: center; min-width: 70px; }
+    #sb-speed { color: #E67E22; font-size: 24px; font-weight: 700; line-height: 1; }
+    #sb-unit { color: #9fb3cc; font-size: 10px; font-weight: 500; margin-top: 1px; }
     #help { position: fixed; bottom: 8px; left: 8px; color: #668; font: 11px ui-monospace, monospace; }
     /* Lightbar readout (arrow + cm + line label) — DOM overlay so it renders
        identically under both the 2D and Skia map renderers (CanvasKit has no
        bundled font). Sits just below the LED strip. */
     #lb {
-      position: fixed; top: 44px; left: 0; right: 0; text-align: center; display: none;
+      position: fixed; top: 74px; left: 0; right: 0; text-align: center; display: none;
       color: #cfe3ff; font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
@@ -36,6 +68,31 @@
 <body>
   <canvas id="c"></canvas>
   <canvas id="ck"></canvas>
+  <div id="statusbar">
+    <button id="sb-pause" title="Pause / resume rotating field info">❚❚</button>
+    <div class="sb-left">
+      <div class="sb-row1">
+        <span id="sb-fixdot" class="dot"></span>
+        <span id="sb-fix">—</span>
+        <span id="sb-age" class="sb-sec"></span>
+      </div>
+      <div id="sb-rot" class="sb-rot">—</div>
+    </div>
+    <span class="sb-spacer"></span>
+    <div class="sb-mods-wrap">
+      <button id="sb-modbtn"><span id="sb-modagg" class="dot"></span>Modules</button>
+      <div id="sb-modpop">
+        <div class="sb-modrow"><i id="sb-gps" class="dot"></i><span class="sb-modname">GPS</span><span id="sb-gps-d" class="sb-modd"></span></div>
+        <div class="sb-modrow"><i id="sb-imu" class="dot"></i><span class="sb-modname">IMU</span><span id="sb-imu-d" class="sb-modd"></span></div>
+        <div class="sb-modrow"><i id="sb-as" class="dot"></i><span class="sb-modname">AutoSteer</span><span id="sb-as-d" class="sb-modd"></span></div>
+        <div class="sb-modrow"><i id="sb-ma" class="dot"></i><span class="sb-modname">Machine</span><span id="sb-ma-d" class="sb-modd"></span></div>
+      </div>
+    </div>
+    <div class="sb-speed-wrap">
+      <span id="sb-speed">—</span>
+      <span id="sb-unit"></span>
+    </div>
+  </div>
   <div id="hud">connecting…</div>
   <div id="lb"></div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = follow · K = renderer (2D/Skia) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>

@@ -39,6 +39,7 @@ let tick = null;       // TickDto (latest — for sections/HUD)
 let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + receipt time, for DR
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
+let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 
 // ---- coverage offscreen (Phase 2): cells painted into a cell-grid canvas,
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
@@ -119,6 +120,7 @@ const transport = RemoteTransport.create({
     }
     cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
   },
+  onStatusBar(s) { statusBar = s; },
   onStatus(s) { connState = s; },
 });
 transport.start();
@@ -404,7 +406,7 @@ function lightbar() {
   const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
   const mid = (SEG - 1) / 2;
   const totalW = SEG * (W + GAP) - GAP;
-  const x0 = (vw - totalW) / 2, top = 22;
+  const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
   const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
   // Native convention: the lights point the way to STEER. Right-of-line (+xte)
   // lights the LEFT in orange-red (steer left); left-of-line lights the RIGHT
@@ -438,6 +440,127 @@ function updateLightbarText() {
   const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
   lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   ${tick.lineLabel || ''}`;
   lbEl.style.display = 'block';
+}
+
+// Top status bar — DOM overlay mirroring the native StatusBarPanel: a two-line
+// left stack (Fix dot + text + Age on top, a rotating Field/Stats/AB-line below
+// with a pause toggle), and a right cluster (aggregate Modules dot + per-module
+// popup, then big Speed + unit). Updated each frame from the latest StatusDto plus
+// the live tick. Element refs cached once.
+const SB = {
+  bar: document.getElementById('statusbar'),
+  pause: document.getElementById('sb-pause'),
+  fixDot: document.getElementById('sb-fixdot'), fix: document.getElementById('sb-fix'),
+  age: document.getElementById('sb-age'), rot: document.getElementById('sb-rot'),
+  speed: document.getElementById('sb-speed'), unit: document.getElementById('sb-unit'),
+  modAgg: document.getElementById('sb-modagg'), modBtn: document.getElementById('sb-modbtn'),
+  modPop: document.getElementById('sb-modpop'),
+  mGps: document.getElementById('sb-gps'), mImu: document.getElementById('sb-imu'),
+  mAs: document.getElementById('sb-as'), mMa: document.getElementById('sb-ma'),
+  dGps: document.getElementById('sb-gps-d'), dImu: document.getElementById('sb-imu-d'),
+  dAs: document.getElementById('sb-as-d'), dMa: document.getElementById('sb-ma-d'),
+};
+// GPS fix-quality → dot colour (matches the native FixQualityToColor intent).
+function fixColor(q) {
+  switch (q) {
+    case 4: return '#22c55e';  // RTK fixed — green
+    case 5: return '#f59e0b';  // RTK float — amber
+    case 2: return '#38bdf8';  // DGPS — blue
+    case 1: return '#eab308';  // GPS — yellow
+    default: return '#ef4444'; // no/invalid fix — red
+  }
+}
+// Aggregate module colour — green only when every CONFIGURED module is present,
+// amber if some, red if none (mirrors MainViewModel.ModuleStatusKind).
+function moduleAggColor(s) {
+  let conf = 0, pres = 0;
+  const tally = (c, ok) => { if (c) { conf++; if (ok) pres++; } };
+  tally(s.gpsConf, s.gpsOk); tally(s.imuConf, s.imuOk);
+  tally(s.autoSteerConf, s.autoSteerOk); tally(s.machineConf, s.machineOk);
+  if (conf === 0 || pres === 0) return '#ef4444';
+  return pres === conf ? '#22c55e' : '#f59e0b';
+}
+// Area/rate formatting — matches MainViewModel.FormatArea / WorkRateDisplay.
+function fmtArea(m2, metric) {
+  const ha = m2 * 0.0001;
+  return metric ? ha.toFixed(2) + ' ha' : (ha * 2.47105).toFixed(2) + ' ac';
+}
+function fmtRate(haPerHr, metric) {
+  return metric ? haPerHr.toFixed(1) + ' ha/hr' : (haPerHr * 2.47105).toFixed(1) + ' ac/hr';
+}
+// Workable area (m²) from the Scene the client already has: headland polygon if
+// present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
+function shoelace(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; a += pts[i].e * pts[j].n - pts[j].e * pts[i].n; }
+  return Math.abs(a / 2);
+}
+function workableAreaSqM() {
+  if (scene && scene.headland && scene.headland.length >= 3) return shoelace(scene.headland);
+  if (scene && scene.boundaries && scene.boundaries.length && scene.boundaries[0].length >= 3)
+    return shoelace(scene.boundaries[0]);
+  return 0;
+}
+// Active track heading (deg, 0 = north) from its first two Scene points.
+function activeTrackHeadingDeg() {
+  if (!scene || !tick || !tick.activeTrackName) return null;
+  const tr = scene.tracks.find(t => t.name === tick.activeTrackName);
+  if (!tr || tr.points.length < 2) return null;
+  const a = tr.points[0], b = tr.points[1];
+  return Math.atan2(b.e - a.e, b.n - a.n) * 180 / Math.PI;
+}
+// Rotating bottom line — the three native pages (Field / Stats / AB-line).
+let sbPage = 0, sbPaused = false;
+function rotatingLineText() {
+  const s = statusBar; if (!s) return '';
+  if (sbPage === 0) { // Field
+    if (!scene || !scene.hasField) return 'No field';
+    return 'Field: ' + (scene.fieldName || '—') + (s.jobName ? '  Job: ' + s.jobName : '');
+  }
+  if (sbPage === 1) { // Stats
+    if (!scene || !scene.hasField) return '—';
+    const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
+    const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
+    const haPerHr = (lastTick ? lastTick.speed : 0) * 3600 * toolWidthM() / 10000;
+    return 'Done ' + fmtArea(worked, s.isMetric) + '  Left ' + leftPct.toFixed(0) + '%  Rate ' + fmtRate(haPerHr, s.isMetric);
+  }
+  const name = tick && tick.activeTrackName; // AB-line page
+  if (!name) return 'No AB Line';
+  const h = activeTrackHeadingDeg();
+  if (h == null) return 'AB Line: ' + name;
+  const primary = ((h % 360) + 360) % 360, recip = (primary + 180) % 360;
+  return 'AB Line: ' + name + '  ' + primary.toFixed(1) + '°, ' + recip.toFixed(1) + '°';
+}
+setInterval(() => { if (!sbPaused) sbPage = (sbPage + 1) % 3; }, 5000); // native 5 s cycle
+SB.pause.addEventListener('click', () => { sbPaused = !sbPaused; SB.pause.textContent = sbPaused ? '▶' : '❚❚'; });
+// Bar interaction must not pan the map (the camera listens on window pointerdown).
+SB.bar.addEventListener('pointerdown', e => e.stopPropagation());
+SB.modBtn.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  SB.modPop.style.display = SB.modPop.style.display === 'block' ? 'none' : 'block';
+});
+addEventListener('pointerdown', () => { if (SB.modPop) SB.modPop.style.display = 'none'; });
+
+function renderStatusBar() {
+  const s = statusBar;
+  if (!s) { SB.bar.style.display = 'none'; return; }
+  SB.bar.style.display = 'flex';
+  SB.fixDot.style.background = fixColor(s.fixQuality);
+  SB.fix.textContent = s.fixText || '—';
+  SB.age.textContent = 'Age ' + (s.age != null ? s.age.toFixed(1) : '—');
+  SB.rot.textContent = rotatingLineText();
+  // Speed from the live tick (m/s), formatted per the host's unit preference.
+  const mps = lastTick ? lastTick.speed : 0;
+  SB.speed.textContent = (mps * (s.isMetric ? 3.6 : 2.236936)).toFixed(1);
+  SB.unit.textContent = s.isMetric ? 'km/h' : 'mph';
+  // Modules: aggregate dot + per-module popup rows.
+  SB.modAgg.style.background = moduleAggColor(s);
+  const dot = (el, ok) => { el.style.background = ok ? '#22c55e' : '#6b7280'; };
+  dot(SB.mGps, s.gpsOk); dot(SB.mImu, s.imuOk); dot(SB.mAs, s.autoSteerOk); dot(SB.mMa, s.machineOk);
+  SB.dGps.textContent = (s.fixText || '—') + (s.sats ? ' (' + s.sats + ' sats)' : '');
+  SB.dImu.textContent = s.imuIp || 'Not detected';
+  SB.dAs.textContent = s.autoSteerIp || 'Not detected';
+  SB.dMa.textContent = s.machineIp || 'Not detected';
 }
 
 // Background imagery (BackPic.png) — the bottom layer, drawn at its world rect.
@@ -559,6 +682,7 @@ function draw() {
   if (rp) vehicle(rp);
   lightbar();
   updateLightbarText(); // DOM overlay — shared by both renderers (draw() always runs)
+  renderStatusBar();    // top status bar (DOM); always runs
 
   const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
   // "on" = codes 1 (manual on) / 2 (auto on) / 3 (turning off, still flowing).
@@ -708,7 +832,7 @@ function lightbarSk(canvas) {
   const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
   const mid = (SEG - 1) / 2;
   const totalW = SEG * (W + GAP) - GAP;
-  const x0 = (vw - totalW) / 2, top = 22;
+  const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
   const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
   const onLine = Math.abs(xte) < PER;
   const steerLeft = xte > 0; // lights point the way to STEER (native convention)

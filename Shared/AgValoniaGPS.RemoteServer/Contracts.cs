@@ -67,3 +67,33 @@ public record TickDto(
     double ToolN,
     double ToolHeading,
     bool ToolReady);
+
+/// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
+/// + correction age + sat count; the units preference (so the client formats speed
+/// itself — speed rides the Tick); and the four module connection states
+/// (GPS/IMU/AutoSteer/Machine) with their detected IPs ("" = not detected).</summary>
+public record StatusDto(
+    int FixQuality,
+    string FixQualityText,
+    double Age,
+    int SatelliteCount,
+    bool IsMetric,
+    bool GpsOk,
+    bool ImuOk,
+    bool AutoSteerOk,
+    bool MachineOk,
+    string ImuIp,
+    string AutoSteerIp,
+    string MachineIp,
+    // Module-configured flags (the aggregate "Modules" dot is green only when every
+    // CONFIGURED module is present — mirrors MainViewModel.ModuleStatusKind).
+    bool GpsConfigured,
+    bool ImuConfigured,
+    bool AutoSteerConfigured,
+    bool MachineConfigured,
+    // Rotating bottom-line inputs the client can't derive from the Scene: the active
+    // job's task name and the worked area (m²). Field name, workable area (boundary/
+    // headland), tool width and speed the client already has, so it formats + rotates
+    // the three pages (Field / Stats / AB-line) itself, matching the native strip.
+    string JobName,
+    double WorkedAreaSqM);

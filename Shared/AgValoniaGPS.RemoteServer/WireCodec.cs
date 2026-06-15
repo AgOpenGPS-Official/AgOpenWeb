@@ -16,7 +16,7 @@ namespace AgValoniaGPS.RemoteServer;
 
 public static class WireCodec
 {
-    public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4;
+    public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5;
 
     public static byte[] EncodeScene(SceneDto s)
     {
@@ -82,6 +82,32 @@ public static class WireCodec
         w.Write(t.ToolN);            // f64
         w.Write((float)t.ToolHeading);
         w.Write((byte)(t.ToolReady ? 1 : 0));
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeStatus(StatusDto s)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Status);
+        w.Write(s.FixQuality);       // i32
+        WriteStr(w, s.FixQualityText);
+        w.Write((float)s.Age);
+        w.Write(s.SatelliteCount);   // i32
+        w.Write((byte)(s.IsMetric ? 1 : 0));
+        w.Write((byte)(s.GpsOk ? 1 : 0));
+        w.Write((byte)(s.ImuOk ? 1 : 0));
+        w.Write((byte)(s.AutoSteerOk ? 1 : 0));
+        w.Write((byte)(s.MachineOk ? 1 : 0));
+        WriteStr(w, s.ImuIp);
+        WriteStr(w, s.AutoSteerIp);
+        WriteStr(w, s.MachineIp);
+        w.Write((byte)(s.GpsConfigured ? 1 : 0));
+        w.Write((byte)(s.ImuConfigured ? 1 : 0));
+        w.Write((byte)(s.AutoSteerConfigured ? 1 : 0));
+        w.Write((byte)(s.MachineConfigured ? 1 : 0));
+        WriteStr(w, s.JobName);
+        w.Write(s.WorkedAreaSqM);     // f64
         return ms.ToArray();
     }
 

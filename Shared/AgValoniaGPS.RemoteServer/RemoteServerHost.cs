@@ -36,7 +36,9 @@ public sealed class RemoteServerHost
     /// <param name="state">The live DI ApplicationState the app/pipeline updates.</param>
     /// <param name="port">Bound on 0.0.0.0 so LAN clients (tablets) can connect.</param>
     public async Task StartAsync(ApplicationState state, ICoverageMapService coverage,
-        ISectionControlService sections, IToolPositionService tool, int port = 5174)
+        ISectionControlService sections, IToolPositionService tool,
+        AgValoniaGPS.Models.Configuration.ConfigurationStore config,
+        IJobService jobs, int port = 5174)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -46,6 +48,8 @@ public sealed class RemoteServerHost
         builder.Services.AddSingleton(coverage);
         builder.Services.AddSingleton(sections);
         builder.Services.AddSingleton(tool);
+        builder.Services.AddSingleton(config);
+        builder.Services.AddSingleton(jobs);
         builder.Services.AddSingleton<SceneProjector>();
         builder.Services.AddSingleton<CoverageProjector>();
         builder.Services.AddSingleton<WebSocketHub>();
