@@ -19,7 +19,15 @@ public record SceneDto(
     IReadOnlyList<IReadOnlyList<Vec2Dto>> Boundaries, // each = one outer ring
     IReadOnlyList<TrackDto> Tracks,
     IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
-    IReadOnlyList<Vec2Dto>? GuidanceLine); // the followed offset line (magenta), if guiding
+    IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding
+    IReadOnlyList<SectionSpanDto> ToolSections, // section spans (static layout); pose is per-Tick
+    IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
+    IReadOnlyList<Vec2Dto>? NextTrack); // the next pass to pick up after the turn (cyan), if any
+
+/// <summary>One section's signed offsets from the tool centerline (meters; left
+/// negative, right positive), perpendicular to the tool heading. Static-ish —
+/// changes only with tool/section config.</summary>
+public record SectionSpanDto(double Left, double Right);
 
 /// <summary>Vehicle pose. Heading is RADIANS (0 = north, clockwise); Speed is m/s.</summary>
 public record PoseDto(double E, double N, double Heading, double Speed);
@@ -36,7 +44,8 @@ public record TickDto(
     long SceneVersion,
     PoseDto Pose,
     int Fix,
-    bool[] Sections,
+    byte[] Sections, // per-section SectionControlState.ColorCode: 0 off(red) 1 manual-on(yellow)
+                     // 2 auto-on(green) 3 turning-off(cyan) 4 turning-on(orange) 5 auto-off(gray)
     // Guidance HUD: cross-track error (m, +right of line), whether guidance is
     // engaged, the line label ("3L"), and the name of the followed track so the
     // client can highlight it among the Scene tracks. CrossTrackError is only
@@ -44,4 +53,11 @@ public record TickDto(
     double CrossTrackError,
     bool GuidanceActive,
     string LineLabel,
-    string? ActiveTrackName);
+    string? ActiveTrackName,
+    // Tool pose (the section spans in the Scene are drawn relative to this).
+    // Matches SectionControlService.GetSectionWorldPosition's frame: world edge =
+    // (ToolE,ToolN) + (sin,cos)(ToolHeading + π/2) × span. ToolReady gates drawing.
+    double ToolE,
+    double ToolN,
+    double ToolHeading,
+    bool ToolReady);

@@ -4,14 +4,22 @@
 
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.State;
+using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.RemoteServer;
 
 public sealed class SceneProjector
 {
     private readonly ApplicationState _state;
+    private readonly ISectionControlService _sections;
+    private readonly IToolPositionService _tool;
 
-    public SceneProjector(ApplicationState state) => _state = state;
+    public SceneProjector(ApplicationState state, ISectionControlService sections, IToolPositionService tool)
+    {
+        _state = state;
+        _sections = sections;
+        _tool = tool;
+    }
 
     public SceneDto BuildScene(long version)
     {
@@ -55,6 +63,27 @@ public sealed class SceneProjector
         if (dl is { Length: >= 2 })
             guidanceLine = dl.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
+        // Tool/section layout — static spans (PositionLeft/Right, offsets from the
+        // tool centerline). The pose is per-Tick; the client transforms these by it.
+        int nSec = Math.Clamp(_sections.NumSections, 0, SectionState.MaxSections);
+        var states = _sections.SectionStates;
+        var toolSections = new List<SectionSpanDto>(nSec);
+        for (int i = 0; i < nSec && i < states.Count; i++)
+            toolSections.Add(new SectionSpanDto(states[i].PositionLeft, states[i].PositionRight));
+
+        // Planned U-turn path through the headland (when a turn is active).
+        IReadOnlyList<Vec2Dto>? uTurnPath = null;
+        var tp = _state.YouTurn.TurnPath?.ToArray();
+        if (tp is { Length: >= 2 })
+            uTurnPath = tp.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
+
+        // The next pass the tractor will pick up after the turn (cyan until it
+        // becomes the active line). State.YouTurn.NextTrack is the upcoming Track.
+        IReadOnlyList<Vec2Dto>? nextTrack = null;
+        var nt = _state.YouTurn.NextTrack?.Points?.ToArray();
+        if (nt is { Length: >= 2 })
+            nextTrack = nt.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -64,7 +93,10 @@ public sealed class SceneProjector
             boundaries,
             tracks,
             headland,
-            guidanceLine);
+            guidanceLine,
+            toolSections,
+            uTurnPath,
+            nextTrack);
     }
 
     private static void AddRing(List<IReadOnlyList<Vec2Dto>> rings, BoundaryPolygon? poly)
@@ -76,10 +108,17 @@ public sealed class SceneProjector
     public TickDto BuildTick(long sceneVersion)
     {
         var v = _state.Vehicle;
-        var s = _state.Sections;
-        int n = Math.Clamp(s.NumberOfSections, 0, SectionState.MaxSections);
-        var sections = new bool[n];
-        for (int i = 0; i < n; i++) sections[i] = s.GetSectionActive(i);
+        // Section on/off comes from SectionControlService (the authoritative source
+        // coverage paints from) — NOT State.Sections, whose per-section flags are
+        // never written. IsOn = the section is on/laying product.
+        // Per-section display state = the canonical 6-state ColorCode (same source
+        // as the native section bar / map renderer): 0 off(red) 1 manual-on(yellow)
+        // 2 auto-on(green) 3 turning-off(cyan) 4 turning-on(orange) 5 auto-off(gray).
+        var secStates = _sections.SectionStates;
+        int n = Math.Clamp(_sections.NumSections, 0, SectionState.MaxSections);
+        var sections = new byte[n];
+        for (int i = 0; i < n && i < secStates.Count; i++)
+            sections[i] = (byte)secStates[i].ColorCode;
 
         var g = _state.Guidance;
 
@@ -100,7 +139,11 @@ public sealed class SceneProjector
                 || g.IsContourMode
                 || _state.RecordedPath.IsDrivingRecordedPath,
             g.CurrentLineLabel,
-            _state.Field.ActiveTrack?.Name);
+            _state.Field.ActiveTrack?.Name,
+            _tool.ToolPosition.Easting,
+            _tool.ToolPosition.Northing,
+            _tool.ToolHeading,
+            _tool.IsToolPositionReady);
     }
 
     /// <summary>
@@ -128,6 +171,33 @@ public sealed class SceneProjector
         {
             h = h * 31 + dl.Count;
             var p0 = dl[0];
+            h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
+            h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
+        }
+
+        // Section layout — re-send on count or a span change (tool/section config).
+        int nSec = _sections.NumSections;
+        h = h * 31 + nSec;
+        var states = _sections.SectionStates;
+        for (int i = 0; i < nSec && i < states.Count; i++)
+            h = h * 31 + (long)System.Math.Round((states[i].PositionLeft + states[i].PositionRight) * 100);
+
+        // U-turn path: appears/changes per turn (replaced, not mutated).
+        var tp = _state.YouTurn.TurnPath;
+        if (tp is { Count: > 0 })
+        {
+            h = h * 31 + tp.Count;
+            var p0 = tp[0];
+            h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
+            h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
+        }
+
+        // Next track: appears when a turn is set up, clears once picked up.
+        var nt = _state.YouTurn.NextTrack?.Points;
+        if (nt is { Count: > 0 })
+        {
+            h = h * 31 + nt.Count;
+            var p0 = nt[0];
             h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
             h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
         }

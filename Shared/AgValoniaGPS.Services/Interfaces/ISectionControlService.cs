@@ -189,6 +189,26 @@ public class SectionControlState
     /// <summary>Section center position relative to tool center</summary>
     public double PositionCenter => (PositionLeft + PositionRight) / 2.0;
 
+    /// <summary>
+    /// Canonical 6-state display color code (the single source for the section
+    /// bar, map renderer, cycle SectionColorCodes array, and remote/web map):
+    ///   0 = Off (red), 1 = Manual ON (yellow), 2 = Auto ON (green),
+    ///   3 = Turning OFF (cyan; on but off-request pending),
+    ///   4 = Turning ON (orange; off but on-request pending), 5 = Auto OFF (gray).
+    /// </summary>
+    public int ColorCode
+    {
+        get
+        {
+            if (ButtonState == SectionButtonState.Off) return 0; // manual off
+            if (ButtonState == SectionButtonState.On) return 1;  // manual on
+            if (IsOn && SectionOffRequest) return 3;             // turning off
+            if (!IsOn && SectionOnRequest) return 4;             // turning on
+            if (IsOn) return 2;                                  // auto on
+            return 5;                                            // auto off
+        }
+    }
+
     /// <summary>Whether section center is inside field boundary</summary>
     public bool IsInBoundary { get; set; }
 

@@ -47,8 +47,13 @@ window.RemoteTransport = {
             tracks[k] = { id, name, type, points };
           }
           const headland = optPts(), guidanceLine = optPts();
+          const sc = i32(); const toolSections = new Array(sc);
+          for (let k = 0; k < sc; k++) toolSections[k] = { left: f32(), right: f32() };
+          const uTurnPath = optPts();
+          const nextTrack = optPts();
           handlers.onScene && handlers.onScene({
-            version, originLat, originLon, fieldName, hasField, boundaries, tracks, headland, guidanceLine,
+            version, originLat, originLon, fieldName, hasField, boundaries, tracks,
+            headland, guidanceLine, toolSections, uTurnPath, nextTrack,
           });
           break;
         }
@@ -57,12 +62,13 @@ window.RemoteTransport = {
           const pose = { e: f64(), n: f64(), heading: f32(), speed: f32() };
           const fix = u8();
           const sn = i32(); const sections = new Array(sn);
-          for (let k = 0; k < sn; k++) sections[k] = !!u8();
+          for (let k = 0; k < sn; k++) sections[k] = u8(); // 0=off, 1=auto-on, 2=manual-on
           const crossTrackError = f32(), guidanceActive = !!u8(), lineLabel = str();
           const atn = str();
+          const tool = { e: f64(), n: f64(), heading: f32(), ready: !!u8() };
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
-            activeTrackName: atn.length ? atn : null,
+            activeTrackName: atn.length ? atn : null, tool,
           });
           break;
         }

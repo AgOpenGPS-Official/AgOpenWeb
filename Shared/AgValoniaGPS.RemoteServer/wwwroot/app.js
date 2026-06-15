@@ -8,7 +8,20 @@ const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const hud = document.getElementById('hud');
 
-function resize() { cv.width = innerWidth; cv.height = innerHeight; }
+// Logical (CSS-pixel) canvas size. The backing store is scaled by the device
+// pixel ratio so vectors render at native resolution on hi-DPI screens (tablets,
+// retina) — otherwise thin strokes look faint and shimmer when panning. All draw
+// code works in these logical coordinates; the dpr scale is baked into ctx.
+let vw = innerWidth, vh = innerHeight;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
+  vw = innerWidth; vh = innerHeight;
+  cv.width = Math.round(vw * dpr);
+  cv.height = Math.round(vh * dpr);
+  cv.style.width = vw + 'px';
+  cv.style.height = vh + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // sticky; save/restore in draw preserve it
+}
 addEventListener('resize', resize); resize();
 
 // ---- model (fed by the transport) ----
@@ -40,7 +53,10 @@ const transport = RemoteTransport.create({
   onTick(t) {
     tick = t;
     if (t.pose) {
-      lastTick = { e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed, t: performance.now() };
+      lastTick = {
+        e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
+        tool: t.tool, t: performance.now(),
+      };
     }
   },
   onCoverageInit(init) {
@@ -89,7 +105,7 @@ addEventListener('keydown', e => { if (e.key === 'f' || e.key === 'F') follow = 
 
 // ---- render ----
 function w2s(e, n) {
-  return [cv.width / 2 + (e - camE) * pxPerM, cv.height / 2 - (n - camN) * pxPerM];
+  return [vw / 2 + (e - camE) * pxPerM, vh / 2 - (n - camN) * pxPerM];
 }
 function strokePts(pts, close) {
   if (!pts || !pts.length) return;
@@ -107,6 +123,57 @@ function vehicle(p) {
   ctx.beginPath();
   ctx.moveTo(0, -14); ctx.lineTo(9, 11); ctx.lineTo(-9, 11); ctx.closePath();
   ctx.fill();
+  ctx.restore();
+}
+// Section display palette by ColorCode — matches the native
+// SectionColorCodeToBackgroundConverter exactly.
+const SECTION_COLORS = [
+  'rgba(242,51,51,0.85)',  // 0 off          (red)
+  'rgba(247,247,0,0.9)',   // 1 manual on    (yellow)
+  'rgba(0,242,0,0.85)',    // 2 auto on      (green)
+  'rgba(0,222,222,0.85)',  // 3 turning off  (cyan)
+  'rgba(255,165,0,0.9)',   // 4 turning on   (orange)
+  'rgba(150,150,150,0.5)', // 5 auto off     (gray)
+];
+// Tool/section footprint: each section is a bar from its left to right edge,
+// perpendicular to the tool heading, green when on / grey when off. Section
+// spans come from the Scene (static layout); the tool pose comes from the Tick.
+// Transform matches SectionControlService.GetSectionWorldPosition:
+//   edge = (toolE,toolN) + (sin,cos)(toolHeading + π/2) * span.
+// Dead-reckon the tool pose between ticks (same scheme as renderPose for the
+// vehicle), so the footprint glides with the tractor instead of snapping to each
+// 10 Hz tick. Extrapolate along the tool heading at the reported speed.
+function renderTool() {
+  if (!lastTick || !lastTick.tool) return null;
+  let dt = (performance.now() - lastTick.t) / 1000;
+  dt = Math.min(Math.max(dt, 0), 0.5);
+  const tl = lastTick.tool;
+  return {
+    e: tl.e + lastTick.speed * Math.sin(tl.heading) * dt,
+    n: tl.n + lastTick.speed * Math.cos(tl.heading) * dt,
+    heading: tl.heading,
+  };
+}
+function toolFootprint() {
+  const t = renderTool();
+  // Draw whenever we have a section layout and a real tool position. (Not gated
+  // on t.ready — IsToolPositionReady can read false in the sim even while
+  // coverage paints, and coverage proves the pose is live.)
+  if (!t || !scene || !scene.toolSections || !scene.toolSections.length) return;
+  if (!t.e && !t.n) return;
+  const perp = t.heading + Math.PI / 2;
+  const ps = Math.sin(perp), pc = Math.cos(perp);
+  const secs = tick.sections || [];
+  ctx.save();
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'butt';
+  for (let i = 0; i < scene.toolSections.length; i++) {
+    const span = scene.toolSections[i];
+    const [lx, ly] = w2s(t.e + ps * span.left, t.n + pc * span.left);
+    const [rx, ry] = w2s(t.e + ps * span.right, t.n + pc * span.right);
+    ctx.strokeStyle = SECTION_COLORS[secs[i]] || SECTION_COLORS[5];
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ry); ctx.stroke();
+  }
   ctx.restore();
 }
 // Dead-reckon the pose from the last authoritative tick: extrapolate along the
@@ -141,7 +208,7 @@ function lightbar() {
   const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
   const mid = (SEG - 1) / 2;
   const totalW = SEG * (W + GAP) - GAP;
-  const x0 = (cv.width - totalW) / 2, top = 22;
+  const x0 = (vw - totalW) / 2, top = 22;
   const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
   // Native convention: the lights point the way to STEER. Right-of-line (+xte)
   // lights the LEFT in orange-red (steer left); left-of-line lights the RIGHT
@@ -169,7 +236,7 @@ function lightbar() {
   ctx.fillStyle = '#cfe3ff';
   ctx.font = '600 15px system-ui, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(`${arrow} ${cm.toFixed(0)} cm   ${tick.lineLabel || ''}`, cv.width / 2, top + H + 17);
+  ctx.fillText(`${arrow} ${cm.toFixed(0)} cm   ${tick.lineLabel || ''}`, vw / 2, top + H + 17);
   ctx.restore();
 }
 
@@ -183,7 +250,7 @@ function drawCoverage() {
   ctx.drawImage(cov.canvas, tlx, tly, brx - tlx, bry - tly);
 }
 function draw() {
-  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.clearRect(0, 0, vw, vh);
 
   const rp = renderPose();
   if (rp && follow) { camE = rp.e; camN = rp.n; }
@@ -191,32 +258,43 @@ function draw() {
   drawCoverage();
 
   if (scene) {
-    ctx.lineWidth = 2; ctx.strokeStyle = '#46a0ff';
+    ctx.lineWidth = 5; ctx.strokeStyle = '#46a0ff';
     for (const ring of scene.boundaries) strokePts(ring, true);
-    if (scene.headland) { ctx.lineWidth = 1.5; ctx.strokeStyle = '#5fd35f'; strokePts(scene.headland, true); }
+    if (scene.headland) { ctx.lineWidth = 4; ctx.strokeStyle = '#5fd35f'; strokePts(scene.headland, true); }
     const activeName = tick ? tick.activeTrackName : null;
     for (const tr of scene.tracks) {
       const isActive = activeName && tr.name === activeName;
       if (isActive) {
         ctx.setLineDash([9, 7]);
-        ctx.lineWidth = 2; ctx.strokeStyle = '#a86bff'; // dashed purple = reference line
+        ctx.lineWidth = 5; ctx.strokeStyle = '#a86bff'; // dashed purple = reference line
       } else {
         ctx.setLineDash([]);
-        ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffd24a';
+        ctx.lineWidth = 4; ctx.strokeStyle = '#ffd24a';
       }
       strokePts(tr.points, false);
     }
     ctx.setLineDash([]);
+    if (scene.nextTrack) {
+      ctx.lineWidth = 4; ctx.strokeStyle = '#00c8c8'; // cyan = next pass (until picked up)
+      strokePts(scene.nextTrack, false);
+    }
+    if (scene.uTurnPath) {
+      ctx.lineWidth = 5; ctx.strokeStyle = '#4df24d'; // green = U-turn arc
+      strokePts(scene.uTurnPath, false);
+    }
     if (scene.guidanceLine) {
-      ctx.lineWidth = 3; ctx.strokeStyle = '#ff3df0'; // magenta = followed offset line
+      ctx.lineWidth = 5; ctx.strokeStyle = '#fc56ba'; // magenta = current/followed line
       strokePts(scene.guidanceLine, false);
     }
   }
+  toolFootprint();
   if (rp) vehicle(rp);
   lightbar();
 
   const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
-  const secs = tick && tick.sections ? tick.sections.filter(Boolean).length + '/' + tick.sections.length : '—';
+  // "on" = codes 1 (manual on) / 2 (auto on) / 3 (turning off, still flowing).
+  const secs = tick && tick.sections
+    ? tick.sections.filter(c => c >= 1 && c <= 3).length + '/' + tick.sections.length : '—';
   const guid = tick && tick.guidanceActive
     ? `guidance: ${tick.lineLabel || '—'}  xte: ${xteText(tick.crossTrackError)}`
     : 'guidance: off';

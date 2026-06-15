@@ -87,9 +87,11 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 return;
             }
 
-            // Steady state: throttle the diff scan (it enumerates all covered cells).
+            // Steady state: throttle the diff scan (it enumerates all covered
+            // cells). 100 ms = the broadcast cadence, so coverage keeps pace with
+            // the dead-reckoned tool instead of trailing in ~200 ms chunks.
             long now = Environment.TickCount64;
-            if (now - _lastCoverageTicks < 200) return;
+            if (now - _lastCoverageTicks < 100) return;
             _lastCoverageTicks = now;
             if (_coverageProjector.Delta() is { } delta)
                 _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta));

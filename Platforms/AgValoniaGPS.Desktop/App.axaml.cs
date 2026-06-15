@@ -79,7 +79,9 @@ public partial class App : Application
         _remoteServer = new AgValoniaGPS.RemoteServer.RemoteServerHost();
         _ = _remoteServer.StartAsync(
             Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
-            Services.GetRequiredService<ICoverageMapService>());
+            Services.GetRequiredService<ICoverageMapService>(),
+            Services.GetRequiredService<ISectionControlService>(),
+            Services.GetRequiredService<IToolPositionService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);

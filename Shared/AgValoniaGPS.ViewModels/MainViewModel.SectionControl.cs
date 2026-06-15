@@ -142,7 +142,7 @@ public partial class MainViewModel
         int n = Math.Min(NumSections, ToolConfig.MaxSections);
         var result = new int[Math.Max(n, 0)];
         for (int i = 0; i < result.Length && i < states.Count; i++)
-            result[i] = GetSectionColorCode(states[i]);
+            result[i] = states[i].ColorCode;
         return result;
     }
 
@@ -238,7 +238,7 @@ public partial class MainViewModel
     {
         var states = _sectionControlService.SectionStates;
         for (int i = 0; i < _sectionButtons.Count; i++)
-            _sectionButtons[i].ColorCode = i < states.Count ? GetSectionColorCode(states[i]) : 0;
+            _sectionButtons[i].ColorCode = i < states.Count ? states[i].ColorCode : 0;
     }
 
     /// <summary>
@@ -260,38 +260,6 @@ public partial class MainViewModel
                 NumSections,
                 GetSectionButtonStates());
         }
-    }
-
-    /// <summary>
-    /// Calculate color code for a section state. Mirrors
-    /// GpsPipelineService.GetSectionColorCode so the section control bar,
-    /// the map renderer, and the cycle-driven SectionColorCodes array all
-    /// agree on the same 6-state palette:
-    ///   0 = Off (red)
-    ///   1 = Manual ON (yellow)
-    ///   2 = Auto ON (green)
-    ///   3 = Turning OFF (cyan) — IsOn but off-request pending
-    ///   4 = Turning ON (orange) — !IsOn but on-request pending
-    ///   5 = Auto OFF (gray)
-    /// </summary>
-    private static int GetSectionColorCode(SectionControlState state)
-    {
-        if (state.ButtonState == SectionButtonState.Off)
-            return 0;
-        if (state.ButtonState == SectionButtonState.On)
-            return 1;
-
-        // Auto mode transition states
-        if (state.IsOn && state.SectionOffRequest)
-            return 3;
-        if (!state.IsOn && state.SectionOnRequest)
-            return 4;
-
-        // Auto mode steady states
-        if (state.IsOn)
-            return 2;
-
-        return 5;
     }
 
     #endregion

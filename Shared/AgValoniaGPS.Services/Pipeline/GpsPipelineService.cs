@@ -1019,7 +1019,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             for (int i = 0; i < numSections; i++)
             {
                 secStatesArr[i] = sectionStates[i].IsOn;
-                secColorCodes[i] = GetSectionColorCode(sectionStates[i]);
+                secColorCodes[i] = sectionStates[i].ColorCode;
             }
         }
 
@@ -1683,29 +1683,4 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
     }
 
-    /// <summary>
-    /// Section display color codes matching legacy AgOpenGPS states:
-    /// 0 = Off (red), 1 = Manual ON (yellow), 2 = Auto ON (green),
-    /// 3 = Turning OFF (on but requested off - cyan), 4 = Turning ON (off but requested on - orange)
-    /// </summary>
-    private static int GetSectionColorCode(SectionControlState state)
-    {
-        // Manual override states
-        if (state.ButtonState == SectionButtonState.Off)
-            return 0; // Off (red)
-        if (state.ButtonState == SectionButtonState.On)
-            return 1; // Manual ON (yellow)
-
-        // Auto mode transition states
-        if (state.IsOn && state.SectionOffRequest)
-            return 3; // Turning OFF: valve open but shutting down (cyan)
-        if (!state.IsOn && state.SectionOnRequest)
-            return 4; // Turning ON: valve closed but opening (orange)
-
-        // Auto mode steady states
-        if (state.IsOn)
-            return 2; // Auto ON (green)
-
-        return 5; // Auto OFF (gray)
-    }
 }

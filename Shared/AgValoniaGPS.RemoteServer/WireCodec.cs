@@ -43,6 +43,12 @@ public static class WireCodec
 
         WriteOptPts(w, s.Headland);
         WriteOptPts(w, s.GuidanceLine);
+
+        w.Write(s.ToolSections.Count);
+        foreach (var sec in s.ToolSections) { w.Write((float)sec.Left); w.Write((float)sec.Right); }
+
+        WriteOptPts(w, s.UTurnPath);
+        WriteOptPts(w, s.NextTrack);
         return ms.ToArray();
     }
 
@@ -58,11 +64,15 @@ public static class WireCodec
         w.Write((float)t.Pose.Speed);
         w.Write((byte)t.Fix);
         w.Write(t.Sections.Length);
-        foreach (var on in t.Sections) w.Write((byte)(on ? 1 : 0));
+        foreach (var st in t.Sections) w.Write(st); // already a 0/1/2 display-state byte
         w.Write((float)t.CrossTrackError);
         w.Write((byte)(t.GuidanceActive ? 1 : 0));
         WriteStr(w, t.LineLabel);
         WriteStr(w, t.ActiveTrackName ?? ""); // empty string == null on the client
+        w.Write(t.ToolE);            // f64
+        w.Write(t.ToolN);            // f64
+        w.Write((float)t.ToolHeading);
+        w.Write((byte)(t.ToolReady ? 1 : 0));
         return ms.ToArray();
     }
 
