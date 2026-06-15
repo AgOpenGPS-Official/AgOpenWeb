@@ -70,6 +70,19 @@ public sealed class RemoteServerHost
         app.MapGet("/app.js", () => Results.Content(ReadAsset("app.js"), "text/javascript"));
         app.MapGet("/transport.js", () => Results.Content(ReadAsset("transport.js"), "text/javascript"));
 
+        // Field background imagery (BackPic.png). The heavy bytes go over HTTP
+        // (browser-decoded/cached); only the small world rectangle rides the WS
+        // Scene. The client cache-busts with ?v=<version> on field change.
+        app.MapGet("/backpic.png", () =>
+        {
+            var im = state.Field.Imagery;
+            // Serve the raw bytes — Results.File(string) resolves relative to the
+            // web root, which would 404 the absolute field-directory path.
+            return im is not null && File.Exists(im.Path)
+                ? Results.File(File.ReadAllBytes(im.Path), "image/png")
+                : Results.NotFound();
+        });
+
         // Build the broadcaster now so it wires SeedProvider before clients connect.
         app.Services.GetRequiredService<MapBroadcaster>();
 

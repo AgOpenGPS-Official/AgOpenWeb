@@ -84,6 +84,13 @@ public sealed class SceneProjector
         if (nt is { Length: >= 2 })
             nextTrack = nt.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
+        // Background imagery: just the world rectangle + a per-image version
+        // (the PNG itself is fetched over HTTP at /backpic.png?v=version).
+        ImageryDto? imagery = null;
+        var im = f.Imagery;
+        if (im is not null)
+            imagery = new ImageryDto(im.MinE, im.MinN, im.MaxE, im.MaxN, ImageVersion(im.Path));
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -96,7 +103,16 @@ public sealed class SceneProjector
             guidanceLine,
             toolSections,
             uTurnPath,
-            nextTrack);
+            nextTrack,
+            imagery);
+    }
+
+    // Deterministic per-path version (string.GetHashCode is process-randomized).
+    private static long ImageVersion(string path)
+    {
+        long h = 17;
+        foreach (char c in path) h = h * 31 + c;
+        return h;
     }
 
     private static void AddRing(List<IReadOnlyList<Vec2Dto>> rings, BoundaryPolygon? poly)
@@ -201,6 +217,11 @@ public sealed class SceneProjector
             h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
             h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
         }
+
+        // Imagery: re-send (client reloads /backpic.png) when it toggles or the
+        // field's image changes.
+        var im = _state.Field.Imagery;
+        h = h * 31 + (im is not null ? ImageVersion(im.Path) : 0);
         return h;
     }
 }

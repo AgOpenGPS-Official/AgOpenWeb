@@ -49,6 +49,15 @@ public static class WireCodec
 
         WriteOptPts(w, s.UTurnPath);
         WriteOptPts(w, s.NextTrack);
+
+        if (s.Imagery is { } im)
+        {
+            w.Write((byte)1);
+            w.Write(im.MinE); w.Write(im.MinN); w.Write(im.MaxE); w.Write(im.MaxN);
+            w.Write(im.Version);
+        }
+        else w.Write((byte)0);
+
         return ms.ToArray();
     }
 

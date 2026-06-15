@@ -51,9 +51,12 @@ window.RemoteTransport = {
           for (let k = 0; k < sc; k++) toolSections[k] = { left: f32(), right: f32() };
           const uTurnPath = optPts();
           const nextTrack = optPts();
+          const imagery = u8()
+            ? { minE: f64(), minN: f64(), maxE: f64(), maxN: f64(), version: i64() }
+            : null;
           handlers.onScene && handlers.onScene({
             version, originLat, originLon, fieldName, hasField, boundaries, tracks,
-            headland, guidanceLine, toolSections, uTurnPath, nextTrack,
+            headland, guidanceLine, toolSections, uTurnPath, nextTrack, imagery,
           });
           break;
         }

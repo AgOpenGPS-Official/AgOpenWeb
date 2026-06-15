@@ -180,6 +180,16 @@ public class FieldState : ObservableObject
         set => SetProperty(ref _localPlane, value);
     }
 
+    // Background imagery (BackPic.png) placement in field-local meters, mirrored
+    // from the VM's LoadBackgroundImage (which also pushes it to the map control).
+    // View-independent consumers (remote/web map) read this; null when none.
+    private FieldImagery? _imagery;
+    public FieldImagery? Imagery
+    {
+        get => _imagery;
+        set => SetProperty(ref _imagery, value);
+    }
+
     public void Reset()
     {
         ActiveField = null;
@@ -193,5 +203,10 @@ public class FieldState : ObservableObject
         DriftNorthing = DriftEasting = 0;
         OriginLatitude = OriginLongitude = 0;
         LocalPlane = null;
+        Imagery = null;
     }
 }
+
+/// <summary>Background-imagery placement in field-local meters (the rectangle the
+/// PNG at <paramref name="Path"/> covers).</summary>
+public record FieldImagery(string Path, double MinE, double MinN, double MaxE, double MaxN);

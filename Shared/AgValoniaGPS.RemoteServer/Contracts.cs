@@ -22,7 +22,13 @@ public record SceneDto(
     IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding
     IReadOnlyList<SectionSpanDto> ToolSections, // section spans (static layout); pose is per-Tick
     IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
-    IReadOnlyList<Vec2Dto>? NextTrack); // the next pass to pick up after the turn (cyan), if any
+    IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
+    ImageryDto? Imagery); // background field image world-rect + version (PNG served over HTTP)
+
+/// <summary>Background-imagery placement: the field-local world rectangle the
+/// PNG (fetched from /backpic.png) covers, plus a version that changes per field
+/// so the client cache-busts. Null when no enabled imagery.</summary>
+public record ImageryDto(double MinE, double MinN, double MaxE, double MaxN, long Version);
 
 /// <summary>One section's signed offsets from the tool centerline (meters; left
 /// negative, right positive), perpendicular to the tool heading. Static-ish —

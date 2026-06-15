@@ -35,6 +35,11 @@ let connState = 'connecting…';
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
 
+// ---- background imagery: extent from the Scene, PNG fetched over HTTP. ----
+let imageryRect = null;  // { minE, minN, maxE, maxN, version }
+let imageryImg = null;   // loaded <img> once ready
+let imageryVer = null;   // version currently loaded (cache-bust on change)
+
 // ---- client-owned camera (never crosses the wire) ----
 let pxPerM = 4.0;
 let follow = true;
@@ -48,6 +53,18 @@ const transport = RemoteTransport.create({
       const r = s.boundaries[0];
       camE = r.reduce((a, p) => a + p.e, 0) / r.length;
       camN = r.reduce((a, p) => a + p.n, 0) / r.length;
+    }
+    // Background imagery: (re)load the PNG only when the version changes.
+    if (s.imagery) {
+      imageryRect = s.imagery;
+      if (s.imagery.version !== imageryVer) {
+        imageryVer = s.imagery.version;
+        const img = new Image();
+        img.onload = () => { imageryImg = img; };
+        img.src = '/backpic.png?v=' + s.imagery.version;
+      }
+    } else {
+      imageryRect = null; imageryImg = null; imageryVer = null;
     }
   },
   onTick(t) {
@@ -258,6 +275,16 @@ function lightbar() {
   ctx.restore();
 }
 
+// Background imagery (BackPic.png) — the bottom layer, drawn at its world rect.
+function drawImagery() {
+  if (!imageryImg || !imageryRect) return;
+  const r = imageryRect;
+  const [tlx, tly] = w2s(r.minE, r.maxN); // top-left = (minE, maxN)
+  const [brx, bry] = w2s(r.maxE, r.minN); // bottom-right = (maxE, minN)
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(imageryImg, tlx, tly, brx - tlx, bry - tly);
+}
+
 // Blit the coverage offscreen (cell grid) into world space, under the vectors.
 function drawCoverage() {
   if (!cov) return;
@@ -267,13 +294,70 @@ function drawCoverage() {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(cov.canvas, tlx, tly, brx - tlx, bry - tly);
 }
+
+// Reference grid + origin axes (procedural, client-side — no wire). Spacing is a
+// tool-width multiple on a 1-2-5 series keyed to zoom, matching the native grid
+// (#417). Axes through the field origin (local 0,0): X (N=0) red, Y (E=0) green.
+function niceStep125(x) {
+  if (!(x > 0)) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / p;
+  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+}
+function toolWidthM() {
+  const ts = scene && scene.toolSections;
+  if (ts && ts.length) {
+    let lo = Infinity, hi = -Infinity;
+    for (const s of ts) { if (s.left < lo) lo = s.left; if (s.right > hi) hi = s.right; }
+    if (hi > lo) return hi - lo;
+  }
+  return 6;
+}
+function drawGrid() {
+  const G = 2000; // native clamps the grid to ±2000 m
+  const halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
+  const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
+  const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
+  if (minE >= maxE || minN >= maxN) return;
+
+  const toolW = toolWidthM();
+  const spacing = toolW * Math.max(1, niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30)));
+  ctx.lineWidth = 1;
+
+  for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++) {
+    const e = k * spacing;
+    ctx.strokeStyle = (k % 10 === 0) ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
+    const [x, y1] = w2s(e, minN), [, y2] = w2s(e, maxN);
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
+  }
+  for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++) {
+    const n = k * spacing;
+    ctx.strokeStyle = (k % 10 === 0) ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
+    const [x1, y] = w2s(minE, n), [x2] = w2s(maxE, n);
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+  }
+
+  ctx.lineWidth = 1.5;
+  if (0 >= minE && 0 <= maxE) { // Y axis (E=0) — green
+    ctx.strokeStyle = 'rgba(51,204,51,0.5)';
+    const [x, y1] = w2s(0, minN), [, y2] = w2s(0, maxN);
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
+  }
+  if (0 >= minN && 0 <= maxN) { // X axis (N=0) — red
+    ctx.strokeStyle = 'rgba(204,51,51,0.5)';
+    const [x1, y] = w2s(minE, 0), [x2] = w2s(maxE, 0);
+    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+  }
+}
 function draw() {
   ctx.clearRect(0, 0, vw, vh);
 
   const rp = renderPose();
   if (rp && follow) { camE = rp.e; camN = rp.n; }
 
+  drawImagery();   // bottom layer
   drawCoverage();
+  drawGrid();      // grid + origin axes over coverage, under the vectors
 
   if (scene) {
     ctx.lineWidth = 5; ctx.strokeStyle = '#46a0ff';
@@ -320,7 +404,8 @@ function draw() {
     `${connState}\n` +
     (scene ? `field: ${scene.fieldName}\nboundaries: ${scene.boundaries.length}  tracks: ${scene.tracks.length}\n` : 'waiting for scene…\n') +
     `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
-    `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}`;
+    `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}\n` +
+    `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}`;
 
   requestAnimationFrame(draw);
 }

@@ -3968,6 +3968,8 @@ public partial class MainViewModel : ObservableObject
 
     private void LoadBackgroundImage(string fieldPath, Boundary? boundary)
     {
+        // Clear any prior field's imagery up front; set again below on success.
+        State.Field.Imagery = null;
         try
         {
             var backPicPath = Path.Combine(fieldPath, "BackPic.png");
@@ -4039,6 +4041,15 @@ public partial class MainViewModel : ObservableObject
             {
                 _mapService.SetBackgroundImage(backPicPath, nwLocal.Easting, nwLocal.Northing, seLocal.Easting, seLocal.Northing);
             }
+
+            // Mirror the placement into state for view-independent consumers
+            // (remote/web map). Linear local corners; min/max so corner order
+            // doesn't matter.
+            State.Field.Imagery = new Models.State.FieldImagery(backPicPath,
+                System.Math.Min(nwLocal.Easting, seLocal.Easting),
+                System.Math.Min(nwLocal.Northing, seLocal.Northing),
+                System.Math.Max(nwLocal.Easting, seLocal.Easting),
+                System.Math.Max(nwLocal.Northing, seLocal.Northing));
         }
         catch (Exception ex)
         {
@@ -4180,6 +4191,7 @@ public partial class MainViewModel : ObservableObject
             if (File.Exists(backPicPath)) File.Delete(backPicPath);
             if (File.Exists(backPicGeoPath)) File.Delete(backPicGeoPath);
             _mapService.ClearBackground();
+            State.Field.Imagery = null;
         }
         catch (Exception ex)
         {
