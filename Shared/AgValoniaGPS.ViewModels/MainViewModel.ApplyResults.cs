@@ -201,6 +201,9 @@ public partial class MainViewModel
             {
                 _lastMirroredDisplayTrack = g.DisplayTrack;
                 _mapService.SetActiveTrack(g.DisplayTrack);
+                // Mirror the followed offset line into state so view-independent
+                // consumers (remote/web map) can draw it (§ guidance projection).
+                State.Guidance.DisplayLine = g.DisplayTrack?.Points;
             }
             if (!ReferenceEquals(_lastMirroredBaseTrack, g.BaseTrack))
             {

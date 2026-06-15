@@ -34,6 +34,19 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _activeTrack, value);
     }
 
+    // The offset line the tractor is actually steering to (the cycle's
+    // DisplayTrack, parallel to ActiveTrack and shifted by the current pass).
+    // Mirrored from the cycle in ApplyGpsCycleResult alongside the map-service
+    // push, so view-independent consumers (e.g. the remote/web map) can draw
+    // the followed line without reaching into the map control. null when no
+    // guidance line is active.
+    private System.Collections.Generic.List<Vec3>? _displayLine;
+    public System.Collections.Generic.List<Vec3>? DisplayLine
+    {
+        get => _displayLine;
+        set => SetProperty(ref _displayLine, value);
+    }
+
     private bool _isGuidanceActive;
     public bool IsGuidanceActive
     {
@@ -179,6 +192,7 @@ public class GuidanceState : ObservableObject
     public void Reset()
     {
         ActiveTrack = null;
+        DisplayLine = null;
         IsGuidanceActive = false;
         CrossTrackError = HeadingError = SteerAngle = 0;
         SteerAngleRaw = DistanceOffRaw = 0;

@@ -47,6 +47,14 @@ public sealed class SceneProjector
         if (hl != null && hl.Count >= 3)
             headland = hl.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
+        // The followed offset line (DisplayLine) — the line the tractor is
+        // steering to, parallel to the active reference track and shifted by the
+        // current pass. Snapshot the list (it's mutated on the UI thread).
+        IReadOnlyList<Vec2Dto>? guidanceLine = null;
+        var dl = _state.Guidance.DisplayLine?.ToArray();
+        if (dl is { Length: >= 2 })
+            guidanceLine = dl.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -55,7 +63,8 @@ public sealed class SceneProjector
             f.ActiveField != null,
             boundaries,
             tracks,
-            headland);
+            headland,
+            guidanceLine);
     }
 
     private static void AddRing(List<IReadOnlyList<Vec2Dto>> rings, BoundaryPolygon? poly)
@@ -72,11 +81,22 @@ public sealed class SceneProjector
         var sections = new bool[n];
         for (int i = 0; i < n; i++) sections[i] = s.GetSectionActive(i);
 
+        var g = _state.Guidance;
+
         return new TickDto(
             sceneVersion,
             new PoseDto(v.Easting, v.Northing, v.Heading, v.Speed),
             v.FixQuality,
-            sections);
+            sections,
+            g.CrossTrackError,
+            // Lightbar gate — mirror the native exactly (MainWindow feeds the
+            // LightBarPanel with hasGuidance = HasActiveTrack || contour || rec-path,
+            // NOT autosteer-engaged). IsGuidanceActive is dead (never set true).
+            _state.Field.ActiveTrack != null
+                || g.IsContourMode
+                || _state.RecordedPath.IsDrivingRecordedPath,
+            g.CurrentLineLabel,
+            _state.Field.ActiveTrack?.Name);
     }
 
     /// <summary>
@@ -95,6 +115,18 @@ public sealed class SceneProjector
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + f.Tracks.Count;
         foreach (var t in f.Tracks.ToArray()) h = h * 31 + t.Points.Count;
+
+        // Followed offset line: re-send the Scene when the pass changes. The list
+        // is replaced (not mutated) per pass, so count + first-point (rounded to
+        // 0.1 m to avoid float jitter) detects the shift without per-tick churn.
+        var dl = _state.Guidance.DisplayLine;
+        if (dl is { Count: > 0 })
+        {
+            h = h * 31 + dl.Count;
+            var p0 = dl[0];
+            h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
+            h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
+        }
         return h;
     }
 }

@@ -18,7 +18,8 @@ public record SceneDto(
     bool HasField,
     IReadOnlyList<IReadOnlyList<Vec2Dto>> Boundaries, // each = one outer ring
     IReadOnlyList<TrackDto> Tracks,
-    IReadOnlyList<Vec2Dto>? Headland); // inner headland ring (green line), if any
+    IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
+    IReadOnlyList<Vec2Dto>? GuidanceLine); // the followed offset line (magenta), if guiding
 
 public record PoseDto(double E, double N, double Heading, double Speed);
 
@@ -34,4 +35,12 @@ public record TickDto(
     long SceneVersion,
     PoseDto Pose,
     int Fix,
-    bool[] Sections);
+    bool[] Sections,
+    // Guidance HUD: cross-track error (m, +right of line), whether guidance is
+    // engaged, the line label ("3L"), and the name of the followed track so the
+    // client can highlight it among the Scene tracks. CrossTrackError is only
+    // meaningful when GuidanceActive.
+    double CrossTrackError,
+    bool GuidanceActive,
+    string LineLabel,
+    string? ActiveTrackName);

@@ -19,11 +19,24 @@ public class GuidanceWorkingStateTests
     public void Property_shape_mirrors_GuidanceState()
     {
         var workingProps = DeclaredProps(typeof(GuidanceWorkingState));
-        var observableProps = DeclaredProps(typeof(GuidanceState));
 
-        Assert.That(workingProps, Is.EqualTo(observableProps),
-            "GuidanceWorkingState must mirror GuidanceState property-for-property. " +
-            "If a property is added to one, add it to the other.");
+        // GuidanceState may carry observable-only PROJECTION fields with no
+        // working-state counterpart: these expose cycle-output geometry (set in
+        // ApplyGpsCycleResult from the snapshot) for view-independent consumers
+        // — not values the cycle iterates on. DisplayLine is the followed offset
+        // line (the points form of the snapshot's cycle-only DisplayTrack), drawn
+        // by the remote/web map. The guard's real intent — every WORKING field
+        // has an observable mirror — is unaffected; only the reverse direction
+        // carries these documented exceptions.
+        var observableOnly = new HashSet<string> { "DisplayLine" };
+        var observableProps = DeclaredProps(typeof(GuidanceState))
+            .Where(p => !observableOnly.Contains(p.Name))
+            .ToArray();
+
+        Assert.That(observableProps, Is.EqualTo(workingProps),
+            "GuidanceWorkingState must mirror GuidanceState property-for-property " +
+            "(except documented observable-only projection fields in the allowlist). " +
+            "If a working field is added, add its observable mirror too.");
     }
 
     [Test]

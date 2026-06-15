@@ -123,6 +123,56 @@ function renderPose() {
     speed: lastTick.speed,
   };
 }
+// Cross-track error as "12 cm R" (R = right of line, +xte). Centimetres so the
+// magnitude reads at a glance; the lightbar carries the live feel.
+function xteText(xte) {
+  if (xte == null) return '—';
+  const cm = Math.abs(xte) * 100;
+  const side = xte > 0.005 ? 'R' : xte < -0.005 ? 'L' : '·';
+  return `${cm.toFixed(0)} cm ${side}`;
+}
+
+// Lightbar: a centred LED strip across the top, lit toward the side the vehicle
+// has drifted (right of line → right segments). Centre LED green when on-line.
+// Only shown while guidance is engaged. 5 cm per segment.
+function lightbar() {
+  if (!tick || !tick.guidanceActive) return;
+  const xte = tick.crossTrackError || 0;        // + = right of line
+  const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
+  const mid = (SEG - 1) / 2;
+  const totalW = SEG * (W + GAP) - GAP;
+  const x0 = (cv.width - totalW) / 2, top = 22;
+  const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
+  // Native convention: the lights point the way to STEER. Right-of-line (+xte)
+  // lights the LEFT in orange-red (steer left); left-of-line lights the RIGHT
+  // in green (steer right). Centre LED green when on-line.
+  const onLine = Math.abs(xte) < PER;
+  const steerLeft = xte > 0;
+  const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
+
+  for (let i = 0; i < SEG; i++) {
+    const idx = i - mid;                  // signed position from centre
+    const x = x0 + i * (W + GAP);
+    let on = false, col = '#1c2230';
+    if (idx === 0) {
+      on = onLine; col = on ? '#39FF6A' : '#2a3550';
+    } else if (steerLeft ? (idx < 0 && -idx <= lit) : (idx > 0 && idx <= lit)) {
+      on = true; col = litCol;
+    }
+    ctx.fillStyle = on ? col : '#1c2230';
+    ctx.fillRect(x, top, W, H);
+  }
+
+  const cm = Math.abs(xte) * 100;
+  const arrow = onLine ? '●' : steerLeft ? '◀' : '▶'; // arrow = steer direction
+  ctx.save();
+  ctx.fillStyle = '#cfe3ff';
+  ctx.font = '600 15px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${arrow} ${cm.toFixed(0)} cm   ${tick.lineLabel || ''}`, cv.width / 2, top + H + 17);
+  ctx.restore();
+}
+
 // Blit the coverage offscreen (cell grid) into world space, under the vectors.
 function drawCoverage() {
   if (!cov) return;
@@ -144,17 +194,36 @@ function draw() {
     ctx.lineWidth = 2; ctx.strokeStyle = '#46a0ff';
     for (const ring of scene.boundaries) strokePts(ring, true);
     if (scene.headland) { ctx.lineWidth = 1.5; ctx.strokeStyle = '#5fd35f'; strokePts(scene.headland, true); }
-    ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffd24a';
-    for (const tr of scene.tracks) strokePts(tr.points, false);
+    const activeName = tick ? tick.activeTrackName : null;
+    for (const tr of scene.tracks) {
+      const isActive = activeName && tr.name === activeName;
+      if (isActive) {
+        ctx.setLineDash([9, 7]);
+        ctx.lineWidth = 2; ctx.strokeStyle = '#a86bff'; // dashed purple = reference line
+      } else {
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffd24a';
+      }
+      strokePts(tr.points, false);
+    }
+    ctx.setLineDash([]);
+    if (scene.guidanceLine) {
+      ctx.lineWidth = 3; ctx.strokeStyle = '#ff3df0'; // magenta = followed offset line
+      strokePts(scene.guidanceLine, false);
+    }
   }
   if (rp) vehicle(rp);
+  lightbar();
 
   const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
   const secs = tick && tick.sections ? tick.sections.filter(Boolean).length + '/' + tick.sections.length : '—';
+  const guid = tick && tick.guidanceActive
+    ? `guidance: ${tick.lineLabel || '—'}  xte: ${xteText(tick.crossTrackError)}`
+    : 'guidance: off';
   hud.textContent =
     `${connState}\n` +
     (scene ? `field: ${scene.fieldName}\nboundaries: ${scene.boundaries.length}  tracks: ${scene.tracks.length}\n` : 'waiting for scene…\n') +
-    `speed: ${spd}   sections on: ${secs}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
+    `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
     `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}`;
 
   requestAnimationFrame(draw);
