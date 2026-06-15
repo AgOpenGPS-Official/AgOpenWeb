@@ -455,7 +455,30 @@ Verified single-owner / not duplicated — **do not touch**:
 Each ships with the `NoBypassWritesTests`-style guard extended to flag *runtime-state* local copies,
 so this class can't silently regrow.
 
-**Status:** ✅ **COMPLETE.** §12.1/§12.2 (field-geometry + dead deletion), §12.3 (primitive display
-mirrors), and §12.4 (cross-state/sim) all resolved. Domain-typed VM shadows **and** primitive display
+**Status:** §12.1–§12.4 resolved. Domain-typed VM shadows **and** primitive display
 mirrors are now zero; the only remaining intentional cross-state reference (`GuidanceState.ActiveTrack`)
 is a documented, tested observable-mirror. `StateShadowGuardTests` guards domain-typed regrowth in CI.
+**One open follow-up — §12.7 below** (found 2026-06-15 during the web-UI work).
+
+### 12.7 `SectionState` per-section on/off is dead (never written) — TODO
+
+`ApplicationState.Sections._sectionActive[]` (read via `SectionState.GetSectionActive(i)` /
+`Section1Active`…`Section8Active`) is **never written by anything** — no `SetSectionActive` /
+`SetAllSections` call exists in production. The authoritative per-section on/off lives in
+`SectionControlService.SectionStates[i].IsOn` (the source coverage paints from). So
+`State.Sections` exposes section-active flags that are permanently `false`.
+
+Same class as the dead `SimulatorState` (§12.4): an `ApplicationState` sub-object holding values
+nothing populates. Surfaced because the remote/web map's tool-footprint coloring read
+`State.Sections.GetSectionActive(i)` and got all-`false`; fixed there by reading
+`ISectionControlService.SectionStates[i].IsOn` instead (the same authoritative source). But the
+underlying gap remains in the app:
+
+- **Decide the SoT:** either sync `SectionControlService` → `State.Sections` each control tick (if
+  `State.Sections` is meant to be the observable home for section on/off), **or** delete the dead
+  `_sectionActive[]` + `GetSectionActive`/`SetSectionActive`/`Section{1..8}Active` and have all
+  consumers read `ISectionControlService.SectionStates` (mirrors the §12.4 SimulatorState deletion).
+- **Check the other `SectionState` fields** while there: `NumberOfSections`, `IsMasterOn`,
+  `IsManualMode`/`IsAutoMode`, `ActiveSectionCount` — confirm each is actually written/read or also dead.
+- The `StateShadowGuardTests` reflection guard can't catch this (it's a never-written primitive array,
+  not a domain-typed shadow), so it needs the explicit decision above.
