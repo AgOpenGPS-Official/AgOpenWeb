@@ -50,8 +50,8 @@ we are bringing the web to parity with it, region by region.
 
 Web actuation is enabled progressively as operational panels are built (not
 deferred to the very end), running **alongside** native with these guardrails.
-The **Remote Actuation Safety Layer (Phase 6.5)** must land before the first
-hardware-actuating panel (the section bar, Phase 7).
+The **Remote Actuation Safety Layer (Phase 2)** must land before the first
+hardware-actuating panel — the right-nav operational toolbar (Phase 3).
 
 - **Command tiers** on the allowlist:
   - *Tier 0 — observe:* no commands (read-only panels).
@@ -98,147 +98,157 @@ Autosteer-engage (currently excluded from the allowlist per
 
 ## 4. Phase 0 — Foundation (prerequisite scaffolding)
 
-Stand up what every later phase reuses. No user-visible parity yet.
+The reusable scaffolding every later phase needs. These are built **lazily at
+their first-use phase** rather than all up front (Phase 1's read-only status bar
+needed none of them):
 
-- Generalize the command channel: typed `{id, args}` + `ack`/state-echo frame in
-  `WireCodec`/`transport.js`; promote the `App.axaml.cs` switch to a registry with
-  per-command tier metadata.
-- Client UI framework v1: DOM panel/overlay layer + dialog host + on-screen
-  keyboards + theming/units, layered over the existing canvas map.
-- Config bridge v1: read-only structured `ConfigurationStore` projection (writes
-  arrive in Phase 2).
-- **Exit:** a throwaway demo panel can render host state and round-trip a Tier-1
-  command with an ack; dialog host can open/close a placeholder modal.
+- **Command channel generalization** — typed `{id, args}` + `ack`/state-echo frame
+  in `WireCodec`/`transport.js`; promote the `App.axaml.cs` switch to a registry
+  with per-command tier metadata. → built in **Phase 2** (the safety layer needs it).
+- **Client UI framework** — DOM panel/overlay layer + dialog host + on-screen
+  keyboards + theming/units. → dialog host first needed in **Phase 7** (SimCoords).
+- **Config bridge** — structured read/write `ConfigurationStore` projection. → built
+  in **Phase 10** (left-nav config trees, the first config writes).
 
 ---
 
-## 5. The clockwise sweep (Phases 1–9)
+## 5. The clockwise sweep (Phases 1–10)
 
-Perimeter sweep starting top, moving clockwise: **top → right → lower-right
-readouts → bottom → left.** Each phase lists native sources, what to read, what to
-control, and exit criteria. Wire/command additions are incremental.
+Perimeter sweep starting top, moving clockwise: **top status bar → right nav
+(operational) → lower-right readouts → camera pad → clock → simulator → section
+bar → bottom nav (field tools) → left nav (config + setup + fields).** The Remote
+Actuation Safety Layer (Phase 2) is a foundation inserted before the first
+actuation panel — the right nav, which is almost entirely Tier-2 live control.
+Each phase lists native sources, what to read, what to control, and exit criteria.
 
-### Phase 1 — Top status bar  *(Tier 0)*
-- **Native:** `Panels/StatusBarPanel.axaml`, `MainViewModel.StatusStrip.cs`,
-  `MainViewModel.NetworkIO.cs`; `Panels/NetworkIoPanel.axaml`.
-- **Read (wire+):** new `StatusDto` — fix quality + detail, sat count, GPS Hz,
-  NTRIP connected/status/bytes, speed, worked-area, age-of-correction, network
-  in/out. Most derive from `ApplicationState` + `INtripClientService`.
-- **Control:** none.
-- **Client:** top status bar in DOM, bound to `StatusDto`.
-- **Exit:** status bar matches native readouts live; proves the "add a readout"
-  loop end-to-end. *This is the template phase.*
+> **Panel reality (verified from the AXAML, corrected 2026-06-15):** the **right**
+> nav is the *operational actuation toolbar* used while working a field (contour,
+> section master/manual, U-turn, autosteer). The **left** nav is the *config/setup/
+> field hub* (File, Screen & Alerts, Tools, Vehicle/Tool config, Field Operations,
+> Field Tools, AutoSteer config, Network IO/NTRIP). The big config trees live on the
+> LEFT (Phase 10), not the right.
 
-### Phase 2 — Right nav panel + all contents  *(Tier 1 — config writes)*  ⚠ largest phase
-- **Native:** `Panels/RightNavigationPanel.axaml`; the config trees:
-  `Dialogs/VehicleConfigDialog.axaml`, `Dialogs/ToolConfigDialog.axaml` and all
-  `Configuration/*Tab.axaml` + `*SubTab.axaml`; `Dialogs/NtripProfiles*`,
-  `Dialogs/AppSettingsDialogPanel`, `Dialogs/ViewSettingsDialogPanel`,
-  `Dialogs/AutoSteerConfigPanel`, `Dialogs/HotkeyConfigDialogPanel`,
-  `Dialogs/SmartWasDialogPanel`. VMs: `Commands.Configuration.cs`, `Commands.Ntrip.cs`,
-  `Commands.Settings.cs`, `Commands.Hotkeys.cs`, `Commands.Wizards.cs`.
-- **Read/write (wire+):** full `ConfigurationStore` config bridge (read) + a
-  `config.set` / `profile.save` command family (write, Tier 1 — persisted, no live
-  actuation). NTRIP test-connection command.
-- **Control:** NTRIP connect/test; profile load/save; settings writes.
-- **Client:** the multi-tab config forms (Vehicle: dims/antenna/sources; Tool:
-  type/offset/sections/hitch/switches/timing/pivot; Sections; U-turn; Tram;
-  Machine/pins; App; View; AutoSteer; Hotkeys). Heavy — **sub-phase internally**:
-  2a Vehicle, 2b Tool, 2c NTRIP, 2d App/View settings, 2e AutoSteer/SmartWas/Hotkeys.
-- **Exit:** a vehicle+tool+NTRIP profile can be created/edited/saved from the
-  browser and matches what native writes to the profile JSON. Config is foundational
-  for section/guidance correctness in later phases.
+### Phase 1 — Top status bar  *(Tier 0)*  ✅ DONE (commit 28f215f6)
+- **Native:** `Panels/StatusBarPanel.axaml`, `MainViewModel.StatusStrip.cs`.
+- **Shipped:** `StatusDto` (frame 5) — fix quality/text, age, sats, units, module
+  health+IPs+configured flags, job name, worked area. Client status bar: pause +
+  two-line stack (Fix/Age over rotating Field/Stats/AB-line), aggregate Modules dot
+  + per-module popup, big Speed. Established the add-a-panel loop.
+- **Deferred:** heading (Phase 4 readouts), battery (n/a remote), on-map field-stats
+  / GPS-detail toggles (later).
 
-### Phase 3 — Lower-right readouts: roll gauge, GPS detail, heading  *(Tier 0)*
+### Phase 2 — Remote Actuation Safety Layer  *(foundation — gate for all Tier 2)*
+- Build §2: per-action confirm, deadman/presence, connection-loss failsafe (host
+  auto-disengage autosteer + revert sections to safe), native "REMOTE CONTROL
+  ACTIVE" banner, single-authority lock, state echo/audit. Generalize the command
+  channel to typed `{id,args}` + an `ack`/echo frame.
+- **Why now:** the next panel clockwise (right nav) is almost entirely Tier-2
+  actuation — it can't ship without this. This is the "enable actuation early"
+  enabler.
+- **Exit:** a Tier-2 stub command fires only under confirm + presence; socket drop
+  triggers the host failsafe; native shows the remote-active banner. Required
+  before Phase 3.
+
+### Phase 3 — Right nav: operational toolbar  *(Tier 2 — live actuation)*
+- **Native:** `Panels/RightNavigationPanel.axaml`; VMs `Commands.Track.cs`
+  (sections, contour), `MainViewModel.YouTurn.cs`, `SectionControl.cs`,
+  `Guidance.cs`, autosteer toggle.
+- **Controls (verified):** Contour mode; Section **Manual** (all-on); Section
+  **Master** (all-auto); YouTurn auto-arm; U-turn direction; Manual U-turn L/R;
+  **AutoSteer engage/disengage**.
+- **Read (wire+):** contour-mode on; section master/manual mode; youturn enabled;
+  turn armed + direction + distance-to-trigger; autosteer 3-state (disabled/ready/
+  engaged); has-active-track (the autosteer-available gate).
+- **Control (Tier 2, via Phase 2):** `contour.toggle`, `section.master`,
+  `section.manual`, `youturn.toggle/direction/manualLeft/manualRight`,
+  `autosteer.engage/disengage` (re-enabled under the safety layer).
+- **Client:** the right-edge button stack bound to live state (3-state autosteer
+  colour, U-turn distance readout); actuation behind confirm.
+- **Exit:** the operational toolbar drives a field session from the browser,
+  matching native, under the safety layer. The core of "enable actuation early."
+
+### Phase 4 — Lower-right readouts: roll gauge, GPS detail, heading  *(Tier 0)*
 - **Native:** `Panels/RollGaugeReadout.axaml`, `Panels/GpsDetailPanel.axaml`,
   `Panels/HeadingReadout.axaml`.
 - **Read (wire+):** extend `TickDto`/`StatusDto` with roll, pitch, lat/lon,
   altitude, heading detail (heading already present).
-- **Control:** none.
 - **Client:** SVG/canvas roll gauge, GPS detail readout, heading readout.
 - **Exit:** gauges track native live.
 
-### Phase 4 — Camera / mode pad (tilt, zoom, heading mode)  *(Tier 1 — client-side)*
-- **Native:** `Panels/CameraPadControl.axaml`; `MainViewModel.Commands.Navigation.cs`
-  (camera modes, 2D/3D, pitch, grid, day/night, auto-track).
-- **Read:** vehicle heading (already in Tick) for heading-up.
-- **Control:** **client-owned** — drives the camera we already have (pan/zoom/
-  follow/tilt). Map native modes (HeadingUp / NorthUp / Map / Free, auto-track,
-  grid, day/night) onto client behaviors. Minimal host involvement.
-- **Client:** on-screen pad: zoom ±, tilt (reuse `[`/`]`), 2D/3D, north-up/heading-
-  up, grid, day/night. Honor **map-centric** default.
+### Phase 5 — Camera / mode pad (tilt, zoom, heading mode)  *(Tier 1 — client-side)*
+- **Native:** `Panels/CameraPadControl.axaml`; `Commands.Navigation.cs` (camera
+  modes, 2D/3D, pitch, grid, day/night, auto-track).
+- **Control:** **client-owned** — drives the camera we already have. Map native
+  modes (HeadingUp / NorthUp / Map / Free, auto-track, grid, day/night) onto client
+  behaviors. Honor **map-centric** default.
+- **Client:** on-screen pad: zoom ±, tilt (reuse `[`/`]`), 2D/3D, north/heading-up,
+  grid, day/night.
 - **Exit:** pad fully drives the client camera; modes match native semantics.
 
-### Phase 5 — Clock  *(Tier 0)*
-- **Native:** `Panels/TimeReadout.axaml`.
-- **Client:** small clock (host time over wire, or browser local). Quick item.
-- **Exit:** time displayed; trivial.
+### Phase 6 — Clock  *(Tier 0)*
+- **Native:** `Panels/TimeReadout.axaml`. Small clock; quick item.
 
-### Phase 6 — Simulator panel  *(Tier 1 — safe actuation)*
+### Phase 7 — Simulator panel  *(Tier 1 — safe actuation)*
 - **Native:** `Panels/SimulatorPanel.axaml`, `Dialogs/SimCoordsDialogPanel.axaml`;
   `Commands.Simulator.cs`, `Simulator.cs`.
 - **Read (wire+):** sim enabled, speed, steer angle.
-- **Control (allowlist+):** `sim.enable/disable/reset/reverse/reverseDir`, speed
-  up/down (have), `sim.setCoords` (teleport). Sim is hardware-safe.
-- **Client:** full sim panel + the **first real dialog** (SimCoords) — stands up
-  the dialog host + numeric keyboard from the framework against a live command-with-
-  args.
+- **Control:** `sim.enable/disable/reset/reverse/reverseDir`, speed up/down (have),
+  `sim.setCoords` (teleport). Sim is hardware-safe.
+- **Client:** full sim panel + the **first real dialog** (SimCoords) — stands up the
+  dialog host + numeric keyboard against a live command-with-args.
 - **Exit:** full sim control + teleport from browser; dialog framework proven.
 
-### Phase 6.5 — Remote Actuation Safety Layer  *(gate before Tier 2)*
-- Build §2: per-action confirm, deadman/presence, connection-loss failsafe (host
-  auto-disengage), native "REMOTE CONTROL ACTIVE" banner, single-authority lock,
-  state echo/audit. Fault-inject tested (kill socket mid-actuation).
-- **Exit:** a Tier-2 stub command can only fire under confirm+presence; socket drop
-  triggers the host failsafe; native shows the remote-active banner. **Required
-  before Phase 7.**
+### Phase 8 — Section bar  *(Tier 2 — per-section)*
+- **Native:** `Panels/SectionControlPanel.axaml`; `SectionControl.cs`, section
+  commands in `Commands.Track.cs`.
+- **Read:** per-section ColorCode already in `TickDto`; master/manual mode from
+  Phase 3.
+- **Control (Tier 2):** `section.toggle(index)` — through the safety layer.
+- **Client:** colour-coded section bar bound to live ColorCodes; per-section
+  actuation behind confirm.
+- **Exit:** individual sections arm/disarm from browser, reflected by host echo.
 
-### Phase 7 — Section bar  *(Tier 2 — live actuation)*
-- **Native:** `Panels/SectionControlPanel.axaml`; `MainViewModel.SectionControl.cs`,
-  section commands in `Commands.Track.cs`.
-- **Read:** per-section ColorCode already in `TickDto`; add master auto / manual
-  mode state.
-- **Control (Tier 2):** `section.toggleMaster`, `section.toggleManual`,
-  `section.toggle(index)` — through the safety layer.
-- **Client:** color-coded section bar bound to live ColorCodes; actuation behind
-  confirm.
-- **Exit:** sections arm/disarm from browser, reflected by host echo; first live
-  actuation, validated against native.
-
-### Phase 8 — Bottom nav panel + all contents  *(Tier 2 — operational heart)*
+### Phase 9 — Bottom nav: field tools  *(mixed tiers)*
 - **Native:** `Panels/BottomNavigationPanel.axaml`, `Panels/FieldToolsPanel.axaml`;
-  VMs `Commands.Track.cs` (AB cycle/snap/nudge, flags, tram), `YouTurn.cs`,
-  `Guidance.cs`, autosteer toggle, `Headland.cs`, tram, coverage delete.
-- **Read (wire+):** engaged states — `isAutoSteerEngaged`, `isYouTurnEnabled`,
-  turn armed/direction/skip, nudge offset, tram mode/lane, headland on.
-- **Control (Tier 2):** guidance snap/nudge, `youturn.enable/trigger/direction/skip`,
-  `autosteer.engage/disengage` (re-enabled under safety layer), `flag.*`, `tram.*`,
-  coverage/contour delete.
-- **Client:** operational toolbar; all actuation gated.
-- **Exit:** full operational control from browser, matching native, under safety
-  layer. The functional core of "replace native."
+  VMs `Commands.Track.cs` (AB cycle/snap/nudge, flags, tram), `Headland.cs`,
+  coverage/contour delete. *(Verify exact split BottomNav vs FieldTools when reached.)*
+- **Read (wire+):** nudge offset, tram mode/lane, headland on, flag list.
+- **Control:** guidance snap/nudge (Tier 2), `youturn.trigger` (Tier 2), `flag.*`
+  + `tram.*` display (Tier 1), headland toggles, coverage delete.
+- **Client:** the bottom field-tools toolbar; actuation gated.
+- **Exit:** AB/flag/tram/headland field tools usable from the browser.
 
-### Phase 9 — Left nav panel + all contents  *(Tier 1 — field/file lifecycle)*
-- **Native:** `Panels/LeftNavigationPanel.axaml`, `Panels/FileMenuPanel.axaml`,
-  `Panels/FieldOperationsPanel.axaml`, `Panels/ToolsPanel.axaml`; field dialogs:
-  `FieldSelection`, `StartWorkSession`, `ResumeJob`, `NewField`, `FromExistingField`,
-  `FieldBuilder`, `BoundaryMap`, `KmlImport`, `IsoXmlImport`, `ImportTracks`,
-  `Tracks`, `LoadVehicleTool`, AgShare upload/download. VMs: `Commands.Fields.cs`,
-  `TrackManagement.cs`, `BoundaryRecording.cs`, `Commands.Boundary.cs`.
-- **Read (wire+):** field list + metadata, job history, track list, recent jobs.
-- **Control:** `field.open/create/close/resume`, import flows (file **upload over
-  HTTP** to the host, then host imports), boundary record start/stop, track create
-  /delete. Mostly Tier 1 (file/state); boundary-record drive-around may touch Tier 2.
-- **Client:** field/job lifecycle UI + the heavy editor dialogs (BoundaryMap,
-  DrawAB, FieldBuilder) which need **map-tap interaction** — build on the proven
-  canvas map. Placed last per the sweep; the alongside native app covers field-open
-  while earlier operational phases are built and tested.
-- **Exit:** open/create/close/resume a field and import boundaries entirely from the
-  browser; web no longer needs native for the field lifecycle.
+### Phase 10 — Left nav: config + setup + field/file hub  *(Tier 1)*  ⚠ largest phase
+- **Native:** `Panels/LeftNavigationPanel.axaml` and everything it opens:
+  - File Menu (`FileMenuPanel`), Screen & Alerts (`ScreenAlertsPanel` + `AppSettings`),
+    Tools (`ToolsPanel`).
+  - **Vehicle/Tool Configuration** picker hub → `VehicleConfigDialog`/`ToolConfigDialog`
+    + all `Configuration/*Tab.axaml` + `*SubTab.axaml`.
+  - **AutoSteer Config** (`AutoSteerConfigPanel`, steer wizard, `SmartWas`).
+  - **Network IO** (modules + **NTRIP** profiles) — `NetworkIoPanel`, `NtripProfiles*`.
+  - Field Operations + Field Tools launchers; field-lifecycle dialogs
+    (`FieldSelection`, `StartWorkSession`, `ResumeJob`, `NewField`, `FromExistingField`,
+    `FieldBuilder`, `BoundaryMap`, `KmlImport`, `IsoXmlImport`, `ImportTracks`,
+    `Tracks`, `LoadVehicleTool`, AgShare).
+  - VMs: `Commands.Configuration.cs`, `Commands.Ntrip.cs`, `Commands.Settings.cs`,
+    `Commands.Hotkeys.cs`, `Commands.Wizards.cs`, `Commands.Fields.cs`,
+    `TrackManagement.cs`, `BoundaryRecording.cs`, `Commands.Boundary.cs`.
+- **New infra:** the **config bridge** — a structured read/write projection of
+  `ConfigurationStore` + a tiered `config.set` / `profile.save` command family (first
+  time the client writes config). Field list/job-history read; `field.open/create/
+  close/resume`; import via HTTP upload then host-side import.
+- **Heavy — sub-phase:** 10a config bridge → 10b Vehicle config → 10c Tool config →
+  10d AutoSteer config → 10e Network IO/NTRIP → 10f App/Screen & Alerts settings →
+  10g Field Operations/lifecycle → 10h Field Tools/boundary editors + import/export.
+  Editor dialogs (BoundaryMap, DrawAB, FieldBuilder) need **map-tap interaction** —
+  build on the proven canvas map.
+- **Exit:** create/edit a vehicle+tool+NTRIP profile, change settings, and open/
+  create/close/resume a field + import boundaries entirely from the browser — web no
+  longer needs native for setup or the field lifecycle.
 
 ---
 
-## 6. Phase 10 — Mop-up, parity sweep & cutover
+## 6. Phase 11 — Mop-up, parity sweep & cutover
 
 - **Remaining dialogs/panels not yet built:** charts (XTE/steer/heading via a JS
   charting layer), `ScreenAlertsPanel`/alerts overlay, `MapBannersPanel`,
@@ -260,17 +270,19 @@ control, and exit criteria. Wire/command additions are incremental.
 
 ## 7. Sequencing rationale (clockwise, with the dependency note)
 
-Clockwise (top → right → readouts → bottom → left) is kept deliberately:
-- It front-loads **config (Phase 2, right nav)** — the most foundational piece for
-  section/guidance *correctness* downstream.
-- The only real tension: operational panels (Phase 7 sections, Phase 8 bottom-nav
-  guidance) want a **field + tracks loaded**, which lives in the **left nav (Phase 9,
-  last)**. This is **not blocking** because the web runs **alongside native** — open
-  a field on the native app to exercise each web operational panel as it's built.
-- A counter-clockwise sweep would only pull web-native field-open earlier, at the
-  cost of deferring config — a worse trade. If, during build, the alongside-native
-  crutch proves annoying, pull a *minimal* `field.open/resume` action forward from
-  Phase 9 into Phase 6/7 without moving the whole left-nav block.
+Clockwise (top → right → readouts → camera → clock → sim → section bar → bottom →
+left) is kept deliberately:
+- It front-loads the **operational toolbar (Phase 3, right nav)** — the "enable
+  actuation early" centerpiece — right after standing up the safety layer (Phase 2).
+- The tension: operational panels (Phase 3 right nav, Phase 8 section bar, Phase 9
+  field tools) want a **field + tracks + config loaded**, but field lifecycle and
+  the config trees live in the **left nav (Phase 10, last)**. This is **not blocking**
+  because the web runs **alongside native** — open a field and load vehicle/tool
+  config on the native app to exercise each web operational panel as it's built.
+- Config *correctness* matters for section/guidance geometry, but since native owns
+  config until Phase 10, the alongside app supplies a valid config throughout. If
+  the crutch proves annoying, pull a *minimal* `field.open/resume` + read-only config
+  view forward without moving the whole left-nav block.
 
 ---
 
