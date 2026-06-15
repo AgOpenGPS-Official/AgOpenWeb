@@ -16,7 +16,8 @@ namespace AgValoniaGPS.RemoteServer;
 
 public static class WireCodec
 {
-    public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5;
+    public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
+        ControlState = 6, Hello = 7;
 
     public static byte[] EncodeScene(SceneDto s)
     {
@@ -108,6 +109,28 @@ public static class WireCodec
         w.Write((byte)(s.MachineConfigured ? 1 : 0));
         WriteStr(w, s.JobName);
         w.Write(s.WorkedAreaSqM);     // f64
+        return ms.ToArray();
+    }
+
+    // Sent once per connection so the client learns its own id (to compare against
+    // ControlState.HolderId and know whether it holds actuation authority).
+    public static byte[] EncodeHello(string clientId)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Hello);
+        WriteStr(w, clientId);
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeControlState(ControlStateDto s)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(ControlState);
+        w.Write((byte)(s.Held ? 1 : 0));
+        WriteStr(w, s.HolderId);
+        WriteStr(w, s.HolderName);
         return ms.ToArray();
     }
 

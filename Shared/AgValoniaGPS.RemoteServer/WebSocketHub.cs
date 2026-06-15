@@ -20,6 +20,14 @@ public sealed class WebSocketHub
     }
 
     private readonly ConcurrentDictionary<Guid, Client> _clients = new();
+    private readonly ControlAuthority _authority;
+
+    public WebSocketHub(ControlAuthority authority) => _authority = authority;
+
+    /// <summary>Classifies a command id as Tier-2 (live actuation). Tier-2 commands
+    /// are dropped unless the sending connection currently holds fresh authority.
+    /// Set by the host (the app knows its command ids); null = nothing restricted.</summary>
+    public Func<string, bool>? IsRestrictedCommand { get; set; }
 
     /// <summary>
     /// Frames sent to a client the instant it connects (current Scene + coverage
@@ -45,6 +53,9 @@ public sealed class WebSocketHub
         _clients[id] = client;
         try
         {
+            // Tell the client its id first (so it can recognise itself as the
+            // authority holder), then the Scene/coverage seed.
+            await SendToAsync(client, WireCodec.EncodeHello(id.ToString()), ct).ConfigureAwait(false);
             foreach (var frame in SeedProvider?.Invoke() ?? Array.Empty<byte[]>())
                 await SendToAsync(client, frame, ct).ConfigureAwait(false);
 
@@ -53,17 +64,18 @@ public sealed class WebSocketHub
             {
                 var res = await socket.ReceiveAsync(buf, ct).ConfigureAwait(false);
                 if (res.MessageType == WebSocketMessageType.Close) break;
-                // Commands are short single-frame text messages (a command id).
-                if (res.MessageType == WebSocketMessageType.Text && res.Count > 0 && CommandHandler is { } h)
+                // Commands are short single-frame text messages: "id" or "id|arg".
+                if (res.MessageType == WebSocketMessageType.Text && res.Count > 0)
                 {
-                    var cmdId = System.Text.Encoding.UTF8.GetString(buf, 0, res.Count);
-                    try { h(cmdId); } catch { /* a bad command must not drop the client */ }
+                    var msg = System.Text.Encoding.UTF8.GetString(buf, 0, res.Count);
+                    try { Dispatch(id, msg); } catch { /* a bad command must not drop the client */ }
                 }
             }
         }
         catch { /* client dropped — fall through to cleanup */ }
         finally
         {
+            _authority.Drop(id); // revoke + failsafe if this connection held control
             _clients.TryRemove(id, out _);
             client.Gate.Dispose();
             try
@@ -74,6 +86,28 @@ public sealed class WebSocketHub
             }
             catch { /* ignore */ }
         }
+    }
+
+    // Route one inbound command from a connection. control.* manage actuation
+    // authority; any other id runs through CommandHandler, but a Tier-2 id is
+    // dropped unless this connection holds fresh authority — the safety gate.
+    private void Dispatch(Guid conn, string msg)
+    {
+        var bar = msg.IndexOf('|');
+        var id = bar < 0 ? msg : msg[..bar];
+        var arg = bar < 0 ? "" : msg[(bar + 1)..];
+
+        switch (id)
+        {
+            case "control.acquire": _authority.Acquire(conn, arg); return;
+            case "control.release": _authority.Release(conn); return;
+            case "control.presence": _authority.Refresh(conn); return;
+        }
+
+        if (IsRestrictedCommand is { } restricted && restricted(id) && !_authority.HoldsFresh(conn))
+            return; // Tier-2 without fresh authority → dropped
+
+        CommandHandler?.Invoke(id);
     }
 
     /// <summary>Send one frame to every connected client; drop any that fault.</summary>

@@ -15,6 +15,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private readonly SceneProjector _projector;
     private readonly ICoverageMapService _coverage;
     private readonly CoverageProjector _coverageProjector;
+    private readonly ControlAuthority _authority;
     private readonly CancellationTokenSource _cts = new();
 
     private long _sceneVersion;
@@ -28,12 +29,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
 
     public MapBroadcaster(WebSocketHub ws, SceneProjector projector,
-        ICoverageMapService coverage, CoverageProjector coverageProjector)
+        ICoverageMapService coverage, CoverageProjector coverageProjector,
+        ControlAuthority authority)
     {
         _ws = ws;
         _projector = projector;
         _coverage = coverage;
         _coverageProjector = coverageProjector;
+        _authority = authority;
         _currentScene = projector.BuildScene(0);
         _ws.SeedProvider = BuildSeed;
     }
@@ -47,6 +50,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
         {
             WireCodec.EncodeScene(_currentScene),
             WireCodec.EncodeStatus(_projector.BuildStatus()),
+            WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
         {
@@ -111,6 +115,10 @@ public sealed class MapBroadcaster : IAsyncDisposable
         {
             try
             {
+                // Deadman: revoke a holder whose presence heartbeat has lapsed
+                // (fires the failsafe). Cheap; runs every 100 ms tick.
+                _authority.SweepStale();
+
                 var fp = _projector.SceneFingerprint();
                 if (fp != _lastFingerprint)
                 {

@@ -97,3 +97,8 @@ public record StatusDto(
     // the three pages (Field / Stats / AB-line) itself, matching the native strip.
     string JobName,
     double WorkedAreaSqM);
+
+/// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
+/// client compares HolderId to its own id (sent once in the Hello frame) to know
+/// whether it is the holder. Held=false means no client has control.</summary>
+public record ControlStateDto(bool Held, string HolderId, string HolderName);

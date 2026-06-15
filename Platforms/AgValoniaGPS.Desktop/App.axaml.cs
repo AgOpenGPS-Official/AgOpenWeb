@@ -140,6 +140,11 @@ public partial class App : Application
                     _remoteServer.CommandHandler = cmd =>
                         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                         {
+                            // Tier-2 actuation stub (Phase 2): the hub delivers this
+                            // only when the client holds fresh control authority.
+                            if (cmd == "test.actuate")
+                            { windowVm.StatusMessage = "Remote actuation OK (test)"; return; }
+
                             System.Windows.Input.ICommand? c = cmd switch
                             {
                                 "sim.steerLeft" => windowVm.SimulatorSteerLeftCommand,
@@ -151,6 +156,29 @@ public partial class App : Application
                             };
                             if (c?.CanExecute(null) == true) c.Execute(null);
                         });
+
+                    // Tier-2 (live actuation) ids — honored only while a client holds
+                    // fresh control authority (Phase 2 safety layer). Phase 2 ships only
+                    // the 'test.actuate' stub; the prefixes are ready for the Phase 3
+                    // right-nav toolbar (sections / autosteer / U-turn / contour).
+                    _remoteServer.IsRestrictedCommand = id =>
+                        id == "test.actuate"
+                        || id.StartsWith("section.") || id.StartsWith("autosteer.")
+                        || id.StartsWith("youturn.") || id.StartsWith("contour.");
+
+                    // Control-authority changes are a browser-side concept (each
+                    // client shows who holds control); the end-state host is headless,
+                    // so there is no native banner — just a host-side log for the
+                    // alongside-migration period.
+                    _remoteServer.AuthorityChangedHandler = (held, name) =>
+                        System.Diagnostics.Debug.WriteLine(
+                            held ? $"[remote] control taken by {name}" : "[remote] control released");
+
+                    // Failsafe on involuntary loss of authority. Phase 2: log only
+                    // (nothing remote-actuated yet); Phase 3 reverts what the remote
+                    // engaged (disengage autosteer / sections-safe).
+                    _remoteServer.FailsafeHandler = reason =>
+                        System.Diagnostics.Debug.WriteLine($"[remote] actuation failsafe: {reason}");
                 }
             }
 

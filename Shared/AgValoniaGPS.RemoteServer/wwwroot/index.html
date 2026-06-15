@@ -63,6 +63,16 @@
       cursor: pointer; -webkit-user-select: none; user-select: none;
     }
     #ctl button:active { background: rgba(70,160,255,0.5); }
+    /* Remote actuation control (Phase 2 safety layer). Take/Release authority +
+       a Tier-2 test. Bottom-left, clear of the centre sim pad. */
+    #control { position: fixed; bottom: 14px; left: 14px; display: flex; flex-direction: column;
+               gap: 6px; align-items: flex-start; touch-action: manipulation; }
+    #control button { padding: 8px 12px; border-radius: 8px; border: 1px solid #2a3550;
+      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 600 13px system-ui, sans-serif;
+      cursor: pointer; -webkit-user-select: none; user-select: none; }
+    #control button:disabled { opacity: 0.4; cursor: default; }
+    #control button.held { background: #CC0000; border-color: #ff5a5a; color: #fff; }
+    #ctl-status { color: #9fb3cc; font: 500 11px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
   </style>
 </head>
 <body>
@@ -96,6 +106,11 @@
   <div id="hud">connecting…</div>
   <div id="lb"></div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = follow · K = renderer (2D/Skia) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
+  <div id="control">
+    <button id="ctl-take">Take Control</button>
+    <button id="ctl-test" disabled>Test Actuate</button>
+    <div id="ctl-status">connecting…</div>
+  </div>
   <div id="ctl">
     <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>
     <button data-cmd="sim.speedDown" title="slower (↓)">−</button>

@@ -13,6 +13,8 @@ window.RemoteTransport = {
    *           onCoverageInit?: (init:object)=>void,
    *           onCoverageCells?: (cells:object)=>void,
    *           onStatusBar?:(status:object)=>void,
+   *           onHello?:(clientId:string)=>void,
+   *           onControlState?:(state:object)=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -21,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -88,6 +90,15 @@ window.RemoteTransport = {
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
             gpsConf, imuConf, autoSteerConf, machineConf, jobName, workedAreaSqM,
           });
+          break;
+        }
+        case TYPE.HELLO: {
+          handlers.onHello && handlers.onHello(str());
+          break;
+        }
+        case TYPE.CONTROL_STATE: {
+          const held = !!u8(), holderId = str(), holderName = str();
+          handlers.onControlState && handlers.onControlState({ held, holderId, holderName });
           break;
         }
         case TYPE.COVERAGE_INIT: {

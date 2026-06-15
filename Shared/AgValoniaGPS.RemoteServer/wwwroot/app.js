@@ -40,6 +40,11 @@ let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + recei
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
+// Remote actuation authority (Phase 2 safety layer): our connection id (from the
+// Hello frame), the latest broadcast control state, and whether we hold control.
+let myClientId = null;
+let lastControl = { held: false, holderId: '', holderName: '' };
+let iHoldControl = false;
 
 // ---- coverage offscreen (Phase 2): cells painted into a cell-grid canvas,
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
@@ -121,6 +126,8 @@ const transport = RemoteTransport.create({
     cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
   },
   onStatusBar(s) { statusBar = s; },
+  onHello(id) { myClientId = id; updateControlUi(); },
+  onControlState(s) { lastControl = s; updateControlUi(); },
   onStatus(s) { connState = s; },
 });
 transport.start();
@@ -246,6 +253,49 @@ for (const b of document.querySelectorAll('#ctl button')) {
     e.preventDefault(); e.stopPropagation(); // don't also start a camera pan
     transport.send(b.dataset.cmd);
   });
+}
+
+// ---- remote actuation control (Phase 2 safety layer) ----
+// Take/Release single-holder control + a Tier-2 stub. Only the holder may
+// actuate; the holder must heartbeat (presence) or the host revokes it (deadman).
+const ctlTake = document.getElementById('ctl-take');
+const ctlTest = document.getElementById('ctl-test');
+const ctlStatus = document.getElementById('ctl-status');
+function updateControlUi() {
+  if (!ctlTake) return;
+  iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (iHoldControl) {
+    ctlTake.textContent = 'Release Control'; ctlTake.classList.add('held'); ctlTake.disabled = false;
+    ctlTest.disabled = false;
+    ctlStatus.textContent = '● You have control'; ctlStatus.style.color = '#39FF6A';
+  } else if (lastControl.held) {
+    ctlTake.textContent = 'Take Control'; ctlTake.classList.remove('held'); ctlTake.disabled = true;
+    ctlTest.disabled = true;
+    ctlStatus.textContent = '● Under remote control — ' + (lastControl.holderName || 'another client');
+    ctlStatus.style.color = '#ff7a3d';
+  } else {
+    ctlTake.textContent = 'Take Control'; ctlTake.classList.remove('held'); ctlTake.disabled = false;
+    ctlTest.disabled = true;
+    ctlStatus.textContent = 'No one in control'; ctlStatus.style.color = '#9fb3cc';
+  }
+}
+if (ctlTake) {
+  document.getElementById('control').addEventListener('pointerdown', e => e.stopPropagation());
+  ctlTake.addEventListener('click', () => {
+    transport.send(iHoldControl ? 'control.release' : 'control.acquire|Browser');
+  });
+  ctlTest.addEventListener('click', () => {
+    if (!iHoldControl) return;
+    // NOTE: no blocking confirm() here — it would freeze the presence heartbeat
+    // and trip the host deadman. Real Tier-2 actions get a non-blocking in-page
+    // confirm in Phase 3.
+    transport.send('test.actuate');
+    ctlStatus.textContent = 'Test actuation sent ✓'; // cab status line also confirms
+    setTimeout(updateControlUi, 1500);
+  });
+  // Presence heartbeat — keeps our hold alive; a lapse triggers the host deadman.
+  setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
+  updateControlUi();
 }
 
 // ---- render ----

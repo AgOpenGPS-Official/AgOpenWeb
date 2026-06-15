@@ -33,6 +33,23 @@ public sealed class RemoteServerHost
     }
     private Action<string>? _commandHandler;
 
+    /// <summary>Classifies a command id as Tier-2 (live actuation) — those are
+    /// honored only while the sending client holds fresh control authority.</summary>
+    public Func<string, bool>? IsRestrictedCommand
+    {
+        get => _ws?.IsRestrictedCommand;
+        set { _isRestricted = value; if (_ws is not null) _ws.IsRestrictedCommand = value; }
+    }
+    private Func<string, bool>? _isRestricted;
+
+    /// <summary>Raised (off the UI thread) when actuation authority is taken/lost —
+    /// (held, holderName). The host drives the native "remote control active" banner.</summary>
+    public Action<bool, string>? AuthorityChangedHandler { get; set; }
+
+    /// <summary>Raised when authority is lost involuntarily (disconnect / deadman).
+    /// The host reverts what the remote actuated (Phase 3). Arg = reason.</summary>
+    public Action<string>? FailsafeHandler { get; set; }
+
     /// <param name="state">The live DI ApplicationState the app/pipeline updates.</param>
     /// <param name="port">Bound on 0.0.0.0 so LAN clients (tablets) can connect.</param>
     public async Task StartAsync(ApplicationState state, ICoverageMapService coverage,
@@ -50,6 +67,7 @@ public sealed class RemoteServerHost
         builder.Services.AddSingleton(tool);
         builder.Services.AddSingleton(config);
         builder.Services.AddSingleton(jobs);
+        builder.Services.AddSingleton<ControlAuthority>();
         builder.Services.AddSingleton<SceneProjector>();
         builder.Services.AddSingleton<CoverageProjector>();
         builder.Services.AddSingleton<WebSocketHub>();
@@ -98,6 +116,17 @@ public sealed class RemoteServerHost
         // Hook the WS hub for inbound commands (apply any handler set pre-start).
         _ws = app.Services.GetRequiredService<WebSocketHub>();
         _ws.CommandHandler = _commandHandler;
+        _ws.IsRestrictedCommand = _isRestricted;
+
+        // Control authority → broadcast state to clients + drive the native banner;
+        // involuntary loss → failsafe.
+        var authority = app.Services.GetRequiredService<ControlAuthority>();
+        authority.Changed += st =>
+        {
+            _ = _ws.BroadcastAsync(WireCodec.EncodeControlState(st));
+            AuthorityChangedHandler?.Invoke(st.Held, st.HolderName);
+        };
+        authority.Revoked += reason => FailsafeHandler?.Invoke(reason);
 
         await app.StartAsync();
         app.Services.GetRequiredService<MapBroadcaster>().Start();
