@@ -35,6 +35,9 @@
     <button data-cmd="sim.speedUp" title="faster (↑)">+</button>
     <button data-cmd="sim.steerRight" title="steer right (→)">▶</button>
   </div>
+  <!-- CanvasKit (WASM Skia) — bundled locally, no CDN (offline in-cab). Defines
+       CanvasKitInit; the renderer migration (Phase A/B) uses it for true 3D. -->
+  <script src="/vendor/canvaskit.js"></script>
   <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>
   <script src="/app.js"></script>

@@ -70,6 +70,11 @@ public sealed class RemoteServerHost
         app.MapGet("/app.js", () => Results.Content(ReadAsset("app.js"), "text/javascript"));
         app.MapGet("/transport.js", () => Results.Content(ReadAsset("transport.js"), "text/javascript"));
 
+        // CanvasKit (WASM Skia) — bundled locally for offline in-cab use. The
+        // wasm is served as application/wasm so the browser can streaming-compile.
+        app.MapGet("/vendor/canvaskit.js", () => Results.Content(ReadAsset("vendor.canvaskit.js"), "text/javascript"));
+        app.MapGet("/vendor/canvaskit.wasm", () => Results.File(ReadAssetBytes("vendor.canvaskit.wasm"), "application/wasm"));
+
         // Field background imagery (BackPic.png). The heavy bytes go over HTTP
         // (browser-decoded/cached); only the small world rectangle rides the WS
         // Scene. The client cache-busts with ?v=<version> on field change.
@@ -113,5 +118,17 @@ public sealed class RemoteServerHost
         using var s = asm.GetManifestResourceStream(res)!;
         using var r = new StreamReader(s);
         return r.ReadToEnd();
+    }
+
+    private static byte[] ReadAssetBytes(string name)
+    {
+        var asm = Assembly.GetExecutingAssembly();
+        var res = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith(".wwwroot." + name, StringComparison.OrdinalIgnoreCase))
+            ?? throw new FileNotFoundException($"Embedded client asset not found: {name}");
+        using var s = asm.GetManifestResourceStream(res)!;
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return ms.ToArray();
     }
 }

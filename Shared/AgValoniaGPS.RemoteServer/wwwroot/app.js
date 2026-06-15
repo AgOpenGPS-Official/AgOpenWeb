@@ -29,6 +29,7 @@ let scene = null;      // SceneDto
 let tick = null;       // TickDto (latest — for sections/HUD)
 let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + receipt time, for DR
 let connState = 'connecting…';
+let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 
 // ---- coverage offscreen (Phase 2): cells painted into a cell-grid canvas,
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
@@ -101,6 +102,23 @@ const transport = RemoteTransport.create({
   onStatus(s) { connState = s; },
 });
 transport.start();
+
+// CanvasKit load de-risk (Phase A prep): init the WASM + a WebGL surface to prove
+// it loads and runs in this browser before porting the renderer. No visual change
+// yet — the Canvas2D map below keeps rendering. Status shows in the HUD.
+if (typeof CanvasKitInit === 'function') {
+  CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(CK => {
+    try {
+      const test = document.createElement('canvas');
+      test.width = test.height = 2;
+      const surf = CK.MakeWebGLCanvasSurface(test);
+      ckStatus = surf ? `ready (Skia ${CK.Version ? CK.Version() : 'WebGL'})` : 'no WebGL surface';
+      window.CanvasKit = CK; // hand off to the renderer once Phase A lands
+    } catch (e) { ckStatus = 'init error: ' + e.message; }
+  }).catch(e => { ckStatus = 'load error: ' + e.message; });
+} else {
+  ckStatus = 'loader missing';
+}
 
 // ---- camera controls ----
 addEventListener('wheel', e => {
@@ -405,7 +423,8 @@ function draw() {
     (scene ? `field: ${scene.fieldName}\nboundaries: ${scene.boundaries.length}  tracks: ${scene.tracks.length}\n` : 'waiting for scene…\n') +
     `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
     `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}\n` +
-    `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}`;
+    `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}\n` +
+    `canvaskit: ${ckStatus}`;
 
   requestAnimationFrame(draw);
 }
