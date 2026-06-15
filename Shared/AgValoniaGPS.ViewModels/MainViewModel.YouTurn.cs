@@ -39,7 +39,11 @@ public partial class MainViewModel
     public bool IsYouTurnEnabled
     {
         get => _isYouTurnEnabled;
-        set => SetProperty(ref _isYouTurnEnabled, value);
+        set
+        {
+            if (SetProperty(ref _isYouTurnEnabled, value))
+                State.Operation.IsYouTurnEnabled = value; // mirror for web-UI projection
+        }
     }
 
     /// <summary>

@@ -72,9 +72,15 @@ window.RemoteTransport = {
           const crossTrackError = f32(), guidanceActive = !!u8(), lineLabel = str();
           const atn = str();
           const tool = { e: f64(), n: f64(), heading: f32(), ready: !!u8() };
+          // Operational state for the right-nav toolbar.
+          const op = {
+            autoSteer: !!u8(), autoSteerAvail: !!u8(), contour: !!u8(),
+            sectionAuto: !!u8(), sectionManual: !!u8(), youturn: !!u8(),
+            turnLeft: !!u8(), distToTrigger: f32(), trackClosed: !!u8(),
+          };
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
-            activeTrackName: atn.length ? atn : null, tool,
+            activeTrackName: atn.length ? atn : null, tool, op,
           });
           break;
         }

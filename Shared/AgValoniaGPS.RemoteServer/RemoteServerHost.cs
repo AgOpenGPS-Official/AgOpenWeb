@@ -97,6 +97,16 @@ public sealed class RemoteServerHost
         app.MapGet("/vendor/canvaskit.js", () => Results.Content(ReadAsset("vendor.canvaskit.js"), "text/javascript"));
         app.MapGet("/vendor/canvaskit.wasm", () => Results.File(ReadAssetBytes("vendor.canvaskit.wasm"), "application/wasm"));
 
+        // Right-nav toolbar icons (PNG), embedded from wwwroot/icons. Filename-only
+        // (no path traversal); unknown names 404.
+        app.MapGet("/icons/{file}", (string file) =>
+        {
+            if (file.Contains('/') || file.Contains('\\') || file.Contains(".."))
+                return Results.NotFound();
+            try { return Results.File(ReadAssetBytes("icons." + file), "image/png"); }
+            catch (FileNotFoundException) { return Results.NotFound(); }
+        });
+
         // Field background imagery (BackPic.png). The heavy bytes go over HTTP
         // (browser-decoded/cached); only the small world rectangle rides the WS
         // Scene. The client cache-busts with ?v=<version> on field change.

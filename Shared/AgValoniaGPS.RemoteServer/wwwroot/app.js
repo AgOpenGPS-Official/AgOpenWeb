@@ -613,6 +613,38 @@ function renderStatusBar() {
   SB.dMa.textContent = s.machineIp || 'Not detected';
 }
 
+// Right-nav operational toolbar (Phase 3a: read-only live indicators; 3b wires the
+// Tier-2 commands). Colour-coded from the Tick's operational state.
+const RN = {
+  root: document.getElementById('rightnav'),
+  contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
+  autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
+  dir: document.getElementById('rn-dir'), dirArrow: document.getElementById('rn-dir-arrow'),
+  dirDist: document.getElementById('rn-dir-dist'), manualTurn: document.getElementById('rn-manualturn'),
+  steerI: document.getElementById('rn-steer-i'),
+};
+// Swap an icon only when it actually changes (no per-frame churn).
+function rnIcon(img, name) { if (img && !img.src.endsWith(name)) img.src = '/icons/' + name; }
+function renderRightNav() {
+  if (!RN.root) return;
+  const op = tick && tick.op;
+  if (!op || !scene || !scene.hasField) { RN.root.style.display = 'none'; return; }
+  RN.root.style.display = 'flex';
+  // State carried by the icon image (native uses the same On/Off/Gray PNGs).
+  rnIcon(RN.contourI, op.contour ? 'ContourOn.png' : 'ContourOff.png');
+  rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
+  rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
+  rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
+  // U-turn direction + distance-to-trigger — shown only when auto U-turn is on.
+  RN.dir.style.display = op.youturn ? '' : 'none';
+  RN.dirArrow.textContent = op.turnLeft ? '↰' : '↱';
+  RN.dirDist.textContent = op.distToTrigger > 0 ? op.distToTrigger.toFixed(0) + ' m' : '';
+  // Manual U-turn buttons — visible while steering on a non-closed track (native rule).
+  RN.manualTurn.style.display = (op.autoSteer && !op.trackClosed) ? 'flex' : 'none';
+  // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
+  rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
+}
+
 // Background imagery (BackPic.png) — the bottom layer, drawn at its world rect.
 function drawImagery() {
   if (!imageryImg || !imageryRect) return;
@@ -733,6 +765,7 @@ function draw() {
   lightbar();
   updateLightbarText(); // DOM overlay — shared by both renderers (draw() always runs)
   renderStatusBar();    // top status bar (DOM); always runs
+  renderRightNav();     // right-nav operational toolbar (DOM)
 
   const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
   // "on" = codes 1 (manual on) / 2 (auto on) / 3 (turning off, still flowing).

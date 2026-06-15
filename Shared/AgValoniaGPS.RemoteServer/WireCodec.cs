@@ -83,6 +83,16 @@ public static class WireCodec
         w.Write(t.ToolN);            // f64
         w.Write((float)t.ToolHeading);
         w.Write((byte)(t.ToolReady ? 1 : 0));
+        // Operational state (right-nav toolbar).
+        w.Write((byte)(t.IsAutoSteerEngaged ? 1 : 0));
+        w.Write((byte)(t.AutoSteerAvailable ? 1 : 0));
+        w.Write((byte)(t.IsContourMode ? 1 : 0));
+        w.Write((byte)(t.IsSectionAutoMaster ? 1 : 0));
+        w.Write((byte)(t.IsSectionManualAll ? 1 : 0));
+        w.Write((byte)(t.IsYouTurnEnabled ? 1 : 0));
+        w.Write((byte)(t.TurnIsLeft ? 1 : 0));
+        w.Write((float)t.DistanceToTrigger);
+        w.Write((byte)(t.IsActiveTrackClosed ? 1 : 0));
         return ms.ToArray();
     }
 

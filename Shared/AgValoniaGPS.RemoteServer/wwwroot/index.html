@@ -73,6 +73,26 @@
     #control button:disabled { opacity: 0.4; cursor: default; }
     #control button.held { background: #CC0000; border-color: #ff5a5a; color: #fff; }
     #ctl-status { color: #9fb3cc; font: 500 11px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
+    /* Right-nav operational toolbar (Phase 3). Vertical button stack on the right
+       edge, colour-coded by live state. (Phase 3a: read-only indicators; 3b wires
+       the Tier-2 commands through the control gate.) */
+    #rightnav { position: fixed; right: 10px; top: 56px; display: none; flex-direction: column;
+                gap: 8px; align-items: stretch; touch-action: manipulation; }
+    .rn-btn { width: 70px; min-height: 52px; border-radius: 10px; border: 1px solid #2a3550;
+      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 600 13px system-ui, sans-serif;
+      cursor: pointer; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 2px; -webkit-user-select: none; user-select: none; }
+    .rn-btn .rn-sub { font-size: 11px; color: #9fb3cc; font-weight: 500; }
+    .rn-ic { width: 46px; height: 46px; object-fit: contain; display: block; pointer-events: none; }
+    .rn-btn.on-green { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+    .rn-btn.on-green .rn-sub { color: #d9ffe6; }
+    .rn-btn.on-yellow { background: #9a8500; border-color: #f7d000; color: #fff; }
+    .rn-btn.steer-ready { background: #1c4a7a; border-color: #3a8bd6; color: #fff; }
+    .rn-btn.steer-on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+    .rn-btn.disabled { opacity: 0.4; }
+    #rn-manualturn { display: none; flex-direction: row; gap: 8px; }
+    .rn-sm { width: 31px; min-height: 38px; font-size: 18px; }
+    #rn-readonly { color: #668; font: 500 10px ui-monospace, monospace; text-align: center; }
   </style>
 </head>
 <body>
@@ -110,6 +130,19 @@
     <button id="ctl-take">Take Control</button>
     <button id="ctl-test" disabled>Test Actuate</button>
     <div id="ctl-status">connecting…</div>
+  </div>
+  <div id="rightnav">
+    <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>
+    <button id="rn-manual" class="rn-btn"><img id="rn-manual-i" class="rn-ic" alt="Manual"></button>
+    <button id="rn-auto" class="rn-btn"><img id="rn-auto-i" class="rn-ic" alt="Sections"></button>
+    <button id="rn-youturn" class="rn-btn"><img id="rn-youturn-i" class="rn-ic" alt="U-Turn"></button>
+    <button id="rn-dir" class="rn-btn"><span id="rn-dir-arrow">↰</span><span id="rn-dir-dist" class="rn-sub"></span></button>
+    <div id="rn-manualturn">
+      <button id="rn-uturn-l" class="rn-btn rn-sm">↰</button>
+      <button id="rn-uturn-r" class="rn-btn rn-sm">↱</button>
+    </div>
+    <button id="rn-steer" class="rn-btn"><img id="rn-steer-i" class="rn-ic" alt="AutoSteer"></button>
+    <div id="rn-readonly">read-only</div>
   </div>
   <div id="ctl">
     <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>

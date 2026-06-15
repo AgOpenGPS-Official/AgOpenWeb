@@ -988,7 +988,11 @@ public partial class MainViewModel : ObservableObject
     public bool IsContourModeOn
     {
         get => _isContourModeOn;
-        set => SetProperty(ref _isContourModeOn, value);
+        set
+        {
+            if (SetProperty(ref _isContourModeOn, value))
+                State.Operation.IsContourOn = value; // mirror for web-UI projection
+        }
     }
 
     private bool _showRecordedPaths;
@@ -1029,7 +1033,10 @@ public partial class MainViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isManualAllOn, value))
+            {
+                State.Operation.IsSectionManualAll = value; // mirror for web-UI projection
                 OnPropertyChanged(nameof(IsSectionBarVisible));
+            }
         }
     }
 
@@ -1039,7 +1046,10 @@ public partial class MainViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isAutoAllOn, value))
+            {
+                State.Operation.IsSectionAutoMaster = value; // mirror for web-UI projection
                 OnPropertyChanged(nameof(IsSectionBarVisible));
+            }
         }
     }
 
@@ -1049,6 +1059,7 @@ public partial class MainViewModel : ObservableObject
         set
         {
             SetProperty(ref _isAutoSteerAvailable, value);
+            State.Operation.IsAutoSteerAvailable = value; // mirror for web-UI projection
             RaiseUTurnButtonVisibleChanged();
         }
     }
@@ -1059,7 +1070,10 @@ public partial class MainViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isAutoSteerEngaged, value))
+            {
+                State.Operation.IsAutoSteerEngaged = value; // mirror for web-UI projection
                 OnPropertyChanged(nameof(IsManualUTurnVisible));
+            }
         }
     }
 

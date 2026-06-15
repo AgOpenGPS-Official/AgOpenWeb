@@ -48,6 +48,7 @@ public class ApplicationState : ObservableObject
     public ConnectionState Connections { get; } = new();
     public FieldState Field { get; } = new();
     public YouTurnState YouTurn { get; } = new();
+    public OperationState Operation { get; } = new(); // right-nav toolbar mode mirror (web-UI)
     public RecordedPathState RecordedPath { get; } = new();
     public BoundaryRecState BoundaryRec { get; } = new();
     public UIState UI { get; } = new();

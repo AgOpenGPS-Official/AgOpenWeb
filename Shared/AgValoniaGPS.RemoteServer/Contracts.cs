@@ -66,7 +66,18 @@ public record TickDto(
     double ToolE,
     double ToolN,
     double ToolHeading,
-    bool ToolReady);
+    bool ToolReady,
+    // Operational state for the right-nav toolbar (Phase 3). Lives at Tick rate so
+    // the autosteer 3-state, U-turn arming and distance-to-trigger stay live.
+    bool IsAutoSteerEngaged,
+    bool AutoSteerAvailable,   // a track is active → autosteer may engage (else greyed)
+    bool IsContourMode,
+    bool IsSectionAutoMaster,
+    bool IsSectionManualAll,
+    bool IsYouTurnEnabled,
+    bool TurnIsLeft,
+    double DistanceToTrigger,
+    bool IsActiveTrackClosed);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

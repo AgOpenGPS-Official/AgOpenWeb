@@ -168,7 +168,19 @@ public sealed class SceneProjector
             _tool.ToolPosition.Easting,
             _tool.ToolPosition.Northing,
             _tool.ToolHeading,
-            _tool.IsToolPositionReady);
+            _tool.IsToolPositionReady,
+            // Operational state (right-nav toolbar). Engaged + contour + U-turn
+            // direction/distance come from state; the three mode flags from the
+            // VM mirror (ApplicationState.Operation).
+            _state.Operation.IsAutoSteerEngaged,
+            _state.Operation.IsAutoSteerAvailable,
+            _state.Operation.IsContourOn,
+            _state.Operation.IsSectionAutoMaster,
+            _state.Operation.IsSectionManualAll,
+            _state.Operation.IsYouTurnEnabled,
+            _state.YouTurn.IsTurnLeft,
+            _state.YouTurn.DistanceToTrigger,
+            _state.Field.ActiveTrack?.IsClosed == true);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
