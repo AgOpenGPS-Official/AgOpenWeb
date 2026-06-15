@@ -21,6 +21,7 @@ public record SceneDto(
     IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
     IReadOnlyList<Vec2Dto>? GuidanceLine); // the followed offset line (magenta), if guiding
 
+/// <summary>Vehicle pose. Heading is RADIANS (0 = north, clockwise); Speed is m/s.</summary>
 public record PoseDto(double E, double N, double Heading, double Speed);
 
 // --- Coverage (Phase 2). Display layer streamed as RGB cells; init carries the

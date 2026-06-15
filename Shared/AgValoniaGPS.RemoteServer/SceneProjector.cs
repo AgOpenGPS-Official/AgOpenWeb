@@ -85,7 +85,11 @@ public sealed class SceneProjector
 
         return new TickDto(
             sceneVersion,
-            new PoseDto(v.Easting, v.Northing, v.Heading, v.Speed),
+            // VehicleState.Heading is DEGREES (0 = north, clockwise); the wire
+            // carries RADIANS so the client can ctx.rotate / sin / cos directly
+            // (matching the native map control's headingRadians convention).
+            // Without this the marker spun ~57× per revolution during turns.
+            new PoseDto(v.Easting, v.Northing, v.Heading * System.Math.PI / 180.0, v.Speed),
             v.FixQuality,
             sections,
             g.CrossTrackError,
