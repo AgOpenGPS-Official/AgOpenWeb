@@ -18,6 +18,20 @@ namespace AgValoniaGPS.RemoteServer;
 public sealed class RemoteServerHost
 {
     private WebApplication? _app;
+    private WebSocketHub? _ws;
+
+    /// <summary>
+    /// Host-supplied handler for client commands (command id → action). Invoked
+    /// off the UI thread; the host marshals known ids to the UI thread and ignores
+    /// the rest (the allowlist is the safety boundary). Safe to set before or
+    /// after <see cref="StartAsync"/>.
+    /// </summary>
+    public Action<string>? CommandHandler
+    {
+        get => _ws?.CommandHandler;
+        set { _commandHandler = value; if (_ws is not null) _ws.CommandHandler = value; }
+    }
+    private Action<string>? _commandHandler;
 
     /// <param name="state">The live DI ApplicationState the app/pipeline updates.</param>
     /// <param name="port">Bound on 0.0.0.0 so LAN clients (tablets) can connect.</param>
@@ -58,6 +72,10 @@ public sealed class RemoteServerHost
 
         // Build the broadcaster now so it wires SeedProvider before clients connect.
         app.Services.GetRequiredService<MapBroadcaster>();
+
+        // Hook the WS hub for inbound commands (apply any handler set pre-start).
+        _ws = app.Services.GetRequiredService<WebSocketHub>();
+        _ws.CommandHandler = _commandHandler;
 
         await app.StartAsync();
         app.Services.GetRequiredService<MapBroadcaster>().Start();

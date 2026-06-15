@@ -27,6 +27,14 @@ public sealed class WebSocketHub
     /// </summary>
     public Func<IReadOnlyList<byte[]>>? SeedProvider { get; set; }
 
+    /// <summary>
+    /// Invoked (off the UI thread) with the command id of each inbound text
+    /// message from a client. The host maps known ids to actions and marshals
+    /// them to the UI thread; unknown ids are the host's no-op — that allowlist
+    /// is the command-safety boundary. Null until the host wires it.
+    /// </summary>
+    public Action<string>? CommandHandler { get; set; }
+
     public int ClientCount => _clients.Count;
 
     /// <summary>Owns the socket for its lifetime: seed, then drain until close.</summary>
@@ -45,7 +53,12 @@ public sealed class WebSocketHub
             {
                 var res = await socket.ReceiveAsync(buf, ct).ConfigureAwait(false);
                 if (res.MessageType == WebSocketMessageType.Close) break;
-                // Inbound payloads ignored for now (commands land here later).
+                // Commands are short single-frame text messages (a command id).
+                if (res.MessageType == WebSocketMessageType.Text && res.Count > 0 && CommandHandler is { } h)
+                {
+                    var cmdId = System.Text.Encoding.UTF8.GetString(buf, 0, res.Count);
+                    try { h(cmdId); } catch { /* a bad command must not drop the client */ }
+                }
             }
         }
         catch { /* client dropped — fall through to cleanup */ }

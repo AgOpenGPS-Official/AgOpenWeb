@@ -103,6 +103,24 @@ addEventListener('pointermove', e => {
 });
 addEventListener('keydown', e => { if (e.key === 'f' || e.key === 'F') follow = true; });
 
+// ---- sim drive controls (client→host commands) ----
+// Keys for desktop; the on-screen #ctl buttons for touch. The host maps these
+// ids to the matching VM command on its UI thread (safe allowlist).
+const KEY_CMD = {
+  ArrowLeft: 'sim.steerLeft', ArrowRight: 'sim.steerRight',
+  ArrowUp: 'sim.speedUp', ArrowDown: 'sim.speedDown', ' ': 'sim.stop',
+};
+addEventListener('keydown', e => {
+  const cmd = KEY_CMD[e.key];
+  if (cmd) { e.preventDefault(); transport.send(cmd); }
+});
+for (const b of document.querySelectorAll('#ctl button')) {
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); // don't also start a camera pan
+    transport.send(b.dataset.cmd);
+  });
+}
+
 // ---- render ----
 function w2s(e, n) {
   return [vw / 2 + (e - camE) * pxPerM, vh / 2 - (n - camN) * pxPerM];

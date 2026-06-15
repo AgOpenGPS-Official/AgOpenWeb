@@ -13,12 +13,28 @@
       text-shadow: 0 1px 2px #000;
     }
     #help { position: fixed; bottom: 8px; left: 8px; color: #668; font: 11px ui-monospace, monospace; }
+    /* Sim drive controls (client→host commands). Touch-friendly bottom bar. */
+    #ctl { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+           display: flex; gap: 10px; touch-action: manipulation; }
+    #ctl button {
+      width: 60px; height: 60px; border-radius: 12px; border: 1px solid #2a3550;
+      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 600 24px system-ui, sans-serif;
+      cursor: pointer; -webkit-user-select: none; user-select: none;
+    }
+    #ctl button:active { background: rgba(70,160,255,0.5); }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div id="hud">connecting…</div>
-  <div id="help">wheel/pinch = zoom · drag = pan · F = follow vehicle</div>
+  <div id="help">wheel/pinch = zoom · drag = pan · F = follow · ←→ steer · ↑↓ speed · space stop</div>
+  <div id="ctl">
+    <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>
+    <button data-cmd="sim.speedDown" title="slower (↓)">−</button>
+    <button data-cmd="sim.stop" title="stop (space)">■</button>
+    <button data-cmd="sim.speedUp" title="faster (↑)">+</button>
+    <button data-cmd="sim.steerRight" title="steer right (→)">▶</button>
+  </div>
   <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>
   <script src="/app.js"></script>

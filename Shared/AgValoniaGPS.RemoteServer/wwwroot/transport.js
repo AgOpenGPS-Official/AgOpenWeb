@@ -103,6 +103,8 @@ window.RemoteTransport = {
     return {
       start() { stopped = false; connect(); },
       stop() { stopped = true; if (ws) ws.close(); },
+      // Client→host command: a short text frame carrying a command id.
+      send(cmd) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(cmd); },
     };
   },
 };

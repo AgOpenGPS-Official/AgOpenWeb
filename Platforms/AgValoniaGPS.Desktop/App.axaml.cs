@@ -127,6 +127,29 @@ public partial class App : Application
                     }
                     catch { }
                 };
+
+                // Remote/web UI client→host commands (REMOTE_WEB_UI_SPLIT §5).
+                // SAFE ALLOWLIST only — sim drive controls for now; remote
+                // autosteer-engage stays out until a safety sign-off. The hub
+                // calls this off-thread; marshal to the UI thread, map known ids,
+                // ignore the rest.
+                if (_remoteServer is not null)
+                {
+                    _remoteServer.CommandHandler = cmd =>
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            System.Windows.Input.ICommand? c = cmd switch
+                            {
+                                "sim.steerLeft" => windowVm.SimulatorSteerLeftCommand,
+                                "sim.steerRight" => windowVm.SimulatorSteerRightCommand,
+                                "sim.speedUp" => windowVm.SimulatorSpeedUpCommand,
+                                "sim.speedDown" => windowVm.SimulatorSpeedDownCommand,
+                                "sim.stop" => windowVm.SimulatorStopCommand,
+                                _ => null, // unknown id → ignored (safety boundary)
+                            };
+                            if (c?.CanExecute(null) == true) c.Execute(null);
+                        });
+                }
             }
 
             desktop.Exit += (sender, args) =>
