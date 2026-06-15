@@ -1,6 +1,7 @@
-// Embeds a minimal Kestrel + SignalR server inside the running app. The host
-// passes in the live ApplicationState (the DI singleton the pipeline writes to),
-// and we bridge it into the server's own DI container as a singleton instance.
+// Embeds a minimal Kestrel server inside the running app and streams the map
+// feed over a raw binary WebSocket (no SignalR). The host passes in the live
+// ApplicationState (the DI singleton the pipeline writes to), and we bridge it
+// into the server's own DI container as a singleton instance.
 
 using System.Reflection;
 using Microsoft.AspNetCore.Builder;
@@ -26,19 +27,34 @@ public sealed class RemoteServerHost
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
-        builder.Services.AddSignalR();
         builder.Services.AddSingleton(state);
         builder.Services.AddSingleton(coverage);
         builder.Services.AddSingleton<SceneProjector>();
         builder.Services.AddSingleton<CoverageProjector>();
+        builder.Services.AddSingleton<WebSocketHub>();
         builder.Services.AddSingleton<MapBroadcaster>();
 
         var app = builder.Build();
 
-        app.MapHub<MapHub>("/maphub");
+        app.UseWebSockets();
+        app.Map("/ws", async context =>
+        {
+            if (!context.WebSockets.IsWebSocketRequest)
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+            using var socket = await context.WebSockets.AcceptWebSocketAsync();
+            var hub = context.RequestServices.GetRequiredService<WebSocketHub>();
+            await hub.HandleAsync(socket, context.RequestAborted);
+        });
+
         app.MapGet("/", () => Results.Content(ReadAsset("index.html"), "text/html"));
         app.MapGet("/app.js", () => Results.Content(ReadAsset("app.js"), "text/javascript"));
         app.MapGet("/transport.js", () => Results.Content(ReadAsset("transport.js"), "text/javascript"));
+
+        // Build the broadcaster now so it wires SeedProvider before clients connect.
+        app.Services.GetRequiredService<MapBroadcaster>();
 
         await app.StartAsync();
         app.Services.GetRequiredService<MapBroadcaster>().Start();

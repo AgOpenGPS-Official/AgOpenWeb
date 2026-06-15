@@ -1,10 +1,10 @@
 // Transport adapter — the ONLY file that knows the wire protocol.
 //
-// Today: SignalR + JSON. At Phase 2 (coverage) this is swapped for a binary
-// WebSocket transport for the high-rate feeds, WITHOUT touching the renderer:
-// the renderer only ever sees the { onScene, onTick, onStatus } interface and
-// plain JS objects, never `signalR` or message names. That decoupling is the
-// whole point — SignalR is provisional, the contract/renderer are not.
+// Binary WebSocket. Each frame is [u8 type][payload], little-endian, matching
+// the server-side WireCodec. The renderer never sees this: it only gets the
+// { onScene, onTick, onCoverageInit, onCoverageCells, onStatus } interface and
+// plain JS objects (identical shapes to the old SignalR/JSON path), so swapping
+// the wire here left app.js untouched. That decoupling is the whole point.
 
 window.RemoteTransport = {
   /**
@@ -16,26 +16,87 @@ window.RemoteTransport = {
    */
   create(handlers) {
     const status = s => handlers.onStatus && handlers.onStatus(s);
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${proto}//${location.host}/ws`;
+    let ws = null, stopped = false;
 
-    const conn = new signalR.HubConnectionBuilder()
-      .withUrl('/maphub')
-      .withAutomaticReconnect()
-      .build();
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4 };
+    const td = new TextDecoder();
 
-    conn.on('scene', s => handlers.onScene && handlers.onScene(s));
-    conn.on('tick', t => handlers.onTick && handlers.onTick(t));
-    conn.on('coverageInit', m => handlers.onCoverageInit && handlers.onCoverageInit(m));
-    conn.on('coverageCells', m => handlers.onCoverageCells && handlers.onCoverageCells(m));
-    conn.onreconnecting(() => status('reconnecting…'));
-    conn.onreconnected(() => status('connected'));
-    conn.onclose(() => status('disconnected'));
+    function decode(buffer) {
+      const dv = new DataView(buffer);
+      let o = 0;
+      const u8 = () => dv.getUint8(o++);
+      const i32 = () => { const v = dv.getInt32(o, true); o += 4; return v; };
+      const i64 = () => { const v = Number(dv.getBigInt64(o, true)); o += 8; return v; };
+      const f32 = () => { const v = dv.getFloat32(o, true); o += 4; return v; };
+      const f64 = () => { const v = dv.getFloat64(o, true); o += 8; return v; };
+      const str = () => { const n = i32(); const s = td.decode(new Uint8Array(buffer, o, n)); o += n; return s; };
+      const pts = () => { const n = i32(); const a = new Array(n); for (let k = 0; k < n; k++) a[k] = { e: f32(), n: f32() }; return a; };
+      const optPts = () => (u8() ? pts() : null);
+
+      switch (u8()) {
+        case TYPE.SCENE: {
+          const version = i64(), originLat = f64(), originLon = f64();
+          const hasField = !!u8(), fieldName = str();
+          const bc = i32(); const boundaries = new Array(bc);
+          for (let k = 0; k < bc; k++) boundaries[k] = pts();
+          const tc = i32(); const tracks = new Array(tc);
+          for (let k = 0; k < tc; k++) {
+            const id = str(), name = str(), type = i32(), points = pts();
+            tracks[k] = { id, name, type, points };
+          }
+          const headland = optPts(), guidanceLine = optPts();
+          handlers.onScene && handlers.onScene({
+            version, originLat, originLon, fieldName, hasField, boundaries, tracks, headland, guidanceLine,
+          });
+          break;
+        }
+        case TYPE.TICK: {
+          const sceneVersion = i64();
+          const pose = { e: f64(), n: f64(), heading: f32(), speed: f32() };
+          const fix = u8();
+          const sn = i32(); const sections = new Array(sn);
+          for (let k = 0; k < sn; k++) sections[k] = !!u8();
+          const crossTrackError = f32(), guidanceActive = !!u8(), lineLabel = str();
+          const atn = str();
+          handlers.onTick && handlers.onTick({
+            sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
+            activeTrackName: atn.length ? atn : null,
+          });
+          break;
+        }
+        case TYPE.COVERAGE_INIT: {
+          handlers.onCoverageInit && handlers.onCoverageInit({
+            cellSize: f64(), originE: f64(), originN: f64(), width: i32(), height: i32(),
+          });
+          break;
+        }
+        case TYPE.COVERAGE_CELLS: {
+          const n = i32();
+          // Flat [cellX, cellY, packedRgb, ...] int32 triples. slice() to get a
+          // 4-aligned copy (the payload starts at byte 5, so a direct typed-array
+          // view over `buffer` would throw on the alignment requirement).
+          const cells = new Int32Array(buffer.slice(o, o + n * 4));
+          handlers.onCoverageCells && handlers.onCoverageCells({ cells });
+          break;
+        }
+      }
+    }
+
+    function connect() {
+      status('connecting…');
+      ws = new WebSocket(url);
+      ws.binaryType = 'arraybuffer';
+      ws.onopen = () => status('connected');
+      ws.onmessage = e => { try { decode(e.data); } catch (err) { /* drop a malformed frame */ } };
+      ws.onerror = () => status('error');
+      ws.onclose = () => { status('disconnected'); if (!stopped) setTimeout(connect, 1000); };
+    }
 
     return {
-      start() {
-        status('connecting…');
-        conn.start().then(() => status('connected')).catch(e => status('error: ' + e));
-      },
-      stop() { conn.stop(); },
+      start() { stopped = false; connect(); },
+      stop() { stopped = true; if (ws) ws.close(); },
     };
   },
 };

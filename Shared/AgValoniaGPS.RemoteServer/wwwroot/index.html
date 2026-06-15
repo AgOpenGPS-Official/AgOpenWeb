@@ -19,8 +19,7 @@
   <canvas id="c"></canvas>
   <div id="hud">connecting…</div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = follow vehicle</div>
-  <!-- MVP: SignalR client from CDN. Phase 4 bundles this locally for offline cab use. -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+  <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>
   <script src="/app.js"></script>
 </body>

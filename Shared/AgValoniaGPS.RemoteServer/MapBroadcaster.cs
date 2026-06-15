@@ -1,15 +1,17 @@
 // Background broadcaster. The Scene + Tick feed runs on a 10 Hz PeriodicTimer;
 // coverage is event-driven off CoverageUpdated (snapshot on (re)init, deltas
 // after). PeriodicTimer (not DispatcherTimer) — off the UI thread, no Avalonia dep.
+//
+// Frames are encoded once (WireCodec) and fanned out to every client by the raw
+// WebSocketHub. Newly-connected clients are seeded via SeedProvider below.
 
-using Microsoft.AspNetCore.SignalR;
 using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.RemoteServer;
 
 public sealed class MapBroadcaster : IAsyncDisposable
 {
-    private readonly IHubContext<MapHub> _hub;
+    private readonly WebSocketHub _ws;
     private readonly SceneProjector _projector;
     private readonly ICoverageMapService _coverage;
     private readonly CoverageProjector _coverageProjector;
@@ -24,22 +26,31 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private double _lastCellSize;
     private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
 
-    public MapBroadcaster(IHubContext<MapHub> hub, SceneProjector projector,
+    public MapBroadcaster(WebSocketHub ws, SceneProjector projector,
         ICoverageMapService coverage, CoverageProjector coverageProjector)
     {
-        _hub = hub;
+        _ws = ws;
         _projector = projector;
         _coverage = coverage;
         _coverageProjector = coverageProjector;
         _currentScene = projector.BuildScene(0);
+        _ws.SeedProvider = BuildSeed;
     }
 
-    /// <summary>Latest scene — sent to each client on connect.</summary>
-    public SceneDto CurrentScene() => _currentScene;
-
-    // For the hub to seed a newly-connected client.
-    public CoverageInitDto? CurrentCoverageInit() => _coverageProjector.BuildInit();
-    public CoverageCellsDto? CoverageSnapshot() => _coverageProjector.Snapshot();
+    // Frames sent to a client the instant it connects: the current Scene plus a
+    // full coverage snapshot (non-draining, so it doesn't disturb the delta
+    // sent-bitset the broadcast loop uses for everyone else).
+    private IReadOnlyList<byte[]> BuildSeed()
+    {
+        var frames = new List<byte[]> { WireCodec.EncodeScene(_currentScene) };
+        if (_coverageProjector.BuildInit() is { } init)
+        {
+            frames.Add(WireCodec.EncodeCoverageInit(init));
+            if (_coverageProjector.Snapshot() is { } snap)
+                frames.Add(WireCodec.EncodeCoverageCells(snap));
+        }
+        return frames;
+    }
 
     public void Start()
     {
@@ -69,9 +80,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 _lastCellSize = init.CellSize;
                 _coverageInitSent = true;
                 _coverageProjector.ResetSent();
-                _ = _hub.Clients.All.SendAsync("coverageInit", init);
+                _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(init));
                 if (_coverageProjector.Delta() is { } full) // first Delta after reset = everything
-                    _ = _hub.Clients.All.SendAsync("coverageCells", full);
+                    _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full));
                 _lastCoverageTicks = Environment.TickCount64;
                 return;
             }
@@ -81,7 +92,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             if (now - _lastCoverageTicks < 200) return;
             _lastCoverageTicks = now;
             if (_coverageProjector.Delta() is { } delta)
-                _ = _hub.Clients.All.SendAsync("coverageCells", delta);
+                _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta));
         }
         catch { /* tolerate transient races on the coverage layer */ }
     }
@@ -98,10 +109,11 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 {
                     _lastFingerprint = fp;
                     _currentScene = _projector.BuildScene(++_sceneVersion);
-                    await _hub.Clients.All.SendAsync("scene", _currentScene, ct).ConfigureAwait(false);
+                    await _ws.BroadcastAsync(WireCodec.EncodeScene(_currentScene), ct).ConfigureAwait(false);
                 }
 
-                await _hub.Clients.All.SendAsync("tick", _projector.BuildTick(_sceneVersion), ct).ConfigureAwait(false);
+                await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) { break; }
             catch

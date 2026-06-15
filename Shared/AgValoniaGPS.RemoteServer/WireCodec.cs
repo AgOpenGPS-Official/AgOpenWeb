@@ -1,0 +1,112 @@
+// Binary wire codec for the map feed. Replaces SignalR/JSON with compact
+// little-endian frames (BinaryWriter is little-endian on every platform; the
+// client decodes with DataView littleEndian=true). One frame = [u8 type][payload].
+//
+// This is the transport's encoder ONLY — it does not change the DTOs the
+// projector produces or the JS objects the renderer consumes (transport.js
+// decodes back to the same shapes). The seam in REMOTE_WEB_UI_SPLIT.md §Transport.
+//
+// Geometry points are f32 (sub-cm at field scale, half the bytes); vehicle pose
+// E/N stay f64 (live position precision). Coverage cells — the bandwidth hog —
+// go out as raw i32 triples (~12 B/cell vs ~30 B as JSON).
+
+using System.Text;
+
+namespace AgValoniaGPS.RemoteServer;
+
+public static class WireCodec
+{
+    public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4;
+
+    public static byte[] EncodeScene(SceneDto s)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Scene);
+        w.Write(s.Version);          // i64
+        w.Write(s.OriginLat);        // f64
+        w.Write(s.OriginLon);        // f64
+        w.Write((byte)(s.HasField ? 1 : 0));
+        WriteStr(w, s.FieldName);
+
+        w.Write(s.Boundaries.Count);
+        foreach (var ring in s.Boundaries) WritePts(w, ring);
+
+        w.Write(s.Tracks.Count);
+        foreach (var t in s.Tracks)
+        {
+            WriteStr(w, t.Id);
+            WriteStr(w, t.Name);
+            w.Write(t.Type);         // i32
+            WritePts(w, t.Points);
+        }
+
+        WriteOptPts(w, s.Headland);
+        WriteOptPts(w, s.GuidanceLine);
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeTick(TickDto t)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Tick);
+        w.Write(t.SceneVersion);     // i64
+        w.Write(t.Pose.E);           // f64
+        w.Write(t.Pose.N);           // f64
+        w.Write((float)t.Pose.Heading);
+        w.Write((float)t.Pose.Speed);
+        w.Write((byte)t.Fix);
+        w.Write(t.Sections.Length);
+        foreach (var on in t.Sections) w.Write((byte)(on ? 1 : 0));
+        w.Write((float)t.CrossTrackError);
+        w.Write((byte)(t.GuidanceActive ? 1 : 0));
+        WriteStr(w, t.LineLabel);
+        WriteStr(w, t.ActiveTrackName ?? ""); // empty string == null on the client
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeCoverageInit(CoverageInitDto c)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(CoverageInit);
+        w.Write(c.CellSize);         // f64
+        w.Write(c.OriginE);          // f64
+        w.Write(c.OriginN);          // f64
+        w.Write(c.Width);            // i32
+        w.Write(c.Height);           // i32
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeCoverageCells(CoverageCellsDto c)
+    {
+        var cells = c.Cells;
+        // [u8 type][i32 intCount][i32 × intCount] — block-copied for speed.
+        var buf = new byte[1 + 4 + cells.Length * 4];
+        buf[0] = CoverageCells;
+        BitConverter.TryWriteBytes(buf.AsSpan(1, 4), cells.Length);
+        Buffer.BlockCopy(cells, 0, buf, 5, cells.Length * 4); // int[] → bytes, little-endian
+        return buf;
+    }
+
+    private static void WritePts(BinaryWriter w, IReadOnlyList<Vec2Dto> pts)
+    {
+        w.Write(pts.Count);
+        foreach (var p in pts) { w.Write((float)p.E); w.Write((float)p.N); }
+    }
+
+    private static void WriteOptPts(BinaryWriter w, IReadOnlyList<Vec2Dto>? pts)
+    {
+        if (pts is null) { w.Write((byte)0); return; }
+        w.Write((byte)1);
+        WritePts(w, pts);
+    }
+
+    private static void WriteStr(BinaryWriter w, string? s)
+    {
+        var b = Encoding.UTF8.GetBytes(s ?? "");
+        w.Write(b.Length);           // i32 byte length
+        w.Write(b);
+    }
+}
