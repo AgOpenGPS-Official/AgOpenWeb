@@ -54,6 +54,15 @@ let imageryVer = null;   // version currently loaded (cache-bust on change)
 let pxPerM = 4.0;
 let follow = true;
 let camE = 0, camN = 0;
+// 3D perspective tilt (Skia only — Canvas2D can't do true perspective). pitch 0 =
+// top-down (identical to the ortho path); up to MAX_PITCH tilts toward the horizon.
+// perspM is the world→CSS-px matrix for the current frame (null when top-down).
+let pitch = 0;          // radians
+let perspM = null;      // 16-elem M44 (world→CSS px) or null
+const DEFAULT_PITCH = Math.PI / 3;        // 60° — the one-key tilt
+const MAX_PITCH = 65 * Math.PI / 180;     // v1 cap: keeps the local field in front
+const PITCH_STEP = 5 * Math.PI / 180;
+const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 
 // ---- transport wiring (the only coupling point) ----
 const transport = RemoteTransport.create({
@@ -213,6 +222,10 @@ addEventListener('pointermove', e => {
 addEventListener('keydown', e => {
   if (e.key === 'f' || e.key === 'F') follow = true;
   else if (e.key === 'k' || e.key === 'K') { useSkia = !useSkia; applyRenderer(); }
+  // 3D tilt (Skia only): 3 toggles, [ / ] nudge the pitch.
+  else if (e.key === '3') { if (!useSkia) { useSkia = true; applyRenderer(); } pitch = pitch > 0.001 ? 0 : DEFAULT_PITCH; }
+  else if (e.key === '[') pitch = Math.max(0, pitch - PITCH_STEP);
+  else if (e.key === ']') pitch = Math.min(MAX_PITCH, pitch + PITCH_STEP);
 });
 
 // ---- sim drive controls (client→host commands) ----
@@ -234,8 +247,61 @@ for (const b of document.querySelectorAll('#ctl button')) {
 }
 
 // ---- render ----
+// True 3D is only meaningful under Skia (CanvasKit M44). When inactive, perspM is
+// null and everything uses the plain ortho projection below.
+function active3D() { return useSkia && CK && pitch > 0.001; }
+// Build the world→CSS-px screen matrix, mirroring the native camera model
+// (SkiaMapControl.BuildPerspectiveScreenMatrix): view = T(0,0,-distance)·Rx(-pitch)
+// ·T(-cam), a FOV-PERSP_FOV perspective, then an NDC(-1..1, y-up)→pixel(y-down)
+// viewport. distance is derived from pxPerM so pitch=0 matches the ortho scale
+// exactly (no jump when tilting in). CanvasKit M44 is column-vector / row-major /
+// radians, so multiply right-to-left: T(-cam) acts first.
+function buildScreenMatrix() {
+  if (!CK) return null;
+  const halfW = vw / 2, halfH = vh / 2;
+  const tanHalf = Math.tan(PERSP_FOV / 2);
+  const distance = vh / (2 * tanHalf * pxPerM); // scale-continuity with ortho at pitch 0
+  const near = 1, far = Math.max(5000, distance * 4);
+  const view = CK.M44.multiply(
+    CK.M44.translated([0, 0, -distance]),
+    CK.M44.rotated([1, 0, 0], -pitch),
+    CK.M44.translated([-camE, -camN, 0]));
+  // Perspective (column-vector, row-major) — transpose of System.Numerics
+  // CreatePerspectiveFieldOfView, so w' = -z.
+  const yS = 1 / tanHalf, xS = yS / (vw / vh), nf = 1 / (near - far);
+  const proj = [
+    xS, 0, 0, 0,
+    0, yS, 0, 0,
+    0, 0, far * nf, near * far * nf,
+    0, 0, -1, 0,
+  ];
+  const viewport = [
+    halfW, 0, 0, halfW,
+    0, -halfH, 0, halfH,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ];
+  return CK.M44.multiply(viewport, proj, view);
+}
+function updatePerspective() { perspM = active3D() ? buildScreenMatrix() : null; }
+// Apply perspM (row-major, M·v) to a ground point (e,n,0,1); perspective divide.
+function applyM(M, e, n) {
+  const x = M[0] * e + M[1] * n + M[3];
+  const y = M[4] * e + M[5] * n + M[7];
+  const w = M[12] * e + M[13] * n + M[15];
+  return [x / w, y / w];
+}
 function w2s(e, n) {
+  if (perspM) return applyM(perspM, e, n);
   return [vw / 2 + (e - camE) * pxPerM, vh / 2 - (n - camN) * pxPerM];
+}
+// On-screen heading at a ground point: the heading direction projected through the
+// current matrix (so the vehicle marker aligns with the tilted ground, not screen
+// up). Returns the world heading unchanged when top-down.
+function screenHeading(e, n, h) {
+  if (!perspM) return h;
+  const a = w2s(e, n), b = w2s(e + Math.sin(h) * 3, n + Math.cos(h) * 3);
+  return Math.atan2(b[0] - a[0], -(b[1] - a[1])); // 0 = up, clockwise
 }
 function strokePts(pts, close) {
   if (!pts || !pts.length) return;
@@ -248,7 +314,7 @@ function vehicle(p) {
   const [x, y] = w2s(p.e, p.n);
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(p.heading); // radians, 0 = north (up), clockwise
+  ctx.rotate(screenHeading(p.e, p.n, p.heading)); // radians, 0 = north (up), clockwise
   ctx.fillStyle = '#39FF6A';
   ctx.beginPath();
   ctx.moveTo(0, -14); ctx.lineTo(9, 11); ctx.lineTo(-9, 11); ctx.closePath();
@@ -453,6 +519,7 @@ function draw() {
 
   const rp = renderPose();
   if (rp && follow) { camE = rp.e; camN = rp.n; }
+  updatePerspective(); // null unless Skia + tilt; 2D canvas stays ortho
 
   drawImagery();   // bottom layer
   drawCoverage();
@@ -506,7 +573,7 @@ function draw() {
     `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
     `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}\n` +
     `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}\n` +
-    `canvaskit: ${ckStatus}   renderer: ${useSkia ? 'skia' : '2d'}`;
+    `canvaskit: ${ckStatus}   renderer: ${useSkia ? 'skia' : '2d'}   tilt: ${(pitch * 180 / Math.PI).toFixed(0)}°`;
 
   requestAnimationFrame(draw);
 }
@@ -532,7 +599,9 @@ function segSk(canvas, e1, n1, e2, n2, paint) {
   canvas.drawLine(a[0], a[1], b[0], b[1], paint);
 }
 function drawGridSk(canvas) {
-  const G = 2000, halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
+  const G = 2000;
+  let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
+  if (perspM) { halfW = Math.max(halfW, 180); halfH = Math.max(halfH, 180); } // tilt sees farther
   const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
   if (minE >= maxE || minN >= maxN) return;
@@ -549,7 +618,7 @@ function vehicleSk(canvas, p) {
   const xy = w2s(p.e, p.n);
   canvas.save();
   canvas.translate(xy[0], xy[1]);
-  canvas.rotate(p.heading * 180 / Math.PI, 0, 0); // CanvasKit rotate is degrees
+  canvas.rotate(screenHeading(p.e, p.n, p.heading) * 180 / Math.PI, 0, 0); // degrees; ground-aligned under tilt
   if (skTri) canvas.drawPath(skTri, SKP.vehicle);
   canvas.restore();
 }
@@ -567,10 +636,27 @@ function drawImagerySk(canvas) {
   }
   if (!skImagery) return;
   const r = imageryRect;
+  if (perspM) {
+    drawImageWorldSk(canvas, skImagery, r.minE, r.minN, r.maxE, r.maxN, CK.FilterMode.Linear);
+    return;
+  }
   const tl = w2s(r.minE, r.maxN), br = w2s(r.maxE, r.minN); // (minE,maxN)→(maxE,minN)
   const dest = CK.LTRBRect(tl[0], tl[1], br[0], br[1]);
   const src = CK.LTRBRect(0, 0, skImagery.width(), skImagery.height());
   canvas.drawImageRectOptions(skImagery, src, dest, CK.FilterMode.Linear, CK.MipmapMode.None, null);
+}
+// Draw a north-up image over a world rect under the perspective matrix. The image
+// (top row = high northing) is placed via a px→world affine, then perspM warps it
+// — Skia does perspective-correct sampling AND near-plane clipping on the GPU, so
+// it stays correct even when part of the rect falls behind the tilted camera.
+function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
+  const w = img.width(), h = img.height();
+  const imgToWorld = [(maxE - minE) / w, 0, minE, 0, -(maxN - minN) / h, maxN, 0, 0, 1];
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.concat(imgToWorld);
+  canvas.drawImageOptions(img, 0, 0, filter, CK.MipmapMode.None, null);
+  canvas.restore();
 }
 // Coverage offscreen → SkImage, re-snapshotted only when the cell grid changed
 // (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
@@ -585,8 +671,13 @@ function drawCoverageSk(canvas) {
   }
   if (!cov.skImg) return;
   const cs = cov.cellSize;
-  const tl = w2s(cov.originE, cov.originN + cov.height * cs); // (minE, maxN)
-  const br = w2s(cov.originE + cov.width * cs, cov.originN);  // (maxE, minN)
+  const minE = cov.originE, minN = cov.originN;
+  const maxE = cov.originE + cov.width * cs, maxN = cov.originN + cov.height * cs;
+  if (perspM) {
+    drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Nearest);
+    return;
+  }
+  const tl = w2s(minE, maxN), br = w2s(maxE, minN);
   const dest = CK.LTRBRect(tl[0], tl[1], br[0], br[1]);
   const src = CK.LTRBRect(0, 0, cov.width, cov.height);
   canvas.drawImageRectOptions(cov.skImg, src, dest, CK.FilterMode.Nearest, CK.MipmapMode.None, null);
@@ -654,6 +745,7 @@ function renderSkia(canvas) {
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match the 2D path
   const rp = renderPose();
   if (rp && follow) { camE = rp.e; camN = rp.n; }
+  updatePerspective();
   drawImagerySk(canvas); // bottom layer
   drawCoverageSk(canvas);
   drawGridSk(canvas);
