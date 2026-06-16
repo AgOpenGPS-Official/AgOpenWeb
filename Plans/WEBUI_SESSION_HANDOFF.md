@@ -10,7 +10,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
 - Repo: `/Users/chris/Code/AgValoniaGPS3` (Avalonia/.NET 10 agricultural GPS app).
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go.
-- Working tree is clean; Phases 1–4 are committed + pushed.
+- Working tree is clean; Phases 1–5 + the boundary near-clip fix are committed + pushed.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -44,6 +44,15 @@ HTML/JS. Do NOT port logic into JS. End state: headless host, browser is the onl
   camera/mode pad, clock; full 4-mode camera (H/N/M/C) with real map rotation; and
   **CanvasKit is now the SOLE renderer** — the Canvas2D path + `K` toggle are deleted,
   one `skFrame` loop drives the GL map + DOM overlays. Grid matched to native.
+- **Boundary/track near-plane clip** (3807a02f): `strokePtsSk3D` walks each polyline
+  in world space, splits at near-plane crossings (same `EPS=1.0` math as `clipNear`)
+  and strokes each front-facing run, so a vertex behind the tilted camera no longer
+  draws a mirrored ghost segment. Covers boundary/headland/track/next/uturn/guidance.
+- **Phase 5 — status-bar completion** (76fb38a4): heading readout (pink `000.0°` + HDG,
+  right of speed) and the GPS-detail card (popup toggled by the strip's fix dot:
+  lat/lon/elev/sats/hdop/fix/age/heading/roll/fps). Wire grew `StatusDto` by
+  Latitude/Longitude (f64) + Altitude/Hdop (f32) from `VehicleState` (append-only,
+  ~2 Hz Status); heading/roll already rode the Tick. Added a client-side fps counter.
 
 ## The projection pattern (recurring; the source of most bugs so far)
 Runtime UI state usually lives in the **VM as plain fields**, NOT in `ApplicationState`.
@@ -60,24 +69,17 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
 **Read MainWindow.axaml for placement and each panel's own AXAML for contents first.**
 
 ## NEXT SESSION — start here
-1. **Boundary/track near-plane clipping in 3D (deferred bug fix — do first).**
-   In `wwwroot/app.js`, grid lines are now near-plane-clipped via `clipNear()` so they
-   don't ghost/vanish behind the tilted camera. The field **boundaries/tracks/headland/
-   guidance/uturn/next** still project per-vertex through `w2s` (`strokePtsSk`) with no
-   near-clip — so at extreme tilt a vertex running behind the camera produces a mirrored
-   ghost segment (same class of bug we just fixed for the grid). Fix: near-plane-clip the
-   polylines before projecting — i.e., walk each polyline and split/emit sub-segments
-   where it crosses the near plane (reuse the `clipNear()` math; `perspM` bottom row
-   gives w, EPS = 1.0). Grid lines were simple 2-point segments; polylines need the
-   walk. Apply in `strokePtsSk` (or a 3D variant) when `perspM` is active.
-2. **Phase 5 — status-bar completion:** the **heading readout** (top strip, right of
-   speed; heading already on the Tick) and the **GPS-detail card** (popup toggled by the
-   strip's fix dot: lat/lon, altitude, sats, age — extend Status/Tick). These were
-   deferred from Phase 1; native: `Panels/HeadingReadout.axaml`, `Panels/GpsDetailPanel.axaml`.
-3. Then continue the clockwise sweep: **Phase 6** simulator (+ first real dialog, stands
-   up the dialog host), **7** section bar, **8** bottom nav (field tools), **9** left nav
-   (config trees + NTRIP + field/file lifecycle — the big one), **10** mop-up + headless
-   cutover. See the plan doc.
+1. **Phase 6 — simulator (+ first real dialog; stands up the dialog host).** The
+   browser already has a bottom sim-drive pad (`#ctl` steer/speed/stop in `index.html`)
+   wired to client→host commands, but the **native SimulatorPanel** (enable toggle,
+   set-speed/steer sliders, reset/teleport, the Sim Coords dialog) isn't mirrored yet.
+   This phase also **stands up the web dialog-host** — the first modal overlay on the
+   client (native dialogs live in `DialogOverlayHost.axaml`; on the web they become DOM
+   overlays). Read the native `Panels/SimulatorPanel.axaml` + `Dialogs/SimCoordsDialogPanel.axaml`
+   and the existing sim command ids in `App.axaml.cs` before projecting more state.
+2. Then continue the clockwise sweep: **Phase 7** section bar, **8** bottom nav (field
+   tools), **9** left nav (config trees + NTRIP + field/file lifecycle — the big one),
+   **10** mop-up + headless cutover. See the plan doc.
 
 ## Workflow rules (important)
 - **Embedded assets:** `wwwroot/*` (and `wwwroot/icons/*`) are `EmbeddedResource` in
@@ -109,4 +111,4 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
   blend like native (sRGB), not washed-out linear.
 - Camera modes 0=N 1=H 2=Free 3=Map (default); `mapRotation` eased by `ROT_SMOOTH`.
 
-**Start by fixing the boundary/track near-plane clipping (item 1), then Phase 5.**
+**Start on Phase 6 (simulator panel + dialog-host stand-up).**
