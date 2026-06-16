@@ -190,6 +190,18 @@
     .cfg-act:hover { background: rgba(255,255,255,0.18); }
     .cfg-actwide { width: 100%; flex: none; }
     .cfg-slider { width: 100%; accent-color: #4A90D9; }
+    /* Vehicle config diagrams (type cards + per-field measurement diagrams). */
+    .vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+    .vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
+      border: 1px solid #2a3550; border-radius: 8px; background: rgba(255,255,255,0.04);
+      color: #cfe3ff; cursor: pointer; font: 600 12px system-ui, sans-serif; }
+    .vc-typecard img { width: 100%; height: 56px; object-fit: contain; background: #fff; border-radius: 4px; }
+    .vc-typecard.active { border-color: #4A90D9; background: #14304d; color: #fff; }
+    .vc-diagrow { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .vc-diag { width: 150px; height: 96px; object-fit: contain; background: #fff; border-radius: 6px; flex: none; }
+    .vc-fieldcol { flex: 1; display: grid; grid-template-columns: auto 110px; gap: 6px 10px; align-items: center; }
+    .vc-fieldcol label { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .vc-diag-wide { width: 100%; max-height: 120px; object-fit: contain; background: #fff; border-radius: 6px; margin: 6px 0; }
     .ln-back { border: 0; background: rgba(255,255,255,0.10); color: #cfe3ff; cursor: pointer;
       border-radius: 6px; width: 26px; height: 26px; font: 700 15px system-ui; margin-right: 6px; }
     /* Vehicle & Tool picker hub. */
@@ -413,24 +425,44 @@
     </div>
     <div id="vc-tab-vehicle" class="cfg-body">
       <div class="cfg-label">Vehicle type</div>
-      <div class="ln-seg cfg-seg-full">
-        <button class="cfg-typebtn" data-key="vehicle.type" data-val="0">Tractor</button>
-        <button class="cfg-typebtn" data-key="vehicle.type" data-val="1">Harvester</button>
-        <button class="cfg-typebtn" data-key="vehicle.type" data-val="2">4WD</button>
+      <div class="vc-typecards">
+        <button class="cfg-typebtn vc-typecard" data-key="vehicle.type" data-val="0"><img src="/icons/vehiclePageTractor.png" alt=""><span>Tractor</span></button>
+        <button class="cfg-typebtn vc-typecard" data-key="vehicle.type" data-val="1"><img src="/icons/vehiclePageHarvester.png" alt=""><span>Harvester</span></button>
+        <button class="cfg-typebtn vc-typecard" data-key="vehicle.type" data-val="2"><img src="/icons/vehiclePageArticulated.png" alt=""><span>Articulated</span></button>
       </div>
-      <div class="cfg-grid">
-        <label>Hitch type</label><select class="cfg-sel" data-key="vehicle.hitchType"></select>
-        <label>Hitch length (m)</label><input class="cfg-num" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
-        <label>Wheelbase (m)</label><input class="cfg-num" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal">
-        <label>Track width (m)</label><input class="cfg-num" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal">
-        <label>Antenna pivot (m)</label><input class="cfg-num" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
-        <label>Antenna height (m)</label><input class="cfg-num" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
-        <label>Antenna offset (m)</label><input class="cfg-num" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
-        <label>Antenna side</label>
-        <div class="ln-seg">
-          <button class="cfg-act" data-key="vehicle.antennaSide" data-val="left">Left</button>
-          <button class="cfg-act" data-key="vehicle.antennaSide" data-val="center">Center</button>
-          <button class="cfg-act" data-key="vehicle.antennaSide" data-val="right">Right</button>
+      <div class="cfg-label">Hitch / Wheelbase / Track</div>
+      <div class="vc-diagrow">
+        <img id="vc-img-hitch" class="vc-diag" alt="">
+        <div class="vc-fieldcol">
+          <label>Coupling type</label><select class="cfg-sel" data-key="vehicle.hitchType"></select>
+          <label>Hitch length (m)</label><input class="cfg-num" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
+        </div>
+      </div>
+      <div class="vc-diagrow">
+        <img id="vc-img-wheelbase" class="vc-diag" alt="">
+        <div class="vc-fieldcol"><label>Wheelbase (m)</label><input class="cfg-num" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal"></div>
+      </div>
+      <div class="vc-diagrow">
+        <img id="vc-img-track" class="vc-diag" alt="">
+        <div class="vc-fieldcol"><label>Track width (m)</label><input class="cfg-num" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal"></div>
+      </div>
+      <div class="cfg-label">Antenna</div>
+      <div class="vc-diagrow">
+        <img id="vc-img-antside" class="vc-diag" alt="">
+        <div class="vc-fieldcol">
+          <label>Antenna pivot (m)</label><input class="cfg-num" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
+          <label>Antenna height (m)</label><input class="cfg-num" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
+        </div>
+      </div>
+      <div class="vc-diagrow">
+        <img id="vc-img-antoffset" class="vc-diag" alt="">
+        <div class="vc-fieldcol">
+          <label>Antenna offset (m)</label><input class="cfg-num" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
+          <div class="ln-seg">
+            <button class="cfg-act" data-key="vehicle.antennaSide" data-val="left">Left</button>
+            <button class="cfg-act" data-key="vehicle.antennaSide" data-val="center">Center</button>
+            <button class="cfg-act" data-key="vehicle.antennaSide" data-val="right">Right</button>
+          </div>
         </div>
       </div>
     </div>
@@ -450,12 +482,14 @@
       </div>
     </div>
     <div id="vc-tab-roll" class="cfg-body" hidden>
+      <img src="/icons/ConD_RollHelper.png" class="vc-diag-wide" alt="Roll calibration">
       <div class="cfg-grid">
         <label>Roll zero (°)</label><input class="cfg-num" data-key="roll.rollZero" type="number" step="0.01" inputmode="decimal">
         <label></label><button class="cfg-act cfg-actwide" data-key="roll.setZero" data-val="1">Zero Now</button>
         <label>Roll filter</label><input class="cfg-num" data-key="roll.rollFilter" type="number" step="0.01" inputmode="decimal">
         <label>Invert roll</label><button class="cfg-tgl" data-key="roll.isRollInvert">Off</button>
       </div>
+      <img src="/icons/ConDa_InvertRoll.png" class="vc-diag-wide" alt="Invert roll">
     </div>
     <button id="vc-save" class="ln-savebtn">Save Profile</button>
   </div>

@@ -455,6 +455,20 @@ function populateVehicleCfg(force) {
   }
   for (const b of vcPanel.querySelectorAll('.cfg-typebtn'))
     b.classList.toggle('active', String(cfgGet(b.dataset.key)) === b.dataset.val);
+  // Type-dependent measurement diagrams (mirror VehicleConfig.*ImageSource switches:
+  // index by VehicleType 0 Tractor / 1 Harvester / 2 FourWD; '' = no image).
+  const ty = Math.max(0, Math.min(2, cfgGet('vehicle.type') | 0));
+  const setImg = (id, names) => {
+    const el = document.getElementById(id), n = names[ty];
+    if (!el) return;
+    if (n) { const p = '/icons/' + n + '.png'; if (!el.src.endsWith(p)) el.src = p; el.style.display = ''; }
+    else el.style.display = 'none';
+  };
+  setImg('vc-img-hitch', ['Hitch', '', 'HitchArticulated']);
+  setImg('vc-img-wheelbase', ['WheelbaseTractor', 'WheelbaseHarvester', 'WheelbaseArticulated']);
+  setImg('vc-img-track', ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated']);
+  setImg('vc-img-antside', ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop']);
+  setImg('vc-img-antoffset', ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset']);
   vcHitchSel.value = cfgGet('vehicle.hitchType');
   const w = cfgGet('gps.headingFusionWeight') || 0;
   vcFw.value = w; document.getElementById('vc-hfw').textContent = Math.round(w * 100) + '%';
