@@ -10,7 +10,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
 - Repo: `/Users/chris/Code/AgValoniaGPS3` (Avalonia/.NET 10 agricultural GPS app).
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go.
-- Working tree is clean; Phases 1–6 + the boundary near-clip fix are committed + pushed.
+- Working tree is clean; Phases 1–7 + the boundary near-clip fix are committed + pushed.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -61,6 +61,12 @@ HTML/JS. Do NOT port logic into JS. End state: headless host, browser is the onl
   sim ids incl. `sim.setSteer|<deg>` + `sim.setCoords|<lat>,<lon>`. Panel visibility is
   client-local (a `SIM` launcher chip reopens it). Also: STOP/RST now zero the projected
   speed; roll gauge centred over the campad.
+- **Phase 7 — section bar** (3c71d892): mostly client — per-section `ColorCode` already
+  rode `tick.sections`, master/manual `tick.op`. New `#bottomstack` (vertical column =
+  native StackPanel: sim bar / section bar / [bottom nav next]). `#sectionbar` colour
+  buttons (SECTION_COLORS), rows split like native `RebuildSectionRows`; shown when field
+  open AND a master engaged. One Tier-2 id `section.toggle|<index>` (gated by `section.`
+  prefix). Bar dims `.locked` without control.
 
 ## The projection pattern (recurring; the source of most bugs so far)
 Runtime UI state usually lives in the **VM as plain fields**, NOT in `ApplicationState`.
@@ -79,7 +85,7 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
 **Watch for setters bypassed by backing-field writes** (Phase 6's STOP wrote
 `_simulatorSpeedKph` directly, skipping the mirror) — those need an explicit mirror line.
 
-## Infra now available (built in Phase 6)
+## Infra now available (built in Phases 6–7)
 - **Dialog host:** `wwwroot/index.html` `#dialoghost` + `app.js` `openDialog(cardId)` /
   `closeDialog()`. Add a `.dlg-card` into `#dialoghost`, give it an id, call `openDialog`.
   One modal at a time over a dimming backdrop (mirrors `DialogOverlayHost`). Reuse for
@@ -88,21 +94,26 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
   the client sends `transport.send('id|arg')`. Property-setting / arg-carrying ids are
   handled in the `switch` ABOVE the ICommand map in `App.axaml.cs`; argless ids map to a
   VM `ICommand`. Tier-2 gating still keys off the id prefix in `IsRestrictedCommand`.
+- **Bottom stack:** `#bottomstack` (bottom-centre flex column) = the native bottom
+  `StackPanel`. Children top→bottom: sim bar, section bar, **bottom nav goes here next
+  (Phase 8)** — append it as the last child so it sits at the very bottom.
 
 ## NEXT SESSION — start here
-1. **Phase 7 — section bar  *(Tier 2 — per-section)*.** Native: `Panels/SectionControlPanel.axaml`;
-   `MainViewModel.SectionControl.cs` + section commands in `Commands.Track.cs`. Per-section
-   `ColorCode` is ALREADY on `TickDto.Sections` (0 off … 5 auto-off — see `tick.sections`
-   in `app.js`); master/manual mode is already mirrored to `ApplicationState.Operation`
-   (Phase 3). So most READ state is on the wire — this phase is mostly the **client bar**
-   (a per-section button strip showing each section's colour + a manual per-section toggle)
-   plus the per-section **control** id (Tier-2, gated). Decide the command shape:
-   `section.toggle|<index>` (use the new command-with-args path) for manual per-section
-   on/off. Read `SectionControlPanel.axaml` for the exact button layout + what each section
-   button does, and check `Commands.Track.cs` for the matching VM command before wiring.
-2. Then continue the clockwise sweep: **Phase 8** bottom nav (field tools), **9** left nav
-   (config trees + NTRIP + field/file lifecycle — the big one), **10** mop-up + headless
-   cutover. See the plan doc.
+1. **Phase 8 — bottom nav: field tools  *(mixed tiers)*.** Native: `Panels/BottomNavigationPanel.axaml`
+   + `Panels/FieldToolsPanel.axaml` (⚠ **verify the exact split** between BottomNav and
+   FieldTools first — read both AXAML + `MainWindow.axaml` for which sits where). VMs:
+   AB cycle/snap/nudge + flags + tram in `Commands.Track.cs`, `MainViewModel.Headland.cs`,
+   coverage/contour delete. **Read (wire+):** nudge offset, tram mode/lane, headland-on,
+   flag list — find each in the VM (projection pattern: mirror VM field → `ApplicationState`
+   in the setter → project), and **watch for backing-field writes that bypass setters**
+   (Phase 6 STOP bug). **Control:** guidance snap/nudge + `youturn.trigger` (Tier-2, gated);
+   `flag.*` + `tram.*` + headland toggles + coverage-delete (mostly Tier-1). **Client:** the
+   bottom field-tools toolbar — append it as the last child of `#bottomstack` so it lands at
+   the very bottom (below the section bar), matching native. Reuse the dialog host for any
+   tool that needs a value (e.g. nudge distance), and command-with-args for indexed/valued ids.
+2. Then: **Phase 9** left nav (config trees + NTRIP + field/file lifecycle — the big one;
+   needs a new **config bridge** read/write projection + `config.set`/`profile.save` family),
+   **10** mop-up + headless cutover. See the plan doc (Phase 9 is sub-phased 10a–…).
 
 ## Workflow rules (important)
 - **Embedded assets:** `wwwroot/*` (and `wwwroot/icons/*`) are `EmbeddedResource` in
@@ -134,4 +145,4 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
   blend like native (sRGB), not washed-out linear.
 - Camera modes 0=N 1=H 2=Free 3=Map (default); `mapRotation` eased by `ROT_SMOOTH`.
 
-**Start on Phase 7 (section bar) — most read-state is already on the Tick; build the client bar + per-section Tier-2 toggle.**
+**Start on Phase 8 (bottom nav / field tools) — append the toolbar as the last child of `#bottomstack`; verify the BottomNav-vs-FieldTools split first.**
