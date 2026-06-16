@@ -427,34 +427,54 @@ for (const t of vcPanel.querySelectorAll('.cfg-tab'))
     for (const b of vcPanel.querySelectorAll('.cfg-tab')) b.classList.toggle('active', b === t);
     for (const body of vcPanel.querySelectorAll('.cfg-body')) body.hidden = (body.id !== t.dataset.tab);
   });
-for (const inp of vcPanel.querySelectorAll('.cfg-num'))
-  inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
-for (const b of vcPanel.querySelectorAll('.cfg-tgl'))
-  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
-for (const b of vcPanel.querySelectorAll('.cfg-typebtn'))
-  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
+// Generic config controls keyed by data-key="<section>.<field>" — reused by the
+// Vehicle and Tool panels. Tab strips, selects, sliders and dynamic lists wire per
+// panel. cfg-typebtn active state compares the config value to data-active (falling
+// back to data-val) so name-valued buttons (tool type) can match an int field.
+function wireCfgControls(panel) {
+  for (const inp of panel.querySelectorAll('.cfg-num'))
+    inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
+  for (const b of panel.querySelectorAll('.cfg-tgl'))
+    b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
+  for (const b of panel.querySelectorAll('.cfg-typebtn'))
+    b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
+  for (const b of panel.querySelectorAll('.cfg-act'))
+    b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
+}
+function populateCfgControls(panel, force) {
+  for (const inp of panel.querySelectorAll('.cfg-num')) {
+    if (!force && document.activeElement === inp) continue;
+    const val = cfgGet(inp.dataset.key);
+    if (typeof val === 'number') inp.value = Math.round(val * 1000) / 1000;
+  }
+  for (const b of panel.querySelectorAll('.cfg-tgl')) {
+    const on = !!cfgGet(b.dataset.key);
+    b.classList.toggle('active', on);
+    if (!b.dataset.keepLabel) b.textContent = on ? 'On' : 'Off';
+  }
+  for (const b of panel.querySelectorAll('.cfg-typebtn'))
+    b.classList.toggle('active', String(cfgGet(b.dataset.key)) === (b.dataset.active != null ? b.dataset.active : b.dataset.val));
+}
+// Tab strip switcher: tabs + bodies share a data-strip id (so nested strips don't
+// cross-toggle). Active tab → its data-tab body shown, siblings in the strip hidden.
+function wireTabStrip(panel, stripId) {
+  for (const t of panel.querySelectorAll('.cfg-tab[data-strip="' + stripId + '"]'))
+    t.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      for (const b of panel.querySelectorAll('.cfg-tab[data-strip="' + stripId + '"]')) b.classList.toggle('active', b === t);
+      for (const body of panel.querySelectorAll('.cfg-body[data-strip="' + stripId + '"]')) body.hidden = (body.id !== t.dataset.tab);
+    });
+}
+wireCfgControls(vcPanel);
 vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitchSel.value));
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = Math.round(vcFw.value * 100) + '%'; cfgSend('gps.headingFusionWeight', vcFw.value); });
-for (const b of vcPanel.querySelectorAll('.cfg-act'))
-  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
 // Populate every control from the config frame. force (on open) fills all; otherwise
 // skip the focused number input so we don't clobber what the user is typing.
 function populateVehicleCfg(force) {
   if (!config || !config.vehicle) return;
   vcName.textContent = config.vehicle.name || '—';
-  for (const inp of vcPanel.querySelectorAll('.cfg-num')) {
-    if (!force && document.activeElement === inp) continue;
-    const val = cfgGet(inp.dataset.key);
-    if (typeof val === 'number') inp.value = Math.round(val * 1000) / 1000;
-  }
-  for (const b of vcPanel.querySelectorAll('.cfg-tgl')) {
-    const on = !!cfgGet(b.dataset.key);
-    b.classList.toggle('active', on);
-    b.textContent = on ? 'On' : 'Off';
-  }
-  for (const b of vcPanel.querySelectorAll('.cfg-typebtn'))
-    b.classList.toggle('active', String(cfgGet(b.dataset.key)) === b.dataset.val);
+  populateCfgControls(vcPanel, force);
   // Type-dependent measurement diagrams (mirror VehicleConfig.*ImageSource switches:
   // index by VehicleType 0 Tractor / 1 Harvester / 2 FourWD; '' = no image).
   const ty = Math.max(0, Math.min(2, cfgGet('vehicle.type') | 0));
@@ -479,14 +499,96 @@ function populateVehicleCfg(force) {
   ['gps.dualHeadingOffset', 'gps.dualReverseDistance', 'gps.autoDualFix', 'gps.dualSwitchSpeed'].forEach(k => setEn(k, dual));
   setEn('gps.reverseDetection', !dual);
 }
+
+// ---- Tool config panel (full native ToolConfigDialog) ----
+const tcPanel = document.getElementById('toolcfg'), tcName = document.getElementById('tc-name');
+const tcHitchSel = tcPanel.querySelector('.cfg-sel[data-key="tool.hitchType"]');
+HITCH_OPTS.forEach((label, i) => { const o = document.createElement('option'); o.value = i - 1; o.textContent = label; tcHitchSel.appendChild(o); });
+const tcSingleColor = document.getElementById('tc-singlecolor');
+wireCfgControls(tcPanel);
+wireTabStrip(tcPanel, 'tc-top');
+wireTabStrip(tcPanel, 'tc-sub');
+wireTabStrip(tcPanel, 'tc-mac');
+tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel.value));
+tcSingleColor.addEventListener('change', () => cfgSend('tool.singleCoverageColor', tcSingleColor.value.slice(1)));
+document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('machine.resetPins', '1'); });
+document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+// PinFunction enum labels (mirror MachineConfig.PinFunction).
+const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
+  'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
+const _tcBuilt = { sw: -1, ze: -1, sc: false, pins: false };
+function tcDynInput(parent, idx, label, type, onChange) {
+  const c = document.createElement('div'); c.className = 'tc-cell';
+  const sp = document.createElement('span'); sp.textContent = label;
+  const inp = document.createElement(type === 'pin' ? 'select' : 'input');
+  if (type === 'pin') PIN_FUNCS.forEach((l, fi) => { const o = document.createElement('option'); o.value = fi; o.textContent = l; inp.appendChild(o); });
+  else { inp.type = type; if (type === 'number') inp.step = '1'; }
+  inp.dataset.idx = idx;
+  inp.addEventListener('change', () => onChange(inp));
+  c.appendChild(sp); c.appendChild(inp); parent.appendChild(c);
+}
+function tcShow(name, on) { for (const el of tcPanel.querySelectorAll('[data-show="' + name + '"]')) el.hidden = !on; }
+function hex6(v) { return '#' + ((v >>> 0) & 0xFFFFFF).toString(16).padStart(6, '0'); }
+function populateToolCfg(force) {
+  if (!config || !config.tool) return;
+  const t = config.tool;
+  tcName.textContent = 'Tool: ' + (profiles ? profiles.activeTool : '—');
+  populateCfgControls(tcPanel, force);
+  if (document.activeElement !== tcHitchSel) tcHitchSel.value = t.hitchType;
+  const hi = document.getElementById('tc-img-hitch');
+  const hp = '/icons/' + (['ToolHitchPageFront', 'ToolHitchPageRear', 'ToolHitchPageTBT', 'ToolHitchPageTrailing'][t.type] || 'ToolHitchPageRear') + '.png';
+  if (!hi.src.endsWith(hp)) hi.src = hp;
+  // Conditional visibility by tool type (0 front, 1 rear, 2 TBT, 3 trailing).
+  const trailing = t.type === 3, tbt = t.type === 2, trailtbt = trailing || tbt;
+  tcShow('rigid', !trailing); tcShow('trailtbt', trailtbt); tcShow('tbt', tbt); tcShow('notrailtbt', !trailtbt);
+  tcShow('individual', t.isSectionsNotZones); tcShow('zones', !t.isSectionsNotZones);
+  tcShow('multicolor', t.isMultiColoredSections); tcShow('singlecolor', !t.isMultiColoredSections);
+  tcShow('worksw', t.isWorkSwitchEnabled); tcShow('steersw', t.isSteerSwitchEnabled);
+  const wsi = document.getElementById('tc-img-worksw');
+  wsi.src = '/icons/' + (t.isWorkSwitchActiveLow ? 'SwitchActiveClosed' : 'SwitchActiveOpen') + '.png';
+  // Dynamic lists — rebuild on count change, fill values (skip the focused control).
+  const nSec = Math.max(1, Math.min(16, t.numSections));
+  if (_tcBuilt.sw !== nSec) {
+    const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); });
+    _tcBuilt.sw = nSec;
+  }
+  for (const inp of document.querySelectorAll('#tc-sectionwidths input')) if (force || document.activeElement !== inp) inp.value = Math.round(t.sectionWidths[+inp.dataset.idx]);
+  const nZone = Math.max(1, Math.min(8, t.zones));
+  if (_tcBuilt.ze !== nZone) {
+    const g = document.getElementById('tc-zoneends'); g.innerHTML = '';
+    for (let i = 1; i <= nZone; i++) tcDynInput(g, i, 'Zone ' + i, 'number', inp => { const v = parseInt(inp.value); if (Number.isFinite(v)) cfgSend('tool.zoneEnd', i + ',' + v); });
+    _tcBuilt.ze = nZone;
+  }
+  for (const inp of document.querySelectorAll('#tc-zoneends input')) if (force || document.activeElement !== inp) inp.value = t.zoneRanges[+inp.dataset.idx];
+  if (!_tcBuilt.sc) {
+    const g = document.getElementById('tc-sectioncolors'); g.innerHTML = '';
+    for (let i = 0; i < 16; i++) tcDynInput(g, i, 'S' + (i + 1), 'color', inp => cfgSend('tool.sectionColor', i + ',' + inp.value.slice(1)));
+    _tcBuilt.sc = true;
+  }
+  for (const inp of document.querySelectorAll('#tc-sectioncolors input')) if (document.activeElement !== inp) inp.value = hex6(t.sectionColors[+inp.dataset.idx]);
+  if (document.activeElement !== tcSingleColor) tcSingleColor.value = hex6(t.singleCoverageColor);
+  if (!_tcBuilt.pins) {
+    const g = document.getElementById('tc-pins'); g.innerHTML = '';
+    for (let i = 0; i < 24; i++) tcDynInput(g, i, 'Pin ' + (i + 1), 'pin', sel => cfgSend('machine.pin', i + ',' + sel.value));
+    _tcBuilt.pins = true;
+  }
+  for (const sel of document.querySelectorAll('#tc-pins select')) if (document.activeElement !== sel) sel.value = config.machine.pinAssignments[+sel.dataset.idx];
+  document.getElementById('tc-totalwidth').textContent = 'Total width: ' + (t.totalWidth || 0).toFixed(2) + ' m';
+}
+
 function renderSettings() {
   if (statusBar) {
     const metric = !!statusBar.isMetric;
     uMetric.classList.toggle('active', metric);
     uImperial.classList.toggle('active', !metric);
   }
-  // Re-read the vehicle panel when a fresh config frame arrives.
-  if (configDirty) { configDirty = false; if (vcPanel.classList.contains('open')) populateVehicleCfg(false); }
+  // Re-read the open config panel(s) when a fresh config frame arrives.
+  if (configDirty) {
+    configDirty = false;
+    if (vcPanel.classList.contains('open')) populateVehicleCfg(false);
+    if (tcPanel.classList.contains('open')) populateToolCfg(false);
+  }
   // Re-read the hub when a fresh profiles frame arrives.
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
 }
@@ -565,7 +667,7 @@ document.getElementById('vth-vehconfig').addEventListener('pointerdown', e => {
 document.getElementById('vth-toolconfig').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (HUB.toolList.value) hubSend('profile.configureTool', HUB.toolList.value);
-  lnOpen('toolcfg', 'ln-vehicle');
+  lnOpen('toolcfg', 'ln-vehicle', () => populateToolCfg(true));
 });
 
 // ---- remote actuation control (Phase 2 safety layer) ----
@@ -891,6 +993,24 @@ setInterval(() => { if (!sbPaused) sbPage = (sbPage + 1) % 3; }, 5000); // nativ
 SB.pause.addEventListener('click', () => { sbPaused = !sbPaused; SB.pause.textContent = sbPaused ? '▶' : '❚❚'; });
 // Bar interaction must not pan the map (the camera listens on window pointerdown).
 SB.bar.addEventListener('pointerdown', e => e.stopPropagation());
+// Fullscreen toggle — hides the browser tabs/URL bar on tablets. Works on a user
+// gesture over plain HTTP (no PWA install needed). Prefixed fallback for older Android.
+const fsBtn = document.getElementById('sb-fs');
+if (fsBtn) {
+  const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  // Use 'click' (not pointerdown): requestFullscreen needs a durable user activation
+  // that pointerdown doesn't reliably grant on Android Chrome (entering took 2–3 taps).
+  // exitFullscreen needs no activation, so that always worked first tap.
+  fsBtn.addEventListener('click', () => {
+    if (fsEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+  });
+  fsBtn.addEventListener('pointerdown', e => e.stopPropagation()); // don't also pan the map
+  const sync = () => { fsBtn.textContent = fsEl() ? '🗗' : '⛶'; };
+  document.addEventListener('fullscreenchange', sync);
+  document.addEventListener('webkitfullscreenchange', sync);
+}
 SB.modBtn.addEventListener('pointerdown', e => {
   e.stopPropagation();
   SB.modPop.style.display = SB.modPop.style.display === 'block' ? 'none' : 'block';

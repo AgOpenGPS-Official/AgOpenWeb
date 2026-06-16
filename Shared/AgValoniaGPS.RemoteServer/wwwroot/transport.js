@@ -125,7 +125,27 @@ window.RemoteTransport = {
             headingFusionWeight: f64(), reverseDetection: !!u8(), rtkLostAlarm: !!u8(), rtkLostAction: i32(),
           };
           const roll = { rollZero: f64(), rollFilter: f64(), isRollInvert: !!u8() };
-          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll });
+          const rdF64 = () => { const n = i32(), a = new Array(n); for (let k = 0; k < n; k++) a[k] = f64(); return a; };
+          const rdI32 = () => { const n = i32(), a = new Array(n); for (let k = 0; k < n; k++) a[k] = i32(); return a; };
+          const tool = {
+            type: i32(), hitchType: i32(), hitchLength: f64(), trailingHitchLength: f64(),
+            tankTrailingHitchLength: f64(), length: f64(), lookAheadOn: f64(), lookAheadOff: f64(),
+            turnOffDelay: f64(), offset: f64(), overlap: f64(), trailingToolToPivotLength: f64(),
+            isSectionsNotZones: !!u8(), numSections: i32(), defaultSectionWidth: f64(),
+            sectionWidths: rdF64(), zones: i32(), zoneRanges: rdI32(),
+            isMultiColoredSections: !!u8(), sectionColors: rdI32(), singleCoverageColor: i32(),
+            isSectionOffWhenOut: !!u8(), isHeadlandSectionControl: !!u8(), minCoverage: i32(),
+            slowSpeedCutoff: f64(), coverageMargin: f64(),
+            isWorkSwitchEnabled: !!u8(), isWorkSwitchActiveLow: !!u8(), isWorkSwitchManualSections: !!u8(),
+            isSteerSwitchEnabled: !!u8(), isSteerSwitchManualSections: !!u8(), totalWidth: f64(),
+          };
+          const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64() };
+          const tram = { passes: i32(), display: !!u8(), line: i32() };
+          const machine = {
+            hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),
+            user1: i32(), user2: i32(), user3: i32(), user4: i32(), pinAssignments: rdI32(),
+          };
+          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine });
           break;
         }
         case TYPE.PROFILES: {

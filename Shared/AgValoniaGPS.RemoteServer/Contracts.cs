@@ -140,8 +140,37 @@ public record StatusDto(
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
 /// re-sent when the config fingerprint changes. Grows a section per sub-phase;
-/// the wire stays append-only. The Vehicle config dialog = Vehicle + Gps + Roll.</summary>
-public record ConfigDto(VehicleConfigDto Vehicle, GpsConfigDto Gps, RollConfigDto Roll);
+/// the wire stays append-only. Vehicle dialog = Vehicle + Gps + Roll; Tool dialog =
+/// Tool + Uturn + Tram + Machine.</summary>
+public record ConfigDto(VehicleConfigDto Vehicle, GpsConfigDto Gps, RollConfigDto Roll,
+    ToolConfigDto Tool, UturnConfigDto Uturn, TramConfigDto Tram, MachineConfigDto Machine);
+
+/// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
+/// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>
+public record ToolConfigDto(
+    int Type, int HitchType, double HitchLength, double TrailingHitchLength,
+    double TankTrailingHitchLength, double Length,
+    double LookAheadOn, double LookAheadOff, double TurnOffDelay,
+    double Offset, double Overlap, double TrailingToolToPivotLength,
+    bool IsSectionsNotZones, int NumSections, double DefaultSectionWidth,
+    IReadOnlyList<double> SectionWidths, int Zones, IReadOnlyList<int> ZoneRanges,
+    bool IsMultiColoredSections, IReadOnlyList<int> SectionColors, int SingleCoverageColor,
+    bool IsSectionOffWhenOut, bool IsHeadlandSectionControl, int MinCoverage,
+    double SlowSpeedCutoff, double CoverageMargin,
+    bool IsWorkSwitchEnabled, bool IsWorkSwitchActiveLow, bool IsWorkSwitchManualSections,
+    bool IsSteerSwitchEnabled, bool IsSteerSwitchManualSections,
+    double TotalWidth);
+
+/// <summary>U-Turn tab (ConfigStore.Guidance). Style: 0 Omega, 1 Sagitta.</summary>
+public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
+
+/// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
+public record TramConfigDto(int Passes, bool Display, int Line);
+
+/// <summary>Machine Control tab (ConfigStore.Machine). PinAssignments: 24 PinFunction ints.</summary>
+public record MachineConfigDto(
+    bool HydraulicLiftEnabled, int RaiseTime, double LookAhead, int LowerTime, bool InvertRelay,
+    int User1, int User2, int User3, int User4, IReadOnlyList<int> PinAssignments);
 
 /// <summary>Vehicle &amp; Tool picker hub (Phase 9): available profiles (name + preview)
 /// and the active pair. Seeded on connect, re-sent when the list/active/config changes.</summary>

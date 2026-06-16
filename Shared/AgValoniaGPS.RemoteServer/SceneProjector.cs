@@ -242,13 +242,33 @@ public sealed class SceneProjector
         var v = _config.Vehicle;
         var c = _config.Connections;
         var a = _config.Ahrs;
+        var t = _config.Tool;
+        var g = _config.Guidance;
+        var m = _config.Machine;
+        int toolType = t.IsToolFrontFixed ? 0 : t.IsToolRearFixed ? 1 : t.IsToolTBT ? 2 : 3;
+        var widths = new double[16]; for (int i = 0; i < 16; i++) widths[i] = t.GetSectionWidth(i);
+        var colors = new int[16]; for (int i = 0; i < 16; i++) colors[i] = (int)t.GetSectionColor(i);
+        var zones = new int[9]; for (int i = 0; i < 9; i++) zones[i] = t.GetZoneEndSection(i);
+        var pins = new int[24]; for (int i = 0; i < 24; i++) pins[i] = (int)m.GetPinAssignment(i);
         return new ConfigDto(
             new VehicleConfigDto(v.Name, (int)v.Type, v.HitchType, v.HitchLength, v.Wheelbase,
                 v.TrackWidth, v.AntennaPivot, v.AntennaHeight, v.AntennaOffset),
             new GpsConfigDto(c.IsDualGps, c.DualHeadingOffset, c.DualReverseDistance, c.AutoDualFix,
                 c.DualSwitchSpeed, c.MinGpsStep, c.FixToFixDistance, c.HeadingFusionWeight,
                 c.ReverseDetection, c.RtkLostAlarm, c.RtkLostAction),
-            new RollConfigDto(a.RollZero, a.RollFilter, a.IsRollInvert));
+            new RollConfigDto(a.RollZero, a.RollFilter, a.IsRollInvert),
+            new ToolConfigDto(toolType, t.HitchType, t.HitchLength, t.TrailingHitchLength,
+                t.TankTrailingHitchLength, t.Length, t.LookAheadOnSetting, t.LookAheadOffSetting,
+                t.TurnOffDelay, t.Offset, t.Overlap, t.TrailingToolToPivotLength,
+                t.IsSectionsNotZones, _config.NumSections, t.DefaultSectionWidth, widths,
+                t.Zones, zones, t.IsMultiColoredSections, colors, (int)t.SingleCoverageColor,
+                t.IsSectionOffWhenOut, t.IsHeadlandSectionControl, t.MinCoverage, t.SlowSpeedCutoff,
+                t.CoverageMargin, t.IsWorkSwitchEnabled, t.IsWorkSwitchActiveLow, t.IsWorkSwitchManualSections,
+                t.IsSteerSwitchEnabled, t.IsSteerSwitchManualSections, _config.ActualToolWidth),
+            new UturnConfigDto(g.UTurnStyle, g.UTurnExtension, g.UTurnSmoothing, g.UTurnRadius, g.UTurnDistanceFromBoundary),
+            new TramConfigDto(g.TramPasses, g.TramDisplay, g.TramLine),
+            new MachineConfigDto(m.HydraulicLiftEnabled, m.RaiseTime, m.LookAhead, m.LowerTime, m.InvertRelay,
+                m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins));
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
@@ -293,6 +313,26 @@ public sealed class SceneProjector
                                   c.DualReverseDistance, c.DualSwitchSpeed, c.MinGpsStep,
                                   c.FixToFixDistance, c.HeadingFusionWeight, a.RollZero, a.RollFilter })
             h = h * 31 + d.GetHashCode();
+        // Tool / U-Turn / Tram / Machine (so Tool-dialog edits re-send the frame).
+        var t = _config.Tool; var g = _config.Guidance; var mc = _config.Machine;
+        h = h * 31 + (t.IsToolFrontFixed ? 1 : t.IsToolRearFixed ? 2 : t.IsToolTBT ? 3 : 4);
+        h = h * 31 + t.HitchType + t.Zones * 31 + _config.NumSections * 7
+              + (t.IsSectionsNotZones ? 1 : 0) + (t.IsMultiColoredSections ? 2 : 0)
+              + (t.IsSectionOffWhenOut ? 4 : 0) + (t.IsHeadlandSectionControl ? 8 : 0) + t.MinCoverage
+              + (t.IsWorkSwitchEnabled ? 16 : 0) + (t.IsWorkSwitchActiveLow ? 32 : 0) + (t.IsWorkSwitchManualSections ? 64 : 0)
+              + (t.IsSteerSwitchEnabled ? 128 : 0) + (t.IsSteerSwitchManualSections ? 256 : 0);
+        foreach (var d in new[] { t.HitchLength, t.TrailingHitchLength, t.TankTrailingHitchLength, t.Length,
+                                  t.LookAheadOnSetting, t.LookAheadOffSetting, t.TurnOffDelay, t.Offset, t.Overlap,
+                                  t.TrailingToolToPivotLength, t.DefaultSectionWidth, t.SlowSpeedCutoff, t.CoverageMargin,
+                                  g.UTurnExtension, g.UTurnRadius, g.UTurnDistanceFromBoundary, mc.LookAhead })
+            h = h * 31 + d.GetHashCode();
+        for (int i = 0; i < 16; i++) h = h * 31 + t.GetSectionWidth(i).GetHashCode() + (int)t.GetSectionColor(i);
+        for (int i = 0; i < 9; i++) h = h * 31 + t.GetZoneEndSection(i);
+        h = h * 31 + (int)t.SingleCoverageColor;
+        h = h * 31 + g.UTurnStyle * 7 + g.UTurnSmoothing * 11 + g.TramPasses * 13 + (g.TramDisplay ? 1 : 0) + g.TramLine * 17;
+        h = h * 31 + (mc.HydraulicLiftEnabled ? 1 : 0) + mc.RaiseTime * 7 + mc.LowerTime * 11 + (mc.InvertRelay ? 64 : 0)
+              + mc.User1Value + mc.User2Value * 3 + mc.User3Value * 5 + mc.User4Value * 7;
+        for (int i = 0; i < 24; i++) h = h * 31 + (int)mc.GetPinAssignment(i);
         return h;
     }
 

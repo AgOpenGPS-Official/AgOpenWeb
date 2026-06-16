@@ -327,7 +327,14 @@ public partial class App : Application
         bool D(out double d) => double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out d);
         bool I(out int i) => int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out i);
         bool B() => val == "1";
+        bool IDX(out int i, out string rest) // "i,rest" — indexed array writes
+        {
+            var k = val.IndexOf(','); rest = ""; i = 0;
+            if (k <= 0 || !int.TryParse(val[..k], out i)) return false;
+            rest = val[(k + 1)..]; return true;
+        }
         var veh = store.Vehicle; var con = store.Connections; var ahrs = store.Ahrs;
+        var tool = store.Tool; var gd = store.Guidance; var mch = store.Machine;
         switch (key)
         {
             case "units": store.IsMetric = val == "metric"; cfg.SaveAppSettings(); return; // device setting
@@ -362,6 +369,69 @@ public partial class App : Application
             case "roll.rollFilter": if (D(out var r2)) ahrs.RollFilter = r2; return;
             case "roll.isRollInvert": ahrs.IsRollInvert = B(); return;
             case "roll.setZero": ahrs.RollZero = 0; return; // mirror SetRollZeroCommand
+            // --- Tool / Implement (ConfigStore.Tool + NumSections) ---
+            case "tool.type": tool.SetToolType(val); return; // front/rear/tbt/trailing
+            case "tool.hitchType": if (I(out var th)) tool.HitchType = th; return;
+            case "tool.hitchLength": if (D(out var t1)) tool.HitchLength = t1; return;
+            case "tool.trailingHitchLength": if (D(out var t2)) tool.TrailingHitchLength = t2; return;
+            case "tool.tankTrailingHitchLength": if (D(out var t3)) tool.TankTrailingHitchLength = t3; return;
+            case "tool.length": if (D(out var t4)) tool.Length = t4; return;
+            case "tool.lookAheadOn": if (D(out var t5)) tool.LookAheadOnSetting = t5; return;
+            case "tool.lookAheadOff": if (D(out var t6)) tool.LookAheadOffSetting = t6; return;
+            case "tool.turnOffDelay": if (D(out var t7)) tool.TurnOffDelay = t7; return;
+            case "tool.offset": if (D(out var t8)) tool.Offset = t8; return;
+            case "tool.overlap": if (D(out var t9)) tool.Overlap = t9; return;
+            case "tool.trailingToolToPivotLength": if (D(out var t10)) tool.TrailingToolToPivotLength = t10; return;
+            case "tool.slowSpeedCutoff": if (D(out var t11)) tool.SlowSpeedCutoff = t11; return;
+            case "tool.coverageMargin": if (D(out var t12)) tool.CoverageMargin = t12; return;
+            case "tool.defaultSectionWidth": if (D(out var t13)) tool.DefaultSectionWidth = t13; return;
+            case "tool.minCoverage": if (I(out var t14)) tool.MinCoverage = t14; return;
+            case "tool.numSections": if (I(out var t15)) store.NumSections = t15; return;
+            case "tool.zones": if (I(out var t16)) tool.Zones = t16; return;
+            case "tool.isSectionsNotZones": tool.IsSectionsNotZones = B(); return;
+            case "tool.isMultiColoredSections": tool.IsMultiColoredSections = B(); return;
+            case "tool.isSectionOffWhenOut": tool.IsSectionOffWhenOut = B(); return;
+            case "tool.isHeadlandSectionControl": tool.IsHeadlandSectionControl = B(); return;
+            case "tool.isWorkSwitchEnabled": tool.IsWorkSwitchEnabled = B(); return;
+            case "tool.isWorkSwitchActiveLow": tool.IsWorkSwitchActiveLow = B(); return;
+            case "tool.isWorkSwitchManualSections": tool.IsWorkSwitchManualSections = B(); return;
+            case "tool.isSteerSwitchEnabled": tool.IsSteerSwitchEnabled = B(); return;
+            case "tool.isSteerSwitchManualSections": tool.IsSteerSwitchManualSections = B(); return;
+            case "tool.offsetSide": // left/right/zero (sign on Offset)
+                tool.Offset = val == "zero" ? 0 : val == "left" ? -System.Math.Abs(tool.Offset == 0 ? 0.5 : tool.Offset) : System.Math.Abs(tool.Offset == 0 ? 0.5 : tool.Offset);
+                return;
+            case "tool.overlapSide": // overlap(+)/gap(-)/zero
+                tool.Overlap = val == "zero" ? 0 : val == "gap" ? -System.Math.Abs(tool.Overlap == 0 ? 0.1 : tool.Overlap) : System.Math.Abs(tool.Overlap == 0 ? 0.1 : tool.Overlap);
+                return;
+            case "tool.pivotSide": // behind(+)/ahead(-)/zero
+                tool.TrailingToolToPivotLength = val == "zero" ? 0 : val == "ahead" ? -System.Math.Abs(tool.TrailingToolToPivotLength == 0 ? 0.5 : tool.TrailingToolToPivotLength) : System.Math.Abs(tool.TrailingToolToPivotLength == 0 ? 0.5 : tool.TrailingToolToPivotLength);
+                return;
+            case "tool.sectionWidth": if (IDX(out var swi, out var swv) && double.TryParse(swv, System.Globalization.NumberStyles.Float, inv, out var swd)) tool.SetSectionWidth(swi, swd); return;
+            case "tool.zoneEnd": if (IDX(out var zei, out var zev) && int.TryParse(zev, out var zen)) tool.SetZoneEndSection(zei, zen); return;
+            case "tool.sectionColor": if (IDX(out var sci, out var sch) && uint.TryParse(sch, System.Globalization.NumberStyles.HexNumber, inv, out var scc)) tool.SetSectionColor(sci, scc); return;
+            case "tool.singleCoverageColor": if (uint.TryParse(val, System.Globalization.NumberStyles.HexNumber, inv, out var scov)) tool.SingleCoverageColor = scov; return;
+            // --- U-Turn (ConfigStore.Guidance) ---
+            case "uturn.style": if (I(out var u1)) gd.UTurnStyle = u1; return;
+            case "uturn.extension": if (D(out var u2)) gd.UTurnExtension = u2; return;
+            case "uturn.smoothing": if (I(out var u3)) gd.UTurnSmoothing = u3; return;
+            case "uturn.radius": if (D(out var u4)) gd.UTurnRadius = u4; return;
+            case "uturn.distanceFromBoundary": if (D(out var u5)) gd.UTurnDistanceFromBoundary = u5; return;
+            // --- Tram (ConfigStore.Guidance) ---
+            case "tram.passes": if (I(out var tp)) gd.TramPasses = tp; return;
+            case "tram.display": gd.TramDisplay = B(); return;
+            case "tram.line": if (I(out var tl)) gd.TramLine = tl; return;
+            // --- Machine Control (ConfigStore.Machine) ---
+            case "machine.hydraulicLiftEnabled": mch.HydraulicLiftEnabled = B(); return;
+            case "machine.raiseTime": if (I(out var m1)) mch.RaiseTime = m1; return;
+            case "machine.lookAhead": if (D(out var m2)) mch.LookAhead = m2; return;
+            case "machine.lowerTime": if (I(out var m3)) mch.LowerTime = m3; return;
+            case "machine.invertRelay": mch.InvertRelay = B(); return;
+            case "machine.user1": if (I(out var m4)) mch.User1Value = m4; return;
+            case "machine.user2": if (I(out var m5)) mch.User2Value = m5; return;
+            case "machine.user3": if (I(out var m6)) mch.User3Value = m6; return;
+            case "machine.user4": if (I(out var m7)) mch.User4Value = m7; return;
+            case "machine.pin": if (IDX(out var pi, out var pv) && int.TryParse(pv, out var pf)) mch.SetPinAssignment(pi, (AgValoniaGPS.Models.Configuration.PinFunction)pf); return;
+            case "machine.resetPins": mch.ResetPinAssignments(); return;
             // unknown key → ignored
         }
     }

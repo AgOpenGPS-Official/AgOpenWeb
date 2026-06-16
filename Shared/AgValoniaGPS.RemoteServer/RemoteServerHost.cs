@@ -92,6 +92,8 @@ public sealed class RemoteServerHost
         app.MapGet("/", () => Results.Content(ReadAsset("index.html"), "text/html"));
         app.MapGet("/app.js", () => Results.Content(ReadAsset("app.js"), "text/javascript"));
         app.MapGet("/transport.js", () => Results.Content(ReadAsset("transport.js"), "text/javascript"));
+        // PWA manifest — lets "Add to home screen" launch fullscreen (no browser chrome).
+        app.MapGet("/manifest.webmanifest", () => Results.Content(ReadAsset("manifest.webmanifest"), "application/manifest+json"));
 
         // CanvasKit (WASM Skia) — bundled locally for offline in-cab use. The
         // wasm is served as application/wasm so the browser can streaming-compile.
@@ -104,7 +106,8 @@ public sealed class RemoteServerHost
         {
             if (file.Contains('/') || file.Contains('\\') || file.Contains(".."))
                 return Results.NotFound();
-            try { return Results.File(ReadAssetBytes("icons." + file), "image/png"); }
+            var mime = file.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? "image/gif" : "image/png";
+            try { return Results.File(ReadAssetBytes("icons." + file), mime); }
             catch (FileNotFoundException) { return Results.NotFound(); }
         });
 

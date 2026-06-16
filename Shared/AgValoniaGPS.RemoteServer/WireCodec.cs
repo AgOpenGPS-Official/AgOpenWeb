@@ -64,6 +64,65 @@ public static class WireCodec
         w.Write(r.RollZero);           // f64
         w.Write(r.RollFilter);
         w.Write((byte)(r.IsRollInvert ? 1 : 0));
+        // Tool/Implement tab.
+        var t = c.Tool;
+        w.Write(t.Type);               // i32
+        w.Write(t.HitchType);
+        w.Write(t.HitchLength);        // f64
+        w.Write(t.TrailingHitchLength);
+        w.Write(t.TankTrailingHitchLength);
+        w.Write(t.Length);
+        w.Write(t.LookAheadOn);
+        w.Write(t.LookAheadOff);
+        w.Write(t.TurnOffDelay);
+        w.Write(t.Offset);
+        w.Write(t.Overlap);
+        w.Write(t.TrailingToolToPivotLength);
+        w.Write((byte)(t.IsSectionsNotZones ? 1 : 0));
+        w.Write(t.NumSections);        // i32
+        w.Write(t.DefaultSectionWidth);// f64
+        w.Write(t.SectionWidths.Count);
+        foreach (var sw in t.SectionWidths) w.Write(sw); // f64
+        w.Write(t.Zones);              // i32
+        w.Write(t.ZoneRanges.Count);
+        foreach (var z in t.ZoneRanges) w.Write(z);      // i32
+        w.Write((byte)(t.IsMultiColoredSections ? 1 : 0));
+        w.Write(t.SectionColors.Count);
+        foreach (var col in t.SectionColors) w.Write(col); // i32 (0xRRGGBB)
+        w.Write(t.SingleCoverageColor);// i32
+        w.Write((byte)(t.IsSectionOffWhenOut ? 1 : 0));
+        w.Write((byte)(t.IsHeadlandSectionControl ? 1 : 0));
+        w.Write(t.MinCoverage);        // i32
+        w.Write(t.SlowSpeedCutoff);    // f64
+        w.Write(t.CoverageMargin);
+        w.Write((byte)(t.IsWorkSwitchEnabled ? 1 : 0));
+        w.Write((byte)(t.IsWorkSwitchActiveLow ? 1 : 0));
+        w.Write((byte)(t.IsWorkSwitchManualSections ? 1 : 0));
+        w.Write((byte)(t.IsSteerSwitchEnabled ? 1 : 0));
+        w.Write((byte)(t.IsSteerSwitchManualSections ? 1 : 0));
+        w.Write(t.TotalWidth);         // f64
+        // U-Turn tab.
+        var u = c.Uturn;
+        w.Write(u.Style);              // i32
+        w.Write(u.Extension);          // f64
+        w.Write(u.Smoothing);          // i32
+        w.Write(u.Radius);             // f64
+        w.Write(u.DistanceFromBoundary);
+        // Tram tab.
+        var tr = c.Tram;
+        w.Write(tr.Passes);            // i32
+        w.Write((byte)(tr.Display ? 1 : 0));
+        w.Write(tr.Line);              // i32
+        // Machine Control tab.
+        var m = c.Machine;
+        w.Write((byte)(m.HydraulicLiftEnabled ? 1 : 0));
+        w.Write(m.RaiseTime);          // i32
+        w.Write(m.LookAhead);          // f64
+        w.Write(m.LowerTime);          // i32
+        w.Write((byte)(m.InvertRelay ? 1 : 0));
+        w.Write(m.User1); w.Write(m.User2); w.Write(m.User3); w.Write(m.User4); // i32
+        w.Write(m.PinAssignments.Count);
+        foreach (var p in m.PinAssignments) w.Write(p);  // i32 (PinFunction)
         return ms.ToArray();
     }
 
