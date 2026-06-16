@@ -11,13 +11,33 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go.
 - Working tree is clean; Phases 1–8 + the boundary near-clip fix are committed + pushed.
-  **Phase 9 in progress:** 9a (left-nav shell + config bridge: `config.set`, units) and
-  9b (vehicle config + the `Config` read-frame type 8 + `profile.save`) are done + pushed.
-  Next sub-phase: **9c Tool config** (same pattern — add a Tool section to `ConfigDto`,
-  more `config.set|tool.*` keys, a Tool panel + Save). Then 9d AutoSteer, 9e Network/NTRIP,
-  9f App/Screen settings, 9g Field ops/lifecycle, 9h Field tools/editors + Phase-8 deferred
-  dialogs. The config-bridge pattern (read-frame + `config.set` + `profile.save` +
-  `LN_PANELS` entry) is the repeatable template.
+  **Phase 9 in progress.** Done + pushed:
+  - 9a — left-nav shell + config bridge (`config.set`, units).
+  - **Vehicle & Tool configuration — COMPLETE** (the big one). Picker **hub**
+    (`LoadVehicleToolDialogPanel`: profile lists/preview/New/Delete/Rename/Reset/Load +
+    Configure), the full **Vehicle dialog** (Vehicle/GPS/Roll, type cards + measurement
+    diagrams), and the full **Tool dialog** (Tool sub-tabs Type/Hitch/Timing/Offset/Pivot/
+    Sections/Switches, U-Turn, Machine [Module/Pin Config], Tram — diagrams, GIFs, per-
+    section/zone/colour/24-pin editors). Built to FULL native depth per
+    `[[feedback_full_feature_surface]]` (don't ship a core subset).
+  - **Tablet UX:** panels fit 1200×700 with NO scroll — lay out across the width (fixed
+    760px config panels, 2-col tabs, diagrams 2-up). PWA manifest (`display:fullscreen`) +
+    a status-bar Fullscreen ⛶ button (fires on `click`, not pointerdown).
+  - **Infra:** `Config` read-frame (wire type 8) + `Profiles` frame (type 9), seeded on
+    connect + re-sent on a fingerprint change (broadcaster); `config.set|<section>.<field>`
+    (indexed: `key:i,val`), `profile.save`, `profile.{load,new,delete,rename,reset,
+    configureVehicle,configureTool}` (host `ApplyConfigSet`/`ApplyProfileCommand`);
+    `IConfigurationService` now has `GetVehicleProfilePreview`/`GetToolProfilePreview`
+    (shared by the picker VM + projector — no dup). Generic client helpers:
+    `wireCfgControls`/`populateCfgControls`/`wireTabStrip`, `data-key`/`data-show`/
+    `data-active`. `IConfigurationService` is injected into `SceneProjector`.
+  - **Remaining Phase-9 sub-phases:** AutoSteer config, Network IO + **NTRIP**, App/Screen
+    settings (expand the Screen & Alerts panel), Field operations/lifecycle (field
+    list/open/create/close/resume), Field tools/boundary editors + the **Phase-8 deferred
+    dialogs** (Tracks/QuickAB/DrawAB/FlagList/place-on-map; need map-tap interaction).
+  - **HTTPS note:** a *true* installable PWA needs a secure context. Over LAN HTTP the
+    Fullscreen button is the dependable path; serving the remote UI over HTTPS (self-signed
+    cert trusted on the tablet) is a separate future task if real PWA install is wanted.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
