@@ -20,6 +20,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
     private long _sceneVersion;
     private long _lastFingerprint = long.MinValue;
+    private long _lastConfigFp = long.MinValue;
     private SceneDto _currentScene;
     private Task? _loop;
 
@@ -50,6 +51,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
         {
             WireCodec.EncodeScene(_currentScene),
             WireCodec.EncodeStatus(_projector.BuildStatus()),
+            WireCodec.EncodeConfig(_projector.BuildConfig()),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -125,6 +127,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     _lastFingerprint = fp;
                     _currentScene = _projector.BuildScene(++_sceneVersion);
                     await _ws.BroadcastAsync(WireCodec.EncodeScene(_currentScene), ct).ConfigureAwait(false);
+                }
+
+                // Config read-frame: re-send only when an editable value changes.
+                var cfp = _projector.ConfigFingerprint();
+                if (cfp != _lastConfigFp)
+                {
+                    _lastConfigFp = cfp;
+                    await _ws.BroadcastAsync(WireCodec.EncodeConfig(_projector.BuildConfig()), ct).ConfigureAwait(false);
                 }
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)

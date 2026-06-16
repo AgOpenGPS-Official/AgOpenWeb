@@ -233,6 +233,29 @@ public sealed class SceneProjector
             _state.Simulator.Is10x);
     }
 
+    // Config read-frame (Phase 9). Projects editable ConfigurationStore values for
+    // the left-nav settings panels. Grows a section per sub-phase.
+    public ConfigDto BuildConfig()
+    {
+        var v = _config.Vehicle;
+        return new ConfigDto(new VehicleConfigDto(
+            v.Name, v.Wheelbase, v.TrackWidth, v.AntennaHeight, v.AntennaPivot,
+            v.AntennaOffset, v.HitchLength, v.MaxSteerAngle, v.MaxAngularVelocity));
+    }
+
+    // Change-detector so the broadcaster re-sends Config only when an editable value
+    // actually changes (e.g. the user edits a field, or a profile loads).
+    public long ConfigFingerprint()
+    {
+        var v = _config.Vehicle;
+        long h = 17;
+        h = h * 31 + v.Name.GetHashCode();
+        foreach (var d in new[] { v.Wheelbase, v.TrackWidth, v.AntennaHeight, v.AntennaPivot,
+                                  v.AntennaOffset, v.HitchLength, v.MaxSteerAngle, v.MaxAngularVelocity })
+            h = h * 31 + d.GetHashCode();
+        return h;
+    }
+
     /// <summary>
     /// Cheap change-detector so the broadcaster only re-sends the Scene when the
     /// static-ish geometry actually changes (field swap, boundary/track edits).

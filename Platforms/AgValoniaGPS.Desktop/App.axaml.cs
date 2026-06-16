@@ -168,11 +168,14 @@ public partial class App : Application
                                     return;
                                 case "config.set": // config bridge (Phase 9a). arg = "key:value"
                                     var ci = arg.IndexOf(':');
-                                    if (ci <= 0) return;
-                                    if (ApplyConfigSet(
+                                    if (ci > 0)
+                                        ApplyConfigSet(
                                             Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
-                                            arg[..ci], arg[(ci + 1)..]))
-                                        configService.SaveAppSettings(); // persist only on a known key
+                                            configService, arg[..ci], arg[(ci + 1)..]);
+                                    return;
+                                case "profile.save": // persist active vehicle+tool profiles (Phase 9b)
+                                    var cs = Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>();
+                                    configService.SaveProfiles(cs.ActiveVehicleProfileName, cs.ActiveToolProfileName);
                                     return;
                             }
 
@@ -303,15 +306,30 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    // Config bridge (Phase 9a): apply one "key:value" config write from the web client.
-    // Returns true when the key is recognised (the caller persists only then). Grows as
-    // later sub-phases expose more of ConfigurationStore. Runs on the UI thread.
-    private static bool ApplyConfigSet(AgValoniaGPS.Models.Configuration.ConfigurationStore store, string key, string val)
+    // Config bridge (Phase 9a+): apply one "key:value" config write from the web client.
+    // Device settings (e.g. units) persist immediately via SaveAppSettings; profile
+    // settings (vehicle dims) take live effect only — the client persists them with a
+    // profile.save. Grows as later sub-phases expose more of ConfigurationStore. Runs
+    // on the UI thread.
+    private static void ApplyConfigSet(AgValoniaGPS.Models.Configuration.ConfigurationStore store,
+        AgValoniaGPS.Services.Interfaces.IConfigurationService cfg, string key, string val)
     {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        bool D(out double d) => double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out d);
+        var veh = store.Vehicle;
         switch (key)
         {
-            case "units": store.IsMetric = val == "metric"; return true;
-            default: return false; // unknown key → ignored (no persist)
+            case "units": store.IsMetric = val == "metric"; cfg.SaveAppSettings(); return; // device setting
+            // Vehicle config (Phase 9b). Live effect; persisted by a profile.save.
+            case "vehicle.wheelbase": if (D(out var d1)) veh.Wheelbase = d1; return;
+            case "vehicle.trackWidth": if (D(out var d2)) veh.TrackWidth = d2; return;
+            case "vehicle.antennaHeight": if (D(out var d3)) veh.AntennaHeight = d3; return;
+            case "vehicle.antennaPivot": if (D(out var d4)) veh.AntennaPivot = d4; return;
+            case "vehicle.antennaOffset": if (D(out var d5)) veh.AntennaOffset = d5; return;
+            case "vehicle.hitchLength": if (D(out var d6)) veh.HitchLength = d6; return;
+            case "vehicle.maxSteerAngle": if (D(out var d7)) veh.MaxSteerAngle = d7; return;
+            case "vehicle.maxAngularVelocity": if (D(out var d8)) veh.MaxAngularVelocity = d8; return;
+            // unknown key → ignored
         }
     }
 

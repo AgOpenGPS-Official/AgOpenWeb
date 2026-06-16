@@ -17,7 +17,25 @@ namespace AgValoniaGPS.RemoteServer;
 public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
-        ControlState = 6, Hello = 7;
+        ControlState = 6, Hello = 7, Config = 8;
+
+    public static byte[] EncodeConfig(ConfigDto c)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Config);
+        var v = c.Vehicle;
+        WriteStr(w, v.Name);
+        w.Write(v.Wheelbase);          // f64
+        w.Write(v.TrackWidth);
+        w.Write(v.AntennaHeight);
+        w.Write(v.AntennaPivot);
+        w.Write(v.AntennaOffset);
+        w.Write(v.HitchLength);
+        w.Write(v.MaxSteerAngle);
+        w.Write(v.MaxAngularVelocity);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeScene(SceneDto s)
     {

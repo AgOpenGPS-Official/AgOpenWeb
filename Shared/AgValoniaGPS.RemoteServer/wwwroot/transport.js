@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -112,6 +112,15 @@ window.RemoteTransport = {
         }
         case TYPE.HELLO: {
           handlers.onHello && handlers.onHello(str());
+          break;
+        }
+        case TYPE.CONFIG: {
+          const vehicle = {
+            name: str(), wheelbase: f64(), trackWidth: f64(), antennaHeight: f64(),
+            antennaPivot: f64(), antennaOffset: f64(), hitchLength: f64(),
+            maxSteerAngle: f64(), maxAngularVelocity: f64(),
+          };
+          handlers.onConfig && handlers.onConfig({ vehicle });
           break;
         }
         case TYPE.CONTROL_STATE: {

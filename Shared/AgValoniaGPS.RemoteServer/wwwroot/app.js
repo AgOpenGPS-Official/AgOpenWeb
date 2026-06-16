@@ -33,6 +33,8 @@ let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + recei
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
+let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
+let configDirty = false; // a new config frame arrived → settings panels re-read it
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
@@ -129,6 +131,7 @@ const transport = RemoteTransport.create({
     cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
   },
   onStatusBar(s) { statusBar = s; },
+  onConfig(c) { config = c; configDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
   onStatus(s) { connState = s; },
@@ -363,29 +366,62 @@ document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.sto
 document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
 
 // ---- left nav (Phase 9) — config/settings panels via the config bridge ----
-// Vertical button bar; each button toggles a non-modal panel. Panels READ config from
-// existing frames (units = Status.isMetric) and WRITE via `config.set|key:value`
-// (Tier-1; the host applies it to ConfigurationStore + persists). Grows per sub-phase.
-const LN = {
-  saBtn: document.getElementById('ln-screenalerts'),
-  saPanel: document.getElementById('screenalerts'),
-  uMetric: document.getElementById('sa-metric'), uImperial: document.getElementById('sa-imperial'),
-};
-function lnClosePanels() { LN.saPanel.classList.remove('open'); LN.saBtn.classList.remove('active'); }
-LN.saBtn.addEventListener('pointerdown', e => {
-  e.stopPropagation();
-  const open = !LN.saPanel.classList.contains('open');
-  lnClosePanels();
-  if (open) { LN.saPanel.classList.add('open'); LN.saBtn.classList.add('active'); }
-});
-LN.saPanel.addEventListener('pointerdown', e => e.stopPropagation()); // keep open / don't pan
-for (const b of LN.saPanel.querySelectorAll('.ln-segbtn[data-units]'))
+// Vertical button bar; each button toggles a non-modal panel (only one open at a
+// time). Panels READ from the config frame (or existing frames, e.g. units =
+// Status.isMetric) and WRITE via `config.set|key:value` (Tier-1; the host applies it
+// to ConfigurationStore). Grows one entry per sub-phase.
+const LN_PANELS = [
+  { btn: 'ln-screenalerts', panel: 'screenalerts' },
+  { btn: 'ln-vehicle', panel: 'vehiclecfg', onOpen: () => populateVehicleCfg(true) },
+];
+function lnCloseAll() {
+  for (const p of LN_PANELS) {
+    document.getElementById(p.panel).classList.remove('open');
+    document.getElementById(p.btn).classList.remove('active');
+  }
+}
+for (const p of LN_PANELS) {
+  const btn = document.getElementById(p.btn), panel = document.getElementById(p.panel);
+  btn.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const open = !panel.classList.contains('open');
+    lnCloseAll();
+    if (open) { panel.classList.add('open'); btn.classList.add('active'); if (p.onOpen) p.onOpen(); }
+  });
+  panel.addEventListener('pointerdown', e => e.stopPropagation()); // keep open / don't pan
+}
+// Units (Screen & Alerts) → config bridge write.
+const uMetric = document.getElementById('sa-metric'), uImperial = document.getElementById('sa-imperial');
+for (const b of document.querySelectorAll('#screenalerts .ln-segbtn[data-units]'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
+// Vehicle config inputs → config.set|vehicle.X on change; Save → profile.save.
+const vcPanel = document.getElementById('vehiclecfg'), vcName = document.getElementById('vc-name');
+for (const inp of vcPanel.querySelectorAll('.vc-in'))
+  inp.addEventListener('change', () => {
+    const v = parseFloat(inp.value);
+    if (Number.isFinite(v)) transport.send('config.set|' + inp.dataset.key + ':' + v);
+  });
+document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+// Fill the vehicle inputs from the config frame. force (on open) fills all; otherwise
+// skip the focused input so we don't clobber what the user is typing.
+function populateVehicleCfg(force) {
+  if (!config || !config.vehicle) return;
+  const v = config.vehicle;
+  vcName.textContent = v.name || '—';
+  for (const inp of vcPanel.querySelectorAll('.vc-in')) {
+    if (!force && document.activeElement === inp) continue;
+    const val = v[inp.dataset.key.split('.')[1]]; // "vehicle.<field>"
+    if (typeof val === 'number') inp.value = Math.round(val * 1000) / 1000;
+  }
+}
 function renderSettings() {
-  if (!statusBar) return;
-  const metric = !!statusBar.isMetric;
-  LN.uMetric.classList.toggle('active', metric);
-  LN.uImperial.classList.toggle('active', !metric);
+  if (statusBar) {
+    const metric = !!statusBar.isMetric;
+    uMetric.classList.toggle('active', metric);
+    uImperial.classList.toggle('active', !metric);
+  }
+  // Re-read the vehicle panel when a fresh config frame arrives.
+  if (configDirty) { configDirty = false; if (vcPanel.classList.contains('open')) populateVehicleCfg(false); }
 }
 
 // ---- remote actuation control (Phase 2 safety layer) ----
@@ -732,9 +768,7 @@ addEventListener('pointerdown', () => {
   if (af) af.classList.remove('open');
   document.getElementById('bn-flags')?.classList.remove('menuopen');
   document.getElementById('bn-abmenu')?.classList.remove('menuopen');
-  const sa = document.getElementById('screenalerts');
-  if (sa) sa.classList.remove('open');
-  document.getElementById('ln-screenalerts')?.classList.remove('active');
+  if (typeof lnCloseAll === 'function') lnCloseAll(); // close any left-nav panel
 });
 
 function renderStatusBar() {

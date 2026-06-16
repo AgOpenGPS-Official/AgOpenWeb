@@ -137,6 +137,24 @@ public record StatusDto(
     double SimSteerAngle,
     bool Sim10x);
 
+/// <summary>Config read-frame (Phase 9). A structured projection of
+/// ConfigurationStore for the left-nav settings panels — seeded on connect and
+/// re-sent when the config fingerprint changes. Grows a section per sub-phase
+/// (9b Vehicle, 9c Tool, …); the wire stays append-only.</summary>
+public record ConfigDto(VehicleConfigDto Vehicle);
+
+/// <summary>Editable vehicle dimensions (metres / degrees as stored).</summary>
+public record VehicleConfigDto(
+    string Name,
+    double Wheelbase,
+    double TrackWidth,
+    double AntennaHeight,
+    double AntennaPivot,
+    double AntennaOffset,
+    double HitchLength,
+    double MaxSteerAngle,
+    double MaxAngularVelocity);
+
 /// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
 /// client compares HolderId to its own id (sent once in the Hello frame) to know
 /// whether it is the holder. Held=false means no client has control.</summary>

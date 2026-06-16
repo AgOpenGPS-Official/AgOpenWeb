@@ -159,6 +159,15 @@
     .ln-segbtn { padding: 8px 18px; border: 0; background: transparent; color: #cfe3ff;
       cursor: pointer; font: 600 13px system-ui, sans-serif; }
     .ln-segbtn.active { background: #1f6fb2; color: #fff; }
+    .ln-sub { color: #9fb3cc; font: 600 12px system-ui, sans-serif; margin-bottom: 12px; }
+    .vc-grid { display: grid; grid-template-columns: auto 110px; gap: 7px 12px; align-items: center; }
+    .vc-grid label { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .vc-in { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
+      color: #e7eef9; font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right; }
+    .vc-in:focus { outline: none; border-color: #4A90D9; }
+    .ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
+      background: #1f6fb2; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; }
+    .ln-savebtn:active { background: #195c95; }
     /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
     #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
       justify-content: center; z-index: 50; }
@@ -289,6 +298,7 @@
        button-by-button as sub-phases land. Each opens a non-modal panel to its right. -->
   <div id="leftnav">
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
+    <button id="ln-vehicle" class="ln-btn" title="Vehicle Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle Configuration"></button>
   </div>
   <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
        bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
@@ -301,6 +311,23 @@
         <button id="sa-imperial" class="ln-segbtn" data-units="imperial">Imperial</button>
       </div>
     </div>
+  </div>
+  <!-- Vehicle Configuration (Phase 9b) — reads the config frame, writes via
+       config.set|vehicle.*; Save Profile persists with profile.save. -->
+  <div id="vehiclecfg" class="ln-panel">
+    <div class="ln-title">Vehicle Configuration</div>
+    <div id="vc-name" class="ln-sub">—</div>
+    <div class="vc-grid">
+      <label>Wheelbase (m)</label><input class="vc-in" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal">
+      <label>Track width (m)</label><input class="vc-in" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal">
+      <label>Antenna height (m)</label><input class="vc-in" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
+      <label>Antenna pivot (m)</label><input class="vc-in" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
+      <label>Antenna offset (m)</label><input class="vc-in" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
+      <label>Hitch length (m)</label><input class="vc-in" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
+      <label>Max steer angle (°)</label><input class="vc-in" data-key="vehicle.maxSteerAngle" type="number" step="0.5" inputmode="decimal">
+      <label>Max angular vel (°/s)</label><input class="vc-in" data-key="vehicle.maxAngularVelocity" type="number" step="0.5" inputmode="decimal">
+    </div>
+    <button id="vc-save" class="ln-savebtn">Save Profile</button>
   </div>
   <div id="rightnav">
     <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>
