@@ -10,7 +10,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
 - Repo: `/Users/chris/Code/AgValoniaGPS3` (Avalonia/.NET 10 agricultural GPS app).
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go.
-- Working tree is clean; Phases 1–5 + the boundary near-clip fix are committed + pushed.
+- Working tree is clean; Phases 1–6 + the boundary near-clip fix are committed + pushed.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -53,6 +53,14 @@ HTML/JS. Do NOT port logic into JS. End state: headless host, browser is the onl
   lat/lon/elev/sats/hdop/fix/age/heading/roll/fps). Wire grew `StatusDto` by
   Latitude/Longitude (f64) + Altitude/Hdop (f32) from `VehicleState` (append-only,
   ~2 Hz Status); heading/roll already rode the Tick. Added a client-side fps counter.
+- **Phase 6 — simulator panel + dialog host** (6c5f56f2): full `#simbar` mirroring the
+  native SimulatorPanel + the first web modal (`#dialoghost` SimCoords). New
+  `SimulatorState` mirror (VM setters push); `StatusDto` grew SimEnabled/SimSpeedKph
+  (raw, pre-10×)/SimSteerAngle/Sim10x. **`CommandHandler` is now `Action<string,string>`
+  (id, arg)** end-to-end — the `id|arg` wire format finally forwards the arg; new Tier-1
+  sim ids incl. `sim.setSteer|<deg>` + `sim.setCoords|<lat>,<lon>`. Panel visibility is
+  client-local (a `SIM` launcher chip reopens it). Also: STOP/RST now zero the projected
+  speed; roll gauge centred over the campad.
 
 ## The projection pattern (recurring; the source of most bugs so far)
 Runtime UI state usually lives in the **VM as plain fields**, NOT in `ApplicationState`.
@@ -64,22 +72,37 @@ in the VM setter → project it. Watch for **same-named-but-different** fields:
   contour").
 - roll: `RollDegrees` (VM) → mirrored to `VehicleState.Roll` (`ImuRoll` is dead).
 - section master/manual + youturn-enabled → mirrored to `ApplicationState.Operation`.
+- sim enabled/speed/steer/10× → mirrored to `ApplicationState.Simulator` (Phase 6).
 Always grep the AXAML binding + the VM setter to find the RIGHT source; the early
 exploration agents mislabeled several things (right vs left nav, the lower-right cluster).
 **Read MainWindow.axaml for placement and each panel's own AXAML for contents first.**
+**Watch for setters bypassed by backing-field writes** (Phase 6's STOP wrote
+`_simulatorSpeedKph` directly, skipping the mirror) — those need an explicit mirror line.
+
+## Infra now available (built in Phase 6)
+- **Dialog host:** `wwwroot/index.html` `#dialoghost` + `app.js` `openDialog(cardId)` /
+  `closeDialog()`. Add a `.dlg-card` into `#dialoghost`, give it an id, call `openDialog`.
+  One modal at a time over a dimming backdrop (mirrors `DialogOverlayHost`). Reuse for
+  every future dialog (NewField, NTRIP editor, numeric inputs, etc.).
+- **Command-with-args:** the host `CommandHandler` is `Action<string,string>` (id, arg);
+  the client sends `transport.send('id|arg')`. Property-setting / arg-carrying ids are
+  handled in the `switch` ABOVE the ICommand map in `App.axaml.cs`; argless ids map to a
+  VM `ICommand`. Tier-2 gating still keys off the id prefix in `IsRestrictedCommand`.
 
 ## NEXT SESSION — start here
-1. **Phase 6 — simulator (+ first real dialog; stands up the dialog host).** The
-   browser already has a bottom sim-drive pad (`#ctl` steer/speed/stop in `index.html`)
-   wired to client→host commands, but the **native SimulatorPanel** (enable toggle,
-   set-speed/steer sliders, reset/teleport, the Sim Coords dialog) isn't mirrored yet.
-   This phase also **stands up the web dialog-host** — the first modal overlay on the
-   client (native dialogs live in `DialogOverlayHost.axaml`; on the web they become DOM
-   overlays). Read the native `Panels/SimulatorPanel.axaml` + `Dialogs/SimCoordsDialogPanel.axaml`
-   and the existing sim command ids in `App.axaml.cs` before projecting more state.
-2. Then continue the clockwise sweep: **Phase 7** section bar, **8** bottom nav (field
-   tools), **9** left nav (config trees + NTRIP + field/file lifecycle — the big one),
-   **10** mop-up + headless cutover. See the plan doc.
+1. **Phase 7 — section bar  *(Tier 2 — per-section)*.** Native: `Panels/SectionControlPanel.axaml`;
+   `MainViewModel.SectionControl.cs` + section commands in `Commands.Track.cs`. Per-section
+   `ColorCode` is ALREADY on `TickDto.Sections` (0 off … 5 auto-off — see `tick.sections`
+   in `app.js`); master/manual mode is already mirrored to `ApplicationState.Operation`
+   (Phase 3). So most READ state is on the wire — this phase is mostly the **client bar**
+   (a per-section button strip showing each section's colour + a manual per-section toggle)
+   plus the per-section **control** id (Tier-2, gated). Decide the command shape:
+   `section.toggle|<index>` (use the new command-with-args path) for manual per-section
+   on/off. Read `SectionControlPanel.axaml` for the exact button layout + what each section
+   button does, and check `Commands.Track.cs` for the matching VM command before wiring.
+2. Then continue the clockwise sweep: **Phase 8** bottom nav (field tools), **9** left nav
+   (config trees + NTRIP + field/file lifecycle — the big one), **10** mop-up + headless
+   cutover. See the plan doc.
 
 ## Workflow rules (important)
 - **Embedded assets:** `wwwroot/*` (and `wwwroot/icons/*`) are `EmbeddedResource` in
@@ -111,4 +134,4 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
   blend like native (sRGB), not washed-out linear.
 - Camera modes 0=N 1=H 2=Free 3=Map (default); `mapRotation` eased by `ROT_SMOOTH`.
 
-**Start on Phase 6 (simulator panel + dialog-host stand-up).**
+**Start on Phase 7 (section bar) — most read-state is already on the Tick; build the client bar + per-section Tier-2 toggle.**
