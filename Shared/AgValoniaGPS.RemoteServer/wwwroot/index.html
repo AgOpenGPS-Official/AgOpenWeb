@@ -175,6 +175,17 @@
     .ln-segbtn { padding: 8px 18px; border: 0; background: transparent; color: #cfe3ff;
       cursor: pointer; font: 600 13px system-ui, sans-serif; }
     .ln-segbtn.active { background: #1f6fb2; color: #fff; }
+    /* Screen & Alerts toggle grid (3-up, native UniformGrid Columns=3). */
+    .sa-panel { width: 480px; }
+    .sa-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
+    .sa-tgl, .sa-act { height: 40px; border: 1px solid #2a3550; border-radius: 6px;
+      background: rgba(255,255,255,0.06); color: #cfe3ff; cursor: pointer;
+      font: 600 12px system-ui, sans-serif; text-align: left; padding: 0 8px; }
+    .sa-tgl:hover, .sa-act:hover { background: rgba(255,255,255,0.14); }
+    .sa-tgl.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+    .sa-act { background: rgba(255,255,255,0.10); }
+    .sa-grid .cfg-num { height: 40px; }
+    .sa-hint { color: #9fb3cc; font: 400 11px system-ui, sans-serif; }
     .ln-sub { color: #9fb3cc; font: 600 12px system-ui, sans-serif; margin-bottom: 12px; }
     .ln-wide { width: 760px; }
     .ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
@@ -400,14 +411,44 @@
   </div>
   <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
        bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
-  <div id="screenalerts" class="ln-panel">
+  <div id="screenalerts" class="ln-panel sa-panel">
     <div class="ln-title">Screen &amp; Alerts</div>
-    <div class="ln-section">
-      <div class="ln-label">Units</div>
-      <div class="ln-seg">
+    <div class="cfg-label">Display</div>
+    <div class="sa-grid">
+      <button class="sa-tgl" data-key="display.gridVisible">Grid</button>
+      <button class="sa-tgl" data-key="display.fieldTextureVisible">Field Texture</button>
+      <button class="sa-tgl" data-key="display.fieldTextureMoveable">Texture Moves</button>
+      <button class="sa-tgl" data-key="display.svennArrowVisible">Svenn Arrow</button>
+      <button class="sa-tgl" data-key="display.headlandDistanceVisible">Headland Dist</button>
+      <button class="sa-tgl" data-key="display.lineSmoothEnabled">Smoothing</button>
+      <button class="sa-tgl" data-key="display.autoDayNight">Auto Day/Night</button>
+      <button class="sa-tgl" data-key="display.hardwareMessagesEnabled">AiO Board Msgs</button>
+      <button class="sa-act" data-cmd="display.toggleTheme">Day/Night Theme</button>
+      <button class="sa-tgl" data-key="display.extraGuidelines">Extra Guides</button>
+      <input id="sa-extracount" class="cfg-num" type="number" step="1" min="0" title="Extra guide count">
+      <button class="sa-act" data-cmd="display.cycleResolution">Quality: <span id="sa-quality">—</span></button>
+    </div>
+    <div class="cfg-label">On-Screen Buttons</div>
+    <div class="sa-grid">
+      <button class="sa-tgl" data-key="display.uTurnButtonVisible">U-Turn</button>
+      <button class="sa-tgl" data-key="display.lateralButtonVisible">Lateral</button>
+    </div>
+    <div class="cfg-label">Alerts &amp; Sounds</div>
+    <div class="sa-grid">
+      <button class="sa-tgl" data-key="display.autoSteerSound">Auto Steer</button>
+      <button class="sa-tgl" data-key="display.uTurnSound">U-Turn</button>
+      <button class="sa-tgl" data-key="display.hydraulicSound">Hydraulic</button>
+      <button class="sa-tgl" data-key="display.sectionsSound">Sections</button>
+    </div>
+    <div class="cfg-label">App Settings <span class="sa-hint">(moves to its own dialog with the File menu)</span></div>
+    <div class="sa-grid">
+      <div class="ln-seg" style="grid-column: span 2">
         <button id="sa-metric" class="ln-segbtn" data-units="metric">Metric</button>
         <button id="sa-imperial" class="ln-segbtn" data-units="imperial">Imperial</button>
       </div>
+      <button class="sa-tgl" data-key="display.keyboardEnabled">On-screen Kbd</button>
+      <button class="sa-tgl" data-key="display.startFullscreen">Start Fullscreen</button>
+      <button class="sa-tgl" data-key="display.elevationLogEnabled">Elevation Log</button>
     </div>
   </div>
   <!-- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogPanel:

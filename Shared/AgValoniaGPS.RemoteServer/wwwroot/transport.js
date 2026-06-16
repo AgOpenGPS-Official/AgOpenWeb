@@ -145,7 +145,15 @@ window.RemoteTransport = {
             hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),
             user1: i32(), user2: i32(), user3: i32(), user4: i32(), pinAssignments: rdI32(),
           };
-          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine });
+          const display = {
+            gridVisible: !!u8(), fieldTextureVisible: !!u8(), fieldTextureMoveable: !!u8(), svennArrowVisible: !!u8(),
+            headlandDistanceVisible: !!u8(), lineSmoothEnabled: !!u8(), autoDayNight: !!u8(), hardwareMessagesEnabled: !!u8(),
+            extraGuidelines: !!u8(), extraGuidelinesCount: i32(), resolutionLabel: str(),
+            uTurnButtonVisible: !!u8(), lateralButtonVisible: !!u8(),
+            autoSteerSound: !!u8(), uTurnSound: !!u8(), hydraulicSound: !!u8(), sectionsSound: !!u8(),
+            keyboardEnabled: !!u8(), startFullscreen: !!u8(), elevationLogEnabled: !!u8(),
+          };
+          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine, display });
           break;
         }
         case TYPE.PROFILES: {

@@ -482,3 +482,48 @@ underlying gap remains in the app:
   `IsManualMode`/`IsAutoMode`, `ActiveSectionCount` — confirm each is actually written/read or also dead.
 - The `StateShadowGuardTests` reflection guard can't catch this (it's a never-written primitive array,
   not a domain-typed shadow), so it needs the explicit decision above.
+
+---
+
+## 13. Config flags persist but aren't applied to the live renderer/behavior (added 2026-06-16)
+
+A **distinct axis** from §1–§12. §1–§10 fixed *where config values live and persist*; §12
+fixed *runtime field-geometry/selection SoT*. This section is the **apply gap**: several
+`ConfigStore.Display.*` flags are persisted correctly **but nothing connects them to the
+running map/behavior**, so toggling them does nothing (or the wrong thing) — on the **native**
+app too, not just the web client.
+
+Surfaced by the web-UI Screen & Alerts panel (it writes `config.set|display.<field>` → the exact
+flag each native toggle binds to, and persists it via `SaveAppSettings`). The web is faithful;
+the features are dead because the renderer/behavior reads a *different* flag.
+
+### 13.1 Display toggles disconnected from the renderer
+
+- **Grid.** Panel + web set `ConfigStore.Display.GridVisible` (`ConfigVM.ToggleGridCommand` just
+  does `Display.GridVisible = !…; Config.MarkChanged()`). But the map renders off
+  `SkiaMapControl.IsGridVisible` ← `_displaySettings.IsGridOn`, seeded **once** from AppSettings at
+  startup (`MainViewModel.cs:730 _displaySettings.IsGridOn = settings.GridVisible`). Nothing pushes
+  `Display.GridVisible → SetGridVisible(...)`. THREE representations
+  (`Display.GridVisible` / `_displaySettings.IsGridOn` / `SkiaMapControl.IsGridVisible`),
+  no SoT→renderer binding. `MainViewModel.ToggleGridCommand` sets the *separate* `IsGridOn`.
+- **Same class** (config flips, renderer never reads it): **Svenn Arrow** (`Display.SvennArrowVisible`),
+  **Headland Distance HUD** (`Display.HeadlandDistanceVisible`), **Extra Guidelines**
+  (`Display.ExtraGuidelines` + count), **display Quality / resolution**
+  (`Display.DisplayResolutionMultiplier`, cycled by `CycleDisplayResolutionCommand` but no visible effect).
+
+### 13.2 Cross-wiring side effect
+
+- **On-screen U-Turn button.** Toggling `Display.UTurnButtonVisible` shows/hides the buttons **and
+  also disables auto-uturn on the right nav** — an unintended coupling between a display-visibility
+  flag and the YouTurn-enabled behavior. Decouple.
+
+### 13.3 Fix direction
+
+- Make the renderer/behavior **read the `ConfigStore.Display.*` SoT** (bind/observe), or push the
+  value to the map on change — eliminate `_displaySettings.IsGridOn` and the map's
+  `IsGridVisible` divergence (collapse to one source, mirrors §12 SimulatorState/SectionState).
+- Decouple the U-Turn-button visibility flag from auto-uturn enablement.
+- Guard idea: a smoke test that flips each `Display.*` flag and asserts the corresponding
+  render-state / behavior actually changed (the reflection shadow-guard can't catch an *apply* gap).
+- **Not the web migration's job** — the web already writes the bound flag; this is native
+  config→feature wiring. Do it as a slice of this audit.

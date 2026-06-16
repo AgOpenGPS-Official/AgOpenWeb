@@ -391,7 +391,7 @@ for (const id of LN_NAV_PANELS) document.getElementById(id).addEventListener('po
 document.getElementById('ln-screenalerts').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (document.getElementById('screenalerts').classList.contains('open')) lnCloseAll();
-  else lnOpen('screenalerts', 'ln-screenalerts');
+  else lnOpen('screenalerts', 'ln-screenalerts', populateScreenAlerts);
 });
 document.getElementById('ln-vehicle').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -401,9 +401,24 @@ document.getElementById('ln-vehicle').addEventListener('pointerdown', e => {
 for (const b of document.querySelectorAll('.ln-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
 // Units (Screen & Alerts) → config bridge write.
+const saPanel = document.getElementById('screenalerts');
 const uMetric = document.getElementById('sa-metric'), uImperial = document.getElementById('sa-imperial');
-for (const b of document.querySelectorAll('#screenalerts .ln-segbtn[data-units]'))
+for (const b of saPanel.querySelectorAll('.ln-segbtn[data-units]'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
+// Screen & Alerts toggles → config.set|display.X; action rows (theme/quality) → command.
+for (const b of saPanel.querySelectorAll('.sa-tgl'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
+for (const b of saPanel.querySelectorAll('.sa-act'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
+const saExtra = document.getElementById('sa-extracount');
+saExtra.addEventListener('change', () => { const v = parseInt(saExtra.value); if (Number.isFinite(v)) cfgSend('display.extraGuidelinesCount', v); });
+function populateScreenAlerts() {
+  if (!config || !config.display) return;
+  const d = config.display;
+  for (const b of saPanel.querySelectorAll('.sa-tgl')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
+  if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
+  document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
+}
 // Vehicle config panel — full native VehicleConfigDialog surface (Vehicle/GPS/Roll).
 // Generic config controls keyed by data-key="<section>.<field>"; reused by later
 // sub-phases. Writes via config.set; Save Profile via profile.save.
@@ -588,6 +603,7 @@ function renderSettings() {
     configDirty = false;
     if (vcPanel.classList.contains('open')) populateVehicleCfg(false);
     if (tcPanel.classList.contains('open')) populateToolCfg(false);
+    if (saPanel.classList.contains('open')) populateScreenAlerts();
   }
   // Re-read the hub when a fresh profiles frame arrives.
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }

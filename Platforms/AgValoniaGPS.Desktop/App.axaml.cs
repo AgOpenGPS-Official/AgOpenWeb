@@ -207,6 +207,9 @@ public partial class App : Application
                                 "youturn.manualLeft" => windowVm.ManualYouTurnLeftCommand,
                                 "youturn.manualRight" => windowVm.ManualYouTurnRightCommand,
                                 "autosteer.toggle" => windowVm.ToggleAutoSteerCommand,
+                                // Screen & Alerts (Phase 9): theme + display-quality cycle.
+                                "display.toggleTheme" => windowVm.ToggleDayNightCommand,
+                                "display.cycleResolution" => windowVm.CycleDisplayResolutionCommand,
                                 // Bottom-nav field tools (Phase 8). track.* + headland.*
                                 // are Tier-2 (guidance/section actuation, gated); the
                                 // tool./map./flag./tram. ids are Tier-1 (display/markers).
@@ -334,7 +337,7 @@ public partial class App : Application
             rest = val[(k + 1)..]; return true;
         }
         var veh = store.Vehicle; var con = store.Connections; var ahrs = store.Ahrs;
-        var tool = store.Tool; var gd = store.Guidance; var mch = store.Machine;
+        var tool = store.Tool; var gd = store.Guidance; var mch = store.Machine; var disp = store.Display;
         switch (key)
         {
             case "units": store.IsMetric = val == "metric"; cfg.SaveAppSettings(); return; // device setting
@@ -432,6 +435,26 @@ public partial class App : Application
             case "machine.user4": if (I(out var m7)) mch.User4Value = m7; return;
             case "machine.pin": if (IDX(out var pi, out var pv) && int.TryParse(pv, out var pf)) mch.SetPinAssignment(pi, (AgValoniaGPS.Models.Configuration.PinFunction)pf); return;
             case "machine.resetPins": mch.ResetPinAssignments(); return;
+            // --- Screen & Alerts (ConfigStore.Display). Device settings → persist now. ---
+            case "display.gridVisible": disp.GridVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.fieldTextureVisible": disp.FieldTextureVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.fieldTextureMoveable": disp.FieldTextureMoveable = B(); cfg.SaveAppSettings(); return;
+            case "display.svennArrowVisible": disp.SvennArrowVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.headlandDistanceVisible": disp.HeadlandDistanceVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.lineSmoothEnabled": disp.LineSmoothEnabled = B(); cfg.SaveAppSettings(); return;
+            case "display.autoDayNight": disp.AutoDayNight = B(); cfg.SaveAppSettings(); return;
+            case "display.hardwareMessagesEnabled": disp.HardwareMessagesEnabled = B(); cfg.SaveAppSettings(); return;
+            case "display.extraGuidelines": disp.ExtraGuidelines = B(); cfg.SaveAppSettings(); return;
+            case "display.extraGuidelinesCount": if (I(out var dg)) { disp.ExtraGuidelinesCount = dg; cfg.SaveAppSettings(); } return;
+            case "display.uTurnButtonVisible": disp.UTurnButtonVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.lateralButtonVisible": disp.LateralButtonVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.autoSteerSound": disp.AutoSteerSound = B(); cfg.SaveAppSettings(); return;
+            case "display.uTurnSound": disp.UTurnSound = B(); cfg.SaveAppSettings(); return;
+            case "display.hydraulicSound": disp.HydraulicSound = B(); cfg.SaveAppSettings(); return;
+            case "display.sectionsSound": disp.SectionsSound = B(); cfg.SaveAppSettings(); return;
+            case "display.keyboardEnabled": disp.KeyboardEnabled = B(); cfg.SaveAppSettings(); return;
+            case "display.startFullscreen": disp.StartFullscreen = B(); cfg.SaveAppSettings(); return;
+            case "display.elevationLogEnabled": disp.ElevationLogEnabled = B(); cfg.SaveAppSettings(); return;
             // unknown key → ignored
         }
     }

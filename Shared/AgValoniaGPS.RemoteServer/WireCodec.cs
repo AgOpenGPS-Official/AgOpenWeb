@@ -123,6 +123,17 @@ public static class WireCodec
         w.Write(m.User1); w.Write(m.User2); w.Write(m.User3); w.Write(m.User4); // i32
         w.Write(m.PinAssignments.Count);
         foreach (var p in m.PinAssignments) w.Write(p);  // i32 (PinFunction)
+        // Screen & Alerts (Display) tab.
+        var d = c.Display;
+        void DB(bool b) => w.Write((byte)(b ? 1 : 0));
+        DB(d.GridVisible); DB(d.FieldTextureVisible); DB(d.FieldTextureMoveable); DB(d.SvennArrowVisible);
+        DB(d.HeadlandDistanceVisible); DB(d.LineSmoothEnabled); DB(d.AutoDayNight); DB(d.HardwareMessagesEnabled);
+        DB(d.ExtraGuidelines);
+        w.Write(d.ExtraGuidelinesCount); // i32
+        WriteStr(w, d.ResolutionLabel);
+        DB(d.UTurnButtonVisible); DB(d.LateralButtonVisible);
+        DB(d.AutoSteerSound); DB(d.UTurnSound); DB(d.HydraulicSound); DB(d.SectionsSound);
+        DB(d.KeyboardEnabled); DB(d.StartFullscreen); DB(d.ElevationLogEnabled);
         return ms.ToArray();
     }
 

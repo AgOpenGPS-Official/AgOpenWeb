@@ -268,7 +268,23 @@ public sealed class SceneProjector
             new UturnConfigDto(g.UTurnStyle, g.UTurnExtension, g.UTurnSmoothing, g.UTurnRadius, g.UTurnDistanceFromBoundary),
             new TramConfigDto(g.TramPasses, g.TramDisplay, g.TramLine),
             new MachineConfigDto(m.HydraulicLiftEnabled, m.RaiseTime, m.LookAhead, m.LowerTime, m.InvertRelay,
-                m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins));
+                m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins),
+            BuildDisplay());
+    }
+
+    // Resolution label mirrors MainViewModel.DisplayResolutionLabel.
+    private DisplayConfigDto BuildDisplay()
+    {
+        var d = _config.Display;
+        var rm = d.DisplayResolutionMultiplier;
+        string res = rm < 1.25 ? "Ultra" : rm < 2.0 ? "High" : rm < 3.25 ? "Med" : rm < 5.0 ? "Low" : "Min";
+        return new DisplayConfigDto(
+            d.GridVisible, d.FieldTextureVisible, d.FieldTextureMoveable, d.SvennArrowVisible,
+            d.HeadlandDistanceVisible, d.LineSmoothEnabled, d.AutoDayNight, d.HardwareMessagesEnabled,
+            d.ExtraGuidelines, d.ExtraGuidelinesCount, res,
+            d.UTurnButtonVisible, d.LateralButtonVisible,
+            d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
+            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
@@ -333,6 +349,16 @@ public sealed class SceneProjector
         h = h * 31 + (mc.HydraulicLiftEnabled ? 1 : 0) + mc.RaiseTime * 7 + mc.LowerTime * 11 + (mc.InvertRelay ? 64 : 0)
               + mc.User1Value + mc.User2Value * 3 + mc.User3Value * 5 + mc.User4Value * 7;
         for (int i = 0; i < 24; i++) h = h * 31 + (int)mc.GetPinAssignment(i);
+        // Screen & Alerts (Display).
+        var dp = _config.Display;
+        int db = (dp.GridVisible ? 1 : 0) | (dp.FieldTextureVisible ? 2 : 0) | (dp.FieldTextureMoveable ? 4 : 0)
+            | (dp.SvennArrowVisible ? 8 : 0) | (dp.HeadlandDistanceVisible ? 16 : 0) | (dp.LineSmoothEnabled ? 32 : 0)
+            | (dp.AutoDayNight ? 64 : 0) | (dp.HardwareMessagesEnabled ? 128 : 0) | (dp.ExtraGuidelines ? 256 : 0)
+            | (dp.UTurnButtonVisible ? 512 : 0) | (dp.LateralButtonVisible ? 1024 : 0) | (dp.AutoSteerSound ? 2048 : 0)
+            | (dp.UTurnSound ? 4096 : 0) | (dp.HydraulicSound ? 8192 : 0) | (dp.SectionsSound ? 16384 : 0)
+            | (dp.KeyboardEnabled ? 32768 : 0) | (dp.StartFullscreen ? 65536 : 0) | (dp.ElevationLogEnabled ? 131072 : 0);
+        h = h * 31 + db;
+        h = h * 31 + dp.ExtraGuidelinesCount * 7 + dp.DisplayResolutionMultiplier.GetHashCode();
         return h;
     }
 

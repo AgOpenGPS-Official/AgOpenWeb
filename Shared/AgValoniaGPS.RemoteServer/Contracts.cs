@@ -143,7 +143,19 @@ public record StatusDto(
 /// the wire stays append-only. Vehicle dialog = Vehicle + Gps + Roll; Tool dialog =
 /// Tool + Uturn + Tram + Machine.</summary>
 public record ConfigDto(VehicleConfigDto Vehicle, GpsConfigDto Gps, RollConfigDto Roll,
-    ToolConfigDto Tool, UturnConfigDto Uturn, TramConfigDto Tram, MachineConfigDto Machine);
+    ToolConfigDto Tool, UturnConfigDto Uturn, TramConfigDto Tram, MachineConfigDto Machine,
+    DisplayConfigDto Display);
+
+/// <summary>Screen &amp; Alerts panel (ConfigStore.Display): display toggles, on-screen
+/// buttons, alert sounds, plus the App-Settings device flags (keyboard / start
+/// fullscreen / elevation log). ResolutionLabel mirrors DisplayResolutionLabel.</summary>
+public record DisplayConfigDto(
+    bool GridVisible, bool FieldTextureVisible, bool FieldTextureMoveable, bool SvennArrowVisible,
+    bool HeadlandDistanceVisible, bool LineSmoothEnabled, bool AutoDayNight, bool HardwareMessagesEnabled,
+    bool ExtraGuidelines, int ExtraGuidelinesCount, string ResolutionLabel,
+    bool UTurnButtonVisible, bool LateralButtonVisible,
+    bool AutoSteerSound, bool UTurnSound, bool HydraulicSound, bool SectionsSound,
+    bool KeyboardEnabled, bool StartFullscreen, bool ElevationLogEnabled);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>
