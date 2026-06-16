@@ -2368,6 +2368,10 @@ public partial class MainViewModel : ObservableObject
         var flags = Flags.Select(f =>
             (f.Easting, f.Northing, f.FlagColor.ToString(), f.Name)).ToList();
         _mapService.SetFlags(flags);
+        // Mirror a render snapshot into FieldState (the SoT the web-UI projector reads).
+        State.Field.Flags = Flags
+            .Select(f => new Models.State.FlagMarker(f.Easting, f.Northing, Flag.ColorToHex(f.FlagColor)))
+            .ToList();
     }
 
     // Track management commands

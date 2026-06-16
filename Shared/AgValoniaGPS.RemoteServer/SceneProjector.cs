@@ -93,6 +93,10 @@ public sealed class SceneProjector
         if (nt is { Length: >= 2 })
             nextTrack = nt.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
+        // Field flags (markers). Field-local position + display colour hex.
+        var flags = (f.Flags ?? System.Array.Empty<Models.State.FlagMarker>())
+            .Select(fl => new FlagDto(fl.Easting, fl.Northing, fl.ColorHex)).ToList();
+
         // Background imagery: just the world rectangle + a per-image version
         // (the PNG itself is fetched over HTTP at /backpic.png?v=version).
         ImageryDto? imagery = null;
@@ -113,6 +117,7 @@ public sealed class SceneProjector
             toolSections,
             uTurnPath,
             nextTrack,
+            flags,
             imagery);
     }
 
@@ -244,6 +249,16 @@ public sealed class SceneProjector
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + f.Tracks.Count;
         foreach (var t in f.Tracks.ToArray()) h = h * 31 + t.Points.Count;
+
+        // Flags: re-send the Scene on place/delete. Count + last position (rounded to
+        // 0.1 m) catches add/remove/move without per-tick churn.
+        var flags = f.Flags;
+        h = h * 31 + flags.Count;
+        if (flags.Count > 0)
+        {
+            var last = flags[flags.Count - 1];
+            h = h * 31 + (long)(last.Easting * 10) * 31 + (long)(last.Northing * 10);
+        }
 
         // Followed offset line: re-send the Scene when the pass changes. The list
         // is replaced (not mutated) per pass, so count + first-point (rounded to

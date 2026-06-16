@@ -180,6 +180,7 @@ function buildSkPaints() {
     gridMinor: mk('rgba(180,180,180,0.314)', 1), gridMajor: mk('rgba(200,200,200,0.47)', 2),
     axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
     vehicle: fill('#39FF6A'),
+    flagFill: fill('#FF0000'), flagOutline: mk('#101010', 1.5), // colour set per flag
   };
   // Section footprint bars: one stroke paint per ColorCode (butt cap so adjacent
   // sections abut without rounded overhang), matching the 2D SECTION_COLORS.
@@ -1007,6 +1008,19 @@ function segSk(canvas, e1, n1, e2, n2, paint) {
   const a = w2s(e1, n1), b = w2s(e2, n2);
   canvas.drawLine(a[0], a[1], b[0], b[1], paint);
 }
+// Field flags — filled dot (0.8 m radius like native, min 4 px) + dark outline,
+// coloured by the flag's hex. Skips flags behind the tilted camera (near-plane).
+function drawFlagsSk(canvas, flags) {
+  if (!flags || !flags.length) return;
+  const r = Math.max(4, 0.8 * pxPerM);
+  for (const fl of flags) {
+    if (perspM && (perspM[12] * fl.e + perspM[13] * fl.n + perspM[15]) < 1.0) continue; // behind camera
+    const xy = w2s(fl.e, fl.n);
+    SKP.flagFill.setColor(ckColor(fl.color || '#FF0000'));
+    canvas.drawCircle(xy[0], xy[1], r, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], r, SKP.flagOutline);
+  }
+}
 function drawGridSk(canvas) {
   const G = 2000;
   let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
@@ -1202,6 +1216,7 @@ function renderSkia(canvas, rp) {
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
     if (scene.guidanceLine) strokePtsSk(canvas, scene.guidanceLine, false, SKP.guidance);
+    drawFlagsSk(canvas, scene.flags);
   }
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);

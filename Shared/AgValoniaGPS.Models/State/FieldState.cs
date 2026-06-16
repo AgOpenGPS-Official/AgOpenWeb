@@ -91,6 +91,11 @@ public class FieldState : ObservableObject
     // Tracks (unified Track model)
     public ObservableCollection<Track.Track> Tracks { get; } = new();
 
+    // Field flags (markers) — render snapshot the VM's UpdateFlagsOnMap pushes here
+    // so View-free consumers (the web-UI projector) can read them. Field-local metres
+    // + the flag's display colour as hex.
+    public IReadOnlyList<FlagMarker> Flags { get; set; } = System.Array.Empty<FlagMarker>();
+
     private Track.Track? _activeTrack;
     public Track.Track? ActiveTrack
     {

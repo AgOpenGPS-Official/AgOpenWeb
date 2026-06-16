@@ -51,6 +51,9 @@ public static class WireCodec
         WriteOptPts(w, s.UTurnPath);
         WriteOptPts(w, s.NextTrack);
 
+        w.Write(s.Flags.Count);
+        foreach (var fl in s.Flags) { w.Write((float)fl.E); w.Write((float)fl.N); WriteStr(w, fl.ColorHex); }
+
         if (s.Imagery is { } im)
         {
             w.Write((byte)1);

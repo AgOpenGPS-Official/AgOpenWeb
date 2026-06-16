@@ -23,7 +23,11 @@ public record SceneDto(
     IReadOnlyList<SectionSpanDto> ToolSections, // section spans (static layout); pose is per-Tick
     IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
     IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
+    IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
     ImageryDto? Imagery); // background field image world-rect + version (PNG served over HTTP)
+
+/// <summary>A field flag marker: field-local position (m) + display colour hex.</summary>
+public record FlagDto(double E, double N, string ColorHex);
 
 /// <summary>Background-imagery placement: the field-local world rectangle the
 /// PNG (fetched from /backpic.png) covers, plus a version that changes per field
