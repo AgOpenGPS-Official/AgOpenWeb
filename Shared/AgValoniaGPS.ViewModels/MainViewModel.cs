@@ -526,6 +526,14 @@ public partial class MainViewModel : ObservableObject
         _displaySettings.LoadSettings();
         RestoreSettings();
 
+        // Seed the web-UI field-tools mirror from the current VM values (some default
+        // non-false, e.g. IsAutoTrackEnabled=true, and a few are restored above) — the
+        // setters only push on change, so the projector would otherwise read stale zeros.
+        State.FieldTools.IsHeadlandOn = _isHeadlandOn;
+        State.FieldTools.IsAutoTrackEnabled = _isAutoTrackEnabled;
+        State.FieldTools.UTurnSkipRows = _uTurnSkipRows;
+        State.FieldTools.IsUTurnSkipRowsEnabled = _isUTurnSkipRowsEnabled;
+
         // Settings are now loaded; subsequent ConnectionConfig changes are
         // user-driven and should persist (see the ConfigStore.Connections
         // subscription above).
@@ -3226,20 +3234,29 @@ public partial class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _isHeadlandOn, value))
             {
+                State.FieldTools.IsHeadlandOn = value; // mirror for the web-UI projector
                 StatusMessage = value ? "Headland ON" : "Headland OFF";
                 _mapService.SetHeadlandVisible(value);
             }
         }
     }
 
-    private bool _isSectionControlInHeadland;
     /// <summary>
-    /// When true, section control remains active in headland area
+    /// Section control operates inside the headland (sections auto-off there). The
+    /// single source of truth is <see cref="ConfigStore"/>.Tool.IsHeadlandSectionControl —
+    /// the flag <c>SectionControlService.IsPointInHeadland</c> reads live. This property
+    /// is a thin pass-through so the bottom-nav button + icon drive the REAL flag (the
+    /// former VM-local backing field and the SectionState copy were dead duplicates).
     /// </summary>
     public bool IsSectionControlInHeadland
     {
-        get => _isSectionControlInHeadland;
-        set => SetProperty(ref _isSectionControlInHeadland, value);
+        get => ConfigStore.Tool.IsHeadlandSectionControl;
+        set
+        {
+            if (ConfigStore.Tool.IsHeadlandSectionControl == value) return;
+            ConfigStore.Tool.IsHeadlandSectionControl = value;
+            OnPropertyChanged();
+        }
     }
 
     // UTurnSkipRows and IsUTurnSkipRowsEnabled are now in MainViewModel.YouTurn.cs
@@ -3386,13 +3403,6 @@ public partial class MainViewModel : ObservableObject
     {
         get => _isHeadlandZoomMode;
         set => SetProperty(ref _isHeadlandZoomMode, value);
-    }
-
-    private bool _isHeadlandSectionControlled = true;
-    public bool IsHeadlandSectionControlled
-    {
-        get => _isHeadlandSectionControlled;
-        set => SetProperty(ref _isHeadlandSectionControlled, value);
     }
 
     private int _headlandToolWidthMultiplier = 1;

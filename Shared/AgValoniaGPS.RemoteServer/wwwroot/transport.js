@@ -79,9 +79,14 @@ window.RemoteTransport = {
             turnLeft: !!u8(), distToTrigger: f32(), trackClosed: !!u8(),
           };
           const roll = f32();
+          // Bottom-nav field-tools (Phase 8).
+          const tools = {
+            headlandOn: !!u8(), sectionInHeadland: !!u8(), autoTrack: !!u8(),
+            skipRows: u8(), skipRowsOn: !!u8(), tramMode: u8(),
+          };
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
-            activeTrackName: atn.length ? atn : null, tool, op, roll,
+            activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
           });
           break;
         }

@@ -111,6 +111,34 @@
     #sectionbar .sec-row { display: flex; gap: 3px; }
     #sectionbar .sec-btn { width: 46px; height: 38px; border: 2px solid #11151c; border-radius: 0;
       color: #202020; font: 700 13px system-ui, sans-serif; cursor: pointer; padding: 0; }
+    /* Bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts. */
+    #bottomnav { position: relative; display: none; pointer-events: auto;
+      -webkit-user-select: none; user-select: none; }
+    #bottomnav.open { display: block; }
+    #bottomnav .bn-bar { display: flex; gap: 4px; padding: 6px; border-radius: 10px;
+      background: rgba(20,24,33,0.92); border: 1px solid #2a3550; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+    #bottomnav .bn-btn { width: 52px; height: 52px; border: 0; border-radius: 6px; padding: 6px;
+      background: rgba(255,255,255,0.08); color: #e7eef9; cursor: pointer; box-sizing: border-box;
+      font: 700 16px system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
+    #bottomnav .bn-btn:hover { background: rgba(255,255,255,0.16); }
+    #bottomnav .bn-btn:active { background: rgba(70,160,255,0.5); }
+    #bottomnav .bn-btn.active { background: #1f8f3f; }       /* toggle-on (matches native Active) */
+    #bottomnav .bn-btn.hide { display: none; }               /* AB-dependent, no active track */
+    #bottomnav .bn-menu.menuopen { background: #1c4a7a; }
+    #bottomnav .bn-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+    #bn-skipnum { font-size: 22px; font-weight: 700; }
+    #bottomnav.locked .bn-btn[data-t2] { opacity: 0.45; } /* dim Tier-2 when we lack control */
+    .bn-flyout { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      margin-bottom: 6px; display: none; flex-direction: column; gap: 5px; padding: 8px;
+      border-radius: 10px; background: rgba(28,38,54,0.97); border: 1px solid #2a3550;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.6); }
+    .bn-flyout.open { display: flex; }
+    .bn-flyrow { display: flex; gap: 4px; justify-content: center; }
+    .bn-row { display: flex; align-items: center; gap: 8px; min-width: 180px; padding: 9px 10px;
+      border: 0; border-radius: 6px; background: rgba(255,255,255,0.08); color: #e7eef9;
+      cursor: pointer; font: 600 13px system-ui, sans-serif; text-align: left; }
+    .bn-row:hover { background: rgba(255,255,255,0.16); }
+    .bn-rowic { width: 20px; height: 20px; object-fit: contain; }
     /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
     #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
       justify-content: center; z-index: 50; }
@@ -304,6 +332,53 @@
          Shown when a field is open AND a master (auto/manual) is engaged. Rows are
          built dynamically by renderSectionBar (≤16/row, split like the native). -->
     <div id="sectionbar"></div>
+    <!-- Bottom nav: field-tools toolbar (Phase 8) — mirrors BottomNavigationPanel.
+         Shown when a field is open; AB-dependent buttons (.bn-abdep) appear only with
+         an active track. Two flyouts (Flags / AB-line) pop up above the bar. Tier-2
+         buttons carry data-t2 and fire only while this client holds control. The
+         dialog-launchers (Tracks / QuickAB / DrawAB / FlagList / place-on-map) land in
+         Phase 9 with their dialogs. -->
+    <div id="bottomnav">
+      <div id="bn-flyout-flags" class="bn-flyout">
+        <button class="bn-row" data-cmd="flag.placeHere"><img class="bn-rowic" src="/icons/FlagRed.png" alt=""><span>Place Flag Here</span></button>
+      </div>
+      <div id="bn-flyout-ab" class="bn-flyout">
+        <div class="bn-flyrow">
+          <button class="bn-btn" id="bn-autotrack" data-cmd="track.autoTrack" data-t2 title="Auto track select (closest track)">AT</button>
+          <button class="bn-btn" data-cmd="track.createFromBoundary" data-t2 title="Create AB line from boundary edge">BE</button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
+          <button class="bn-btn" data-cmd="track.cycle" data-t2 title="Cycle AB lines"><img class="bn-ic" src="/icons/ABLineCycle.png" alt="Cycle"></button>
+          <button class="bn-btn" data-cmd="track.smooth" data-t2 title="Smooth AB curve"><img class="bn-ic" src="/icons/ABSmooth.png" alt="Smooth"></button>
+          <button class="bn-btn" data-cmd="track.deleteContours" data-t2 title="Delete contours"><img class="bn-ic" src="/icons/TrashContourRef.png" alt="Delete contours"></button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
+          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge left (A+)"><img class="bn-ic" src="/icons/APlusPlusA.png" alt="Nudge L"></button>
+          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge right (B+)"><img class="bn-ic" src="/icons/APlusPlusB.png" alt="Nudge R"></button>
+          <button class="bn-btn" data-cmd="track.fineNudgeLeft" data-t2 title="Fine nudge left (A−)"><img class="bn-ic" src="/icons/APlusMinusA.png" alt="Fine L"></button>
+          <button class="bn-btn" data-cmd="track.fineNudgeRight" data-t2 title="Fine nudge right (B−)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Fine R"></button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
+          <button class="bn-btn" data-cmd="track.halfNudgeLeft" data-t2 title="Nudge left half tool width">&lt;&lt;</button>
+          <button class="bn-btn" data-cmd="track.resetNudge" data-t2 title="Reset nudge">0</button>
+          <button class="bn-btn" data-cmd="track.halfNudgeRight" data-t2 title="Nudge right half tool width">&gt;&gt;</button>
+        </div>
+      </div>
+      <div class="bn-bar">
+        <button class="bn-btn bn-abdep" id="bn-skipcycle" data-cmd="youturn.skipCycle" data-t2 title="U-Turn skip rows (tap to cycle 0–9)"><span id="bn-skipnum">0</span></button>
+        <button class="bn-btn bn-abdep" id="bn-skiptoggle" data-cmd="youturn.skipToggle" data-t2 title="U-Turn skip rows on/off"><img class="bn-ic" id="bn-skip-ic" alt="Skip"></button>
+        <button class="bn-btn" data-cmd="map.cycleColor" title="Section mapping colour"><img class="bn-ic" src="/icons/SectionMapping.png" alt="Mapping colour"></button>
+        <button class="bn-btn" data-cmd="tool.resetHeading" title="Reset tool heading"><img class="bn-ic" src="/icons/ResetTool.png" alt="Reset tool"></button>
+        <button class="bn-btn" id="bn-secheadland" data-cmd="headland.sectionToggle" data-t2 title="Section control in headland"><img class="bn-ic" id="bn-secheadland-ic" alt="Section in headland"></button>
+        <button class="bn-btn" id="bn-headland" data-cmd="headland.toggle" data-t2 title="Headland on/off"><img class="bn-ic" id="bn-headland-ic" alt="Headland"></button>
+        <button class="bn-btn bn-menu" id="bn-flags" title="Flags"><img class="bn-ic" src="/icons/FlagRed.png" alt="Flags"></button>
+        <button class="bn-btn bn-abdep" data-cmd="track.snapLeft" data-t2 title="Snap to left track"><img class="bn-ic" src="/icons/SnapLeft.png" alt="Snap L"></button>
+        <button class="bn-btn bn-abdep" data-cmd="track.snapRight" data-t2 title="Snap to right track"><img class="bn-ic" src="/icons/SnapRight.png" alt="Snap R"></button>
+        <button class="bn-btn bn-abdep" data-cmd="track.snapPivot" data-t2 title="Snap to pivot"><img class="bn-ic" src="/icons/SnapToPivot.png" alt="Snap pivot"></button>
+        <button class="bn-btn" id="bn-tram" data-cmd="tram.cycle" title="Tram lines display mode"><img class="bn-ic" id="bn-tram-ic" alt="Tram"></button>
+        <button class="bn-btn bn-menu" id="bn-abmenu" title="AB line options"><img class="bn-ic" src="/icons/TrackOn.png" alt="AB line"></button>
+      </div>
+    </div>
   </div>
   <!-- Dialog host (Phase 6): the web mirror of DialogOverlayHost — one modal at a
        time over a dimming backdrop. SimCoords is the first dialog; later phases add

@@ -95,14 +95,6 @@ public class SectionState : ObservableObject
         set => SetProperty(ref _isAutoMode, value);
     }
 
-    // Headland section control
-    private bool _isSectionControlInHeadland;
-    public bool IsSectionControlInHeadland
-    {
-        get => _isSectionControlInHeadland;
-        set => SetProperty(ref _isSectionControlInHeadland, value);
-    }
-
     public void Reset()
     {
         for (int i = 0; i < MaxSections; i++)
@@ -111,7 +103,6 @@ public class SectionState : ObservableObject
         IsMasterOn = false;
         IsManualMode = false;
         IsAutoMode = false;
-        IsSectionControlInHeadland = false;
     }
 
     /// <summary>

@@ -237,6 +237,20 @@ Each phase lists native sources, what to read, what to control, and exit criteri
     (`FieldSelection`, `StartWorkSession`, `ResumeJob`, `NewField`, `FromExistingField`,
     `FieldBuilder`, `BoundaryMap`, `KmlImport`, `IsoXmlImport`, `ImportTracks`,
     `Tracks`, `LoadVehicleTool`, AgShare).
+  - **Bottom-nav items deferred from Phase 8** (the toolbar shell + all direct-action
+    tools shipped in Phase 8; these need a dialog or interactive map-mode that lands
+    here). All live in `BottomNavigationPanel.axaml`:
+    - **AB-line flyout — Tracks dialog** (`ShowTracksDialogCommand` → `Tracks` dialog,
+      manage/select saved AB lines).
+    - **AB-line flyout — Quick AB creator** (`ShowQuickABSelectorCommand` → mode
+      selector for drive-in AB creation).
+    - **AB-line flyout — Draw AB** (`ShowDrawABDialogCommand` → **map-tap** point
+      placement; build on the canvas map interaction).
+    - **Flags flyout — Place Flag On Map** (`PlaceFlagOnClickCommand` → **map-tap**
+      single-shot place mode).
+    - **Flags flyout — Flag List** (`ShowFlagListCommand` → flag manager dialog).
+    These re-use the Phase-6 dialog host; the two map-tap modes share the editor map
+    interaction built for BoundaryMap/DrawAB/FieldBuilder above.
   - VMs: `Commands.Configuration.cs`, `Commands.Ntrip.cs`, `Commands.Settings.cs`,
     `Commands.Hotkeys.cs`, `Commands.Wizards.cs`, `Commands.Fields.cs`,
     `TrackManagement.cs`, `BoundaryRecording.cs`, `Commands.Boundary.cs`.

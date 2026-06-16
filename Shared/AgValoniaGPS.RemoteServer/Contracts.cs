@@ -78,7 +78,16 @@ public record TickDto(
     bool TurnIsLeft,
     double DistanceToTrigger,
     bool IsActiveTrackClosed,
-    double Roll); // vehicle roll angle (degrees) for the roll gauge
+    double Roll, // vehicle roll angle (degrees) for the roll gauge
+    // Bottom-nav field-tools (Phase 8). Toggle states for the bottom toolbar; the
+    // AB-dependent buttons gate on ActiveTrackName client-side. TramMode is the
+    // TramDisplayMode enum (0 Off / 1 All / 2 LinesOnly / 3 OuterOnly).
+    bool HeadlandOn,
+    bool SectionInHeadland,
+    bool AutoTrack,
+    int SkipRows,
+    bool SkipRowsOn,
+    int TramMode);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

@@ -187,6 +187,32 @@ public partial class App : Application
                                 "youturn.manualLeft" => windowVm.ManualYouTurnLeftCommand,
                                 "youturn.manualRight" => windowVm.ManualYouTurnRightCommand,
                                 "autosteer.toggle" => windowVm.ToggleAutoSteerCommand,
+                                // Bottom-nav field tools (Phase 8). track.* + headland.*
+                                // are Tier-2 (guidance/section actuation, gated); the
+                                // tool./map./flag./tram. ids are Tier-1 (display/markers).
+                                "youturn.skipCycle" => windowVm.CycleUTurnSkipRowsCommand,
+                                "youturn.skipToggle" => windowVm.ToggleUTurnSkipRowsCommand,
+                                "headland.toggle" => windowVm.ToggleHeadlandCommand,
+                                "headland.sectionToggle" => windowVm.ToggleSectionInHeadlandCommand,
+                                "tram.cycle" => windowVm.ToggleTramDisplayCommand,
+                                "tool.resetHeading" => windowVm.ResetToolHeadingCommand,
+                                "map.cycleColor" => windowVm.ChangeMappingColorCommand,
+                                "flag.placeHere" => windowVm.PlaceFlagHereCommand,
+                                "track.snapLeft" => windowVm.SnapLeftCommand,
+                                "track.snapRight" => windowVm.SnapRightCommand,
+                                "track.snapPivot" => windowVm.SnapToPivotCommand,
+                                "track.nudgeLeft" => windowVm.NudgeLeftCommand,
+                                "track.nudgeRight" => windowVm.NudgeRightCommand,
+                                "track.fineNudgeLeft" => windowVm.FineNudgeLeftCommand,
+                                "track.fineNudgeRight" => windowVm.FineNudgeRightCommand,
+                                "track.halfNudgeLeft" => windowVm.HalfToolNudgeLeftCommand,
+                                "track.halfNudgeRight" => windowVm.HalfToolNudgeRightCommand,
+                                "track.resetNudge" => windowVm.ResetNudgeCommand,
+                                "track.cycle" => windowVm.CycleABLinesCommand,
+                                "track.smooth" => windowVm.SmoothABLineCommand,
+                                "track.deleteContours" => windowVm.DeleteContoursCommand,
+                                "track.autoTrack" => windowVm.ToggleAutoTrackCommand,
+                                "track.createFromBoundary" => windowVm.CreateTrackFromBoundaryCommand,
                                 _ => null, // unknown id → ignored (safety boundary)
                             };
                             if (c?.CanExecute(null) == true) c.Execute(null);
@@ -196,7 +222,8 @@ public partial class App : Application
                     // fresh control authority (Phase 2 safety gate).
                     _remoteServer.IsRestrictedCommand = id =>
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
-                        || id.StartsWith("youturn.") || id.StartsWith("contour.");
+                        || id.StartsWith("youturn.") || id.StartsWith("contour.")
+                        || id.StartsWith("track.") || id.StartsWith("headland.");
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep

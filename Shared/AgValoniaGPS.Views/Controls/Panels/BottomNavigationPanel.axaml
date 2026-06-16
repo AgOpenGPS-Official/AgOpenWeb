@@ -154,10 +154,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                 <Button Classes="BottomPanelButton" ToolTip.Tip="Section Control in Headland"
                         Command="{Binding ToggleSectionInHeadlandCommand}">
                     <Panel>
+                        <!-- Icon shows the PAINTING state: On (sections paint the headland)
+                             when control is OFF; Off when control auto-shuts sections in the
+                             headland. IsSectionControlInHeadland == Tool.IsHeadlandSectionControl. -->
                         <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/HeadlandSectionOn.png" Stretch="Uniform"
-                               IsVisible="{Binding IsSectionControlInHeadland}"/>
-                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/HeadlandSectionOff.png" Stretch="Uniform"
                                IsVisible="{Binding IsSectionControlInHeadland, Converter={StaticResource InverseBoolConverter}}"/>
+                        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/HeadlandSectionOff.png" Stretch="Uniform"
+                               IsVisible="{Binding IsSectionControlInHeadland}"/>
                     </Panel>
                 </Button>
 

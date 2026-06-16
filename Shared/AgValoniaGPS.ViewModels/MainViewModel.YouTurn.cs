@@ -59,14 +59,22 @@ public partial class MainViewModel
     public int UTurnSkipRows
     {
         get => _uTurnSkipRows;
-        set => SetProperty(ref _uTurnSkipRows, Math.Max(0, Math.Min(9, value)));
+        set
+        {
+            if (SetProperty(ref _uTurnSkipRows, Math.Max(0, Math.Min(9, value))))
+                State.FieldTools.UTurnSkipRows = _uTurnSkipRows; // mirror (web-UI; post-clamp)
+        }
     }
 
     private bool _isUTurnSkipRowsEnabled;
     public bool IsUTurnSkipRowsEnabled
     {
         get => _isUTurnSkipRowsEnabled;
-        set => SetProperty(ref _isUTurnSkipRowsEnabled, value);
+        set
+        {
+            if (SetProperty(ref _isUTurnSkipRowsEnabled, value))
+                State.FieldTools.IsUTurnSkipRowsEnabled = value; // mirror for the web-UI projector
+        }
     }
 
     private bool _isSkipWorkedMode;

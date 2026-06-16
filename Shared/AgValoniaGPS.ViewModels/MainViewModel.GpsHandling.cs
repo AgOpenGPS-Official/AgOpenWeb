@@ -246,7 +246,11 @@ public partial class MainViewModel
     public bool IsAutoTrackEnabled
     {
         get => _isAutoTrackEnabled;
-        set => SetProperty(ref _isAutoTrackEnabled, value);
+        set
+        {
+            if (SetProperty(ref _isAutoTrackEnabled, value))
+                State.FieldTools.IsAutoTrackEnabled = value; // mirror for the web-UI projector
+        }
     }
 
     private DateTime _lastAutoTrackTime = DateTime.MinValue;

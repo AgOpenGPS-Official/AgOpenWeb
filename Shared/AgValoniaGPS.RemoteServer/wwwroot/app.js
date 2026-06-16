@@ -337,6 +337,30 @@ sectionBar.addEventListener('pointerdown', e => {
   if (btn && iHoldControl) transport.send('section.toggle|' + btn.dataset.idx);
 });
 
+// ---- bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts ----
+// Direct-action field tools. Tier-2 ids (data-t2: track.* / headland.* / youturn.skip*)
+// fire only while we hold control (the host re-gates); the rest are Tier-1. Toggle
+// READ state rides the Tick (tick.tools); AB-dependent buttons key off activeTrackName.
+const bottomNav = document.getElementById('bottomnav');
+const bnFlags = document.getElementById('bn-flyout-flags');
+const bnAb = document.getElementById('bn-flyout-ab');
+bottomNav.addEventListener('pointerdown', e => {
+  e.stopPropagation(); // don't pan the map
+  const btn = e.target.closest('button[data-cmd]');
+  if (!btn) return;
+  if (btn.hasAttribute('data-t2') && !iHoldControl) return; // gated; host re-checks
+  transport.send(btn.dataset.cmd);
+});
+function bnToggleFly(fly, btn) {
+  const open = !fly.classList.contains('open');
+  bnFlags.classList.remove('open'); bnAb.classList.remove('open');
+  document.getElementById('bn-flags').classList.remove('menuopen');
+  document.getElementById('bn-abmenu').classList.remove('menuopen');
+  if (open) { fly.classList.add('open'); btn.classList.add('menuopen'); }
+}
+document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnFlags, e.currentTarget); });
+document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
+
 // ---- remote actuation control (Phase 2 safety layer) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may
 // actuate; the holder must heartbeat (presence) or the host revokes it (deadman).
@@ -674,6 +698,13 @@ SB.fixBtn.addEventListener('pointerdown', e => {
 addEventListener('pointerdown', () => {
   if (SB.modPop) SB.modPop.style.display = 'none';
   if (SB.gpsCard) SB.gpsCard.style.display = 'none';
+  // Close bottom-nav flyouts on any outside click (clicks inside #bottomnav
+  // stopPropagation, so they don't reach here).
+  const ff = document.getElementById('bn-flyout-flags'), af = document.getElementById('bn-flyout-ab');
+  if (ff) ff.classList.remove('open');
+  if (af) af.classList.remove('open');
+  document.getElementById('bn-flags')?.classList.remove('menuopen');
+  document.getElementById('bn-abmenu')?.classList.remove('menuopen');
 });
 
 function renderStatusBar() {
@@ -770,6 +801,28 @@ function renderSectionBar() {
   for (const b of sectionBar.querySelectorAll('button[data-idx]'))
     b.style.background = SECTION_COLORS[secs[+b.dataset.idx]] || SECTION_COLORS[0];
   sectionBar.classList.toggle('locked', !iHoldControl); // dim when we can't actuate
+}
+// Bottom nav (Phase 8). Swap icons only on change; reflect Tick toggle state.
+function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }
+const TRAM_ICONS = ['TramOff.png', 'TramAll.png', 'TramLines.png', 'TramOuter.png'];
+function renderBottomNav() {
+  const visible = !!(scene && scene.hasField); // native gate: IsFieldOpen
+  bottomNav.classList.toggle('open', visible);
+  if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); return; }
+  // AB-line-dependent buttons appear only with an active track.
+  const hasTrack = !!(tick && tick.activeTrackName);
+  for (const el of bottomNav.querySelectorAll('.bn-abdep')) el.classList.toggle('hide', !hasTrack);
+  const t = (tick && tick.tools) || {};
+  document.getElementById('bn-skipnum').textContent = t.skipRows || 0;
+  bnIcon(document.getElementById('bn-skip-ic'), t.skipRowsOn ? 'YouSkipOn.png' : 'YouSkipOff.png');
+  // Icon shows the PAINTING state, not the raw flag: sectionInHeadland (=Tool.
+  // IsHeadlandSectionControl) true means sections AUTO-OFF in the headland (NOT
+  // painted) → the "Off" icon; false means sections paint the headland → "On".
+  bnIcon(document.getElementById('bn-secheadland-ic'), t.sectionInHeadland ? 'HeadlandSectionOff.png' : 'HeadlandSectionOn.png');
+  bnIcon(document.getElementById('bn-headland-ic'), t.headlandOn ? 'HeadlandOn.png' : 'HeadlandOff.png');
+  bnIcon(document.getElementById('bn-tram-ic'), TRAM_ICONS[t.tramMode || 0]);
+  document.getElementById('bn-autotrack').classList.toggle('active', !!t.autoTrack);
+  bottomNav.classList.toggle('locked', !iHoldControl);
 }
 
 // Right-nav operational toolbar (Phase 3a: read-only live indicators; 3b wires the
@@ -1139,7 +1192,10 @@ function renderSkia(canvas, rp) {
   drawGridSk(canvas);
   if (scene) {
     for (const ring of scene.boundaries) strokePtsSk(canvas, ring, true, SKP.boundary);
-    if (scene.headland) strokePtsSk(canvas, scene.headland, true, SKP.headland);
+    // Headland line shows only when the headland is ON — mirrors the native
+    // SetHeadlandVisible gate (IsHeadlandOn). The bottom-nav headland button drives it.
+    if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
+      strokePtsSk(canvas, scene.headland, true, SKP.headland);
     const activeName = tick ? tick.activeTrackName : null;
     for (const tr of scene.tracks)
       strokePtsSk(canvas, tr.points, false, (activeName && tr.name === activeName) ? SKP.reference : SKP.track);
@@ -1170,6 +1226,7 @@ function skFrame() {
   renderStatusBar();
   renderSimBar();
   renderSectionBar();
+  renderBottomNav();
   renderRightNav();
   renderRoll();
   renderCampad();

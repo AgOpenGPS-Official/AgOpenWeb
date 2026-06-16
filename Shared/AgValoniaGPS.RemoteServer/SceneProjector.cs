@@ -181,7 +181,15 @@ public sealed class SceneProjector
             _state.YouTurn.IsTurnLeft,
             _state.YouTurn.DistanceToTrigger,
             _state.Field.ActiveTrack?.IsClosed == true,
-            _state.Vehicle.Roll);
+            _state.Vehicle.Roll,
+            // Bottom-nav field-tools (Phase 8). Toggle states from the FieldTools
+            // mirror; tram mode straight from config (no VM mirror needed).
+            _state.FieldTools.IsHeadlandOn,
+            _config.Tool.IsHeadlandSectionControl, // single source (read live from config)
+            _state.FieldTools.IsAutoTrackEnabled,
+            _state.FieldTools.UTurnSkipRows,
+            _state.FieldTools.IsUTurnSkipRowsEnabled,
+            (int)_config.Tram.DisplayMode);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

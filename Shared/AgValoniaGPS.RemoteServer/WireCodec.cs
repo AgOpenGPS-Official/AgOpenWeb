@@ -94,6 +94,13 @@ public static class WireCodec
         w.Write((float)t.DistanceToTrigger);
         w.Write((byte)(t.IsActiveTrackClosed ? 1 : 0));
         w.Write((float)t.Roll);
+        // Bottom-nav field-tools (Phase 8).
+        w.Write((byte)(t.HeadlandOn ? 1 : 0));
+        w.Write((byte)(t.SectionInHeadland ? 1 : 0));
+        w.Write((byte)(t.AutoTrack ? 1 : 0));
+        w.Write((byte)t.SkipRows);
+        w.Write((byte)(t.SkipRowsOn ? 1 : 0));
+        w.Write((byte)t.TramMode);
         return ms.ToArray();
     }
 
