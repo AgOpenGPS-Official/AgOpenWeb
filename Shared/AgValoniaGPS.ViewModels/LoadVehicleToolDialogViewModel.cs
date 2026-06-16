@@ -471,65 +471,9 @@ public partial class LoadVehicleToolDialogViewModel : ObservableObject
         });
     }
 
-    private string BuildVehiclePreview(string name)
-    {
-        // Active profile already lives in the live store — no disk read.
-        if (IsActiveVehicle(name))
-            return FormatVehicle(_configurationService.Store);
+    // Preview formatting + side-effect-free file reads live in ConfigurationService
+    // so the web-UI projector shares the exact same logic (no duplication).
+    private string BuildVehiclePreview(string name) => _configurationService.GetVehicleProfilePreview(name);
 
-        // Preview a non-active profile by reading its file into a throwaway
-        // store so the live one isn't perturbed. Falls back to v1 reader for
-        // pre-#346 files that haven't been migrated yet.
-        // Preview must be side-effect-free: pass quarantineOnFailure: false so
-        // merely selecting a damaged profile doesn't move its file aside.
-        var temp = new ConfigurationStore();
-        bool ok = VehicleProfileJsonService.Load(_configurationService.ProfilesDirectory, name, temp, out _, out _, quarantineOnFailure: false)
-               || ProfileJsonServiceV1.Load(_configurationService.ProfilesDirectory, name, temp);
-        if (!ok)
-            return $"Vehicle profile '{name}'\n(file not found / unreadable)";
-        return FormatVehicle(temp);
-    }
-
-    private string BuildToolPreview(string name)
-    {
-        if (IsActiveTool(name))
-            return FormatTool(_configurationService.Store);
-
-        // Preview must be side-effect-free (see BuildVehiclePreview).
-        var temp = new ConfigurationStore();
-        bool ok = ToolProfileJsonService.Load(_configurationService.ToolsDirectory, name, temp, out _, out _, quarantineOnFailure: false)
-               || ProfileJsonServiceV1.Load(_configurationService.ProfilesDirectory, name, temp);
-        if (!ok)
-            return $"Tool profile '{name}'\n(file not found / unreadable)";
-        return FormatTool(temp);
-    }
-
-    private static string FormatVehicle(ConfigurationStore store)
-    {
-        var v = store.Vehicle;
-        return
-            $"Type: {v.Type}\n" +
-            $"Wheelbase: {v.Wheelbase:F2} m\n" +
-            $"Track width: {v.TrackWidth:F2} m\n" +
-            $"Antenna height: {v.AntennaHeight:F2} m\n" +
-            $"Antenna pivot: {v.AntennaPivot:F2} m\n" +
-            $"Antenna offset: {v.AntennaOffset:F2} m\n" +
-            $"Max steer angle: {v.MaxSteerAngle:F1}°";
-    }
-
-    private static string FormatTool(ConfigurationStore store)
-    {
-        var t = store.Tool;
-        string attach = t.IsToolFrontFixed ? "Front fixed"
-                      : t.IsToolRearFixed ? "Rear fixed"
-                      : t.IsToolTrailing ? "Trailing"
-                      : "—";
-        return
-            $"Width: {t.Width:F2} m\n" +
-            $"Overlap: {t.Overlap:F2} m\n" +
-            $"Offset: {t.Offset:F2} m\n" +
-            $"Sections: {store.NumSections}\n" +
-            $"Min coverage: {t.MinCoverage}%\n" +
-            $"Attach: {attach}";
-    }
+    private string BuildToolPreview(string name) => _configurationService.GetToolProfilePreview(name);
 }

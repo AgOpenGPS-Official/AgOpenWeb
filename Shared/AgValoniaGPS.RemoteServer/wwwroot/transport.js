@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -116,11 +116,23 @@ window.RemoteTransport = {
         }
         case TYPE.CONFIG: {
           const vehicle = {
-            name: str(), wheelbase: f64(), trackWidth: f64(), antennaHeight: f64(),
-            antennaPivot: f64(), antennaOffset: f64(), hitchLength: f64(),
-            maxSteerAngle: f64(), maxAngularVelocity: f64(),
+            name: str(), type: i32(), hitchType: i32(), hitchLength: f64(), wheelbase: f64(),
+            trackWidth: f64(), antennaPivot: f64(), antennaHeight: f64(), antennaOffset: f64(),
           };
-          handlers.onConfig && handlers.onConfig({ vehicle });
+          const gps = {
+            isDualGps: !!u8(), dualHeadingOffset: f64(), dualReverseDistance: f64(),
+            autoDualFix: !!u8(), dualSwitchSpeed: f64(), minGpsStep: f64(), fixToFixDistance: f64(),
+            headingFusionWeight: f64(), reverseDetection: !!u8(), rtkLostAlarm: !!u8(), rtkLostAction: i32(),
+          };
+          const roll = { rollZero: f64(), rollFilter: f64(), isRollInvert: !!u8() };
+          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll });
+          break;
+        }
+        case TYPE.PROFILES: {
+          const activeVehicle = str(), activeTool = str();
+          const rdList = () => { const n = i32(), out = new Array(n); for (let k = 0; k < n; k++) out[k] = { name: str(), preview: str() }; return out; };
+          const vehicles = rdList(), tools = rdList();
+          handlers.onProfiles && handlers.onProfiles({ activeVehicle, activeTool, vehicles, tools });
           break;
         }
         case TYPE.CONTROL_STATE: {

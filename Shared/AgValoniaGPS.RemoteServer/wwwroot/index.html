@@ -160,14 +160,63 @@
       cursor: pointer; font: 600 13px system-ui, sans-serif; }
     .ln-segbtn.active { background: #1f6fb2; color: #fff; }
     .ln-sub { color: #9fb3cc; font: 600 12px system-ui, sans-serif; margin-bottom: 12px; }
-    .vc-grid { display: grid; grid-template-columns: auto 110px; gap: 7px 12px; align-items: center; }
-    .vc-grid label { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
-    .vc-in { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
-      color: #e7eef9; font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right; }
-    .vc-in:focus { outline: none; border-color: #4A90D9; }
+    .ln-wide { min-width: 320px; }
     .ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
       background: #1f6fb2; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; }
     .ln-savebtn:active { background: #195c95; }
+    /* Generic config controls (tabs / grid / number / toggle / select / slider). */
+    .cfg-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #2a3550; }
+    .cfg-tab { padding: 7px 14px; border: 0; background: transparent; color: #9fb3cc;
+      cursor: pointer; font: 600 13px system-ui, sans-serif; border-bottom: 2px solid transparent; }
+    .cfg-tab.active { color: #fff; border-bottom-color: #4A90D9; }
+    .cfg-label { color: #9fb3cc; font: 600 12px system-ui, sans-serif; margin-bottom: 6px; }
+    .cfg-seg-full { width: 100%; margin-bottom: 12px; }
+    .cfg-seg-full .cfg-typebtn { flex: 1; }
+    .cfg-typebtn { padding: 8px 10px; border: 0; background: transparent; color: #cfe3ff;
+      cursor: pointer; font: 600 12px system-ui, sans-serif; }
+    .cfg-typebtn.active { background: #1f6fb2; color: #fff; }
+    .cfg-grid { display: grid; grid-template-columns: auto 130px; gap: 7px 12px; align-items: center; }
+    .cfg-grid label { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .cfg-num { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
+      color: #e7eef9; font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right; }
+    .cfg-num:focus { outline: none; border-color: #4A90D9; }
+    .cfg-sel { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
+      color: #e7eef9; font: 600 12px system-ui, sans-serif; padding: 0 6px; box-sizing: border-box; }
+    .cfg-tgl { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: rgba(255,255,255,0.06);
+      color: #9fb3cc; cursor: pointer; font: 700 12px system-ui, sans-serif; }
+    .cfg-tgl.active { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+    .cfg-act { padding: 8px 10px; border: 0; border-radius: 6px; background: rgba(255,255,255,0.10);
+      color: #e7eef9; cursor: pointer; font: 600 12px system-ui, sans-serif; flex: 1; }
+    .cfg-act:hover { background: rgba(255,255,255,0.18); }
+    .cfg-actwide { width: 100%; flex: none; }
+    .cfg-slider { width: 100%; accent-color: #4A90D9; }
+    .ln-back { border: 0; background: rgba(255,255,255,0.10); color: #cfe3ff; cursor: pointer;
+      border-radius: 6px; width: 26px; height: 26px; font: 700 15px system-ui; margin-right: 6px; }
+    /* Vehicle & Tool picker hub. */
+    .ln-hub { min-width: 600px; }
+    .hub-banner { background: #1E8449; color: #fff; border-radius: 6px; padding: 7px 12px;
+      text-align: center; font: 700 14px system-ui, sans-serif; margin-bottom: 12px; }
+    .hub-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .hub-colhdr { color: #4A90D9; font: 700 15px system-ui, sans-serif; margin-bottom: 6px; }
+    .hub-cur { color: #9fb3cc; font-weight: 500; font-size: 12px; }
+    .hub-list { width: 100%; box-sizing: border-box; background: #0f1115; color: #e7eef9;
+      border: 1px solid #2a3550; border-radius: 6px; font: 600 13px system-ui, sans-serif; padding: 2px; }
+    .hub-list option { padding: 5px 8px; }
+    .hub-prev { background: rgba(255,255,255,0.04); border: 1px solid #2a3550; border-radius: 6px;
+      color: #cfe3ff; font: 500 12px ui-monospace, monospace; padding: 8px; margin: 8px 0 0;
+      min-height: 96px; white-space: pre-wrap; }
+    .hub-config { width: 100%; margin-top: 8px; height: 36px; border: 0; border-radius: 8px;
+      background: #1f6fb2; color: #fff; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+    .hub-name { width: 100%; box-sizing: border-box; margin-top: 8px; height: 32px; border-radius: 6px;
+      border: 1px solid #2a3550; background: #0f1115; color: #e7eef9; font: 600 13px system-ui; padding: 0 8px; }
+    .hub-crud { display: flex; gap: 5px; margin-top: 6px; }
+    .hub-cbtn { flex: 1; height: 32px; border: 0; border-radius: 6px; background: rgba(255,255,255,0.10);
+      color: #cfe3ff; cursor: pointer; font: 600 12px system-ui, sans-serif; }
+    .hub-cbtn:hover { background: rgba(255,255,255,0.18); }
+    .hub-danger { background: rgba(231,76,60,0.30); }
+    .hub-foot { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+    .hub-status { flex: 1; color: #9fb3cc; font: 500 12px system-ui, sans-serif; }
+    .hub-load { width: auto; padding: 0 22px; margin-top: 0; }
     /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
     #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
       justify-content: center; z-index: 50; }
@@ -298,7 +347,7 @@
        button-by-button as sub-phases land. Each opens a non-modal panel to its right. -->
   <div id="leftnav">
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
-    <button id="ln-vehicle" class="ln-btn" title="Vehicle Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle Configuration"></button>
+    <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
   </div>
   <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
        bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
@@ -312,22 +361,108 @@
       </div>
     </div>
   </div>
-  <!-- Vehicle Configuration (Phase 9b) — reads the config frame, writes via
-       config.set|vehicle.*; Save Profile persists with profile.save. -->
-  <div id="vehiclecfg" class="ln-panel">
-    <div class="ln-title">Vehicle Configuration</div>
+  <!-- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogPanel:
+       two columns (vehicle / tool) each with a profile list, preview, New/Delete/
+       Rename/Reset + name field + Configure…, and a bottom Load Selected. -->
+  <div id="vehtoolhub" class="ln-panel ln-hub">
+    <div class="ln-title">Vehicle &amp; Tool</div>
+    <div id="vth-summary" class="hub-banner">—</div>
+    <div class="hub-cols">
+      <div class="hub-col">
+        <div class="hub-colhdr">Vehicle <span id="vth-curveh" class="hub-cur"></span></div>
+        <select id="vth-vehlist" class="hub-list" size="7"></select>
+        <pre id="vth-vehprev" class="hub-prev"></pre>
+        <button id="vth-vehconfig" class="hub-config">Configure Vehicle…</button>
+        <input id="vth-vehname" class="hub-name" placeholder="Vehicle name">
+        <div class="hub-crud">
+          <button class="hub-cbtn" data-act="new" data-kind="vehicle">New</button>
+          <button class="hub-cbtn hub-danger" data-act="delete" data-kind="vehicle">Delete</button>
+          <button class="hub-cbtn" data-act="rename" data-kind="vehicle">Rename</button>
+          <button class="hub-cbtn" data-act="reset" data-kind="vehicle">Reset</button>
+        </div>
+      </div>
+      <div class="hub-col">
+        <div class="hub-colhdr">Tool <span id="vth-curtool" class="hub-cur"></span></div>
+        <select id="vth-toollist" class="hub-list" size="7"></select>
+        <pre id="vth-toolprev" class="hub-prev"></pre>
+        <button id="vth-toolconfig" class="hub-config">Configure Tool…</button>
+        <input id="vth-toolname" class="hub-name" placeholder="Tool name">
+        <div class="hub-crud">
+          <button class="hub-cbtn" data-act="new" data-kind="tool">New</button>
+          <button class="hub-cbtn hub-danger" data-act="delete" data-kind="tool">Delete</button>
+          <button class="hub-cbtn" data-act="rename" data-kind="tool">Rename</button>
+          <button class="hub-cbtn" data-act="reset" data-kind="tool">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="hub-foot">
+      <span id="vth-status" class="hub-status"></span>
+      <button id="vth-load" class="ln-savebtn hub-load">Load Selected</button>
+    </div>
+  </div>
+  <!-- Vehicle Configuration (Phase 9b) — full native VehicleConfigDialog surface:
+       Vehicle / Data-Sources(GPS) / Roll tabs. Reads the config frame; writes via
+       config.set|<section>.<field>; Save Profile persists with profile.save. -->
+  <div id="vehiclecfg" class="ln-panel ln-wide">
+    <div class="ln-title"><button class="ln-back" data-back="vehiclecfg">←</button> Vehicle Configuration</div>
     <div id="vc-name" class="ln-sub">—</div>
-    <div class="vc-grid">
-      <label>Wheelbase (m)</label><input class="vc-in" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal">
-      <label>Track width (m)</label><input class="vc-in" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal">
-      <label>Antenna height (m)</label><input class="vc-in" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
-      <label>Antenna pivot (m)</label><input class="vc-in" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
-      <label>Antenna offset (m)</label><input class="vc-in" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
-      <label>Hitch length (m)</label><input class="vc-in" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
-      <label>Max steer angle (°)</label><input class="vc-in" data-key="vehicle.maxSteerAngle" type="number" step="0.5" inputmode="decimal">
-      <label>Max angular vel (°/s)</label><input class="vc-in" data-key="vehicle.maxAngularVelocity" type="number" step="0.5" inputmode="decimal">
+    <div class="cfg-tabs">
+      <button class="cfg-tab active" data-tab="vc-tab-vehicle">Vehicle</button>
+      <button class="cfg-tab" data-tab="vc-tab-gps">GPS</button>
+      <button class="cfg-tab" data-tab="vc-tab-roll">Roll</button>
+    </div>
+    <div id="vc-tab-vehicle" class="cfg-body">
+      <div class="cfg-label">Vehicle type</div>
+      <div class="ln-seg cfg-seg-full">
+        <button class="cfg-typebtn" data-key="vehicle.type" data-val="0">Tractor</button>
+        <button class="cfg-typebtn" data-key="vehicle.type" data-val="1">Harvester</button>
+        <button class="cfg-typebtn" data-key="vehicle.type" data-val="2">4WD</button>
+      </div>
+      <div class="cfg-grid">
+        <label>Hitch type</label><select class="cfg-sel" data-key="vehicle.hitchType"></select>
+        <label>Hitch length (m)</label><input class="cfg-num" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
+        <label>Wheelbase (m)</label><input class="cfg-num" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal">
+        <label>Track width (m)</label><input class="cfg-num" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal">
+        <label>Antenna pivot (m)</label><input class="cfg-num" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
+        <label>Antenna height (m)</label><input class="cfg-num" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
+        <label>Antenna offset (m)</label><input class="cfg-num" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
+        <label>Antenna side</label>
+        <div class="ln-seg">
+          <button class="cfg-act" data-key="vehicle.antennaSide" data-val="left">Left</button>
+          <button class="cfg-act" data-key="vehicle.antennaSide" data-val="center">Center</button>
+          <button class="cfg-act" data-key="vehicle.antennaSide" data-val="right">Right</button>
+        </div>
+      </div>
+    </div>
+    <div id="vc-tab-gps" class="cfg-body" hidden>
+      <div class="cfg-grid">
+        <label>Dual GPS</label><button class="cfg-tgl" data-key="gps.isDualGps">Off</button>
+        <label>Dual heading offset (°)</label><input class="cfg-num" data-key="gps.dualHeadingOffset" type="number" step="0.1" inputmode="decimal">
+        <label>Dual reverse dist (m)</label><input class="cfg-num" data-key="gps.dualReverseDistance" type="number" step="0.1" inputmode="decimal">
+        <label>Auto dual fix</label><button class="cfg-tgl" data-key="gps.autoDualFix">Off</button>
+        <label>Dual switch speed</label><input class="cfg-num" data-key="gps.dualSwitchSpeed" type="number" step="0.1" inputmode="decimal">
+        <label>Min GPS step (m)</label><input class="cfg-num" data-key="gps.minGpsStep" type="number" step="0.01" inputmode="decimal">
+        <label>Fix-to-fix dist (m)</label><input class="cfg-num" data-key="gps.fixToFixDistance" type="number" step="0.01" inputmode="decimal">
+        <label>Heading fusion <span id="vc-hfw">—</span></label><input class="cfg-slider" data-key="gps.headingFusionWeight" type="range" min="0" max="1" step="0.05">
+        <label>Reverse detection</label><button class="cfg-tgl" data-key="gps.reverseDetection">Off</button>
+        <label>RTK lost alarm</label><button class="cfg-tgl" data-key="gps.rtkLostAlarm">Off</button>
+        <label>Alarm stops AutoSteer</label><button class="cfg-tgl" data-key="gps.rtkLostAction">Off</button>
+      </div>
+    </div>
+    <div id="vc-tab-roll" class="cfg-body" hidden>
+      <div class="cfg-grid">
+        <label>Roll zero (°)</label><input class="cfg-num" data-key="roll.rollZero" type="number" step="0.01" inputmode="decimal">
+        <label></label><button class="cfg-act cfg-actwide" data-key="roll.setZero" data-val="1">Zero Now</button>
+        <label>Roll filter</label><input class="cfg-num" data-key="roll.rollFilter" type="number" step="0.01" inputmode="decimal">
+        <label>Invert roll</label><button class="cfg-tgl" data-key="roll.isRollInvert">Off</button>
+      </div>
     </div>
     <button id="vc-save" class="ln-savebtn">Save Profile</button>
+  </div>
+  <!-- Tool Configuration — built fully in the next sub-phase (Hub → Vehicle → Tool). -->
+  <div id="toolcfg" class="ln-panel ln-wide">
+    <div class="ln-title"><button class="ln-back" data-back="toolcfg">←</button> Tool Configuration</div>
+    <div class="ln-sub">Coming in the next step (Tool dialog: Type / Hitch / Timing / Offset / Pivot / Sections / Switches + U-Turn / Machine / Tram).</div>
   </div>
   <div id="rightnav">
     <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>

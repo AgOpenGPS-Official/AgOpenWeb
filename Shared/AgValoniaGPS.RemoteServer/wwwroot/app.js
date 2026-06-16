@@ -35,6 +35,8 @@ let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
 let configDirty = false; // a new config frame arrived → settings panels re-read it
+let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
+let profilesDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
@@ -132,6 +134,7 @@ const transport = RemoteTransport.create({
   },
   onStatusBar(s) { statusBar = s; },
   onConfig(c) { config = c; configDirty = true; },
+  onProfiles(p) { profiles = p; profilesDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
   onStatus(s) { connState = s; },
@@ -370,49 +373,97 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // time). Panels READ from the config frame (or existing frames, e.g. units =
 // Status.isMetric) and WRITE via `config.set|key:value` (Tier-1; the host applies it
 // to ConfigurationStore). Grows one entry per sub-phase.
-const LN_PANELS = [
-  { btn: 'ln-screenalerts', panel: 'screenalerts' },
-  { btn: 'ln-vehicle', panel: 'vehiclecfg', onOpen: () => populateVehicleCfg(true) },
-];
+// Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
+// reached from the hub and carry a Back button. One panel open at a time.
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg'];
 function lnCloseAll() {
-  for (const p of LN_PANELS) {
-    document.getElementById(p.panel).classList.remove('open');
-    document.getElementById(p.btn).classList.remove('active');
-  }
+  for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
+  document.getElementById('ln-screenalerts').classList.remove('active');
+  document.getElementById('ln-vehicle').classList.remove('active');
 }
-for (const p of LN_PANELS) {
-  const btn = document.getElementById(p.btn), panel = document.getElementById(p.panel);
-  btn.addEventListener('pointerdown', e => {
-    e.stopPropagation();
-    const open = !panel.classList.contains('open');
-    lnCloseAll();
-    if (open) { panel.classList.add('open'); btn.classList.add('active'); if (p.onOpen) p.onOpen(); }
-  });
-  panel.addEventListener('pointerdown', e => e.stopPropagation()); // keep open / don't pan
+function lnOpen(panelId, navBtnId, onOpen) {
+  lnCloseAll();
+  document.getElementById(panelId).classList.add('open');
+  if (navBtnId) document.getElementById(navBtnId).classList.add('active');
+  if (onOpen) onOpen();
 }
+for (const id of LN_NAV_PANELS) document.getElementById(id).addEventListener('pointerdown', e => e.stopPropagation());
+document.getElementById('ln-screenalerts').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (document.getElementById('screenalerts').classList.contains('open')) lnCloseAll();
+  else lnOpen('screenalerts', 'ln-screenalerts');
+});
+document.getElementById('ln-vehicle').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const anyOpen = ['vehtoolhub', 'vehiclecfg', 'toolcfg'].some(id => document.getElementById(id).classList.contains('open'));
+  if (anyOpen) lnCloseAll(); else lnOpen('vehtoolhub', 'ln-vehicle', refreshHub);
+});
+for (const b of document.querySelectorAll('.ln-back'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
 // Units (Screen & Alerts) → config bridge write.
 const uMetric = document.getElementById('sa-metric'), uImperial = document.getElementById('sa-imperial');
 for (const b of document.querySelectorAll('#screenalerts .ln-segbtn[data-units]'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
-// Vehicle config inputs → config.set|vehicle.X on change; Save → profile.save.
+// Vehicle config panel — full native VehicleConfigDialog surface (Vehicle/GPS/Roll).
+// Generic config controls keyed by data-key="<section>.<field>"; reused by later
+// sub-phases. Writes via config.set; Save Profile via profile.save.
 const vcPanel = document.getElementById('vehiclecfg'), vcName = document.getElementById('vc-name');
-for (const inp of vcPanel.querySelectorAll('.vc-in'))
-  inp.addEventListener('change', () => {
-    const v = parseFloat(inp.value);
-    if (Number.isFinite(v)) transport.send('config.set|' + inp.dataset.key + ':' + v);
+// Hitch-type labels (mirrors ConfigurationViewModel.HitchTypeOptions); value = code =
+// index − 1 (code −1 → "Not available").
+const HITCH_OPTS = ['Not available', 'Unknown', 'ISO 6489-3 Tractor drawbar',
+  'ISO 730 Three-point-hitch semi-mounted', 'ISO 730 Three-point-hitch mounted',
+  'ISO 6489-1 Hitch-hook', 'ISO 6489-2 Clevis coupling 40', 'ISO 6489-4 Piton type coupling',
+  'ISO 6489-5 CUNA hitch', 'ISO 24347 Ball type hitch', 'Chassis Mounted - Self-Propelled',
+  'ISO 5692-2 Pivot wagon hitch'];
+const vcHitchSel = vcPanel.querySelector('.cfg-sel[data-key="vehicle.hitchType"]');
+HITCH_OPTS.forEach((label, i) => { const o = document.createElement('option'); o.value = i - 1; o.textContent = label; vcHitchSel.appendChild(o); });
+const vcFw = vcPanel.querySelector('.cfg-slider[data-key="gps.headingFusionWeight"]');
+function cfgGet(key) { if (!config) return undefined; const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]]; }
+function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
+// Tabs.
+for (const t of vcPanel.querySelectorAll('.cfg-tab'))
+  t.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    for (const b of vcPanel.querySelectorAll('.cfg-tab')) b.classList.toggle('active', b === t);
+    for (const body of vcPanel.querySelectorAll('.cfg-body')) body.hidden = (body.id !== t.dataset.tab);
   });
+for (const inp of vcPanel.querySelectorAll('.cfg-num'))
+  inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
+for (const b of vcPanel.querySelectorAll('.cfg-tgl'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
+for (const b of vcPanel.querySelectorAll('.cfg-typebtn'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
+vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitchSel.value));
+vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = Math.round(vcFw.value * 100) + '%'; cfgSend('gps.headingFusionWeight', vcFw.value); });
+for (const b of vcPanel.querySelectorAll('.cfg-act'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
-// Fill the vehicle inputs from the config frame. force (on open) fills all; otherwise
-// skip the focused input so we don't clobber what the user is typing.
+// Populate every control from the config frame. force (on open) fills all; otherwise
+// skip the focused number input so we don't clobber what the user is typing.
 function populateVehicleCfg(force) {
   if (!config || !config.vehicle) return;
-  const v = config.vehicle;
-  vcName.textContent = v.name || '—';
-  for (const inp of vcPanel.querySelectorAll('.vc-in')) {
+  vcName.textContent = config.vehicle.name || '—';
+  for (const inp of vcPanel.querySelectorAll('.cfg-num')) {
     if (!force && document.activeElement === inp) continue;
-    const val = v[inp.dataset.key.split('.')[1]]; // "vehicle.<field>"
+    const val = cfgGet(inp.dataset.key);
     if (typeof val === 'number') inp.value = Math.round(val * 1000) / 1000;
   }
+  for (const b of vcPanel.querySelectorAll('.cfg-tgl')) {
+    const on = !!cfgGet(b.dataset.key);
+    b.classList.toggle('active', on);
+    b.textContent = on ? 'On' : 'Off';
+  }
+  for (const b of vcPanel.querySelectorAll('.cfg-typebtn'))
+    b.classList.toggle('active', String(cfgGet(b.dataset.key)) === b.dataset.val);
+  vcHitchSel.value = cfgGet('vehicle.hitchType');
+  const w = cfgGet('gps.headingFusionWeight') || 0;
+  vcFw.value = w; document.getElementById('vc-hfw').textContent = Math.round(w * 100) + '%';
+  // Dual-only fields are live only in Dual GPS mode; reverse detection only in single
+  // (mirrors the native enable/disable gating).
+  const dual = !!cfgGet('gps.isDualGps');
+  const setEn = (key, en) => { const el = vcPanel.querySelector('[data-key="' + key + '"]'); if (el) { el.disabled = !en; el.style.opacity = en ? '1' : '0.4'; } };
+  ['gps.dualHeadingOffset', 'gps.dualReverseDistance', 'gps.autoDualFix', 'gps.dualSwitchSpeed'].forEach(k => setEn(k, dual));
+  setEn('gps.reverseDetection', !dual);
 }
 function renderSettings() {
   if (statusBar) {
@@ -422,7 +473,86 @@ function renderSettings() {
   }
   // Re-read the vehicle panel when a fresh config frame arrives.
   if (configDirty) { configDirty = false; if (vcPanel.classList.contains('open')) populateVehicleCfg(false); }
+  // Re-read the hub when a fresh profiles frame arrives.
+  if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
 }
+
+// ---- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogViewModel ----
+const HUB = {
+  summary: document.getElementById('vth-summary'),
+  curVeh: document.getElementById('vth-curveh'), curTool: document.getElementById('vth-curtool'),
+  vehList: document.getElementById('vth-vehlist'), toolList: document.getElementById('vth-toollist'),
+  vehPrev: document.getElementById('vth-vehprev'), toolPrev: document.getElementById('vth-toolprev'),
+  vehName: document.getElementById('vth-vehname'), toolName: document.getElementById('vth-toolname'),
+  status: document.getElementById('vth-status'), load: document.getElementById('vth-load'),
+};
+function hubSend(cmd, arg) { transport.send(arg == null ? cmd : cmd + '|' + arg); }
+function fillHubList(sel, entries, activeName) {
+  const prev = sel.value;
+  sel.innerHTML = '';
+  for (const e of entries) {
+    const o = document.createElement('option');
+    o.value = e.name; o.textContent = e.name + (e.name === activeName ? '  ●' : '');
+    sel.appendChild(o);
+  }
+  sel.value = entries.some(e => e.name === prev) ? prev : activeName;
+}
+function hubPreview(entries, name) { const e = entries.find(x => x.name === name); return e ? e.preview : ''; }
+function hubUpdatePreviews() {
+  if (!profiles) return;
+  HUB.vehPrev.textContent = hubPreview(profiles.vehicles, HUB.vehList.value);
+  HUB.toolPrev.textContent = hubPreview(profiles.tools, HUB.toolList.value);
+  HUB.summary.textContent = 'Selected: ' + (HUB.vehList.value || profiles.activeVehicle) +
+    ' / ' + (HUB.toolList.value || profiles.activeTool);
+  HUB.load.disabled = (HUB.vehList.value === profiles.activeVehicle && HUB.toolList.value === profiles.activeTool);
+}
+function refreshHub() {
+  if (!profiles) return;
+  HUB.curVeh.textContent = 'Current: ' + profiles.activeVehicle;
+  HUB.curTool.textContent = 'Current: ' + profiles.activeTool;
+  fillHubList(HUB.vehList, profiles.vehicles, profiles.activeVehicle);
+  fillHubList(HUB.toolList, profiles.tools, profiles.activeTool);
+  hubUpdatePreviews();
+}
+HUB.vehList.addEventListener('change', () => { HUB.vehName.value = HUB.vehList.value; hubUpdatePreviews(); });
+HUB.toolList.addEventListener('change', () => { HUB.toolName.value = HUB.toolList.value; hubUpdatePreviews(); });
+for (const b of document.querySelectorAll('#vehtoolhub .hub-cbtn'))
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const kind = b.dataset.kind, act = b.dataset.act;
+    const list = kind === 'vehicle' ? HUB.vehList : HUB.toolList;
+    const nameInput = kind === 'vehicle' ? HUB.vehName : HUB.toolName;
+    if (act === 'new') {
+      const nm = (nameInput.value || '').trim();
+      if (!nm) { HUB.status.textContent = 'Type a name, then New'; return; }
+      hubSend('profile.new', kind + '\t' + nm); HUB.status.textContent = 'Creating ' + nm + '…';
+    } else if (act === 'delete') {
+      const nm = list.value;
+      if (nm && confirm('Delete ' + kind + " profile '" + nm + "'?")) hubSend('profile.delete', kind + '\t' + nm);
+    } else if (act === 'rename') {
+      const old = list.value, nw = (nameInput.value || '').trim();
+      if (!old || !nw) { HUB.status.textContent = 'Select a profile, type a new name, then Rename'; return; }
+      hubSend('profile.rename', kind + '\t' + old + '\t' + nw);
+    } else if (act === 'reset') {
+      if (confirm('Reset Default ' + kind + ' profile?')) hubSend('profile.reset', kind);
+    }
+  });
+HUB.load.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (HUB.load.disabled || !profiles) return;
+  hubSend('profile.load', (HUB.vehList.value || profiles.activeVehicle) + '\t' + (HUB.toolList.value || profiles.activeTool));
+  lnCloseAll(); // native closes the picker on load
+});
+document.getElementById('vth-vehconfig').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (HUB.vehList.value) hubSend('profile.configureVehicle', HUB.vehList.value);
+  lnOpen('vehiclecfg', 'ln-vehicle', () => populateVehicleCfg(true));
+});
+document.getElementById('vth-toolconfig').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (HUB.toolList.value) hubSend('profile.configureTool', HUB.toolList.value);
+  lnOpen('toolcfg', 'ln-vehicle');
+});
 
 // ---- remote actuation control (Phase 2 safety layer) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may

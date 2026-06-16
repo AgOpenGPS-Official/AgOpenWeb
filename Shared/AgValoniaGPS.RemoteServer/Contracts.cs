@@ -139,21 +139,51 @@ public record StatusDto(
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
-/// re-sent when the config fingerprint changes. Grows a section per sub-phase
-/// (9b Vehicle, 9c Tool, …); the wire stays append-only.</summary>
-public record ConfigDto(VehicleConfigDto Vehicle);
+/// re-sent when the config fingerprint changes. Grows a section per sub-phase;
+/// the wire stays append-only. The Vehicle config dialog = Vehicle + Gps + Roll.</summary>
+public record ConfigDto(VehicleConfigDto Vehicle, GpsConfigDto Gps, RollConfigDto Roll);
 
-/// <summary>Editable vehicle dimensions (metres / degrees as stored).</summary>
+/// <summary>Vehicle &amp; Tool picker hub (Phase 9): available profiles (name + preview)
+/// and the active pair. Seeded on connect, re-sent when the list/active/config changes.</summary>
+public record ProfilesDto(
+    string ActiveVehicle,
+    string ActiveTool,
+    IReadOnlyList<ProfileEntryDto> Vehicles,
+    IReadOnlyList<ProfileEntryDto> Tools);
+
+public record ProfileEntryDto(string Name, string Preview);
+
+/// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
 public record VehicleConfigDto(
     string Name,
+    int Type,            // VehicleType: 0 Tractor, 1 Harvester, 2 FourWD
+    int HitchType,       // code; index into HitchTypeOptions = HitchType + 1
+    double HitchLength,
     double Wheelbase,
     double TrackWidth,
-    double AntennaHeight,
     double AntennaPivot,
-    double AntennaOffset,
-    double HitchLength,
-    double MaxSteerAngle,
-    double MaxAngularVelocity);
+    double AntennaHeight,
+    double AntennaOffset);
+
+/// <summary>Data Sources → GPS tab (ConfigStore.Connections).</summary>
+public record GpsConfigDto(
+    bool IsDualGps,
+    double DualHeadingOffset,
+    double DualReverseDistance,
+    bool AutoDualFix,
+    double DualSwitchSpeed,
+    double MinGpsStep,
+    double FixToFixDistance,
+    double HeadingFusionWeight,
+    bool ReverseDetection,
+    bool RtkLostAlarm,
+    int RtkLostAction);  // 0 Warn, 1 Pause AutoSteer
+
+/// <summary>Data Sources → Roll tab (ConfigStore.Ahrs).</summary>
+public record RollConfigDto(
+    double RollZero,
+    double RollFilter,
+    bool IsRollInvert);
 
 /// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
 /// client compares HolderId to its own id (sent once in the Hello frame) to know

@@ -64,6 +64,58 @@ public class ConfigurationService(
         return toolProfileService.GetAvailableProfiles();
     }
 
+    public string GetVehicleProfilePreview(string name)
+    {
+        // Active profile already lives in the store — no disk read.
+        if (string.Equals(name, Store.ActiveVehicleProfileName, StringComparison.OrdinalIgnoreCase))
+            return FormatVehicle(Store);
+        // Non-active: read its file into a throwaway store (side-effect-free —
+        // quarantineOnFailure:false so previewing a damaged profile doesn't move it).
+        var temp = new ConfigurationStore();
+        bool ok = VehicleProfileJsonService.Load(ProfilesDirectory, name, temp, out _, out _, quarantineOnFailure: false)
+               || ProfileJsonServiceV1.Load(ProfilesDirectory, name, temp);
+        return ok ? FormatVehicle(temp) : $"Vehicle profile '{name}'\n(file not found / unreadable)";
+    }
+
+    public string GetToolProfilePreview(string name)
+    {
+        if (string.Equals(name, Store.ActiveToolProfileName, StringComparison.OrdinalIgnoreCase))
+            return FormatTool(Store);
+        var temp = new ConfigurationStore();
+        bool ok = ToolProfileJsonService.Load(ToolsDirectory, name, temp, out _, out _, quarantineOnFailure: false)
+               || ProfileJsonServiceV1.Load(ProfilesDirectory, name, temp);
+        return ok ? FormatTool(temp) : $"Tool profile '{name}'\n(file not found / unreadable)";
+    }
+
+    private static string FormatVehicle(ConfigurationStore store)
+    {
+        var v = store.Vehicle;
+        return
+            $"Type: {v.Type}\n" +
+            $"Wheelbase: {v.Wheelbase:F2} m\n" +
+            $"Track width: {v.TrackWidth:F2} m\n" +
+            $"Antenna height: {v.AntennaHeight:F2} m\n" +
+            $"Antenna pivot: {v.AntennaPivot:F2} m\n" +
+            $"Antenna offset: {v.AntennaOffset:F2} m\n" +
+            $"Max steer angle: {v.MaxSteerAngle:F1}°";
+    }
+
+    private static string FormatTool(ConfigurationStore store)
+    {
+        var t = store.Tool;
+        string attach = t.IsToolFrontFixed ? "Front fixed"
+                      : t.IsToolRearFixed ? "Rear fixed"
+                      : t.IsToolTrailing ? "Trailing"
+                      : "—";
+        return
+            $"Width: {t.Width:F2} m\n" +
+            $"Overlap: {t.Overlap:F2} m\n" +
+            $"Offset: {t.Offset:F2} m\n" +
+            $"Sections: {store.NumSections}\n" +
+            $"Min coverage: {t.MinCoverage}%\n" +
+            $"Attach: {attach}";
+    }
+
     /// <summary>
     /// Convenience: load a vehicle and a tool profile that share the same
     /// name. The legacy single-profile callers and the same-name save

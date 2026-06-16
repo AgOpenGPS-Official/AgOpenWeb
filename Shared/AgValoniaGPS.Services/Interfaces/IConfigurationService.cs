@@ -56,6 +56,16 @@ public interface IConfigurationService
     IReadOnlyList<string> GetAvailableToolProfiles();
 
     /// <summary>
+    /// A short multi-line summary of a vehicle profile (type, wheelbase, antenna, …)
+    /// for the picker preview. The active profile reads the live store; others read
+    /// their file side-effect-free. Used by the picker VM and the web-UI projector.
+    /// </summary>
+    string GetVehicleProfilePreview(string name);
+
+    /// <summary>Tool-profile counterpart of <see cref="GetVehicleProfilePreview"/>.</summary>
+    string GetToolProfilePreview(string name);
+
+    /// <summary>
     /// Loads a vehicle profile and a tool profile by name (#346 split).
     /// Transparently recovers from each file's <c>.bak</c> last-known-good copy
     /// when the primary is damaged; <see cref="LastRecovery"/> reports whether

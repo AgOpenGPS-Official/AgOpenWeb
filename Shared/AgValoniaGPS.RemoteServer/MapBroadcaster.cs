@@ -21,6 +21,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _sceneVersion;
     private long _lastFingerprint = long.MinValue;
     private long _lastConfigFp = long.MinValue;
+    private long _lastProfilesFp = long.MinValue;
     private SceneDto _currentScene;
     private Task? _loop;
 
@@ -52,6 +53,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeScene(_currentScene),
             WireCodec.EncodeStatus(_projector.BuildStatus()),
             WireCodec.EncodeConfig(_projector.BuildConfig()),
+            WireCodec.EncodeProfiles(_projector.BuildProfiles()),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -135,6 +137,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 {
                     _lastConfigFp = cfp;
                     await _ws.BroadcastAsync(WireCodec.EncodeConfig(_projector.BuildConfig()), ct).ConfigureAwait(false);
+                }
+
+                // Profiles read-frame (picker hub): list / active pair / preview changes.
+                var pfp = _projector.ProfilesFingerprint();
+                if (pfp != _lastProfilesFp)
+                {
+                    _lastProfilesFp = pfp;
+                    await _ws.BroadcastAsync(WireCodec.EncodeProfiles(_projector.BuildProfiles()), ct).ConfigureAwait(false);
                 }
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)

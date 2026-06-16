@@ -17,10 +17,11 @@ public sealed class SceneProjector
     private readonly ConfigurationStore _config;
     private readonly ICoverageMapService _coverage;
     private readonly IJobService _jobs;
+    private readonly IConfigurationService _configService;
 
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
-        ICoverageMapService coverage, IJobService jobs)
+        ICoverageMapService coverage, IJobService jobs, IConfigurationService configService)
     {
         _state = state;
         _sections = sections;
@@ -28,6 +29,7 @@ public sealed class SceneProjector
         _config = config;
         _coverage = coverage;
         _jobs = jobs;
+        _configService = configService;
     }
 
     public SceneDto BuildScene(long version)
@@ -238,20 +240,58 @@ public sealed class SceneProjector
     public ConfigDto BuildConfig()
     {
         var v = _config.Vehicle;
-        return new ConfigDto(new VehicleConfigDto(
-            v.Name, v.Wheelbase, v.TrackWidth, v.AntennaHeight, v.AntennaPivot,
-            v.AntennaOffset, v.HitchLength, v.MaxSteerAngle, v.MaxAngularVelocity));
+        var c = _config.Connections;
+        var a = _config.Ahrs;
+        return new ConfigDto(
+            new VehicleConfigDto(v.Name, (int)v.Type, v.HitchType, v.HitchLength, v.Wheelbase,
+                v.TrackWidth, v.AntennaPivot, v.AntennaHeight, v.AntennaOffset),
+            new GpsConfigDto(c.IsDualGps, c.DualHeadingOffset, c.DualReverseDistance, c.AutoDualFix,
+                c.DualSwitchSpeed, c.MinGpsStep, c.FixToFixDistance, c.HeadingFusionWeight,
+                c.ReverseDetection, c.RtkLostAlarm, c.RtkLostAction),
+            new RollConfigDto(a.RollZero, a.RollFilter, a.IsRollInvert));
+    }
+
+    // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
+    // vehicle/tool profiles (name + preview) and the active pair.
+    public ProfilesDto BuildProfiles()
+    {
+        var vehicles = _configService.GetAvailableProfiles()
+            .OrderBy(s => s, System.StringComparer.OrdinalIgnoreCase)
+            .Select(n => new ProfileEntryDto(n, _configService.GetVehicleProfilePreview(n))).ToList();
+        var tools = _configService.GetAvailableToolProfiles()
+            .OrderBy(s => s, System.StringComparer.OrdinalIgnoreCase)
+            .Select(n => new ProfileEntryDto(n, _configService.GetToolProfilePreview(n))).ToList();
+        return new ProfilesDto(_config.ActiveVehicleProfileName, _config.ActiveToolProfileName, vehicles, tools);
+    }
+
+    // Re-send the Profiles frame when the list, the active pair, or the active config
+    // changes (so the active profile's preview stays live). Names + active + config fp.
+    public long ProfilesFingerprint()
+    {
+        long h = 17;
+        foreach (var n in _configService.GetAvailableProfiles()) h = h * 31 + n.GetHashCode();
+        h = h * 31 + 7;
+        foreach (var n in _configService.GetAvailableToolProfiles()) h = h * 31 + n.GetHashCode();
+        h = h * 31 + _config.ActiveVehicleProfileName.GetHashCode();
+        h = h * 31 + _config.ActiveToolProfileName.GetHashCode();
+        return h * 31 + ConfigFingerprint();
     }
 
     // Change-detector so the broadcaster re-sends Config only when an editable value
     // actually changes (e.g. the user edits a field, or a profile loads).
     public long ConfigFingerprint()
     {
-        var v = _config.Vehicle;
+        var v = _config.Vehicle; var c = _config.Connections; var a = _config.Ahrs;
         long h = 17;
         h = h * 31 + v.Name.GetHashCode();
-        foreach (var d in new[] { v.Wheelbase, v.TrackWidth, v.AntennaHeight, v.AntennaPivot,
-                                  v.AntennaOffset, v.HitchLength, v.MaxSteerAngle, v.MaxAngularVelocity })
+        h = h * 31 + (int)v.Type * 31 + v.HitchType;
+        h = h * 31 + (c.IsDualGps ? 1 : 0) * 7 + (c.AutoDualFix ? 1 : 0) * 11
+                   + (c.ReverseDetection ? 1 : 0) * 13 + (c.RtkLostAlarm ? 1 : 0) * 17
+                   + c.RtkLostAction * 19 + (a.IsRollInvert ? 1 : 0) * 23;
+        foreach (var d in new[] { v.HitchLength, v.Wheelbase, v.TrackWidth, v.AntennaPivot,
+                                  v.AntennaHeight, v.AntennaOffset, c.DualHeadingOffset,
+                                  c.DualReverseDistance, c.DualSwitchSpeed, c.MinGpsStep,
+                                  c.FixToFixDistance, c.HeadingFusionWeight, a.RollZero, a.RollFilter })
             h = h * 31 + d.GetHashCode();
         return h;
     }

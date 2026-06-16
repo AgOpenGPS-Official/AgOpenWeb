@@ -83,7 +83,8 @@ public partial class App : Application
             Services.GetRequiredService<ISectionControlService>(),
             Services.GetRequiredService<IToolPositionService>(),
             Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
-            Services.GetRequiredService<IJobService>());
+            Services.GetRequiredService<IJobService>(),
+            Services.GetRequiredService<IConfigurationService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);
@@ -176,6 +177,14 @@ public partial class App : Application
                                 case "profile.save": // persist active vehicle+tool profiles (Phase 9b)
                                     var cs = Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>();
                                     configService.SaveProfiles(cs.ActiveVehicleProfileName, cs.ActiveToolProfileName);
+                                    return;
+                                // --- Vehicle & Tool picker hub (Phase 9). Args are tab-separated. ---
+                                case "profile.load": case "profile.new": case "profile.delete":
+                                case "profile.rename": case "profile.reset":
+                                case "profile.configureVehicle": case "profile.configureTool":
+                                    ApplyProfileCommand(
+                                        Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
+                                        configService, cmd, arg);
                                     return;
                             }
 
@@ -316,20 +325,93 @@ public partial class App : Application
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         bool D(out double d) => double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out d);
-        var veh = store.Vehicle;
+        bool I(out int i) => int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out i);
+        bool B() => val == "1";
+        var veh = store.Vehicle; var con = store.Connections; var ahrs = store.Ahrs;
         switch (key)
         {
             case "units": store.IsMetric = val == "metric"; cfg.SaveAppSettings(); return; // device setting
-            // Vehicle config (Phase 9b). Live effect; persisted by a profile.save.
-            case "vehicle.wheelbase": if (D(out var d1)) veh.Wheelbase = d1; return;
-            case "vehicle.trackWidth": if (D(out var d2)) veh.TrackWidth = d2; return;
-            case "vehicle.antennaHeight": if (D(out var d3)) veh.AntennaHeight = d3; return;
+            // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
+            case "vehicle.type": if (I(out var ty)) veh.Type = (AgValoniaGPS.Models.VehicleType)ty; return;
+            case "vehicle.hitchType": if (I(out var ht)) veh.HitchType = ht; return;
+            case "vehicle.hitchLength": if (D(out var d1)) veh.HitchLength = d1; return;
+            case "vehicle.wheelbase": if (D(out var d2)) veh.Wheelbase = d2; return;
+            case "vehicle.trackWidth": if (D(out var d3)) veh.TrackWidth = d3; return;
             case "vehicle.antennaPivot": if (D(out var d4)) veh.AntennaPivot = d4; return;
-            case "vehicle.antennaOffset": if (D(out var d5)) veh.AntennaOffset = d5; return;
-            case "vehicle.hitchLength": if (D(out var d6)) veh.HitchLength = d6; return;
-            case "vehicle.maxSteerAngle": if (D(out var d7)) veh.MaxSteerAngle = d7; return;
-            case "vehicle.maxAngularVelocity": if (D(out var d8)) veh.MaxAngularVelocity = d8; return;
+            case "vehicle.antennaHeight": if (D(out var d5)) veh.AntennaHeight = d5; return;
+            case "vehicle.antennaOffset": if (D(out var d6)) veh.AntennaOffset = d6; return;
+            case "vehicle.antennaSide": // L/C/R presets (mirror ConfigurationViewModel)
+                if (val == "center") veh.AntennaOffset = 0;
+                else if (val == "left") veh.AntennaOffset = System.Math.Abs(veh.AntennaOffset) < 0.01 ? -0.5 : -System.Math.Abs(veh.AntennaOffset);
+                else if (val == "right") veh.AntennaOffset = System.Math.Abs(veh.AntennaOffset) < 0.01 ? 0.5 : System.Math.Abs(veh.AntennaOffset);
+                return;
+            // --- GPS data source (ConfigStore.Connections) ---
+            case "gps.isDualGps": con.IsDualGps = B(); return;
+            case "gps.dualHeadingOffset": if (D(out var g1)) con.DualHeadingOffset = g1; return;
+            case "gps.dualReverseDistance": if (D(out var g2)) con.DualReverseDistance = g2; return;
+            case "gps.autoDualFix": con.AutoDualFix = B(); return;
+            case "gps.dualSwitchSpeed": if (D(out var g3)) con.DualSwitchSpeed = g3; return;
+            case "gps.minGpsStep": if (D(out var g4)) con.MinGpsStep = g4; return;
+            case "gps.fixToFixDistance": if (D(out var g5)) con.FixToFixDistance = g5; return;
+            case "gps.headingFusionWeight": if (D(out var g6)) con.HeadingFusionWeight = g6; return;
+            case "gps.reverseDetection": con.ReverseDetection = B(); return;
+            case "gps.rtkLostAlarm": con.RtkLostAlarm = B(); return;
+            case "gps.rtkLostAction": if (I(out var ra)) con.RtkLostAction = ra; return;
+            // --- Roll / AHRS (ConfigStore.Ahrs) ---
+            case "roll.rollZero": if (D(out var r1)) ahrs.RollZero = r1; return;
+            case "roll.rollFilter": if (D(out var r2)) ahrs.RollFilter = r2; return;
+            case "roll.isRollInvert": ahrs.IsRollInvert = B(); return;
+            case "roll.setZero": ahrs.RollZero = 0; return; // mirror SetRollZeroCommand
             // unknown key → ignored
+        }
+    }
+
+    // Vehicle & Tool picker hub (Phase 9). Mirrors LoadVehicleToolDialogViewModel's
+    // orchestration against IConfigurationService (the VM is dialog-scoped + Avalonia-
+    // bound, so the web can't use it). Confirmations happen client-side. Args are
+    // tab-separated; the leading field (where present) is the kind "vehicle"/"tool".
+    private static void ApplyProfileCommand(AgValoniaGPS.Models.Configuration.ConfigurationStore store,
+        AgValoniaGPS.Services.Interfaces.IConfigurationService cfg, string cmd, string arg)
+    {
+        var a = arg.Split('\t');
+        switch (cmd)
+        {
+            case "profile.load": // <vehicle>\t<tool> — save the outgoing pair, then load
+                if (a.Length == 2)
+                {
+                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
+                    cfg.LoadProfiles(a[0], a[1]);
+                }
+                return;
+            case "profile.new": // <kind>\t<name> — duplicate the live store under a new name
+                if (a.Length == 2 && a[0] == "vehicle") cfg.SaveProfiles(a[1], store.ActiveToolProfileName);
+                else if (a.Length == 2 && a[0] == "tool") cfg.SaveProfiles(store.ActiveVehicleProfileName, a[1]);
+                return;
+            case "profile.delete": // <kind>\t<name>
+                if (a.Length == 2 && a[0] == "vehicle") cfg.DeleteVehicleProfile(a[1]);
+                else if (a.Length == 2 && a[0] == "tool") cfg.DeleteToolProfile(a[1]);
+                return;
+            case "profile.rename": // <kind>\t<old>\t<new>
+                if (a.Length == 3 && a[0] == "vehicle") cfg.RenameVehicleProfile(a[1], a[2]);
+                else if (a.Length == 3 && a[0] == "tool") cfg.RenameToolProfile(a[1], a[2]);
+                return;
+            case "profile.reset": // <kind> — CreateProfile("Default") (matches Reset-to-Default)
+                cfg.CreateProfile("Default");
+                return;
+            case "profile.configureVehicle": // <name> — make it active before the dialog opens
+                if (!string.Equals(arg, store.ActiveVehicleProfileName, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
+                    cfg.LoadProfiles(arg, store.ActiveToolProfileName);
+                }
+                return;
+            case "profile.configureTool": // <name>
+                if (!string.Equals(arg, store.ActiveToolProfileName, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
+                    cfg.LoadProfiles(store.ActiveVehicleProfileName, arg);
+                }
+                return;
         }
     }
 

@@ -17,7 +17,21 @@ namespace AgValoniaGPS.RemoteServer;
 public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
-        ControlState = 6, Hello = 7, Config = 8;
+        ControlState = 6, Hello = 7, Config = 8, Profiles = 9;
+
+    public static byte[] EncodeProfiles(ProfilesDto p)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Profiles);
+        WriteStr(w, p.ActiveVehicle);
+        WriteStr(w, p.ActiveTool);
+        w.Write(p.Vehicles.Count);
+        foreach (var e in p.Vehicles) { WriteStr(w, e.Name); WriteStr(w, e.Preview); }
+        w.Write(p.Tools.Count);
+        foreach (var e in p.Tools) { WriteStr(w, e.Name); WriteStr(w, e.Preview); }
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeConfig(ConfigDto c)
     {
@@ -26,14 +40,30 @@ public static class WireCodec
         w.Write(Config);
         var v = c.Vehicle;
         WriteStr(w, v.Name);
-        w.Write(v.Wheelbase);          // f64
+        w.Write(v.Type);               // i32
+        w.Write(v.HitchType);          // i32
+        w.Write(v.HitchLength);        // f64
+        w.Write(v.Wheelbase);
         w.Write(v.TrackWidth);
-        w.Write(v.AntennaHeight);
         w.Write(v.AntennaPivot);
+        w.Write(v.AntennaHeight);
         w.Write(v.AntennaOffset);
-        w.Write(v.HitchLength);
-        w.Write(v.MaxSteerAngle);
-        w.Write(v.MaxAngularVelocity);
+        var g = c.Gps;
+        w.Write((byte)(g.IsDualGps ? 1 : 0));
+        w.Write(g.DualHeadingOffset);  // f64
+        w.Write(g.DualReverseDistance);
+        w.Write((byte)(g.AutoDualFix ? 1 : 0));
+        w.Write(g.DualSwitchSpeed);
+        w.Write(g.MinGpsStep);
+        w.Write(g.FixToFixDistance);
+        w.Write(g.HeadingFusionWeight);
+        w.Write((byte)(g.ReverseDetection ? 1 : 0));
+        w.Write((byte)(g.RtkLostAlarm ? 1 : 0));
+        w.Write(g.RtkLostAction);      // i32
+        var r = c.Roll;
+        w.Write(r.RollZero);           // f64
+        w.Write(r.RollFilter);
+        w.Write((byte)(r.IsRollInvert ? 1 : 0));
         return ms.ToArray();
     }
 
