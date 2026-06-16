@@ -68,7 +68,7 @@ window.RemoteTransport = {
           const pose = { e: f64(), n: f64(), heading: f32(), speed: f32() };
           const fix = u8();
           const sn = i32(); const sections = new Array(sn);
-          for (let k = 0; k < sn; k++) sections[k] = u8(); // 0=off, 1=auto-on, 2=manual-on
+          for (let k = 0; k < sn; k++) sections[k] = u8(); // ColorCode 0..5 (see SECTION_COLORS)
           const crossTrackError = f32(), guidanceActive = !!u8(), lineLabel = str();
           const atn = str();
           const tool = { e: f64(), n: f64(), heading: f32(), ready: !!u8() };

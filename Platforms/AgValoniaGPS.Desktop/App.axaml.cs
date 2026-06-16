@@ -161,6 +161,11 @@ public partial class App : Application
                                         && double.TryParse(parts[1], num, inv, out var lon))
                                         windowVm.SetSimulatorCoordinates(lat, lon);
                                     return;
+                                case "section.toggle": // Tier-2 (gated); cycle one section
+                                    if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)
+                                        && windowVm.ToggleSectionCommand?.CanExecute(si) == true)
+                                        windowVm.ToggleSectionCommand.Execute(si);
+                                    return;
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch

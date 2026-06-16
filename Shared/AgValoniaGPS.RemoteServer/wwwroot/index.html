@@ -68,12 +68,16 @@
       color: #cfe3ff; font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
-    /* Simulator bar (Phase 6) — mirrors the native SimulatorPanel: a single
-       horizontal bar centred above the bottom edge. Hidden until launched. */
-    #simbar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-      display: none; align-items: center; gap: 4px; padding: 6px 8px; box-sizing: border-box;
+    /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
+       StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
+       independently and the column re-flows. */
+    #bottomstack { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      pointer-events: none; z-index: 10; }
+    /* Simulator bar (Phase 6) — a single horizontal bar. Hidden until launched. */
+    #simbar { display: none; align-items: center; gap: 4px; padding: 6px 8px; box-sizing: border-box;
       background: rgba(20,24,33,0.92); border: 1px solid #2a3550; border-radius: 12px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation; pointer-events: auto;
       -webkit-user-select: none; user-select: none; }
     #simbar.open { display: flex; }
     .sim-btn { min-width: 38px; height: 40px; padding: 0 8px; border-radius: 6px;
@@ -91,12 +95,22 @@
     .sim-slider { width: 150px; accent-color: #4A90D9; cursor: pointer; }
     .sim-val { width: 46px; text-align: center; color: #9fb3cc; font: 600 11px ui-monospace, monospace; }
     .sim-speed { width: 78px; text-align: center; color: #e7eef9; font: 700 12px system-ui, sans-serif; }
-    /* Launcher chip — visible only while the sim bar is closed. */
-    #sim-launch { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-      display: none; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid #2a3550;
-      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 700 13px system-ui, sans-serif;
-      cursor: pointer; touch-action: manipulation; }
+    /* Launcher chip — visible only while the sim bar is closed (top stack slot). */
+    #sim-launch { display: none; height: 34px; padding: 0 16px; border-radius: 10px;
+      border: 1px solid #2a3550; background: rgba(28,34,48,0.82); color: #cfe3ff;
+      font: 700 13px system-ui, sans-serif; cursor: pointer; touch-action: manipulation;
+      pointer-events: auto; }
     #sim-launch.show { display: block; }
+    /* Section bar (Phase 7) — colour-coded per-section buttons, one or more rows. */
+    #sectionbar { display: none; flex-direction: column; align-items: center; gap: 4px;
+      padding: 8px; border-radius: 10px; background: rgba(20,24,33,0.92);
+      border: 1px solid #2a3550; box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+      pointer-events: auto; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+    #sectionbar.open { display: flex; }
+    #sectionbar.locked { opacity: 0.5; } /* dimmed when this client doesn't hold control */
+    #sectionbar .sec-row { display: flex; gap: 3px; }
+    #sectionbar .sec-btn { width: 46px; height: 38px; border: 2px solid #11151c; border-radius: 0;
+      color: #202020; font: 700 13px system-ui, sans-serif; cursor: pointer; padding: 0; }
     /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
     #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
       justify-content: center; z-index: 50; }
@@ -256,31 +270,41 @@
     </div>
   </div>
   <div id="clock">--:--:--</div>
-  <!-- Simulator bar (Phase 6): mirrors the native SimulatorPanel. Toggled open by
-       #sim-launch; drives the host sim via client->host commands. Sim is Tier-1
-       (hardware-safe), so these aren't gated by control authority. -->
-  <div id="simbar">
-    <button id="sim-enable" class="sim-toggle" data-cmd="sim.toggleEnable" title="Simulator on/off">SIM</button>
-    <span class="sim-sep"></span>
-    <button id="sim-gps" class="sim-btn" title="Enter GPS coordinates (disable sim first)">GPS</button>
-    <button id="sim-reset" class="sim-btn" data-cmd="sim.reset" title="Reset position">RST</button>
-    <span class="sim-sep"></span>
-    <button id="sim-steerl" class="sim-btn" data-cmd="sim.steerLeft" title="Steer left 0.5°">L</button>
-    <input id="sim-steer" class="sim-slider" type="range" min="-40" max="40" step="0.5" value="0" title="Steering angle (0.5° steps)">
-    <button id="sim-steerr" class="sim-btn" data-cmd="sim.steerRight" title="Steer right 0.5°">R</button>
-    <span id="sim-steerval" class="sim-val">0.0°</span>
-    <button id="sim-steerreset" class="sim-btn" data-cmd="sim.steerReset" title="Reset steering to 0">&gt;0&lt;</button>
-    <span class="sim-sep"></span>
-    <button id="sim-speeddown" class="sim-btn" data-cmd="sim.speedDown" title="Slower (−0.5 kph)">▼</button>
-    <span id="sim-speedval" class="sim-speed">0.0 kph</span>
-    <button id="sim-speedup" class="sim-btn" data-cmd="sim.speedUp" title="Faster (+0.5 kph)">▲</button>
-    <button id="sim-stop" class="sim-btn sim-stopbtn" data-cmd="sim.stop" title="Stop">STOP</button>
-    <button id="sim-10x" class="sim-toggle" data-cmd="sim.toggle10x" title="10× speed multiplier">10x</button>
-    <span class="sim-sep"></span>
-    <button id="sim-reverse" class="sim-btn" data-cmd="sim.reverseDir" title="Reverse direction (flip 180°)">⇅</button>
-    <button id="sim-close" class="sim-btn sim-closebtn" title="Close">✕</button>
+  <!-- Bottom-centre stack (mirrors the native StackPanel): simulator bar above the
+       section bar above the bottom nav (Phase 8). Each row toggles its own
+       visibility; the column re-flows. -->
+  <div id="bottomstack">
+    <button id="sim-launch" title="Open simulator">SIM</button>
+    <!-- Simulator bar (Phase 6): mirrors the native SimulatorPanel. Toggled open by
+         #sim-launch; drives the host sim via client->host commands. Sim is Tier-1
+         (hardware-safe), so these aren't gated by control authority. -->
+    <div id="simbar">
+      <button id="sim-enable" class="sim-toggle" data-cmd="sim.toggleEnable" title="Simulator on/off">SIM</button>
+      <span class="sim-sep"></span>
+      <button id="sim-gps" class="sim-btn" title="Enter GPS coordinates (disable sim first)">GPS</button>
+      <button id="sim-reset" class="sim-btn" data-cmd="sim.reset" title="Reset position">RST</button>
+      <span class="sim-sep"></span>
+      <button id="sim-steerl" class="sim-btn" data-cmd="sim.steerLeft" title="Steer left 0.5°">L</button>
+      <input id="sim-steer" class="sim-slider" type="range" min="-40" max="40" step="0.5" value="0" title="Steering angle (0.5° steps)">
+      <button id="sim-steerr" class="sim-btn" data-cmd="sim.steerRight" title="Steer right 0.5°">R</button>
+      <span id="sim-steerval" class="sim-val">0.0°</span>
+      <button id="sim-steerreset" class="sim-btn" data-cmd="sim.steerReset" title="Reset steering to 0">&gt;0&lt;</button>
+      <span class="sim-sep"></span>
+      <button id="sim-speeddown" class="sim-btn" data-cmd="sim.speedDown" title="Slower (−0.5 kph)">▼</button>
+      <span id="sim-speedval" class="sim-speed">0.0 kph</span>
+      <button id="sim-speedup" class="sim-btn" data-cmd="sim.speedUp" title="Faster (+0.5 kph)">▲</button>
+      <button id="sim-stop" class="sim-btn sim-stopbtn" data-cmd="sim.stop" title="Stop">STOP</button>
+      <button id="sim-10x" class="sim-toggle" data-cmd="sim.toggle10x" title="10× speed multiplier">10x</button>
+      <span class="sim-sep"></span>
+      <button id="sim-reverse" class="sim-btn" data-cmd="sim.reverseDir" title="Reverse direction (flip 180°)">⇅</button>
+      <button id="sim-close" class="sim-btn sim-closebtn" title="Close">✕</button>
+    </div>
+    <!-- Section bar (Phase 7): per-section colour buttons (rebuilt to match the
+         section count); each tap cycles that section Off->Auto->On (Tier-2, gated).
+         Shown when a field is open AND a master (auto/manual) is engaged. Rows are
+         built dynamically by renderSectionBar (≤16/row, split like the native). -->
+    <div id="sectionbar"></div>
   </div>
-  <button id="sim-launch" title="Open simulator">SIM</button>
   <!-- Dialog host (Phase 6): the web mirror of DialogOverlayHost — one modal at a
        time over a dimming backdrop. SimCoords is the first dialog; later phases add
        more cards into this same host. -->

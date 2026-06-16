@@ -325,6 +325,18 @@ document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
   closeDialog();
 });
 
+// ---- section bar (Phase 7) — per-section colour strip + manual toggle ----
+// Read state (per-section ColorCode + master/manual mode) already rides the Tick;
+// each tap cycles one section Off->Auto->On (Tier-2 — gated by control authority on
+// both ends). Buttons are (re)built when the section count changes; colours update
+// per frame. Delegated click handler reads the section index off data-idx.
+const sectionBar = document.getElementById('sectionbar');
+sectionBar.addEventListener('pointerdown', e => {
+  e.stopPropagation(); // don't pan the map
+  const btn = e.target.closest('button[data-idx]');
+  if (btn && iHoldControl) transport.send('section.toggle|' + btn.dataset.idx);
+});
+
 // ---- remote actuation control (Phase 2 safety layer) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may
 // actuate; the holder must heartbeat (presence) or the host revokes it (deadman).
@@ -725,6 +737,40 @@ function renderSimBar() {
   SIM.gps.disabled = !!s.simEnabled;
   SIM.gps.style.opacity = s.simEnabled ? '0.4' : '1';
 }
+// Section bar (Phase 7). Rebuild rows when the count changes; split rows like the
+// native RebuildSectionRows: ceil(n/16) rows, top rows get the extra when uneven.
+let _secCount = -1;
+function buildSectionRows(n) {
+  sectionBar.innerHTML = '';
+  const rows = Math.ceil(n / 16);             // 1..4
+  const base = Math.floor(n / rows), rem = n % rows; // first `rem` rows get +1
+  let idx = 0;
+  for (let r = 0; r < rows; r++) {
+    const count = base + (r < rem ? 1 : 0);
+    const row = document.createElement('div');
+    row.className = 'sec-row';
+    for (let k = 0; k < count; k++, idx++) {
+      const b = document.createElement('button');
+      b.className = 'sec-btn';
+      b.dataset.idx = idx;
+      b.textContent = idx + 1;                // 1-based section number
+      row.appendChild(b);
+    }
+    sectionBar.appendChild(row);
+  }
+}
+function renderSectionBar() {
+  // Native gate: field open AND a master (auto or manual) engaged.
+  const secs = tick && tick.sections;
+  const visible = !!(scene && scene.hasField && tick && tick.op
+    && (tick.op.sectionManual || tick.op.sectionAuto) && secs && secs.length);
+  sectionBar.classList.toggle('open', visible);
+  if (!visible) { _secCount = -1; return; } // force a rebuild when it reappears
+  if (secs.length !== _secCount) { buildSectionRows(secs.length); _secCount = secs.length; }
+  for (const b of sectionBar.querySelectorAll('button[data-idx]'))
+    b.style.background = SECTION_COLORS[secs[+b.dataset.idx]] || SECTION_COLORS[0];
+  sectionBar.classList.toggle('locked', !iHoldControl); // dim when we can't actuate
+}
 
 // Right-nav operational toolbar (Phase 3a: read-only live indicators; 3b wires the
 // Tier-2 commands). Colour-coded from the Tick's operational state.
@@ -1123,6 +1169,7 @@ function skFrame() {
   updateLightbarText();
   renderStatusBar();
   renderSimBar();
+  renderSectionBar();
   renderRightNav();
   renderRoll();
   renderCampad();
