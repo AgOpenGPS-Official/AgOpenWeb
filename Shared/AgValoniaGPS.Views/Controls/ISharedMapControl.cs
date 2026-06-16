@@ -52,7 +52,6 @@ public interface ISharedMapControl
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady);
     void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[]? buttonStates = null);
-    void SetGridVisible(bool visible);
     void SetNorthUp(bool isNorthUp);
     void SetDayMode(bool isDayMode);
     void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points);
@@ -122,9 +121,6 @@ public interface ISharedMapControl
     ushort[]? GetCoveragePixelBuffer();
     void SetCoveragePixelBuffer(ushort[] pixels);
     (int Width, int Height, double CellSize)? GetDisplayBitmapInfo();
-
-    // Grid visibility property
-    bool IsGridVisible { get; set; }
 
     // Flag markers on the map
     void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags);

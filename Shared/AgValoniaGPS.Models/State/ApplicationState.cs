@@ -44,7 +44,6 @@ public class ApplicationState : ObservableObject
     // Domain state objects
     public VehicleState Vehicle { get; } = new();
     public GuidanceState Guidance { get; } = new();
-    public SectionState Sections { get; } = new();
     public ConnectionState Connections { get; } = new();
     public FieldState Field { get; } = new();
     public YouTurnState YouTurn { get; } = new();
@@ -62,7 +61,6 @@ public class ApplicationState : ObservableObject
     {
         Vehicle.Reset();
         Guidance.Reset();
-        Sections.Reset();
         YouTurn.Reset();
         RecordedPath.Reset();
         BoundaryRec.Reset();

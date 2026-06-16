@@ -459,3 +459,83 @@ so this class can't silently regrow.
 mirrors), and §12.4 (cross-state/sim) all resolved. Domain-typed VM shadows **and** primitive display
 mirrors are now zero; the only remaining intentional cross-state reference (`GuidanceState.ActiveTrack`)
 is a documented, tested observable-mirror. `StateShadowGuardTests` guards domain-typed regrowth in CI.
+
+### 12.7 `SectionState` per-section on/off was dead (never written) — ✅ RESOLVED
+
+`ApplicationState.Sections` (`SectionState`) held per-section on/off flags
+(`_sectionActive[]`, `Section1..8Active`, `GetSectionActive`/`SetSectionActive`/`SetAllSections`/
+`GetAllSectionsAsBits`) plus `ActiveSectionCount`, `NumberOfSections`, `IsMasterOn`,
+`IsManualMode`/`IsAutoMode`, `IsSectionControlInHeadland` — **every member verified dead**
+(0 production writers, 0 production readers). The authoritative per-section on/off is
+`ISectionControlService.SectionStates[i].IsOn` (the source coverage paints from); every consumer
+already reads that.
+
+**Resolved (2026-06-16, `audit/config-apply-gap` v26.5.49):** decision = **delete** (mirrors the
+§12.4 `SimulatorState` deletion). Removed the whole `SectionState` class (file deleted) +
+`ApplicationState.Sections` property + its `Reset()` call. 1504 tests green.
+
+---
+
+## 13. Config flags persist but aren't applied to the live renderer/behavior — ✅ MOSTLY RESOLVED
+
+A **distinct axis** from §1–§12: the **apply gap**. Several `ConfigStore.Display.*` flags persist
+correctly but nothing connected them to the running map/behavior, so toggling them (from the
+Settings / Screen-&-Alerts panel — and the web client, which writes the same flag the menu binds to)
+did nothing on the **native** app. Surfaced by the web-UI Screen & Alerts work; the web is faithful —
+this was native config→renderer wiring.
+
+### 13.1 Display toggles disconnected from the renderer
+
+- **Grid** — three reps (`Display.GridVisible` / `_displaySettings.IsGridOn` /
+  `SkiaMapControl.IsGridVisible` StyledProperty); the renderer read only the StyledProperty, pushed
+  only from the *on-screen-button* path, so the *Settings* toggle was dead. **Fixed:** collapsed to one
+  source — the map control reads `ConfigStore.Display.GridVisible` directly and repaints on
+  `Display.PropertyChanged`. Deleted the `IsGridVisible` StyledProperty + `SetGridVisible` from the
+  control, both interfaces (`ISharedMapControl`, `IMapService`, iOS `IMapControl`), all 3 platform
+  `MapService` impls, and the Desktop/iOS/Android push/binding sites. Both toggles now drive the SoT.
+- **Svenn Arrow** (`Display.SvennArrowVisible`), **Headland-Distance HUD**
+  (`Display.HeadlandDistanceVisible`), **Extra Guidelines** (`Display.ExtraGuidelines` + count) — these
+  had config flags + UI toggles + unused `MapRenderState` fields but **no draw code anywhere**.
+  **Implemented** (ported from AgOpenGPS): Extra Guidelines (parallel reference lines either side of the
+  active track, green over black shadow, zoom-gated); Svenn lookahead arrow (yellow triangle ahead of
+  the wheelbase, sized off the visible world span); Headland HUD (screen-space rounded box, yellow /
+  red-on-warning, **displaying the pipeline's already-computed `HeadlandProximityDistance`** —
+  `State.Field.HeadlandProximityDistance`, not a renderer recompute).
+- **The backbone:** a single `ConfigStore.Display.PropertyChanged` subscription in `SkiaMapControl`
+  now triggers a repaint, so every `displayCfg`-sourced flag (grid, Svenn, headland HUD, extra
+  guidelines, field texture, line smoothing) applies **live**, from either the on-screen buttons or
+  the Settings panel.
+- **Display Quality** (`Display.DisplayResolutionMultiplier`) — ⏳ **still open.** It *is* applied, but
+  only at coverage-bitmap **init** (field open); changing it mid-session has no live effect because
+  that needs a coverage-bitmap rebuild + reprojection (a coverage-system change, not a draw wire).
+  Tracked as its own follow-up to avoid a rushed coverage rebuild.
+
+### 13.2 Cross-wiring side effect — ✅ RESOLVED
+
+Toggling `Display.UTurnButtonVisible` (a *display-visibility* preference) also hid the right-nav
+auto-U-turn **arming** toggle (`ToggleYouTurnCommand`, the only control that enables auto-uturn),
+making the behavior unreachable. **Fixed:** `IsUTurnButtonVisible` no longer reads
+`Display.UTurnButtonVisible` — the arming/direction controls are gated only by autosteer + track
+state (+ `HasBoundary`), so they're always reachable; the flag now governs **only** the on-map U-turn
+overlay (`IsUTurnOverlayVisible`).
+
+### 13.3 Guard
+
+Added `DisplayRenderFlagsAppliedTests` (source-scan, NoBypassWrites-style): asserts every
+render-affecting `Display.*` flag is actually read by `SkiaMapControl`. The reflection shadow-guard
+can't catch an *apply* gap; this does, at the wiring layer.
+
+---
+
+## 14. Remaining open items (honest status, 2026-06-16)
+
+Everything in §1–§13 is resolved **except** two items, deliberately scoped as their own changes
+rather than rushed into the apply-gap branch:
+
+1. **§13.1 Display Quality live re-apply** — needs a coverage-bitmap rebuild + reprojection on
+   `DisplayResolutionMultiplier` change (heavy, coverage-system; the flag is otherwise applied at field
+   open and not dead).
+2. **§12.1 `_currentFieldName`** — still a real VM local copy (the §12 "zero VM shadows" claim missed
+   it). Collapsing it is a *sentinel-sensitive* refactor: `CurrentFieldName` returns `""` when closed
+   vs `FieldState.FieldName`'s `"No Field"`, it backs ~25 field-path-construction call sites, and it's
+   ordering-coupled with `ActiveField` at field create/rename. Worth a dedicated, test-backed pass.

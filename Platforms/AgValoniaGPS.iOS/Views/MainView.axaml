@@ -41,8 +41,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
             <!-- Main Content Area - SkiaMap with overlay panels -->
             <Grid Grid.Row="1" Background="Transparent">
-                <controls:SkiaMapControl x:Name="MapControl" Margin="5"
-                                         IsGridVisible="{Binding IsGridOn}"/>
+                <controls:SkiaMapControl x:Name="MapControl" Margin="5"/>
 
                 <!-- Light-dismiss scrim: present only while a left-nav fly-out is
                      open; a tap on the map closes the open menu. ZIndex 8 keeps it

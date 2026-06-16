@@ -274,12 +274,18 @@ public partial class MainViewModel : ObservableObject
         {
             if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.UTurnButtonVisible))
             {
-                OnPropertyChanged(nameof(IsUTurnButtonVisible));
                 OnPropertyChanged(nameof(IsUTurnOverlayVisible));
             }
             else if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.LateralButtonVisible))
             {
                 OnPropertyChanged(nameof(IsLateralOverlayVisible));
+            }
+            else if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.GridVisible))
+            {
+                // The renderer reads ConfigStore.Display.GridVisible directly; keep the
+                // on-screen grid button's active-state binding in sync when the flag is
+                // flipped from the Settings/Screen-&-Alerts toggle instead of the button.
+                OnPropertyChanged(nameof(IsGridOn));
             }
         };
 

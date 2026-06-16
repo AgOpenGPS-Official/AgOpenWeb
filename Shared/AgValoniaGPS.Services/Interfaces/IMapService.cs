@@ -81,9 +81,6 @@ public interface IMapService
     /// </summary>
     void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates);
 
-    // Grid
-    bool IsGridVisible { get; set; }
-
     // Vehicle state
     void SetReversing(bool isReversing);
     void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive);
