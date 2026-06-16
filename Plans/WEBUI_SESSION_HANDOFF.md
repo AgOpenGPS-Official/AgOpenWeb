@@ -31,10 +31,19 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
     (shared by the picker VM + projector — no dup). Generic client helpers:
     `wireCfgControls`/`populateCfgControls`/`wireTabStrip`, `data-key`/`data-show`/
     `data-active`. `IConfigurationService` is injected into `SceneProjector`.
-  - **Remaining Phase-9 sub-phases:** AutoSteer config, Network IO + **NTRIP**, App/Screen
-    settings (expand the Screen & Alerts panel), Field operations/lifecycle (field
-    list/open/create/close/resume), Field tools/boundary editors + the **Phase-8 deferred
-    dialogs** (Tracks/QuickAB/DrawAB/FlagList/place-on-map; need map-tap interaction).
+  - **Screen & Alerts — COMPLETE** (full native ScreenAlertsPanel: Display / On-Screen
+    Buttons / Alerts & Sounds + an App Settings group with units relocated there per the IA,
+    keyboard/start-fullscreen/elevation-log). Config frame gained a `Display` section;
+    toggles `config.set|display.*`, theme/quality via `ToggleDayNightCommand`/
+    `CycleDisplayResolutionCommand`. ⚠ **Several of these flags are dead on NATIVE too** —
+    config persists but isn't wired to the live renderer (grid/svenn/headland/extra-guides/
+    quality) + U-Turn-button toggle disables auto-uturn. **NOT a web bug**; logged as
+    `Plans/CONFIG_STATE_AUDIT.md` §13 + `[[project_config_state_audit]]` (config→renderer
+    apply gap — audit work, not the web migration).
+  - **Remaining Phase-9 sub-phases:** AutoSteer config, Network IO + **NTRIP**, Field
+    operations/lifecycle (field list/open/create/close/resume), Field tools/boundary editors
+    + the **Phase-8 deferred dialogs** (Tracks/QuickAB/DrawAB/FlagList/place-on-map; need
+    map-tap interaction). Each follows the established config-bridge + generic-control pattern.
   - **HTTPS note:** a *true* installable PWA needs a secure context. Over LAN HTTP the
     Fullscreen button is the dependable path; serving the remote UI over HTTPS (self-signed
     cert trusted on the tablet) is a separate future task if real PWA install is wanted.
