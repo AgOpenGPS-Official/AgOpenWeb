@@ -92,7 +92,9 @@
     .rn-btn.disabled { opacity: 0.4; }
     #rn-manualturn { display: none; flex-direction: row; gap: 8px; }
     .rn-sm { width: 31px; min-height: 38px; font-size: 18px; }
-    #rn-readonly { color: #668; font: 500 10px ui-monospace, monospace; text-align: center; }
+    #rn-readonly { color: #ff7a3d; font: 600 10px ui-monospace, monospace; text-align: center; min-height: 12px; }
+    /* Dimmed when this client doesn't hold control — the buttons are inert. */
+    #rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
   </style>
 </head>
 <body>
@@ -127,8 +129,6 @@
   <div id="lb"></div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = follow · K = renderer (2D/Skia) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
   <div id="control">
-    <button id="ctl-take">Take Control</button>
-    <button id="ctl-test" disabled>Test Actuate</button>
     <div id="ctl-status">connecting…</div>
   </div>
   <div id="rightnav">
@@ -142,7 +142,7 @@
       <button id="rn-uturn-r" class="rn-btn rn-sm">↱</button>
     </div>
     <button id="rn-steer" class="rn-btn"><img id="rn-steer-i" class="rn-ic" alt="AutoSteer"></button>
-    <div id="rn-readonly">read-only</div>
+    <div id="rn-readonly"></div>
   </div>
   <div id="ctl">
     <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>

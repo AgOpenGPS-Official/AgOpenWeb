@@ -54,8 +54,11 @@ public sealed class WebSocketHub
         try
         {
             // Tell the client its id first (so it can recognise itself as the
-            // authority holder), then the Scene/coverage seed.
+            // controller), then claim control. Control is implicit and by connection
+            // order: the first client to connect becomes the controller; Acquire is
+            // denied for later clients (they observe). No take-over.
             await SendToAsync(client, WireCodec.EncodeHello(id.ToString()), ct).ConfigureAwait(false);
+            _authority.Acquire(id, "Browser");
             foreach (var frame in SeedProvider?.Invoke() ?? Array.Empty<byte[]>())
                 await SendToAsync(client, frame, ct).ConfigureAwait(false);
 

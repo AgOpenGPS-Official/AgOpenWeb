@@ -130,21 +130,15 @@ public partial class App : Application
                     catch { }
                 };
 
-                // Remote/web UI client→host commands (REMOTE_WEB_UI_SPLIT §5).
-                // SAFE ALLOWLIST only — sim drive controls for now; remote
-                // autosteer-engage stays out until a safety sign-off. The hub
-                // calls this off-thread; marshal to the UI thread, map known ids,
-                // ignore the rest.
+                // Remote/web UI client→host commands (REMOTE_WEB_UI_SPLIT §5). The
+                // hub calls this off-thread; marshal to the UI thread, map known ids,
+                // ignore the rest. Tier-2 (live actuation) ids only arrive when the
+                // sending client holds fresh control authority (the hub gates them).
                 if (_remoteServer is not null)
                 {
                     _remoteServer.CommandHandler = cmd =>
                         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                         {
-                            // Tier-2 actuation stub (Phase 2): the hub delivers this
-                            // only when the client holds fresh control authority.
-                            if (cmd == "test.actuate")
-                            { windowVm.StatusMessage = "Remote actuation OK (test)"; return; }
-
                             System.Windows.Input.ICommand? c = cmd switch
                             {
                                 "sim.steerLeft" => windowVm.SimulatorSteerLeftCommand,
@@ -152,31 +146,53 @@ public partial class App : Application
                                 "sim.speedUp" => windowVm.SimulatorSpeedUpCommand,
                                 "sim.speedDown" => windowVm.SimulatorSpeedDownCommand,
                                 "sim.stop" => windowVm.SimulatorStopCommand,
+                                // Right-nav operational toolbar (Tier-2).
+                                "contour.toggle" => windowVm.ToggleContourModeCommand,
+                                "section.master" => windowVm.ToggleSectionMasterCommand,
+                                "section.manual" => windowVm.ToggleManualModeCommand,
+                                "youturn.toggle" => windowVm.ToggleYouTurnCommand,
+                                "youturn.direction" => windowVm.ToggleUTurnDirectionCommand,
+                                "youturn.manualLeft" => windowVm.ManualYouTurnLeftCommand,
+                                "youturn.manualRight" => windowVm.ManualYouTurnRightCommand,
+                                "autosteer.toggle" => windowVm.ToggleAutoSteerCommand,
                                 _ => null, // unknown id → ignored (safety boundary)
                             };
                             if (c?.CanExecute(null) == true) c.Execute(null);
                         });
 
                     // Tier-2 (live actuation) ids — honored only while a client holds
-                    // fresh control authority (Phase 2 safety layer). Phase 2 ships only
-                    // the 'test.actuate' stub; the prefixes are ready for the Phase 3
-                    // right-nav toolbar (sections / autosteer / U-turn / contour).
+                    // fresh control authority (Phase 2 safety gate).
                     _remoteServer.IsRestrictedCommand = id =>
-                        id == "test.actuate"
-                        || id.StartsWith("section.") || id.StartsWith("autosteer.")
+                        id.StartsWith("section.") || id.StartsWith("autosteer.")
                         || id.StartsWith("youturn.") || id.StartsWith("contour.");
 
-                    // Control-authority changes are a browser-side concept (each
-                    // client shows who holds control); the end-state host is headless,
-                    // so there is no native banner — just a host-side log for the
-                    // alongside-migration period.
+                    // One operator, via the browser. When the control session ends —
+                    // release, disconnect, or deadman — the machine must not keep
+                    // actuating with no interface: disengage autosteer and turn sections
+                    // off. (Headless target → control state lives in the browser.)
                     _remoteServer.AuthorityChangedHandler = (held, name) =>
-                        System.Diagnostics.Debug.WriteLine(
-                            held ? $"[remote] control taken by {name}" : "[remote] control released");
+                    {
+                        if (held)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");
+                            return;
+                        }
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (windowVm.IsAutoSteerEngaged
+                                && windowVm.ToggleAutoSteerCommand?.CanExecute(null) == true)
+                                windowVm.ToggleAutoSteerCommand.Execute(null);
+                            if (windowVm.IsManualSectionMode
+                                && windowVm.ToggleManualModeCommand?.CanExecute(null) == true)
+                                windowVm.ToggleManualModeCommand.Execute(null);
+                            if (windowVm.IsSectionMasterOn
+                                && windowVm.ToggleSectionMasterCommand?.CanExecute(null) == true)
+                                windowVm.ToggleSectionMasterCommand.Execute(null);
+                        });
+                    };
 
-                    // Failsafe on involuntary loss of authority. Phase 2: log only
-                    // (nothing remote-actuated yet); Phase 3 reverts what the remote
-                    // engaged (disengage autosteer / sections-safe).
+                    // Involuntary loss (disconnect / deadman) — log the reason; the
+                    // disengage runs in AuthorityChangedHandler (covers release too).
                     _remoteServer.FailsafeHandler = reason =>
                         System.Diagnostics.Debug.WriteLine($"[remote] actuation failsafe: {reason}");
                 }

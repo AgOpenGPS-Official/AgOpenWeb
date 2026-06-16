@@ -258,44 +258,48 @@ for (const b of document.querySelectorAll('#ctl button')) {
 // ---- remote actuation control (Phase 2 safety layer) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may
 // actuate; the holder must heartbeat (presence) or the host revokes it (deadman).
-const ctlTake = document.getElementById('ctl-take');
-const ctlTest = document.getElementById('ctl-test');
+// Control is implicit and by connection order: the first browser to connect is the
+// controller (server-assigned); others observe. No take/release UI. A status line
+// shows which role this browser has.
 const ctlStatus = document.getElementById('ctl-status');
 function updateControlUi() {
-  if (!ctlTake) return;
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (!ctlStatus) return;
   if (iHoldControl) {
-    ctlTake.textContent = 'Release Control'; ctlTake.classList.add('held'); ctlTake.disabled = false;
-    ctlTest.disabled = false;
-    ctlStatus.textContent = '● You have control'; ctlStatus.style.color = '#39FF6A';
+    ctlStatus.textContent = '● Controlling'; ctlStatus.style.color = '#39FF6A';
   } else if (lastControl.held) {
-    ctlTake.textContent = 'Take Control'; ctlTake.classList.remove('held'); ctlTake.disabled = true;
-    ctlTest.disabled = true;
-    ctlStatus.textContent = '● Under remote control — ' + (lastControl.holderName || 'another client');
-    ctlStatus.style.color = '#ff7a3d';
+    ctlStatus.textContent = '● Observing — another browser has control'; ctlStatus.style.color = '#ff7a3d';
   } else {
-    ctlTake.textContent = 'Take Control'; ctlTake.classList.remove('held'); ctlTake.disabled = false;
-    ctlTest.disabled = true;
-    ctlStatus.textContent = 'No one in control'; ctlStatus.style.color = '#9fb3cc';
+    ctlStatus.textContent = '○ No controller'; ctlStatus.style.color = '#9fb3cc';
   }
 }
-if (ctlTake) {
-  document.getElementById('control').addEventListener('pointerdown', e => e.stopPropagation());
-  ctlTake.addEventListener('click', () => {
-    transport.send(iHoldControl ? 'control.release' : 'control.acquire|Browser');
-  });
-  ctlTest.addEventListener('click', () => {
-    if (!iHoldControl) return;
-    // NOTE: no blocking confirm() here — it would freeze the presence heartbeat
-    // and trip the host deadman. Real Tier-2 actions get a non-blocking in-page
-    // confirm in Phase 3.
-    transport.send('test.actuate');
-    ctlStatus.textContent = 'Test actuation sent ✓'; // cab status line also confirms
-    setTimeout(updateControlUi, 1500);
-  });
-  // Presence heartbeat — keeps our hold alive; a lapse triggers the host deadman.
-  setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
-  updateControlUi();
+const controlEl = document.getElementById('control');
+if (controlEl) controlEl.addEventListener('pointerdown', e => e.stopPropagation());
+// Heartbeat keeps our hold alive while we control; a lapse trips the host deadman
+// (disengage autosteer + sections).
+setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
+updateControlUi();
+
+// Right-nav toolbar actuation (Phase 3b). Each button sends its Tier-2 command,
+// but only while we hold control — the host hub enforces the same gate. No
+// per-action confirm: holding control IS the deliberate gate (matches the native
+// single-tap), and the deadman + failsafe cover a lost controller.
+function rnSend(cmd) { if (iHoldControl) transport.send(cmd); }
+// NB: use a direct lookup here, not the RN object — RN is a `const` defined later
+// in the render section, so referencing it here would hit the temporal dead zone
+// and throw at load (stuck "connecting…").
+const rnRoot = document.getElementById('rightnav');
+if (rnRoot) {
+  rnRoot.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
+  const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => rnSend(cmd)); };
+  wireRn('rn-contour', 'contour.toggle');
+  wireRn('rn-manual', 'section.manual');
+  wireRn('rn-auto', 'section.master');
+  wireRn('rn-youturn', 'youturn.toggle');
+  wireRn('rn-dir', 'youturn.direction');
+  wireRn('rn-uturn-l', 'youturn.manualLeft');
+  wireRn('rn-uturn-r', 'youturn.manualRight');
+  wireRn('rn-steer', 'autosteer.toggle');
 }
 
 // ---- render ----
@@ -621,7 +625,7 @@ const RN = {
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
   dir: document.getElementById('rn-dir'), dirArrow: document.getElementById('rn-dir-arrow'),
   dirDist: document.getElementById('rn-dir-dist'), manualTurn: document.getElementById('rn-manualturn'),
-  steerI: document.getElementById('rn-steer-i'),
+  steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
 // Swap an icon only when it actually changes (no per-frame churn).
 function rnIcon(img, name) { if (img && !img.src.endsWith(name)) img.src = '/icons/' + name; }
@@ -630,6 +634,9 @@ function renderRightNav() {
   const op = tick && tick.op;
   if (!op || !scene || !scene.hasField) { RN.root.style.display = 'none'; return; }
   RN.root.style.display = 'flex';
+  // Dim + hint when we don't hold control (buttons are no-ops then; the host also gates).
+  RN.root.classList.toggle('locked', !iHoldControl);
+  if (RN.readonly) RN.readonly.textContent = iHoldControl ? '' : 'observing';
   // State carried by the icon image (native uses the same On/Off/Gray PNGs).
   rnIcon(RN.contourI, op.contour ? 'ContourOn.png' : 'ContourOff.png');
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
