@@ -166,6 +166,14 @@ public partial class App : Application
                                         && windowVm.ToggleSectionCommand?.CanExecute(si) == true)
                                         windowVm.ToggleSectionCommand.Execute(si);
                                     return;
+                                case "config.set": // config bridge (Phase 9a). arg = "key:value"
+                                    var ci = arg.IndexOf(':');
+                                    if (ci <= 0) return;
+                                    if (ApplyConfigSet(
+                                            Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
+                                            arg[..ci], arg[(ci + 1)..]))
+                                        configService.SaveAppSettings(); // persist only on a known key
+                                    return;
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -293,6 +301,18 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // Config bridge (Phase 9a): apply one "key:value" config write from the web client.
+    // Returns true when the key is recognised (the caller persists only then). Grows as
+    // later sub-phases expose more of ConfigurationStore. Runs on the UI thread.
+    private static bool ApplyConfigSet(AgValoniaGPS.Models.Configuration.ConfigurationStore store, string key, string val)
+    {
+        switch (key)
+        {
+            case "units": store.IsMetric = val == "metric"; return true;
+            default: return false; // unknown key → ignored (no persist)
+        }
     }
 
     private static void ExtractSoundFiles(IServiceProvider services)

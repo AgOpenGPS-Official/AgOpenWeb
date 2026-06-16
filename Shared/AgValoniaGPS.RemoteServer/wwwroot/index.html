@@ -139,6 +139,26 @@
       cursor: pointer; font: 600 13px system-ui, sans-serif; text-align: left; }
     .bn-row:hover { background: rgba(255,255,255,0.16); }
     .bn-rowic { width: 20px; height: 20px; object-fit: contain; }
+    /* Left nav (Phase 9) — vertical button bar + non-modal flyout panels. */
+    #leftnav { position: fixed; left: 0; top: 56px; display: flex; flex-direction: column;
+      gap: 6px; padding: 8px 8px 8px 0; background: rgba(15,17,21,0.85);
+      border: 1px solid #222a38; border-left: 0; border-radius: 0 10px 10px 0; z-index: 20; }
+    .ln-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px;
+      background: rgba(255,255,255,0.08); color: #e7eef9; cursor: pointer; box-sizing: border-box; }
+    .ln-btn:hover { background: rgba(255,255,255,0.16); }
+    .ln-btn.active { background: #1c4a7a; }
+    .ln-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+    .ln-panel { position: fixed; left: 80px; top: 56px; display: none; min-width: 220px;
+      background: #161b24; border: 1px solid #2a3550; border-radius: 10px; padding: 14px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 21; }
+    .ln-panel.open { display: block; }
+    .ln-title { color: #e7eef9; font: 700 16px system-ui, sans-serif; margin-bottom: 12px; }
+    .ln-section { margin-bottom: 12px; }
+    .ln-label { color: #9fb3cc; font: 600 12px system-ui, sans-serif; margin-bottom: 6px; }
+    .ln-seg { display: flex; border: 1px solid #2a3550; border-radius: 8px; overflow: hidden; width: fit-content; }
+    .ln-segbtn { padding: 8px 18px; border: 0; background: transparent; color: #cfe3ff;
+      cursor: pointer; font: 600 13px system-ui, sans-serif; }
+    .ln-segbtn.active { background: #1f6fb2; color: #fff; }
     /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
     #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
       justify-content: center; z-index: 50; }
@@ -264,6 +284,23 @@
   <div id="help">wheel/pinch = zoom · drag = pan · F = map-follow · camera pad = mode (H/N/M/C) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
   <div id="control">
     <div id="ctl-status">connecting…</div>
+  </div>
+  <!-- Left nav (Phase 9) — vertical button bar mirroring LeftNavigationPanel; grows
+       button-by-button as sub-phases land. Each opens a non-modal panel to its right. -->
+  <div id="leftnav">
+    <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
+  </div>
+  <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
+       bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
+  <div id="screenalerts" class="ln-panel">
+    <div class="ln-title">Screen &amp; Alerts</div>
+    <div class="ln-section">
+      <div class="ln-label">Units</div>
+      <div class="ln-seg">
+        <button id="sa-metric" class="ln-segbtn" data-units="metric">Metric</button>
+        <button id="sa-imperial" class="ln-segbtn" data-units="imperial">Imperial</button>
+      </div>
+    </div>
   </div>
   <div id="rightnav">
     <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>

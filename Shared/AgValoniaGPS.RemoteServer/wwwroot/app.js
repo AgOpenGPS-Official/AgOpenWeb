@@ -362,6 +362,32 @@ function bnToggleFly(fly, btn) {
 document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnFlags, e.currentTarget); });
 document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
 
+// ---- left nav (Phase 9) — config/settings panels via the config bridge ----
+// Vertical button bar; each button toggles a non-modal panel. Panels READ config from
+// existing frames (units = Status.isMetric) and WRITE via `config.set|key:value`
+// (Tier-1; the host applies it to ConfigurationStore + persists). Grows per sub-phase.
+const LN = {
+  saBtn: document.getElementById('ln-screenalerts'),
+  saPanel: document.getElementById('screenalerts'),
+  uMetric: document.getElementById('sa-metric'), uImperial: document.getElementById('sa-imperial'),
+};
+function lnClosePanels() { LN.saPanel.classList.remove('open'); LN.saBtn.classList.remove('active'); }
+LN.saBtn.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const open = !LN.saPanel.classList.contains('open');
+  lnClosePanels();
+  if (open) { LN.saPanel.classList.add('open'); LN.saBtn.classList.add('active'); }
+});
+LN.saPanel.addEventListener('pointerdown', e => e.stopPropagation()); // keep open / don't pan
+for (const b of LN.saPanel.querySelectorAll('.ln-segbtn[data-units]'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
+function renderSettings() {
+  if (!statusBar) return;
+  const metric = !!statusBar.isMetric;
+  LN.uMetric.classList.toggle('active', metric);
+  LN.uImperial.classList.toggle('active', !metric);
+}
+
 // ---- remote actuation control (Phase 2 safety layer) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may
 // actuate; the holder must heartbeat (presence) or the host revokes it (deadman).
@@ -706,6 +732,9 @@ addEventListener('pointerdown', () => {
   if (af) af.classList.remove('open');
   document.getElementById('bn-flags')?.classList.remove('menuopen');
   document.getElementById('bn-abmenu')?.classList.remove('menuopen');
+  const sa = document.getElementById('screenalerts');
+  if (sa) sa.classList.remove('open');
+  document.getElementById('ln-screenalerts')?.classList.remove('active');
 });
 
 function renderStatusBar() {
@@ -1242,6 +1271,7 @@ function skFrame() {
   renderSimBar();
   renderSectionBar();
   renderBottomNav();
+  renderSettings();
   renderRightNav();
   renderRoll();
   renderCampad();
