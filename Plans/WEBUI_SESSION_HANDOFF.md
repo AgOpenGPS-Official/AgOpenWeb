@@ -10,7 +10,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
 - Repo: `/Users/chris/Code/AgValoniaGPS3` (Avalonia/.NET 10 agricultural GPS app).
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go.
-- Working tree is clean; Phases 1–7 + the boundary near-clip fix are committed + pushed.
+- Working tree is clean; Phases 1–8 + the boundary near-clip fix are committed + pushed.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -67,6 +67,18 @@ HTML/JS. Do NOT port logic into JS. End state: headless host, browser is the onl
   buttons (SECTION_COLORS), rows split like native `RebuildSectionRows`; shown when field
   open AND a master engaged. One Tier-2 id `section.toggle|<index>` (gated by `section.`
   prefix). Bar dims `.locked` without control.
+- **Phase 8 — bottom nav / field tools** (65300d11): `#bottomnav` (last child of
+  `#bottomstack`) mirrors BottomNavigationPanel — direct-action tools + Flags/AB-line
+  flyouts; AB-dependent buttons key off `activeTrackName`; Tier-2 (`track.`/`headland.`)
+  dim without control. New `FieldToolsState` mirror; Tick grew `tick.tools`
+  (headlandOn/sectionInHeadland/autoTrack/skipRows/skipRowsOn/tramMode); tram +
+  section-in-headland read straight from ConfigStore. 24 native icons in `wwwroot/icons`.
+  **Found+fixed a dead-state bug** (the section-in-headland button toggled a flag no
+  service read; rewired the VM property to a pass-through onto
+  `ConfigStore.Tool.IsHeadlandSectionControl` and deleted 3 dead duplicates). Headland
+  line now renders only when `headlandOn`. Dialog-launchers
+  (Tracks/QuickAB/DrawAB/FlagList/place-on-map) **deferred to Phase 9** — see the
+  explicit list now in WEBUI_MIGRATION_PLAN.md Phase 9.
 
 ## The projection pattern (recurring; the source of most bugs so far)
 Runtime UI state usually lives in the **VM as plain fields**, NOT in `ApplicationState`.
@@ -84,8 +96,14 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
 **Read MainWindow.axaml for placement and each panel's own AXAML for contents first.**
 **Watch for setters bypassed by backing-field writes** (Phase 6's STOP wrote
 `_simulatorSpeedKph` directly, skipping the mirror) — those need an explicit mirror line.
+**Watch for dead VM duplicate fields** (Phase 8: the section-in-headland button toggled a
+VM flag NO service read; the live source was `ConfigStore.Tool.IsHeadlandSectionControl`).
+Before mirroring/binding a VM field, grep its CONSUMER — the SoT is `ApplicationState`
+(`*State`, runtime) or `ConfigStore` (`*Config`, persisted); if the live value is there,
+read/project it directly and make the VM property a pass-through, don't mirror a dead
+field. (See memory `project_state_model_sot`.)
 
-## Infra now available (built in Phases 6–7)
+## Infra now available (built in Phases 6–8)
 - **Dialog host:** `wwwroot/index.html` `#dialoghost` + `app.js` `openDialog(cardId)` /
   `closeDialog()`. Add a `.dlg-card` into `#dialoghost`, give it an id, call `openDialog`.
   One modal at a time over a dimming backdrop (mirrors `DialogOverlayHost`). Reuse for
@@ -95,25 +113,33 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
   handled in the `switch` ABOVE the ICommand map in `App.axaml.cs`; argless ids map to a
   VM `ICommand`. Tier-2 gating still keys off the id prefix in `IsRestrictedCommand`.
 - **Bottom stack:** `#bottomstack` (bottom-centre flex column) = the native bottom
-  `StackPanel`. Children top→bottom: sim bar, section bar, **bottom nav goes here next
-  (Phase 8)** — append it as the last child so it sits at the very bottom.
+  `StackPanel`. Children top→bottom: sim bar, section bar, bottom nav. All three bottom
+  rows now exist; new bottom rows append as the last child.
+- **Tier gating:** `IsRestrictedCommand` prefixes (Tier-2, control-gated) are now
+  `section.` `autosteer.` `youturn.` `contour.` `track.` `headland.`; Tier-1 (ungated):
+  `sim.` `tool.` `map.` `flag.` `tram.`. Client gates Tier-2 buttons with `data-t2` +
+  `iHoldControl`; the host re-gates.
 
 ## NEXT SESSION — start here
-1. **Phase 8 — bottom nav: field tools  *(mixed tiers)*.** Native: `Panels/BottomNavigationPanel.axaml`
-   + `Panels/FieldToolsPanel.axaml` (⚠ **verify the exact split** between BottomNav and
-   FieldTools first — read both AXAML + `MainWindow.axaml` for which sits where). VMs:
-   AB cycle/snap/nudge + flags + tram in `Commands.Track.cs`, `MainViewModel.Headland.cs`,
-   coverage/contour delete. **Read (wire+):** nudge offset, tram mode/lane, headland-on,
-   flag list — find each in the VM (projection pattern: mirror VM field → `ApplicationState`
-   in the setter → project), and **watch for backing-field writes that bypass setters**
-   (Phase 6 STOP bug). **Control:** guidance snap/nudge + `youturn.trigger` (Tier-2, gated);
-   `flag.*` + `tram.*` + headland toggles + coverage-delete (mostly Tier-1). **Client:** the
-   bottom field-tools toolbar — append it as the last child of `#bottomstack` so it lands at
-   the very bottom (below the section bar), matching native. Reuse the dialog host for any
-   tool that needs a value (e.g. nudge distance), and command-with-args for indexed/valued ids.
-2. Then: **Phase 9** left nav (config trees + NTRIP + field/file lifecycle — the big one;
-   needs a new **config bridge** read/write projection + `config.set`/`profile.save` family),
-   **10** mop-up + headless cutover. See the plan doc (Phase 9 is sub-phased 10a–…).
+1. **Phase 9 — left nav: config + setup + field/file hub  *(Tier 1)* ⚠ largest phase.**
+   Native: `Panels/LeftNavigationPanel.axaml` and everything it opens (File menu, Screen &
+   Alerts/AppSettings, Tools, Vehicle/Tool config picker + tabs, AutoSteer config, Network
+   IO + NTRIP, field-lifecycle dialogs, **and the bottom-nav dialog-launchers deferred from
+   Phase 8** — Tracks/QuickAB/DrawAB/FlagList/place-on-map). **Read the full Phase-9 section
+   in `Plans/WEBUI_MIGRATION_PLAN.md`** — it's sub-phased (config bridge → Vehicle → Tool →
+   AutoSteer → Network/NTRIP → App/Screen settings → Field ops/lifecycle → Field tools/
+   editors) and lists the deferred bottom-nav items explicitly.
+   - **New infra to build first:** the **config bridge** — a structured read/write projection
+     of `ConfigurationStore` + a tiered `config.set` / `profile.save` command family (first
+     time the client WRITES config). Field list/job-history read; `field.open/create/close/
+     resume`; import via HTTP upload → host-side import.
+   - **Editor dialogs** (BoundaryMap, DrawAB, FieldBuilder, place-flag-on-map) need **map-tap
+     interaction** on the canvas — build that interaction once and reuse.
+   - This is big: **do it as its own multi-commit sub-phased effort**, not one shot. Reuse the
+     dialog host + command-with-args. **Heed `project_state_model_sot`** — config lives in
+     `ConfigStore` (`*Config`); don't mirror dead VM fields, project the SoT.
+2. Then **Phase 10** — mop-up + headless cutover (the host goes UI-less; browser is the only
+   UI). See the plan doc.
 
 ## Workflow rules (important)
 - **Embedded assets:** `wwwroot/*` (and `wwwroot/icons/*`) are `EmbeddedResource` in
@@ -145,4 +171,4 @@ exploration agents mislabeled several things (right vs left nav, the lower-right
   blend like native (sRGB), not washed-out linear.
 - Camera modes 0=N 1=H 2=Free 3=Map (default); `mapRotation` eased by `ROT_SMOOTH`.
 
-**Start on Phase 8 (bottom nav / field tools) — append the toolbar as the last child of `#bottomstack`; verify the BottomNav-vs-FieldTools split first.**
+**Start on Phase 9 (left nav: config/setup/field-file hub) — the largest phase; build the config bridge first and work it sub-phased over multiple commits. Read the Phase-9 plan section before starting.**
