@@ -209,7 +209,11 @@ public sealed class SceneProjector
             cfg.IsAutoSteerConfigured,
             cfg.IsMachineConfigured,
             _jobs.ActiveJob?.TaskName ?? "",
-            _coverage.TotalWorkedArea);
+            _coverage.TotalWorkedArea,
+            v.Latitude,
+            v.Longitude,
+            v.Altitude,
+            v.Hdop);
     }
 
     /// <summary>

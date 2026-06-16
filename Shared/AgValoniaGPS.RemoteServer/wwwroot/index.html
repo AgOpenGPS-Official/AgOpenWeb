@@ -44,6 +44,21 @@
     .sb-speed-wrap { display: flex; flex-direction: column; align-items: center; min-width: 70px; }
     #sb-speed { color: #E67E22; font-size: 24px; font-weight: 700; line-height: 1; }
     #sb-unit { color: #9fb3cc; font-size: 10px; font-weight: 500; margin-top: 1px; }
+    /* Heading readout (Phase 5) — AgOpen-style big pink degrees + small HDG label,
+       right of the speed slot in the strip. Fixed width so 000.0° never reflows. */
+    .sb-hdg-wrap { display: flex; flex-direction: column; align-items: center; min-width: 76px; }
+    #sb-hdg { color: #E91E90; font-size: 24px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+    #sb-hdglabel { color: #9fb3cc; font-size: 10px; font-weight: 500; margin-top: 1px; }
+    /* GPS-detail card (Phase 5) — popup toggled by the fix dot; mirrors GpsDetailPanel. */
+    #sb-fixbtn { padding: 0; }
+    #sb-gpscard { display: none; position: absolute; top: 50px; left: 10px; min-width: 180px;
+      background: #161b24; border: 1px solid #2a3550; border-radius: 8px; padding: 10px 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; font-weight: 500; }
+    #sb-gpscard .gc-ll { color: #F1C40F; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    #sb-gpscard .gc-rule { height: 1px; background: #2a3550; margin: 5px 0; }
+    #sb-gpscard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
+    #sb-gpscard .gc-k { color: #9fb3cc; font-size: 12px; }
+    #sb-gpscard .gc-v { color: #cfe3ff; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
     #help { position: fixed; bottom: 8px; left: 8px; color: #668; font: 11px ui-monospace, monospace; }
     /* Lightbar readout (arrow + cm + line label) — DOM overlay so it renders
        identically under both the 2D and Skia map renderers (CanvasKit has no
@@ -117,8 +132,10 @@
     <button id="sb-pause" title="Pause / resume rotating field info">❚❚</button>
     <div class="sb-left">
       <div class="sb-row1">
-        <span id="sb-fixdot" class="dot"></span>
-        <span id="sb-fix">—</span>
+        <button id="sb-fixbtn" title="GPS detail">
+          <span id="sb-fixdot" class="dot"></span>
+          <span id="sb-fix">—</span>
+        </button>
         <span id="sb-age" class="sb-sec"></span>
       </div>
       <div id="sb-rot" class="sb-rot">—</div>
@@ -136,6 +153,26 @@
     <div class="sb-speed-wrap">
       <span id="sb-speed">—</span>
       <span id="sb-unit"></span>
+    </div>
+    <div class="sb-hdg-wrap">
+      <span id="sb-hdg">—</span>
+      <span id="sb-hdglabel">HDG</span>
+    </div>
+    <!-- GPS-detail card (Phase 5): toggled by the fix dot. Anchored under the
+         left fix readout, mirroring the native GpsDetailPanel. -->
+    <div id="sb-gpscard">
+      <div class="gc-ll" id="gc-lat">—</div>
+      <div class="gc-ll" id="gc-lon">—</div>
+      <div class="gc-rule"></div>
+      <div class="gc-row"><span class="gc-k">Elev:</span><span class="gc-v" id="gc-elev">—</span></div>
+      <div class="gc-row"><span class="gc-k"># Sats:</span><span class="gc-v" id="gc-sats">—</span></div>
+      <div class="gc-row"><span class="gc-k">HDOP:</span><span class="gc-v" id="gc-hdop">—</span></div>
+      <div class="gc-row"><span class="gc-k">Fix:</span><span class="gc-v" id="gc-fix">—</span></div>
+      <div class="gc-row"><span class="gc-k">Age:</span><span class="gc-v" id="gc-age">—</span></div>
+      <div class="gc-rule"></div>
+      <div class="gc-row"><span class="gc-k">Heading:</span><span class="gc-v" id="gc-hdg">—</span></div>
+      <div class="gc-row"><span class="gc-k">IMU Roll:</span><span class="gc-v" id="gc-roll">—</span></div>
+      <div class="gc-row"><span class="gc-k">FPS:</span><span class="gc-v" id="gc-fps">—</span></div>
     </div>
   </div>
   <div id="hud">connecting…</div>

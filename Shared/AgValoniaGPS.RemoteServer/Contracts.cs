@@ -108,7 +108,15 @@ public record StatusDto(
     // headland), tool width and speed the client already has, so it formats + rotates
     // the three pages (Field / Stats / AB-line) itself, matching the native strip.
     string JobName,
-    double WorkedAreaSqM);
+    double WorkedAreaSqM,
+    // GPS-detail card (Phase 5): lat/lon (degrees), altitude (m) and HDOP for the
+    // popup toggled by the strip's fix dot. Rides the ~2 Hz Status — plenty for a
+    // readout. (Heading + roll for that card ride the 10 Hz Tick; sats/age/fix are
+    // already above.) Lat/lon need f64 precision; alt/hdop go out as f32.
+    double Latitude,
+    double Longitude,
+    double Altitude,
+    double Hdop);
 
 /// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
 /// client compares HolderId to its own id (sent once in the Hello frame) to know

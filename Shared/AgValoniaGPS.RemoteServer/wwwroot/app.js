@@ -33,6 +33,8 @@ let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + recei
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
+let fps = 0;           // smoothed client render rate (for the GPS-detail card)
+let _fpsFrames = 0, _fpsT0 = 0;
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
 // Hello frame), the latest broadcast control state, and whether we hold control.
 let myClientId = null;
@@ -486,12 +488,20 @@ const SB = {
   fixDot: document.getElementById('sb-fixdot'), fix: document.getElementById('sb-fix'),
   age: document.getElementById('sb-age'), rot: document.getElementById('sb-rot'),
   speed: document.getElementById('sb-speed'), unit: document.getElementById('sb-unit'),
+  hdg: document.getElementById('sb-hdg'),
   modAgg: document.getElementById('sb-modagg'), modBtn: document.getElementById('sb-modbtn'),
   modPop: document.getElementById('sb-modpop'),
   mGps: document.getElementById('sb-gps'), mImu: document.getElementById('sb-imu'),
   mAs: document.getElementById('sb-as'), mMa: document.getElementById('sb-ma'),
   dGps: document.getElementById('sb-gps-d'), dImu: document.getElementById('sb-imu-d'),
   dAs: document.getElementById('sb-as-d'), dMa: document.getElementById('sb-ma-d'),
+  // GPS-detail card (Phase 5).
+  fixBtn: document.getElementById('sb-fixbtn'), gpsCard: document.getElementById('sb-gpscard'),
+  gcLat: document.getElementById('gc-lat'), gcLon: document.getElementById('gc-lon'),
+  gcElev: document.getElementById('gc-elev'), gcSats: document.getElementById('gc-sats'),
+  gcHdop: document.getElementById('gc-hdop'), gcFix: document.getElementById('gc-fix'),
+  gcAge: document.getElementById('gc-age'), gcHdg: document.getElementById('gc-hdg'),
+  gcRoll: document.getElementById('gc-roll'), gcFps: document.getElementById('gc-fps'),
 };
 // GPS fix-quality → dot colour (matches the native FixQualityToColor intent).
 function fixColor(q) {
@@ -572,7 +582,17 @@ SB.modBtn.addEventListener('pointerdown', e => {
   e.stopPropagation();
   SB.modPop.style.display = SB.modPop.style.display === 'block' ? 'none' : 'block';
 });
-addEventListener('pointerdown', () => { if (SB.modPop) SB.modPop.style.display = 'none'; });
+// Fix dot toggles the GPS-detail card (mutually exclusive with the modules popup).
+SB.fixBtn.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const show = SB.gpsCard.style.display !== 'block';
+  SB.gpsCard.style.display = show ? 'block' : 'none';
+  if (show) SB.modPop.style.display = 'none';
+});
+addEventListener('pointerdown', () => {
+  if (SB.modPop) SB.modPop.style.display = 'none';
+  if (SB.gpsCard) SB.gpsCard.style.display = 'none';
+});
 
 function renderStatusBar() {
   const s = statusBar;
@@ -594,6 +614,27 @@ function renderStatusBar() {
   SB.dImu.textContent = s.imuIp || 'Not detected';
   SB.dAs.textContent = s.autoSteerIp || 'Not detected';
   SB.dMa.textContent = s.machineIp || 'Not detected';
+  // Heading readout (right of speed) — Tick heading is radians (0 = N, CW).
+  const hdgDeg = lastTick ? (lastTick.heading * 180 / Math.PI) : null;
+  SB.hdg.textContent = hdgDeg != null ? fmtHdg(hdgDeg) : '—';
+  // GPS-detail card — populated only while open (the fix dot toggles it).
+  if (SB.gpsCard.style.display === 'block') {
+    SB.gcLat.textContent = s.lat != null ? s.lat.toFixed(7) : '—';
+    SB.gcLon.textContent = s.lon != null ? s.lon.toFixed(7) : '—';
+    SB.gcElev.textContent = s.altitude != null ? s.altitude.toFixed(1) : '—';
+    SB.gcSats.textContent = s.sats != null ? s.sats : '—';
+    SB.gcHdop.textContent = s.hdop != null ? s.hdop.toFixed(2) : '—';
+    SB.gcFix.textContent = s.fixText || '—';
+    SB.gcAge.textContent = s.age != null ? s.age.toFixed(1) : '—';
+    SB.gcHdg.textContent = hdgDeg != null ? (((hdgDeg % 360) + 360) % 360).toFixed(1) + '°' : '—';
+    SB.gcRoll.textContent = (tick && typeof tick.roll === 'number') ? tick.roll.toFixed(1) + '°' : '—';
+    SB.gcFps.textContent = fps.toFixed(0);
+  }
+}
+// Heading in AgOpen 000.0° form (constant width). Input degrees, any sign.
+function fmtHdg(deg) {
+  const d = ((deg % 360) + 360) % 360;
+  return d.toFixed(1).padStart(5, '0') + '°';
 }
 
 // Right-nav operational toolbar (Phase 3a: read-only live indicators; 3b wires the
@@ -980,6 +1021,10 @@ function renderSkia(canvas, rp) {
 // survives surface recreation on resize and runs even before CanvasKit finishes
 // loading (DOM overlays update regardless; the GL map draws once skSurface exists).
 function skFrame() {
+  // Client render rate over a ~500 ms window (shown on the GPS-detail card).
+  const _now = performance.now();
+  if (_fpsT0 === 0) _fpsT0 = _now;
+  else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
   if (skSurface) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }

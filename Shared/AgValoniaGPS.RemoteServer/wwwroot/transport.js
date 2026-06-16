@@ -92,10 +92,12 @@ window.RemoteTransport = {
           const imuIp = str(), autoSteerIp = str(), machineIp = str();
           const gpsConf = !!u8(), imuConf = !!u8(), autoSteerConf = !!u8(), machineConf = !!u8();
           const jobName = str(), workedAreaSqM = f64();
+          const lat = f64(), lon = f64(), altitude = f32(), hdop = f32();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
             gpsConf, imuConf, autoSteerConf, machineConf, jobName, workedAreaSqM,
+            lat, lon, altitude, hdop,
           });
           break;
         }

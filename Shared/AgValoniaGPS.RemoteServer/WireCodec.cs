@@ -120,6 +120,11 @@ public static class WireCodec
         w.Write((byte)(s.MachineConfigured ? 1 : 0));
         WriteStr(w, s.JobName);
         w.Write(s.WorkedAreaSqM);     // f64
+        // GPS-detail card (Phase 5).
+        w.Write(s.Latitude);          // f64
+        w.Write(s.Longitude);         // f64
+        w.Write((float)s.Altitude);
+        w.Write((float)s.Hdop);
         return ms.ToArray();
     }
 
