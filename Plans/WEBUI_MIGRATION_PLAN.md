@@ -118,7 +118,7 @@ needed none of them):
 
 ---
 
-## 5. The clockwise sweep (Phases 1–10)
+## 5. The clockwise sweep (Phases 1–9)
 
 Perimeter sweep starting top, moving clockwise: **top status bar → right nav
 (operational) → lower-right readouts → camera pad → clock → simulator → section
@@ -171,28 +171,31 @@ Each phase lists native sources, what to read, what to control, and exit criteri
 - **Exit:** the operational toolbar drives a field session from the browser,
   matching native, under the safety layer. The core of "enable actuation early."
 
-### Phase 4 — Lower-right readouts: roll gauge, GPS detail, heading  *(Tier 0)*
-- **Native:** `Panels/RollGaugeReadout.axaml`, `Panels/GpsDetailPanel.axaml`,
-  `Panels/HeadingReadout.axaml`.
-- **Read (wire+):** extend `TickDto`/`StatusDto` with roll, pitch, lat/lon,
-  altitude, heading detail (heading already present).
-- **Client:** SVG/canvas roll gauge, GPS detail readout, heading readout.
-- **Exit:** gauges track native live.
+### Phase 4 — Lower-right cluster: roll gauge + camera/mode pad + clock  *(Tier 0 / client-side)*
+> **Corrected from the AXAML (the inventory mis-grouped this):** the bottom-right
+> `StackPanel` holds the roll gauge + camera pad; the clock sits just left of it.
+> GPS-detail and heading are NOT here — see Phase 5.
+- **Native (MainWindow bottom-right + TimeReadout):** `Panels/RollGaugeReadout.axaml`,
+  `Panels/CameraPadControl.axaml`, `Panels/TimeReadout.axaml`; camera modes in
+  `Commands.Navigation.cs`.
+- **Roll gauge** — read (wire+): roll (+ pitch) added to the Tick; SVG/canvas gauge.
+- **Camera/mode pad** (tilt / zoom / mode-cycle) — **client-owned**: drives the
+  camera we already have (pan/zoom/tilt/follow). Map native modes (HeadingUp /
+  NorthUp / Map / Free, 2D/3D, grid, day/night, auto-track) onto client behaviour;
+  honor **map-centric** default. On-screen pad UI.
+- **Clock** — host time (or browser local). Trivial.
+- **Exit:** the bottom-right cluster matches native; the pad fully drives the camera.
 
-### Phase 5 — Camera / mode pad (tilt, zoom, heading mode)  *(Tier 1 — client-side)*
-- **Native:** `Panels/CameraPadControl.axaml`; `Commands.Navigation.cs` (camera
-  modes, 2D/3D, pitch, grid, day/night, auto-track).
-- **Control:** **client-owned** — drives the camera we already have. Map native
-  modes (HeadingUp / NorthUp / Map / Free, auto-track, grid, day/night) onto client
-  behaviors. Honor **map-centric** default.
-- **Client:** on-screen pad: zoom ±, tilt (reuse `[`/`]`), 2D/3D, north/heading-up,
-  grid, day/night.
-- **Exit:** pad fully drives the client camera; modes match native semantics.
+### Phase 5 — Status-bar completion: heading readout + GPS-detail card  *(Tier 0)*
+> Status-bar elements deferred from Phase 1 (corrected from the AXAML — they are NOT
+> in the lower-right cluster).
+- **Heading readout** — sits in the top strip right of speed (`Panels/HeadingReadout.axaml`;
+  heading is already on the Tick). Add the widget to the web status bar.
+- **GPS-detail card** (`Panels/GpsDetailPanel.axaml`) — an on-map popup toggled by
+  the strip's fix dot: lat/lon, altitude, sats, age (extend Status/Tick).
+- **Exit:** heading shows in the status bar; tapping the fix dot opens a GPS-detail card.
 
-### Phase 6 — Clock  *(Tier 0)*
-- **Native:** `Panels/TimeReadout.axaml`. Small clock; quick item.
-
-### Phase 7 — Simulator panel  *(Tier 1 — safe actuation)*
+### Phase 6 — Simulator panel  *(Tier 1 — safe actuation)*
 - **Native:** `Panels/SimulatorPanel.axaml`, `Dialogs/SimCoordsDialogPanel.axaml`;
   `Commands.Simulator.cs`, `Simulator.cs`.
 - **Read (wire+):** sim enabled, speed, steer angle.
@@ -202,7 +205,7 @@ Each phase lists native sources, what to read, what to control, and exit criteri
   dialog host + numeric keyboard against a live command-with-args.
 - **Exit:** full sim control + teleport from browser; dialog framework proven.
 
-### Phase 8 — Section bar  *(Tier 2 — per-section)*
+### Phase 7 — Section bar  *(Tier 2 — per-section)*
 - **Native:** `Panels/SectionControlPanel.axaml`; `SectionControl.cs`, section
   commands in `Commands.Track.cs`.
 - **Read:** per-section ColorCode already in `TickDto`; master/manual mode from
@@ -212,7 +215,7 @@ Each phase lists native sources, what to read, what to control, and exit criteri
   actuation behind confirm.
 - **Exit:** individual sections arm/disarm from browser, reflected by host echo.
 
-### Phase 9 — Bottom nav: field tools  *(mixed tiers)*
+### Phase 8 — Bottom nav: field tools  *(mixed tiers)*
 - **Native:** `Panels/BottomNavigationPanel.axaml`, `Panels/FieldToolsPanel.axaml`;
   VMs `Commands.Track.cs` (AB cycle/snap/nudge, flags, tram), `Headland.cs`,
   coverage/contour delete. *(Verify exact split BottomNav vs FieldTools when reached.)*
@@ -222,7 +225,7 @@ Each phase lists native sources, what to read, what to control, and exit criteri
 - **Client:** the bottom field-tools toolbar; actuation gated.
 - **Exit:** AB/flag/tram/headland field tools usable from the browser.
 
-### Phase 10 — Left nav: config + setup + field/file hub  *(Tier 1)*  ⚠ largest phase
+### Phase 9 — Left nav: config + setup + field/file hub  *(Tier 1)*  ⚠ largest phase
 - **Native:** `Panels/LeftNavigationPanel.axaml` and everything it opens:
   - File Menu (`FileMenuPanel`), Screen & Alerts (`ScreenAlertsPanel` + `AppSettings`),
     Tools (`ToolsPanel`).
@@ -252,7 +255,7 @@ Each phase lists native sources, what to read, what to control, and exit criteri
 
 ---
 
-## 6. Phase 11 — Mop-up, parity sweep & cutover
+## 6. Phase 10 — Mop-up, parity sweep & cutover
 
 - **Remaining dialogs/panels not yet built:** charts (XTE/steer/heading via a JS
   charting layer), `ScreenAlertsPanel`/alerts overlay, `MapBannersPanel`,
@@ -278,9 +281,9 @@ Clockwise (top → right → readouts → camera → clock → sim → section b
 left) is kept deliberately:
 - It front-loads the **operational toolbar (Phase 3, right nav)** — the "enable
   actuation early" centerpiece — right after standing up the safety layer (Phase 2).
-- The tension: operational panels (Phase 3 right nav, Phase 8 section bar, Phase 9
+- The tension: operational panels (Phase 3 right nav, Phase 7 section bar, Phase 8
   field tools) want a **field + tracks + config loaded**, but field lifecycle and
-  the config trees live in the **left nav (Phase 10, last)**. This is **not blocking**
+  the config trees live in the **left nav (Phase 9, last)**. This is **not blocking**
   because the web runs **alongside native** — open a field and load vehicle/tool
   config on the native app to exercise each web operational panel as it's built.
 - Config *correctness* matters for section/guidance geometry, but since native owns
