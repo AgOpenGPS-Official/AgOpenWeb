@@ -11,6 +11,13 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go.
 - Working tree is clean; Phases 1–8 + the boundary near-clip fix are committed + pushed.
+  **Phase 9 in progress:** 9a (left-nav shell + config bridge: `config.set`, units) and
+  9b (vehicle config + the `Config` read-frame type 8 + `profile.save`) are done + pushed.
+  Next sub-phase: **9c Tool config** (same pattern — add a Tool section to `ConfigDto`,
+  more `config.set|tool.*` keys, a Tool panel + Save). Then 9d AutoSteer, 9e Network/NTRIP,
+  9f App/Screen settings, 9g Field ops/lifecycle, 9h Field tools/editors + Phase-8 deferred
+  dialogs. The config-bridge pattern (read-frame + `config.set` + `profile.save` +
+  `LN_PANELS` entry) is the repeatable template.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
