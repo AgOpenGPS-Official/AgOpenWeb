@@ -6,8 +6,7 @@
   <title>AgValonia Remote Map (Phase 1)</title>
   <style>
     html, body { margin: 0; height: 100%; background: #0f1115; overflow: hidden; }
-    #c, #ck { position: fixed; inset: 0; display: block; touch-action: none; }
-    #ck { display: none; } /* CanvasKit renderer (toggle with K); hidden until parity */
+    #ck { position: fixed; inset: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
     #hud {
       position: fixed; top: 54px; left: 8px; color: #7CFC9A;
       font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none;
@@ -95,10 +94,24 @@
     #rn-readonly { color: #ff7a3d; font: 600 10px ui-monospace, monospace; text-align: center; min-height: 12px; }
     /* Dimmed when this client doesn't hold control — the buttons are inert. */
     #rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
+    /* Lower-right cluster (Phase 4): roll gauge + camera/mode pad. Clock separate. */
+    #lowerright { position: fixed; right: 14px; bottom: 72px; display: flex; flex-direction: column;
+      align-items: flex-end; gap: 10px; pointer-events: none; }
+    #rollgauge { filter: drop-shadow(0 1px 2px #000); }
+    #campad { display: grid; grid-template-columns: 44px 44px 44px; grid-template-rows: 44px 44px 44px;
+      gap: 2px; pointer-events: auto; }
+    #campad button { border: 0; cursor: pointer; color: #cfe3ff; font: 700 20px system-ui, sans-serif;
+      background: rgba(28,34,48,0.82); -webkit-user-select: none; user-select: none; }
+    #campad button:active { background: #4A90D9; }
+    .cp-up { grid-row: 1; grid-column: 2; } .cp-left { grid-row: 2; grid-column: 1; }
+    .cp-center { grid-row: 2; grid-column: 2; background: #4A90D9; color: #fff; font-size: 15px; font-weight: 700; }
+    .cp-center.free { background: rgba(28,34,48,0.82); }
+    .cp-right { grid-row: 2; grid-column: 3; } .cp-down { grid-row: 3; grid-column: 2; }
+    #clock { position: fixed; right: 16px; bottom: 16px; color: #cfe3ff;
+      font: 700 18px ui-monospace, monospace; text-shadow: 0 1px 2px #000; pointer-events: none; }
   </style>
 </head>
 <body>
-  <canvas id="c"></canvas>
   <canvas id="ck"></canvas>
   <div id="statusbar">
     <button id="sb-pause" title="Pause / resume rotating field info">❚❚</button>
@@ -127,7 +140,7 @@
   </div>
   <div id="hud">connecting…</div>
   <div id="lb"></div>
-  <div id="help">wheel/pinch = zoom · drag = pan · F = follow · K = renderer (2D/Skia) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
+  <div id="help">wheel/pinch = zoom · drag = pan · F = map-follow · camera pad = mode (H/N/M/C) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
   <div id="control">
     <div id="ctl-status">connecting…</div>
   </div>
@@ -144,6 +157,26 @@
     <button id="rn-steer" class="rn-btn"><img id="rn-steer-i" class="rn-ic" alt="AutoSteer"></button>
     <div id="rn-readonly"></div>
   </div>
+  <!-- Lower-right: roll gauge (SVG paths reused from the native gauge) + camera pad. -->
+  <div id="lowerright">
+    <svg id="rollgauge" width="200" height="80" viewBox="0 0 200 80">
+      <path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round"
+            d="M 70,12 A 22,28 0 0 0 70,68 M 59,20 L 51,20 M 52,30 L 44,30 M 48,40 L 40,40 M 52,50 L 44,50 M 59,60 L 51,60"/>
+      <path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round"
+            d="M 130,12 A 22,28 0 0 1 130,68 M 141,20 L 149,20 M 148,30 L 156,30 M 152,40 L 160,40 M 148,50 L 156,50 M 141,60 L 149,60"/>
+      <rect id="roll-bar" x="50" y="38" width="100" height="4" rx="2" fill="#2ECC71"/>
+      <circle cx="100" cy="40" r="3" fill="#fff"/>
+      <text id="roll-deg" x="100" y="32" text-anchor="middle" fill="#fff" font-size="24" font-weight="bold" font-family="system-ui,sans-serif">0.0</text>
+    </svg>
+    <div id="campad">
+      <button class="cp-up" id="cp-tiltup" title="Tilt toward overhead (2D)">▲</button>
+      <button class="cp-left" id="cp-zoomout" title="Zoom out">−</button>
+      <button class="cp-center" id="cp-mode" title="Camera mode: Heading-Up / North-Up / Map / Center">M</button>
+      <button class="cp-right" id="cp-zoomin" title="Zoom in">+</button>
+      <button class="cp-down" id="cp-tiltdown" title="Tilt toward horizon (3D)">▼</button>
+    </div>
+  </div>
+  <div id="clock">--:--:--</div>
   <div id="ctl">
     <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>
     <button data-cmd="sim.speedDown" title="slower (↓)">−</button>

@@ -4,31 +4,24 @@
 // CanvasKit swap (and client-side dead-reckoning) slot in here without touching
 // the transport seam.
 
-const cv = document.getElementById('c');
-const ctx = cv.getContext('2d');
-const ckcv = document.getElementById('ck'); // CanvasKit (Skia) renderer canvas
+const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole renderer (matches native)
 const hud = document.getElementById('hud');
 
 // Logical (CSS-pixel) canvas size. The backing store is scaled by the device
 // pixel ratio so vectors render at native resolution on hi-DPI screens (tablets,
 // retina) — otherwise thin strokes look faint and shimmer when panning. All draw
-// code works in these logical coordinates; the dpr scale is baked into ctx (2D)
-// or the Skia canvas (scale(dpr) per frame).
+// code works in these logical coordinates; the Skia canvas applies scale(dpr) per frame.
 let vw = innerWidth, vh = innerHeight, dpr = 1;
 // Skia/CanvasKit renderer state — declared before resize() (which calls
 // recreateSkSurface) to avoid a temporal-dead-zone ReferenceError.
 let CK = null, skSurface = null, skTri = null, SKP = null;
-let useSkia = false;
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
   vw = innerWidth; vh = innerHeight;
-  for (const c of [cv, ckcv]) {
-    c.width = Math.round(vw * dpr);
-    c.height = Math.round(vh * dpr);
-    c.style.width = vw + 'px';
-    c.style.height = vh + 'px';
-  }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // sticky; save/restore in draw preserve it
+  ckcv.width = Math.round(vw * dpr);
+  ckcv.height = Math.round(vh * dpr);
+  ckcv.style.width = vw + 'px';
+  ckcv.style.height = vh + 'px';
   recreateSkSurface(); // the GL surface is tied to the canvas size
 }
 addEventListener('resize', resize); resize();
@@ -58,8 +51,16 @@ let imageryVer = null;   // version currently loaded (cache-bust on change)
 
 // ---- client-owned camera (never crosses the wire) ----
 let pxPerM = 4.0;
-let follow = true;
 let camE = 0, camN = 0;
+// Camera follow mode, matching native SkiaMapControl: 0 NorthUp (lock to vehicle),
+// 1 HeadingUp (lock + rotate map to heading), 2 Free (manual pan holds), 3 Map
+// (map-centric auto-pan with a safe zone). Default Map, like native.
+let cameraMode = 3;
+let mapRotation = 0;          // radians the map is rotated (−heading in HeadingUp)
+let _cosRR = 1, _sinRR = 0;   // cos/sin of the screen rotation (−mapRotation), per frame
+const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15; // match native tuning
+const ROT_SMOOTH = 0.3; // ease map rotation toward target (smooths 10 Hz heading steps)
+function isFollowMode() { return cameraMode !== 2; }
 // 3D perspective tilt (Skia only — Canvas2D can't do true perspective). pitch 0 =
 // top-down (identical to the ortho path); up to MAX_PITCH tilts toward the horizon.
 // perspM is the world→CSS-px matrix for the current frame (null when top-down).
@@ -74,7 +75,7 @@ const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 const transport = RemoteTransport.create({
   onScene(s) {
     scene = s;
-    if (follow && (!tick || !tick.pose) && s.boundaries.length && s.boundaries[0].length) {
+    if (isFollowMode() && (!tick || !tick.pose) && s.boundaries.length && s.boundaries[0].length) {
       const r = s.boundaries[0];
       camE = r.reduce((a, p) => a + p.e, 0) / r.length;
       camN = r.reduce((a, p) => a + p.n, 0) / r.length;
@@ -173,8 +174,9 @@ function buildSkPaints() {
     boundary: mk('#46a0ff', 5), headland: mk('#5fd35f', 4),
     track: mk('#ffd24a', 4), reference: mk('#a86bff', 5, [9, 7]),
     guidance: mk('#fc56ba', 5), uturn: mk('#4df24d', 5), next: mk('#00c8c8', 4),
-    gridMinor: mk('rgba(255,255,255,0.055)', 1), gridMajor: mk('rgba(255,255,255,0.13)', 1),
-    axisX: mk('rgba(204,51,51,0.5)', 1.5), axisY: mk('rgba(51,204,51,0.5)', 1.5),
+    // Match native (night-mode) grid: grey, ~0.31/0.47 alpha, major ~2× thickness.
+    gridMinor: mk('rgba(180,180,180,0.314)', 1), gridMajor: mk('rgba(200,200,200,0.47)', 2),
+    axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
     vehicle: fill('#39FF6A'),
   };
   // Section footprint bars: one stroke paint per ColorCode (butt cap so adjacent
@@ -195,18 +197,12 @@ function buildSkPaints() {
   // Vehicle triangle in marker-local px (drawn under canvas translate+rotate).
   skTri = CK.Path.MakeFromSVGString('M 0 -14 L 9 11 L -9 11 Z');
 }
-function applyRenderer() {
-  cv.style.display = useSkia ? 'none' : 'block';
-  ckcv.style.display = useSkia ? 'block' : 'none';
-}
-
 if (typeof CanvasKitInit === 'function') {
   CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(ck => {
     CK = ck;
     buildSkPaints();
     recreateSkSurface();
     ckStatus = skSurface ? 'ready (Skia WebGL)' : 'no WebGL surface';
-    requestAnimationFrame(skFrame);
   }).catch(e => { ckStatus = 'load error: ' + e.message; });
 } else {
   ckStatus = 'loader missing';
@@ -220,19 +216,21 @@ addEventListener('wheel', e => {
 }, { passive: false });
 
 let dragging = false, lastX = 0, lastY = 0;
-addEventListener('pointerdown', e => { dragging = true; follow = false; lastX = e.clientX; lastY = e.clientY; });
+addEventListener('pointerdown', e => { dragging = true; cameraMode = 2; lastX = e.clientX; lastY = e.clientY; });
 addEventListener('pointerup', () => dragging = false);
 addEventListener('pointermove', e => {
   if (!dragging) return;
-  camE -= (e.clientX - lastX) / pxPerM;
-  camN += (e.clientY - lastY) / pxPerM;
+  // Pan in the rotated frame: invert the screen rotation so the grabbed point
+  // tracks the cursor. Reduces to the plain north-up pan at rotation 0.
+  const dsx = e.clientX - lastX, dsy = e.clientY - lastY;
+  camE += (-_cosRR * dsx + _sinRR * dsy) / pxPerM;
+  camN += (_sinRR * dsx + _cosRR * dsy) / pxPerM;
   lastX = e.clientX; lastY = e.clientY;
 });
 addEventListener('keydown', e => {
-  if (e.key === 'f' || e.key === 'F') follow = true;
-  else if (e.key === 'k' || e.key === 'K') { useSkia = !useSkia; applyRenderer(); }
-  // 3D tilt (Skia only): 3 toggles, [ / ] nudge the pitch.
-  else if (e.key === '3') { if (!useSkia) { useSkia = true; applyRenderer(); } pitch = pitch > 0.001 ? 0 : DEFAULT_PITCH; }
+  if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
+  // 3D tilt: 3 toggles between top-down and 60°, [ / ] nudge the pitch.
+  else if (e.key === '3') pitch = pitch > 0.001 ? 0 : DEFAULT_PITCH;
   else if (e.key === '[') pitch = Math.max(0, pitch - PITCH_STEP);
   else if (e.key === ']') pitch = Math.min(MAX_PITCH, pitch + PITCH_STEP);
 });
@@ -305,7 +303,7 @@ if (rnRoot) {
 // ---- render ----
 // True 3D is only meaningful under Skia (CanvasKit M44). When inactive, perspM is
 // null and everything uses the plain ortho projection below.
-function active3D() { return useSkia && CK && pitch > 0.001; }
+function active3D() { return CK && pitch > 0.001; }
 // Build the world→CSS-px screen matrix, mirroring the native camera model
 // (SkiaMapControl.BuildPerspectiveScreenMatrix): view = T(0,0,-distance)·Rx(-pitch)
 // ·T(-cam), a FOV-PERSP_FOV perspective, then an NDC(-1..1, y-up)→pixel(y-down)
@@ -321,6 +319,7 @@ function buildScreenMatrix() {
   const view = CK.M44.multiply(
     CK.M44.translated([0, 0, -distance]),
     CK.M44.rotated([1, 0, 0], -pitch),
+    CK.M44.rotated([0, 0, 1], -mapRotation), // map rotation (HeadingUp etc.)
     CK.M44.translated([-camE, -camN, 0]));
   // Perspective (column-vector, row-major) — transpose of System.Numerics
   // CreatePerspectiveFieldOfView, so w' = -z.
@@ -340,6 +339,53 @@ function buildScreenMatrix() {
   return CK.M44.multiply(viewport, proj, view);
 }
 function updatePerspective() { perspM = active3D() ? buildScreenMatrix() : null; }
+// Near-plane clip a ground segment for the perspective path. perspM's w (bottom row,
+// z=0) is positive in front of the camera; CanvasKit's drawLine doesn't clip the
+// behind part (it perspective-divides by a negative w → a mirrored ghost line), so
+// we clip in world space first. Returns [e1,n1,e2,n2] fully in front, or null.
+function clipNear(e1, n1, e2, n2) {
+  const M = perspM, EPS = 1.0; // matches the projection near plane
+  const w1 = M[12] * e1 + M[13] * n1 + M[15];
+  const w2 = M[12] * e2 + M[13] * n2 + M[15];
+  if (w1 >= EPS && w2 >= EPS) return [e1, n1, e2, n2];
+  if (w1 < EPS && w2 < EPS) return null;
+  const t = (EPS - w1) / (w2 - w1);
+  const ce = e1 + (e2 - e1) * t, cn = n1 + (n2 - n1) * t;
+  return w1 < EPS ? [ce, cn, e2, n2] : [e1, n1, ce, cn];
+}
+// Map-mode auto-pan: keep the vehicle inside a centred safe zone, smoothing the
+// camera toward it (snap if it leaves the viewport). Mirrors native ApplyAutoPan
+// (rotation 0 in Map mode). World units; rotation 0.
+function applyAutoPan(rp) {
+  const viewHalfW = (vw / 2) / pxPerM, viewHalfH = (vh / 2) / pxPerM;
+  const relE = rp.e - camE, relN = rp.n - camN;
+  if (Math.abs(relE) > viewHalfW || Math.abs(relN) > viewHalfH) { camE = rp.e; camN = rp.n; return; }
+  const safeW = viewHalfW * AUTO_PAN_SAFE, safeH = viewHalfH * AUTO_PAN_SAFE;
+  let panE = 0, panN = 0;
+  if (relE > safeW) panE = relE - safeW; else if (relE < -safeW) panE = relE + safeW;
+  if (relN > safeH) panN = relN - safeH; else if (relN < -safeH) panN = relN + safeH;
+  camE += panE * AUTO_PAN_SMOOTH; camN += panN * AUTO_PAN_SMOOTH;
+}
+// Per-frame camera update (run once, from skFrame()): apply the follow mode (camera
+// position + map rotation), precompute the screen rotation, rebuild perspM.
+function updateCamera() {
+  const rp = renderPose();
+  let target = mapRotation; // Free (mode 2): hold rotation
+  if (rp) {
+    if (cameraMode === 0) { camE = rp.e; camN = rp.n; target = 0; }                // NorthUp
+    else if (cameraMode === 1) { camE = rp.e; camN = rp.n; target = -rp.heading; } // HeadingUp
+    else if (cameraMode === 3) { target = 0; applyAutoPan(rp); }                   // Map
+  } else if (cameraMode !== 2) target = 0;
+  // Ease toward the target along the shortest angular path — turns the 10 Hz
+  // heading steps (HeadingUp) into continuous rotation.
+  let d = target - mapRotation;
+  d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
+  mapRotation += d * ROT_SMOOTH;
+  const rR = -mapRotation;
+  _cosRR = Math.cos(rR); _sinRR = Math.sin(rR);
+  updatePerspective();
+  return rp;
+}
 // Apply perspM (row-major, M·v) to a ground point (e,n,0,1); perspective divide.
 function applyM(M, e, n) {
   const x = M[0] * e + M[1] * n + M[3];
@@ -349,33 +395,21 @@ function applyM(M, e, n) {
 }
 function w2s(e, n) {
   if (perspM) return applyM(perspM, e, n);
-  return [vw / 2 + (e - camE) * pxPerM, vh / 2 - (n - camN) * pxPerM];
+  // 2D ortho with map rotation (screen rotation = −mapRotation; _cosRR/_sinRR
+  // precomputed per frame in updateCamera). Reduces to the old north-up form at
+  // rotation 0.
+  const rE = e - camE, rN = n - camN;
+  const x = rE * _cosRR - rN * _sinRR, y = rE * _sinRR + rN * _cosRR;
+  return [vw / 2 + x * pxPerM, vh / 2 - y * pxPerM];
 }
 // On-screen heading at a ground point: the heading direction projected through the
 // current matrix (so the vehicle marker aligns with the tilted ground, not screen
 // up). Returns the world heading unchanged when top-down.
 function screenHeading(e, n, h) {
-  if (!perspM) return h;
+  // Project a short step along the heading and read the on-screen angle. Works for
+  // 2D (now rotation-aware via w2s) and 3D; returns h when north-up + top-down.
   const a = w2s(e, n), b = w2s(e + Math.sin(h) * 3, n + Math.cos(h) * 3);
   return Math.atan2(b[0] - a[0], -(b[1] - a[1])); // 0 = up, clockwise
-}
-function strokePts(pts, close) {
-  if (!pts || !pts.length) return;
-  ctx.beginPath();
-  pts.forEach((p, i) => { const [x, y] = w2s(p.e, p.n); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-  if (close) ctx.closePath();
-  ctx.stroke();
-}
-function vehicle(p) {
-  const [x, y] = w2s(p.e, p.n);
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(screenHeading(p.e, p.n, p.heading)); // radians, 0 = north (up), clockwise
-  ctx.fillStyle = '#39FF6A';
-  ctx.beginPath();
-  ctx.moveTo(0, -14); ctx.lineTo(9, 11); ctx.lineTo(-9, 11); ctx.closePath();
-  ctx.fill();
-  ctx.restore();
 }
 // Section display palette by ColorCode — matches the native
 // SectionColorCodeToBackgroundConverter exactly.
@@ -406,28 +440,6 @@ function renderTool() {
     heading: tl.heading,
   };
 }
-function toolFootprint() {
-  const t = renderTool();
-  // Draw whenever we have a section layout and a real tool position. (Not gated
-  // on t.ready — IsToolPositionReady can read false in the sim even while
-  // coverage paints, and coverage proves the pose is live.)
-  if (!t || !scene || !scene.toolSections || !scene.toolSections.length) return;
-  if (!t.e && !t.n) return;
-  const perp = t.heading + Math.PI / 2;
-  const ps = Math.sin(perp), pc = Math.cos(perp);
-  const secs = tick.sections || [];
-  ctx.save();
-  ctx.lineWidth = 7;
-  ctx.lineCap = 'butt';
-  for (let i = 0; i < scene.toolSections.length; i++) {
-    const span = scene.toolSections[i];
-    const [lx, ly] = w2s(t.e + ps * span.left, t.n + pc * span.left);
-    const [rx, ry] = w2s(t.e + ps * span.right, t.n + pc * span.right);
-    ctx.strokeStyle = SECTION_COLORS[secs[i]] || SECTION_COLORS[5];
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ry); ctx.stroke();
-  }
-  ctx.restore();
-}
 // Dead-reckon the pose from the last authoritative tick: extrapolate along the
 // heading at the reported speed. dt is clamped so motion freezes (rather than
 // flies off) if ticks stall — same spirit as the app's own stale-pose cap.
@@ -451,41 +463,8 @@ function xteText(xte) {
   return `${cm.toFixed(0)} cm ${side}`;
 }
 
-// Lightbar: a centred LED strip across the top, lit toward the side the vehicle
-// has drifted (right of line → right segments). Centre LED green when on-line.
-// Only shown while guidance is engaged. 5 cm per segment.
-function lightbar() {
-  if (!tick || !tick.guidanceActive) return;
-  const xte = tick.crossTrackError || 0;        // + = right of line
-  const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
-  const mid = (SEG - 1) / 2;
-  const totalW = SEG * (W + GAP) - GAP;
-  const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
-  const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
-  // Native convention: the lights point the way to STEER. Right-of-line (+xte)
-  // lights the LEFT in orange-red (steer left); left-of-line lights the RIGHT
-  // in green (steer right). Centre LED green when on-line.
-  const onLine = Math.abs(xte) < PER;
-  const steerLeft = xte > 0;
-  const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
-
-  for (let i = 0; i < SEG; i++) {
-    const idx = i - mid;                  // signed position from centre
-    const x = x0 + i * (W + GAP);
-    let on = false, col = '#1c2230';
-    if (idx === 0) {
-      on = onLine; col = on ? '#39FF6A' : '#2a3550';
-    } else if (steerLeft ? (idx < 0 && -idx <= lit) : (idx > 0 && idx <= lit)) {
-      on = true; col = litCol;
-    }
-    ctx.fillStyle = on ? col : '#1c2230';
-    ctx.fillRect(x, top, W, H);
-  }
-  // The readout text (arrow + cm + label) is a DOM overlay (#lb) shared by both
-  // renderers — see updateLightbarText(), driven from the always-running draw().
-}
-// Lightbar readout text → DOM overlay, so it shows under both the 2D and Skia map
-// renderers. Updated every frame from the latest tick; hidden when guidance is off.
+// Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
+// Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
 function updateLightbarText() {
   if (!tick || !tick.guidanceActive) { lbEl.style.display = 'none'; return; }
@@ -652,34 +631,56 @@ function renderRightNav() {
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
 }
 
-// Background imagery (BackPic.png) — the bottom layer, drawn at its world rect.
-function drawImagery() {
-  if (!imageryImg || !imageryRect) return;
-  const r = imageryRect;
-  const [tlx, tly] = w2s(r.minE, r.maxN); // top-left = (minE, maxN)
-  const [brx, bry] = w2s(r.maxE, r.minN); // bottom-right = (maxE, minN)
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(imageryImg, tlx, tly, brx - tlx, bry - tly);
+// ---- Lower-right cluster (Phase 4): roll gauge + camera/mode pad + clock ----
+const rollBar = document.getElementById('roll-bar');
+const rollDeg = document.getElementById('roll-deg');
+function renderRoll() {
+  const r = (tick && typeof tick.roll === 'number') ? tick.roll : 0;
+  if (rollBar) rollBar.setAttribute('transform', 'rotate(' + r.toFixed(2) + ' 100 40)');
+  if (rollDeg) rollDeg.textContent = r.toFixed(1);
 }
-
-// Blit the coverage offscreen (cell grid) into world space, under the vectors.
-function drawCoverage() {
-  if (!cov) return;
-  const cs = cov.cellSize;
-  const [tlx, tly] = w2s(cov.originE, cov.originN + cov.height * cs); // (minE, maxN)
-  const [brx, bry] = w2s(cov.originE + cov.width * cs, cov.originN);  // (maxE, minN)
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(cov.canvas, tlx, tly, brx - tlx, bry - tly);
+const cpMode = document.getElementById('cp-mode');
+function camModeLabel() { return cameraMode === 1 ? 'H' : cameraMode === 0 ? 'N' : cameraMode === 3 ? 'M' : 'C'; }
+function renderCampad() {
+  if (!cpMode) return;
+  cpMode.textContent = camModeLabel();          // H / N / M / C (native labels)
+  cpMode.classList.toggle('free', cameraMode === 2);
 }
+// Camera pad drives the client-owned camera (pitch / zoom / follow) — no host commands.
+(function wireCampad() {
+  const pad = document.getElementById('campad');
+  if (!pad) return;
+  pad.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
+  document.getElementById('cp-tiltup').addEventListener('click', () => { pitch = Math.max(0, pitch - PITCH_STEP); });
+  document.getElementById('cp-tiltdown').addEventListener('click', () => {
+    pitch = Math.min(MAX_PITCH, pitch + PITCH_STEP);
+  });
+  document.getElementById('cp-zoomin').addEventListener('click', () => { pxPerM = Math.min(200, pxPerM * 1.2); });
+  document.getElementById('cp-zoomout').addEventListener('click', () => { pxPerM = Math.max(0.2, pxPerM * 0.83); });
+  // Center: cycle the four native modes H → N → M → C → H; recenter on follow modes.
+  document.getElementById('cp-mode').addEventListener('click', () => {
+    cameraMode = cameraMode === 1 ? 0 : cameraMode === 0 ? 3 : cameraMode === 3 ? 2 : 1;
+    if (cameraMode !== 2) { const rp = renderPose(); if (rp) { camE = rp.e; camN = rp.n; } }
+  });
+})();
+// Clock — browser-local 24h HH:MM:SS.
+const clockEl = document.getElementById('clock');
+function tickClock() {
+  if (!clockEl) return;
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  clockEl.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+setInterval(tickClock, 1000); tickClock();
 
 // Reference grid + origin axes (procedural, client-side — no wire). Spacing is a
 // tool-width multiple on a 1-2-5 series keyed to zoom, matching the native grid
 // (#417). Axes through the field origin (local 0,0): X (N=0) red, Y (E=0) green.
+// Matches native NiceStep125 exactly: ≤1 → 1, then 2, 5, 10, 20 … (no 1.5 step).
 function niceStep125(x) {
-  if (!(x > 0)) return 1;
-  const p = Math.pow(10, Math.floor(Math.log10(x)));
-  const f = x / p;
-  return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p;
+  if (x <= 1) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / pow;
+  return (f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
 }
 function toolWidthM() {
   const ts = scene && scene.toolSections;
@@ -690,90 +691,8 @@ function toolWidthM() {
   }
   return 6;
 }
-function drawGrid() {
-  const G = 2000; // native clamps the grid to ±2000 m
-  const halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
-  const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
-  const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
-  if (minE >= maxE || minN >= maxN) return;
-
-  const toolW = toolWidthM();
-  const spacing = toolW * Math.max(1, niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30)));
-  ctx.lineWidth = 1;
-
-  for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++) {
-    const e = k * spacing;
-    ctx.strokeStyle = (k % 10 === 0) ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
-    const [x, y1] = w2s(e, minN), [, y2] = w2s(e, maxN);
-    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
-  }
-  for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++) {
-    const n = k * spacing;
-    ctx.strokeStyle = (k % 10 === 0) ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.055)';
-    const [x1, y] = w2s(minE, n), [x2] = w2s(maxE, n);
-    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
-  }
-
-  ctx.lineWidth = 1.5;
-  if (0 >= minE && 0 <= maxE) { // Y axis (E=0) — green
-    ctx.strokeStyle = 'rgba(51,204,51,0.5)';
-    const [x, y1] = w2s(0, minN), [, y2] = w2s(0, maxN);
-    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
-  }
-  if (0 >= minN && 0 <= maxN) { // X axis (N=0) — red
-    ctx.strokeStyle = 'rgba(204,51,51,0.5)';
-    const [x1, y] = w2s(minE, 0), [x2] = w2s(maxE, 0);
-    ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
-  }
-}
-function draw() {
-  ctx.clearRect(0, 0, vw, vh);
-
-  const rp = renderPose();
-  if (rp && follow) { camE = rp.e; camN = rp.n; }
-  updatePerspective(); // null unless Skia + tilt; 2D canvas stays ortho
-
-  drawImagery();   // bottom layer
-  drawCoverage();
-  drawGrid();      // grid + origin axes over coverage, under the vectors
-
-  if (scene) {
-    ctx.lineWidth = 5; ctx.strokeStyle = '#46a0ff';
-    for (const ring of scene.boundaries) strokePts(ring, true);
-    if (scene.headland) { ctx.lineWidth = 4; ctx.strokeStyle = '#5fd35f'; strokePts(scene.headland, true); }
-    const activeName = tick ? tick.activeTrackName : null;
-    for (const tr of scene.tracks) {
-      const isActive = activeName && tr.name === activeName;
-      if (isActive) {
-        ctx.setLineDash([9, 7]);
-        ctx.lineWidth = 5; ctx.strokeStyle = '#a86bff'; // dashed purple = reference line
-      } else {
-        ctx.setLineDash([]);
-        ctx.lineWidth = 4; ctx.strokeStyle = '#ffd24a';
-      }
-      strokePts(tr.points, false);
-    }
-    ctx.setLineDash([]);
-    if (scene.nextTrack) {
-      ctx.lineWidth = 4; ctx.strokeStyle = '#00c8c8'; // cyan = next pass (until picked up)
-      strokePts(scene.nextTrack, false);
-    }
-    if (scene.uTurnPath) {
-      ctx.lineWidth = 5; ctx.strokeStyle = '#4df24d'; // green = U-turn arc
-      strokePts(scene.uTurnPath, false);
-    }
-    if (scene.guidanceLine) {
-      ctx.lineWidth = 5; ctx.strokeStyle = '#fc56ba'; // magenta = current/followed line
-      strokePts(scene.guidanceLine, false);
-    }
-  }
-  toolFootprint();
-  if (rp) vehicle(rp);
-  lightbar();
-  updateLightbarText(); // DOM overlay — shared by both renderers (draw() always runs)
-  renderStatusBar();    // top status bar (DOM); always runs
-  renderRightNav();     // right-nav operational toolbar (DOM)
-
+// HUD text (DOM). Built each frame from the latest tick/scene.
+function updateHud(rp) {
   const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
   // "on" = codes 1 (manual on) / 2 (auto on) / 3 (turning off, still flowing).
   const secs = tick && tick.sections
@@ -784,14 +703,11 @@ function draw() {
   hud.textContent =
     `${connState}\n` +
     (scene ? `field: ${scene.fieldName}\nboundaries: ${scene.boundaries.length}  tracks: ${scene.tracks.length}\n` : 'waiting for scene…\n') +
-    `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   follow: ${follow ? 'on' : 'off'}  (DR)\n` +
+    `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   cam: ${camModeLabel()}  (DR)\n` +
     `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}\n` +
     `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}\n` +
-    `canvaskit: ${ckStatus}   renderer: ${useSkia ? 'skia' : '2d'}   tilt: ${(pitch * 180 / Math.PI).toFixed(0)}°`;
-
-  requestAnimationFrame(draw);
+    `canvaskit: ${ckStatus}   tilt: ${(pitch * 180 / Math.PI).toFixed(0)}°`;
 }
-draw();
 
 // ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
 //      px (canvas.scale(dpr)), reusing w2s. Coverage/imagery/tool/lightbar TODO. ----
@@ -816,15 +732,50 @@ function drawGridSk(canvas) {
   const G = 2000;
   let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
   if (perspM) { halfW = Math.max(halfW, 180); halfH = Math.max(halfH, 180); } // tilt sees farther
+  if (mapRotation !== 0) { const d = Math.hypot(halfW, halfH); halfW = d; halfH = d; } // cover rotated corners
   const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
   if (minE >= maxE || minN >= maxN) return;
   const toolW = toolWidthM();
-  const spacing = toolW * Math.max(1, niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30)));
+  // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
+  const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
+  const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;
+  const gm = 6; // gridMult = BaseStrokeMult 3 × GridExtraStrokeMult 2
+
+  if (perspM) {
+    // 3D: draw in WORLD coords under the perspective matrix so Skia GPU-clips at the
+    // near plane. (Per-vertex screen projection garbles any line crossing behind the
+    // tilted camera — that's why the vertical lines vanished.) Stroke widths in world
+    // metres (native formula: a 0.3 px floor + a 0.05 m world-thickness floor).
+    const wpp = 1 / pxPerM;
+    SKP.gridMinor.setStrokeWidth(Math.max(0.3 * wpp, 0.05) * gm);
+    SKP.gridMajor.setStrokeWidth(Math.max(0.6 * wpp, 0.1) * gm);
+    SKP.axisX.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
+    SKP.axisY.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
+    canvas.save();
+    canvas.concat(perspM);
+    const line = (e1, n1, e2, n2, paint) => {
+      const c = clipNear(e1, n1, e2, n2);
+      if (c) canvas.drawLine(c[0], c[1], c[2], c[3], paint);
+    };
+    for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
+      line(k * spacing, minN, k * spacing, maxN, major(k));
+    for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
+      line(minE, k * spacing, maxE, k * spacing, major(k));
+    if (0 >= minE && 0 <= maxE) line(0, minN, 0, maxN, SKP.axisY);
+    if (0 >= minN && 0 <= maxN) line(minE, 0, maxE, 0, SKP.axisX);
+    canvas.restore();
+    return;
+  }
+  // 2D top-down: screen-space; the same thickness expressed in CSS px.
+  SKP.gridMinor.setStrokeWidth(Math.max(0.3, 0.05 * pxPerM) * gm);
+  SKP.gridMajor.setStrokeWidth(Math.max(0.6, 0.1 * pxPerM) * gm);
+  SKP.axisX.setStrokeWidth(Math.max(0.9, 0.15 * pxPerM) * gm);
+  SKP.axisY.setStrokeWidth(Math.max(0.9, 0.15 * pxPerM) * gm);
   for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
-    segSk(canvas, k * spacing, minN, k * spacing, maxN, k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor);
+    segSk(canvas, k * spacing, minN, k * spacing, maxN, major(k));
   for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
-    segSk(canvas, minE, k * spacing, maxE, k * spacing, k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor);
+    segSk(canvas, minE, k * spacing, maxE, k * spacing, major(k));
   if (0 >= minE && 0 <= maxE) segSk(canvas, 0, minN, 0, maxN, SKP.axisY);
   if (0 >= minN && 0 <= maxN) segSk(canvas, minE, 0, maxE, 0, SKP.axisX);
 }
@@ -953,13 +904,10 @@ function lightbarSk(canvas) {
     if (tri) { canvas.drawPath(tri, p); tri.delete(); }
   }
 }
-function renderSkia(canvas) {
+function renderSkia(canvas, rp) {
   canvas.clear(ckColor('#0f1115'));
   canvas.save();
-  canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match the 2D path
-  const rp = renderPose();
-  if (rp && follow) { camE = rp.e; camN = rp.n; }
-  updatePerspective();
+  canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
   drawImagerySk(canvas); // bottom layer
   drawCoverageSk(canvas);
   drawGridSk(canvas);
@@ -978,12 +926,22 @@ function renderSkia(canvas) {
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale
   canvas.restore();
 }
+// The single render loop. Window rAF (not surface.requestAnimationFrame) so it
+// survives surface recreation on resize and runs even before CanvasKit finishes
+// loading (DOM overlays update regardless; the GL map draws once skSurface exists).
 function skFrame() {
-  // Window rAF (not surface.requestAnimationFrame) so the loop survives surface
-  // recreation on resize; re-reads the global skSurface each frame.
-  if (useSkia && skSurface) {
-    try { renderSkia(skSurface.getCanvas()); skSurface.flush(); }
-    catch (e) { ckStatus = 'render err: ' + (e && e.message || e); useSkia = false; applyRenderer(); }
+  const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
+  if (skSurface) {
+    try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
+    catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }
   }
+  // DOM overlays (independent of the GL surface).
+  updateLightbarText();
+  renderStatusBar();
+  renderRightNav();
+  renderRoll();
+  renderCampad();
+  updateHud(rp);
   requestAnimationFrame(skFrame);
 }
+skFrame();

@@ -78,9 +78,10 @@ window.RemoteTransport = {
             sectionAuto: !!u8(), sectionManual: !!u8(), youturn: !!u8(),
             turnLeft: !!u8(), distToTrigger: f32(), trackClosed: !!u8(),
           };
+          const roll = f32();
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
-            activeTrackName: atn.length ? atn : null, tool, op,
+            activeTrackName: atn.length ? atn : null, tool, op, roll,
           });
           break;
         }

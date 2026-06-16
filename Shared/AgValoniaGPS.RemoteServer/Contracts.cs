@@ -77,7 +77,8 @@ public record TickDto(
     bool IsYouTurnEnabled,
     bool TurnIsLeft,
     double DistanceToTrigger,
-    bool IsActiveTrackClosed);
+    bool IsActiveTrackClosed,
+    double Roll); // vehicle roll angle (degrees) for the roll gauge
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

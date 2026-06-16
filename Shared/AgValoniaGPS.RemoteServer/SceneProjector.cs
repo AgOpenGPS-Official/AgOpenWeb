@@ -180,7 +180,8 @@ public sealed class SceneProjector
             _state.Operation.IsYouTurnEnabled,
             _state.YouTurn.IsTurnLeft,
             _state.YouTurn.DistanceToTrigger,
-            _state.Field.ActiveTrack?.IsClosed == true);
+            _state.Field.ActiveTrack?.IsClosed == true,
+            _state.Vehicle.Roll);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

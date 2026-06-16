@@ -132,7 +132,7 @@ public partial class MainViewModel
     public double RollDegrees
     {
         get => _rollDegrees;
-        set => SetProperty(ref _rollDegrees, value);
+        set { if (SetProperty(ref _rollDegrees, value)) State.Vehicle.Roll = value; } // mirror for web-UI
     }
 
     #endregion

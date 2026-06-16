@@ -126,6 +126,15 @@ public class VehicleState : ObservableObject
         set => SetProperty(ref _age, value);
     }
 
+    private double _roll;
+    /// <summary>Processed roll angle (degrees) — the value the roll gauge shows.
+    /// Mirrored from MainViewModel.RollDegrees for View-free (web-UI) projection.</summary>
+    public double Roll
+    {
+        get => _roll;
+        set => SetProperty(ref _roll, value);
+    }
+
     // IMU data
     private double _imuRoll;
     public double ImuRoll

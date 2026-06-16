@@ -93,6 +93,7 @@ public static class WireCodec
         w.Write((byte)(t.TurnIsLeft ? 1 : 0));
         w.Write((float)t.DistanceToTrigger);
         w.Write((byte)(t.IsActiveTrackClosed ? 1 : 0));
+        w.Write((float)t.Roll);
         return ms.ToArray();
     }
 
