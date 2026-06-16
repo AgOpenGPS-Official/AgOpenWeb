@@ -49,30 +49,36 @@ we are bringing the web to parity with it, region by region.
 ## 2. Actuation & safety model (decision: *enable actuation early*)
 
 Web actuation is enabled progressively as operational panels are built (not
-deferred to the very end), running **alongside** native with these guardrails.
-The **Remote Actuation Safety Layer (Phase 2)** must land before the first
-hardware-actuating panel — the right-nav operational toolbar (Phase 3).
+deferred to the very end). The **Remote Actuation Safety Layer (Phase 2)** lands
+before the first hardware-actuating panel — the right-nav operational toolbar
+(Phase 3).
+
+**As-shipped model (Phases 2+3, commit 49c685cf).** The premise is **ONE operator
+and a HEADLESS host** (no native cab UI). The earlier draft of this section assumed
+two operators + a native banner + take/release + per-action confirm — all wrong;
+the shipped model is deliberately simpler:
 
 - **Command tiers** on the allowlist:
   - *Tier 0 — observe:* no commands (read-only panels).
   - *Tier 1 — safe actuation:* simulator drive, camera (client-side), settings &
-    config writes (persisted, no live hardware). Allowed freely.
-  - *Tier 2 — live actuation:* section arm on/off, U-turn enable/trigger, autosteer
-    engage/disengage, nudge/snap. Allowed **only** through the safety layer.
-- **Per-action confirmation** for Tier 2 (hold-to-confirm or explicit confirm tap).
-- **Operator-presence / deadman:** Tier 2 requires a live, recently-interacted
-  session; idle or backgrounded clients cannot actuate.
-- **Connection-loss failsafe:** socket drop → host auto-disengages autosteer and
-  reverts sections to safe state (configurable), independent of the client.
-- **"REMOTE CONTROL ACTIVE" indicator on the native in-cab screen** whenever a
-  browser holds Tier 2 authority, plus which client.
-- **State echo / audit:** host confirms the resulting state back to the client
-  (and logs it); the client never assumes a command took — it reflects host state.
-- **Single actuator authority:** only one client may hold Tier 2 at a time;
-  native always retains override.
+    config writes (persisted, no live hardware).
+  - *Tier 2 — live actuation:* sections, U-turn, autosteer, contour — gated by
+    `ControlAuthority` in the hub (dropped unless the sender is the controller).
+- **Control is implicit, by connection order.** The first browser to connect is the
+  controller (server auto-`Acquire` on connect); later clients observe-only. **No
+  take-over, no Take Control / Release UI, no per-action confirm** — being the
+  controller is the gate (matches the native single-tap).
+- **Deadman + connection-loss failsafe.** The controller heartbeats (~2 Hz); if it
+  disconnects or the heartbeat lapses (~1.5 s), the host **disengages autosteer and
+  turns sections off** so the machine never keeps actuating with no interface.
+  Control is **not** handed off — reload to reconnect as controller when none held.
+- **No ownership tracking.** One operator, so the failsafe simply disengages what's
+  active on control-loss (no "remote-vs-cab" distinction).
+- **Control state lives in the browser** (Controlling / Observing / No controller) —
+  there is no native banner; the end-state host is headless.
 
-Autosteer-engage (currently excluded from the allowlist per
-`REMOTE_WEB_UI_SPLIT.md §5`) is re-enabled **only** under this layer, with sign-off.
+Autosteer-engage (was excluded from the allowlist per `REMOTE_WEB_UI_SPLIT.md §5`)
+is enabled under this gate.
 
 ---
 
@@ -137,19 +143,17 @@ Each phase lists native sources, what to read, what to control, and exit criteri
 - **Deferred:** heading (Phase 4 readouts), battery (n/a remote), on-map field-stats
   / GPS-detail toggles (later).
 
-### Phase 2 — Remote Actuation Safety Layer  *(foundation — gate for all Tier 2)*
-- Build §2: per-action confirm, deadman/presence, connection-loss failsafe (host
-  auto-disengage autosteer + revert sections to safe), native "REMOTE CONTROL
-  ACTIVE" banner, single-authority lock, state echo/audit. Generalize the command
-  channel to typed `{id,args}` + an `ack`/echo frame.
+### Phase 2 — Remote Actuation Safety Layer  *(foundation — gate for all Tier 2)*  ✅ DONE (49c685cf)
+- **Shipped (§2 as-shipped model):** `ControlAuthority` (single controller, implicit
+  by connection order — server auto-`Acquire` on connect, later clients observe);
+  Hello + ControlState frames; hub drops Tier-2 unless the sender is the controller;
+  deadman heartbeat (~1.5 s) + connection-loss failsafe (host disengages autosteer +
+  sections). No native banner, no take/release UI, no per-action confirm (headless,
+  one operator).
 - **Why now:** the next panel clockwise (right nav) is almost entirely Tier-2
-  actuation — it can't ship without this. This is the "enable actuation early"
-  enabler.
-- **Exit:** a Tier-2 stub command fires only under confirm + presence; socket drop
-  triggers the host failsafe; native shows the remote-active banner. Required
-  before Phase 3.
+  actuation — it can't ship without this.
 
-### Phase 3 — Right nav: operational toolbar  *(Tier 2 — live actuation)*
+### Phase 3 — Right nav: operational toolbar  *(Tier 2 — live actuation)*  ✅ DONE (3a 000b6105, 3b 49c685cf)
 - **Native:** `Panels/RightNavigationPanel.axaml`; VMs `Commands.Track.cs`
   (sections, contour), `MainViewModel.YouTurn.cs`, `SectionControl.cs`,
   `Guidance.cs`, autosteer toggle.
