@@ -68,15 +68,54 @@
       color: #cfe3ff; font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
-    /* Sim drive controls (client→host commands). Touch-friendly bottom bar. */
-    #ctl { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-           display: flex; gap: 10px; touch-action: manipulation; }
-    #ctl button {
-      width: 60px; height: 60px; border-radius: 12px; border: 1px solid #2a3550;
-      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 600 24px system-ui, sans-serif;
-      cursor: pointer; -webkit-user-select: none; user-select: none;
-    }
-    #ctl button:active { background: rgba(70,160,255,0.5); }
+    /* Simulator bar (Phase 6) — mirrors the native SimulatorPanel: a single
+       horizontal bar centred above the bottom edge. Hidden until launched. */
+    #simbar { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 4px; padding: 6px 8px; box-sizing: border-box;
+      background: rgba(20,24,33,0.92); border: 1px solid #2a3550; border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation;
+      -webkit-user-select: none; user-select: none; }
+    #simbar.open { display: flex; }
+    .sim-btn { min-width: 38px; height: 40px; padding: 0 8px; border-radius: 6px;
+      border: 0; background: rgba(255,255,255,0.10); color: #e7eef9;
+      font: 700 13px system-ui, sans-serif; cursor: pointer; }
+    .sim-btn:hover { background: rgba(255,255,255,0.18); }
+    .sim-btn:active { background: rgba(70,160,255,0.5); }
+    .sim-stopbtn { background: rgba(231,76,60,0.32); }
+    .sim-closebtn { background: transparent; color: #9fb3cc; min-width: 32px; }
+    .sim-toggle { min-width: 42px; height: 40px; border-radius: 6px; border: 1px solid #2a3550;
+      background: rgba(255,255,255,0.06); color: #9fb3cc; font: 700 12px system-ui, sans-serif;
+      cursor: pointer; }
+    .sim-toggle.on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+    .sim-sep { width: 1px; height: 28px; background: #2a3550; margin: 0 2px; }
+    .sim-slider { width: 150px; accent-color: #4A90D9; cursor: pointer; }
+    .sim-val { width: 46px; text-align: center; color: #9fb3cc; font: 600 11px ui-monospace, monospace; }
+    .sim-speed { width: 78px; text-align: center; color: #e7eef9; font: 700 12px system-ui, sans-serif; }
+    /* Launcher chip — visible only while the sim bar is closed. */
+    #sim-launch { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      display: none; height: 34px; padding: 0 16px; border-radius: 10px; border: 1px solid #2a3550;
+      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 700 13px system-ui, sans-serif;
+      cursor: pointer; touch-action: manipulation; }
+    #sim-launch.show { display: block; }
+    /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
+    #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
+      justify-content: center; z-index: 50; }
+    #dialoghost.open { display: flex; }
+    #dialoghost .dlg-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+    .dlg-card { position: relative; margin-top: 60px; min-width: 320px; max-width: 380px;
+      background: #161b24; border: 1px solid #2a3550; border-radius: 12px; padding: 18px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6); display: none; flex-direction: column; }
+    .dlg-card.open { display: flex; }
+    .dlg-title { color: #e7eef9; font: 700 18px system-ui, sans-serif; text-align: center; margin-bottom: 14px; }
+    .dlg-label { color: #9fb3cc; font: 500 13px system-ui, sans-serif; margin: 6px 0 4px; }
+    .dlg-input { height: 44px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
+      color: #e7eef9; font: 700 16px ui-monospace, monospace; padding: 0 10px; box-sizing: border-box; }
+    .dlg-input:focus { outline: none; border-color: #4A90D9; }
+    .dlg-buttons { display: flex; gap: 10px; margin-top: 16px; }
+    .dlg-btn { flex: 1; height: 42px; border-radius: 8px; border: 0; cursor: pointer;
+      font: 700 14px system-ui, sans-serif; }
+    .dlg-cancel { background: rgba(255,255,255,0.10); color: #cfe3ff; }
+    .dlg-ok { background: #1f6fb2; color: #fff; }
     /* Remote actuation control (Phase 2 safety layer). Take/Release authority +
        a Tier-2 test. Bottom-left, clear of the centre sim pad. */
     #control { position: fixed; bottom: 14px; left: 14px; display: flex; flex-direction: column;
@@ -112,7 +151,10 @@
     /* Lower-right cluster (Phase 4): roll gauge + camera/mode pad. Clock separate. */
     #lowerright { position: fixed; right: 14px; bottom: 72px; display: flex; flex-direction: column;
       align-items: flex-end; gap: 10px; pointer-events: none; }
-    #rollgauge { filter: drop-shadow(0 1px 2px #000); }
+    /* The 200px-wide gauge is wider than the 136px campad below it; nudge it right
+       by (200−136)/2 so its (centred) graphic sits over the campad, not flush-right.
+       The empty right margin of the SVG absorbs the overflow — no visible clipping. */
+    #rollgauge { filter: drop-shadow(0 1px 2px #000); margin-right: -32px; }
     #campad { display: grid; grid-template-columns: 44px 44px 44px; grid-template-rows: 44px 44px 44px;
       gap: 2px; pointer-events: auto; }
     #campad button { border: 0; cursor: pointer; color: #cfe3ff; font: 700 20px system-ui, sans-serif;
@@ -214,12 +256,47 @@
     </div>
   </div>
   <div id="clock">--:--:--</div>
-  <div id="ctl">
-    <button data-cmd="sim.steerLeft" title="steer left (←)">◀</button>
-    <button data-cmd="sim.speedDown" title="slower (↓)">−</button>
-    <button data-cmd="sim.stop" title="stop (space)">■</button>
-    <button data-cmd="sim.speedUp" title="faster (↑)">+</button>
-    <button data-cmd="sim.steerRight" title="steer right (→)">▶</button>
+  <!-- Simulator bar (Phase 6): mirrors the native SimulatorPanel. Toggled open by
+       #sim-launch; drives the host sim via client->host commands. Sim is Tier-1
+       (hardware-safe), so these aren't gated by control authority. -->
+  <div id="simbar">
+    <button id="sim-enable" class="sim-toggle" data-cmd="sim.toggleEnable" title="Simulator on/off">SIM</button>
+    <span class="sim-sep"></span>
+    <button id="sim-gps" class="sim-btn" title="Enter GPS coordinates (disable sim first)">GPS</button>
+    <button id="sim-reset" class="sim-btn" data-cmd="sim.reset" title="Reset position">RST</button>
+    <span class="sim-sep"></span>
+    <button id="sim-steerl" class="sim-btn" data-cmd="sim.steerLeft" title="Steer left 0.5°">L</button>
+    <input id="sim-steer" class="sim-slider" type="range" min="-40" max="40" step="0.5" value="0" title="Steering angle (0.5° steps)">
+    <button id="sim-steerr" class="sim-btn" data-cmd="sim.steerRight" title="Steer right 0.5°">R</button>
+    <span id="sim-steerval" class="sim-val">0.0°</span>
+    <button id="sim-steerreset" class="sim-btn" data-cmd="sim.steerReset" title="Reset steering to 0">&gt;0&lt;</button>
+    <span class="sim-sep"></span>
+    <button id="sim-speeddown" class="sim-btn" data-cmd="sim.speedDown" title="Slower (−0.5 kph)">▼</button>
+    <span id="sim-speedval" class="sim-speed">0.0 kph</span>
+    <button id="sim-speedup" class="sim-btn" data-cmd="sim.speedUp" title="Faster (+0.5 kph)">▲</button>
+    <button id="sim-stop" class="sim-btn sim-stopbtn" data-cmd="sim.stop" title="Stop">STOP</button>
+    <button id="sim-10x" class="sim-toggle" data-cmd="sim.toggle10x" title="10× speed multiplier">10x</button>
+    <span class="sim-sep"></span>
+    <button id="sim-reverse" class="sim-btn" data-cmd="sim.reverseDir" title="Reverse direction (flip 180°)">⇅</button>
+    <button id="sim-close" class="sim-btn sim-closebtn" title="Close">✕</button>
+  </div>
+  <button id="sim-launch" title="Open simulator">SIM</button>
+  <!-- Dialog host (Phase 6): the web mirror of DialogOverlayHost — one modal at a
+       time over a dimming backdrop. SimCoords is the first dialog; later phases add
+       more cards into this same host. -->
+  <div id="dialoghost">
+    <div class="dlg-backdrop"></div>
+    <div id="dlg-simcoords" class="dlg-card">
+      <div class="dlg-title">Enter GPS Coordinates</div>
+      <label class="dlg-label" for="dlg-lat">Latitude (−90 to 90)</label>
+      <input id="dlg-lat" class="dlg-input" type="number" step="0.00000001" inputmode="decimal" placeholder="0.00000000">
+      <label class="dlg-label" for="dlg-lon">Longitude (−180 to 180)</label>
+      <input id="dlg-lon" class="dlg-input" type="number" step="0.00000001" inputmode="decimal" placeholder="0.00000000">
+      <div class="dlg-buttons">
+        <button id="dlg-cancel" class="dlg-btn dlg-cancel">Cancel</button>
+        <button id="dlg-ok" class="dlg-btn dlg-ok">OK</button>
+      </div>
+    </div>
   </div>
   <!-- CanvasKit (WASM Skia) — bundled locally, no CDN (offline in-cab). Defines
        CanvasKitInit; the renderer migration (Phase A/B) uses it for true 3D. -->

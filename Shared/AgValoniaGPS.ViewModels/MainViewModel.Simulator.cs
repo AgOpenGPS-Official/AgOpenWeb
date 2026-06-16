@@ -143,6 +143,7 @@ public partial class MainViewModel
 
             if (SetProperty(ref _isSimulatorEnabled, value))
             {
+                State.Simulator.IsEnabled = value; // mirror for the web-UI projector
                 // Persist the "simulator is the GPS source" preference through
                 // the store (config), not by writing the DTO directly.
                 ConfigStore.Simulator.Enabled = value;
@@ -174,6 +175,7 @@ public partial class MainViewModel
         set
         {
             SetProperty(ref _simulatorSteerAngle, value);
+            State.Simulator.SteerAngle = value; // mirror for the web-UI projector
             PersistentState.SimulatorSteerAngle = value; // persisted on close
             OnPropertyChanged(nameof(SimulatorSteerAngleDisplay)); // Notify display property
             if (_isSimulatorEnabled)
@@ -197,6 +199,7 @@ public partial class MainViewModel
             // Clamp to valid range
             value = Math.Max(-10, Math.Min(25, value));
             SetProperty(ref _simulatorSpeedKph, value);
+            State.Simulator.SpeedKph = value; // mirror (RAW kph) for the web-UI projector
             UpdateSimulatorSpeed();
         }
     }
@@ -210,6 +213,7 @@ public partial class MainViewModel
         set
         {
             SetProperty(ref _isSimulatorSpeed10x, value);
+            State.Simulator.Is10x = value; // mirror for the web-UI projector
             UpdateSimulatorSpeed();
             OnPropertyChanged(nameof(SimulatorSpeedDisplay));
         }

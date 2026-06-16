@@ -125,6 +125,11 @@ public static class WireCodec
         w.Write(s.Longitude);         // f64
         w.Write((float)s.Altitude);
         w.Write((float)s.Hdop);
+        // Simulator panel (Phase 6).
+        w.Write((byte)(s.SimEnabled ? 1 : 0));
+        w.Write((float)s.SimSpeedKph);
+        w.Write((float)s.SimSteerAngle);
+        w.Write((byte)(s.Sim10x ? 1 : 0));
         return ms.ToArray();
     }
 

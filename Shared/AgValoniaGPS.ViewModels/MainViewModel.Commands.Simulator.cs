@@ -39,6 +39,8 @@ public partial class MainViewModel
         {
             _simulatorService.Reset();
             SimulatorSteerAngle = 0;
+            SimulatorSpeedKph = 0; // start stationary at the reset position (property
+                                   // setter mirrors State + refreshes the display)
             StatusMessage = "Simulator Reset";
         });
 
@@ -62,6 +64,8 @@ public partial class MainViewModel
             _simulatorService.IsAcceleratingBackward = false;
             _simulatorService.StepDistance = 0;
             _simulatorSpeedKph = 0;
+            State.Simulator.SpeedKph = 0; // mirror for the web-UI projector (this path
+                                          // bypasses the SimulatorSpeedKph setter)
             OnPropertyChanged(nameof(SimulatorSpeedKph));
             OnPropertyChanged(nameof(SimulatorSpeedDisplay));
             StatusMessage = "Sim: Stopped";

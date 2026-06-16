@@ -136,9 +136,33 @@ public partial class App : Application
                 // sending client holds fresh control authority (the hub gates them).
                 if (_remoteServer is not null)
                 {
-                    _remoteServer.CommandHandler = cmd =>
+                    _remoteServer.CommandHandler = (cmd, arg) =>
                         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                         {
+                            var inv = System.Globalization.CultureInfo.InvariantCulture;
+                            var num = System.Globalization.NumberStyles.Float;
+                            // Sim ids that set a property or carry an arg (all Tier-1,
+                            // hardware-safe) are handled directly; the rest map to a VM
+                            // command below.
+                            switch (cmd)
+                            {
+                                case "sim.toggleEnable":
+                                    windowVm.IsSimulatorEnabled = !windowVm.IsSimulatorEnabled; return;
+                                case "sim.toggle10x":
+                                    windowVm.IsSimulatorSpeed10x = !windowVm.IsSimulatorSpeed10x; return;
+                                case "sim.setSteer":
+                                    if (double.TryParse(arg, num, inv, out var deg))
+                                        windowVm.SimulatorSteerAngle = deg;
+                                    return;
+                                case "sim.setCoords":
+                                    var parts = arg.Split(',');
+                                    if (parts.Length == 2
+                                        && double.TryParse(parts[0], num, inv, out var lat)
+                                        && double.TryParse(parts[1], num, inv, out var lon))
+                                        windowVm.SetSimulatorCoordinates(lat, lon);
+                                    return;
+                            }
+
                             System.Windows.Input.ICommand? c = cmd switch
                             {
                                 "sim.steerLeft" => windowVm.SimulatorSteerLeftCommand,
@@ -146,6 +170,9 @@ public partial class App : Application
                                 "sim.speedUp" => windowVm.SimulatorSpeedUpCommand,
                                 "sim.speedDown" => windowVm.SimulatorSpeedDownCommand,
                                 "sim.stop" => windowVm.SimulatorStopCommand,
+                                "sim.reset" => windowVm.ResetSimulatorCommand,
+                                "sim.steerReset" => windowVm.ResetSteerAngleCommand,
+                                "sim.reverseDir" => windowVm.SimulatorReverseDirectionCommand,
                                 // Right-nav operational toolbar (Tier-2).
                                 "contour.toggle" => windowVm.ToggleContourModeCommand,
                                 "section.master" => windowVm.ToggleSectionMasterCommand,

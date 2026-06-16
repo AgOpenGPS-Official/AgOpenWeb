@@ -36,12 +36,13 @@ public sealed class WebSocketHub
     public Func<IReadOnlyList<byte[]>>? SeedProvider { get; set; }
 
     /// <summary>
-    /// Invoked (off the UI thread) with the command id of each inbound text
-    /// message from a client. The host maps known ids to actions and marshals
-    /// them to the UI thread; unknown ids are the host's no-op — that allowlist
-    /// is the command-safety boundary. Null until the host wires it.
+    /// Invoked (off the UI thread) with the id + arg of each inbound text message
+    /// from a client (arg is "" when the message carries no "|arg" suffix). The host
+    /// maps known ids to actions and marshals them to the UI thread; unknown ids are
+    /// the host's no-op — that allowlist is the command-safety boundary. Null until
+    /// the host wires it.
     /// </summary>
-    public Action<string>? CommandHandler { get; set; }
+    public Action<string, string>? CommandHandler { get; set; }
 
     public int ClientCount => _clients.Count;
 
@@ -110,7 +111,7 @@ public sealed class WebSocketHub
         if (IsRestrictedCommand is { } restricted && restricted(id) && !_authority.HoldsFresh(conn))
             return; // Tier-2 without fresh authority → dropped
 
-        CommandHandler?.Invoke(id);
+        CommandHandler?.Invoke(id, arg);
     }
 
     /// <summary>Send one frame to every connected client; drop any that fault.</summary>

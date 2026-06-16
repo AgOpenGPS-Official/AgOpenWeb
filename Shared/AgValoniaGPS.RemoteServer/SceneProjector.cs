@@ -213,7 +213,11 @@ public sealed class SceneProjector
             v.Latitude,
             v.Longitude,
             v.Altitude,
-            v.Hdop);
+            v.Hdop,
+            _state.Simulator.IsEnabled,
+            _state.Simulator.SpeedKph,
+            _state.Simulator.SteerAngle,
+            _state.Simulator.Is10x);
     }
 
     /// <summary>

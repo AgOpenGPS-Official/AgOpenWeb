@@ -116,7 +116,13 @@ public record StatusDto(
     double Latitude,
     double Longitude,
     double Altitude,
-    double Hdop);
+    double Hdop,
+    // Simulator panel (Phase 6): enabled + raw speed (kph, before 10×) + steer angle
+    // (deg) + 10× toggle. The client applies the 10× multiplier + unit formatting.
+    bool SimEnabled,
+    double SimSpeedKph,
+    double SimSteerAngle,
+    bool Sim10x);
 
 /// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
 /// client compares HolderId to its own id (sent once in the Hello frame) to know

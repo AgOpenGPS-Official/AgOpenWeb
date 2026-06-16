@@ -26,12 +26,12 @@ public sealed class RemoteServerHost
     /// the rest (the allowlist is the safety boundary). Safe to set before or
     /// after <see cref="StartAsync"/>.
     /// </summary>
-    public Action<string>? CommandHandler
+    public Action<string, string>? CommandHandler
     {
         get => _ws?.CommandHandler;
         set { _commandHandler = value; if (_ws is not null) _ws.CommandHandler = value; }
     }
-    private Action<string>? _commandHandler;
+    private Action<string, string>? _commandHandler;
 
     /// <summary>Classifies a command id as Tier-2 (live actuation) — those are
     /// honored only while the sending client holds fresh control authority.</summary>

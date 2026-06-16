@@ -237,9 +237,9 @@ addEventListener('keydown', e => {
   else if (e.key === ']') pitch = Math.min(MAX_PITCH, pitch + PITCH_STEP);
 });
 
-// ---- sim drive controls (client→host commands) ----
-// Keys for desktop; the on-screen #ctl buttons for touch. The host maps these
-// ids to the matching VM command on its UI thread (safe allowlist).
+// ---- sim drive keys (client→host commands) ----
+// Arrow keys / space for desktop; the simulator bar (#simbar, below) covers touch.
+// The host maps these ids to the matching VM command on its UI thread (allowlist).
 const KEY_CMD = {
   ArrowLeft: 'sim.steerLeft', ArrowRight: 'sim.steerRight',
   ArrowUp: 'sim.speedUp', ArrowDown: 'sim.speedDown', ' ': 'sim.stop',
@@ -248,12 +248,82 @@ addEventListener('keydown', e => {
   const cmd = KEY_CMD[e.key];
   if (cmd) { e.preventDefault(); transport.send(cmd); }
 });
-for (const b of document.querySelectorAll('#ctl button')) {
+// ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
+// Sim is Tier-1 (hardware-safe), so the bar's commands aren't gated by control
+// authority — anyone driving the sim is fine. Panel *visibility* is client-local
+// (the host's IsSimulatorPanelVisible is a native-only concept); enabled/speed/
+// steer are host state, mirrored back over the Status frame.
+const SIM = {
+  bar: document.getElementById('simbar'), launch: document.getElementById('sim-launch'),
+  enable: document.getElementById('sim-enable'), tenx: document.getElementById('sim-10x'),
+  steer: document.getElementById('sim-steer'), steerVal: document.getElementById('sim-steerval'),
+  speedVal: document.getElementById('sim-speedval'), gps: document.getElementById('sim-gps'),
+};
+let simBarOpen = true;          // client-local; bar shown on load (no menu yet)
+let _steerDragging = false;     // suppress state→slider sync while the user drags
+function applySimBarVisible() {
+  SIM.bar.classList.toggle('open', simBarOpen);
+  SIM.launch.classList.toggle('show', !simBarOpen);
+}
+applySimBarVisible();
+SIM.bar.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
+SIM.launch.addEventListener('pointerdown', e => e.stopPropagation());
+// Generic argless commands (data-cmd) — fire on pointerdown for snappy feel.
+for (const b of document.querySelectorAll('#simbar button[data-cmd]')) {
   b.addEventListener('pointerdown', e => {
-    e.preventDefault(); e.stopPropagation(); // don't also start a camera pan
+    e.preventDefault(); e.stopPropagation();
     transport.send(b.dataset.cmd);
   });
 }
+// Steer slider → command-with-arg; optimistic local readout while dragging.
+SIM.steer.addEventListener('input', () => {
+  _steerDragging = true;
+  const deg = parseFloat(SIM.steer.value);
+  SIM.steerVal.textContent = deg.toFixed(1) + '°';
+  transport.send('sim.setSteer|' + deg);
+});
+SIM.steer.addEventListener('change', () => { _steerDragging = false; });
+// GPS button opens the SimCoords dialog (client-local open; OK sends sim.setCoords).
+SIM.gps.addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (statusBar && statusBar.simEnabled) return; // native guard: disable sim first
+  openSimCoords();
+});
+document.getElementById('sim-close').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation(); simBarOpen = false; applySimBarVisible();
+});
+SIM.launch.addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation(); simBarOpen = true; applySimBarVisible();
+});
+
+// ---- dialog host (Phase 6) — the web mirror of DialogOverlayHost ----
+// One modal at a time over a dimming backdrop. SimCoords is the first card; later
+// phases add more cards into the same host and reuse openDialog/closeDialog.
+const dialogHost = document.getElementById('dialoghost');
+function openDialog(cardId) {
+  for (const c of dialogHost.querySelectorAll('.dlg-card')) c.classList.toggle('open', c.id === cardId);
+  dialogHost.classList.add('open');
+}
+function closeDialog() { dialogHost.classList.remove('open'); }
+dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => { e.stopPropagation(); closeDialog(); });
+dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
+const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
+function openSimCoords() {
+  // Pre-fill with the current vehicle position (from the Status frame), matching
+  // the native dialog's GetSimulatorPosition() seed.
+  dlgLat.value = statusBar && statusBar.lat != null ? statusBar.lat.toFixed(8) : '';
+  dlgLon.value = statusBar && statusBar.lon != null ? statusBar.lon.toFixed(8) : '';
+  openDialog('dlg-simcoords');
+  dlgLat.focus();
+}
+document.getElementById('dlg-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
+document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  const lat = parseFloat(dlgLat.value), lon = parseFloat(dlgLon.value);
+  if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
+    transport.send('sim.setCoords|' + lat + ',' + lon);
+  closeDialog();
+});
 
 // ---- remote actuation control (Phase 2 safety layer) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may
@@ -635,6 +705,25 @@ function renderStatusBar() {
 function fmtHdg(deg) {
   const d = ((deg % 360) + 360) % 360;
   return d.toFixed(1).padStart(5, '0') + '°';
+}
+// Simulator bar (Phase 6) — reflect host sim state onto the bar each frame.
+function renderSimBar() {
+  const s = statusBar;
+  if (!s || !simBarOpen) return;
+  SIM.enable.classList.toggle('on', !!s.simEnabled);
+  SIM.tenx.classList.toggle('on', !!s.sim10x);
+  // Steer: reflect the host value unless the user is mid-drag (don't fight them).
+  if (!_steerDragging) {
+    const deg = s.simSteerAngle || 0;
+    SIM.steer.value = deg;
+    SIM.steerVal.textContent = deg.toFixed(1) + '°';
+  }
+  // Speed readout: apply 10× then format per units (mirrors SimulatorSpeedDisplay).
+  const eff = (s.simSpeedKph || 0) * (s.sim10x ? 10 : 1);
+  SIM.speedVal.textContent = s.isMetric ? eff.toFixed(1) + ' kph' : (eff * 0.621371).toFixed(1) + ' mph';
+  // GPS (teleport) only while sim disabled — matches the native IsEnabled binding.
+  SIM.gps.disabled = !!s.simEnabled;
+  SIM.gps.style.opacity = s.simEnabled ? '0.4' : '1';
 }
 
 // Right-nav operational toolbar (Phase 3a: read-only live indicators; 3b wires the
@@ -1033,6 +1122,7 @@ function skFrame() {
   // DOM overlays (independent of the GL surface).
   updateLightbarText();
   renderStatusBar();
+  renderSimBar();
   renderRightNav();
   renderRoll();
   renderCampad();
