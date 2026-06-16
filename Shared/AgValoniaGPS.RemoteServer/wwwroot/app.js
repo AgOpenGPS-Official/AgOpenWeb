@@ -715,6 +715,7 @@ function updateHud(rp) {
 // (flat [VERB,x,y,...]) for polylines; drawLine for single segments.
 function strokePtsSk(canvas, pts, close, paint) {
   if (!pts || pts.length < 2) return;
+  if (perspM) { strokePtsSk3D(canvas, pts, close, paint); return; }
   const cmds = [];
   for (let i = 0; i < pts.length; i++) {
     const xy = w2s(pts[i].e, pts[i].n);
@@ -723,6 +724,55 @@ function strokePtsSk(canvas, pts, close, paint) {
   if (close) cmds.push(CK.CLOSE_VERB);
   const path = CK.Path.MakeFromCmds(cmds);
   if (path) { canvas.drawPath(path, paint); path.delete(); }
+}
+// Perspective path for strokePtsSk: a vertex behind the tilted camera (w < EPS)
+// projects through w2s with a negative w → a mirrored ghost segment (the same bug
+// clipNear() fixes for single grid segments). So walk the polyline in WORLD space,
+// split it at every near-plane crossing, and stroke each continuous front-facing run
+// in screen space — only ever feeding w2s points that are in front of the camera.
+function strokePtsSk3D(canvas, pts, close, paint) {
+  const M = perspM, EPS = 1.0;
+  const n = pts.length;
+  const wOf = (p) => M[12] * p.e + M[13] * p.n + M[15];
+  // World point where segment a→b crosses the near plane (a, b straddle it).
+  const cross = (a, b, wa, wb) => {
+    const t = (EPS - wa) / (wb - wa);
+    return [a.e + (b.e - a.e) * t, a.n + (b.n - a.n) * t];
+  };
+  let run = [];
+  const flush = () => {
+    if (run.length >= 2) {
+      const cmds = [];
+      for (let i = 0; i < run.length; i++)
+        cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, run[i][0], run[i][1]);
+      const path = CK.Path.MakeFromCmds(cmds);
+      if (path) { canvas.drawPath(path, paint); path.delete(); }
+    }
+    run = [];
+  };
+  const segCount = close ? n : n - 1;
+  for (let i = 0; i < segCount; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const wa = wOf(a), wb = wOf(b);
+    const aFront = wa >= EPS, bFront = wb >= EPS;
+    if (aFront && bFront) {                       // whole segment in front
+      if (run.length === 0) run.push(w2s(a.e, a.n));
+      run.push(w2s(b.e, b.n));
+    } else if (aFront && !bFront) {               // exits behind: clip end, break run
+      if (run.length === 0) run.push(w2s(a.e, a.n));
+      const c = cross(a, b, wa, wb);
+      run.push(w2s(c[0], c[1]));
+      flush();
+    } else if (!aFront && bFront) {               // enters from behind: start at clip
+      flush();
+      const c = cross(a, b, wa, wb);
+      run.push(w2s(c[0], c[1]));
+      run.push(w2s(b.e, b.n));
+    } else {                                      // wholly behind: nothing to draw
+      flush();
+    }
+  }
+  flush();
 }
 function segSk(canvas, e1, n1, e2, n2, paint) {
   const a = w2s(e1, n1), b = w2s(e2, n2);
