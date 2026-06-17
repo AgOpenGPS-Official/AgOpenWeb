@@ -121,4 +121,20 @@ public partial class MainViewModel
             ShowSteerWizard,
             () => ShowSmartWasCommand?.Execute(null));
     }
+
+    /// <summary>
+    /// Lazily construct the Smart-WAS calibration child VM without showing the native
+    /// dialog. The remote (web) Smart-WAS dialog routes Start/Stop/Reset/Apply through
+    /// this same VM so the WAS-offset write + PGN push + buffer-correction logic is
+    /// shared with native, not duplicated.
+    /// </summary>
+    public void EnsureSmartWasViewModel()
+    {
+        SmartWasViewModel ??= new SmartWasViewModel(
+            _smartWasService,
+            _configurationService,
+            _udpService,
+            _autoSteerService,
+            _dispatcher);
+    }
 }

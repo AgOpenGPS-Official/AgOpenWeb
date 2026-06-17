@@ -289,6 +289,15 @@ public static class WireCodec
         w.Write((float)s.SetSteerAngle);
         w.Write((float)s.FreeDriveAngle);
         w.Write((byte)(s.SteerFreeDrive ? 1 : 0));
+        // Smart-WAS calibration snapshot.
+        w.Write((byte)(s.SmartWasCollecting ? 1 : 0));
+        w.Write(s.SmartWasSamples);          // i32
+        w.Write((float)s.SmartWasMean);
+        w.Write((float)s.SmartWasMedian);
+        w.Write((float)s.SmartWasStdDev);
+        w.Write((float)s.SmartWasOffsetDeg);
+        w.Write((float)s.SmartWasConfidence);
+        w.Write((byte)(s.SmartWasValid ? 1 : 0));
         return ms.ToArray();
     }
 

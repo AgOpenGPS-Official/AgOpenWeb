@@ -85,7 +85,8 @@ public partial class App : Application
             Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
             Services.GetRequiredService<IJobService>(),
             Services.GetRequiredService<IConfigurationService>(),
-            Services.GetRequiredService<IAutoSteerService>());
+            Services.GetRequiredService<IAutoSteerService>(),
+            Services.GetRequiredService<ISmartWasCalibrationService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);
@@ -213,6 +214,25 @@ public partial class App : Application
                                     if (ac?.CanExecute(null) == true) ac.Execute(null);
                                     return;
                                 }
+                                // --- Smart-WAS calibration dialog actions. Routed through
+                                // SmartWasViewModel (shared WAS-offset/PGN/buffer logic).
+                                // All "smartwas." → Tier-2 gated (calibrate while engaged). ---
+                                case "smartwas.start": case "smartwas.stop":
+                                case "smartwas.reset": case "smartwas.apply":
+                                {
+                                    windowVm.EnsureSmartWasViewModel();
+                                    var sw = windowVm.SmartWasViewModel!;
+                                    System.Windows.Input.ICommand? sc = cmd switch
+                                    {
+                                        "smartwas.start" => sw.StartCommand,
+                                        "smartwas.stop" => sw.StopCommand,
+                                        "smartwas.reset" => sw.ResetCommand,
+                                        "smartwas.apply" => sw.ApplyCommand,
+                                        _ => null,
+                                    };
+                                    if (sc?.CanExecute(null) == true) sc.Execute(null);
+                                    return;
+                                }
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -273,7 +293,8 @@ public partial class App : Application
                     _remoteServer.IsRestrictedCommand = id =>
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
-                        || id.StartsWith("track.") || id.StartsWith("headland.");
+                        || id.StartsWith("track.") || id.StartsWith("headland.")
+                        || id.StartsWith("smartwas.");
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep

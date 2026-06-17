@@ -103,6 +103,8 @@ window.RemoteTransport = {
           const simEnabled = !!u8(), simSpeedKph = f32(), simSteerAngle = f32(), sim10x = !!u8();
           const actualSteerAngle = f32(), sensorPercent = f32(), setSteerAngle = f32(),
                 freeDriveAngle = f32(), steerFreeDrive = !!u8();
+          const swCollecting = !!u8(), swSamples = i32(), swMean = f32(), swMedian = f32(),
+                swStdDev = f32(), swOffsetDeg = f32(), swConfidence = f32(), swValid = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -110,6 +112,7 @@ window.RemoteTransport = {
             lat, lon, altitude, hdop,
             simEnabled, simSpeedKph, simSteerAngle, sim10x,
             actualSteerAngle, sensorPercent, setSteerAngle, freeDriveAngle, steerFreeDrive,
+            swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
           });
           break;
         }

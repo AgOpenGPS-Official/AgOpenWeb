@@ -722,6 +722,37 @@ function renderAutoSteerLive() {
   }
 }
 
+// ---- Smart WAS Calibration modal (Phase 9) — launched from the AutoSteer panel.
+// Live stats ride the Status frame; Start/Stop/Reset/Apply are gated smartwas.* cmds.
+const swBackdrop = document.getElementById('smartwas-backdrop');
+function openSmartWas() { swBackdrop.classList.add('open'); populateSmartWas(); }
+function closeSmartWas() { swBackdrop.classList.remove('open'); }
+swBackdrop.addEventListener('pointerdown', e => { if (e.target === swBackdrop) closeSmartWas(); });
+document.querySelector('#smartwas-backdrop .sw-modal').addEventListener('pointerdown', e => e.stopPropagation());
+for (const b of swBackdrop.querySelectorAll('.rn-gated[data-cmd]'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); rnSend(b.dataset.cmd); });
+document.getElementById('sw-close').addEventListener('pointerdown', e => { e.stopPropagation(); closeSmartWas(); });
+function populateSmartWas() {
+  if (!statusBar) return;
+  const collecting = !!statusBar.swCollecting;
+  asSetText('sw-status', collecting ? 'Collecting' : 'Stopped');
+  asSetText('sw-samples', (statusBar.swSamples || 0) + ' / 200 min');
+  asSetText('sw-mean', (statusBar.swMean || 0).toFixed(2) + '°');
+  asSetText('sw-median', (statusBar.swMedian || 0).toFixed(2) + '°');
+  asSetText('sw-stddev', (statusBar.swStdDev || 0).toFixed(2) + '°');
+  const cpd = (config && config.autosteer && config.autosteer.countsPerDegree) || 0;
+  const counts = Math.round((statusBar.swOffsetDeg || 0) * cpd);
+  asSetText('sw-offset', (statusBar.swOffsetDeg || 0).toFixed(2) + '° (' + counts + ' counts)');
+  asSetText('sw-confidence', Math.round(statusBar.swConfidence || 0) + '%');
+  // Button enable: gated by control + per-button state (start when stopped, stop when
+  // collecting, apply when a valid calibration exists).
+  const gate = (id, ok) => { const el = document.getElementById(id); if (el) el.classList.toggle('disabled', !(iHoldControl && ok)); };
+  gate('sw-reset', true);
+  gate('sw-start', !collecting);
+  gate('sw-stop', collecting);
+  gate('sw-apply', !!statusBar.swValid);
+}
+
 function renderSettings() {
   if (statusBar) {
     const metric = !!statusBar.isMetric;
@@ -738,6 +769,8 @@ function renderSettings() {
   }
   // AutoSteer live telemetry rides every status frame (not just config changes).
   if (asPanel.classList.contains('open')) renderAutoSteerLive();
+  // Smart-WAS stats refresh while its modal is open.
+  if (swBackdrop.classList.contains('open')) populateSmartWas();
   // Re-read the hub when a fresh profiles frame arrives.
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
 }

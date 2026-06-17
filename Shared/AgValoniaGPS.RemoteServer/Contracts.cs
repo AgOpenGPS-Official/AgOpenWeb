@@ -146,7 +146,19 @@ public record StatusDto(
     double SensorPercent,
     double SetSteerAngle,
     double FreeDriveAngle,
-    bool SteerFreeDrive);
+    bool SteerFreeDrive,
+    // Smart-WAS calibration (the dialog launched from the AutoSteer panel). Live
+    // snapshot of the accumulating analysis — mirrors ISmartWasCalibrationService
+    // .GetSnapshot(). Offset is degrees; the client multiplies by CountsPerDegree
+    // for the counts readout. Rides Status (mostly zero unless collecting).
+    bool SmartWasCollecting,
+    int SmartWasSamples,
+    double SmartWasMean,
+    double SmartWasMedian,
+    double SmartWasStdDev,
+    double SmartWasOffsetDeg,
+    double SmartWasConfidence,
+    bool SmartWasValid);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and

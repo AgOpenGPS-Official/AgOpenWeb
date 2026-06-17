@@ -19,11 +19,12 @@ public sealed class SceneProjector
     private readonly IJobService _jobs;
     private readonly IConfigurationService _configService;
     private readonly IAutoSteerService _autoSteer;
+    private readonly ISmartWasCalibrationService _smartWas;
 
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
         ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
-        IAutoSteerService autoSteer)
+        IAutoSteerService autoSteer, ISmartWasCalibrationService smartWas)
     {
         _state = state;
         _sections = sections;
@@ -33,6 +34,7 @@ public sealed class SceneProjector
         _jobs = jobs;
         _configService = configService;
         _autoSteer = autoSteer;
+        _smartWas = smartWas;
     }
 
     public SceneDto BuildScene(long version)
@@ -208,6 +210,7 @@ public sealed class SceneProjector
         var v = _state.Vehicle;
         var c = _state.Connections;
         var cfg = _config.Connections;
+        var sw = _smartWas.GetSnapshot();
         return new StatusDto(
             v.FixQuality,
             v.FixQualityText,
@@ -242,7 +245,10 @@ public sealed class SceneProjector
             _autoSteer.SensorPercent,
             _autoSteer.IsInFreeDriveMode ? _autoSteer.FreeDriveSteerAngle : 0.0,
             _autoSteer.FreeDriveSteerAngle,
-            _autoSteer.IsInFreeDriveMode);
+            _autoSteer.IsInFreeDriveMode,
+            // Smart-WAS calibration snapshot (atomic; SoT for the web dialog too).
+            sw.IsCollecting, sw.SampleCount, sw.Mean, sw.Median, sw.StdDev,
+            sw.RecommendedOffset, sw.Confidence, sw.HasValidCalibration);
     }
 
     // Config read-frame (Phase 9). Projects editable ConfigurationStore values for

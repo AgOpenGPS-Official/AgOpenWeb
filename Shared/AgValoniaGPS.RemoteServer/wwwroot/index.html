@@ -297,6 +297,24 @@
     .as-confirm .cfg-act { flex: none; padding: 8px 16px; }
     /* Gated (Tier-2) controls dim until the client holds control. */
     .rn-gated.disabled { opacity: 0.4; pointer-events: none; }
+    /* ===== Smart WAS Calibration modal ===== */
+    .sw-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 40; display: none; align-items: center; justify-content: center; }
+    .sw-backdrop.open { display: flex; }
+    .sw-modal { width: 430px; background: #161b24; border: 1px solid #2a3550; border-radius: 12px;
+      padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+    .sw-title { text-align: center; color: #e7eef9; font: 700 18px system-ui, sans-serif; margin-bottom: 6px; }
+    .sw-status { text-align: center; color: #cfe3ff; font: 500 13px system-ui, sans-serif; margin-bottom: 14px; }
+    .sw-status b { color: #fff; }
+    .sw-card { border: 1px solid #2a3550; border-radius: 8px; background: rgba(255,255,255,0.03); padding: 10px 14px; margin-bottom: 12px; }
+    .sw-cardtitle { color: #9fb3cc; font: 700 12px system-ui, sans-serif; margin-bottom: 6px; }
+    .sw-row { display: flex; justify-content: space-between; padding: 3px 0; }
+    .sw-row .k { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .sw-row .v { color: #e7eef9; font: 700 14px ui-monospace, monospace; }
+    .sw-info { color: #8294ab; font: 500 12px system-ui, sans-serif; border: 1px solid #2a3550; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+    .sw-btns { display: flex; gap: 8px; }
+    .sw-b { flex: 1; padding: 9px 4px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 13px system-ui, sans-serif; }
+    .sw-grey { background: rgba(255,255,255,0.12); }
+    .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
     /* Vehicle config diagrams (type cards + per-field measurement diagrams). */
     .vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
@@ -1036,6 +1054,35 @@
       <span class="as-stat">Act:<b id="as-stat-act">—</b></span>
       <span class="as-stat err">Err:<b id="as-stat-err">—</b></span>
       <button id="as-expand" class="as-toggle">▶ Full</button>
+    </div>
+  </div>
+  <!-- Smart WAS Calibration — modal launched from the AutoSteer panel. Live stats ride
+       the Status frame (ISmartWasCalibrationService snapshot); Start/Stop/Reset/Apply
+       are gated smartwas.* commands routed through SmartWasViewModel. -->
+  <div id="smartwas-backdrop" class="sw-backdrop">
+    <div class="sw-modal">
+      <div class="sw-title">Smart WAS Calibration</div>
+      <div class="sw-status">Status: <b id="sw-status">Stopped</b></div>
+      <div class="sw-card">
+        <div class="sw-cardtitle">Statistics</div>
+        <div class="sw-row"><span class="k">Samples</span><span class="v" id="sw-samples">0 / 200 min</span></div>
+        <div class="sw-row"><span class="k">Mean</span><span class="v" id="sw-mean">0.00°</span></div>
+        <div class="sw-row"><span class="k">Median</span><span class="v" id="sw-median">0.00°</span></div>
+        <div class="sw-row"><span class="k">Std Dev</span><span class="v" id="sw-stddev">0.00°</span></div>
+      </div>
+      <div class="sw-card">
+        <div class="sw-cardtitle">Recommendation</div>
+        <div class="sw-row"><span class="k">Offset</span><span class="v" id="sw-offset">0.00° (0 counts)</span></div>
+        <div class="sw-row"><span class="k">Confidence</span><span class="v" id="sw-confidence">0%</span></div>
+      </div>
+      <div class="sw-info">Drive at &gt;2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.</div>
+      <div class="sw-btns">
+        <button id="sw-reset" class="sw-b sw-grey rn-gated" data-cmd="smartwas.reset">Reset</button>
+        <button id="sw-start" class="sw-b sw-green rn-gated" data-cmd="smartwas.start">Start</button>
+        <button id="sw-stop" class="sw-b sw-grey rn-gated" data-cmd="smartwas.stop">Stop</button>
+        <button id="sw-apply" class="sw-b sw-blue rn-gated" data-cmd="smartwas.apply">Apply</button>
+        <button id="sw-close" class="sw-b sw-grey">Close</button>
+      </div>
     </div>
   </div>
   <div id="rightnav">
