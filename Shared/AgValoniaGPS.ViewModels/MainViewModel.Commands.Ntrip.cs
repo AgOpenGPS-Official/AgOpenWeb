@@ -127,88 +127,17 @@ public partial class MainViewModel
         TestNtripConnectionCommand = new AsyncRelayCommand(async () =>
         {
             if (EditingNtripProfile == null) return;
-            if (string.IsNullOrWhiteSpace(EditingNtripProfile.CasterHost))
-            {
-                NtripTestStatus = "Error: Caster host is required";
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(EditingNtripProfile.MountPoint))
-            {
-                NtripTestStatus = "Error: Mount point is required";
-                return;
-            }
 
             IsTestingNtripConnection = true;
             NtripTestStatus = "Testing connection...";
-
             try
             {
-                using var tcpClient = new System.Net.Sockets.TcpClient();
-                var connectTask = tcpClient.ConnectAsync(
-                    EditingNtripProfile.CasterHost,
-                    EditingNtripProfile.CasterPort);
-
-                if (await Task.WhenAny(connectTask, Task.Delay(5000)) == connectTask)
-                {
-                    if (tcpClient.Connected)
-                    {
-                        using var stream = tcpClient.GetStream();
-                        var request = $"GET /{EditingNtripProfile.MountPoint} HTTP/1.1\r\n" +
-                                    $"Host: {EditingNtripProfile.CasterHost}\r\n" +
-                                    $"Ntrip-Version: Ntrip/2.0\r\n" +
-                                    $"User-Agent: NTRIP AgValoniaGPS/Test\r\n";
-
-                        if (!string.IsNullOrEmpty(EditingNtripProfile.Username))
-                        {
-                            var credentials = Convert.ToBase64String(
-                                System.Text.Encoding.ASCII.GetBytes(
-                                    $"{EditingNtripProfile.Username}:{EditingNtripProfile.Password}"));
-                            request += $"Authorization: Basic {credentials}\r\n";
-                        }
-                        request += "\r\n";
-
-                        var requestBytes = System.Text.Encoding.ASCII.GetBytes(request);
-                        await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
-
-                        var buffer = new byte[1024];
-                        stream.ReadTimeout = 3000;
-                        var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                        var response = System.Text.Encoding.ASCII.GetString(buffer, 0, bytesRead);
-
-                        if (response.Contains("200 OK") || response.Contains("ICY 200"))
-                        {
-                            NtripTestStatus = "Success: Connected to caster and mount point";
-                        }
-                        else if (response.Contains("401"))
-                        {
-                            NtripTestStatus = "Error: Authentication failed (check username/password)";
-                        }
-                        else if (response.Contains("404"))
-                        {
-                            NtripTestStatus = "Error: Mount point not found";
-                        }
-                        else
-                        {
-                            NtripTestStatus = "Connected to caster (mount point status unknown)";
-                        }
-                    }
-                    else
-                    {
-                        NtripTestStatus = "Error: Could not connect to caster";
-                    }
-                }
-                else
-                {
-                    NtripTestStatus = "Error: Connection timed out";
-                }
-            }
-            catch (System.Net.Sockets.SocketException ex)
-            {
-                NtripTestStatus = $"Error: {ex.Message}";
-            }
-            catch (Exception ex)
-            {
-                NtripTestStatus = $"Error: {ex.Message}";
+                // Shared probe (also used by the remote Network IO editor) — no
+                // duplicated TCP/NTRIP logic between native and web.
+                NtripTestStatus = await AgValoniaGPS.Services.NtripConnectionTester.TestAsync(
+                    EditingNtripProfile.CasterHost, EditingNtripProfile.CasterPort,
+                    EditingNtripProfile.MountPoint, EditingNtripProfile.Username,
+                    EditingNtripProfile.Password);
             }
             finally
             {

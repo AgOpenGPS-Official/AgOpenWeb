@@ -167,7 +167,19 @@ public record StatusDto(
     double SmartWasStdDev,
     double SmartWasOffsetDeg,
     double SmartWasConfidence,
-    bool SmartWasValid);
+    bool SmartWasValid,
+    // Network IO panel (Phase 9). The GPS module IP (the other three already ride
+    // above), the detected module /24 (from a PGN 203 scan reply), the host's own
+    // IPv4 list (newline-separated), the NTRIP connection status line + bytes, and
+    // the last "Test Connection" result for the remote NTRIP editor. All slow-moving
+    // → Status frame.
+    string GpsIp,
+    string ModuleSubnet,
+    string HostIps,
+    bool NtripConnected,
+    string NtripStatus,
+    double NtripBytes,
+    string NtripTestStatus);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
@@ -307,3 +319,17 @@ public record RollConfigDto(
 /// client compares HolderId to its own id (sent once in the Hello frame) to know
 /// whether it is the holder. Held=false means no client has control.</summary>
 public record ControlStateDto(bool Held, string HolderId, string HolderName);
+
+/// <summary>NTRIP profiles read-frame (Phase 9 Network IO) — the saved caster
+/// profiles plus the list of fields they can associate with. Seeded on connect +
+/// re-sent when the profile set changes (fingerprint). The browser edits a
+/// client-side buffer and writes back via ntrip.* commands; passwords ride the wire
+/// (LAN trust model, same as all config) so an edit preserves them.</summary>
+public record NtripProfilesDto(
+    IReadOnlyList<NtripProfileDto> Profiles,
+    IReadOnlyList<string> AvailableFields);
+
+public record NtripProfileDto(
+    string Id, string Name, string CasterHost, int CasterPort, string MountPoint,
+    string Username, string Password, bool AutoConnectOnFieldLoad, bool IsDefault,
+    IReadOnlyList<string> AssociatedFields);

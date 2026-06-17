@@ -22,6 +22,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastFingerprint = long.MinValue;
     private long _lastConfigFp = long.MinValue;
     private long _lastProfilesFp = long.MinValue;
+    private long _lastNtripFp = long.MinValue;
     private SceneDto _currentScene;
     private Task? _loop;
 
@@ -58,6 +59,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeStatus(_projector.BuildStatus()),
             WireCodec.EncodeConfig(_projector.BuildConfig()),
             WireCodec.EncodeProfiles(_projector.BuildProfiles()),
+            WireCodec.EncodeNtripProfiles(_projector.BuildNtripProfiles()),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -149,6 +151,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 {
                     _lastProfilesFp = pfp;
                     await _ws.BroadcastAsync(WireCodec.EncodeProfiles(_projector.BuildProfiles()), ct).ConfigureAwait(false);
+                }
+
+                // NTRIP profiles read-frame (Network IO): add / edit / delete / default.
+                var nfp = _projector.NtripProfilesFingerprint();
+                if (nfp != _lastNtripFp)
+                {
+                    _lastNtripFp = nfp;
+                    await _ws.BroadcastAsync(WireCodec.EncodeNtripProfiles(_projector.BuildNtripProfiles()), ct).ConfigureAwait(false);
                 }
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)

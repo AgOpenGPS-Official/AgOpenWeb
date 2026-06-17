@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -88,7 +89,9 @@ public partial class App : Application
             Services.GetRequiredService<IJobService>(),
             Services.GetRequiredService<IConfigurationService>(),
             Services.GetRequiredService<IAutoSteerService>(),
-            Services.GetRequiredService<ISmartWasCalibrationService>());
+            Services.GetRequiredService<ISmartWasCalibrationService>(),
+            Services.GetRequiredService<IUdpCommunicationService>(),
+            Services.GetRequiredService<INtripProfileService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);
@@ -267,6 +270,33 @@ public partial class App : Application
                                 case "wizard.action": // arg = command base name on the current step
                                     InvokeWizardAction(windowVm.SteerWizardViewModel, arg);
                                     return;
+                                // --- Network IO (Phase 9). Module scan (PGN 202) is a harmless
+                                // probe (Tier-1); the subnet change (PGN 201) restarts every
+                                // module, so it is gated (Tier-2). Both go straight to the UDP
+                                // service — no PGN logic in JS. ---
+                                case "net.scan":
+                                    Services.GetRequiredService<IUdpCommunicationService>().ScanModules();
+                                    return;
+                                case "net.subnet": // arg = "o1.o2.o3" (gated)
+                                {
+                                    var oct = arg.Split('.');
+                                    if (oct.Length == 3
+                                        && byte.TryParse(oct[0], out var o1)
+                                        && byte.TryParse(oct[1], out var o2)
+                                        && byte.TryParse(oct[2], out var o3))
+                                        Services.GetRequiredService<IUdpCommunicationService>().SetModuleSubnet(o1, o2, o3);
+                                    return;
+                                }
+                                // --- NTRIP profile CRUD (Phase 9). Calls INtripProfileService
+                                // directly (mirrors the vehicle/tool ApplyProfileCommand path);
+                                // confirmations happen client-side. Tier-1 (config files). ---
+                                case "ntrip.save": case "ntrip.delete": case "ntrip.setDefault":
+                                case "ntrip.test":
+                                    ApplyNtripCommand(
+                                        Services.GetRequiredService<INtripProfileService>(),
+                                        Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
+                                        cmd, arg);
+                                    return;
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -328,7 +358,8 @@ public partial class App : Application
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
                         || id.StartsWith("track.") || id.StartsWith("headland.")
-                        || id.StartsWith("smartwas.") || id.StartsWith("wizard.action");
+                        || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
+                        || id == "net.subnet"; // restarts every module → gate it
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep
@@ -432,6 +463,12 @@ public partial class App : Application
         switch (key)
         {
             case "units": store.IsMetric = val == "metric"; cfg.SaveAppSettings(); return; // device setting
+            // --- Network IO module-present flags (ConfigStore.Connections). Device
+            // settings → persist now; they drive the Status frame's *Configured dots. ---
+            case "conn.gpsConfigured": con.IsGpsConfigured = B(); cfg.SaveAppSettings(); return;
+            case "conn.imuConfigured": con.IsImuConfigured = B(); cfg.SaveAppSettings(); return;
+            case "conn.autoSteerConfigured": con.IsAutoSteerConfigured = B(); cfg.SaveAppSettings(); return;
+            case "conn.machineConfigured": con.IsMachineConfigured = B(); cfg.SaveAppSettings(); return;
             // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
             case "vehicle.type": if (I(out var ty)) veh.Type = (AgValoniaGPS.Models.VehicleType)ty; return;
             case "vehicle.hitchType": if (I(out var ht)) veh.HitchType = ht; return;
@@ -740,6 +777,72 @@ public partial class App : Application
                 }
                 return;
         }
+    }
+
+    // NTRIP profile CRUD for the remote Network IO editor. Mirrors the native
+    // MainViewModel NTRIP commands but calls INtripProfileService directly (the VM's
+    // commands also drive Avalonia chain-dialog state we don't want here). The browser
+    // holds the editing buffer; save sends every field at once. Runs on the UI thread;
+    // the async service calls are fire-and-forget (the read-frame re-sends on change).
+    private static void ApplyNtripCommand(
+        AgValoniaGPS.Services.Interfaces.INtripProfileService svc,
+        AgValoniaGPS.Models.State.ApplicationState state, string cmd, string arg)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        switch (cmd)
+        {
+            case "ntrip.delete": // arg = id
+                _ = svc.DeleteProfileAsync(arg);
+                return;
+            case "ntrip.setDefault": // arg = id
+                _ = svc.SetDefaultProfileAsync(arg);
+                return;
+            case "ntrip.test": // arg = host \t port \t mount \t user \t pass
+            {
+                var t = arg.Split('\t');
+                if (t.Length < 3) return;
+                int.TryParse(t.ElementAtOrDefault(1), System.Globalization.NumberStyles.Integer, inv, out var tport);
+                if (tport == 0) tport = 2101;
+                state.Connections.NtripTestStatus = "Testing connection...";
+                _ = TestNtripAndReportAsync(state, t[0], tport, t[2],
+                    t.ElementAtOrDefault(3) ?? "", t.ElementAtOrDefault(4) ?? "");
+                return;
+            }
+            case "ntrip.save": // id \t name \t host \t port \t mount \t user \t pass \t auto \t default \t assoc(csv)
+            {
+                var f = arg.Split('\t');
+                if (f.Length < 9) return;
+                var id = f[0];
+                // Reuse the existing file path on edit so a rename doesn't orphan a file
+                // (matches the native editor, which copies FilePath from the selection).
+                var existing = string.IsNullOrEmpty(id)
+                    ? null
+                    : svc.Profiles.FirstOrDefault(p => p.Id == id);
+                int.TryParse(f[3], System.Globalization.NumberStyles.Integer, inv, out var port);
+                if (port == 0) port = 2101;
+                var assoc = (f.ElementAtOrDefault(9) ?? "")
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList();
+                var profile = new AgValoniaGPS.Models.Ntrip.NtripProfile
+                {
+                    Name = f[1], CasterHost = f[2], CasterPort = port, MountPoint = f[4],
+                    Username = f[5], Password = f[6],
+                    AutoConnectOnFieldLoad = f[7] == "1", IsDefault = f[8] == "1",
+                    AssociatedFields = assoc,
+                };
+                if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; }
+                _ = svc.SaveProfileAsync(profile);
+                return;
+            }
+        }
+    }
+
+    private static async Task TestNtripAndReportAsync(
+        AgValoniaGPS.Models.State.ApplicationState state,
+        string host, int port, string mount, string user, string pass)
+    {
+        var result = await AgValoniaGPS.Services.NtripConnectionTester.TestAsync(host, port, mount, user, pass);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => state.Connections.NtripTestStatus = result);
     }
 
     private static void ExtractSoundFiles(IServiceProvider services)

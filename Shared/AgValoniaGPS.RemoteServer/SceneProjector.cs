@@ -20,11 +20,14 @@ public sealed class SceneProjector
     private readonly IConfigurationService _configService;
     private readonly IAutoSteerService _autoSteer;
     private readonly ISmartWasCalibrationService _smartWas;
+    private readonly IUdpCommunicationService _udp;
+    private readonly INtripProfileService _ntripProfiles;
 
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
         ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
-        IAutoSteerService autoSteer, ISmartWasCalibrationService smartWas)
+        IAutoSteerService autoSteer, ISmartWasCalibrationService smartWas,
+        IUdpCommunicationService udp, INtripProfileService ntripProfiles)
     {
         _state = state;
         _sections = sections;
@@ -35,6 +38,8 @@ public sealed class SceneProjector
         _configService = configService;
         _autoSteer = autoSteer;
         _smartWas = smartWas;
+        _udp = udp;
+        _ntripProfiles = ntripProfiles;
     }
 
     public SceneDto BuildScene(long version)
@@ -253,7 +258,48 @@ public sealed class SceneProjector
             _autoSteer.IsInFreeDriveMode,
             // Smart-WAS calibration snapshot (atomic; SoT for the web dialog too).
             sw.IsCollecting, sw.SampleCount, sw.Mean, sw.Median, sw.StdDev,
-            sw.RecommendedOffset, sw.Confidence, sw.HasValidCalibration);
+            sw.RecommendedOffset, sw.Confidence, sw.HasValidCalibration,
+            // Network IO panel.
+            c.GpsIpAddress ?? "",
+            c.ModuleSubnet ?? "",
+            string.Join("\n", _udp.GetLocalIpAddresses()),
+            c.IsNtripConnected,
+            c.NtripStatus ?? "",
+            c.NtripBytesReceived,
+            c.NtripTestStatus ?? "");
+    }
+
+    // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved
+    // profiles + the fields they can associate with. Re-sent on a fingerprint change.
+    public NtripProfilesDto BuildNtripProfiles()
+    {
+        var profiles = _ntripProfiles.Profiles
+            .Select(p => new NtripProfileDto(
+                p.Id, p.Name, p.CasterHost, p.CasterPort, p.MountPoint,
+                p.Username, p.Password, p.AutoConnectOnFieldLoad, p.IsDefault,
+                p.AssociatedFields.ToList()))
+            .ToList();
+        return new NtripProfilesDto(profiles, _ntripProfiles.GetAvailableFields().ToList());
+    }
+
+    // Re-send the NTRIP profiles frame on add / edit / delete / set-default.
+    public long NtripProfilesFingerprint()
+    {
+        long h = 17;
+        foreach (var p in _ntripProfiles.Profiles)
+        {
+            h = h * 31 + (p.Id?.GetHashCode() ?? 0);
+            h = h * 31 + (p.Name?.GetHashCode() ?? 0);
+            h = h * 31 + (p.CasterHost?.GetHashCode() ?? 0);
+            h = h * 31 + p.CasterPort;
+            h = h * 31 + (p.MountPoint?.GetHashCode() ?? 0);
+            h = h * 31 + (p.Username?.GetHashCode() ?? 0);
+            h = h * 31 + (p.IsDefault ? 1 : 0) + (p.AutoConnectOnFieldLoad ? 2 : 0);
+            h = h * 31 + p.AssociatedFields.Count;
+            foreach (var f in p.AssociatedFields) h = h * 31 + (f?.GetHashCode() ?? 0);
+        }
+        foreach (var f in _ntripProfiles.GetAvailableFields()) h = h * 31 + (f?.GetHashCode() ?? 0);
+        return h;
     }
 
     // Config read-frame (Phase 9). Projects editable ConfigurationStore values for

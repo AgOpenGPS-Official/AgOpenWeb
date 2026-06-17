@@ -327,6 +327,53 @@
     .sw-b { flex: 1; padding: 9px 4px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 13px system-ui, sans-serif; }
     .sw-grey { background: rgba(255,255,255,0.12); }
     .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
+    /* ===== Network IO panel + NTRIP modals ===== */
+    .nio-panel { width: 360px; }
+    .nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }
+    .nio-chk { width: 18px; height: 18px; accent-color: #4A90D9; margin: 0; }
+    .nio-dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; }
+    .nio-mod { color: #e7eef9; font: 500 13px system-ui, sans-serif; }
+    .nio-ip { color: #cfe3ff; font: 600 12px ui-monospace, monospace; text-align: right; }
+    .nio-subnet { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+    .nio-oct { width: 56px; text-align: center; }
+    .nio-dotsep { color: #e7eef9; font-weight: 700; }
+    .nio-x { color: #8294ab; margin-left: 4px; }
+    .nio-hostips { color: #cfe3ff; font: 600 12px ui-monospace, monospace; white-space: pre-line; line-height: 1.5; }
+    .nio-rule { border: 0; border-top: 1px solid #2a3550; margin: 14px 0 10px; }
+    .nio-ntriprow { display: flex; align-items: center; gap: 8px; }
+    .nio-ntstatus { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    /* NTRIP chain sub-panels (ln-panels that replace their parent). */
+    .nio-ntmodal { width: 520px; }
+    .nio-ntedit { width: 480px; max-height: calc(100vh - 72px); overflow: auto; }
+    .nio-nttoolbar { display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05);
+      border-radius: 8px; padding: 6px; margin-bottom: 12px; }
+    .nio-tbtn { width: 40px; height: 40px; border: 0; border-radius: 6px; background: rgba(255,255,255,0.10);
+      color: #e7eef9; font: 700 20px system-ui, sans-serif; cursor: pointer; }
+    .nio-tbtn:hover { background: rgba(255,255,255,0.18); }
+    .nio-tbtn-x { color: #ff7a6b; } .nio-tbtn-star { color: #F1C40F; font-size: 22px; }
+    .nio-tbsep { width: 1px; height: 28px; background: #2a3550; margin: 0 4px; }
+    .nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 160px 60px; align-items: center; }
+    .nio-nthead { color: #9fb3cc; font: 600 12px system-ui, sans-serif; padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 6px 6px 0 0; }
+    .nio-nthead span:last-child, .nio-ntrow .nt-def { text-align: center; }
+    .nio-ntlist { border: 1px solid #2a3550; border-top: 0; border-radius: 0 0 6px 6px; min-height: 120px; max-height: 320px; overflow: auto; }
+    .nio-ntrow { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .nio-ntrow:hover { background: rgba(255,255,255,0.06); }
+    .nio-ntrow.sel { background: #1c4a7a; }
+    .nio-ntrow .nt-name { color: #e7eef9; font: 600 14px system-ui, sans-serif; }
+    .nio-ntrow .nt-mount { color: #8294ab; font: 400 12px system-ui, sans-serif; }
+    .nio-ntrow .nt-caster { color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .nio-ntrow .nt-def { color: #F1C40F; font: 700 20px system-ui, sans-serif; }
+    /* NTRIP editor modal */
+    .nio-fld { margin-bottom: 8px; }
+    .nio-fld label { display: block; color: #9fb3cc; font: 600 12px system-ui, sans-serif; margin-bottom: 4px; }
+    .nio-tx { width: 100%; height: 36px; text-align: left; box-sizing: border-box; }
+    .nio-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .nio-testrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+    .nio-fieldlist { border: 1px solid #2a3550; border-radius: 6px; max-height: 110px; overflow: auto; padding: 6px; margin-bottom: 4px; }
+    .nio-fieldlist label { display: flex; align-items: center; gap: 8px; color: #e7eef9; font: 500 13px system-ui, sans-serif; padding: 3px 2px; cursor: pointer; }
+    .nio-fieldlist input { accent-color: #4A90D9; }
+    .nio-cklbl { display: flex; align-items: center; gap: 8px; color: #e7eef9; font: 500 13px system-ui, sans-serif; margin-top: 8px; cursor: pointer; }
+    .nio-cklbl input { accent-color: #4A90D9; width: 16px; height: 16px; }
     /* ===== Steer Wizard (full-screen) ===== */
     .wz-overlay { position: fixed; inset: 0; z-index: 50; background: #1b2233; display: none; flex-direction: column; }
     .wz-overlay.open { display: flex; }
@@ -428,6 +475,13 @@
       color: #e7eef9; font: 600 11px system-ui, sans-serif; padding: 0 2px; }
     .ln-back { border: 0; background: rgba(255,255,255,0.10); color: #cfe3ff; cursor: pointer;
       border-radius: 6px; width: 26px; height: 26px; font: 700 15px system-ui; margin-right: 6px; }
+    /* Standard header for every panel/dialog: top-level = title + X (top-right);
+       sub-panel = ← Back (top-left) + title + X. One pattern → consistent navigation. */
+    .ln-hdr { display: flex; align-items: center; margin-bottom: 12px; }
+    .ln-hdr-title { color: #e7eef9; font: 700 16px system-ui, sans-serif; flex: 1; }
+    .ln-x { border: 0; background: rgba(255,255,255,0.10); color: #cfe3ff; cursor: pointer;
+      border-radius: 6px; width: 26px; height: 26px; font: 700 15px system-ui, sans-serif; flex: none; }
+    .ln-x:hover { background: rgba(255,255,255,0.18); }
     /* Vehicle & Tool picker hub. */
     .ln-hub { min-width: 600px; }
     .hub-banner { background: #1E8449; color: #fff; border-radius: 6px; padding: 7px 12px;
@@ -587,11 +641,22 @@
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
     <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
     <button id="ln-autosteer" class="ln-btn" title="AutoSteer Configuration"><img class="ln-ic" src="/icons/AutoSteerConf.png" alt="AutoSteer Configuration"></button>
+    <button id="ln-network" class="ln-btn" title="Network IO">
+      <svg class="ln-ic" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="stroke:currentColor;fill:currentColor">
+        <line x1="24" y1="24" x2="24" y2="10" stroke-width="2.5"/>
+        <line x1="24" y1="24" x2="11" y2="37" stroke-width="2.5"/>
+        <line x1="24" y1="24" x2="37" y2="37" stroke-width="2.5"/>
+        <circle cx="24" cy="24" r="7"/>
+        <circle cx="24" cy="10" r="6"/>
+        <circle cx="11" cy="37" r="6"/>
+        <circle cx="37" cy="37" r="6"/>
+      </svg>
+    </button>
   </div>
   <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
        bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
   <div id="screenalerts" class="ln-panel sa-panel">
-    <div class="ln-title">Screen &amp; Alerts</div>
+    <div class="ln-hdr"><span class="ln-hdr-title">Screen &amp; Alerts</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="cfg-label">Display</div>
     <div class="sa-grid">
       <button class="sa-tgl" data-key="display.gridVisible"><img class="sa-ic" src="/icons/ConD_Grid.png" alt="">Grid</button>
@@ -634,7 +699,7 @@
        two columns (vehicle / tool) each with a profile list, preview, New/Delete/
        Rename/Reset + name field + Configure…, and a bottom Load Selected. -->
   <div id="vehtoolhub" class="ln-panel ln-hub">
-    <div class="ln-title">Vehicle &amp; Tool</div>
+    <div class="ln-hdr"><span class="ln-hdr-title">Vehicle &amp; Tool</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div id="vth-summary" class="hub-banner">—</div>
     <div class="hub-cols">
       <div class="hub-col">
@@ -673,7 +738,7 @@
        Vehicle / Data-Sources(GPS) / Roll tabs. Reads the config frame; writes via
        config.set|<section>.<field>; Save Profile persists with profile.save. -->
   <div id="vehiclecfg" class="ln-panel ln-wide">
-    <div class="ln-title"><button class="ln-back" data-back="vehiclecfg">←</button> Vehicle Configuration</div>
+    <div class="ln-hdr"><button class="ln-back" data-back="vehiclecfg">←</button><span class="ln-hdr-title">Vehicle Configuration</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div id="vc-name" class="ln-sub">—</div>
     <div class="cfg-tabs">
       <button class="cfg-tab active" data-tab="vc-tab-vehicle">Vehicle</button>
@@ -773,7 +838,7 @@
        Tool/Implement (Type/Hitch/Timing/Offset/Pivot/Sections/Switches) + U-Turn +
        Machine + Tram. Generic data-key controls; diagrams + dynamic lists. -->
   <div id="toolcfg" class="ln-panel ln-wide">
-    <div class="ln-title"><button class="ln-back" data-back="toolcfg">←</button> Tool Configuration</div>
+    <div class="ln-hdr"><button class="ln-back" data-back="toolcfg">←</button><span class="ln-hdr-title">Tool Configuration</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div id="tc-name" class="ln-sub">—</div>
     <div class="cfg-tabs">
       <button class="cfg-tab active" data-strip="tc-top" data-tab="tc-tool">Tool</button>
@@ -1139,6 +1204,88 @@
   <!-- Smart WAS Calibration — modal launched from the AutoSteer panel. Live stats ride
        the Status frame (ISmartWasCalibrationService snapshot); Start/Stop/Reset/Apply
        are gated smartwas.* commands routed through SmartWasViewModel. -->
+  <!-- Network IO (Phase 9) — non-modal flyout mirroring NetworkIoPanel: modules
+       (present checkbox + status dot + IP), Scan, global subnet change (PGN 201),
+       host IPs, and the NTRIP status + Profiles launcher. -->
+  <div id="networkio" class="ln-panel nio-panel">
+    <div class="ln-hdr"><span class="ln-hdr-title">Network IO</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Modules</div>
+    <div class="nio-modgrid">
+      <input type="checkbox" class="nio-chk" id="nio-gps-cfg" data-key="conn.gpsConfigured" title="GPS module should be present">
+      <span class="nio-dot" id="nio-gps-dot"></span><span class="nio-mod">GPS</span><span class="nio-ip" id="nio-gps-ip">—</span>
+      <input type="checkbox" class="nio-chk" id="nio-as-cfg" data-key="conn.autoSteerConfigured" title="AutoSteer module should be present">
+      <span class="nio-dot" id="nio-as-dot"></span><span class="nio-mod">AutoSteer</span><span class="nio-ip" id="nio-as-ip">—</span>
+      <input type="checkbox" class="nio-chk" id="nio-ma-cfg" data-key="conn.machineConfigured" title="Machine module should be present">
+      <span class="nio-dot" id="nio-ma-dot"></span><span class="nio-mod">Machine</span><span class="nio-ip" id="nio-ma-ip">—</span>
+      <input type="checkbox" class="nio-chk" id="nio-imu-cfg" data-key="conn.imuConfigured" title="IMU module should be present">
+      <span class="nio-dot" id="nio-imu-dot"></span><span class="nio-mod">IMU</span><span class="nio-ip" id="nio-imu-ip">—</span>
+    </div>
+    <button id="nio-scan" class="cfg-act cfg-actwide">Scan for Modules</button>
+    <div class="cfg-label" style="margin-top:14px">Subnet</div>
+    <div class="nio-subnet">
+      <input class="cfg-num nio-oct" id="nio-o1" type="number" min="0" max="255">
+      <span class="nio-dotsep">.</span>
+      <input class="cfg-num nio-oct" id="nio-o2" type="number" min="0" max="255">
+      <span class="nio-dotsep">.</span>
+      <input class="cfg-num nio-oct" id="nio-o3" type="number" min="0" max="255">
+      <span class="nio-x">.x</span>
+    </div>
+    <button id="nio-subnet" class="cfg-act cfg-actwide rn-gated">Send Subnet to Modules</button>
+    <div class="sa-hint">Changes ALL modules at once, then restarts them.</div>
+    <div class="cfg-label" style="margin-top:14px">Host IPs</div>
+    <div class="nio-hostips" id="nio-hostips">—</div>
+    <hr class="nio-rule">
+    <div class="nio-ntriprow">
+      <span class="nio-dot" id="nio-ntrip-dot"></span>
+      <span class="nio-mod" style="font-weight:700">NTRIP</span>
+      <span class="nio-ntstatus" id="nio-ntrip-status">Not Connected</span>
+    </div>
+    <div class="sa-hint" id="nio-ntrip-bytes">0 KB</div>
+    <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
+  </div>
+  <!-- NTRIP Profiles — chain sub-panel of Network IO. Per the native chain model
+       (MainViewModel.Navigation.Chain): opening REPLACES the parent (single panel
+       visible); Back reopens the parent fly-out, Close → map. Mirrors
+       NtripProfilesDialogPanel (DialogChrome: Back · Title · Close). -->
+  <div id="ntripprofiles" class="ln-panel nio-ntmodal">
+    <div class="ln-hdr"><button class="ln-x" id="nt-back" title="Back">←</button><span class="ln-hdr-title">NTRIP Profiles</span><button class="ln-x" id="nt-x" title="Close">✕</button></div>
+    <div class="nio-nttoolbar">
+      <button id="nt-add" class="nio-tbtn" title="Add New Profile">+</button>
+      <button id="nt-edit" class="nio-tbtn" title="Edit Selected Profile">⚙</button>
+      <button id="nt-del" class="nio-tbtn nio-tbtn-x" title="Delete Selected Profile">✕</button>
+      <span class="nio-tbsep"></span>
+      <button id="nt-default" class="nio-tbtn nio-tbtn-star" title="Set as Default Profile">★</button>
+    </div>
+    <div class="nio-nthead"><span>Profile Name</span><span>Caster</span><span>Default</span></div>
+    <div id="nt-list" class="nio-ntlist"></div>
+  </div>
+  <!-- Edit NTRIP Profile — chain sub-panel of the profiles list (replaces it; Back
+       reopens the list, Close → map). Client-side buffer; Save sends every field. -->
+  <div id="ntripeditor" class="ln-panel nio-ntedit">
+    <div class="ln-hdr"><button class="ln-x" id="nte-back" title="Back">←</button><span class="ln-hdr-title" id="nte-title">Edit NTRIP Profile</span><button class="ln-x" id="nte-x" title="Close">✕</button></div>
+      <div class="nio-fld"><label>Name</label><input class="cfg-num nio-tx" id="nte-name" placeholder="e.g., Local Base Station"></div>
+      <div class="nio-fld"><label>Host</label><input class="cfg-num nio-tx" id="nte-host" placeholder="e.g., rtk2go.com"></div>
+      <div class="nio-row2">
+        <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-port" type="number" placeholder="2101"></div>
+        <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-mount" placeholder="NEAR-RTCM3"></div>
+      </div>
+      <div class="nio-row2">
+        <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-user" placeholder="(optional)"></div>
+        <div class="nio-fld"><label>Pass</label><input class="cfg-num nio-tx" id="nte-pass" type="password" placeholder="(optional)"></div>
+      </div>
+      <div class="nio-testrow">
+        <button id="nte-test" class="sw-b sw-grey" style="flex:none;padding:8px 16px">Test Connection</button>
+        <span id="nte-teststatus" class="sa-hint"></span>
+      </div>
+      <div class="cfg-label" style="margin-top:6px">Associated Fields</div>
+      <div id="nte-fields" class="nio-fieldlist"></div>
+      <div class="sa-hint">Fields not selected will use the default profile (if set).</div>
+      <label class="nio-cklbl"><input type="checkbox" id="nte-auto"> Auto-connect when associated field is loaded</label>
+      <label class="nio-cklbl"><input type="checkbox" id="nte-default"> Set as default profile (for fields without specific association)</label>
+      <div class="sw-btns" style="margin-top:14px; justify-content:flex-end">
+        <button id="nte-save" class="sw-b sw-blue" style="flex:none; padding:9px 22px">Save Profile</button>
+      </div>
+  </div>
   <div id="smartwas-backdrop" class="sw-backdrop">
     <div class="sw-modal">
       <div class="sw-title">Smart WAS Calibration</div>

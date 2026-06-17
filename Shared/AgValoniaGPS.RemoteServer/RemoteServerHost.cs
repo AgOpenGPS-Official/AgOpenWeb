@@ -67,7 +67,8 @@ public sealed class RemoteServerHost
         ISectionControlService sections, IToolPositionService tool,
         AgValoniaGPS.Models.Configuration.ConfigurationStore config,
         IJobService jobs, IConfigurationService configService, IAutoSteerService autoSteer,
-        ISmartWasCalibrationService smartWas, int port = 5174)
+        ISmartWasCalibrationService smartWas, IUdpCommunicationService udp,
+        INtripProfileService ntripProfiles, int port = 5174)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -82,6 +83,8 @@ public sealed class RemoteServerHost
         builder.Services.AddSingleton(configService);
         builder.Services.AddSingleton(autoSteer);
         builder.Services.AddSingleton(smartWas);
+        builder.Services.AddSingleton(udp);
+        builder.Services.AddSingleton(ntripProfiles);
         builder.Services.AddSingleton<ControlAuthority>();
         builder.Services.AddSingleton<SceneProjector>();
         builder.Services.AddSingleton<CoverageProjector>();

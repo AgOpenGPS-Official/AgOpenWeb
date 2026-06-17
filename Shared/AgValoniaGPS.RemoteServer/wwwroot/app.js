@@ -37,6 +37,8 @@ let config = null;     // config read-frame (vehicle config, …) for the left-n
 let configDirty = false; // a new config frame arrived → settings panels re-read it
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
+let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable fields
+let ntripDirty = false;
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -137,6 +139,7 @@ const transport = RemoteTransport.create({
   onStatusBar(s) { statusBar = s; },
   onConfig(c) { config = c; configDirty = true; },
   onProfiles(p) { profiles = p; profilesDirty = true; },
+  onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -378,12 +381,13 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor'];
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
   document.getElementById('ln-screenalerts').classList.remove('active');
   document.getElementById('ln-vehicle').classList.remove('active');
   document.getElementById('ln-autosteer').classList.remove('active');
+  document.getElementById('ln-network').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
@@ -412,8 +416,17 @@ document.getElementById('ln-autosteer').addEventListener('pointerdown', e => {
     populateAutoSteer(true);
   });
 });
+document.getElementById('ln-network').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (document.getElementById('networkio').classList.contains('open')) lnCloseAll();
+  else lnOpen('networkio', 'ln-network', renderNetworkIo);
+});
 for (const b of document.querySelectorAll('.ln-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
+// Standard header close (X) → close the chain to the map. Tagged .ln-closex so the
+// NTRIP chain Back/X buttons (which need parent-aware nav) keep their own handlers.
+for (const b of document.querySelectorAll('.ln-closex'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
 // Units (Screen & Alerts) → config bridge write.
 const saPanel = document.getElementById('screenalerts');
 const uMetric = document.getElementById('sa-metric'), uImperial = document.getElementById('sa-imperial');
@@ -756,6 +769,168 @@ function populateSmartWas() {
   gate('sw-apply', !!statusBar.swValid);
 }
 
+// ---- Network IO (Phase 9) — modules / scan / subnet / host IPs / NTRIP. Reads ride
+// the Status frame; writes are config.set (module-present, Tier-1), net.scan (Tier-1),
+// net.subnet (Tier-2 gated), and ntrip.* profile CRUD. The NTRIP editor keeps its
+// editing buffer client-side; Save sends every field at once. ----
+const nioPanel = document.getElementById('networkio');
+nioPanel.addEventListener('pointerdown', e => e.stopPropagation());
+for (const cb of nioPanel.querySelectorAll('.nio-chk'))
+  cb.addEventListener('change', () => cfgSend(cb.dataset.key, cb.checked ? '1' : '0'));
+document.getElementById('nio-scan').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('net.scan'); });
+const nioO1 = document.getElementById('nio-o1'), nioO2 = document.getElementById('nio-o2'), nioO3 = document.getElementById('nio-o3');
+const nioSubnetBtn = document.getElementById('nio-subnet');
+nioSubnetBtn.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!iHoldControl) return; // gated; host re-checks
+  const o1 = clampOct(nioO1.value), o2 = clampOct(nioO2.value), o3 = clampOct(nioO3.value);
+  if (confirm('Set ALL connected modules to subnet ' + o1 + '.' + o2 + '.' + o3 + '.x and restart them?'))
+    transport.send('net.subnet|' + o1 + '.' + o2 + '.' + o3);
+});
+document.getElementById('nio-ntprofiles').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripProfiles(); });
+function clampOct(v) { let n = parseInt(v); if (!Number.isFinite(n)) n = 0; return Math.max(0, Math.min(255, n)); }
+function nioDotColor(configured, ok) { return !configured ? '#6b7280' : (ok ? '#22c55e' : '#ef4444'); }
+let _lastModuleSubnet = '';
+function renderNetworkIo() {
+  const s = statusBar; if (!s) return;
+  const setMod = (cfgId, dotId, ipId, configured, ok, ip) => {
+    const cb = document.getElementById(cfgId);
+    if (document.activeElement !== cb) cb.checked = !!configured;
+    document.getElementById(dotId).style.background = nioDotColor(configured, ok);
+    document.getElementById(ipId).textContent = ip || '—';
+  };
+  setMod('nio-gps-cfg', 'nio-gps-dot', 'nio-gps-ip', s.gpsConf, s.gpsOk, s.gpsIp);
+  setMod('nio-as-cfg', 'nio-as-dot', 'nio-as-ip', s.autoSteerConf, s.autoSteerOk, s.autoSteerIp);
+  setMod('nio-ma-cfg', 'nio-ma-dot', 'nio-ma-ip', s.machineConf, s.machineOk, s.machineIp);
+  setMod('nio-imu-cfg', 'nio-imu-dot', 'nio-imu-ip', s.imuConf, s.imuOk, s.imuIp);
+  // Seed the subnet octets from the detected /24 when it changes (a PGN 203 reply),
+  // unless the operator is editing that box — mirrors the native ModuleSubnet binding.
+  if (s.moduleSubnet && s.moduleSubnet !== _lastModuleSubnet) {
+    _lastModuleSubnet = s.moduleSubnet;
+    const p = s.moduleSubnet.split('.');
+    if (p.length === 3) {
+      if (document.activeElement !== nioO1) nioO1.value = p[0];
+      if (document.activeElement !== nioO2) nioO2.value = p[1];
+      if (document.activeElement !== nioO3) nioO3.value = p[2];
+    }
+  }
+  if (!nioO1.value && document.activeElement !== nioO1) nioO1.value = 192;
+  if (!nioO2.value && document.activeElement !== nioO2) nioO2.value = 168;
+  if (!nioO3.value && document.activeElement !== nioO3) nioO3.value = 5;
+  document.getElementById('nio-hostips').textContent = s.hostIps || '—';
+  document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
+  document.getElementById('nio-ntrip-status').textContent = s.ntripStatus || 'Not Connected';
+  document.getElementById('nio-ntrip-bytes').textContent = Math.floor((s.ntripBytes || 0) / 1024).toLocaleString() + ' KB';
+  nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
+}
+
+// NTRIP Profiles — chain sub-panel of Network IO (mirrors NtripProfilesDialogPanel).
+// Native chain model: opening REPLACES the parent (lnOpen closes everything else);
+// Back reopens the parent fly-out (Network IO); Close → map.
+let ntSelId = null;
+function openNtripProfiles() { lnOpen('ntripprofiles', 'ln-network', renderNtripList); }
+document.getElementById('nt-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('networkio', 'ln-network', renderNetworkIo); });
+document.getElementById('nt-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+document.getElementById('nt-add').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripEditor(null); });
+document.getElementById('nt-edit').addEventListener('pointerdown', e => { e.stopPropagation(); const p = selectedNtProfile(); if (p) openNtripEditor(p); });
+document.getElementById('nt-del').addEventListener('pointerdown', e => {
+  e.stopPropagation(); const p = selectedNtProfile();
+  if (p && confirm("Delete NTRIP profile '" + p.name + "'?")) { transport.send('ntrip.delete|' + p.id); ntSelId = null; }
+});
+document.getElementById('nt-default').addEventListener('pointerdown', e => {
+  e.stopPropagation(); const p = selectedNtProfile(); if (p) transport.send('ntrip.setDefault|' + p.id);
+});
+function selectedNtProfile() { return (ntripProfiles && ntripProfiles.profiles.find(p => p.id === ntSelId)) || null; }
+function renderNtripList() {
+  const list = document.getElementById('nt-list');
+  list.innerHTML = '';
+  const profs = ntripProfiles ? ntripProfiles.profiles : [];
+  if (!profs.length) { list.innerHTML = '<div style="padding:18px;color:#8294ab;text-align:center">No profiles</div>'; return; }
+  for (const p of profs) {
+    const row = document.createElement('div');
+    row.className = 'nio-ntrow' + (p.id === ntSelId ? ' sel' : '');
+    row.innerHTML = '<div><div class="nt-name"></div><div class="nt-mount"></div></div>'
+      + '<div class="nt-caster"></div><div class="nt-def">' + (p.isDefault ? '★' : '') + '</div>';
+    row.querySelector('.nt-name').textContent = p.name;
+    row.querySelector('.nt-mount').textContent = p.mountPoint;
+    row.querySelector('.nt-caster').textContent = p.casterHost;
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); ntSelId = p.id; renderNtripList(); });
+    list.appendChild(row);
+  }
+}
+
+// Edit NTRIP Profile — chain sub-panel of the profiles list (mirrors
+// NtripProfileEditorPanel). Opening REPLACES the list; Back reopens the list; Close →
+// map; Save returns to the list (native NavigateBack). Client-side buffer.
+let nteBuf = null, _nteTestActive = false;
+function openNtripEditor(p) {
+  nteBuf = p
+    ? { id: p.id, associatedFields: (p.associatedFields || []).slice() }
+    : { id: '', associatedFields: [] };
+  document.getElementById('nte-title').textContent = p ? 'Edit NTRIP Profile' : 'New NTRIP Profile';
+  document.getElementById('nte-name').value = p ? p.name : 'New Profile';
+  document.getElementById('nte-host').value = p ? p.casterHost : '';
+  document.getElementById('nte-port').value = p ? p.casterPort : 2101;
+  document.getElementById('nte-mount').value = p ? p.mountPoint : '';
+  document.getElementById('nte-user').value = p ? p.username : '';
+  document.getElementById('nte-pass').value = p ? p.password : '';
+  document.getElementById('nte-auto').checked = p ? !!p.autoConnect : true;
+  document.getElementById('nte-default').checked = p ? !!p.isDefault : false;
+  document.getElementById('nte-teststatus').textContent = '';
+  _nteTestActive = false;
+  lnOpen('ntripeditor', 'ln-network', renderNteFields);
+}
+document.getElementById('nte-back').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripProfiles(); });
+document.getElementById('nte-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+function renderNteFields() {
+  const box = document.getElementById('nte-fields');
+  box.innerHTML = '';
+  const fields = ntripProfiles ? ntripProfiles.availableFields : [];
+  if (!fields.length) { box.innerHTML = '<div style="color:#8294ab;padding:4px">No fields</div>'; return; }
+  for (const f of fields) {
+    const lbl = document.createElement('label');
+    const cb = document.createElement('input'); cb.type = 'checkbox';
+    cb.checked = nteBuf.associatedFields.includes(f);
+    cb.addEventListener('change', () => {
+      if (cb.checked) { if (!nteBuf.associatedFields.includes(f)) nteBuf.associatedFields.push(f); }
+      else nteBuf.associatedFields = nteBuf.associatedFields.filter(x => x !== f);
+    });
+    lbl.appendChild(cb); lbl.appendChild(document.createTextNode(f));
+    box.appendChild(lbl);
+  }
+}
+document.getElementById('nte-test').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const host = document.getElementById('nte-host').value.trim();
+  const port = document.getElementById('nte-port').value || '2101';
+  const mount = document.getElementById('nte-mount').value.trim();
+  const user = document.getElementById('nte-user').value, pass = document.getElementById('nte-pass').value;
+  const st = document.getElementById('nte-teststatus');
+  if (!host) { st.textContent = 'Error: Caster host is required'; return; }
+  if (!mount) { st.textContent = 'Error: Mount point is required'; return; }
+  _nteTestActive = true;
+  st.textContent = 'Testing connection...';
+  transport.send('ntrip.test|' + [host, port, mount, user, pass].join('\t'));
+});
+document.getElementById('nte-save').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!nteBuf) return;
+  const fields = [
+    nteBuf.id || '',
+    document.getElementById('nte-name').value.trim(),
+    document.getElementById('nte-host').value.trim(),
+    document.getElementById('nte-port').value || '2101',
+    document.getElementById('nte-mount').value.trim(),
+    document.getElementById('nte-user').value,
+    document.getElementById('nte-pass').value,
+    document.getElementById('nte-auto').checked ? '1' : '0',
+    document.getElementById('nte-default').checked ? '1' : '0',
+    nteBuf.associatedFields.join(','),
+  ];
+  transport.send('ntrip.save|' + fields.join('\t'));
+  openNtripProfiles(); // native SaveNtripProfileCommand ends in NavigateBack → list
+});
+
 // ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
 // SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
 // the existing config.set bridge, and forward nav (wizard.*) + gated calibration
@@ -945,6 +1120,17 @@ function renderSettings() {
   if (wzOverlay.classList.contains('open')) renderWizard();
   // Re-read the hub when a fresh profiles frame arrives.
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
+  // Network IO panel: module/NTRIP readouts ride the Status frame → refresh each frame.
+  if (nioPanel.classList.contains('open')) renderNetworkIo();
+  // NTRIP test result rides the Status frame while a test is in flight.
+  if (_nteTestActive && document.getElementById('ntripeditor').classList.contains('open') && statusBar)
+    document.getElementById('nte-teststatus').textContent = statusBar.ntripTestStatus || '';
+  // Re-read the NTRIP list/editor fields when a fresh profiles frame arrives.
+  if (ntripDirty) {
+    ntripDirty = false;
+    if (document.getElementById('ntripprofiles').classList.contains('open')) renderNtripList();
+    if (document.getElementById('ntripeditor').classList.contains('open')) renderNteFields();
+  }
 }
 
 // ---- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogViewModel ----

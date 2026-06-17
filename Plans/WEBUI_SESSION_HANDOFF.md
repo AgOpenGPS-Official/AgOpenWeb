@@ -76,15 +76,94 @@ read 0 without it.
 - The sim got QoL this session: STOP/center(`>0<`)/zero + ±0.5 nudge buttons on Speed/Wheel/
   Roll; persisted GPS pose (`vehsim.json`) with **8-digit** coords + a **Save Position** button.
 
-## Remaining Phase-9 sub-phases (NEXT — pick one)
-- **Network IO + NTRIP** — NTRIP profile mgmt + module-IP readout + subnet-change fly-out
-  (PGN 202 scan / 203 reply / 201 global subnet — no per-module IP-set in AgOpen). Plan:
-  `Plans/NETWORK_IO_PLAN.md` + memory `[[project_network_io_panel]]`.
-- **Field operations / lifecycle** — field list / open / create / close / resume; needs a
+## Remaining Phase-9 sub-phases — FULL left-nav inventory (8 native buttons)
+The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
+| # | Native button | Web status |
+|---|---|---|
+| 1 | **File / Application Menu** | ❌ NOT BUILT |
+| 2 | Screen & Alerts | ✅ built (`#screenalerts`) |
+| 3 | **Tools** | ❌ NOT BUILT |
+| 4 | Vehicle / Tool Configuration | ✅ built (`#vehtoolhub`/`#vehiclecfg`/`#toolcfg`) |
+| 5 | **Field Operations** | ❌ NOT BUILT |
+| 6 | **Field Tools** | ❌ NOT BUILT (only bottom-nav operational toggles exist) |
+| 7 | AutoSteer Configuration | ✅ built (`#autosteercfg` + Smart-WAS + Wizard) |
+| 8 | **Network IO** | ✅ BUILT (this session, v26.5.59 — pending device test) |
+
+**4 of 8 buttons remain.** Pick one:
+- ~~**Network IO + NTRIP**~~ ✅ **DONE (v26.5.59, pending device test).** Full `NetworkIoPanel`
+  parity: module present-checkbox + status dot + IP (GPS/AutoSteer/Machine/IMU), Scan for
+  Modules (`net.scan`, PGN 202), global subnet change (`net.subnet`, PGN 201 — **Tier-2 gated**,
+  client confirm), Host IPs readout, NTRIP status/bytes + a full **NTRIP Profiles** modal
+  (add/edit/delete/set-default) + **Edit Profile** modal (host/port/mount/user/pass, Test
+  Connection, field-association checkboxes, auto-connect, default). Read side: new Status-frame
+  fields (GpsIp/ModuleSubnet/HostIps/Ntrip*) + new **NtripProfiles frame (wire type 11)**. Write
+  side: `net.*` → `IUdpCommunicationService`; `ntrip.*` (save/delete/setDefault/test) →
+  `INtripProfileService` directly (mirrors `ApplyProfileCommand`); Test Connection reuses the new
+  shared `NtripConnectionTester` (also now used by the native VM — no duplicated TCP probe),
+  result projected via `ConnectionState.NtripTestStatus`. SceneProjector gained
+  `IUdpCommunicationService` + `INtripProfileService` (passed through `RemoteServerHost.StartAsync`
+  → updated the Desktop call). Plan: `Plans/NETWORK_IO_PLAN.md` + memory `[[project_network_io_panel]]`.
+- **File / Application Menu** (`Panels/FileMenuPanel.axaml`) — owns Application Settings:
+  Language · Reset All Settings · **App Settings (modal)** · View All Settings · Log Viewer ·
+  Hotkeys · Simulator · Help · About · Bug Report Dump. ⚠ A subset of App Settings (units /
+  on-screen keyboard / start-fullscreen / elevation-log) currently lives **inside the web
+  Screen & Alerts panel** with a "moves to its own dialog" note — building this means
+  migrating those four OUT, per `[[project_screen_alerts_settings_ia]]` (non-modal Screen &
+  Alerts vs modal App Settings).
+- **Tools** (`Panels/ToolsPanel.axaml`) — Steer Wizard launcher (VM already web-wired) · Log
+  Viewer · Roll Correction · Steer Chart · Heading Chart · XTE Chart (3 diagnostic charts, none
+  built in web).
+- **Field Operations** (`Panels/FieldOperationsPanel.axaml`) — field lifecycle: Fields and Jobs
+  · Resume Last Job · Resume Job · Drive In · Close · AgShare Upload/Download/Settings. Needs a
   field-list read-frame + confirm dialogs (mostly command-driven).
-- **Deferred map-tap dialogs** (Phase-8 deferred) — Tracks / QuickAB / DrawAB / FlagList /
-  place-on-map. Needs **map-tap interaction** on the canvas — build that once, reuse. Hardest.
+- **Field Tools** (`Panels/FieldToolsPanel.axaml`) — Field Builder · Boundary (dialog) · Delete
+  Applied Area · Import Tracks · Recorded Path · Offset Fix. DISTINCT from the deferred map-tap
+  dialogs (Tracks / QuickAB / DrawAB / FlagList / place-on-map), which need **map-tap canvas
+  interaction** built once + reused — the hardest chunk, do last.
 Then **Phase 10** — mop-up + headless cutover (host goes UI-less; browser is the only UI).
+
+## Navigation model — SINGLE UNIFIED MODEL (LOCKED 2026-06-17)
+**There is ONE navigation model. Dimming modals are eliminated as a category.** Everything is
+a chain panel; "only one panel on screen at a time." Decision rationale: the only thing a
+dimming modal did that the chain didn't was *block* the map + persistent toolbars — and a
+**transparent light-dismiss scrim** already gives that safety (the outside tap is *consumed* to
+close the panel, so the background never receives it) **without** hiding the field. So the modal
+adds nothing. Native already proves the mechanism — chain dialogs use *"a fully transparent
+light-dismiss scrim (not a darkening backdrop)"* (`NtripProfilesDialogPanel.axaml`).
+
+The model:
+- **One panel visible at a time.** Opening a child REPLACES the parent (not stacked). Source of
+  truth = `MainViewModel.Navigation.Chain.cs` (`OpenChainDialog`/`PushChainDialog`/`NavigateBack`/
+  `CloseChain`). Web = `ln-panel` in `LN_NAV_PANELS`, opened via `lnOpen` (which `lnCloseAll`s first).
+- **Header chrome:** fly-out / chain-root = **Title + ✕** (`FloatingPanel`); deeper chain panel =
+  **← Back + Title + ✕** (`DialogChrome`). Back reopens the specific parent; ✕ closes the whole
+  chain to the map. Web: plain closers tagged `.ln-closex` → `lnCloseAll`; chain Back/✕ get
+  parent-aware handlers.
+- **Transparent light-dismiss scrim** behind the open panel: map fully visible, outside-tap closes
+  the chain and is **consumed** (does not actuate the background). This is the blocking-safety,
+  minus the dimming.
+- **Watch-the-tractor exception** (Smart-WAS, AutoSteer free-drive test, wizard cal steps): these
+  need to pan/zoom the map to watch the tractor, so they **opt OUT of light-dismiss** — no scrim,
+  map fully interactive, panel persists, closes only via the header. The only deliberate
+  non-dismiss surface type.
+- **Steer Wizard** stays full-screen — it's a guided multi-step flow with its own gauges, not a
+  map view; "blocking" isn't the issue there.
+
+**Migration TODO to reach the locked model** (web currently still has dimming modals + a global
+window-pointerdown closer):
+1. Add the **transparent light-dismiss scrim** to the web chain panels (replace reliance on the
+   global `window` pointerdown closer, which lets the same click also reach the map).
+2. **Standard confirm panel** — promote the AutoSteer-reset inline confirm bar (`.as-confirm`)
+   into a reusable confirm surface; route the browser `confirm()` calls (hub delete, NTRIP delete,
+   subnet change) + native `ShowConfirmationDialog` through it. Confirm triggered from a persistent
+   toolbar → confirm strip (decide anchor) — *(open sub-detail, not blocking the model)*.
+3. Convert the remaining **dimming modals** (`sw-backdrop`) to the model: **Smart-WAS** + **SimCoords**
+   → chain panels; Smart-WAS = watch-tractor (no scrim).
+Status: NTRIP Profiles + Editor already converted (chain panels, replace-parent). Smart-WAS,
+SimCoords, confirmations still to convert.
+
+**Native divergence:** native still uses dimming modals for Smart-WAS / confirmations. This unified
+model is a **web-led improvement** (web is the end-state UI). Whether to backport to native is open.
 
 ## Established patterns (reuse these — they're the template now)
 - **Config bridge (settings panels):** structured read-frame (a `*Dto` projection of
@@ -102,11 +181,12 @@ Then **Phase 10** — mop-up + headless cutover (host goes UI-less; browser is t
   Native icons live in `Shared/AgValoniaGPS.Views/Assets/Icons[/Config]/` — **copy the PNGs
   in** before referencing them, else broken-link. Rebuild RemoteServer to embed.
 - **Frame types:** Scene=1 Tick=2 CoverageInit=3 CoverageCells=4 Status=5 ControlState=6
-  Hello=7 Config=8 Profiles=9 **Wizard=10**.
+  Hello=7 Config=8 Profiles=9 Wizard=10 **NtripProfiles=11**.
 - **Tier-2 gating** (`IsRestrictedCommand`, control-gated): prefixes `section.` `autosteer.`
-  `youturn.` `contour.` `track.` `headland.` `smartwas.` `wizard.action`. Tier-1 (ungated):
-  `sim.` `tool.` `map.` `flag.` `tram.` `display.` `config.set` `profile.*` `wizard.{open,
-  next,back,skip,finish,cancel,hw,set}`. Client dims gated controls (`.rn-gated`/`.disabled`)
+  `youturn.` `contour.` `track.` `headland.` `smartwas.` `wizard.action`, plus the exact id
+  `net.subnet` (restarts every module). Tier-1 (ungated): `sim.` `tool.` `map.` `flag.` `tram.`
+  `display.` `config.set` (incl. `conn.*` module-present) `profile.*` `net.scan` `ntrip.*`
+  `wizard.{open,next,back,skip,finish,cancel,hw,set}`. Client dims gated controls (`.rn-gated`/`.disabled`)
   off `iHoldControl`; the host re-gates.
 - **Command-with-args:** host `CommandHandler` is `Action<string,string>` (id, arg); client
   sends `transport.send('id|arg')`. Arg-carrying ids handled in the `switch` above the ICommand

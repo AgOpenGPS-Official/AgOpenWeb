@@ -17,7 +17,32 @@ namespace AgValoniaGPS.RemoteServer;
 public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
-        ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10;
+        ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11;
+
+    public static byte[] EncodeNtripProfiles(NtripProfilesDto p)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(NtripProfiles);
+        w.Write(p.Profiles.Count);
+        foreach (var e in p.Profiles)
+        {
+            WriteStr(w, e.Id);
+            WriteStr(w, e.Name);
+            WriteStr(w, e.CasterHost);
+            w.Write(e.CasterPort);          // i32
+            WriteStr(w, e.MountPoint);
+            WriteStr(w, e.Username);
+            WriteStr(w, e.Password);
+            w.Write((byte)(e.AutoConnectOnFieldLoad ? 1 : 0));
+            w.Write((byte)(e.IsDefault ? 1 : 0));
+            w.Write(e.AssociatedFields.Count);
+            foreach (var f in e.AssociatedFields) WriteStr(w, f);
+        }
+        w.Write(p.AvailableFields.Count);
+        foreach (var f in p.AvailableFields) WriteStr(w, f);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeProfiles(ProfilesDto p)
     {
@@ -336,6 +361,14 @@ public static class WireCodec
         w.Write((float)s.SmartWasOffsetDeg);
         w.Write((float)s.SmartWasConfidence);
         w.Write((byte)(s.SmartWasValid ? 1 : 0));
+        // Network IO panel (append-only).
+        WriteStr(w, s.GpsIp);
+        WriteStr(w, s.ModuleSubnet);
+        WriteStr(w, s.HostIps);
+        w.Write((byte)(s.NtripConnected ? 1 : 0));
+        WriteStr(w, s.NtripStatus);
+        w.Write(s.NtripBytes);          // f64 (raw bytes; client formats KB)
+        WriteStr(w, s.NtripTestStatus);
         return ms.ToArray();
     }
 

@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -108,6 +108,9 @@ window.RemoteTransport = {
                 freeDriveAngle = f32(), steerFreeDrive = !!u8();
           const swCollecting = !!u8(), swSamples = i32(), swMean = f32(), swMedian = f32(),
                 swStdDev = f32(), swOffsetDeg = f32(), swConfidence = f32(), swValid = !!u8();
+          // Network IO panel (append-only).
+          const gpsIp = str(), moduleSubnet = str(), hostIps = str();
+          const ntripConnected = !!u8(), ntripStatus = str(), ntripBytes = f64(), ntripTestStatus = str();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -116,7 +119,22 @@ window.RemoteTransport = {
             simEnabled, simSpeedKph, simSteerAngle, sim10x,
             actualSteerAngle, sensorPercent, setSteerAngle, freeDriveAngle, steerFreeDrive,
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
+            gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripTestStatus,
           });
+          break;
+        }
+        case TYPE.NTRIP_PROFILES: {
+          const pc = i32(); const profiles = new Array(pc);
+          for (let k = 0; k < pc; k++) {
+            const id = str(), name = str(), casterHost = str(), casterPort = i32(), mountPoint = str();
+            const username = str(), password = str(), autoConnect = !!u8(), isDefault = !!u8();
+            const ac = i32(); const associatedFields = new Array(ac);
+            for (let j = 0; j < ac; j++) associatedFields[j] = str();
+            profiles[k] = { id, name, casterHost, casterPort, mountPoint, username, password, autoConnect, isDefault, associatedFields };
+          }
+          const af = i32(); const availableFields = new Array(af);
+          for (let k = 0; k < af; k++) availableFields[k] = str();
+          handlers.onNtripProfiles && handlers.onNtripProfiles({ profiles, availableFields });
           break;
         }
         case TYPE.HELLO: {

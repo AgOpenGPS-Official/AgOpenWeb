@@ -96,6 +96,16 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripBytesReceived, value);
     }
 
+    // Result of the most recent NTRIP "Test Connection" probe (e.g. from the remote
+    // Network IO editor). Set on the UI thread by the test runner; projected on the
+    // Status frame so the browser editor can show it. Empty = no test run.
+    private string _ntripTestStatus = string.Empty;
+    public string NtripTestStatus
+    {
+        get => _ntripTestStatus;
+        set => SetProperty(ref _ntripTestStatus, value);
+    }
+
     // AutoSteer module
     private bool _isAutoSteerConnected;
     public bool IsAutoSteerConnected
