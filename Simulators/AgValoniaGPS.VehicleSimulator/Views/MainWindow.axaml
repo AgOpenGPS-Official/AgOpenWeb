@@ -42,7 +42,12 @@
                         <vm:DriveMode>Raw</vm:DriveMode>
                     </ComboBox>
 
-                    <TextBlock Text="{Binding Speed, StringFormat='Speed: {0:F1} km/h'}" />
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding Speed, StringFormat='Speed: {0:F1} km/h'}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="−" Padding="10,2" Command="{Binding SpeedDownCommand}" ToolTip.Tip="−0.5 km/h" />
+                        <Button Grid.Column="2" Content="+" Padding="10,2" Margin="4,0" Command="{Binding SpeedUpCommand}" ToolTip.Tip="+0.5 km/h" />
+                        <Button Grid.Column="3" Content="STOP" Padding="10,2" Command="{Binding StopSpeedCommand}" ToolTip.Tip="Set speed to 0" />
+                    </Grid>
                     <Slider Minimum="0" Maximum="30" Value="{Binding Speed}"
                             TickFrequency="1" IsSnapToTickEnabled="False" />
 
@@ -56,7 +61,12 @@
                             TickFrequency="0.1" IsSnapToTickEnabled="False"
                             ToolTip.Tip="Axle length used by the simulator's bicycle kinematic model. Operator-controlled truth — the host's wizard tries to discover this." />
 
-                    <TextBlock Text="{Binding WasAngle, StringFormat='Wheel Angle: {0:F1} deg'}" />
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding WasAngle, StringFormat='Wheel Angle: {0:F1} deg'}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="−" Padding="10,2" Command="{Binding WheelDownCommand}" ToolTip.Tip="−0.5°" />
+                        <Button Grid.Column="2" Content="+" Padding="10,2" Margin="4,0" Command="{Binding WheelUpCommand}" ToolTip.Tip="+0.5°" />
+                        <Button Grid.Column="3" Content="&gt;0&lt;" Padding="10,2" Command="{Binding CenterWheelCommand}" ToolTip.Tip="Center wheel angle (0°)" />
+                    </Grid>
                     <Slider Minimum="-45" Maximum="45" Value="{Binding WasAngle}"
                             TickFrequency="1" IsSnapToTickEnabled="False"
                             ToolTip.Tip="Physical wheel angle. The simulated WAS reads this and applies the virtual hardware calibration before PGN 253 reports it." />
@@ -102,7 +112,12 @@
 
                     <!-- Roll lives here because it's the IMU's sensor output,
                          carried by $PANDA alongside the GPS-side data. -->
-                    <TextBlock Text="{Binding RollAngle, StringFormat='Roll (IMU): {0:F1} deg'}" />
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding RollAngle, StringFormat='Roll (IMU): {0:F1} deg'}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="−" Padding="10,2" Command="{Binding RollDownCommand}" ToolTip.Tip="−0.5°" />
+                        <Button Grid.Column="2" Content="+" Padding="10,2" Margin="4,0" Command="{Binding RollUpCommand}" ToolTip.Tip="+0.5°" />
+                        <Button Grid.Column="3" Content="0" Padding="14,2" Command="{Binding ZeroRollCommand}" ToolTip.Tip="Zero roll" />
+                    </Grid>
                     <Slider Minimum="-15" Maximum="15" Value="{Binding RollAngle}"
                             TickFrequency="0.5" IsSnapToTickEnabled="False" />
                 </StackPanel>

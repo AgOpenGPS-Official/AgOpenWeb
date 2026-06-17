@@ -310,10 +310,34 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public string StartStopLabel => IsRunning ? "Stop" : "Start";
 
     public ICommand StartStopCommand { get; }
+    // Quick-set buttons: stop motion, center the wheel, zero roll. Set the live
+    // property so the next tick pushes 0 to the GPS/steer modules.
+    public ICommand StopSpeedCommand { get; }
+    public ICommand CenterWheelCommand { get; }
+    public ICommand ZeroRollCommand { get; }
+    // Fine ±0.5 nudge buttons (match the in-app sim step) for setting exact values
+    // where the slider is awkward. Property setters clamp.
+    public ICommand SpeedUpCommand { get; }
+    public ICommand SpeedDownCommand { get; }
+    public ICommand WheelUpCommand { get; }
+    public ICommand WheelDownCommand { get; }
+    public ICommand RollUpCommand { get; }
+    public ICommand RollDownCommand { get; }
+
+    private const double NudgeStep = 0.5;
 
     public MainWindowViewModel()
     {
         StartStopCommand = new RelayCommand(ToggleRunning);
+        StopSpeedCommand = new RelayCommand(() => Speed = 0);
+        CenterWheelCommand = new RelayCommand(() => WasAngle = 0);
+        ZeroRollCommand = new RelayCommand(() => RollAngle = 0);
+        SpeedUpCommand = new RelayCommand(() => Speed += NudgeStep);
+        SpeedDownCommand = new RelayCommand(() => Speed -= NudgeStep);
+        WheelUpCommand = new RelayCommand(() => WasAngle += NudgeStep);
+        WheelDownCommand = new RelayCommand(() => WasAngle -= NudgeStep);
+        RollUpCommand = new RelayCommand(() => RollAngle += NudgeStep);
+        RollDownCommand = new RelayCommand(() => RollAngle -= NudgeStep);
     }
 
     private void ToggleRunning()
