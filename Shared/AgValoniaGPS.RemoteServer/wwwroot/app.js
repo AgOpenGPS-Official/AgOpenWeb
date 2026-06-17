@@ -1247,6 +1247,20 @@ function updateLightbarText() {
   lbEl.style.display = 'block';
 }
 
+// Headland-distance HUD → DOM overlay (mirrors the native SkiaMapControl HUD).
+// Shown only when Display.HeadlandDistanceVisible is on and a live distance ≥ 0
+// (−1 = no headland / not driving). Metric/imperial follows the status bar.
+const hlHud = document.getElementById('headland-hud');
+function updateHeadlandHud() {
+  const on = config && config.display && config.display.headlandDistanceVisible;
+  const d = tick ? tick.headlandDist : -1;
+  if (!on || d == null || d < 0) { hlHud.style.display = 'none'; return; }
+  const metric = !statusBar || statusBar.isMetric;
+  hlHud.textContent = metric ? d.toFixed(1) + ' m' : (d * 3.28084).toFixed(0) + ' ft';
+  hlHud.classList.toggle('warn', !!(tick && tick.headlandWarn));
+  hlHud.style.display = 'block';
+}
+
 // Top status bar — DOM overlay mirroring the native StatusBarPanel: a two-line
 // left stack (Fix dot + text + Age on top, a rotating Field/Stats/AB-line below
 // with a pause toggle), and a right cluster (aggregate Modules dot + per-module
@@ -1920,6 +1934,7 @@ function skFrame() {
   }
   // DOM overlays (independent of the GL surface).
   updateLightbarText();
+  updateHeadlandHud();
   renderStatusBar();
   renderSimBar();
   renderSectionBar();

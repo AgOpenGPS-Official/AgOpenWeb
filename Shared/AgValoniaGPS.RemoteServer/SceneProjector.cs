@@ -200,7 +200,10 @@ public sealed class SceneProjector
             _state.FieldTools.IsAutoTrackEnabled,
             _state.FieldTools.UTurnSkipRows,
             _state.FieldTools.IsUTurnSkipRowsEnabled,
-            (int)_config.Tram.DisplayMode);
+            (int)_config.Tram.DisplayMode,
+            // Headland-distance HUD (-1 = no headland / not driving → hidden client-side).
+            _state.Field.HeadlandProximityDistance ?? -1.0,
+            _state.Field.HeadlandProximityWarning);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

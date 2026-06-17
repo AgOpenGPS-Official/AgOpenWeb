@@ -280,6 +280,9 @@ public static class WireCodec
         w.Write((byte)t.SkipRows);
         w.Write((byte)(t.SkipRowsOn ? 1 : 0));
         w.Write((byte)t.TramMode);
+        // Headland-distance HUD.
+        w.Write((float)t.HeadlandProximityDistance);
+        w.Write((byte)(t.HeadlandProximityWarning ? 1 : 0));
         return ms.ToArray();
     }
 

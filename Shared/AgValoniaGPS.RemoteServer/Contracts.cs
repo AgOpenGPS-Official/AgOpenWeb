@@ -91,7 +91,13 @@ public record TickDto(
     bool AutoTrack,
     int SkipRows,
     bool SkipRowsOn,
-    int TramMode);
+    int TramMode,
+    // Headland-distance HUD: live distance to the headland (m; -1 = no headland / not
+    // driving → HUD hidden) + the proximity warning flag (near → red box). Gated
+    // client-side by Display.HeadlandDistanceVisible (Config frame). Mirrors
+    // FieldState.HeadlandProximityDistance/…Warning.
+    double HeadlandProximityDistance,
+    bool HeadlandProximityWarning);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

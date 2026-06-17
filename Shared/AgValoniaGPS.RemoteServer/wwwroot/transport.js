@@ -86,9 +86,11 @@ window.RemoteTransport = {
             headlandOn: !!u8(), sectionInHeadland: !!u8(), autoTrack: !!u8(),
             skipRows: u8(), skipRowsOn: !!u8(), tramMode: u8(),
           };
+          const headlandDist = f32(), headlandWarn = !!u8();
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
+            headlandDist, headlandWarn,
           });
           break;
         }

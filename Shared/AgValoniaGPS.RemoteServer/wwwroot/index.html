@@ -78,6 +78,16 @@
       color: #cfe3ff; font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
+    /* Headland-distance HUD — screen-space box at top-centre (below the light bar),
+       mirroring the native SkiaMapControl HUD. Green when clear, red on warning.
+       Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0. */
+    #headland-hud {
+      position: fixed; top: 102px; left: 50%; transform: translateX(-50%); display: none;
+      padding: 6px 18px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(20,46,28,0.85); color: #fff; font: 700 19px ui-monospace, monospace;
+      pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
+    }
+    #headland-hud.warn { background: rgba(130,32,32,0.9); border-color: #ff6b5b; }
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
@@ -564,6 +574,7 @@
   </div>
   <div id="hud">connecting…</div>
   <div id="lb"></div>
+  <div id="headland-hud"></div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = map-follow · camera pad = mode (H/N/M/C) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
   <div id="control">
     <div id="ctl-status">connecting…</div>
