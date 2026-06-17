@@ -52,7 +52,6 @@ public interface ISharedMapControl
         double toolX, double toolY, double toolHeading, double toolWidth,
         double hitchX, double hitchY, bool toolReady);
     void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[]? buttonStates = null);
-    void SetGridVisible(bool visible);
     void SetNorthUp(bool isNorthUp);
     void SetDayMode(bool isDayMode);
     void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points);
@@ -114,6 +113,7 @@ public interface ISharedMapControl
     // Initialize coverage bitmap with field bounds (call on field load)
     // If background image is set, composites it; otherwise initializes to black
     void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN);
+    void RebuildCoverageBitmapForResolutionChange();
 
     // Direct pixel access for unified bitmap (service writes directly to bitmap)
     ushort GetCoveragePixel(int localX, int localY);
@@ -122,9 +122,6 @@ public interface ISharedMapControl
     ushort[]? GetCoveragePixelBuffer();
     void SetCoveragePixelBuffer(ushort[] pixels);
     (int Width, int Height, double CellSize)? GetDisplayBitmapInfo();
-
-    // Grid visibility property
-    bool IsGridVisible { get; set; }
 
     // Flag markers on the map
     void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags);

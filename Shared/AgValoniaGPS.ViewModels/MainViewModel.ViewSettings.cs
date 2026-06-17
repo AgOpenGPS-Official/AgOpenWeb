@@ -389,12 +389,16 @@ public partial class MainViewModel
     #region ConfigurationStore Display Forwarding
 
     /// <summary>
-    /// UTurn button visible when track available AND config allows it AND the
-    /// active track isn't a closed loop (no U-turns on polygon tracks, #421).
+    /// Right-nav auto-U-turn controls (arm toggle + direction toggle) are available
+    /// when autosteer is available AND the active track isn't a closed loop (no
+    /// U-turns on polygon tracks, #421). Deliberately NOT gated by the
+    /// <see cref="DisplayConfig.UTurnButtonVisible"/> display-visibility preference:
+    /// that flag governs only the on-map U-turn overlay (<see cref="IsUTurnOverlayVisible"/>),
+    /// so hiding the overlay never makes arming/disarming auto-U-turn unreachable
+    /// (config/state audit §13.2).
     /// </summary>
     public bool IsUTurnButtonVisible =>
-        IsAutoSteerAvailable && _configStore.Display.UTurnButtonVisible
-        && !IsActiveTrackClosed;
+        IsAutoSteerAvailable && !IsActiveTrackClosed;
 
     /// <summary>
     /// Manual U-turn left/right buttons: visible only while steering AND not on a

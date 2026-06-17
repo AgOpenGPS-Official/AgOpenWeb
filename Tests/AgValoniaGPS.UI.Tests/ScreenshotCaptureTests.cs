@@ -303,7 +303,7 @@ public class ScreenshotCaptureTests
 
         control.SetCamera(0, 0, 2.0, 0);
         control.SetDayMode(true);
-        control.SetGridVisible(true);
+        AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.GridVisible = true;
 
         return control;
     }
@@ -463,8 +463,8 @@ public class ScreenshotCaptureTests
         CaptureToggle(
             "GridVisible",
             CaptureMode.Map | CaptureMode.Full,
-            ctrl => ctrl.SetGridVisible(true),
-            ctrl => ctrl.SetGridVisible(false));
+            _ => AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.GridVisible = true,
+            _ => AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.GridVisible = false);
     }
 
     [AvaloniaTest]

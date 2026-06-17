@@ -224,6 +224,13 @@ public partial class MainViewModel
                 _ => 1.0,       // Min → Ultra
             };
             OnPropertyChanged(nameof(DisplayResolutionLabel));
+
+            // Apply the new resolution to the live coverage bitmap immediately
+            // instead of only on the next field open: rebuild the display bitmap at
+            // the new cell size and repaint from the resolution-independent detection
+            // cells (camera preserved). Audit §13.1.
+            if (IsFieldOpen)
+                _mapService.RebuildCoverageBitmapForResolutionChange();
         });
 
         // iOS Sheet toggle commands

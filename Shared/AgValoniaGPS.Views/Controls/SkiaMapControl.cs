@@ -43,14 +43,11 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     // Avalonia styled properties (mirror DCMC for binding parity)
     // ------------------------------------------------------------------
 
-    public static readonly StyledProperty<bool> IsGridVisibleProperty =
-        AvaloniaProperty.Register<SkiaMapControl, bool>(nameof(IsGridVisible), defaultValue: true);
-
-    public bool IsGridVisible
-    {
-        get => GetValue(IsGridVisibleProperty);
-        set => SetValue(IsGridVisibleProperty, value);
-    }
+    // Grid visibility is sourced directly from ConfigStore.Display.GridVisible
+    // (the single source of truth). The renderer reads it in SendStateToHandlerNow
+    // and the OnDisplayConfigChanged subscription repaints when it (or any other
+    // Display.* render flag) changes — so both the on-screen grid button and the
+    // Settings/Screen-&-Alerts toggle drive one source. No StyledProperty mirror.
 
     public static readonly StyledProperty<bool> ShowVehicleProperty =
         AvaloniaProperty.Register<SkiaMapControl, bool>(nameof(ShowVehicle), defaultValue: true);
@@ -272,7 +269,24 @@ public partial class SkiaMapControl : Control, ISharedMapControl
     {
         base.OnAttachedToVisualTree(e);
         SetupCompositionVisual();
+
+        // Repaint whenever a Display.* render flag flips (grid, Svenn arrow,
+        // headland-distance HUD, extra guidelines, field texture, line smoothing,
+        // …). This is the single bridge that makes every Display config toggle —
+        // from the on-screen buttons OR the Settings/Screen-&-Alerts panel — take
+        // effect live, instead of relying on a per-flag VM push. SendStateToHandler
+        // re-reads ConfigStore.Display, so no per-property fan-out is needed.
+        ConfigurationStore.Instance.Display.PropertyChanged += OnDisplayConfigChanged;
     }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        ConfigurationStore.Instance.Display.PropertyChanged -= OnDisplayConfigChanged;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnDisplayConfigChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        => SendStateToHandler();
 
     private void SetupCompositionVisual()
     {
@@ -448,7 +462,19 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             HalfWheelTrack = vehicleCfg.TrackWidth / 2.0,
             IsDisplayTramControl = ConfigurationStore.Instance.Tram.IsDisplayTramControl,
 
-            IsGridVisible = IsGridVisible,
+            IsGridVisible = displayCfg.GridVisible,
+            SvennArrowVisible = displayCfg.SvennArrowVisible,
+            HeadlandDistanceVisible = displayCfg.HeadlandDistanceVisible,
+            // Distance-to-headland is computed by the GPS pipeline and mirrored to
+            // ApplicationState.Field; the renderer (a View, the sanctioned singleton
+            // seam) just displays it. -1 => no headland / not driving => no HUD.
+            HeadlandProximityDistance = ApplicationState.Instance.Field.HeadlandProximityDistance ?? -1.0,
+            HeadlandProximityWarning = ApplicationState.Instance.Field.HeadlandProximityWarning,
+            // Light bar shows (top-centre) when a bar mode is enabled AND guidance is
+            // active — same condition as LightBarPanel.Update. The HUD dodges it.
+            LightBarVisible = (ConfigurationStore.Instance.AutoSteer.LightbarEnabled
+                               || ConfigurationStore.Instance.AutoSteer.SteerBarEnabled)
+                              && _guidanceActive,
             IsMetric = ConfigurationStore.Instance.IsMetric,
         };
 
@@ -797,12 +823,6 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         SendStateToHandler();
     }
 
-    public void SetGridVisible(bool visible)
-    {
-        IsGridVisible = visible;
-        SendStateToHandler();
-    }
-
     public void SetNorthUp(bool isNorthUp)
     {
         _isNorthUp = isNorthUp;
@@ -1139,6 +1159,17 @@ public partial class SkiaMapControl : Control, ISharedMapControl
         private readonly SKPaint _abLabelHaloPaint;
         private readonly SKPaint _youTurnPaint;
 
+        // Extra-guideline paints (parallel reference lines either side of the active
+        // track), Svenn lookahead arrow, and the screen-space headland-distance HUD.
+        private readonly SKPaint _extraGuideShadowPaint;
+        private readonly SKPaint _extraGuidePaint;
+        private readonly SKPaint _svennArrowPaint;
+        private readonly SKFont _hudFont;
+        private readonly SKPaint _hudTextPaint;
+        private readonly SKPaint _hudBoxFarPaint;
+        private readonly SKPaint _hudBoxNearPaint;
+        private readonly SKPaint _hudBorderPaint;
+
         // Tool / section paints
         private readonly SKPaint _toolHitchPaint;
         private readonly SKPaint _toolDrawbarPaint;
@@ -1265,6 +1296,18 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             _abLabelHaloPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 0.25f };
             _youTurnPaint = new SKPaint { Color = new SKColor(77, 242, 77), Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
 
+            // Extra guidelines: green over a black shadow, matching AgOpenGPS.
+            _extraGuideShadowPaint = new SKPaint { Color = new SKColor(0, 0, 0, 128), Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f, IsAntialias = true, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round };
+            _extraGuidePaint = new SKPaint { Color = new SKColor(51, 153, 50, 153), Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f, IsAntialias = true, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round };
+            // Svenn lookahead arrow: bright yellow filled triangle ahead of the wheelbase.
+            _svennArrowPaint = new SKPaint { Color = new SKColor(242, 242, 25), Style = SKPaintStyle.Fill, IsAntialias = true };
+            // Screen-space headland-distance HUD (device pixels, not world units).
+            _hudFont = new SKFont(SKTypeface.Default, 30f);
+            _hudTextPaint = new SKPaint { Color = SKColors.Black, IsAntialias = true };
+            _hudBoxFarPaint = new SKPaint { Color = new SKColor(255, 242, 64, 200), Style = SKPaintStyle.Fill, IsAntialias = true };
+            _hudBoxNearPaint = new SKPaint { Color = new SKColor(255, 0, 0, 200), Style = SKPaintStyle.Fill, IsAntialias = true };
+            _hudBorderPaint = new SKPaint { Color = new SKColor(0, 0, 0, 180), Style = SKPaintStyle.Stroke, StrokeWidth = 2f, IsAntialias = true };
+
             _toolHitchPaint = new SKPaint { Color = new SKColor(255, 255, 0), Style = SKPaintStyle.Stroke, StrokeWidth = 0.15f };
             _toolDrawbarPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 0.3f };
             _toolCenterPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 0.1f };
@@ -1387,11 +1430,66 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                         }
                     }
                 }
+
+                // Screen-space HUD overlay (device pixels — drawn after the camera
+                // transform is gone). Headland-distance readout, gated by the
+                // Display.HeadlandDistanceVisible toggle; -1 distance => no headland.
+                if (s.HeadlandDistanceVisible && s.HeadlandProximityDistance >= 0)
+                {
+                    var hudFeature = drawingContext.TryGetFeature<ISkiaSharpApiLeaseFeature>();
+                    if (hudFeature != null)
+                    {
+                        using var hudLease = hudFeature.Lease();
+                        DrawHeadlandHud(hudLease.SkCanvas, s);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[SkiaMapVisualHandler] OnRender outer error: {ex.Message}");
             }
+        }
+
+        // Headland-distance HUD: a rounded box centred near the top of the screen
+        // showing distance-to-headland, yellow normally and red on the pipeline's
+        // proximity warning (AgOpenGPS DrawHeadlandDistance). Device-pixel space.
+        private void DrawHeadlandHud(SKCanvas canvas, MapRenderState s)
+        {
+            double meters = s.HeadlandProximityDistance;
+            string text = s.IsMetric ? $"{meters:F1} m" : $"{meters * 3.28084:F0} ft";
+            var box = s.HeadlandProximityWarning ? _hudBoxNearPaint : _hudBoxFarPaint;
+
+            _hudFont.MeasureText(text, out SKRect textBounds);
+            const float padX = 18f, padY = 10f;
+            float boxW = textBounds.Width + padX * 2;
+            float boxH = _hudFont.Size + padY * 2;
+            float top = (float)(s.BoundsHeight * 0.04);
+            float center = (float)(s.BoundsWidth / 2.0);
+
+            float left, rightEdge;
+            if (s.LightBarVisible)
+            {
+                // Light bar occupies top-centre: anchor the box's RIGHT edge a fixed
+                // distance left of centre. The box grows LEFTWARD as digits appear, so
+                // the right edge never creeps back toward the bar at any distance value.
+                const float lightBarClearanceX = 120f;
+                rightEdge = center - lightBarClearanceX;
+                left = rightEdge - boxW;
+            }
+            else
+            {
+                // No light bar — centre the box at the top.
+                left = center - boxW / 2f;
+                rightEdge = center + boxW / 2f;
+            }
+            var rect = new SKRect(left, top, rightEdge, top + boxH);
+            canvas.DrawRoundRect(rect, 8f, 8f, box);
+            canvas.DrawRoundRect(rect, 8f, 8f, _hudBorderPaint);
+
+            float cx = (left + rightEdge) / 2f;
+            float tx = cx - textBounds.MidX;
+            float ty = top + boxH / 2 - textBounds.MidY;
+            canvas.DrawText(text, tx, ty, _hudFont, _hudTextPaint);
         }
 
         // Top-down and perspective paths share this draw block. With perspective:true
@@ -1435,6 +1533,7 @@ public partial class SkiaMapControl : Control, ISharedMapControl
                 {
                     DrawRecordedPathsSk(canvas, s);
                     DrawContourStripsSk(canvas, s);
+                    DrawExtraGuidelinesSk(canvas, s, viewHeight);
                     DrawTrackSk(canvas, s);
                 }
 
@@ -2196,6 +2295,70 @@ public partial class SkiaMapControl : Control, ISharedMapControl
 
         // ----------------- Tracks -----------------
 
+        // Extra parallel reference guidelines either side of the active track, offset
+        // by whole tool widths (AgOpenGPS "side guide lines"). Count comes from
+        // Display.ExtraGuidelinesCount. Drawn before the active track (green over a
+        // black shadow) so the active line stays on top. Skipped when zoomed far out
+        // so the lines don't collapse into a solid band.
+        private void DrawExtraGuidelinesSk(SKCanvas canvas, MapRenderState s, double viewHeight)
+        {
+            if (!s.ExtraGuidelines || s.ExtraGuidelinesCount < 1) return;
+            var track = s.ActiveTrack;
+            if (track == null || track.Points.Count < 2) return;
+            double toolWidth = s.ToolWidth;
+            if (toolWidth < 0.1) return;
+
+            // Zoom gate: don't draw once adjacent lines are less than ~3 px apart.
+            double worldPerPixel = viewHeight / Math.Max(1.0, s.BoundsHeight);
+            if (toolWidth < worldPerPixel * 3.0) return;
+
+            _extraGuideShadowPaint.StrokeWidth = 0.45f * _strokeMult;
+            _extraGuidePaint.StrokeWidth = 0.3f * _strokeMult;
+
+            for (int i = 1; i <= s.ExtraGuidelinesCount; i++)
+            {
+                double off = toolWidth * i;
+                DrawOffsetGuidelineSk(canvas, track, off);
+                DrawOffsetGuidelineSk(canvas, track, -off);
+            }
+        }
+
+        private void DrawOffsetGuidelineSk(SKCanvas canvas, Track track, double offset)
+        {
+            var pts = track.Points;
+            if (pts.Count == 2)
+            {
+                // AB line: offset both endpoints along the line's left normal, extend.
+                var a = pts[0];
+                var b = pts[1];
+                double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
+                double len = Math.Sqrt(dx * dx + dy * dy);
+                if (len < 0.01) return;
+                double nx = -dy / len, ny = dx / len;
+                var a2 = new Vec3(a.Easting + nx * offset, a.Northing + ny * offset, 0);
+                var b2 = new Vec3(b.Easting + nx * offset, b.Northing + ny * offset, 0);
+                DrawExtendedABLineSk(canvas, a2, b2, _extraGuideShadowPaint);
+                DrawExtendedABLineSk(canvas, a2, b2, _extraGuidePaint);
+            }
+            else
+            {
+                // Curve: offset each point along its local left normal (tangent from neighbours).
+                var off = new List<Vec3>(pts.Count);
+                for (int i = 0; i < pts.Count; i++)
+                {
+                    int i0 = Math.Max(0, i - 1), i1 = Math.Min(pts.Count - 1, i + 1);
+                    double dx = pts[i1].Easting - pts[i0].Easting;
+                    double dy = pts[i1].Northing - pts[i0].Northing;
+                    double len = Math.Sqrt(dx * dx + dy * dy);
+                    if (len < 1e-6) { off.Add(pts[i]); continue; }
+                    double nx = -dy / len, ny = dx / len;
+                    off.Add(new Vec3(pts[i].Easting + nx * offset, pts[i].Northing + ny * offset, 0));
+                }
+                DrawTrackPointsSk(canvas, off, _extraGuideShadowPaint);
+                DrawTrackPointsSk(canvas, off, _extraGuidePaint);
+            }
+        }
+
         private void DrawTrackSk(SKCanvas canvas, MapRenderState s)
         {
             _trackActivePaint.StrokeWidth = 0.5f * _strokeMult;
@@ -2538,6 +2701,22 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             }
 
             canvas.DrawCircle((float)s.AntennaOffset, (float)s.AntennaPivot, 0.25f, _antennaPaint);
+
+            // Svenn lookahead arrow: a yellow triangle ahead of the wheelbase (AgOpenGPS
+            // CVehicle). Sized off the visible world span so it stays roughly screen-
+            // constant across zoom levels. Vehicle frame: +Y is forward.
+            if (s.SvennArrowVisible && s.HasValidHeading)
+            {
+                double viewH = 200.0 / Math.Max(0.0001, s.Zoom);
+                float svennDist = (float)(viewH * 0.05);
+                float svennWidth = svennDist * 0.22f;
+                using var arrow = new SKPath();
+                arrow.MoveTo(svennWidth, wheelbase + svennDist);
+                arrow.LineTo(0, wheelbase + svennWidth + 0.5f + svennDist);
+                arrow.LineTo(-svennWidth, wheelbase + svennDist);
+                arrow.Close();
+                canvas.DrawPath(arrow, _svennArrowPaint);
+            }
 
             if (_frontWheelSkBitmap == null && s.FrontWheelImage is Bitmap wheelAvBitmap)
             {

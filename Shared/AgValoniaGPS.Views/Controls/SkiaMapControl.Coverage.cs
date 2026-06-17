@@ -184,6 +184,35 @@ public partial class SkiaMapControl
         _bitmapNeedsIncrementalUpdate = false;
     }
 
+    /// <summary>
+    /// Rebuild the coverage display bitmap at the CURRENT bounds after the
+    /// DisplayResolutionMultiplier changed: recompute the cell size, recreate the
+    /// bitmap, and repaint from the resolution-independent detection cells. Unlike
+    /// <see cref="InitializeCoverageBitmapWithBounds"/> this is NOT a field-open —
+    /// bounds and camera state are preserved (no recenter). No-op when no coverage
+    /// bitmap exists yet, or when the resolution maps to the same pixel grid.
+    /// </summary>
+    public void RebuildCoverageBitmapForResolutionChange()
+    {
+        if (_coverageWriteableBitmap == null) return;
+        double worldWidth = _bitmapMaxE - _bitmapMinE;
+        double worldHeight = _bitmapMaxN - _bitmapMinN;
+        if (worldWidth <= 0 || worldHeight <= 0) return;
+
+        double cellSize = ComputeCellSize(worldWidth, worldHeight);
+        int requiredWidth = (int)Math.Ceiling(worldWidth / cellSize);
+        int requiredHeight = (int)Math.Ceiling(worldHeight / cellSize);
+        if (requiredWidth <= 0 || requiredHeight <= 0) return;
+        if (requiredWidth == _bitmapWidth && requiredHeight == _bitmapHeight) return;
+
+        _actualBitmapCellSize = cellSize;
+        _bitmapWidth = requiredWidth;
+        _bitmapHeight = requiredHeight;
+        CreateCoverageBitmap();
+        MarkCoverageFullRebuildNeeded();
+        SendStateToHandler();
+    }
+
     public ushort GetCoveragePixel(int localX, int localY)
     {
         if (localX < 0 || localX >= _bitmapWidth || localY < 0 || localY >= _bitmapHeight) return 0;
