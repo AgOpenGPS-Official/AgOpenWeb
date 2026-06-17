@@ -37,6 +37,8 @@ let config = null;     // config read-frame (vehicle config, …) for the left-n
 let configDirty = false; // a new config frame arrived → settings panels re-read it
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
+let wizard = null;     // Steer Wizard frame (host-driven); null when not open
+let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
@@ -135,6 +137,7 @@ const transport = RemoteTransport.create({
   onStatusBar(s) { statusBar = s; },
   onConfig(c) { config = c; configDirty = true; },
   onProfiles(p) { profiles = p; profilesDirty = true; },
+  onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
   onStatus(s) { connState = s; },
@@ -753,6 +756,172 @@ function populateSmartWas() {
   gate('sw-apply', !!statusBar.swValid);
 }
 
+// ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
+// SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
+// the existing config.set bridge, and forward nav (wizard.*) + gated calibration
+// (wizard.action). Editable values display from the Config frame. ----
+const wzOverlay = document.getElementById('wizard-overlay');
+const wzContent = document.getElementById('wz-content');
+let _wzKey = ''; // stepKind|index of the currently-built content (rebuild on change)
+function openSteerWizard() { _wzKey = ''; wizard = null; transport.send('wizard.open'); wzOverlay.classList.add('open'); }
+function wzClose(send) { if (send) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; }
+document.getElementById('wz-cancel').addEventListener('pointerdown', e => { e.stopPropagation(); wzClose(true); });
+document.getElementById('wz-skip').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('wizard.skip'); });
+document.getElementById('wz-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('wizard.back'); });
+document.getElementById('wz-next').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (wizard && wizard.isLast) { transport.send('wizard.finish'); wzClose(false); }
+  else transport.send('wizard.next');
+});
+// Delegated content events: data-cfg="key:val" (config.set), data-hw="n" (hardware
+// level), data-act="Cmd" (gated wizard.action), data-tgl="key" (toggle), data-cfgnum
+// (number input) on change.
+wzContent.addEventListener('pointerdown', e => {
+  const el = e.target.closest('[data-cfg],[data-hw],[data-act],[data-tgl]'); if (!el) return;
+  e.stopPropagation();
+  if (el.dataset.cfg) { const i = el.dataset.cfg.indexOf(':'); cfgSend(el.dataset.cfg.slice(0, i), el.dataset.cfg.slice(i + 1)); }
+  else if (el.dataset.hw != null) transport.send('wizard.hw|' + el.dataset.hw);
+  else if (el.dataset.act) rnSend('wizard.action|' + el.dataset.act);
+  else if (el.dataset.tgl) cfgSend(el.dataset.tgl, cfgGet(el.dataset.tgl) ? '0' : '1');
+});
+wzContent.addEventListener('change', e => {
+  const inp = e.target.closest('[data-cfgnum]'); if (!inp) return;
+  const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.cfgnum, v);
+});
+// Per-step content. Editable values read from the Config frame; live values get ids
+// (data-live) refreshed each frame. esc() guards interpolated strings.
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function wzVal(key, dflt) { const v = cfgGet(key); return typeof v === 'number' ? v : (dflt || 0); }
+function wzNum(label, sub, key, step, unit) {
+  return '<div class="wz-fld"><label>' + esc(label) + '</label><div class="sub">' + esc(sub || '') + '</div>' +
+    '<input class="wz-num" data-cfgnum="' + key + '" type="number" step="' + (step || '0.01') + '" value="' + wzVal(key) + '"><span class="wz-unit">' + esc(unit || '') + '</span></div>';
+}
+function wzSeg(label, sub, key, opts) { // opts: [[text,val],...]
+  return '<div class="wz-row"><div class="lbl">' + esc(label) + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div><div class="wz-seg">' +
+    opts.map(o => '<button data-cfg="' + key + ':' + o[1] + '" data-activekey="' + key + '" data-activeval="' + o[1] + '">' + esc(o[0]) + '</button>').join('') + '</div></div>';
+}
+function wzTgl(label, sub, key) {
+  return '<div class="wz-row"><div class="lbl">' + esc(label) + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div><button class="wz-tgl" data-tgl="' + key + '" data-tglkey="' + key + '">Off</button></div>';
+}
+function wzLive(lbl, key) { return '<div class="wz-live"><div class="big" data-live="' + key + '">—</div><div class="lbl">' + esc(lbl) + '</div></div>'; }
+function buildWizardContent(w) {
+  const cfg = config || {}, veh = cfg.vehicle || {}, ast = cfg.autosteer || {}, roll = cfg.roll || {};
+  const ty = Math.max(0, Math.min(2, (veh.type | 0)));
+  const head = '<div class="wz-h1">' + esc(w.title) + '</div><div class="wz-desc">' + esc(w.description) + '</div>';
+  switch (w.stepKind) {
+    case 'welcome': return head + '<div class="wz-center"><div class="wz-okcard"><div class="t">AutoSteer</div><div class="s">Configuration Wizard</div></div></div>';
+    case 'vehicleType': {
+      const c = (i, ic, t) => '<div class="wz-card" data-cfg="vehicle.type:' + i + '" data-activekey="vehicle.type" data-activeval="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + t + '</div></div>';
+      return head + '<div class="wz-cards">' + c(0, 'WheelbaseTractor', 'Tractor') + c(1, 'WheelbaseHarvester', 'Harvester') + c(2, 'WheelbaseArticulated', '4WD / Articulated') + '</div>';
+    }
+    case 'hardware': {
+      const c = (i, ic, t, s) => '<div class="wz-card" data-hw="' + i + '" data-activehw="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + t + '</div><div class="s">' + s + '</div></div>';
+      return head + '<div class="wz-cards">' + c(0, 'NavigationSettings', 'GPS Only', 'Light bar guidance only') + c(1, 'AutoSteerConf', 'AutoSteer', 'Motor/valve, WAS, IMU') + c(2, 'Settings48', 'Full Setup', 'Steering + section control') + '</div>';
+    }
+    case 'dimensions':
+      return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['WheelbaseTractor', 'WheelbaseHarvester', 'WheelbaseArticulated'][ty] + '.png">' + wzNum('Wheelbase', 'Front to rear axle distance', 'vehicle.wheelbase', '0.01', 'm') + '</div>' +
+        '<div class="wz-panel"><img class="dia" src="/icons/' + ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated'][ty] + '.png">' + wzNum('Track Width', 'Left to right wheel center', 'vehicle.trackWidth', '0.01', 'm') + '</div></div>';
+    case 'antenna':
+      return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset'][ty] + '.png">' +
+        wzNum('Pivot Distance', 'Antenna to rear axle (+ = ahead)', 'vehicle.antennaPivot', '0.01', 'm') + wzNum('Antenna Height', 'Above ground level', 'vehicle.antennaHeight', '0.01', 'm') + '</div>' +
+        '<div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop'][ty] + '.png"><div class="wz-fld"><label>Lateral Offset</label><div class="sub">From centerline (+ = right)</div><div class="wz-seg">' +
+        '<button data-cfg="vehicle.antennaSide:left">Left</button><button data-cfg="vehicle.antennaSide:center">Center</button><button data-cfg="vehicle.antennaSide:right">Right</button></div></div></div></div>';
+    case 'hwconfig':
+      return head + '<div class="wz-rows">' +
+        wzSeg('Steer Enable Method', null, 'autosteer.externalEnable', [['None', 0], ['Switch', 1], ['Button', 2]]) +
+        wzSeg('Motor Driver', null, 'autosteer.motorDriver', [['IBT2', 0], ['Cytron', 1]]) +
+        wzSeg('A/D Converter', null, 'autosteer.adConverter', [['Differential', 0], ['Single', 1]]) +
+        wzTgl('Invert Steer Enable Relay', 'Inverts the relay that enables the motor', 'autosteer.invertRelays') +
+        wzTgl('Danfoss Valve', 'Enable for Danfoss hydraulic steering', 'autosteer.danfossEnabled') + '</div>';
+    case 'roll':
+      // Reuse the map's roll gauge: a green bar that rotates around (100,40) by the
+      // live roll, with pink scale marks and the degree readout.
+      return head + '<div class="wz-center"><svg width="260" height="104" viewBox="0 0 200 80">' +
+        '<path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round" d="M 70,12 A 22,28 0 0 0 70,68 M 59,20 L 51,20 M 52,30 L 44,30 M 48,40 L 40,40 M 52,50 L 44,50 M 59,60 L 51,60"/>' +
+        '<path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round" d="M 130,12 A 22,28 0 0 1 130,68 M 141,20 L 149,20 M 148,30 L 156,30 M 152,40 L 160,40 M 148,50 L 156,50 M 141,60 L 149,60"/>' +
+        '<rect id="wz-roll-bar" x="50" y="38" width="100" height="4" rx="2" fill="#2ECC71"/>' +
+        '<circle cx="100" cy="40" r="3" fill="#fff"/>' +
+        '<text id="wz-roll-deg" x="100" y="32" text-anchor="middle" fill="#fff" font-size="24" font-weight="bold" font-family="system-ui,sans-serif">0.0</text>' +
+        '</svg></div>' +
+        '<div class="wz-rows">' + wzTgl('Invert Roll', null, 'roll.isRollInvert') +
+        '<div class="wz-row"><div class="lbl">Zero Roll</div><button class="wz-testbtn" data-act="ZeroRoll">Zero Roll</button></div>' +
+        '<div class="wz-row"><div class="lbl">Roll Zero Offset</div><div class="lbl"><span data-live="rollzero">—</span></div></div></div>';
+    case 'was':
+      return head + wzLive('Live Steer Angle', 'angle') +
+        '<div class="wz-rows"><div class="wz-row"><div class="lbl">Zero WAS</div><button class="wz-testbtn" data-act="ZeroWas">Zero WAS</button></div>' +
+        wzTgl('Invert WAS', 'Enable if steering reads backwards', 'autosteer.invertWas') +
+        '<div class="wz-row"><div class="lbl">WAS Offset</div><div class="lbl"><span data-live="wasoffset">—</span> counts</div></div></div>';
+    case 'motor':
+      return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Motor Test</button>' +
+        '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
+    case 'maxangle':
+      return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
+        '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
+    case 'cpd':
+      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~5 km/h)</div></div>' +
+        wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
+        '<div class="wz-rows">' + wzNum('Counts Per Degree', null, 'autosteer.countsPerDegree', '1', '') + '</div>';
+    case 'ackermann':
+      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
+        wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
+        '<div class="wz-rows">' + wzNum('Ackermann', '100 = neutral', 'autosteer.ackermann', '1', '') + '</div>';
+    case 'gains':
+      return head + '<div class="wz-rows">' + wzTgl('Guidance Algorithm (Stanley)', 'Pure Pursuit default; Stanley more responsive at low speed', 'autosteer.isStanleyMode') +
+        wzNum('Proportional Gain (Kp)', 'Start at 10, increase for faster correction', 'autosteer.proportionalGain', '1', '') +
+        wzNum('Integral Gain (Ki)', 'Start at 0, only increase for drift', 'autosteer.integralGain', '0.01', '') +
+        wzNum('Steer Response Hold', 'Look-ahead (higher = smoother)', 'autosteer.steerResponseHold', '0.1', '') +
+        wzNum('Side Hill Compensation', 'Degrees per degree of roll (0-1.0)', 'autosteer.sideHillCompensation', '0.01', '') + '</div>';
+    case 'speed':
+      return head + '<div class="wz-rows">' +
+        wzNum('Min Steer Speed', 'Engage above this speed', 'autosteer.minSteerSpeed', '0.1', 'km/h') +
+        wzNum('Max Steer Speed', 'Safety cutoff speed', 'autosteer.maxSteerSpeed', '0.1', 'km/h') +
+        wzTgl('Turn Sensor', 'Steering wheel encoder', 'autosteer.turnSensorEnabled') +
+        wzTgl('Pressure Sensor', 'Hydraulic stall detection', 'autosteer.pressureSensorEnabled') +
+        wzTgl('Current Sensor', 'Motor current obstruction detection', 'autosteer.currentSensorEnabled') +
+        wzTgl('Steer In Reverse', 'Allow steering while reversing', 'autosteer.steerInReverse') +
+        wzNum('Deadzone Heading', 'Heading error tolerance', 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
+    case 'finish':
+      return head + '<div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Configuration saved!</div><div class="s">Click Finish to close the wizard</div></div></div>';
+    default: return head;
+  }
+}
+function renderWizard() {
+  const w = wizard;
+  if (!w) return;
+  // Chrome (every frame).
+  asSetText('wz-step', 'Step ' + (w.stepIndex + 1) + ' of ' + w.totalSteps);
+  document.getElementById('wz-progressbar').style.width = (w.totalSteps ? (w.stepIndex + 1) / w.totalSteps * 100 : 0) + '%';
+  asSetText('wz-was', (w.statusWas || 0).toFixed(1) + '°'); asSetText('wz-roll', (w.statusRoll || 0).toFixed(1) + '°');
+  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', (w.statusSpeed || 0).toFixed(1) + ' km/h'); asSetText('wz-pwm', w.statusPwm | 0);
+  const next = document.getElementById('wz-next');
+  next.textContent = w.isLast ? 'Finish' : 'Next';
+  next.classList.toggle('disabled', !(w.isLast || w.canNext));
+  document.getElementById('wz-back').classList.toggle('disabled', !w.canBack);
+  document.getElementById('wz-skip').style.display = w.canSkip ? '' : 'none';
+  // Rebuild content only on step change.
+  const key = w.stepKind + '|' + w.stepIndex;
+  if (key !== _wzKey) { _wzKey = key; wzContent.innerHTML = buildWizardContent(w); }
+  // Active states (selection cards / segments / toggles) + live values, every frame.
+  for (const el of wzContent.querySelectorAll('[data-activekey]'))
+    el.classList.toggle('active', String(cfgGet(el.dataset.activekey)) === el.dataset.activeval);
+  for (const el of wzContent.querySelectorAll('[data-activehw]'))
+    el.classList.toggle('active', w.hardwareLevel === +el.dataset.activehw);
+  for (const el of wzContent.querySelectorAll('[data-tglkey]')) {
+    const on = !!cfgGet(el.dataset.tglkey); el.classList.toggle('on', on); el.textContent = on ? 'On' : 'Off';
+  }
+  for (const el of wzContent.querySelectorAll('[data-act]')) el.classList.toggle('disabled', !iHoldControl);
+  const live = (k, v) => { for (const el of wzContent.querySelectorAll('[data-live="' + k + '"]')) el.textContent = v; };
+  live('angle', (w.liveAngle || 0).toFixed(1) + '°'); live('roll', (w.liveRoll || 0).toFixed(2) + '°');
+  live('error', (w.liveError || 0).toFixed(1)); live('phase', w.testPhase || ''); live('result', w.testResult || '');
+  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', (w.statusSpeed || 0).toFixed(1) + ' km/h');
+  live('rollzero', wzVal('roll.rollZero').toFixed(2)); live('wasoffset', wzVal('autosteer.wasOffset') | 0);
+  // Roll gauge (roll-calibration step): rotate the bar by the live roll, like the map.
+  const rb = document.getElementById('wz-roll-bar');
+  if (rb) { const rv = w.liveRoll || w.statusRoll || 0; rb.setAttribute('transform', 'rotate(' + rv.toFixed(2) + ' 100 40)'); const rd = document.getElementById('wz-roll-deg'); if (rd) rd.textContent = rv.toFixed(1); }
+  const rec = document.getElementById('wz-recbtn');
+  if (rec) { rec.textContent = w.testActive ? 'Stop' : 'Record'; rec.dataset.act = w.testActive ? 'StopRecording' : 'StartRecording'; }
+}
+
 function renderSettings() {
   if (statusBar) {
     const metric = !!statusBar.isMetric;
@@ -771,6 +940,9 @@ function renderSettings() {
   if (asPanel.classList.contains('open')) renderAutoSteerLive();
   // Smart-WAS stats refresh while its modal is open.
   if (swBackdrop.classList.contains('open')) populateSmartWas();
+  // Steer Wizard: re-render while open (host-driven; live every frame).
+  wizardDirty = false;
+  if (wzOverlay.classList.contains('open')) renderWizard();
   // Re-read the hub when a fresh profiles frame arrives.
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
 }

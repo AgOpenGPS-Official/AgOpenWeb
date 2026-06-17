@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -176,6 +176,24 @@ window.RemoteTransport = {
             lightbarEnabled: !!u8(), steerBarEnabled: !!u8(), guidanceBarOn: !!u8(),
           };
           handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine, display, autosteer });
+          break;
+        }
+        case TYPE.WIZARD: {
+          const stepIndex = i32(), totalSteps = i32(), stepKind = str(), title = str(), description = str();
+          const canBack = !!u8(), canNext = !!u8(), canSkip = !!u8(), isLast = !!u8(), validation = str();
+          const statusWas = f32(), statusRoll = f32(), statusGps = str(), statusSpeed = f32(),
+                statusPwm = i32(), statusConnected = !!u8();
+          const hardwareLevel = i32();
+          const liveAngle = f32(), liveRoll = f32(), liveError = f32();
+          const testPhase = str(), testResult = str(), testProgress = f32(), testActive = !!u8();
+          const rtkFixed = !!u8(), fixLabel = str(), diameter = f32();
+          handlers.onWizard && handlers.onWizard({
+            stepIndex, totalSteps, stepKind, title, description,
+            canBack, canNext, canSkip, isLast, validation,
+            statusWas, statusRoll, statusGps, statusSpeed, statusPwm, statusConnected,
+            hardwareLevel, liveAngle, liveRoll, liveError,
+            testPhase, testResult, testProgress, testActive, rtkFixed, fixLabel, diameter,
+          });
           break;
         }
         case TYPE.PROFILES: {

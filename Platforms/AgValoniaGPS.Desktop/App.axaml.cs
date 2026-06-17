@@ -32,6 +32,8 @@ public partial class App : Application
 {
     private IHost? _host;
     private AgValoniaGPS.RemoteServer.RemoteServerHost? _remoteServer;
+    // True while a browser has the Steer Wizard open (gates the WizardProvider).
+    private bool _remoteWizardActive;
 
     public static IServiceProvider? Services { get; set; }
 
@@ -233,6 +235,38 @@ public partial class App : Application
                                     if (sc?.CanExecute(null) == true) sc.Execute(null);
                                     return;
                                 }
+                                // --- Steer Wizard (host-driven). The real SteerWizardViewModel
+                                // runs here; the browser forwards nav + edits + actions. Only
+                                // wizard.action (calibration/actuation) is Tier-2 gated. ---
+                                case "wizard.open":
+                                    windowVm.StartRemoteSteerWizard();
+                                    _remoteWizardActive = true;
+                                    return;
+                                case "wizard.cancel": case "wizard.close":
+                                    windowVm.SteerWizardViewModel?.CancelCommand.Execute(null);
+                                    windowVm.EndRemoteSteerWizard();
+                                    _remoteWizardActive = false;
+                                    return;
+                                case "wizard.next": ExecCmd(windowVm.SteerWizardViewModel?.NextCommand); return;
+                                case "wizard.back": ExecCmd(windowVm.SteerWizardViewModel?.BackCommand); return;
+                                case "wizard.skip": ExecCmd(windowVm.SteerWizardViewModel?.SkipCommand); return;
+                                case "wizard.finish":
+                                    ExecCmd(windowVm.SteerWizardViewModel?.FinishCommand);
+                                    windowVm.EndRemoteSteerWizard();
+                                    _remoteWizardActive = false;
+                                    return;
+                                case "wizard.hw": // arg = hardware level 0/1/2
+                                    SetWizardProp(windowVm.SteerWizardViewModel, "HardwareLevel", arg);
+                                    return;
+                                case "wizard.set": // arg = "Property:value" on the current step
+                                {
+                                    var wi = arg.IndexOf(':');
+                                    if (wi > 0) SetWizardProp(windowVm.SteerWizardViewModel, arg[..wi], arg[(wi + 1)..]);
+                                    return;
+                                }
+                                case "wizard.action": // arg = command base name on the current step
+                                    InvokeWizardAction(windowVm.SteerWizardViewModel, arg);
+                                    return;
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -294,7 +328,7 @@ public partial class App : Application
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
                         || id.StartsWith("track.") || id.StartsWith("headland.")
-                        || id.StartsWith("smartwas.");
+                        || id.StartsWith("smartwas.") || id.StartsWith("wizard.action");
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep
@@ -325,6 +359,14 @@ public partial class App : Application
                     // disengage runs in AuthorityChangedHandler (covers release too).
                     _remoteServer.FailsafeHandler = reason =>
                         System.Diagnostics.Debug.WriteLine($"[remote] actuation failsafe: {reason}");
+
+                    // Steer Wizard projector: while the remote wizard is open, project the
+                    // live SteerWizardViewModel to a WizardDto each broadcast tick. Read off
+                    // the broadcaster thread (read-only; tolerates the same transient races
+                    // as the other projectors).
+                    _remoteServer.WizardProvider = () =>
+                        _remoteWizardActive && windowVm.SteerWizardViewModel is { } w
+                            ? BuildWizardDto(w) : null;
                 }
             }
 
@@ -563,6 +605,90 @@ public partial class App : Application
             case "autosteer.guidanceBarOn": ast.GuidanceBarOn = B(); store.MarkChanged(); return;
             // unknown key → ignored
         }
+    }
+
+    // ===== Steer Wizard host glue (Phase 9). The real SteerWizardViewModel runs here;
+    // these forward the browser's nav/edit/action and project its state to a WizardDto.
+    private static void ExecCmd(System.Windows.Input.ICommand? c)
+    {
+        if (c?.CanExecute(null) == true) c.Execute(null);
+    }
+
+    // Set a property on the wizard's current step by name (generic — covers every
+    // step's editable fields without a per-step switch). Converts to the target type.
+    private static void SetWizardProp(
+        AgValoniaGPS.ViewModels.Wizards.SteerWizard.SteerWizardViewModel? w, string name, string val)
+    {
+        var step = w?.CurrentStep;
+        var p = step?.GetType().GetProperty(name);
+        if (step == null || p == null || !p.CanWrite) return;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var t = System.Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+        object? conv = null;
+        try
+        {
+            if (t == typeof(double)) { if (double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out var d)) conv = d; }
+            else if (t == typeof(int)) { if (int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out var i)) conv = i; }
+            else if (t == typeof(bool)) conv = val == "1" || val == "true";
+            else if (t.IsEnum) { if (int.TryParse(val, out var e)) conv = System.Enum.ToObject(t, e); }
+            else if (t == typeof(string)) conv = val;
+        }
+        catch { return; }
+        if (conv != null) p.SetValue(step, conv);
+    }
+
+    // Invoke a named command on the wizard's current step (e.g. "ZeroWas" → ZeroWasCommand).
+    private static void InvokeWizardAction(
+        AgValoniaGPS.ViewModels.Wizards.SteerWizard.SteerWizardViewModel? w, string name)
+    {
+        var step = w?.CurrentStep;
+        if (step?.GetType().GetProperty(name + "Command")?.GetValue(step)
+            is System.Windows.Input.ICommand c && c.CanExecute(null)) c.Execute(null);
+    }
+
+    // Project the live wizard VM to a WizardDto. Editable values ride the existing
+    // Config frame; this carries nav state, the status bar, and the calibration-step
+    // live blob (read by reflection so missing fields default cleanly per step).
+    private static AgValoniaGPS.RemoteServer.WizardDto BuildWizardDto(
+        AgValoniaGPS.ViewModels.Wizards.SteerWizard.SteerWizardViewModel w)
+    {
+        var step = w.CurrentStep;
+        object? s = step;
+        string kind = step?.GetType().Name switch
+        {
+            "WelcomeStepViewModel" => "welcome",
+            "VehicleTypeStepViewModel" => "vehicleType",
+            "HardwareInstalledStepViewModel" => "hardware",
+            "VehicleDimensionsStepViewModel" => "dimensions",
+            "AntennaSetupStepViewModel" => "antenna",
+            "HardwareConfigStepViewModel" => "hwconfig",
+            "RollCalibrationStepViewModel" => "roll",
+            "WasCalibrationStepViewModel" => "was",
+            "AutoMotorCalibrationStepViewModel" => "motor",
+            "MaxSteeringAngleStepViewModel" => "maxangle",
+            "CpdCircleTestStepViewModel" => "cpd",
+            "AckermannTestStepViewModel" => "ackermann",
+            "SteeringGainsStepViewModel" => "gains",
+            "SpeedAndSensorsStepViewModel" => "speed",
+            "FinishStepViewModel" => "finish",
+            _ => "unknown",
+        };
+        double GP(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToDouble(v) : 0; }
+        bool GPb(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is bool b && b; }
+        string GPs(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s)?.ToString() ?? ""; }
+        int GPi(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToInt32(v) : 0; }
+        var sb = w.StatusBar;
+        string phaseResult = GPs("PhaseResult");
+        bool testActive = GPb("IsRecording") || GPb("IsMeasuring") || GPb("IsPhaseA1") || GPb("IsPhaseB1");
+        return new AgValoniaGPS.RemoteServer.WizardDto(
+            w.CurrentStepIndex, w.TotalSteps, kind, step?.Title ?? "", step?.Description ?? "",
+            w.CanGoBack, w.CanGoNext, w.CanSkip, w.IsOnLastStep, step?.ValidationMessage ?? "",
+            sb?.WasAngle ?? 0, sb?.RollAngle ?? 0, sb?.GpsStatus ?? "", sb?.SpeedKmh ?? 0, sb?.PwmOutput ?? 0, sb?.IsModuleConnected ?? false,
+            GPi("HardwareLevel"),
+            GP("LiveSteerAngle"), GP("LiveRoll"), GP("LiveSteerError"),
+            GPs("PhaseDescription"), phaseResult.Length > 0 ? phaseResult : GPs("TestResult"),
+            GP("Progress"), testActive,
+            GPb("IsRtkFixed"), GPs("FixQualityLabel"), GP("Diameter"));
     }
 
     // Vehicle & Tool picker hub (Phase 9). Mirrors LoadVehicleToolDialogViewModel's

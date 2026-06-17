@@ -245,6 +245,23 @@ public record ProfilesDto(
 
 public record ProfileEntryDto(string Name, string Preview);
 
+/// <summary>Steer Wizard frame (Phase 9) — host-driven: the real SteerWizardViewModel
+/// runs on the host and this projects its state each tick while the remote wizard is
+/// open. The browser renders a layout per <see cref="StepKind"/> (binding editable
+/// values to the existing Config frame + writing via wizard.set) and forwards
+/// navigation / actions. The live blob carries the calibration-step dynamics (phase /
+/// progress / measured diameter / RTK gating) that aren't in ConfigStore.</summary>
+public record WizardDto(
+    int StepIndex, int TotalSteps, string StepKind, string Title, string Description,
+    bool CanBack, bool CanNext, bool CanSkip, bool IsLast, string Validation,
+    // Persistent status bar (live hardware data across every step).
+    double StatusWas, double StatusRoll, string StatusGps, double StatusSpeed, int StatusPwm, bool StatusConnected,
+    // Per-step live state (zeroed/empty for steps that don't use a field).
+    int HardwareLevel,
+    double LiveAngle, double LiveRoll, double LiveError,
+    string TestPhase, string TestResult, double TestProgress, bool TestActive,
+    bool RtkFixed, string FixLabel, double Diameter);
+
 /// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
 public record VehicleConfigDto(
     string Name,

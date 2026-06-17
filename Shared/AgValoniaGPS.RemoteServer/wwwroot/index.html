@@ -315,6 +315,73 @@
     .sw-b { flex: 1; padding: 9px 4px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 13px system-ui, sans-serif; }
     .sw-grey { background: rgba(255,255,255,0.12); }
     .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
+    /* ===== Steer Wizard (full-screen) ===== */
+    .wz-overlay { position: fixed; inset: 0; z-index: 50; background: #1b2233; display: none; flex-direction: column; }
+    .wz-overlay.open { display: flex; }
+    .wz-header { position: relative; padding: 16px 22px; background: #141a28; }
+    .wz-title { color: #4A90D9; font: 800 18px system-ui, sans-serif; }
+    .wz-step { position: absolute; right: 22px; top: 18px; color: #8294ab; font: 500 13px system-ui, sans-serif; }
+    .wz-progress { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: #2a3550; }
+    .wz-progressbar { height: 100%; width: 0; background: #4A90D9; transition: width 0.2s; }
+    .wz-body { flex: 1; overflow: auto; padding: 22px 26px; }
+    #wz-content { max-width: 1100px; margin: 0 auto; }
+    .wz-h1 { color: #e7eef9; font: 700 22px system-ui, sans-serif; margin-bottom: 8px; }
+    .wz-desc { color: #b9c6d8; font: 400 14px system-ui, sans-serif; line-height: 1.5; margin-bottom: 18px; white-space: pre-line; }
+    .wz-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 200px; }
+    /* Selection cards (hardware / vehicle type). */
+    .wz-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px auto; max-width: 900px; }
+    .wz-card { border: 2px solid #2a3550; border-radius: 12px; background: rgba(255,255,255,0.03); padding: 18px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; }
+    .wz-card img { width: 96px; height: 96px; object-fit: contain; background: #11151c; border-radius: 8px; padding: 6px; }
+    .wz-card .t { color: #e7eef9; font: 700 16px system-ui, sans-serif; }
+    .wz-card .s { color: #8294ab; font: 400 12px system-ui, sans-serif; }
+    .wz-card.active { border-color: #4A90D9; background: #14304d; }
+    /* Diagram + value panels (dimensions / antenna). */
+    .wz-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .wz-panel { border: 1px solid #2a3550; border-radius: 10px; background: rgba(255,255,255,0.02); padding: 16px; }
+    .wz-panel img.dia { width: 100%; height: 220px; object-fit: contain; background: #11151c; border-radius: 8px; }
+    .wz-fld { margin-top: 12px; }
+    .wz-fld label { display: block; color: #e7eef9; font: 700 14px system-ui, sans-serif; }
+    .wz-fld .sub { color: #8294ab; font: 400 12px system-ui, sans-serif; margin-bottom: 6px; }
+    .wz-num { width: 120px; height: 40px; border-radius: 8px; border: 1px solid #4A90D9; background: #11151c;
+      color: #fff; font: 700 18px ui-monospace, monospace; text-align: center; }
+    .wz-unit { color: #8294ab; margin-left: 8px; }
+    /* Rows of settings (hardware config / speed / gains). */
+    .wz-rows { display: flex; flex-direction: column; gap: 10px; }
+    .wz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      border: 1px solid #2a3550; border-radius: 10px; background: rgba(255,255,255,0.03); padding: 12px 16px; }
+    .wz-row .lbl { color: #e7eef9; font: 700 14px system-ui, sans-serif; }
+    .wz-row .lbl .sub { color: #8294ab; font: 400 12px system-ui, sans-serif; font-weight: 400; }
+    .wz-seg { display: flex; gap: 8px; }
+    .wz-seg button { padding: 8px 14px; border: 1px solid #2a3550; border-radius: 8px; background: rgba(255,255,255,0.06);
+      color: #cfe3ff; cursor: pointer; font: 600 13px system-ui, sans-serif; }
+    .wz-seg button.active { background: #2f6fb0; border-color: #4A90D9; color: #fff; }
+    .wz-tgl { min-width: 64px; height: 34px; border-radius: 17px; border: 1px solid #2a3550;
+      background: rgba(255,255,255,0.08); color: #9fb3cc; cursor: pointer; font: 700 12px system-ui, sans-serif; }
+    .wz-tgl.on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+    /* Calibration widgets (gauge / live angle / test buttons). */
+    .wz-live { text-align: center; margin: 18px 0; }
+    .wz-live .big { color: #4A90D9; font: 800 44px ui-monospace, monospace; }
+    .wz-live .lbl { color: #8294ab; font: 500 12px system-ui, sans-serif; }
+    .wz-testbtn { padding: 12px 28px; border: 0; border-radius: 8px; background: #2f6fb0; color: #fff;
+      font: 700 15px system-ui, sans-serif; cursor: pointer; }
+    .wz-prereq { border: 1px solid #2a3550; border-radius: 10px; background: rgba(255,255,255,0.03); padding: 12px 16px; margin-bottom: 16px; }
+    .wz-prereq .ttl { color: #e7eef9; font: 700 13px system-ui, sans-serif; margin-bottom: 6px; }
+    .wz-prereq .it { color: #b9c6d8; font: 500 12px system-ui, sans-serif; padding: 2px 0; }
+    .wz-prereq .it b { color: #4A90D9; }
+    .wz-okcard { background: #11304d; border-radius: 10px; padding: 22px; text-align: center; }
+    .wz-okcard .ok { display: inline-flex; width: 56px; height: 56px; border-radius: 50%; background: #2f6fb0;
+      align-items: center; justify-content: center; color: #fff; font: 800 18px system-ui; margin-bottom: 10px; }
+    .wz-okcard .t { color: #e7eef9; font: 700 16px system-ui, sans-serif; }
+    .wz-okcard .s { color: #8294ab; font: 400 12px system-ui, sans-serif; margin-top: 4px; }
+    .wz-statusbar { display: flex; gap: 26px; justify-content: center; padding: 10px; background: #141a28; border-top: 1px solid #2a3550; }
+    .wz-statusbar span { color: #8294ab; font: 500 13px system-ui, sans-serif; }
+    .wz-statusbar b { color: #e7eef9; font-weight: 700; margin-left: 5px; }
+    .wz-footer { display: flex; align-items: center; gap: 10px; padding: 14px 22px; background: #141a28; border-top: 1px solid #2a3550; }
+    .wz-spacer { flex: 1; }
+    .wz-btn { padding: 12px 26px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 700 14px system-ui, sans-serif; }
+    .wz-red { background: #b54430; } .wz-grey { background: rgba(255,255,255,0.14); } .wz-blue { background: #2f6fb0; }
+    .wz-btn.disabled { opacity: 0.4; pointer-events: none; }
     /* Vehicle config diagrams (type cards + per-field measurement diagrams). */
     .vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
@@ -1083,6 +1150,31 @@
         <button id="sw-apply" class="sw-b sw-blue rn-gated" data-cmd="smartwas.apply">Apply</button>
         <button id="sw-close" class="sw-b sw-grey">Close</button>
       </div>
+    </div>
+  </div>
+  <!-- Steer Wizard — full-screen, host-driven. The real SteerWizardViewModel runs on
+       the host; #wz-content is rebuilt per step from the Wizard frame (editable values
+       via the existing config.set bridge, calibration via gated wizard.action). -->
+  <div id="wizard-overlay" class="wz-overlay">
+    <div class="wz-header">
+      <span class="wz-title">AutoSteer Configuration Wizard</span>
+      <span class="wz-step" id="wz-step">Step 1 of 15</span>
+      <div class="wz-progress"><div class="wz-progressbar" id="wz-progressbar"></div></div>
+    </div>
+    <div class="wz-body"><div id="wz-content"></div></div>
+    <div class="wz-statusbar">
+      <span>WAS:<b id="wz-was">—</b></span>
+      <span>Roll:<b id="wz-roll">—</b></span>
+      <span>GPS:<b id="wz-gps">—</b></span>
+      <span>Speed:<b id="wz-speed">—</b></span>
+      <span>PWM:<b id="wz-pwm">—</b></span>
+    </div>
+    <div class="wz-footer">
+      <button id="wz-cancel" class="wz-btn wz-red">Cancel</button>
+      <span class="wz-spacer"></span>
+      <button id="wz-skip" class="wz-btn wz-grey">Skip</button>
+      <button id="wz-back" class="wz-btn wz-grey">Back</button>
+      <button id="wz-next" class="wz-btn wz-blue">Next</button>
     </div>
   </div>
   <div id="rightnav">

@@ -19,6 +19,17 @@ public sealed class RemoteServerHost
 {
     private WebApplication? _app;
     private WebSocketHub? _ws;
+    private MapBroadcaster? _broadcaster;
+
+    /// <summary>Host-supplied projector for the live Steer Wizard — returns a WizardDto
+    /// while the remote wizard is open, else null. Read every broadcast tick. Set after
+    /// <see cref="StartAsync"/> (it needs the MainWindow VM).</summary>
+    public Func<WizardDto?>? WizardProvider
+    {
+        get => _broadcaster?.WizardProvider;
+        set { _wizardProvider = value; if (_broadcaster is not null) _broadcaster.WizardProvider = value; }
+    }
+    private Func<WizardDto?>? _wizardProvider;
 
     /// <summary>
     /// Host-supplied handler for client commands (command id → action). Invoked
@@ -134,6 +145,8 @@ public sealed class RemoteServerHost
         _ws = app.Services.GetRequiredService<WebSocketHub>();
         _ws.CommandHandler = _commandHandler;
         _ws.IsRestrictedCommand = _isRestricted;
+        _broadcaster = app.Services.GetRequiredService<MapBroadcaster>();
+        _broadcaster.WizardProvider = _wizardProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
         // involuntary loss → failsafe.

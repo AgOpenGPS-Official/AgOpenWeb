@@ -60,4 +60,20 @@ public partial class MainViewModel
         // Show the wizard
         SteerWizardViewModel.IsDialogVisible = true;
     }
+
+    /// <summary>
+    /// Start a fresh Steer Wizard for the remote (web) client WITHOUT showing the
+    /// native overlay — the host drives the same VM and the browser renders it. The
+    /// projector streams its state while it's non-null.
+    /// </summary>
+    public void StartRemoteSteerWizard()
+    {
+        SteerWizardViewModel = new SteerWizardViewModel(_configurationService, _dispatcher, _autoSteerService);
+    }
+
+    /// <summary>Tear down the remote wizard (Finish / Cancel from the browser).</summary>
+    public void EndRemoteSteerWizard()
+    {
+        SteerWizardViewModel = null;
+    }
 }

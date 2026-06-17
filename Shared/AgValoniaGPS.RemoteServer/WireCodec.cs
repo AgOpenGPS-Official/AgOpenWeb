@@ -17,7 +17,7 @@ namespace AgValoniaGPS.RemoteServer;
 public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
-        ControlState = 6, Hello = 7, Config = 8, Profiles = 9;
+        ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10;
 
     public static byte[] EncodeProfiles(ProfilesDto p)
     {
@@ -159,6 +159,39 @@ public static class WireCodec
         // Tab 9 — Display
         w.Write(a.LineWidth); w.Write(a.NudgeDistance); w.Write(a.NextGuidanceTime); w.Write(a.CmPerPixel);
         DB(a.LightbarEnabled); DB(a.SteerBarEnabled); DB(a.GuidanceBarOn);
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeWizard(WizardDto w)
+    {
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+        bw.Write(Wizard);
+        bw.Write(w.StepIndex);          // i32
+        bw.Write(w.TotalSteps);
+        WriteStr(bw, w.StepKind);
+        WriteStr(bw, w.Title);
+        WriteStr(bw, w.Description);
+        void B(bool b) => bw.Write((byte)(b ? 1 : 0));
+        B(w.CanBack); B(w.CanNext); B(w.CanSkip); B(w.IsLast);
+        WriteStr(bw, w.Validation);
+        bw.Write((float)w.StatusWas);
+        bw.Write((float)w.StatusRoll);
+        WriteStr(bw, w.StatusGps);
+        bw.Write((float)w.StatusSpeed);
+        bw.Write(w.StatusPwm);          // i32
+        B(w.StatusConnected);
+        bw.Write(w.HardwareLevel);      // i32
+        bw.Write((float)w.LiveAngle);
+        bw.Write((float)w.LiveRoll);
+        bw.Write((float)w.LiveError);
+        WriteStr(bw, w.TestPhase);
+        WriteStr(bw, w.TestResult);
+        bw.Write((float)w.TestProgress);
+        B(w.TestActive);
+        B(w.RtkFixed);
+        WriteStr(bw, w.FixLabel);
+        bw.Write((float)w.Diameter);
         return ms.ToArray();
     }
 

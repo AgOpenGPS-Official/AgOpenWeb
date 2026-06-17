@@ -26,6 +26,10 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private Task? _loop;
 
     private int _statusTick;
+    // Set by the host (App.axaml.cs) — projects the live SteerWizardViewModel to a
+    // WizardDto, or null when the remote wizard isn't open. Sent every tick while open
+    // (the calibration steps need live phase/angle updates).
+    public Func<WizardDto?>? WizardProvider { get; set; }
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
     private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
@@ -158,6 +162,11 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     await _ws.BroadcastAsync(WireCodec.EncodeStatus(_projector.BuildStatus()), ct)
                         .ConfigureAwait(false);
                 }
+
+                // Steer Wizard (host-driven): while the remote wizard is open, project
+                // the live VM state every tick so calibration phases/angles stay live.
+                if (WizardProvider?.Invoke() is { } wiz)
+                    await _ws.BroadcastAsync(WireCodec.EncodeWizard(wiz), ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { break; }
             catch
