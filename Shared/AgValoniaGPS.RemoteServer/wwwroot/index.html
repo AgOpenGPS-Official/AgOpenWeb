@@ -162,7 +162,14 @@
     /* Left nav (Phase 9) — vertical button bar + non-modal flyout panels. */
     #leftnav { position: fixed; left: 0; top: 56px; display: flex; flex-direction: column;
       gap: 6px; padding: 8px 8px 8px 0; background: rgba(15,17,21,0.85);
-      border: 1px solid #222a38; border-left: 0; border-radius: 0 10px 10px 0; z-index: 20; }
+      border: 1px solid #222a38; border-left: 0; border-radius: 0 10px 10px 0; z-index: 32; }
+    /* Transparent light-dismiss scrim behind an open chain panel: map stays visible,
+       an outside tap closes the chain and is CONSUMED (no map pan / no background
+       actuation) — the blocking safety, minus the dimming. Sits above the map +
+       operational toolbars but below the left-nav bar (one-tap panel switching) and
+       the panels. Watch-the-tractor panels (Smart-WAS) opt out — see NO_SCRIM. */
+    .ln-scrim { position: fixed; inset: 0; z-index: 30; display: none; background: transparent; }
+    .ln-scrim.open { display: block; }
     .ln-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px;
       background: rgba(255,255,255,0.08); color: #e7eef9; cursor: pointer; box-sizing: border-box; }
     .ln-btn:hover { background: rgba(255,255,255,0.16); }
@@ -171,7 +178,7 @@
     .ln-panel { position: fixed; left: 80px; top: 56px; display: none; min-width: 220px;
       max-width: calc(100vw - 96px);
       background: #161b24; border: 1px solid #2a3550; border-radius: 10px; padding: 14px;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 21; }
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 31; }
     /* Lay tall tabs out across the width so they fit a 1200x700 tablet without scroll. */
     .cfg-cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; align-items: start; }
     .cfg-diaggrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; }
@@ -314,6 +321,8 @@
     .sw-backdrop.open { display: flex; }
     .sw-modal { width: 430px; background: #161b24; border: 1px solid #2a3550; border-radius: 12px;
       padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+    /* Smart-WAS as a chain panel (ln-panel) rather than a centred modal. */
+    .sw-panel { width: 420px; }
     .sw-title { text-align: center; color: #e7eef9; font: 700 18px system-ui, sans-serif; margin-bottom: 6px; }
     .sw-status { text-align: center; color: #cfe3ff; font: 500 13px system-ui, sans-serif; margin-bottom: 14px; }
     .sw-status b { color: #fff; }
@@ -507,11 +516,15 @@
     .hub-foot { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
     .hub-status { flex: 1; color: #9fb3cc; font: 500 12px system-ui, sans-serif; }
     .hub-load { width: auto; padding: 0 22px; margin-top: 0; }
-    /* Dialog host (Phase 6) — full-screen dimmer + a centred card. One at a time. */
+    /* Dialog host (Phase 6) — centred leaf card with a TRANSPARENT light-dismiss
+       scrim (no dimming, per the unified nav model). Hosts SimCoords + the shared
+       confirm. One at a time. */
     #dialoghost { position: fixed; inset: 0; display: none; align-items: flex-start;
       justify-content: center; z-index: 50; }
     #dialoghost.open { display: flex; }
-    #dialoghost .dlg-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+    #dialoghost .dlg-backdrop { position: absolute; inset: 0; background: transparent; }
+    .dlg-msg { color: #cfe3ff; font: 500 14px system-ui, sans-serif; line-height: 1.5;
+      text-align: center; margin-bottom: 4px; }
     .dlg-card { position: relative; margin-top: 60px; min-width: 320px; max-width: 380px;
       background: #161b24; border: 1px solid #2a3550; border-radius: 12px; padding: 18px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.6); display: none; flex-direction: column; }
@@ -635,6 +648,8 @@
   <div id="control">
     <div id="ctl-status">connecting…</div>
   </div>
+  <!-- Transparent light-dismiss scrim for open chain panels (unified nav model). -->
+  <div id="ln-scrim" class="ln-scrim"></div>
   <!-- Left nav (Phase 9) — vertical button bar mirroring LeftNavigationPanel; grows
        button-by-button as sub-phases land. Each opens a non-modal panel to its right. -->
   <div id="leftnav">
@@ -1286,30 +1301,30 @@
         <button id="nte-save" class="sw-b sw-blue" style="flex:none; padding:9px 22px">Save Profile</button>
       </div>
   </div>
-  <div id="smartwas-backdrop" class="sw-backdrop">
-    <div class="sw-modal">
-      <div class="sw-title">Smart WAS Calibration</div>
-      <div class="sw-status">Status: <b id="sw-status">Stopped</b></div>
-      <div class="sw-card">
-        <div class="sw-cardtitle">Statistics</div>
-        <div class="sw-row"><span class="k">Samples</span><span class="v" id="sw-samples">0 / 200 min</span></div>
-        <div class="sw-row"><span class="k">Mean</span><span class="v" id="sw-mean">0.00°</span></div>
-        <div class="sw-row"><span class="k">Median</span><span class="v" id="sw-median">0.00°</span></div>
-        <div class="sw-row"><span class="k">Std Dev</span><span class="v" id="sw-stddev">0.00°</span></div>
-      </div>
-      <div class="sw-card">
-        <div class="sw-cardtitle">Recommendation</div>
-        <div class="sw-row"><span class="k">Offset</span><span class="v" id="sw-offset">0.00° (0 counts)</span></div>
-        <div class="sw-row"><span class="k">Confidence</span><span class="v" id="sw-confidence">0%</span></div>
-      </div>
-      <div class="sw-info">Drive at &gt;2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.</div>
-      <div class="sw-btns">
-        <button id="sw-reset" class="sw-b sw-grey rn-gated" data-cmd="smartwas.reset">Reset</button>
-        <button id="sw-start" class="sw-b sw-green rn-gated" data-cmd="smartwas.start">Start</button>
-        <button id="sw-stop" class="sw-b sw-grey rn-gated" data-cmd="smartwas.stop">Stop</button>
-        <button id="sw-apply" class="sw-b sw-blue rn-gated" data-cmd="smartwas.apply">Apply</button>
-        <button id="sw-close" class="sw-b sw-grey">Close</button>
-      </div>
+  <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
+       opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor
+       while collecting; closes only via the header). ← Back reopens AutoSteer, ✕ → map. -->
+  <div id="smartwas" class="ln-panel sw-panel">
+    <div class="ln-hdr"><button class="ln-x" id="sw-back" title="Back">←</button><span class="ln-hdr-title">Smart WAS Calibration</span><button class="ln-x ln-closex" id="sw-x" title="Close">✕</button></div>
+    <div class="sw-status">Status: <b id="sw-status">Stopped</b></div>
+    <div class="sw-card">
+      <div class="sw-cardtitle">Statistics</div>
+      <div class="sw-row"><span class="k">Samples</span><span class="v" id="sw-samples">0 / 200 min</span></div>
+      <div class="sw-row"><span class="k">Mean</span><span class="v" id="sw-mean">0.00°</span></div>
+      <div class="sw-row"><span class="k">Median</span><span class="v" id="sw-median">0.00°</span></div>
+      <div class="sw-row"><span class="k">Std Dev</span><span class="v" id="sw-stddev">0.00°</span></div>
+    </div>
+    <div class="sw-card">
+      <div class="sw-cardtitle">Recommendation</div>
+      <div class="sw-row"><span class="k">Offset</span><span class="v" id="sw-offset">0.00° (0 counts)</span></div>
+      <div class="sw-row"><span class="k">Confidence</span><span class="v" id="sw-confidence">0%</span></div>
+    </div>
+    <div class="sw-info">Drive at &gt;2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.</div>
+    <div class="sw-btns">
+      <button id="sw-reset" class="sw-b sw-grey rn-gated" data-cmd="smartwas.reset">Reset</button>
+      <button id="sw-start" class="sw-b sw-green rn-gated" data-cmd="smartwas.start">Start</button>
+      <button id="sw-stop" class="sw-b sw-grey rn-gated" data-cmd="smartwas.stop">Stop</button>
+      <button id="sw-apply" class="sw-b sw-blue rn-gated" data-cmd="smartwas.apply">Apply</button>
     </div>
   </div>
   <!-- Steer Wizard — full-screen, host-driven. The real SteerWizardViewModel runs on
@@ -1466,6 +1481,16 @@
       <div class="dlg-buttons">
         <button id="dlg-cancel" class="dlg-btn dlg-cancel">Cancel</button>
         <button id="dlg-ok" class="dlg-btn dlg-ok">OK</button>
+      </div>
+    </div>
+    <!-- Shared confirm (replaces browser confirm() + native ShowConfirmationDialog).
+         Transparent light-dismiss scrim; outside-tap / Cancel = no action. -->
+    <div id="dlg-confirm" class="dlg-card">
+      <div class="dlg-title" id="dlgc-title">Confirm</div>
+      <div class="dlg-msg" id="dlgc-msg"></div>
+      <div class="dlg-buttons">
+        <button id="dlgc-cancel" class="dlg-btn dlg-cancel">Cancel</button>
+        <button id="dlgc-ok" class="dlg-btn dlg-ok">Confirm</button>
       </div>
     </div>
   </div>

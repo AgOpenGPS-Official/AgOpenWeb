@@ -313,11 +313,21 @@ SIM.launch.addEventListener('pointerdown', e => {
 // One modal at a time over a dimming backdrop. SimCoords is the first card; later
 // phases add more cards into the same host and reuse openDialog/closeDialog.
 const dialogHost = document.getElementById('dialoghost');
+let _confirmCb = null;
 function openDialog(cardId) {
   for (const c of dialogHost.querySelectorAll('.dlg-card')) c.classList.toggle('open', c.id === cardId);
   dialogHost.classList.add('open');
 }
-function closeDialog() { dialogHost.classList.remove('open'); }
+function closeDialog() { dialogHost.classList.remove('open'); _confirmCb = null; }
+// Shared confirm (unified nav model) — replaces browser confirm() + the native
+// ShowConfirmationDialog. Transparent light-dismiss scrim (backdrop tap / Cancel = no
+// action); Confirm runs the callback. Hosted in the dialog host (now a transparent leaf).
+function showConfirm(title, message, onConfirm) {
+  _confirmCb = onConfirm || null;
+  document.getElementById('dlgc-title').textContent = title || 'Confirm';
+  document.getElementById('dlgc-msg').textContent = message || '';
+  openDialog('dlg-confirm');
+}
 dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => { e.stopPropagation(); closeDialog(); });
 dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
 const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
@@ -336,6 +346,11 @@ document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
     transport.send('sim.setCoords|' + lat + ',' + lon);
   closeDialog();
+});
+document.getElementById('dlgc-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
+document.getElementById('dlgc-ok').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  const cb = _confirmCb; closeDialog(); if (cb) cb();
 });
 
 // ---- section bar (Phase 7) — per-section colour strip + manual toggle ----
@@ -381,9 +396,15 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas'];
+// Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
+// interactive (pan/zoom to follow the tractor while capturing). They close only via
+// the header (Back / ✕).
+const NO_SCRIM = new Set(['smartwas']);
+const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
+  lnScrim.classList.remove('open');
   document.getElementById('ln-screenalerts').classList.remove('active');
   document.getElementById('ln-vehicle').classList.remove('active');
   document.getElementById('ln-autosteer').classList.remove('active');
@@ -392,9 +413,13 @@ function lnCloseAll() {
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
   document.getElementById(panelId).classList.add('open');
+  if (!NO_SCRIM.has(panelId)) lnScrim.classList.add('open'); // transparent light-dismiss
   if (navBtnId) document.getElementById(navBtnId).classList.add('active');
   if (onOpen) onOpen();
 }
+// Outside tap on the scrim closes the chain and is CONSUMED (stopPropagation keeps the
+// map from panning / the background from actuating).
+lnScrim.addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
 for (const id of LN_NAV_PANELS) document.getElementById(id).addEventListener('pointerdown', e => e.stopPropagation());
 document.getElementById('ln-screenalerts').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -738,16 +763,18 @@ function renderAutoSteerLive() {
   }
 }
 
-// ---- Smart WAS Calibration modal (Phase 9) — launched from the AutoSteer panel.
-// Live stats ride the Status frame; Start/Stop/Reset/Apply are gated smartwas.* cmds.
-const swBackdrop = document.getElementById('smartwas-backdrop');
-function openSmartWas() { swBackdrop.classList.add('open'); populateSmartWas(); }
-function closeSmartWas() { swBackdrop.classList.remove('open'); }
-swBackdrop.addEventListener('pointerdown', e => { if (e.target === swBackdrop) closeSmartWas(); });
-document.querySelector('#smartwas-backdrop .sw-modal').addEventListener('pointerdown', e => e.stopPropagation());
-for (const b of swBackdrop.querySelectorAll('.rn-gated[data-cmd]'))
+// ---- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor; no
+// scrim, map stays interactive). Live stats ride the Status frame; Start/Stop/Reset/
+// Apply are gated smartwas.* cmds. Opening REPLACES AutoSteer; ← Back reopens it
+// (sw-back), ✕ → map (sw-x carries .ln-closex → generic close).
+const swPanel = document.getElementById('smartwas');
+function openSmartWas() { lnOpen('smartwas', 'ln-autosteer', populateSmartWas); }
+document.getElementById('sw-back').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  lnOpen('autosteercfg', 'ln-autosteer', () => populateAutoSteer(true));
+});
+for (const b of swPanel.querySelectorAll('.rn-gated[data-cmd]'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); rnSend(b.dataset.cmd); });
-document.getElementById('sw-close').addEventListener('pointerdown', e => { e.stopPropagation(); closeSmartWas(); });
 function populateSmartWas() {
   if (!statusBar) return;
   const collecting = !!statusBar.swCollecting;
@@ -784,8 +811,9 @@ nioSubnetBtn.addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (!iHoldControl) return; // gated; host re-checks
   const o1 = clampOct(nioO1.value), o2 = clampOct(nioO2.value), o3 = clampOct(nioO3.value);
-  if (confirm('Set ALL connected modules to subnet ' + o1 + '.' + o2 + '.' + o3 + '.x and restart them?'))
-    transport.send('net.subnet|' + o1 + '.' + o2 + '.' + o3);
+  showConfirm('Change Module Subnet',
+    'Set ALL connected modules to subnet ' + o1 + '.' + o2 + '.' + o3 + '.x and restart them?',
+    () => transport.send('net.subnet|' + o1 + '.' + o2 + '.' + o3));
 });
 document.getElementById('nio-ntprofiles').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripProfiles(); });
 function clampOct(v) { let n = parseInt(v); if (!Number.isFinite(n)) n = 0; return Math.max(0, Math.min(255, n)); }
@@ -835,7 +863,8 @@ document.getElementById('nt-add').addEventListener('pointerdown', e => { e.stopP
 document.getElementById('nt-edit').addEventListener('pointerdown', e => { e.stopPropagation(); const p = selectedNtProfile(); if (p) openNtripEditor(p); });
 document.getElementById('nt-del').addEventListener('pointerdown', e => {
   e.stopPropagation(); const p = selectedNtProfile();
-  if (p && confirm("Delete NTRIP profile '" + p.name + "'?")) { transport.send('ntrip.delete|' + p.id); ntSelId = null; }
+  if (p) showConfirm('Delete NTRIP Profile', "Delete NTRIP profile '" + p.name + "'?",
+    () => { transport.send('ntrip.delete|' + p.id); ntSelId = null; });
 });
 document.getElementById('nt-default').addEventListener('pointerdown', e => {
   e.stopPropagation(); const p = selectedNtProfile(); if (p) transport.send('ntrip.setDefault|' + p.id);
@@ -1114,7 +1143,7 @@ function renderSettings() {
   // AutoSteer live telemetry rides every status frame (not just config changes).
   if (asPanel.classList.contains('open')) renderAutoSteerLive();
   // Smart-WAS stats refresh while its modal is open.
-  if (swBackdrop.classList.contains('open')) populateSmartWas();
+  if (swPanel.classList.contains('open')) populateSmartWas();
   // Steer Wizard: re-render while open (host-driven; live every frame).
   wizardDirty = false;
   if (wzOverlay.classList.contains('open')) renderWizard();
@@ -1184,13 +1213,14 @@ for (const b of document.querySelectorAll('#vehtoolhub .hub-cbtn'))
       hubSend('profile.new', kind + '\t' + nm); HUB.status.textContent = 'Creating ' + nm + '…';
     } else if (act === 'delete') {
       const nm = list.value;
-      if (nm && confirm('Delete ' + kind + " profile '" + nm + "'?")) hubSend('profile.delete', kind + '\t' + nm);
+      if (nm) showConfirm('Delete Profile', 'Delete ' + kind + " profile '" + nm + "'?",
+        () => hubSend('profile.delete', kind + '\t' + nm));
     } else if (act === 'rename') {
       const old = list.value, nw = (nameInput.value || '').trim();
       if (!old || !nw) { HUB.status.textContent = 'Select a profile, type a new name, then Rename'; return; }
       hubSend('profile.rename', kind + '\t' + old + '\t' + nw);
     } else if (act === 'reset') {
-      if (confirm('Reset Default ' + kind + ' profile?')) hubSend('profile.reset', kind);
+      showConfirm('Reset Profile', 'Reset Default ' + kind + ' profile?', () => hubSend('profile.reset', kind));
     }
   });
 HUB.load.addEventListener('pointerdown', e => {
@@ -1598,7 +1628,8 @@ addEventListener('pointerdown', () => {
   if (af) af.classList.remove('open');
   document.getElementById('bn-flags')?.classList.remove('menuopen');
   document.getElementById('bn-abmenu')?.classList.remove('menuopen');
-  if (typeof lnCloseAll === 'function') lnCloseAll(); // close any left-nav panel
+  // Left-nav panels now close via the transparent #ln-scrim (which consumes the tap),
+  // not this global handler — so a panel dismiss no longer also pans the map.
 });
 
 function renderStatusBar() {

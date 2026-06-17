@@ -149,18 +149,23 @@ The model:
 - **Steer Wizard** stays full-screen — it's a guided multi-step flow with its own gauges, not a
   map view; "blocking" isn't the issue there.
 
-**Migration TODO to reach the locked model** (web currently still has dimming modals + a global
-window-pointerdown closer):
-1. Add the **transparent light-dismiss scrim** to the web chain panels (replace reliance on the
-   global `window` pointerdown closer, which lets the same click also reach the map).
-2. **Standard confirm panel** — promote the AutoSteer-reset inline confirm bar (`.as-confirm`)
-   into a reusable confirm surface; route the browser `confirm()` calls (hub delete, NTRIP delete,
-   subnet change) + native `ShowConfirmationDialog` through it. Confirm triggered from a persistent
-   toolbar → confirm strip (decide anchor) — *(open sub-detail, not blocking the model)*.
-3. Convert the remaining **dimming modals** (`sw-backdrop`) to the model: **Smart-WAS** + **SimCoords**
-   → chain panels; Smart-WAS = watch-tractor (no scrim).
-Status: NTRIP Profiles + Editor already converted (chain panels, replace-parent). Smart-WAS,
-SimCoords, confirmations still to convert.
+**Migration to the locked model — DONE (v26.5.60, pending device test):**
+1. ✅ **Transparent light-dismiss scrim** (`#ln-scrim`, z30): shown behind open chain panels by
+   `lnOpen` (hidden for `NO_SCRIM` watch-tractor panels), tap closes the chain + is **consumed**
+   (`stopPropagation` → no map pan). Removed the `lnCloseAll()` from the global window-pointerdown
+   closer. Z-restack: scrim 30 / panels 31 / left-nav bar 32 (one-tap panel switching) / dialoghost 50.
+2. ✅ **Shared confirm** (`showConfirm(title,msg,cb)` → `#dlg-confirm` card in the now-transparent
+   dialog host): replaced all four browser `confirm()` calls (hub delete + reset, NTRIP delete,
+   subnet change). Backdrop tap / Cancel = no action. (AutoSteer reset keeps its in-context
+   `.as-confirm` inline bar — already non-modal; left as the nicer in-panel pattern.)
+3. ✅ **Smart-WAS → watch-tractor chain panel** (`#smartwas`, `ln-panel`, in `NO_SCRIM`): map stays
+   interactive, header-only close (← Back → AutoSteer, ✕ → map). **SimCoords** now uses the
+   transparent dialog-host backdrop (light-dismiss, no dim).
+NTRIP Profiles + Editor already were chain panels. Steer Wizard stays full-screen. **No dimming
+modals remain** in the web client.
+Open sub-detail (not blocking): a confirm currently shows a centered card with a transparent scrim
+regardless of origin — fine since all current confirms originate inside a panel; revisit anchor if a
+persistent-toolbar confirm is ever added.
 
 **Native divergence:** native still uses dimming modals for Smart-WAS / confirmations. This unified
 model is a **web-led improvement** (web is the end-state UI). Whether to backport to native is open.
