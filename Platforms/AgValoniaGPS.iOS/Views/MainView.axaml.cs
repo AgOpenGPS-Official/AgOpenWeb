@@ -62,11 +62,8 @@ public partial class MainView : UserControl
     {
         if (App.Services == null) return;
 
-        if (_viewModel != null)
-        {
-            var display = AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display;
-            display.GridVisible = _viewModel.IsGridOn;
-        }
+        // Grid visibility is the SoT in ConfigStore.Display.GridVisible already —
+        // no VM→config sync needed here.
 
         // Save on background thread — never block the UI thread on app close
         Task.Run(() =>

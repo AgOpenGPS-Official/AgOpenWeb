@@ -81,9 +81,6 @@ public interface IMapService
     /// </summary>
     void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates);
 
-    // Grid
-    bool IsGridVisible { get; set; }
-
     // Vehicle state
     void SetReversing(bool isReversing);
     void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive);
@@ -142,4 +139,8 @@ public interface IMapService
     // Initialize coverage bitmap with field bounds on field load
     // If background image is set, composites it; otherwise initializes to black
     void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN);
+
+    // Rebuild the coverage display bitmap at the current bounds after a
+    // DisplayResolutionMultiplier change (repaints from detection cells; preserves camera).
+    void RebuildCoverageBitmapForResolutionChange();
 }

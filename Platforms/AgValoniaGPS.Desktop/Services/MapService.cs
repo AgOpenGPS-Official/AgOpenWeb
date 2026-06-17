@@ -109,16 +109,6 @@ public class MapService : IMapService
     public void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates) =>
         GetMapControl().SetSectionStates(sectionOn, sectionWidths, numSections, buttonStates);
 
-    public bool IsGridVisible
-    {
-        get => _mapControl?.IsGridVisible ?? false;
-        set
-        {
-            if (_mapControl != null)
-                _mapControl.IsGridVisible = value;
-        }
-    }
-
     public void SetReversing(bool isReversing) => GetMapControl().IsReversing = isReversing;
     public void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive) => GetMapControl().SetGuidancePoints(goalEasting, goalNorthing, isActive);
 
@@ -199,4 +189,7 @@ public class MapService : IMapService
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>
         GetMapControl().InitializeCoverageBitmapWithBounds(minE, maxE, minN, maxN);
+
+    public void RebuildCoverageBitmapForResolutionChange() =>
+        GetMapControl().RebuildCoverageBitmapForResolutionChange();
 }

@@ -252,14 +252,14 @@ public partial class MainViewModel
                     $"{latStr},{lonStr}\n";
                 File.WriteAllText(fieldTxtPath, fieldTxtContent);
 
-                CurrentFieldName = NewFieldName;
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
 
                 // Set field origin for coordinate transformations
                 SetFieldOrigin(NewFieldLatitude, NewFieldLongitude);
 
-                // Create field object and set as active (required for headland/track saving)
+                // Create field object and set as active (required for headland/track
+                // saving). CurrentFieldName is a pass-through over ActiveField.Name.
                 var field = new Field
                 {
                     Name = NewFieldName,
@@ -409,9 +409,11 @@ public partial class MainViewModel
                     }
                 }
 
-                CurrentFieldName = newFieldName;
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
+                // Set the active field so State.Field is the SoT (CurrentFieldName reads
+                // ActiveField.Name). Previously this flow left ActiveField null.
+                _fieldService.SetActiveField(new Field { Name = newFieldName, DirectoryPath = newFieldPath });
 
                 PersistentState.LastOpenedField = newFieldName;
                 _persistentStateService.Save();
@@ -568,9 +570,11 @@ public partial class MainViewModel
                 // Set field origin so coordinate conversions work
                 SetFieldOrigin(KmlCenterLatitude, KmlCenterLongitude);
 
-                CurrentFieldName = newFieldName;
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
+                // Set the active field first (SoT) so CurrentFieldName resolves and the
+                // boundary set below attaches to it. Previously ActiveField was left null.
+                _fieldService.SetActiveField(new Field { Name = newFieldName, DirectoryPath = newFieldPath });
 
                 // Load boundary into map renderer
                 SetCurrentBoundary(boundary);
@@ -675,9 +679,11 @@ public partial class MainViewModel
             {
                 Directory.CreateDirectory(newFieldPath);
 
-                CurrentFieldName = newFieldName;
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
+                // Set the active field so State.Field is the SoT (CurrentFieldName reads
+                // ActiveField.Name). Previously this flow left ActiveField null.
+                _fieldService.SetActiveField(new Field { Name = newFieldName, DirectoryPath = newFieldPath });
 
                 PersistentState.LastOpenedField = newFieldName;
                 _persistentStateService.Save();

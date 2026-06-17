@@ -226,7 +226,8 @@ public partial class MainWindow : Window
         // Apply initial camera state to map (ViewModel is available now)
         if (ViewModel != null && MapControl != null)
         {
-            MapControl.IsGridVisible = ViewModel.IsGridOn;
+            // Grid visibility is read directly from ConfigStore.Display.GridVisible
+            // by the map control (no seed needed here).
 
             // Sync Is2DMode with saved pitch to avoid state mismatch
             if (ViewModel.CameraPitch <= -89.0)
@@ -483,14 +484,10 @@ public partial class MainWindow : Window
         // Section state/layout is pushed to the map directly by the ViewModel
         // (MainViewModel.UpdateSectionStates) and every GPS cycle by
         // ApplyGpsCycleResult, so there is no per-property section bridge here.
-        if (e.PropertyName == nameof(MainViewModel.IsGridOn))
-        {
-            if (ViewModel != null && MapControl != null)
-            {
-                MapControl.SetGridVisible(ViewModel.IsGridOn);
-            }
-        }
-        else if (e.PropertyName == nameof(MainViewModel.CameraPitch))
+        // Grid visibility no longer needs a per-property bridge: the map control
+        // reads ConfigStore.Display.GridVisible directly and repaints on its
+        // PropertyChanged (drives both the on-screen button and the Settings toggle).
+        if (e.PropertyName == nameof(MainViewModel.CameraPitch))
         {
             if (ViewModel != null && MapControl != null)
             {

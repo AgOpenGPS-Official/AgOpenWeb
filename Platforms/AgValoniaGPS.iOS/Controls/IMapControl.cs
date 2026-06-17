@@ -33,5 +33,4 @@ public interface IMapControl
     void Zoom(double factor);
     void SetBoundary(Boundary? boundary);
     void SetVehiclePosition(double easting, double northing, double headingRadians);
-    bool IsGridVisible { get; set; }
 }

@@ -274,12 +274,18 @@ public partial class MainViewModel : ObservableObject
         {
             if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.UTurnButtonVisible))
             {
-                OnPropertyChanged(nameof(IsUTurnButtonVisible));
                 OnPropertyChanged(nameof(IsUTurnOverlayVisible));
             }
             else if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.LateralButtonVisible))
             {
                 OnPropertyChanged(nameof(IsLateralOverlayVisible));
+            }
+            else if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.GridVisible))
+            {
+                // The renderer reads ConfigStore.Display.GridVisible directly; keep the
+                // on-screen grid button's active-state binding in sync when the flag is
+                // flipped from the Settings/Screen-&-Alerts toggle instead of the button.
+                OnPropertyChanged(nameof(IsGridOn));
             }
         };
 
@@ -461,6 +467,13 @@ public partial class MainViewModel : ObservableObject
             if (e.PropertyName is nameof(State.Field.DriftEasting) or nameof(State.Field.DriftNorthing))
             {
                 _autoSteerService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
+            }
+            else if (e.PropertyName == nameof(State.Field.FieldName))
+            {
+                // CurrentFieldName is a pass-through over State.Field.ActiveField.Name;
+                // re-raise it (and the field/job label) when the active field changes.
+                OnPropertyChanged(nameof(CurrentFieldName));
+                OnPropertyChanged(nameof(CurrentFieldAndJobLabel));
             }
         };
 
@@ -1513,8 +1526,8 @@ public partial class MainViewModel : ObservableObject
             await _dispatcher.InvokeAsync(() => { }, UiDispatcherPriority.Render);
             await Task.Delay(50);
 
-            // Update field state
-            CurrentFieldName = fieldName;
+            // Update field state. CurrentFieldName is a pass-through over
+            // State.Field.ActiveField.Name, set via SetActiveField below.
             IsFieldOpen = true;
             FieldsRootDirectory = Path.GetDirectoryName(fieldPath) ?? string.Empty;
             _gpsPipelineService.SetHasActiveField(true);
@@ -1877,7 +1890,8 @@ public partial class MainViewModel : ObservableObject
             SyncGuidanceStateToPipeline();
         }
 
-        CurrentFieldName = string.Empty;
+        // CurrentFieldName clears via the pass-through when SetActiveField(null)
+        // runs below (State.Field.ActiveField → null).
         IsFieldOpen = false;
         _gpsPipelineService.SetHasActiveField(false);
 
@@ -3609,16 +3623,12 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private string _currentFieldName = string.Empty;
-    public string CurrentFieldName
-    {
-        get => _currentFieldName;
-        set
-        {
-            if (SetProperty(ref _currentFieldName, value))
-                OnPropertyChanged(nameof(CurrentFieldAndJobLabel));
-        }
-    }
+    /// <summary>
+    /// Open field's name (empty when no field is open). Pass-through over the SoT
+    /// (<see cref="FieldState.ActiveField"/>); no VM-local copy. Change notifications
+    /// come from the State.Field subscription in the constructor (config/state audit §12.1).
+    /// </summary>
+    public string CurrentFieldName => State.Field.ActiveField?.Name ?? string.Empty;
 
     /// <summary>
     /// Active job's task name, or empty when no job is active.

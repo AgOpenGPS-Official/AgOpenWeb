@@ -139,6 +139,9 @@ internal class MapRenderState
     public bool HeadlandDistanceVisible;
     public double HeadlandProximityDistance;
     public bool HeadlandProximityWarning;
+    // True when the guidance light bar overlay is showing (top-centre); the headland
+    // HUD shifts left to clear it, and re-centres when it is hidden.
+    public bool LightBarVisible;
     public bool HasHeadland;
 
     // Coverage patches (vestigial — patches replaced by cell-based detection;

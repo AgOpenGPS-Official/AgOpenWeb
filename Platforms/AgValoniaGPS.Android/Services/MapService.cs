@@ -22,7 +22,6 @@ public class MapService : IMapService
     private double _pitch;
     private double _zoomLevel = 1.0;
     private double _rotation;
-    private bool _isGridVisible;
 
     public void RegisterMapControl(ISharedMapControl mapControl)
     {
@@ -33,16 +32,6 @@ public class MapService : IMapService
     public double Pitch => _pitch;
     public double ZoomLevel => _mapControl?.GetZoom() ?? _zoomLevel;
     public double Rotation => _rotation;
-    public bool IsGridVisible
-    {
-        get => _mapControl?.IsGridVisible ?? _isGridVisible;
-        set
-        {
-            _isGridVisible = value;
-            if (_mapControl != null)
-                _mapControl.IsGridVisible = value;
-        }
-    }
 
     public void Toggle3DMode()
     {
@@ -182,4 +171,7 @@ public class MapService : IMapService
 
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>
         _mapControl?.InitializeCoverageBitmapWithBounds(minE, maxE, minN, maxN);
+
+    public void RebuildCoverageBitmapForResolutionChange() =>
+        _mapControl?.RebuildCoverageBitmapForResolutionChange();
 }

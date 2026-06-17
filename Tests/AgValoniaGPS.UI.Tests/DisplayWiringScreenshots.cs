@@ -51,7 +51,7 @@ public class DisplayWiringScreenshots
         map.SetToolPosition(0, -3, 0, 6.0, 0, -3);
         map.SetCamera(0, 0, 2.0, 0);
         map.SetDayMode(true);
-        map.SetGridVisible(true);
+        AgValoniaGPS.Models.Configuration.ConfigurationStore.Instance.Display.GridVisible = true;
 
         var track = Track.FromABLine("Test AB",
             new Vec3(10, -50, 0), new Vec3(10, 50, 0));

@@ -76,7 +76,7 @@ public sealed class SceneProjector
 
         // Tool/section layout — static spans (PositionLeft/Right, offsets from the
         // tool centerline). The pose is per-Tick; the client transforms these by it.
-        int nSec = Math.Clamp(_sections.NumSections, 0, SectionState.MaxSections);
+        int nSec = Math.Clamp(_sections.NumSections, 0, ToolConfig.MaxSections);
         var states = _sections.SectionStates;
         var toolSections = new List<SectionSpanDto>(nSec);
         for (int i = 0; i < nSec && i < states.Count; i++)
@@ -141,13 +141,12 @@ public sealed class SceneProjector
     {
         var v = _state.Vehicle;
         // Section on/off comes from SectionControlService (the authoritative source
-        // coverage paints from) — NOT State.Sections, whose per-section flags are
-        // never written. IsOn = the section is on/laying product.
+        // coverage paints from). IsOn = the section is on/laying product.
         // Per-section display state = the canonical 6-state ColorCode (same source
         // as the native section bar / map renderer): 0 off(red) 1 manual-on(yellow)
         // 2 auto-on(green) 3 turning-off(cyan) 4 turning-on(orange) 5 auto-off(gray).
         var secStates = _sections.SectionStates;
-        int n = Math.Clamp(_sections.NumSections, 0, SectionState.MaxSections);
+        int n = Math.Clamp(_sections.NumSections, 0, ToolConfig.MaxSections);
         var sections = new byte[n];
         for (int i = 0; i < n && i < secStates.Count; i++)
             sections[i] = (byte)secStates[i].ColorCode;
