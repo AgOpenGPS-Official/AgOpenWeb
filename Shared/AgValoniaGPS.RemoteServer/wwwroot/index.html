@@ -190,7 +190,9 @@
     .sa-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
     .sa-tgl, .sa-act { height: 40px; border: 1px solid #2a3550; border-radius: 6px;
       background: rgba(255,255,255,0.06); color: #cfe3ff; cursor: pointer;
-      font: 600 12px system-ui, sans-serif; text-align: left; padding: 0 8px; }
+      font: 600 12px system-ui, sans-serif; text-align: left; padding: 0 8px;
+      display: flex; align-items: center; gap: 6px; }
+    .sa-ic { width: 22px; height: 22px; object-fit: contain; flex: none; }
     .sa-tgl:hover, .sa-act:hover { background: rgba(255,255,255,0.14); }
     .sa-tgl.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
     .sa-act { background: rgba(255,255,255,0.10); }
@@ -592,30 +594,30 @@
     <div class="ln-title">Screen &amp; Alerts</div>
     <div class="cfg-label">Display</div>
     <div class="sa-grid">
-      <button class="sa-tgl" data-key="display.gridVisible">Grid</button>
-      <button class="sa-tgl" data-key="display.fieldTextureVisible">Field Texture</button>
-      <button class="sa-tgl" data-key="display.fieldTextureMoveable">Texture Moves</button>
-      <button class="sa-tgl" data-key="display.svennArrowVisible">Svenn Arrow</button>
-      <button class="sa-tgl" data-key="display.headlandDistanceVisible">Headland Dist</button>
+      <button class="sa-tgl" data-key="display.gridVisible"><img class="sa-ic" src="/icons/ConD_Grid.png" alt="">Grid</button>
+      <button class="sa-tgl" data-key="display.fieldTextureVisible"><img class="sa-ic" src="/icons/ConD_FloorTexture.png" alt="">Field Texture</button>
+      <button class="sa-tgl" data-key="display.fieldTextureMoveable"><img class="sa-ic" src="/icons/ConD_FloorTexture.png" alt="">Texture Moves</button>
+      <button class="sa-tgl" data-key="display.svennArrowVisible"><img class="sa-ic" src="/icons/ConD_SvennArrow.png" alt="">Svenn Arrow</button>
+      <button class="sa-tgl" data-key="display.headlandDistanceVisible"><img class="sa-ic" src="/icons/ConD_HeadlandDistance.png" alt="">Next Boundary Dist</button>
       <button class="sa-tgl" data-key="display.lineSmoothEnabled">Smoothing</button>
-      <button class="sa-tgl" data-key="display.autoDayNight">Auto Day/Night</button>
+      <button class="sa-tgl" data-key="display.autoDayNight"><img class="sa-ic" src="/icons/ConD_AutoDayNight.png" alt="">Auto Day/Night</button>
       <button class="sa-tgl" data-key="display.hardwareMessagesEnabled">AiO Board Msgs</button>
       <button class="sa-act" data-cmd="display.toggleTheme">Day/Night Theme</button>
-      <button class="sa-tgl" data-key="display.extraGuidelines">Extra Guides</button>
+      <button class="sa-tgl" data-key="display.extraGuidelines"><img class="sa-ic" src="/icons/ConD_ExtraGuides.png" alt="">Extra Guides</button>
       <input id="sa-extracount" class="cfg-num" type="number" step="1" min="0" title="Extra guide count">
       <button class="sa-act" data-cmd="display.cycleResolution">Quality: <span id="sa-quality">—</span></button>
     </div>
     <div class="cfg-label">On-Screen Buttons</div>
     <div class="sa-grid">
-      <button class="sa-tgl" data-key="display.uTurnButtonVisible">U-Turn</button>
-      <button class="sa-tgl" data-key="display.lateralButtonVisible">Lateral</button>
+      <button class="sa-tgl" data-key="display.uTurnButtonVisible"><img class="sa-ic" src="/icons/Con_UTurnMenu.png" alt="">U-Turn</button>
+      <button class="sa-tgl" data-key="display.lateralButtonVisible"><img class="sa-ic" src="/icons/ABSnapNudgeMenu.png" alt="">Lateral</button>
     </div>
     <div class="cfg-label">Alerts &amp; Sounds</div>
     <div class="sa-grid">
-      <button class="sa-tgl" data-key="display.autoSteerSound">Auto Steer</button>
-      <button class="sa-tgl" data-key="display.uTurnSound">U-Turn</button>
-      <button class="sa-tgl" data-key="display.hydraulicSound">Hydraulic</button>
-      <button class="sa-tgl" data-key="display.sectionsSound">Sections</button>
+      <button class="sa-tgl" data-key="display.autoSteerSound"><img class="sa-ic" src="/icons/ConF_SteerSound.png" alt="">Auto Steer</button>
+      <button class="sa-tgl" data-key="display.uTurnSound"><img class="sa-ic" src="/icons/ConF_TurnSound.png" alt="">U-Turn</button>
+      <button class="sa-tgl" data-key="display.hydraulicSound"><img class="sa-ic" src="/icons/ConF_HydLiftSound.png" alt="">Hydraulic</button>
+      <button class="sa-tgl" data-key="display.sectionsSound"><img class="sa-ic" src="/icons/ConF_SoundSections.png" alt="">Sections</button>
     </div>
     <div class="cfg-label">App Settings <span class="sa-hint">(moves to its own dialog with the File menu)</span></div>
     <div class="sa-grid">

@@ -168,7 +168,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
                             Command="{Binding ToggleHeadlandDistanceCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
                             <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConD_HeadlandDistance.png" Width="24" Height="24"/>
-                            <TextBlock Text="Headland Dist" VerticalAlignment="Center" FontSize="12"/>
+                            <TextBlock Text="Next Boundary Dist" VerticalAlignment="Center" FontSize="12"/>
                         </StackPanel>
                     </Button>
                     <Button Classes="SaRow" Classes.Active="{Binding Display.LineSmoothEnabled}"
