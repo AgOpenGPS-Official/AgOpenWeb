@@ -88,13 +88,17 @@
                 <StackPanel Spacing="8">
                     <TextBlock Text="GPS" FontWeight="SemiBold" FontSize="14" />
 
-                    <TextBlock Text="{Binding Latitude, StringFormat='Latitude: {0:F6}'}" />
+                    <TextBlock Text="{Binding Latitude, StringFormat='Latitude: {0:F8}'}" />
                     <NumericUpDown Value="{Binding Latitude}" Increment="0.0001"
-                                   FormatString="F6" Minimum="-90" Maximum="90" />
+                                   FormatString="F8" Minimum="-90" Maximum="90" />
 
-                    <TextBlock Text="{Binding Longitude, StringFormat='Longitude: {0:F6}'}" />
+                    <TextBlock Text="{Binding Longitude, StringFormat='Longitude: {0:F8}'}" />
                     <NumericUpDown Value="{Binding Longitude}" Increment="0.0001"
-                                   FormatString="F6" Minimum="-180" Maximum="180" />
+                                   FormatString="F8" Minimum="-180" Maximum="180" />
+
+                    <Button Content="Save Position" HorizontalAlignment="Stretch"
+                            Command="{Binding SavePositionCommand}"
+                            ToolTip.Tip="Save the current GPS position + heading as the startup pose" />
 
                     <TextBlock Text="{Binding SatelliteCount, StringFormat='Satellites: {0}'}" />
                     <NumericUpDown Value="{Binding SatelliteCount}" Increment="1"

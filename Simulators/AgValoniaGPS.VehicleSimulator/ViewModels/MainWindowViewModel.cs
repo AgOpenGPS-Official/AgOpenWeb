@@ -28,6 +28,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
     private DispatcherTimer? _simTimer;
     private long _packetCount;
     private readonly VehiclePhysicsModel _vehicle = new();
+    // Persisted starting GPS pose (loaded in the ctor; saved on operator edits while stopped).
+    private readonly SimSettings _settings = SimSettings.Load();
 
     // Vehicle
     private double _speed; // km/h
@@ -82,19 +84,37 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public double Heading
     {
         get => _heading;
-        set { _heading = ((value % 360) + 360) % 360; OnPropertyChanged(); }
+        set { _heading = ((value % 360) + 360) % 360; OnPropertyChanged(); PersistPose(); }
     }
 
     public double Latitude
     {
         get => _latitude;
-        set { _latitude = value; OnPropertyChanged(); }
+        set { _latitude = value; OnPropertyChanged(); PersistPose(); }
     }
 
     public double Longitude
     {
         get => _longitude;
-        set { _longitude = value; OnPropertyChanged(); }
+        set { _longitude = value; OnPropertyChanged(); PersistPose(); }
+    }
+
+    // Auto-save the starting pose when the operator edits it (stopped) — never while
+    // running, so live driving drift doesn't clobber the saved start point. The
+    // explicit Save Position button uses SavePose directly (saves the current pose
+    // regardless of running state).
+    private void PersistPose()
+    {
+        if (_isRunning) return;
+        SavePose();
+    }
+
+    private void SavePose()
+    {
+        _settings.Latitude = _latitude;
+        _settings.Longitude = _longitude;
+        _settings.Heading = _heading;
+        _settings.Save();
     }
 
     public double Wheelbase
@@ -323,11 +343,20 @@ public class MainWindowViewModel : INotifyPropertyChanged
     public ICommand WheelDownCommand { get; }
     public ICommand RollUpCommand { get; }
     public ICommand RollDownCommand { get; }
+    // Explicit "Save Position" — snapshots the CURRENT pose (works while running too,
+    // so you can drive somewhere and save it as the new startup point).
+    public ICommand SavePositionCommand { get; }
 
     private const double NudgeStep = 0.5;
 
     public MainWindowViewModel()
     {
+        // Restore the operator's last starting pose (set fields directly — before any
+        // binding — so PersistPose isn't triggered re-saving on construction).
+        _latitude = _settings.Latitude;
+        _longitude = _settings.Longitude;
+        _heading = _settings.Heading;
+
         StartStopCommand = new RelayCommand(ToggleRunning);
         StopSpeedCommand = new RelayCommand(() => Speed = 0);
         CenterWheelCommand = new RelayCommand(() => WasAngle = 0);
@@ -338,6 +367,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         WheelDownCommand = new RelayCommand(() => WasAngle -= NudgeStep);
         RollUpCommand = new RelayCommand(() => RollAngle += NudgeStep);
         RollDownCommand = new RelayCommand(() => RollAngle -= NudgeStep);
+        SavePositionCommand = new RelayCommand(() => { SavePose(); StatusText = "Position saved"; });
     }
 
     private void ToggleRunning()
