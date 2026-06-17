@@ -189,4 +189,7 @@ public class MapService : IMapService
     // Coverage bitmap initialization on field load
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>
         GetMapControl().InitializeCoverageBitmapWithBounds(minE, maxE, minN, maxN);
+
+    public void RebuildCoverageBitmapForResolutionChange() =>
+        GetMapControl().RebuildCoverageBitmapForResolutionChange();
 }

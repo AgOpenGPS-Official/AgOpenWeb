@@ -113,6 +113,7 @@ public interface ISharedMapControl
     // Initialize coverage bitmap with field bounds (call on field load)
     // If background image is set, composites it; otherwise initializes to black
     void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN);
+    void RebuildCoverageBitmapForResolutionChange();
 
     // Direct pixel access for unified bitmap (service writes directly to bitmap)
     ushort GetCoveragePixel(int localX, int localY);

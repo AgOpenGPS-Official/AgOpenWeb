@@ -171,4 +171,7 @@ public class MapService : IMapService
 
     public void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN) =>
         _mapControl?.InitializeCoverageBitmapWithBounds(minE, maxE, minN, maxN);
+
+    public void RebuildCoverageBitmapForResolutionChange() =>
+        _mapControl?.RebuildCoverageBitmapForResolutionChange();
 }

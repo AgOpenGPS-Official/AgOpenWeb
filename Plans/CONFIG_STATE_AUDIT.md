@@ -527,15 +527,23 @@ can't catch an *apply* gap; this does, at the wiring layer.
 
 ---
 
-## 14. Remaining open items (honest status, 2026-06-16)
+## 14. Final two items — ✅ RESOLVED (2026-06-16, v26.5.50)
 
-Everything in §1–§13 is resolved **except** two items, deliberately scoped as their own changes
-rather than rushed into the apply-gap branch:
+Both items previously deferred from the apply-gap branch are now done:
 
-1. **§13.1 Display Quality live re-apply** — needs a coverage-bitmap rebuild + reprojection on
-   `DisplayResolutionMultiplier` change (heavy, coverage-system; the flag is otherwise applied at field
-   open and not dead).
-2. **§12.1 `_currentFieldName`** — still a real VM local copy (the §12 "zero VM shadows" claim missed
-   it). Collapsing it is a *sentinel-sensitive* refactor: `CurrentFieldName` returns `""` when closed
-   vs `FieldState.FieldName`'s `"No Field"`, it backs ~25 field-path-construction call sites, and it's
-   ordering-coupled with `ActiveField` at field create/rename. Worth a dedicated, test-backed pass.
+1. **§13.1 Display Quality live re-apply** — ✅ DONE. The detection-bits coverage source is
+   resolution-independent (only the display bitmap's cell size scales with the multiplier), so a live
+   rebuild is lossless. Added `ISharedMapControl.RebuildCoverageBitmapForResolutionChange()` (+
+   `IMapService` + 3 platform forwards): it recomputes the cell size at the current bounds, recreates
+   the display bitmap, and repaints from the detection cells — **preserving camera state** (unlike
+   `InitializeCoverageBitmapWithBounds`, which is a field-open and recenters). `CycleDisplayResolutionCommand`
+   calls it when a field is open, so Quality changes take effect immediately instead of only on next
+   field open.
+2. **§12.1 `_currentFieldName`** — ✅ DONE. Collapsed to a read-only pass-through
+   `CurrentFieldName => State.Field.ActiveField?.Name ?? string.Empty`; all 6 writes removed; the
+   field/job label re-raises from the existing `State.Field.PropertyChanged` (`FieldName`) subscription.
+   Fixed 3 **latent SoT bugs** uncovered in the process — the copy / KML-import / ISO-XML-import flows
+   set `IsFieldOpen = true` but never set `ActiveField`; they now call `SetActiveField` (the KML flow
+   does it before `SetCurrentBoundary` so the boundary attaches to the active field). 1504 tests green.
+
+**§1–§14 of this audit are now complete.**
