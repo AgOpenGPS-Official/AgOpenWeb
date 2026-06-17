@@ -981,6 +981,15 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _crossTrackError, value);
     }
 
+    /// <summary>
+    /// Steer-bar value (AgOpen): the steer-angle ERROR = actual WAS angle (from the
+    /// steer module) − commanded guidance steer angle, both in degrees. The light bar
+    /// shows cross-track distance; the steer bar shows this. Read per-frame by the
+    /// LightBarPanel when SteerBarEnabled.
+    /// </summary>
+    public double SteerBarAngleError =>
+        _autoSteerService.LastSteerData.ActualSteerAngle - State.Guidance.SteerAngle;
+
     public bool IsAutoSteerActive
     {
         get => _isAutoSteerActive;

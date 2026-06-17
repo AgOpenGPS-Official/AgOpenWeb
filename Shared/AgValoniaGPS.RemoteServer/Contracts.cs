@@ -97,7 +97,10 @@ public record TickDto(
     // client-side by Display.HeadlandDistanceVisible (Config frame). Mirrors
     // FieldState.HeadlandProximityDistance/…Warning.
     double HeadlandProximityDistance,
-    bool HeadlandProximityWarning);
+    bool HeadlandProximityWarning,
+    // Steer-bar value: steer-angle error (actual WAS − commanded guidance angle, deg).
+    // The web top bar shows this in steer-bar mode (light-bar mode uses CrossTrackError).
+    double SteerAngleError);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

@@ -470,11 +470,9 @@ public partial class SkiaMapControl : Control, ISharedMapControl
             // seam) just displays it. -1 => no headland / not driving => no HUD.
             HeadlandProximityDistance = ApplicationState.Instance.Field.HeadlandProximityDistance ?? -1.0,
             HeadlandProximityWarning = ApplicationState.Instance.Field.HeadlandProximityWarning,
-            // Light bar shows (top-centre) when a bar mode is enabled AND guidance is
-            // active — same condition as LightBarPanel.Update. The HUD dodges it.
-            LightBarVisible = (ConfigurationStore.Instance.AutoSteer.LightbarEnabled
-                               || ConfigurationStore.Instance.AutoSteer.SteerBarEnabled)
-                              && _guidanceActive,
+            // Light bar shows (top-centre) when the master (GuidanceBarOn) is on AND
+            // guidance is active — same condition as LightBarPanel.Update. HUD dodges it.
+            LightBarVisible = ConfigurationStore.Instance.AutoSteer.GuidanceBarOn && _guidanceActive,
             IsMetric = ConfigurationStore.Instance.IsMetric,
         };
 

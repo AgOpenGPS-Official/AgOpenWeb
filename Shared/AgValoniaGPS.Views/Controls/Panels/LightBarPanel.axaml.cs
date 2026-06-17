@@ -172,14 +172,13 @@ public partial class LightBarPanel : UserControl
     /// Update light bar with current guidance values.
     /// Called from platform code on each GPS update.
     /// </summary>
-    public void Update(double crossTrackErrorMeters, double steerAngleDegrees,
-                       bool hasActiveGuidance, bool isInDeadZone)
+    public void Update(double crossTrackErrorMeters, double steerAngleError,
+                       bool hasActiveGuidance, bool isAutoSteerEngaged)
     {
         var config = ConfigurationStore.Instance.AutoSteer;
-        bool lightBar = config.LightbarEnabled;
-        bool steerBar = config.SteerBarEnabled;
 
-        if (!lightBar && !steerBar || !hasActiveGuidance)
+        // GuidanceBarOn is the master (AgOpen isLightbarOn); Steer/Light is the mode.
+        if (!config.GuidanceBarOn || !hasActiveGuidance)
         {
             IsVisible = false;
             return;
@@ -191,10 +190,10 @@ public partial class LightBarPanel : UserControl
         if (canvas != null && canvas.Children.Count == 0)
             CreateArrows(canvas);
 
-        if (steerBar)
-            UpdateSteerBar(steerAngleDegrees, config);
+        if (config.SteerBarEnabled)
+            UpdateSteerBar(steerAngleError, isAutoSteerEngaged, config);
         else
-            UpdateLightBar(crossTrackErrorMeters, config, isInDeadZone);
+            UpdateLightBar(crossTrackErrorMeters, config, false);
     }
 
     private void UpdateLightBar(double errorMeters, AutoSteerConfig config, bool isInDeadZone)
@@ -312,14 +311,20 @@ public partial class LightBarPanel : UserControl
         }
     }
 
-    private void UpdateSteerBar(double steerAngleDegrees, AutoSteerConfig config)
+    private void UpdateSteerBar(double steerAngleError, bool isAutoSteerEngaged, AutoSteerConfig config)
     {
+        // AgOpen steer bar = steer-angle ERROR (actual WAS − commanded), with a
+        // dead-zone (engaged < 0.5°, disengaged < 0.2° → 0) and ±12° full deflection.
+        double err = steerAngleError;
+        double deadzone = isAutoSteerEngaged ? 0.5 : 0.2;
+        if (Math.Abs(err) < deadzone) err = 0;
+
         // Fast EWMA for steer display
-        double smoothed = _avgPivDistance * 0.8 + steerAngleDegrees * 0.2;
+        double smoothed = _avgPivDistance * 0.8 + err * 0.2;
         _avgPivDistance = smoothed;
 
-        double maxAngle = Math.Max(ConfigurationStore.Instance.Vehicle.MaxSteerAngle, 1);
-        double dotsToLight = smoothed / maxAngle * DotsPerSide;
+        const double fullScaleDeg = 12.0; // AgOpen clamps the error bar to ±12°
+        double dotsToLight = smoothed / fullScaleDeg * DotsPerSide;
         int clampedDots = (int)Math.Clamp(dotsToLight, -DotsPerSide, DotsPerSide);
 
         for (int side = 0; side < 2; side++)

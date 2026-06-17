@@ -273,8 +273,8 @@ public partial class MainView : UserControl
                     || _viewModel.State.RecordedPath.IsDrivingRecordedPath;
                 LightBarPanel?.Update(
                     _viewModel.CrossTrackError / 100.0,
-                    _viewModel.SimulatorSteerAngle,
-                    hasGuidance, false);
+                    _viewModel.SteerBarAngleError,      // actual WAS − commanded (steer bar)
+                    hasGuidance, _viewModel.IsAutoSteerEngaged);
             }
         }
     }

@@ -203,7 +203,9 @@ public sealed class SceneProjector
             (int)_config.Tram.DisplayMode,
             // Headland-distance HUD (-1 = no headland / not driving → hidden client-side).
             _state.Field.HeadlandProximityDistance ?? -1.0,
-            _state.Field.HeadlandProximityWarning);
+            _state.Field.HeadlandProximityWarning,
+            // Steer-bar error: actual WAS angle − commanded guidance steer angle.
+            _autoSteer.LastSteerData.ActualSteerAngle - _state.Guidance.SteerAngle);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

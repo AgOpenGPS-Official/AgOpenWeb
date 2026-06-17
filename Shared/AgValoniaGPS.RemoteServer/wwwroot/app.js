@@ -1239,11 +1239,22 @@ function xteText(xte) {
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
 function updateLightbarText() {
-  if (!tick || !tick.guidanceActive) { lbEl.style.display = 'none'; return; }
-  const xte = tick.crossTrackError || 0;
-  const onLine = Math.abs(xte) < 0.05;
-  const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
-  lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   ${tick.lineLabel || ''}`;
+  const cfg = config && config.autosteer;
+  if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) { lbEl.style.display = 'none'; return; }
+  if (cfg.steerBarEnabled) {
+    // Steer bar: steer-angle error (deg) with dead-zone.
+    let err = tick.steerAngleError || 0;
+    const dz = (tick.op && tick.op.autoSteer) ? 0.5 : 0.2;
+    if (Math.abs(err) < dz) err = 0;
+    const arrow = err === 0 ? '> 0 <' : err > 0 ? '◀' : '▶';
+    lbEl.textContent = err === 0 ? '> 0 <' : `${arrow} ${Math.abs(err).toFixed(1)}°`;
+  } else {
+    // Light bar: cross-track distance.
+    const xte = tick.crossTrackError || 0;
+    const onLine = Math.abs(xte) < 0.05;
+    const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
+    lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   ${tick.lineLabel || ''}`;
+  }
   lbEl.style.display = 'block';
 }
 
@@ -1857,15 +1868,27 @@ function toolFootprintSk(canvas) {
 // so here we draw the LEDs plus a directional arrow triangle. Drawn in CSS px
 // (under renderSkia's scale(dpr)), so it must run before canvas.restore().
 function lightbarSk(canvas) {
-  if (!tick || !tick.guidanceActive) return;
-  const xte = tick.crossTrackError || 0;        // + = right of line
-  const SEG = 15, W = 18, H = 16, GAP = 4, PER = 0.05;
+  // GuidanceBarOn is the master; SteerBarEnabled picks the mode (steer-angle error vs
+  // cross-track). Mirrors the native LightBarPanel.
+  const cfg = config && config.autosteer;
+  if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) return;
+  const SEG = 15, W = 18, H = 16, GAP = 4;
   const mid = (SEG - 1) / 2;
+  const steerMode = !!cfg.steerBarEnabled;
+  let val, PER, onThresh;
+  if (steerMode) {
+    val = tick.steerAngleError || 0;                          // actual − commanded (deg)
+    const dz = (tick.op && tick.op.autoSteer) ? 0.5 : 0.2;    // AgOpen dead-zone
+    if (Math.abs(val) < dz) val = 0;
+    PER = 12 / mid; onThresh = dz;                            // ±12° full deflection
+  } else {
+    val = tick.crossTrackError || 0; PER = 0.05; onThresh = 0.05; // + = right of line
+  }
   const totalW = SEG * (W + GAP) - GAP;
   const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
-  const lit = Math.min(Math.round(Math.abs(xte) / PER), mid);
-  const onLine = Math.abs(xte) < PER;
-  const steerLeft = xte > 0; // lights point the way to STEER (native convention)
+  const lit = Math.min(Math.round(Math.abs(val) / PER), mid);
+  const onLine = Math.abs(val) < onThresh;
+  const steerLeft = val > 0; // lights point the way to STEER (native convention)
   const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
   const p = SKP.lbFill;
   for (let i = 0; i < SEG; i++) {

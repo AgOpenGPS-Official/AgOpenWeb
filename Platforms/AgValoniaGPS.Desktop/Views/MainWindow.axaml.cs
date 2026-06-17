@@ -539,8 +539,8 @@ public partial class MainWindow : Window
                     || ViewModel.State.RecordedPath.IsDrivingRecordedPath;
                 LightBarPanel.Update(
                     ViewModel.CrossTrackError / 100.0, // cm -> meters
-                    ViewModel.SimulatorSteerAngle,
-                    hasGuidance, false);
+                    ViewModel.SteerBarAngleError,      // actual WAS − commanded (steer bar)
+                    hasGuidance, ViewModel.IsAutoSteerEngaged);
             }
         }
     }

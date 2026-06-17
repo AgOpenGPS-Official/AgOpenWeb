@@ -283,6 +283,8 @@ public static class WireCodec
         // Headland-distance HUD.
         w.Write((float)t.HeadlandProximityDistance);
         w.Write((byte)(t.HeadlandProximityWarning ? 1 : 0));
+        // Steer-bar value (steer-angle error).
+        w.Write((float)t.SteerAngleError);
         return ms.ToArray();
     }
 
