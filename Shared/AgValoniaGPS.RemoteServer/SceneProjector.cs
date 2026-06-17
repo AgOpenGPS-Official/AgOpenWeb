@@ -18,10 +18,12 @@ public sealed class SceneProjector
     private readonly ICoverageMapService _coverage;
     private readonly IJobService _jobs;
     private readonly IConfigurationService _configService;
+    private readonly IAutoSteerService _autoSteer;
 
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
-        ICoverageMapService coverage, IJobService jobs, IConfigurationService configService)
+        ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
+        IAutoSteerService autoSteer)
     {
         _state = state;
         _sections = sections;
@@ -30,6 +32,7 @@ public sealed class SceneProjector
         _coverage = coverage;
         _jobs = jobs;
         _configService = configService;
+        _autoSteer = autoSteer;
     }
 
     public SceneDto BuildScene(long version)
@@ -231,7 +234,15 @@ public sealed class SceneProjector
             _state.Simulator.IsEnabled,
             _state.Simulator.SpeedKph,
             _state.Simulator.SteerAngle,
-            _state.Simulator.Is10x);
+            _state.Simulator.Is10x,
+            // AutoSteer live telemetry: smoothed wheel angle + WAS position + free-drive
+            // state for the AutoSteer panel's steering-sensor / test-mode tabs. In free
+            // drive the commanded ("set") angle is the free-drive angle.
+            _autoSteer.LastSteerData.ActualSteerAngle,
+            _autoSteer.SensorPercent,
+            _autoSteer.IsInFreeDriveMode ? _autoSteer.FreeDriveSteerAngle : 0.0,
+            _autoSteer.FreeDriveSteerAngle,
+            _autoSteer.IsInFreeDriveMode);
     }
 
     // Config read-frame (Phase 9). Projects editable ConfigurationStore values for
@@ -268,7 +279,27 @@ public sealed class SceneProjector
             new TramConfigDto(g.TramPasses, g.TramDisplay, g.TramLine),
             new MachineConfigDto(m.HydraulicLiftEnabled, m.RaiseTime, m.LookAhead, m.LowerTime, m.InvertRelay,
                 m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins),
-            BuildDisplay());
+            BuildDisplay(), BuildAutoSteer());
+    }
+
+    // AutoSteer config tab — projects the full 9-tab ConfigStore.AutoSteer surface.
+    private AutoSteerConfigDto BuildAutoSteer()
+    {
+        var a = _config.AutoSteer;
+        return new AutoSteerConfigDto(
+            a.SteerResponseHold, a.IntegralGain, a.IsStanleyMode,
+            a.StanleyAggressiveness, a.StanleyOvershootReduction,
+            a.WasOffset, a.CountsPerDegree, a.Ackermann, a.MaxSteerAngle,
+            a.DeadzoneHeading, a.DeadzoneDelay, a.SpeedFactor, a.AcquireFactor,
+            a.ProportionalGain, a.MaxPwm, a.MinPwm,
+            a.TurnSensorEnabled, a.PressureSensorEnabled, a.CurrentSensorEnabled,
+            a.TurnSensorCounts, a.PressureTripPoint, a.CurrentTripPoint,
+            a.DanfossEnabled, a.InvertWas, a.InvertMotor, a.InvertRelays,
+            a.MotorDriver, a.AdConverter, a.ImuAxisSwap, a.ExternalEnable,
+            a.UTurnCompensation, a.SideHillCompensation, a.SteerInReverse,
+            a.ManualTurnsEnabled, a.ManualTurnsSpeed, a.MinSteerSpeed, a.MaxSteerSpeed,
+            a.LineWidth, a.NudgeDistance, a.NextGuidanceTime, a.CmPerPixel,
+            a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn);
     }
 
     // Resolution label mirrors MainViewModel.DisplayResolutionLabel.
@@ -358,6 +389,23 @@ public sealed class SceneProjector
             | (dp.KeyboardEnabled ? 32768 : 0) | (dp.StartFullscreen ? 65536 : 0) | (dp.ElevationLogEnabled ? 131072 : 0);
         h = h * 31 + db;
         h = h * 31 + dp.ExtraGuidelinesCount * 7 + dp.DisplayResolutionMultiplier.GetHashCode();
+        // AutoSteer config (so AutoSteer-panel edits re-send the frame).
+        var asc = _config.AutoSteer;
+        int ab = (asc.IsStanleyMode ? 1 : 0) | (asc.TurnSensorEnabled ? 2 : 0) | (asc.PressureSensorEnabled ? 4 : 0)
+            | (asc.CurrentSensorEnabled ? 8 : 0) | (asc.DanfossEnabled ? 16 : 0) | (asc.InvertWas ? 32 : 0)
+            | (asc.InvertMotor ? 64 : 0) | (asc.InvertRelays ? 128 : 0) | (asc.SteerInReverse ? 256 : 0)
+            | (asc.ManualTurnsEnabled ? 512 : 0) | (asc.LightbarEnabled ? 1024 : 0) | (asc.SteerBarEnabled ? 2048 : 0)
+            | (asc.GuidanceBarOn ? 4096 : 0);
+        h = h * 31 + ab;
+        h = h * 31 + asc.WasOffset * 3 + asc.Ackermann * 5 + asc.MaxSteerAngle * 7 + asc.DeadzoneDelay * 11
+              + asc.ProportionalGain * 13 + asc.MaxPwm * 17 + asc.MinPwm * 19 + asc.TurnSensorCounts * 23
+              + asc.PressureTripPoint * 29 + asc.CurrentTripPoint * 31 + asc.MotorDriver * 37 + asc.AdConverter * 41
+              + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61;
+        foreach (var d in new[] { asc.SteerResponseHold, asc.IntegralGain, asc.StanleyAggressiveness,
+                                  asc.StanleyOvershootReduction, asc.CountsPerDegree, asc.DeadzoneHeading,
+                                  asc.SpeedFactor, asc.AcquireFactor, asc.UTurnCompensation, asc.SideHillCompensation,
+                                  asc.ManualTurnsSpeed, asc.MinSteerSpeed, asc.MaxSteerSpeed, asc.NextGuidanceTime })
+            h = h * 31 + d.GetHashCode();
         return h;
     }
 

@@ -375,11 +375,12 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg'];
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
   document.getElementById('ln-screenalerts').classList.remove('active');
   document.getElementById('ln-vehicle').classList.remove('active');
+  document.getElementById('ln-autosteer').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
@@ -397,6 +398,16 @@ document.getElementById('ln-vehicle').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const anyOpen = ['vehtoolhub', 'vehiclecfg', 'toolcfg'].some(id => document.getElementById(id).classList.contains('open'));
   if (anyOpen) lnCloseAll(); else lnOpen('vehtoolhub', 'ln-vehicle', refreshHub);
+});
+document.getElementById('ln-autosteer').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (document.getElementById('autosteercfg').classList.contains('open')) lnCloseAll();
+  else lnOpen('autosteercfg', 'ln-autosteer', () => {
+    // Always open collapsed (left pane only), like the native panel.
+    asPanel.classList.remove('expanded');
+    document.getElementById('as-expand').textContent = '▶ Full';
+    populateAutoSteer(true);
+  });
 });
 for (const b of document.querySelectorAll('.ln-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
@@ -446,6 +457,20 @@ for (const t of vcPanel.querySelectorAll('.cfg-tab'))
 // Vehicle and Tool panels. Tab strips, selects, sliders and dynamic lists wire per
 // panel. cfg-typebtn active state compares the config value to data-active (falling
 // back to data-val) so name-valued buttons (tool type) can match an int field.
+// Slider readout formatter (data-fmt): f0/f1/f2 fixed decimals, p0 = value×100 %,
+// pct = value %, deg = value °. Used by generic .cfg-slider controls.
+function fmtRo(v, fmt) {
+  const n = Number(v);
+  switch (fmt) {
+    case 'f0': return n.toFixed(0);
+    case 'f1': return n.toFixed(1);
+    case 'f2': return n.toFixed(2);
+    case 'p0': return Math.round(n * 100) + '%';
+    case 'pct': return Math.round(n) + '%';
+    case 'deg': return Math.round(n) + '°';
+    default: return String(v);
+  }
+}
 function wireCfgControls(panel) {
   for (const inp of panel.querySelectorAll('.cfg-num'))
     inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
@@ -453,8 +478,20 @@ function wireCfgControls(panel) {
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
   for (const b of panel.querySelectorAll('.cfg-typebtn'))
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
-  for (const b of panel.querySelectorAll('.cfg-act'))
+  // .cfg-act = config.set action buttons; .rn-gated ones carry data-cmd (a gated
+  // command, not a config key) and are wired separately, so exclude them here.
+  for (const b of panel.querySelectorAll('.cfg-act:not(.rn-gated)'))
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
+  for (const sel of panel.querySelectorAll('.cfg-isel'))
+    sel.addEventListener('change', () => cfgSend(sel.dataset.key, sel.value));
+  // Sliders with a data-fmt are generic: drag updates the readout live; the value
+  // commits on release ('change') to avoid flooding the bridge. (Sliders without
+  // data-fmt — e.g. the Vehicle heading-fusion slider — are wired by hand.)
+  for (const s of panel.querySelectorAll('.cfg-slider[data-fmt]')) {
+    const ro = panel.querySelector('.cfg-ro[data-for="' + s.dataset.key + '"]');
+    s.addEventListener('input', () => { if (ro) ro.textContent = fmtRo(s.value, s.dataset.fmt); });
+    s.addEventListener('change', () => cfgSend(s.dataset.key, s.value));
+  }
 }
 function populateCfgControls(panel, force) {
   for (const inp of panel.querySelectorAll('.cfg-num')) {
@@ -469,6 +506,20 @@ function populateCfgControls(panel, force) {
   }
   for (const b of panel.querySelectorAll('.cfg-typebtn'))
     b.classList.toggle('active', String(cfgGet(b.dataset.key)) === (b.dataset.active != null ? b.dataset.active : b.dataset.val));
+  for (const s of panel.querySelectorAll('.cfg-slider[data-fmt]')) {
+    if (!force && document.activeElement === s) continue;
+    const val = cfgGet(s.dataset.key);
+    if (typeof val === 'number') {
+      s.value = val;
+      const ro = panel.querySelector('.cfg-ro[data-for="' + s.dataset.key + '"]');
+      if (ro) ro.textContent = fmtRo(val, s.dataset.fmt);
+    }
+  }
+  for (const sel of panel.querySelectorAll('.cfg-isel')) {
+    if (document.activeElement === sel) continue;
+    const val = cfgGet(sel.dataset.key);
+    if (typeof val === 'number') sel.value = String(val);
+  }
 }
 // Tab strip switcher: tabs + bodies share a data-strip id (so nested strips don't
 // cross-toggle). Active tab → its data-tab body shown, siblings in the strip hidden.
@@ -592,6 +643,85 @@ function populateToolCfg(force) {
   document.getElementById('tc-totalwidth').textContent = 'Total width: ' + (t.totalWidth || 0).toFixed(2) + ' m';
 }
 
+// ---- AutoSteer config panel (Phase 9) — full native 9-tab surface + live Test Mode ----
+// Field edits ride the generic config bridge (config.set|autosteer.*). Hardware-push
+// actions (Send&Save / Zero-WAS / Reset / free-drive) are gated autosteer.* commands —
+// routed through AutoSteerConfigViewModel host-side so PGN/free-drive logic isn't dupd.
+const asPanel = document.getElementById('autosteercfg');
+const asResetConfirm = document.getElementById('as-resetconfirm');
+wireCfgControls(asPanel);
+wireTabStrip(asPanel, 'as-left');   // left pane: 4 tabs
+wireTabStrip(asPanel, 'as-right');  // right pane: 5 tabs
+function hideAsResetConfirm() { asResetConfirm.hidden = true; }
+// Generic gated action buttons (Zero-WAS, Send&Save, OK, free-drive) → send only while
+// we hold control; the host re-checks (IsRestrictedCommand).
+for (const b of asPanel.querySelectorAll('.rn-gated[data-cmd]'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); rnSend(b.dataset.cmd); });
+// OK (green check) = Send&Save then close the panel.
+document.getElementById('as-apply').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+document.getElementById('as-close').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+// Expand / collapse (native IsFullMode): collapsed = left pane only.
+document.getElementById('as-expand').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const exp = asPanel.classList.toggle('expanded');
+  e.currentTarget.textContent = exp ? '◀ Less' : '▶ Full';
+});
+// Reset → inline confirm bar (mirrors native ResetToDefaults confirmation).
+document.getElementById('as-reset').addEventListener('pointerdown', e => { e.stopPropagation(); asResetConfirm.hidden = false; });
+document.getElementById('as-reset-no').addEventListener('pointerdown', e => { e.stopPropagation(); hideAsResetConfirm(); });
+document.getElementById('as-reset-yes').addEventListener('pointerdown', e => { e.stopPropagation(); hideAsResetConfirm(); rnSend('autosteer.reset'); });
+// Algorithm mode switch (Pure Pursuit ↔ Stanley) — native puts this on the Algorithm
+// tab as a single tap-to-toggle button.
+document.getElementById('as-modeswitch').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (config && config.autosteer) cfgSend('autosteer.isStanleyMode', config.autosteer.isStanleyMode ? '0' : '1');
+});
+// Satellite-dialog launchers — defined by their own sub-phases (Smart-WAS / Wizard).
+document.getElementById('as-smartwas').addEventListener('pointerdown', e => { e.stopPropagation(); if (typeof openSmartWas === 'function') openSmartWas(); });
+document.getElementById('as-wizard').addEventListener('pointerdown', e => { e.stopPropagation(); if (typeof openSteerWizard === 'function') openSteerWizard(); });
+
+function asSetText(id, t) { const el = document.getElementById(id); if (el) el.textContent = t; }
+// Dim/disable gated controls when this browser doesn't hold control.
+function updateAsGated() {
+  for (const el of asPanel.querySelectorAll('.rn-gated')) el.classList.toggle('disabled', !iHoldControl);
+}
+function populateAutoSteer(force) {
+  if (!config || !config.autosteer) return;
+  const a = config.autosteer;
+  populateCfgControls(asPanel, force);
+  // Mode title + tab icon track Pure Pursuit / Stanley.
+  asSetText('as-modetitle', a.isStanleyMode ? 'Stanley' : 'Pure Pursuit');
+  const modeIc = document.getElementById('as-modetab-ic');
+  if (modeIc) modeIc.src = a.isStanleyMode ? '/icons/ModeStanley.png' : '/icons/ModePurePursuit.png';
+  const msw = document.getElementById('as-modeswitch');
+  if (msw) { msw.textContent = a.isStanleyMode ? 'Stanley' : 'Pure Pursuit'; msw.classList.toggle('stanley', a.isStanleyMode); }
+  asSetText('as-wasoffset', a.wasOffset);
+  // Conditional sections (data-show) mirror native enable/visibility gating.
+  const show = (name, on) => { for (const el of asPanel.querySelectorAll('[data-show="' + name + '"]')) el.style.display = on ? '' : 'none'; };
+  show('purepursuit', !a.isStanleyMode);
+  show('stanley', a.isStanleyMode);
+  show('turnsensor', a.turnSensorEnabled);
+  show('pressuresensor', a.pressureSensorEnabled);
+  show('currentsensor', a.currentSensorEnabled);
+  updateAsGated();
+}
+// Live steer telemetry — the status bar (Set/Act/Err) + Test-mode angle + free-drive
+// button state. Refreshed every status frame.
+function renderAutoSteerLive() {
+  if (!statusBar) return;
+  const set = statusBar.setSteerAngle || 0, act = statusBar.actualSteerAngle || 0;
+  asSetText('as-stat-set', set.toFixed(1) + '°');
+  asSetText('as-stat-act', act.toFixed(1) + '°');
+  asSetText('as-stat-err', (set - act).toFixed(1) + '°');
+  asSetText('as-live-angle', act.toFixed(1) + '°');
+  const fdBtn = document.getElementById('as-fd-toggle'), fdIc = document.getElementById('as-fd-ic');
+  if (fdBtn) {
+    const on = !!statusBar.steerFreeDrive;
+    fdBtn.classList.toggle('on', on);
+    if (fdIc) fdIc.src = on ? '/icons/SteerDriveOn.png' : '/icons/SteerDriveOff.png';
+  }
+}
+
 function renderSettings() {
   if (statusBar) {
     const metric = !!statusBar.isMetric;
@@ -604,7 +734,10 @@ function renderSettings() {
     if (vcPanel.classList.contains('open')) populateVehicleCfg(false);
     if (tcPanel.classList.contains('open')) populateToolCfg(false);
     if (saPanel.classList.contains('open')) populateScreenAlerts();
+    if (asPanel.classList.contains('open')) populateAutoSteer(false);
   }
+  // AutoSteer live telemetry rides every status frame (not just config changes).
+  if (asPanel.classList.contains('open')) renderAutoSteerLive();
   // Re-read the hub when a fresh profiles frame arrives.
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
 }
@@ -695,6 +828,7 @@ document.getElementById('vth-toolconfig').addEventListener('pointerdown', e => {
 const ctlStatus = document.getElementById('ctl-status');
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (!ctlStatus) return;
   if (iHoldControl) {
     ctlStatus.textContent = '● Controlling'; ctlStatus.style.color = '#39FF6A';

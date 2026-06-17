@@ -135,7 +135,18 @@ public record StatusDto(
     bool SimEnabled,
     double SimSpeedKph,
     double SimSteerAngle,
-    bool Sim10x);
+    bool Sim10x,
+    // AutoSteer live telemetry (Phase 9 AutoSteer panel): the steering-sensor /
+    // test-mode tabs and Zero-WAS need the module's live readout. ActualSteerAngle is
+    // the smoothed wheel angle (deg, from PGN 253); SensorPercent is the WAS position
+    // 0..100; SetSteerAngle is the commanded angle; FreeDriveAngle / SteerFreeDrive
+    // drive the free-drive test display. Rides the ~2 Hz Status (the panel display is
+    // throttled to ~10 Hz native anyway).
+    double ActualSteerAngle,
+    double SensorPercent,
+    double SetSteerAngle,
+    double FreeDriveAngle,
+    bool SteerFreeDrive);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
@@ -144,7 +155,35 @@ public record StatusDto(
 /// Tool + Uturn + Tram + Machine.</summary>
 public record ConfigDto(VehicleConfigDto Vehicle, GpsConfigDto Gps, RollConfigDto Roll,
     ToolConfigDto Tool, UturnConfigDto Uturn, TramConfigDto Tram, MachineConfigDto Machine,
-    DisplayConfigDto Display);
+    DisplayConfigDto Display, AutoSteerConfigDto AutoSteer);
+
+/// <summary>AutoSteer config panel (ConfigStore.AutoSteer) — the full native 9-tab
+/// surface. Grouped by tab: Pure-Pursuit/Stanley, Steering-Sensor, Deadzone/Timing,
+/// Gain/PWM, Turn-Sensors, Hardware-Config, Algorithm, Speed-Limits, Display. Mirrors
+/// AutoSteerConfig 1:1 so config.set|autosteer.&lt;field&gt; round-trips.</summary>
+public record AutoSteerConfigDto(
+    // Tab 1 — Pure Pursuit / Stanley
+    double SteerResponseHold, double IntegralGain, bool IsStanleyMode,
+    double StanleyAggressiveness, double StanleyOvershootReduction,
+    // Tab 2 — Steering Sensor
+    int WasOffset, double CountsPerDegree, int Ackermann, int MaxSteerAngle,
+    // Tab 3 — Deadzone / Timing
+    double DeadzoneHeading, int DeadzoneDelay, double SpeedFactor, double AcquireFactor,
+    // Tab 4 — Gain / PWM
+    int ProportionalGain, int MaxPwm, int MinPwm,
+    // Tab 5 — Turn Sensors
+    bool TurnSensorEnabled, bool PressureSensorEnabled, bool CurrentSensorEnabled,
+    int TurnSensorCounts, int PressureTripPoint, int CurrentTripPoint,
+    // Tab 6 — Hardware Config
+    bool DanfossEnabled, bool InvertWas, bool InvertMotor, bool InvertRelays,
+    int MotorDriver, int AdConverter, int ImuAxisSwap, int ExternalEnable,
+    // Tab 7 — Algorithm
+    double UTurnCompensation, double SideHillCompensation, bool SteerInReverse,
+    // Tab 8 — Speed Limits
+    bool ManualTurnsEnabled, double ManualTurnsSpeed, double MinSteerSpeed, double MaxSteerSpeed,
+    // Tab 9 — Display
+    int LineWidth, int NudgeDistance, double NextGuidanceTime, int CmPerPixel,
+    bool LightbarEnabled, bool SteerBarEnabled, bool GuidanceBarOn);
 
 /// <summary>Screen &amp; Alerts panel (ConfigStore.Display): display toggles, on-screen
 /// buttons, alert sounds, plus the App-Settings device flags (keyboard / start

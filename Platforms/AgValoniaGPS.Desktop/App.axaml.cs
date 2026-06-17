@@ -84,7 +84,8 @@ public partial class App : Application
             Services.GetRequiredService<IToolPositionService>(),
             Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
             Services.GetRequiredService<IJobService>(),
-            Services.GetRequiredService<IConfigurationService>());
+            Services.GetRequiredService<IConfigurationService>(),
+            Services.GetRequiredService<IAutoSteerService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);
@@ -186,6 +187,32 @@ public partial class App : Application
                                         Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
                                         configService, cmd, arg);
                                     return;
+                                // --- AutoSteer config hardware-push actions (Phase 9). All
+                                // route through the AutoSteerConfigViewModel so the PGN /
+                                // MarkChanged / free-drive logic is shared with native, not
+                                // duplicated. All "autosteer." → Tier-2 gated (push to module
+                                // / motor actuation). Plain field edits ride config.set above.
+                                case "autosteer.sendSave": case "autosteer.zeroWas":
+                                case "autosteer.reset":
+                                case "autosteer.freedrive.toggle": case "autosteer.freedrive.left":
+                                case "autosteer.freedrive.right": case "autosteer.freedrive.center":
+                                {
+                                    windowVm.EnsureAutoSteerConfigViewModel();
+                                    var asvm = windowVm.AutoSteerConfigViewModel!;
+                                    System.Windows.Input.ICommand? ac = cmd switch
+                                    {
+                                        "autosteer.sendSave" => asvm.SendAndSaveCommand,
+                                        "autosteer.zeroWas" => asvm.ZeroWasCommand,
+                                        "autosteer.reset" => asvm.ConfirmResetCommand, // web shows its own confirm
+                                        "autosteer.freedrive.toggle" => asvm.ToggleFreeDriveCommand,
+                                        "autosteer.freedrive.left" => asvm.SteerLeftCommand,
+                                        "autosteer.freedrive.right" => asvm.SteerRightCommand,
+                                        "autosteer.freedrive.center" => asvm.SteerCenterCommand,
+                                        _ => null,
+                                    };
+                                    if (ac?.CanExecute(null) == true) ac.Execute(null);
+                                    return;
+                                }
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -338,6 +365,7 @@ public partial class App : Application
         }
         var veh = store.Vehicle; var con = store.Connections; var ahrs = store.Ahrs;
         var tool = store.Tool; var gd = store.Guidance; var mch = store.Machine; var disp = store.Display;
+        var ast = store.AutoSteer;
         switch (key)
         {
             case "units": store.IsMetric = val == "metric"; cfg.SaveAppSettings(); return; // device setting
@@ -455,6 +483,63 @@ public partial class App : Application
             case "display.keyboardEnabled": disp.KeyboardEnabled = B(); cfg.SaveAppSettings(); return;
             case "display.startFullscreen": disp.StartFullscreen = B(); cfg.SaveAppSettings(); return;
             case "display.elevationLogEnabled": disp.ElevationLogEnabled = B(); cfg.SaveAppSettings(); return;
+            // --- AutoSteer config (Phase 9). Live effect on ConfigStore.AutoSteer (the
+            // SoT the VM binds to); MarkChanged re-fingerprints so the Config frame
+            // re-sends and the value persists on a profile.save / Send&Save. Hardware
+            // push is the separate (gated) autosteer.* actions, not these edits. ---
+            // Tab 1 — Pure Pursuit / Stanley
+            case "autosteer.steerResponseHold": if (D(out var a1)) { ast.SteerResponseHold = a1; store.MarkChanged(); } return;
+            case "autosteer.integralGain": if (D(out var a2)) { ast.IntegralGain = a2; store.MarkChanged(); } return;
+            case "autosteer.isStanleyMode": ast.IsStanleyMode = B(); store.MarkChanged(); return;
+            case "autosteer.stanleyAggressiveness": if (D(out var a3)) { ast.StanleyAggressiveness = a3; store.MarkChanged(); } return;
+            case "autosteer.stanleyOvershootReduction": if (D(out var a4)) { ast.StanleyOvershootReduction = a4; store.MarkChanged(); } return;
+            // Tab 2 — Steering Sensor
+            case "autosteer.wasOffset": if (I(out var a5)) { ast.WasOffset = a5; store.MarkChanged(); } return;
+            case "autosteer.countsPerDegree": if (D(out var a6)) { ast.CountsPerDegree = a6; store.MarkChanged(); } return;
+            case "autosteer.ackermann": if (I(out var a7)) { ast.Ackermann = a7; store.MarkChanged(); } return;
+            case "autosteer.maxSteerAngle": if (I(out var a8)) { ast.MaxSteerAngle = a8; store.MarkChanged(); } return;
+            // Tab 3 — Deadzone / Timing
+            case "autosteer.deadzoneHeading": if (D(out var a9)) { ast.DeadzoneHeading = a9; store.MarkChanged(); } return;
+            case "autosteer.deadzoneDelay": if (I(out var a10)) { ast.DeadzoneDelay = a10; store.MarkChanged(); } return;
+            case "autosteer.speedFactor": if (D(out var a11)) { ast.SpeedFactor = a11; store.MarkChanged(); } return;
+            case "autosteer.acquireFactor": if (D(out var a12)) { ast.AcquireFactor = a12; store.MarkChanged(); } return;
+            // Tab 4 — Gain / PWM
+            case "autosteer.proportionalGain": if (I(out var a13)) { ast.ProportionalGain = a13; store.MarkChanged(); } return;
+            case "autosteer.maxPwm": if (I(out var a14)) { ast.MaxPwm = a14; store.MarkChanged(); } return;
+            case "autosteer.minPwm": if (I(out var a15)) { ast.MinPwm = a15; store.MarkChanged(); } return;
+            // Tab 5 — Turn Sensors
+            case "autosteer.turnSensorEnabled": ast.TurnSensorEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.pressureSensorEnabled": ast.PressureSensorEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.currentSensorEnabled": ast.CurrentSensorEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.turnSensorCounts": if (I(out var a16)) { ast.TurnSensorCounts = a16; store.MarkChanged(); } return;
+            case "autosteer.pressureTripPoint": if (I(out var a17)) { ast.PressureTripPoint = a17; store.MarkChanged(); } return;
+            case "autosteer.currentTripPoint": if (I(out var a18)) { ast.CurrentTripPoint = a18; store.MarkChanged(); } return;
+            // Tab 6 — Hardware Config
+            case "autosteer.danfossEnabled": ast.DanfossEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.invertWas": ast.InvertWas = B(); store.MarkChanged(); return;
+            case "autosteer.invertMotor": ast.InvertMotor = B(); store.MarkChanged(); return;
+            case "autosteer.invertRelays": ast.InvertRelays = B(); store.MarkChanged(); return;
+            case "autosteer.motorDriver": if (I(out var a19)) { ast.MotorDriver = a19; store.MarkChanged(); } return;
+            case "autosteer.adConverter": if (I(out var a20)) { ast.AdConverter = a20; store.MarkChanged(); } return;
+            case "autosteer.imuAxisSwap": if (I(out var a21)) { ast.ImuAxisSwap = a21; store.MarkChanged(); } return;
+            case "autosteer.externalEnable": if (I(out var a22)) { ast.ExternalEnable = a22; store.MarkChanged(); } return;
+            // Tab 7 — Algorithm
+            case "autosteer.uTurnCompensation": if (D(out var a23)) { ast.UTurnCompensation = a23; store.MarkChanged(); } return;
+            case "autosteer.sideHillCompensation": if (D(out var a24)) { ast.SideHillCompensation = a24; store.MarkChanged(); } return;
+            case "autosteer.steerInReverse": ast.SteerInReverse = B(); store.MarkChanged(); return;
+            // Tab 8 — Speed Limits
+            case "autosteer.manualTurnsEnabled": ast.ManualTurnsEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.manualTurnsSpeed": if (D(out var a25)) { ast.ManualTurnsSpeed = a25; store.MarkChanged(); } return;
+            case "autosteer.minSteerSpeed": if (D(out var a26)) { ast.MinSteerSpeed = a26; store.MarkChanged(); } return;
+            case "autosteer.maxSteerSpeed": if (D(out var a27)) { ast.MaxSteerSpeed = a27; store.MarkChanged(); } return;
+            // Tab 9 — Display
+            case "autosteer.lineWidth": if (I(out var a28)) { ast.LineWidth = a28; store.MarkChanged(); } return;
+            case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; store.MarkChanged(); } return;
+            case "autosteer.nextGuidanceTime": if (D(out var a30)) { ast.NextGuidanceTime = a30; store.MarkChanged(); } return;
+            case "autosteer.cmPerPixel": if (I(out var a31)) { ast.CmPerPixel = a31; store.MarkChanged(); } return;
+            case "autosteer.lightbarEnabled": ast.LightbarEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.steerBarEnabled": ast.SteerBarEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.guidanceBarOn": ast.GuidanceBarOn = B(); store.MarkChanged(); return;
             // unknown key → ignored
         }
     }

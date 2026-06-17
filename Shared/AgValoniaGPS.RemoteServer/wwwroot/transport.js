@@ -101,12 +101,15 @@ window.RemoteTransport = {
           const jobName = str(), workedAreaSqM = f64();
           const lat = f64(), lon = f64(), altitude = f32(), hdop = f32();
           const simEnabled = !!u8(), simSpeedKph = f32(), simSteerAngle = f32(), sim10x = !!u8();
+          const actualSteerAngle = f32(), sensorPercent = f32(), setSteerAngle = f32(),
+                freeDriveAngle = f32(), steerFreeDrive = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
             gpsConf, imuConf, autoSteerConf, machineConf, jobName, workedAreaSqM,
             lat, lon, altitude, hdop,
             simEnabled, simSpeedKph, simSteerAngle, sim10x,
+            actualSteerAngle, sensorPercent, setSteerAngle, freeDriveAngle, steerFreeDrive,
           });
           break;
         }
@@ -153,7 +156,23 @@ window.RemoteTransport = {
             autoSteerSound: !!u8(), uTurnSound: !!u8(), hydraulicSound: !!u8(), sectionsSound: !!u8(),
             keyboardEnabled: !!u8(), startFullscreen: !!u8(), elevationLogEnabled: !!u8(),
           };
-          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine, display });
+          // AutoSteer config — full 9-tab surface (positional, matches WireCodec).
+          const autosteer = {
+            steerResponseHold: f64(), integralGain: f64(), isStanleyMode: !!u8(),
+            stanleyAggressiveness: f64(), stanleyOvershootReduction: f64(),
+            wasOffset: i32(), countsPerDegree: f64(), ackermann: i32(), maxSteerAngle: i32(),
+            deadzoneHeading: f64(), deadzoneDelay: i32(), speedFactor: f64(), acquireFactor: f64(),
+            proportionalGain: i32(), maxPwm: i32(), minPwm: i32(),
+            turnSensorEnabled: !!u8(), pressureSensorEnabled: !!u8(), currentSensorEnabled: !!u8(),
+            turnSensorCounts: i32(), pressureTripPoint: i32(), currentTripPoint: i32(),
+            danfossEnabled: !!u8(), invertWas: !!u8(), invertMotor: !!u8(), invertRelays: !!u8(),
+            motorDriver: i32(), adConverter: i32(), imuAxisSwap: i32(), externalEnable: i32(),
+            uTurnCompensation: f64(), sideHillCompensation: f64(), steerInReverse: !!u8(),
+            manualTurnsEnabled: !!u8(), manualTurnsSpeed: f64(), minSteerSpeed: f64(), maxSteerSpeed: f64(),
+            lineWidth: i32(), nudgeDistance: i32(), nextGuidanceTime: f64(), cmPerPixel: i32(),
+            lightbarEnabled: !!u8(), steerBarEnabled: !!u8(), guidanceBarOn: !!u8(),
+          };
+          handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine, display, autosteer });
           break;
         }
         case TYPE.PROFILES: {

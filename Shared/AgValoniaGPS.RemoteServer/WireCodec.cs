@@ -134,6 +134,31 @@ public static class WireCodec
         DB(d.UTurnButtonVisible); DB(d.LateralButtonVisible);
         DB(d.AutoSteerSound); DB(d.UTurnSound); DB(d.HydraulicSound); DB(d.SectionsSound);
         DB(d.KeyboardEnabled); DB(d.StartFullscreen); DB(d.ElevationLogEnabled);
+        // AutoSteer config tab (full 9-tab surface). Append-only; field order mirrors
+        // AutoSteerConfigDto exactly so transport.js decodes it positionally.
+        var a = c.AutoSteer;
+        // Tab 1 — Pure Pursuit / Stanley
+        w.Write(a.SteerResponseHold); w.Write(a.IntegralGain); DB(a.IsStanleyMode);
+        w.Write(a.StanleyAggressiveness); w.Write(a.StanleyOvershootReduction);
+        // Tab 2 — Steering Sensor
+        w.Write(a.WasOffset); w.Write(a.CountsPerDegree); w.Write(a.Ackermann); w.Write(a.MaxSteerAngle);
+        // Tab 3 — Deadzone / Timing
+        w.Write(a.DeadzoneHeading); w.Write(a.DeadzoneDelay); w.Write(a.SpeedFactor); w.Write(a.AcquireFactor);
+        // Tab 4 — Gain / PWM
+        w.Write(a.ProportionalGain); w.Write(a.MaxPwm); w.Write(a.MinPwm);
+        // Tab 5 — Turn Sensors
+        DB(a.TurnSensorEnabled); DB(a.PressureSensorEnabled); DB(a.CurrentSensorEnabled);
+        w.Write(a.TurnSensorCounts); w.Write(a.PressureTripPoint); w.Write(a.CurrentTripPoint);
+        // Tab 6 — Hardware Config
+        DB(a.DanfossEnabled); DB(a.InvertWas); DB(a.InvertMotor); DB(a.InvertRelays);
+        w.Write(a.MotorDriver); w.Write(a.AdConverter); w.Write(a.ImuAxisSwap); w.Write(a.ExternalEnable);
+        // Tab 7 — Algorithm
+        w.Write(a.UTurnCompensation); w.Write(a.SideHillCompensation); DB(a.SteerInReverse);
+        // Tab 8 — Speed Limits
+        DB(a.ManualTurnsEnabled); w.Write(a.ManualTurnsSpeed); w.Write(a.MinSteerSpeed); w.Write(a.MaxSteerSpeed);
+        // Tab 9 — Display
+        w.Write(a.LineWidth); w.Write(a.NudgeDistance); w.Write(a.NextGuidanceTime); w.Write(a.CmPerPixel);
+        DB(a.LightbarEnabled); DB(a.SteerBarEnabled); DB(a.GuidanceBarOn);
         return ms.ToArray();
     }
 
@@ -258,6 +283,12 @@ public static class WireCodec
         w.Write((float)s.SimSpeedKph);
         w.Write((float)s.SimSteerAngle);
         w.Write((byte)(s.Sim10x ? 1 : 0));
+        // AutoSteer live telemetry (Phase 9 AutoSteer panel).
+        w.Write((float)s.ActualSteerAngle);
+        w.Write((float)s.SensorPercent);
+        w.Write((float)s.SetSteerAngle);
+        w.Write((float)s.FreeDriveAngle);
+        w.Write((byte)(s.SteerFreeDrive ? 1 : 0));
         return ms.ToArray();
     }
 

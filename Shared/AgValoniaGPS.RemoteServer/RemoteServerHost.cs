@@ -55,7 +55,7 @@ public sealed class RemoteServerHost
     public async Task StartAsync(ApplicationState state, ICoverageMapService coverage,
         ISectionControlService sections, IToolPositionService tool,
         AgValoniaGPS.Models.Configuration.ConfigurationStore config,
-        IJobService jobs, IConfigurationService configService, int port = 5174)
+        IJobService jobs, IConfigurationService configService, IAutoSteerService autoSteer, int port = 5174)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -68,6 +68,7 @@ public sealed class RemoteServerHost
         builder.Services.AddSingleton(config);
         builder.Services.AddSingleton(jobs);
         builder.Services.AddSingleton(configService);
+        builder.Services.AddSingleton(autoSteer);
         builder.Services.AddSingleton<ControlAuthority>();
         builder.Services.AddSingleton<SceneProjector>();
         builder.Services.AddSingleton<CoverageProjector>();

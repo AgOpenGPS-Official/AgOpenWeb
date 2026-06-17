@@ -207,7 +207,7 @@
     .cfg-num { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
       color: #e7eef9; font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right; }
     .cfg-num:focus { outline: none; border-color: #4A90D9; }
-    .cfg-sel { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
+    .cfg-sel, .cfg-isel { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: #0f1115;
       color: #e7eef9; font: 600 12px system-ui, sans-serif; padding: 0 6px; box-sizing: border-box; }
     .cfg-tgl { height: 34px; border-radius: 6px; border: 1px solid #2a3550; background: rgba(255,255,255,0.06);
       color: #9fb3cc; cursor: pointer; font: 700 12px system-ui, sans-serif; }
@@ -217,6 +217,86 @@
     .cfg-act:hover { background: rgba(255,255,255,0.18); }
     .cfg-actwide { width: 100%; flex: none; }
     .cfg-slider { width: 100%; accent-color: #4A90D9; }
+    /* ===== AutoSteer panel — mirrors native AutoSteerConfigPanel: a title bar, a
+       left pane (4 horizontal icon tabs + value cards + Test Mode), a right pane
+       (5 icon tabs of cards) revealed in expanded mode, and a Set/Act/Err status
+       bar with the expand/collapse toggle. Collapsed = left pane only. ===== */
+    .as-shell { width: 452px; padding: 0; overflow: hidden; }
+    .as-shell.expanded { width: 852px; }
+    .as-titlebar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
+    .as-titlebar .as-title2 { color: #e7eef9; font: 700 16px system-ui, sans-serif; }
+    .as-x { background: none; border: 0; color: #9fb3cc; font-size: 18px; cursor: pointer; padding: 2px 8px; }
+    .as-body { display: flex; align-items: stretch; }
+    .as-left { width: 452px; box-sizing: border-box; padding: 6px 16px 14px; flex: none; }
+    .as-right { width: 400px; box-sizing: border-box; padding: 6px 16px 14px; border-left: 1px solid #2a3550; flex: none; }
+    .as-shell:not(.expanded) .as-right, .as-shell:not(.expanded) .as-testmode { display: none; }
+    .as-tabrow { display: flex; gap: 6px; margin-bottom: 12px; }
+    .as-tabrow .cfg-tab { width: 58px; height: 52px; margin: 0; padding: 0; border: 1px solid #2a3550;
+      border-radius: 8px; background: rgba(255,255,255,0.04); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .as-tabrow .cfg-tab img { width: 38px; height: 38px; object-fit: contain; }
+    .as-tabrow .cfg-tab.active { border-color: #4A90D9; background: #1a4a78; }
+    .as-content .cfg-body { display: block; }
+    .as-content .cfg-body[hidden] { display: none; }
+    .as-modetitle { color: #39FF6A; font: 700 18px system-ui, sans-serif; text-align: center; margin: 2px 0 14px; }
+    .as-modes { display: flex; gap: 8px; margin-bottom: 14px; }
+    .as-modes .cfg-typebtn { flex: 1; padding: 7px; border: 1px solid #2a3550; border-radius: 6px;
+      background: rgba(255,255,255,0.04); color: #cfe3ff; cursor: pointer; font: 600 12px system-ui, sans-serif; }
+    .as-modes .cfg-typebtn.active { background: #1a4a78; border-color: #4A90D9; color: #fff; }
+    .as-modesw { min-width: 120px; padding: 8px 12px; border: 1px solid #4A90D9; border-radius: 6px;
+      background: #14304d; color: #4A90D9; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+    .as-modesw.stanley { border-color: #39FF6A; color: #39FF6A; }
+    /* Steer-response style header: Fast (green) — label (bold) — Slow (red). */
+    .as-lblrow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 8px; }
+    .as-lblrow .lblfast { color: #39FF6A; font: 600 13px system-ui, sans-serif; }
+    .as-lblrow .lblmid { color: #e7eef9; font: 700 15px system-ui, sans-serif; text-align: center; }
+    .as-lblrow .lblslow { color: #ff5b5b; font: 600 13px system-ui, sans-serif; text-align: right; }
+    .as-caphdr { color: #e7eef9; font: 700 15px system-ui, sans-serif; text-align: center; margin-bottom: 8px; }
+    /* Value box (dark, bold) + slider, native ParamCard row. */
+    .as-valrow { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+    .as-valbox { background: #11151c; border: 1px solid #2a3550; border-radius: 8px; min-width: 80px;
+      padding: 9px 14px; color: #e7eef9; font: 700 19px ui-monospace, monospace; text-align: center; }
+    .as-valrow .cfg-slider { flex: 1; }
+    .as-valrow img.as-dia { width: 44px; height: 34px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; }
+    .as-caption { color: #8294ab; font: 500 12px system-ui, sans-serif; text-align: center; margin: -6px 0 14px; }
+    .as-hint { color: #8294ab; font-size: 11px; font-weight: 400; }
+    /* Right-pane cards (Turn / Pressure / Current, etc.). */
+    .as-card { border: 1px solid #2a3550; border-radius: 8px; background: rgba(255,255,255,0.03); padding: 10px 12px; margin-bottom: 10px; }
+    .as-card .as-cardtitle { color: #39FF6A; font: 700 14px system-ui, sans-serif; margin-bottom: 8px; }
+    .as-togcard { display: flex; align-items: center; gap: 10px; }
+    .as-togcard img { width: 44px; height: 34px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; }
+    .as-togcard label { flex: 1; color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .as-note { color: #f0a868; font: 500 11px system-ui, sans-serif; margin-top: 6px; }
+    /* Test Mode (left pane, expanded only): Free Drive + Left/0/Right + actual angle. */
+    .as-testmode { margin-top: 12px; padding-top: 10px; border-top: 1px solid #2a3550; }
+    .as-tmtitle { color: #F39C12; font: 700 14px system-ui, sans-serif; text-align: center; margin-bottom: 8px; }
+    .as-fd-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid #2a3550;
+      border-radius: 8px; background: rgba(255,255,255,0.05); color: #e7eef9; font: 600 14px system-ui, sans-serif; cursor: pointer; }
+    .as-fd-btn img { width: 30px; height: 30px; object-fit: contain; }
+    .as-fd-btn.on { background: #1f8f3f; border-color: #39FF6A; }
+    .as-fd-row { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
+    .as-fd-row .cfg-act { flex: none; padding: 8px 18px; }
+    .as-angbox { margin-top: 8px; text-align: center; padding: 8px; border: 1px solid #2a3550; border-radius: 8px; background: rgba(255,255,255,0.03); }
+    .as-angbox .big { color: #e7eef9; font: 700 18px ui-monospace, monospace; }
+    .as-angbox .lbl { color: #8294ab; font: 500 10px system-ui, sans-serif; }
+    /* Right-pane action buttons (icon-on-top, native colours). */
+    .as-actions { display: flex; gap: 10px; margin-top: 12px; justify-content: space-between; }
+    .as-actbtn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px;
+      border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 11px system-ui, sans-serif; }
+    .as-actbtn img { width: 28px; height: 28px; object-fit: contain; }
+    .as-actbtn.blue { background: #2f6fb0; } .as-actbtn.red { background: #b54430; }
+    .as-actbtn.green { background: #2e9e4f; }
+    /* Status bar (always visible): Set / Act / Err live + expand/collapse toggle. */
+    .as-statusbar { display: flex; align-items: center; gap: 20px; padding: 9px 16px; border-top: 1px solid #2a3550; background: rgba(0,0,0,0.28); }
+    .as-stat { color: #8294ab; font: 600 12px system-ui, sans-serif; }
+    .as-stat b { color: #e7eef9; font: 700 16px ui-monospace, monospace; margin-left: 5px; }
+    .as-stat.err b { color: #ff5b5b; }
+    .as-toggle { margin-left: auto; background: #2f6fb0; border: 0; border-radius: 6px; color: #fff;
+      font: 700 13px system-ui, sans-serif; padding: 7px 12px; cursor: pointer; }
+    .as-confirm { display: flex; align-items: center; gap: 10px; margin: 0 16px 12px; padding: 10px;
+      border: 1px solid #c24; border-radius: 8px; background: rgba(180,40,40,0.12); color: #ffd9d9; font: 600 13px system-ui, sans-serif; }
+    .as-confirm .cfg-act { flex: none; padding: 8px 16px; }
+    /* Gated (Tier-2) controls dim until the client holds control. */
+    .rn-gated.disabled { opacity: 0.4; pointer-events: none; }
     /* Vehicle config diagrams (type cards + per-field measurement diagrams). */
     .vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
@@ -408,6 +488,7 @@
   <div id="leftnav">
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
     <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
+    <button id="ln-autosteer" class="ln-btn" title="AutoSteer Configuration"><img class="ln-ic" src="/icons/AutoSteerConf.png" alt="AutoSteer Configuration"></button>
   </div>
   <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
        bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
@@ -771,6 +852,191 @@
       <div class="vc-diagrow"><img src="/icons/ConT_TramSpacing.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Tram line</label><input class="cfg-num" data-key="tram.line" type="number" step="1"></div></div>
     </div>
     <button id="tc-save" class="ln-savebtn">Save Profile</button>
+  </div>
+  <!-- AutoSteer Configuration (Phase 9) — mirrors native AutoSteerConfigPanel: title
+       bar, left pane (4 icon tabs + value cards + Test Mode), right pane (5 icon tabs)
+       revealed when expanded, and a Set/Act/Err status bar with the expand toggle.
+       Field edits ride config.set|autosteer.*; hardware-push actions (Send&Save /
+       Zero-WAS / Reset / free-drive) are gated autosteer.* commands. -->
+  <div id="autosteercfg" class="ln-panel as-shell">
+    <div class="as-titlebar">
+      <span class="as-title2">Auto Steer Configuration</span>
+      <button class="as-x" id="as-close">✕</button>
+    </div>
+    <div class="as-body">
+      <!-- ===== LEFT PANE (always visible): 4 tabs + Test Mode ===== -->
+      <div class="as-left as-content">
+        <div class="as-tabrow">
+          <button class="cfg-tab active" data-strip="as-left" data-tab="as-pp" title="Pure Pursuit / Stanley"><img id="as-modetab-ic" src="/icons/ModePurePursuit.png" alt="Steer"></button>
+          <button class="cfg-tab" data-strip="as-left" data-tab="as-sensor" title="Steering Sensor"><img src="/icons/ST_SteerTab.png" alt="Sensor"></button>
+          <button class="cfg-tab" data-strip="as-left" data-tab="as-timing" title="Deadzone / Timing"><img src="/icons/ST_NerdAdv.png" alt="Timing"></button>
+          <button class="cfg-tab" data-strip="as-left" data-tab="as-gain" title="Gain / PWM"><img src="/icons/ST_GainTab.png" alt="Gain"></button>
+        </div>
+
+        <!-- Tab 1: Pure Pursuit / Stanley -->
+        <div id="as-pp" class="cfg-body" data-strip="as-left">
+          <div class="as-modetitle" id="as-modetitle">Pure Pursuit</div>
+          <div data-show="purepursuit">
+            <div class="as-lblrow"><span class="lblfast">Fast</span><span class="lblmid">Steer Response</span><span class="lblslow">Slow</span></div>
+            <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.steerResponseHold" data-fmt="f1">—</span><input class="cfg-slider" data-key="autosteer.steerResponseHold" data-fmt="f1" type="range" min="1" max="10" step="0.1"></div>
+          </div>
+          <div data-show="stanley">
+            <div class="as-caphdr">Aggressiveness</div>
+            <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.stanleyAggressiveness" data-fmt="f1">—</span><input class="cfg-slider" data-key="autosteer.stanleyAggressiveness" data-fmt="f1" type="range" min="0" max="10" step="0.1"></div>
+            <div class="as-caphdr">Overshoot Reduction</div>
+            <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.stanleyOvershootReduction" data-fmt="f1">—</span><input class="cfg-slider" data-key="autosteer.stanleyOvershootReduction" data-fmt="f1" type="range" min="0" max="10" step="0.1"></div>
+          </div>
+          <div class="as-caphdr">Integral</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.integralGain" data-fmt="p0">—</span><input class="cfg-slider" data-key="autosteer.integralGain" data-fmt="p0" type="range" min="0" max="1" step="0.01"></div>
+          <div class="as-caption">Slowly increases steer angle to reduce cross track error</div>
+        </div>
+
+        <!-- Tab 2: Steering Sensor -->
+        <div id="as-sensor" class="cfg-body" data-strip="as-left" hidden>
+          <div class="as-caphdr">WAS Offset</div>
+          <div class="as-valrow"><span class="as-valbox" id="as-wasoffset">—</span><button class="cfg-act cfg-actwide rn-gated" data-cmd="autosteer.zeroWas">Zero WAS</button></div>
+          <div class="as-caphdr">Counts Per Degree</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.countsPerDegree" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.countsPerDegree" data-fmt="f0" type="range" min="1" max="255" step="1"></div>
+          <div class="as-caphdr">Ackermann</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.ackermann" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.ackermann" data-fmt="f0" type="range" min="0" max="200" step="1"></div>
+          <div class="as-caphdr">Max Steer Angle</div>
+          <div class="as-valrow"><img class="as-dia" src="/icons/ConV_MaxAutoSteer.png" alt=""><span class="as-valbox cfg-ro" data-for="autosteer.maxSteerAngle" data-fmt="deg">—</span><input class="cfg-slider" data-key="autosteer.maxSteerAngle" data-fmt="deg" type="range" min="10" max="90" step="1"></div>
+        </div>
+
+        <!-- Tab 3: Deadzone / Timing -->
+        <div id="as-timing" class="cfg-body" data-strip="as-left" hidden>
+          <div class="as-caphdr">Deadzone Heading (°)</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.deadzoneHeading" data-fmt="f1">—</span><input class="cfg-slider" data-key="autosteer.deadzoneHeading" data-fmt="f1" type="range" min="0" max="5" step="0.1"></div>
+          <div class="as-caphdr">On Delay (counts)</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.deadzoneDelay" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.deadzoneDelay" data-fmt="f0" type="range" min="0" max="50" step="1"></div>
+          <div class="as-caphdr">Look-ahead Speed Factor</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.speedFactor" data-fmt="f1">—</span><input class="cfg-slider" data-key="autosteer.speedFactor" data-fmt="f1" type="range" min="0.5" max="3" step="0.1"></div>
+          <div class="as-caphdr">Acquire Factor</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.acquireFactor" data-fmt="f2">—</span><input class="cfg-slider" data-key="autosteer.acquireFactor" data-fmt="f2" type="range" min="0.5" max="1" step="0.01"></div>
+        </div>
+
+        <!-- Tab 4: Gain / PWM -->
+        <div id="as-gain" class="cfg-body" data-strip="as-left" hidden>
+          <div class="as-caphdr">Proportional Gain</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.proportionalGain" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.proportionalGain" data-fmt="f0" type="range" min="1" max="100" step="1"></div>
+          <div class="as-caphdr">Max Limit (high PWM)</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.maxPwm" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.maxPwm" data-fmt="f0" type="range" min="50" max="255" step="1"></div>
+          <div class="as-caphdr">Minimum To Move (low PWM)</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.minPwm" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.minPwm" data-fmt="f0" type="range" min="1" max="50" step="1"></div>
+        </div>
+
+        <!-- Test Mode (expanded only) -->
+        <div class="as-testmode">
+          <div class="as-tmtitle">Test Mode</div>
+          <button id="as-fd-toggle" class="as-fd-btn rn-gated" data-cmd="autosteer.freedrive.toggle"><img id="as-fd-ic" src="/icons/SteerDriveOff.png" alt="">Free Drive</button>
+          <div class="as-fd-row">
+            <button class="cfg-act rn-gated" data-cmd="autosteer.freedrive.left">◀ LEFT</button>
+            <button class="cfg-act rn-gated" data-cmd="autosteer.freedrive.center">0</button>
+            <button class="cfg-act rn-gated" data-cmd="autosteer.freedrive.right">RIGHT ▶</button>
+          </div>
+          <div class="as-angbox"><div class="big" id="as-live-angle">—</div><div class="lbl">Actual Steer Angle</div></div>
+        </div>
+      </div>
+
+      <!-- ===== RIGHT PANE (expanded only): 5 tabs ===== -->
+      <div class="as-right as-content">
+        <div class="as-tabrow">
+          <button class="cfg-tab active" data-strip="as-right" data-tab="as-turn" title="Turn Sensors"><img src="/icons/Sensors.png" alt="Turn"></button>
+          <button class="cfg-tab" data-strip="as-right" data-tab="as-hw" title="Hardware Config"><img src="/icons/ConS_Pins.png" alt="Hardware"></button>
+          <button class="cfg-tab" data-strip="as-right" data-tab="as-algo" title="Algorithm"><img src="/icons/ConS_ModulesSteer.png" alt="Algorithm"></button>
+          <button class="cfg-tab" data-strip="as-right" data-tab="as-speed" title="Speed Limits"><img src="/icons/ConS_Alarm.png" alt="Speed"></button>
+          <button class="cfg-tab" data-strip="as-right" data-tab="as-disp" title="Display"><img src="/icons/ConS_ImplementConfig.png" alt="Display"></button>
+        </div>
+
+        <!-- Tab 5: Turn Sensors -->
+        <div id="as-turn" class="cfg-body" data-strip="as-right">
+          <div class="as-card">
+            <div class="as-cardtitle">Turn Sensor</div>
+            <div class="as-togcard"><img src="/icons/ConSt_TurnSensor.png" alt=""><label>Encoder</label><button class="cfg-tgl" data-key="autosteer.turnSensorEnabled">Off</button></div>
+            <div data-show="turnsensor" class="as-valrow" style="margin-top:8px;margin-bottom:0"><span class="as-valbox cfg-ro" data-for="autosteer.turnSensorCounts" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.turnSensorCounts" data-fmt="f0" type="range" min="0" max="255" step="1"></div>
+          </div>
+          <div class="as-card">
+            <div class="as-cardtitle">Pressure Turn</div>
+            <div class="as-togcard"><img src="/icons/ConSt_TurnSensorPressure.png" alt=""><label>Enable</label><button class="cfg-tgl" data-key="autosteer.pressureSensorEnabled">Off</button></div>
+            <div data-show="pressuresensor" class="as-valrow" style="margin-top:8px;margin-bottom:0"><span class="as-valbox cfg-ro" data-for="autosteer.pressureTripPoint" data-fmt="pct">—</span><input class="cfg-slider" data-key="autosteer.pressureTripPoint" data-fmt="pct" type="range" min="0" max="99" step="1"></div>
+          </div>
+          <div class="as-card">
+            <div class="as-cardtitle">Current Turn</div>
+            <div class="as-togcard"><img src="/icons/ConSt_TurnSensorCurrent.png" alt=""><label>Enable</label><button class="cfg-tgl" data-key="autosteer.currentSensorEnabled">Off</button></div>
+            <div data-show="currentsensor" class="as-valrow" style="margin-top:8px;margin-bottom:0"><span class="as-valbox cfg-ro" data-for="autosteer.currentTripPoint" data-fmt="pct">—</span><input class="cfg-slider" data-key="autosteer.currentTripPoint" data-fmt="pct" type="range" min="0" max="99" step="1"></div>
+          </div>
+        </div>
+
+        <!-- Tab 6: Hardware Config -->
+        <div id="as-hw" class="cfg-body" data-strip="as-right" hidden>
+          <div class="as-card as-togcard"><img src="/icons/ConST_Danfoss.png" alt=""><label>Danfoss valve</label><button class="cfg-tgl" data-key="autosteer.danfossEnabled">Off</button></div>
+          <div class="as-card as-togcard"><img src="/icons/ConSt_InvertWAS.png" alt=""><label>Invert WAS</label><button class="cfg-tgl" data-key="autosteer.invertWas">Off</button></div>
+          <div class="as-card as-togcard"><img src="/icons/ConSt_InvertDirection.png" alt=""><label>Invert motor</label><button class="cfg-tgl" data-key="autosteer.invertMotor">Off</button></div>
+          <div class="as-card as-togcard"><img src="/icons/ConSt_InvertRelay.png" alt=""><label>Invert relays</label><button class="cfg-tgl" data-key="autosteer.invertRelays">Off</button></div>
+          <div class="as-card"><div class="cfg-grid">
+            <label>Motor driver</label><select class="cfg-isel" data-key="autosteer.motorDriver"><option value="0">IBT2</option><option value="1">Cytron</option></select>
+            <label>A/D converter</label><select class="cfg-isel" data-key="autosteer.adConverter"><option value="0">Differential</option><option value="1">Single</option></select>
+            <label>IMU axis</label><select class="cfg-isel" data-key="autosteer.imuAxisSwap"><option value="0">X</option><option value="1">Y</option></select>
+            <label>External enable</label><select class="cfg-isel" data-key="autosteer.externalEnable"><option value="0">None</option><option value="1">Switch</option><option value="2">Button</option></select>
+          </div></div>
+        </div>
+
+        <!-- Tab 7: Algorithm -->
+        <div id="as-algo" class="cfg-body" data-strip="as-right" hidden>
+          <div class="as-card as-togcard"><label>Algorithm</label><button id="as-modeswitch" class="as-modesw">Pure Pursuit</button></div>
+          <div class="as-caphdr">U-Turn Compensation <span class="as-hint">(− out / + in)</span></div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.uTurnCompensation" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.uTurnCompensation" data-fmt="f0" type="range" min="-100" max="100" step="1"></div>
+          <div class="as-caphdr">Side-hill Compensation</div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.sideHillCompensation" data-fmt="f2">—</span><input class="cfg-slider" data-key="autosteer.sideHillCompensation" data-fmt="f2" type="range" min="0" max="1" step="0.01"></div>
+          <div class="as-card as-togcard"><img src="/icons/ConSt_InvertDirection.png" alt=""><label>Steer in reverse</label><button class="cfg-tgl" data-key="autosteer.steerInReverse">Off</button></div>
+        </div>
+
+        <!-- Tab 8: Speed Limits -->
+        <div id="as-speed" class="cfg-body" data-strip="as-right" hidden>
+          <div class="as-card as-togcard"><img src="/icons/con_VehicleFunctionSpeedLimit.png" alt=""><label>Manual turns</label><button class="cfg-tgl" data-key="autosteer.manualTurnsEnabled">Off</button></div>
+          <div class="as-card"><div class="cfg-grid">
+            <label>Manual turns speed (km/h)</label><input class="cfg-num" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1">
+            <label>Min steer speed (km/h)</label><input class="cfg-num" data-key="autosteer.minSteerSpeed" type="number" step="0.1">
+            <label>Max steer speed (km/h)</label><input class="cfg-num" data-key="autosteer.maxSteerSpeed" type="number" step="0.1">
+          </div></div>
+        </div>
+
+        <!-- Tab 9: Display -->
+        <div id="as-disp" class="cfg-body" data-strip="as-right" hidden>
+          <div class="as-caphdr">Line Width (px)</div>
+          <div class="as-valrow"><img class="as-dia" src="/icons/ConV_LineWith.png" alt=""><span class="as-valbox cfg-ro" data-for="autosteer.lineWidth" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.lineWidth" data-fmt="f0" type="range" min="1" max="8" step="1"></div>
+          <div class="as-card"><div class="cfg-grid">
+            <label>Nudge distance (cm)</label><input class="cfg-num" data-key="autosteer.nudgeDistance" type="number" step="1">
+            <label>Next guidance (s)</label><input class="cfg-num" data-key="autosteer.nextGuidanceTime" type="number" step="0.1">
+            <label>cm per pixel</label><input class="cfg-num" data-key="autosteer.cmPerPixel" type="number" step="1">
+          </div></div>
+          <div class="as-card as-togcard"><img src="/icons/ConD_LightBar.png" alt=""><label>Light bar</label><button class="cfg-tgl" data-key="autosteer.lightbarEnabled">Off</button></div>
+          <div class="as-card as-togcard"><img src="/icons/ConD_SteerBarBar.png" alt=""><label>Steer bar</label><button class="cfg-tgl" data-key="autosteer.steerBarEnabled">Off</button></div>
+        </div>
+
+        <!-- Right-pane action buttons -->
+        <div class="as-actions">
+          <button id="as-smartwas" class="as-actbtn blue"><img src="/icons/Chart.png" alt="">Smart WAS</button>
+          <button id="as-reset" class="as-actbtn red"><img src="/icons/Reset_Default.png" alt="">Defaults</button>
+          <button id="as-sendsave" class="as-actbtn blue rn-gated" data-cmd="autosteer.sendSave"><img src="/icons/OK64.png" alt="">Send+Save</button>
+          <button id="as-apply" class="as-actbtn green rn-gated" data-cmd="autosteer.sendSave"><img src="/icons/ToolAcceptChange.png" alt="">OK</button>
+        </div>
+        <div id="as-resetconfirm" class="as-confirm" hidden style="margin:10px 0 0">
+          <span>Reset all to defaults?</span>
+          <button id="as-reset-yes" class="cfg-act rn-gated">Reset</button>
+          <button id="as-reset-no" class="cfg-act">Cancel</button>
+        </div>
+        <button id="as-wizard" class="ln-savebtn as-actsec" style="margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px"><img src="/icons/ST_NerdAdv.png" alt="" style="width:22px;height:22px">Steer Wizard</button>
+      </div>
+    </div>
+
+    <!-- Status bar (always visible): Set / Act / Err live + expand/collapse toggle. -->
+    <div class="as-statusbar">
+      <span class="as-stat">Set:<b id="as-stat-set">—</b></span>
+      <span class="as-stat">Act:<b id="as-stat-act">—</b></span>
+      <span class="as-stat err">Err:<b id="as-stat-err">—</b></span>
+      <button id="as-expand" class="as-toggle">▶ Full</button>
+    </div>
   </div>
   <div id="rightnav">
     <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>

@@ -68,13 +68,8 @@ public partial class MainViewModel
         // AutoSteer Configuration Panel
         ShowAutoSteerConfigCommand = new RelayCommand(() =>
         {
-            AutoSteerConfigViewModel ??= new AutoSteerConfigViewModel(
-                _configurationService,
-                _udpService,
-                _autoSteerService,
-                ShowSteerWizard,
-                () => ShowSmartWasCommand?.Execute(null));
-            AutoSteerConfigViewModel.IsPanelVisible = true;
+            EnsureAutoSteerConfigViewModel();
+            AutoSteerConfigViewModel!.IsPanelVisible = true;
         });
 
         // Smart WAS calibration dialog
@@ -109,5 +104,21 @@ public partial class MainViewModel
         // Apply/Cancel inside the config dialog dismiss the whole config chain back
         // to the map (the picker has already applied the profile selection).
         ConfigurationViewModel.CloseRequested += (s, e) => CloseChain();
+    }
+
+    /// <summary>
+    /// Lazily construct the AutoSteer config child VM without showing the native
+    /// panel. The remote (web) AutoSteer panel routes its hardware-push actions
+    /// (Send&amp;Save, Zero-WAS, Reset, free-drive) through this same VM so the
+    /// PGN/MarkChanged/free-drive logic is never duplicated.
+    /// </summary>
+    public void EnsureAutoSteerConfigViewModel()
+    {
+        AutoSteerConfigViewModel ??= new AutoSteerConfigViewModel(
+            _configurationService,
+            _udpService,
+            _autoSteerService,
+            ShowSteerWizard,
+            () => ShowSmartWasCommand?.Execute(null));
     }
 }
