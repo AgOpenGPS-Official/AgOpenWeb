@@ -311,6 +311,16 @@ public partial class App : Application
                                 case "field.resumeLast": ExecCmd(windowVm.ResumeLastJobCommand); return;
                                 case "field.driveIn": ExecCmd(windowVm.DriveInCommand); return;
                                 case "field.close": ExecCmd(windowVm.CloseFieldCommand); return;
+                                // --- AgShare cloud sync (test / fetch / download / upload).
+                                // Replicates the dialog code-behind orchestration host-side;
+                                // results land in ApplicationState.AgShare. Tier-1. ---
+                                case "agshare.test": case "agshare.fetch": case "agshare.download":
+                                case "agshare.downloadAll": case "agshare.upload":
+                                    AgShareRemote.Handle(cmd, arg,
+                                        Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
+                                        Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
+                                        Services.GetRequiredService<ISettingsService>());
+                                    return;
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -483,6 +493,10 @@ public partial class App : Application
             case "conn.imuConfigured": con.IsImuConfigured = B(); cfg.SaveAppSettings(); return;
             case "conn.autoSteerConfigured": con.IsAutoSteerConfigured = B(); cfg.SaveAppSettings(); return;
             case "conn.machineConfigured": con.IsMachineConfigured = B(); cfg.SaveAppSettings(); return;
+            // --- AgShare cloud settings (ConfigStore.Connections). Persist on change. ---
+            case "conn.agShareServer": con.AgShareServer = val; cfg.SaveAppSettings(); return;
+            case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
+            case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
             // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
             case "vehicle.type": if (I(out var ty)) veh.Type = (AgValoniaGPS.Models.VehicleType)ty; return;
             case "vehicle.hitchType": if (I(out var ht)) veh.HitchType = ht; return;

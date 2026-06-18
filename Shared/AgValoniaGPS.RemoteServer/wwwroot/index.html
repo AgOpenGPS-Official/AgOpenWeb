@@ -436,6 +436,15 @@
       border: 1px solid #2a3550; border-radius: 6px; background: #0f1115; }
     .fj-crbtn { display: flex; align-items: center; gap: 8px; justify-content: flex-start; margin-bottom: 6px; }
     .fe-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    /* AgShare upload/download. */
+    .agu-tools { display: flex; gap: 6px; align-items: center; }
+    .agu-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .agu-row:hover { background: rgba(255,255,255,0.06); }
+    .agu-row input { accent-color: #4A90D9; }
+    .agu-name { flex: 1; color: #e7eef9; font: 600 13px system-ui, sans-serif; }
+    .agu-bd { font: 500 11px system-ui, sans-serif; }
+    .agu-bd.ok { color: #39FF6A; } .agu-bd.no { color: #ff7a6b; }
     /* ===== Steer Wizard (full-screen) ===== */
     .wz-overlay { position: fixed; inset: 0; z-index: 50; background: #1b2233; display: none; flex-direction: column; }
     .wz-overlay.open { display: flex; }
@@ -1359,11 +1368,17 @@
   <div id="fieldops" class="ln-panel fo-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">Field Operations</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="fo-grid">
-      <button class="fo-btn" id="fo-fields"><img class="fo-ic" src="/icons/JobActive.png">Fields and Jobs</button>
-      <button class="fo-btn" id="fo-resumelast"><img class="fo-ic" src="/icons/JobActive.png">Resume Last Job</button>
-      <button class="fo-btn" id="fo-resumejob"><img class="fo-ic" src="/icons/JobActive.png">Resume Job</button>
-      <button class="fo-btn" id="fo-drivein"><img class="fo-ic" src="/icons/JobActive.png">Drive In</button>
-      <button class="fo-btn" id="fo-close"><img class="fo-ic" src="/icons/JobActive.png">Close</button>
+      <button class="fo-btn" id="fo-fields"><img class="fo-ic" src="/icons/FileOpen.png">Fields and Jobs</button>
+      <button class="fo-btn" id="fo-resumelast"><img class="fo-ic" src="/icons/FilePrevious.png">Resume Last Job</button>
+      <button class="fo-btn" id="fo-resumejob"><img class="fo-ic" src="/icons/FilePrevious.png">Resume Job</button>
+      <button class="fo-btn" id="fo-drivein"><img class="fo-ic" src="/icons/SteerDriveOn.png">Drive In</button>
+      <button class="fo-btn" id="fo-close"><img class="fo-ic" src="/icons/FileClose.png">Close</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">AgShare</div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="fo-agupload"><img class="fo-ic" src="/icons/AgShare.png">AgShare Upload</button>
+      <button class="fo-btn" id="fo-agdownload"><img class="fo-ic" src="/icons/AgShare.png">AgShare Download</button>
+      <button class="fo-btn" id="fo-agapi"><img class="fo-ic" src="/icons/AgShare.png">AgShare API</button>
     </div>
     <div class="fo-pill" id="fo-current" style="display:none"></div>
   </div>
@@ -1462,6 +1477,46 @@
     <div class="ln-hdr"><button class="ln-x" id="rj-back" title="Back">←</button><span class="ln-hdr-title">Resume Job</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="cfg-label">Recent jobs (all fields)</div>
     <div id="rj-list" class="fj-list" style="max-height:360px"></div>
+  </div>
+  <!-- AgShare API/Settings — chain sub-panel. -->
+  <div id="agsettings" class="ln-panel nf-panel">
+    <div class="ln-hdr"><button class="ln-x" id="ag-back" title="Back">←</button><span class="ln-hdr-title">AgShare API</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Server URL</div>
+    <input class="cfg-num fj-tx" id="ag-server" placeholder="https://agshare.agopengps.com">
+    <div class="cfg-label" style="margin-top:8px">API Key</div>
+    <input class="cfg-num fj-tx" id="ag-key" type="password" placeholder="(not set)">
+    <div style="margin-top:10px"><button class="cfg-tgl" id="ag-enabled" data-keep-label>Enabled</button></div>
+    <div class="nio-testrow" style="margin-top:10px">
+      <button class="sw-b sw-grey" id="ag-test" style="flex:none;padding:8px 16px">Test Connection</button>
+      <span class="sa-hint" id="ag-teststatus"></span>
+    </div>
+    <div class="sa-hint" style="margin-top:8px">Get your API key from agshare.agopengps.com.</div>
+  </div>
+  <!-- AgShare Upload — chain sub-panel. -->
+  <div id="agupload" class="ln-panel fo-panel">
+    <div class="ln-hdr"><button class="ln-x" id="agu-back" title="Back">←</button><span class="ln-hdr-title">AgShare Upload</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="agu-tools">
+      <button class="cfg-act fj-mini" id="agu-selall">Select All</button>
+      <button class="cfg-act fj-mini" id="agu-selnone">Deselect All</button>
+      <button class="cfg-tgl" id="agu-public" data-keep-label>Public</button>
+    </div>
+    <div id="agu-list" class="fj-list" style="max-height:300px;margin-top:8px"></div>
+    <div class="sa-hint" id="agu-status" style="margin-top:6px"></div>
+    <button class="cfg-act cfg-actwide fj-primary" id="agu-upload" style="margin-top:10px">Upload Selected</button>
+  </div>
+  <!-- AgShare Download — chain sub-panel. -->
+  <div id="agdownload" class="ln-panel fo-panel">
+    <div class="ln-hdr"><button class="ln-x" id="agd-back" title="Back">←</button><span class="ln-hdr-title">AgShare Download</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="agu-tools">
+      <button class="cfg-act fj-mini" id="agd-refresh">Refresh</button>
+      <button class="cfg-tgl" id="agd-force" data-keep-label>Force Overwrite</button>
+    </div>
+    <div id="agd-list" class="fj-list" style="max-height:280px;margin-top:8px"></div>
+    <div class="sa-hint" id="agd-status" style="margin-top:6px"></div>
+    <div class="fj-btnrow">
+      <button class="cfg-act" id="agd-download">Download Selected</button>
+      <button class="cfg-act fj-primary" id="agd-downloadall">Download All</button>
+    </div>
   </div>
   <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
        opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor

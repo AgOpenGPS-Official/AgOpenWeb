@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -147,6 +147,15 @@ window.RemoteTransport = {
           const kc = i32(); const kmlFiles = new Array(kc); for (let k = 0; k < kc; k++) kmlFiles[k] = str();
           const activeField = str();
           handlers.onFieldOps && handlers.onFieldOps({ fields, jobs, workTypes, isoFiles, kmlFiles, activeField });
+          break;
+        }
+        case TYPE.AGSHARE: {
+          const serverUrl = str(), apiKey = str(), enabled = !!u8(), status = str(), busy = !!u8();
+          const lc = i32(); const localFields = new Array(lc);
+          for (let k = 0; k < lc; k++) localFields[k] = { name: str(), hasBoundary: !!u8() };
+          const cc = i32(); const cloudFields = new Array(cc);
+          for (let k = 0; k < cc; k++) cloudFields[k] = { id: str(), name: str(), areaHa: f64() };
+          handlers.onAgShare && handlers.onAgShare({ serverUrl, apiKey, enabled, status, busy, localFields, cloudFields });
           break;
         }
         case TYPE.HELLO: {

@@ -41,6 +41,8 @@ let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable field
 let ntripDirty = false;
 let fieldOps = null;   // Field Operations: field list + jobs + suggestions + import files
 let fieldOpsDirty = false;
+let agShare = null;    // AgShare: settings + cloud action status/results
+let agShareDirty = false;
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -143,6 +145,7 @@ const transport = RemoteTransport.create({
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
+  onAgShare(a) { agShare = a; agShareDirty = true; },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -399,7 +402,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -1159,6 +1162,83 @@ function renderResumeJob() {
   }
 }
 
+// ---- AgShare cloud sync (Settings / Upload / Download) — chain sub-panels of Field
+// Operations. Settings via config.set conn.agShare*; actions via agshare.* with results
+// (status / cloud list) riding the AgShare frame. Launched from the fly-out's AgShare row.
+document.getElementById('fo-agupload').addEventListener('pointerdown', e => { e.stopPropagation(); openAgUpload(); });
+document.getElementById('fo-agdownload').addEventListener('pointerdown', e => { e.stopPropagation(); openAgDownload(); });
+document.getElementById('fo-agapi').addEventListener('pointerdown', e => { e.stopPropagation(); openAgSettings(); });
+
+// Settings
+function openAgSettings() { lnOpen('agsettings', 'ln-fieldops', renderAgSettings); }
+document.getElementById('ag-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldops', 'ln-fieldops', renderFieldOps); });
+function renderAgSettings() {
+  if (!agShare) return;
+  const sv = document.getElementById('ag-server'), kv = document.getElementById('ag-key');
+  if (document.activeElement !== sv) sv.value = agShare.serverUrl || '';
+  if (document.activeElement !== kv) kv.value = agShare.apiKey || '';
+  document.getElementById('ag-enabled').classList.toggle('active', !!agShare.enabled);
+  document.getElementById('ag-teststatus').textContent = agShare.status || '';
+}
+document.getElementById('ag-server').addEventListener('change', () => cfgSend('conn.agShareServer', document.getElementById('ag-server').value.trim()));
+document.getElementById('ag-key').addEventListener('change', () => cfgSend('conn.agShareApiKey', document.getElementById('ag-key').value.trim()));
+document.getElementById('ag-enabled').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('conn.agShareEnabled', e.currentTarget.classList.contains('active') ? '0' : '1'); });
+document.getElementById('ag-test').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  cfgSend('conn.agShareServer', document.getElementById('ag-server').value.trim());
+  cfgSend('conn.agShareApiKey', document.getElementById('ag-key').value.trim());
+  transport.send('agshare.test');
+});
+
+// Upload
+let aguSel = new Set();
+function openAgUpload() { aguSel = new Set(); lnOpen('agupload', 'ln-fieldops', renderAgUpload); }
+document.getElementById('agu-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldops', 'ln-fieldops', renderFieldOps); });
+function renderAgUpload() {
+  const list = document.getElementById('agu-list'); list.innerHTML = '';
+  for (const f of (agShare ? agShare.localFields : [])) {
+    const row = document.createElement('label'); row.className = 'agu-row';
+    const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = aguSel.has(f.name);
+    cb.addEventListener('change', () => { if (cb.checked) aguSel.add(f.name); else aguSel.delete(f.name); });
+    const nm = document.createElement('span'); nm.className = 'agu-name'; nm.textContent = f.name;
+    const bd = document.createElement('span'); bd.className = 'agu-bd ' + (f.hasBoundary ? 'ok' : 'no'); bd.textContent = f.hasBoundary ? 'Has boundary' : 'No boundary';
+    row.appendChild(cb); row.appendChild(nm); row.appendChild(bd); list.appendChild(row);
+  }
+  document.getElementById('agu-status').textContent = agShare ? (agShare.status || '') : '';
+}
+document.getElementById('agu-selall').addEventListener('pointerdown', e => { e.stopPropagation(); for (const f of (agShare ? agShare.localFields : [])) aguSel.add(f.name); renderAgUpload(); });
+document.getElementById('agu-selnone').addEventListener('pointerdown', e => { e.stopPropagation(); aguSel.clear(); renderAgUpload(); });
+document.getElementById('agu-public').addEventListener('pointerdown', e => { e.stopPropagation(); e.currentTarget.classList.toggle('active'); });
+document.getElementById('agu-upload').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!aguSel.size) return;
+  const pub = document.getElementById('agu-public').classList.contains('active') ? '1' : '0';
+  transport.send('agshare.upload|' + [pub, ...aguSel].join('\t'));
+});
+
+// Download
+let agdSel = null;
+function openAgDownload() { agdSel = null; lnOpen('agdownload', 'ln-fieldops', () => { transport.send('agshare.fetch'); renderAgDownload(); }); }
+document.getElementById('agd-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldops', 'ln-fieldops', renderFieldOps); });
+function renderAgDownload() {
+  const list = document.getElementById('agd-list'); list.innerHTML = '';
+  const cf = agShare ? agShare.cloudFields : [];
+  if (!cf.length) list.innerHTML = '<div class="fj-empty">No cloud fields (Refresh to load).</div>';
+  for (const f of cf) {
+    const row = document.createElement('div'); row.className = 'fj-jrow' + (f.id === agdSel ? ' sel' : '');
+    row.innerHTML = '<div class="fj-jtop"><span class="fj-jname"></span><span class="fj-jwt"></span></div>';
+    row.querySelector('.fj-jname').textContent = f.name;
+    row.querySelector('.fj-jwt').textContent = f.areaHa.toFixed(2) + ' ha';
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); agdSel = f.id; renderAgDownload(); });
+    list.appendChild(row);
+  }
+  document.getElementById('agd-status').textContent = agShare ? (agShare.status || '') : '';
+}
+document.getElementById('agd-refresh').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('agshare.fetch'); });
+document.getElementById('agd-download').addEventListener('pointerdown', e => { e.stopPropagation(); if (agdSel) transport.send('agshare.download|' + agdSel); });
+document.getElementById('agd-force').addEventListener('pointerdown', e => { e.stopPropagation(); e.currentTarget.classList.toggle('active'); });
+document.getElementById('agd-downloadall').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('agshare.downloadAll|' + (document.getElementById('agd-force').classList.contains('active') ? '1' : '0')); });
+
 // ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
 // SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
 // the existing config.set bridge, and forward nav (wizard.*) + gated calibration
@@ -1367,6 +1447,12 @@ function renderSettings() {
     fieldOpsDirty = false;
     if (document.getElementById('fieldsandjobs').classList.contains('open')) renderFieldsAndJobs();
     if (document.getElementById('resumejob').classList.contains('open')) renderResumeJob();
+  }
+  if (agShareDirty) {
+    agShareDirty = false;
+    if (document.getElementById('agsettings').classList.contains('open')) renderAgSettings();
+    if (document.getElementById('agupload').classList.contains('open')) renderAgUpload();
+    if (document.getElementById('agdownload').classList.contains('open')) renderAgDownload();
   }
 }
 

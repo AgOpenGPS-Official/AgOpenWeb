@@ -84,12 +84,19 @@ The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
 | 2 | Screen & Alerts | ✅ built (`#screenalerts`) |
 | 3 | **Tools** | ❌ NOT BUILT |
 | 4 | Vehicle / Tool Configuration | ✅ built (`#vehtoolhub`/`#vehiclecfg`/`#toolcfg`) |
-| 5 | **Field Operations** | ❌ NOT BUILT |
+| 5 | Field Operations | ✅ built (`#fieldops` + Fields-and-Jobs + creation + Resume Job + AgShare) |
 | 6 | **Field Tools** | ❌ NOT BUILT (only bottom-nav operational toggles exist) |
 | 7 | AutoSteer Configuration | ✅ built (`#autosteercfg` + Smart-WAS + Wizard) |
-| 8 | **Network IO** | ✅ BUILT (this session, v26.5.59 — pending device test) |
+| 8 | Network IO | ✅ built (`#networkio` + NTRIP) |
 
-**4 of 8 buttons remain.** Pick one:
+**3 of 8 buttons remain: File/App Menu, Tools, Field Tools.**
+- **Field Operations** ✅ DONE (v26.5.61–63). Fly-out (Fields and Jobs / Resume Last / Resume Job /
+  Drive In / Close + AgShare Upload/Download/API + status pill); Fields-and-Jobs chain panel; New
+  Field / From Existing / From ISO-XML / From KML creation panels; cross-field Resume Job picker;
+  AgShare Settings/Upload/Download. Wire frames **FieldOps=12**, **AgShare=13**. Host: lifecycle via
+  host-driven `EnsureRemoteStartWorkSession`; creation via `RemoteCreateFrom*`; AgShare orchestration
+  replicated host-side in Desktop `AgShareRemote.cs` (services aren't DI-registered) → writes
+  `ApplicationState.AgShare`. Remaining pick:
 - ~~**Network IO + NTRIP**~~ ✅ **DONE (v26.5.59, pending device test).** Full `NetworkIoPanel`
   parity: module present-checkbox + status dot + IP (GPS/AutoSteer/Machine/IMU), Scan for
   Modules (`net.scan`, PGN 202), global subnet change (`net.subnet`, PGN 201 — **Tier-2 gated**,
@@ -186,7 +193,7 @@ model is a **web-led improvement** (web is the end-state UI). Whether to backpor
   Native icons live in `Shared/AgValoniaGPS.Views/Assets/Icons[/Config]/` — **copy the PNGs
   in** before referencing them, else broken-link. Rebuild RemoteServer to embed.
 - **Frame types:** Scene=1 Tick=2 CoverageInit=3 CoverageCells=4 Status=5 ControlState=6
-  Hello=7 Config=8 Profiles=9 Wizard=10 **NtripProfiles=11**.
+  Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 **FieldOps=12 AgShare=13**.
 - **Tier-2 gating** (`IsRestrictedCommand`, control-gated): prefixes `section.` `autosteer.`
   `youturn.` `contour.` `track.` `headland.` `smartwas.` `wizard.action`, plus the exact id
   `net.subnet` (restarts every module). Tier-1 (ungated): `sim.` `tool.` `map.` `flag.` `tram.`

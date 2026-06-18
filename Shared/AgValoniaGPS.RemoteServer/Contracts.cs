@@ -355,3 +355,16 @@ public record FieldEntryDto(string Name, bool HasDistance, double DistanceKm, do
 /// LastOpened is a preformatted "yyyy-MM-dd HH:mm" string.</summary>
 public record JobEntryDto(
     string FieldName, string TaskName, string WorkType, int Status, string LastOpened, string Notes);
+
+/// <summary>AgShare read-frame (Phase 9 Field Ops) — cloud sync settings + transient action
+/// state. Settings come from ConfigStore.Connections; Status/Busy/CloudFields are the live
+/// result of the last test/fetch/upload/download (ApplicationState.AgShare). LocalFields are
+/// the upload candidates (every field on disk + whether it has a boundary).</summary>
+public record AgShareDto(
+    string ServerUrl, string ApiKey, bool Enabled,
+    string Status, bool Busy,
+    IReadOnlyList<AgShareLocalFieldDto> LocalFields,
+    IReadOnlyList<AgShareCloudFieldDto> CloudFields);
+
+public record AgShareLocalFieldDto(string Name, bool HasBoundary);
+public record AgShareCloudFieldDto(string Id, string Name, double AreaHa);

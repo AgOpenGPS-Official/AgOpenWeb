@@ -391,6 +391,52 @@ public sealed class SceneProjector
         return h;
     }
 
+    // AgShare read-frame. Settings from ConfigStore.Connections; live action status +
+    // fetched cloud fields from ApplicationState.AgShare; upload candidates = every field
+    // on disk (with whether it has a Boundary.txt). Mirrors the native dialogs' scans.
+    public AgShareDto BuildAgShare()
+    {
+        var c = _config.Connections;
+        var ag = _state.AgShare;
+        var local = new System.Collections.Generic.List<AgShareLocalFieldDto>();
+        var root = _settings.Settings.FieldsDirectory ?? "";
+        try
+        {
+            if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root))
+                foreach (var dir in System.IO.Directory.GetDirectories(root))
+                    if (System.IO.File.Exists(System.IO.Path.Combine(dir, "Field.txt")))
+                        local.Add(new AgShareLocalFieldDto(System.IO.Path.GetFileName(dir),
+                            System.IO.File.Exists(System.IO.Path.Combine(dir, "Boundary.txt"))));
+        }
+        catch { /* fields dir optional */ }
+        local.Sort((a, b) => string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase));
+        var cloud = ag.CloudFields.Select(f => new AgShareCloudFieldDto(f.Id, f.Name, f.AreaHa)).ToList();
+        return new AgShareDto(c.AgShareServer ?? "", c.AgShareApiKey ?? "", c.AgShareEnabled,
+            ag.Status ?? "", ag.Busy, local, cloud);
+    }
+
+    public long AgShareFingerprint()
+    {
+        var c = _config.Connections;
+        var ag = _state.AgShare;
+        long h = 17;
+        h = h * 31 + (c.AgShareServer?.GetHashCode() ?? 0);
+        h = h * 31 + (c.AgShareApiKey?.GetHashCode() ?? 0);
+        h = h * 31 + (c.AgShareEnabled ? 1 : 0);
+        h = h * 31 + (ag.Status?.GetHashCode() ?? 0);
+        h = h * 31 + (ag.Busy ? 1 : 0);
+        h = h * 31 + ag.CloudFields.Count;
+        foreach (var f in ag.CloudFields) h = h * 31 + (f.Id?.GetHashCode() ?? 0);
+        var root = _settings.Settings.FieldsDirectory ?? "";
+        try
+        {
+            if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root))
+                foreach (var d in System.IO.Directory.GetDirectories(root)) h = h * 31 + System.IO.Path.GetFileName(d).GetHashCode();
+        }
+        catch { }
+        return h;
+    }
+
     // Config read-frame (Phase 9). Projects editable ConfigurationStore values for
     // the left-nav settings panels. Grows a section per sub-phase.
     public ConfigDto BuildConfig()

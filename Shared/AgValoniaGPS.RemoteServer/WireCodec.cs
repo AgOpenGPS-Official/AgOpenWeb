@@ -18,7 +18,24 @@ public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
-        FieldOps = 12;
+        FieldOps = 12, AgShare = 13;
+
+    public static byte[] EncodeAgShare(AgShareDto a)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(AgShare);
+        WriteStr(w, a.ServerUrl);
+        WriteStr(w, a.ApiKey);
+        w.Write((byte)(a.Enabled ? 1 : 0));
+        WriteStr(w, a.Status);
+        w.Write((byte)(a.Busy ? 1 : 0));
+        w.Write(a.LocalFields.Count);
+        foreach (var f in a.LocalFields) { WriteStr(w, f.Name); w.Write((byte)(f.HasBoundary ? 1 : 0)); }
+        w.Write(a.CloudFields.Count);
+        foreach (var f in a.CloudFields) { WriteStr(w, f.Id); WriteStr(w, f.Name); w.Write(f.AreaHa); }
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeFieldOps(FieldOpsDto f)
     {
