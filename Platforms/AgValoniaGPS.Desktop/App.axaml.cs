@@ -91,7 +91,9 @@ public partial class App : Application
             Services.GetRequiredService<IAutoSteerService>(),
             Services.GetRequiredService<ISmartWasCalibrationService>(),
             Services.GetRequiredService<IUdpCommunicationService>(),
-            Services.GetRequiredService<INtripProfileService>());
+            Services.GetRequiredService<INtripProfileService>(),
+            Services.GetRequiredService<AgValoniaGPS.Services.IFieldService>(),
+            Services.GetRequiredService<ISettingsService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);
@@ -297,6 +299,17 @@ public partial class App : Application
                                         Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
                                         cmd, arg);
                                     return;
+                                // --- Field Operations (Phase 9). Lifecycle routes through the real
+                                // StartWorkSessionDialogViewModel (host-driven) so field/job open/
+                                // start/resume/delete reuse MainViewModel's orchestration; deletes
+                                // are confirmed client-side. Tier-1 (data management, not actuation). ---
+                                case "field.openOnly": case "field.startJob": case "field.resumeJob":
+                                case "field.deleteField": case "field.deleteJob": case "field.new":
+                                    ApplyFieldCommand(windowVm, cmd, arg);
+                                    return;
+                                case "field.resumeLast": ExecCmd(windowVm.ResumeLastJobCommand); return;
+                                case "field.driveIn": ExecCmd(windowVm.DriveInCommand); return;
+                                case "field.close": ExecCmd(windowVm.CloseFieldCommand); return;
                             }
 
                             System.Windows.Input.ICommand? c = cmd switch
@@ -832,6 +845,53 @@ public partial class App : Application
                 };
                 if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; }
                 _ = svc.SaveProfileAsync(profile);
+                return;
+            }
+        }
+    }
+
+    // Field Operations write-side. New Field uses the VM's create command directly
+    // (name + current GPS); everything else drives the host-side Fields-and-Jobs VM
+    // (EnsureRemoteStartWorkSession) which reuses MainViewModel's field/job orchestration.
+    private static void ApplyFieldCommand(AgValoniaGPS.ViewModels.MainViewModel vm, string cmd, string arg)
+    {
+        var a = arg.Split('\t');
+        if (cmd == "field.new") // arg = field name
+        {
+            if (string.IsNullOrWhiteSpace(arg)) return;
+            vm.NewFieldLatitude = vm.Latitude != 0 ? vm.Latitude : 40.7128;
+            vm.NewFieldLongitude = vm.Longitude != 0 ? vm.Longitude : -74.0060;
+            vm.NewFieldName = arg;
+            ExecCmd(vm.ConfirmNewFieldDialogCommand);
+            return;
+        }
+        var sw = vm.EnsureRemoteStartWorkSession();
+        sw.SelectedField = sw.Fields.FirstOrDefault(f =>
+            string.Equals(f.Name, a[0], System.StringComparison.OrdinalIgnoreCase));
+        switch (cmd)
+        {
+            case "field.openOnly":
+                ExecCmd(sw.OpenFieldOnlyCommand);
+                return;
+            case "field.startJob": // field \t workType \t notes \t taskName
+                sw.NewJobWorkType = a.ElementAtOrDefault(1) ?? "";
+                sw.NewJobNotes = a.ElementAtOrDefault(2) ?? "";
+                sw.NewJobTaskName = a.ElementAtOrDefault(3) ?? "";
+                ExecCmd(sw.StartNewJobCommand);
+                return;
+            case "field.resumeJob": // field \t taskName
+            {
+                var job = sw.JobsForSelectedField.FirstOrDefault(j => j.TaskName == a.ElementAtOrDefault(1));
+                if (job != null) sw.ResumeJobCommand.Execute(job);
+                return;
+            }
+            case "field.deleteField":
+                if (sw.DeleteFieldCommand.CanExecute(null)) sw.DeleteFieldCommand.Execute(null);
+                return;
+            case "field.deleteJob": // field \t taskName
+            {
+                var job = sw.JobsForSelectedField.FirstOrDefault(j => j.TaskName == a.ElementAtOrDefault(1));
+                if (job != null && sw.DeleteJobCommand.CanExecute(job)) sw.DeleteJobCommand.Execute(job);
                 return;
             }
         }

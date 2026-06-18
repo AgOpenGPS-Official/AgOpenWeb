@@ -842,4 +842,31 @@ public partial class MainViewModel
             IsFieldOperationsPanelVisible = false;
         });
     }
+
+    /// <summary>
+    /// Host-driven Fields-and-Jobs VM for the remote (web) client. Reuses the real
+    /// <see cref="StartWorkSessionDialogViewModel"/> — same field/job orchestration as
+    /// the native dialog — but with web-appropriate callbacks: no native dialog to
+    /// close, and the confirm callbacks proceed immediately (the browser does its own
+    /// confirm before sending a delete). The web sets SelectedField / the new-job form
+    /// then executes the VM's commands; we Refresh() so the lists are current.
+    /// </summary>
+    public StartWorkSessionDialogViewModel EnsureRemoteStartWorkSession()
+    {
+        StartWorkSessionDialogVm = new StartWorkSessionDialogViewModel(
+            _fieldService,
+            _jobService,
+            _settingsService,
+            _appState,
+            close: () => { },
+            openField: (path, name) => _ = OpenFieldOnlyAsync(path, name),
+            openFieldStartingNewJob: (path, name, workType, notes, taskName) =>
+                _ = OpenFieldStartingNewJobAsync(path, name, workType, notes, taskName),
+            openFieldResumingJob: (path, name, taskName) =>
+                _ = OpenFieldResumingJobAsync(path, name, taskName),
+            confirm: (_, action) => action(),
+            confirmWithOption: (_, _, _, _, action) => action(true));
+        StartWorkSessionDialogVm.Refresh();
+        return StartWorkSessionDialogVm;
+    }
 }

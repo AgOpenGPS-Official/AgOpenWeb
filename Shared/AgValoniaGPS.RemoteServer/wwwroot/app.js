@@ -39,6 +39,8 @@ let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
 let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable fields
 let ntripDirty = false;
+let fieldOps = null;   // Field Operations: field list + jobs + suggestions + import files
+let fieldOpsDirty = false;
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -140,6 +142,7 @@ const transport = RemoteTransport.create({
   onConfig(c) { config = c; configDirty = true; },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
+  onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -396,7 +399,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -409,6 +412,7 @@ function lnCloseAll() {
   document.getElementById('ln-vehicle').classList.remove('active');
   document.getElementById('ln-autosteer').classList.remove('active');
   document.getElementById('ln-network').classList.remove('active');
+  document.getElementById('ln-fieldops').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
@@ -445,6 +449,11 @@ document.getElementById('ln-network').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (document.getElementById('networkio').classList.contains('open')) lnCloseAll();
   else lnOpen('networkio', 'ln-network', renderNetworkIo);
+});
+document.getElementById('ln-fieldops').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const anyOpen = ['fieldops', 'fieldsandjobs', 'newfield'].some(id => document.getElementById(id).classList.contains('open'));
+  if (anyOpen) lnCloseAll(); else lnOpen('fieldops', 'ln-fieldops', renderFieldOps);
 });
 for (const b of document.querySelectorAll('.ln-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
@@ -960,6 +969,122 @@ document.getElementById('nte-save').addEventListener('pointerdown', e => {
   openNtripProfiles(); // native SaveNtripProfileCommand ends in NavigateBack → list
 });
 
+// ---- Field Operations (Phase 9) — field/job lifecycle. Fly-out launches the
+// Fields-and-Jobs chain panel (fields table + jobs + new-job form) and New Field.
+// Reads ride the FieldOps frame; writes are field.* commands (host-driven via the real
+// StartWorkSessionDialogViewModel). Tier-1 (data management); deletes confirm client-side.
+const JOB_STATUS = ['In progress', 'Done', 'Abandoned'];
+let fjSelField = null, fjSelJob = null;
+
+// Field Operations fly-out: status pill + Close gating from the live scene/status.
+function renderFieldOps() {
+  const has = !!(scene && scene.hasField);
+  const pill = document.getElementById('fo-current');
+  if (has) {
+    const fld = (scene && scene.fieldName) || '—';
+    const job = statusBar && statusBar.jobName;
+    pill.textContent = 'Current: ' + fld + (job ? ' / ' + job : '');
+    pill.style.display = 'block';
+  } else pill.style.display = 'none';
+  document.getElementById('fo-close').classList.toggle('disabled', !has);
+}
+document.getElementById('fo-fields').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+document.getElementById('fo-resumelast').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.resumeLast'); lnCloseAll(); });
+document.getElementById('fo-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+document.getElementById('fo-drivein').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.driveIn'); lnCloseAll(); });
+document.getElementById('fo-close').addEventListener('pointerdown', e => { e.stopPropagation(); if (scene && scene.hasField) { transport.send('field.close'); lnCloseAll(); } });
+
+// Fields-and-Jobs chain panel (mirrors StartWorkSessionDialogPanel).
+function openFieldsAndJobs() {
+  if (fieldOps && !fjSelField)
+    fjSelField = fieldOps.activeField || (fieldOps.fields[0] && fieldOps.fields[0].name) || null;
+  lnOpen('fieldsandjobs', 'ln-fieldops', renderFieldsAndJobs);
+}
+document.getElementById('fj-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldops', 'ln-fieldops', renderFieldOps); });
+function fjJobsArr() { return fieldOps ? fieldOps.jobs.filter(j => j.fieldName === fjSelField) : []; }
+function renderFieldsAndJobs() {
+  const fl = document.getElementById('fj-fieldlist'); fl.innerHTML = '';
+  for (const f of (fieldOps ? fieldOps.fields : [])) {
+    const row = document.createElement('div');
+    row.className = 'fj-frow' + (f.name === fjSelField ? ' sel' : '');
+    row.innerHTML = '<span class="fj-fname"></span><span class="fj-fnum"></span><span class="fj-fnum"></span>';
+    row.querySelector('.fj-fname').textContent = f.name;
+    const nums = row.querySelectorAll('.fj-fnum');
+    nums[0].textContent = f.hasDistance ? f.distanceKm.toFixed(1) : '—';
+    nums[1].textContent = f.areaHa.toFixed(1);
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fjSelField = f.name; fjSelJob = null; renderFieldsAndJobs(); });
+    fl.appendChild(row);
+  }
+  const sel = !!fjSelField;
+  document.getElementById('fj-jobside').style.display = sel ? 'block' : 'none';
+  document.getElementById('fj-empty').style.display = sel ? 'none' : 'block';
+  if (sel) {
+    const jl = document.getElementById('fj-joblist'); jl.innerHTML = '';
+    for (const j of fjJobsArr()) {
+      const row = document.createElement('div');
+      row.className = 'fj-jrow' + (j.taskName === fjSelJob ? ' sel' : '');
+      row.innerHTML = '<div class="fj-jtop"><span class="fj-jname"></span><span class="fj-jwt"></span><span class="fj-jst"></span></div><div class="fj-jsub"></div>';
+      row.querySelector('.fj-jname').textContent = j.taskName;
+      row.querySelector('.fj-jwt').textContent = j.workType;
+      row.querySelector('.fj-jst').textContent = JOB_STATUS[j.status] || '';
+      row.querySelector('.fj-jsub').textContent = 'Last opened: ' + j.lastOpened;
+      row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fjSelJob = j.taskName; renderFieldsAndJobs(); });
+      jl.appendChild(row);
+    }
+    const dl = document.getElementById('fj-wtlist'); dl.innerHTML = '';
+    for (const w of (fieldOps ? fieldOps.workTypes : [])) { const o = document.createElement('option'); o.value = w; dl.appendChild(o); }
+    const tn = document.getElementById('fj-taskname');
+    if (!tn.value && document.activeElement !== tn) tn.value = isoDate();
+  }
+}
+function isoDate() { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function isoTime() { const d = new Date(), p = n => String(n).padStart(2, '0'); return p(d.getHours()) + '-' + p(d.getMinutes()); }
+// New-job form helpers
+document.getElementById('fj-uselast').addEventListener('pointerdown', e => { e.stopPropagation(); const j = fjJobsArr()[0]; if (j) document.getElementById('fj-notes').value = j.notes; });
+document.getElementById('fj-date').addEventListener('pointerdown', e => { e.stopPropagation(); const tn = document.getElementById('fj-taskname'); tn.value = (tn.value ? tn.value + '_' : '') + isoDate(); });
+document.getElementById('fj-time').addEventListener('pointerdown', e => { e.stopPropagation(); const tn = document.getElementById('fj-taskname'); tn.value = (tn.value ? tn.value + '_' : '') + isoTime(); });
+// Footer actions
+document.getElementById('fj-openonly').addEventListener('pointerdown', e => { e.stopPropagation(); if (fjSelField) { transport.send('field.openOnly|' + fjSelField); lnCloseAll(); } });
+document.getElementById('fj-deletefield').addEventListener('pointerdown', e => {
+  e.stopPropagation(); if (!fjSelField) return;
+  showConfirm('Delete Field', "Delete field '" + fjSelField + "' and all its jobs?", () => { transport.send('field.deleteField|' + fjSelField); fjSelField = null; fjSelJob = null; });
+});
+document.getElementById('fj-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); if (fjSelField && fjSelJob) { transport.send('field.resumeJob|' + fjSelField + '\t' + fjSelJob); lnCloseAll(); } });
+document.getElementById('fj-startjob').addEventListener('pointerdown', e => {
+  e.stopPropagation(); if (!fjSelField) return;
+  const wt = document.getElementById('fj-worktype').value.trim();
+  const notes = document.getElementById('fj-notes').value;
+  const task = document.getElementById('fj-taskname').value.trim();
+  transport.send('field.startJob|' + [fjSelField, wt, notes, task].join('\t'));
+  lnCloseAll();
+});
+document.getElementById('fj-deletejob').addEventListener('pointerdown', e => {
+  e.stopPropagation(); if (!fjSelField || !fjSelJob) return;
+  const job = fjSelJob;
+  showConfirm('Delete Job', "Delete job '" + job + "' from field '" + fjSelField + "'?", () => { transport.send('field.deleteJob|' + fjSelField + '\t' + job); fjSelJob = null; });
+});
+// New Field chain panel (Creation column)
+document.getElementById('fj-newfield').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('newfield', 'ln-fieldops', () => { document.getElementById('nf-name').value = ''; renderNewField(); }); });
+// Show the origin the field will be created at — the live GPS, or the host's
+// no-fix fallback (40.7128, -74.0060) so the readout matches what gets written.
+function renderNewField() {
+  const hasFix = statusBar && (statusBar.lat || statusBar.lon);
+  const lat = hasFix ? statusBar.lat : 40.7128, lon = hasFix ? statusBar.lon : -74.0060;
+  document.getElementById('nf-pos').textContent = lat.toFixed(8) + ', ' + lon.toFixed(8);
+  document.getElementById('nf-poshint').textContent = hasFix
+    ? 'The field is created at this position.'
+    : 'No GPS fix — a default origin will be used.';
+}
+document.getElementById('nf-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+document.getElementById('nf-create').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const name = document.getElementById('nf-name').value.trim();
+  if (!name) return;
+  transport.send('field.new|' + name);
+  fjSelField = name;
+  openFieldsAndJobs(); // back to the list; the new field appears once the frame updates
+});
+
 // ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
 // SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
 // the existing config.set bridge, and forward nav (wizard.*) + gated calibration
@@ -1159,6 +1284,14 @@ function renderSettings() {
     ntripDirty = false;
     if (document.getElementById('ntripprofiles').classList.contains('open')) renderNtripList();
     if (document.getElementById('ntripeditor').classList.contains('open')) renderNteFields();
+  }
+  // Field Operations: status pill rides scene/status; Fields-and-Jobs lists re-read on a
+  // fresh FieldOps frame.
+  if (document.getElementById('fieldops').classList.contains('open')) renderFieldOps();
+  if (document.getElementById('newfield').classList.contains('open')) renderNewField();
+  if (fieldOpsDirty) {
+    fieldOpsDirty = false;
+    if (document.getElementById('fieldsandjobs').classList.contains('open')) renderFieldsAndJobs();
   }
 }
 

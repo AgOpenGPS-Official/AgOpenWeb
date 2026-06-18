@@ -383,6 +383,57 @@
     .nio-fieldlist input { accent-color: #4A90D9; }
     .nio-cklbl { display: flex; align-items: center; gap: 8px; color: #e7eef9; font: 500 13px system-ui, sans-serif; margin-top: 8px; cursor: pointer; }
     .nio-cklbl input { accent-color: #4A90D9; width: 16px; height: 16px; }
+    /* ===== Field Operations ===== */
+    .fo-panel { width: 360px; }
+    .fo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .fo-btn { height: 44px; border: 1px solid #2a3550; border-radius: 6px; background: rgba(255,255,255,0.06);
+      color: #cfe3ff; cursor: pointer; font: 600 13px system-ui, sans-serif; text-align: left;
+      padding: 0 10px; display: flex; align-items: center; gap: 8px; }
+    .fo-btn:hover { background: rgba(255,255,255,0.14); }
+    .fo-btn.disabled { opacity: 0.4; pointer-events: none; }
+    .fo-ic { width: 22px; height: 22px; object-fit: contain; flex: none; }
+    .fo-pill { margin-top: 12px; background: #1E8449; color: #fff; border-radius: 6px; padding: 7px 12px;
+      font: 600 13px system-ui, sans-serif; }
+    /* Fields and Jobs — three columns. */
+    .fj-panel { width: 900px; }
+    .fj-cols { display: grid; grid-template-columns: 1.1fr 1.4fr auto; gap: 16px; }
+    .fj-col { min-width: 0; }
+    .fj-creation { min-width: 150px; }
+    .fj-fhead { display: grid; grid-template-columns: 1fr 70px 70px; padding: 8px 10px; gap: 6px;
+      background: rgba(255,255,255,0.05); border-radius: 6px 6px 0 0;
+      color: #9fb3cc; font: 600 11px system-ui, sans-serif; }
+    .fj-fhead span:not(:first-child) { text-align: right; }
+    .fj-list { border: 1px solid #2a3550; border-top: 0; border-radius: 0 0 6px 6px;
+      max-height: 280px; overflow: auto; }
+    .fj-joblist { border-radius: 6px; border-top: 1px solid #2a3550; max-height: 200px; margin-bottom: 4px; }
+    .fj-frow { display: grid; grid-template-columns: 1fr 70px 70px; gap: 6px; padding: 9px 10px; cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .fj-frow:hover { background: rgba(255,255,255,0.06); }
+    .fj-frow.sel { background: #1c4a7a; }
+    .fj-fname { color: #e7eef9; font: 600 13px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fj-fnum { color: #cfe3ff; font: 500 13px ui-monospace, monospace; text-align: right; }
+    .fj-jrow { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .fj-jrow:hover { background: rgba(255,255,255,0.06); }
+    .fj-jrow.sel { background: #1c4a7a; }
+    .fj-jtop { display: flex; gap: 10px; align-items: baseline; }
+    .fj-jname { color: #e7eef9; font: 600 14px system-ui, sans-serif; flex: 1; }
+    .fj-jwt { color: #9fb3cc; font: 500 12px system-ui, sans-serif; }
+    .fj-jst { color: #8294ab; font: 500 11px system-ui, sans-serif; }
+    .fj-jsub { color: #8294ab; font: 400 11px system-ui, sans-serif; margin-top: 2px; }
+    .fj-empty { color: #8294ab; font: 500 14px system-ui, sans-serif; text-align: center; padding: 40px 10px; }
+    .fj-tx { width: 100%; height: 34px; text-align: left; box-sizing: border-box; }
+    .fj-notes { width: 100%; height: 64px; box-sizing: border-box; border-radius: 6px; border: 1px solid #2a3550;
+      background: #0f1115; color: #e7eef9; font: 500 13px system-ui, sans-serif; padding: 6px 8px; resize: none; }
+    .fj-noteshdr { display: flex; align-items: center; justify-content: space-between; }
+    .fj-namerow { display: flex; gap: 6px; }
+    .fj-mini { flex: none; padding: 6px 10px; }
+    .fj-btnrow { display: flex; gap: 6px; margin-top: 10px; }
+    .fj-jbtns { margin-top: 12px; }
+    .fj-primary { background: #1f6fb2; color: #fff; }
+    .fj-danger { background: #b54430; color: #fff; }
+    .nf-panel { width: 320px; }
+    .nf-pos { color: #cfe3ff; font: 600 14px ui-monospace, monospace; padding: 8px 10px;
+      border: 1px solid #2a3550; border-radius: 6px; background: #0f1115; }
     /* ===== Steer Wizard (full-screen) ===== */
     .wz-overlay { position: fixed; inset: 0; z-index: 50; background: #1b2233; display: none; flex-direction: column; }
     .wz-overlay.open { display: flex; }
@@ -656,6 +707,7 @@
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
     <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
     <button id="ln-autosteer" class="ln-btn" title="AutoSteer Configuration"><img class="ln-ic" src="/icons/AutoSteerConf.png" alt="AutoSteer Configuration"></button>
+    <button id="ln-fieldops" class="ln-btn" title="Field Operations"><img class="ln-ic" src="/icons/JobActive.png" alt="Field Operations"></button>
     <button id="ln-network" class="ln-btn" title="Network IO">
       <svg class="ln-ic" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="stroke:currentColor;fill:currentColor">
         <line x1="24" y1="24" x2="24" y2="10" stroke-width="2.5"/>
@@ -1300,6 +1352,71 @@
       <div class="sw-btns" style="margin-top:14px; justify-content:flex-end">
         <button id="nte-save" class="sw-b sw-blue" style="flex:none; padding:9px 22px">Save Profile</button>
       </div>
+  </div>
+  <!-- Field Operations (Phase 9) — fly-out launcher (field/job lifecycle). -->
+  <div id="fieldops" class="ln-panel fo-panel">
+    <div class="ln-hdr"><span class="ln-hdr-title">Field Operations</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="fo-fields"><img class="fo-ic" src="/icons/JobActive.png">Fields and Jobs</button>
+      <button class="fo-btn" id="fo-resumelast"><img class="fo-ic" src="/icons/JobActive.png">Resume Last Job</button>
+      <button class="fo-btn" id="fo-resumejob"><img class="fo-ic" src="/icons/JobActive.png">Resume Job</button>
+      <button class="fo-btn" id="fo-drivein"><img class="fo-ic" src="/icons/JobActive.png">Drive In</button>
+      <button class="fo-btn" id="fo-close"><img class="fo-ic" src="/icons/JobActive.png">Close</button>
+    </div>
+    <div class="fo-pill" id="fo-current" style="display:none"></div>
+  </div>
+  <!-- Fields and Jobs — chain sub-panel (replaces Field Operations). Mirrors
+       StartWorkSessionDialogPanel: Fields table | Jobs+new-job form | Creation. -->
+  <div id="fieldsandjobs" class="ln-panel fj-panel">
+    <div class="ln-hdr"><button class="ln-x" id="fj-back" title="Back">←</button><span class="ln-hdr-title">Fields and Jobs</span><button class="ln-x ln-closex" id="fj-x" title="Close">✕</button></div>
+    <div class="fj-cols">
+      <div class="fj-col">
+        <div class="cfg-label">Fields</div>
+        <div class="fj-fhead"><span>Name</span><span>Dist (km)</span><span>Area (ha)</span></div>
+        <div id="fj-fieldlist" class="fj-list"></div>
+        <div class="fj-btnrow">
+          <button class="cfg-act" id="fj-openonly">Open Field Only</button>
+          <button class="cfg-act fj-danger" id="fj-deletefield">Delete Field</button>
+        </div>
+      </div>
+      <div class="fj-col">
+        <div id="fj-empty" class="fj-empty">Pick a field on the left to start or resume a job.</div>
+        <div id="fj-jobside" style="display:none">
+          <div class="cfg-label">Jobs</div>
+          <div id="fj-joblist" class="fj-list fj-joblist"></div>
+          <div class="cfg-label">New Job — Work Type</div>
+          <input class="cfg-num fj-tx" id="fj-worktype" list="fj-wtlist" autocomplete="off">
+          <datalist id="fj-wtlist"></datalist>
+          <div class="fj-noteshdr"><span class="cfg-label">Notes</span><button class="cfg-act fj-mini" id="fj-uselast">Use Last</button></div>
+          <textarea class="fj-notes" id="fj-notes"></textarea>
+          <div class="cfg-label">Job name</div>
+          <div class="fj-namerow">
+            <input class="cfg-num fj-tx" id="fj-taskname">
+            <button class="cfg-act fj-mini" id="fj-date">Date</button>
+            <button class="cfg-act fj-mini" id="fj-time">Time</button>
+          </div>
+          <div class="fj-btnrow fj-jbtns">
+            <button class="cfg-act" id="fj-resumejob">Resume Job</button>
+            <button class="cfg-act fj-primary" id="fj-startjob">Start New Job</button>
+            <button class="cfg-act fj-danger" id="fj-deletejob">Delete Job</button>
+          </div>
+        </div>
+      </div>
+      <div class="fj-col fj-creation">
+        <div class="cfg-label">Creation</div>
+        <button class="cfg-act cfg-actwide" id="fj-newfield"><img class="fo-ic" src="/icons/FileNew.png">New Field</button>
+      </div>
+    </div>
+  </div>
+  <!-- New Field — chain sub-panel (replaces Fields and Jobs). -->
+  <div id="newfield" class="ln-panel nf-panel">
+    <div class="ln-hdr"><button class="ln-x" id="nf-back" title="Back">←</button><span class="ln-hdr-title">New Field</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Field name</div>
+    <input class="cfg-num fj-tx" id="nf-name" placeholder="e.g., North 40">
+    <div class="cfg-label" style="margin-top:10px">Origin (current GPS)</div>
+    <div class="nf-pos" id="nf-pos">—</div>
+    <div class="sa-hint" id="nf-poshint" style="margin-top:4px">The field is created at this position.</div>
+    <button class="cfg-act cfg-actwide fj-primary" id="nf-create" style="margin-top:14px">Create Field</button>
   </div>
   <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
        opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor

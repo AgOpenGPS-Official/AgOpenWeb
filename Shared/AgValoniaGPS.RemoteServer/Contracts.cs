@@ -333,3 +333,25 @@ public record NtripProfileDto(
     string Id, string Name, string CasterHost, int CasterPort, string MountPoint,
     string Username, string Password, bool AutoConnectOnFieldLoad, bool IsDefault,
     IReadOnlyList<string> AssociatedFields);
+
+/// <summary>Field Operations read-frame (Phase 9 Field Ops) — the field/job lifecycle
+/// lists for the Fields-and-Jobs dialog. Fields = every field on disk (distance enriched
+/// when a GPS fix exists); Jobs = ALL jobs across fields (the client filters by the
+/// selected field). Seeded on connect + re-sent on a fingerprint change (field/job
+/// add/delete/open). IsoXml/Kml lists feed the From-ISO-XML / From-KML creation pickers.</summary>
+public record FieldOpsDto(
+    IReadOnlyList<FieldEntryDto> Fields,
+    IReadOnlyList<JobEntryDto> Jobs,
+    IReadOnlyList<string> WorkTypeSuggestions,
+    IReadOnlyList<string> IsoXmlFiles,
+    IReadOnlyList<string> KmlFiles,
+    string ActiveFieldName);
+
+/// <summary>One field row: name + great-circle distance (HasDistance=false → "—") +
+/// outer-boundary area (ha). Mirrors NearbyField.</summary>
+public record FieldEntryDto(string Name, bool HasDistance, double DistanceKm, double AreaHa);
+
+/// <summary>One job row (mirrors JobSummary). Status: 0 InProgress, 1 Done, 2 Abandoned.
+/// LastOpened is a preformatted "yyyy-MM-dd HH:mm" string.</summary>
+public record JobEntryDto(
+    string FieldName, string TaskName, string WorkType, int Status, string LastOpened, string Notes);

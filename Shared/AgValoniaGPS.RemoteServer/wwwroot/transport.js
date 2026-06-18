@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -135,6 +135,18 @@ window.RemoteTransport = {
           const af = i32(); const availableFields = new Array(af);
           for (let k = 0; k < af; k++) availableFields[k] = str();
           handlers.onNtripProfiles && handlers.onNtripProfiles({ profiles, availableFields });
+          break;
+        }
+        case TYPE.FIELD_OPS: {
+          const fc = i32(); const fields = new Array(fc);
+          for (let k = 0; k < fc; k++) fields[k] = { name: str(), hasDistance: !!u8(), distanceKm: f64(), areaHa: f64() };
+          const jc = i32(); const jobs = new Array(jc);
+          for (let k = 0; k < jc; k++) jobs[k] = { fieldName: str(), taskName: str(), workType: str(), status: i32(), lastOpened: str(), notes: str() };
+          const wc = i32(); const workTypes = new Array(wc); for (let k = 0; k < wc; k++) workTypes[k] = str();
+          const ic = i32(); const isoFiles = new Array(ic); for (let k = 0; k < ic; k++) isoFiles[k] = str();
+          const kc = i32(); const kmlFiles = new Array(kc); for (let k = 0; k < kc; k++) kmlFiles[k] = str();
+          const activeField = str();
+          handlers.onFieldOps && handlers.onFieldOps({ fields, jobs, workTypes, isoFiles, kmlFiles, activeField });
           break;
         }
         case TYPE.HELLO: {

@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using AgValoniaGPS.Models.State;
+using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.RemoteServer;
@@ -68,7 +69,8 @@ public sealed class RemoteServerHost
         AgValoniaGPS.Models.Configuration.ConfigurationStore config,
         IJobService jobs, IConfigurationService configService, IAutoSteerService autoSteer,
         ISmartWasCalibrationService smartWas, IUdpCommunicationService udp,
-        INtripProfileService ntripProfiles, int port = 5174)
+        INtripProfileService ntripProfiles, IFieldService fields, ISettingsService settings,
+        int port = 5174)
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
@@ -85,6 +87,8 @@ public sealed class RemoteServerHost
         builder.Services.AddSingleton(smartWas);
         builder.Services.AddSingleton(udp);
         builder.Services.AddSingleton(ntripProfiles);
+        builder.Services.AddSingleton(fields);
+        builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton<ControlAuthority>();
         builder.Services.AddSingleton<SceneProjector>();
         builder.Services.AddSingleton<CoverageProjector>();

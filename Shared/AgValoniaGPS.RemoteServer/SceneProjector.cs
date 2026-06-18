@@ -5,6 +5,7 @@
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
 using AgValoniaGPS.Models.State;
+using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.Interfaces;
 
 namespace AgValoniaGPS.RemoteServer;
@@ -22,13 +23,18 @@ public sealed class SceneProjector
     private readonly ISmartWasCalibrationService _smartWas;
     private readonly IUdpCommunicationService _udp;
     private readonly INtripProfileService _ntripProfiles;
+    private readonly IFieldService _fields;
+    private readonly ISettingsService _settings;
 
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
         ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
         IAutoSteerService autoSteer, ISmartWasCalibrationService smartWas,
-        IUdpCommunicationService udp, INtripProfileService ntripProfiles)
+        IUdpCommunicationService udp, INtripProfileService ntripProfiles,
+        IFieldService fields, ISettingsService settings)
     {
+        _fields = fields;
+        _settings = settings;
         _state = state;
         _sections = sections;
         _tool = tool;
@@ -299,6 +305,89 @@ public sealed class SceneProjector
             foreach (var f in p.AssociatedFields) h = h * 31 + (f?.GetHashCode() ?? 0);
         }
         foreach (var f in _ntripProfiles.GetAvailableFields()) h = h * 31 + (f?.GetHashCode() ?? 0);
+        return h;
+    }
+
+    // Field Operations read-frame (Phase 9). Mirrors StartWorkSessionDialogViewModel.Refresh:
+    // every field on disk, distance-enriched when a GPS fix exists, plus all jobs + work-type
+    // suggestions + the ISO-XML / KML import-folder listings.
+    public FieldOpsDto BuildFieldOps()
+    {
+        var root = _settings.Settings.FieldsDirectory ?? "";
+        double lat = _state.Vehicle.Latitude, lon = _state.Vehicle.Longitude;
+        var names = string.IsNullOrEmpty(root)
+            ? new System.Collections.Generic.List<string>()
+            : new System.Collections.Generic.List<string>(_fields.GetAvailableFields(root));
+        var known = (lat != 0 || lon != 0) && !string.IsNullOrEmpty(root)
+            ? _fields.FindFieldsNear(root, lat, lon, double.MaxValue)
+                .ToDictionary(f => f.Name, f => f, System.StringComparer.OrdinalIgnoreCase)
+            : new System.Collections.Generic.Dictionary<string, NearbyField>(System.StringComparer.OrdinalIgnoreCase);
+        var fields = new System.Collections.Generic.List<FieldEntryDto>(names.Count);
+        foreach (var name in names)
+        {
+            if (known.TryGetValue(name, out var nf))
+                fields.Add(new FieldEntryDto(nf.Name, !double.IsNaN(nf.DistanceKm), double.IsNaN(nf.DistanceKm) ? 0 : nf.DistanceKm, nf.BoundaryAreaHectares));
+            else
+                fields.Add(new FieldEntryDto(name, false, 0, 0));
+        }
+        // Known (with distance) first by distance, then unknown alphabetically — matches Refresh.
+        fields.Sort((a, b) =>
+        {
+            if (a.HasDistance && b.HasDistance) return a.DistanceKm.CompareTo(b.DistanceKm);
+            if (a.HasDistance) return -1;
+            if (b.HasDistance) return 1;
+            return string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase);
+        });
+
+        var jobs = _jobs.ListAllJobs()
+            .Select(j => new JobEntryDto(j.FieldName, j.TaskName, j.WorkType, (int)j.Status,
+                j.LastOpenedAt.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture), j.Notes))
+            .ToList();
+        var suggestions = _jobs.SuggestWorkTypes().ToList();
+
+        var (iso, kml) = ScanImportFolder();
+        return new FieldOpsDto(fields, jobs, suggestions, iso, kml, _fields.ActiveField?.Name ?? "");
+    }
+
+    // ISO-XML (subdirs with TASKDATA.xml) + KML/KMZ files under ~/Documents/AgValoniaGPS/Import.
+    // Mirrors MainViewModel.PopulateAvailableIsoXmlFiles / PopulateAvailableKmlFiles.
+    private static (System.Collections.Generic.List<string> iso, System.Collections.Generic.List<string> kml) ScanImportFolder()
+    {
+        var iso = new System.Collections.Generic.List<string>();
+        var kml = new System.Collections.Generic.List<string>();
+        try
+        {
+            var docs = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
+            if (string.IsNullOrEmpty(docs)) docs = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+            var importDir = System.IO.Path.Combine(docs, "AgValoniaGPS", "Import");
+            if (!System.IO.Directory.Exists(importDir)) return (iso, kml);
+            foreach (var dir in System.IO.Directory.GetDirectories(importDir))
+                if (System.IO.File.Exists(System.IO.Path.Combine(dir, "TASKDATA.xml")))
+                    iso.Add(new System.IO.DirectoryInfo(dir).Name);
+            foreach (var fp in System.IO.Directory.GetFiles(importDir, "*.kml", System.IO.SearchOption.AllDirectories)
+                .Concat(System.IO.Directory.GetFiles(importDir, "*.kmz", System.IO.SearchOption.AllDirectories)))
+                kml.Add(System.IO.Path.GetFileName(fp));
+        }
+        catch { /* import dir optional */ }
+        return (iso, kml);
+    }
+
+    // Re-send FieldOps on a field/job add/delete/open/area change (NOT on import-folder
+    // changes — those refresh on connect / any field-job change, cheap enough).
+    public long FieldOpsFingerprint()
+    {
+        long h = 17;
+        var root = _settings.Settings.FieldsDirectory ?? "";
+        if (!string.IsNullOrEmpty(root))
+            foreach (var n in _fields.GetAvailableFields(root)) h = h * 31 + n.GetHashCode();
+        foreach (var j in _jobs.ListAllJobs())
+        {
+            h = h * 31 + (j.FieldName?.GetHashCode() ?? 0);
+            h = h * 31 + (j.TaskName?.GetHashCode() ?? 0);
+            h = h * 31 + (int)j.Status;
+            h = h * 31 + j.LastOpenedAt.Ticks.GetHashCode();
+        }
+        h = h * 31 + (_fields.ActiveField?.Name?.GetHashCode() ?? 0);
         return h;
     }
 

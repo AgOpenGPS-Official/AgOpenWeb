@@ -17,7 +17,41 @@ namespace AgValoniaGPS.RemoteServer;
 public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
-        ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11;
+        ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
+        FieldOps = 12;
+
+    public static byte[] EncodeFieldOps(FieldOpsDto f)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(FieldOps);
+        w.Write(f.Fields.Count);
+        foreach (var e in f.Fields)
+        {
+            WriteStr(w, e.Name);
+            w.Write((byte)(e.HasDistance ? 1 : 0));
+            w.Write(e.DistanceKm);   // f64
+            w.Write(e.AreaHa);       // f64
+        }
+        w.Write(f.Jobs.Count);
+        foreach (var j in f.Jobs)
+        {
+            WriteStr(w, j.FieldName);
+            WriteStr(w, j.TaskName);
+            WriteStr(w, j.WorkType);
+            w.Write(j.Status);       // i32
+            WriteStr(w, j.LastOpened);
+            WriteStr(w, j.Notes);
+        }
+        w.Write(f.WorkTypeSuggestions.Count);
+        foreach (var s in f.WorkTypeSuggestions) WriteStr(w, s);
+        w.Write(f.IsoXmlFiles.Count);
+        foreach (var s in f.IsoXmlFiles) WriteStr(w, s);
+        w.Write(f.KmlFiles.Count);
+        foreach (var s in f.KmlFiles) WriteStr(w, s);
+        WriteStr(w, f.ActiveFieldName);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeNtripProfiles(NtripProfilesDto p)
     {
