@@ -1802,12 +1802,12 @@ if (rnRoot) {
 // ---- render ----
 // ONE projection: the CanvasKit M44 perspective matrix, always — top-down is just
 // pitch 0 on the same matrix (distance is chosen so pitch 0 matches the ortho scale
-// exactly, see buildScreenMatrix). There is no separate 2D renderer: the legacy ortho
-// branches below (`perspM == null`) only run if CanvasKit failed to load, in which case
-// the map isn't drawn at all. Gating the matrix on pitch used to drop top-down into an
-// axis-aligned raster path that couldn't rotate — imagery/coverage skewed away under
-// HeadingUp/Map. Keeping perspM on at every pitch routes rasters through the
-// rotation-correct world-matrix path.
+// exactly, see buildScreenMatrix). There is no separate 2D renderer; perspM is non-null
+// for the entire Skia render path (it's only null before CanvasKit finishes loading, and
+// nothing is drawn then). The render helpers (w2s, drawGridSk, drawImagerySk,
+// drawCoverageSk, …) assume perspM and no longer branch on it — that old per-pitch
+// branch dropped top-down into an axis-aligned raster path that couldn't rotate, so
+// imagery/coverage skewed away under HeadingUp/Map as heading changed.
 function active3D() { return !!CK; }
 // Build the world→CSS-px screen matrix, mirroring the native camera model
 // (SkiaMapControl.BuildPerspectiveScreenMatrix): view = T(0,0,-distance)·Rx(-pitch)
@@ -1898,14 +1898,10 @@ function applyM(M, e, n) {
   const w = M[12] * e + M[13] * n + M[15];
   return [x / w, y / w];
 }
+// World (e,n) → CSS px through the one perspective matrix (top-down is pitch 0). Only
+// ever called from the Skia render path, where perspM is guaranteed set (CanvasKit up).
 function w2s(e, n) {
-  if (perspM) return applyM(perspM, e, n);
-  // 2D ortho with map rotation (screen rotation = −mapRotation; _cosRR/_sinRR
-  // precomputed per frame in updateCamera). Reduces to the old north-up form at
-  // rotation 0.
-  const rE = e - camE, rN = n - camN;
-  const x = rE * _cosRR - rN * _sinRR, y = rE * _sinRR + rN * _cosRR;
-  return [vw / 2 + x * pxPerM, vh / 2 - y * pxPerM];
+  return applyM(perspM, e, n);
 }
 // On-screen heading at a ground point: the heading direction projected through the
 // current matrix (so the vehicle marker aligns with the tilted ground, not screen
@@ -2636,15 +2632,7 @@ function updateHud(rp) {
 // (flat [VERB,x,y,...]) for polylines; drawLine for single segments.
 function strokePtsSk(canvas, pts, close, paint) {
   if (!pts || pts.length < 2) return;
-  if (perspM) { strokePtsSk3D(canvas, pts, close, paint); return; }
-  const cmds = [];
-  for (let i = 0; i < pts.length; i++) {
-    const xy = w2s(pts[i].e, pts[i].n);
-    cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, xy[0], xy[1]);
-  }
-  if (close) cmds.push(CK.CLOSE_VERB);
-  const path = CK.Path.MakeFromCmds(cmds);
-  if (path) { canvas.drawPath(path, paint); path.delete(); }
+  strokePtsSk3D(canvas, pts, close, paint);
 }
 // Perspective path for strokePtsSk: a vertex behind the tilted camera (w < EPS)
 // projects through w2s with a negative w → a mirrored ghost segment (the same bug
@@ -2695,17 +2683,13 @@ function strokePtsSk3D(canvas, pts, close, paint) {
   }
   flush();
 }
-function segSk(canvas, e1, n1, e2, n2, paint) {
-  const a = w2s(e1, n1), b = w2s(e2, n2);
-  canvas.drawLine(a[0], a[1], b[0], b[1], paint);
-}
 // Field flags — filled dot (0.8 m radius like native, min 4 px) + dark outline,
 // coloured by the flag's hex. Skips flags behind the tilted camera (near-plane).
 function drawFlagsSk(canvas, flags) {
   if (!flags || !flags.length) return;
   const r = Math.max(4, 0.8 * pxPerM);
   for (const fl of flags) {
-    if (perspM && (perspM[12] * fl.e + perspM[13] * fl.n + perspM[15]) < 1.0) continue; // behind camera
+    if ((perspM[12] * fl.e + perspM[13] * fl.n + perspM[15]) < 1.0) continue; // behind camera
     const xy = w2s(fl.e, fl.n);
     SKP.flagFill.setColor(ckColor(fl.color || '#FF0000'));
     canvas.drawCircle(xy[0], xy[1], r, SKP.flagFill);
@@ -2715,7 +2699,7 @@ function drawFlagsSk(canvas, flags) {
 function drawGridSk(canvas) {
   const G = 2000;
   let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
-  if (perspM) { halfW = Math.max(halfW, 180); halfH = Math.max(halfH, 180); } // tilt sees farther
+  halfW = Math.max(halfW, 180); halfH = Math.max(halfH, 180); // see far enough under tilt
   if (mapRotation !== 0) { const d = Math.hypot(halfW, halfH); halfW = d; halfH = d; } // cover rotated corners
   const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
@@ -2726,42 +2710,27 @@ function drawGridSk(canvas) {
   const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;
   const gm = 6; // gridMult = BaseStrokeMult 3 × GridExtraStrokeMult 2
 
-  if (perspM) {
-    // 3D: draw in WORLD coords under the perspective matrix so Skia GPU-clips at the
-    // near plane. (Per-vertex screen projection garbles any line crossing behind the
-    // tilted camera — that's why the vertical lines vanished.) Stroke widths in world
-    // metres (native formula: a 0.3 px floor + a 0.05 m world-thickness floor).
-    const wpp = 1 / pxPerM;
-    SKP.gridMinor.setStrokeWidth(Math.max(0.3 * wpp, 0.05) * gm);
-    SKP.gridMajor.setStrokeWidth(Math.max(0.6 * wpp, 0.1) * gm);
-    SKP.axisX.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
-    SKP.axisY.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
-    canvas.save();
-    canvas.concat(perspM);
-    const line = (e1, n1, e2, n2, paint) => {
-      const c = clipNear(e1, n1, e2, n2);
-      if (c) canvas.drawLine(c[0], c[1], c[2], c[3], paint);
-    };
-    for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
-      line(k * spacing, minN, k * spacing, maxN, major(k));
-    for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
-      line(minE, k * spacing, maxE, k * spacing, major(k));
-    if (0 >= minE && 0 <= maxE) line(0, minN, 0, maxN, SKP.axisY);
-    if (0 >= minN && 0 <= maxN) line(minE, 0, maxE, 0, SKP.axisX);
-    canvas.restore();
-    return;
-  }
-  // 2D top-down: screen-space; the same thickness expressed in CSS px.
-  SKP.gridMinor.setStrokeWidth(Math.max(0.3, 0.05 * pxPerM) * gm);
-  SKP.gridMajor.setStrokeWidth(Math.max(0.6, 0.1 * pxPerM) * gm);
-  SKP.axisX.setStrokeWidth(Math.max(0.9, 0.15 * pxPerM) * gm);
-  SKP.axisY.setStrokeWidth(Math.max(0.9, 0.15 * pxPerM) * gm);
+  // Draw in WORLD coords under the perspective matrix so Skia GPU-clips at the near
+  // plane. (Per-vertex screen projection garbles any line crossing behind a tilted
+  // camera.) Stroke widths in world metres (native: 0.3 px floor + 0.05 m floor).
+  const wpp = 1 / pxPerM;
+  SKP.gridMinor.setStrokeWidth(Math.max(0.3 * wpp, 0.05) * gm);
+  SKP.gridMajor.setStrokeWidth(Math.max(0.6 * wpp, 0.1) * gm);
+  SKP.axisX.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
+  SKP.axisY.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
+  canvas.save();
+  canvas.concat(perspM);
+  const line = (e1, n1, e2, n2, paint) => {
+    const c = clipNear(e1, n1, e2, n2);
+    if (c) canvas.drawLine(c[0], c[1], c[2], c[3], paint);
+  };
   for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
-    segSk(canvas, k * spacing, minN, k * spacing, maxN, major(k));
+    line(k * spacing, minN, k * spacing, maxN, major(k));
   for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
-    segSk(canvas, minE, k * spacing, maxE, k * spacing, major(k));
-  if (0 >= minE && 0 <= maxE) segSk(canvas, 0, minN, 0, maxN, SKP.axisY);
-  if (0 >= minN && 0 <= maxN) segSk(canvas, minE, 0, maxE, 0, SKP.axisX);
+    line(minE, k * spacing, maxE, k * spacing, major(k));
+  if (0 >= minE && 0 <= maxE) line(0, minN, 0, maxN, SKP.axisY);
+  if (0 >= minN && 0 <= maxN) line(minE, 0, maxE, 0, SKP.axisX);
+  canvas.restore();
 }
 function vehicleSk(canvas, p) {
   const xy = w2s(p.e, p.n);
@@ -2785,14 +2754,7 @@ function drawImagerySk(canvas) {
   }
   if (!skImagery) return;
   const r = imageryRect;
-  if (perspM) {
-    drawImageWorldSk(canvas, skImagery, r.minE, r.minN, r.maxE, r.maxN, CK.FilterMode.Linear);
-    return;
-  }
-  const tl = w2s(r.minE, r.maxN), br = w2s(r.maxE, r.minN); // (minE,maxN)→(maxE,minN)
-  const dest = CK.LTRBRect(tl[0], tl[1], br[0], br[1]);
-  const src = CK.LTRBRect(0, 0, skImagery.width(), skImagery.height());
-  canvas.drawImageRectOptions(skImagery, src, dest, CK.FilterMode.Linear, CK.MipmapMode.None, null);
+  drawImageWorldSk(canvas, skImagery, r.minE, r.minN, r.maxE, r.maxN, CK.FilterMode.Linear);
 }
 // Draw a north-up image over a world rect under the perspective matrix. The image
 // (top row = high northing) is placed via a px→world affine, then perspM warps it
@@ -2822,14 +2784,7 @@ function drawCoverageSk(canvas) {
   const cs = cov.cellSize;
   const minE = cov.originE, minN = cov.originN;
   const maxE = cov.originE + cov.width * cs, maxN = cov.originN + cov.height * cs;
-  if (perspM) {
-    drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Nearest);
-    return;
-  }
-  const tl = w2s(minE, maxN), br = w2s(maxE, minN);
-  const dest = CK.LTRBRect(tl[0], tl[1], br[0], br[1]);
-  const src = CK.LTRBRect(0, 0, cov.width, cov.height);
-  canvas.drawImageRectOptions(cov.skImg, src, dest, CK.FilterMode.Nearest, CK.MipmapMode.None, null);
+  drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Nearest);
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
