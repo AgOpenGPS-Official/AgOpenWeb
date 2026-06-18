@@ -406,6 +406,39 @@ public sealed class SceneProjector
         return h;
     }
 
+    // Field Tools read-frame. Import Tracks: other fields on disk that have saved
+    // tracks (the current field excluded — you import INTO it).
+    public FieldToolsDto BuildFieldTools()
+    {
+        var importFields = new System.Collections.Generic.List<string>();
+        var root = _settings.Settings.FieldsDirectory ?? "";
+        var active = _fields.ActiveField?.Name;
+        if (!string.IsNullOrEmpty(root))
+            foreach (var name in _fields.GetAvailableFields(root))
+            {
+                if (name == active) continue;
+                if (AgValoniaGPS.Services.TrackFilesService.Exists(System.IO.Path.Combine(root, name)))
+                    importFields.Add(name);
+            }
+        return new FieldToolsDto(importFields);
+    }
+
+    public long FieldToolsFingerprint()
+    {
+        long h = 17;
+        var root = _settings.Settings.FieldsDirectory ?? "";
+        var active = _fields.ActiveField?.Name;
+        if (!string.IsNullOrEmpty(root))
+            foreach (var name in _fields.GetAvailableFields(root))
+            {
+                if (name == active) continue;
+                if (AgValoniaGPS.Services.TrackFilesService.Exists(System.IO.Path.Combine(root, name)))
+                    h = h * 31 + name.GetHashCode();
+            }
+        h = h * 31 + (active?.GetHashCode() ?? 0);
+        return h;
+    }
+
     // AgShare read-frame. Settings from ConfigStore.Connections; live action status +
     // fetched cloud fields from ApplicationState.AgShare; upload candidates = every field
     // on disk (with whether it has a Boundary.txt). Mirrors the native dialogs' scans.

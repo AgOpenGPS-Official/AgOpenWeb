@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -176,6 +176,12 @@ window.RemoteTransport = {
           for (let k = 0; k < gc; k++) logs[k] = { time: str(), level: i32(), message: str() };
           const bugReportStatus = str();
           handlers.onAppInfo && handlers.onAppInfo({ version, gitHash, currentLanguage, languages, directories, hotkeys, logs, bugReportStatus });
+          break;
+        }
+        case TYPE.FIELD_TOOLS: {
+          const ic = i32(); const importFields = new Array(ic);
+          for (let k = 0; k < ic; k++) importFields[k] = str();
+          handlers.onFieldTools && handlers.onFieldTools({ importFields });
           break;
         }
         case TYPE.HELLO: {

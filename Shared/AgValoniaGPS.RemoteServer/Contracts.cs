@@ -401,6 +401,12 @@ public record AppInfoDto(
     IReadOnlyList<AppLogDto> Logs,
     string BugReportStatus);
 
+/// <summary>Field Tools read-frame. Grows per sub-increment (append-only). Import
+/// Tracks: the other fields on disk that have saved tracks (current field excluded).
+/// Re-sent on a fingerprint change (field add/delete/open).</summary>
+public record FieldToolsDto(
+    IReadOnlyList<string> ImportFields);
+
 public record AppLangDto(string Code, string Name);
 public record AppDirDto(string Name, string Path, bool Exists);
 public record AppHotkeyDto(string Action, string Key, string Label);

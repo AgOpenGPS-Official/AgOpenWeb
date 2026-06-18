@@ -45,6 +45,8 @@ let agShare = null;    // AgShare: settings + cloud action status/results
 let agShareDirty = false;
 let appInfo = null;    // File/App menu: version, languages, directories, hotkeys, logs
 let appInfoDirty = false;
+let fieldTools = null; // Field Tools read-frame: import-track field list
+let fieldToolsDirty = false;
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -150,6 +152,7 @@ const transport = RemoteTransport.create({
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
   onAgShare(a) { agShare = a; agShareDirty = true; },
   onAppInfo(a) { appInfo = a; appInfoDirty = true; },
+  onFieldTools(f) { fieldTools = f; fieldToolsDirty = true; if (document.getElementById('importtracks').classList.contains('open')) renderImportTracks(); },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -408,7 +411,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'importtracks', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -523,6 +526,12 @@ document.getElementById('ft-offsetfix').addEventListener('pointerdown', e => {
   e.stopPropagation(); lnOpen('offsetfix', 'ln-fieldtools', renderOffsetFix);
 });
 document.getElementById('of-back').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools');
+});
+document.getElementById('ft-importtracks').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('importtracks', 'ln-fieldtools', renderImportTracks);
+});
+document.getElementById('it-back').addEventListener('pointerdown', e => {
   e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools');
 });
 // Offset Fix D-pad (argless Tier-1 commands).
@@ -2551,6 +2560,29 @@ function renderOffsetFix() {
   const ns = document.getElementById('of-ns-in'), ew = document.getElementById('of-ew-in');
   if (document.activeElement !== ns) ns.value = (statusBar.driftNorthing || 0).toFixed(3);
   if (document.activeElement !== ew) ew.value = (statusBar.driftEasting || 0).toFixed(3);
+}
+
+// Import Tracks: list the other fields that have saved tracks; tap one to copy its
+// tracks into the open field (host ImportTracksFromFieldCommand transforms origins).
+function renderImportTracks() {
+  const list = document.getElementById('it-list'); list.innerHTML = '';
+  const fields = fieldTools ? fieldTools.importFields : [];
+  if (!fields || !fields.length) {
+    list.innerHTML = '<div class="fj-empty">No other fields with tracks found.</div>';
+    return;
+  }
+  for (const name of fields) {
+    const row = document.createElement('div');
+    row.className = 'fj-jrow';
+    row.innerHTML = '<div class="fj-jtop"><span class="fj-jname"></span></div>';
+    row.querySelector('.fj-jname').textContent = name;
+    row.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      transport.send('field.importTracks|' + name);
+      lnCloseAll();
+    });
+    list.appendChild(row);
+  }
 }
 
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays

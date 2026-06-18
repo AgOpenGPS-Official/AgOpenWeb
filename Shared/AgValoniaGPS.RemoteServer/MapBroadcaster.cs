@@ -26,6 +26,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastFieldOpsFp = long.MinValue;
     private long _lastAgShareFp = long.MinValue;
     private long _lastAppInfoFp = long.MinValue;
+    private long _lastFieldToolsFp = long.MinValue;
     private SceneDto _currentScene;
     private Task? _loop;
 
@@ -66,6 +67,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeFieldOps(_projector.BuildFieldOps()),
             WireCodec.EncodeAgShare(_projector.BuildAgShare()),
             WireCodec.EncodeAppInfo(_projector.BuildAppInfo()),
+            WireCodec.EncodeFieldTools(_projector.BuildFieldTools()),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -189,6 +191,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 {
                     _lastAppInfoFp = aifp;
                     await _ws.BroadcastAsync(WireCodec.EncodeAppInfo(_projector.BuildAppInfo()), ct).ConfigureAwait(false);
+                }
+
+                // Field Tools read-frame: import-track field list (field add/delete/open).
+                var ftfp = _projector.FieldToolsFingerprint();
+                if (ftfp != _lastFieldToolsFp)
+                {
+                    _lastFieldToolsFp = ftfp;
+                    await _ws.BroadcastAsync(WireCodec.EncodeFieldTools(_projector.BuildFieldTools()), ct).ConfigureAwait(false);
                 }
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)

@@ -207,6 +207,10 @@ public partial class App : Application
                                 case "field.deleteApplied": // Tier-1; browser already confirmed
                                     windowVm.DeleteAppliedAreaConfirmed();
                                     return;
+                                case "field.importTracks": // arg = source field name (Tier-1)
+                                    if (windowVm.ImportTracksFromFieldCommand?.CanExecute(arg) == true)
+                                        windowVm.ImportTracksFromFieldCommand.Execute(arg);
+                                    return;
                                 case "offset.set": // Offset Fix manual entry. arg = "easting,northing" (m)
                                 {
                                     var op = arg.Split(',');
