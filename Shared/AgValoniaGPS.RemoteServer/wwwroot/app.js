@@ -103,6 +103,7 @@ function isFollowMode() { return cameraMode !== 2; }
 // perspM is the world→CSS-px matrix for the current frame (null when top-down).
 let pitch = 0;          // radians
 let perspM = null;      // 16-elem M44 (world→CSS px) or null
+let perspMInv = null;   // cached 4×4 inverse of perspM (CSS px→world ray); null until built
 const DEFAULT_PITCH = Math.PI / 3;        // 60° — the one-key tilt
 const MAX_PITCH = 65 * Math.PI / 180;     // v1 cap: keeps the local field in front
 const PITCH_STEP = 5 * Math.PI / 180;
@@ -1942,7 +1943,12 @@ function buildScreenMatrix() {
   ];
   return CK.M44.multiply(viewport, proj, view);
 }
-function updatePerspective() { perspM = active3D() ? buildScreenMatrix() : null; }
+function updatePerspective() {
+  perspM = active3D() ? buildScreenMatrix() : null;
+  // Cache the inverse once per frame (Phase MT s2w foundation). perspM is row-major
+  // (CanvasKit M44); the inverse is the screen-px→world-ray map used by s2w.
+  perspMInv = perspM ? invertM44(perspM) : null;
+}
 // Near-plane clip a ground segment for the perspective path. perspM's w (bottom row,
 // z=0) is positive in front of the camera; CanvasKit's drawLine doesn't clip the
 // behind part (it perspective-divides by a negative w → a mirrored ghost line), so
@@ -2002,6 +2008,82 @@ function applyM(M, e, n) {
 function w2s(e, n) {
   return applyM(perspM, e, n);
 }
+// ---- screen→world unprojection (Phase MT foundation) ----
+// w2s only ever does world→screen; map-tap features need the inverse: turn a CSS-px tap
+// into a field coordinate (E,N) on the ground plane z=0. perspM bakes the viewport in, so
+// a tap (px,py) is already in perspM's output space — no NDC pre-step. We unproject the
+// tap at two clip depths (the near/far representatives where the homogeneous w=1), giving
+// two world points on the viewing ray, then intersect that ray with z=0.
+//
+// Full 4×4 row-major Gauss-Jordan inverse (perspM is row-major: a[r][c]=m[r*4+c]).
+// Returns null if singular. Robust to any pitch — no special-casing top-down.
+function invertM44(m) {
+  const a = [];
+  for (let r = 0; r < 4; r++) {
+    a.push([m[r*4], m[r*4+1], m[r*4+2], m[r*4+3],
+            r===0?1:0, r===1?1:0, r===2?1:0, r===3?1:0]);
+  }
+  for (let col = 0; col < 4; col++) {
+    let piv = col, best = Math.abs(a[col][col]);
+    for (let r = col + 1; r < 4; r++) {
+      const v = Math.abs(a[r][col]); if (v > best) { best = v; piv = r; }
+    }
+    if (best < 1e-12) return null;
+    if (piv !== col) { const t = a[piv]; a[piv] = a[col]; a[col] = t; }
+    const pv = a[col][col];
+    for (let j = 0; j < 8; j++) a[col][j] /= pv;
+    for (let r = 0; r < 4; r++) {
+      if (r === col) continue;
+      const f = a[r][col];
+      if (f !== 0) for (let j = 0; j < 8; j++) a[r][j] -= f * a[col][j];
+    }
+  }
+  const out = new Array(16);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) out[r*4+c] = a[r][c+4];
+  return out;
+}
+// Row-major 4×4 · column vector (x,y,z,w) → [4].
+function m44vec(M, x, y, z, w) {
+  return [
+    M[0]*x + M[1]*y + M[2]*z + M[3]*w,
+    M[4]*x + M[5]*y + M[6]*z + M[7]*w,
+    M[8]*x + M[9]*y + M[10]*z + M[11]*w,
+    M[12]*x + M[13]*y + M[14]*z + M[15]*w,
+  ];
+}
+// Screen (CSS px) → world (E,N) on the ground plane z=0. Returns {e,n} or null (no matrix
+// yet, or the viewing ray is parallel to the ground — e.g. a tap on/above the horizon under
+// extreme tilt). Reuse everywhere a tap must become a field coordinate.
+function s2w(px, py) {
+  if (!perspMInv) return null;
+  const A = m44vec(perspMInv, px, py, 0, 1); // near-plane representative
+  const B = m44vec(perspMInv, px, py, 1, 1); // far-plane representative
+  if (A[3] === 0 || B[3] === 0) return null;
+  const ax = A[0]/A[3], ay = A[1]/A[3], az = A[2]/A[3];
+  const bx = B[0]/B[3], by = B[1]/B[3], bz = B[2]/B[3];
+  const dz = bz - az;
+  if (Math.abs(dz) < 1e-9) return null;       // ray parallel to ground (horizon)
+  const t = -az / dz;
+  return { e: ax + (bx - ax) * t, n: ay + (by - ay) * t };
+}
+// Dev round-trip check: project a grid of world points with w2s, unproject with s2w,
+// report max error. Call from the console at pitch 0 AND tilted (press 3) — expect
+// sub-millimetre error. Skips points behind the camera (w<1), which w2s can't show anyway.
+window._s2wTest = function () {
+  if (!perspM) { console.log('s2w test: no perspM (CanvasKit not ready)'); return; }
+  let maxErr = 0, n = 0;
+  for (let de = -200; de <= 200; de += 50) for (let dn = -200; dn <= 200; dn += 50) {
+    const e = camE + de, nn = camN + dn;
+    if (perspM[12]*e + perspM[13]*nn + perspM[15] < 1.0) continue; // behind camera
+    const s = w2s(e, nn);
+    const b = s2w(s[0], s[1]);
+    if (!b) continue;
+    maxErr = Math.max(maxErr, Math.hypot(b.e - e, b.n - nn));
+    n++;
+  }
+  console.log(`s2w round-trip: pitch=${(pitch*180/Math.PI).toFixed(0)}° samples=${n} maxErr=${maxErr.toExponential(3)} m`);
+  return maxErr;
+};
 // On-screen heading at a ground point: the heading direction projected through the
 // current matrix (so the vehicle marker aligns with the tilted ground, not screen
 // up). Returns the world heading unchanged when top-down.
