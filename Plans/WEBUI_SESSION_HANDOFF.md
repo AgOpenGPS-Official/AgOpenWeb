@@ -99,7 +99,7 @@ The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
 | 3 | **Tools** | ❌ NOT BUILT |
 | 4 | Vehicle / Tool Configuration | ✅ built (`#vehtoolhub`/`#vehiclecfg`/`#toolcfg`) |
 | 5 | Field Operations | ✅ built (`#fieldops` + Fields-and-Jobs + creation + Resume Job + AgShare) |
-| 6 | **Field Tools** | ❌ NOT BUILT (only bottom-nav operational toggles exist) |
+| 6 | **Field Tools** | ❌ NOT BUILT — launcher items + **map-tap boundary work (needs Phase MT)** |
 | 7 | AutoSteer Configuration | ✅ built (`#autosteercfg` + Smart-WAS + Wizard) |
 | 8 | Network IO | ✅ built (`#networkio` + NTRIP) |
 
@@ -141,10 +141,27 @@ Wire frame **AppInfo=14**; host write `app.*` + `AgShareRemote`-style bug-report
 - **Field Operations** (`Panels/FieldOperationsPanel.axaml`) — field lifecycle: Fields and Jobs
   · Resume Last Job · Resume Job · Drive In · Close · AgShare Upload/Download/Settings. Needs a
   field-list read-frame + confirm dialogs (mostly command-driven).
-- **Field Tools** (`Panels/FieldToolsPanel.axaml`) — Field Builder · Boundary (dialog) · Delete
-  Applied Area · Import Tracks · Recorded Path · Offset Fix. DISTINCT from the deferred map-tap
-  dialogs (Tracks / QuickAB / DrawAB / FlagList / place-on-map), which need **map-tap canvas
-  interaction** built once + reused — the hardest chunk, do last.
+- **Field Tools** (`Panels/FieldToolsPanel.axaml`) — Field Builder · Boundary · Delete Applied
+  Area · Import Tracks · Recorded Path · Offset Fix. The launcher items are form/command panels,
+  BUT **the boundary work and several others are map-tap features** (see the Map-Tap phase below) —
+  Field Tools is NOT complete until those are built.
+
+## Phase MT — Map-tap interaction (REQUIRED; the migration is NOT done until this ships)
+The map-tap features need the operator to **tap a location on the map canvas** to act, unlike the
+form/command panels. They ALL depend on one missing piece: **screen→world unprojection** — turn a
+tap (x,y px) into a field coordinate (E,N). The renderer only does world→screen (`w2s`) today.
+Build the inverse ONCE, reuse everywhere:
+- Flat/top-down: invert pan/zoom/rotation. **3D tilt: invert the perspective M44 + ray-cast onto the
+  ground plane** (the hard part — `perspM` is column-vector/row-major; see Renderer notes).
+Features that need it (across Field Tools + bottom-nav + Tracks):
+- **Boundary** — record/draw/edit field boundaries by tapping (the bulk of Field Tools).
+- **Quick AB / Draw AB** — set an AB line by tapping A then B; draw curves by tapping points.
+- **Place flag on map** — drop a flag at a tapped point (note: "place flag here" at the vehicle
+  already works in the bottom-nav; only the arbitrary-point placement needs map-tap).
+- **Flag list** — pick/locate/move flags on the map.
+- **Tracks** — on-map point picking for track create/edit.
+This is its own phase. Treat the web migration as INCOMPLETE until Phase MT is done.
+
 Then **Phase 10** — mop-up + headless cutover (host goes UI-less; browser is the only UI).
 
 ## Navigation model — SINGLE UNIFIED MODEL (LOCKED 2026-06-17)
@@ -258,7 +275,8 @@ separate §13 audit work (now merged from develop), **not** the web migration.
   under `canvas.concat(perspM)`. Non-color-managed surface (sRGB blend like native).
   Camera modes 0=N 1=H 2=Free 3=Map; `strokePtsSk3D` near-plane-clips polylines.
 
-**Pick the next Phase-9 sub-phase (Network IO + NTRIP, Field ops/lifecycle, or the deferred
-map-tap dialogs) and build it sub-phased per the patterns above. Use the VehicleSimulator rig
-to test anything touching steer/GPS/calibration. Ask for native screenshots before building a
+**Remaining to finish the migration (all REQUIRED — there is no "later"): (1) Tools button,
+(2) Field Tools button, (3) Phase MT — map-tap interaction (boundary/AB/flags/tracks), (4)
+Phase 10 headless cutover. Build each sub-phased per the patterns above. Use the VehicleSimulator
+rig to test anything touching steer/GPS/calibration. Ask for native screenshots before building a
 new panel.**
