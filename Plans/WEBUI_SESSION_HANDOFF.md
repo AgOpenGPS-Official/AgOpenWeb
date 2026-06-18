@@ -12,7 +12,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.65`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.73`** (we DO bump `sys/version.h` per commit now).
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -30,7 +30,18 @@ safe allowlist. Migration = project more state + accept more command ids + build
   safety wiring + host-side projectors/handlers in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
 
 ## Done & pushed
-- **Session 2026-06-18 additions (left nav now 7/8 buttons):**
+- **Session 2026-06-18 additions (all 8 left-nav buttons now present):**
+  - **Field Tools** (`v26.5.66–73`) — `#fieldtools` fly-out + the non-map-tap surface:
+    **Offset Fix** (`#offsetfix` D-pad + manual N/E, `offset.*`), **Delete Applied Area**
+    (browser-confirm → extracted `DeleteAppliedAreaConfirmed()`; FIX: it no longer resets
+    guidance/nudge/U-turn, native too), **Import Tracks** (`#importtracks`, FieldTools frame),
+    **Recorded Path** (`#recpath`, RecordedPath frame, host provider; record/playback, live
+    dots, native icons, NO_SCRIM), **Boundary** (`#boundarymenu` + `#boundaryplayer`, Boundary
+    frame, host provider; drive-around recording, native icons, live line+dots, NO_SCRIM).
+    Deferred: Field Builder + Boundary/AB Draw-on-Map (Phase MT), Import-KML picker.
+  - **Renderer unified on perspM** (`v26.5.66–67`) — `active3D()` keys on CanvasKit presence,
+    not pitch; top-down = pitch 0 on the one M44. Removed the dead 2D ortho path (fixed
+    imagery/coverage skewing under HeadingUp at pitch 0). See the NOTE at the bottom.
   - **Tools** (`v26.5.65`) — fly-out (`#tools`) at native left-nav position 3. **Steer Wizard** =
     shortcut to the existing host-driven wizard (`openSteerWizard`). **Log Viewer** = shortcut to
     the App Log Viewer panel with **parent-aware Back** (`logViewerParent` → Tools or File menu).
@@ -111,11 +122,12 @@ The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
 | 3 | Tools | ✅ built (`#tools` + Steer Wizard/Log Viewer shortcuts + Roll Correction `#rollcorr` + Steer/Heading/XTE chart cards) |
 | 4 | Vehicle / Tool Configuration | ✅ built (`#vehtoolhub`/`#vehiclecfg`/`#toolcfg`) |
 | 5 | Field Operations | ✅ built (`#fieldops` + Fields-and-Jobs + creation + Resume Job + AgShare) |
-| 6 | **Field Tools** | ❌ NOT BUILT — launcher items + **map-tap boundary work (needs Phase MT)** |
+| 6 | Field Tools | ✅ built (non-MT): `#fieldtools` + Offset Fix + Delete Applied + Import Tracks + Recorded Path + Boundary menu/player. ⏳ remaining = **Field Builder + Boundary Draw-on-Map (Phase MT)** + Import-KML picker (follow-up) |
 | 7 | AutoSteer Configuration | ✅ built (`#autosteercfg` + Smart-WAS + Wizard) |
 | 8 | Network IO | ✅ built (`#networkio` + NTRIP) |
 
-**1 of 8 buttons remains: Field Tools.** (Tools done v26.5.65 — see Done & pushed above.)
+**All 8 left-nav buttons are now present.** Field Tools' non-map-tap surface is done
+(v26.5.66–73); what's left inside it is Phase-MT map-tap work + the Import-KML picker.
 (File/App Menu done v26.5.64 — fly-out + App
 Settings [units/kbd/fullscreen/elev migrated OUT of Screen & Alerts + App Directories] + Language
 + Reset All + View All Settings [read-only tree from the config frame] + Log Viewer [AppInfo logs,
@@ -242,7 +254,9 @@ model is a **web-led improvement** (web is the end-state UI). Whether to backpor
   Native icons live in `Shared/AgValoniaGPS.Views/Assets/Icons[/Config]/` — **copy the PNGs
   in** before referencing them, else broken-link. Rebuild RemoteServer to embed.
 - **Frame types:** Scene=1 Tick=2 CoverageInit=3 CoverageCells=4 Status=5 ControlState=6
-  Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 FieldOps=12 AgShare=13 **AppInfo=14**.
+  Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 FieldOps=12 AgShare=13 AppInfo=14
+  **FieldTools=15 (Import Tracks, projector-built) RecordedPath=16 (host-driven provider)
+  Boundary=17 (host-driven provider)**.
 - **Tier-2 gating** (`IsRestrictedCommand`, control-gated): prefixes `section.` `autosteer.`
   `youturn.` `contour.` `track.` `headland.` `smartwas.` `wizard.action`, plus the exact id
   `net.subnet` (restarts every module). Tier-1 (ungated): `sim.` `tool.` `map.` `flag.` `tram.`
@@ -289,7 +303,16 @@ separate §13 audit work (now merged from develop), **not** the web migration.
   under `canvas.concat(perspM)`. Non-color-managed surface (sRGB blend like native).
   Camera modes 0=N 1=H 2=Free 3=Map; `strokePtsSk3D` near-plane-clips polylines.
 
-**Remaining to finish the migration (all REQUIRED — there is no "later"): (1) Field Tools button,
-(2) Phase MT — map-tap interaction (boundary/AB/flags/tracks), (3) Phase 10 headless cutover. Build each sub-phased per the patterns above. Use the VehicleSimulator
-rig to test anything touching steer/GPS/calibration. Ask for native screenshots before building a
-new panel.**
+**Remaining to finish the migration (all REQUIRED — there is no "later"): (1) Phase MT —
+map-tap interaction: needs screen→world unprojection (invert pan/zoom/rotation; 3D = invert
+perspM + ground-plane ray-cast), then Boundary Draw-on-Map, Field Builder (on-map track/
+headland/tram editor), Quick/Draw AB, place-flag-at-point, flag list, on-map track edit; plus
+the Import-KML boundary picker (a list sub-dialog, not map-tap — can land independently).
+(2) Phase 10 headless cutover. Build each sub-phased per the patterns above. Use the
+VehicleSimulator rig to test anything touching steer/GPS/calibration. Ask for native
+screenshots before building a new panel.
+
+NOTE: the web renderer is now unified on ONE projection (the perspM M44 at every pitch;
+top-down = pitch 0). w2s and the raster/grid draws assume perspM — there is no separate 2D
+ortho path. The screen→world inverse for Phase MT must invert perspM (+ ray-cast the ground
+plane), not a 2D ortho transform.**
