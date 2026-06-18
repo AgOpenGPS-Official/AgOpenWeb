@@ -62,13 +62,14 @@ public sealed class SceneProjector
         // Boundary with an outer ring + optional inner holes) — NOT the (unused)
         // Field.Boundaries collection.
         var boundaries = new List<IReadOnlyList<Vec2Dto>>();
+        var boundaryInner = new List<bool>();
         var bnd = f.ActiveField?.Boundary;
         if (bnd is not null)
         {
-            AddRing(boundaries, bnd.OuterBoundary);
+            if (AddRing(boundaries, bnd.OuterBoundary)) boundaryInner.Add(false);
             if (bnd.InnerBoundaries != null)
                 foreach (var inner in bnd.InnerBoundaries.ToArray())
-                    AddRing(boundaries, inner);
+                    if (AddRing(boundaries, inner)) boundaryInner.Add(true);
         }
 
         var tracks = f.Tracks.ToArray()
@@ -135,6 +136,7 @@ public sealed class SceneProjector
             f.FieldName,
             f.ActiveField != null,
             boundaries,
+            boundaryInner,
             tracks,
             headland,
             guidanceLine,
@@ -153,10 +155,14 @@ public sealed class SceneProjector
         return h;
     }
 
-    private static void AddRing(List<IReadOnlyList<Vec2Dto>> rings, BoundaryPolygon? poly)
+    private static bool AddRing(List<IReadOnlyList<Vec2Dto>> rings, BoundaryPolygon? poly)
     {
         if (poly is { Points.Count: >= 3 })
+        {
             rings.Add(poly.Points.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList());
+            return true;
+        }
+        return false;
     }
 
     public TickDto BuildTick(long sceneVersion)

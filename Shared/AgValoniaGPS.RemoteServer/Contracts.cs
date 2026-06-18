@@ -16,7 +16,8 @@ public record SceneDto(
     double OriginLon,
     string FieldName,
     bool HasField,
-    IReadOnlyList<IReadOnlyList<Vec2Dto>> Boundaries, // each = one outer ring
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> Boundaries, // outer ring first, then inner holes
+    IReadOnlyList<bool> BoundaryInner, // parallel to Boundaries: true = inner/obstacle (drawn yellow)
     IReadOnlyList<TrackDto> Tracks,
     IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
     IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding

@@ -223,9 +223,11 @@ function buildSkPaints() {
   };
   const fill = (color) => { const p = new CK.Paint(); p.setStyle(CK.PaintStyle.Fill); p.setColor(ckColor(color)); p.setAntiAlias(true); return p; };
   SKP = {
-    boundary: mk('#46a0ff', 5), headland: mk('#5fd35f', 4),
-    track: mk('#ffd24a', 4), reference: mk('#a86bff', 5, [9, 7]),
-    guidance: mk('#fc56ba', 5), uturn: mk('#4df24d', 5), next: mk('#00c8c8', 4),
+    // Colours mirror native SkiaMapControl paints; widths are set per frame in
+    // updateLineWidths() (world metres × pxPerM, like native's world-space strokes).
+    boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
+    track: mk('#ffd24a', 4), reference: mk('rgb(180,100,255)', 5, [9, 7]),
+    guidance: mk('rgb(252,86,186)', 5), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
     // Match native (night-mode) grid: grey, ~0.31/0.47 alpha, major ~2× thickness.
     gridMinor: mk('rgba(180,180,180,0.314)', 1), gridMajor: mk('rgba(200,200,200,0.47)', 2),
     axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
@@ -3014,6 +3016,21 @@ function drawHitchSk(canvas) {
 // triangle until the image/config is ready. Native sequence: translate→rotate(-heading)
 // →flip Y→draw bitmap into the rear-axle-anchored rect.
 const SPR_REAR = 0.245, SPR_FRONT = 0.75, SPR_HALFX = 0.245; // bitmap norm anchors (native)
+// Vector line weights: native uses world-metre stroke widths × strokeMult (3) drawn in
+// world space, so they scale with zoom (no per-pixel factor — that's only the grid). We
+// stroke in screen space, so set px = worldMetres × pxPerM each frame (min 1 px so lines
+// don't vanish when zoomed far out). Values = native SkiaMapControl widths × 3.
+function updateLineWidths() {
+  const z = pxPerM, w = (m) => Math.max(m * z, 1);
+  SKP.boundary.setStrokeWidth(w(3.0));   // boundaryOuter 1 × 3
+  SKP.boundaryInner.setStrokeWidth(w(3.0)); // boundaryInner 1 × 3
+  SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
+  SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
+  SKP.reference.setStrokeWidth(w(0.9));  // trackBaseDash 0.3 × 3
+  SKP.next.setStrokeWidth(w(1.2));       // trackNext 0.4 × 3
+  SKP.uturn.setStrokeWidth(w(3.0));      // youTurn 1 × 3
+  SKP.track.setStrokeWidth(w(1.5));      // saved tracks ~ active weight
+}
 function vehicleSk(canvas, p) {
   const veh = config && config.vehicle;
   if (tractorReady && veh && veh.trackWidth > 0.01 && veh.wheelbase > 0.01) {
@@ -3209,12 +3226,15 @@ function renderSkia(canvas, rp) {
   canvas.clear(ckColor('#0f1115'));
   canvas.save();
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
+  updateLineWidths(); // world-metre line weights × current zoom (matches native)
   drawGroundTextureSk(canvas); // ground backdrop (under everything)
   drawImagerySk(canvas); // imagery overlays the ground where present
   drawCoverageSk(canvas);
   drawGridSk(canvas);
   if (scene) {
-    for (const ring of scene.boundaries) strokePtsSk(canvas, ring, true, SKP.boundary);
+    for (let bi = 0; bi < scene.boundaries.length; bi++)
+      strokePtsSk(canvas, scene.boundaries[bi], true,
+        (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
     // Headland line shows only when the headland is ON — mirrors the native
     // SetHeadlandVisible gate (IsHeadlandOn). The bottom-nav headland button drives it.
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)

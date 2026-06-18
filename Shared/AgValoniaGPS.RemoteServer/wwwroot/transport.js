@@ -42,8 +42,8 @@ window.RemoteTransport = {
         case TYPE.SCENE: {
           const version = i64(), originLat = f64(), originLon = f64();
           const hasField = !!u8(), fieldName = str();
-          const bc = i32(); const boundaries = new Array(bc);
-          for (let k = 0; k < bc; k++) boundaries[k] = pts();
+          const bc = i32(); const boundaries = new Array(bc); const boundaryInner = new Array(bc);
+          for (let k = 0; k < bc; k++) { boundaryInner[k] = !!u8(); boundaries[k] = pts(); }
           const tc = i32(); const tracks = new Array(tc);
           for (let k = 0; k < tc; k++) {
             const id = str(), name = str(), type = i32(), points = pts();
@@ -60,7 +60,7 @@ window.RemoteTransport = {
             ? { minE: f64(), minN: f64(), maxE: f64(), maxN: f64(), version: i64() }
             : null;
           handlers.onScene && handlers.onScene({
-            version, originLat, originLon, fieldName, hasField, boundaries, tracks,
+            version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
             headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery,
           });
           break;

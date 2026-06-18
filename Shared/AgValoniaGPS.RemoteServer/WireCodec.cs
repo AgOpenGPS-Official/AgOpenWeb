@@ -360,7 +360,11 @@ public static class WireCodec
         WriteStr(w, s.FieldName);
 
         w.Write(s.Boundaries.Count);
-        foreach (var ring in s.Boundaries) WritePts(w, ring);
+        for (int i = 0; i < s.Boundaries.Count; i++)
+        {
+            w.Write((byte)(i < s.BoundaryInner.Count && s.BoundaryInner[i] ? 1 : 0));
+            WritePts(w, s.Boundaries[i]);
+        }
 
         w.Write(s.Tracks.Count);
         foreach (var t in s.Tracks)
