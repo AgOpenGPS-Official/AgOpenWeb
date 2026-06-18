@@ -305,6 +305,7 @@ public partial class App : Application
                                 // are confirmed client-side. Tier-1 (data management, not actuation). ---
                                 case "field.openOnly": case "field.startJob": case "field.resumeJob":
                                 case "field.deleteField": case "field.deleteJob": case "field.new":
+                                case "field.fromExisting": case "field.fromIsoXml": case "field.fromKml":
                                     ApplyFieldCommand(windowVm, cmd, arg);
                                     return;
                                 case "field.resumeLast": ExecCmd(windowVm.ResumeLastJobCommand); return;
@@ -865,6 +866,14 @@ public partial class App : Application
             ExecCmd(vm.ConfirmNewFieldDialogCommand);
             return;
         }
+        if (cmd == "field.fromExisting") // src \t newName \t flags \t mapping \t headland \t lines
+        {
+            if (a.Length >= 6)
+                vm.RemoteCreateFromExisting(a[0], a[1], a[2] == "1", a[3] == "1", a[4] == "1", a[5] == "1");
+            return;
+        }
+        if (cmd == "field.fromIsoXml") { if (a.Length >= 2) vm.RemoteCreateFromIsoXml(a[0], a[1]); return; } // file \t newName
+        if (cmd == "field.fromKml") { if (a.Length >= 2) vm.RemoteCreateFromKml(a[0], a[1]); return; }       // file \t newName
         var sw = vm.EnsureRemoteStartWorkSession();
         sw.SelectedField = sw.Fields.FirstOrDefault(f =>
             string.Equals(f.Name, a[0], System.StringComparison.OrdinalIgnoreCase));

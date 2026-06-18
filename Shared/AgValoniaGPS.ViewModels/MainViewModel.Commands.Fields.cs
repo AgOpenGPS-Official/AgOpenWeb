@@ -869,4 +869,44 @@ public partial class MainViewModel
         StartWorkSessionDialogVm.Refresh();
         return StartWorkSessionDialogVm;
     }
+
+    // Remote (web) field-creation entry points. Each populates the relevant picker
+    // collection (no native dialog), sets the same input properties the native dialog
+    // binds, then runs the real Confirm command — so the create logic isn't duplicated.
+    private string RemoteFieldsDir()
+    {
+        var dir = _settingsService.Settings.FieldsDirectory;
+        return string.IsNullOrWhiteSpace(dir)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AgValoniaGPS", "Fields")
+            : dir;
+    }
+
+    public void RemoteCreateFromExisting(string sourceName, string newName,
+        bool copyFlags, bool copyMapping, bool copyHeadland, bool copyLines)
+    {
+        PopulateAvailableFields(RemoteFieldsDir());
+        FromExistingSelectedField = AvailableFields.FirstOrDefault(f =>
+            string.Equals(f.Name, sourceName, StringComparison.OrdinalIgnoreCase));
+        FromExistingFieldName = newName;
+        CopyFlags = copyFlags; CopyMapping = copyMapping; CopyHeadland = copyHeadland; CopyLines = copyLines;
+        ConfirmFromExistingFieldDialogCommand.Execute(null);
+    }
+
+    public void RemoteCreateFromKml(string fileName, string newName)
+    {
+        PopulateAvailableKmlFiles();
+        SelectedKmlFile = AvailableKmlFiles.FirstOrDefault(f =>
+            string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
+        KmlImportFieldName = newName;
+        ConfirmKmlImportDialogCommand.Execute(null);
+    }
+
+    public void RemoteCreateFromIsoXml(string fileName, string newName)
+    {
+        PopulateAvailableIsoXmlFiles();
+        SelectedIsoXmlFile = AvailableIsoXmlFiles.FirstOrDefault(f =>
+            string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
+        IsoXmlImportFieldName = newName;
+        ConfirmIsoXmlImportDialogCommand.Execute(null);
+    }
 }

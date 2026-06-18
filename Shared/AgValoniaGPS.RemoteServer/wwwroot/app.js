@@ -399,7 +399,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -990,7 +990,7 @@ function renderFieldOps() {
 }
 document.getElementById('fo-fields').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
 document.getElementById('fo-resumelast').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.resumeLast'); lnCloseAll(); });
-document.getElementById('fo-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+document.getElementById('fo-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); openResumeJob(); });
 document.getElementById('fo-drivein').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.driveIn'); lnCloseAll(); });
 document.getElementById('fo-close').addEventListener('pointerdown', e => { e.stopPropagation(); if (scene && scene.hasField) { transport.send('field.close'); lnCloseAll(); } });
 
@@ -1065,6 +1065,9 @@ document.getElementById('fj-deletejob').addEventListener('pointerdown', e => {
 });
 // New Field chain panel (Creation column)
 document.getElementById('fj-newfield').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('newfield', 'ln-fieldops', () => { document.getElementById('nf-name').value = ''; renderNewField(); }); });
+document.getElementById('fj-fromexisting').addEventListener('pointerdown', e => { e.stopPropagation(); openFromExisting(); });
+document.getElementById('fj-iso').addEventListener('pointerdown', e => { e.stopPropagation(); openImport('isoimport', 'iso-file', 'isoFiles'); });
+document.getElementById('fj-kml').addEventListener('pointerdown', e => { e.stopPropagation(); openImport('kmlimport', 'kml-file', 'kmlFiles'); });
 // Show the origin the field will be created at — the live GPS, or the host's
 // no-fix fallback (40.7128, -74.0060) so the readout matches what gets written.
 function renderNewField() {
@@ -1084,6 +1087,77 @@ document.getElementById('nf-create').addEventListener('pointerdown', e => {
   fjSelField = name;
   openFieldsAndJobs(); // back to the list; the new field appears once the frame updates
 });
+
+// Helper: fill a <select> with options from a string array (preserving the choice).
+function fillSelect(sel, items) {
+  const prev = sel.value;
+  sel.innerHTML = '';
+  for (const it of items) { const o = document.createElement('option'); o.value = it; o.textContent = it; sel.appendChild(o); }
+  if (items.includes(prev)) sel.value = prev;
+}
+
+// From Existing — clone a field (source + new name + copy toggles).
+document.getElementById('fe-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+for (const b of document.querySelectorAll('#fromexisting .cfg-tgl'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); b.classList.toggle('active'); });
+function openFromExisting() {
+  lnOpen('fromexisting', 'ln-fieldops', () => {
+    fillSelect(document.getElementById('fe-source'), (fieldOps ? fieldOps.fields : []).map(f => f.name));
+    document.getElementById('fe-name').value = '';
+    for (const b of document.querySelectorAll('#fromexisting .cfg-tgl')) b.classList.add('active'); // all copy on by default
+  });
+}
+document.getElementById('fe-create').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const src = document.getElementById('fe-source').value;
+  const name = document.getElementById('fe-name').value.trim();
+  if (!src || !name) return;
+  const on = id => document.getElementById(id).classList.contains('active') ? '1' : '0';
+  transport.send('field.fromExisting|' + [src, name, on('fe-flags'), on('fe-mapping'), on('fe-headland'), on('fe-lines')].join('\t'));
+  fjSelField = name; openFieldsAndJobs();
+});
+
+// From ISO-XML / From KML — import a field from a file in the Import folder.
+function openImport(panelId, selId, fileArr) {
+  lnOpen(panelId, 'ln-fieldops', () => {
+    fillSelect(document.getElementById(selId), fieldOps ? fieldOps[fileArr] : []);
+    document.getElementById(panelId === 'isoimport' ? 'iso-name' : 'kml-name').value = '';
+  });
+}
+document.getElementById('iso-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+document.getElementById('kml-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
+document.getElementById('iso-create').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const file = document.getElementById('iso-file').value, name = document.getElementById('iso-name').value.trim();
+  if (!file || !name) return;
+  transport.send('field.fromIsoXml|' + file + '\t' + name); fjSelField = name; openFieldsAndJobs();
+});
+document.getElementById('kml-create').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const file = document.getElementById('kml-file').value, name = document.getElementById('kml-name').value.trim();
+  if (!file || !name) return;
+  transport.send('field.fromKml|' + file + '\t' + name); fjSelField = name; openFieldsAndJobs();
+});
+
+// Cross-field Resume Job picker (all jobs, recency order from the host).
+function openResumeJob() { lnOpen('resumejob', 'ln-fieldops', renderResumeJob); }
+document.getElementById('rj-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldops', 'ln-fieldops', renderFieldOps); });
+function renderResumeJob() {
+  const list = document.getElementById('rj-list'); list.innerHTML = '';
+  const jobs = fieldOps ? fieldOps.jobs : [];
+  if (!jobs.length) { list.innerHTML = '<div class="fj-empty">No jobs yet.</div>'; return; }
+  for (const j of jobs) {
+    const row = document.createElement('div');
+    row.className = 'fj-jrow';
+    row.innerHTML = '<div class="fj-jtop"><span class="fj-jname"></span><span class="fj-jwt"></span><span class="fj-jst"></span></div><div class="fj-jsub"></div>';
+    row.querySelector('.fj-jname').textContent = j.taskName;
+    row.querySelector('.fj-jwt').textContent = j.fieldName;
+    row.querySelector('.fj-jst').textContent = JOB_STATUS[j.status] || '';
+    row.querySelector('.fj-jsub').textContent = 'Last opened: ' + j.lastOpened;
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('field.resumeJob|' + j.fieldName + '\t' + j.taskName); lnCloseAll(); });
+    list.appendChild(row);
+  }
+}
 
 // ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
 // SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
@@ -1292,6 +1366,7 @@ function renderSettings() {
   if (fieldOpsDirty) {
     fieldOpsDirty = false;
     if (document.getElementById('fieldsandjobs').classList.contains('open')) renderFieldsAndJobs();
+    if (document.getElementById('resumejob').classList.contains('open')) renderResumeJob();
   }
 }
 

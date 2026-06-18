@@ -434,6 +434,8 @@
     .nf-panel { width: 320px; }
     .nf-pos { color: #cfe3ff; font: 600 14px ui-monospace, monospace; padding: 8px 10px;
       border: 1px solid #2a3550; border-radius: 6px; background: #0f1115; }
+    .fj-crbtn { display: flex; align-items: center; gap: 8px; justify-content: flex-start; margin-bottom: 6px; }
+    .fe-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
     /* ===== Steer Wizard (full-screen) ===== */
     .wz-overlay { position: fixed; inset: 0; z-index: 50; background: #1b2233; display: none; flex-direction: column; }
     .wz-overlay.open { display: flex; }
@@ -1404,7 +1406,10 @@
       </div>
       <div class="fj-col fj-creation">
         <div class="cfg-label">Creation</div>
-        <button class="cfg-act cfg-actwide" id="fj-newfield"><img class="fo-ic" src="/icons/FileNew.png">New Field</button>
+        <button class="cfg-act cfg-actwide fj-crbtn" id="fj-newfield"><img class="fo-ic" src="/icons/FileNew.png">New Field</button>
+        <button class="cfg-act cfg-actwide fj-crbtn" id="fj-fromexisting"><img class="fo-ic" src="/icons/FileExisting.png">From Existing</button>
+        <button class="cfg-act cfg-actwide fj-crbtn" id="fj-iso"><img class="fo-ic" src="/icons/ISOXML.png">From ISO-XML</button>
+        <button class="cfg-act cfg-actwide fj-crbtn" id="fj-kml"><img class="fo-ic" src="/icons/GoogleEarth.png">From KML</button>
       </div>
     </div>
   </div>
@@ -1417,6 +1422,46 @@
     <div class="nf-pos" id="nf-pos">—</div>
     <div class="sa-hint" id="nf-poshint" style="margin-top:4px">The field is created at this position.</div>
     <button class="cfg-act cfg-actwide fj-primary" id="nf-create" style="margin-top:14px">Create Field</button>
+  </div>
+  <!-- From Existing — clone a field. -->
+  <div id="fromexisting" class="ln-panel nf-panel">
+    <div class="ln-hdr"><button class="ln-x" id="fe-back" title="Back">←</button><span class="ln-hdr-title">From Existing</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Source field</div>
+    <select class="cfg-sel fj-tx" id="fe-source"></select>
+    <div class="cfg-label" style="margin-top:8px">New field name</div>
+    <input class="cfg-num fj-tx" id="fe-name" placeholder="e.g., North 40 copy">
+    <div class="cfg-label" style="margin-top:8px">Copy</div>
+    <div class="fe-toggles">
+      <button class="cfg-tgl" id="fe-flags" data-keep-label>Flags</button>
+      <button class="cfg-tgl" id="fe-mapping" data-keep-label>Mapping</button>
+      <button class="cfg-tgl" id="fe-headland" data-keep-label>Headland</button>
+      <button class="cfg-tgl" id="fe-lines" data-keep-label>Lines</button>
+    </div>
+    <button class="cfg-act cfg-actwide fj-primary" id="fe-create" style="margin-top:14px">Create Field</button>
+  </div>
+  <!-- From ISO-XML — import a TASKDATA.xml folder from Documents/AgValoniaGPS/Import. -->
+  <div id="isoimport" class="ln-panel nf-panel">
+    <div class="ln-hdr"><button class="ln-x" id="iso-back" title="Back">←</button><span class="ln-hdr-title">From ISO-XML</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">ISO-XML source (Documents/AgValoniaGPS/Import)</div>
+    <select class="cfg-sel fj-tx" id="iso-file"></select>
+    <div class="cfg-label" style="margin-top:8px">New field name</div>
+    <input class="cfg-num fj-tx" id="iso-name" placeholder="field name">
+    <button class="cfg-act cfg-actwide fj-primary" id="iso-create" style="margin-top:14px">Create Field</button>
+  </div>
+  <!-- From KML — import a .kml/.kmz from Documents/AgValoniaGPS/Import. -->
+  <div id="kmlimport" class="ln-panel nf-panel">
+    <div class="ln-hdr"><button class="ln-x" id="kml-back" title="Back">←</button><span class="ln-hdr-title">From KML</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">KML file (Documents/AgValoniaGPS/Import)</div>
+    <select class="cfg-sel fj-tx" id="kml-file"></select>
+    <div class="cfg-label" style="margin-top:8px">New field name</div>
+    <input class="cfg-num fj-tx" id="kml-name" placeholder="field name">
+    <button class="cfg-act cfg-actwide fj-primary" id="kml-create" style="margin-top:14px">Create Field</button>
+  </div>
+  <!-- Resume Job — cross-field recent-job picker. -->
+  <div id="resumejob" class="ln-panel fo-panel">
+    <div class="ln-hdr"><button class="ln-x" id="rj-back" title="Back">←</button><span class="ln-hdr-title">Resume Job</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Recent jobs (all fields)</div>
+    <div id="rj-list" class="fj-list" style="max-height:360px"></div>
   </div>
   <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
        opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor
