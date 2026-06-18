@@ -88,6 +88,17 @@
       pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
     }
     #headland-hud.warn { background: rgba(130,32,32,0.9); border-color: #ff6b5b; }
+    /* Map-tap capture hint (Phase MT) — top-centre pill shown while a feature is
+       capturing an on-map tap (place-flag, boundary draw, AB, …). Esc cancels. */
+    #maptap-hint {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%); display: none;
+      padding: 7px 20px; border-radius: 999px; border: 1px solid rgba(120,200,255,0.6);
+      background: rgba(18,40,64,0.92); color: #d6ecff; font: 600 15px system-ui, sans-serif;
+      pointer-events: none; z-index: 40; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+    }
+    #maptap-hint.show { display: block; }
+    #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; }
+    body.maptap #ck { cursor: crosshair; }
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
@@ -850,6 +861,7 @@
   <div id="hud">connecting…</div>
   <div id="lb"></div>
   <div id="headland-hud"></div>
+  <div id="maptap-hint"></div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = map-follow · camera pad = mode (H/N/M/C) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
   <div id="control">
     <div id="ctl-status">connecting…</div>
@@ -2034,6 +2046,7 @@
     <div id="bottomnav">
       <div id="bn-flyout-flags" class="bn-flyout">
         <button class="bn-row" data-cmd="flag.placeHere"><img class="bn-rowic" src="/icons/FlagRed.png" alt=""><span>Place Flag Here</span></button>
+        <button class="bn-row" id="bn-flag-onmap"><img class="bn-rowic" src="/icons/FlagRed.png" alt=""><span>Place Flag on Map</span></button>
       </div>
       <div id="bn-flyout-ab" class="bn-flyout">
         <div class="bn-flyrow">

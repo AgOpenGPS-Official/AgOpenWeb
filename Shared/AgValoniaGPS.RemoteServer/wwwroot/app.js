@@ -277,11 +277,33 @@ addEventListener('wheel', e => {
   pxPerM = Math.min(200, Math.max(0.2, pxPerM));
 }, { passive: false });
 
-let dragging = false, lastX = 0, lastY = 0;
-addEventListener('pointerdown', e => { dragging = true; cameraMode = 2; lastX = e.clientX; lastY = e.clientY; });
-addEventListener('pointerup', () => dragging = false);
+// Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one
+// that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
+// so window-level pointerdown only fires for gestures that began on the map — gestureOnMap
+// guards the pointerup tap against panel taps that bubble their pointerup.
+const TAP_SLOP = 5; // px — below this, a press-release is a tap, not a pan
+let dragging = false, moved = false, gestureOnMap = false, lastX = 0, lastY = 0, downX = 0, downY = 0;
+addEventListener('pointerdown', e => {
+  gestureOnMap = true; dragging = true; moved = false;
+  downX = lastX = e.clientX; downY = lastY = e.clientY;
+});
+addEventListener('pointerup', e => {
+  dragging = false;
+  // A clean tap while a map-tap capture mode is armed → unproject and dispatch.
+  if (gestureOnMap && !moved && mapTap) {
+    const w = s2w(e.clientX, e.clientY);
+    if (w) mapTap.onTap(w.e, w.n);
+  }
+  gestureOnMap = false;
+});
 addEventListener('pointermove', e => {
   if (!dragging) return;
+  if (!moved) {
+    // Stay still until the slop is exceeded so a tap doesn't pan or drop follow mode.
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) return;
+    moved = true; cameraMode = 2; lastX = e.clientX; lastY = e.clientY; // reset origin, no jump
+    return;
+  }
   // Pan in the rotated frame: invert the screen rotation so the grabbed point
   // tracks the cursor. Reduces to the plain north-up pan at rotation 0.
   const dsx = e.clientX - lastX, dsy = e.clientY - lastY;
@@ -289,6 +311,22 @@ addEventListener('pointermove', e => {
   camN += (_sinRR * dsx + _cosRR * dsy) / pxPerM;
   lastX = e.clientX; lastY = e.clientY;
 });
+// ---- map-tap capture mode (Phase MT) — the reusable on-map point-picking primitive ----
+// A feature arms capture with startMapTap({hint, onTap}); the next clean tap unprojects via
+// s2w and calls onTap(e,n) (field metres). One mode at a time; the map stays pan/zoomable
+// (only a tap captures) so the operator can frame the view first. Esc / endMapTap() exits.
+let mapTap = null;
+function startMapTap(cfg) {
+  mapTap = cfg;
+  document.body.classList.add('maptap'); // crosshair cursor (CSS)
+  const h = document.getElementById('maptap-hint');
+  h.textContent = cfg.hint || 'Tap the map'; h.classList.add('show');
+}
+function endMapTap() {
+  mapTap = null;
+  document.body.classList.remove('maptap');
+  document.getElementById('maptap-hint').classList.remove('show');
+}
 // True when the user is typing into a field — global hotkeys (tilt, sim drive) must not
 // fire then (e.g. typing "300" into the boundary offset shouldn't toggle 3D tilt on "3").
 function isTyping() {
@@ -296,6 +334,7 @@ function isTyping() {
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 }
 addEventListener('keydown', e => {
+  if (e.key === 'Escape' && mapTap) { endMapTap(); return; } // cancel on-map capture
   if (isTyping()) return;
   if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
   // 3D tilt: 3 toggles between top-down and 60°, [ / ] nudge the pitch.
@@ -444,6 +483,21 @@ function bnToggleFly(fly, btn) {
   if (open) { fly.classList.add('open'); btn.classList.add('menuopen'); }
 }
 document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnFlags, e.currentTarget); });
+// "Place Flag on Map" (Phase MT) — arm tap capture; the next map tap drops a flag at the
+// tapped field point via flag.placeAt (host PlaceFlagAtWorldPosition). No data-cmd, so the
+// bottomNav delegate ignores it. Closes the flyout, then captures one tap.
+document.getElementById('bn-flag-onmap').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  bnFlags.classList.remove('open');
+  document.getElementById('bn-flags').classList.remove('menuopen');
+  startMapTap({
+    hint: 'Tap the map to place a flag',
+    onTap: (e2, n2) => {
+      transport.send('flag.placeAt|' + e2.toFixed(3) + ',' + n2.toFixed(3));
+      endMapTap();
+    },
+  });
+});
 document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
 
 // ---- left nav (Phase 9) — config/settings panels via the config bridge ----

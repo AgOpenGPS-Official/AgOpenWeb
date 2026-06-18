@@ -234,6 +234,15 @@ public partial class App : Application
                                 case "boundary.toggleSectionControl": // ToggleButton has no command (Tier-1)
                                     windowVm.IsBoundarySectionControlOn = !windowVm.IsBoundarySectionControlOn;
                                     return;
+                                case "flag.placeAt": // Phase MT map-tap. arg = "easting,northing"
+                                {                     // (m, field-local, from s2w). Tier-1 marker.
+                                    var fp = arg.Split(',');
+                                    if (fp.Length >= 2
+                                        && double.TryParse(fp[0], num, inv, out var fe)
+                                        && double.TryParse(fp[1], num, inv, out var fn))
+                                        windowVm.PlaceFlagAtWorldPosition(fe, fn);
+                                    return;
+                                }
                                 case "offset.set": // Offset Fix manual entry. arg = "easting,northing" (m)
                                 {
                                     var op = arg.Split(',');
