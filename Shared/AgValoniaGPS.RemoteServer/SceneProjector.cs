@@ -227,7 +227,10 @@ public sealed class SceneProjector
             _state.Guidance.SteerAngle,                  // ChartSetSteer (commanded)
             _autoSteer.LastSteerData.ActualSteerAngle,   // ChartActualSteer (WAS)
             _autoSteer.LastSteerData.PwmDisplay,         // ChartPwm
-            _autoSteer.LastSteerData.ImuHeading);        // ChartImuHeading
+            _autoSteer.LastSteerData.ImuHeading,         // ChartImuHeading
+            // Hitch pivot (implement hitch line: hitch → tool).
+            _tool.HitchPosition.Easting,
+            _tool.HitchPosition.Northing);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

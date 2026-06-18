@@ -74,6 +74,13 @@ let groundReady = false, skGround = null;
 groundImg.onload = () => { groundReady = true; };
 groundImg.src = '/icons/GroundTextureDark.png';
 
+// ---- tractor sprite (TractorAoG.png) — drawn world-sized on the ground, replacing the
+//      fallback triangle. Sized from the vehicle track-width/wheelbase like native. ----
+const tractorImg = new Image();
+let tractorReady = false, skTractor = null;
+tractorImg.onload = () => { tractorReady = true; };
+tractorImg.src = '/icons/TractorAoG.png';
+
 // ---- background imagery: extent from the Scene, PNG fetched over HTTP. ----
 let imageryRect = null;  // { minE, minN, maxE, maxN, version }
 let imageryImg = null;   // loaded <img> once ready
@@ -236,6 +243,12 @@ function buildSkPaints() {
     p.setAntiAlias(true);
     return p;
   });
+  // Section footprint as native: filled 2 m-deep rects per ColorCode + a thin black
+  // outline (DrawToolSk DrawRect fill + _sectionOutlinePaint).
+  SKP.sectionFill = SECTION_COLORS.map((c) => fill(c));
+  SKP.sectionOutline = mk('#000000', 1.2);
+  SKP.sectionOutline.setStrokeCap(CK.StrokeCap.Butt);
+  SKP.sectionOutline.setStrokeJoin(CK.StrokeJoin.Miter);
   // Lightbar LED fill — one reusable paint, recoloured per cell (crisp rects, no AA).
   SKP.lbFill = new CK.Paint();
   SKP.lbFill.setStyle(CK.PaintStyle.Fill);
@@ -2961,7 +2974,67 @@ function drawGridSk(canvas) {
   if (0 >= minN && 0 <= maxN) line(minE, 0, maxE, 0, SKP.axisX);
   canvas.restore();
 }
+// Implement hitch line: yellow line from the vehicle hitch pivot to the tool, drawn
+// under the perspective path so it clips/tilts like the other vectors. Mirrors native
+// DrawToolSk's hitch segment (hitch → tool).
+function drawHitchSk(canvas) {
+  const tool = renderTool(), p = renderPose();
+  if (!tool || !p || (!tool.e && !tool.n)) return;
+  const veh = config && config.vehicle, tl = config && config.tool;
+  if (!veh || !tl) return;
+  if (!SKP.hitch) {
+    SKP.hitch = new CK.Paint();
+    SKP.hitch.setStyle(CK.PaintStyle.Stroke);
+    SKP.hitch.setColor(ckColor('#FFFF00'));
+    SKP.hitch.setStrokeWidth(3);
+    SKP.hitch.setAntiAlias(true);
+    SKP.hitch.setStrokeCap(CK.StrokeCap.Round);
+  }
+  const type = tl.type | 0; // 0 front, 1 rear, 2 TBT, 3 trailing (ToolConfigDto)
+  if (type === 3 || type === 2) {
+    // Trailing / TBT: a single tongue line from the vehicle hitch pivot to the tool.
+    if (tick && tick.hitchE != null && (tick.hitchE || tick.hitchN))
+      strokePtsSk(canvas, [{ e: tick.hitchE, n: tick.hitchN }, { e: tool.e, n: tool.n }], false, SKP.hitch);
+    return;
+  }
+  // Mounted (front/rear 3-point): two arms from the tractor mount (rear axle, or
+  // wheelbase ahead for front-mount) ± a lateral spread, converging on the tool.
+  // Mirrors native: spread = trackWidth*0.3; base = pivot (+wheelbase ahead if front).
+  const spread = veh.trackWidth * 0.3;
+  const front = type === 0;
+  const baseE = p.e + (front ? Math.sin(p.heading) * veh.wheelbase : 0);
+  const baseN = p.n + (front ? Math.cos(p.heading) * veh.wheelbase : 0);
+  const ps = Math.cos(p.heading), pc = -Math.sin(p.heading); // perpendicular (= native cosV,sinV)
+  strokePtsSk(canvas, [{ e: baseE - ps * spread, n: baseN - pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
+  strokePtsSk(canvas, [{ e: baseE + ps * spread, n: baseN + pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
+}
+// Vehicle: the TractorAoG sprite drawn world-sized on the ground (scales with zoom,
+// foreshortens under tilt), sized from track-width/wheelbase via the same normalized
+// sprite proportions as native (BitmapTractorSize). Falls back to the screen-space
+// triangle until the image/config is ready. Native sequence: translate→rotate(-heading)
+// →flip Y→draw bitmap into the rear-axle-anchored rect.
+const SPR_REAR = 0.245, SPR_FRONT = 0.75, SPR_HALFX = 0.245; // bitmap norm anchors (native)
 function vehicleSk(canvas, p) {
+  const veh = config && config.vehicle;
+  if (tractorReady && veh && veh.trackWidth > 0.01 && veh.wheelbase > 0.01) {
+    if (!skTractor) skTractor = CK.MakeImageFromCanvasImageSource(tractorImg);
+    if (skTractor) {
+      const bW = veh.trackWidth / (2 * SPR_HALFX);
+      const bH = veh.wheelbase / (SPR_FRONT - SPR_REAR);
+      const half = bW / 2, top = (1 - SPR_REAR) * bH, bot = -SPR_REAR * bH;
+      canvas.save();
+      canvas.concat(perspM);
+      canvas.translate(p.e, p.n);
+      canvas.rotate(-p.heading * 180 / Math.PI, 0, 0);
+      canvas.scale(1, -1); // bitmap rows are top-down; world N is up
+      canvas.drawImageRectOptions(skTractor,
+        CK.LTRBRect(0, 0, skTractor.width(), skTractor.height()),
+        CK.LTRBRect(-half, -top, half, -bot),
+        CK.FilterMode.Linear, CK.MipmapMode.None, null);
+      canvas.restore();
+      return;
+    }
+  }
   const xy = w2s(p.e, p.n);
   canvas.save();
   canvas.translate(xy[0], xy[1]);
@@ -3043,18 +3116,40 @@ function drawCoverageSk(canvas) {
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
+// Tool footprint: each section a filled 2 m-deep rect (coloured by ColorCode) with a
+// thin black outline + a 0.05 m inter-section gap, matching native DrawToolSk. The four
+// world corners come from the perpendicular (left/right) and forward (depth) directions;
+// all four are projected via w2s (the tool is always near the camera, so no near-plane
+// clipping is needed) and filled/stroked as a quad.
 function toolFootprintSk(canvas) {
   const t = renderTool();
   if (!t || !scene || !scene.toolSections || !scene.toolSections.length) return;
   if (!t.e && !t.n) return;
   const perp = t.heading + Math.PI / 2;
-  const ps = Math.sin(perp), pc = Math.cos(perp);
+  const ps = Math.sin(perp), pc = Math.cos(perp);        // perpendicular (right) dir
+  const hs = Math.sin(t.heading), hc = Math.cos(t.heading); // forward (depth) dir
+  const depth = 1.0, halfGap = 0.025;                    // toolDepth 2 m; 0.05 m gap
   const secs = (tick && tick.sections) || [];
+  const quad = (L, R) => {
+    const cmds = [];
+    const corners = [[L, -depth], [R, -depth], [R, depth], [L, depth]];
+    for (let k = 0; k < 4; k++) {
+      const off = corners[k][0], d = corners[k][1];
+      const xy = w2s(t.e + ps * off + hs * d, t.n + pc * off + hc * d);
+      cmds.push(k === 0 ? CK.MOVE_VERB : CK.LINE_VERB, xy[0], xy[1]);
+    }
+    cmds.push(CK.CLOSE_VERB);
+    return CK.Path.MakeFromCmds(cmds);
+  };
   for (let i = 0; i < scene.toolSections.length; i++) {
     const span = scene.toolSections[i];
-    const a = w2s(t.e + ps * span.left, t.n + pc * span.left);
-    const b = w2s(t.e + ps * span.right, t.n + pc * span.right);
-    canvas.drawLine(a[0], a[1], b[0], b[1], SKP.section[secs[i]] || SKP.section[5]);
+    const L = span.left + halfGap, R = span.right - halfGap;
+    if (R - L < 0.01) continue;
+    const path = quad(L, R);
+    if (!path) continue;
+    canvas.drawPath(path, SKP.sectionFill[secs[i]] || SKP.sectionFill[5]);
+    canvas.drawPath(path, SKP.sectionOutline);
+    path.delete();
   }
 }
 // Lightbar — screen-space LED strip, identical logic/geometry to the 2D
@@ -3134,6 +3229,7 @@ function renderSkia(canvas, rp) {
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
+  drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale

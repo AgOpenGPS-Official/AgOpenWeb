@@ -443,6 +443,9 @@ public static class WireCodec
         w.Write((float)t.ChartActualSteer);
         w.Write((float)t.ChartPwm);
         w.Write((float)t.ChartImuHeading);
+        // Hitch pivot (implement hitch line).
+        w.Write(t.HitchE);           // f64
+        w.Write(t.HitchN);           // f64
         return ms.ToArray();
     }
 

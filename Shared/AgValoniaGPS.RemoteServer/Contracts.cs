@@ -111,7 +111,12 @@ public record TickDto(
     double ChartSetSteer,
     double ChartActualSteer,
     double ChartPwm,
-    double ChartImuHeading);
+    double ChartImuHeading,
+    // Hitch pivot on the vehicle (field-local m) — the web draws the implement hitch
+    // line from here to the tool. Mirrors IToolPositionService.HitchPosition. f64 for
+    // position precision like the pose/tool coords. Meaningful only when ToolReady.
+    double HitchE,
+    double HitchN);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
