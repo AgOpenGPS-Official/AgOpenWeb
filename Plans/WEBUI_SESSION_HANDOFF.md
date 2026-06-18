@@ -12,7 +12,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.58`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.64`** (we DO bump `sys/version.h` per commit now).
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -30,6 +30,20 @@ safe allowlist. Migration = project more state + accept more command ids + build
   safety wiring + host-side projectors/handlers in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
 
 ## Done & pushed
+- **Session 2026-06-17 additions (left nav now 6/8 buttons):**
+  - **Network IO + NTRIP** (`0ee454d7`, v26.5.59) — module checkboxes/status/IP, Scan (PGN 202),
+    subnet change (PGN 201, gated), Host IPs, NTRIP status + Profiles/Editor dialogs. Wire frame
+    **NtripProfiles=11**; shared `NtripConnectionTester`.
+  - **Unified non-modal nav model** (`86ac6e6d`, v26.5.60) — dimming modals eliminated;
+    transparent light-dismiss scrim; watch-tractor panels opt out; see `[[project_unified_nav_model]]`.
+  - **Field Operations** (`d8299d26`/`fbc9556b`/`b71796e2`, v26.5.61–63) — Fields-and-Jobs lifecycle +
+    New Field/From Existing/ISO-XML/KML + cross-field Resume Job + AgShare Upload/Download/Settings.
+    Wire frames **FieldOps=12, AgShare=13**; host `AgShareRemote.cs` + `EnsureRemoteStartWorkSession`.
+  - **File / Application Menu** (`79697583`, v26.5.64) — App Settings (units/kbd/fs/elev moved out of
+    Screen & Alerts + App Directories), Language, Reset All, View All Settings (near-fullscreen),
+    Log Viewer, Hotkeys, Help, About, Bug Report. Wire frame **AppInfo=14**; sim show/hide persists
+    via `PersistentAppState.SimulatorPanelVisible` (Status `simPanelVisible` + `sim.togglePanel`).
+  - **NEXT: 2 buttons remain — Tools, Field Tools** (see the inventory table below).
 - **Phases 1–8** (status bar, control-authority safety layer, right-nav toolbar, lower-right
   cluster + Skia-only renderer, GPS-detail card, simulator panel + dialog host, section bar,
   bottom nav/field tools) — see git history. CanvasKit is the SOLE renderer (`skFrame` loop).
