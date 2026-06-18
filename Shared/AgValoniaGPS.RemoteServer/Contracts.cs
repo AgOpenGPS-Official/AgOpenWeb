@@ -9,6 +9,12 @@ public record Vec2Dto(double E, double N);
 
 public record TrackDto(string Id, string Name, int Type, IReadOnlyList<Vec2Dto> Points);
 
+/// <summary>One row in the Tracks-manager list: index into the field's track list,
+/// name, a display type label (Line/Curve/Path/Contour — derived host-side like native's
+/// TracksDialog), and the active/visible flags. Carries NO points (the manager only
+/// lists/selects); the render geometry rides SceneDto.Tracks.</summary>
+public record TrackInfoDto(int Index, string Name, string Type, bool Active, bool Visible);
+
 /// <summary>Static-ish geometry: sent on connect and whenever the fingerprint changes.</summary>
 public record SceneDto(
     long Version,
@@ -25,7 +31,8 @@ public record SceneDto(
     IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
     IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
     IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
-    ImageryDto? Imagery); // background field image world-rect + version (PNG served over HTTP)
+    ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
+    IReadOnlyList<TrackInfoDto> TrackList); // ALL tracks (incl. hidden) for the Tracks manager
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex.</summary>
 public record FlagDto(double E, double N, string ColorHex);

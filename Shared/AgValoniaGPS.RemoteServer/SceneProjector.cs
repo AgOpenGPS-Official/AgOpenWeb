@@ -72,8 +72,11 @@ public sealed class SceneProjector
                     if (AddRing(boundaries, inner)) boundaryInner.Add(true);
         }
 
+        // Map render list: ONLY the active track, mirroring native SkiaMapControl
+        // (DrawTrackSk draws s.ActiveTrack alone — there is no all-saved-tracks pass).
+        // The full list for the Tracks manager rides TrackList (below), not this.
         var tracks = f.Tracks.ToArray()
-            .Where(t => t.IsVisible && t.Points.Count >= 2)
+            .Where(t => t.IsActive && t.Points.Count >= 2)
             .Select((t, i) => new TrackDto(
                 i.ToString(),
                 t.Name,
@@ -129,6 +132,12 @@ public sealed class SceneProjector
         if (im is not null)
             imagery = new ImageryDto(im.MinE, im.MinN, im.MaxE, im.MaxN, ImageVersion(im.Path));
 
+        // Tracks-manager list: ALL tracks (incl. hidden), index = position in the field
+        // track list so the client can address one for select/visibility/management.
+        var trackList = f.Tracks.ToArray()
+            .Select((t, i) => new TrackInfoDto(i, t.Name, TrackTypeLabel(t), t.IsActive, t.IsVisible))
+            .ToList();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -144,8 +153,17 @@ public sealed class SceneProjector
             uTurnPath,
             nextTrack,
             flags,
-            imagery);
+            imagery,
+            trackList);
     }
+
+    // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
+    // Curve → Line, derived from Type + point count, not the raw enum int).
+    private static string TrackTypeLabel(AgValoniaGPS.Models.Track.Track t) =>
+        t.IsContour ? "Contour"
+        : t.IsRecordedPath ? "Path"
+        : t.IsCurve ? "Curve"
+        : "Line";
 
     // Deterministic per-path version (string.GetHashCode is process-randomized).
     private static long ImageVersion(string path)
@@ -753,7 +771,15 @@ public sealed class SceneProjector
             foreach (var inner in bnd.InnerBoundaries.ToArray()) h = h * 31 + inner.Points.Count;
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + f.Tracks.Count;
-        foreach (var t in f.Tracks.ToArray()) h = h * 31 + t.Points.Count;
+        // Point count + name + active/visible so the Tracks manager refreshes on
+        // activate/hide/rename (none of which change point counts).
+        foreach (var t in f.Tracks.ToArray())
+        {
+            h = h * 31 + t.Points.Count;
+            h = h * 31 + t.Name.GetHashCode();
+            h = h * 31 + (t.IsActive ? 1 : 0);
+            h = h * 31 + (t.IsVisible ? 1 : 0);
+        }
 
         // Flags: re-send the Scene on place/delete. Count + last position (rounded to
         // 0.1 m) catches add/remove/move without per-tick churn.

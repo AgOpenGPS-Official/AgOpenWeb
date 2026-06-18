@@ -99,6 +99,22 @@
     #maptap-hint.show { display: block; }
     #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; }
     body.maptap #ck { cursor: crosshair; }
+    /* Draw-track toolbar (Phase MT) — top-centre, directly under the instruction pill
+       (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
+       the screen from it. */
+    #draw-toolbar {
+      position: fixed; top: 100px; left: 50%; transform: translateX(-50%); display: none;
+      gap: 10px; z-index: 41;
+    }
+    #draw-toolbar.show { display: flex; }
+    #draw-toolbar button {
+      padding: 9px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(28,40,56,0.95); color: #e6eefc; font: 600 15px system-ui, sans-serif;
+      cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+    }
+    #draw-toolbar button:active { background: rgba(50,80,120,0.95); }
+    #draw-finish, #draw-setpoint { border-color: rgba(110,220,150,0.7) !important; color: #b6f0cd !important; }
+    #draw-cancel { border-color: rgba(230,120,110,0.7) !important; color: #f3c4bd !important; }
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
@@ -652,6 +668,43 @@
       font: 700 14px system-ui, sans-serif; }
     .dlg-cancel { background: rgba(255,255,255,0.10); color: #cfe3ff; }
     .dlg-ok { background: #1f6fb2; color: #fff; }
+    /* AB creation selectors (Quick AB / Draw AB) — mode-button grid. */
+    .dlg-wide { max-width: 460px; min-width: 420px; }
+    .dlg-sub { color: #9fb3cc; font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
+    .dlg-modes { display: flex; gap: 10px; justify-content: center; }
+    .dlg-mode { flex: 1; min-height: 84px; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 6px; border-radius: 8px; border: 1px solid #2a3550;
+      background: rgba(255,255,255,0.05); color: #dce8f8; font: 600 12px system-ui, sans-serif; cursor: pointer; }
+    .dlg-mode:active { background: rgba(74,144,217,0.35); }
+    .dlg-mode img { width: 40px; height: 40px; object-fit: contain; }
+    .dlg-mode .dlg-bigtxt { font: 800 24px system-ui, sans-serif; color: #e7eef9; }
+    .dlg-mode.disabled { opacity: 0.4; pointer-events: none; }
+    /* Tracks manager — toolbar + list. */
+    .trk-toolbar { display: flex; gap: 6px; align-items: center; background: rgba(255,255,255,0.05);
+      border-radius: 8px; padding: 5px; margin-bottom: 12px; }
+    .trk-tool { width: 44px; height: 40px; border-radius: 6px; border: 1px solid #2a3550;
+      background: rgba(255,255,255,0.04); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .trk-tool img { width: 26px; height: 26px; object-fit: contain; }
+    .trk-tool.disabled { opacity: 0.4; pointer-events: none; }
+    .trk-sep { width: 1px; height: 28px; background: #2a3550; margin: 0 4px; }
+    .trk-head { display: grid; grid-template-columns: 1fr 90px 60px; padding: 6px 10px;
+      color: #9fb3cc; font: 600 12px system-ui, sans-serif; background: rgba(255,255,255,0.04);
+      border-radius: 6px 6px 0 0; }
+    .trk-head span:nth-child(2), .trk-head span:nth-child(3) { text-align: center; }
+    .trk-list { max-height: 300px; min-height: 120px; overflow-y: auto; border: 1px solid #2a3550;
+      border-top: 0; border-radius: 0 0 6px 6px; }
+    .trk-row { display: grid; grid-template-columns: 28px 1fr 90px 60px; align-items: center;
+      padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+    .trk-row:hover { background: rgba(255,255,255,0.05); }
+    .trk-row.active { background: rgba(39,174,96,0.18); }
+    .trk-row .trk-name { color: #e7eef9; font: 500 14px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trk-row .trk-type { text-align: center; color: #9fb3cc; font: 500 13px system-ui, sans-serif; }
+    .trk-row .trk-dot { justify-self: center; width: 14px; height: 14px; border-radius: 50%; background: #3a4660; }
+    .trk-row.active .trk-dot { background: #27AE60; }
+    .trk-row .trk-vis { width: 18px; height: 18px; cursor: pointer; accent-color: #4A90D9; }
+    .trk-empty { padding: 24px; text-align: center; color: #7d8ca5; font: 500 14px system-ui, sans-serif; }
+    /* AB flyout group separator (matches native's separators between groups). */
+    .bn-flysep { height: 1px; background: rgba(255,255,255,0.14); margin: 4px 6px; }
     /* Remote actuation control (Phase 2 safety layer). Take/Release authority +
        a Tier-2 test. Bottom-left, clear of the centre sim pad. */
     #control { position: fixed; bottom: 14px; left: 14px; display: flex; flex-direction: column;
@@ -862,6 +915,14 @@
   <div id="lb"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
+  <!-- Phase MT — draw-track toolbar. Shown while drawing an AB/curve on the map.
+       Undo/Finish appear only in curve mode; Cancel always. -->
+  <div id="draw-toolbar">
+    <button id="draw-setpoint">Set Point</button>
+    <button id="draw-undo">Undo</button>
+    <button id="draw-finish">Finish</button>
+    <button id="draw-cancel">Cancel</button>
+  </div>
   <div id="help">wheel/pinch = zoom · drag = pan · F = map-follow · camera pad = mode (H/N/M/C) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
   <div id="control">
     <div id="ctl-status">connecting…</div>
@@ -2049,18 +2110,31 @@
         <button class="bn-row" id="bn-flag-onmap"><img class="bn-rowic" src="/icons/FlagRed.png" alt=""><span>Place Flag on Map</span></button>
       </div>
       <div id="bn-flyout-ab" class="bn-flyout">
+        <!-- Mirrors native BottomNavigationPanel AB flyout. Row 1: Tracks manager /
+             Auto-track / Quick-AB selector. Row 2: boundary-edge AB / Draw-on-map
+             selector. Then the active-track ops (cycle/smooth/delete + nudges), shown
+             only with an active track (.bn-abdep). Tracks/QuickAB/DrawAB open dialogs. -->
         <div class="bn-flyrow">
+          <button class="bn-btn" id="bn-tracks" title="Tracks — manage AB lines"><img class="bn-ic" src="/icons/ABTracks.png" alt="Tracks"></button>
           <button class="bn-btn" id="bn-autotrack" data-cmd="track.autoTrack" data-t2 title="Auto track select (closest track)">AT</button>
-          <button class="bn-btn" data-cmd="track.createFromBoundary" data-t2 title="Create AB line from boundary edge">BE</button>
+          <button class="bn-btn" id="bn-quickab" title="Quick AB line creator"><img class="bn-ic" src="/icons/ABTrackAPlus.png" alt="Quick AB"></button>
         </div>
+        <div class="bn-flyrow">
+          <button class="bn-btn" data-cmd="track.createFromBoundary" title="Create AB line from boundary edge">BE</button>
+          <button class="bn-btn" id="bn-drawab" title="Draw AB line on map"><img class="bn-ic" src="/icons/ABDraw.png" alt="Draw AB"></button>
+        </div>
+        <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
           <button class="bn-btn" data-cmd="track.cycle" data-t2 title="Cycle AB lines"><img class="bn-ic" src="/icons/ABLineCycle.png" alt="Cycle"></button>
           <button class="bn-btn" data-cmd="track.smooth" data-t2 title="Smooth AB curve"><img class="bn-ic" src="/icons/ABSmooth.png" alt="Smooth"></button>
           <button class="bn-btn" data-cmd="track.deleteContours" data-t2 title="Delete contours"><img class="bn-ic" src="/icons/TrashContourRef.png" alt="Delete contours"></button>
         </div>
+        <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
           <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge left (A+)"><img class="bn-ic" src="/icons/APlusPlusA.png" alt="Nudge L"></button>
           <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge right (B+)"><img class="bn-ic" src="/icons/APlusPlusB.png" alt="Nudge R"></button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
           <button class="bn-btn" data-cmd="track.fineNudgeLeft" data-t2 title="Fine nudge left (A−)"><img class="bn-ic" src="/icons/APlusMinusA.png" alt="Fine L"></button>
           <button class="bn-btn" data-cmd="track.fineNudgeRight" data-t2 title="Fine nudge right (B−)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Fine R"></button>
         </div>
@@ -2111,6 +2185,48 @@
         <button id="dlgc-cancel" class="dlg-btn dlg-cancel">Cancel</button>
         <button id="dlgc-ok" class="dlg-btn dlg-ok">Confirm</button>
       </div>
+    </div>
+    <!-- Quick AB Line creator (mirrors native QuickABSelectorPanel) — GPS-driven modes. -->
+    <div id="dlg-quickab" class="dlg-card">
+      <div class="dlg-title">Quick AB Line</div>
+      <div class="dlg-msg">Select a creation mode</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-qab="aPlus" title="AB line from current position &amp; heading"><img src="/icons/ABTrackAPlus.png" alt=""><span>A+</span></button>
+        <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
+        <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+      </div>
+      <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
+    </div>
+    <!-- Draw AB on map (mirrors native DrawABDialogPanel) — map-tap + boundary creation. -->
+    <div id="dlg-drawab" class="dlg-card">
+      <div class="dlg-title">Draw Track on Map</div>
+      <div class="dlg-msg">Tap on the map to place points</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-draw="straight" title="Tap 2 points for a straight AB line"><img src="/icons/ABTrackAB.png" alt=""><span>Straight</span></button>
+        <button class="dlg-mode" data-draw="curve" title="Tap points for a curve, then Finish"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+      </div>
+      <div class="dlg-sub">From Field Boundary</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-draw="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>
+        <button class="dlg-mode" data-draw="boundaryCurve" title="Curve following the whole boundary"><img src="/icons/ABTrackCurve.png" alt=""><span>Bnd. Curve</span></button>
+        <button class="dlg-mode" data-draw="allEdges" title="AB line for every boundary edge"><span class="dlg-bigtxt">All</span><span>All Edges</span></button>
+      </div>
+      <div class="dlg-buttons"><button id="dlg-drawab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
+    </div>
+    <!-- Tracks manager (mirrors native TracksDialogPanel) — list + toolbar. -->
+    <div id="dlg-tracks" class="dlg-card dlg-wide">
+      <div class="dlg-title">AB Line Tracks</div>
+      <div class="trk-toolbar">
+        <button class="trk-tool" id="trk-delete" data-t2 title="Delete selected track"><img src="/icons/Trash.png" alt="Delete"></button>
+        <button class="trk-tool" id="trk-swap" data-t2 title="Swap A and B points"><img src="/icons/ABSwapPoints.png" alt="Swap"></button>
+        <button class="trk-tool" id="trk-activate" data-t2 title="Activate selected track"><img src="/icons/TrackOn.png" alt="Activate"></button>
+        <span class="trk-sep"></span>
+        <button class="trk-tool" id="trk-import" title="Import tracks from another field"><img src="/icons/FileOpen.png" alt="Import"></button>
+        <button class="trk-tool" id="trk-recpaths" data-t2 title="Toggle recorded-path display"><img src="/icons/RecPath.png" alt="Rec paths"></button>
+      </div>
+      <div class="trk-head"><span>Track</span><span>Type</span><span>Active</span></div>
+      <div id="trk-list" class="trk-list"></div>
+      <div class="dlg-buttons"><button id="dlg-tracks-close" class="dlg-btn dlg-cancel">Close</button></div>
     </div>
   </div>
   <!-- CanvasKit (WASM Skia) — bundled locally, no CDN (offline in-cab). Defines

@@ -36,6 +36,20 @@ public partial class App : Application
     // True while a browser has the Steer Wizard open (gates the WizardProvider).
     private bool _remoteWizardActive;
 
+    // track.* ids that are DATA/creation, not guidance actuation — exempt from the
+    // operator gate so any browser can draw/create/import lines and toggle display.
+    // Everything else under track.* (activate/cycle/nudge/snap/swap/delete — they change
+    // the active line the machine follows) stays gated. Fail-closed: a new track.* id
+    // defaults to gated until added here.
+    private static readonly System.Collections.Generic.HashSet<string> UngatedTrackIds = new()
+    {
+        "track.drawStraight", "track.drawCurve", "track.drawPoint", "track.drawFinish",
+        "track.drawUndo", "track.drawCancel", "track.aPlus", "track.driveAB",
+        "track.recordCurve", "track.finishCurve", "track.setABGps",
+        "track.createFromBoundary", "track.boundaryCurve", "track.allEdges",
+        "track.setVisible", "track.toggleRecPaths",
+    };
+
     public static IServiceProvider? Services { get; set; }
 
     /// <summary>
@@ -234,6 +248,40 @@ public partial class App : Application
                                 case "boundary.toggleSectionControl": // ToggleButton has no command (Tier-1)
                                     windowVm.IsBoundarySectionControlOn = !windowVm.IsBoundarySectionControlOn;
                                     return;
+                                case "track.select": // Tracks manager — tap a row. arg = index.
+                                {                    // Mirrors native: tapping the active track
+                                    if (int.TryParse(arg, out var tsi) // deactivates; else activates.
+                                        && tsi >= 0 && tsi < windowVm.SavedTracks.Count)
+                                    {
+                                        var t = windowVm.SavedTracks[tsi];
+                                        windowVm.SelectedTrack = windowVm.SelectedTrack == t ? null : t;
+                                    }
+                                    return;
+                                }
+                                case "track.setVisible": // arg = "index,0|1" — show/hide on map.
+                                {
+                                    var vp = arg.Split(',');
+                                    if (vp.Length == 2 && int.TryParse(vp[0], out var tvi)
+                                        && tvi >= 0 && tvi < windowVm.SavedTracks.Count)
+                                    {
+                                        windowVm.SavedTracks[tvi].IsVisible = vp[1] == "1";
+                                        windowVm.OnTrackVisibilityChanged();
+                                    }
+                                    return;
+                                }
+                                case "track.drawPoint": // Phase MT — map-tap AB/curve point.
+                                {                       // arg = "e,n" (m, from s2w). Routes to the
+                                    var tp = arg.Split(','); // native SetABPointCommand (DrawAB =
+                                    if (tp.Length >= 2  // tap A then B; DrawCurve = tap N points).
+                                        && double.TryParse(tp[0], num, inv, out var te)
+                                        && double.TryParse(tp[1], num, inv, out var tn))
+                                    {
+                                        var pos = new AgValoniaGPS.Models.Position { Easting = te, Northing = tn };
+                                        if (windowVm.SetABPointCommand?.CanExecute(pos) == true)
+                                            windowVm.SetABPointCommand.Execute(pos);
+                                    }
+                                    return;
+                                }
                                 case "flag.placeAt": // Phase MT map-tap. arg = "easting,northing"
                                 {                     // (m, field-local, from s2w). Tier-1 marker.
                                     var fp = arg.Split(',');
@@ -450,6 +498,30 @@ public partial class App : Application
                                 "track.deleteContours" => windowVm.DeleteContoursCommand,
                                 "track.autoTrack" => windowVm.ToggleAutoTrackCommand,
                                 "track.createFromBoundary" => windowVm.CreateTrackFromBoundaryCommand,
+                                // Phase MT — draw-on-map track creation (mirrors native
+                                // DrawABDialog). The point taps ride track.drawPoint (arg
+                                // switch above); these are the mode/lifecycle + boundary-
+                                // based creators. All Tier-2 (track.* changes guidance).
+                                "track.drawStraight" => windowVm.StartDrawABModeCommand,
+                                "track.drawCurve" => windowVm.StartDrawCurveModeCommand,
+                                "track.drawFinish" => windowVm.FinishDrawCurveCommand,
+                                "track.drawUndo" => windowVm.UndoLastDrawnPointCommand,
+                                "track.drawCancel" => windowVm.CancelABCreationCommand,
+                                "track.aPlus" => windowVm.StartAPlusLineCommand,
+                                "track.boundaryCurve" => windowVm.CreateCurveFromBoundaryCommand,
+                                "track.allEdges" => windowVm.CreateTracksFromAllEdgesCommand,
+                                // Quick-AB selector (GPS-driven): drive A→B, record a curve
+                                // by driving, and set-point-at-vehicle (param ignored in
+                                // DriveAB/Curve modes → uses live GPS).
+                                "track.driveAB" => windowVm.StartDriveABCommand,
+                                "track.recordCurve" => windowVm.StartCurveRecordingCommand,
+                                "track.finishCurve" => windowVm.FinishCurveRecordingCommand,
+                                "track.setABGps" => windowVm.SetABPointCommand,
+                                // Tracks manager toolbar (act on the active/selected track).
+                                "track.delete" => windowVm.DeleteContourTrackCommand,
+                                "track.swapAB" => windowVm.SwapABPointsCommand,
+                                "track.activate" => windowVm.SelectTrackAsActiveCommand,
+                                "track.toggleRecPaths" => windowVm.ToggleRecordedPathsCommand,
                                 // Field Tools — Recorded Path. Record/save/select are Tier-1
                                 // (data); recpath.play drives the vehicle → Tier-2 (gated below).
                                 "recpath.start" => windowVm.StartRecordedPathCommand,
@@ -492,7 +564,8 @@ public partial class App : Application
                     _remoteServer.IsRestrictedCommand = id =>
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
-                        || id.StartsWith("track.") || id.StartsWith("headland.")
+                        || (id.StartsWith("track.") && !UngatedTrackIds.Contains(id)) // see below
+                        || id.StartsWith("headland.")
                         || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
                         || id == "net.subnet" // restarts every module → gate it
                         || id == "recpath.play"; // drives the vehicle along the path → actuation

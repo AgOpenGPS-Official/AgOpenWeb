@@ -240,8 +240,7 @@ public partial class MainViewModel
             var trackName = SelectedTrack.Name;
             var trackToRemove = SelectedTrack;
             SelectedTrack = null;
-            SavedTracks.Remove(trackToRemove);
-            State.Field.Tracks.Remove(trackToRemove);
+            SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
             RebuildRecordedPathsAndContours();
             SaveTracksToFile();
             StatusMessage = $"Deleted track '{trackName}'";

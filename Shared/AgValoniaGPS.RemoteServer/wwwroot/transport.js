@@ -59,9 +59,12 @@ window.RemoteTransport = {
           const imagery = u8()
             ? { minE: f64(), minN: f64(), maxE: f64(), maxN: f64(), version: i64() }
             : null;
+          const tlc = i32(); const trackList = new Array(tlc);
+          for (let k = 0; k < tlc; k++)
+            trackList[k] = { index: i32(), name: str(), type: str(), active: !!u8(), visible: !!u8() };
           handlers.onScene && handlers.onScene({
             version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
-            headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery,
+            headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery, trackList,
           });
           break;
         }

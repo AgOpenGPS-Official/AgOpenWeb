@@ -362,6 +362,35 @@ public partial class MainViewModel : ObservableObject
         _appState = appState;
         _fieldPlaneFileService = new FieldPlaneFileService();
 
+        // State.Field.Tracks is the SoT (projected to the web + read by guidance); it
+        // mirrors SavedTracks, the working collection EVERY creation/management path
+        // mutates. Subscribing once here keeps them in lockstep for ALL paths — not just
+        // load/delete, which used to update both by hand (so a freshly-drawn track never
+        // reached ApplicationState and was invisible to the web + the Tracks manager).
+        SavedTracks.CollectionChanged += (_, e) =>
+        {
+            var dst = _appState.Field.Tracks;
+            switch (e.Action)
+            {
+                case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
+                    for (int i = 0; i < e.NewItems!.Count; i++)
+                        dst.Insert(e.NewStartingIndex + i, (Track)e.NewItems[i]!);
+                    break;
+                case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
+                    foreach (var t in e.OldItems!) dst.Remove((Track)t!);
+                    break;
+                case System.Collections.Specialized.NotifyCollectionChangedAction.Replace:
+                    foreach (var t in e.OldItems!) dst.Remove((Track)t!);
+                    for (int i = 0; i < e.NewItems!.Count; i++)
+                        dst.Insert(e.NewStartingIndex + i, (Track)e.NewItems[i]!);
+                    break;
+                default: // Reset (Clear) / Move → rebuild from scratch
+                    dst.Clear();
+                    foreach (var t in SavedTracks) dst.Add(t);
+                    break;
+            }
+        };
+
         // Live half of the aggregate module-status indicator (see the
         // ConfigStore.Connections subscription above for the configured-set
         // half). Only the four data-ok flags participate; IP and engaged flags
@@ -1913,8 +1942,7 @@ public partial class MainViewModel : ObservableObject
         // Clear background
         _mapService.ClearBackground();
 
-        // Clear tracks
-        State.Field.Tracks.Clear();
+        // Clear tracks (State.Field.Tracks mirrors SavedTracks via the ctor subscription)
         SavedTracks.Clear();
         SelectedTrack = null;
 
@@ -2240,6 +2268,9 @@ public partial class MainViewModel : ObservableObject
                     // Clear the track and guidance from the map when deactivated
                     _mapService.SetActiveTrack(null);
                     _mapService.SetBaseTrack(null);
+                    State.Guidance.DisplayLine = null; // clear the web magenta offset line too
+                    _lastMirroredDisplayTrack = null;  // re-mirror on the next selection
+                    _lastMirroredBaseTrack = null;
                     _mapService.SetGuidancePoints(0, 0, false);
                     _isSelectedTrackOnBoundary = false;
                     // Clear any U-turn state associated with the deactivated track
@@ -5782,8 +5813,7 @@ public partial class MainViewModel : ObservableObject
 
     private void LoadTracksFromField(Field? field)
     {
-        // Clear existing tracks from both state and legacy collection
-        State.Field.Tracks.Clear();
+        // Clear existing tracks (State.Field.Tracks mirrors SavedTracks via the subscription)
         SavedTracks.Clear();
 
         if (field == null || string.IsNullOrEmpty(field.DirectoryPath))
@@ -5806,8 +5836,7 @@ public partial class MainViewModel : ObservableObject
                     // Ensure all tracks start inactive (SelectedTrack setter will activate)
                     track.IsActive = false;
                     MigrateCurveTrack(track);
-                    State.Field.Tracks.Add(track);
-                    SavedTracks.Add(track);
+                    SavedTracks.Add(track); // mirrors into State.Field.Tracks
 
                     // Debug: log track details
                     _logger.LogDebug("[TrackFiles] Track: '{TrackName}', Points: {PointCount}, Type: {TrackType}, IsCurve: {IsCurve}", track.Name, track.Points.Count, track.Type, track.IsCurve);
@@ -5876,8 +5905,7 @@ public partial class MainViewModel : ObservableObject
                             // Don't auto-activate - user must explicitly select
                             track.IsActive = false;
 
-                            State.Field.Tracks.Add(track);
-                            SavedTracks.Add(track);
+                            SavedTracks.Add(track); // mirrors into State.Field.Tracks
                             loadedCount++;
                         }
                     }

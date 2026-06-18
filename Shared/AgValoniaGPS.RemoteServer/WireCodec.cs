@@ -395,6 +395,18 @@ public static class WireCodec
         }
         else w.Write((byte)0);
 
+        // Tracks-manager list (ALL tracks incl. hidden) — appended at the end of the
+        // Scene frame per the wire rule. No points; index maps back to the field list.
+        w.Write(s.TrackList.Count);
+        foreach (var ti in s.TrackList)
+        {
+            w.Write(ti.Index);
+            WriteStr(w, ti.Name);
+            WriteStr(w, ti.Type); // display label (Line/Curve/Path/Contour)
+            w.Write((byte)(ti.Active ? 1 : 0));
+            w.Write((byte)(ti.Visible ? 1 : 0));
+        }
+
         return ms.ToArray();
     }
 
