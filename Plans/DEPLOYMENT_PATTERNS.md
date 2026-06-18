@@ -82,9 +82,14 @@ Qualcomm Linux: AgValonia server + RemoteServer web host ──WiFi──▶ tab
 - Multi-bus brands handled via **SPI MCP2518FD CAN-FD expanders**. Native FDCAN
   → steering bus (lowest latency); SPI expanders → slower K-Bus/ISOBUS.
 
-**Pros:** Hardware-guaranteed RT isolation (the MCU physically cannot be starved
-by Linux). Strong fault isolation. Linux side *is* the web-UI headless host the
-migration already assumes. One physical box.
+**Pros:** Hardware-guaranteed RT timing (the MCU physically cannot be starved by
+Linux). **Independent failure domain** — a kernel-level fault on the Linux side
+(panic, OOM-killer, wedged driver, scheduler stall) does not take the control
+chip with it; the MCU keeps running and can hold/safe-stop. **Small, auditable
+safe-state path** (IWDG → reset → outputs safe). Linux side *is* the web-UI
+headless host the migration already assumes. One physical box.
+(The MCU is *not* crash-proof — see the cross-pattern watchdog note; the win is
+failure independence + an analyzable safe path, not invulnerability.)
 
 **Cons / risks:**
 - **Port to a constrained MCU.** 160 MHz Cortex-M33 vs the Teensy 4.1's 600 MHz
@@ -99,7 +104,7 @@ migration already assumes. One physical box.
 
 ---
 
-## Pattern B — Single SBC + PREEMPT_RT (recommended single-box option)
+## Pattern B — Single SBC + PREEMPT_RT (recommended single-box option; AutoSD/RHIVOS variant)
 
 One SBC runs everything. The C/C++ control core runs as an **RT-priority
 process** pinned to an isolated core under **mainline PREEMPT_RT**; the .NET
@@ -118,12 +123,56 @@ on-SoC FDCAN if the board has it.
 ARM64 with ample headroom. One box, one stock kernel, low maintenance.
 
 **Cons / risks:**
-- **No physical fault isolation.** A kernel panic / Linux hang takes the
-  steering loop with it. **Requires an external hardware watchdog / safety relay**
-  that drops steer-enable if the RT process stops kicking it. Non-negotiable for
-  a moving machine.
+- **Shared failure domain.** The RT control process and the .NET guidance share
+  one kernel and one resource pool. A plain *.NET userspace crash* does **not**
+  take the RT process down — but a **kernel-level** fault (panic, OOM-killer,
+  wedged driver, scheduler stall) or resource starvation takes *both* down
+  together. And the guidance/OS side is the far-more-likely thing to fault.
+  Closeable: add an **external safety MCU / hardware watchdog** on the
+  steer-enable line (the "safety island" pattern) — see the cross-pattern
+  watchdog note. Non-negotiable for a moving machine either way.
 - **I/O path caps determinism** (see shared note below). SPI-CAN under
   PREEMPT_RT needs RT priority on the SPI IRQ/worker threads. USB-CAN is poor.
+
+### B-variant: CentOS AutoSD / RHIVOS instead of rolling your own PREEMPT_RT
+
+AutoSD (Automotive Stream Distribution) is the open, in-development upstream
+preview of **RHIVOS** (Red Hat In-Vehicle OS). Its `kernel-automotive` is
+**PREEMPT_RT** — same mechanism as mainline 6.12, *not* a dual kernel and *not* a
+new determinism class. So it does **not** make latency tighter than generic
+PREEMPT_RT, and it doesn't change the math for our 10–20 ms loops. What it
+changes is **who maintains the kernel and how the RT/non-RT split is sanctioned:**
+
+- **Kills the biggest con of Pattern B.** Replaces "roll-your-own PREEMPT_RT +
+  chase BSP fragility" with a **vendor-maintained automotive RT kernel** targeting
+  exactly the SoCs we care about (Qualcomm, NXP, TI, Renesas, RPi4; ARM64). The
+  kernel becomes a supported dependency instead of a liability.
+- **Mixed-criticality partitioning is built-in.** AutoSD is designed to run
+  safety-critical and non-critical workloads on one platform "with proven
+  isolation using containers and partitioning" — precisely our architecture
+  (C/C++ RT control core in an isolated/partitioned container; .NET guidance +
+  web host as the non-critical workload). A blessed isolation pattern, not one we
+  invent.
+- **Credible certification path if this ever becomes a product** — RHIVOS is the
+  commercial, safety-certified downstream.
+
+**Caveats — what AutoSD does NOT change:**
+- **Functional-safety certification lives behind commercial RHIVOS, not AutoSD.**
+  AutoSD is explicitly an in-development preview; its safety requirements/docs are
+  "available only to RHIVOS customers." An all-Linux future with real ISO 26262 /
+  ASIL paperwork = a paid RHIVOS relationship. Fine for AgOpen's open ecosystem
+  (never a certified ASIL product; steering safety stays with operator + engage
+  logic + HW watchdog), but don't mistake the free distro for a certified OS.
+- **I/O path still dominates** — PREEMPT_RT CAN drivers are normal RT-priority
+  kernel threads (which is fine, and notably *avoids* Xenomai's RTDM-driver gap),
+  but native on-SoC CAN > SPI > USB still holds.
+- **Shared failure domain is unchanged.** Partitioning isolates the RT workload
+  from the *.NET* workload, not from a kernel-level fault. **Independent external
+  safety MCU / hardware watchdog on steer-enable still required.**
+
+Net: AutoSD strengthens the all-Linux case on **maintainability + productization**
+and leaves the **failure-domain-independence safety axis** exactly where it was — still the
+real deciding factor vs Patterns A/D.
 
 ---
 
@@ -143,7 +192,8 @@ Xenomai 3.3).
   boundary, so real determinism reverts to the SPI/USB driver's jitter anyway.
 - **Maintenance tax:** patched kernel pinned to specific versions, separate RT
   API (POSIX/alchemy skin) for RT code, harder debugging, BSP fragility.
-- Same weak fault isolation as Pattern B (still needs a HW watchdog).
+- Same shared failure domain as Pattern B (still needs an independent HW
+  watchdog / safety MCU on steer-enable).
 
 **Reserve Cobalt only if** measured PREEMPT_RT jitter genuinely breaks the loop
 **and** native RTDM-capable CAN is available — both unlikely here.
@@ -156,9 +206,10 @@ Keep a Teensy/STM32 as a **dumb hard-RT CAN + sensor front-end**, connected over
 **USB** to any SBC running the .NET guidance + web host. This is Pattern A in
 discrete parts.
 
-**Pros:** Physical RT isolation (like A) **and** freedom to pick a fast SBC with
-native CAN (like B). Sidesteps both the 160 MHz squeeze *and* the RT-kernel
-question. Reuses the existing Teensy as-is (minus networking).
+**Pros:** Independent failure domain (like A — a Linux kernel fault doesn't take
+the control chip with it) **and** freedom to pick a fast SBC with native CAN
+(like B). Sidesteps both the 160 MHz squeeze *and* the RT-kernel question.
+Reuses the existing Teensy as-is (minus networking).
 
 **Cons:** Adds a box back (defeats the "one box" goal). USB link adds latency/
 jitter on the bridge — fine for the decoupled-cadence model (MCU stays
@@ -181,23 +232,62 @@ traffic to expanders.
 
 ---
 
+## Cross-pattern note: an independent hardware watchdog is the real safety mechanism
+
+No CPU is crash-proof. An STM32 — RTOS *or* bare-metal superloop (the Teensy uses
+a superloop, not an RTOS) — can hard-fault, stack-overflow, deadlock, or hang on
+a stuck peripheral, exactly as a Linux kernel can panic. So "separate chip" does
+not mean "cannot fail," and an RTOS is not what makes a design safe. **What makes
+any of these patterns fail-safe is an independent watchdog that forces the
+actuator (steer-enable) to a safe state on loss of heartbeat:**
+
+- **On an MCU**, the **STM32 IWDG** runs off its own internal LSI oscillator,
+  independent of the main clock. If the firmware hangs — superloop stuck, RTOS
+  deadlocked — the IWDG isn't kicked and resets the chip → outputs safe. The path
+  from "hung" to "valve de-energized" is tiny and fully auditable.
+- **On Linux**, `/dev/watchdog` / the SoC watchdog works, but the kick path runs
+  through a userspace daemon → kernel driver → watchdog HW. A kernel wedged in a
+  way that still services the watchdog thread can "kick a dead system." The safe
+  path is long and harder to prove — which is why a **separate external safety
+  MCU** supervising steer-enable (the "safety island" pattern) is the robust
+  answer for single-SBC designs. The Uno Q is literally that shape (A53 + M33).
+
+So two-chip designs (A/D) don't buy invulnerability — they buy **failure-domain
+independence** (a fault in the complex, failure-prone guidance/OS side doesn't
+propagate to the control chip) plus a **small, analyzable safe-state path**. A
+single SBC (B/C) can recover most of that property by adding an external safety
+MCU/watchdog; it just has to do so deliberately rather than getting it for free.
+
+---
+
 ## The deciding axis
 
-It is **not** the kernel. It is **how much you trust Linux with the steering loop
-on a moving tractor:**
+It is **not** the kernel, and it is **not** "which chip can't crash" (none can't).
+It is: **when the most failure-prone component — the complex guidance/OS — dies,
+does the actuator stay controllable long enough to reach a safe state, and how
+small/auditable is the path that gets it there?**
 
-- **Physical isolation** → Pattern A (Uno Q) or Pattern D (discrete MCU). The RT
-  chip cannot be starved by Linux.
-- **Software isolation + hardware watchdog** → Pattern B (PREEMPT_RT single SBC).
-  Simpler hardware, more compute, but a Linux fault is a control fault unless the
-  external watchdog catches it.
+- **Failure-domain independence for free** → Pattern A (Uno Q) or Pattern D
+  (discrete MCU). A Linux-side kernel fault doesn't reach the control chip; the
+  safe path is the MCU's IWDG.
+- **Shared failure domain, gap closed deliberately** → Pattern B (PREEMPT_RT
+  single SBC). More compute, simpler BOM, but a kernel-level fault is a control
+  fault **unless** an external safety MCU / hardware watchdog on steer-enable
+  catches it. Add one.
+
+Every pattern needs an independent watchdog on steer-enable regardless; the
+question is only whether you get the isolation for free or bolt it on.
 
 ## Recommendation
 
-- **For a true single box with strongest safety story:** Pattern A (Uno Q),
-  accepting the MCU port + compute-budget risk.
+- **For a true single box with failure-domain independence for free:** Pattern A
+  (Uno Q), accepting the MCU port + compute-budget risk.
 - **For most compute / least porting in one box:** Pattern B (PREEMPT_RT) with a
-  mandatory external hardware watchdog. **Use PREEMPT_RT, never Xenomai Cobalt.**
+  mandatory external safety MCU / hardware watchdog on steer-enable (closes the
+  shared-failure-domain gap). **Use PREEMPT_RT, never Xenomai Cobalt** —
+  and prefer the **AutoSD/RHIVOS variant** to get a vendor-maintained automotive
+  RT kernel + sanctioned mixed-criticality partitioning instead of rolling your
+  own (see B-variant).
 - **Lowest RT risk overall:** Pattern D (discrete MCU over USB), at the cost of a
   second box.
 
@@ -222,6 +312,8 @@ Steps 1 and 2 are independent and can run in parallel.
 - PREEMPT_RT mainlined in Linux 6.12 (Sept 2024), ARM64 supported —
   <https://en.wikipedia.org/wiki/PREEMPT_RT>
 - Xenomai 3 Cobalt / Dovetail dual-kernel overview — <https://v3.xenomai.org/overview/>
+- CentOS AutoSD (upstream preview of RHIVOS) — <https://sig.centos.org/automotive/>
+- AutoSD real-time (kernel-automotive = PREEMPT_RT) — <https://docs.centos.org/automotive-sig-documentation/about/con_real-time-linux-kernel/>
 - LinRT Cobalt BSP (6.12-dovetail, Xenomai 3.3) — <https://www.linrt.com/>
 - Arduino UNO Q (QRB2210 + STM32U585) — <https://docs.arduino.cc/hardware/uno-q>
 - STM32U585 datasheet (1× FDCAN) — <https://www.st.com/resource/en/datasheet/stm32u585ai.pdf>
