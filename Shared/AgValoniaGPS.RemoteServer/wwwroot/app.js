@@ -66,6 +66,14 @@ let iHoldControl = false;
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
 
+// ---- ground texture: the tiled field backdrop (night variant — the web grid renders
+//      night-mode). Drawn as a repeating shader in world space, gated on
+//      Display.FieldTextureVisible. Loaded once; decoded to an SkImage on first use. ----
+const groundImg = new Image();
+let groundReady = false, skGround = null;
+groundImg.onload = () => { groundReady = true; };
+groundImg.src = '/icons/GroundTextureDark.png';
+
 // ---- background imagery: extent from the Scene, PNG fetched over HTTP. ----
 let imageryRect = null;  // { minE, minN, maxE, maxN, version }
 let imageryImg = null;   // loaded <img> once ready
@@ -2965,6 +2973,32 @@ function vehicleSk(canvas, p) {
 // cached, re-decoded only when the imagery version changes (same trigger as the
 // 2D path's <img> swap). drawImageRectOptions with Linear filtering = the 2D
 // path's imageSmoothingEnabled=true.
+// Tiled ground texture: a repeating shader over a camera-centred world rect, drawn under
+// the perspective matrix so it foreshortens with tilt. One tile = 50 m, matching native
+// SkiaMapControl.DrawGroundTextureSk. CanvasKit's makeShaderOptions localMatrix maps
+// texel→local(world) (the inverse of native SkShader.CreateBitmap), so W texels span 50 m
+// when the scale is 50/W. Shader + paint are built once (world-anchored — no per-frame
+// rebuild; the tiles stay fixed in the world and scroll under the vehicle).
+function drawGroundTextureSk(canvas) {
+  const disp = config && config.display;
+  if (!disp || !disp.fieldTextureVisible || !groundReady) return;
+  if (!SKP.ground) {
+    skGround = CK.MakeImageFromCanvasImageSource(groundImg);
+    if (!skGround) return;
+    const W = skGround.width(), H = skGround.height();
+    const shader = skGround.makeShaderOptions(
+      CK.TileMode.Repeat, CK.TileMode.Repeat, CK.FilterMode.Linear, CK.MipmapMode.None,
+      CK.Matrix.scaled(50 / W, 50 / H));
+    SKP.ground = new CK.Paint();
+    SKP.ground.setAntiAlias(false);
+    SKP.ground.setShader(shader);
+  }
+  const half = Math.max(Math.max(vw, vh) / pxPerM, 300); // cover the view; see far under tilt
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.drawRect(CK.LTRBRect(camE - half, camN - half, camE + half, camN + half), SKP.ground);
+  canvas.restore();
+}
 let skImagery = null, skImageryVer = null;
 function drawImagerySk(canvas) {
   if (!imageryImg || !imageryRect) return;
@@ -3080,7 +3114,8 @@ function renderSkia(canvas, rp) {
   canvas.clear(ckColor('#0f1115'));
   canvas.save();
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
-  drawImagerySk(canvas); // bottom layer
+  drawGroundTextureSk(canvas); // ground backdrop (under everything)
+  drawImagerySk(canvas); // imagery overlays the ground where present
   drawCoverageSk(canvas);
   drawGridSk(canvas);
   if (scene) {
