@@ -12,7 +12,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.73`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.80`** (we DO bump `sys/version.h` per commit now).
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -30,7 +30,22 @@ safe allowlist. Migration = project more state + accept more command ids + build
   safety wiring + host-side projectors/handlers in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
 
 ## Done & pushed
-- **Session 2026-06-18 additions (all 8 left-nav buttons now present):**
+- **Session 2026-06-18 additions (all 8 left-nav buttons present + map-render parity):**
+  - **Map-render parity pass** (`v26.5.74–80`) — the web now matches native's field/vehicle
+    rendering. **Ground texture** (`drawGroundTextureSk`): tiled `GroundTextureDark.png`
+    repeating shader, 50 m tiles, bottom layer, gated on `Display.FieldTextureVisible` (NOTE:
+    CanvasKit `makeShaderOptions` localMatrix is **texel→world**, inverse of native's
+    `SkShader.CreateBitmap` → scale is `50/W`, not `W/50`). **Tractor sprite**
+    (`TractorAoG.png`, `vehicleSk`): world-sized on the ground via native `BitmapTractorSize`
+    anchors (track-width/wheelbase), replaces the triangle (still the fallback). **Hitch**
+    (`drawHitchSk`): computed client-side from pose+config — mounted tools draw two converging
+    arms (`trackWidth×0.3` spread), trailing/TBT a tongue line; hitch pivot rides new Tick
+    `HitchE/HitchN`. **Section footprint**: filled 2 m rects + black outline + 0.05 m gap
+    (was thin lines). **Line colours/weights**: snapped to native paints + `updateLineWidths()`
+    sets px = worldMetres × pxPerM each frame (native widths × strokeMult 3) so weights scale
+    with zoom. **Inner/outer boundary**: Scene carries parallel `BoundaryInner` flag → outer
+    orange-red, inner yellow. Known small gaps left out: front-wheel steer sprite, antenna dot,
+    Svenn arrow, reference-dash world-scaling.
   - **Field Tools** (`v26.5.66–73`) — `#fieldtools` fly-out + the non-map-tap surface:
     **Offset Fix** (`#offsetfix` D-pad + manual N/E, `offset.*`), **Delete Applied Area**
     (browser-confirm → extracted `DeleteAppliedAreaConfirmed()`; FIX: it no longer resets
@@ -188,6 +203,24 @@ Features that need it (across Field Tools + bottom-nav + Tracks):
 - **Tracks** — on-map point picking for track create/edit.
 This is its own phase. Treat the web migration as INCOMPLETE until Phase MT is done.
 
+**Unprojection — build this FIRST (the foundation everything else reuses).** The renderer is
+now unified on ONE matrix: `perspM` (CanvasKit M44, world→CSS-px) at every pitch — there is
+NO separate 2D ortho path anymore. So `s2w(px,py)` must invert `perspM`, NOT a 2D transform:
+- A tap is a CSS-px point on the near→far ray. Build the ray in world space and intersect the
+  **ground plane z=0**. `perspM` maps world (E,N,0,1)→clip; to invert, take the full 4×4
+  (before the `.Matrix` 3×3 collapse `w2s` uses), invert it, and unproject two clip-space
+  points (near z, far z) at the tap's NDC (x = 2·px/vw−1, y = 1−2·py/vh), then solve for the
+  t where the ray crosses N̂·P=0 (ground). Return (E,N). `buildScreenMatrix()` is the place to
+  also expose the 4×4 + its inverse (cache per frame in `updateCamera`).
+- Verify by round-trip: `s2w(w2s(e,n)) ≈ (e,n)` for points across the view at pitch 0 AND 60°.
+- Watch: taps on the **DOM overlays** (panels, toolbars, sim bar) must not fall through to the
+  map; the map canvas pointer handler should ignore events the overlays consumed (the panels
+  already `stopPropagation`).
+Once `s2w` round-trips, the map-tap features are mostly UI: an on-canvas "tap to add point"
+mode per feature, a client-side point buffer drawn live (reuse `strokePtsSk`/marker draws),
+and a command that ships the captured points to the host (mirror native's
+`BoundaryMapDialog`/`FieldBuilder` *save* paths — DON'T port the geometry math to JS).
+
 Then **Phase 10** — mop-up + headless cutover (host goes UI-less; browser is the only UI).
 
 ## Navigation model — SINGLE UNIFIED MODEL (LOCKED 2026-06-17)
@@ -256,7 +289,10 @@ model is a **web-led improvement** (web is the end-state UI). Whether to backpor
 - **Frame types:** Scene=1 Tick=2 CoverageInit=3 CoverageCells=4 Status=5 ControlState=6
   Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 FieldOps=12 AgShare=13 AppInfo=14
   **FieldTools=15 (Import Tracks, projector-built) RecordedPath=16 (host-driven provider)
-  Boundary=17 (host-driven provider)**.
+  Boundary=17 (host-driven provider)**. Tick grew `HitchE/HitchN` (hitch pivot) + the 4 chart
+  scalars; Scene grew a parallel `BoundaryInner` bool list (outer ring first, then inner holes).
+  The wire is decoded **positionally** — append new fields at the END of a frame's encode +
+  decode (never insert mid-frame), and keep `WireCodec`↔`transport.js` field order in lockstep.
 - **Tier-2 gating** (`IsRestrictedCommand`, control-gated): prefixes `section.` `autosteer.`
   `youturn.` `contour.` `track.` `headland.` `smartwas.` `wizard.action`, plus the exact id
   `net.subnet` (restarts every module). Tier-1 (ungated): `sim.` `tool.` `map.` `flag.` `tram.`
@@ -297,22 +333,38 @@ separate §13 audit work (now merged from develop), **not** the web migration.
 ## Renderer notes (CanvasKit, app.js)
 - Skia-only. `skFrame()` single loop: `updateCamera()` → `renderSkia()` → DOM overlays
   (`renderStatusBar`/`renderRightNav`/`renderRoll`/`renderCampad`/`updateLightbarText`/
-  `updateHeadlandHud`/`renderSettings`) → `updateHud()`.
-- `w2s(e,n)`: perspective via `perspM` (M44, column-vector/row-major) when tilted, else 2D
-  ortho+rotation. Vectors draw per-vertex via `w2s`; rasters + 3D grid draw in WORLD coords
-  under `canvas.concat(perspM)`. Non-color-managed surface (sRGB blend like native).
-  Camera modes 0=N 1=H 2=Free 3=Map; `strokePtsSk3D` near-plane-clips polylines.
+  `updateHeadlandHud`/`renderSettings`/`renderCharts`/`renderRollCorr`/`renderOffsetFix`) →
+  `updateHud()`.
+- **ONE projection: `perspM` (M44, column-vector/row-major) at every pitch** — top-down is
+  just pitch 0 (built for scale-continuity in `buildScreenMatrix`). `active3D()` returns
+  `!!CK`. There is NO 2D ortho branch left; `w2s` = `applyM(perspM,…)` and every helper
+  assumes `perspM` is set (null only before CanvasKit loads, when nothing draws).
+- `renderSkia` layer order: clear → `drawGroundTextureSk` (tiled shader) → `drawImagerySk` →
+  `drawCoverageSk` → `drawGridSk` → scene vectors (boundaries[outer/inner]/headland/tracks/
+  next/uturn/guidance via `strokePtsSk`) → flags → `drawRecordingMarkersSk` →
+  `drawBoundaryRecordingSk` → `drawHitchSk` → `toolFootprintSk` (filled section rects+outline)
+  → `vehicleSk` (tractor sprite) → `lightbarSk`. `updateLineWidths()` (first in `renderSkia`)
+  sets vector px = worldMetres × pxPerM each frame so weights scale with zoom like native.
+- Rasters/ground/sprite draw in WORLD coords under `canvas.concat(perspM)` (Skia GPU does
+  perspective + near-plane clip); polylines stroke per-vertex via `strokePtsSk`→`strokePtsSk3D`
+  which near-plane-clips in world space. Non-color-managed surface (sRGB blend like native).
+  Camera modes 0=N 1=H 2=Free 3=Map. `isTyping()` guards global hotkeys (tilt/sim keys) so
+  typing in inputs doesn't trigger them.
 
-**Remaining to finish the migration (all REQUIRED — there is no "later"): (1) Phase MT —
-map-tap interaction: needs screen→world unprojection (invert pan/zoom/rotation; 3D = invert
-perspM + ground-plane ray-cast), then Boundary Draw-on-Map, Field Builder (on-map track/
-headland/tram editor), Quick/Draw AB, place-flag-at-point, flag list, on-map track edit; plus
-the Import-KML boundary picker (a list sub-dialog, not map-tap — can land independently).
-(2) Phase 10 headless cutover. Build each sub-phased per the patterns above. Use the
-VehicleSimulator rig to test anything touching steer/GPS/calibration. Ask for native
-screenshots before building a new panel.
+**Remaining to finish the migration (all REQUIRED — there is no "later"):**
+1. **Phase MT — map-tap interaction.** Build `s2w` (screen→world: invert `perspM` + ray-cast
+   the ground plane — see the Phase MT section above; the renderer is unified on perspM so do
+   NOT write a 2D-ortho inverse) FIRST, round-trip-verify it, then: Boundary Draw-on-Map +
+   Draw-on-Satellite (inner), **Field Builder** (on-map track/headland/tram editor — the big
+   one; native `FieldBuilderDialogPanel`), Quick AB / Draw AB / A+, place-flag-at-point, flag
+   list, on-map track create/edit. Get native screenshots before each panel.
+2. **Import-KML boundary picker** — list sub-dialog (project `AvailableKmlFiles` + the import
+   flow); not map-tap, can land independently. (Field Tools `bm-importkml` is the disabled stub.)
+3. **Phase 10** — headless cutover (host goes UI-less; browser is the only UI).
 
-NOTE: the web renderer is now unified on ONE projection (the perspM M44 at every pitch;
-top-down = pitch 0). w2s and the raster/grid draws assume perspM — there is no separate 2D
-ortho path. The screen→world inverse for Phase MT must invert perspM (+ ray-cast the ground
-plane), not a 2D ortho transform.**
+**Working rules recap:** build to verify compile → user runs `dotnet run --project Platforms/
+AgValoniaGPS.Desktop/...` and reports → **wait for confirm, then one commit+push per verified
+fix, bump `sys/version.h`**. `wwwroot` is embedded → restart after JS/HTML edits. Tier-2 gate
+the actuation-ish ids; data/geometry capture is Tier-1. Use the **VehicleSimulator** rig for
+steer/GPS/calibration. Host-driven provider pattern (Wizard/RecordedPath/Boundary) for
+VM-coupled read state; projector pattern for ApplicationState/disk-derived state.**
