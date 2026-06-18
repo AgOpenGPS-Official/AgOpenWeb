@@ -691,6 +691,34 @@
     .cp-right { grid-row: 2; grid-column: 3; } .cp-down { grid-row: 3; grid-column: 2; }
     #clock { position: fixed; right: 16px; bottom: 16px; color: #cfe3ff;
       font: 700 18px ui-monospace, monospace; text-shadow: 0 1px 2px #000; pointer-events: none; }
+    /* Diagnostic chart cards (Tools panel). Floating, independently draggable
+       overlays; sit above the map HUD but below the left-nav chain/scrim so an
+       opened config panel covers them. */
+    .chart-card { position: fixed; left: 80px; width: 408px;
+      background: #141a26; border: 1px solid #222a38; border-radius: 8px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 29; overflow: hidden; }
+    #chart-steer { top: 70px; }
+    #chart-heading { top: 246px; }
+    #chart-xte { top: 422px; }
+    .chart-hdr { display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 8px; background: #1b2333; cursor: move; user-select: none;
+      font-size: 12px; font-weight: 600; color: #cfd8e6; touch-action: none; }
+    .chart-x { background: none; border: 0; color: #8c9bb3; font-size: 14px;
+      cursor: pointer; padding: 0 4px; line-height: 1; }
+    .chart-x:hover { color: #fff; }
+    .chart-cv { display: block; width: 400px; height: 150px; margin: 4px; }
+    .fo-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+    .tl-chartbtn.active { background: rgba(80,160,255,0.28); border-color: #4a90d9; }
+    /* Roll Correction panel. */
+    .rc-gauge { display: flex; justify-content: center; padding: 6px 0 2px; }
+    .rc-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+    .rc-row { display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; font-size: 13px; color: #cfd8e6; }
+    .rc-tgl { min-width: 60px; height: 32px; border: 1px solid #2a3550; border-radius: 6px;
+      background: rgba(255,255,255,0.06); color: #cfd8e6; cursor: pointer; font-size: 12px; }
+    .rc-tgl.on { background: rgba(80,160,255,0.28); border-color: #4a90d9; color: #fff; }
+    .rc-zerobtn { height: 32px; width: auto; padding: 0 16px; }
+    .rc-ro { font-variant-numeric: tabular-nums; color: #9fb0c8; }
   </style>
 </head>
 <body>
@@ -757,6 +785,7 @@
   <div id="leftnav">
     <button id="ln-filemenu" class="ln-btn" title="File / Application Menu"><img class="ln-ic" src="/icons/fileMenu.png" alt="File Menu"></button>
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
+    <button id="ln-tools" class="ln-btn" title="Tools"><img class="ln-ic" src="/icons/SpecialFunctions.png" alt="Tools"></button>
     <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
     <button id="ln-autosteer" class="ln-btn" title="AutoSteer Configuration"><img class="ln-ic" src="/icons/AutoSteerConf.png" alt="AutoSteer Configuration"></button>
     <button id="ln-fieldops" class="ln-btn" title="Field Operations"><img class="ln-ic" src="/icons/JobActive.png" alt="Field Operations"></button>
@@ -1575,6 +1604,57 @@
       <button class="fo-btn" id="fm-bugreport">Bug Report Dump</button>
     </div>
   </div>
+  <!-- Tools fly-out (native ToolsPanel): Steer Wizard / Log Viewer / Roll Correction
+       on the left, the three diagnostic charts on the right. -->
+  <div id="tools" class="ln-panel fm-panel">
+    <div class="ln-hdr"><span class="ln-hdr-title">Tools</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Utilities</div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="tl-wizard">Steer Wizard</button>
+      <button class="fo-btn" id="tl-logviewer">Log Viewer</button>
+      <button class="fo-btn" id="tl-rollcorr">Roll Correction</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">Diagnostic Charts</div>
+    <div class="fo-grid">
+      <button class="fo-btn tl-chartbtn" id="tl-steerchart" data-chart="steer">Steer Chart</button>
+      <button class="fo-btn tl-chartbtn" id="tl-headingchart" data-chart="heading">Heading Chart</button>
+      <button class="fo-btn tl-chartbtn" id="tl-xtechart" data-chart="xte">XTE Chart</button>
+    </div>
+  </div>
+  <!-- Roll Correction (Tools): the roll-calibration piece of the Steer Wizard as a
+       standalone chain panel — live roll gauge + Invert Roll + Zero Roll capture +
+       offset readout. Back returns to Tools. -->
+  <div id="rollcorr" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x" id="rc-back" title="Back">←</button><span class="ln-hdr-title">Roll Correction</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="rc-gauge">
+      <svg width="260" height="104" viewBox="0 0 200 80">
+        <path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round" d="M 70,12 A 22,28 0 0 0 70,68 M 59,20 L 51,20 M 52,30 L 44,30 M 48,40 L 40,40 M 52,50 L 44,50 M 59,60 L 51,60"/>
+        <path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round" d="M 130,12 A 22,28 0 0 1 130,68 M 141,20 L 149,20 M 148,30 L 156,30 M 152,40 L 160,40 M 148,50 L 156,50 M 141,60 L 149,60"/>
+        <rect id="rc-roll-bar" x="50" y="38" width="100" height="4" rx="2" fill="#2ECC71"/>
+        <circle cx="100" cy="40" r="3" fill="#fff"/>
+        <text id="rc-roll-deg" x="100" y="32" text-anchor="middle" fill="#fff" font-size="24" font-weight="bold" font-family="system-ui,sans-serif">0.0</text>
+      </svg>
+    </div>
+    <div class="rc-rows">
+      <div class="rc-row"><span>Invert Roll</span><button class="rc-tgl" id="rc-invert">Off</button></div>
+      <div class="rc-row"><span>Zero Roll</span><button class="fo-btn rc-zerobtn" id="rc-zero">Zero Roll</button></div>
+      <div class="rc-row"><span>Roll Zero Offset</span><span id="rc-offset" class="rc-ro">—</span></div>
+    </div>
+  </div>
+  <!-- Diagnostic chart cards (floating overlays, drawn by renderCharts each frame).
+       Each can be open independently; map stays interactive. Drag by the header. -->
+  <div id="chart-steer" class="chart-card" style="display:none">
+    <div class="chart-hdr"><span>Steer</span><button class="chart-x" data-chart="steer" title="Close">✕</button></div>
+    <canvas class="chart-cv" width="400" height="150"></canvas>
+  </div>
+  <div id="chart-heading" class="chart-card" style="display:none">
+    <div class="chart-hdr"><span>Heading</span><button class="chart-x" data-chart="heading" title="Close">✕</button></div>
+    <canvas class="chart-cv" width="400" height="150"></canvas>
+  </div>
+  <div id="chart-xte" class="chart-card" style="display:none">
+    <div class="chart-hdr"><span>XTE</span><button class="chart-x" data-chart="xte" title="Close">✕</button></div>
+    <canvas class="chart-cv" width="400" height="150"></canvas>
+  </div>
   <!-- App Settings — units + device toggles + app directories. -->
   <div id="appsettings" class="ln-panel sa-panel">
     <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">App Settings</span><button class="ln-x ln-closex" title="Close">✕</button></div>
@@ -1601,7 +1681,7 @@
   </div>
   <!-- Log Viewer. -->
   <div id="logviewer" class="ln-panel fm-wide">
-    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Log Viewer</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="ln-hdr"><button class="ln-x" id="lv-back" title="Back">←</button><span class="ln-hdr-title">Log Viewer</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="log-filts">
       <button class="log-filt active" data-lvl="0">All</button>
       <button class="log-filt" data-lvl="1">Debug</button>

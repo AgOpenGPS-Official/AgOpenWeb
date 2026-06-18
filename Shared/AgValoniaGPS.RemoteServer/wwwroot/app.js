@@ -117,6 +117,7 @@ const transport = RemoteTransport.create({
         tool: t.tool, t: performance.now(),
       };
     }
+    pushChartData(t);
   },
   onCoverageInit(init) {
     const canvas = document.createElement('canvas');
@@ -407,7 +408,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -422,6 +423,7 @@ function lnCloseAll() {
   document.getElementById('ln-network').classList.remove('active');
   document.getElementById('ln-fieldops').classList.remove('active');
   document.getElementById('ln-filemenu').classList.remove('active');
+  document.getElementById('ln-tools').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
@@ -464,6 +466,46 @@ document.getElementById('ln-fieldops').addEventListener('pointerdown', e => {
   const anyOpen = ['fieldops', 'fieldsandjobs', 'newfield'].some(id => document.getElementById(id).classList.contains('open'));
   if (anyOpen) lnCloseAll(); else lnOpen('fieldops', 'ln-fieldops', renderFieldOps);
 });
+document.getElementById('ln-tools').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (document.getElementById('tools').classList.contains('open')) lnCloseAll();
+  else lnOpen('tools', 'ln-tools', renderToolsPanel);
+});
+// Tools fly-out items. Steer Wizard + Log Viewer reuse existing flows; Roll
+// Correction is an inert placeholder (matches the native button, which has no
+// command bound). The three chart buttons toggle their floating chart cards.
+document.getElementById('tl-wizard').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnCloseAll();
+  if (typeof openSteerWizard === 'function') openSteerWizard();
+});
+// Log Viewer is a shortcut to the App Log Viewer (the File menu owns the same panel);
+// track which parent opened it so Back returns to the right place.
+let logViewerParent = 'filemenu';
+document.getElementById('tl-logviewer').addEventListener('pointerdown', e => {
+  e.stopPropagation(); logViewerParent = 'tools'; lnOpen('logviewer', 'ln-tools', renderLogViewer);
+});
+document.getElementById('lv-back').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (logViewerParent === 'tools') lnOpen('tools', 'ln-tools', renderToolsPanel);
+  else lnOpen('filemenu', 'ln-filemenu');
+});
+// Roll Correction → the wizard's roll-cal piece as a standalone chain panel.
+document.getElementById('tl-rollcorr').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('rollcorr', 'ln-tools', renderRollCorr);
+});
+document.getElementById('rc-back').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('tools', 'ln-tools', renderToolsPanel);
+});
+document.getElementById('rc-invert').addEventListener('pointerdown', e => {
+  e.stopPropagation(); cfgSend('roll.isRollInvert', cfgGet('roll.isRollInvert') ? '0' : '1');
+});
+document.getElementById('rc-zero').addEventListener('pointerdown', e => {
+  e.stopPropagation(); transport.send('roll.zeroCalibrate');
+});
+for (const b of document.querySelectorAll('.tl-chartbtn'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); toggleChart(b.dataset.chart); });
+for (const b of document.querySelectorAll('.chart-x'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); setChartOpen(b.dataset.chart, false); });
 for (const b of document.querySelectorAll('.ln-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
 // Standard header close (X) → close the chain to the map. Tagged .ln-closex so the
@@ -1257,7 +1299,7 @@ document.getElementById('fm-language').addEventListener('pointerdown', e => { e.
 document.getElementById('fm-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm('Reset All Settings', 'Reset all settings to their defaults? This cannot be undone.', () => transport.send('app.resetSettings')); });
 document.getElementById('fm-appsettings').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('appsettings', 'ln-filemenu', renderAppSettings); });
 document.getElementById('fm-viewsettings').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('viewsettings', 'ln-filemenu', renderViewSettings); });
-document.getElementById('fm-logviewer').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('logviewer', 'ln-filemenu', renderLogViewer); });
+document.getElementById('fm-logviewer').addEventListener('pointerdown', e => { e.stopPropagation(); logViewerParent = 'filemenu'; lnOpen('logviewer', 'ln-filemenu', renderLogViewer); });
 document.getElementById('fm-hotkeys').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('hotkeys', 'ln-filemenu', renderHotkeys); });
 document.getElementById('fm-simulator').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('sim.togglePanel'); lnCloseAll(); });
 document.getElementById('fm-help').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('help', 'ln-filemenu'); });
@@ -2256,6 +2298,246 @@ function renderCampad() {
     if (cameraMode !== 2) { const rp = renderPose(); if (rp) { camE = rp.e; camN = rp.n; } }
   });
 })();
+// ── Diagnostic charts (Tools panel) ─────────────────────────────────────────
+// Thin-client port of the native ChartControl: the host streams the scalar
+// series sources on each Tick (see TickDto chart fields); we keep a rolling
+// display buffer per series and redraw the open chart cards each frame to a 2D
+// canvas. Configs mirror the native *ChartPanel.ConfigureChart() calls 1:1.
+const CHART_WINDOW = 20; // seconds (IChartDataService.TimeWindowSeconds default)
+const CHARTS = {
+  steer: {
+    title: 'Steer', yLabel: 'deg', minY: -40, maxY: 40, step: 10, auto: false,
+    series: [
+      { name: 'Set Angle', color: '#E05020', pts: [] },
+      { name: 'Actual Angle', color: '#2080E0', pts: [] },
+      { name: 'PWM', color: '#00A080', pts: [] },
+    ],
+  },
+  heading: {
+    title: 'Heading', yLabel: 'deg', minY: 0, maxY: 360, step: 45, auto: true,
+    series: [
+      { name: 'Heading Error', color: '#DD3333', pts: [] },
+      { name: 'IMU Heading', color: '#D07020', pts: [] },
+      { name: 'GPS Heading', color: '#0088AA', pts: [] },
+    ],
+  },
+  xte: {
+    title: 'XTE', yLabel: 'm', minY: -2, maxY: 2, step: 0.5, auto: true,
+    series: [{ name: 'XTE', color: '#C020C0', pts: [] }],
+  },
+};
+const chartOpen = { steer: false, heading: false, xte: false };
+
+// Buffer the latest Tick into every series (always, even while a card is closed,
+// so opening mid-session shows recent history — matches ChartDataService.Start()).
+function pushChartData(t) {
+  const now = performance.now() / 1000;
+  const hdgDeg = (((t.pose ? t.pose.heading : 0) * 180 / Math.PI) % 360 + 360) % 360;
+  const vals = {
+    steer: [t.chartSetSteer, t.chartActualSteer, t.chartPwm],
+    // HeadingError mirrors the native quirk (ComputeHeadingError == set steer angle).
+    heading: [t.chartSetSteer, t.chartImuHeading, hdgDeg],
+    xte: [t.crossTrackError],
+  };
+  const trim = now - CHART_WINDOW - 2;
+  for (const key in CHARTS) {
+    const arr = vals[key];
+    const series = CHARTS[key].series;
+    for (let i = 0; i < series.length; i++) {
+      const pts = series[i].pts;
+      pts.push({ t: now, v: arr[i] });
+      let cut = 0; while (cut < pts.length && pts[cut].t < trim) cut++;
+      if (cut) pts.splice(0, cut);
+    }
+  }
+}
+
+function setChartOpen(key, open) {
+  chartOpen[key] = open;
+  document.getElementById('chart-' + key).style.display = open ? 'block' : 'none';
+  const btn = document.querySelector('.tl-chartbtn[data-chart="' + key + '"]');
+  if (btn) btn.classList.toggle('active', open);
+}
+function toggleChart(key) { setChartOpen(key, !chartOpen[key]); }
+// Reflect open/closed state on the Tools fly-out chart buttons when it opens.
+function renderToolsPanel() {
+  for (const key in chartOpen) {
+    const btn = document.querySelector('.tl-chartbtn[data-chart="' + key + '"]');
+    if (btn) btn.classList.toggle('active', chartOpen[key]);
+  }
+}
+
+function chartNiceStep(range, targetLines) {
+  const raw = range / targetLines;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const nice = norm <= 1.5 ? 1 : norm <= 3.5 ? 2 : norm <= 7.5 ? 5 : 10;
+  return nice * mag;
+}
+
+function drawChart(cv, c) {
+  const ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = 400, H = 150;
+  if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = '10px system-ui,sans-serif';
+  ctx.textBaseline = 'alphabetic';
+
+  // Background + frame.
+  ctx.fillStyle = '#10141d';
+  ctx.fillRect(0, 0, W, H);
+
+  const L = 50, R = 10, T = 8, B = 20;
+  const cl = L, cr = W - R, ctop = T, cbot = H - B;
+  const cw = cr - cl, ch = cbot - ctop;
+  if (cw <= 0 || ch <= 0) return;
+
+  // Y range (auto-scale mirrors native ComputeAutoScale: 10% pad + nice step).
+  let minY = c.minY, maxY = c.maxY, step = c.step;
+  if (c.auto) {
+    let dmin = Infinity, dmax = -Infinity;
+    for (const s of c.series) for (const p of s.pts) { if (p.v < dmin) dmin = p.v; if (p.v > dmax) dmax = p.v; }
+    if (dmin !== Infinity) {
+      let range = dmax - dmin; if (range < 1) range = 1;
+      const pad = range * 0.1;
+      minY = dmin - pad; maxY = dmax + pad;
+      step = chartNiceStep(maxY - minY, 5);
+    }
+  }
+  let yRange = maxY - minY; if (yRange <= 0) yRange = 1;
+
+  const now = performance.now() / 1000;
+  const timeStart = now - CHART_WINDOW;
+
+  // Horizontal grid + Y labels.
+  ctx.strokeStyle = 'rgba(140,155,180,0.25)'; ctx.lineWidth = 0.5;
+  ctx.fillStyle = '#aeb8c8'; ctx.textAlign = 'right';
+  const fmt = step >= 1 ? 0 : step >= 0.1 ? 1 : 2;
+  const firstY = Math.ceil(minY / step) * step;
+  for (let val = firstY; val <= maxY + 1e-9; val += step) {
+    const y = cbot - ((val - minY) / yRange * ch);
+    ctx.beginPath(); ctx.moveTo(cl, y); ctx.lineTo(cr, y); ctx.stroke();
+    ctx.fillText(val.toFixed(fmt), cl - 4, y + 3);
+  }
+
+  // Zero line.
+  if (minY < 0 && maxY > 0) {
+    const zy = cbot - ((-minY) / yRange * ch);
+    ctx.strokeStyle = 'rgba(206,214,230,0.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(cl, zy); ctx.lineTo(cr, zy); ctx.stroke();
+  }
+
+  // Series polylines (clipped to chart area).
+  ctx.save();
+  ctx.beginPath(); ctx.rect(cl, ctop, cw, ch); ctx.clip();
+  ctx.lineWidth = 1.5;
+  for (const s of c.series) {
+    if (s.pts.length < 2) continue;
+    ctx.strokeStyle = s.color;
+    ctx.beginPath();
+    let started = false;
+    for (const p of s.pts) {
+      if (p.t < timeStart) continue;
+      const x = cl + ((p.t - timeStart) / CHART_WINDOW * cw);
+      const y = cbot - ((p.v - minY) / yRange * ch);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    if (started) ctx.stroke();
+  }
+  ctx.restore();
+
+  // Border.
+  ctx.strokeStyle = 'rgba(140,155,180,0.4)'; ctx.lineWidth = 1;
+  ctx.strokeRect(cl, ctop, cw, ch);
+
+  // Title (top-left of chart area).
+  ctx.fillStyle = '#aeb8c8'; ctx.textAlign = 'left';
+  ctx.font = '11px system-ui,sans-serif';
+  ctx.fillText(c.title, cl + 4, ctop + 11);
+
+  // Legend (top-right, right-to-left).
+  ctx.font = '9px system-ui,sans-serif';
+  let lx = cr - 8;
+  for (let i = c.series.length - 1; i >= 0; i--) {
+    const s = c.series[i];
+    const tw = ctx.measureText(s.name).width;
+    lx -= tw;
+    ctx.fillStyle = s.color;
+    ctx.textAlign = 'left';
+    ctx.fillText(s.name, lx, ctop + 9);
+    ctx.strokeStyle = s.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(lx - 14, ctop + 6); ctx.lineTo(lx - 4, ctop + 6); ctx.stroke();
+    lx -= 22;
+  }
+
+  // Time labels (relative seconds, −window … 0).
+  ctx.fillStyle = '#aeb8c8'; ctx.textAlign = 'center'; ctx.font = '9px system-ui,sans-serif';
+  const labelCount = 5;
+  for (let i = 0; i <= labelCount; i++) {
+    const frac = i / labelCount;
+    const x = cl + frac * cw;
+    const rel = Math.round(-CHART_WINDOW + frac * CHART_WINDOW);
+    ctx.fillText(rel + 's', x, cbot + 13);
+    ctx.strokeStyle = 'rgba(140,155,180,0.25)'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x, ctop); ctx.lineTo(x, cbot); ctx.stroke();
+  }
+}
+
+function renderCharts() {
+  for (const key in chartOpen) {
+    if (!chartOpen[key]) continue;
+    const cv = document.getElementById('chart-' + key).querySelector('.chart-cv');
+    drawChart(cv, CHARTS[key]);
+  }
+}
+
+// Roll Correction panel: live gauge + offset/invert readouts (only when open).
+// Mirrors the wizard roll-cal step; the bar rotates by the live (post-calibration)
+// roll the same way the map roll gauge does.
+function renderRollCorr() {
+  const panel = document.getElementById('rollcorr');
+  if (!panel.classList.contains('open')) return;
+  const rv = (tick && typeof tick.roll === 'number') ? tick.roll : 0;
+  const bar = document.getElementById('rc-roll-bar');
+  if (bar) bar.setAttribute('transform', 'rotate(' + rv.toFixed(2) + ' 100 40)');
+  const deg = document.getElementById('rc-roll-deg');
+  if (deg) deg.textContent = rv.toFixed(1);
+  const roll = (config && config.roll) || {};
+  const off = document.getElementById('rc-offset');
+  if (off) off.textContent = (typeof roll.rollZero === 'number' ? roll.rollZero : 0).toFixed(2) + '°';
+  const inv = document.getElementById('rc-invert');
+  if (inv) { const on = !!roll.isRollInvert; inv.classList.toggle('on', on); inv.textContent = on ? 'On' : 'Off'; }
+}
+
+// Drag chart cards by the header (web docks ln-panels, but charts are free overlays
+// like the native FloatingPanel so the operator can move them out of the way).
+(function wireChartDrag() {
+  for (const key of ['steer', 'heading', 'xte']) {
+    const card = document.getElementById('chart-' + key);
+    const hdr = card.querySelector('.chart-hdr');
+    let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    card.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
+    hdr.addEventListener('pointerdown', e => {
+      if (e.target.classList.contains('chart-x')) return;
+      e.stopPropagation();
+      const r = card.getBoundingClientRect();
+      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
+      try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    hdr.addEventListener('pointermove', e => {
+      if (!drag) return;
+      card.style.left = (ox + e.clientX - sx) + 'px';
+      card.style.top = (oy + e.clientY - sy) + 'px';
+    });
+    const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
+    hdr.addEventListener('pointerup', end);
+    hdr.addEventListener('pointercancel', end);
+  }
+})();
+
 // Clock — browser-local 24h HH:MM:SS.
 const clockEl = document.getElementById('clock');
 function tickClock() {
@@ -2622,6 +2904,8 @@ function skFrame() {
   renderRightNav();
   renderRoll();
   renderCampad();
+  renderCharts();
+  renderRollCorr();
   updateHud(rp);
   requestAnimationFrame(skFrame);
 }

@@ -222,7 +222,12 @@ public sealed class SceneProjector
             _state.Field.HeadlandProximityDistance ?? -1.0,
             _state.Field.HeadlandProximityWarning,
             // Steer-bar error: actual WAS angle − commanded guidance steer angle.
-            _autoSteer.LastSteerData.ActualSteerAngle - _state.Guidance.SteerAngle);
+            _autoSteer.LastSteerData.ActualSteerAngle - _state.Guidance.SteerAngle,
+            // Diagnostic-chart scalars (mirrors IChartDataService's series sources).
+            _state.Guidance.SteerAngle,                  // ChartSetSteer (commanded)
+            _autoSteer.LastSteerData.ActualSteerAngle,   // ChartActualSteer (WAS)
+            _autoSteer.LastSteerData.PwmDisplay,         // ChartPwm
+            _autoSteer.LastSteerData.ImuHeading);        // ChartImuHeading
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

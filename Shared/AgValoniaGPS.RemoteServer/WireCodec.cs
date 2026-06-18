@@ -381,6 +381,11 @@ public static class WireCodec
         w.Write((byte)(t.HeadlandProximityWarning ? 1 : 0));
         // Steer-bar value (steer-angle error).
         w.Write((float)t.SteerAngleError);
+        // Diagnostic-chart scalars (Tools panel charts).
+        w.Write((float)t.ChartSetSteer);
+        w.Write((float)t.ChartActualSteer);
+        w.Write((float)t.ChartPwm);
+        w.Write((float)t.ChartImuHeading);
         return ms.ToArray();
     }
 

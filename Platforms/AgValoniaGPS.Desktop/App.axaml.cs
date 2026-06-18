@@ -193,6 +193,17 @@ public partial class App : Application
                                             Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
                                             configService, arg[..ci], arg[(ci + 1)..]);
                                     return;
+                                case "roll.zeroCalibrate": // Tools→Roll Correction "Zero Roll":
+                                    // capture the current live roll as the new zero offset.
+                                    // Mirrors RollCalibrationStepViewModel.ZeroRollCommand
+                                    // (RollZero += LiveRoll; LiveRoll is already post-calibration
+                                    // so the running offset accumulates correctly on repeat presses).
+                                {
+                                    var rollStore = Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>();
+                                    var rollState = Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>();
+                                    rollStore.Ahrs.RollZero += rollState.Vehicle.Roll;
+                                    return;
+                                }
                                 case "profile.save": // persist active vehicle+tool profiles (Phase 9b)
                                     var cs = Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>();
                                     configService.SaveProfiles(cs.ActiveVehicleProfileName, cs.ActiveToolProfileName);

@@ -88,10 +88,13 @@ window.RemoteTransport = {
           };
           const headlandDist = f32(), headlandWarn = !!u8();
           const steerAngleError = f32();
+          // Diagnostic-chart scalars (Tools panel charts).
+          const chartSetSteer = f32(), chartActualSteer = f32(), chartPwm = f32(), chartImuHeading = f32();
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
             headlandDist, headlandWarn, steerAngleError,
+            chartSetSteer, chartActualSteer, chartPwm, chartImuHeading,
           });
           break;
         }

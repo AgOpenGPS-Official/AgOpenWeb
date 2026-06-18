@@ -12,7 +12,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.64`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.65`** (we DO bump `sys/version.h` per commit now).
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -30,7 +30,19 @@ safe allowlist. Migration = project more state + accept more command ids + build
   safety wiring + host-side projectors/handlers in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
 
 ## Done & pushed
-- **Session 2026-06-17 additions (left nav now 6/8 buttons):**
+- **Session 2026-06-18 additions (left nav now 7/8 buttons):**
+  - **Tools** (`v26.5.65`) — fly-out (`#tools`) at native left-nav position 3. **Steer Wizard** =
+    shortcut to the existing host-driven wizard (`openSteerWizard`). **Log Viewer** = shortcut to
+    the App Log Viewer panel with **parent-aware Back** (`logViewerParent` → Tools or File menu).
+    **Roll Correction** (`#rollcorr` chain panel) = the wizard's roll-cal piece standalone: live
+    roll gauge (off Tick `roll`) + Invert toggle (`config.set|roll.isRollInvert`) + **Zero Roll**
+    (new host cmd `roll.zeroCalibrate` = `Ahrs.RollZero += live roll`, mirrors
+    `RollCalibrationStepViewModel.ZeroRollCommand`, Tier-1) + offset readout. **3 diagnostic charts**
+    (Steer/Heading/XTE) = floating draggable canvas cards (`.chart-card`), faithful port of native
+    `ChartControl` (same scales/colours/autoscale/legend/20 s window); scalars stream on the **Tick**
+    (4 new floats `ChartSetSteer/ChartActualSteer/ChartPwm/ChartImuHeading`; XTE + GPS heading already
+    on Tick), browser keeps the rolling display buffer (thin-client precedent = SteerAngleError).
+- **Session 2026-06-17 additions (left nav was 6/8 buttons):**
   - **Network IO + NTRIP** (`0ee454d7`, v26.5.59) — module checkboxes/status/IP, Scan (PGN 202),
     subnet change (PGN 201, gated), Host IPs, NTRIP status + Profiles/Editor dialogs. Wire frame
     **NtripProfiles=11**; shared `NtripConnectionTester`.
@@ -96,14 +108,15 @@ The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
 |---|---|---|
 | 1 | File / Application Menu | ✅ built (`#filemenu` + App Settings/Language/View All/Log Viewer/Hotkeys/Help/About/Bug Report) |
 | 2 | Screen & Alerts | ✅ built (`#screenalerts`) |
-| 3 | **Tools** | ❌ NOT BUILT |
+| 3 | Tools | ✅ built (`#tools` + Steer Wizard/Log Viewer shortcuts + Roll Correction `#rollcorr` + Steer/Heading/XTE chart cards) |
 | 4 | Vehicle / Tool Configuration | ✅ built (`#vehtoolhub`/`#vehiclecfg`/`#toolcfg`) |
 | 5 | Field Operations | ✅ built (`#fieldops` + Fields-and-Jobs + creation + Resume Job + AgShare) |
 | 6 | **Field Tools** | ❌ NOT BUILT — launcher items + **map-tap boundary work (needs Phase MT)** |
 | 7 | AutoSteer Configuration | ✅ built (`#autosteercfg` + Smart-WAS + Wizard) |
 | 8 | Network IO | ✅ built (`#networkio` + NTRIP) |
 
-**2 of 8 buttons remain: Tools, Field Tools.** (File/App Menu done v26.5.64 — fly-out + App
+**1 of 8 buttons remains: Field Tools.** (Tools done v26.5.65 — see Done & pushed above.)
+(File/App Menu done v26.5.64 — fly-out + App
 Settings [units/kbd/fullscreen/elev migrated OUT of Screen & Alerts + App Directories] + Language
 + Reset All + View All Settings [read-only tree from the config frame] + Log Viewer [AppInfo logs,
 level filter] + Hotkeys [list + click-to-capture] + Help [external links] + About + Bug Report.
@@ -135,9 +148,10 @@ Wire frame **AppInfo=14**; host write `app.*` + `AgShareRemote`-style bug-report
   Screen & Alerts panel** with a "moves to its own dialog" note — building this means
   migrating those four OUT, per `[[project_screen_alerts_settings_ia]]` (non-modal Screen &
   Alerts vs modal App Settings).
-- **Tools** (`Panels/ToolsPanel.axaml`) — Steer Wizard launcher (VM already web-wired) · Log
-  Viewer · Roll Correction · Steer Chart · Heading Chart · XTE Chart (3 diagnostic charts, none
-  built in web).
+- ~~**Tools**~~ ✅ **DONE (v26.5.65).** Steer Wizard + Log Viewer = shortcuts; Roll Correction =
+  standalone `#rollcorr` chain panel (wizard roll-cal piece; `roll.zeroCalibrate` host cmd); Steer/
+  Heading/XTE = floating draggable canvas chart cards (port of native `ChartControl`; 4 chart scalars
+  added to the Tick frame, browser-side rolling buffer).
 - **Field Operations** (`Panels/FieldOperationsPanel.axaml`) — field lifecycle: Fields and Jobs
   · Resume Last Job · Resume Job · Drive In · Close · AgShare Upload/Download/Settings. Needs a
   field-list read-frame + confirm dialogs (mostly command-driven).
@@ -275,8 +289,7 @@ separate §13 audit work (now merged from develop), **not** the web migration.
   under `canvas.concat(perspM)`. Non-color-managed surface (sRGB blend like native).
   Camera modes 0=N 1=H 2=Free 3=Map; `strokePtsSk3D` near-plane-clips polylines.
 
-**Remaining to finish the migration (all REQUIRED — there is no "later"): (1) Tools button,
-(2) Field Tools button, (3) Phase MT — map-tap interaction (boundary/AB/flags/tracks), (4)
-Phase 10 headless cutover. Build each sub-phased per the patterns above. Use the VehicleSimulator
+**Remaining to finish the migration (all REQUIRED — there is no "later"): (1) Field Tools button,
+(2) Phase MT — map-tap interaction (boundary/AB/flags/tracks), (3) Phase 10 headless cutover. Build each sub-phased per the patterns above. Use the VehicleSimulator
 rig to test anything touching steer/GPS/calibration. Ask for native screenshots before building a
 new panel.**

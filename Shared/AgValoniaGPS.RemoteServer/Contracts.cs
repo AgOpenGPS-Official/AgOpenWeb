@@ -100,7 +100,18 @@ public record TickDto(
     bool HeadlandProximityWarning,
     // Steer-bar value: steer-angle error (actual WAS − commanded guidance angle, deg).
     // The web top bar shows this in steer-bar mode (light-bar mode uses CrossTrackError).
-    double SteerAngleError);
+    double SteerAngleError,
+    // Diagnostic-chart scalars (Tools panel: Steer / Heading / XTE charts). Streamed
+    // at Tick rate so the browser keeps its own rolling display buffer — the host
+    // IChartDataService stays the native SoT; this is the thin-client display feed,
+    // same precedent as SteerAngleError above. ChartSetSteer = commanded guidance
+    // angle (deg), ChartActualSteer = WAS wheel angle (deg), ChartPwm = PWM output
+    // magnitude (0..255), ChartImuHeading = IMU heading (deg). XTE = CrossTrackError
+    // and GPS heading = Pose.Heading (already on this frame).
+    double ChartSetSteer,
+    double ChartActualSteer,
+    double ChartPwm,
+    double ChartImuHeading);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
