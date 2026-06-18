@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -182,6 +182,16 @@ window.RemoteTransport = {
           const ic = i32(); const importFields = new Array(ic);
           for (let k = 0; k < ic; k++) importFields[k] = str();
           handlers.onFieldTools && handlers.onFieldTools({ importFields });
+          break;
+        }
+        case TYPE.RECORDED_PATH: {
+          const rc = i32(); const recFiles = new Array(rc);
+          for (let k = 0; k < rc; k++) recFiles[k] = str();
+          const isRecording = !!u8(), isPlaying = !!u8(), hasUnsaved = !!u8();
+          const recordedPathInfo = str(), resumeModeLabel = str(), recordedPathName = str();
+          const pc = i32(); const recordingPoints = new Array(pc);
+          for (let k = 0; k < pc; k++) recordingPoints[k] = f32();
+          handlers.onRecordedPath && handlers.onRecordedPath({ recFiles, isRecording, isPlaying, hasUnsaved, recordedPathInfo, resumeModeLabel, recordedPathName, recordingPoints });
           break;
         }
         case TYPE.HELLO: {

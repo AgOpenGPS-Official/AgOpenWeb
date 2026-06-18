@@ -47,6 +47,9 @@ let appInfo = null;    // File/App menu: version, languages, directories, hotkey
 let appInfoDirty = false;
 let fieldTools = null; // Field Tools read-frame: import-track field list
 let fieldToolsDirty = false;
+let recPath = null;    // Recorded Path read-frame: rec files + record/play state
+let recPathTab = 0;    // client-side tab: 0 Record, 1 Playback
+let recSelFile = null; // client-side selected .rec file
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -153,6 +156,7 @@ const transport = RemoteTransport.create({
   onAgShare(a) { agShare = a; agShareDirty = true; },
   onAppInfo(a) { appInfo = a; appInfoDirty = true; },
   onFieldTools(f) { fieldTools = f; fieldToolsDirty = true; if (document.getElementById('importtracks').classList.contains('open')) renderImportTracks(); },
+  onRecordedPath(r) { recPath = r; if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -411,11 +415,11 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'importtracks', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'importtracks', 'recpath', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
-const NO_SCRIM = new Set(['smartwas']);
+const NO_SCRIM = new Set(['smartwas', 'recpath']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
@@ -534,6 +538,23 @@ document.getElementById('ft-importtracks').addEventListener('pointerdown', e => 
 document.getElementById('it-back').addEventListener('pointerdown', e => {
   e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools');
 });
+// Recorded Path.
+document.getElementById('ft-recpath').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('recpath', 'ln-fieldtools', renderRecPath);
+});
+document.getElementById('rp-back').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools');
+});
+document.getElementById('rp-tab-rec').addEventListener('pointerdown', e => { e.stopPropagation(); recPathTab = 0; renderRecPath(); });
+document.getElementById('rp-tab-play').addEventListener('pointerdown', e => { e.stopPropagation(); recPathTab = 1; renderRecPath(); });
+document.getElementById('rp-start').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.start'); });
+document.getElementById('rp-stop').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.stop'); });
+document.getElementById('rp-save').addEventListener('pointerdown', e => {
+  e.stopPropagation(); transport.send('recpath.save|' + document.getElementById('rp-name').value);
+});
+document.getElementById('rp-playbtn').addEventListener('pointerdown', e => { e.stopPropagation(); rnSend('recpath.play'); });
+document.getElementById('rp-resume').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.cycleResume'); });
+document.getElementById('rp-reverse').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.reverse'); });
 // Offset Fix D-pad (argless Tier-1 commands).
 for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
@@ -1770,6 +1791,7 @@ const ctlStatus = document.getElementById('ctl-status');
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
+  if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
   if (!ctlStatus) return;
   if (iHoldControl) {
     ctlStatus.textContent = '● Controlling'; ctlStatus.style.color = '#39FF6A';
@@ -2585,6 +2607,53 @@ function renderImportTracks() {
   }
 }
 
+// Recorded Path: GPS-driven record (Tier-1) + playback (Play is gated). All state
+// comes from the host-driven RecordedPath frame; the name field is local input.
+function renderRecPath() {
+  const r = recPath || { recFiles: [], isRecording: false, isPlaying: false, hasUnsaved: false, recordedPathInfo: '', resumeModeLabel: 'Start' };
+  document.getElementById('rp-tab-rec').classList.toggle('active', recPathTab === 0);
+  document.getElementById('rp-tab-play').classList.toggle('active', recPathTab === 1);
+  document.getElementById('rp-record').classList.toggle('active', recPathTab === 0);
+  document.getElementById('rp-play').classList.toggle('active', recPathTab === 1);
+  // Record tab.
+  document.getElementById('rp-start').style.display = r.isRecording ? 'none' : '';
+  document.getElementById('rp-stop').style.display = r.isRecording ? '' : 'none';
+  document.getElementById('rp-recind').style.display = r.isRecording ? 'block' : 'none';
+  document.getElementById('rp-saverow').style.display = r.hasUnsaved ? 'flex' : 'none';
+  // Auto-fill the Save-as name from the host's generated default (native parity), but
+  // don't clobber the user mid-edit.
+  const nameIn = document.getElementById('rp-name');
+  if (document.activeElement !== nameIn && r.recordedPathName) nameIn.value = r.recordedPathName;
+  // Playback tab.
+  document.getElementById('rp-playimg').src = r.isPlaying ? '/icons/RecPathStop.png' : '/icons/RecPathPlay.png';
+  document.getElementById('rp-playlbl').textContent = r.isPlaying ? 'Stop' : 'Play';
+  document.getElementById('rp-playbtn').classList.toggle('disabled', !iHoldControl);
+  document.getElementById('rp-resumelbl').textContent = r.resumeModeLabel || 'Start';
+  const list = document.getElementById('rp-list'); list.innerHTML = '';
+  if (!r.recFiles || !r.recFiles.length) {
+    list.innerHTML = '<div class="fj-empty">No saved paths.</div>';
+  } else {
+    for (const name of r.recFiles) {
+      const row = document.createElement('div');
+      row.className = 'fj-jrow rp-frow' + (name === recSelFile ? ' sel' : '');
+      row.innerHTML = '<span class="fj-jname"></span><button class="rp-del" title="Delete">🗑</button>';
+      row.querySelector('.fj-jname').textContent = name;
+      row.querySelector('.fj-jname').addEventListener('pointerdown', ev => {
+        ev.stopPropagation(); recSelFile = name; transport.send('recpath.selectFile|' + name); renderRecPath();
+      });
+      row.querySelector('.rp-del').addEventListener('pointerdown', ev => {
+        ev.stopPropagation();
+        showConfirm('Delete Recorded Path', 'Delete "' + name + '"? This cannot be undone.', () => {
+          if (recSelFile === name) recSelFile = null;
+          transport.send('recpath.delete|' + name);
+        });
+      });
+      list.appendChild(row);
+    }
+  }
+  document.getElementById('rp-info').textContent = r.recordedPathInfo || '';
+}
+
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays
 // like the native FloatingPanel so the operator can move them out of the way).
 (function wireChartDrag() {
@@ -2717,6 +2786,22 @@ function strokePtsSk3D(canvas, pts, close, paint) {
 }
 // Field flags — filled dot (0.8 m radius like native, min 4 px) + dark outline,
 // coloured by the flag's hex. Skips flags behind the tilted camera (near-plane).
+// Live recorded-path markers (Recorded Path → Record). The host streams the points
+// captured so far on the RecordedPath frame; draw each as a dot so the path is visible
+// as it's driven, like native's growing "Recording…" track.
+function drawRecordingMarkersSk(canvas) {
+  const r = recPath;
+  if (!r || !r.recordingPoints || r.recordingPoints.length < 2) return;
+  const pts = r.recordingPoints;
+  const rad = Math.max(3, 0.4 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#FFD040')); // recorded-path yellow
+  for (let i = 0; i + 1 < pts.length; i += 2) {
+    const e = pts[i], n = pts[i + 1];
+    if ((perspM[12] * e + perspM[13] * n + perspM[15]) < 1.0) continue; // behind camera
+    const xy = w2s(e, n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+  }
+}
 function drawFlagsSk(canvas, flags) {
   if (!flags || !flags.length) return;
   const r = Math.max(4, 0.8 * pxPerM);
@@ -2908,6 +2993,7 @@ function renderSkia(canvas, rp) {
     if (scene.guidanceLine) strokePtsSk(canvas, scene.guidanceLine, false, SKP.guidance);
     drawFlagsSk(canvas, scene.flags);
   }
+  drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale

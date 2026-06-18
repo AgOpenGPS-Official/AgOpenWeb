@@ -32,6 +32,15 @@ public sealed class RemoteServerHost
     }
     private Func<WizardDto?>? _wizardProvider;
 
+    /// <summary>Host-supplied projector for the Recorded Path panel (VM-owned UI state).
+    /// Read every broadcast tick, re-sent on change. Set after <see cref="StartAsync"/>.</summary>
+    public Func<RecordedPathDto?>? RecordedPathProvider
+    {
+        get => _broadcaster?.RecordedPathProvider;
+        set { _recordedPathProvider = value; if (_broadcaster is not null) _broadcaster.RecordedPathProvider = value; }
+    }
+    private Func<RecordedPathDto?>? _recordedPathProvider;
+
     /// <summary>
     /// Host-supplied handler for client commands (command id → action). Invoked
     /// off the UI thread; the host marshals known ids to the UI thread and ignores
@@ -156,6 +165,7 @@ public sealed class RemoteServerHost
         _ws.IsRestrictedCommand = _isRestricted;
         _broadcaster = app.Services.GetRequiredService<MapBroadcaster>();
         _broadcaster.WizardProvider = _wizardProvider;
+        _broadcaster.RecordedPathProvider = _recordedPathProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
         // involuntary loss → failsafe.

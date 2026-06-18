@@ -211,6 +211,17 @@ public partial class App : Application
                                     if (windowVm.ImportTracksFromFieldCommand?.CanExecute(arg) == true)
                                         windowVm.ImportTracksFromFieldCommand.Execute(arg);
                                     return;
+                                case "recpath.save": // arg = name typed in the browser (Tier-1)
+                                    windowVm.RecordedPathName = arg;
+                                    windowVm.SaveNamedRecordedPathCommand?.Execute(null);
+                                    return;
+                                case "recpath.selectFile": // arg = .rec file name → load for playback (Tier-1)
+                                    windowVm.SelectedRecFile = arg;
+                                    return;
+                                case "recpath.delete": // arg = .rec file name (Tier-1; browser confirmed)
+                                    if (windowVm.DeleteRecordedPathCommand?.CanExecute(arg) == true)
+                                        windowVm.DeleteRecordedPathCommand.Execute(arg);
+                                    return;
                                 case "offset.set": // Offset Fix manual entry. arg = "easting,northing" (m)
                                 {
                                     var op = arg.Split(',');
@@ -418,6 +429,14 @@ public partial class App : Application
                                 "track.deleteContours" => windowVm.DeleteContoursCommand,
                                 "track.autoTrack" => windowVm.ToggleAutoTrackCommand,
                                 "track.createFromBoundary" => windowVm.CreateTrackFromBoundaryCommand,
+                                // Field Tools — Recorded Path. Record/save/select are Tier-1
+                                // (data); recpath.play drives the vehicle → Tier-2 (gated below).
+                                "recpath.start" => windowVm.StartRecordedPathCommand,
+                                "recpath.stop" => windowVm.StopRecordedPathCommand,
+                                "recpath.play" => windowVm.PlayRecordedPathCommand,
+                                "recpath.cycleResume" => windowVm.CycleResumeModeCommand,
+                                "recpath.reverse" => windowVm.ReverseRecordedPathCommand,
+                                "recpath.turnOff" => windowVm.TurnOffRecordedPathCommand,
                                 // Field Tools — Offset Fix D-pad (Tier-1; GPS drift nudge, 1 cm/click).
                                 "offset.north" => windowVm.OffsetFixNorthCommand,
                                 "offset.south" => windowVm.OffsetFixSouthCommand,
@@ -436,7 +455,8 @@ public partial class App : Application
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
                         || id.StartsWith("track.") || id.StartsWith("headland.")
                         || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
-                        || id == "net.subnet"; // restarts every module → gate it
+                        || id == "net.subnet" // restarts every module → gate it
+                        || id == "recpath.play"; // drives the vehicle along the path → actuation
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep
@@ -475,6 +495,32 @@ public partial class App : Application
                     _remoteServer.WizardProvider = () =>
                         _remoteWizardActive && windowVm.SteerWizardViewModel is { } w
                             ? BuildWizardDto(w) : null;
+
+                    // Recorded Path projector: the panel's UI state (IsRecordingPath,
+                    // HasUnsaved, info/label) is VM-owned, so project it from the live VM
+                    // each tick; the .rec file list comes off disk. Read-only on the
+                    // broadcaster thread, same race tolerance as the other projectors.
+                    _remoteServer.RecordedPathProvider = () =>
+                    {
+                        var dir = Services.GetRequiredService<AgValoniaGPS.Services.IFieldService>()
+                            .ActiveField?.DirectoryPath;
+                        var recFiles = !string.IsNullOrEmpty(dir)
+                            ? AgValoniaGPS.Services.RecPathFileService.ListRecFiles(dir)
+                            : new System.Collections.Generic.List<string>();
+                        var st = Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>();
+                        var live = windowVm.LiveRecordingPoints;
+                        var pts = new System.Collections.Generic.List<double>(live.Count * 2);
+                        foreach (var p in live) { pts.Add(p.Easting); pts.Add(p.Northing); }
+                        return new AgValoniaGPS.RemoteServer.RecordedPathDto(
+                            recFiles,
+                            windowVm.IsRecordingPath,
+                            st.RecordedPath.IsDrivingRecordedPath,
+                            windowVm.HasUnsavedRecordedPath,
+                            windowVm.RecordedPathInfo ?? "",
+                            windowVm.ResumeModeLabel ?? "Start",
+                            windowVm.RecordedPathName ?? "",
+                            pts);
+                    };
                 }
             }
 

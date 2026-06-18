@@ -407,6 +407,26 @@ public record AppInfoDto(
 public record FieldToolsDto(
     IReadOnlyList<string> ImportFields);
 
+/// <summary>Recorded Path read-frame (host-driven, like the Wizard — the panel's UI
+/// state lives in the VM, not ApplicationState). RecFiles = saved .rec files in the
+/// active field; the booleans + info/label mirror the live VM. RecordedPathName is the
+/// client's own text input, so it isn't projected. Re-sent on a fingerprint change.</summary>
+public record RecordedPathDto(
+    IReadOnlyList<string> RecFiles,
+    bool IsRecording,
+    bool IsPlaying,
+    bool HasUnsaved,
+    string RecordedPathInfo,
+    string ResumeModeLabel,
+    // Host-generated default name on Stop ("RecPath_<timestamp>") so the browser can
+    // pre-fill the Save-as field like native; the browser shows it when its input isn't
+    // focused (the user can still edit). Empty unless a recording is awaiting a name.
+    string RecordedPathName,
+    // Live recording markers: the points captured so far this recording session, as a
+    // flat [E,N,E,N,…] (field-local m). Empty when not recording. The browser draws
+    // these as dots so the path is visible as it's driven (native shows the same).
+    IReadOnlyList<double> RecordingPoints);
+
 public record AppLangDto(string Code, string Name);
 public record AppDirDto(string Name, string Path, bool Exists);
 public record AppHotkeyDto(string Action, string Key, string Label);

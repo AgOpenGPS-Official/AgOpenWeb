@@ -35,6 +35,10 @@ public sealed class MapBroadcaster : IAsyncDisposable
     // WizardDto, or null when the remote wizard isn't open. Sent every tick while open
     // (the calibration steps need live phase/angle updates).
     public Func<WizardDto?>? WizardProvider { get; set; }
+    // Host-driven Recorded Path read-frame: the panel's UI state lives in the VM, so the
+    // host projects it (like the wizard). Read every tick, re-sent on a fingerprint change.
+    public Func<RecordedPathDto?>? RecordedPathProvider { get; set; }
+    private long _lastRecPathFp = long.MinValue;
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
     private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
@@ -68,6 +72,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeAgShare(_projector.BuildAgShare()),
             WireCodec.EncodeAppInfo(_projector.BuildAppInfo()),
             WireCodec.EncodeFieldTools(_projector.BuildFieldTools()),
+            WireCodec.EncodeRecordedPath(RecordedPathProvider?.Invoke() ?? EmptyRecordedPath),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -201,6 +206,17 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     await _ws.BroadcastAsync(WireCodec.EncodeFieldTools(_projector.BuildFieldTools()), ct).ConfigureAwait(false);
                 }
 
+                // Recorded Path read-frame (host-driven): rec-file list + record/play state.
+                if (RecordedPathProvider?.Invoke() is { } rpDto)
+                {
+                    var rpfp = RecPathFingerprint(rpDto);
+                    if (rpfp != _lastRecPathFp)
+                    {
+                        _lastRecPathFp = rpfp;
+                        await _ws.BroadcastAsync(WireCodec.EncodeRecordedPath(rpDto), ct).ConfigureAwait(false);
+                    }
+                }
+
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
                     .ConfigureAwait(false);
 
@@ -225,6 +241,23 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 // mutated on the UI thread; an occasional dropped frame is fine.
             }
         }
+    }
+
+    private static readonly RecordedPathDto EmptyRecordedPath =
+        new(Array.Empty<string>(), false, false, false, "", "Start", "", Array.Empty<double>());
+
+    private static long RecPathFingerprint(RecordedPathDto r)
+    {
+        long h = 17;
+        foreach (var f in r.RecFiles) h = h * 31 + (f?.GetHashCode() ?? 0);
+        h = h * 31 + (r.IsRecording ? 1 : 0);
+        h = h * 31 + (r.IsPlaying ? 1 : 0);
+        h = h * 31 + (r.HasUnsaved ? 1 : 0);
+        h = h * 31 + (r.RecordedPathInfo?.GetHashCode() ?? 0);
+        h = h * 31 + (r.ResumeModeLabel?.GetHashCode() ?? 0);
+        h = h * 31 + (r.RecordedPathName?.GetHashCode() ?? 0);
+        h = h * 31 + r.RecordingPoints.Count; // grows as the path is driven → re-send
+        return h;
     }
 
     public async ValueTask DisposeAsync()

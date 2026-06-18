@@ -51,6 +51,15 @@ public partial class MainViewModel
     private RecPathPoint? _lastRecPathPoint;
     private const double RecPathMinPointSpacing = 2.0; // Minimum 2m between recorded path points
 
+    /// <summary>
+    /// Snapshot of the points captured so far in the active recording (empty when not
+    /// recording). Used by the remote web Recorded Path panel to draw the path growing
+    /// on the map as it's driven (native does this via IMapService.SetRecordedPaths).
+    /// Returns a copy so background readers don't trip on the live list being appended.
+    /// </summary>
+    public IReadOnlyList<RecPathPoint> LiveRecordingPoints =>
+        IsRecordingPath ? _recPathRecordingPoints.ToList() : System.Array.Empty<RecPathPoint>();
+
     #endregion
 
     #region Track Management Command Initialization

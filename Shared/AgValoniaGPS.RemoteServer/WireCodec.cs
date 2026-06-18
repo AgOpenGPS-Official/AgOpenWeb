@@ -18,7 +18,7 @@ public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
-        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15;
+        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16;
 
     public static byte[] EncodeFieldTools(FieldToolsDto f)
     {
@@ -27,6 +27,24 @@ public static class WireCodec
         w.Write(FieldTools);
         w.Write(f.ImportFields.Count);
         foreach (var s in f.ImportFields) WriteStr(w, s);
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeRecordedPath(RecordedPathDto r)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(RecordedPath);
+        w.Write(r.RecFiles.Count);
+        foreach (var s in r.RecFiles) WriteStr(w, s);
+        w.Write((byte)(r.IsRecording ? 1 : 0));
+        w.Write((byte)(r.IsPlaying ? 1 : 0));
+        w.Write((byte)(r.HasUnsaved ? 1 : 0));
+        WriteStr(w, r.RecordedPathInfo);
+        WriteStr(w, r.ResumeModeLabel);
+        WriteStr(w, r.RecordedPathName);
+        w.Write(r.RecordingPoints.Count);
+        foreach (var v in r.RecordingPoints) w.Write((float)v); // field-local m, f32
         return ms.ToArray();
     }
 

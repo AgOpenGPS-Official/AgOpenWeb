@@ -733,6 +733,30 @@
     .of-input { height: 34px; border: 1px solid #2a3550; border-radius: 6px; background: rgba(255,255,255,0.06);
       color: #fff; font-size: 15px; font-weight: 700; text-align: center; }
     .of-hint { text-align: center; font-size: 10px; color: #9fb0c8; margin-top: 6px; }
+    /* Recorded Path panel. */
+    .rp-tabs { margin-bottom: 8px; }
+    .rp-tab { flex: 1; height: 32px; }
+    .rp-tab.active { background: rgba(80,160,255,0.28); border-color: #4a90d9; color: #fff; }
+    .rp-tabbody { display: none; flex-direction: column; gap: 8px; }
+    .rp-tabbody.active { display: flex; }
+    .rp-iconrow { display: flex; gap: 10px; justify-content: center; }
+    .rp-iconbtn { display: flex; flex-direction: column; align-items: center; gap: 3px;
+      width: 72px; padding: 8px 4px; border: 1px solid #2a3550; border-radius: 8px;
+      background: rgba(255,255,255,0.06); color: #cfd8e6; cursor: pointer; font-size: 11px; }
+    .rp-iconbtn:hover { background: rgba(255,255,255,0.12); }
+    .rp-iconbtn img { width: 36px; height: 36px; }
+    .rp-ab { font-size: 22px; font-weight: 700; line-height: 36px; color: #fff; }
+    .rp-recording { display: none; text-align: center; color: #ff5a5a; font-weight: 700;
+      font-size: 13px; padding: 4px; animation: rpblink 1s steps(2, start) infinite; }
+    @keyframes rpblink { 50% { opacity: 0.3; } }
+    .rp-saverow { display: none; align-items: center; gap: 8px; }
+    .rp-saverow label { font-size: 12px; color: #9fb0c8; }
+    .rp-saverow .of-input { flex: 1; text-align: left; font-weight: 400; font-size: 13px; }
+    .rp-info { text-align: center; font-size: 11px; color: #9fb0c8; margin-top: 8px; }
+    .rp-frow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .rp-frow .fj-jname { flex: 1; cursor: pointer; }
+    .rp-del { background: none; border: 0; color: #c97c7c; font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+    .rp-del:hover { background: rgba(220,60,60,0.25); color: #fff; }
   </style>
 </head>
 <body>
@@ -1680,7 +1704,7 @@
       <button class="fo-btn" id="ft-boundary" disabled title="Built next increment">Boundary</button>
       <button class="fo-btn" id="ft-deleteapplied">Delete Applied Area</button>
       <button class="fo-btn" id="ft-importtracks">Import Tracks</button>
-      <button class="fo-btn" id="ft-recpath" disabled title="Built next increment">Recorded Path</button>
+      <button class="fo-btn" id="ft-recpath">Recorded Path</button>
       <button class="fo-btn" id="ft-offsetfix">Offset Fix</button>
     </div>
   </div>
@@ -1705,6 +1729,37 @@
     <div class="ln-hdr"><button class="ln-x" id="it-back" title="Back">←</button><span class="ln-hdr-title">Import Tracks From Field</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="cfg-label">Select a field to import its tracks into the current field</div>
     <div id="it-list" class="fj-list" style="max-height:360px"></div>
+  </div>
+  <!-- Recorded Path: GPS-driven record + playback of a driven path. Record/Save are
+       Tier-1; Play drives the vehicle along the path → gated (rn-gated). -->
+  <div id="recpath" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x" id="rp-back" title="Back">←</button><span class="ln-hdr-title">Recorded Path</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="ln-seg rp-tabs">
+      <button id="rp-tab-rec" class="rp-tab">Record</button>
+      <button id="rp-tab-play" class="rp-tab">Playback</button>
+    </div>
+    <div id="rp-record" class="rp-tabbody">
+      <div class="rp-iconrow">
+        <button id="rp-start" class="rp-iconbtn"><img src="/icons/RecPathRecord.png" alt=""><span>Record</span></button>
+        <button id="rp-stop" class="rp-iconbtn"><img src="/icons/RecPathStop.png" alt=""><span>Stop</span></button>
+      </div>
+      <div id="rp-recind" class="rp-recording">● RECORDING…</div>
+      <div id="rp-saverow" class="rp-saverow">
+        <label>Save as</label>
+        <input id="rp-name" class="of-input" type="text" placeholder="path name" autocomplete="off">
+        <button id="rp-save" class="ln-savebtn">Save</button>
+      </div>
+    </div>
+    <div id="rp-play" class="rp-tabbody">
+      <div class="cfg-label">Saved Paths</div>
+      <div id="rp-list" class="fj-list" style="max-height:200px"></div>
+      <div class="rp-iconrow">
+        <button id="rp-playbtn" class="rp-iconbtn rn-gated"><img id="rp-playimg" src="/icons/RecPathPlay.png" alt=""><span id="rp-playlbl">Play</span></button>
+        <button id="rp-resume" class="rp-iconbtn"><img src="/icons/RecPathResumeStart.png" alt=""><span id="rp-resumelbl">Start</span></button>
+        <button id="rp-reverse" class="rp-iconbtn"><span class="rp-ab">A/B</span><span>Reverse</span></button>
+      </div>
+    </div>
+    <div id="rp-info" class="rp-info">No path loaded</div>
   </div>
   <!-- App Settings — units + device toggles + app directories. -->
   <div id="appsettings" class="ln-panel sa-panel">
