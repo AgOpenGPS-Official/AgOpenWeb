@@ -18,7 +18,27 @@ public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
-        FieldOps = 12, AgShare = 13;
+        FieldOps = 12, AgShare = 13, AppInfo = 14;
+
+    public static byte[] EncodeAppInfo(AppInfoDto a)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(AppInfo);
+        WriteStr(w, a.Version);
+        WriteStr(w, a.GitHash);
+        WriteStr(w, a.CurrentLanguage);
+        w.Write(a.Languages.Count);
+        foreach (var l in a.Languages) { WriteStr(w, l.Code); WriteStr(w, l.Name); }
+        w.Write(a.Directories.Count);
+        foreach (var d in a.Directories) { WriteStr(w, d.Name); WriteStr(w, d.Path); w.Write((byte)(d.Exists ? 1 : 0)); }
+        w.Write(a.Hotkeys.Count);
+        foreach (var hk in a.Hotkeys) { WriteStr(w, hk.Action); WriteStr(w, hk.Key); WriteStr(w, hk.Label); }
+        w.Write(a.Logs.Count);
+        foreach (var lg in a.Logs) { WriteStr(w, lg.Time); w.Write(lg.Level); WriteStr(w, lg.Message); }
+        WriteStr(w, a.BugReportStatus);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeAgShare(AgShareDto a)
     {
@@ -420,6 +440,7 @@ public static class WireCodec
         WriteStr(w, s.NtripStatus);
         w.Write(s.NtripBytes);          // f64 (raw bytes; client formats KB)
         WriteStr(w, s.NtripTestStatus);
+        w.Write((byte)(s.SimPanelVisible ? 1 : 0));
         return ms.ToArray();
     }
 

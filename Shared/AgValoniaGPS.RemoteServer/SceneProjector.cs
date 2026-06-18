@@ -4,6 +4,7 @@
 
 using AgValoniaGPS.Models;
 using AgValoniaGPS.Models.Configuration;
+using System.Reflection;
 using AgValoniaGPS.Models.State;
 using AgValoniaGPS.Services;
 using AgValoniaGPS.Services.Interfaces;
@@ -25,16 +26,21 @@ public sealed class SceneProjector
     private readonly INtripProfileService _ntripProfiles;
     private readonly IFieldService _fields;
     private readonly ISettingsService _settings;
+    private readonly IVehicleProfileService _vehicleProfiles;
+    private readonly IPersistentStateService _persist;
 
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
         ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
         IAutoSteerService autoSteer, ISmartWasCalibrationService smartWas,
         IUdpCommunicationService udp, INtripProfileService ntripProfiles,
-        IFieldService fields, ISettingsService settings)
+        IFieldService fields, ISettingsService settings, IVehicleProfileService vehicleProfiles,
+        IPersistentStateService persist)
     {
         _fields = fields;
         _settings = settings;
+        _vehicleProfiles = vehicleProfiles;
+        _persist = persist;
         _state = state;
         _sections = sections;
         _tool = tool;
@@ -272,7 +278,8 @@ public sealed class SceneProjector
             c.IsNtripConnected,
             c.NtripStatus ?? "",
             c.NtripBytesReceived,
-            c.NtripTestStatus ?? "");
+            c.NtripTestStatus ?? "",
+            _persist.State.SimulatorPanelVisible);
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved
@@ -413,6 +420,86 @@ public sealed class SceneProjector
         var cloud = ag.CloudFields.Select(f => new AgShareCloudFieldDto(f.Id, f.Name, f.AreaHa)).ToList();
         return new AgShareDto(c.AgShareServer ?? "", c.AgShareApiKey ?? "", c.AgShareEnabled,
             ag.Status ?? "", ag.Busy, local, cloud);
+    }
+
+    // File / Application Menu read-frame. Version+git (assembly), languages, app directories,
+    // hotkey bindings, recent in-memory logs, bug-report status.
+    private static readonly string[] _langCodes =
+    {
+        "en", "da", "de", "es", "et", "fi", "fr", "hu", "it", "ko",
+        "lt", "lv", "nl", "no", "pl", "pt", "ru", "sk", "sr", "tr", "uk", "zh-Hans"
+    };
+
+    public AppInfoDto BuildAppInfo()
+    {
+        // Version + git hash from AssemblyInformationalVersion ("26.x.y+<hash>").
+        string version = "", git = "";
+        var info = System.Reflection.Assembly.GetEntryAssembly()?
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            var parts = info.Split('+', 2);
+            version = parts[0];
+            git = parts.Length > 1 ? parts[1] : "";
+        }
+
+        var langs = _langCodes.Select(code =>
+        {
+            string name = code;
+            try { name = new System.Globalization.CultureInfo(code).NativeName + " (" + code + ")"; } catch { }
+            return new AppLangDto(code, name);
+        }).ToList();
+        var current = string.IsNullOrEmpty(_settings.Settings.Language) ? "en" : _settings.Settings.Language;
+
+        var dirs = new System.Collections.Generic.List<AppDirDto>
+        {
+            DirInfo("Settings", System.IO.Path.GetDirectoryName(_settings.GetSettingsFilePath()) ?? ""),
+            DirInfo("Fields", _settings.Settings.FieldsDirectory ?? ""),
+            DirInfo("Vehicle Profiles", _vehicleProfiles.VehiclesDirectory ?? ""),
+            DirInfo("NTRIP Profiles", _ntripProfiles.ProfilesDirectory ?? ""),
+        };
+
+        var hotkeys = _config.Hotkeys.Bindings
+            .Select(kv => new AppHotkeyDto(kv.Key.ToString(), kv.Value, Spaced(kv.Key.ToString())))
+            .ToList();
+
+        // Recent logs (last 200), oldest→newest, as the viewer shows them.
+        var snap = AgValoniaGPS.Services.Logging.LogStore.Instance.GetSnapshot();
+        var logs = snap.Skip(System.Math.Max(0, snap.Count - 200))
+            .Select(e => new AppLogDto(
+                e.Timestamp.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+                (int)e.Level, e.Message))
+            .ToList();
+
+        return new AppInfoDto(version, git, current, langs, dirs, hotkeys, logs, _state.BugReportStatus ?? "");
+    }
+
+    private static AppDirDto DirInfo(string name, string path) =>
+        new(name, path, !string.IsNullOrEmpty(path) && System.IO.Directory.Exists(path));
+
+    // "AutoSteer" → "Auto Steer", "Section1" → "Section 1".
+    private static string Spaced(string s)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < s.Length; i++)
+        {
+            char ch = s[i];
+            if (i > 0 && (char.IsUpper(ch) || (char.IsDigit(ch) && !char.IsDigit(s[i - 1])))) sb.Append(' ');
+            sb.Append(ch);
+        }
+        return sb.ToString();
+    }
+
+    public long AppInfoFingerprint()
+    {
+        long h = 17;
+        h = h * 31 + (_settings.Settings.Language?.GetHashCode() ?? 0);
+        foreach (var kv in _config.Hotkeys.Bindings) h = h * 31 + kv.Key.GetHashCode() * 7 + (kv.Value?.GetHashCode() ?? 0);
+        var snap = AgValoniaGPS.Services.Logging.LogStore.Instance.GetSnapshot();
+        h = h * 31 + snap.Count;
+        if (snap.Count > 0) h = h * 31 + snap[snap.Count - 1].Timestamp.Ticks.GetHashCode();
+        h = h * 31 + (_state.BugReportStatus?.GetHashCode() ?? 0);
+        return h;
     }
 
     public long AgShareFingerprint()

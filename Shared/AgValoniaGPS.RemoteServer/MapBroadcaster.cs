@@ -25,6 +25,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastNtripFp = long.MinValue;
     private long _lastFieldOpsFp = long.MinValue;
     private long _lastAgShareFp = long.MinValue;
+    private long _lastAppInfoFp = long.MinValue;
     private SceneDto _currentScene;
     private Task? _loop;
 
@@ -64,6 +65,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeNtripProfiles(_projector.BuildNtripProfiles()),
             WireCodec.EncodeFieldOps(_projector.BuildFieldOps()),
             WireCodec.EncodeAgShare(_projector.BuildAgShare()),
+            WireCodec.EncodeAppInfo(_projector.BuildAppInfo()),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -179,6 +181,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 {
                     _lastAgShareFp = afp;
                     await _ws.BroadcastAsync(WireCodec.EncodeAgShare(_projector.BuildAgShare()), ct).ConfigureAwait(false);
+                }
+
+                // App Info read-frame: language / hotkeys / logs / bug-report status.
+                var aifp = _projector.AppInfoFingerprint();
+                if (aifp != _lastAppInfoFp)
+                {
+                    _lastAppInfoFp = aifp;
+                    await _ws.BroadcastAsync(WireCodec.EncodeAppInfo(_projector.BuildAppInfo()), ct).ConfigureAwait(false);
                 }
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)

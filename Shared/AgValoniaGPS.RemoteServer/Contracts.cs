@@ -179,7 +179,10 @@ public record StatusDto(
     bool NtripConnected,
     string NtripStatus,
     double NtripBytes,
-    string NtripTestStatus);
+    string NtripTestStatus,
+    // Simulator panel visibility (persisted in PersistentAppState.SimulatorPanelVisible) —
+    // the web sim bar shows/hides from this so the choice survives app restarts.
+    bool SimPanelVisible);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
@@ -368,3 +371,23 @@ public record AgShareDto(
 
 public record AgShareLocalFieldDto(string Name, bool HasBoundary);
 public record AgShareCloudFieldDto(string Id, string Name, double AreaHa);
+
+/// <summary>File / Application Menu read-frame (Phase 9). The slow-changing data behind the
+/// App Settings / Language / Hotkeys / About / Log Viewer dialogs: app version + git hash,
+/// the current + available UI languages, the app directories, the hotkey bindings, the recent
+/// in-memory log entries, and the last bug-report submit status. Seeded on connect + re-sent on
+/// a fingerprint change (settings/hotkeys/log-growth/bug-report).</summary>
+public record AppInfoDto(
+    string Version, string GitHash,
+    string CurrentLanguage,
+    IReadOnlyList<AppLangDto> Languages,
+    IReadOnlyList<AppDirDto> Directories,
+    IReadOnlyList<AppHotkeyDto> Hotkeys,
+    IReadOnlyList<AppLogDto> Logs,
+    string BugReportStatus);
+
+public record AppLangDto(string Code, string Name);
+public record AppDirDto(string Name, string Path, bool Exists);
+public record AppHotkeyDto(string Action, string Key, string Label);
+/// <summary>One log line. Level: 0 Trace,1 Debug,2 Info,3 Warn,4 Error,5 Critical (Microsoft LogLevel).</summary>
+public record AppLogDto(string Time, int Level, string Message);

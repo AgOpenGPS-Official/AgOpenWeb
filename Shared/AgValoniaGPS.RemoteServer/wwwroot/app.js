@@ -43,6 +43,8 @@ let fieldOps = null;   // Field Operations: field list + jobs + suggestions + im
 let fieldOpsDirty = false;
 let agShare = null;    // AgShare: settings + cloud action status/results
 let agShareDirty = false;
+let appInfo = null;    // File/App menu: version, languages, directories, hotkeys, logs
+let appInfoDirty = false;
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -140,12 +142,13 @@ const transport = RemoteTransport.create({
     }
     cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
   },
-  onStatusBar(s) { statusBar = s; },
+  onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); },
   onConfig(c) { config = c; configDirty = true; },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
   onAgShare(a) { agShare = a; agShareDirty = true; },
+  onAppInfo(a) { appInfo = a; appInfoDirty = true; },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -278,11 +281,13 @@ const SIM = {
   steer: document.getElementById('sim-steer'), steerVal: document.getElementById('sim-steerval'),
   speedVal: document.getElementById('sim-speedval'), gps: document.getElementById('sim-gps'),
 };
-let simBarOpen = true;          // client-local; bar shown on load (no menu yet)
 let _steerDragging = false;     // suppress state→slider sync while the user drags
+// Sim-bar visibility is host-driven (PersistentAppState.SimulatorPanelVisible) so the
+// choice persists across app restarts. Shown until the first Status frame arrives.
 function applySimBarVisible() {
-  SIM.bar.classList.toggle('open', simBarOpen);
-  SIM.launch.classList.toggle('show', !simBarOpen);
+  const open = !statusBar || statusBar.simPanelVisible !== false;
+  SIM.bar.classList.toggle('open', open);
+  SIM.launch.classList.toggle('show', !open);
 }
 applySimBarVisible();
 SIM.bar.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
@@ -309,10 +314,10 @@ SIM.gps.addEventListener('pointerdown', e => {
   openSimCoords();
 });
 document.getElementById('sim-close').addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation(); simBarOpen = false; applySimBarVisible();
+  e.preventDefault(); e.stopPropagation(); transport.send('sim.togglePanel');
 });
 SIM.launch.addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation(); simBarOpen = true; applySimBarVisible();
+  e.preventDefault(); e.stopPropagation(); transport.send('sim.togglePanel');
 });
 
 // ---- dialog host (Phase 6) — the web mirror of DialogOverlayHost ----
@@ -402,7 +407,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload'];
+const LN_NAV_PANELS = ['screenalerts', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -416,6 +421,7 @@ function lnCloseAll() {
   document.getElementById('ln-autosteer').classList.remove('active');
   document.getElementById('ln-network').classList.remove('active');
   document.getElementById('ln-fieldops').classList.remove('active');
+  document.getElementById('ln-filemenu').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
@@ -466,9 +472,7 @@ for (const b of document.querySelectorAll('.ln-closex'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
 // Units (Screen & Alerts) → config bridge write.
 const saPanel = document.getElementById('screenalerts');
-const uMetric = document.getElementById('sa-metric'), uImperial = document.getElementById('sa-imperial');
-for (const b of saPanel.querySelectorAll('.ln-segbtn[data-units]'))
-  b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
+// Units + device settings (keyboard/fullscreen/elevation) moved to App Settings (File menu).
 // Screen & Alerts toggles → config.set|display.X; action rows (theme/quality) → command.
 for (const b of saPanel.querySelectorAll('.sa-tgl'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
@@ -1239,6 +1243,141 @@ document.getElementById('agd-download').addEventListener('pointerdown', e => { e
 document.getElementById('agd-force').addEventListener('pointerdown', e => { e.stopPropagation(); e.currentTarget.classList.toggle('active'); });
 document.getElementById('agd-downloadall').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('agshare.downloadAll|' + (document.getElementById('agd-force').classList.contains('active') ? '1' : '0')); });
 
+// ---- File / Application Menu (Phase 9) — settings/tools launcher. Reads ride the AppInfo
+// frame + config/status; writes are config.set (App Settings) + app.* (language/reset/
+// hotkeys/bug-report). Sub-panels are chain panels (replace the menu; Back reopens it).
+document.getElementById('ln-filemenu').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const anyOpen = ['filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'].some(id => document.getElementById(id).classList.contains('open'));
+  if (anyOpen) lnCloseAll(); else lnOpen('filemenu', 'ln-filemenu');
+});
+for (const b of document.querySelectorAll('.fm-back'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('filemenu', 'ln-filemenu'); });
+document.getElementById('fm-language').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('language', 'ln-filemenu', renderLanguage); });
+document.getElementById('fm-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm('Reset All Settings', 'Reset all settings to their defaults? This cannot be undone.', () => transport.send('app.resetSettings')); });
+document.getElementById('fm-appsettings').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('appsettings', 'ln-filemenu', renderAppSettings); });
+document.getElementById('fm-viewsettings').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('viewsettings', 'ln-filemenu', renderViewSettings); });
+document.getElementById('fm-logviewer').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('logviewer', 'ln-filemenu', renderLogViewer); });
+document.getElementById('fm-hotkeys').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('hotkeys', 'ln-filemenu', renderHotkeys); });
+document.getElementById('fm-simulator').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('sim.togglePanel'); lnCloseAll(); });
+document.getElementById('fm-help').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('help', 'ln-filemenu'); });
+document.getElementById('fm-about').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('about', 'ln-filemenu', renderAbout); });
+document.getElementById('fm-bugreport').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('bugreport', 'ln-filemenu', renderBugReport); });
+
+// App Settings: units (status) + device toggles (config.display) + app directories (appInfo).
+function renderAppSettings() {
+  const metric = !!(statusBar && statusBar.isMetric);
+  document.getElementById('as-metric').classList.toggle('active', metric);
+  document.getElementById('as-imperial').classList.toggle('active', !metric);
+  const d = config && config.display;
+  if (d) for (const b of document.querySelectorAll('#appsettings .as-tgl')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
+  const dl = document.getElementById('as-dirs'); dl.innerHTML = '';
+  for (const dir of (appInfo ? appInfo.directories : [])) {
+    const row = document.createElement('div'); row.className = 'as-dir';
+    row.innerHTML = '<div class="as-dirname"></div><div class="as-dirpath"></div>';
+    row.querySelector('.as-dirname').textContent = dir.name + (dir.exists ? '' : ' (missing)');
+    row.querySelector('.as-dirpath').textContent = dir.path;
+    dl.appendChild(row);
+  }
+}
+for (const b of document.querySelectorAll('#appsettings .ln-segbtn[data-units]'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
+for (const b of document.querySelectorAll('#appsettings .as-tgl'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
+
+// Language picker
+function renderLanguage() {
+  const list = document.getElementById('lang-list'); list.innerHTML = '';
+  const cur = appInfo ? appInfo.currentLanguage : 'en';
+  for (const l of (appInfo ? appInfo.languages : [])) {
+    const b = document.createElement('button'); b.className = 'lang-btn' + (l.code === cur ? ' active' : ''); b.textContent = l.name;
+    b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('app.setLanguage|' + l.code); });
+    list.appendChild(b);
+  }
+}
+
+// View All Settings — read-only tree rendered from the config frame the client already has.
+function renderViewSettings() {
+  const box = document.getElementById('vs-tree'); box.innerHTML = '';
+  if (!config) { box.textContent = 'Loading…'; return; }
+  const groups = { Vehicle: config.vehicle, GPS: config.gps, Roll: config.roll, Tool: config.tool, 'U-Turn': config.uturn, Tram: config.tram, Machine: config.machine, Display: config.display, AutoSteer: config.autosteer };
+  for (const name in groups) {
+    const obj = groups[name]; if (!obj) continue;
+    const sec = document.createElement('div'); sec.className = 'vs-section';
+    const h = document.createElement('div'); h.className = 'vs-group'; h.textContent = name; sec.appendChild(h);
+    for (const k in obj) {
+      const v = obj[k]; if (v !== null && typeof v === 'object') continue;
+      const r = document.createElement('div'); r.className = 'vs-row';
+      r.innerHTML = '<span class="vs-k"></span><span class="vs-v"></span>';
+      r.querySelector('.vs-k').textContent = k; r.querySelector('.vs-v').textContent = String(v);
+      sec.appendChild(r);
+    }
+    box.appendChild(sec);
+  }
+}
+
+// Log Viewer — filter + list (from AppInfo).
+let logFilter = 0;
+const LOG_LVL = ['Trace', 'Debug', 'Info', 'Warn', 'Error', 'Crit'];
+function renderLogViewer() {
+  const list = document.getElementById('log-list'); list.innerHTML = '';
+  for (const e of (appInfo ? appInfo.logs : [])) {
+    if (e.level < logFilter) continue;
+    const r = document.createElement('div'); r.className = 'log-row lvl' + e.level;
+    r.innerHTML = '<span class="log-t"></span><span class="log-l"></span><span class="log-m"></span>';
+    r.querySelector('.log-t').textContent = e.time;
+    r.querySelector('.log-l').textContent = LOG_LVL[e.level] || '';
+    r.querySelector('.log-m').textContent = e.message;
+    list.appendChild(r);
+  }
+  list.scrollTop = list.scrollHeight;
+}
+for (const b of document.querySelectorAll('#logviewer .log-filt'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); logFilter = parseInt(b.dataset.lvl); for (const x of document.querySelectorAll('#logviewer .log-filt')) x.classList.toggle('active', x === b); renderLogViewer(); });
+
+// Hotkeys — list + click-to-capture.
+let hkCapture = null;
+function renderHotkeys() {
+  const list = document.getElementById('hk-list'); list.innerHTML = '';
+  for (const hk of (appInfo ? appInfo.hotkeys : [])) {
+    const r = document.createElement('div'); r.className = 'hk-row';
+    r.innerHTML = '<span class="hk-label"></span><button class="hk-key"></button>';
+    r.querySelector('.hk-label').textContent = hk.label;
+    const kb = r.querySelector('.hk-key');
+    kb.textContent = hkCapture === hk.action ? 'Press a key…' : (hk.key || '—');
+    if (hkCapture === hk.action) kb.classList.add('capturing');
+    kb.addEventListener('pointerdown', ev => { ev.stopPropagation(); hkCapture = hk.action; renderHotkeys(); });
+    list.appendChild(r);
+  }
+}
+window.addEventListener('keydown', e => {
+  if (!hkCapture || !document.getElementById('hotkeys').classList.contains('open')) return;
+  e.preventDefault();
+  const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  transport.send('app.setHotkey|' + hkCapture + ':' + key);
+  hkCapture = null;
+});
+document.getElementById('hk-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm('Reset Hotkeys', 'Reset all hotkeys to their defaults?', () => transport.send('app.resetHotkeys')); });
+
+// Help — external links open in a new tab.
+for (const b of document.querySelectorAll('#help .help-link'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); window.open(b.dataset.url, '_blank'); });
+
+// About
+function renderAbout() {
+  document.getElementById('ab-version').textContent = appInfo ? ('Version ' + appInfo.version) : '';
+  document.getElementById('ab-git').textContent = appInfo ? appInfo.gitHash : '';
+}
+
+// Bug Report
+function renderBugReport() { document.getElementById('br-status').textContent = appInfo ? (appInfo.bugReportStatus || '') : ''; }
+document.getElementById('br-submit').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const t = document.getElementById('br-title').value.trim();
+  if (!t) return;
+  transport.send('app.bugReport|' + t + '\t' + document.getElementById('br-desc').value);
+});
+
 // ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
 // SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
 // the existing config.set bridge, and forward nav (wizard.*) + gated calibration
@@ -1406,11 +1545,6 @@ function renderWizard() {
 }
 
 function renderSettings() {
-  if (statusBar) {
-    const metric = !!statusBar.isMetric;
-    uMetric.classList.toggle('active', metric);
-    uImperial.classList.toggle('active', !metric);
-  }
   // Re-read the open config panel(s) when a fresh config frame arrives.
   if (configDirty) {
     configDirty = false;
@@ -1418,6 +1552,7 @@ function renderSettings() {
     if (tcPanel.classList.contains('open')) populateToolCfg(false);
     if (saPanel.classList.contains('open')) populateScreenAlerts();
     if (asPanel.classList.contains('open')) populateAutoSteer(false);
+    if (document.getElementById('viewsettings').classList.contains('open')) renderViewSettings();
   }
   // AutoSteer live telemetry rides every status frame (not just config changes).
   if (asPanel.classList.contains('open')) renderAutoSteerLive();
@@ -1453,6 +1588,16 @@ function renderSettings() {
     if (document.getElementById('agsettings').classList.contains('open')) renderAgSettings();
     if (document.getElementById('agupload').classList.contains('open')) renderAgUpload();
     if (document.getElementById('agdownload').classList.contains('open')) renderAgDownload();
+  }
+  // App Settings units/toggles ride config+status (every frame while open).
+  if (document.getElementById('appsettings').classList.contains('open')) renderAppSettings();
+  if (appInfoDirty) {
+    appInfoDirty = false;
+    if (document.getElementById('language').classList.contains('open')) renderLanguage();
+    if (document.getElementById('logviewer').classList.contains('open')) renderLogViewer();
+    if (document.getElementById('hotkeys').classList.contains('open')) renderHotkeys();
+    if (document.getElementById('about').classList.contains('open')) renderAbout();
+    if (document.getElementById('bugreport').classList.contains('open')) renderBugReport();
   }
 }
 
@@ -1971,7 +2116,7 @@ function fmtHdg(deg) {
 // Simulator bar (Phase 6) — reflect host sim state onto the bar each frame.
 function renderSimBar() {
   const s = statusBar;
-  if (!s || !simBarOpen) return;
+  if (!s || s.simPanelVisible === false) return;
   SIM.enable.classList.toggle('on', !!s.simEnabled);
   SIM.tenx.classList.toggle('on', !!s.sim10x);
   // Steer: reflect the host value unless the user is mid-drag (don't fight them).

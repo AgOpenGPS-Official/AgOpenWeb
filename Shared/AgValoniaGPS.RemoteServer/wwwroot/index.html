@@ -445,6 +445,46 @@
     .agu-name { flex: 1; color: #e7eef9; font: 600 13px system-ui, sans-serif; }
     .agu-bd { font: 500 11px system-ui, sans-serif; }
     .agu-bd.ok { color: #39FF6A; } .agu-bd.no { color: #ff7a6b; }
+    /* ===== File / Application Menu ===== */
+    .fm-panel { width: 340px; }
+    .fm-wide { width: 560px; }
+    /* View All Settings fills the tablet viewport so every setting shows for a screenshot. */
+    .fm-full { width: calc(100vw - 110px); height: calc(100vh - 84px); box-sizing: border-box; }
+    .fm-full .vs-tree { max-height: calc(100vh - 150px); columns: 280px; column-gap: 22px; }
+    .vs-section { break-inside: avoid; -webkit-column-break-inside: avoid; margin-bottom: 12px; }
+    .as-dirs { display: flex; flex-direction: column; gap: 6px; }
+    .as-dir { border: 1px solid #2a3550; border-radius: 6px; padding: 6px 8px; }
+    .as-dirname { color: #cfe3ff; font: 600 12px system-ui, sans-serif; }
+    .as-dirpath { color: #8294ab; font: 500 11px ui-monospace, monospace; word-break: break-all; }
+    .lang-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 420px; overflow: auto; }
+    .lang-btn { height: 38px; border: 1px solid #2a3550; border-radius: 6px; background: rgba(255,255,255,0.06);
+      color: #cfe3ff; cursor: pointer; font: 600 12px system-ui, sans-serif; }
+    .lang-btn:hover { background: rgba(255,255,255,0.14); }
+    .lang-btn.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+    .vs-tree { max-height: 460px; overflow: auto; }
+    .vs-group { color: #39FF6A; font: 700 13px system-ui, sans-serif; margin: 10px 0 4px; }
+    .vs-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .vs-k { color: #cfe3ff; font: 500 12px system-ui, sans-serif; }
+    .vs-v { color: #e7eef9; font: 600 12px ui-monospace, monospace; }
+    .log-filts { display: flex; gap: 4px; margin-bottom: 8px; }
+    .log-filt { flex: 1; padding: 6px 4px; border: 1px solid #2a3550; border-radius: 6px; background: rgba(255,255,255,0.06);
+      color: #9fb3cc; cursor: pointer; font: 600 11px system-ui, sans-serif; }
+    .log-filt.active { background: #1f6fb2; color: #fff; border-color: #4A90D9; }
+    .log-list { max-height: 440px; overflow: auto; border: 1px solid #2a3550; border-radius: 6px; padding: 4px; }
+    .log-row { display: grid; grid-template-columns: 64px 38px 1fr; gap: 6px; padding: 2px 4px; font: 500 11px ui-monospace, monospace; }
+    .log-t { color: #8294ab; } .log-l { color: #9fb3cc; } .log-m { color: #cfe3ff; word-break: break-word; }
+    .log-row.lvl3 .log-l, .log-row.lvl3 .log-m { color: #F39C12; }
+    .log-row.lvl4 .log-l, .log-row.lvl4 .log-m, .log-row.lvl5 .log-l, .log-row.lvl5 .log-m { color: #ff7a6b; }
+    .hk-list { max-height: 420px; overflow: auto; }
+    .hk-row { display: flex; align-items: center; gap: 10px; padding: 5px 4px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .hk-label { flex: 1; color: #cfe3ff; font: 500 13px system-ui, sans-serif; }
+    .hk-key { min-width: 64px; height: 30px; border: 1px solid #2a3550; border-radius: 6px; background: #0f1115;
+      color: #e7eef9; font: 700 13px ui-monospace, monospace; cursor: pointer; }
+    .hk-key.capturing { border-color: #4A90D9; color: #4A90D9; }
+    .ab-title { color: #e7eef9; font: 700 20px system-ui, sans-serif; text-align: center; margin-bottom: 4px; }
+    .ab-version { color: #cfe3ff; font: 600 14px system-ui, sans-serif; text-align: center; }
+    .ab-git { color: #8294ab; font: 500 11px ui-monospace, monospace; text-align: center; margin-bottom: 10px; word-break: break-all; }
+    .ab-desc { color: #9fb3cc; font: 500 12px system-ui, sans-serif; text-align: center; margin-top: 4px; }
     /* ===== Steer Wizard (full-screen) ===== */
     .wz-overlay { position: fixed; inset: 0; z-index: 50; background: #1b2233; display: none; flex-direction: column; }
     .wz-overlay.open { display: flex; }
@@ -715,6 +755,7 @@
   <!-- Left nav (Phase 9) — vertical button bar mirroring LeftNavigationPanel; grows
        button-by-button as sub-phases land. Each opens a non-modal panel to its right. -->
   <div id="leftnav">
+    <button id="ln-filemenu" class="ln-btn" title="File / Application Menu"><img class="ln-ic" src="/icons/fileMenu.png" alt="File Menu"></button>
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
     <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
     <button id="ln-autosteer" class="ln-btn" title="AutoSteer Configuration"><img class="ln-ic" src="/icons/AutoSteerConf.png" alt="AutoSteer Configuration"></button>
@@ -761,16 +802,6 @@
       <button class="sa-tgl" data-key="display.uTurnSound"><img class="sa-ic" src="/icons/ConF_TurnSound.png" alt="">U-Turn</button>
       <button class="sa-tgl" data-key="display.hydraulicSound"><img class="sa-ic" src="/icons/ConF_HydLiftSound.png" alt="">Hydraulic</button>
       <button class="sa-tgl" data-key="display.sectionsSound"><img class="sa-ic" src="/icons/ConF_SoundSections.png" alt="">Sections</button>
-    </div>
-    <div class="cfg-label">App Settings <span class="sa-hint">(moves to its own dialog with the File menu)</span></div>
-    <div class="sa-grid">
-      <div class="ln-seg" style="grid-column: span 2">
-        <button id="sa-metric" class="ln-segbtn" data-units="metric">Metric</button>
-        <button id="sa-imperial" class="ln-segbtn" data-units="imperial">Imperial</button>
-      </div>
-      <button class="sa-tgl" data-key="display.keyboardEnabled">On-screen Kbd</button>
-      <button class="sa-tgl" data-key="display.startFullscreen">Start Fullscreen</button>
-      <button class="sa-tgl" data-key="display.elevationLogEnabled">Elevation Log</button>
     </div>
   </div>
   <!-- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogPanel:
@@ -1517,6 +1548,104 @@
       <button class="cfg-act" id="agd-download">Download Selected</button>
       <button class="cfg-act fj-primary" id="agd-downloadall">Download All</button>
     </div>
+  </div>
+  <!-- File / Application Menu (Phase 9) — fly-out launcher. -->
+  <div id="filemenu" class="ln-panel fm-panel">
+    <div class="ln-hdr"><span class="ln-hdr-title">File / Application Menu</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">General</div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="fm-language">Language</button>
+      <button class="fo-btn" id="fm-reset">Reset All Settings</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">App Configuration</div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="fm-appsettings">App Settings</button>
+      <button class="fo-btn" id="fm-viewsettings">View All Settings</button>
+      <button class="fo-btn" id="fm-logviewer">Log Viewer</button>
+      <button class="fo-btn" id="fm-hotkeys">Hotkeys</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">Simulator</div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="fm-simulator">Simulator</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">Help &amp; Info</div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="fm-help">Help</button>
+      <button class="fo-btn" id="fm-about">About</button>
+      <button class="fo-btn" id="fm-bugreport">Bug Report Dump</button>
+    </div>
+  </div>
+  <!-- App Settings — units + device toggles + app directories. -->
+  <div id="appsettings" class="ln-panel sa-panel">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">App Settings</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="cfg-label">Units</div>
+    <div class="ln-seg"><button id="as-metric" class="ln-segbtn" data-units="metric">Metric</button><button id="as-imperial" class="ln-segbtn" data-units="imperial">Imperial</button></div>
+    <div class="cfg-label" style="margin-top:10px">System</div>
+    <div class="sa-grid">
+      <button class="sa-tgl as-tgl" data-key="display.keyboardEnabled">On-screen Kbd</button>
+      <button class="sa-tgl as-tgl" data-key="display.startFullscreen">Start Fullscreen</button>
+      <button class="sa-tgl as-tgl" data-key="display.elevationLogEnabled">Elevation Log</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">App Directories</div>
+    <div id="as-dirs" class="as-dirs"></div>
+  </div>
+  <!-- Language picker. -->
+  <div id="language" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Language</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div id="lang-list" class="lang-list"></div>
+  </div>
+  <!-- View All Settings (read-only). -->
+  <div id="viewsettings" class="ln-panel fm-full">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">View All Settings</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div id="vs-tree" class="vs-tree"></div>
+  </div>
+  <!-- Log Viewer. -->
+  <div id="logviewer" class="ln-panel fm-wide">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Log Viewer</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="log-filts">
+      <button class="log-filt active" data-lvl="0">All</button>
+      <button class="log-filt" data-lvl="1">Debug</button>
+      <button class="log-filt" data-lvl="2">Info</button>
+      <button class="log-filt" data-lvl="3">Warn</button>
+      <button class="log-filt" data-lvl="4">Error</button>
+    </div>
+    <div id="log-list" class="log-list"></div>
+  </div>
+  <!-- Hotkeys. -->
+  <div id="hotkeys" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Hotkeys</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="sa-hint">Click a key, then press the new key.</div>
+    <div id="hk-list" class="hk-list"></div>
+    <button class="cfg-act cfg-actwide" id="hk-reset" style="margin-top:10px">Reset to Defaults</button>
+  </div>
+  <!-- Help. -->
+  <div id="help" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Help</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <button class="fo-btn help-link" data-url="https://github.com/AgOpenGPS-Official/AgValoniaGPS">GitHub Repository</button>
+    <button class="fo-btn help-link" data-url="https://github.com/AgOpenGPS-Official/AgValoniaGPS/discussions">Discussions / Forum</button>
+    <button class="fo-btn help-link" data-url="https://github.com/AgOpenGPS-Official/AgValoniaGPS/releases">Check for Updates</button>
+    <button class="fo-btn help-link" data-url="https://www.youtube.com/results?search_query=AgOpenGPS">YouTube Tutorials</button>
+  </div>
+  <!-- About. -->
+  <div id="about" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">About</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="ab-title">AgValoniaGPS</div>
+    <div class="ab-version" id="ab-version"></div>
+    <div class="ab-git" id="ab-git"></div>
+    <div class="ab-desc">Cross-Platform Agricultural GPS Guidance</div>
+    <div class="ab-desc">Based on AgOpenGPS by Brian Tee</div>
+    <div class="ab-desc">Avalonia UI · .NET 10 · GNU GPL v3.0</div>
+  </div>
+  <!-- Bug Report. -->
+  <div id="bugreport" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Bug Report Dump</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="sa-hint">Captures a state snapshot (settings + state) to a zip in Documents/AgValoniaGPS/BugReports.</div>
+    <div class="cfg-label" style="margin-top:8px">Title</div>
+    <input class="cfg-num fj-tx" id="br-title" placeholder="Short summary">
+    <div class="cfg-label" style="margin-top:8px">Description</div>
+    <textarea class="fj-notes" id="br-desc" style="height:90px"></textarea>
+    <button class="cfg-act cfg-actwide fj-primary" id="br-submit" style="margin-top:10px">Create Bug Report</button>
+    <div class="sa-hint" id="br-status" style="margin-top:6px"></div>
   </div>
   <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
        opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor

@@ -80,7 +80,7 @@ read 0 without it.
 The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
 | # | Native button | Web status |
 |---|---|---|
-| 1 | **File / Application Menu** | ❌ NOT BUILT |
+| 1 | File / Application Menu | ✅ built (`#filemenu` + App Settings/Language/View All/Log Viewer/Hotkeys/Help/About/Bug Report) |
 | 2 | Screen & Alerts | ✅ built (`#screenalerts`) |
 | 3 | **Tools** | ❌ NOT BUILT |
 | 4 | Vehicle / Tool Configuration | ✅ built (`#vehtoolhub`/`#vehiclecfg`/`#toolcfg`) |
@@ -89,7 +89,11 @@ The native left nav (`LeftNavigationPanel.axaml`) has **8 buttons**. Web status:
 | 7 | AutoSteer Configuration | ✅ built (`#autosteercfg` + Smart-WAS + Wizard) |
 | 8 | Network IO | ✅ built (`#networkio` + NTRIP) |
 
-**3 of 8 buttons remain: File/App Menu, Tools, Field Tools.**
+**2 of 8 buttons remain: Tools, Field Tools.** (File/App Menu done v26.5.64 — fly-out + App
+Settings [units/kbd/fullscreen/elev migrated OUT of Screen & Alerts + App Directories] + Language
++ Reset All + View All Settings [read-only tree from the config frame] + Log Viewer [AppInfo logs,
+level filter] + Hotkeys [list + click-to-capture] + Help [external links] + About + Bug Report.
+Wire frame **AppInfo=14**; host write `app.*` + `AgShareRemote`-style bug-report dump.)
 - **Field Operations** ✅ DONE (v26.5.61–63). Fly-out (Fields and Jobs / Resume Last / Resume Job /
   Drive In / Close + AgShare Upload/Download/API + status pill); Fields-and-Jobs chain panel; New
   Field / From Existing / From ISO-XML / From KML creation panels; cross-field Resume Job picker;
@@ -193,7 +197,7 @@ model is a **web-led improvement** (web is the end-state UI). Whether to backpor
   Native icons live in `Shared/AgValoniaGPS.Views/Assets/Icons[/Config]/` — **copy the PNGs
   in** before referencing them, else broken-link. Rebuild RemoteServer to embed.
 - **Frame types:** Scene=1 Tick=2 CoverageInit=3 CoverageCells=4 Status=5 ControlState=6
-  Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 **FieldOps=12 AgShare=13**.
+  Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 FieldOps=12 AgShare=13 **AppInfo=14**.
 - **Tier-2 gating** (`IsRestrictedCommand`, control-gated): prefixes `section.` `autosteer.`
   `youturn.` `contour.` `track.` `headland.` `smartwas.` `wizard.action`, plus the exact id
   `net.subnet` (restarts every module). Tier-1 (ungated): `sim.` `tool.` `map.` `flag.` `tram.`

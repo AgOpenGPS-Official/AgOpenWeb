@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -111,6 +111,7 @@ window.RemoteTransport = {
           // Network IO panel (append-only).
           const gpsIp = str(), moduleSubnet = str(), hostIps = str();
           const ntripConnected = !!u8(), ntripStatus = str(), ntripBytes = f64(), ntripTestStatus = str();
+          const simPanelVisible = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -120,6 +121,7 @@ window.RemoteTransport = {
             actualSteerAngle, sensorPercent, setSteerAngle, freeDriveAngle, steerFreeDrive,
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripTestStatus,
+            simPanelVisible,
           });
           break;
         }
@@ -156,6 +158,20 @@ window.RemoteTransport = {
           const cc = i32(); const cloudFields = new Array(cc);
           for (let k = 0; k < cc; k++) cloudFields[k] = { id: str(), name: str(), areaHa: f64() };
           handlers.onAgShare && handlers.onAgShare({ serverUrl, apiKey, enabled, status, busy, localFields, cloudFields });
+          break;
+        }
+        case TYPE.APP_INFO: {
+          const version = str(), gitHash = str(), currentLanguage = str();
+          const lc = i32(); const languages = new Array(lc);
+          for (let k = 0; k < lc; k++) languages[k] = { code: str(), name: str() };
+          const dc = i32(); const directories = new Array(dc);
+          for (let k = 0; k < dc; k++) directories[k] = { name: str(), path: str(), exists: !!u8() };
+          const hc = i32(); const hotkeys = new Array(hc);
+          for (let k = 0; k < hc; k++) hotkeys[k] = { action: str(), key: str(), label: str() };
+          const gc = i32(); const logs = new Array(gc);
+          for (let k = 0; k < gc; k++) logs[k] = { time: str(), level: i32(), message: str() };
+          const bugReportStatus = str();
+          handlers.onAppInfo && handlers.onAppInfo({ version, gitHash, currentLanguage, languages, directories, hotkeys, logs, bugReportStatus });
           break;
         }
         case TYPE.HELLO: {

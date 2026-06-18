@@ -93,7 +93,9 @@ public partial class App : Application
             Services.GetRequiredService<IUdpCommunicationService>(),
             Services.GetRequiredService<INtripProfileService>(),
             Services.GetRequiredService<AgValoniaGPS.Services.IFieldService>(),
-            Services.GetRequiredService<ISettingsService>());
+            Services.GetRequiredService<ISettingsService>(),
+            Services.GetRequiredService<IVehicleProfileService>(),
+            Services.GetRequiredService<IPersistentStateService>());
 
         // Extract sound files from Avalonia resources for cross-platform audio
         ExtractSoundFiles(Services);
@@ -160,6 +162,14 @@ public partial class App : Application
                                     windowVm.IsSimulatorEnabled = !windowVm.IsSimulatorEnabled; return;
                                 case "sim.toggle10x":
                                     windowVm.IsSimulatorSpeed10x = !windowVm.IsSimulatorSpeed10x; return;
+                                case "sim.togglePanel": // show/hide the sim panel; persisted across runs
+                                {
+                                    var ps = Services.GetRequiredService<IPersistentStateService>();
+                                    ps.State.SimulatorPanelVisible = !ps.State.SimulatorPanelVisible;
+                                    ps.Save();
+                                    windowVm.IsSimulatorPanelVisible = ps.State.SimulatorPanelVisible;
+                                    return;
+                                }
                                 case "sim.setSteer":
                                     if (double.TryParse(arg, num, inv, out var deg))
                                         windowVm.SimulatorSteerAngle = deg;
@@ -320,6 +330,16 @@ public partial class App : Application
                                         Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>(),
                                         Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
                                         Services.GetRequiredService<ISettingsService>());
+                                    return;
+                                // --- File / Application Menu (Phase 9). Language via the VM
+                                // command; reset/hotkeys/bug-report via services/ConfigStore
+                                // (reset confirmed client-side). Tier-1 (settings/data). ---
+                                case "app.setLanguage":
+                                    if (windowVm.SetLanguageCommand?.CanExecute(arg) == true) windowVm.SetLanguageCommand.Execute(arg);
+                                    return;
+                                case "app.resetSettings": case "app.setHotkey":
+                                case "app.resetHotkeys": case "app.bugReport":
+                                    ApplyAppCommand(cmd, arg);
                                     return;
                             }
 
@@ -915,6 +935,59 @@ public partial class App : Application
             {
                 var job = sw.JobsForSelectedField.FirstOrDefault(j => j.TaskName == a.ElementAtOrDefault(1));
                 if (job != null && sw.DeleteJobCommand.CanExecute(job)) sw.DeleteJobCommand.Execute(job);
+                return;
+            }
+        }
+    }
+
+    // File / Application Menu write-side. Reset (client-confirmed), hotkey edits, and bug-report
+    // dump go straight to the services / ConfigStore (no native dialogs). Language rides the VM.
+    private static void ApplyAppCommand(string cmd, string arg)
+    {
+        var configService = Services!.GetRequiredService<IConfigurationService>();
+        var store = Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>();
+        switch (cmd)
+        {
+            case "app.resetSettings":
+                Services.GetRequiredService<ISettingsService>().ResetToDefaults();
+                configService.LoadAppSettings();
+                return;
+            case "app.setHotkey": // arg = Action:Key
+            {
+                var ci = arg.IndexOf(':');
+                if (ci > 0 && System.Enum.TryParse<AgValoniaGPS.Models.Configuration.HotkeyAction>(arg[..ci], out var act))
+                {
+                    store.Hotkeys.SetKeyForAction(act, arg[(ci + 1)..]);
+                    configService.SaveAppSettings();
+                }
+                return;
+            }
+            case "app.resetHotkeys":
+                store.Hotkeys.ResetToDefaults();
+                configService.SaveAppSettings();
+                return;
+            case "app.bugReport": // arg = title \t description
+            {
+                var t = arg.Split('\t');
+                var title = t.ElementAtOrDefault(0) ?? "";
+                var desc = t.ElementAtOrDefault(1) ?? "";
+                var state = Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>();
+                state.BugReportStatus = "Creating bug report…";
+                try
+                {
+                    var dir = System.IO.Path.Combine(
+                        System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments),
+                        "AgValoniaGPS", "BugReports");
+                    var slug = string.IsNullOrWhiteSpace(title) ? "untitled"
+                        : new string(title.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
+                    if (slug.Length > 60) slug = slug.Substring(0, 60);
+                    var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
+                    var zip = AgValoniaGPS.Services.DebugDumpService.CreateDump(
+                        Services.GetRequiredService<ISettingsService>(), state, store,
+                        additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug);
+                    state.BugReportStatus = "Saved: " + zip;
+                }
+                catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
                 return;
             }
         }

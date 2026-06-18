@@ -51,6 +51,7 @@ public class ApplicationState : ObservableObject
     public SimulatorState Simulator { get; } = new(); // sim-panel readout mirror (web-UI)
     public FieldToolsState FieldTools { get; } = new(); // bottom-nav toggle mirror (web-UI)
     public AgShareState AgShare { get; } = new(); // remote AgShare action status/results (web-UI)
+    public string BugReportStatus { get; set; } = string.Empty; // remote bug-report submit result (web-UI)
     public RecordedPathState RecordedPath { get; } = new();
     public BoundaryRecState BoundaryRec { get; } = new();
     public UIState UI { get; } = new();
