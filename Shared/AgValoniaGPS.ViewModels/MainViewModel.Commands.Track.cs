@@ -34,6 +34,40 @@ namespace AgValoniaGPS.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
+    /// <summary>
+    /// Clear all applied-area coverage. Deletes the painted coverage + persisted
+    /// Sections.txt and refreshes the worked-area stats — and ONLY that. Guidance,
+    /// nudge/pathsAway and any active U-turn are deliberately left untouched: coverage
+    /// is just painted area and is independent of the guidance line, so clearing it must
+    /// not snap the magenta line back to the reference pass or orphan an in-progress turn.
+    /// (The earlier version reset _trackGuidanceState + zeroed pathsAway/NudgeDistance,
+    /// which forced exactly that — disable/re-enable-autosteer recovery dance.)
+    /// </summary>
+    public void DeleteAppliedAreaConfirmed()
+    {
+        _coverageMapService.ClearAll();
+
+        if (State.Field.ActiveField != null)
+        {
+            var sectionsFile = System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, "Sections.txt");
+            if (System.IO.File.Exists(sectionsFile))
+            {
+                try
+                {
+                    System.IO.File.Delete(sectionsFile);
+                    _logger.LogDebug($"[Coverage] Deleted {sectionsFile}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug($"[Coverage] Error deleting Sections.txt: {ex.Message}");
+                }
+            }
+        }
+
+        RefreshCoverageStatistics();
+        StatusMessage = "Applied area deleted";
+    }
+
     private void InitializeTrackCommands()
     {
         // AB Line Guidance Commands - Bottom Bar
@@ -926,60 +960,7 @@ public partial class MainViewModel
             ShowConfirmationDialog(
                 "Delete Applied Area",
                 "Are you sure you want to delete all applied area coverage? This cannot be undone.",
-                () =>
-                {
-                    _coverageMapService.ClearAll();
-
-                    if (State.Field.ActiveField != null)
-                    {
-                        var sectionsFile = System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, "Sections.txt");
-                        if (System.IO.File.Exists(sectionsFile))
-                        {
-                            try
-                            {
-                                System.IO.File.Delete(sectionsFile);
-                                _logger.LogDebug($"[Coverage] Deleted {sectionsFile}");
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogDebug($"[Coverage] Error deleting Sections.txt: {ex.Message}");
-                            }
-                        }
-                    }
-
-                    // Reset track guidance state to force global search for nearest segment
-                    // Otherwise it will continue from where coverage ended
-                    _trackGuidanceState = null;
-
-                    // Phase D D6: seed pending zeros; sync below carries them into
-                    // _guidanceWorking and the next snapshot zeroes State.Guidance.
-                    _logger.LogDebug("[NUDGE] Resetting pathsAway from {HowManyPathsAway} to 0, nudgeOffset from {NudgeOffset:F3} to 0", State.Guidance.HowManyPathsAway, State.Guidance.NudgeOffset);
-                    _pendingInitialPathsAway = 0;
-                    _pendingInitialNudgeOffset = 0;
-                    SyncGuidanceStateToPipeline();
-
-                    // Reset NudgeDistance on ALL tracks, not just selected
-                    _logger.LogDebug("[NUDGE] Resetting NudgeDistance on {TrackCount} tracks", SavedTracks.Count);
-
-                    // Verify SelectedTrack is in SavedTracks
-                    if (SelectedTrack != null)
-                    {
-                        bool inCollection = SavedTracks.Contains(SelectedTrack);
-                        _logger.LogDebug("[NUDGE] SelectedTrack '{TrackName}' in SavedTracks: {InCollection}", SelectedTrack.Name, inCollection);
-                    }
-
-                    foreach (var track in SavedTracks)
-                    {
-                        _logger.LogDebug($"[NUDGE] Track '{track.Name}' NudgeDistance: {track.NudgeDistance:F1} -> 0");
-                        track.NudgeDistance = 0;
-                    }
-                    // Save tracks to persist the reset NudgeDistance
-                    SaveTracksToFile();
-                    _logger.LogDebug("[NUDGE] Saved tracks to file, State.Guidance.HowManyPathsAway is now {HowManyPathsAway}", State.Guidance.HowManyPathsAway);
-
-                    RefreshCoverageStatistics();
-                    StatusMessage = "Applied area deleted";
-                });
+                DeleteAppliedAreaConfirmed);
         }, () => IsFieldOpen);
 
         // Tram line commands

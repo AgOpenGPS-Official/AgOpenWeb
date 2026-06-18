@@ -204,6 +204,18 @@ public partial class App : Application
                                     rollStore.Ahrs.RollZero += rollState.Vehicle.Roll;
                                     return;
                                 }
+                                case "field.deleteApplied": // Tier-1; browser already confirmed
+                                    windowVm.DeleteAppliedAreaConfirmed();
+                                    return;
+                                case "offset.set": // Offset Fix manual entry. arg = "easting,northing" (m)
+                                {
+                                    var op = arg.Split(',');
+                                    if (op.Length == 2
+                                        && double.TryParse(op[0], num, inv, out var oe)
+                                        && double.TryParse(op[1], num, inv, out var on))
+                                        windowVm.OffsetFixSet(oe, on);
+                                    return;
+                                }
                                 case "profile.save": // persist active vehicle+tool profiles (Phase 9b)
                                     var cs = Services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>();
                                     configService.SaveProfiles(cs.ActiveVehicleProfileName, cs.ActiveToolProfileName);
@@ -402,6 +414,12 @@ public partial class App : Application
                                 "track.deleteContours" => windowVm.DeleteContoursCommand,
                                 "track.autoTrack" => windowVm.ToggleAutoTrackCommand,
                                 "track.createFromBoundary" => windowVm.CreateTrackFromBoundaryCommand,
+                                // Field Tools — Offset Fix D-pad (Tier-1; GPS drift nudge, 1 cm/click).
+                                "offset.north" => windowVm.OffsetFixNorthCommand,
+                                "offset.south" => windowVm.OffsetFixSouthCommand,
+                                "offset.east" => windowVm.OffsetFixEastCommand,
+                                "offset.west" => windowVm.OffsetFixWestCommand,
+                                "offset.zero" => windowVm.OffsetFixZeroCommand,
                                 _ => null, // unknown id → ignored (safety boundary)
                             };
                             if (c?.CanExecute(null) == true) c.Execute(null);

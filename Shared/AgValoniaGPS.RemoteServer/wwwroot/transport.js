@@ -115,6 +115,7 @@ window.RemoteTransport = {
           const gpsIp = str(), moduleSubnet = str(), hostIps = str();
           const ntripConnected = !!u8(), ntripStatus = str(), ntripBytes = f64(), ntripTestStatus = str();
           const simPanelVisible = !!u8();
+          const driftEasting = f32(), driftNorthing = f32();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -124,7 +125,7 @@ window.RemoteTransport = {
             actualSteerAngle, sensorPercent, setSteerAngle, freeDriveAngle, steerFreeDrive,
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripTestStatus,
-            simPanelVisible,
+            simPanelVisible, driftEasting, driftNorthing,
           });
           break;
         }

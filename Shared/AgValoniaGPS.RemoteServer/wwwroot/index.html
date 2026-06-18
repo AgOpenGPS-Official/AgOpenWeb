@@ -719,6 +719,20 @@
     .rc-tgl.on { background: rgba(80,160,255,0.28); border-color: #4a90d9; color: #fff; }
     .rc-zerobtn { height: 32px; width: auto; padding: 0 16px; }
     .rc-ro { font-variant-numeric: tabular-nums; color: #9fb0c8; }
+    /* Offset Fix D-pad. */
+    .of-dpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 48px);
+      gap: 6px; justify-content: center; padding: 6px 0; }
+    .of-btn { border: 0; border-radius: 6px; color: #fff; font-size: 17px; font-weight: 700; cursor: pointer; }
+    .of-ns { background: #2E7D32; } .of-ew { background: #1565C0; } .of-zero { background: #C62828; }
+    .of-btn:active { filter: brightness(1.2); }
+    #of-n { grid-area: 1 / 2; } #of-w { grid-area: 2 / 1; } #of-z { grid-area: 2 / 2; }
+    #of-e { grid-area: 2 / 3; } #of-s { grid-area: 3 / 2; }
+    .of-manual { display: flex; gap: 10px; margin-top: 6px; }
+    .of-fld { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+    .of-fld label { font-size: 11px; color: #9fb0c8; text-align: center; }
+    .of-input { height: 34px; border: 1px solid #2a3550; border-radius: 6px; background: rgba(255,255,255,0.06);
+      color: #fff; font-size: 15px; font-weight: 700; text-align: center; }
+    .of-hint { text-align: center; font-size: 10px; color: #9fb0c8; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -789,6 +803,7 @@
     <button id="ln-vehicle" class="ln-btn" title="Vehicle &amp; Tool Configuration"><img class="ln-ic" src="/icons/Settings48.png" alt="Vehicle & Tool Configuration"></button>
     <button id="ln-autosteer" class="ln-btn" title="AutoSteer Configuration"><img class="ln-ic" src="/icons/AutoSteerConf.png" alt="AutoSteer Configuration"></button>
     <button id="ln-fieldops" class="ln-btn" title="Field Operations"><img class="ln-ic" src="/icons/JobActive.png" alt="Field Operations"></button>
+    <button id="ln-fieldtools" class="ln-btn" title="Field Tools"><img class="ln-ic" src="/icons/FieldTools.png" alt="Field Tools"></button>
     <button id="ln-network" class="ln-btn" title="Network IO">
       <svg class="ln-ic" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="stroke:currentColor;fill:currentColor">
         <line x1="24" y1="24" x2="24" y2="10" stroke-width="2.5"/>
@@ -1654,6 +1669,36 @@
   <div id="chart-xte" class="chart-card" style="display:none">
     <div class="chart-hdr"><span>XTE</span><button class="chart-x" data-chart="xte" title="Close">✕</button></div>
     <canvas class="chart-cv" width="400" height="150"></canvas>
+  </div>
+  <!-- Field Tools fly-out (native FieldToolsPanel). Field Builder + Boundary draw-on-map
+       are Phase MT (map-tap); Import Tracks / Recorded Path / Boundary recording build in
+       follow-up increments. Offset Fix + Delete Applied Area are live now. -->
+  <div id="fieldtools" class="ln-panel fm-panel">
+    <div class="ln-hdr"><span class="ln-hdr-title">Field Tools</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="fo-grid">
+      <button class="fo-btn" id="ft-fieldbuilder" disabled title="Phase MT — on-map track / headland / tram editor">Field Builder</button>
+      <button class="fo-btn" id="ft-boundary" disabled title="Built next increment">Boundary</button>
+      <button class="fo-btn" id="ft-deleteapplied">Delete Applied Area</button>
+      <button class="fo-btn" id="ft-importtracks" disabled title="Built next increment">Import Tracks</button>
+      <button class="fo-btn" id="ft-recpath" disabled title="Built next increment">Recorded Path</button>
+      <button class="fo-btn" id="ft-offsetfix">Offset Fix</button>
+    </div>
+  </div>
+  <!-- Offset Fix (GPS drift nudge): compass D-pad (1 cm/click) + manual N/E entry. -->
+  <div id="offsetfix" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x" id="of-back" title="Back">←</button><span class="ln-hdr-title">GPS Offset Fix</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="of-dpad">
+      <button class="of-btn of-ns" id="of-n" data-cmd="offset.north">N</button>
+      <button class="of-btn of-ew" id="of-w" data-cmd="offset.west">W</button>
+      <button class="of-btn of-zero" id="of-z" data-cmd="offset.zero">0</button>
+      <button class="of-btn of-ew" id="of-e" data-cmd="offset.east">E</button>
+      <button class="of-btn of-ns" id="of-s" data-cmd="offset.south">S</button>
+    </div>
+    <div class="of-manual">
+      <div class="of-fld"><label>N / S (m)</label><input id="of-ns-in" class="of-input" type="number" step="0.001"></div>
+      <div class="of-fld"><label>E / W (m)</label><input id="of-ew-in" class="of-input" type="number" step="0.001"></div>
+    </div>
+    <div class="of-hint">1 cm per click</div>
   </div>
   <!-- App Settings — units + device toggles + app directories. -->
   <div id="appsettings" class="ln-panel sa-panel">

@@ -408,7 +408,7 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -424,6 +424,7 @@ function lnCloseAll() {
   document.getElementById('ln-fieldops').classList.remove('active');
   document.getElementById('ln-filemenu').classList.remove('active');
   document.getElementById('ln-tools').classList.remove('active');
+  document.getElementById('ln-fieldtools').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
   lnCloseAll();
@@ -506,6 +507,35 @@ for (const b of document.querySelectorAll('.tl-chartbtn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); toggleChart(b.dataset.chart); });
 for (const b of document.querySelectorAll('.chart-x'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); setChartOpen(b.dataset.chart, false); });
+// Field Tools fly-out.
+document.getElementById('ln-fieldtools').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const anyOpen = ['fieldtools', 'offsetfix'].some(id => document.getElementById(id).classList.contains('open'));
+  if (anyOpen) lnCloseAll(); else lnOpen('fieldtools', 'ln-fieldtools');
+});
+document.getElementById('ft-deleteapplied').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  showConfirm('Delete Applied Area',
+    'Delete all applied area coverage? This cannot be undone.',
+    () => transport.send('field.deleteApplied'));
+});
+document.getElementById('ft-offsetfix').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('offsetfix', 'ln-fieldtools', renderOffsetFix);
+});
+document.getElementById('of-back').addEventListener('pointerdown', e => {
+  e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools');
+});
+// Offset Fix D-pad (argless Tier-1 commands).
+for (const b of document.querySelectorAll('#offsetfix .of-btn'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
+// Manual Easting/Northing entry → absolute set (offset.set|E,N).
+function sendOffsetSet() {
+  const ns = parseFloat(document.getElementById('of-ns-in').value);
+  const ew = parseFloat(document.getElementById('of-ew-in').value);
+  if (Number.isFinite(ns) && Number.isFinite(ew)) transport.send('offset.set|' + ew + ',' + ns);
+}
+for (const id of ['of-ns-in', 'of-ew-in'])
+  document.getElementById(id).addEventListener('change', e => { e.stopPropagation(); sendOffsetSet(); });
 for (const b of document.querySelectorAll('.ln-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('vehtoolhub', 'ln-vehicle', refreshHub); });
 // Standard header close (X) → close the chain to the map. Tagged .ln-closex so the
@@ -1770,9 +1800,15 @@ if (rnRoot) {
 }
 
 // ---- render ----
-// True 3D is only meaningful under Skia (CanvasKit M44). When inactive, perspM is
-// null and everything uses the plain ortho projection below.
-function active3D() { return CK && pitch > 0.001; }
+// ONE projection: the CanvasKit M44 perspective matrix, always — top-down is just
+// pitch 0 on the same matrix (distance is chosen so pitch 0 matches the ortho scale
+// exactly, see buildScreenMatrix). There is no separate 2D renderer: the legacy ortho
+// branches below (`perspM == null`) only run if CanvasKit failed to load, in which case
+// the map isn't drawn at all. Gating the matrix on pitch used to drop top-down into an
+// axis-aligned raster path that couldn't rotate — imagery/coverage skewed away under
+// HeadingUp/Map. Keeping perspM on at every pitch routes rasters through the
+// rotation-correct world-matrix path.
+function active3D() { return !!CK; }
 // Build the world→CSS-px screen matrix, mirroring the native camera model
 // (SkiaMapControl.BuildPerspectiveScreenMatrix): view = T(0,0,-distance)·Rx(-pitch)
 // ·T(-cam), a FOV-PERSP_FOV perspective, then an NDC(-1..1, y-up)→pixel(y-down)
@@ -2511,6 +2547,16 @@ function renderRollCorr() {
   if (inv) { const on = !!roll.isRollInvert; inv.classList.toggle('on', on); inv.textContent = on ? 'On' : 'Off'; }
 }
 
+// Offset Fix: reflect the live drift offset into the manual inputs (unless the user is
+// editing that field). Drift rides the Status frame.
+function renderOffsetFix() {
+  if (!document.getElementById('offsetfix').classList.contains('open')) return;
+  if (!statusBar) return;
+  const ns = document.getElementById('of-ns-in'), ew = document.getElementById('of-ew-in');
+  if (document.activeElement !== ns) ns.value = (statusBar.driftNorthing || 0).toFixed(3);
+  if (document.activeElement !== ew) ew.value = (statusBar.driftEasting || 0).toFixed(3);
+}
+
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays
 // like the native FloatingPanel so the operator can move them out of the way).
 (function wireChartDrag() {
@@ -2906,6 +2952,7 @@ function skFrame() {
   renderCampad();
   renderCharts();
   renderRollCorr();
+  renderOffsetFix();
   updateHud(rp);
   requestAnimationFrame(skFrame);
 }

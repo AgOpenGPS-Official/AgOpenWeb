@@ -284,7 +284,10 @@ public sealed class SceneProjector
             c.NtripStatus ?? "",
             c.NtripBytesReceived,
             c.NtripTestStatus ?? "",
-            _persist.State.SimulatorPanelVisible);
+            _persist.State.SimulatorPanelVisible,
+            // Field Tools — Offset Fix drift offset (meters).
+            _state.Field.DriftEasting,
+            _state.Field.DriftNorthing);
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved

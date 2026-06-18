@@ -193,7 +193,11 @@ public record StatusDto(
     string NtripTestStatus,
     // Simulator panel visibility (persisted in PersistentAppState.SimulatorPanelVisible) —
     // the web sim bar shows/hides from this so the choice survives app restarts.
-    bool SimPanelVisible);
+    bool SimPanelVisible,
+    // Field Tools → Offset Fix: the current GPS drift offset (meters) the D-pad nudges
+    // and the manual inputs edit. Mirrors ApplicationState.Field.Drift{Easting,Northing}.
+    double DriftEasting,
+    double DriftNorthing);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and

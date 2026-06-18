@@ -465,6 +465,16 @@ public partial class MainViewModel
         SyncGuidanceStateToPipeline();
     }
 
+    /// <summary>
+    /// Set the GPS drift offset to absolute values (meters). Used by the remote web
+    /// Offset Fix panel's manual Easting/Northing inputs; applies the same trailing-tool
+    /// reset + pipeline sync as the directional nudges by routing through the delta path.
+    /// </summary>
+    public void OffsetFixSet(double easting, double northing)
+    {
+        ApplyDrift(easting - State.Field.DriftEasting, northing - State.Field.DriftNorthing);
+    }
+
     private void RefreshAppDirectories()
     {
         var dirs = new ObservableCollection<AppDirectoryInfo>();
