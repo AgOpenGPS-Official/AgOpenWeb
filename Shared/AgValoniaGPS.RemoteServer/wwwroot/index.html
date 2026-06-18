@@ -176,7 +176,7 @@
     .ln-btn.active { background: #1c4a7a; }
     .ln-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
     .ln-panel { position: fixed; left: 80px; top: 56px; display: none; min-width: 220px;
-      max-width: calc(100vw - 96px);
+      max-width: calc(100vw - 96px); color: #e7eef9;
       background: #161b24; border: 1px solid #2a3550; border-radius: 10px; padding: 14px;
       box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 31; }
     /* Lay tall tabs out across the width so they fit a 1200x700 tablet without scroll. */
@@ -757,6 +757,44 @@
     .rp-frow .fj-jname { flex: 1; cursor: pointer; }
     .rp-del { background: none; border: 0; color: #c97c7c; font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
     .rp-del:hover { background: rgba(220,60,60,0.25); color: #fff; }
+    /* Boundary recording menu. */
+    .bm-panel { width: 470px; }
+    .bm-toolbar { display: flex; gap: 6px; justify-content: space-between; margin-bottom: 10px; }
+    .bm-tbtn { position: relative; width: 56px; height: 48px; border: 1px solid #2a3550; border-radius: 8px;
+      background: rgba(255,255,255,0.06); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .bm-tbtn:hover { background: rgba(255,255,255,0.12); }
+    .bm-tbtn img { width: 32px; height: 32px; }
+    .bm-tbtn:disabled { opacity: 0.35; cursor: default; }
+    .bm-plus { position: absolute; right: 4px; bottom: 2px; color: #F5F54D; font-weight: 700; font-size: 15px; }
+    .bm-lhdr { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; background: #1565C0; color: #fff;
+      font-weight: 700; font-size: 12px; padding: 6px 8px; border-radius: 6px 6px 0 0; }
+    .bm-lhdr span { text-align: center; }
+    .bm-lhdr span:first-child { text-align: left; }
+    .bm-list { background: rgba(255,255,255,0.03); border-radius: 0 0 6px 6px; max-height: 220px; overflow-y: auto; }
+    .bm-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; align-items: center; padding: 8px;
+      font-size: 13px; cursor: pointer; border-bottom: 1px solid #1b2333; }
+    .bm-row.sel { background: #1c4a7a; }
+    .bm-row span { text-align: center; }
+    .bm-row .bm-name { text-align: left; }
+    .bm-flag { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+    .bm-flag.on { background: rgba(80,200,120,0.3); color: #6de29a; }
+    .bm-flag.off { color: #8c9bb3; }
+    /* Boundary player. */
+    .bp-offrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .bp-offlbl { font-weight: 700; font-size: 14px; }
+    .bp-offin { width: 90px; height: 36px; border: 1px solid #2a3550; border-radius: 6px; background: #fff;
+      color: #111; font-size: 20px; font-weight: 700; text-align: center; }
+    .bp-offunit { font-size: 13px; color: #9fb0c8; }
+    .bp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .bp-btn { height: 60px; border: 1px solid #2a3550; border-radius: 8px; background: rgba(255,255,255,0.06);
+      cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .bp-btn:hover { background: rgba(255,255,255,0.12); }
+    .bp-btn img { width: 40px; height: 40px; }
+    .bp-btn.on { background: rgba(80,160,255,0.3); border-color: #4a90d9; }
+    .bp-okbtn img { width: 46px; height: 46px; }
+    .bp-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .bp-statlbl { font-size: 12px; color: #8c9bb3; }
+    .bp-statval { font-size: 18px; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -1701,7 +1739,7 @@
     <div class="ln-hdr"><span class="ln-hdr-title">Field Tools</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="fo-grid">
       <button class="fo-btn" id="ft-fieldbuilder" disabled title="Phase MT — on-map track / headland / tram editor">Field Builder</button>
-      <button class="fo-btn" id="ft-boundary" disabled title="Built next increment">Boundary</button>
+      <button class="fo-btn" id="ft-boundary">Boundary</button>
       <button class="fo-btn" id="ft-deleteapplied">Delete Applied Area</button>
       <button class="fo-btn" id="ft-importtracks">Import Tracks</button>
       <button class="fo-btn" id="ft-recpath">Recorded Path</button>
@@ -1760,6 +1798,42 @@
       </div>
     </div>
     <div id="rp-info" class="rp-info">No path loaded</div>
+  </div>
+  <!-- Boundary recording menu ("Start or Delete Boundary"). Draw-on-Map is Phase MT and
+       Import-KML needs the KML picker (follow-up) — both disabled here. -->
+  <div id="boundarymenu" class="ln-panel bm-panel">
+    <div class="ln-hdr"><button class="ln-x" id="bm-back" title="Back">←</button><span class="ln-hdr-title">Start or Delete Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="bm-toolbar">
+      <button id="bm-delete" class="bm-tbtn" title="Delete selected boundary"><img src="/icons/Trash.png" alt=""></button>
+      <button id="bm-importkml" class="bm-tbtn" disabled title="Import from KML (follow-up)"><img src="/icons/BoundaryLoadFromGE.png" alt=""></button>
+      <button id="bm-drawmap" class="bm-tbtn" disabled title="Draw on map — Phase MT"><img src="/icons/BoundaryByMap.png" alt=""></button>
+      <button id="bm-buildtracks" class="bm-tbtn" title="Build boundary from driven tracks"><img src="/icons/BoundaryFromTracks.png" alt=""></button>
+      <button id="bm-drivearound" class="bm-tbtn" title="Drive around field to record boundary"><img src="/icons/ST_SteerTab.png" alt=""></button>
+      <button id="bm-driveinner" class="bm-tbtn" title="Drive around obstacle (inner boundary)"><img src="/icons/Boundary.png" alt=""><span class="bm-plus">+</span></button>
+      <button id="bm-accept" class="bm-tbtn" title="Accept and close"><img src="/icons/OK64.png" alt=""></button>
+    </div>
+    <div class="bm-lhdr"><span>Boundary</span><span>Area</span><span>Drive Thru</span><span>Hard</span></div>
+    <div id="bm-list" class="bm-list"></div>
+  </div>
+  <!-- Boundary Player ("Stop Record Pause Boundary") — GPS drive-around recording. -->
+  <div id="boundaryplayer" class="ln-panel bp-panel">
+    <div class="ln-hdr"><button class="ln-x" id="bp-back" title="Back">←</button><span class="ln-hdr-title">Stop Record Pause Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="bp-offrow">
+      <span class="bp-offlbl">Recording Offset</span>
+      <input id="bp-offset" class="bp-offin" type="number" step="1" value="100"><span class="bp-offunit">cm</span>
+    </div>
+    <div class="bp-grid">
+      <button id="bp-clear" class="bp-btn" title="Clear all points"><img src="/icons/Trash.png" alt=""></button>
+      <button id="bp-section" class="bp-btn" title="Section control while recording"><img src="/icons/BoundarySectionControlOnOff.png" alt=""></button>
+      <button id="bp-undo" class="bp-btn" title="Delete last point"><img src="/icons/PointDelete.png" alt=""></button>
+      <button id="bp-add" class="bp-btn" title="Add point at current position"><img src="/icons/PointAdd.png" alt=""></button>
+      <button id="bp-leftright" class="bp-btn" title="Record on left / right side"><img id="bp-lrimg" src="/icons/BoundaryLeft.png" alt=""></button>
+      <button id="bp-antennatool" class="bp-btn" title="Record at antenna / tool"><img id="bp-atimg" src="/icons/BoundaryRecordTool.png" alt=""></button>
+      <div class="bp-stat"><span class="bp-statlbl">Points:</span><span id="bp-points" class="bp-statval">0</span></div>
+      <div class="bp-stat"><span class="bp-statlbl">Area:</span><span id="bp-area" class="bp-statval">0.00 Ha</span></div>
+      <button id="bp-stop" class="bp-btn bp-okbtn" title="Stop and save"><img src="/icons/OK64.png" alt=""></button>
+      <button id="bp-record" class="bp-btn bp-recbtn" title="Record / Pause"><img id="bp-recimg" src="/icons/BoundaryRecord.png" alt=""></button>
+    </div>
   </div>
   <!-- App Settings — units + device toggles + app directories. -->
   <div id="appsettings" class="ln-panel sa-panel">

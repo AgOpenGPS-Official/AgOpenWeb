@@ -39,6 +39,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
     // host projects it (like the wizard). Read every tick, re-sent on a fingerprint change.
     public Func<RecordedPathDto?>? RecordedPathProvider { get; set; }
     private long _lastRecPathFp = long.MinValue;
+    // Host-driven Boundary read-frame (menu list + live drive-around recording state).
+    public Func<BoundaryDto?>? BoundaryProvider { get; set; }
+    private long _lastBoundaryFp = long.MinValue;
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
     private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
@@ -73,6 +76,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeAppInfo(_projector.BuildAppInfo()),
             WireCodec.EncodeFieldTools(_projector.BuildFieldTools()),
             WireCodec.EncodeRecordedPath(RecordedPathProvider?.Invoke() ?? EmptyRecordedPath),
+            WireCodec.EncodeBoundary(BoundaryProvider?.Invoke() ?? EmptyBoundary),
             WireCodec.EncodeControlState(_authority.Snapshot()),
         };
         if (_coverageProjector.BuildInit() is { } init)
@@ -217,6 +221,17 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     }
                 }
 
+                // Boundary read-frame (host-driven): menu list + drive-around recording.
+                if (BoundaryProvider?.Invoke() is { } bDto)
+                {
+                    var bfp = BoundaryFingerprint(bDto);
+                    if (bfp != _lastBoundaryFp)
+                    {
+                        _lastBoundaryFp = bfp;
+                        await _ws.BroadcastAsync(WireCodec.EncodeBoundary(bDto), ct).ConfigureAwait(false);
+                    }
+                }
+
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
                     .ConfigureAwait(false);
 
@@ -257,6 +272,31 @@ public sealed class MapBroadcaster : IAsyncDisposable
         h = h * 31 + (r.ResumeModeLabel?.GetHashCode() ?? 0);
         h = h * 31 + (r.RecordedPathName?.GetHashCode() ?? 0);
         h = h * 31 + r.RecordingPoints.Count; // grows as the path is driven → re-send
+        return h;
+    }
+
+    private static readonly BoundaryDto EmptyBoundary =
+        new(Array.Empty<BoundaryItemDto>(), -1, false, false, false, 0, 0, 0, false, false, false, Array.Empty<double>());
+
+    private static long BoundaryFingerprint(BoundaryDto b)
+    {
+        long h = 17;
+        foreach (var it in b.Items)
+        {
+            h = h * 31 + it.Index;
+            h = h * 31 + (it.BoundaryType?.GetHashCode() ?? 0);
+            h = h * 31 + (it.AreaDisplay?.GetHashCode() ?? 0);
+            h = h * 31 + (it.DriveThru ? 1 : 0);
+            h = h * 31 + (it.Hard ? 1 : 0);
+        }
+        h = h * 31 + b.SelectedIndex;
+        h = h * 31 + (b.PlayerVisible ? 1 : 0);
+        h = h * 31 + (b.IsRecording ? 1 : 0) + (b.IsPaused ? 2 : 0);
+        h = h * 31 + b.PointCount;
+        h = h * 31 + b.AreaHa.GetHashCode();
+        h = h * 31 + b.OffsetCm.GetHashCode();
+        h = h * 31 + (b.DrawRightSide ? 1 : 0) + (b.DrawAtPivot ? 2 : 0) + (b.SectionControlOn ? 4 : 0);
+        h = h * 31 + b.RecordingPoints.Count;
         return h;
     }
 

@@ -222,6 +222,18 @@ public partial class App : Application
                                     if (windowVm.DeleteRecordedPathCommand?.CanExecute(arg) == true)
                                         windowVm.DeleteRecordedPathCommand.Execute(arg);
                                     return;
+                                case "boundary.refresh": // rebuild the menu list from the field (Tier-1)
+                                    windowVm.RefreshBoundaryList();
+                                    return;
+                                case "boundary.select": // arg = boundary list index (Tier-1)
+                                    if (int.TryParse(arg, out var bsi)) windowVm.SelectedBoundaryIndex = bsi;
+                                    return;
+                                case "boundary.setOffset": // arg = recording offset cm (Tier-1)
+                                    if (double.TryParse(arg, num, inv, out var boff)) windowVm.BoundaryOffset = boff;
+                                    return;
+                                case "boundary.toggleSectionControl": // ToggleButton has no command (Tier-1)
+                                    windowVm.IsBoundarySectionControlOn = !windowVm.IsBoundarySectionControlOn;
+                                    return;
                                 case "offset.set": // Offset Fix manual entry. arg = "easting,northing" (m)
                                 {
                                     var op = arg.Split(',');
@@ -437,6 +449,24 @@ public partial class App : Application
                                 "recpath.cycleResume" => windowVm.CycleResumeModeCommand,
                                 "recpath.reverse" => windowVm.ReverseRecordedPathCommand,
                                 "recpath.turnOff" => windowVm.TurnOffRecordedPathCommand,
+                                // Field Tools — Boundary (Tier-1; geometry capture, not steering).
+                                // Menu (operate on SelectedBoundaryIndex):
+                                "boundary.delete" => windowVm.DeleteBoundaryCommand,
+                                "boundary.driveThru" => windowVm.ToggleDriveThroughCommand,
+                                "boundary.hard" => windowVm.ToggleHardCommand,
+                                "boundary.importKml" => windowVm.ImportKmlBoundaryCommand,
+                                "boundary.buildFromTracks" => windowVm.BuildFromTracksCommand,
+                                "boundary.driveAround" => windowVm.DriveAroundFieldCommand,
+                                "boundary.driveAroundInner" => windowVm.DriveAroundInnerBoundaryCommand,
+                                "boundary.accept" => windowVm.ToggleBoundaryPanelCommand,
+                                // Player (drive-around recording):
+                                "boundary.clear" => windowVm.ClearBoundaryCommand,
+                                "boundary.undo" => windowVm.UndoBoundaryPointCommand,
+                                "boundary.addPoint" => windowVm.AddBoundaryPointCommand,
+                                "boundary.toggleLeftRight" => windowVm.ToggleBoundaryLeftRightCommand,
+                                "boundary.toggleAntennaTool" => windowVm.ToggleBoundaryAntennaToolCommand,
+                                "boundary.toggleRecording" => windowVm.ToggleRecordingCommand,
+                                "boundary.stop" => windowVm.StopBoundaryRecordingCommand,
                                 // Field Tools — Offset Fix D-pad (Tier-1; GPS drift nudge, 1 cm/click).
                                 "offset.north" => windowVm.OffsetFixNorthCommand,
                                 "offset.south" => windowVm.OffsetFixSouthCommand,
@@ -520,6 +550,35 @@ public partial class App : Application
                             windowVm.ResumeModeLabel ?? "Start",
                             windowVm.RecordedPathName ?? "",
                             pts);
+                    };
+
+                    // Boundary projector: the menu list (VM BoundaryItems) + live
+                    // drive-around recording metrics/points (IBoundaryRecordingService is
+                    // the SoT) + the VM-owned record toggles. Read-only on the broadcaster
+                    // thread, same race tolerance as the other projectors.
+                    _remoteServer.BoundaryProvider = () =>
+                    {
+                        var bst = Services.GetRequiredService<AgValoniaGPS.Models.State.ApplicationState>();
+                        var brs = Services.GetRequiredService<AgValoniaGPS.Services.Interfaces.IBoundaryRecordingService>();
+                        var items = new System.Collections.Generic.List<AgValoniaGPS.RemoteServer.BoundaryItemDto>();
+                        foreach (var it in windowVm.BoundaryItems)
+                            items.Add(new AgValoniaGPS.RemoteServer.BoundaryItemDto(
+                                it.Index, it.BoundaryType, it.AreaDisplay, it.IsDriveThrough, it.IsHard));
+                        var bpts = new System.Collections.Generic.List<double>(brs.RecordedPoints.Count * 2);
+                        foreach (var p in brs.RecordedPoints) { bpts.Add(p.Easting); bpts.Add(p.Northing); }
+                        return new AgValoniaGPS.RemoteServer.BoundaryDto(
+                            items,
+                            windowVm.SelectedBoundaryIndex,
+                            windowVm.IsBoundaryPlayerPanelVisible,
+                            brs.IsRecording,
+                            bst.BoundaryRec.IsPaused,
+                            brs.PointCount,
+                            brs.AreaHectares,
+                            windowVm.BoundaryOffset,
+                            windowVm.IsDrawRightSide,
+                            windowVm.IsDrawAtPivot,
+                            windowVm.IsBoundarySectionControlOn,
+                            bpts);
                     };
                 }
             }

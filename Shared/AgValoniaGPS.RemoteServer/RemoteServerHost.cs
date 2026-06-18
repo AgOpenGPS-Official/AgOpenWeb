@@ -41,6 +41,15 @@ public sealed class RemoteServerHost
     }
     private Func<RecordedPathDto?>? _recordedPathProvider;
 
+    /// <summary>Host-supplied projector for the Boundary panel (menu list + drive-around
+    /// recording). Read every broadcast tick, re-sent on change. Set after StartAsync.</summary>
+    public Func<BoundaryDto?>? BoundaryProvider
+    {
+        get => _broadcaster?.BoundaryProvider;
+        set { _boundaryProvider = value; if (_broadcaster is not null) _broadcaster.BoundaryProvider = value; }
+    }
+    private Func<BoundaryDto?>? _boundaryProvider;
+
     /// <summary>
     /// Host-supplied handler for client commands (command id → action). Invoked
     /// off the UI thread; the host marshals known ids to the UI thread and ignores
@@ -166,6 +175,7 @@ public sealed class RemoteServerHost
         _broadcaster = app.Services.GetRequiredService<MapBroadcaster>();
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
+        _broadcaster.BoundaryProvider = _boundaryProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
         // involuntary loss → failsafe.

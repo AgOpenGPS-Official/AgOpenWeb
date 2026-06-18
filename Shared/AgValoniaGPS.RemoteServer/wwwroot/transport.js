@@ -23,7 +23,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -192,6 +192,17 @@ window.RemoteTransport = {
           const pc = i32(); const recordingPoints = new Array(pc);
           for (let k = 0; k < pc; k++) recordingPoints[k] = f32();
           handlers.onRecordedPath && handlers.onRecordedPath({ recFiles, isRecording, isPlaying, hasUnsaved, recordedPathInfo, resumeModeLabel, recordedPathName, recordingPoints });
+          break;
+        }
+        case TYPE.BOUNDARY: {
+          const ic = i32(); const items = new Array(ic);
+          for (let k = 0; k < ic; k++) items[k] = { index: i32(), boundaryType: str(), areaDisplay: str(), driveThru: !!u8(), hard: !!u8() };
+          const selectedIndex = i32(), playerVisible = !!u8(), isRecording = !!u8(), isPaused = !!u8();
+          const pointCount = i32(), areaHa = f64(), offsetCm = f64();
+          const drawRightSide = !!u8(), drawAtPivot = !!u8(), sectionControlOn = !!u8();
+          const pc = i32(); const recordingPoints = new Array(pc);
+          for (let k = 0; k < pc; k++) recordingPoints[k] = f32();
+          handlers.onBoundary && handlers.onBoundary({ items, selectedIndex, playerVisible, isRecording, isPaused, pointCount, areaHa, offsetCm, drawRightSide, drawAtPivot, sectionControlOn, recordingPoints });
           break;
         }
         case TYPE.HELLO: {

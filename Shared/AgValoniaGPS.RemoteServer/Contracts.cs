@@ -427,6 +427,27 @@ public record RecordedPathDto(
     // these as dots so the path is visible as it's driven (native shows the same).
     IReadOnlyList<double> RecordingPoints);
 
+/// <summary>Boundary read-frame (host-driven). Items = the field's boundaries for the
+/// recording menu (Outer / Inner N, area, drive-thru / hard flags). The Player.* fields
+/// mirror the live drive-around recording (State.BoundaryRec + the VM toggles). Re-sent on
+/// a fingerprint change. Draw-on-map point drawing is Phase MT and not here.</summary>
+public record BoundaryItemDto(int Index, string BoundaryType, string AreaDisplay, bool DriveThru, bool Hard);
+
+public record BoundaryDto(
+    IReadOnlyList<BoundaryItemDto> Items,
+    int SelectedIndex,
+    bool PlayerVisible,
+    bool IsRecording,
+    bool IsPaused,
+    int PointCount,
+    double AreaHa,
+    double OffsetCm,
+    bool DrawRightSide,
+    bool DrawAtPivot,
+    bool SectionControlOn,
+    // Live drive-around markers (field-local m, flat [E,N,…]); empty when idle.
+    IReadOnlyList<double> RecordingPoints);
+
 public record AppLangDto(string Code, string Name);
 public record AppDirDto(string Name, string Path, bool Exists);
 public record AppHotkeyDto(string Action, string Key, string Label);

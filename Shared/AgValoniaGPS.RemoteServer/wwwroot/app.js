@@ -50,6 +50,7 @@ let fieldToolsDirty = false;
 let recPath = null;    // Recorded Path read-frame: rec files + record/play state
 let recPathTab = 0;    // client-side tab: 0 Record, 1 Playback
 let recSelFile = null; // client-side selected .rec file
+let boundary = null;   // Boundary read-frame: menu list + drive-around recording state
 let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
@@ -157,6 +158,11 @@ const transport = RemoteTransport.create({
   onAppInfo(a) { appInfo = a; appInfoDirty = true; },
   onFieldTools(f) { fieldTools = f; fieldToolsDirty = true; if (document.getElementById('importtracks').classList.contains('open')) renderImportTracks(); },
   onRecordedPath(r) { recPath = r; if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); },
+  onBoundary(b) {
+    boundary = b;
+    if (document.getElementById('boundarymenu').classList.contains('open')) renderBoundaryMenu();
+    if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
+  },
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
@@ -259,7 +265,14 @@ addEventListener('pointermove', e => {
   camN += (_sinRR * dsx + _cosRR * dsy) / pxPerM;
   lastX = e.clientX; lastY = e.clientY;
 });
+// True when the user is typing into a field — global hotkeys (tilt, sim drive) must not
+// fire then (e.g. typing "300" into the boundary offset shouldn't toggle 3D tilt on "3").
+function isTyping() {
+  const el = document.activeElement;
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+}
 addEventListener('keydown', e => {
+  if (isTyping()) return;
   if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
   // 3D tilt: 3 toggles between top-down and 60°, [ / ] nudge the pitch.
   else if (e.key === '3') pitch = pitch > 0.001 ? 0 : DEFAULT_PITCH;
@@ -275,6 +288,7 @@ const KEY_CMD = {
   ArrowUp: 'sim.speedUp', ArrowDown: 'sim.speedDown', ' ': 'sim.stop',
 };
 addEventListener('keydown', e => {
+  if (isTyping()) return;
   const cmd = KEY_CMD[e.key];
   if (cmd) { e.preventDefault(); transport.send(cmd); }
 });
@@ -415,11 +429,11 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'importtracks', 'recpath', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
-const NO_SCRIM = new Set(['smartwas', 'recpath']);
+const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
@@ -555,6 +569,37 @@ document.getElementById('rp-save').addEventListener('pointerdown', e => {
 document.getElementById('rp-playbtn').addEventListener('pointerdown', e => { e.stopPropagation(); rnSend('recpath.play'); });
 document.getElementById('rp-resume').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.cycleResume'); });
 document.getElementById('rp-reverse').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.reverse'); });
+// Boundary recording menu.
+document.getElementById('ft-boundary').addEventListener('pointerdown', e => {
+  e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu);
+});
+document.getElementById('bm-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools'); });
+document.getElementById('bm-delete').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!boundary || boundary.selectedIndex < 0) return;
+  const it = boundary.items.find(i => i.index === boundary.selectedIndex);
+  showConfirm('Delete Boundary', 'Delete the ' + (it ? it.boundaryType : 'selected') + ' boundary? This cannot be undone.',
+    () => transport.send('boundary.delete'));
+});
+document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.buildFromTracks'); });
+document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
+  e.stopPropagation(); transport.send('boundary.driveAround'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
+});
+document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
+  e.stopPropagation(); transport.send('boundary.driveAroundInner'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
+});
+document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.accept'); lnCloseAll(); });
+// Boundary player.
+document.getElementById('bp-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
+document.getElementById('bp-offset').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v); });
+document.getElementById('bp-clear').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.clear'); });
+document.getElementById('bp-section').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleSectionControl'); });
+document.getElementById('bp-undo').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.undo'); });
+document.getElementById('bp-add').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.addPoint'); });
+document.getElementById('bp-leftright').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleLeftRight'); });
+document.getElementById('bp-antennatool').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleAntennaTool'); });
+document.getElementById('bp-stop').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.stop'); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
+document.getElementById('bp-record').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleRecording'); });
 // Offset Fix D-pad (argless Tier-1 commands).
 for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
@@ -2654,6 +2699,47 @@ function renderRecPath() {
   document.getElementById('rp-info').textContent = r.recordedPathInfo || '';
 }
 
+// Boundary recording menu: the field's boundaries (Outer / Inner N) with area + the
+// Drive-Thru / Hard flags. Tap a row to select; tap a flag cell to select + toggle it.
+function renderBoundaryMenu() {
+  const b = boundary;
+  const list = document.getElementById('bm-list'); list.innerHTML = '';
+  const items = b ? b.items : [];
+  if (!items.length) { list.innerHTML = '<div class="fj-empty">No boundaries yet — drive around the field to record one.</div>'; return; }
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = 'bm-row' + (b && it.index === b.selectedIndex ? ' sel' : '');
+    row.innerHTML = '<span class="bm-name"></span><span class="bm-area"></span>'
+      + '<span class="bm-flag ' + (it.driveThru ? 'on' : 'off') + '" data-flag="driveThru"></span>'
+      + '<span class="bm-flag ' + (it.hard ? 'on' : 'off') + '" data-flag="hard"></span>';
+    row.querySelector('.bm-name').textContent = it.boundaryType;
+    row.querySelector('.bm-area').textContent = it.areaDisplay;
+    row.querySelector('[data-flag="driveThru"]').textContent = it.driveThru ? 'Yes' : '--';
+    row.querySelector('[data-flag="hard"]').textContent = it.hard ? 'Hard' : 'Soft';
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('boundary.select|' + it.index); });
+    row.querySelector('[data-flag="driveThru"]').addEventListener('pointerdown', ev => {
+      ev.stopPropagation(); transport.send('boundary.select|' + it.index); transport.send('boundary.driveThru');
+    });
+    row.querySelector('[data-flag="hard"]').addEventListener('pointerdown', ev => {
+      ev.stopPropagation(); transport.send('boundary.select|' + it.index); transport.send('boundary.hard');
+    });
+    list.appendChild(row);
+  }
+}
+
+// Boundary player: live drive-around recording controls + point count / area.
+function renderBoundaryPlayer() {
+  const b = boundary; if (!b) return;
+  const off = document.getElementById('bp-offset');
+  if (document.activeElement !== off) off.value = (b.offsetCm || 0).toFixed(0);
+  document.getElementById('bp-section').classList.toggle('on', b.sectionControlOn);
+  document.getElementById('bp-lrimg').src = b.drawRightSide ? '/icons/BoundaryRight.png' : '/icons/BoundaryLeft.png';
+  document.getElementById('bp-atimg').src = b.drawAtPivot ? '/icons/BoundaryRecordPivot.png' : '/icons/BoundaryRecordTool.png';
+  document.getElementById('bp-points').textContent = b.pointCount;
+  document.getElementById('bp-area').textContent = (b.areaHa || 0).toFixed(2) + ' Ha';
+  document.getElementById('bp-recimg').src = b.isRecording ? '/icons/boundaryPause.png' : '/icons/BoundaryRecord.png';
+}
+
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays
 // like the native FloatingPanel so the operator can move them out of the way).
 (function wireChartDrag() {
@@ -2799,6 +2885,24 @@ function drawRecordingMarkersSk(canvas) {
     const e = pts[i], n = pts[i + 1];
     if ((perspM[12] * e + perspM[13] * n + perspM[15]) < 1.0) continue; // behind camera
     const xy = w2s(e, n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+  }
+}
+// Live drive-around boundary (Boundary → Drive Around): the points captured so far,
+// streamed on the Boundary frame. Draw a connecting line + dots so it's visible as it's
+// driven, like native's growing recording.
+function drawBoundaryRecordingSk(canvas) {
+  const b = boundary;
+  if (!b || !b.recordingPoints || b.recordingPoints.length < 2) return;
+  const flat = b.recordingPoints;
+  const pts = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) pts.push({ e: flat[i], n: flat[i + 1] });
+  if (pts.length >= 2) strokePtsSk(canvas, pts, false, SKP.boundary);
+  const rad = Math.max(3, 0.35 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#E05220'));
+  for (const p of pts) {
+    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    const xy = w2s(p.e, p.n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
 }
@@ -2994,6 +3098,7 @@ function renderSkia(canvas, rp) {
     drawFlagsSk(canvas, scene.flags);
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
+  drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale

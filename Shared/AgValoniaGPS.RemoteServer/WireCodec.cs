@@ -18,7 +18,36 @@ public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
-        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16;
+        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17;
+
+    public static byte[] EncodeBoundary(BoundaryDto b)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Boundary);
+        w.Write(b.Items.Count);
+        foreach (var it in b.Items)
+        {
+            w.Write(it.Index);            // i32
+            WriteStr(w, it.BoundaryType);
+            WriteStr(w, it.AreaDisplay);
+            w.Write((byte)(it.DriveThru ? 1 : 0));
+            w.Write((byte)(it.Hard ? 1 : 0));
+        }
+        w.Write(b.SelectedIndex);         // i32
+        w.Write((byte)(b.PlayerVisible ? 1 : 0));
+        w.Write((byte)(b.IsRecording ? 1 : 0));
+        w.Write((byte)(b.IsPaused ? 1 : 0));
+        w.Write(b.PointCount);            // i32
+        w.Write(b.AreaHa);                // f64
+        w.Write(b.OffsetCm);              // f64
+        w.Write((byte)(b.DrawRightSide ? 1 : 0));
+        w.Write((byte)(b.DrawAtPivot ? 1 : 0));
+        w.Write((byte)(b.SectionControlOn ? 1 : 0));
+        w.Write(b.RecordingPoints.Count);
+        foreach (var v in b.RecordingPoints) w.Write((float)v);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeFieldTools(FieldToolsDto f)
     {
