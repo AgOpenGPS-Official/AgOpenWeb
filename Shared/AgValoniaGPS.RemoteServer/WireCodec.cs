@@ -385,7 +385,7 @@ public static class WireCodec
         WriteOptPts(w, s.NextTrack);
 
         w.Write(s.Flags.Count);
-        foreach (var fl in s.Flags) { w.Write((float)fl.E); w.Write((float)fl.N); WriteStr(w, fl.ColorHex); }
+        foreach (var fl in s.Flags) { w.Write((float)fl.E); w.Write((float)fl.N); WriteStr(w, fl.ColorHex); WriteStr(w, fl.Name); }
 
         if (s.Imagery is { } im)
         {

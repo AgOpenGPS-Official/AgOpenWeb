@@ -55,7 +55,7 @@ window.RemoteTransport = {
           const uTurnPath = optPts();
           const nextTrack = optPts();
           const flagCount = i32(); const flags = new Array(flagCount);
-          for (let k = 0; k < flagCount; k++) flags[k] = { e: f32(), n: f32(), color: str() };
+          for (let k = 0; k < flagCount; k++) flags[k] = { e: f32(), n: f32(), color: str(), name: str() };
           const imagery = u8()
             ? { minE: f64(), minN: f64(), maxE: f64(), maxN: f64(), version: i64() }
             : null;

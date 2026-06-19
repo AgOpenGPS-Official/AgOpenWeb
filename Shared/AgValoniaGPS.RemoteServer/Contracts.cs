@@ -34,8 +34,8 @@ public record SceneDto(
     ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
     IReadOnlyList<TrackInfoDto> TrackList); // ALL tracks (incl. hidden) for the Tracks manager
 
-/// <summary>A field flag marker: field-local position (m) + display colour hex.</summary>
-public record FlagDto(double E, double N, string ColorHex);
+/// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
+public record FlagDto(double E, double N, string ColorHex, string Name);
 
 /// <summary>Background-imagery placement: the field-local world rectangle the
 /// PNG (fetched from /backpic.png) covers, plus a version that changes per field

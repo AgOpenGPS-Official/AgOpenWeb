@@ -2424,8 +2424,41 @@ public partial class MainViewModel : ObservableObject
         _mapService.SetFlags(flags);
         // Mirror a render snapshot into FieldState (the SoT the web-UI projector reads).
         State.Field.Flags = Flags
-            .Select(f => new Models.State.FlagMarker(f.Easting, f.Northing, Flag.ColorToHex(f.FlagColor)))
+            .Select(f => new Models.State.FlagMarker(f.Easting, f.Northing, Flag.ColorToHex(f.FlagColor), f.Name))
             .ToList();
+    }
+
+    // ---- Remote/web flag-list operations (index into Flags, matching the projected list) ----
+    public void RenameFlagAt(int index, string name)
+    {
+        if (index < 0 || index >= Flags.Count || string.IsNullOrWhiteSpace(name)) return;
+        Flags[index].Name = name.Trim();
+        UpdateFlagsOnMap();
+    }
+
+    public void SetFlagColorAt(int index, FlagColor color)
+    {
+        if (index < 0 || index >= Flags.Count) return;
+        Flags[index].FlagColor = color;
+        UpdateFlagsOnMap();
+    }
+
+    public void DeleteFlagAt(int index)
+    {
+        if (index < 0 || index >= Flags.Count) return;
+        var f = Flags[index];
+        Flags.Remove(f);
+        UpdateFlagsOnMap();
+        StatusMessage = $"Deleted flag '{f.Name}'";
+    }
+
+    public void DeleteAllFlagsRemote()
+    {
+        int count = Flags.Count;
+        Flags.Clear();
+        _nextFlagId = 1;
+        UpdateFlagsOnMap();
+        StatusMessage = $"Deleted {count} flags";
     }
 
     // Track management commands

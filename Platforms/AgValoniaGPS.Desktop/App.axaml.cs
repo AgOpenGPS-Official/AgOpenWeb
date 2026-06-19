@@ -318,6 +318,28 @@ public partial class App : Application
                                         windowVm.PlaceFlagAtWorldPosition(fe, fn);
                                     return;
                                 }
+                                // Flag list (Phase MT). Index into the projected flag list. Tier-1.
+                                case "flag.delete":
+                                    if (int.TryParse(arg, out var fdi)) windowVm.DeleteFlagAt(fdi);
+                                    return;
+                                case "flag.deleteAll":
+                                    windowVm.DeleteAllFlagsRemote();
+                                    return;
+                                case "flag.rename": // arg = "index,new name" (name may contain commas)
+                                {
+                                    var fc = arg.IndexOf(',');
+                                    if (fc > 0 && int.TryParse(arg[..fc], out var fri))
+                                        windowVm.RenameFlagAt(fri, arg[(fc + 1)..]);
+                                    return;
+                                }
+                                case "flag.setColor": // arg = "index,ColorName" (FlagColor enum)
+                                {
+                                    var sc = arg.Split(',');
+                                    if (sc.Length == 2 && int.TryParse(sc[0], out var fsi)
+                                        && Enum.TryParse<AgValoniaGPS.Models.FlagColor>(sc[1], out var col))
+                                        windowVm.SetFlagColorAt(fsi, col);
+                                    return;
+                                }
                                 case "offset.set": // Offset Fix manual entry. arg = "easting,northing" (m)
                                 {
                                     var op = arg.Split(',');

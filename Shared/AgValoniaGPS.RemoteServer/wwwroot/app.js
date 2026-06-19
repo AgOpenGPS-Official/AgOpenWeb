@@ -137,6 +137,10 @@ const transport = RemoteTransport.create({
     }
     // Keep the Tracks manager list live (activate/add/delete/hide change the Scene).
     if (document.getElementById('dlg-tracks').classList.contains('open')) renderTracksList();
+    // Refresh the flag list on add/delete/rename/recolour, unless the user is mid-edit.
+    if (document.getElementById('dlg-flags').classList.contains('open')
+        && !document.querySelector('.flg-nameedit') && !document.querySelector('.flg-colorpick'))
+      renderFlagList();
   },
   onTick(t) {
     tick = t;
@@ -495,18 +499,100 @@ document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.sto
 // "Place Flag on Map" (Phase MT) — arm tap capture; the next map tap drops a flag at the
 // tapped field point via flag.placeAt (host PlaceFlagAtWorldPosition). No data-cmd, so the
 // bottomNav delegate ignores it. Closes the flyout, then captures one tap.
+function armPlaceFlagOnMap() {
+  startMapTap({
+    hint: 'Tap the map to place a flag',
+    onTap: (e2, n2) => { transport.send('flag.placeAt|' + e2.toFixed(3) + ',' + n2.toFixed(3)); endMapTap(); },
+  });
+}
 document.getElementById('bn-flag-onmap').addEventListener('pointerdown', e => {
   e.stopPropagation();
   bnFlags.classList.remove('open');
   document.getElementById('bn-flags').classList.remove('menuopen');
-  startMapTap({
-    hint: 'Tap the map to place a flag',
-    onTap: (e2, n2) => {
-      transport.send('flag.placeAt|' + e2.toFixed(3) + ',' + n2.toFixed(3));
-      endMapTap();
-    },
-  });
+  armPlaceFlagOnMap();
 });
+
+// ---- flag list (mirrors native FlagListDialogPanel) ----
+// Colour swatch (tap → 10-colour picker), name (tap → inline rename), distance+bearing
+// from the vehicle (computed here off the Tick), locate (pan the camera to the flag),
+// delete. Footer: Place Here / Place on Map / Delete All / Close. Reads scene.flags
+// (index = the projected order, which matches the host's Flags list).
+const FLAG_HEX = ['#FF0000', '#00CC00', '#FFCC00', '#2080E0', '#FF8800', '#9933CC', '#00BBCC', '#FF66AA', '#FFFFFF', '#333333'];
+const FLAG_NAMES = ['Red', 'Green', 'Yellow', 'Blue', 'Orange', 'Purple', 'Cyan', 'Pink', 'White', 'Black'];
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+document.getElementById('bn-flag-list').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  bnFlags.classList.remove('open');
+  document.getElementById('bn-flags').classList.remove('menuopen');
+  openFlagList();
+});
+function openFlagList() { renderFlagList(); openDialog('dlg-flags'); }
+function renderFlagList() {
+  const list = document.getElementById('flag-list');
+  const fl = (scene && scene.flags) || [];
+  if (!fl.length) { list.innerHTML = '<div class="trk-empty">No flags placed</div>'; return; }
+  list.innerHTML = '';
+  fl.forEach((f, i) => {
+    let dist = '';
+    if (tick && tick.pose) {
+      const de = f.e - tick.pose.e, dn = f.n - tick.pose.n;
+      const brg = (Math.atan2(de, dn) * 180 / Math.PI + 360) % 360;
+      dist = Math.hypot(de, dn).toFixed(0) + ' m ' + COMPASS[Math.round(brg / 45) % 8];
+    }
+    const row = document.createElement('div');
+    row.className = 'flg-row';
+    row.innerHTML =
+      '<button class="flg-sw"></button>' +
+      '<span class="flg-name"></span>' +
+      '<span class="flg-dist"></span>' +
+      '<button class="flg-loc" title="Locate (pan to flag)">⊕</button>' +
+      '<button class="flg-del" title="Delete flag">✕</button>';
+    row.querySelector('.flg-sw').style.background = f.color;
+    const nameEl = row.querySelector('.flg-name');
+    nameEl.textContent = f.name || ('Flag ' + (i + 1));
+    row.querySelector('.flg-dist').textContent = dist;
+    // Colour swatch → toggle an inline 10-colour picker under the row.
+    row.querySelector('.flg-sw').addEventListener('pointerdown', ev => { ev.stopPropagation(); toggleFlagColorPick(row, i); });
+    // Name → inline rename.
+    nameEl.addEventListener('pointerdown', ev => { ev.stopPropagation(); editFlagName(nameEl, i); });
+    // Locate → pan the camera to the flag, close the dialog to reveal the map.
+    row.querySelector('.flg-loc').addEventListener('pointerdown', ev => {
+      ev.stopPropagation(); camE = f.e; camN = f.n; cameraMode = 2; closeDialog();
+    });
+    row.querySelector('.flg-del').addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('flag.delete|' + i); });
+    list.appendChild(row);
+  });
+}
+function toggleFlagColorPick(row, idx) {
+  const existing = row.nextSibling;
+  if (existing && existing.classList && existing.classList.contains('flg-colorpick')) { existing.remove(); return; }
+  for (const c of document.querySelectorAll('.flg-colorpick')) c.remove();
+  const pick = document.createElement('div');
+  pick.className = 'flg-colorpick';
+  FLAG_HEX.forEach((hex, ci) => {
+    const b = document.createElement('button');
+    b.style.background = hex; b.title = FLAG_NAMES[ci];
+    b.addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('flag.setColor|' + idx + ',' + FLAG_NAMES[ci]); pick.remove(); });
+    pick.appendChild(b);
+  });
+  row.after(pick);
+}
+function editFlagName(nameEl, idx) {
+  const cur = nameEl.textContent;
+  const input = document.createElement('input');
+  input.className = 'flg-nameedit'; input.value = cur;
+  nameEl.replaceWith(input); input.focus(); input.select();
+  const commit = () => { const v = input.value.trim(); if (v && v !== cur) transport.send('flag.rename|' + idx + ',' + v); renderFlagList(); };
+  input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); else if (ev.key === 'Escape') renderFlagList(); });
+  input.addEventListener('blur', commit);
+}
+document.getElementById('flag-placehere').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('flag.placeHere'); });
+document.getElementById('flag-placemap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); armPlaceFlagOnMap(); });
+document.getElementById('flag-deleteall').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  showConfirm('Delete All Flags', 'Delete all flags? This cannot be undone.', () => transport.send('flag.deleteAll'));
+});
+document.getElementById('flag-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
 
 // ---- AB-line creation (mirrors native QuickABSelector + DrawAB dialogs) ----

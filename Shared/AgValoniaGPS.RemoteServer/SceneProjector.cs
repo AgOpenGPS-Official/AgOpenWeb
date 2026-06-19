@@ -123,7 +123,7 @@ public sealed class SceneProjector
 
         // Field flags (markers). Field-local position + display colour hex.
         var flags = (f.Flags ?? System.Array.Empty<Models.State.FlagMarker>())
-            .Select(fl => new FlagDto(fl.Easting, fl.Northing, fl.ColorHex)).ToList();
+            .Select(fl => new FlagDto(fl.Easting, fl.Northing, fl.ColorHex, fl.Name)).ToList();
 
         // Background imagery: just the world rectangle + a per-image version
         // (the PNG itself is fetched over HTTP at /backpic.png?v=version).
@@ -788,10 +788,13 @@ public sealed class SceneProjector
         // 0.1 m) catches add/remove/move without per-tick churn.
         var flags = f.Flags;
         h = h * 31 + flags.Count;
-        if (flags.Count > 0)
+        // Name + colour per flag so the Tracks/flag list refreshes on rename/recolour
+        // (neither changes count or position).
+        foreach (var fl in flags)
         {
-            var last = flags[flags.Count - 1];
-            h = h * 31 + (long)(last.Easting * 10) * 31 + (long)(last.Northing * 10);
+            h = h * 31 + (long)(fl.Easting * 10) * 31 + (long)(fl.Northing * 10);
+            h = h * 31 + (fl.Name?.GetHashCode() ?? 0);
+            h = h * 31 + (fl.ColorHex?.GetHashCode() ?? 0);
         }
 
         // Followed offset line: re-send the Scene when the pass changes. The list

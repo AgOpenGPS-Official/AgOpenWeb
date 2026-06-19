@@ -6,4 +6,4 @@ namespace AgValoniaGPS.Models.State;
 /// VM's <c>UpdateFlagsOnMap</c> and stored on <see cref="FieldState.Flags"/> so the
 /// View-free web-UI projector can read flags without touching the ViewModel.
 /// </summary>
-public readonly record struct FlagMarker(double Easting, double Northing, string ColorHex);
+public readonly record struct FlagMarker(double Easting, double Northing, string ColorHex, string Name);
