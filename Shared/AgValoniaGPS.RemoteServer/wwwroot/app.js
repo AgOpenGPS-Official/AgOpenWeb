@@ -142,6 +142,9 @@ const transport = RemoteTransport.create({
     if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'headland'
         && document.getElementById('fb-addhl').hidden
         && !document.querySelector('#fb-hllist .flg-nameedit')) renderFbHeadland();
+    if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'tram') {
+      if (document.getElementById('fb-tramedit').hidden) renderFbTram(); else populateTramEdit();
+    }
     // Refresh the flag list on add/delete/rename/recolour, unless the user is mid-edit.
     if (document.getElementById('dlg-flags').classList.contains('open')
         && !document.querySelector('.flg-nameedit') && !document.querySelector('.flg-colorpick'))
@@ -256,6 +259,8 @@ function buildSkPaints() {
     // Field Builder headland-editor offset lines: yellow = contributes to the closed
     // headland loop, red = doesn't (yet). Width set per frame in drawHeadlandSegEditLinesSk.
     hlEdit: mk('rgba(245,235,90,0.95)', 3), hlEditOff: mk('rgba(232,86,74,0.95)', 3),
+    // Tram lines (wheel tracks) — orange, set per frame in drawTramLinesSk.
+    tram: mk('rgba(255,140,60,0.9)', 2),
   };
   // Section footprint bars: one stroke paint per ColorCode (butt cap so adjacent
   // sections abut without rounded overhang), matching the 2D SECTION_COLORS.
@@ -1007,10 +1012,12 @@ function showFbTab(tab) {
   fbTab = tab;
   document.getElementById('fb-addtrack').hidden = true;
   document.getElementById('fb-addhl').hidden = true;
+  document.getElementById('fb-tramedit').hidden = true;
   for (const t of document.querySelectorAll('#fieldbuilder .fb-tab')) t.classList.toggle('active', t.dataset.fbtab === tab);
   for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = (p.dataset.fbpane !== tab);
   if (tab === 'tracks') renderFbTracks();
   else if (tab === 'headland') renderFbHeadland();
+  else if (tab === 'tram') renderFbTram();
 }
 function renderFieldBuilder() { showFbTab(fbTab); }
 for (const t of document.querySelectorAll('#fieldbuilder .fb-tab'))
@@ -1170,6 +1177,72 @@ document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
   input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); else if (ev.key === 'Escape') renderFbHeadland(); });
   input.addEventListener('blur', commit);
 });
+// ---- Field Builder Tram tab (stage 3) — system list + per-system editor --------------
+// Systems live in ConfigStore.Tram.Systems (host SoT); the browser sends field edits and
+// the host regenerates the lines + persists. Tram building is field-data editing (Tier-1).
+let fbTramSel = -1;
+let fbTramPendingEdit = false; // open the editor on the system we just added (native parity)
+function openTramEditor() {
+  for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = true;
+  document.getElementById('fb-tramedit').hidden = false;
+  populateTramEdit();
+}
+function renderFbTram() {
+  const list = document.getElementById('fb-tramlist');
+  const ts = (scene && scene.tramSystems) || [];
+  if (fbTramPendingEdit && ts.length) { fbTramPendingEdit = false; fbTramSel = ts.length - 1; openTramEditor(); return; }
+  if (fbTramSel >= ts.length) fbTramSel = -1;
+  if (!ts.length) { list.innerHTML = '<div class="trk-empty">No tram systems. Add one referencing a track or the boundary.</div>'; return; }
+  list.innerHTML = '';
+  ts.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'fb-hlrow' + (s.enabled ? '' : ' noeffect') + (i === fbTramSel ? ' sel' : '');
+    row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
+    row.querySelector('.fb-hlname').textContent = s.name;
+    row.querySelector('.fb-hlmeta').textContent = s.width.toFixed(1) + ' m · ' + (s.passCount ? s.passCount + ' pass' : 'all');
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbTramSel = i; renderFbTram(); });
+    list.appendChild(row);
+  });
+}
+function curTram() { const ts = scene && scene.tramSystems; return (fbTramSel >= 0 && ts && ts[fbTramSel]) ? ts[fbTramSel] : null; }
+function tramSet(field, value) { const s = curTram(); if (s) transport.send('tram.set|' + s.index + ',' + field + ',' + value); }
+document.getElementById('fb-tram-add').addEventListener('pointerdown', e => { e.stopPropagation(); fbTramPendingEdit = true; transport.send('tram.add'); });
+document.getElementById('fb-tram-delete').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const s = curTram(); if (!s) return;
+  showConfirm('Delete Tram System', 'Delete "' + s.name + '"?', () => { transport.send('tram.delete|' + s.index); fbTramSel = -1; });
+});
+document.getElementById('fb-tram-edit').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (curTram()) openTramEditor();
+});
+document.getElementById('fb-tram-back').addEventListener('pointerdown', e => { e.stopPropagation(); showFbTab('tram'); });
+document.getElementById('fb-tram-done').addEventListener('pointerdown', e => { e.stopPropagation(); showFbTab('tram'); });
+function populateTramEdit() {
+  const s = curTram(); if (!s) { showFbTab('tram'); return; }
+  document.getElementById('fb-tram-title').textContent = 'Edit: ' + s.name;
+  const en = document.getElementById('fb-tram-en'); en.classList.toggle('active', s.enabled); en.textContent = s.enabled ? 'On' : 'Off';
+  const ref = document.getElementById('fb-tram-ref');
+  const opts = ['(Boundary)'];
+  for (const t of (scene.trackList || [])) if (t.type !== 'Path' && t.type !== 'Contour') opts.push(t.name);
+  ref.innerHTML = opts.map(o => { const e = document.createElement('option'); e.textContent = o; return e.outerHTML; }).join('');
+  ref.value = s.refLabel;
+  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) wEl.value = s.width.toFixed(1);
+  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) offEl.value = s.offset.toFixed(1);
+  const pEl = document.getElementById('fb-tram-passes'); if (document.activeElement !== pEl) pEl.value = s.passCount;
+  for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
+  for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
+  document.getElementById('fb-tram-offrow').hidden = s.isBoundary;   // offset/direction don't apply
+  document.getElementById('fb-tram-dirlbl').hidden = s.isBoundary;   // to boundary-referenced systems
+  document.getElementById('fb-tram-dir').hidden = s.isBoundary;
+}
+document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.stopPropagation(); const s = curTram(); if (s) tramSet('enabled', s.enabled ? '0' : '1'); });
+document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
+document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (v > 0) tramSet('width', v); });
+document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (Number.isFinite(v)) tramSet('offset', v); });
+document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSet('passes', Math.max(0, v)); });
+for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
+for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
 document.getElementById('bm-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (!boundary || boundary.selectedIndex < 0) return;
@@ -3629,6 +3702,17 @@ function drawSatBoundarySk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
+// Tram lines (wheel tracks) generated from the tram systems. Drawn when the tram display is
+// on (bottom-nav tram mode > 0) or while the Field Builder Tram tab is open (so you see the
+// effect of edits). Orange polylines; the host owns the geometry.
+function drawTramLinesSk(canvas) {
+  if (!scene || !scene.tramLines || !scene.tramLines.length) return;
+  const fbTramOpen = document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'tram';
+  const tramOn = tick && tick.tools && tick.tools.tramMode > 0;
+  if (!fbTramOpen && !tramOn) return;
+  SKP.tram.setStrokeWidth(Math.max(2, 0.3 * pxPerM));
+  for (const line of scene.tramLines) if (line.length >= 2) strokePtsSk(canvas, line, false, SKP.tram);
+}
 // Field Builder Headland editor — draw each segment's offset line + overshoot extensions
 // (yellow = contributes to the closed headland, red = doesn't yet) ONLY while the Headland
 // tab is open, so the operator can watch the lines cross and enclose the area, mirroring
@@ -4078,6 +4162,7 @@ function renderSkia(canvas, rp) {
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
+  drawTramLinesSk(canvas); // generated tram lines (orange) when tram display on / editing
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);

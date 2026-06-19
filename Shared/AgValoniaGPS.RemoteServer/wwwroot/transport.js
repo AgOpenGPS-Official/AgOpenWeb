@@ -65,10 +65,15 @@ window.RemoteTransport = {
           const hsc = i32(); const headlandSegs = new Array(hsc);
           for (let k = 0; k < hsc; k++)
             headlandSegs[k] = { index: i32(), name: str(), type: str(), offset: f64(), effective: !!u8(), editLine: pts() };
+          const tsc = i32(); const tramSystems = new Array(tsc);
+          for (let k = 0; k < tsc; k++)
+            tramSystems[k] = { index: i32(), name: str(), refLabel: str(), width: f64(), mode: i32(), offset: f64(), direction: i32(), passCount: i32(), enabled: !!u8(), isBoundary: !!u8() };
+          const tlc2 = i32(); const tramLines = new Array(tlc2);
+          for (let k = 0; k < tlc2; k++) tramLines[k] = pts();
           handlers.onScene && handlers.onScene({
             version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
             headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery, trackList,
-            headlandSegs,
+            headlandSegs, tramSystems, tramLines,
           });
           break;
         }

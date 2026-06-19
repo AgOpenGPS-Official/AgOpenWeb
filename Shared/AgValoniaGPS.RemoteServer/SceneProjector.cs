@@ -36,6 +36,11 @@ public sealed class SceneProjector
     /// Read off the broadcaster thread; tolerates transient races like the others.</summary>
     public System.Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider { get; set; }
 
+    /// <summary>Host-supplied projector for the generated tram lines (ITramLineService's
+    /// ParallelTramLines — pipeline state, but the service isn't injected here). Set by the
+    /// Desktop host; read off the broadcaster thread like the other providers.</summary>
+    public System.Func<IReadOnlyList<IReadOnlyList<Vec2Dto>>>? TramLinesProvider { get; set; }
+
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
         ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
@@ -149,6 +154,20 @@ public sealed class SceneProjector
         var headlandSegs = HeadlandSegsProvider?.Invoke()
             ?? (IReadOnlyList<HeadlandSegInfoDto>)System.Array.Empty<HeadlandSegInfoDto>();
 
+        // Field Builder Tram-tab systems — straight from ConfigStore (the SoT).
+        var tramSystems = new List<TramSystemDto>();
+        var sysList = _config.Tram.Systems.ToArray();
+        for (int i = 0; i < sysList.Length; i++)
+        {
+            var s = sysList[i];
+            bool isBnd = s.ReferenceBoundaryIndex >= 0;
+            tramSystems.Add(new TramSystemDto(
+                i, s.Name, s.ReferenceTrackName ?? "(Boundary)", s.TramWidth, (int)s.Mode,
+                s.Offset, (int)s.Direction, s.PassCount, s.IsEnabled, isBnd));
+        }
+        var tramLines = TramLinesProvider?.Invoke()
+            ?? (IReadOnlyList<IReadOnlyList<Vec2Dto>>)System.Array.Empty<IReadOnlyList<Vec2Dto>>();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -166,7 +185,9 @@ public sealed class SceneProjector
             flags,
             imagery,
             trackList,
-            headlandSegs);
+            headlandSegs,
+            tramSystems,
+            tramLines);
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -810,6 +831,17 @@ public sealed class SceneProjector
                 h = h * 31 + (sg.Effective ? 1 : 0);
             }
         }
+
+        // Tram systems (Field Builder list) + generated-line count — refresh on any tram edit.
+        foreach (var s in _config.Tram.Systems.ToArray())
+        {
+            h = h * 31 + (s.Name?.GetHashCode() ?? 0);
+            h = h * 31 + s.TramWidth.GetHashCode();
+            h = h * 31 + s.Offset.GetHashCode();
+            h = h * 31 + s.PassCount * 7 + (int)s.Mode * 13 + (int)s.Direction * 17 + (s.IsEnabled ? 1 : 0);
+            h = h * 31 + (s.ReferenceTrackName?.GetHashCode() ?? s.ReferenceBoundaryIndex);
+        }
+        h = h * 31 + (TramLinesProvider?.Invoke()?.Count ?? 0);
 
         // Flags: re-send the Scene on place/delete. Count + last position (rounded to
         // 0.1 m) catches add/remove/move without per-tick churn.

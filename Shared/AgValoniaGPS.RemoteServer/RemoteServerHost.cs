@@ -81,6 +81,15 @@ public sealed class RemoteServerHost
     }
     private Func<IReadOnlyList<HeadlandSegInfoDto>>? _headlandSegsProvider;
 
+    /// <summary>Host-supplied projector for the generated tram lines (rides the Scene frame).
+    /// Set after <see cref="StartAsync"/>.</summary>
+    public Func<IReadOnlyList<IReadOnlyList<Vec2Dto>>>? TramLinesProvider
+    {
+        get => _broadcaster?.Projector.TramLinesProvider;
+        set { _tramLinesProvider = value; if (_broadcaster is not null) _broadcaster.Projector.TramLinesProvider = value; }
+    }
+    private Func<IReadOnlyList<IReadOnlyList<Vec2Dto>>>? _tramLinesProvider;
+
     /// <summary>
     /// Host-supplied handler for client commands (command id → action). Invoked
     /// off the UI thread; the host marshals known ids to the UI thread and ignores
@@ -221,6 +230,7 @@ public sealed class RemoteServerHost
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
+        _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
         // involuntary loss → failsafe.

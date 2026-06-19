@@ -420,6 +420,24 @@ public static class WireCodec
             WritePts(w, hs.EditLine); // offset line + overshoots, for the on-map editor view
         }
 
+        // Field Builder Tram-tab systems + generated tram lines (appended at the end).
+        w.Write(s.TramSystems.Count);
+        foreach (var ts in s.TramSystems)
+        {
+            w.Write(ts.Index);
+            WriteStr(w, ts.Name);
+            WriteStr(w, ts.RefLabel);
+            w.Write(ts.Width);     // f64
+            w.Write(ts.Mode);      // i32
+            w.Write(ts.Offset);    // f64
+            w.Write(ts.Direction); // i32
+            w.Write(ts.PassCount); // i32
+            w.Write((byte)(ts.Enabled ? 1 : 0));
+            w.Write((byte)(ts.IsBoundary ? 1 : 0));
+        }
+        w.Write(s.TramLines.Count);
+        foreach (var line in s.TramLines) WritePts(w, line);
+
         return ms.ToArray();
     }
 

@@ -23,6 +23,13 @@ public record TrackInfoDto(int Index, string Name, string Type, bool Active, boo
 public record HeadlandSegInfoDto(int Index, string Name, string Type, double Offset, bool Effective,
     IReadOnlyList<Vec2Dto> EditLine); // offset line + overshoot extensions, drawn while editing
 
+/// <summary>One Field Builder tram system (ConfigStore.Tram.Systems). RefLabel = the
+/// reference track name or "(Boundary)"; IsBoundary hides direction/offset client-side
+/// (they don't apply to boundary-referenced systems). Mode 0=TrackLine 1=Edge;
+/// Direction 0=Symmetric 1=Left 2=Right.</summary>
+public record TramSystemDto(int Index, string Name, string RefLabel, double Width, int Mode,
+    double Offset, int Direction, int PassCount, bool Enabled, bool IsBoundary);
+
 /// <summary>Static-ish geometry: sent on connect and whenever the fingerprint changes.</summary>
 public record SceneDto(
     long Version,
@@ -41,7 +48,9 @@ public record SceneDto(
     IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
     ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
     IReadOnlyList<TrackInfoDto> TrackList, // ALL tracks (incl. hidden) for the Tracks manager
-    IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs); // Field Builder Headland-tab segment list
+    IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs, // Field Builder Headland-tab segment list
+    IReadOnlyList<TramSystemDto> TramSystems, // Field Builder Tram-tab system list
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines); // generated tram lines, for the map
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);

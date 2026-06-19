@@ -1025,7 +1025,9 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = ConfigStore.Tram.Systems.Count > 0
                 ? $"Tram lines built from {ConfigStore.Tram.Systems.Count} system(s)"
-                : $"Tram lines built from '{SelectedTrack!.Name}'";
+                : SelectedTrack != null
+                    ? $"Tram lines built from '{SelectedTrack.Name}'"
+                    : "Tram lines built from boundary";
         });
 
         ShowTramSettingsCommand = new RelayCommand(() =>

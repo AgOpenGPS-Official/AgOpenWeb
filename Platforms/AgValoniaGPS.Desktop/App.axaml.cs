@@ -325,6 +325,20 @@ public partial class App : Application
                                         windowVm.RemoteRenameHeadlandAt(hri, arg[(hr + 1)..]);
                                     return;
                                 }
+                                case "tram.add": // Field Builder Tram tab — add a system.
+                                    windowVm.RemoteAddTramSystem();
+                                    return;
+                                case "tram.delete": // arg = system index.
+                                    if (int.TryParse(arg, out var tdi)) windowVm.RemoteDeleteTramSystemAt(tdi);
+                                    return;
+                                case "tram.set": // arg = "index,field,value" (value may contain commas: track name)
+                                {
+                                    var t1 = arg.IndexOf(',');
+                                    var t2 = t1 >= 0 ? arg.IndexOf(',', t1 + 1) : -1;
+                                    if (t2 > t1 && int.TryParse(arg[..t1], out var tsi))
+                                        windowVm.RemoteSetTramField(tsi, arg[(t1 + 1)..t2], arg[(t2 + 1)..]);
+                                    return;
+                                }
                                 case "boundary.fromMapPoints": // Phase MT — Draw boundary on map.
                                 {                              // arg = "e,n;e,n;…" (field E/N from s2w).
                                     var bmp = new System.Collections.Generic.List<(double, double)>();
@@ -787,6 +801,28 @@ public partial class App : Application
                                 i, s.Name, s.Type.ToString(), s.Offset, s.IsEffective, editPts));
                         }
                         return list;
+                    };
+
+                    // Tram lines: the generated geometry lives in ITramLineService (pipeline
+                    // state, not injected into the projector), so project it here. Native draws
+                    // FOUR collections (SetTramLines): the outer + inner boundary tracks, the
+                    // parallel lines, and the boundary-extra passes — gather them all.
+                    var tramSvc = Services.GetRequiredService<AgValoniaGPS.Services.Interfaces.ITramLineService>();
+                    _remoteServer.TramLinesProvider = () =>
+                    {
+                        var outLines = new System.Collections.Generic.List<System.Collections.Generic.IReadOnlyList<AgValoniaGPS.RemoteServer.Vec2Dto>>();
+                        void Add(System.Collections.Generic.IReadOnlyList<AgValoniaGPS.Models.Base.Vec2> line)
+                        {
+                            if (line == null || line.Count < 2) return;
+                            var pl = new System.Collections.Generic.List<AgValoniaGPS.RemoteServer.Vec2Dto>(line.Count);
+                            foreach (var p in line) pl.Add(new AgValoniaGPS.RemoteServer.Vec2Dto(p.Easting, p.Northing));
+                            outLines.Add(pl);
+                        }
+                        Add(tramSvc.OuterBoundaryTrack);
+                        Add(tramSvc.InnerBoundaryTrack);
+                        foreach (var line in tramSvc.ParallelTramLines) Add(line);
+                        foreach (var line in tramSvc.BoundaryExtraLines) Add(line);
+                        return outLines;
                     };
                 }
             }

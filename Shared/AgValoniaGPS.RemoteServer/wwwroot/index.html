@@ -737,6 +737,7 @@
       gap: 5px; border-radius: 8px; border: 1px solid #2a3550; background: rgba(255,255,255,0.05);
       color: #dce8f8; font: 600 12px system-ui, sans-serif; cursor: pointer; }
     .fb-addbtn:active { background: rgba(74,144,217,0.35); }
+    .fb-addbtn.sel { background: rgba(74,144,217,0.3); border-color: #4a90d9; }
     .fb-addbtn img { width: 34px; height: 34px; object-fit: contain; }
     .fb-bigtxt { font: 800 22px system-ui, sans-serif; color: #e7eef9; }
     #fb-tracklist { max-height: 280px; }
@@ -1933,8 +1934,36 @@
         <button class="fb-addbtn" data-fbhl="whole"><span class="fb-bigtxt">◯</span><span>Whole Boundary</span></button>
       </div>
     </div>
-    <!-- Tram tab (stage 3) -->
-    <div class="fb-pane" data-fbpane="tram" hidden><div class="trk-empty">Tram systems — later stage</div></div>
+    <!-- Tram tab (stage 3): system list + per-system editor -->
+    <div class="fb-pane" data-fbpane="tram" hidden>
+      <div id="fb-tramlist" class="trk-list"></div>
+      <div class="fb-actions">
+        <button id="fb-tram-add" class="fb-act">＋ Add</button>
+        <button id="fb-tram-edit" class="fb-act">Edit</button>
+        <button id="fb-tram-delete" class="fb-act fb-del">Delete</button>
+      </div>
+    </div>
+    <!-- Tram system editor (replaces the tab content) -->
+    <div id="fb-tramedit" class="fb-pane" hidden>
+      <div class="fb-subhdr"><button id="fb-tram-back" class="fb-act">← Back</button><span id="fb-tram-title">Edit System</span></div>
+      <div class="fb-offrow"><label>Enabled</label><button id="fb-tram-en" class="cfg-tgl">On</button></div>
+      <div class="fb-offrow"><label>Reference</label><select id="fb-tram-ref" class="cfg-isel"></select></div>
+      <div class="fb-offrow"><label>Tram width</label><input id="fb-tram-w" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span></div>
+      <div class="fb-sublbl">Mode</div>
+      <div class="fb-addrow">
+        <button class="fb-addbtn" data-tmode="0"><img src="/icons/TramLines.png" alt=""><span>Wheel Track</span></button>
+        <button class="fb-addbtn" data-tmode="1"><img src="/icons/TramOuter.png" alt=""><span>Edge</span></button>
+      </div>
+      <div id="fb-tram-offrow" class="fb-offrow"><label>Offset</label><input id="fb-tram-off" class="cfg-num" type="number" step="0.5"><span>m</span></div>
+      <div id="fb-tram-dirlbl" class="fb-sublbl">Direction</div>
+      <div id="fb-tram-dir" class="fb-addrow">
+        <button class="fb-addbtn" data-tdir="1"><img src="/icons/SnapLeft.png" alt=""><span>Left</span></button>
+        <button class="fb-addbtn" data-tdir="0"><img src="/icons/TramMulti.png" alt=""><span>Both</span></button>
+        <button class="fb-addbtn" data-tdir="2"><img src="/icons/SnapRight.png" alt=""><span>Right</span></button>
+      </div>
+      <div class="fb-offrow"><label>Passes (0 = all)</label><input id="fb-tram-passes" class="cfg-num" type="number" step="1" min="0"></div>
+      <button id="fb-tram-done" class="fb-act" style="margin-top:6px">Done</button>
+    </div>
     <!-- Add Track sub-view (replaces the tab content) -->
     <div id="fb-addtrack" class="fb-pane" hidden>
       <div class="fb-subhdr"><button id="fb-add-back" class="fb-act">← Back</button><span>Add Track</span></div>
