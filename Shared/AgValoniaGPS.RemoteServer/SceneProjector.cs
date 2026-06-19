@@ -815,6 +815,10 @@ public sealed class SceneProjector
             h = h * 31 + t.Name.GetHashCode();
             h = h * 31 + (t.IsActive ? 1 : 0);
             h = h * 31 + (t.IsVisible ? 1 : 0);
+            // Fold point coords (rounded to 0.1 m) so on-map edits that keep the same point
+            // count (e.g. dragging an AB endpoint) still re-broadcast the Scene.
+            foreach (var p in t.Points)
+                h = h * 31 + (long)(p.Easting * 10) * 31 + (long)(p.Northing * 10);
         }
 
         // Headland segments (Field Builder list) — refresh on add/delete/rename/offset/
@@ -829,6 +833,9 @@ public sealed class SceneProjector
                 h = h * 31 + (sg.Name?.GetHashCode() ?? 0);
                 h = h * 31 + sg.Offset.GetHashCode();
                 h = h * 31 + (sg.Effective ? 1 : 0);
+                // Endpoints (rounded) so on-map endpoint edits re-broadcast the Scene.
+                h = h * 31 + (long)(sg.EndA.E * 10) * 31 + (long)(sg.EndA.N * 10);
+                h = h * 31 + (long)(sg.EndB.E * 10) * 31 + (long)(sg.EndB.N * 10);
             }
         }
 

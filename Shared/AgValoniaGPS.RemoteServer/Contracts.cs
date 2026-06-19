@@ -21,7 +21,8 @@ public record TrackInfoDto(int Index, string Name, string Type, bool Active, boo
 /// built headland → shown red, mirroring native). Carries NO points; the built headland
 /// polygon rides SceneDto.Headland.</summary>
 public record HeadlandSegInfoDto(int Index, string Name, string Type, double Offset, bool Effective,
-    IReadOnlyList<Vec2Dto> EditLine); // offset line + overshoot extensions, drawn while editing
+    IReadOnlyList<Vec2Dto> EditLine, // offset line + overshoot extensions, drawn while editing
+    Vec2Dto EndA, Vec2Dto EndB);     // the two boundary endpoints (drag handles for on-map edit)
 
 /// <summary>One Field Builder tram system (ConfigStore.Tram.Systems). RefLabel = the
 /// reference track name or "(Boundary)"; IsBoundary hides direction/offset client-side

@@ -47,7 +47,7 @@ public partial class App : Application
         "track.drawUndo", "track.drawCancel", "track.aPlus", "track.driveAB",
         "track.recordCurve", "track.finishCurve", "track.setABGps",
         "track.createFromBoundary", "track.boundaryCurve", "track.allEdges",
-        "track.setVisible", "track.toggleRecPaths",
+        "track.setVisible", "track.toggleRecPaths", "track.editSave",
     };
 
     // Field Builder headland *building* is field-data editing (done while reviewing the
@@ -58,7 +58,7 @@ public partial class App : Application
     private static readonly System.Collections.Generic.HashSet<string> UngatedHeadlandIds = new()
     {
         "headland.fromMapPoints", "headland.wholeBoundary", "headland.setOffset",
-        "headland.delete", "headland.deleteAll", "headland.rename",
+        "headland.delete", "headland.deleteAll", "headland.rename", "headland.editSave",
     };
 
     public static IServiceProvider? Services { get; set; }
@@ -323,6 +323,35 @@ public partial class App : Application
                                     var hr = arg.IndexOf(',');
                                     if (hr > 0 && int.TryParse(arg[..hr], out var hri))
                                         windowVm.RemoteRenameHeadlandAt(hri, arg[(hr + 1)..]);
+                                    return;
+                                }
+                                case "track.editSave": // stage 4 on-map edit. arg = "index;e,n;e,n;…"
+                                {
+                                    var teParts = arg.Split(';');
+                                    if (teParts.Length >= 3 && int.TryParse(teParts[0], out var tei))
+                                    {
+                                        var ep = new System.Collections.Generic.List<(double, double)>();
+                                        for (int k = 1; k < teParts.Length; k++)
+                                        {
+                                            var en = teParts[k].Split(',');
+                                            if (en.Length == 2
+                                                && double.TryParse(en[0], num, inv, out var pe)
+                                                && double.TryParse(en[1], num, inv, out var pn))
+                                                ep.Add((pe, pn));
+                                        }
+                                        if (ep.Count >= 2) windowVm.RemoteSaveTrackEdit(tei, ep);
+                                    }
+                                    return;
+                                }
+                                case "headland.editSave": // stage 4. arg = "index,e1,n1,e2,n2"
+                                {
+                                    var hp = arg.Split(',');
+                                    if (hp.Length >= 5 && int.TryParse(hp[0], out var hei)
+                                        && double.TryParse(hp[1], num, inv, out var he1)
+                                        && double.TryParse(hp[2], num, inv, out var hn1)
+                                        && double.TryParse(hp[3], num, inv, out var he2)
+                                        && double.TryParse(hp[4], num, inv, out var hn2))
+                                        windowVm.RemoteSaveHeadlandEdit(hei, he1, hn1, he2, hn2);
                                     return;
                                 }
                                 case "tram.add": // Field Builder Tram tab — add a system.
@@ -797,8 +826,11 @@ public partial class App : Application
                             var edit = windowVm.GetHeadlandSegmentEditLine(s);
                             var editPts = new System.Collections.Generic.List<AgValoniaGPS.RemoteServer.Vec2Dto>(edit.Count);
                             foreach (var p in edit) editPts.Add(new AgValoniaGPS.RemoteServer.Vec2Dto(p.Easting, p.Northing));
+                            var bp = s.BoundaryPoints;
+                            var endA = bp.Count > 0 ? new AgValoniaGPS.RemoteServer.Vec2Dto(bp[0].Easting, bp[0].Northing) : new AgValoniaGPS.RemoteServer.Vec2Dto(0, 0);
+                            var endB = bp.Count > 0 ? new AgValoniaGPS.RemoteServer.Vec2Dto(bp[^1].Easting, bp[^1].Northing) : new AgValoniaGPS.RemoteServer.Vec2Dto(0, 0);
                             list.Add(new AgValoniaGPS.RemoteServer.HeadlandSegInfoDto(
-                                i, s.Name, s.Type.ToString(), s.Offset, s.IsEffective, editPts));
+                                i, s.Name, s.Type.ToString(), s.Offset, s.IsEffective, editPts, endA, endB));
                         }
                         return list;
                     };

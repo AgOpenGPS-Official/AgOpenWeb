@@ -418,6 +418,8 @@ public static class WireCodec
             w.Write(hs.Offset);   // f64, metres
             w.Write((byte)(hs.Effective ? 1 : 0));
             WritePts(w, hs.EditLine); // offset line + overshoots, for the on-map editor view
+            w.Write((float)hs.EndA.E); w.Write((float)hs.EndA.N); // boundary drag handles
+            w.Write((float)hs.EndB.E); w.Write((float)hs.EndB.N);
         }
 
         // Field Builder Tram-tab systems + generated tram lines (appended at the end).

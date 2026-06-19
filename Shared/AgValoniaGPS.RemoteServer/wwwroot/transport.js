@@ -64,7 +64,7 @@ window.RemoteTransport = {
             trackList[k] = { index: i32(), name: str(), type: str(), active: !!u8(), visible: !!u8() };
           const hsc = i32(); const headlandSegs = new Array(hsc);
           for (let k = 0; k < hsc; k++)
-            headlandSegs[k] = { index: i32(), name: str(), type: str(), offset: f64(), effective: !!u8(), editLine: pts() };
+            headlandSegs[k] = { index: i32(), name: str(), type: str(), offset: f64(), effective: !!u8(), editLine: pts(), endA: { e: f32(), n: f32() }, endB: { e: f32(), n: f32() } };
           const tsc = i32(); const tramSystems = new Array(tsc);
           for (let k = 0; k < tsc; k++)
             tramSystems[k] = { index: i32(), name: str(), refLabel: str(), width: f64(), mode: i32(), offset: f64(), direction: i32(), passCount: i32(), enabled: !!u8(), isBoundary: !!u8() };

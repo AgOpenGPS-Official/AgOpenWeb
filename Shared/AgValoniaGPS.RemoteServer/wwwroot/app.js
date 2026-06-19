@@ -311,10 +311,16 @@ addEventListener('wheel', e => {
 const TAP_SLOP = 5; // px — below this, a press-release is a tap, not a pan
 let dragging = false, moved = false, gestureOnMap = false, lastX = 0, lastY = 0, downX = 0, downY = 0;
 addEventListener('pointerdown', e => {
+  // Stage-4 edit: grab a handle if the press starts on one (else fall through to pan).
+  if (editSession) {
+    const hi = editHitTest(e.clientX, e.clientY);
+    if (hi >= 0) { editDragIdx = hi; gestureOnMap = false; dragging = false; return; }
+  }
   gestureOnMap = true; dragging = true; moved = false;
   downX = lastX = e.clientX; downY = lastY = e.clientY;
 });
 addEventListener('pointerup', e => {
+  if (editDragIdx >= 0) { editDragIdx = -1; return; } // finished dragging an edit handle
   dragging = false;
   // A clean tap while a map-tap capture mode is armed → unproject and dispatch.
   if (gestureOnMap && !moved && mapTap) {
@@ -324,6 +330,11 @@ addEventListener('pointerup', e => {
   gestureOnMap = false;
 });
 addEventListener('pointermove', e => {
+  if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
+    const w = s2w(e.clientX, e.clientY);
+    if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
+    return;
+  }
   if (!dragging) return;
   if (!moved) {
     // Stay still until the slop is exceeded so a tap doesn't pan or drop follow mode.
@@ -364,6 +375,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && satBnd) { satCancel(); return; }  // cancel boundary draw-on-map
   if (e.key === 'Escape' && abFlow) { abCancel(); return; }   // cancel AB-line creation (tells host)
   if (e.key === 'Escape' && hlFlow) { endHeadlandDraw(); return; } // cancel headland draw
+  if (e.key === 'Escape' && editSession) { endEdit(); return; }    // cancel on-map edit
   if (e.key === 'Escape' && mapTap) { endMapTap(); return; }  // cancel on-map capture
   if (isTyping()) return;
   if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
@@ -770,12 +782,79 @@ function endHeadlandDraw() {
   drawBar.classList.remove('show'); endMapTap(); hintEl.classList.remove('show');
 }
 
+// ---- Field Builder stage 4 — on-map point editing -----------------------------------
+// Drag a track's / headland segment's points on the main map, then Save. The client only
+// captures the dragged positions; the host rebuilds (track heading recompute, or headland
+// snap-to-boundary + re-offset + rebuild). One handle drag at a time; the map still pans
+// when the press doesn't start on a handle.
+let editSession = null;  // { kind:'track'|'headland', index, points:[{e,n}] }
+let editDragIdx = -1;
+function flashHint(t) { const h = document.getElementById('maptap-hint'); h.textContent = t; h.classList.add('show'); setTimeout(() => h.classList.remove('show'), 1800); }
+function startTrackEdit() {
+  const active = (scene && scene.trackList || []).find(t => t.active);
+  const at = scene && scene.tracks && scene.tracks[0];
+  if (!active || !at || !at.points || at.points.length < 2) { flashHint('Select/activate a track to edit'); return; }
+  editSession = { kind: 'track', index: active.index, points: at.points.map(p => ({ e: p.e, n: p.n })) };
+  beginEdit('Drag the track points, then Save');
+}
+function startHeadlandEdit() {
+  const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
+  const s = hs[fbHlSel];
+  if (s.type === 'Boundary') { flashHint('Whole-boundary headland is not point-edited'); return; }
+  editSession = { kind: 'headland', index: s.index, points: [{ e: s.endA.e, n: s.endA.n }, { e: s.endB.e, n: s.endB.n }] };
+  beginEdit('Drag the two endpoints (snap to boundary), then Save');
+}
+function beginEdit(hint) {
+  showAbBar(false, false, true);  // Save (Finish) + Cancel
+  document.getElementById('draw-finish').textContent = 'Save';
+  hintEl.textContent = hint; hintEl.classList.add('show'); document.body.classList.add('maptap');
+}
+function editHitTest(px, py) {
+  if (!editSession) return -1;
+  let best = -1, bd = 22 * 22;
+  for (let i = 0; i < editSession.points.length; i++) {
+    const p = editSession.points[i];
+    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    const xy = w2s(p.e, p.n); const dx = xy[0] - px, dy = xy[1] - py; const d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+function saveEdit() {
+  if (!editSession) return;
+  const pts = editSession.points;
+  if (editSession.kind === 'track')
+    transport.send('track.editSave|' + editSession.index + ';' + pts.map(p => p.e.toFixed(3) + ',' + p.n.toFixed(3)).join(';'));
+  else if (pts.length >= 2)
+    transport.send('headland.editSave|' + editSession.index + ',' + pts[0].e.toFixed(3) + ',' + pts[0].n.toFixed(3) + ',' + pts[1].e.toFixed(3) + ',' + pts[1].n.toFixed(3));
+  endEdit();
+}
+function endEdit() {
+  editSession = null; editDragIdx = -1;
+  drawBar.classList.remove('show'); document.getElementById('draw-finish').textContent = 'Finish';
+  hintEl.classList.remove('show'); document.body.classList.remove('maptap');
+}
+function drawEditHandlesSk(canvas) {
+  if (!editSession) return;
+  if (editSession.points.length >= 2) strokePtsSk(canvas, editSession.points, false, SKP.track);
+  const rad = Math.max(5, 0.7 * pxPerM);
+  for (let i = 0; i < editSession.points.length; i++) {
+    const p = editSession.points[i];
+    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    const xy = w2s(p.e, p.n);
+    SKP.flagFill.setColor(ckColor(i === editDragIdx ? '#FFD24A' : '#40E0FF'));
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
+document.getElementById('fb-hl-edit').addEventListener('pointerdown', e => { e.stopPropagation(); startHeadlandEdit(); });
+
 // Draw toolbar serves whichever map-draw flow is active (AB line / boundary-on-map / headland).
 drawBar.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan / not a map tap
 document.getElementById('draw-setpoint').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abSetPoint(); });
 document.getElementById('draw-undo').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? hlUndo() : satBnd ? satUndo() : abUndo(); });
-document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? endHeadlandDraw() : satBnd ? satFinish() : abFinish(); });
-document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? endHeadlandDraw() : satBnd ? satCancel() : abCancel(); });
+document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); editSession ? saveEdit() : hlFlow ? endHeadlandDraw() : satBnd ? satFinish() : abFinish(); });
+document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); editSession ? endEdit() : hlFlow ? endHeadlandDraw() : satBnd ? satCancel() : abCancel(); });
 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
@@ -1061,12 +1140,7 @@ for (const b of document.querySelectorAll('#fb-addtrack .fb-addbtn'))
     else if (m === 'ball') transport.send('track.allEdges');
   });
 // Track actions (Edit = stage 4).
-document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => {
-  e.stopPropagation();
-  const h = document.getElementById('maptap-hint');
-  h.textContent = 'On-map track edit — later stage'; h.classList.add('show');
-  setTimeout(() => h.classList.remove('show'), 1800);
-});
+document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => { e.stopPropagation(); startTrackEdit(); });
 document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel] || !iHoldControl) return;
@@ -4163,6 +4237,7 @@ function renderSkia(canvas, rp) {
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
   drawTramLinesSk(canvas); // generated tram lines (orange) when tram display on / editing
+  drawEditHandlesSk(canvas); // stage-4 on-map edit handles (drag points to reshape)
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);
