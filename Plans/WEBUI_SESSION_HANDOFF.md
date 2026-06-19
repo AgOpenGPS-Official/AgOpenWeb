@@ -12,7 +12,23 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.86`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.90`** (we DO bump `sys/version.h` per commit now).
+
+## ⭐ STATUS (2026-06-19): Phase MT is DONE — only Phase 10 (headless cutover) remains.
+- **Field Builder — ALL 4 stages complete** (v26.5.86–89): Tracks tab, Headland tab +
+  multi-line builder, Tram tab + systems editor, on-map point Edit (drag track/headland
+  points). See memory `[[project_headland_lines_model]]` for the headland-lines model
+  (multi-line overshoot-and-cross → closed loop; single line can't enclose; DON'T connect
+  lines to the boundary — they must cross each other). Tram systems live in
+  `ConfigStore.Tram.Systems`; tram LINES need ALL FOUR `ITramLineService` collections
+  projected (outer+inner boundary tracks, parallel, boundary-extra), not just ParallelTramLines.
+- **Import-KML boundary picker — DONE** (v26.5.90): Boundary menu → Import-KML → picks a
+  KML/KMZ from `Documents/AgValoniaGPS/Import` (FieldOps `KmlFiles` list) → host parses +
+  imports into the open field. Cmd `boundary.importKmlFile|<name>`.
+- **Fixed latent native bugs along the way:** `BuildTramLinesCommand` null-deref when the
+  last tram system is deleted with no track selected (now null-safe).
+- **NEXT = Phase 10 — headless cutover** (host goes UI-less; browser is the only UI). This is
+  the only remaining migration item.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
