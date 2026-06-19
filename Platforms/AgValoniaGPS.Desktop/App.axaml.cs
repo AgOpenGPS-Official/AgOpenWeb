@@ -368,6 +368,9 @@ public partial class App : Application
                                         windowVm.RemoteSetTramField(tsi, arg[(t1 + 1)..t2], arg[(t2 + 1)..]);
                                     return;
                                 }
+                                case "boundary.importKmlFile": // Import-KML picker. arg = KML file name.
+                                    windowVm.RemoteImportKmlBoundary(arg);
+                                    return;
                                 case "boundary.fromMapPoints": // Phase MT — Draw boundary on map.
                                 {                              // arg = "e,n;e,n;…" (field E/N from s2w).
                                     var bmp = new System.Collections.Generic.List<(double, double)>();

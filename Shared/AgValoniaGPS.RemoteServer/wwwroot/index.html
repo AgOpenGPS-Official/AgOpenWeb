@@ -2041,7 +2041,7 @@
     <div class="ln-hdr"><button class="ln-x" id="bm-back" title="Back">←</button><span class="ln-hdr-title">Start or Delete Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="bm-toolbar">
       <button id="bm-delete" class="bm-tbtn" title="Delete selected boundary"><img src="/icons/Trash.png" alt=""></button>
-      <button id="bm-importkml" class="bm-tbtn" disabled title="Import from KML (follow-up)"><img src="/icons/BoundaryLoadFromGE.png" alt=""></button>
+      <button id="bm-importkml" class="bm-tbtn" title="Import boundary from a KML/KMZ file"><img src="/icons/BoundaryLoadFromGE.png" alt=""></button>
       <button id="bm-drawmap" class="bm-tbtn" title="Draw boundary on satellite imagery"><img src="/icons/BoundaryByMap.png" alt=""></button>
       <button id="bm-buildtracks" class="bm-tbtn" title="Build boundary from driven tracks"><img src="/icons/BoundaryFromTracks.png" alt=""></button>
       <button id="bm-drivearound" class="bm-tbtn" title="Drive around field to record boundary"><img src="/icons/ST_SteerTab.png" alt=""></button>
@@ -2070,6 +2070,13 @@
       <button id="bp-stop" class="bp-btn bp-okbtn" title="Stop and save"><img src="/icons/OK64.png" alt=""></button>
       <button id="bp-record" class="bp-btn bp-recbtn" title="Record / Pause"><img id="bp-recimg" src="/icons/BoundaryRecord.png" alt=""></button>
     </div>
+  </div>
+  <!-- Import KML boundary picker — lists KML/KMZ under Documents/AgValoniaGPS/Import;
+       tapping one imports it as the field boundary (first polygon = outer, rest = inner). -->
+  <div id="kmlboundary" class="ln-panel fm-panel">
+    <div class="ln-hdr"><button class="ln-x" id="kb-back" title="Back">←</button><span class="ln-hdr-title">Import KML Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="fb-sublbl">KML/KMZ files in Documents/AgValoniaGPS/Import</div>
+    <div id="kb-list" class="trk-list"></div>
   </div>
   <!-- App Settings — units + device toggles + app directories. -->
   <div id="appsettings" class="ln-panel sa-panel">

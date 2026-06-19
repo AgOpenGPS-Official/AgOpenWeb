@@ -931,7 +931,7 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -1326,6 +1326,26 @@ document.getElementById('bm-delete').addEventListener('pointerdown', e => {
 });
 document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.buildFromTracks'); });
 document.getElementById('bm-drawmap').addEventListener('pointerdown', e => { e.stopPropagation(); startSatBoundary(); });
+// Import-KML boundary picker: lists KML/KMZ from the Import folder (FieldOps frame),
+// tapping one imports it as the field boundary (host parses + imports, replacing the outer).
+document.getElementById('bm-importkml').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('kmlboundary', 'ln-fieldtools', renderKmlBoundary); });
+document.getElementById('kb-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
+function renderKmlBoundary() {
+  const list = document.getElementById('kb-list'); list.innerHTML = '';
+  const files = (fieldOps && fieldOps.kmlFiles) || [];
+  if (!files.length) { list.innerHTML = '<div class="trk-empty">No KML/KMZ files in the Import folder.</div>'; return; }
+  for (const f of files) {
+    const row = document.createElement('div'); row.className = 'fb-trkrow';
+    row.innerHTML = '<span class="fb-dot"></span><span class="fb-tname"></span>';
+    row.querySelector('.fb-tname').textContent = f;
+    row.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      showConfirm('Import KML Boundary', 'Import "' + f + '" as the field boundary? This replaces the current outer boundary.',
+        () => { transport.send('boundary.importKmlFile|' + f); lnCloseAll(); });
+    });
+    list.appendChild(row);
+  }
+}
 document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.driveAround'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
 });
