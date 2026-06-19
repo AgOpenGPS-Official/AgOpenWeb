@@ -118,7 +118,7 @@
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
-    #bottomstack { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+    #bottomstack { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
       display: flex; flex-direction: column; align-items: center; gap: 6px;
       pointer-events: none; z-index: 10; }
     /* Simulator bar (Phase 6) — a single horizontal bar. Hidden until launched. */
@@ -162,9 +162,11 @@
     #bottomnav { position: relative; display: none; pointer-events: auto;
       -webkit-user-select: none; user-select: none; }
     #bottomnav.open { display: block; }
-    #bottomnav .bn-bar { display: flex; gap: 4px; padding: 6px; border-radius: 10px;
-      background: rgba(20,24,33,0.92); border: 1px solid #2a3550; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
-    #bottomnav .bn-btn { width: 52px; height: 52px; border: 0; border-radius: 6px; padding: 6px;
+    /* Bar chrome + button look match the left nav (the canonical style). */
+    #bottomnav .bn-bar { display: flex; gap: 6px; padding: 8px; border-radius: 10px 10px 0 0;
+      background: rgba(15,17,21,0.85); border: 1px solid #222a38; border-bottom: 0;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+    #bottomnav .bn-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px;
       background: rgba(255,255,255,0.08); color: #e7eef9; cursor: pointer; box-sizing: border-box;
       font: 700 16px system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
     #bottomnav .bn-btn:hover { background: rgba(255,255,255,0.16); }
@@ -774,22 +776,26 @@
     /* Right-nav operational toolbar (Phase 3). Vertical button stack on the right
        edge, colour-coded by live state. (Phase 3a: read-only indicators; 3b wires
        the Tier-2 commands through the control gate.) */
-    #rightnav { position: fixed; right: 10px; top: 56px; display: none; flex-direction: column;
-                gap: 8px; align-items: stretch; touch-action: manipulation; }
-    .rn-btn { width: 70px; min-height: 52px; border-radius: 10px; border: 1px solid #2a3550;
-      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 600 13px system-ui, sans-serif;
+    /* Bar chrome + button look match the left nav (the canonical style); state colours below. */
+    #rightnav { position: fixed; right: 0; top: 56px; display: none; flex-direction: column;
+                gap: 6px; align-items: stretch; padding: 8px; border-radius: 10px 0 0 10px;
+                background: rgba(15,17,21,0.85); border: 1px solid #222a38; border-right: 0;
+                box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation; }
+    .rn-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px; box-sizing: border-box;
+      background: rgba(255,255,255,0.08); color: #e7eef9; font: 600 13px system-ui, sans-serif;
       cursor: pointer; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 2px; -webkit-user-select: none; user-select: none; }
-    .rn-btn .rn-sub { font-size: 11px; color: #9fb3cc; font-weight: 500; }
-    .rn-ic { width: 46px; height: 46px; object-fit: contain; display: block; pointer-events: none; }
+    .rn-btn:hover { background: rgba(255,255,255,0.16); }
+    .rn-btn .rn-sub { font-size: 10px; color: #9fb3cc; font-weight: 500; }
+    .rn-ic { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
     .rn-btn.on-green { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
     .rn-btn.on-green .rn-sub { color: #d9ffe6; }
     .rn-btn.on-yellow { background: #9a8500; border-color: #f7d000; color: #fff; }
     .rn-btn.steer-ready { background: #1c4a7a; border-color: #3a8bd6; color: #fff; }
     .rn-btn.steer-on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
     .rn-btn.disabled { opacity: 0.4; }
-    #rn-manualturn { display: none; flex-direction: row; gap: 8px; }
-    .rn-sm { width: 31px; min-height: 38px; font-size: 18px; }
+    #rn-manualturn { display: none; flex-direction: row; gap: 6px; }
+    .rn-sm { width: 25px; height: 56px; font-size: 18px; padding: 0; }
     #rn-readonly { color: #ff7a3d; font: 600 10px ui-monospace, monospace; text-align: center; min-height: 12px; }
     /* Dimmed when this client doesn't hold control — the buttons are inert. */
     #rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
