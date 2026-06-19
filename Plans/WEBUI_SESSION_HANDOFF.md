@@ -12,7 +12,40 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.90`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.92`** (we DO bump `sys/version.h` per commit now).
+
+## ⏭ NEXT SESSION — START HERE: iPad-only full-screen chrome
+Reported on **iPad only**, standalone/full-screen web app (browsers smooth on Mac/Android/iPad
+after v26.5.92): (1) the **iOS status bar** (date/time upper-left, battery upper-right) shows;
+(2) a **"pill with X" appears upper-left, under the date/time**. Mac + Android don't show either.
+- **First action: ask the user for an iPad screenshot of the top-left** — the "X pill" is
+  unidentified (could be iOS chrome — AssistiveTouch / Guided Access / Stage Manager control —
+  or one of our own elements mis-placed in the safe area). Don't guess; see it.
+- Context already gathered: PWA meta is set (`index.html` head): `apple-mobile-web-app-capable=yes`,
+  `apple-mobile-web-app-status-bar-style=black-translucent`, `viewport-fit=cover`. So the map
+  bleeds UNDER the iOS status bar, but our top chrome isn't offset for the safe area:
+  `#statusbar` is `position:fixed; top:0` (collides with the iOS date/time); no `env(safe-area-inset-*)`
+  anywhere in the file. `#leftnav`/`#rightnav` are `top:56px`; `#bottomstack` `bottom:0`.
+- **The iOS status bar cannot be hidden** for a browser/PWA on iPad (iPadOS always shows it; no
+  meta hides it). Realistic fixes: (a) offset our chrome below `env(safe-area-inset-top)` so the
+  iOS bar doesn't overlap our controls (map stays full-bleed); or (b) switch status-bar style to
+  opaque `black` so content sits below it. Confirm which the user wants. Fully hiding it needs a
+  native wrapper — track separately if they insist.
+- I had an `AskUserQuestion` queued (status-bar preference + is-the-X-pill-ours) when we hit the
+  context limit — re-ask with the screenshot.
+
+## ⭐ STATUS (2026-06-19): Phase MT DONE + motion-smoothness pass DONE — only Phase 10 (headless cutover) remains.
+- **Motion smoothness (v26.5.92)** — web tool/pose/coverage now glide like native (verified
+  native + Mac/Android/iPad browsers at once). See memory `[[project_webui_motion_smoothness]]`:
+  project the render-pull DEAD-RECKONED pose+tool+hitch (`VehicleState.Render*`, written in
+  `MainViewModel.OnRenderPullTick`), NOT the control-loop/GPS-anchored snapshots (those step at
+  GPS rate / make client DR snap back = staccato). Coverage diff moved OFF the 100Hz control-loop
+  thread to the broadcaster loop + a server-dedicated incremental drain
+  (`CoverageMapService.GetNewCoverageBitmapCellsServer` / `_newCellsServer`,
+  `CoverageProjector.IncrementalDelta`) — the old O(~56M-cell) scan on the control thread stalled
+  real-time control in ~500ms bursts.
+- **Nav bars unified (v26.5.91)** — bottom + right match the left bar (edge-docked, translucent
+  bordered, borderless 56×56 icon buttons); semantic state colours kept.
 
 ## ⭐ STATUS (2026-06-19): Phase MT is DONE — only Phase 10 (headless cutover) remains.
 - **Field Builder — ALL 4 stages complete** (v26.5.86–89): Tracks tab, Headland tab +
