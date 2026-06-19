@@ -50,6 +50,17 @@ public partial class App : Application
         "track.setVisible", "track.toggleRecPaths",
     };
 
+    // Field Builder headland *building* is field-data editing (done while reviewing the
+    // field, not live actuation), so it stays ungated like track creation. The live
+    // headland on/off + section-in-headland toggles (headland.toggle / .sectionToggle)
+    // DO change what the machine does, so they remain gated. Fail-closed: a new
+    // headland.* id defaults to gated until added here.
+    private static readonly System.Collections.Generic.HashSet<string> UngatedHeadlandIds = new()
+    {
+        "headland.fromMapPoints", "headland.wholeBoundary", "headland.setOffset",
+        "headland.delete", "headland.deleteAll", "headland.rename",
+    };
+
     public static IServiceProvider? Services { get; set; }
 
     /// <summary>
@@ -274,6 +285,44 @@ public partial class App : Application
                                         windowVm.SavedTracks[tvi].IsVisible = vp[1] == "1";
                                         windowVm.OnTrackVisibilityChanged();
                                     }
+                                    return;
+                                }
+                                case "headland.fromMapPoints": // Field Builder stage 2. arg =
+                                {                              // "<line|curve>,offset,e1,n1,e2,n2"
+                                    var hp = arg.Split(',');   // (m). Host snaps to boundary +
+                                    if (hp.Length >= 6         // builds the segment + headland.
+                                        && double.TryParse(hp[1], num, inv, out var hoff)
+                                        && double.TryParse(hp[2], num, inv, out var he1)
+                                        && double.TryParse(hp[3], num, inv, out var hn1)
+                                        && double.TryParse(hp[4], num, inv, out var he2)
+                                        && double.TryParse(hp[5], num, inv, out var hn2))
+                                        windowVm.RemoteCreateHeadlandFromMapPoints(
+                                            hp[0] == "curve", hoff, he1, hn1, he2, hn2);
+                                    return;
+                                }
+                                case "headland.wholeBoundary": // arg = offset (m). Whole boundary
+                                    if (double.TryParse(arg, num, inv, out var hwb)) // offset inward.
+                                        windowVm.RemoteCreateHeadlandWholeBoundary(hwb);
+                                    return;
+                                case "headland.setOffset": // arg = "index,offset" (m).
+                                {
+                                    var so = arg.Split(',');
+                                    if (so.Length == 2 && int.TryParse(so[0], out var hsi)
+                                        && double.TryParse(so[1], num, inv, out var hso))
+                                        windowVm.RemoteSetHeadlandOffsetAt(hsi, hso);
+                                    return;
+                                }
+                                case "headland.delete": // arg = segment index.
+                                    if (int.TryParse(arg, out var hdi)) windowVm.RemoteDeleteHeadlandAt(hdi);
+                                    return;
+                                case "headland.deleteAll":
+                                    windowVm.RemoteDeleteAllHeadland();
+                                    return;
+                                case "headland.rename": // arg = "index,new name" (name may contain commas)
+                                {
+                                    var hr = arg.IndexOf(',');
+                                    if (hr > 0 && int.TryParse(arg[..hr], out var hri))
+                                        windowVm.RemoteRenameHeadlandAt(hri, arg[(hr + 1)..]);
                                     return;
                                 }
                                 case "boundary.fromMapPoints": // Phase MT — Draw boundary on map.
@@ -622,7 +671,7 @@ public partial class App : Application
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
                         || (id.StartsWith("track.") && !UngatedTrackIds.Contains(id)) // see below
-                        || id.StartsWith("headland.")
+                        || (id.StartsWith("headland.") && !UngatedHeadlandIds.Contains(id))
                         || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
                         || id == "net.subnet" // restarts every module → gate it
                         || id == "recpath.play"; // drives the vehicle along the path → actuation
@@ -718,6 +767,26 @@ public partial class App : Application
                             windowVm.IsDrawAtPivot,
                             windowVm.IsBoundarySectionControlOn,
                             bpts);
+                    };
+
+                    // Field Builder Headland-tab list: the segments live on the VM
+                    // (MainViewModel.HeadlandSegments — no ApplicationState SoT), so project
+                    // them from the live VM each tick. Read-only on the broadcaster thread,
+                    // same transient-race tolerance as the other VM-coupled projectors.
+                    _remoteServer.HeadlandSegsProvider = () =>
+                    {
+                        var segs = windowVm.HeadlandSegments;
+                        var list = new System.Collections.Generic.List<AgValoniaGPS.RemoteServer.HeadlandSegInfoDto>(segs.Count);
+                        for (int i = 0; i < segs.Count; i++)
+                        {
+                            var s = segs[i];
+                            var edit = windowVm.GetHeadlandSegmentEditLine(s);
+                            var editPts = new System.Collections.Generic.List<AgValoniaGPS.RemoteServer.Vec2Dto>(edit.Count);
+                            foreach (var p in edit) editPts.Add(new AgValoniaGPS.RemoteServer.Vec2Dto(p.Easting, p.Northing));
+                            list.Add(new AgValoniaGPS.RemoteServer.HeadlandSegInfoDto(
+                                i, s.Name, s.Type.ToString(), s.Offset, s.IsEffective, editPts));
+                        }
+                        return list;
                     };
                 }
             }

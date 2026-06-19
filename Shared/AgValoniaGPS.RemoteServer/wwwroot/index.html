@@ -746,6 +746,18 @@
     .fb-trkrow .fb-dot { width: 12px; height: 12px; border-radius: 50%; background: #3a4660; }
     .fb-trkrow.active .fb-dot { background: #27AE60; }
     .fb-trkrow .fb-tname { color: #e7eef9; font: 500 14px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Headland-tab segment list (Field Builder stage 2). Dot = effective (green) /
+       no-effect (red, doesn't reach the boundary on both ends). Meta = type · offset. */
+    #fb-hllist { max-height: 250px; }
+    .fb-hlrow { display: grid; grid-template-columns: 12px 1fr auto; align-items: center; gap: 8px; padding: 9px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+    .fb-hlrow.sel { background: rgba(74,144,217,0.25); }
+    .fb-hlrow .fb-dot { width: 10px; height: 10px; border-radius: 50%; background: #27AE60; }
+    .fb-hlrow.noeffect .fb-dot { background: #e6564a; }
+    .fb-hlrow .fb-hlname { color: #e7eef9; font: 500 14px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fb-hlrow .fb-hlmeta { color: #9fb3cc; font: 500 12px system-ui, sans-serif; white-space: nowrap; }
+    .fb-offrow { display: flex; align-items: center; gap: 8px; color: #9fb3cc; font: 600 13px system-ui, sans-serif; }
+    .fb-offrow input { width: 96px; }
     /* AB flyout group separator (matches native's separators between groups). */
     .bn-flysep { height: 1px; background: rgba(255,255,255,0.14); margin: 4px 6px; }
     /* Remote actuation control (Phase 2 safety layer). Take/Release authority +
@@ -1882,8 +1894,45 @@
         <button id="fb-trk-deleteall" class="fb-act fb-del">Delete All</button>
       </div>
     </div>
-    <!-- Headland tab (stage 2) -->
-    <div class="fb-pane" data-fbpane="headland" hidden><div class="trk-empty">Headland building — next stage</div></div>
+    <!-- Headland tab (stage 2): segment list + build (line/curve map-draw + whole-boundary) -->
+    <div class="fb-pane" data-fbpane="headland" hidden>
+      <div id="fb-hllist" class="trk-list"></div>
+      <div class="fb-actions">
+        <button id="fb-hl-add" class="fb-act">＋ Add</button>
+        <button id="fb-hl-rename" class="fb-act">Rename</button>
+        <button id="fb-hl-delete" class="fb-act fb-del">Delete</button>
+        <button id="fb-hl-deleteall" class="fb-act fb-del">Delete All</button>
+      </div>
+      <div id="fb-hl-offrow" class="fb-offrow" hidden>
+        <label>Offset</label><input id="fb-hl-off" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span>
+      </div>
+    </div>
+    <!-- Add Headland sub-view (replaces the tab content) -->
+    <div id="fb-addhl" class="fb-pane" hidden>
+      <div class="fb-subhdr"><button id="fb-hl-addback" class="fb-act">← Back</button><span>Add Headland</span></div>
+      <div class="fb-offrow">
+        <label>Inset</label>
+        <select id="fb-hl-tw" class="cfg-isel">
+          <option value="1">1 tool width</option>
+          <option value="2">2 tool widths</option>
+          <option value="3">3 tool widths</option>
+          <option value="4">4 tool widths</option>
+          <option value="5">5 tool widths</option>
+          <option value="6">6 tool widths</option>
+          <option value="0">Custom</option>
+        </select>
+        <input id="fb-hl-newoff" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span>
+      </div>
+      <div class="fb-sublbl">Draw on Map — one line per edge; where they cross encloses the headland</div>
+      <div class="fb-addrow">
+        <button class="fb-addbtn" data-fbhl="line"><span class="fb-bigtxt">／</span><span>Line</span></button>
+        <button class="fb-addbtn" data-fbhl="curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+      </div>
+      <div class="fb-sublbl">From Boundary</div>
+      <div class="fb-addrow">
+        <button class="fb-addbtn" data-fbhl="whole"><span class="fb-bigtxt">◯</span><span>Whole Boundary</span></button>
+      </div>
+    </div>
     <!-- Tram tab (stage 3) -->
     <div class="fb-pane" data-fbpane="tram" hidden><div class="trk-empty">Tram systems — later stage</div></div>
     <!-- Add Track sub-view (replaces the tab content) -->

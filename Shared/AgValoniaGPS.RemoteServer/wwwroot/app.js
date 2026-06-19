@@ -139,6 +139,9 @@ const transport = RemoteTransport.create({
     if (document.getElementById('dlg-tracks').classList.contains('open')) renderTracksList();
     if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'tracks'
         && !document.querySelector('#fb-tracklist .flg-nameedit')) renderFbTracks();
+    if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'headland'
+        && document.getElementById('fb-addhl').hidden
+        && !document.querySelector('#fb-hllist .flg-nameedit')) renderFbHeadland();
     // Refresh the flag list on add/delete/rename/recolour, unless the user is mid-edit.
     if (document.getElementById('dlg-flags').classList.contains('open')
         && !document.querySelector('.flg-nameedit') && !document.querySelector('.flg-colorpick'))
@@ -250,6 +253,9 @@ function buildSkPaints() {
     axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
     vehicle: fill('#39FF6A'),
     flagFill: fill('#FF0000'), flagOutline: mk('#101010', 1.5), // colour set per flag
+    // Field Builder headland-editor offset lines: yellow = contributes to the closed
+    // headland loop, red = doesn't (yet). Width set per frame in drawHeadlandSegEditLinesSk.
+    hlEdit: mk('rgba(245,235,90,0.95)', 3), hlEditOff: mk('rgba(232,86,74,0.95)', 3),
   };
   // Section footprint bars: one stroke paint per ColorCode (butt cap so adjacent
   // sections abut without rounded overhang), matching the 2D SECTION_COLORS.
@@ -352,6 +358,7 @@ function isTyping() {
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && satBnd) { satCancel(); return; }  // cancel boundary draw-on-map
   if (e.key === 'Escape' && abFlow) { abCancel(); return; }   // cancel AB-line creation (tells host)
+  if (e.key === 'Escape' && hlFlow) { endHeadlandDraw(); return; } // cancel headland draw
   if (e.key === 'Escape' && mapTap) { endMapTap(); return; }  // cancel on-map capture
   if (isTyping()) return;
   if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
@@ -712,12 +719,58 @@ function endSatBoundary() {
   drawBar.classList.remove('show'); endMapTap(); hintEl.classList.remove('show');
 }
 
-// Draw toolbar serves whichever map-draw flow is active (AB line or boundary-on-map).
+// ---- headland draw-on-map (Field Builder stage 2) — tap two boundary points -----------
+// Preview snaps each tap to the nearest boundary vertex (visual only; the host re-snaps and
+// builds the inward offset + headland). Ships headland.fromMapPoints on the 2nd tap.
+let hlFlow = null;       // 'line' | 'curve' — drawing a headland segment, else null
+let hlPts = [];          // [{e,n}] tapped+snapped boundary points (preview)
+let hlOffset = 12;       // inward offset (m) chosen in the Add sub-view
+function hlSnap(e, n) {
+  const ring = scene && scene.boundaries && scene.boundaries[0];
+  if (!ring || !ring.length) return { e, n };
+  let best = ring[0], bd = Infinity;
+  for (const p of ring) { const d = (p.e - e) ** 2 + (p.n - n) ** 2; if (d < bd) { bd = d; best = p; } }
+  return { e: best.e, n: best.n };
+}
+function setHlHint() { hintEl.textContent = hlPts.length === 0 ? 'Tap the start of an edge (add a line per edge to enclose the headland)' : 'Tap the end of the edge'; }
+function startHeadlandDraw(mode, offset) {
+  const ring = scene && scene.boundaries && scene.boundaries[0];
+  if (!ring || ring.length < 3) {
+    const h = document.getElementById('maptap-hint');
+    h.textContent = 'No boundary to offset'; h.classList.add('show');
+    setTimeout(() => h.classList.remove('show'), 1800);
+    return;
+  }
+  hlFlow = mode; hlOffset = offset; hlPts = [];
+  showAbBar(false, true, true);   // Undo + Finish + Cancel — draw MANY lines, Finish to stop
+  startMapTap({ hint: 'Tap the start of an edge (add a line per edge to enclose the headland)', onTap: hlTap });
+}
+function hlTap(e, n) {
+  hlPts.push(hlSnap(e, n));
+  if (hlPts.length >= 2) {
+    // Ship this edge line and immediately re-arm for the NEXT edge — headland drawing is
+    // continuous (one line per edge) until the operator taps Finish, mirroring native.
+    transport.send('headland.fromMapPoints|' + hlFlow + ',' + hlOffset + ',' +
+      hlPts[0].e.toFixed(3) + ',' + hlPts[0].n.toFixed(3) + ',' +
+      hlPts[1].e.toFixed(3) + ',' + hlPts[1].n.toFixed(3));
+    hlPts = [];
+    hintEl.textContent = 'Edge added — draw the next edge, or tap Finish';
+    return;
+  }
+  setHlHint();
+}
+function hlUndo() { if (hlPts.length) { hlPts.pop(); setHlHint(); } }
+function endHeadlandDraw() {
+  hlFlow = null; hlPts = [];
+  drawBar.classList.remove('show'); endMapTap(); hintEl.classList.remove('show');
+}
+
+// Draw toolbar serves whichever map-draw flow is active (AB line / boundary-on-map / headland).
 drawBar.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan / not a map tap
 document.getElementById('draw-setpoint').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abSetPoint(); });
-document.getElementById('draw-undo').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); satBnd ? satUndo() : abUndo(); });
-document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); satBnd ? satFinish() : abFinish(); });
-document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); satBnd ? satCancel() : abCancel(); });
+document.getElementById('draw-undo').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? hlUndo() : satBnd ? satUndo() : abUndo(); });
+document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? endHeadlandDraw() : satBnd ? satFinish() : abFinish(); });
+document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? endHeadlandDraw() : satBnd ? satCancel() : abCancel(); });
 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
@@ -953,9 +1006,11 @@ document.querySelector('#fieldbuilder .fb-back').addEventListener('pointerdown',
 function showFbTab(tab) {
   fbTab = tab;
   document.getElementById('fb-addtrack').hidden = true;
+  document.getElementById('fb-addhl').hidden = true;
   for (const t of document.querySelectorAll('#fieldbuilder .fb-tab')) t.classList.toggle('active', t.dataset.fbtab === tab);
   for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = (p.dataset.fbpane !== tab);
   if (tab === 'tracks') renderFbTracks();
+  else if (tab === 'headland') renderFbHeadland();
 }
 function renderFieldBuilder() { showFbTab(fbTab); }
 for (const t of document.querySelectorAll('#fieldbuilder .fb-tab'))
@@ -1027,6 +1082,92 @@ document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
   nameEl.replaceWith(input); input.focus(); input.select();
   const commit = () => { const v = input.value.trim(); if (v && v !== t.name) transport.send('track.rename|' + t.index + ',' + v); renderFbTracks(); };
   input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); else if (ev.key === 'Escape') renderFbTracks(); });
+  input.addEventListener('blur', commit);
+});
+// ---- Field Builder Headland tab (stage 2) — segment list + build ----------------------
+// Building is field-data editing (Tier-1, ungated). Line/Curve = tap two boundary points
+// on the main map (host snaps + builds the inward offset + the headland polygon); Whole
+// Boundary = the entire boundary offset inward. The host runs ALL geometry — the client
+// only captures the two taps + the offset and ships them (no headland math in JS).
+let fbHlSel = -1;        // selected segment index in the Headland tab
+function fbDefaultOffset() {  // tool width × 2 (host re-defaults to the same if 0 is sent)
+  const tw = toolWidthM();
+  return tw > 0 ? +(tw * 2).toFixed(1) : 12;
+}
+function renderFbHeadland() {
+  const list = document.getElementById('fb-hllist');
+  const hs = (scene && scene.headlandSegs) || [];
+  if (fbHlSel >= hs.length) fbHlSel = -1;
+  const offrow = document.getElementById('fb-hl-offrow');
+  if (!hs.length) { list.innerHTML = '<div class="trk-empty">No headland yet. Add a line along each edge (or Whole Boundary). Where the lines cross they enclose the headland.</div>'; offrow.hidden = true; return; }
+  list.innerHTML = '';
+  hs.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'fb-hlrow' + (s.effective ? '' : ' noeffect') + (i === fbHlSel ? ' sel' : '');
+    row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
+    row.querySelector('.fb-hlname').textContent = s.name;
+    row.querySelector('.fb-hlmeta').textContent = s.type + ' · ' + (+s.offset).toFixed(1) + ' m';
+    row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbHlSel = i; renderFbHeadland(); });
+    list.appendChild(row);
+  });
+  // Offset editor for the selected segment (re-runs the build on change).
+  if (fbHlSel >= 0 && hs[fbHlSel]) {
+    offrow.hidden = false;
+    const off = document.getElementById('fb-hl-off');
+    if (document.activeElement !== off) off.value = (+hs[fbHlSel].offset).toFixed(1);
+  } else offrow.hidden = true;
+}
+document.getElementById('fb-hl-off').addEventListener('change', e => {
+  e.stopPropagation();
+  const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
+  const v = parseFloat(e.target.value);
+  if (Number.isFinite(v) && v > 0) transport.send('headland.setOffset|' + hs[fbHlSel].index + ',' + v);
+});
+// Inset = N tool widths (dropdown, mirrors AgOpen's cboxToolWidths) → fills the metre box;
+// editing the metre box directly flips the dropdown to Custom.
+const fbTwSel = document.getElementById('fb-hl-tw');
+const fbNewOff = document.getElementById('fb-hl-newoff');
+function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) fbNewOff.value = +(n * toolWidthM()).toFixed(1); }
+fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
+fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
+document.getElementById('fb-hl-add').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  fbTwSel.value = '2'; fbApplyTw();   // default 2 tool widths
+  for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = true;
+  document.getElementById('fb-addhl').hidden = false;
+});
+document.getElementById('fb-hl-addback').addEventListener('pointerdown', e => { e.stopPropagation(); showFbTab('headland'); });
+for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const off = parseFloat(document.getElementById('fb-hl-newoff').value);
+    const offset = (Number.isFinite(off) && off > 0) ? off : fbDefaultOffset();
+    const m = b.dataset.fbhl;
+    showFbTab('headland');
+    if (m === 'whole') transport.send('headland.wholeBoundary|' + offset);
+    else startHeadlandDraw(m, offset);   // 'line' | 'curve' — map-tap two boundary points
+  });
+document.getElementById('fb-hl-delete').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
+  transport.send('headland.delete|' + hs[fbHlSel].index); fbHlSel = -1;
+});
+document.getElementById('fb-hl-deleteall').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  showConfirm('Delete All Headland', 'Delete all headland segments? The headland reverts to the boundary.',
+    () => { transport.send('headland.deleteAll'); fbHlSel = -1; });
+});
+document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
+  const s = hs[fbHlSel];
+  renderFbHeadland();
+  const row = document.querySelectorAll('#fb-hllist .fb-hlrow')[fbHlSel]; if (!row) return;
+  const nameEl = row.querySelector('.fb-hlname');
+  const input = document.createElement('input'); input.className = 'flg-nameedit'; input.value = s.name;
+  nameEl.replaceWith(input); input.focus(); input.select();
+  const commit = () => { const v = input.value.trim(); if (v && v !== s.name) transport.send('headland.rename|' + s.index + ',' + v); renderFbHeadland(); };
+  input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); else if (ev.key === 'Escape') renderFbHeadland(); });
   input.addEventListener('blur', commit);
 });
 document.getElementById('bm-delete').addEventListener('pointerdown', e => {
@@ -3488,6 +3629,37 @@ function drawSatBoundarySk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
+// Field Builder Headland editor — draw each segment's offset line + overshoot extensions
+// (yellow = contributes to the closed headland, red = doesn't yet) ONLY while the Headland
+// tab is open, so the operator can watch the lines cross and enclose the area, mirroring
+// native's "Create and Edit Headland" view. The built headland polygon draws separately.
+function drawHeadlandSegEditLinesSk(canvas) {
+  if (!scene || !scene.headlandSegs || !scene.headlandSegs.length) return;
+  const fb = document.getElementById('fieldbuilder');
+  if (!fb.classList.contains('open') || fbTab !== 'headland') return;
+  const w = Math.max(2, 0.4 * pxPerM);
+  for (const s of scene.headlandSegs) {
+    if (!s.editLine || s.editLine.length < 2) continue;
+    const paint = s.effective ? SKP.hlEdit : SKP.hlEditOff;
+    paint.setStrokeWidth(w);
+    strokePtsSk(canvas, s.editLine, false, paint);
+  }
+}
+// Live headland draw preview (Field Builder stage 2) — the boundary points tapped so far,
+// snapped to the nearest boundary vertex. Green (headland colour) dots + connecting line;
+// the host builds the real inward-offset segment + headland on finish.
+function drawHeadlandDrawSk(canvas) {
+  if (!hlFlow || !hlPts.length) return;
+  if (hlPts.length >= 2) strokePtsSk(canvas, hlPts, false, SKP.headland);
+  const rad = Math.max(4, 0.6 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#6BFF6B'));
+  for (const p of hlPts) {
+    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
 // Live draw-track preview (Phase MT) — the points tapped so far while drawing an AB/curve
 // on the map. Client-side only (the host holds the authoritative list); cleared on
 // finish/cancel. Cyan line through the points + an outlined dot at each.
@@ -3904,6 +4076,8 @@ function renderSkia(canvas, rp) {
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
+  drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
+  drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);

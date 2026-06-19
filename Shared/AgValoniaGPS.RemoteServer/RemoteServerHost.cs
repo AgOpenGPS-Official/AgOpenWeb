@@ -72,6 +72,15 @@ public sealed class RemoteServerHost
     }
     private Func<BoundaryDto?>? _boundaryProvider;
 
+    /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list
+    /// (VM-owned, rides the Scene frame). Set after <see cref="StartAsync"/>.</summary>
+    public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
+    {
+        get => _broadcaster?.Projector.HeadlandSegsProvider;
+        set { _headlandSegsProvider = value; if (_broadcaster is not null) _broadcaster.Projector.HeadlandSegsProvider = value; }
+    }
+    private Func<IReadOnlyList<HeadlandSegInfoDto>>? _headlandSegsProvider;
+
     /// <summary>
     /// Host-supplied handler for client commands (command id → action). Invoked
     /// off the UI thread; the host marshals known ids to the UI thread and ignores
@@ -211,6 +220,7 @@ public sealed class RemoteServerHost
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
+        _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
         // involuntary loss → failsafe.

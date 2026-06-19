@@ -15,6 +15,14 @@ public record TrackDto(string Id, string Name, int Type, IReadOnlyList<Vec2Dto> 
 /// lists/selects); the render geometry rides SceneDto.Tracks.</summary>
 public record TrackInfoDto(int Index, string Name, string Type, bool Active, bool Visible);
 
+/// <summary>One row in the Field Builder Headland tab: index into the VM's HeadlandSegments
+/// list, name, a type label (Line/Curve/Boundary), the inward offset (m), and Effective
+/// (false = the segment doesn't reach the boundary on both ends so it has no effect on the
+/// built headland → shown red, mirroring native). Carries NO points; the built headland
+/// polygon rides SceneDto.Headland.</summary>
+public record HeadlandSegInfoDto(int Index, string Name, string Type, double Offset, bool Effective,
+    IReadOnlyList<Vec2Dto> EditLine); // offset line + overshoot extensions, drawn while editing
+
 /// <summary>Static-ish geometry: sent on connect and whenever the fingerprint changes.</summary>
 public record SceneDto(
     long Version,
@@ -32,7 +40,8 @@ public record SceneDto(
     IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
     IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
     ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
-    IReadOnlyList<TrackInfoDto> TrackList); // ALL tracks (incl. hidden) for the Tracks manager
+    IReadOnlyList<TrackInfoDto> TrackList, // ALL tracks (incl. hidden) for the Tracks manager
+    IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs); // Field Builder Headland-tab segment list
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);

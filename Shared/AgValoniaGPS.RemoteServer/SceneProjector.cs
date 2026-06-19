@@ -29,6 +29,13 @@ public sealed class SceneProjector
     private readonly IVehicleProfileService _vehicleProfiles;
     private readonly IPersistentStateService _persist;
 
+    /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list.
+    /// The segments live on the VM (MainViewModel.HeadlandSegments) — there is no
+    /// ApplicationState SoT for them — so the Desktop host sets this to read the live VM
+    /// each broadcast tick (same VM-coupled provider pattern as Boundary/RecordedPath).
+    /// Read off the broadcaster thread; tolerates transient races like the others.</summary>
+    public System.Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider { get; set; }
+
     public SceneProjector(ApplicationState state, ISectionControlService sections,
         IToolPositionService tool, ConfigurationStore config,
         ICoverageMapService coverage, IJobService jobs, IConfigurationService configService,
@@ -138,6 +145,10 @@ public sealed class SceneProjector
             .Select((t, i) => new TrackInfoDto(i, t.Name, TrackTypeLabel(t), t.IsActive, t.IsVisible))
             .ToList();
 
+        // Field Builder Headland-tab list — VM-held, supplied by the host provider.
+        var headlandSegs = HeadlandSegsProvider?.Invoke()
+            ?? (IReadOnlyList<HeadlandSegInfoDto>)System.Array.Empty<HeadlandSegInfoDto>();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -154,7 +165,8 @@ public sealed class SceneProjector
             nextTrack,
             flags,
             imagery,
-            trackList);
+            trackList,
+            headlandSegs);
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -782,6 +794,21 @@ public sealed class SceneProjector
             h = h * 31 + t.Name.GetHashCode();
             h = h * 31 + (t.IsActive ? 1 : 0);
             h = h * 31 + (t.IsVisible ? 1 : 0);
+        }
+
+        // Headland segments (Field Builder list) — refresh on add/delete/rename/offset/
+        // effective changes. None of these alter the HeadlandLine point count reliably,
+        // so fold name + offset + effective per segment in.
+        var hsegs = HeadlandSegsProvider?.Invoke();
+        if (hsegs != null)
+        {
+            h = h * 31 + hsegs.Count;
+            foreach (var sg in hsegs)
+            {
+                h = h * 31 + (sg.Name?.GetHashCode() ?? 0);
+                h = h * 31 + sg.Offset.GetHashCode();
+                h = h * 31 + (sg.Effective ? 1 : 0);
+            }
         }
 
         // Flags: re-send the Scene on place/delete. Count + last position (rounded to

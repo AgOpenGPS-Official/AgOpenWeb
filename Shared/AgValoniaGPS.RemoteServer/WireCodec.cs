@@ -407,6 +407,19 @@ public static class WireCodec
             w.Write((byte)(ti.Visible ? 1 : 0));
         }
 
+        // Field Builder Headland-tab segment list — appended at the end of the Scene frame
+        // per the wire rule. No points; index maps back to the VM's HeadlandSegments list.
+        w.Write(s.HeadlandSegs.Count);
+        foreach (var hs in s.HeadlandSegs)
+        {
+            w.Write(hs.Index);
+            WriteStr(w, hs.Name);
+            WriteStr(w, hs.Type); // Line / Curve / Boundary
+            w.Write(hs.Offset);   // f64, metres
+            w.Write((byte)(hs.Effective ? 1 : 0));
+            WritePts(w, hs.EditLine); // offset line + overshoots, for the on-map editor view
+        }
+
         return ms.ToArray();
     }
 

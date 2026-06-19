@@ -725,6 +725,13 @@ public partial class MainViewModel
         SaveHeadlandSegments();
     }
 
+    /// <summary>The drawable offset line for a segment — its inward-offset points plus the
+    /// straight extension overshoots at each end. This is exactly what the headland build
+    /// intersects/trims against neighbours, so drawing it shows the operator the lines that
+    /// must cross to enclose the headland (mirrors native's "Create and Edit Headland" view).</summary>
+    public List<Vec3> GetHeadlandSegmentEditLine(Models.Headland.HeadlandSegment seg)
+        => BuildOffsetLineWithExtensions(seg);
+
     private static List<Vec3> BuildOffsetLineWithExtensions(Models.Headland.HeadlandSegment seg)
     {
         var line = new List<Vec3>();

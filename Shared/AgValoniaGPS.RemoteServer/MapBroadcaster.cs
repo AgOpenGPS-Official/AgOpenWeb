@@ -13,6 +13,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
 {
     private readonly WebSocketHub _ws;
     private readonly SceneProjector _projector;
+    /// <summary>The Scene projector — exposed so the host can attach VM-coupled
+    /// providers (e.g. the Field Builder headland-segment list) that ride the Scene frame.</summary>
+    public SceneProjector Projector => _projector;
     private readonly ICoverageMapService _coverage;
     private readonly CoverageProjector _coverageProjector;
     private readonly ControlAuthority _authority;
