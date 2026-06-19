@@ -826,4 +826,86 @@ public partial class MainViewModel
             }
         });
     }
+
+    /// <summary>
+    /// Create an outer boundary from points drawn on the satellite imagery (remote/web
+    /// "Draw on map"). Points are field-local E/N (already unprojected by the client via
+    /// s2w), so no WGS84 conversion is needed here — unlike the native BoundaryMapDialog,
+    /// which captures lat/lon. Mirrors ConfirmBoundaryMapDialog's save path.
+    /// </summary>
+    public void RemoteCreateBoundaryFromMapPoints(System.Collections.Generic.IReadOnlyList<(double E, double N)> points)
+    {
+        if (points.Count < 3 || !IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
+            return;
+        try
+        {
+            var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+            var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+
+            var outer = new BoundaryPolygon();
+            foreach (var (e, n) in points)
+                outer.Points.Add(new BoundaryPoint(e, n, 0));
+            boundary.OuterBoundary = outer;
+
+            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SetCurrentBoundary(boundary);
+            RefreshBoundaryList();
+            StatusMessage = $"Boundary created with {points.Count} points";
+            // The Bing aerial covering this boundary is captured + saved as the field
+            // background by the host after this returns (see boundary.fromMapPoints).
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error creating boundary: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Padded WGS84 + Web-Mercator bounds for the aerial that should cover a drawn
+    /// boundary (E/N field-local). The host fetches/assembles Bing tiles for these bounds;
+    /// uses the field's LocalPlane so the saved imagery aligns with the boundary.
+    /// </summary>
+    public (double nwLat, double nwLon, double seLat, double seLon,
+            double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)?
+        GetBoundaryImageryBounds(System.Collections.Generic.IReadOnlyList<(double E, double N)> points)
+    {
+        if (points.Count < 3) return null;
+        double minE = double.MaxValue, maxE = double.MinValue, minN = double.MaxValue, maxN = double.MinValue;
+        foreach (var (e, n) in points)
+        {
+            minE = Math.Min(minE, e); maxE = Math.Max(maxE, e);
+            minN = Math.Min(minN, n); maxN = Math.Max(maxN, n);
+        }
+        double padE = Math.Max((maxE - minE) * 0.1, 20.0), padN = Math.Max((maxN - minN) * 0.1, 20.0);
+        minE -= padE; maxE += padE; minN -= padN; maxN += padN;
+
+        var localPlane = new LocalPlane(
+            new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude), new SharedFieldProperties());
+        // GeoCoord ctor is (northing, easting). NW = (north=maxN, west=minE); SE = (south=minN, east=maxE).
+        var nw = localPlane.ConvertGeoCoordToWgs84(new GeoCoord(maxN, minE));
+        var se = localPlane.ConvertGeoCoordToWgs84(new GeoCoord(minN, maxE));
+        var (mxMin, myMax) = MercFromLonLat(nw.Longitude, nw.Latitude); // west lon, north lat
+        var (mxMax, myMin) = MercFromLonLat(se.Longitude, se.Latitude); // east lon, south lat
+        return (nw.Latitude, nw.Longitude, se.Latitude, se.Longitude, mxMin, mxMax, myMin, myMax);
+    }
+
+    private static (double x, double y) MercFromLonLat(double lon, double lat)
+    {
+        const double R = 6378137.0;
+        return (R * lon * Math.PI / 180.0,
+                R * Math.Log(Math.Tan(Math.PI / 4 + lat * Math.PI / 360.0)));
+    }
+
+    /// <summary>
+    /// Apply a host-assembled aerial PNG as the field background (remote/web Draw-on-map).
+    /// Reuses the native SaveBackgroundImage path (copies to BackPic.png + geo-ref + reload).
+    /// </summary>
+    public void ApplyCapturedBackground(string pngPath, double nwLat, double nwLon, double seLat, double seLon,
+        double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)
+    {
+        if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName) || !File.Exists(pngPath)) return;
+        var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+        SaveBackgroundImage(pngPath, fieldPath, nwLat, nwLon, seLat, seLon, mercMinX, mercMaxX, mercMinY, mercMaxY);
+        StatusMessage = "Boundary imagery saved";
+    }
 }

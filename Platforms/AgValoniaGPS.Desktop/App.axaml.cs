@@ -269,6 +269,33 @@ public partial class App : Application
                                     }
                                     return;
                                 }
+                                case "boundary.fromMapPoints": // Phase MT — Draw boundary on map.
+                                {                              // arg = "e,n;e,n;…" (field E/N from s2w).
+                                    var bmp = new System.Collections.Generic.List<(double, double)>();
+                                    foreach (var pair in arg.Split(';'))
+                                    {
+                                        var en = pair.Split(',');
+                                        if (en.Length == 2
+                                            && double.TryParse(en[0], num, inv, out var pe)
+                                            && double.TryParse(en[1], num, inv, out var pn))
+                                            bmp.Add((pe, pn));
+                                    }
+                                    windowVm.RemoteCreateBoundaryFromMapPoints(bmp);
+                                    // Capture + save the aerial imagery covering the boundary
+                                    // (off-thread; applies the background back on the UI thread).
+                                    if (windowVm.GetBoundaryImageryBounds(bmp) is { } bb)
+                                        _ = System.Threading.Tasks.Task.Run(async () =>
+                                        {
+                                            var png = await BoundaryImageryCapture.CaptureAsync(
+                                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY);
+                                            if (png is not null)
+                                                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                                                    windowVm.ApplyCapturedBackground(png,
+                                                        bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
+                                                        bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY));
+                                        });
+                                    return;
+                                }
                                 case "track.drawPoint": // Phase MT — map-tap AB/curve point.
                                 {                       // arg = "e,n" (m, from s2w). Routes to the
                                     var tp = arg.Split(','); // native SetABPointCommand (DrawAB =

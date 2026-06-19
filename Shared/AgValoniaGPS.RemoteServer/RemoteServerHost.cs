@@ -22,6 +22,28 @@ public sealed class RemoteServerHost
     private WebSocketHub? _ws;
     private MapBroadcaster? _broadcaster;
 
+    // Satellite tile fetch (Phase MT — Draw boundary on map). Keyless Bing aerial
+    // tiles via the Virtual Earth quadkey endpoint (same source as native's
+    // BoundaryMapDialog). Proxied through the host so the browser draws them into the
+    // CanvasKit map without CORS taint; cached in memory.
+    private static readonly System.Net.Http.HttpClient _tileHttp =
+        new() { Timeout = TimeSpan.FromSeconds(10) };
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> _tileCache = new();
+
+    public static async System.Threading.Tasks.Task<byte[]?> FetchSatTileAsync(string quadkey)
+    {
+        if (_tileCache.TryGetValue(quadkey, out var cached)) return cached;
+        try
+        {
+            var bytes = await _tileHttp.GetByteArrayAsync(
+                $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587").ConfigureAwait(false);
+            if (_tileCache.Count > 1024) _tileCache.Clear();
+            _tileCache[quadkey] = bytes;
+            return bytes;
+        }
+        catch { return null; }
+    }
+
     /// <summary>Host-supplied projector for the live Steer Wizard — returns a WizardDto
     /// while the remote wizard is open, else null. Read every broadcast tick. Set after
     /// <see cref="StartAsync"/> (it needs the MainWindow VM).</summary>
@@ -163,6 +185,19 @@ public sealed class RemoteServerHost
             return im is not null && File.Exists(im.Path)
                 ? Results.File(File.ReadAllBytes(im.Path), "image/png")
                 : Results.NotFound();
+        });
+
+        // Satellite tile proxy (Phase MT — Draw boundary on map). Quadkey-addressed,
+        // served same-origin (no CORS taint) + hard browser cache.
+        app.MapGet("/sattile/{quadkey}", async (string quadkey, HttpContext ctx) =>
+        {
+            bool valid = quadkey.Length is > 0 and <= 23;
+            foreach (var c in quadkey) if (c is < '0' or > '3') { valid = false; break; }
+            if (!valid) return Results.NotFound();
+            var bytes = await FetchSatTileAsync(quadkey);
+            if (bytes is null) return Results.NotFound();
+            ctx.Response.Headers.CacheControl = "public, max-age=604800"; // a week
+            return Results.File(bytes, "image/jpeg");
         });
 
         // Build the broadcaster now so it wires SeedProvider before clients connect.

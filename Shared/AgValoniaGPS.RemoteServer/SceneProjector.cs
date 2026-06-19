@@ -170,6 +170,9 @@ public sealed class SceneProjector
     {
         long h = 17;
         foreach (char c in path) h = h * 31 + c;
+        // Fold in the file's last-write time so a re-captured background at the same path
+        // (e.g. redrawing the boundary-on-map) changes the version and the client reloads.
+        try { h = h * 31 + System.IO.File.GetLastWriteTimeUtc(path).Ticks; } catch { }
         return h;
     }
 

@@ -86,6 +86,10 @@ let imageryRect = null;  // { minE, minN, maxE, maxN, version }
 let imageryImg = null;   // loaded <img> once ready
 let imageryVer = null;   // version currently loaded (cache-bust on change)
 
+// ---- field geo origin (lat/lon at E=0,N=0) — for the satellite-tile underlay. ----
+let originLat = 0, originLon = 0;
+let satEnabled = false;  // true while drawing a boundary on satellite imagery
+
 // ---- client-owned camera (never crosses the wire) ----
 let pxPerM = 4.0;
 let camE = 0, camN = 0;
@@ -113,6 +117,7 @@ const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 const transport = RemoteTransport.create({
   onScene(s) {
     scene = s;
+    originLat = s.originLat; originLon = s.originLon; // for the satellite underlay geo math
     if (isFollowMode() && (!tick || !tick.pose) && s.boundaries.length && s.boundaries[0].length) {
       const r = s.boundaries[0];
       camE = r.reduce((a, p) => a + p.e, 0) / r.length;
@@ -336,6 +341,7 @@ function isTyping() {
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
 }
 addEventListener('keydown', e => {
+  if (e.key === 'Escape' && satBnd) { satCancel(); return; }  // cancel boundary draw-on-map
   if (e.key === 'Escape' && abFlow) { abCancel(); return; }   // cancel AB-line creation (tells host)
   if (e.key === 'Escape' && mapTap) { endMapTap(); return; }  // cancel on-map capture
   if (isTyping()) return;
@@ -588,11 +594,39 @@ function endAbFlow() {
   endMapTap();
   hintEl.classList.remove('show');
 }
+// ---- boundary draw-on-map (Phase MT) — native BoundaryMapDialog equivalent ----
+// Shows a Bing aerial underlay (satEnabled) and captures the boundary polygon by tapping
+// the imagery (s2w → field E/N). On finish the host builds the boundary AND assembles the
+// covered Bing tiles into the field-background PNG (boundary.fromMapPoints). Client-side
+// point buffer for the live preview; no geometry in JS.
+let satBnd = false;      // drawing a boundary on the satellite underlay
+let satPts = [];         // [{e,n}] polygon vertices (preview only)
+function startSatBoundary() {
+  satEnabled = true; satBnd = true; satPts = [];
+  lnCloseAll();                           // close the boundary menu
+  showAbBar(false, true, true);           // Undo + Finish + Cancel
+  startMapTap({ hint: 'Tap the field corners on the imagery — Finish when done', onTap: satTap });
+}
+function satTap(e, n) { satPts.push({ e, n }); setSatHint(); }
+function setSatHint() { hintEl.textContent = `Boundary: ${satPts.length} point${satPts.length === 1 ? '' : 's'} — Finish when done`; }
+function satUndo() { if (satPts.length) { satPts.pop(); setSatHint(); } }
+function satFinish() {
+  if (satPts.length >= 3)
+    transport.send('boundary.fromMapPoints|' + satPts.map(p => p.e.toFixed(3) + ',' + p.n.toFixed(3)).join(';'));
+  endSatBoundary();
+}
+function satCancel() { endSatBoundary(); }
+function endSatBoundary() {
+  satBnd = false; satEnabled = false; satPts = [];
+  drawBar.classList.remove('show'); endMapTap(); hintEl.classList.remove('show');
+}
+
+// Draw toolbar serves whichever map-draw flow is active (AB line or boundary-on-map).
 drawBar.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan / not a map tap
 document.getElementById('draw-setpoint').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abSetPoint(); });
-document.getElementById('draw-undo').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abUndo(); });
-document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abFinish(); });
-document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abCancel(); });
+document.getElementById('draw-undo').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); satBnd ? satUndo() : abUndo(); });
+document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); satBnd ? satFinish() : abFinish(); });
+document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); satBnd ? satCancel() : abCancel(); });
 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
@@ -822,6 +856,7 @@ document.getElementById('bm-delete').addEventListener('pointerdown', e => {
     () => transport.send('boundary.delete'));
 });
 document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.buildFromTracks'); });
+document.getElementById('bm-drawmap').addEventListener('pointerdown', e => { e.stopPropagation(); startSatBoundary(); });
 document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.driveAround'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
 });
@@ -3227,6 +3262,20 @@ function drawBoundaryRecordingSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
 }
+// Live boundary draw-on-map preview (Phase MT) — the polygon vertices tapped on the
+// satellite imagery so far. Closed white outline + outlined dots; client-side only.
+function drawSatBoundarySk(canvas) {
+  if (!satBnd || !satPts.length) return;
+  if (satPts.length >= 2) strokePtsSk(canvas, satPts, satPts.length >= 3, SKP.boundary);
+  const rad = Math.max(4, 0.5 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#FFFFFF'));
+  for (const p of satPts) {
+    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
 // Live draw-track preview (Phase MT) — the points tapped so far while drawing an AB/curve
 // on the map. Client-side only (the host holds the authoritative list); cleared on
 // finish/cancel. Cyan line through the points + an outlined dot at each.
@@ -3427,6 +3476,78 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
   canvas.drawImageOptions(img, 0, 0, filter, CK.MipmapMode.None, null);
   canvas.restore();
 }
+// ---- satellite tile underlay (Phase MT — Draw boundary on map) ----
+// A slippy-map of keyless Bing aerial tiles drawn world-positioned under the field, so
+// the existing pan/zoom frames it and the s2w tap primitive draws the boundary on it.
+// Tiles are proxied through the host (/sattile/<quadkey>) to avoid CORS taint. Flat-earth
+// E/N↔lat/lon around the field origin is sub-metre accurate at field scale (the saved
+// imagery uses the host's precise LocalPlane); good enough to draw against.
+const MPD_LAT = 111320; // metres per degree latitude (flat-earth)
+function mpdLon() { return MPD_LAT * Math.cos(originLat * Math.PI / 180); }
+function enToLon(e) { return originLon + e / mpdLon(); }
+function enToLat(n) { return originLat + n / MPD_LAT; }
+function lonToE(lon) { return (lon - originLon) * mpdLon(); }
+function latToN(lat) { return (lat - originLat) * MPD_LAT; }
+function lonToTileX(lon, z) { return Math.floor((lon + 180) / 360 * (1 << z)); }
+function latToTileY(lat, z) {
+  const r = lat * Math.PI / 180;
+  return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * (1 << z));
+}
+function tileXToLon(x, z) { return x / (1 << z) * 360 - 180; }
+function tileYToLat(y, z) {
+  const n = Math.PI - 2 * Math.PI * y / (1 << z);
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+function tileQuadkey(x, y, z) {
+  let qk = '';
+  for (let i = z; i > 0; i--) {
+    let d = 0; const m = 1 << (i - 1);
+    if (x & m) d += 1;
+    if (y & m) d += 2;
+    qk += d;
+  }
+  return qk;
+}
+// Pick the Bing zoom whose ground resolution ≈ the screen resolution (1 tile px ≈ 1 css px).
+function satZoom() {
+  const z = Math.log2(156543.03392 * Math.cos(originLat * Math.PI / 180) * pxPerM);
+  return Math.max(2, Math.min(20, Math.round(z)));
+}
+const satTiles = new Map(); // "z/x/y" → { img, skImg }
+function getSatTile(x, y, z) {
+  const key = z + '/' + x + '/' + y;
+  let t = satTiles.get(key);
+  if (!t) {
+    t = { img: null, skImg: null };
+    satTiles.set(key, t);
+    const im = new Image();
+    im.onload = () => { t.img = im; };
+    im.src = '/sattile/' + tileQuadkey(x, y, z);
+    if (satTiles.size > 500) { const k = satTiles.keys().next().value; const ev = satTiles.get(k); if (ev && ev.skImg) ev.skImg.delete(); satTiles.delete(k); }
+  }
+  if (t.img && !t.skImg) t.skImg = CK.MakeImageFromCanvasImageSource(t.img);
+  return t;
+}
+function drawSatelliteSk(canvas) {
+  if (!satEnabled || (!originLat && !originLon)) return;
+  const z = satZoom();
+  let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
+  halfW = Math.max(halfW, 50); halfH = Math.max(halfH, 50);
+  if (mapRotation !== 0) { const d = Math.hypot(halfW, halfH); halfW = d; halfH = d; }
+  // Visible E/N → lat/lon corners → tile range.
+  const lonW = enToLon(camE - halfW), lonE = enToLon(camE + halfW);
+  const latN = enToLat(camN + halfH), latS = enToLat(camN - halfH);
+  const xMin = lonToTileX(lonW, z), xMax = lonToTileX(lonE, z);
+  const yMin = latToTileY(latN, z), yMax = latToTileY(latS, z); // y grows southward
+  if ((xMax - xMin) > 40 || (yMax - yMin) > 40 || xMax < xMin || yMax < yMin) return; // sanity
+  for (let tx = xMin; tx <= xMax; tx++) for (let ty = yMin; ty <= yMax; ty++) {
+    const t = getSatTile(tx, ty, z);
+    if (!t.skImg) continue;
+    const eW = lonToE(tileXToLon(tx, z)), eE = lonToE(tileXToLon(tx + 1, z));
+    const nN = latToN(tileYToLat(ty, z)), nS = latToN(tileYToLat(ty + 1, z));
+    drawImageWorldSk(canvas, t.skImg, eW, nS, eE, nN, CK.FilterMode.Linear);
+  }
+}
 // Coverage offscreen → SkImage, re-snapshotted only when the cell grid changed
 // (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
 // cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
@@ -3541,6 +3662,7 @@ function renderSkia(canvas, rp) {
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
   updateLineWidths(); // world-metre line weights × current zoom (matches native)
   drawGroundTextureSk(canvas); // ground backdrop (under everything)
+  drawSatelliteSk(canvas); // Bing aerial underlay while drawing a boundary on map
   drawImagerySk(canvas); // imagery overlays the ground where present
   drawCoverageSk(canvas);
   drawGridSk(canvas);
@@ -3565,6 +3687,7 @@ function renderSkia(canvas, rp) {
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
+  drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
