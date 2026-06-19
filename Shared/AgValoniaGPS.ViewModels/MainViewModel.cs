@@ -287,6 +287,13 @@ public partial class MainViewModel : ObservableObject
                 // flipped from the Settings/Screen-&-Alerts toggle instead of the button.
                 OnPropertyChanged(nameof(IsGridOn));
             }
+            else if (e.PropertyName == nameof(Models.Configuration.DisplayConfig.AutoTrack))
+            {
+                // Auto-track is persisted in ConfigStore.Display; mirror to FieldTools (the
+                // SoT the web projector reads) whenever it loads/changes.
+                State.FieldTools.IsAutoTrackEnabled = ConfigStore.Display.AutoTrack;
+                OnPropertyChanged(nameof(IsAutoTrackEnabled));
+            }
         };
 
         // Aggregate module-status indicator (replaces the four-letter G/I/A/M
@@ -572,7 +579,7 @@ public partial class MainViewModel : ObservableObject
         // non-false, e.g. IsAutoTrackEnabled=true, and a few are restored above) — the
         // setters only push on change, so the projector would otherwise read stale zeros.
         State.FieldTools.IsHeadlandOn = _isHeadlandOn;
-        State.FieldTools.IsAutoTrackEnabled = _isAutoTrackEnabled;
+        State.FieldTools.IsAutoTrackEnabled = ConfigStore.Display.AutoTrack; // persisted
         State.FieldTools.UTurnSkipRows = _uTurnSkipRows;
         State.FieldTools.IsUTurnSkipRowsEnabled = _isUTurnSkipRowsEnabled;
 
@@ -2459,6 +2466,14 @@ public partial class MainViewModel : ObservableObject
         _nextFlagId = 1;
         UpdateFlagsOnMap();
         StatusMessage = $"Deleted {count} flags";
+    }
+
+    /// <summary>Rename a saved track by index (remote/web Field Builder). Persists.</summary>
+    public void RenameTrackAt(int index, string name)
+    {
+        if (index < 0 || index >= SavedTracks.Count || string.IsNullOrWhiteSpace(name)) return;
+        SavedTracks[index].Name = name.Trim();
+        SaveTracksToFile();
     }
 
     // Track management commands

@@ -137,6 +137,8 @@ const transport = RemoteTransport.create({
     }
     // Keep the Tracks manager list live (activate/add/delete/hide change the Scene).
     if (document.getElementById('dlg-tracks').classList.contains('open')) renderTracksList();
+    if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'tracks'
+        && !document.querySelector('#fb-tracklist .flg-nameedit')) renderFbTracks();
     // Refresh the flag list on add/delete/rename/recolour, unless the user is mid-edit.
     if (document.getElementById('dlg-flags').classList.contains('open')
         && !document.querySelector('.flg-nameedit') && !document.querySelector('.flg-colorpick'))
@@ -240,6 +242,9 @@ function buildSkPaints() {
     boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
     track: mk('#ffd24a', 4), reference: mk('rgb(180,100,255)', 5, [9, 7]),
     guidance: mk('rgb(252,86,186)', 5), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
+    // Extra guidelines (adjacent passes) — native _extraGuidePaint green(51,153,50,153)
+    // over a black shadow, both 0.3 m. Widths set per frame in updateLineWidths.
+    extraGuide: mk('rgba(51,153,50,0.6)', 1), extraGuideShadow: mk('rgba(0,0,0,0.5)', 1),
     // Match native (night-mode) grid: grey, ~0.31/0.47 alpha, major ~2× thickness.
     gridMinor: mk('rgba(180,180,180,0.314)', 1), gridMajor: mk('rgba(200,200,200,0.47)', 2),
     axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
@@ -789,11 +794,11 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
-const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer']);
+const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
@@ -934,6 +939,96 @@ document.getElementById('ft-boundary').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu);
 });
 document.getElementById('bm-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools'); });
+
+// ---- Field Builder (Phase MT) — Tracks / Headland / Tram editor (NO_SCRIM: the map
+// stays interactive so you draw/edit on it). Stage 1 = Tracks tab; reuses the existing
+// AB-draw / create-from-boundary flows on the main map. ----
+let fbTab = 'tracks';   // active FB tab
+let fbSel = -1;         // selected track index in the Tracks tab
+document.getElementById('ft-fieldbuilder').addEventListener('pointerdown', e => {
+  e.stopPropagation(); fbTab = 'tracks'; fbSel = -1; lnOpen('fieldbuilder', 'ln-fieldtools', renderFieldBuilder);
+});
+document.getElementById('fieldbuilder').addEventListener('pointerdown', e => e.stopPropagation()); // panel taps don't pan the map (NO_SCRIM)
+document.querySelector('#fieldbuilder .fb-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools'); });
+function showFbTab(tab) {
+  fbTab = tab;
+  document.getElementById('fb-addtrack').hidden = true;
+  for (const t of document.querySelectorAll('#fieldbuilder .fb-tab')) t.classList.toggle('active', t.dataset.fbtab === tab);
+  for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = (p.dataset.fbpane !== tab);
+  if (tab === 'tracks') renderFbTracks();
+}
+function renderFieldBuilder() { showFbTab(fbTab); }
+for (const t of document.querySelectorAll('#fieldbuilder .fb-tab'))
+  t.addEventListener('pointerdown', e => { e.stopPropagation(); showFbTab(t.dataset.fbtab); });
+function renderFbTracks() {
+  const list = document.getElementById('fb-tracklist');
+  const tl = (scene && scene.trackList) || [];
+  if (fbSel >= tl.length) fbSel = -1;
+  if (!tl.length) { list.innerHTML = '<div class="trk-empty">No tracks</div>'; return; }
+  list.innerHTML = '';
+  tl.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'fb-trkrow' + (t.active ? ' active' : '') + (i === fbSel ? ' sel' : '');
+    row.innerHTML = '<span class="fb-dot"></span><span class="fb-tname"></span>';
+    row.querySelector('.fb-tname').textContent = t.name;
+    row.addEventListener('pointerdown', ev => {
+      ev.stopPropagation(); fbSel = i;
+      if (iHoldControl) transport.send('track.select|' + t.index); // activate (highlights on map)
+      renderFbTracks();
+    });
+    list.appendChild(row);
+  });
+}
+// Add-track sub-view.
+document.getElementById('fb-trk-add').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = true;
+  document.getElementById('fb-addtrack').hidden = false;
+});
+document.getElementById('fb-add-back').addEventListener('pointerdown', e => { e.stopPropagation(); showFbTab('tracks'); });
+for (const b of document.querySelectorAll('#fb-addtrack .fb-addbtn'))
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const m = b.dataset.fbadd;
+    showFbTab('tracks');
+    if (m === 'ab') startDrawTrack('straight');        // map-tap draw (FB stays open, NO_SCRIM)
+    else if (m === 'curve') startDrawTrack('curve');
+    else if (m === 'aplus') transport.send('track.aPlus');
+    else if (m === 'bedge') transport.send('track.createFromBoundary');
+    else if (m === 'bcurve') transport.send('track.boundaryCurve');
+    else if (m === 'ball') transport.send('track.allEdges');
+  });
+// Track actions (Edit = stage 4).
+document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const h = document.getElementById('maptap-hint');
+  h.textContent = 'On-map track edit — later stage'; h.classList.add('show');
+  setTimeout(() => h.classList.remove('show'), 1800);
+});
+document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel] || !iHoldControl) return;
+  transport.send('track.select|' + tl[fbSel].index);
+  transport.send('track.delete'); fbSel = -1;
+});
+document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  showConfirm('Delete All Tracks', 'Delete all tracks? This cannot be undone.',
+    () => { if (iHoldControl) transport.send('track.deleteAll'); fbSel = -1; });
+});
+document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel]) return;
+  const t = tl[fbSel];
+  renderFbTracks();
+  const row = document.querySelectorAll('#fb-tracklist .fb-trkrow')[fbSel]; if (!row) return;
+  const nameEl = row.querySelector('.fb-tname');
+  const input = document.createElement('input'); input.className = 'flg-nameedit'; input.value = t.name;
+  nameEl.replaceWith(input); input.focus(); input.select();
+  const commit = () => { const v = input.value.trim(); if (v && v !== t.name) transport.send('track.rename|' + t.index + ',' + v); renderFbTracks(); };
+  input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); else if (ev.key === 'Escape') renderFbTracks(); });
+  input.addEventListener('blur', commit);
+});
 document.getElementById('bm-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (!boundary || boundary.selectedIndex < 0) return;
@@ -3350,6 +3445,37 @@ function drawBoundaryRecordingSk(canvas) {
 }
 // Live boundary draw-on-map preview (Phase MT) — the polygon vertices tapped on the
 // satellite imagery so far. Closed white outline + outlined dots; client-side only.
+// Extra guidelines (Phase MT parity) — the adjacent passes ±tool-width × i from the
+// followed line, when Display.ExtraGuidelines is on. Mirrors native DrawExtraGuidelinesSk:
+// offset the active/display line by ±toolW·i and stroke faint green (over a shadow), with
+// a zoom gate so the lines don't collapse into a band.
+function offsetLine(pts, offset) {
+  const out = new Array(pts.length);
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = b.e - a.e, dy = b.n - a.n, len = Math.hypot(dx, dy);
+    if (len < 1e-6) { out[i] = pts[i]; continue; }
+    out[i] = { e: pts[i].e + (-dy / len) * offset, n: pts[i].n + (dx / len) * offset };
+  }
+  return out;
+}
+function drawExtraGuidelinesSk(canvas) {
+  const d = config && config.display;
+  if (!d || !d.extraGuidelines) return;
+  const count = d.extraGuidelinesCount || 0;
+  if (count < 1) return;
+  const line = scene && scene.guidanceLine; // the followed pass (native offsets ActiveTrack)
+  if (!line || line.length < 2) return;
+  const toolW = toolWidthM();
+  if (toolW < 0.1 || toolW * pxPerM < 3) return; // zoom gate: skip when passes < ~3 px apart
+  for (let i = 1; i <= count; i++) {
+    for (const off of [toolW * i, -toolW * i]) {
+      const ol = offsetLine(line, off);
+      strokePtsSk(canvas, ol, false, SKP.extraGuideShadow);
+      strokePtsSk(canvas, ol, false, SKP.extraGuide);
+    }
+  }
+}
 function drawSatBoundarySk(canvas) {
   if (!satBnd || !satPts.length) return;
   if (satPts.length >= 2) strokePtsSk(canvas, satPts, satPts.length >= 3, SKP.boundary);
@@ -3478,6 +3604,8 @@ function updateLineWidths() {
   SKP.next.setStrokeWidth(w(1.2));       // trackNext 0.4 × 3
   SKP.uturn.setStrokeWidth(w(3.0));      // youTurn 1 × 3
   SKP.track.setStrokeWidth(w(1.5));      // saved tracks ~ active weight
+  SKP.extraGuide.setStrokeWidth(w(0.9)); // extra guide 0.3 × 3
+  SKP.extraGuideShadow.setStrokeWidth(w(1.2));
 }
 function vehicleSk(canvas, p) {
   const veh = config && config.vehicle;
@@ -3760,6 +3888,7 @@ function renderSkia(canvas, rp) {
     // SetHeadlandVisible gate (IsHeadlandOn). The bottom-nav headland button drives it.
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
       strokePtsSk(canvas, scene.headland, true, SKP.headland);
+    drawExtraGuidelinesSk(canvas); // faint adjacent passes (under the bold lines)
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
     if (scene.guidanceLine) strokePtsSk(canvas, scene.guidanceLine, false, SKP.guidance);

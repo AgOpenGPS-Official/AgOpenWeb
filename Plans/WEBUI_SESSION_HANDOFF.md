@@ -12,7 +12,7 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.80`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.86`** (we DO bump `sys/version.h` per commit now).
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
@@ -30,6 +30,61 @@ safe allowlist. Migration = project more state + accept more command ids + build
   safety wiring + host-side projectors/handlers in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
 
 ## Done & pushed
+- **Phase MT — map-tap interaction (session 2026-06-18 → -19), v26.5.81–86:**
+  - **`s2w` foundation** (v26.5.81) — screen→world unprojection: invert the `perspM` M44 +
+    ray-cast the ground plane (`s2w(px,py)` in `app.js`; round-trip verified < 1e-9 m at
+    pitch 0 AND 60°). Plus the reusable **`startMapTap`/`endMapTap`** primitive (tap-vs-pan
+    5 px slop, `#maptap-hint` pill, Esc-cancel, `gestureOnMap` guard). EVERY map-tap feature
+    builds on these — do not write a 2D-ortho inverse.
+  - **Place flag at tapped point** (v26.5.82) — `flag.placeAt|e,n` → `PlaceFlagAtWorldPosition`.
+  - **Quick AB / Draw AB + full native-parity track flyout + Tracks manager** (v26.5.83) —
+    rebuilt the bottom-nav AB flyout to mirror `BottomNavigationPanel` (Tracks-manager /
+    Auto-track / Quick-AB selector · boundary-edge / Draw-AB selector · cycle/smooth/delete ·
+    nudges). Quick-AB selector (A+/Drive AB/Record Curve), Draw-AB selector (Straight/Curve
+    map-tap + From-Boundary), Tracks manager (list+activate/delete/swap/visibility, Scene
+    `TrackList` frame field). **SoT fix:** `State.Field.Tracks` now mirrors `SavedTracks` via
+    one ctor `CollectionChanged` subscription (created tracks reach ApplicationState). Map
+    render = active-track-only (native draws only ActiveTrack); reference drawn after the
+    magenta DisplayLine. **Operator gating** rename ("Controlling"→"Operator") + track
+    data/creation un-gated, guidance changes gated.
+  - **Boundary draw-on-map (Bing satellite)** (v26.5.84) — port of `BoundaryMapDialog`:
+    `/sattile/{quadkey}` host proxy (keyless Virtual-Earth tiles, same-origin/no-CORS);
+    `drawSatelliteSk` slippy-map underlay (E/N↔lat/lon↔web-mercator-tile↔quadkey, zoom from
+    pxPerM); `boundary.fromMapPoints` builds the boundary from tapped E/N; host-side imagery
+    capture (`BoundaryImageryCapture.cs`, SkiaSharp composite of covering tiles → field
+    background via `SaveBackgroundImage`). `ImageVersion` folds in file mtime for re-draw.
+  - **Flag list** (v26.5.85) — `FlagListDialogPanel` port: colour swatch (10-colour picker),
+    inline rename, distance+bearing, locate (pan), delete; Place Here / on Map / Delete All.
+    `FlagMarker`/`FlagDto` carry name; flag fingerprint includes name+colour.
+  - **Field Builder — STAGE 1 of 4** (v26.5.86, this commit) — `FieldBuilderDialogPanel` is a
+    big Tracks/Headland/Tram editor; **decided: reuse the MAIN map + s2w for drawing/editing**
+    (NOT native's separate full-screen canvas), Field Builder = a NO_SCRIM control panel
+    (`#fieldbuilder`, opens from Field Tools). **Stage 1 done = shell + Tracks tab**: track
+    list (reuses Scene `trackList`) + Add (Free-Draw AB/Curve/A+ via existing flows; From-
+    Boundary) + Rename (`track.rename`) + Delete + Delete-All (`track.deleteAll`). **Headland
+    / Tram tabs = placeholders; track Edit = stage-4 placeholder.** REMAINING: **stage 2**
+    Headland tab + building (line/curve/from-boundary offset; `HeadlandSegments` exists),
+    **stage 3** Tram tab + editor (`TramSystems` = `ConfigStore.Tram.Systems`), **stage 4**
+    on-map Edit sessions (load track/headland points → drag/redraw/save). Native code-behind
+    `FieldBuilderDialogPanel.axaml.cs` (~2300 lines) is the reference for the draw/edit session.
+  - **Bug/parity fixes folded into v26.5.86:** (a) **recorded path won't delete** — root
+    cause `LoadRecPathFromField` re-adds `RecPath.txt` every field open; fix: deleting a
+    `RecordedPath` track (or Delete-All) now also deletes `RecPath.txt`
+    (`DeleteContourTrackCommand`/`DeleteAllTracksCommand`). (b) **Extra guidelines** now
+    render on web (`drawExtraGuidelinesSk`, offset ±toolW·i, zoom-gated). (c) **Auto-track
+    persists** across restarts — `IsAutoTrackEnabled` backed by `ConfigStore.Display.AutoTrack`
+    ↔ `AppSettings.AutoTrack`, saved on toggle, mirrored to `State.FieldTools`.
+- **Phase MT remaining (the migration is NOT done until these ship):** Field Builder stages
+  2–4 (Headland building, Tram systems+editor, on-map Edit), the **Import-KML boundary
+  picker** (project `AvailableKmlFiles` + import; `bm-importkml` stub), then **Phase 10**
+  headless cutover. (On-map *track* point-editing has no standalone native feature — it lives
+  inside Field Builder's Edit; user confirmed.)
+- **Established map-tap patterns (reuse):** `startMapTap({hint,onTap})` for single/multi-tap;
+  client-side point buffer drawn live (`drawSatBoundarySk`/draw preview) + ship captured
+  points to host on finish (host runs the real native save path — NO geometry in JS); the
+  shared `#draw-toolbar` (Set Point/Undo/Finish/Cancel) dispatches to whichever flow is
+  active (`abFlow`/`bndDraw`/`satBnd`); index-based list edits (tracks/flags) over the Scene
+  projection; new wire fields appended at the END of a frame (decode in lockstep).
 - **Session 2026-06-18 additions (all 8 left-nav buttons present + map-render parity):**
   - **Map-render parity pass** (`v26.5.74–80`) — the web now matches native's field/vehicle
     rendering. **Ground texture** (`drawGroundTextureSk`): tiled `GroundTextureDark.png`

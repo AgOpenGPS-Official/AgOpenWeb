@@ -171,6 +171,15 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _extraGuidelines, value);
     }
 
+    // Auto-select the nearest track when none is manually chosen (#143). Persisted so the
+    // operator's choice survives restarts.
+    private bool _autoTrack = true;
+    public bool AutoTrack
+    {
+        get => _autoTrack;
+        set => SetProperty(ref _autoTrack, value);
+    }
+
     private int _extraGuidelinesCount = 10;
     public int ExtraGuidelinesCount
     {

@@ -242,14 +242,18 @@ public partial class MainViewModel
         // push lived here; both are gone.
     }
 
-    private bool _isAutoTrackEnabled = true;
+    // Backed by ConfigStore.Display.AutoTrack so the operator's choice persists across
+    // restarts (synced to AppSettings via ConfigurationService).
     public bool IsAutoTrackEnabled
     {
-        get => _isAutoTrackEnabled;
+        get => ConfigStore.Display.AutoTrack;
         set
         {
-            if (SetProperty(ref _isAutoTrackEnabled, value))
-                State.FieldTools.IsAutoTrackEnabled = value; // mirror for the web-UI projector
+            if (ConfigStore.Display.AutoTrack == value) return;
+            ConfigStore.Display.AutoTrack = value;
+            State.FieldTools.IsAutoTrackEnabled = value; // mirror for the web-UI projector
+            OnPropertyChanged();
+            if (_configReady) _configurationService.SaveAppSettings(); // persist immediately
         }
     }
 
@@ -263,7 +267,7 @@ public partial class MainViewModel
     /// </summary>
     private void UpdateAutoTrackSelection(AgValoniaGPS.Models.Position position)
     {
-        if (!_isAutoTrackEnabled || IsAutoSteerEngaged)
+        if (!IsAutoTrackEnabled || IsAutoSteerEngaged)
             return;
 
         // Don't override a manually selected track

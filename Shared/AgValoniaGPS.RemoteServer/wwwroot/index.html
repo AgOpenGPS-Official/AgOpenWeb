@@ -715,6 +715,37 @@
     .flg-del { color: #f3a99f; }
     .flg-colorpick { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px 10px 44px; }
     .flg-colorpick button { width: 24px; height: 24px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.4); cursor: pointer; padding: 0; }
+    /* Field Builder panel (Phase MT). */
+    .fb-panel { width: 360px; }
+    .fb-tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+    .fb-tab { flex: 1; height: 36px; border-radius: 6px 6px 0 0; border: 1px solid #2a3550; border-bottom: 0;
+      background: rgba(255,255,255,0.04); color: #9fb3cc; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+    .fb-tab.active { background: rgba(74,144,217,0.25); color: #e7eef9; }
+    .fb-pane { display: flex; flex-direction: column; gap: 8px; }
+    .fb-pane[hidden] { display: none; }
+    .fb-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fb-act { flex: 1; min-width: 64px; height: 38px; border-radius: 8px; border: 1px solid #2a3550;
+      background: rgba(255,255,255,0.05); color: #dce8f8; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+    .fb-act:active { background: rgba(74,144,217,0.35); }
+    .fb-act.disabled { opacity: 0.4; pointer-events: none; }
+    .fb-del { color: #f3a99f; border-color: rgba(230,120,110,0.5); }
+    .fb-subhdr { display: flex; align-items: center; gap: 10px; color: #e7eef9; font: 700 15px system-ui, sans-serif; }
+    .fb-subhdr button { flex: 0 0 auto; }
+    .fb-sublbl { color: #9fb3cc; font: 700 12px system-ui, sans-serif; margin-top: 4px; }
+    .fb-addrow { display: flex; gap: 8px; }
+    .fb-addbtn { flex: 1; min-height: 76px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 5px; border-radius: 8px; border: 1px solid #2a3550; background: rgba(255,255,255,0.05);
+      color: #dce8f8; font: 600 12px system-ui, sans-serif; cursor: pointer; }
+    .fb-addbtn:active { background: rgba(74,144,217,0.35); }
+    .fb-addbtn img { width: 34px; height: 34px; object-fit: contain; }
+    .fb-bigtxt { font: 800 22px system-ui, sans-serif; color: #e7eef9; }
+    #fb-tracklist { max-height: 280px; }
+    .fb-trkrow { display: grid; grid-template-columns: 16px 1fr; align-items: center; gap: 8px; padding: 9px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; }
+    .fb-trkrow.sel { background: rgba(74,144,217,0.25); }
+    .fb-trkrow .fb-dot { width: 12px; height: 12px; border-radius: 50%; background: #3a4660; }
+    .fb-trkrow.active .fb-dot { background: #27AE60; }
+    .fb-trkrow .fb-tname { color: #e7eef9; font: 500 14px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     /* AB flyout group separator (matches native's separators between groups). */
     .bn-flysep { height: 1px; background: rgba(255,255,255,0.14); margin: 4px 6px; }
     /* Remote actuation control (Phase 2 safety layer). Take/Release authority +
@@ -1823,12 +1854,53 @@
   <div id="fieldtools" class="ln-panel fm-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">Field Tools</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="fo-grid">
-      <button class="fo-btn" id="ft-fieldbuilder" disabled title="Phase MT — on-map track / headland / tram editor">Field Builder</button>
+      <button class="fo-btn" id="ft-fieldbuilder" title="On-map track / headland / tram editor">Field Builder</button>
       <button class="fo-btn" id="ft-boundary">Boundary</button>
       <button class="fo-btn" id="ft-deleteapplied">Delete Applied Area</button>
       <button class="fo-btn" id="ft-importtracks">Import Tracks</button>
       <button class="fo-btn" id="ft-recpath">Recorded Path</button>
       <button class="fo-btn" id="ft-offsetfix">Offset Fix</button>
+    </div>
+  </div>
+  <!-- Field Builder (native FieldBuilderDialogPanel) — Tracks / Headland / Tram editor.
+       Reuses the main map + s2w for drawing/editing; this panel is the control surface. -->
+  <div id="fieldbuilder" class="ln-panel fb-panel">
+    <div class="ln-hdr"><button class="ln-x fb-back" title="Back">←</button><span class="ln-hdr-title">Field Builder</span><button class="ln-x ln-closex" title="Close">✕</button></div>
+    <div class="fb-tabs">
+      <button class="fb-tab active" data-fbtab="tracks">Tracks</button>
+      <button class="fb-tab" data-fbtab="headland">Headland</button>
+      <button class="fb-tab" data-fbtab="tram">Tram</button>
+    </div>
+    <!-- Tracks tab -->
+    <div class="fb-pane" data-fbpane="tracks">
+      <div id="fb-tracklist" class="trk-list"></div>
+      <div class="fb-actions">
+        <button id="fb-trk-add" class="fb-act">＋ Add</button>
+        <button id="fb-trk-edit" class="fb-act" title="Edit on map">✎ Edit</button>
+        <button id="fb-trk-rename" class="fb-act">Rename</button>
+        <button id="fb-trk-delete" class="fb-act fb-del">Delete</button>
+        <button id="fb-trk-deleteall" class="fb-act fb-del">Delete All</button>
+      </div>
+    </div>
+    <!-- Headland tab (stage 2) -->
+    <div class="fb-pane" data-fbpane="headland" hidden><div class="trk-empty">Headland building — next stage</div></div>
+    <!-- Tram tab (stage 3) -->
+    <div class="fb-pane" data-fbpane="tram" hidden><div class="trk-empty">Tram systems — later stage</div></div>
+    <!-- Add Track sub-view (replaces the tab content) -->
+    <div id="fb-addtrack" class="fb-pane" hidden>
+      <div class="fb-subhdr"><button id="fb-add-back" class="fb-act">← Back</button><span>Add Track</span></div>
+      <div class="fb-sublbl">Free Draw</div>
+      <div class="fb-addrow">
+        <button class="fb-addbtn" data-fbadd="ab"><img src="/icons/ABTrackAB.png" alt=""><span>AB Line</span></button>
+        <button class="fb-addbtn" data-fbadd="curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+        <button class="fb-addbtn" data-fbadd="aplus"><img src="/icons/ABTrackAPlus.png" alt=""><span>A+ Line</span></button>
+      </div>
+      <div class="fb-sublbl">From Boundary</div>
+      <div class="fb-addrow">
+        <button class="fb-addbtn" data-fbadd="bedge"><span class="fb-bigtxt">AB</span><span>Longest Edge</span></button>
+        <button class="fb-addbtn" data-fbadd="bcurve"><img src="/icons/ABTrackCurve.png" alt=""><span>Bnd. Curve</span></button>
+        <button class="fb-addbtn" data-fbadd="ball"><span class="fb-bigtxt">All</span><span>All Edges</span></button>
+      </div>
     </div>
   </div>
   <!-- Offset Fix (GPS drift nudge): compass D-pad (1 cm/click) + manual N/E entry. -->

@@ -248,6 +248,13 @@ public partial class App : Application
                                 case "boundary.toggleSectionControl": // ToggleButton has no command (Tier-1)
                                     windowVm.IsBoundarySectionControlOn = !windowVm.IsBoundarySectionControlOn;
                                     return;
+                                case "track.rename": // Field Builder. arg = "index,new name". Tier-2.
+                                {
+                                    var ri = arg.IndexOf(',');
+                                    if (ri > 0 && int.TryParse(arg[..ri], out var rti))
+                                        windowVm.RenameTrackAt(rti, arg[(ri + 1)..]);
+                                    return;
+                                }
                                 case "track.select": // Tracks manager — tap a row. arg = index.
                                 {                    // Mirrors native: tapping the active track
                                     if (int.TryParse(arg, out var tsi) // deactivates; else activates.
@@ -559,6 +566,7 @@ public partial class App : Application
                                 "track.aPlus" => windowVm.StartAPlusLineCommand,
                                 "track.boundaryCurve" => windowVm.CreateCurveFromBoundaryCommand,
                                 "track.allEdges" => windowVm.CreateTracksFromAllEdgesCommand,
+                                "track.deleteAll" => windowVm.DeleteAllTracksCommand, // Field Builder
                                 // Quick-AB selector (GPS-driven): drive A→B, record a curve
                                 // by driving, and set-point-at-vehicle (param ignored in
                                 // DriveAB/Curve modes → uses live GPS).

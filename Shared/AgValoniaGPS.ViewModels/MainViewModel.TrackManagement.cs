@@ -239,10 +239,16 @@ public partial class MainViewModel
 
             var trackName = SelectedTrack.Name;
             var trackToRemove = SelectedTrack;
+            bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
             SelectedTrack = null;
             SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
             RebuildRecordedPathsAndContours();
             SaveTracksToFile();
+            // A recorded path is re-loaded from RecPath.txt on every field open
+            // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
+            // the file must go too, else it reappears after restart.
+            if (wasRecPath && _fieldService.ActiveField is { } f)
+                RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
             StatusMessage = $"Deleted track '{trackName}'";
         });
 

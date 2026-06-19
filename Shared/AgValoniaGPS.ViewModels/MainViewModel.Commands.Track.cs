@@ -157,7 +157,11 @@ public partial class MainViewModel
                 {
                     SavedTracks.Clear();
                     SelectedTrack = null;
+                    RebuildRecordedPathsAndContours(); // clear rec-path/contour display
                     SaveTracksToFile();
+                    // Also remove RecPath.txt, else the recorded path reloads on next open.
+                    if (_fieldService.ActiveField is { } f)
+                        Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
                     StatusMessage = "All tracks deleted";
                 });
         });
