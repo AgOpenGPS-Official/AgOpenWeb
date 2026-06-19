@@ -241,7 +241,13 @@ public sealed class SceneProjector
             // carries RADIANS so the client can ctx.rotate / sin / cos directly
             // (matching the native map control's headingRadians convention).
             // Without this the marker spun ~57× per revolution during turns.
-            new PoseDto(v.Easting, v.Northing, v.Heading * System.Math.PI / 180.0, v.Speed),
+            // Dead-reckoned-to-now pose (RenderEasting…, radians) so the client's
+            // dead-reckoning continues smoothly instead of snapping back to the lagging
+            // GPS-anchored pose each tick. Falls back to the raw pose before the first
+            // render-pull (no GPS yet).
+            v.RenderPoseValid
+                ? new PoseDto(v.RenderEasting, v.RenderNorthing, v.RenderHeadingRad, v.RenderSpeed)
+                : new PoseDto(v.Easting, v.Northing, v.Heading * System.Math.PI / 180.0, v.Speed),
             v.FixQuality,
             sections,
             g.CrossTrackError,
@@ -253,10 +259,12 @@ public sealed class SceneProjector
                 || _state.RecordedPath.IsDrivingRecordedPath,
             g.CurrentLineLabel,
             _state.Field.ActiveTrack?.Name,
-            _tool.ToolPosition.Easting,
-            _tool.ToolPosition.Northing,
-            _tool.ToolHeading,
-            _tool.IsToolPositionReady,
+            // Dead-reckoned (render-pull) tool — smooth, matches the native map. The
+            // control-loop ToolPositionService snapshot steps at the GPS rate.
+            v.RenderToolEasting,
+            v.RenderToolNorthing,
+            v.RenderToolHeading,
+            v.RenderToolReady,
             // Operational state (right-nav toolbar). Engaged + contour + U-turn
             // direction/distance come from state; the three mode flags from the
             // VM mirror (ApplicationState.Operation).
@@ -288,9 +296,9 @@ public sealed class SceneProjector
             _autoSteer.LastSteerData.ActualSteerAngle,   // ChartActualSteer (WAS)
             _autoSteer.LastSteerData.PwmDisplay,         // ChartPwm
             _autoSteer.LastSteerData.ImuHeading,         // ChartImuHeading
-            // Hitch pivot (implement hitch line: hitch → tool).
-            _tool.HitchPosition.Easting,
-            _tool.HitchPosition.Northing);
+            // Hitch pivot (implement hitch line: hitch → tool) — render-pull dead-reckoned.
+            v.RenderHitchEasting,
+            v.RenderHitchNorthing);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

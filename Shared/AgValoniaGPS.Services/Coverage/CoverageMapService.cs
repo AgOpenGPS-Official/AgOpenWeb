@@ -89,6 +89,15 @@ public class CoverageMapService : ICoverageMapService
     private readonly List<(int CellX, int CellY, CoverageColor Color)> _newCellsResult = new();
     private readonly HashSet<(int, int)> _newCellsDedup = new();
 
+    // Parallel new-cell stream for a SECOND independent consumer (the remote/web
+    // server's CoverageProjector). GetNewCoverageBitmapCells drains _newCells for the
+    // native map control; the server needs its own drain so the two don't steal cells
+    // from each other. Without this the server fell back to an O(whole-grid) scan that,
+    // run on the 100 Hz control-loop thread, stalled real-time control in ~500 ms bursts.
+    private readonly HashSet<(int CellE, int CellN, int Zone)> _newCellsServer = new();
+    private readonly List<(int CellX, int CellY, CoverageColor Color)> _newCellsServerResult = new();
+    private readonly HashSet<(int, int)> _newCellsServerDedup = new();
+
     // Track bounds of coverage for reporting
     private int _minCellE = int.MaxValue;
     private int _maxCellE = int.MinValue;
@@ -583,6 +592,7 @@ public class CoverageMapService : ICoverageMapService
 
         // Track for batched write by map control (via GetNewCoverageBitmapCells)
         _newCells.Add((cellE, cellN, zone));
+        _newCellsServer.Add((cellE, cellN, zone)); // parallel drain for the web server
 
         // Update per-zone counter
         if (!_cellCountPerZone.TryGetValue(zone, out long count))
@@ -884,6 +894,54 @@ public class CoverageMapService : ICoverageMapService
         }
     }
 
+    /// <summary>
+    /// Second, independent incremental drain — newly-covered cells since the LAST
+    /// call to THIS method (parallel to GetNewCoverageBitmapCells, which serves the
+    /// native map). For the remote/web server's CoverageProjector so it gets O(new
+    /// cells) deltas instead of an O(whole-grid) scan. Same downsample logic.
+    /// </summary>
+    public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize)
+    {
+        lock (_coverageLock)
+        {
+            if (_newCellsServer.Count == 0)
+                return Array.Empty<(int, int, CoverageColor)>();
+
+            double minE, minN;
+            if (_fieldBoundsSet)
+            {
+                minE = _fieldMinE;
+                minN = _fieldMinN;
+            }
+            else
+            {
+                if (!_boundsValid)
+                {
+                    _newCellsServer.Clear();
+                    return Array.Empty<(int, int, CoverageColor)>();
+                }
+                minE = _minCellE * BITMAP_CELL_SIZE;
+                minN = _minCellN * BITMAP_CELL_SIZE;
+            }
+
+            _newCellsServerDedup.Clear();
+            _newCellsServerResult.Clear();
+
+            foreach (var (cellE, cellN, zone) in _newCellsServer)
+            {
+                double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
+                double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
+                int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
+                int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
+                if (_newCellsServerDedup.Add((outCellX, outCellY)))
+                    _newCellsServerResult.Add((outCellX, outCellY, GetZoneColor(zone)));
+            }
+
+            _newCellsServer.Clear();
+            return _newCellsServerResult.ToArray();
+        }
+    }
+
     public IReadOnlyList<CoveragePatch> GetPatches()
     {
         // Legacy compatibility - patches no longer used, return empty list
@@ -903,6 +961,7 @@ public class CoverageMapService : ICoverageMapService
             Array.Clear(_displayPixels, 0, _displayPixels.Length);
         ExpandDirtyAll();
         _newCells.Clear();
+        _newCellsServer.Clear();
         if (_detectionBits != null)
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
         _cellCountPerZone.Clear();

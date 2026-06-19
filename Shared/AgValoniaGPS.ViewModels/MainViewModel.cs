@@ -720,6 +720,24 @@ public partial class MainViewModel : ObservableObject
             ConfigStore.ActualToolWidth, hitchE, hitchN,
             _toolPositionService.IsToolPositionReady);
 
+        // Mirror the dead-reckoned tool/hitch into ApplicationState so the web map
+        // projector renders the SAME smooth implement the native map does (the
+        // control-loop ToolPositionService snapshot the Tick used to read steps at the
+        // GPS rate — freeze-then-jump on the web while the tractor glides).
+        var vs = State.Vehicle;
+        vs.RenderToolEasting = toolE;
+        vs.RenderToolNorthing = toolN;
+        vs.RenderToolHeading = toolHeading;
+        vs.RenderHitchEasting = hitchE;
+        vs.RenderHitchNorthing = hitchN;
+        vs.RenderToolReady = _toolPositionService.IsToolPositionReady;
+        // Dead-reckoned vehicle pose (same as the native map) for the web Tick.
+        vs.RenderEasting = p.Position.Easting;
+        vs.RenderNorthing = p.Position.Northing;
+        vs.RenderHeadingRad = p.Heading;
+        vs.RenderSpeed = p.SpeedMps;
+        vs.RenderPoseValid = true;
+
         if (sm)
         {
             _smCycleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - smT0;

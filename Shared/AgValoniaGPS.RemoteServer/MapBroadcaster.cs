@@ -47,7 +47,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastBoundaryFp = long.MinValue;
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
-    private long _lastCoverageTicks; // throttle the (O(total-cells)) diff scan
+    private volatile bool _coverageReload; // set by OnCoverageUpdated on a full reload
 
     public MapBroadcaster(WebSocketHub ws, SceneProjector projector,
         ICoverageMapService coverage, CoverageProjector coverageProjector,
@@ -107,35 +107,13 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
     private void OnCoverageUpdated(object? sender, CoverageUpdatedEventArgs e)
     {
-        try
-        {
-            var init = _coverageProjector.BuildInit();
-            if (init is null) return;
-
-            // Re-init on first coverage, a cell-size rescale, or a full reload
-            // (field load/clear). A fresh coverageInit makes clients drop + rebuild.
-            if (!_coverageInitSent || init.CellSize != _lastCellSize || e.IsFullReload)
-            {
-                _lastCellSize = init.CellSize;
-                _coverageInitSent = true;
-                _coverageProjector.ResetSent();
-                _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(init));
-                if (_coverageProjector.Delta() is { } full) // first Delta after reset = everything
-                    _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full));
-                _lastCoverageTicks = Environment.TickCount64;
-                return;
-            }
-
-            // Steady state: throttle the diff scan (it enumerates all covered
-            // cells). 100 ms = the broadcast cadence, so coverage keeps pace with
-            // the dead-reckoned tool instead of trailing in ~200 ms chunks.
-            long now = Environment.TickCount64;
-            if (now - _lastCoverageTicks < 100) return;
-            _lastCoverageTicks = now;
-            if (_coverageProjector.Delta() is { } delta)
-                _ = _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta));
-        }
-        catch { /* tolerate transient races on the coverage layer */ }
+        // This fires on the 100 Hz control-loop thread (FlushCoverageUpdate). Keep it
+        // CHEAP — only flag a full reload. The diff + broadcast happen on the broadcaster
+        // thread (RunAsync). The old code ran the O(whole-grid) GetCoverageBitmapCells scan
+        // HERE, which stalled real-time control (tool/section) in ~500 ms bursts and made
+        // coverage step on the web. Steady-state new cells are drained in RunAsync via the
+        // server-dedicated incremental stream.
+        if (e.IsFullReload) _coverageReload = true;
     }
 
     private async Task RunAsync(CancellationToken ct)
@@ -237,6 +215,33 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
                     .ConfigureAwait(false);
+
+                // Coverage — diff + broadcast on THIS (broadcaster) thread, NEVER the 100 Hz
+                // control loop. (Re)init on first coverage / cell-size change / full reload
+                // sends a full snapshot; steady state drains the server-dedicated incremental
+                // stream (O(new cells)). This is the 10 Hz coverage cadence.
+                try
+                {
+                    if (_coverageProjector.BuildInit() is { } cvInit)
+                    {
+                        if (!_coverageInitSent || cvInit.CellSize != _lastCellSize || _coverageReload)
+                        {
+                            _coverageReload = false;
+                            _coverageInitSent = true;
+                            _lastCellSize = cvInit.CellSize;
+                            _coverageProjector.ResetSent();
+                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit), ct).ConfigureAwait(false);
+                            if (_coverageProjector.Snapshot() is { } full)
+                                await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full), ct).ConfigureAwait(false);
+                            _coverageProjector.DiscardIncremental(); // snapshot already covers everything so far
+                        }
+                        else if (_coverageProjector.IncrementalDelta() is { } delta)
+                        {
+                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta), ct).ConfigureAwait(false);
+                        }
+                    }
+                }
+                catch { /* tolerate transient coverage-layer races */ }
 
                 // Status bar changes slowly (fix/age/modules) — send at ~2 Hz, not
                 // every 10 Hz tick. Speed (which updates fast) rides the Tick.

@@ -67,6 +67,29 @@ public sealed class CoverageProjector
         return flat.Count == 0 ? null : new CoverageCellsDto(flat.ToArray());
     }
 
+    /// <summary>
+    /// Cells painted since the last call — drained from the service's SERVER-dedicated
+    /// incremental stream (O(new cells), not an O(whole-grid) scan). Used for steady-state
+    /// deltas so coverage keeps pace without the full-scan stall. Independent of the native
+    /// map's drain.
+    /// </summary>
+    public CoverageCellsDto? IncrementalDelta()
+    {
+        if (_cov.DisplayDimensions is not { } dim) return null;
+        var flat = new List<int>();
+        foreach (var (x, y, c) in _cov.GetNewCoverageBitmapCellsServer(dim.CellSize))
+            Add(flat, x, y, c);
+        return flat.Count == 0 ? null : new CoverageCellsDto(flat.ToArray());
+    }
+
+    /// <summary>Drain + discard the server incremental stream (after a full Snapshot, so the
+    /// next IncrementalDelta carries only post-snapshot cells).</summary>
+    public void DiscardIncremental()
+    {
+        if (_cov.DisplayDimensions is { } dim)
+            foreach (var _ in _cov.GetNewCoverageBitmapCellsServer(dim.CellSize)) { }
+    }
+
     /// <summary>Forget what's been sent (on bounds/cell-size change → clients re-init).</summary>
     public void ResetSent() => _sent = null;
 

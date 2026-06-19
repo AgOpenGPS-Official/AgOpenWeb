@@ -161,6 +161,14 @@ public interface ICoverageMapService
     IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCells(double cellSize);
 
     /// <summary>
+    /// Second, independent incremental drain (parallel to GetNewCoverageBitmapCells) for a
+    /// separate consumer — the remote/web server's coverage projector. Returns newly-covered
+    /// cells since the last call to THIS method and clears its own pending list, so the two
+    /// consumers don't steal cells from each other.
+    /// </summary>
+    IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize);
+
+    /// <summary>
     /// Get patches for a specific zone
     /// </summary>
     /// <param name="zoneIndex">Zone index (0-based)</param>
