@@ -5,7 +5,6 @@
 // the transport seam.
 
 const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole renderer (matches native)
-const hud = document.getElementById('hud');
 
 // Logical (CSS-pixel) canvas size. The backing store is scaled by the device
 // pixel ratio so vectors render at native resolution on hi-DPI screens (tablets,
@@ -201,7 +200,7 @@ const transport = RemoteTransport.create({
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
-  onStatus(s) { connState = s; },
+  onStatus(s) { connState = s; renderRole(); },
 });
 transport.start();
 
@@ -2596,22 +2595,24 @@ document.getElementById('vth-toolconfig').addEventListener('pointerdown', e => {
 // Control is implicit and by connection order: the first browser to connect is the
 // controller (server-assigned); others observe. No take/release UI. A status line
 // shows which role this browser has.
-const ctlStatus = document.getElementById('ctl-status');
+// Status-bar role indicator (left of Modules). Reflects both connection state
+// (Disconnected when the socket is down) and the implicit control role.
+function renderRole() {
+  const t = document.getElementById('sb-roletext'), d = document.getElementById('sb-roledot');
+  if (!t) return;
+  let label, color;
+  if (connState !== 'connected') { label = 'Disconnected'; color = '#ff5a5a'; }
+  else if (iHoldControl)         { label = 'Operator';     color = '#39FF6A'; }
+  else if (lastControl.held)     { label = 'Observer';     color = '#ff7a3d'; }
+  else                           { label = 'No operator';  color = '#9fb3cc'; }
+  t.textContent = label; t.style.color = color; d.style.background = color;
+}
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
-  if (!ctlStatus) return;
-  if (iHoldControl) {
-    ctlStatus.textContent = '● Operator'; ctlStatus.style.color = '#39FF6A';
-  } else if (lastControl.held) {
-    ctlStatus.textContent = '● Observing — another browser is the operator'; ctlStatus.style.color = '#ff7a3d';
-  } else {
-    ctlStatus.textContent = '○ No operator'; ctlStatus.style.color = '#9fb3cc';
-  }
+  renderRole();
 }
-const controlEl = document.getElementById('control');
-if (controlEl) controlEl.addEventListener('pointerdown', e => e.stopPropagation());
 // Heartbeat keeps our hold alive while we control; a lapse trips the host deadman
 // (disengage autosteer + sections).
 setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
@@ -3641,23 +3642,6 @@ function toolWidthM() {
   return 6;
 }
 // HUD text (DOM). Built each frame from the latest tick/scene.
-function updateHud(rp) {
-  const spd = rp ? (rp.speed * 3.6).toFixed(1) + ' km/h' : '—';
-  // "on" = codes 1 (manual on) / 2 (auto on) / 3 (turning off, still flowing).
-  const secs = tick && tick.sections
-    ? tick.sections.filter(c => c >= 1 && c <= 3).length + '/' + tick.sections.length : '—';
-  const guid = tick && tick.guidanceActive
-    ? `guidance: ${tick.lineLabel || '—'}  xte: ${xteText(tick.crossTrackError)}`
-    : 'guidance: off';
-  hud.textContent =
-    `${connState}\n` +
-    (scene ? `field: ${scene.fieldName}\nboundaries: ${scene.boundaries.length}  tracks: ${scene.tracks.length}\n` : 'waiting for scene…\n') +
-    `speed: ${spd}   sections on: ${secs}\n${guid}\nzoom: ${pxPerM.toFixed(1)} px/m   cam: ${camModeLabel()}  (DR)\n` +
-    `coverage: ${cov ? `${cov.width}x${cov.height} @ ${cov.cellSize.toFixed(2)}m, ${covCells} cells` : '—'}\n` +
-    `imagery: ${imageryImg ? 'loaded' : imageryRect ? 'loading…' : 'none'}\n` +
-    `canvaskit: ${ckStatus}   tilt: ${(pitch * 180 / Math.PI).toFixed(0)}°`;
-}
-
 // ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
 //      px (canvas.scale(dpr)), reusing w2s. Coverage/imagery/tool/lightbar TODO. ----
 // CanvasKit 0.41: Path is immutable (no moveTo/reset) — build via MakeFromCmds
@@ -4291,7 +4275,6 @@ function skFrame() {
   renderCharts();
   renderRollCorr();
   renderOffsetFix();
-  updateHud(rp);
   requestAnimationFrame(skFrame);
 }
 skFrame();

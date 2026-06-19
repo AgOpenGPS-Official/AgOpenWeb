@@ -12,18 +12,24 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="/icons/appicon-192.png">
   <style>
+    /* iOS/iPadOS safe-area insets — a home-screen web app bleeds full-screen
+       (viewport-fit=cover) UNDER the iOS status bar (time/battery) + home
+       indicator, so every edge-docked control is offset in by these so iOS
+       chrome never overlaps our UI. On iPad (no notch) only top/bottom are
+       non-zero; left/right are included for robustness on notched devices. */
+    :root {
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+      --sal: env(safe-area-inset-left, 0px);
+      --sar: env(safe-area-inset-right, 0px);
+    }
     html, body { margin: 0; height: 100%; background: #0f1115; overflow: hidden; }
     #ck { position: fixed; inset: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
-    #hud {
-      position: fixed; top: 54px; left: 8px; color: #7CFC9A;
-      font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none;
-      text-shadow: 0 1px 2px #000;
-    }
     /* Top status bar (Phase 1) — mirrors the native StatusBarPanel: pause + two-line
        left stack (Fix/Age over a rotating Field/Stats/AB line), aggregate Modules
        (with per-module popup), and big Speed on the right. */
     #statusbar {
-      position: fixed; top: 0; left: 0; right: 0; height: 46px; display: none;
+      position: fixed; top: var(--sat); left: 0; right: 0; height: 46px; display: none;
       align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
       background: rgba(15,17,21,0.85); border-bottom: 1px solid #222a38;
       color: #cfe3ff; font: 600 15px system-ui, sans-serif;
@@ -69,12 +75,11 @@
     #sb-gpscard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
     #sb-gpscard .gc-k { color: #9fb3cc; font-size: 12px; }
     #sb-gpscard .gc-v { color: #cfe3ff; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    #help { position: fixed; bottom: 8px; left: 8px; color: #668; font: 11px ui-monospace, monospace; }
     /* Lightbar readout (arrow + cm + line label) — DOM overlay so it renders
        identically under both the 2D and Skia map renderers (CanvasKit has no
        bundled font). Sits just below the LED strip. */
     #lb {
-      position: fixed; top: 74px; left: 0; right: 0; text-align: center; display: none;
+      position: fixed; top: calc(74px + var(--sat)); left: 0; right: 0; text-align: center; display: none;
       color: #cfe3ff; font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
@@ -82,7 +87,7 @@
        mirroring the native SkiaMapControl HUD. Green when clear, red on warning.
        Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0. */
     #headland-hud {
-      position: fixed; top: 102px; left: 50%; transform: translateX(-50%); display: none;
+      position: fixed; top: calc(102px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
       padding: 6px 18px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25);
       background: rgba(20,46,28,0.85); color: #fff; font: 700 19px ui-monospace, monospace;
       pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
@@ -91,7 +96,7 @@
     /* Map-tap capture hint (Phase MT) — top-centre pill shown while a feature is
        capturing an on-map tap (place-flag, boundary draw, AB, …). Esc cancels. */
     #maptap-hint {
-      position: fixed; top: 60px; left: 50%; transform: translateX(-50%); display: none;
+      position: fixed; top: calc(60px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
       padding: 7px 20px; border-radius: 999px; border: 1px solid rgba(120,200,255,0.6);
       background: rgba(18,40,64,0.92); color: #d6ecff; font: 600 15px system-ui, sans-serif;
       pointer-events: none; z-index: 40; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
@@ -103,7 +108,7 @@
        (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
        the screen from it. */
     #draw-toolbar {
-      position: fixed; top: 100px; left: 50%; transform: translateX(-50%); display: none;
+      position: fixed; top: calc(100px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
       gap: 10px; z-index: 41;
     }
     #draw-toolbar.show { display: flex; }
@@ -118,7 +123,7 @@
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
-    #bottomstack { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    #bottomstack { position: fixed; bottom: var(--sab); left: 50%; transform: translateX(-50%);
       display: flex; flex-direction: column; align-items: center; gap: 6px;
       pointer-events: none; z-index: 10; }
     /* Simulator bar (Phase 6) — a single horizontal bar. Hidden until launched. */
@@ -189,7 +194,7 @@
     .bn-row:hover { background: rgba(255,255,255,0.16); }
     .bn-rowic { width: 20px; height: 20px; object-fit: contain; }
     /* Left nav (Phase 9) — vertical button bar + non-modal flyout panels. */
-    #leftnav { position: fixed; left: 0; top: 56px; display: flex; flex-direction: column;
+    #leftnav { position: fixed; left: var(--sal); top: calc(56px + var(--sat)); display: flex; flex-direction: column;
       gap: 6px; padding: 8px 8px 8px 0; background: rgba(15,17,21,0.85);
       border: 1px solid #222a38; border-left: 0; border-radius: 0 10px 10px 0; z-index: 32; }
     /* Transparent light-dismiss scrim behind an open chain panel: map stays visible,
@@ -204,7 +209,7 @@
     .ln-btn:hover { background: rgba(255,255,255,0.16); }
     .ln-btn.active { background: #1c4a7a; }
     .ln-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-    .ln-panel { position: fixed; left: 80px; top: 56px; display: none; min-width: 220px;
+    .ln-panel { position: fixed; left: calc(80px + var(--sal)); top: calc(56px + var(--sat)); display: none; min-width: 220px;
       max-width: calc(100vw - 96px); color: #e7eef9;
       background: #161b24; border: 1px solid #2a3550; border-radius: 10px; padding: 14px;
       box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 31; }
@@ -763,21 +768,16 @@
     .fb-offrow input { width: 96px; }
     /* AB flyout group separator (matches native's separators between groups). */
     .bn-flysep { height: 1px; background: rgba(255,255,255,0.14); margin: 4px 6px; }
-    /* Remote actuation control (Phase 2 safety layer). Take/Release authority +
-       a Tier-2 test. Bottom-left, clear of the centre sim pad. */
-    #control { position: fixed; bottom: 14px; left: 14px; display: flex; flex-direction: column;
-               gap: 6px; align-items: flex-start; touch-action: manipulation; }
-    #control button { padding: 8px 12px; border-radius: 8px; border: 1px solid #2a3550;
-      background: rgba(28,34,48,0.82); color: #cfe3ff; font: 600 13px system-ui, sans-serif;
-      cursor: pointer; -webkit-user-select: none; user-select: none; }
-    #control button:disabled { opacity: 0.4; cursor: default; }
-    #control button.held { background: #CC0000; border-color: #ff5a5a; color: #fff; }
-    #ctl-status { color: #9fb3cc; font: 500 11px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
+    /* Control role (Phase 2 safety layer) — Operator / Observer / Disconnected.
+       Lives in the status bar, just left of the Modules aggregate. Control is
+       implicit/by connection order; this is the read-only role indicator. */
+    #sb-role { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      color: #9fb3cc; font: 600 14px system-ui, sans-serif; }
     /* Right-nav operational toolbar (Phase 3). Vertical button stack on the right
        edge, colour-coded by live state. (Phase 3a: read-only indicators; 3b wires
        the Tier-2 commands through the control gate.) */
     /* Bar chrome + button look match the left nav (the canonical style); state colours below. */
-    #rightnav { position: fixed; right: 0; top: 56px; display: none; flex-direction: column;
+    #rightnav { position: fixed; right: var(--sar); top: calc(56px + var(--sat)); display: none; flex-direction: column;
                 gap: 6px; align-items: stretch; padding: 8px; border-radius: 10px 0 0 10px;
                 background: rgba(15,17,21,0.85); border: 1px solid #222a38; border-right: 0;
                 box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation; }
@@ -800,7 +800,7 @@
     /* Dimmed when this client doesn't hold control — the buttons are inert. */
     #rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
     /* Lower-right cluster (Phase 4): roll gauge + camera/mode pad. Clock separate. */
-    #lowerright { position: fixed; right: 14px; bottom: 72px; display: flex; flex-direction: column;
+    #lowerright { position: fixed; right: calc(14px + var(--sar)); bottom: calc(72px + var(--sab)); display: flex; flex-direction: column;
       align-items: flex-end; gap: 10px; pointer-events: none; }
     /* The 200px-wide gauge is wider than the 136px campad below it; nudge it right
        by (200−136)/2 so its (centred) graphic sits over the campad, not flush-right.
@@ -815,17 +815,17 @@
     .cp-center { grid-row: 2; grid-column: 2; background: #4A90D9; color: #fff; font-size: 15px; font-weight: 700; }
     .cp-center.free { background: rgba(28,34,48,0.82); }
     .cp-right { grid-row: 2; grid-column: 3; } .cp-down { grid-row: 3; grid-column: 2; }
-    #clock { position: fixed; right: 16px; bottom: 16px; color: #cfe3ff;
+    #clock { position: fixed; right: calc(16px + var(--sar)); bottom: calc(16px + var(--sab)); color: #cfe3ff;
       font: 700 18px ui-monospace, monospace; text-shadow: 0 1px 2px #000; pointer-events: none; }
     /* Diagnostic chart cards (Tools panel). Floating, independently draggable
        overlays; sit above the map HUD but below the left-nav chain/scrim so an
        opened config panel covers them. */
-    .chart-card { position: fixed; left: 80px; width: 408px;
+    .chart-card { position: fixed; left: calc(80px + var(--sal)); width: 408px;
       background: #141a26; border: 1px solid #222a38; border-radius: 8px;
       box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 29; overflow: hidden; }
-    #chart-steer { top: 70px; }
-    #chart-heading { top: 246px; }
-    #chart-xte { top: 422px; }
+    #chart-steer { top: calc(70px + var(--sat)); }
+    #chart-heading { top: calc(246px + var(--sat)); }
+    #chart-xte { top: calc(422px + var(--sat)); }
     .chart-hdr { display: flex; align-items: center; justify-content: space-between;
       padding: 4px 8px; background: #1b2333; cursor: move; user-select: none;
       font-size: 12px; font-weight: 600; color: #cfd8e6; touch-action: none; }
@@ -938,6 +938,7 @@
       <div id="sb-rot" class="sb-rot">—</div>
     </div>
     <span class="sb-spacer"></span>
+    <div id="sb-role" title="Control role"><span id="sb-roledot" class="dot"></span><span id="sb-roletext">—</span></div>
     <div class="sb-mods-wrap">
       <button id="sb-modbtn"><span id="sb-modagg" class="dot"></span>Modules</button>
       <div id="sb-modpop">
@@ -973,7 +974,6 @@
       <div class="gc-row"><span class="gc-k">FPS:</span><span class="gc-v" id="gc-fps">—</span></div>
     </div>
   </div>
-  <div id="hud">connecting…</div>
   <div id="lb"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
@@ -984,10 +984,6 @@
     <button id="draw-undo">Undo</button>
     <button id="draw-finish">Finish</button>
     <button id="draw-cancel">Cancel</button>
-  </div>
-  <div id="help">wheel/pinch = zoom · drag = pan · F = map-follow · camera pad = mode (H/N/M/C) · 3 = 3D tilt · [ ] = pitch · ←→ steer · ↑↓ speed · space stop</div>
-  <div id="control">
-    <div id="ctl-status">connecting…</div>
   </div>
   <!-- Transparent light-dismiss scrim for open chain panels (unified nav model). -->
   <div id="ln-scrim" class="ln-scrim"></div>
