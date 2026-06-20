@@ -141,6 +141,11 @@ public sealed class RemoteServerHost
         // host self-stops on SIGTERM and races the host's StopAsync (disposed CTS).
         builder.Services.AddSingleton<IHostLifetime, NoopHostLifetime>();
 
+        // Cap the graceful-shutdown wait so Ctrl-C / SIGTERM stops promptly even if
+        // a request is still in flight. The long-lived /ws request already exits on
+        // ApplicationStopping (linked token below); this is the safety net.
+        builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = System.TimeSpan.FromSeconds(2));
+
         builder.Services.AddSingleton(state);
         builder.Services.AddSingleton(coverage);
         builder.Services.AddSingleton(sections);
@@ -174,7 +179,15 @@ public sealed class RemoteServerHost
             }
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
             var hub = context.RequestServices.GetRequiredService<WebSocketHub>();
-            await hub.HandleAsync(socket, context.RequestAborted);
+            // Link the long-lived receive loop to ApplicationStopping so a graceful
+            // shutdown (Ctrl-C / SIGTERM) cancels it immediately instead of waiting
+            // out the host shutdown timeout — RequestAborted alone does NOT fire on
+            // shutdown, only on client disconnect, so a connected browser would stall
+            // the stop. HandleAsync's loop already exits when its token cancels.
+            var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+            using var linked = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(
+                context.RequestAborted, lifetime.ApplicationStopping);
+            await hub.HandleAsync(socket, linked.Token);
         });
 
         app.MapGet("/", () => Results.Content(ReadAsset("index.html"), "text/html"));

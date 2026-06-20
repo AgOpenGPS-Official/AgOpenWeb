@@ -7,8 +7,6 @@
 // (at your option) any later version.
 
 using System;
-using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using AgValoniaGPS.Desktop.DependencyInjection;
 using AgValoniaGPS.Models.Configuration;
@@ -106,21 +104,13 @@ internal static class HeadlessHost
 
         Console.WriteLine("[headless] ready — browse to http://localhost:5174 (or the LAN IP).");
 
-        // Run until SIGTERM (systemd stop) / SIGINT (Ctrl+C). Then persist config +
-        // state and stop the server cleanly — mirrors the windowed desktop.Exit.
-        var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        void RequestShutdown(PosixSignalContext ctx)
-        {
-            // Cancel the default disposition (terminate) so we run graceful
-            // shutdown — save config + state and stop the server — before exit.
-            ctx.Cancel = true;
-            shutdown.TrySetResult();
-        }
-
-        using var sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, RequestShutdown);
-        using var sigInt = PosixSignalRegistration.Create(PosixSignal.SIGINT, RequestShutdown);
-
-        await shutdown.Task;
+        // Block until shutdown, driven by the generic host's ConsoleLifetime —
+        // Microsoft's tested handling of SIGINT (Ctrl-C), SIGTERM (systemd stop) and
+        // SIGQUIT, cross-platform. (A hand-rolled PosixSignalRegistration handled
+        // SIGTERM but NOT SIGINT on macOS, so Ctrl-C never shut us down gracefully —
+        // the source of the kill latency.) RunAsync returns once a signal arrives;
+        // the host has no hosted services, so it just waits for the stop signal.
+        await host.RunAsync();
 
         Console.WriteLine("[headless] shutting down — saving config + state…");
         try { configService.SaveAppSettings(); } catch (Exception ex) { Console.WriteLine($"[headless] save config failed: {ex.Message}"); }
