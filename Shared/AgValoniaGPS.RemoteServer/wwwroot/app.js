@@ -40,14 +40,16 @@ const POSE_BUF_MAX = 12; // ~1.2 s @ 10 Hz — plenty of bracket for the delay +
 // (the whole-world jump at speed) AND the straight-line turn deviation — both are
 // extrapolation artifacts. Cost: a small constant display lag (~RENDER_DELAY × speed). Must
 // exceed the pose interval (~100 ms @ 10 Hz) plus arrival jitter so we rarely run out of buffer.
-// Buffer depth behind the newest pose. Must clear the WiFi inter-arrival jitter+spikes,
-// else the playhead hits the newest pose and HOLDS for a frame → the residual micro-
-// stutter. 240 ms gives generous headroom for tablet-WiFi latency spikes (offline sim:
-// edge-holds vanish above ~200 ms). It's pure DISPLAY lag (the vehicle is shown ~240 ms
-// in the past, <1 m at field speed) — the host-side steering loop is unaffected. Safe to
-// exceed the pose interval only because of the multi-pose buffer above (a 2-pose buffer
-// would judder). Combined with host-timeline interpolation it kills the WiFi wiggle/stutter.
-const RENDER_DELAY = 240; // ms
+// Buffer depth behind the newest pose. Kept SMALL (low display lag) so the dead-reckoned
+// vehicle sprite stays aligned with the host-accumulated coverage — a large delay made the
+// tractor visibly trail its own coverage. WiFi inter-arrival spikes that would otherwise
+// drain the buffer are bridged by EXTRAPOLATION (sample(), below) rather than a freeze, so
+// we get smoothness without the lag. ~130 ms covers the pose interval + interpolation room.
+const RENDER_DELAY = 130; // ms
+// Max time we'll extrapolate past the newest pose when the buffer underruns (WiFi spike /
+// dropped pose) before settling to a hold — bridges spikes without flying off on a real
+// dropout. At field speed 200 ms is well under a pose-pair's worth of travel.
+const EXTRAP_CAP_MS = 200;
 // Smoothed client↔host clock offset: host_time ≈ client_time − clockOffset. Estimated from the
 // host monotonic timestamp on each Tick (EMA, so one jittery arrival can't shift the timeline).
 let clockOffset = null;
@@ -2973,7 +2975,17 @@ function sample() {
     : performance.now() - RENDER_DELAY; // legacy receipt timeline (host sent no timestamp)
   if (playhead <= poseBuf[0][key]) return { a: poseBuf[0], b: poseBuf[0], f: 0 };
   const nw = poseBuf[m - 1];
-  if (playhead >= nw[key]) return { a: nw, b: nw, f: 1 };
+  if (playhead >= nw[key]) {
+    // Buffer underrun (WiFi spike / late pose): EXTRAPOLATE the last segment's velocity
+    // forward (f>1 → renderPose/renderTool extend prev→nw linearly) instead of HOLDING,
+    // which would freeze a frame → stutter. Capped at EXTRAP_CAP_MS so a real dropout
+    // settles to a hold rather than flying off.
+    const prev = poseBuf[m - 2];
+    const span = nw[key] - prev[key];
+    if (span <= 0) return { a: nw, b: nw, f: 1 };
+    const over = Math.min(playhead - nw[key], EXTRAP_CAP_MS);
+    return { a: prev, b: nw, f: 1 + over / span };
+  }
   for (let i = 0; i < m - 1; i++) {
     const a = poseBuf[i], b = poseBuf[i + 1];
     if (playhead >= a[key] && playhead < b[key]) {
@@ -4271,12 +4283,21 @@ function drawSatelliteSk(canvas) {
 // (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
 // cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
 // cov object so a new coverage-init naturally starts with a fresh (null) image.
+// Coverage offscreen → GPU texture rebuild is a FULL field-sized re-upload
+// (MakeImageFromCanvasImageSource). Coverage cells arrive ~10 Hz while sections paint, so
+// rebuilding every change re-uploaded the whole texture ~10×/s → a frame hitch each time =
+// the "stutter while following the line" (not-following = coverage static = no rebuild =
+// smooth). Throttle the rebuild to ~4 Hz: the worked-area layer tolerates a ≤250 ms visual
+// lag, and the expensive upload drops to a fraction of the rate.
+const COV_REBUILD_MS = 250;
 function drawCoverageSk(canvas) {
   if (!cov) return;
-  if (cov.dirty || !cov.skImg) {
+  const nowMs = performance.now();
+  if (!cov.skImg || (cov.dirty && nowMs - (cov.lastBuild || 0) >= COV_REBUILD_MS)) {
     if (cov.skImg) cov.skImg.delete();
     cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);
     cov.dirty = false;
+    cov.lastBuild = nowMs;
   }
   if (!cov.skImg) return;
   const cs = cov.cellSize;
