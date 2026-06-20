@@ -54,6 +54,14 @@ esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Auto-detect a bundle: if no mode was forced and a published app/ sits next to this
+# script (the package.sh tarball layout), install from it instead of trying to build.
+# Lets a bare `sudo ./install.sh` Just Work on a target with no .NET SDK.
+if [[ "$MODE" == "build" && -f "$SCRIPT_DIR/app/AgValoniaGPS.Desktop" ]]; then
+  MODE="from"; FROM_DIR="$SCRIPT_DIR/app"
+  echo "==> Detected published bundle in ./app — installing from it (no build)."
+fi
+
 echo "==> AgOpenWeb installer (mode=$MODE, rid=$RID, prefix=$PREFIX)"
 
 PUBLISH_SRC=""
