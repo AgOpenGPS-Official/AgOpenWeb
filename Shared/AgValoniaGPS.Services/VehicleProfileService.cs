@@ -57,10 +57,7 @@ public class VehicleProfileService : IVehicleProfileService
     }
 
     private static string DefaultVehiclesDirectory()
-    {
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        return Path.Combine(documentsPath, "AgValoniaGPS", "Vehicles");
-    }
+        => Path.Combine(AppDataRoot.Documents, "Vehicles");
 
     public List<string> GetAvailableProfiles()
     {

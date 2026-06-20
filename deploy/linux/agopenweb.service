@@ -36,10 +36,13 @@ WorkingDirectory=/opt/agopenweb
 User=agopenweb
 Group=agopenweb
 
-# Field data + config live under HOME. StateDirectory makes systemd create and own
-# /var/lib/agopenweb (mode 0700, chown agopenweb) before start; HOME points the
-# app's MyDocuments path there. Survives ProtectHome/ProtectSystem below.
+# Field data + config live OUTSIDE the program dir so a program update (which replaces
+# /opt/agopenweb) never wipes the operator's fields/tools/vehicles/config. StateDirectory
+# makes systemd create + own /var/lib/agopenweb (mode 0700, chown agopenweb) before start.
+# AGOPENWEB_DATA is the explicit data-root override the app honors (see AppDataRoot) →
+# data lands in /var/lib/agopenweb/AgValoniaGPS. HOME set too as a belt-and-suspenders.
 StateDirectory=agopenweb
+Environment=AGOPENWEB_DATA=/var/lib/agopenweb
 Environment=HOME=/var/lib/agopenweb
 # .NET diagnostics pipe is pointless on an appliance and trips some hardening.
 Environment=DOTNET_EnableDiagnostics=0

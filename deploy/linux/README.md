@@ -49,9 +49,14 @@ Browse to `http://<box-ip>:5174`.
 
 | Path | Contents |
 |------|----------|
-| `/opt/agopenweb` | published program (self-contained) |
-| `/var/lib/agopenweb` | field data + config (`HOME` of the service user) |
+| `/opt/agopenweb` | published program (self-contained) — REPLACED on every update |
+| `/var/lib/agopenweb/AgValoniaGPS` | field data + profiles + config (`AGOPENWEB_DATA`) — kept across updates |
 | `/etc/systemd/system/agopenweb.service` | the unit |
+
+Updates only ever touch `/opt/agopenweb` (with a `/opt/agopenweb.old` backup). All
+operator data lives under `/var/lib/agopenweb` via the `AGOPENWEB_DATA` env var the unit
+sets, so fields/tools/vehicles/config survive every `install.sh --from app`. To run the
+host by hand outside systemd and use the same data, set `AGOPENWEB_DATA=/var/lib/agopenweb`.
 
 ## Notes
 
