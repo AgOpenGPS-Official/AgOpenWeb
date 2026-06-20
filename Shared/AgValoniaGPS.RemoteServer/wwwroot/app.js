@@ -123,7 +123,14 @@ let cameraMode = 3;
 let mapRotation = 0;          // radians the map is rotated (−heading in HeadingUp)
 let _cosRR = 1, _sinRR = 0;   // cos/sin of the screen rotation (−mapRotation), per frame
 const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15; // match native tuning
-const ROT_SMOOTH = 0.3; // ease map rotation toward target (smooths 10 Hz heading steps)
+// Map-rotation easing (HeadingUp). ADAPTIVE: heavily damp SMALL heading errors so the
+// whole heading-up map doesn't wobble with autosteer line-holding dither, but stay
+// responsive for LARGE errors (real headland turns). alpha ramps MIN→MAX as the heading
+// error grows to ROT_SMOOTH_FULL rad. (A single fixed value either wobbles on the line or
+// lags the turns.)
+const ROT_SMOOTH_MIN = 0.06;  // ~0.5 s settle — kills line-holding dither
+const ROT_SMOOTH_MAX = 0.35;  // crisp on real turns (≈ the old fixed 0.3)
+const ROT_SMOOTH_FULL = 0.12; // rad (~7°) error at which we're fully responsive
 function isFollowMode() { return cameraMode !== 2; }
 // 3D perspective tilt (Skia only — Canvas2D can't do true perspective). pitch 0 =
 // top-down (identical to the ortho path); up to MAX_PITCH tilts toward the horizon.
@@ -195,7 +202,10 @@ const transport = RemoteTransport.create({
       // single late/early arrival shifts it by ≤5% instead of warping the whole frame.
       if (typeof t.hostMs === 'number') {
         const raw = lastTick.t - t.hostMs;
-        clockOffset = (clockOffset === null) ? raw : clockOffset + 0.05 * (raw - clockOffset);
+        // Slow EMA (0.02): the client↔host clock barely drifts (ppm), so adapting slowly
+        // keeps the playhead velocity steady — a faster EMA chased arrival jitter and left
+        // a slight residual position stutter. Buffer/RENDER_DELAY absorb the slower settle.
+        clockOffset = (clockOffset === null) ? raw : clockOffset + 0.02 * (raw - clockOffset);
       }
     }
     pushChartData(t);
@@ -2787,11 +2797,14 @@ function updateCamera() {
     else if (cameraMode === 1) { camE = rp.e; camN = rp.n; target = -rp.heading; } // HeadingUp
     else if (cameraMode === 3) { target = 0; applyAutoPan(rp); }                   // Map
   } else if (cameraMode !== 2) target = 0;
-  // Ease toward the target along the shortest angular path — turns the 10 Hz
-  // heading steps (HeadingUp) into continuous rotation.
+  // Ease toward the target along the shortest angular path — turns the 10 Hz heading
+  // steps (HeadingUp) into continuous rotation. Adaptive alpha: heavy damping for small
+  // errors (line-holding dither) → no map wobble; responsive for large errors → crisp turns.
   let d = target - mapRotation;
   d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
-  mapRotation += d * ROT_SMOOTH;
+  const rotAlpha = ROT_SMOOTH_MIN +
+    (ROT_SMOOTH_MAX - ROT_SMOOTH_MIN) * Math.min(1, Math.abs(d) / ROT_SMOOTH_FULL);
+  mapRotation += d * rotAlpha;
   const rR = -mapRotation;
   _cosRR = Math.cos(rR); _sinRR = Math.sin(rR);
   updatePerspective();
