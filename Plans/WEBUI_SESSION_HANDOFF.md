@@ -12,27 +12,58 @@ Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
   upstream; `SceneProjector` reads `ISectionControlService` + `ToolConfig.MaxSections`).
-- Working tree clean. **Current version `26.5.92`** (we DO bump `sys/version.h` per commit now).
+- Working tree clean. **Current version `26.5.95`** (we DO bump `sys/version.h` per commit now).
 
-## ⏭ NEXT SESSION — START HERE: iPad-only full-screen chrome
-Reported on **iPad only**, standalone/full-screen web app (browsers smooth on Mac/Android/iPad
-after v26.5.92): (1) the **iOS status bar** (date/time upper-left, battery upper-right) shows;
-(2) a **"pill with X" appears upper-left, under the date/time**. Mac + Android don't show either.
-- **First action: ask the user for an iPad screenshot of the top-left** — the "X pill" is
-  unidentified (could be iOS chrome — AssistiveTouch / Guided Access / Stage Manager control —
-  or one of our own elements mis-placed in the safe area). Don't guess; see it.
-- Context already gathered: PWA meta is set (`index.html` head): `apple-mobile-web-app-capable=yes`,
-  `apple-mobile-web-app-status-bar-style=black-translucent`, `viewport-fit=cover`. So the map
-  bleeds UNDER the iOS status bar, but our top chrome isn't offset for the safe area:
-  `#statusbar` is `position:fixed; top:0` (collides with the iOS date/time); no `env(safe-area-inset-*)`
-  anywhere in the file. `#leftnav`/`#rightnav` are `top:56px`; `#bottomstack` `bottom:0`.
-- **The iOS status bar cannot be hidden** for a browser/PWA on iPad (iPadOS always shows it; no
-  meta hides it). Realistic fixes: (a) offset our chrome below `env(safe-area-inset-top)` so the
-  iOS bar doesn't overlap our controls (map stays full-bleed); or (b) switch status-bar style to
-  opaque `black` so content sits below it. Confirm which the user wants. Fully hiding it needs a
-  native wrapper — track separately if they insist.
-- I had an `AskUserQuestion` queued (status-bar preference + is-the-X-pill-ours) when we hit the
-  context limit — re-ask with the screenshot.
+## ⏭ NEXT SESSION — START HERE: Phase 10 (headless cutover) — the LAST migration item
+Everything else in the migration is done. Phase 10 = the host goes **UI-less** (no Avalonia
+window); the browser becomes the only UI. This is also the **prerequisite for the appliance
+deployment** (you can't cleanly daemonize a windowed Avalonia app — a headless generic-host +
+Kestrel process is what runs as a systemd service / Windows Service).
+- **Deployment decision reached this session:** the headless host should run as a **service/
+  daemon** on the cab-PC / one-box-SBC targets (auto-start on boot, `Restart=always`, no display
+  needed since rendering is in the browser, dedicated unprivileged user in the `can`/`dialout`
+  groups, `After=network-online`, `WatchdogSec`+`sd_notify`, journald). The **UI is always a
+  separate layer** — a remote tablet browser OR a local **chromium-kiosk** at `localhost`. The
+  co-resident **mobile** case is NOT a daemon — it's an app (Android foreground service; iOS
+  foregrounded app + Guided Access). Not yet written into `DEPLOYMENT_PATTERNS.md` — offered, do it
+  if asked. See `[[project_deployment_patterns]]`.
+- Phase 10 scope: strip the Avalonia window/UI from the host startup path so it boots as a plain
+  .NET host (services + `RemoteServerHost`), confirm Desktop still serves the browser headless,
+  then the per-platform packaging (systemd unit, etc.). `RemoteServerHost.StartAsync` is already
+  the seam; it's only wired from Desktop `App.axaml.cs` today.
+
+## ⭐ STATUS (2026-06-19, session 2): map-motion + quality/parity polish DONE (v26.5.93–95)
+Continuation after Phase MT. All committed + pushed to `feature/web-ui-phase2`.
+- **iPad full-screen chrome (v26.5.93)** — the "X pill" was the **browser's Full-Screen-mode exit
+  control** (Safari AND Chrome), NOT ours and NOT removable from web code → solved by launching via
+  **Add to Home Screen** (standalone, no X). The **iOS status bar overlap** fixed with
+  `env(safe-area-inset-*)` offsets (`:root --sat/--sab/--sal/--sar`; map stays full-bleed). Also
+  removed the green test **HUD** + bottom-left **help text**, and promoted **Operator/Observer/
+  Disconnected** into the status bar (`#sb-role`, left of Modules; driven by control state + `connState`).
+- **Smooth map motion (v26.5.94)** — THE fix for the background "jump while driving". Root cause was
+  NOT precision — it was the **dead-reckoning re-anchor snap** (client extrapolated, then each tick
+  hard-snapped the anchor to a latency/jitter-delayed pose → whole world jumped ≈latency×speed).
+  Replaced extrapolation with **INTERPOLATION**: render `RENDER_DELAY=120 ms` in the past, lerp
+  position+heading between the two most recent real poses (`prevTick`→`lastTick`). Deleted the
+  `drOff`/`smoothHdg` smoothing apparatus. Also added **camera-relative rendering** (subtract
+  camE,camN in f64 before the f32 M44 — kills floating-origin sub-pixel jitter, mirrors native
+  `relX = _vehicleX - _cameraX`) and **imagery/ground mipmaps** + the **grid visibility toggle**.
+  ⚠ Debugging lesson: a per-frame DOM `textContent` diagnostic overlay *itself* caused background
+  jitter (forced reflow) — observer effect; removed it.
+- **Residual U-turn jitter — LEFT ALONE (decided):** the U-turn entry/exit endpoints jitter slightly;
+  **native does it too** (it's in the host U-turn generation, regenerated from the live pose — NOT a
+  web renderer bug). Only visible zoomed way in; imperceptible at normal zoom. Real fix would be
+  host-side U-turn anchor smoothing (helps native too) — parked.
+- **Quality button + front wheels (v26.5.95)** — quality (`DisplayResolutionMultiplier`) now drives
+  the web like native: **coverage** (new shared `CoverageMapService.RebuildDisplayForResolutionChange()`
+  — the rebuild previously lived only in the native `SkiaMapControl`, so the web never saw it; the
+  command now calls both) AND **background imagery** (projected the numeric multiplier; `drawImagerySk`
+  downsamples its LOD by it — mirrors native's **Apple composite path = iOS *and* macOS**, so the Mac
+  desktop shows it too). Added the **steerable front-wheel sprite** (`FrontWheels.png` + new Tick
+  field `VehicleSteerAngle` = sim-slider-or-WAS like native `ApplyResults`; drawn at both front-axle
+  ends rotated by −steer in the +Y-forward frame).
+- **Docs:** `DEPLOYMENT_PATTERNS.md` gained the **Uno Q two-chip RPC-bridge** realization (+ .NET
+  binding caveat) and the **x86-64 backend** pattern (Pattern B/D).
 
 ## ⭐ STATUS (2026-06-19): Phase MT DONE + motion-smoothness pass DONE — only Phase 10 (headless cutover) remains.
 - **Motion smoothness (v26.5.92)** — web tool/pose/coverage now glide like native (verified
