@@ -134,6 +134,13 @@ public sealed class RemoteServerHost
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
+        // This is an EMBEDDED server, not the process owner. Suppress its default
+        // ConsoleLifetime so it does NOT grab SIGTERM / Ctrl+C — the host process
+        // (the Avalonia app when windowed, HeadlessHost as a daemon) owns process
+        // signals and stops us explicitly via StopAsync. Without this, the embedded
+        // host self-stops on SIGTERM and races the host's StopAsync (disposed CTS).
+        builder.Services.AddSingleton<IHostLifetime, NoopHostLifetime>();
+
         builder.Services.AddSingleton(state);
         builder.Services.AddSingleton(coverage);
         builder.Services.AddSingleton(sections);
@@ -254,6 +261,19 @@ public sealed class RemoteServerHost
         await _app.StopAsync();
         await _app.DisposeAsync();
         _app = null;
+    }
+
+    /// <summary>
+    /// No-op <see cref="IHostLifetime"/> that replaces the embedded web host's
+    /// default ConsoleLifetime, so the embedded server never installs process
+    /// signal handlers. Process-signal handling belongs to the owning host.
+    /// </summary>
+    private sealed class NoopHostLifetime : IHostLifetime
+    {
+        public System.Threading.Tasks.Task WaitForStartAsync(System.Threading.CancellationToken ct)
+            => System.Threading.Tasks.Task.CompletedTask;
+        public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken ct)
+            => System.Threading.Tasks.Task.CompletedTask;
     }
 
     private static string ReadAsset(string name)

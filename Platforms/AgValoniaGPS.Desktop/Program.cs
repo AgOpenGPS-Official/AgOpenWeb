@@ -27,8 +27,21 @@ sealed class Program
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
     [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
-        .StartWithClassicDesktopLifetime(args);
+    public static void Main(string[] args)
+    {
+        // Phase 10: AgOpenWeb boots HEADLESS by default — no Avalonia window; the
+        // browser at http://<host>:5174 is the only UI, and the process can run as a
+        // display-less daemon (systemd / Windows Service). Pass --windowed (or set
+        // AGOPENWEB_WINDOWED=1) to launch the legacy native window for verify/compare
+        // while the headless path is field-validated. See WEBUI_SESSION_HANDOFF.md.
+        bool windowed = Array.IndexOf(args, "--windowed") >= 0
+            || Environment.GetEnvironmentVariable("AGOPENWEB_WINDOWED") == "1";
+
+        if (windowed)
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        else
+            HeadlessHost.RunAsync(args).GetAwaiter().GetResult();
+    }
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
