@@ -37,17 +37,15 @@ User=agopenweb
 Group=agopenweb
 
 # Field data + config live OUTSIDE the program dir so a program update (which replaces
-# /opt/agopenweb) never wipes the operator's fields/tools/vehicles/config. /var/lib/agopenweb
-# IS the agopenweb user's home dir; StateDirectory makes systemd create + own it before
-# start. StateDirectoryMode=0755 + UMask=0022 make it (and everything the daemon writes)
-# WORLD-READABLE but daemon-write-only: any login user can browse/back up the fields, yet
-# only the service can modify them (no accidental corruption while it runs). AGOPENWEB_DATA
-# is the explicit data-root the app honors (see AppDataRoot) → /var/lib/agopenweb/AgValoniaGPS.
-StateDirectory=agopenweb
-StateDirectoryMode=0755
+# /opt/agopenweb) never wipes the operator's fields/tools/vehicles/config. They live in
+# /home/agopenweb — the agopenweb user's home, where people look for user data (it sits in
+# /home alongside the real users). install.sh creates it (0755, owned by agopenweb).
+# UMask=0022 keeps everything the daemon writes WORLD-READABLE but daemon-write-only: any
+# login user can browse/back up the fields, only the service can modify them. AGOPENWEB_DATA
+# is the explicit data-root the app honors (see AppDataRoot) → /home/agopenweb/AgValoniaGPS.
 UMask=0022
-Environment=AGOPENWEB_DATA=/var/lib/agopenweb
-Environment=HOME=/var/lib/agopenweb
+Environment=AGOPENWEB_DATA=/home/agopenweb
+Environment=HOME=/home/agopenweb
 # .NET diagnostics pipe is pointless on an appliance and trips some hardening.
 Environment=DOTNET_EnableDiagnostics=0
 
@@ -69,6 +67,7 @@ SyslogIdentifier=agopenweb
 # --- Hardening. Loosened only where the workload needs it; tighten per site. ---
 NoNewPrivileges=true
 ProtectSystem=full
+# Must be false: the data home is /home/agopenweb, which ProtectHome would hide/lock.
 ProtectHome=false
 PrivateTmp=true
 ProtectControlGroups=true

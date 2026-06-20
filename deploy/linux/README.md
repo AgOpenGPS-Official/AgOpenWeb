@@ -29,7 +29,7 @@ journalctl -u agopenweb -f          # live logs
 systemctl status agopenweb          # state + last lines
 systemctl restart agopenweb         # restart
 sudo ./uninstall.sh                 # remove (keeps field data)
-sudo ./uninstall.sh --purge         # remove everything incl. /var/lib/agopenweb
+sudo ./uninstall.sh --purge         # remove everything incl. /home/agopenweb
 ```
 
 Browse to `http://<box-ip>:5174`.
@@ -50,17 +50,17 @@ Browse to `http://<box-ip>:5174`.
 | Path | Contents |
 |------|----------|
 | `/opt/agopenweb` | published program (self-contained) — REPLACED on every update |
-| `/var/lib/agopenweb/AgValoniaGPS` | field data + profiles + config (`AGOPENWEB_DATA`) — kept across updates |
+| `/home/agopenweb/AgValoniaGPS` | field data + profiles + config (`AGOPENWEB_DATA`) — kept across updates |
 | `/etc/systemd/system/agopenweb.service` | the unit |
 
 Updates only ever touch `/opt/agopenweb` (with a `/opt/agopenweb.old` backup). All
-operator data lives under `/var/lib/agopenweb` (the `agopenweb` service user's home,
+operator data lives under `/home/agopenweb` (the `agopenweb` service user's home,
 via the `AGOPENWEB_DATA` env var the unit sets), so fields/tools/vehicles/config survive
 every `install.sh --from app`. The data home is **world-readable but daemon-write-only**
-(`0755` + `UMask=0022`): any login user can `cd /var/lib/agopenweb/AgValoniaGPS` to
+(`0755` + `UMask=0022`): any login user can `cd /home/agopenweb/AgValoniaGPS` to
 browse or back up the fields, but only the service can modify them (no accidental
 corruption while it runs). To run the host by hand outside systemd against the same data,
-set `AGOPENWEB_DATA=/var/lib/agopenweb`. To put data elsewhere (home dir, USB/SSD, NFS),
+set `AGOPENWEB_DATA=/home/agopenweb`. To put data elsewhere (home dir, USB/SSD, NFS),
 point `AGOPENWEB_DATA` at it.
 
 ## Notes

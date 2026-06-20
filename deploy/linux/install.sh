@@ -28,7 +28,7 @@ ARCH="x64"
 MODE="build"          # build | from | unit-only
 FROM_DIR=""
 PREFIX="/opt/agopenweb"
-STATE_DIR="/var/lib/agopenweb"
+STATE_DIR="/home/agopenweb"   # the agopenweb user's home — where people look for user data
 SVC_USER="agopenweb"
 UNIT="agopenweb.service"
 
@@ -90,8 +90,11 @@ fi
 
 echo "==> Creating service user '$SVC_USER' (if missing)…"
 if ! id -u "$SVC_USER" >/dev/null 2>&1; then
-  # System account, no login shell, home = state dir.
-  useradd --system --no-create-home --home-dir "$STATE_DIR" --shell /usr/sbin/nologin "$SVC_USER"
+  # System account, no login shell, home in /home so it sits with the other users.
+  useradd --system --create-home --home-dir "$STATE_DIR" --shell /usr/sbin/nologin "$SVC_USER"
+else
+  # Existing account (possibly from an earlier /var/lib home) — repoint its home.
+  usermod --home "$STATE_DIR" "$SVC_USER" 2>/dev/null || true
 fi
 # Best-effort device groups (may not exist on every distro).
 for g in dialout can; do getent group "$g" >/dev/null && usermod -aG "$g" "$SVC_USER" || true; done
@@ -114,12 +117,18 @@ if [[ -n "$PUBLISH_SRC" ]]; then
   echo "==> Installing files to $PREFIX (from $PUBLISH_SRC)…"
   systemctl stop "$UNIT" 2>/dev/null || true
   mkdir -p "$PREFIX" "$STATE_DIR"
-  # One-time recovery: pre-v26.5.110 builds could store operator data INSIDE the program
-  # dir when the data root resolved wrong. If such data exists and the proper data root
-  # has none yet, move it across so this update recovers it instead of wiping it.
-  if [[ -d "$PREFIX/AgValoniaGPS" && ! -d "$STATE_DIR/AgValoniaGPS" ]]; then
-    echo "==> Recovering in-program-dir data → $STATE_DIR/AgValoniaGPS"
-    cp -a "$PREFIX/AgValoniaGPS" "$STATE_DIR/"
+  # One-time recovery from earlier data locations: pre-v26.5.110 builds could store data
+  # INSIDE the program dir (/opt/agopenweb/AgValoniaGPS); v26.5.110–112 used /var/lib/
+  # agopenweb. If the /home data root has none yet, bring the first one found across (the
+  # /opt one must be rescued before /opt is wiped below).
+  if [[ ! -d "$STATE_DIR/AgValoniaGPS" ]]; then
+    for old in "$PREFIX/AgValoniaGPS" /var/lib/agopenweb/AgValoniaGPS; do
+      if [[ -d "$old" ]]; then
+        echo "==> Recovering data from $old → $STATE_DIR/AgValoniaGPS"
+        cp -a "$old" "$STATE_DIR/"
+        break
+      fi
+    done
   fi
   rm -rf "$PREFIX.old"
   [[ -n "$(ls -A "$PREFIX" 2>/dev/null)" ]] && cp -a "$PREFIX" "$PREFIX.old" || true
