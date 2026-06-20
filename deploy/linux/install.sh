@@ -96,6 +96,20 @@ fi
 # Best-effort device groups (may not exist on every distro).
 for g in dialout can; do getent group "$g" >/dev/null && usermod -aG "$g" "$SVC_USER" || true; done
 
+# SkiaSharp native deps. The host composites boundary imagery with SkiaSharp, whose
+# bundled libSkiaSharp.so dynamically links libfontconfig + libGL. They are NOT part
+# of the self-contained .NET bundle, so a minimal board (e.g. the Uno Q) lacks
+# libfontconfig and the imagery-capture child fails ("type initializer for
+# SkiaSharp.SKImageInfo threw"). The host stays up (capture is crash-isolated) but the
+# background is blank. Best-effort install on apt systems; skipped elsewhere with a hint.
+if command -v apt-get >/dev/null 2>&1; then
+  echo "==> Ensuring SkiaSharp native deps (libfontconfig1, libgl1)…"
+  apt-get install -y --no-install-recommends libfontconfig1 libgl1 \
+    || echo "   (auto-install failed — if boundary imagery is blank, run: sudo apt-get install libfontconfig1 libgl1)"
+else
+  echo "==> NOTE: install libfontconfig + libGL via your package manager for boundary imagery."
+fi
+
 if [[ -n "$PUBLISH_SRC" ]]; then
   echo "==> Installing files to $PREFIX (from $PUBLISH_SRC)…"
   systemctl stop "$UNIT" 2>/dev/null || true

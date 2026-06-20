@@ -62,3 +62,8 @@ Browse to `http://<box-ip>:5174`.
 - A local kiosk display is a separate concern: install a minimal X/Wayland +
   `chromium --kiosk http://localhost:5174` as its own unit. The AgOpenWeb host
   itself needs no display.
+- **Boundary imagery** (drawing a field boundary on the satellite map) composites
+  Bing tiles with SkiaSharp host-side, whose native lib links `libfontconfig` +
+  `libGL`. `install.sh` apt-installs them; on a non-apt distro install them manually.
+  If they're missing the host stays up (capture is crash-isolated) but the background
+  is blank. Imagery also needs the board to reach `virtualearth.net` (internet).
