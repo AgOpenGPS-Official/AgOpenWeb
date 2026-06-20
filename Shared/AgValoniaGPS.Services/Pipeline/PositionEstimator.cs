@@ -32,8 +32,20 @@ namespace AgValoniaGPS.Services.Pipeline;
 public sealed class PositionEstimator : IPositionEstimator
 {
     private PoseSnapshot? _latest;
+    private double _filteredYawRate;
+    private bool _hasFilteredYaw;
 
     public double MaxStaleSeconds { get; set; } = 1.0;
+
+    // Low-pass weight for the IMU-less DERIVED yaw rate. The raw rate is a single-pair
+    // heading-delta derivative, so when autosteer holds a line with small steering
+    // corrections it oscillates — and GetPose extrapolates the latest rate FORWARD,
+    // amplifying that dither into a visible heading "bounce" / whole-map wiggle (most
+    // noticeable approaching the headland, where the line-follow correction is busiest).
+    // EMA-damping the rate stops the forward prediction from chasing each correction,
+    // while still ramping up within a few samples for a real sustained turn. Only the
+    // derived (no-IMU) path is filtered; a real IMU yaw rate is used as-is.
+    public double YawRateFilterAlpha { get; set; } = 0.3;
 
     public void UpdateFromGps(PoseSnapshot snapshot)
     {
@@ -55,8 +67,21 @@ public sealed class PositionEstimator : IPositionEstimator
                 double dh = snapshot.Heading - prev.Heading;
                 while (dh > Math.PI) dh -= 2 * Math.PI;
                 while (dh < -Math.PI) dh += 2 * Math.PI;
-                snapshot = snapshot with { YawRateRadPerSec = dh / dt };
+                double rawYaw = dh / dt;
+                // EMA-damp the derived rate (see YawRateFilterAlpha) so a forward
+                // extrapolation in GetPose can't amplify autosteer line-holding dither.
+                _filteredYawRate = _hasFilteredYaw
+                    ? _filteredYawRate + YawRateFilterAlpha * (rawYaw - _filteredYawRate)
+                    : rawYaw;
+                _hasFilteredYaw = true;
+                snapshot = snapshot with { YawRateRadPerSec = _filteredYawRate };
             }
+        }
+        else if (Math.Abs(snapshot.YawRateRadPerSec) >= 1e-9)
+        {
+            // A real IMU yaw rate arrived — drop the derived-rate filter state so a later
+            // return to the derived path doesn't resume from a stale value.
+            _hasFilteredYaw = false;
         }
         Interlocked.Exchange(ref _latest, snapshot);
     }
