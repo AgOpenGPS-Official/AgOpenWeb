@@ -180,8 +180,16 @@ const transport = RemoteTransport.create({
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
         tool: t.tool, t: performance.now(), hostT: t.hostMs,
       };
-      poseBuf.push(lastTick);
-      if (poseBuf.length > POSE_BUF_MAX) poseBuf.shift();
+      // Keep the buffer strictly increasing in host time. The 30 Hz render-pull vs 10 Hz
+      // broadcast can occasionally resend the same pose (equal hostT) — a duplicate/
+      // backward stamp would break the bracket search, so replace rather than append.
+      const prev = poseBuf[poseBuf.length - 1];
+      if (prev && typeof t.hostMs === 'number' && typeof prev.hostT === 'number' && t.hostMs <= prev.hostT)
+        poseBuf[poseBuf.length - 1] = lastTick;
+      else {
+        poseBuf.push(lastTick);
+        if (poseBuf.length > POSE_BUF_MAX) poseBuf.shift();
+      }
       // Track the client↔host clock offset (EMA). The interp SPAN comes from the
       // jitter-free host timestamps; this offset only aligns the playback timeline, so a
       // single late/early arrival shifts it by ≤5% instead of warping the whole frame.
