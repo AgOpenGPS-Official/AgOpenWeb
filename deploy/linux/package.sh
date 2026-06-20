@@ -61,7 +61,11 @@ chmod +x "$STAGE/install.sh" "$STAGE/uninstall.sh"
 mkdir -p "$OUT_DIR"
 TARBALL="$OUT_DIR/$NAME.tar.gz"
 echo "==> Writing ${TARBALL} ..."
-tar -C "$(dirname "$STAGE")" -czf "$TARBALL" "$NAME"
+# --no-xattrs: don't store extended attributes. On macOS bsdtar stamps every file
+# with a com.apple.provenance xattr, which GNU tar on the target warns about
+# ("Ignoring unknown extended header keyword 'LIBARCHIVE.xattr.com.apple.provenance'").
+# The flag exists in both bsdtar and GNU tar, so the bundle stays clean either way.
+tar --no-xattrs -C "$(dirname "$STAGE")" -czf "$TARBALL" "$NAME"
 rm -rf "$(dirname "$STAGE")"
 
 echo "==> Done: $TARBALL ($(du -h "$TARBALL" | cut -f1))"
