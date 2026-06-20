@@ -50,6 +50,9 @@
     <PackageReference Include="HotAvalonia" Version="3.0.2" PrivateAssets="All" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <!-- Phase 10 headless daemon: Type=notify readiness + journald formatting +
+         SystemdLifetime (SIGTERM) when run under systemd; no-op otherwise. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />

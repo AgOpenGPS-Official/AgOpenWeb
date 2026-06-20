@@ -1,0 +1,71 @@
+# AgOpenWeb headless host — systemd service unit (Phase 10 appliance deployment).
+#
+# Runs the display-less .NET host as a daemon on a cab-PC / one-box SBC. The host
+# has NO native UI; operators use a browser (remote tablet, or a local
+# chromium-kiosk pointed at http://localhost:5174). See Plans/DEPLOYMENT_PATTERNS.md.
+#
+# Install with deploy/linux/install.sh, which publishes the self-contained build to
+# /opt/agopenweb, creates the agopenweb service user, and installs + enables this unit.
+# After editing this file by hand: `sudo systemctl daemon-reload && sudo systemctl restart agopenweb`.
+
+[Unit]
+Description=AgOpenWeb headless GPS guidance host (browser UI on :5174)
+Documentation=https://github.com/chriskinal/AgOpenWeb
+# The host opens UDP sockets to the AiO / GPS modules and (optionally) an NTRIP
+# caster, so wait for the network to be actually up, not just configured.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Type=notify: the .NET host (UseSystemd) sends READY=1 once it is serving, so
+# systemd only considers the unit "started" when the browser endpoint is live —
+# and the WatchdogSec timer below only starts counting after READY.
+Type=notify
+NotifyAccess=main
+
+ExecStart=/opt/agopenweb/AgValoniaGPS.Desktop
+WorkingDirectory=/opt/agopenweb
+
+# Dedicated unprivileged service account. dialout = USB serial (GPS / AiO over
+# /dev/ttyACM*, /dev/ttyUSB*); can = SocketCAN interfaces on one-box SBC targets.
+User=agopenweb
+Group=agopenweb
+SupplementaryGroups=dialout can
+
+# Field data + config live under HOME. StateDirectory makes systemd create and own
+# /var/lib/agopenweb (mode 0700, chown agopenweb) before start; HOME points the
+# app's MyDocuments path there. Survives ProtectHome/ProtectSystem below.
+StateDirectory=agopenweb
+Environment=HOME=/var/lib/agopenweb
+# .NET diagnostics pipe is pointless on an appliance and trips some hardening.
+Environment=DOTNET_EnableDiagnostics=0
+
+# Keep the brain alive. RestartSec gives modules a moment to settle between crashes.
+Restart=always
+RestartSec=2
+# Watchdog: the host pets it via sd_notify at half this interval
+# (SystemdWatchdogService). A wedged host misses the deadline → systemd kills and
+# restarts it. Raise if you see false trips under heavy field load.
+WatchdogSec=30
+TimeoutStartSec=60
+TimeoutStopSec=15
+
+# Logs → journald (view with: journalctl -u agopenweb -f).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=agopenweb
+
+# --- Hardening. Loosened only where the workload needs it; tighten per site. ---
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+# The .NET layer talks to modules over UDP (AF_INET) and to NTRIP over TCP; AF_UNIX
+# is used internally; AF_CAN is listed so a future SocketCAN path is not blocked.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN
+
+[Install]
+WantedBy=multi-user.target

@@ -47,6 +47,11 @@ internal static class HeadlessHost
         var hostLoop = new HostLoopDispatcher();
 
         var host = Host.CreateDefaultBuilder(args)
+            // When launched as a systemd Type=notify service: swap in SystemdLifetime
+            // (handles SIGTERM + sends READY=1 once started), and format logs for
+            // journald. A no-op when not run under systemd, so dotnet run still uses
+            // ConsoleLifetime (Ctrl-C). See Plans/DEPLOYMENT_PATTERNS.md.
+            .UseSystemd()
             .ConfigureServices(services =>
             {
                 services.AddAgValoniaServices();
@@ -58,6 +63,10 @@ internal static class HeadlessHost
                 services.AddSingleton<IUiDispatcher>(hostLoop);
                 services.AddSingleton<IUiTimerFactory>(hostLoop);
                 services.AddSingleton<IMapService, NullMapService>();
+
+                // Pets the systemd hardware watchdog (WatchdogSec) via sd_notify;
+                // no-op when not under a watchdog-enabled systemd service.
+                services.AddHostedService<SystemdWatchdogService>();
             })
             .Build();
 
