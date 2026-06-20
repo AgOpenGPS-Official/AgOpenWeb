@@ -317,6 +317,19 @@ addEventListener('wheel', e => {
   pxPerM = Math.min(200, Math.max(0.2, pxPerM));
 }, { passive: false });
 
+// Block BROWSER zoom so only the map zooms. iOS Safari IGNORES the viewport's
+// user-scalable=no, so a two-finger pinch (esp. one starting over a panel, whose
+// touch-action:manipulation still permits page pinch) magnifies the whole page —
+// chrome and all — off-screen ("erratic zoom"). Preventing Safari's gesture* events
+// stops that; trackpad/ctrl+wheel page-zoom is already covered by the wheel handler's
+// preventDefault above. Multi-touch on the map canvas is covered by touch-action:none.
+for (const t of ['gesturestart', 'gesturechange', 'gestureend'])
+  addEventListener(t, e => e.preventDefault(), { passive: false });
+// Belt-and-suspenders for touch browsers without gesture* (e.g. some Android): a
+// 2+-finger move is a pinch — swallow it so the page can't zoom/pan. Single-finger
+// touches pass through to the map pan / panel scroll untouched.
+addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+
 // Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one
 // that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
 // so window-level pointerdown only fires for gestures that began on the map — gestureOnMap
