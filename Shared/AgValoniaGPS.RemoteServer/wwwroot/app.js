@@ -14,6 +14,7 @@ let vw = innerWidth, vh = innerHeight, dpr = 1;
 // Skia/CanvasKit renderer state — declared before resize() (which calls
 // recreateSkSurface) to avoid a temporal-dead-zone ReferenceError.
 let CK = null, skSurface = null, skTri = null, SKP = null;
+let grCtx = null; // WebGL GrDirectContext — hoisted so the coverage render target shares it
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
   vw = innerWidth; vh = innerHeight;
@@ -218,28 +219,47 @@ const transport = RemoteTransport.create({
     pushChartData(t);
   },
   onCoverageInit(init) {
-    const canvas = document.createElement('canvas');
-    canvas.width = init.width;
-    canvas.height = init.height;
+    if (cov) { // tear down a prior coverage (field/resolution change)
+      if (cov.skImg) cov.skImg.delete();
+      if (cov.surface) cov.surface.delete();
+      if (cov.covPaint) cov.covPaint.delete();
+    }
+    const w = init.width, h = init.height;
+    // Primary: a persistent GPU render target. New cells are drawn straight onto it each
+    // update (cheap, only the new cells) and snapshotted (texture copy-on-write) — NO
+    // whole-texture re-upload, which was the regular per-rebuild stutter. Fallback: the
+    // offscreen 2D canvas + full re-upload (throttled) if the render target can't be made.
+    let surface = null;
+    if (CK && grCtx) { try { surface = CK.MakeRenderTarget(grCtx, w, h); } catch (e) { surface = null; } }
+    let canvas = null, cctx = null, covPaint = null;
+    if (surface) {
+      surface.getCanvas().clear(CK.TRANSPARENT);
+      covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
+    } else {
+      canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
+    }
     cov = {
       cellSize: init.cellSize, originE: init.originE, originN: init.originN,
-      width: init.width, height: init.height,
-      canvas, cctx: canvas.getContext('2d'),
-      dirty: true, skImg: null, // Skia snapshot of the offscreen, rebuilt when dirty
+      width: w, height: h, surface, covPaint, pending: [],
+      canvas, cctx, dirty: true, skImg: null, lastBuild: 0,
     };
     covCells = 0;
   },
   onCoverageCells(msg) {
     if (!cov || !msg.cells) return;
-    const c = msg.cells, H = cov.height, cctx = cov.cctx;
-    let lastRgb = -1;
-    for (let i = 0; i + 2 < c.length; i += 3) {
-      const x = c[i], y = c[i + 1], rgb = c[i + 2];
-      if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
-      cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
-      covCells++;
+    if (cov.surface) {
+      cov.pending.push(msg.cells); // drawn onto the render target in drawCoverageSk (in-frame)
+    } else {
+      const c = msg.cells, H = cov.height, cctx = cov.cctx;
+      let lastRgb = -1;
+      for (let i = 0; i + 2 < c.length; i += 3) {
+        const x = c[i], y = c[i + 1], rgb = c[i + 2];
+        if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
+        cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
+        covCells++;
+      }
     }
-    cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
+    cov.dirty = true;
   },
   onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); },
   onConfig(c) { config = c; configDirty = true; },
@@ -275,7 +295,7 @@ function recreateSkSurface() {
   // via the explicit GL path; fall back to the color-managed helper if needed.
   const ctxHandle = CK.GetWebGLContext(ckcv);
   if (ctxHandle) {
-    const grCtx = CK.MakeWebGLContext(ctxHandle);
+    grCtx = CK.MakeWebGLContext(ctxHandle);
     if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   }
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
@@ -4283,21 +4303,42 @@ function drawSatelliteSk(canvas) {
 // (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
 // cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
 // cov object so a new coverage-init naturally starts with a fresh (null) image.
-// Coverage offscreen → GPU texture rebuild is a FULL field-sized re-upload
-// (MakeImageFromCanvasImageSource). Coverage cells arrive ~10 Hz while sections paint, so
-// rebuilding every change re-uploaded the whole texture ~10×/s → a frame hitch each time =
-// the "stutter while following the line" (not-following = coverage static = no rebuild =
-// smooth). Throttle the rebuild to ~4 Hz: the worked-area layer tolerates a ≤250 ms visual
-// lag, and the expensive upload drops to a fraction of the rate.
+// Fallback-path throttle (2D canvas → full re-upload): cap the expensive whole-texture
+// rebuild at ~4 Hz. The GPU render-target path below has no such cost.
 const COV_REBUILD_MS = 250;
 function drawCoverageSk(canvas) {
   if (!cov) return;
-  const nowMs = performance.now();
-  if (!cov.skImg || (cov.dirty && nowMs - (cov.lastBuild || 0) >= COV_REBUILD_MS)) {
-    if (cov.skImg) cov.skImg.delete();
-    cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);
-    cov.dirty = false;
-    cov.lastBuild = nowMs;
+  if (cov.surface) {
+    // GPU render target: draw only the pending NEW cells onto it, then snapshot (a GPU
+    // texture COW — cheap). No whole-texture upload, so no regular per-rebuild stutter.
+    if (cov.pending.length) {
+      const sk = cov.surface.getCanvas(), paint = cov.covPaint, H = cov.height;
+      let lastRgb = -1;
+      for (const c of cov.pending) {
+        for (let i = 0; i + 2 < c.length; i += 3) {
+          const x = c[i], y = c[i + 1], rgb = c[i + 2] >>> 0 & 0xFFFFFF;
+          if (rgb !== lastRgb) { paint.setColor(CK.Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 1)); lastRgb = rgb; }
+          sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
+          covCells++;
+        }
+      }
+      cov.pending.length = 0;
+      cov.surface.flush();
+      cov.dirty = true;
+    }
+    if (cov.dirty || !cov.skImg) {
+      if (cov.skImg) cov.skImg.delete();
+      cov.skImg = cov.surface.makeImageSnapshot();
+      cov.dirty = false;
+    }
+  } else {
+    const nowMs = performance.now();
+    if (!cov.skImg || (cov.dirty && nowMs - (cov.lastBuild || 0) >= COV_REBUILD_MS)) {
+      if (cov.skImg) cov.skImg.delete();
+      cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);
+      cov.dirty = false;
+      cov.lastBuild = nowMs;
+    }
   }
   if (!cov.skImg) return;
   const cs = cov.cellSize;
