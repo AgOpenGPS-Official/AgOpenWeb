@@ -52,6 +52,39 @@ dead-reckoned).
   commands, engage request, config (brand profile, WAS cal, gains), and a
   **heartbeat / sequence counter** the RT side watchdogs for safety.
 
+### Two physical realizations of the same contract
+
+The logical contract above is identical everywhere, but **"a shared data
+structure in memory" is only literally true on one of the two topologies** —
+worth knowing before assuming you can just declare a struct both sides poke:
+
+- **Single-die AMP SoC** (STM32MP1/MP2, NXP i.MX8M-Plus, TI AM62x — a Cortex-A
+  cluster + a Cortex-M core sharing **one** physical DRAM): the contract *is* a
+  literal coherent shared-memory struct. Both cores map the same region;
+  synchronization is **OpenAMP/RPMsg + mailbox IRQs**. "Shared structure in
+  memory" at face value, and you own the seqlock/double-buffer/barriers.
+- **Two-chip board** (Uno Q = QRB2210 + **separate** STM32U585; or Pattern D's
+  discrete MCU): the two processors are distinct silicon and **do not share
+  physical DRAM**. They cannot map one struct. Arduino bridges them with **RPC
+  over a shared-memory transport** (the Uno Q "shared-memory bridge" — shared
+  memory is the *transport underneath*, RPC is the *model you program against*).
+  The same logical contract holds, but you reach it through the bridge API, and
+  the sequencing/ownership discipline is the bridge's job, not hand-rolled.
+
+So the contract section's double-buffered-struct sketch describes the
+single-die case directly; on a two-chip bridge it's the *wire shape behind* the
+RPC, not something both sides mutate in place.
+
+⚠ **.NET binding caveat (two-chip bridges).** Arduino's Bridge/RPC SDK targets
+their **App Lab** world — Python on the Linux side ↔ C++ sketches on the MCU.
+AgValonia's brain is **.NET**, so the Linux side needs a binding step to reach
+the bridge: P/Invoke into the bridge library, a local bridge daemon spoken over
+IPC, or reimplementing the shared-region protocol against the same region.
+Not hard, but it is **not** "Arduino hands .NET a shared struct." Budget it
+explicitly — it folds into de-risk spike #2 (the shared-memory bridge spike).
+The single-die AMP path avoids this (you talk RPMsg/`/dev/rpmsg*` directly from
+.NET), trading the MCU-port question for an SoC-with-M-core board choice.
+
 ---
 
 ## Pattern A — Arduino Uno Q (dual-brain SoC + MCU)
@@ -101,6 +134,12 @@ failure independence + an analyzable safe path, not invulnerability.)
 - **MCU compute budget is the make-or-break number:** GPS parse + IMU fusion +
   3 CAN buses (1 native + 2 SPI) + control loop, all at 160 MHz. Must be
   measured, not assumed.
+- **Bridge is RPC-over-shared-mem, not a raw shared struct, and the SDK is
+  .NET-foreign.** The two chips don't share DRAM; you reach the MCU through
+  Arduino's Bridge/RPC, whose SDK targets Python/C++ App Lab — so the .NET host
+  needs a binding step. See "Two physical realizations of the same contract"
+  above. A single-die AMP SoC (Cortex-A + Cortex-M) sidesteps both this and the
+  160 MHz squeeze, at the cost of a different board + the RPMsg port.
 
 ---
 
@@ -217,6 +256,67 @@ autonomous between setpoints), but it's a non-RT transport.
 
 ---
 
+## Backend compute: x86-64 as the .NET host (Pattern B/D, not A)
+
+The patterns above lean ARM (Uno Q, SBCs), but the .NET "brain + web host" half
+runs equally well — arguably **lowest-risk** — on an **x86-64 compute unit**.
+This is the original `remote-web-ui` premise ("browser on a **cab-PC** headless
+host"); the ARM SBCs were the *collapse-to-one-box* optimization, x86-64 is the
+conservative baseline.
+
+**Why compute is a non-issue.** The backend does guidance math + coverage drain
++ WebSocket fan-out — **no rendering** (that's the browser's GPU). Even the
+smallest modern x86 (**Intel N100**, 4× Gracemont, ~6 W) is desktop-class and
+dwarfs the workload. Size an x86 box for **thermal / power / I/O, not CPU/RAM** —
+these boards ship 8–16 GB standard, so the coverage-bitmap RAM concern that sizes
+the ARM backend just disappears. (Backend workload framing: an iPad — our 50 FPS
+floor device — already does GPS + guidance + coverage **plus full rendering**;
+the headless backend drops the rendering, so it sits *below* the floor device's
+load.)
+
+**Why it's the lowest-risk .NET path.** .NET's JIT/runtime is most mature on x64,
+and AgValonia **already ships a Desktop x64 target** (Win / macOS-x64 / Linux-x64
+in CI). An x86-64 Linux backend is *literally the existing Desktop x64 build minus
+the UI* — the least-risk headless port of any option.
+
+**What x86-64 changes vs the ARM patterns:**
+- **No free RT co-core → Pattern A is off the table.** x86 mini-PCs have no
+  integrated Cortex-M and no single-die A+M analog, so you're forced into
+  **Pattern B (PREEMPT_RT on x86)** or **Pattern D (discrete MCU over USB)**.
+  Upside: **PREEMPT_RT's original home is x86** — best-supported RT platform there
+  is, so Pattern B on x86 is rock-solid.
+- **Single failure domain → external safety MCU is MANDATORY** (loses Pattern A's
+  free failure-domain independence; see the watchdog note below).
+- **CAN gets a wrinkle.** No native CAN, and mini-PCs rarely expose SPI headers
+  (so no MCP2518FD wiring like on an SBC). Use an **M.2 / mPCIe CAN-FD card**
+  (proper controller, best latency — the right call for the steering bus), or
+  **USB-CAN** for slower section/ISOBUS buses only (ms-class jitter; avoid for
+  steering — matches the I/O ranking below).
+- **Power/thermal up.** Stay **Atom-class (N100 / N97 / N305, ~6–15 W)**, not
+  desktop i5/Ryzen. Fanless wide-temp industrial N100 boxes are a mature category
+  (kiosk/signage/industrial), so fanless + 9–36 V automotive input + sealed
+  enclosure is readily sourced. Desktop-CPU mini-PCs are overkill and harder to
+  cool in a cab.
+
+**Spec (x86-64 flavor):**
+
+| | Target |
+|---|---|
+| **CPU** | Intel **N100 / N97 / N305** (Alder Lake-N) class; newer is gravy |
+| **RAM** | 8 GB (standard; coverage RAM is a non-issue here) |
+| **Storage** | 64–128 GB NVMe/eMMC |
+| **CAN** | **M.2/mPCIe CAN-FD card** for the steering bus; USB-CAN only for slow buses |
+| **RT** | PREEMPT_RT (mainline 6.12+); pin the control core to an isolated CPU |
+| **Safety** | external safety MCU / HW watchdog on steer-enable (**required** — single failure domain) |
+| **Enclosure** | fanless, wide-temp, automotive (9–36 V) power conditioning |
+
+**Net:** x86-64 minimizes software/port risk and maximizes headroom; ARM
+(Uno Q / single-die AMP) minimizes box count and buys the safety isolation for
+free. It's a **risk-vs-integration** tradeoff, not a performance one — the
+backend is light enough that any of them has ample compute.
+
+---
+
 ## Cross-pattern note: CAN I/O dominates real-time determinism
 
 Ranked best → worst for jitter, regardless of kernel:
@@ -316,5 +416,9 @@ Steps 1 and 2 are independent and can run in parallel.
 - AutoSD real-time (kernel-automotive = PREEMPT_RT) — <https://docs.centos.org/automotive-sig-documentation/about/con_real-time-linux-kernel/>
 - LinRT Cobalt BSP (6.12-dovetail, Xenomai 3.3) — <https://www.linrt.com/>
 - Arduino UNO Q (QRB2210 + STM32U585) — <https://docs.arduino.cc/hardware/uno-q>
+- Uno Q inter-processor comms (RPC + shared-memory bridge, two-chip) —
+  <https://linuxgizmos.com/arduino-uno-q-combines-qualcomm-dragonwing-qrb2210-and-stm32-mcu/>
+- Linux multi-core AMP shared memory (OpenAMP / RPMsg, single-die A+M SoC) —
+  <https://www.kernel.org/doc/html/latest/staging/remoteproc.html>
 - STM32U585 datasheet (1× FDCAN) — <https://www.st.com/resource/en/datasheet/stm32u585ai.pdf>
 - Related: `Plans/WEBUI_MIGRATION_PLAN.md`, `Plans/REMOTE_WEB_UI_SPLIT.md`
