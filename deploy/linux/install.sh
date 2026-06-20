@@ -130,6 +130,12 @@ fi
 
 mkdir -p "$STATE_DIR"
 chown -R "$SVC_USER":"$SVC_USER" "$PREFIX" "$STATE_DIR"
+# World-readable, daemon-write-only data home: any login user can browse/back up the
+# fields, only the agopenweb service can modify them. The unit's StateDirectoryMode +
+# UMask keep NEW files this way; this opens up any pre-existing 0700/0600 data (and the
+# data just migrated in from /opt). a+rX = read for all + traverse on dirs, NO write.
+chmod 0755 "$STATE_DIR"
+[[ -d "$STATE_DIR/AgValoniaGPS" ]] && chmod -R a+rX "$STATE_DIR/AgValoniaGPS"
 
 echo "==> Installing systemd unit…"
 install -m 0644 "$SCRIPT_DIR/$UNIT" "/etc/systemd/system/$UNIT"

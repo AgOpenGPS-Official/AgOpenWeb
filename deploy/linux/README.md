@@ -54,9 +54,14 @@ Browse to `http://<box-ip>:5174`.
 | `/etc/systemd/system/agopenweb.service` | the unit |
 
 Updates only ever touch `/opt/agopenweb` (with a `/opt/agopenweb.old` backup). All
-operator data lives under `/var/lib/agopenweb` via the `AGOPENWEB_DATA` env var the unit
-sets, so fields/tools/vehicles/config survive every `install.sh --from app`. To run the
-host by hand outside systemd and use the same data, set `AGOPENWEB_DATA=/var/lib/agopenweb`.
+operator data lives under `/var/lib/agopenweb` (the `agopenweb` service user's home,
+via the `AGOPENWEB_DATA` env var the unit sets), so fields/tools/vehicles/config survive
+every `install.sh --from app`. The data home is **world-readable but daemon-write-only**
+(`0755` + `UMask=0022`): any login user can `cd /var/lib/agopenweb/AgValoniaGPS` to
+browse or back up the fields, but only the service can modify them (no accidental
+corruption while it runs). To run the host by hand outside systemd against the same data,
+set `AGOPENWEB_DATA=/var/lib/agopenweb`. To put data elsewhere (home dir, USB/SSD, NFS),
+point `AGOPENWEB_DATA` at it.
 
 ## Notes
 

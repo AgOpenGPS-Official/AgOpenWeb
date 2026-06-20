@@ -37,11 +37,15 @@ User=agopenweb
 Group=agopenweb
 
 # Field data + config live OUTSIDE the program dir so a program update (which replaces
-# /opt/agopenweb) never wipes the operator's fields/tools/vehicles/config. StateDirectory
-# makes systemd create + own /var/lib/agopenweb (mode 0700, chown agopenweb) before start.
-# AGOPENWEB_DATA is the explicit data-root override the app honors (see AppDataRoot) →
-# data lands in /var/lib/agopenweb/AgValoniaGPS. HOME set too as a belt-and-suspenders.
+# /opt/agopenweb) never wipes the operator's fields/tools/vehicles/config. /var/lib/agopenweb
+# IS the agopenweb user's home dir; StateDirectory makes systemd create + own it before
+# start. StateDirectoryMode=0755 + UMask=0022 make it (and everything the daemon writes)
+# WORLD-READABLE but daemon-write-only: any login user can browse/back up the fields, yet
+# only the service can modify them (no accidental corruption while it runs). AGOPENWEB_DATA
+# is the explicit data-root the app honors (see AppDataRoot) → /var/lib/agopenweb/AgValoniaGPS.
 StateDirectory=agopenweb
+StateDirectoryMode=0755
+UMask=0022
 Environment=AGOPENWEB_DATA=/var/lib/agopenweb
 Environment=HOME=/var/lib/agopenweb
 # .NET diagnostics pipe is pointless on an appliance and trips some hardening.
