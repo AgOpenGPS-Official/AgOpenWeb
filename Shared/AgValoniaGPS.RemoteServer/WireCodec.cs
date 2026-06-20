@@ -287,6 +287,7 @@ public static class WireCodec
         DB(d.UTurnButtonVisible); DB(d.LateralButtonVisible);
         DB(d.AutoSteerSound); DB(d.UTurnSound); DB(d.HydraulicSound); DB(d.SectionsSound);
         DB(d.KeyboardEnabled); DB(d.StartFullscreen); DB(d.ElevationLogEnabled);
+        w.Write(d.DisplayResolutionMultiplier); // f64 — web imagery LOD (quality)
         // AutoSteer config tab (full 9-tab surface). Append-only; field order mirrors
         // AutoSteerConfigDto exactly so transport.js decodes it positionally.
         var a = c.AutoSteer;
@@ -495,6 +496,7 @@ public static class WireCodec
         // Hitch pivot (implement hitch line).
         w.Write(t.HitchE);           // f64
         w.Write(t.HitchN);           // f64
+        w.Write((float)t.VehicleSteerAngle); // front-wheel sprite angle (deg)
         return ms.ToArray();
     }
 

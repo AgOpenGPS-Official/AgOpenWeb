@@ -1102,6 +1102,60 @@ public class CoverageMapService : ICoverageMapService
         return cellSize;
     }
 
+    /// <summary>
+    /// Recompute the display layer for a DisplayResolutionMultiplier change at the CURRENT
+    /// field bounds (NOT a field reopen): pick the new display cell size, resize the RGB565
+    /// display buffer, and repaint it from the resolution-independent detection bits. This is
+    /// what makes a live "quality" change take effect on the remote/web coverage feed (which
+    /// reads <see cref="DisplayDimensions"/>.CellSize and re-snapshots from detection) and keeps
+    /// _displayPixels consistent for save. No-op if no field bounds, or the multiplier maps to
+    /// the same pixel grid. The native map control rebuilds its own bitmap separately.
+    /// </summary>
+    public void RebuildDisplayForResolutionChange()
+    {
+        lock (_coverageLock)
+        {
+            if (!_fieldBoundsSet) return;
+            double worldW = _fieldMaxE - _fieldMinE, worldH = _fieldMaxN - _fieldMinN;
+            if (worldW <= 0 || worldH <= 0) return;
+
+            double newCell = ComputeDisplayCellSize(worldW, worldH);
+            int newW = (int)Math.Ceiling(worldW / newCell);
+            int newH = (int)Math.Ceiling(worldH / newCell);
+            if (newW <= 0 || newH <= 0) return;
+            if (newW == _displayWidth && newH == _displayHeight) return; // same pixel grid → nothing to do
+
+            _displayCellSize = newCell;
+            _displayWidth = newW;
+            _displayHeight = newH;
+            long total = (long)newW * newH;
+            if (_displayPixels != null && _displayPixels.LongLength == total)
+                Array.Clear(_displayPixels, 0, _displayPixels.Length);
+            else
+                _displayPixels = new ushort[total];
+            _dirtyValid = false;
+
+            // Repaint from detection bits (0.1 m, resolution-independent). The 1-bit detection
+            // layer carries no per-cell zone, so paint zone 0 — the remote coverage projection
+            // is single-colour too (GetCoverageBitmapCells yields the default zone colour).
+            if (_detectionBits != null)
+            {
+                for (int byteIdx = 0; byteIdx < _detectionBits.Length; byteIdx++)
+                {
+                    byte bits = _detectionBits[byteIdx];
+                    if (bits == 0) continue; // 8 uncovered cells at once
+                    long baseBitIdx = (long)byteIdx * 8;
+                    for (int bit = 0; bit < 8; bit++)
+                    {
+                        if ((bits & (1 << bit)) == 0) continue;
+                        long bitIdx = baseBitIdx + bit;
+                        PaintDisplayPixel((int)(bitIdx % _bitmapWidth), (int)(bitIdx / _bitmapWidth), 0);
+                    }
+                }
+            }
+        }
+    }
+
     private const double EXPAND_MARGIN = 50.0; // Expand when within 50m of edge
     private const double EXPAND_AMOUNT = 250.0; // Add 250m in the needed direction
 

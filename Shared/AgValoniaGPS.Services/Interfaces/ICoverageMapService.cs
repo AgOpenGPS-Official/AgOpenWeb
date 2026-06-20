@@ -292,6 +292,14 @@ public interface ICoverageMapService
     /// the next call only sees newer writes.
     /// </summary>
     (int X, int Y, int Width, int Height)? ConsumeDirtyRect();
+
+    /// <summary>
+    /// Recompute + repaint the display layer after a live DisplayResolutionMultiplier
+    /// ("quality") change, at the current field bounds and without reopening the field.
+    /// Updates <see cref="DisplayDimensions"/> so the remote/web coverage feed re-snapshots
+    /// at the new cell size. No-op if no field is open or the resolution is unchanged.
+    /// </summary>
+    void RebuildDisplayForResolutionChange();
 }
 
 /// <summary>

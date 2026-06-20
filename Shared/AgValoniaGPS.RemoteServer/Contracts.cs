@@ -143,7 +143,11 @@ public record TickDto(
     // line from here to the tool. Mirrors IToolPositionService.HitchPosition. f64 for
     // position precision like the pose/tool coords. Meaningful only when ToolReady.
     double HitchE,
-    double HitchN);
+    double HitchN,
+    // Live front-wheel angle for the steerable front-wheel sprite (deg, +right). Sim
+    // slider value when the internal sim drives, else the real WAS reading — mirrors
+    // native MainViewModel.ApplyResults (SetVehicleSteerAngle).
+    double VehicleSteerAngle);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
@@ -277,7 +281,10 @@ public record DisplayConfigDto(
     bool ExtraGuidelines, int ExtraGuidelinesCount, string ResolutionLabel,
     bool UTurnButtonVisible, bool LateralButtonVisible,
     bool AutoSteerSound, bool UTurnSound, bool HydraulicSound, bool SectionsSound,
-    bool KeyboardEnabled, bool StartFullscreen, bool ElevationLogEnabled);
+    bool KeyboardEnabled, bool StartFullscreen, bool ElevationLogEnabled,
+    // Numeric quality multiplier (1.0 Ultra … 6.0 Min). The web scales its imagery LOD by
+    // this so the quality button degrades the background like native's Apple composite path.
+    double DisplayResolutionMultiplier);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>

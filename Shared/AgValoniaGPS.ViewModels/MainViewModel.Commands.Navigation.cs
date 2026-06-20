@@ -230,7 +230,10 @@ public partial class MainViewModel
             // the new cell size and repaint from the resolution-independent detection
             // cells (camera preserved). Audit §13.1.
             if (IsFieldOpen)
-                _mapService.RebuildCoverageBitmapForResolutionChange();
+            {
+                _coverageMapService.RebuildDisplayForResolutionChange(); // shared layer → remote/web coverage feed + save
+                _mapService.RebuildCoverageBitmapForResolutionChange();  // native map-control bitmap
+            }
         });
 
         // iOS Sheet toggle commands

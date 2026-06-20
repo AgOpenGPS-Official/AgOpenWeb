@@ -103,12 +103,13 @@ window.RemoteTransport = {
           // Diagnostic-chart scalars (Tools panel charts).
           const chartSetSteer = f32(), chartActualSteer = f32(), chartPwm = f32(), chartImuHeading = f32();
           const hitchE = f64(), hitchN = f64();
+          const vehicleSteerAngle = f32();
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
             headlandDist, headlandWarn, steerAngleError,
             chartSetSteer, chartActualSteer, chartPwm, chartImuHeading,
-            hitchE, hitchN,
+            hitchE, hitchN, vehicleSteerAngle,
           });
           break;
         }
@@ -261,6 +262,7 @@ window.RemoteTransport = {
             uTurnButtonVisible: !!u8(), lateralButtonVisible: !!u8(),
             autoSteerSound: !!u8(), uTurnSound: !!u8(), hydraulicSound: !!u8(), sectionsSound: !!u8(),
             keyboardEnabled: !!u8(), startFullscreen: !!u8(), elevationLogEnabled: !!u8(),
+            resolutionMultiplier: f64(),
           };
           // AutoSteer config — full 9-tab surface (positional, matches WireCodec).
           const autosteer = {

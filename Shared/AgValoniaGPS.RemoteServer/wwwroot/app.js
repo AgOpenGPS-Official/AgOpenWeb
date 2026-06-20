@@ -86,6 +86,12 @@ const tractorImg = new Image();
 let tractorReady = false, skTractor = null;
 tractorImg.onload = () => { tractorReady = true; };
 tractorImg.src = '/icons/TractorAoG.png';
+// Steerable front-wheel sprite (single wheel, drawn at both front-axle ends, rotated by
+// the live wheel angle) — matches native SkiaMapControl's FrontWheels.png.
+const frontWheelImg = new Image();
+let frontWheelReady = false, skFrontWheel = null;
+frontWheelImg.onload = () => { frontWheelReady = true; };
+frontWheelImg.src = '/icons/FrontWheels.png';
 
 // ---- background imagery: extent from the Scene, PNG fetched over HTTP. ----
 let imageryRect = null;  // { minE, minN, maxE, maxN, version }
@@ -3989,12 +3995,33 @@ function vehicleSk(canvas, p) {
       canvas.save();
       canvas.concat(perspM);
       canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
-      canvas.rotate(-p.heading * 180 / Math.PI, 0, 0);
-      canvas.scale(1, -1); // bitmap rows are top-down; world N is up
+      canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+      // Body sprite (scale 1,-1 = bitmap rows top-down → world N up).
+      canvas.save();
+      canvas.scale(1, -1);
       canvas.drawImageRectOptions(skTractor,
         CK.LTRBRect(0, 0, skTractor.width(), skTractor.height()),
         CK.LTRBRect(-half, -top, half, -bot),
         CK.FilterMode.Linear, CK.MipmapMode.None, null);
+      canvas.restore();
+      // Steerable front wheels: one sprite drawn at both front-axle ends, rotated by the
+      // live wheel angle. Mirrors native DrawVehicleSk (translate ±trackWidth/2, wheelbase
+      // −0.05; rotate −steer; scale 1,-1; centred dst). Tire sizing = native constants.
+      if (frontWheelReady && (skFrontWheel || (skFrontWheel = CK.MakeImageFromCanvasImageSource(frontWheelImg)))) {
+        const steerDeg = -(tick ? tick.vehicleSteerAngle : 0); // tick angle already in degrees, +right
+        const woX = veh.trackWidth / 2, woY = veh.wheelbase - 0.05;
+        const ww = 0.378 / 0.27, wh = 0.85 / 0.29; // FrontTireWidth/ContentW, Diameter/ContentH
+        const wsrc = CK.LTRBRect(0, 0, skFrontWheel.width(), skFrontWheel.height());
+        const wdst = CK.LTRBRect(-ww / 2, -wh / 2, ww / 2, wh / 2);
+        for (const sx of [1, -1]) {
+          canvas.save();
+          canvas.translate(sx * woX, woY);
+          canvas.rotate(steerDeg, 0, 0);
+          canvas.scale(1, -1);
+          canvas.drawImageRectOptions(skFrontWheel, wsrc, wdst, CK.FilterMode.Linear, CK.MipmapMode.None, null);
+          canvas.restore();
+        }
+      }
       canvas.restore();
       return;
     }
@@ -4043,13 +4070,30 @@ function drawGroundTextureSk(canvas) {
   canvas.drawRect(CK.LTRBRect(-half, -half, half, half), SKP.ground); // camera-relative
   canvas.restore();
 }
-let skImagery = null, skImageryVer = null;
+let skImagery = null, skImageryVer = null, skImageryMult = -1;
 function drawImagerySk(canvas) {
   if (!imageryImg || !imageryRect) return;
-  if (skImageryVer !== imageryVer || !skImagery) {
+  // Quality button: scale the imagery LOD by DisplayResolutionMultiplier so the background
+  // degrades with quality like native's Apple composite path (which bakes imagery into the
+  // multiplier-sized coverage bitmap). Ultra = full res; lower quality = downsampled (also a
+  // real GPU/memory win on the tablet). Downsample via a 2D canvas (reliable browser scaling).
+  const mult = (config && config.display && config.display.resolutionMultiplier) || 1;
+  if (skImageryVer !== imageryVer || skImageryMult !== mult || !skImagery) {
     if (skImagery) skImagery.delete();
-    skImagery = CK.MakeImageFromCanvasImageSource(imageryImg);
+    let src = imageryImg;
+    if (mult > 1.01 && imageryImg.naturalWidth > 0) {
+      const w = Math.max(1, Math.round(imageryImg.naturalWidth / mult));
+      const h = Math.max(1, Math.round(imageryImg.naturalHeight / mult));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(imageryImg, 0, 0, w, h);
+      src = cv;
+    }
+    skImagery = CK.MakeImageFromCanvasImageSource(src);
     skImageryVer = imageryVer;
+    skImageryMult = mult;
   }
   if (!skImagery) return;
   const r = imageryRect;

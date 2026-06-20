@@ -298,7 +298,9 @@ public sealed class SceneProjector
             _autoSteer.LastSteerData.ImuHeading,         // ChartImuHeading
             // Hitch pivot (implement hitch line: hitch → tool) — render-pull dead-reckoned.
             v.RenderHitchEasting,
-            v.RenderHitchNorthing);
+            v.RenderHitchNorthing,
+            // Front-wheel sprite angle: sim slider when the internal sim drives, else WAS.
+            _state.Simulator.IsEnabled ? _state.Simulator.SteerAngle : _autoSteer.LastSteerData.ActualSteerAngle);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
@@ -705,7 +707,7 @@ public sealed class SceneProjector
             d.ExtraGuidelines, d.ExtraGuidelinesCount, res,
             d.UTurnButtonVisible, d.LateralButtonVisible,
             d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
-            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled);
+            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
