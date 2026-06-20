@@ -40,10 +40,14 @@ const POSE_BUF_MAX = 12; // ~1.2 s @ 10 Hz — plenty of bracket for the delay +
 // (the whole-world jump at speed) AND the straight-line turn deviation — both are
 // extrapolation artifacts. Cost: a small constant display lag (~RENDER_DELAY × speed). Must
 // exceed the pose interval (~100 ms @ 10 Hz) plus arrival jitter so we rarely run out of buffer.
-// 160 ms (was 120) gives more slack for WiFi arrival jitter to a remote tablet. Safe to
-// exceed the pose interval ONLY because of the multi-pose buffer above (a 2-pose buffer
-// would judder). Combined with host-timeline interpolation it stops the WiFi heading wiggle.
-const RENDER_DELAY = 160; // ms
+// Buffer depth behind the newest pose. Must clear the WiFi inter-arrival jitter+spikes,
+// else the playhead hits the newest pose and HOLDS for a frame → the residual micro-
+// stutter. 240 ms gives generous headroom for tablet-WiFi latency spikes (offline sim:
+// edge-holds vanish above ~200 ms). It's pure DISPLAY lag (the vehicle is shown ~240 ms
+// in the past, <1 m at field speed) — the host-side steering loop is unaffected. Safe to
+// exceed the pose interval only because of the multi-pose buffer above (a 2-pose buffer
+// would judder). Combined with host-timeline interpolation it kills the WiFi wiggle/stutter.
+const RENDER_DELAY = 240; // ms
 // Smoothed client↔host clock offset: host_time ≈ client_time − clockOffset. Estimated from the
 // host monotonic timestamp on each Tick (EMA, so one jittery arrival can't shift the timeline).
 let clockOffset = null;
@@ -202,10 +206,11 @@ const transport = RemoteTransport.create({
       // single late/early arrival shifts it by ≤5% instead of warping the whole frame.
       if (typeof t.hostMs === 'number') {
         const raw = lastTick.t - t.hostMs;
-        // Slow EMA (0.02): the client↔host clock barely drifts (ppm), so adapting slowly
-        // keeps the playhead velocity steady — a faster EMA chased arrival jitter and left
-        // a slight residual position stutter. Buffer/RENDER_DELAY absorb the slower settle.
-        clockOffset = (clockOffset === null) ? raw : clockOffset + 0.02 * (raw - clockOffset);
+        // Very slow EMA (0.01): the client↔host clock barely drifts (ppm), so adapting
+        // slowly keeps the playhead velocity steady — a faster EMA chased arrival jitter and
+        // left residual position stutter (offline sim: 0.02→12%, 0.01→6% spread). The
+        // RENDER_DELAY buffer absorbs the slower settle. Errs high (more lag) = edge-safe.
+        clockOffset = (clockOffset === null) ? raw : clockOffset + 0.01 * (raw - clockOffset);
       }
     }
     pushChartData(t);
