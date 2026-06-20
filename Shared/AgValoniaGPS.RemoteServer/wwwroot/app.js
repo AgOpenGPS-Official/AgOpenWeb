@@ -28,7 +28,14 @@ addEventListener('resize', resize); resize();
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
 let tick = null;       // TickDto (latest — for sections/HUD)
-let lastTick = null;   // { e, n, heading, speed, t } authoritative pose + receipt time, for DR
+let lastTick = null;   // latest authoritative pose + receipt time
+let prevTick = null;   // previous authoritative pose — the render INTERPOLATES between the two
+// Render slightly in the PAST so every frame interpolates between two REAL poses instead of
+// extrapolating/predicting past the latest. This is what kills the per-tick re-anchor snap
+// (the whole-world jump at speed) AND the straight-line turn deviation — both are
+// extrapolation artifacts. Cost: a small constant display lag (~RENDER_DELAY × speed). Must
+// exceed the pose interval (~100 ms @ 10 Hz) plus arrival jitter so we rarely run out of buffer.
+const RENDER_DELAY = 120; // ms
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
@@ -152,6 +159,7 @@ const transport = RemoteTransport.create({
   onTick(t) {
     tick = t;
     if (t.pose) {
+      prevTick = lastTick; // shift the buffer; renderPose/renderTool interpolate prev→last
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
         tool: t.tool, t: performance.now(),
@@ -813,7 +821,7 @@ function editHitTest(px, py) {
   let best = -1, bd = 22 * 22;
   for (let i = 0; i < editSession.points.length; i++) {
     const p = editSession.points[i];
-    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    if ((pw(p.e, p.n)) < 1.0) continue;
     const xy = w2s(p.e, p.n); const dx = xy[0] - px, dy = xy[1] - py; const d = dx * dx + dy * dy;
     if (d < bd) { bd = d; best = i; }
   }
@@ -839,7 +847,7 @@ function drawEditHandlesSk(canvas) {
   const rad = Math.max(5, 0.7 * pxPerM);
   for (let i = 0; i < editSession.points.length; i++) {
     const p = editSession.points[i];
-    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    if ((pw(p.e, p.n)) < 1.0) continue;
     const xy = w2s(p.e, p.n);
     SKP.flagFill.setColor(ckColor(i === editDragIdx ? '#FFD24A' : '#40E0FF'));
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
@@ -2662,11 +2670,17 @@ function buildScreenMatrix() {
   const tanHalf = Math.tan(PERSP_FOV / 2);
   const distance = vh / (2 * tanHalf * pxPerM); // scale-continuity with ortho at pitch 0
   const near = 1, far = Math.max(5000, distance * 4);
+  // Camera-relative: the camera translation is deliberately NOT baked into the matrix.
+  // Baking absolute -camE,-camN into the f32 M44 forces it to subtract two field-scale
+  // numbers each frame → the result steps in f32 ULPs as the camera moves → the whole
+  // world jitters a sub-mm fraction ("floating-origin" jitter, visible on high-frequency
+  // imagery). Instead w2s / pw / the raster sites subtract camE,camN in f64 (JS) and feed
+  // only small relative coords here. Mirrors native (SkiaMapControl: double relX =
+  // _vehicleX - _cameraX before its f32 SKMatrix44).
   const view = CK.M44.multiply(
     CK.M44.translated([0, 0, -distance]),
     CK.M44.rotated([1, 0, 0], -pitch),
-    CK.M44.rotated([0, 0, 1], -mapRotation), // map rotation (HeadingUp etc.)
-    CK.M44.translated([-camE, -camN, 0]));
+    CK.M44.rotated([0, 0, 1], -mapRotation)); // map rotation (HeadingUp etc.)
   // Perspective (column-vector, row-major) — transpose of System.Numerics
   // CreatePerspectiveFieldOfView, so w' = -z.
   const yS = 1 / tanHalf, xS = yS / (vw / vh), nf = 1 / (near - far);
@@ -2695,9 +2709,9 @@ function updatePerspective() {
 // behind part (it perspective-divides by a negative w → a mirrored ghost line), so
 // we clip in world space first. Returns [e1,n1,e2,n2] fully in front, or null.
 function clipNear(e1, n1, e2, n2) {
-  const M = perspM, EPS = 1.0; // matches the projection near plane
-  const w1 = M[12] * e1 + M[13] * n1 + M[15];
-  const w2 = M[12] * e2 + M[13] * n2 + M[15];
+  const EPS = 1.0; // matches the projection near plane
+  const w1 = pw(e1, n1);
+  const w2 = pw(e2, n2);
   if (w1 >= EPS && w2 >= EPS) return [e1, n1, e2, n2];
   if (w1 < EPS && w2 < EPS) return null;
   const t = (EPS - w1) / (w2 - w1);
@@ -2720,7 +2734,7 @@ function applyAutoPan(rp) {
 // Per-frame camera update (run once, from skFrame()): apply the follow mode (camera
 // position + map rotation), precompute the screen rotation, rebuild perspM.
 function updateCamera() {
-  const rp = renderPose();
+  const rp = renderPose(); // interpolated pose (position + heading both smooth now)
   let target = mapRotation; // Free (mode 2): hold rotation
   if (rp) {
     if (cameraMode === 0) { camE = rp.e; camN = rp.n; target = 0; }                // NorthUp
@@ -2747,7 +2761,13 @@ function applyM(M, e, n) {
 // World (e,n) → CSS px through the one perspective matrix (top-down is pitch 0). Only
 // ever called from the Skia render path, where perspM is guaranteed set (CanvasKit up).
 function w2s(e, n) {
-  return applyM(perspM, e, n);
+  return applyM(perspM, e - camE, n - camN);
+}
+// Homogeneous w of a WORLD point through the camera-relative perspM (w < 1 ⇒ behind the
+// near plane; used for cull/clip). The camE,camN subtraction happens here in f64 so the
+// f32 matrix only ever sees small relative coords (see buildScreenMatrix's note).
+function pw(e, n) {
+  return perspM[12] * (e - camE) + perspM[13] * (n - camN) + perspM[15];
 }
 // ---- screen→world unprojection (Phase MT foundation) ----
 // w2s only ever does world→screen; map-tap features need the inverse: turn a CSS-px tap
@@ -2805,7 +2825,8 @@ function s2w(px, py) {
   const dz = bz - az;
   if (Math.abs(dz) < 1e-9) return null;       // ray parallel to ground (horizon)
   const t = -az / dz;
-  return { e: ax + (bx - ax) * t, n: ay + (by - ay) * t };
+  // perspMInv maps screen → camera-relative world; add the camera origin back for world E/N.
+  return { e: ax + (bx - ax) * t + camE, n: ay + (by - ay) * t + camN };
 }
 // Dev round-trip check: project a grid of world points with w2s, unproject with s2w,
 // report max error. Call from the console at pitch 0 AND tilted (press 3) — expect
@@ -2815,7 +2836,7 @@ window._s2wTest = function () {
   let maxErr = 0, n = 0;
   for (let de = -200; de <= 200; de += 50) for (let dn = -200; dn <= 200; dn += 50) {
     const e = camE + de, nn = camN + dn;
-    if (perspM[12]*e + perspM[13]*nn + perspM[15] < 1.0) continue; // behind camera
+    if (pw(e, nn) < 1.0) continue; // behind camera
     const s = w2s(e, nn);
     const b = s2w(s[0], s[1]);
     if (!b) continue;
@@ -2854,27 +2875,41 @@ const SECTION_COLORS = [
 // 10 Hz tick. Extrapolate along the tool heading at the reported speed.
 function renderTool() {
   if (!lastTick || !lastTick.tool) return null;
-  let dt = (performance.now() - lastTick.t) / 1000;
-  dt = Math.min(Math.max(dt, 0), 0.5);
-  const tl = lastTick.tool;
+  const pt = (prevTick && prevTick.tool) ? prevTick.tool : lastTick.tool, qt = lastTick.tool, f = lerpFrac();
   return {
-    e: tl.e + lastTick.speed * Math.sin(tl.heading) * dt,
-    n: tl.n + lastTick.speed * Math.cos(tl.heading) * dt,
-    heading: tl.heading,
+    e: pt.e + (qt.e - pt.e) * f,
+    n: pt.n + (qt.n - pt.n) * f,
+    heading: lerpAngle(pt.heading, qt.heading, f),
   };
 }
 // Dead-reckon the pose from the last authoritative tick: extrapolate along the
 // heading at the reported speed. dt is clamped so motion freezes (rather than
 // flies off) if ticks stall — same spirit as the app's own stale-pose cap.
+// Shortest-path angular lerp (radians).
+function lerpAngle(a, b, f) {
+  let d = b - a; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
+  return a + d * f;
+}
+// Interpolation fraction for rendering RENDER_DELAY ms in the past, between prevTick→lastTick.
+// f=0 → prevTick, f=1 → lastTick (or "caught up", holding the latest pose). Clamped to [0,1]
+// so we never extrapolate past the newest pose (which is what produced the snap).
+function lerpFrac() {
+  if (!lastTick || !prevTick) return 1;
+  const span = lastTick.t - prevTick.t;
+  if (span < 1) return 1;
+  const tr = performance.now() - RENDER_DELAY;
+  if (tr >= lastTick.t) return 1;          // ran out of buffer → hold latest (brief, not a snap)
+  if (tr <= prevTick.t) return 0;
+  return (tr - prevTick.t) / span;
+}
 function renderPose() {
   if (!lastTick) return null;
-  let dt = (performance.now() - lastTick.t) / 1000;
-  dt = Math.min(Math.max(dt, 0), 0.5);
+  const p = prevTick || lastTick, q = lastTick, f = lerpFrac();
   return {
-    e: lastTick.e + lastTick.speed * Math.sin(lastTick.heading) * dt,
-    n: lastTick.n + lastTick.speed * Math.cos(lastTick.heading) * dt,
-    heading: lastTick.heading,
-    speed: lastTick.speed,
+    e: p.e + (q.e - p.e) * f,
+    n: p.n + (q.n - p.n) * f,
+    heading: lerpAngle(p.heading, q.heading, f),
+    speed: q.speed,
   };
 }
 // Cross-track error as "12 cm R" (R = right of line, +xte). Centimetres so the
@@ -3656,9 +3691,9 @@ function strokePtsSk(canvas, pts, close, paint) {
 // split it at every near-plane crossing, and stroke each continuous front-facing run
 // in screen space — only ever feeding w2s points that are in front of the camera.
 function strokePtsSk3D(canvas, pts, close, paint) {
-  const M = perspM, EPS = 1.0;
+  const EPS = 1.0;
   const n = pts.length;
-  const wOf = (p) => M[12] * p.e + M[13] * p.n + M[15];
+  const wOf = (p) => pw(p.e, p.n);
   // World point where segment a→b crosses the near plane (a, b straddle it).
   const cross = (a, b, wa, wb) => {
     const t = (EPS - wa) / (wb - wa);
@@ -3712,7 +3747,7 @@ function drawRecordingMarkersSk(canvas) {
   SKP.flagFill.setColor(ckColor('#FFD040')); // recorded-path yellow
   for (let i = 0; i + 1 < pts.length; i += 2) {
     const e = pts[i], n = pts[i + 1];
-    if ((perspM[12] * e + perspM[13] * n + perspM[15]) < 1.0) continue; // behind camera
+    if (pw(e, n) < 1.0) continue; // behind camera
     const xy = w2s(e, n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
@@ -3730,7 +3765,7 @@ function drawBoundaryRecordingSk(canvas) {
   const rad = Math.max(3, 0.35 * pxPerM);
   SKP.flagFill.setColor(ckColor('#E05220'));
   for (const p of pts) {
-    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    if ((pw(p.e, p.n)) < 1.0) continue;
     const xy = w2s(p.e, p.n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
@@ -3774,7 +3809,7 @@ function drawSatBoundarySk(canvas) {
   const rad = Math.max(4, 0.5 * pxPerM);
   SKP.flagFill.setColor(ckColor('#FFFFFF'));
   for (const p of satPts) {
-    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    if ((pw(p.e, p.n)) < 1.0) continue;
     const xy = w2s(p.e, p.n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
@@ -3816,7 +3851,7 @@ function drawHeadlandDrawSk(canvas) {
   const rad = Math.max(4, 0.6 * pxPerM);
   SKP.flagFill.setColor(ckColor('#6BFF6B'));
   for (const p of hlPts) {
-    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue;
+    if ((pw(p.e, p.n)) < 1.0) continue;
     const xy = w2s(p.e, p.n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
@@ -3831,7 +3866,7 @@ function drawDrawingSk(canvas) {
   const rad = Math.max(4, 0.5 * pxPerM);
   SKP.flagFill.setColor(ckColor('#40E0FF'));
   for (const p of drawPts) {
-    if ((perspM[12] * p.e + perspM[13] * p.n + perspM[15]) < 1.0) continue; // behind camera
+    if ((pw(p.e, p.n)) < 1.0) continue; // behind camera
     const xy = w2s(p.e, p.n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
@@ -3841,7 +3876,7 @@ function drawFlagsSk(canvas, flags) {
   if (!flags || !flags.length) return;
   const r = Math.max(4, 0.8 * pxPerM);
   for (const fl of flags) {
-    if ((perspM[12] * fl.e + perspM[13] * fl.n + perspM[15]) < 1.0) continue; // behind camera
+    if (pw(fl.e, fl.n) < 1.0) continue; // behind camera
     const xy = w2s(fl.e, fl.n);
     SKP.flagFill.setColor(ckColor(fl.color || '#FF0000'));
     canvas.drawCircle(xy[0], xy[1], r, SKP.flagFill);
@@ -3849,6 +3884,8 @@ function drawFlagsSk(canvas, flags) {
   }
 }
 function drawGridSk(canvas) {
+  const disp = config && config.display;
+  if (!disp || !disp.gridVisible) return; // honour Display.GridVisible (mirrors native)
   const G = 2000;
   let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
   halfW = Math.max(halfW, 180); halfH = Math.max(halfH, 180); // see far enough under tilt
@@ -3873,8 +3910,8 @@ function drawGridSk(canvas) {
   canvas.save();
   canvas.concat(perspM);
   const line = (e1, n1, e2, n2, paint) => {
-    const c = clipNear(e1, n1, e2, n2);
-    if (c) canvas.drawLine(c[0], c[1], c[2], c[3], paint);
+    const c = clipNear(e1, n1, e2, n2); // returns WORLD coords
+    if (c) canvas.drawLine(c[0] - camE, c[1] - camN, c[2] - camE, c[3] - camN, paint); // camera-relative
   };
   for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
     line(k * spacing, minN, k * spacing, maxN, major(k));
@@ -3951,7 +3988,7 @@ function vehicleSk(canvas, p) {
       const half = bW / 2, top = (1 - SPR_REAR) * bH, bot = -SPR_REAR * bH;
       canvas.save();
       canvas.concat(perspM);
-      canvas.translate(p.e, p.n);
+      canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
       canvas.rotate(-p.heading * 180 / Math.PI, 0, 0);
       canvas.scale(1, -1); // bitmap rows are top-down; world N is up
       canvas.drawImageRectOptions(skTractor,
@@ -3982,21 +4019,28 @@ function vehicleSk(canvas, p) {
 function drawGroundTextureSk(canvas) {
   const disp = config && config.display;
   if (!disp || !disp.fieldTextureVisible || !groundReady) return;
-  if (!SKP.ground) {
+  if (!skGround) {
     skGround = CK.MakeImageFromCanvasImageSource(groundImg);
     if (!skGround) return;
-    const W = skGround.width(), H = skGround.height();
-    const shader = skGround.makeShaderOptions(
-      CK.TileMode.Repeat, CK.TileMode.Repeat, CK.FilterMode.Linear, CK.MipmapMode.None,
-      CK.Matrix.scaled(50 / W, 50 / H));
     SKP.ground = new CK.Paint();
     SKP.ground.setAntiAlias(false);
-    SKP.ground.setShader(shader);
   }
+  const W = skGround.width(), H = skGround.height();
+  // We render camera-relative, but the tiles must stay anchored to WORLD. The pattern
+  // repeats every 50 m, so only camE,camN MOD 50 affects alignment — using the remainder
+  // keeps the shader's local-matrix translation small (f32-safe → no shimmer). texel =
+  // (W/50)(P + off) ⇒ texel→local matrix is scale(50/W) then translate(-off).
+  const offE = camE - Math.floor(camE / 50) * 50;
+  const offN = camN - Math.floor(camN / 50) * 50;
+  const lm = [50 / W, 0, -offE, 0, 50 / H, -offN, 0, 0, 1];
+  if (SKP.groundShader) SKP.groundShader.delete(); // free last frame's shader (already flushed)
+  SKP.groundShader = skGround.makeShaderOptions(
+    CK.TileMode.Repeat, CK.TileMode.Repeat, CK.FilterMode.Linear, CK.MipmapMode.Linear, lm);
+  SKP.ground.setShader(SKP.groundShader);
   const half = Math.max(Math.max(vw, vh) / pxPerM, 300); // cover the view; see far under tilt
   canvas.save();
   canvas.concat(perspM);
-  canvas.drawRect(CK.LTRBRect(camE - half, camN - half, camE + half, camN + half), SKP.ground);
+  canvas.drawRect(CK.LTRBRect(-half, -half, half, half), SKP.ground); // camera-relative
   canvas.restore();
 }
 let skImagery = null, skImageryVer = null;
@@ -4017,11 +4061,19 @@ function drawImagerySk(canvas) {
 // it stays correct even when part of the rect falls behind the tilted camera.
 function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
   const w = img.width(), h = img.height();
-  const imgToWorld = [(maxE - minE) / w, 0, minE, 0, -(maxN - minN) / h, maxN, 0, 0, 1];
+  // Map image px → CAMERA-RELATIVE world (minE-camE …): the world−camera offset is done
+  // here in f64 so only small coords reach the f32 matrix — no floating-origin jitter on
+  // imagery/coverage. See buildScreenMatrix.
+  const imgToWorld = [(maxE - minE) / w, 0, minE - camE, 0, -(maxN - minN) / h, maxN - camN, 0, 0, 1];
+  // Photo layers (imagery / satellite tiles, Linear filter) recede to the horizon
+  // under perspective → heavy minification → shimmer/crawl under motion without a
+  // mip chain. Trilinear mipmaps fix it (matches native's mipmapped imagery). But
+  // Nearest callers (coverage cells = data) must stay crisp — no mipmaps for them.
+  const mip = (filter === CK.FilterMode.Linear) ? CK.MipmapMode.Linear : CK.MipmapMode.None;
   canvas.save();
   canvas.concat(perspM);
   canvas.concat(imgToWorld);
-  canvas.drawImageOptions(img, 0, 0, filter, CK.MipmapMode.None, null);
+  canvas.drawImageOptions(img, 0, 0, filter, mip, null);
   canvas.restore();
 }
 // ---- satellite tile underlay (Phase MT — Draw boundary on map) ----
