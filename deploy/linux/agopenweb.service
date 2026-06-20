@@ -26,11 +26,15 @@ NotifyAccess=main
 ExecStart=/opt/agopenweb/AgValoniaGPS.Desktop
 WorkingDirectory=/opt/agopenweb
 
-# Dedicated unprivileged service account. dialout = USB serial (GPS / AiO over
-# /dev/ttyACM*, /dev/ttyUSB*); can = SocketCAN interfaces on one-box SBC targets.
+# Dedicated unprivileged service account. Device-group membership (dialout for USB
+# serial GPS/AiO; can where a SocketCAN group exists) is granted to the user by
+# install.sh via usermod, and systemd applies it automatically at spawn from the
+# group database (initgroups) because User= is set. We deliberately do NOT list
+# SupplementaryGroups= here: systemd hard-fails the unit (status=216/GROUP) if any
+# named group is missing, and the SocketCAN "can" group does not exist on stock
+# Debian (incl. the Uno Q) — CAN frame I/O needs no unix group anyway.
 User=agopenweb
 Group=agopenweb
-SupplementaryGroups=dialout can
 
 # Field data + config live under HOME. StateDirectory makes systemd create and own
 # /var/lib/agopenweb (mode 0700, chown agopenweb) before start; HOME points the
