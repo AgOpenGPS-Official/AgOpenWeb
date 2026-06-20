@@ -248,16 +248,21 @@ public partial class App
                                             bmp.Add((pe, pn));
                                     }
                                     vm.RemoteCreateBoundaryFromMapPoints(bmp);
-                                    // Capture + save the aerial imagery covering the boundary
-                                    // (off-thread; applies the background back on the UI thread).
+                                    // Capture + save the aerial imagery covering the boundary in a
+                                    // CRASH-ISOLATED child process — SkiaSharp can hard-crash on a
+                                    // headless board and must never take the host down. On success,
+                                    // apply the background back on the UI thread.
                                     if (vm.GetBoundaryImageryBounds(bmp) is { } bb)
                                         _ = System.Threading.Tasks.Task.Run(async () =>
                                         {
-                                            var png = await BoundaryImageryCapture.CaptureAsync(
-                                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY);
-                                            if (png is not null)
+                                            var outPath = System.IO.Path.Combine(
+                                                System.IO.Path.GetTempPath(), "AgValoniaGPS_SatCap",
+                                                "BackPic_" + System.Guid.NewGuid().ToString("N") + ".png");
+                                            var ok = await ImageryCaptureProcess.TryCaptureAsync(
+                                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY, outPath);
+                                            if (ok)
                                                 dispatcher.Post(() =>
-                                                    vm.ApplyCapturedBackground(png,
+                                                    vm.ApplyCapturedBackground(outPath,
                                                         bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
                                                         bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY));
                                         });

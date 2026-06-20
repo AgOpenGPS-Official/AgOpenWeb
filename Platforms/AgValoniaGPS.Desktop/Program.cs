@@ -29,6 +29,17 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // One-shot crash-isolated imagery capture child (spawned by the host on a
+        // boundary-on-map draw). SkiaSharp links libGL/libfontconfig and can hard-crash
+        // on a headless board; running it here in a throwaway process means such a crash
+        // never touches the guidance host. Must be the FIRST thing Main does — no host,
+        // no Avalonia. See ImageryCaptureProcess.
+        if (args.Length > 0 && args[0] == ImageryCaptureProcess.CaptureArg)
+        {
+            Environment.Exit(ImageryCaptureProcess.RunCli(args));
+            return;
+        }
+
         // Phase 10: AgOpenWeb boots HEADLESS by default — no Avalonia window; the
         // browser at http://<host>:5174 is the only UI, and the process can run as a
         // display-less daemon (systemd / Windows Service). Pass --windowed (or set
