@@ -113,7 +113,14 @@ fi
 if [[ -n "$PUBLISH_SRC" ]]; then
   echo "==> Installing files to $PREFIX (from $PUBLISH_SRC)…"
   systemctl stop "$UNIT" 2>/dev/null || true
-  mkdir -p "$PREFIX"
+  mkdir -p "$PREFIX" "$STATE_DIR"
+  # One-time recovery: pre-v26.5.110 builds could store operator data INSIDE the program
+  # dir when the data root resolved wrong. If such data exists and the proper data root
+  # has none yet, move it across so this update recovers it instead of wiping it.
+  if [[ -d "$PREFIX/AgValoniaGPS" && ! -d "$STATE_DIR/AgValoniaGPS" ]]; then
+    echo "==> Recovering in-program-dir data → $STATE_DIR/AgValoniaGPS"
+    cp -a "$PREFIX/AgValoniaGPS" "$STATE_DIR/"
+  fi
   rm -rf "$PREFIX.old"
   [[ -n "$(ls -A "$PREFIX" 2>/dev/null)" ]] && cp -a "$PREFIX" "$PREFIX.old" || true
   rm -rf "${PREFIX:?}/"*
