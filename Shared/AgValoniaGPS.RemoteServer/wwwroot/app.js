@@ -128,7 +128,7 @@ const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15; // match native tuning
 // responsive for LARGE errors (real headland turns). alpha ramps MIN→MAX as the heading
 // error grows to ROT_SMOOTH_FULL rad. (A single fixed value either wobbles on the line or
 // lags the turns.)
-const ROT_SMOOTH_MIN = 0.06;  // ~0.5 s settle — kills line-holding dither
+const ROT_SMOOTH_MIN = 0.035; // ~0.5 s settle — kills line-holding dither (~0.2-0.3°)
 const ROT_SMOOTH_MAX = 0.35;  // crisp on real turns (≈ the old fixed 0.3)
 const ROT_SMOOTH_FULL = 0.12; // rad (~7°) error at which we're fully responsive
 function isFollowMode() { return cameraMode !== 2; }
@@ -2802,8 +2802,11 @@ function updateCamera() {
   // errors (line-holding dither) → no map wobble; responsive for large errors → crisp turns.
   let d = target - mapRotation;
   d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
-  const rotAlpha = ROT_SMOOTH_MIN +
-    (ROT_SMOOTH_MAX - ROT_SMOOTH_MIN) * Math.min(1, Math.abs(d) / ROT_SMOOTH_FULL);
+  // QUADRATIC ramp: stays near MIN for tiny errors (line-holding dither ≈0.005 rad → the
+  // map barely follows it) but rises sharply toward MAX as the error approaches a real turn.
+  // A linear ramp lifted alpha too much at the dither scale, leaving residual wobble.
+  const rotFrac = Math.min(1, Math.abs(d) / ROT_SMOOTH_FULL);
+  const rotAlpha = ROT_SMOOTH_MIN + (ROT_SMOOTH_MAX - ROT_SMOOTH_MIN) * rotFrac * rotFrac;
   mapRotation += d * rotAlpha;
   const rR = -mapRotation;
   _cosRR = Math.cos(rR); _sinRR = Math.sin(rR);
