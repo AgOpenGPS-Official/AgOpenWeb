@@ -28,16 +28,22 @@ addEventListener('resize', resize); resize();
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
 let tick = null;       // TickDto (latest — for sections/HUD)
-let lastTick = null;   // latest authoritative pose + receipt time
-let prevTick = null;   // previous authoritative pose — the render INTERPOLATES between the two
+let lastTick = null;   // newest authoritative pose (HUD readouts + guards)
+// Ring of recent authoritative poses (oldest→newest). The render INTERPOLATES between
+// the two that bracket the playback head. A MULTI-pose buffer (not just prev+last) is
+// what lets RENDER_DELAY exceed the ~100 ms pose interval without the playhead falling
+// off the old end → that off-the-end clamp was the 10 Hz "judder".
+const poseBuf = [];
+const POSE_BUF_MAX = 12; // ~1.2 s @ 10 Hz — plenty of bracket for the delay + WiFi jitter
 // Render slightly in the PAST so every frame interpolates between two REAL poses instead of
 // extrapolating/predicting past the latest. This is what kills the per-tick re-anchor snap
 // (the whole-world jump at speed) AND the straight-line turn deviation — both are
 // extrapolation artifacts. Cost: a small constant display lag (~RENDER_DELAY × speed). Must
 // exceed the pose interval (~100 ms @ 10 Hz) plus arrival jitter so we rarely run out of buffer.
-// 180 ms (was 120) gives more slack for WiFi arrival jitter to a remote tablet — combined with
-// host-timeline interpolation below it stops the heading/map "wiggle" seen over WiFi.
-const RENDER_DELAY = 180; // ms
+// 160 ms (was 120) gives more slack for WiFi arrival jitter to a remote tablet. Safe to
+// exceed the pose interval ONLY because of the multi-pose buffer above (a 2-pose buffer
+// would judder). Combined with host-timeline interpolation it stops the WiFi heading wiggle.
+const RENDER_DELAY = 160; // ms
 // Smoothed client↔host clock offset: host_time ≈ client_time − clockOffset. Estimated from the
 // host monotonic timestamp on each Tick (EMA, so one jittery arrival can't shift the timeline).
 let clockOffset = null;
@@ -170,11 +176,12 @@ const transport = RemoteTransport.create({
   onTick(t) {
     tick = t;
     if (t.pose) {
-      prevTick = lastTick; // shift the buffer; renderPose/renderTool interpolate prev→last
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
         tool: t.tool, t: performance.now(), hostT: t.hostMs,
       };
+      poseBuf.push(lastTick);
+      if (poseBuf.length > POSE_BUF_MAX) poseBuf.shift();
       // Track the client↔host clock offset (EMA). The interp SPAN comes from the
       // jitter-free host timestamps; this offset only aligns the playback timeline, so a
       // single late/early arrival shifts it by ≤5% instead of warping the whole frame.
@@ -2905,55 +2912,56 @@ const SECTION_COLORS = [
 // vehicle), so the footprint glides with the tractor instead of snapping to each
 // 10 Hz tick. Extrapolate along the tool heading at the reported speed.
 function renderTool() {
-  if (!lastTick || !lastTick.tool) return null;
-  const pt = (prevTick && prevTick.tool) ? prevTick.tool : lastTick.tool, qt = lastTick.tool, f = lerpFrac();
+  const s = sample();
+  if (!s || !s.b.tool) return null;
+  const pt = s.a.tool || s.b.tool, qt = s.b.tool, f = s.f;
   return {
     e: pt.e + (qt.e - pt.e) * f,
     n: pt.n + (qt.n - pt.n) * f,
     heading: lerpAngle(pt.heading, qt.heading, f),
   };
 }
-// Dead-reckon the pose from the last authoritative tick: extrapolate along the
-// heading at the reported speed. dt is clamped so motion freezes (rather than
-// flies off) if ticks stall — same spirit as the app's own stale-pose cap.
 // Shortest-path angular lerp (radians).
 function lerpAngle(a, b, f) {
   let d = b - a; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
   return a + d * f;
 }
-// Interpolation fraction for rendering RENDER_DELAY ms in the past, between prevTick→lastTick.
-// f=0 → prevTick, f=1 → lastTick (or "caught up", holding the latest pose). Clamped to [0,1]
-// so we never extrapolate past the newest pose (which is what produced the snap).
-function lerpFrac() {
-  if (!lastTick || !prevTick) return 1;
-  // Host-timeline interpolation: the span is the delta of HOST build-times (jitter-free),
-  // so WiFi arrival jitter no longer warps the interp rate — that rate-warp was the
-  // heading/map "wiggle". The playhead is the client clock mapped onto host time
-  // (− clockOffset), RENDER_DELAY in the past. Falls back to receipt times only if the
-  // host sent no timestamp (version skew during a rolling deploy).
-  if (lastTick.hostT != null && prevTick.hostT != null && clockOffset !== null) {
-    const span = lastTick.hostT - prevTick.hostT;
-    if (span < 1) return 1;
-    const playheadHost = performance.now() - clockOffset - RENDER_DELAY;
-    if (playheadHost >= lastTick.hostT) return 1;   // ran out of buffer → hold latest (brief)
-    if (playheadHost <= prevTick.hostT) return 0;
-    return (playheadHost - prevTick.hostT) / span;
+// Pick the two buffered poses bracketing the playback head (RENDER_DELAY in the PAST)
+// and the fraction between them. The playhead runs on the HOST timeline (client clock
+// − clockOffset), so its position relative to the poses' host build-times is jitter-free —
+// WiFi arrival jitter only changes WHICH poses are buffered, never the interp rate (that
+// rate-warp was the "wiggle"). A 2-pose buffer judders once RENDER_DELAY > the pose
+// interval (playhead falls off the old end → clamps); the multi-pose buffer always has a
+// bracketing pair. Returns { a, b, f } or null; holds oldest/newest outside the buffer.
+function sample() {
+  const m = poseBuf.length;
+  if (m === 0) return null;
+  if (m === 1) return { a: poseBuf[0], b: poseBuf[0], f: 1 };
+  const useHost = clockOffset !== null && typeof poseBuf[m - 1].hostT === 'number';
+  const key = useHost ? 'hostT' : 't';
+  const playhead = useHost
+    ? performance.now() - clockOffset - RENDER_DELAY
+    : performance.now() - RENDER_DELAY; // legacy receipt timeline (host sent no timestamp)
+  if (playhead <= poseBuf[0][key]) return { a: poseBuf[0], b: poseBuf[0], f: 0 };
+  const nw = poseBuf[m - 1];
+  if (playhead >= nw[key]) return { a: nw, b: nw, f: 1 };
+  for (let i = 0; i < m - 1; i++) {
+    const a = poseBuf[i], b = poseBuf[i + 1];
+    if (playhead >= a[key] && playhead < b[key]) {
+      const span = b[key] - a[key];
+      return { a, b, f: span > 0 ? (playhead - a[key]) / span : 1 };
+    }
   }
-  const span = lastTick.t - prevTick.t;            // legacy receipt-time fallback
-  if (span < 1) return 1;
-  const tr = performance.now() - RENDER_DELAY;
-  if (tr >= lastTick.t) return 1;
-  if (tr <= prevTick.t) return 0;
-  return (tr - prevTick.t) / span;
+  return { a: nw, b: nw, f: 1 };
 }
 function renderPose() {
-  if (!lastTick) return null;
-  const p = prevTick || lastTick, q = lastTick, f = lerpFrac();
+  const s = sample();
+  if (!s) return null;
   return {
-    e: p.e + (q.e - p.e) * f,
-    n: p.n + (q.n - p.n) * f,
-    heading: lerpAngle(p.heading, q.heading, f),
-    speed: q.speed,
+    e: s.a.e + (s.b.e - s.a.e) * s.f,
+    n: s.a.n + (s.b.n - s.a.n) * s.f,
+    heading: lerpAngle(s.a.heading, s.b.heading, s.f),
+    speed: s.b.speed,
   };
 }
 // Cross-track error as "12 cm R" (R = right of line, +xte). Centimetres so the
