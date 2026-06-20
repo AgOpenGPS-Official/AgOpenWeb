@@ -497,6 +497,7 @@ public static class WireCodec
         w.Write(t.HitchE);           // f64
         w.Write(t.HitchN);           // f64
         w.Write((float)t.VehicleSteerAngle); // front-wheel sprite angle (deg)
+        w.Write(t.HostMs);           // f64 — host monotonic build time (client interp timeline)
         return ms.ToArray();
     }
 

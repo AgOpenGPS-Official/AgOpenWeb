@@ -104,12 +104,13 @@ window.RemoteTransport = {
           const chartSetSteer = f32(), chartActualSteer = f32(), chartPwm = f32(), chartImuHeading = f32();
           const hitchE = f64(), hitchN = f64();
           const vehicleSteerAngle = f32();
+          const hostMs = f64(); // host monotonic build time — the interp timeline
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
             headlandDist, headlandWarn, steerAngleError,
             chartSetSteer, chartActualSteer, chartPwm, chartImuHeading,
-            hitchE, hitchN, vehicleSteerAngle,
+            hitchE, hitchN, vehicleSteerAngle, hostMs,
           });
           break;
         }

@@ -35,7 +35,12 @@ let prevTick = null;   // previous authoritative pose — the render INTERPOLATE
 // (the whole-world jump at speed) AND the straight-line turn deviation — both are
 // extrapolation artifacts. Cost: a small constant display lag (~RENDER_DELAY × speed). Must
 // exceed the pose interval (~100 ms @ 10 Hz) plus arrival jitter so we rarely run out of buffer.
-const RENDER_DELAY = 120; // ms
+// 180 ms (was 120) gives more slack for WiFi arrival jitter to a remote tablet — combined with
+// host-timeline interpolation below it stops the heading/map "wiggle" seen over WiFi.
+const RENDER_DELAY = 180; // ms
+// Smoothed client↔host clock offset: host_time ≈ client_time − clockOffset. Estimated from the
+// host monotonic timestamp on each Tick (EMA, so one jittery arrival can't shift the timeline).
+let clockOffset = null;
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
@@ -168,8 +173,15 @@ const transport = RemoteTransport.create({
       prevTick = lastTick; // shift the buffer; renderPose/renderTool interpolate prev→last
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
-        tool: t.tool, t: performance.now(),
+        tool: t.tool, t: performance.now(), hostT: t.hostMs,
       };
+      // Track the client↔host clock offset (EMA). The interp SPAN comes from the
+      // jitter-free host timestamps; this offset only aligns the playback timeline, so a
+      // single late/early arrival shifts it by ≤5% instead of warping the whole frame.
+      if (typeof t.hostMs === 'number') {
+        const raw = lastTick.t - t.hostMs;
+        clockOffset = (clockOffset === null) ? raw : clockOffset + 0.05 * (raw - clockOffset);
+      }
     }
     pushChartData(t);
   },
@@ -2914,10 +2926,23 @@ function lerpAngle(a, b, f) {
 // so we never extrapolate past the newest pose (which is what produced the snap).
 function lerpFrac() {
   if (!lastTick || !prevTick) return 1;
-  const span = lastTick.t - prevTick.t;
+  // Host-timeline interpolation: the span is the delta of HOST build-times (jitter-free),
+  // so WiFi arrival jitter no longer warps the interp rate — that rate-warp was the
+  // heading/map "wiggle". The playhead is the client clock mapped onto host time
+  // (− clockOffset), RENDER_DELAY in the past. Falls back to receipt times only if the
+  // host sent no timestamp (version skew during a rolling deploy).
+  if (lastTick.hostT != null && prevTick.hostT != null && clockOffset !== null) {
+    const span = lastTick.hostT - prevTick.hostT;
+    if (span < 1) return 1;
+    const playheadHost = performance.now() - clockOffset - RENDER_DELAY;
+    if (playheadHost >= lastTick.hostT) return 1;   // ran out of buffer → hold latest (brief)
+    if (playheadHost <= prevTick.hostT) return 0;
+    return (playheadHost - prevTick.hostT) / span;
+  }
+  const span = lastTick.t - prevTick.t;            // legacy receipt-time fallback
   if (span < 1) return 1;
   const tr = performance.now() - RENDER_DELAY;
-  if (tr >= lastTick.t) return 1;          // ran out of buffer → hold latest (brief, not a snap)
+  if (tr >= lastTick.t) return 1;
   if (tr <= prevTick.t) return 0;
   return (tr - prevTick.t) / span;
 }

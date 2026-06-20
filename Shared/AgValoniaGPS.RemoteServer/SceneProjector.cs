@@ -300,7 +300,9 @@ public sealed class SceneProjector
             v.RenderHitchEasting,
             v.RenderHitchNorthing,
             // Front-wheel sprite angle: sim slider when the internal sim drives, else WAS.
-            _state.Simulator.IsEnabled ? _state.Simulator.SteerAngle : _autoSteer.LastSteerData.ActualSteerAngle);
+            _state.Simulator.IsEnabled ? _state.Simulator.SteerAngle : _autoSteer.LastSteerData.ActualSteerAngle,
+            // Host monotonic build time (ms) — the client's interpolation timeline.
+            System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
