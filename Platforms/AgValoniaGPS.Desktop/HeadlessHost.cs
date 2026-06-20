@@ -72,7 +72,10 @@ internal static class HeadlessHost
         settingsService.Load();
         var configService = services2.GetRequiredService<IConfigurationService>();
         configService.LoadAppSettings();
-        services2.GetRequiredService<IPersistentStateService>().Load();
+        // Resolve into a local now so the shutdown save below never calls
+        // GetRequiredService on a torn-down provider.
+        var persistentState = services2.GetRequiredService<IPersistentStateService>();
+        persistentState.Load();
 
         // Construct the single MainViewModel from DI. This starts the control loop
         // and the render-pull / status timers (the timers fire on the host loop).
@@ -104,20 +107,26 @@ internal static class HeadlessHost
 
         Console.WriteLine("[headless] ready — browse to http://localhost:5174 (or the LAN IP).");
 
-        // Block until shutdown, driven by the generic host's ConsoleLifetime —
-        // Microsoft's tested handling of SIGINT (Ctrl-C), SIGTERM (systemd stop) and
-        // SIGQUIT, cross-platform. (A hand-rolled PosixSignalRegistration handled
-        // SIGTERM but NOT SIGINT on macOS, so Ctrl-C never shut us down gracefully —
-        // the source of the kill latency.) RunAsync returns once a signal arrives;
-        // the host has no hosted services, so it just waits for the stop signal.
-        await host.RunAsync();
+        // Persist config + state and stop the embedded server during the host's
+        // ApplicationStopping phase, which fires WHILE the service provider is still
+        // alive. host.RunAsync() disposes the provider in its finally, so doing this
+        // AFTER RunAsync returns would hit a disposed IServiceProvider (the state save
+        // failed that way). ApplicationStopping callbacks run synchronously when a
+        // signal triggers StopApplication, before any disposal; this one is registered
+        // first, so it completes before the host tears down. Uses captured locals only.
+        var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStopping.Register(() =>
+        {
+            Console.WriteLine("[headless] shutting down — saving config + state…");
+            try { configService.SaveAppSettings(); } catch (Exception ex) { Console.WriteLine($"[headless] save config failed: {ex.Message}"); }
+            try { persistentState.Save(); } catch (Exception ex) { Console.WriteLine($"[headless] save state failed: {ex.Message}"); }
+            try { remoteServer.StopAsync().GetAwaiter().GetResult(); } catch (Exception ex) { Console.WriteLine($"[headless] server stop failed: {ex.Message}"); }
+            Console.WriteLine("[headless] stopped.");
+        });
 
-        Console.WriteLine("[headless] shutting down — saving config + state…");
-        try { configService.SaveAppSettings(); } catch (Exception ex) { Console.WriteLine($"[headless] save config failed: {ex.Message}"); }
-        try { services2.GetRequiredService<IPersistentStateService>().Save(); } catch (Exception ex) { Console.WriteLine($"[headless] save state failed: {ex.Message}"); }
-        try { await remoteServer.StopAsync(); } catch (Exception ex) { Console.WriteLine($"[headless] server stop failed: {ex.Message}"); }
+        // Block until SIGINT (Ctrl-C) / SIGTERM (systemd stop) / SIGQUIT, handled by
+        // the generic host's ConsoleLifetime — Microsoft's tested cross-platform impl.
+        await host.RunAsync();
         hostLoop.Dispose();
-        host.Dispose();
-        Console.WriteLine("[headless] stopped.");
     }
 }
