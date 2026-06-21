@@ -561,6 +561,8 @@ public static class WireCodec
         // Field Tools — Offset Fix drift (meters).
         w.Write((float)s.DriftEasting);
         w.Write((float)s.DriftNorthing);
+        // Unsaved-coverage guard prompt (append-only).
+        w.Write((byte)(s.UnsavedCoveragePrompt ? 1 : 0));
         return ms.ToArray();
     }
 

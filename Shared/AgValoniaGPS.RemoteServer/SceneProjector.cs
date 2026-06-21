@@ -366,7 +366,8 @@ public sealed class SceneProjector
             _persist.State.SimulatorPanelVisible,
             // Field Tools — Offset Fix drift offset (meters).
             _state.Field.DriftEasting,
-            _state.Field.DriftNorthing);
+            _state.Field.DriftNorthing,
+            _state.UI.IsUnsavedCoverageDialogVisible);
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved

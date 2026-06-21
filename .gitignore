@@ -88,3 +88,6 @@ pat.local
 # Android signing keystores — NEVER commit. Supplied to CI via secrets.
 *.keystore
 *.jks
+
+# Linux deployment bundles — build artifacts produced by deploy/linux/package.sh.
+deploy/linux/*.tar.gz

@@ -453,6 +453,13 @@ public partial class App
                                 case "field.resumeLast": ExecCmd(vm.ResumeLastJobCommand); return;
                                 case "field.driveIn": ExecCmd(vm.DriveInCommand); return;
                                 case "field.close": ExecCmd(vm.CloseFieldCommand); return;
+                                // Unsaved-coverage guard resolution (the web prompt mirrors the
+                                // host's DialogType.UnsavedCoverage). Save creates a job then
+                                // finishes the close; Discard closes dropping coverage; Cancel
+                                // abandons the close. Tier-1 (same as field.close).
+                                case "coverage.saveJob": ExecCmd(vm.SaveCoverageToJobCommand); return;
+                                case "coverage.discardClose": ExecCmd(vm.DiscardCoverageAndCloseCommand); return;
+                                case "coverage.cancelClose": ExecCmd(vm.CancelUnsavedCoverageCommand); return;
                                 // --- AgShare cloud sync (test / fetch / download / upload).
                                 // Replicates the dialog code-behind orchestration host-side;
                                 // results land in ApplicationState.AgShare. Tier-1. ---
