@@ -40,16 +40,23 @@ sealed class Program
             return;
         }
 
-        // Phase 10: AgOpenWeb boots HEADLESS by default — no Avalonia window; the
-        // browser at http://<host>:5174 is the only UI, and the process can run as a
-        // display-less daemon (systemd / Windows Service). Pass --windowed (or set
-        // AGOPENWEB_WINDOWED=1) to launch the legacy native window for verify/compare
-        // while the headless path is field-validated. See WEBUI_SESSION_HANDOFF.md.
+        // Mode selection. The backend is identical in every mode; only how it's hosted differs:
+        //   --windowed (or AGOPENWEB_WINDOWED=1) → legacy full native UI (verify/compare).
+        //   --launcher                           → in-process launcher window (app-like).
+        //   --headless                           → display-less daemon (force, e.g. Windows Service).
+        //   no flag                              → Windows: launcher (the AgOpen audience expects a
+        //                                          program); Linux/macOS: headless daemon (systemd).
+        // The browser at http://<host>:5174 is the UI in launcher + headless modes alike.
+        // See WEBUI_SESSION_HANDOFF.md.
         bool windowed = Array.IndexOf(args, "--windowed") >= 0
             || Environment.GetEnvironmentVariable("AGOPENWEB_WINDOWED") == "1";
+        bool forceHeadless = Array.IndexOf(args, "--headless") >= 0;
+        bool forceLauncher = Array.IndexOf(args, "--launcher") >= 0;
 
         if (windowed)
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        else if (forceLauncher || (OperatingSystem.IsWindows() && !forceHeadless))
+            Launcher.LauncherEntry.Run(args);
         else
             HeadlessHost.RunAsync(args).GetAwaiter().GetResult();
     }
