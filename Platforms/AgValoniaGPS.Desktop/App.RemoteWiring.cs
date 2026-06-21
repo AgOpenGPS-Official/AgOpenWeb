@@ -83,6 +83,10 @@ public partial class App
                                             services.GetRequiredService<AgValoniaGPS.Models.Configuration.ConfigurationStore>(),
                                             configService, arg[..ci], arg[(ci + 1)..]);
                                     return;
+                                case "display.capResolution": // web auto-quality: arg = min multiplier
+                                    if (double.TryParse(arg, num, inv, out var capMult)) // (2.5 = Medium)
+                                        vm.CapDisplayResolution(capMult); // only coarsens; idempotent
+                                    return;
                                 case "roll.zeroCalibrate": // Tools→Roll Correction "Zero Roll":
                                     // capture the current live roll as the new zero offset.
                                     // Mirrors RollCalibrationStepViewModel.ZeroRollCommand

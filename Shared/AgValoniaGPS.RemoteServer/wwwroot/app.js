@@ -276,10 +276,26 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); },
+  onHello(id) { myClientId = id; updateControlUi(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
   onStatus(s) { connState = s; renderRole(); },
 });
+
+// Mobile auto-quality. Phones/tablets get GPU-overloaded at Ultra resolution (large
+// coverage + imagery textures), so on connect a mobile client asks the host to CAP the
+// display quality at Medium (multiplier 2.5). The host command only ever coarsens and is
+// idempotent, so it never raises a manually-chosen lower quality and never fights a manual
+// change made afterwards (we send it ONCE per session). Desktop browsers are left untouched.
+// iPadOS reports a desktop ("Macintosh") UA, so also treat a touch-capable "Macintosh".
+const IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+let mobileQualityCapped = false;
+function applyMobileQualityCap() {
+  if (mobileQualityCapped || !IS_MOBILE) return;
+  mobileQualityCapped = true;
+  transport.send('display.capResolution|2.5'); // 2.5 = Medium
+}
+
 transport.start();
 
 // ---- CanvasKit (Skia) renderer — built alongside Canvas2D for A/B (toggle K).
