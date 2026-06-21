@@ -247,21 +247,16 @@ const transport = RemoteTransport.create({
   },
   onCoverageCells(msg) {
     if (!cov || !msg.cells) return;
-    if (cov.surface) {
-      cov.pending.push(msg.cells); // drawn onto the render target in drawCoverageSk (in-frame)
-    } else {
-      const c = msg.cells, H = cov.height, cctx = cov.cctx;
-      let lastRgb = -1;
-      for (let i = 0; i + 2 < c.length; i += 3) {
-        const x = c[i], y = c[i + 1], rgb = c[i + 2];
-        if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
-        cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
-        covCells++;
-      }
-    }
-    cov.dirty = true;
+    // Queue with arrival time; the actual rasterization is delayed by RENDER_DELAY in
+    // drawCoverageSk (both render paths) so freshly-laid coverage appears on the SAME
+    // playback timeline as the render-delayed tool/pose. Drawing it on arrival put the
+    // real-time coverage front AHEAD of the delayed tool sprite, so coverage poked out in
+    // front of the tool at speed (gap = speed × RENDER_DELAY; hidden under the tool below
+    // ~5 km/h, visible above). arrival + RENDER_DELAY matches the host-timeline pose
+    // playback exactly (same socket/latency), so the front now tracks the tool at any speed.
+    cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
-  onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); },
+  onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
   onConfig(c) { config = c; configDirty = true; },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -572,7 +567,13 @@ function showConfirm(title, message, onConfirm) {
   document.getElementById('dlgc-msg').textContent = message || '';
   openDialog('dlg-confirm');
 }
-dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => { e.stopPropagation(); closeDialog(); });
+dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  // Backdrop-dismiss of the unsaved-coverage guard must resolve it (= Cancel), else the
+  // host stays blocked with its dialog open and the field never closes.
+  if (_ucovOpen) { _ucovOpen = false; transport.send('coverage.cancelClose'); }
+  closeDialog();
+});
 dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
 const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
 function openSimCoords() {
@@ -596,6 +597,27 @@ document.getElementById('dlgc-ok').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
   const cb = _confirmCb; closeDialog(); if (cb) cb();
 });
+
+// ---- unsaved-coverage guard (server-driven) ----
+// CloseFieldCommand opens DialogType.UnsavedCoverage on the host when coverage was painted
+// with no open job. The host has no UI, so we render the prompt here off the Status flag and
+// resolve it with the matching host commands (SaveCoverageToJob / DiscardCoverageAndClose /
+// CancelUnsavedCoverage). Without this the host opens a dialog nothing shows and the close hangs.
+let _ucovOpen = false;
+function syncUnsavedCov() {
+  const want = !!(statusBar && statusBar.unsavedCoveragePrompt);
+  if (want && !_ucovOpen) { _ucovOpen = true; openDialog('dlg-unsavedcov'); }
+  else if (!want && _ucovOpen) {
+    _ucovOpen = false;
+    if (document.getElementById('dlg-unsavedcov').classList.contains('open')) closeDialog();
+  }
+}
+// Resolve optimistically (close now); the host command also flips the Status flag false, so
+// the next frame is a no-op rather than a re-open.
+function ucovResolve(cmd) { _ucovOpen = false; transport.send(cmd); closeDialog(); }
+document.getElementById('ucov-save').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); ucovResolve('coverage.saveJob'); });
+document.getElementById('ucov-discard').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); ucovResolve('coverage.discardClose'); });
+document.getElementById('ucov-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); ucovResolve('coverage.cancelClose'); });
 
 // ---- section bar (Phase 7) — per-section colour strip + manual toggle ----
 // Read state (per-section ColorCode + master/manual mode) already rides the Tick;
@@ -4337,21 +4359,28 @@ function drawSatelliteSk(canvas) {
 const COV_REBUILD_MS = 250;
 function drawCoverageSk(canvas) {
   if (!cov) return;
+  // Only rasterize batches that have aged past RENDER_DELAY, so coverage lands on the same
+  // playback timeline as the render-delayed tool (see onCoverageCells). pending is FIFO in
+  // arrival time, so the first not-yet-aged batch ends the drain.
+  const cutoff = performance.now() - RENDER_DELAY;
   if (cov.surface) {
-    // GPU render target: draw only the pending NEW cells onto it, then snapshot (a GPU
+    // GPU render target: draw only the aged pending NEW cells onto it, then snapshot (a GPU
     // texture COW — cheap). No whole-texture upload, so no regular per-rebuild stutter.
-    if (cov.pending.length) {
+    if (cov.pending.length && cov.pending[0].t <= cutoff) {
       const sk = cov.surface.getCanvas(), paint = cov.covPaint, H = cov.height;
-      let lastRgb = -1;
-      for (const c of cov.pending) {
+      let lastRgb = -1, drained = 0;
+      for (const batch of cov.pending) {
+        if (batch.t > cutoff) break;
+        const c = batch.cells;
         for (let i = 0; i + 2 < c.length; i += 3) {
           const x = c[i], y = c[i + 1], rgb = c[i + 2] >>> 0 & 0xFFFFFF;
           if (rgb !== lastRgb) { paint.setColor(CK.Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 1)); lastRgb = rgb; }
           sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
           covCells++;
         }
+        drained++;
       }
-      cov.pending.length = 0;
+      cov.pending.splice(0, drained);
       cov.surface.flush();
       cov.dirty = true;
     }
@@ -4362,6 +4391,24 @@ function drawCoverageSk(canvas) {
     }
   } else {
     const nowMs = performance.now();
+    // 2D fallback: drain aged batches into the offscreen canvas (same RENDER_DELAY gate).
+    if (cov.pending.length && cov.pending[0].t <= cutoff) {
+      const H = cov.height, cctx = cov.cctx;
+      let lastRgb = -1, drained = 0;
+      for (const batch of cov.pending) {
+        if (batch.t > cutoff) break;
+        const c = batch.cells;
+        for (let i = 0; i + 2 < c.length; i += 3) {
+          const x = c[i], y = c[i + 1], rgb = c[i + 2];
+          if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
+          cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
+          covCells++;
+        }
+        drained++;
+      }
+      cov.pending.splice(0, drained);
+      cov.dirty = true;
+    }
     if (!cov.skImg || (cov.dirty && nowMs - (cov.lastBuild || 0) >= COV_REBUILD_MS)) {
       if (cov.skImg) cov.skImg.delete();
       cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);

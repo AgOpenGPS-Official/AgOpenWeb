@@ -2359,6 +2359,17 @@
         <button id="dlgc-ok" class="dlg-btn dlg-ok">Confirm</button>
       </div>
     </div>
+    <!-- Unsaved-coverage guard (server-driven via Status.unsavedCoveragePrompt): coverage
+         painted with no open job. Three outcomes — Save to a job, Discard, or Cancel the close. -->
+    <div id="dlg-unsavedcov" class="dlg-card">
+      <div class="dlg-title">Unsaved Coverage</div>
+      <div class="dlg-msg">You've worked this field without an open job, so the coverage won't be saved. Save it to a job, or it will be lost.</div>
+      <div class="dlg-buttons">
+        <button id="ucov-cancel" class="dlg-btn dlg-cancel">Cancel</button>
+        <button id="ucov-discard" class="dlg-btn dlg-cancel">Discard</button>
+        <button id="ucov-save" class="dlg-btn dlg-ok">Save to Job</button>
+      </div>
+    </div>
     <!-- Quick AB Line creator (mirrors native QuickABSelectorPanel) — GPS-driven modes. -->
     <div id="dlg-quickab" class="dlg-card">
       <div class="dlg-title">Quick AB Line</div>

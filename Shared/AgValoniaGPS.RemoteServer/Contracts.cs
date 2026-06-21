@@ -238,7 +238,12 @@ public record StatusDto(
     // Field Tools → Offset Fix: the current GPS drift offset (meters) the D-pad nudges
     // and the manual inputs edit. Mirrors ApplicationState.Field.Drift{Easting,Northing}.
     double DriftEasting,
-    double DriftNorthing);
+    double DriftNorthing,
+    // Unsaved-coverage guard (server-driven). True while CloseFieldCommand has surfaced the
+    // "coverage painted with no open job" prompt (DialogType.UnsavedCoverage). The web client
+    // renders its own Save/Discard/Cancel prompt off this flag — without it the host opens a
+    // dialog nothing renders and the close hangs. Message text is static (client owns it).
+    bool UnsavedCoveragePrompt);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
