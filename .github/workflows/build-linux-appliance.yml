@@ -1,0 +1,128 @@
+name: Build Linux Appliance
+
+# Builds the HEADLESS host deployment bundles (Phase 10 appliance) — distinct from the
+# Desktop/Android/iOS app artifacts in build-and-release.yml. Each bundle is a
+# self-contained .NET publish + the systemd unit + install scripts, packaged by
+# deploy/linux/package.sh (the single source of truth — this workflow just runs it on a
+# clean runner so we don't have to cross-publish arm64 by hand on a dev Mac).
+#
+# Triggers:
+#   - workflow_dispatch: build on demand. Supply a release_tag to also publish a GitHub
+#     Release with the tarballs; leave it empty to just upload build artifacts.
+#   - push of a v* tag: build + publish a Release for that tag.
+# (Per-commit CI lives in build-and-release.yml; this one is release/packaging-focused.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g. v26.6.4). Leave empty to only upload build artifacts.'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # needed to publish a Release
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]   # mini-PC / amd64 and Pi / Uno-Q / arm64 SBCs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # package.sh cross-publishes self-contained (-p:DesktopOnly=true collapses the shared
+      # projects' net10.0;net10.0-ios multi-target to net10.0, avoiding the Mono runtime-pack
+      # NU1102 on a cross-arch publish) and tars it with the install scripts + unit.
+      - name: Build appliance bundle (${{ matrix.arch }})
+        run: ./deploy/linux/package.sh --arch ${{ matrix.arch }} --out "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agopenweb-linux-${{ matrix.arch }}
+          path: dist/agopenweb-linux-*.tar.gz
+          retention-days: 30
+
+  release:
+    needs: package
+    # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Resolve tag + version
+        id: meta
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: List bundles
+        run: find dist -type f -name '*.tar.gz'
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "AgOpenWeb ${{ steps.meta.outputs.tag }}"
+          body: |
+            ## AgOpenWeb appliance ${{ steps.meta.outputs.tag }}
+
+            Headless host (web UI only) packaged as a Linux systemd daemon.
+
+            **Version:** ${{ steps.meta.outputs.version }}
+
+            ### Downloads
+
+            | Target | File |
+            |--------|------|
+            | x86-64 mini-PC / amd64 | `agopenweb-linux-x64.tar.gz` |
+            | ARM64 SBC (Pi / Uno Q / etc.) | `agopenweb-linux-arm64.tar.gz` |
+
+            ### Install (no .NET SDK needed on the box)
+
+            ```bash
+            tar xzf agopenweb-linux-<arch>.tar.gz && cd agopenweb-linux-<arch>
+            sudo ./install.sh --from app
+            ```
+
+            Installs to `/opt/agopenweb`, runs as the `agopenweb` service user, keeps data in
+            `/home/agopenweb`, and enables `agopenweb.service` (auto-starts on boot). Then browse
+            to `http://<box-ip>:5174`. The installer apt-installs ICU (required) plus
+            libfontconfig/libGL (boundary imagery). See the bundle `README.md` for details.
+          draft: false
+          prerelease: false
+          files: dist/**/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
