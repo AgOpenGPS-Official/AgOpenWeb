@@ -133,7 +133,14 @@ internal sealed class LauncherWindow : Window
         string? error = null;
         var backend = new BackendHost();
         try { await Task.Run(() => backend.StartAsync(_args)); _backend = backend; }
-        catch (Exception ex) { error = ex.Message; try { await backend.StopAsync(); } catch { /* best effort */ } }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            // Full stack to a temp log so a Start failure on a user's box is diagnosable
+            // (a WinExe has no console to print to).
+            try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "agopenweb-launcher-error.log"), ex.ToString()); } catch { }
+            try { await backend.StopAsync(); } catch { /* best effort */ }
+        }
         _busy = false;
         UpdateUi();
         if (error != null) _statusText.Text = "Failed: " + error;
