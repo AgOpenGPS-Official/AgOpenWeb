@@ -391,6 +391,48 @@ question is only whether you get the isolation for free or bolt it on.
 - **Lowest RT risk overall:** Pattern D (discrete MCU over USB), at the cost of a
   second box.
 
+## Running the .NET brain: headless host as a systemd daemon
+
+Across every pattern above, the .NET guidance/UI half ("the brain") is the same
+process — and on the cab-PC / single-SBC targets (A's A53 Linux side, B, D's host)
+it runs as a **headless systemd service**, not a windowed app. This is the realized
+form of de-risk spike #1 and the end-state of the web-UI migration (Phase 10): the
+host has **no native UI**; operators use a browser — a remote tablet, or a local
+`chromium --kiosk http://localhost:5174` on an attached display. You cannot cleanly
+daemonize a windowed Avalonia app; a headless generic-host + Kestrel process is what
+runs under systemd.
+
+Boot it headless by default; `--windowed` (or `AGOPENWEB_WINDOWED=1`) launches the
+legacy native window for local verify/compare. Ship: `deploy/linux/` —
+`install.sh` (publishes the **self-contained** build — no .NET runtime on the box;
+**not trimmed**, the steer wizard reflects over step ViewModels — to `/opt/agopenweb`,
+creates the `agopenweb` user, installs the unit) + `agopenweb.service` + `uninstall.sh`.
+
+The unit (`Plans`-adjacent `deploy/linux/agopenweb.service`):
+
+- **`Type=notify` + `WatchdogSec=30`** — the host sends `READY=1` once it is serving
+  (systemd marks the unit started only when the browser endpoint is live) and pets
+  the watchdog via `sd_notify` (`SystemdWatchdogService`, pinging at half-interval).
+- **`Restart=always`** + **`After=network-online.target`** — the brain returns after
+  a crash, and only starts once module/NTRIP sockets have a real network.
+- **dedicated unprivileged `agopenweb` user** in `dialout` (USB-serial GPS/AiO) +
+  `can` (SocketCAN); **journald** logging; **`StateDirectory`** for field data/config;
+  moderate hardening (tighten per site).
+
+> **Do not conflate the two watchdogs.** systemd's `WatchdogSec` restarts a *hung
+> brain* — it is an availability mechanism on the failure-prone OS side, and its kick
+> path runs through userspace→kernel (the "kick a dead system" caveat from the
+> cross-pattern watchdog note). It is **not** the steer-enable safety watchdog. The
+> fail-safe that de-energizes the actuator on loss of heartbeat is still the
+> **independent hardware/MCU watchdog** described above, and every pattern needs it
+> regardless of how the brain is supervised.
+
+**The co-resident mobile case is NOT a daemon.** When the brain runs *on the tablet
+itself* (no separate box), it's an app, not a service: Android = a **foreground
+service** (persistent notification, `START_STICKY`); iOS = a **foregrounded app +
+Guided Access** (no true background daemon). systemd packaging applies only to the
+Linux cab-PC / SBC targets.
+
 ## Suggested de-risk spikes (order)
 
 1. **Linux host spike** (lowest risk, pattern-independent): AgValonia headless

@@ -40,10 +40,7 @@ public class ToolProfileService : IToolProfileService
     }
 
     private static string DefaultToolsDirectory()
-    {
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        return Path.Combine(documentsPath, "AgValoniaGPS", "Tools");
-    }
+        => Path.Combine(AppDataRoot.Documents, "Tools");
 
     public List<string> GetAvailableProfiles()
     {

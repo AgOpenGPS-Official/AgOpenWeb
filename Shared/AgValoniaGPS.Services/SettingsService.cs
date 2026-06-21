@@ -59,23 +59,9 @@ namespace AgValoniaGPS.Services
 
         private static string ResolveDefaultDirectory()
         {
-            // Store settings in Documents/AgValoniaGPS (same as Fields)
-            // This works consistently across Desktop, iOS, and Android
-            var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-
-            // Fallback to Personal if MyDocuments is empty (some platforms)
-            if (string.IsNullOrEmpty(documentsPath))
-            {
-                documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-            }
-
-            // Last resort fallback
-            if (string.IsNullOrEmpty(documentsPath))
-            {
-                documentsPath = Environment.CurrentDirectory;
-            }
-
-            return Path.Combine(documentsPath, "AgValoniaGPS");
+            // Single resolver (AGOPENWEB_DATA env override → MyDocuments → …). NEVER the
+            // CWD, which on the daemon is the program dir wiped on upgrade. See AppDataRoot.
+            return AppDataRoot.Documents;
         }
 
         public bool Load()
@@ -120,14 +106,14 @@ namespace AgValoniaGPS.Services
                     System.Diagnostics.Debug.WriteLine($"[Settings] Validation fix: {fix}");
                 }
 
-                // Ensure fields directory is set and points to current app container
-                // On iOS, the app container path can change on reinstall, so we need to
-                // verify the saved path is within the current Documents directory
-                var currentDocuments = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                // Ensure fields directory is set and points to the current data root.
+                // On iOS the app container path can change on reinstall; on the daemon the
+                // AGOPENWEB_DATA root governs — either way reinit if the saved path is stale.
+                var currentDocuments = AppDataRoot.Documents;
                 var needsReinit = string.IsNullOrEmpty(Settings.FieldsDirectory) ||
                                   !Directory.Exists(Settings.FieldsDirectory);
 
-                // Also reinit if the saved path is not under current Documents (iOS container changed)
+                // Also reinit if the saved path is not under the current data root.
                 if (!needsReinit && !string.IsNullOrEmpty(currentDocuments) &&
                     !Settings.FieldsDirectory.StartsWith(currentDocuments, StringComparison.OrdinalIgnoreCase))
                 {
@@ -156,9 +142,8 @@ namespace AgValoniaGPS.Services
         /// </summary>
         private void InitializeFieldsDirectory()
         {
-            // Default to Documents/AgValoniaGPS/Fields (cross-platform compatible)
-            var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            Settings.FieldsDirectory = Path.Combine(documentsPath, "AgValoniaGPS", "Fields");
+            // Default to <data root>/AgValoniaGPS/Fields (honors AGOPENWEB_DATA).
+            Settings.FieldsDirectory = Path.Combine(AppDataRoot.Documents, "Fields");
 
             // Create the directory if it doesn't exist
             if (!Directory.Exists(Settings.FieldsDirectory))

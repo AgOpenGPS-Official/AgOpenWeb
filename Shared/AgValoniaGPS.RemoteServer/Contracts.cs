@@ -147,7 +147,12 @@ public record TickDto(
     // Live front-wheel angle for the steerable front-wheel sprite (deg, +right). Sim
     // slider value when the internal sim drives, else the real WAS reading — mirrors
     // native MainViewModel.ApplyResults (SetVehicleSteerAngle).
-    double VehicleSteerAngle);
+    double VehicleSteerAngle,
+    // Host monotonic timestamp (ms) when this Tick was built. The client interpolates
+    // pose/tool on THIS timeline, not on frame-receipt time — so WiFi arrival jitter
+    // (which warped the receipt-delta and made the heading/map wiggle) only shifts the
+    // playback buffer, absorbed by RENDER_DELAY, instead of varying the interp rate.
+    double HostMs);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

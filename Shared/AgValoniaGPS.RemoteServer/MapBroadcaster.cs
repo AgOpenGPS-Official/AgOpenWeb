@@ -20,6 +20,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private readonly CoverageProjector _coverageProjector;
     private readonly ControlAuthority _authority;
     private readonly CancellationTokenSource _cts = new();
+    private bool _disposed;
 
     private long _sceneVersion;
     private long _lastFingerprint = long.MinValue;
@@ -310,6 +311,13 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // Idempotent: RemoteServerHost.StopAsync disposes us explicitly, then the
+        // web host's DI container disposes us again when _app.DisposeAsync() tears
+        // down its singletons. Without this guard the second call hit Cancel() on an
+        // already-disposed CTS (ObjectDisposedException). Affects the windowed path
+        // too — there it was swallowed by a fire-and-forget StopAsync.
+        if (_disposed) return;
+        _disposed = true;
         _coverage.CoverageUpdated -= OnCoverageUpdated;
         _coverage.BoundsExpanded -= OnBoundsExpanded;
         _cts.Cancel();

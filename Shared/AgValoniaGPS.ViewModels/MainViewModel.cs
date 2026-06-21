@@ -672,7 +672,11 @@ public partial class MainViewModel : ObservableObject
         long smT0 = sm ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long smA0 = sm ? GC.GetAllocatedBytesForCurrentThread() : 0;
 
-        var p = _positionEstimator.GetPose(Clock.Current.GetTimestamp());
+        // Capture the instant this pose is dead-reckoned to, so the web Tick can stamp the
+        // pose with ITS compute time (consistent value↔timestamp) rather than the later
+        // broadcast time — see VehicleState.RenderPoseMs.
+        long renderTs = Clock.Current.GetTimestamp();
+        var p = _positionEstimator.GetPose(renderTs);
 
         var tool = ConfigStore.Tool;
         // Rigid tools use Tool.HitchLength (axle -> working center); trailing/TBT use
@@ -737,6 +741,8 @@ public partial class MainViewModel : ObservableObject
         vs.RenderHeadingRad = p.Heading;
         vs.RenderSpeed = p.SpeedMps;
         vs.RenderPoseValid = true;
+        // Stopwatch-basis ms of this pose's compute instant (matches the web HostMs basis).
+        vs.RenderPoseMs = renderTs * 1000.0 / Clock.Current.Frequency;
 
         if (sm)
         {

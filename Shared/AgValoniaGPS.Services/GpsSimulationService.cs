@@ -33,6 +33,10 @@ namespace AgValoniaGPS.Services
         private double _steerAngle;
         private double _steerAngleAverage;
         private double _stepDistance;
+        // Monotonic timestamp of the previous Tick (0 = none yet). Used to scale the
+        // per-tick advance by REAL elapsed time so motion is independent of tick
+        // cadence — see the dt-scaling note in Tick.
+        private long _lastTickTimestamp;
         private bool _isAcceleratingForward;
         private bool _isAcceleratingBackward;
         private Wgs84 _initialPosition;
@@ -82,6 +86,7 @@ namespace AgValoniaGPS.Services
             _steerAngle = 0;
             _steerAngleAverage = 0;
             _stepDistance = 0;
+            _lastTickTimestamp = 0;
             _isAcceleratingForward = false;
             _isAcceleratingBackward = false;
         }
@@ -94,6 +99,7 @@ namespace AgValoniaGPS.Services
             _steerAngle = 0;
             _steerAngleAverage = 0;
             _stepDistance = 0;
+            _lastTickTimestamp = 0;
             _isAcceleratingForward = false;
             _isAcceleratingBackward = false;
         }
@@ -105,9 +111,33 @@ namespace AgValoniaGPS.Services
             // Smooth the steer angle (original algorithm from CSim.DoSimTick)
             SmoothSteerAngle();
 
+            // Time-scale the per-tick advance. The original CSim moved a fixed
+            // _stepDistance every tick, which assumes a perfectly regular ~30 Hz
+            // tick. That holds under Avalonia's DispatcherTimer but NOT under a
+            // jittery System.Threading.Timer (the headless host), where uneven tick
+            // spacing makes the real ground speed wander even though the reported
+            // speed is constant — the dead-reckoner then over/undershoots and the
+            // web map re-anchors with a visible snap. Scaling the step by
+            // (realDt / nominalDt) makes motion track wall-clock time, so the
+            // cadence no longer matters. At a steady 30 Hz scale ≈ 1.0, so the
+            // windowed/mobile behaviour is unchanged. Clamped to absorb the first
+            // tick after start and any long pause without a position jump.
+            double scale = 1.0;
+            long nowTs = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastTickTimestamp != 0)
+            {
+                const double NominalDtSeconds = 1.0 / 30.0; // _simulatorTimer interval (33 ms)
+                double dtSeconds = (nowTs - _lastTickTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency;
+                scale = dtSeconds / NominalDtSeconds;
+                if (scale < 0.25) scale = 0.25;
+                if (scale > 4.0) scale = 4.0;
+            }
+            _lastTickTimestamp = nowTs;
+            double effectiveStep = _stepDistance * scale;
+
             // Calculate heading change based on steering angle
             // Using simplified bicycle model: heading_change = step_distance * tan(steer_angle) / 2
-            double headingChange = _stepDistance * Math.Tan(_steerAngleAverage * DegreesToRadians) / 2.0;
+            double headingChange = effectiveStep * Math.Tan(_steerAngleAverage * DegreesToRadians) / 2.0;
             _headingRadians += headingChange;
 
             // Normalize heading to [0, 2π)
@@ -116,12 +146,13 @@ namespace AgValoniaGPS.Services
             while (_headingRadians < 0)
                 _headingRadians += TwoPI;
 
-            // Calculate speed (km/h) from step distance
+            // Calculate speed (km/h) from step distance (the speed SETTING, not the
+            // time-scaled step — reported speed stays steady for the dead-reckoner).
             // Original: Math.Abs(Math.Round(4 * stepDistance * 10, 2))
             double speedKmh = Math.Round(4.0 * _stepDistance * 10.0, 2);
 
             // Calculate next position using WGS84 bearing/distance
-            _currentPosition = _currentPosition.CalculateNewPostionFromBearingDistance(_headingRadians, _stepDistance);
+            _currentPosition = _currentPosition.CalculateNewPostionFromBearingDistance(_headingRadians, effectiveStep);
 
             // Simulate altitude
             double altitude = SimulateAltitude(_currentPosition);
@@ -157,6 +188,7 @@ namespace AgValoniaGPS.Services
             _steerAngle = 0;
             _steerAngleAverage = 0;
             _stepDistance = 0;
+            _lastTickTimestamp = 0;
             _isAcceleratingForward = false;
             _isAcceleratingBackward = false;
         }

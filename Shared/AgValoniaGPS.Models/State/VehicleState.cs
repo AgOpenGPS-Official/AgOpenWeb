@@ -100,6 +100,13 @@ public class VehicleState : ObservableObject
     public double RenderHeadingRad { get; set; }
     public double RenderSpeed { get; set; }
     public bool RenderPoseValid { get; set; }
+    // Monotonic timestamp (ms, Stopwatch basis) of the instant this render pose was
+    // computed by the render-pull tick. The web Tick sends THIS as its HostMs so the
+    // browser interpolates each pose at the time its position actually corresponds to —
+    // not the later broadcast time. Stamping at broadcast time aliased the 30 Hz render
+    // pull against the 10 Hz broadcast (0–33 ms variable age), which the client read as a
+    // velocity wobble → speed-proportional stutter (visible >~10 km/h).
+    public double RenderPoseMs { get; set; }
 
     // GPS quality
     private int _fixQuality;

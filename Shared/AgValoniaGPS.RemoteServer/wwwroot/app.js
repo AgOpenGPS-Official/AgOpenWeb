@@ -14,6 +14,7 @@ let vw = innerWidth, vh = innerHeight, dpr = 1;
 // Skia/CanvasKit renderer state — declared before resize() (which calls
 // recreateSkSurface) to avoid a temporal-dead-zone ReferenceError.
 let CK = null, skSurface = null, skTri = null, SKP = null;
+let grCtx = null; // WebGL GrDirectContext — hoisted so the coverage render target shares it
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
   vw = innerWidth; vh = innerHeight;
@@ -28,14 +29,31 @@ addEventListener('resize', resize); resize();
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
 let tick = null;       // TickDto (latest — for sections/HUD)
-let lastTick = null;   // latest authoritative pose + receipt time
-let prevTick = null;   // previous authoritative pose — the render INTERPOLATES between the two
+let lastTick = null;   // newest authoritative pose (HUD readouts + guards)
+// Ring of recent authoritative poses (oldest→newest). The render INTERPOLATES between
+// the two that bracket the playback head. A MULTI-pose buffer (not just prev+last) is
+// what lets RENDER_DELAY exceed the ~100 ms pose interval without the playhead falling
+// off the old end → that off-the-end clamp was the 10 Hz "judder".
+const poseBuf = [];
+const POSE_BUF_MAX = 12; // ~1.2 s @ 10 Hz — plenty of bracket for the delay + WiFi jitter
 // Render slightly in the PAST so every frame interpolates between two REAL poses instead of
 // extrapolating/predicting past the latest. This is what kills the per-tick re-anchor snap
 // (the whole-world jump at speed) AND the straight-line turn deviation — both are
 // extrapolation artifacts. Cost: a small constant display lag (~RENDER_DELAY × speed). Must
 // exceed the pose interval (~100 ms @ 10 Hz) plus arrival jitter so we rarely run out of buffer.
-const RENDER_DELAY = 120; // ms
+// Buffer depth behind the newest pose. Kept SMALL (low display lag) so the dead-reckoned
+// vehicle sprite stays aligned with the host-accumulated coverage — a large delay made the
+// tractor visibly trail its own coverage. WiFi inter-arrival spikes that would otherwise
+// drain the buffer are bridged by EXTRAPOLATION (sample(), below) rather than a freeze, so
+// we get smoothness without the lag. ~130 ms covers the pose interval + interpolation room.
+const RENDER_DELAY = 130; // ms
+// Max time we'll extrapolate past the newest pose when the buffer underruns (WiFi spike /
+// dropped pose) before settling to a hold — bridges spikes without flying off on a real
+// dropout. At field speed 200 ms is well under a pose-pair's worth of travel.
+const EXTRAP_CAP_MS = 200;
+// Smoothed client↔host clock offset: host_time ≈ client_time − clockOffset. Estimated from the
+// host monotonic timestamp on each Tick (EMA, so one jittery arrival can't shift the timeline).
+let clockOffset = null;
 let connState = 'connecting…';
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
@@ -112,7 +130,14 @@ let cameraMode = 3;
 let mapRotation = 0;          // radians the map is rotated (−heading in HeadingUp)
 let _cosRR = 1, _sinRR = 0;   // cos/sin of the screen rotation (−mapRotation), per frame
 const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15; // match native tuning
-const ROT_SMOOTH = 0.3; // ease map rotation toward target (smooths 10 Hz heading steps)
+// Map-rotation easing (HeadingUp). ADAPTIVE: heavily damp SMALL heading errors so the
+// whole heading-up map doesn't wobble with autosteer line-holding dither, but stay
+// responsive for LARGE errors (real headland turns). alpha ramps MIN→MAX as the heading
+// error grows to ROT_SMOOTH_FULL rad. (A single fixed value either wobbles on the line or
+// lags the turns.)
+const ROT_SMOOTH_MIN = 0.035; // ~0.5 s settle — kills line-holding dither (~0.2-0.3°)
+const ROT_SMOOTH_MAX = 0.35;  // crisp on real turns (≈ the old fixed 0.3)
+const ROT_SMOOTH_FULL = 0.12; // rad (~7°) error at which we're fully responsive
 function isFollowMode() { return cameraMode !== 2; }
 // 3D perspective tilt (Skia only — Canvas2D can't do true perspective). pitch 0 =
 // top-down (identical to the ortho path); up to MAX_PITCH tilts toward the horizon.
@@ -165,37 +190,76 @@ const transport = RemoteTransport.create({
   onTick(t) {
     tick = t;
     if (t.pose) {
-      prevTick = lastTick; // shift the buffer; renderPose/renderTool interpolate prev→last
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
-        tool: t.tool, t: performance.now(),
+        tool: t.tool, t: performance.now(), hostT: t.hostMs,
       };
+      // Keep the buffer strictly increasing in host time. The 30 Hz render-pull vs 10 Hz
+      // broadcast can occasionally resend the same pose (equal hostT) — a duplicate/
+      // backward stamp would break the bracket search, so replace rather than append.
+      const prev = poseBuf[poseBuf.length - 1];
+      if (prev && typeof t.hostMs === 'number' && typeof prev.hostT === 'number' && t.hostMs <= prev.hostT)
+        poseBuf[poseBuf.length - 1] = lastTick;
+      else {
+        poseBuf.push(lastTick);
+        if (poseBuf.length > POSE_BUF_MAX) poseBuf.shift();
+      }
+      // Track the client↔host clock offset (EMA). The interp SPAN comes from the
+      // jitter-free host timestamps; this offset only aligns the playback timeline, so a
+      // single late/early arrival shifts it by ≤5% instead of warping the whole frame.
+      if (typeof t.hostMs === 'number') {
+        const raw = lastTick.t - t.hostMs;
+        // Very slow EMA (0.01): the client↔host clock barely drifts (ppm), so adapting
+        // slowly keeps the playhead velocity steady — a faster EMA chased arrival jitter and
+        // left residual position stutter (offline sim: 0.02→12%, 0.01→6% spread). The
+        // RENDER_DELAY buffer absorbs the slower settle. Errs high (more lag) = edge-safe.
+        clockOffset = (clockOffset === null) ? raw : clockOffset + 0.01 * (raw - clockOffset);
+      }
     }
     pushChartData(t);
   },
   onCoverageInit(init) {
-    const canvas = document.createElement('canvas');
-    canvas.width = init.width;
-    canvas.height = init.height;
+    if (cov) { // tear down a prior coverage (field/resolution change)
+      if (cov.skImg) cov.skImg.delete();
+      if (cov.surface) cov.surface.delete();
+      if (cov.covPaint) cov.covPaint.delete();
+    }
+    const w = init.width, h = init.height;
+    // Primary: a persistent GPU render target. New cells are drawn straight onto it each
+    // update (cheap, only the new cells) and snapshotted (texture copy-on-write) — NO
+    // whole-texture re-upload, which was the regular per-rebuild stutter. Fallback: the
+    // offscreen 2D canvas + full re-upload (throttled) if the render target can't be made.
+    let surface = null;
+    if (CK && grCtx) { try { surface = CK.MakeRenderTarget(grCtx, w, h); } catch (e) { surface = null; } }
+    let canvas = null, cctx = null, covPaint = null;
+    if (surface) {
+      surface.getCanvas().clear(CK.TRANSPARENT);
+      covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
+    } else {
+      canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
+    }
     cov = {
       cellSize: init.cellSize, originE: init.originE, originN: init.originN,
-      width: init.width, height: init.height,
-      canvas, cctx: canvas.getContext('2d'),
-      dirty: true, skImg: null, // Skia snapshot of the offscreen, rebuilt when dirty
+      width: w, height: h, surface, covPaint, pending: [],
+      canvas, cctx, dirty: true, skImg: null, lastBuild: 0,
     };
     covCells = 0;
   },
   onCoverageCells(msg) {
     if (!cov || !msg.cells) return;
-    const c = msg.cells, H = cov.height, cctx = cov.cctx;
-    let lastRgb = -1;
-    for (let i = 0; i + 2 < c.length; i += 3) {
-      const x = c[i], y = c[i + 1], rgb = c[i + 2];
-      if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
-      cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
-      covCells++;
+    if (cov.surface) {
+      cov.pending.push(msg.cells); // drawn onto the render target in drawCoverageSk (in-frame)
+    } else {
+      const c = msg.cells, H = cov.height, cctx = cov.cctx;
+      let lastRgb = -1;
+      for (let i = 0; i + 2 < c.length; i += 3) {
+        const x = c[i], y = c[i + 1], rgb = c[i + 2];
+        if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
+        cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
+        covCells++;
+      }
     }
-    cov.dirty = true; // offscreen changed → Skia must re-snapshot before next blit
+    cov.dirty = true;
   },
   onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); },
   onConfig(c) { config = c; configDirty = true; },
@@ -212,10 +276,26 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); },
+  onHello(id) { myClientId = id; updateControlUi(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); },
   onStatus(s) { connState = s; renderRole(); },
 });
+
+// Mobile auto-quality. Phones/tablets get GPU-overloaded at Ultra resolution (large
+// coverage + imagery textures), so on connect a mobile client asks the host to CAP the
+// display quality at Medium (multiplier 2.5). The host command only ever coarsens and is
+// idempotent, so it never raises a manually-chosen lower quality and never fights a manual
+// change made afterwards (we send it ONCE per session). Desktop browsers are left untouched.
+// iPadOS reports a desktop ("Macintosh") UA, so also treat a touch-capable "Macintosh".
+const IS_MOBILE = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+let mobileQualityCapped = false;
+function applyMobileQualityCap() {
+  if (mobileQualityCapped || !IS_MOBILE) return;
+  mobileQualityCapped = true;
+  transport.send('display.capResolution|2.5'); // 2.5 = Medium
+}
+
 transport.start();
 
 // ---- CanvasKit (Skia) renderer — built alongside Canvas2D for A/B (toggle K).
@@ -231,7 +311,7 @@ function recreateSkSurface() {
   // via the explicit GL path; fall back to the color-managed helper if needed.
   const ctxHandle = CK.GetWebGLContext(ckcv);
   if (ctxHandle) {
-    const grCtx = CK.MakeWebGLContext(ctxHandle);
+    grCtx = CK.MakeWebGLContext(ctxHandle);
     if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   }
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
@@ -316,6 +396,19 @@ addEventListener('wheel', e => {
   pxPerM *= e.deltaY < 0 ? 1.1 : 0.9;
   pxPerM = Math.min(200, Math.max(0.2, pxPerM));
 }, { passive: false });
+
+// Block BROWSER zoom so only the map zooms. iOS Safari IGNORES the viewport's
+// user-scalable=no, so a two-finger pinch (esp. one starting over a panel, whose
+// touch-action:manipulation still permits page pinch) magnifies the whole page —
+// chrome and all — off-screen ("erratic zoom"). Preventing Safari's gesture* events
+// stops that; trackpad/ctrl+wheel page-zoom is already covered by the wheel handler's
+// preventDefault above. Multi-touch on the map canvas is covered by touch-action:none.
+for (const t of ['gesturestart', 'gesturechange', 'gestureend'])
+  addEventListener(t, e => e.preventDefault(), { passive: false });
+// Belt-and-suspenders for touch browsers without gesture* (e.g. some Android): a
+// 2+-finger move is a pinch — swallow it so the page can't zoom/pan. Single-finger
+// touches pass through to the map pan / panel scroll untouched.
+addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
 // Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one
 // that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
@@ -2747,11 +2840,17 @@ function updateCamera() {
     else if (cameraMode === 1) { camE = rp.e; camN = rp.n; target = -rp.heading; } // HeadingUp
     else if (cameraMode === 3) { target = 0; applyAutoPan(rp); }                   // Map
   } else if (cameraMode !== 2) target = 0;
-  // Ease toward the target along the shortest angular path — turns the 10 Hz
-  // heading steps (HeadingUp) into continuous rotation.
+  // Ease toward the target along the shortest angular path — turns the 10 Hz heading
+  // steps (HeadingUp) into continuous rotation. Adaptive alpha: heavy damping for small
+  // errors (line-holding dither) → no map wobble; responsive for large errors → crisp turns.
   let d = target - mapRotation;
   d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
-  mapRotation += d * ROT_SMOOTH;
+  // QUADRATIC ramp: stays near MIN for tiny errors (line-holding dither ≈0.005 rad → the
+  // map barely follows it) but rises sharply toward MAX as the error approaches a real turn.
+  // A linear ramp lifted alpha too much at the dither scale, leaving residual wobble.
+  const rotFrac = Math.min(1, Math.abs(d) / ROT_SMOOTH_FULL);
+  const rotAlpha = ROT_SMOOTH_MIN + (ROT_SMOOTH_MAX - ROT_SMOOTH_MIN) * rotFrac * rotFrac;
+  mapRotation += d * rotAlpha;
   const rR = -mapRotation;
   _cosRR = Math.cos(rR); _sinRR = Math.sin(rR);
   updatePerspective();
@@ -2880,42 +2979,66 @@ const SECTION_COLORS = [
 // vehicle), so the footprint glides with the tractor instead of snapping to each
 // 10 Hz tick. Extrapolate along the tool heading at the reported speed.
 function renderTool() {
-  if (!lastTick || !lastTick.tool) return null;
-  const pt = (prevTick && prevTick.tool) ? prevTick.tool : lastTick.tool, qt = lastTick.tool, f = lerpFrac();
+  const s = sample();
+  if (!s || !s.b.tool) return null;
+  const pt = s.a.tool || s.b.tool, qt = s.b.tool, f = s.f;
   return {
     e: pt.e + (qt.e - pt.e) * f,
     n: pt.n + (qt.n - pt.n) * f,
     heading: lerpAngle(pt.heading, qt.heading, f),
   };
 }
-// Dead-reckon the pose from the last authoritative tick: extrapolate along the
-// heading at the reported speed. dt is clamped so motion freezes (rather than
-// flies off) if ticks stall — same spirit as the app's own stale-pose cap.
 // Shortest-path angular lerp (radians).
 function lerpAngle(a, b, f) {
   let d = b - a; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
   return a + d * f;
 }
-// Interpolation fraction for rendering RENDER_DELAY ms in the past, between prevTick→lastTick.
-// f=0 → prevTick, f=1 → lastTick (or "caught up", holding the latest pose). Clamped to [0,1]
-// so we never extrapolate past the newest pose (which is what produced the snap).
-function lerpFrac() {
-  if (!lastTick || !prevTick) return 1;
-  const span = lastTick.t - prevTick.t;
-  if (span < 1) return 1;
-  const tr = performance.now() - RENDER_DELAY;
-  if (tr >= lastTick.t) return 1;          // ran out of buffer → hold latest (brief, not a snap)
-  if (tr <= prevTick.t) return 0;
-  return (tr - prevTick.t) / span;
+// Pick the two buffered poses bracketing the playback head (RENDER_DELAY in the PAST)
+// and the fraction between them. The playhead runs on the HOST timeline (client clock
+// − clockOffset), so its position relative to the poses' host build-times is jitter-free —
+// WiFi arrival jitter only changes WHICH poses are buffered, never the interp rate (that
+// rate-warp was the "wiggle"). A 2-pose buffer judders once RENDER_DELAY > the pose
+// interval (playhead falls off the old end → clamps); the multi-pose buffer always has a
+// bracketing pair. Returns { a, b, f } or null; holds oldest/newest outside the buffer.
+function sample() {
+  const m = poseBuf.length;
+  if (m === 0) return null;
+  if (m === 1) return { a: poseBuf[0], b: poseBuf[0], f: 1 };
+  const useHost = clockOffset !== null && typeof poseBuf[m - 1].hostT === 'number';
+  const key = useHost ? 'hostT' : 't';
+  const playhead = useHost
+    ? performance.now() - clockOffset - RENDER_DELAY
+    : performance.now() - RENDER_DELAY; // legacy receipt timeline (host sent no timestamp)
+  if (playhead <= poseBuf[0][key]) return { a: poseBuf[0], b: poseBuf[0], f: 0 };
+  const nw = poseBuf[m - 1];
+  if (playhead >= nw[key]) {
+    // Buffer underrun (WiFi spike / late pose): EXTRAPOLATE the last segment's velocity
+    // forward (f>1 → renderPose/renderTool extend prev→nw linearly) instead of HOLDING,
+    // which would freeze a frame → stutter. Capped at EXTRAP_CAP_MS so a real dropout
+    // settles to a hold rather than flying off.
+    const prev = poseBuf[m - 2];
+    const span = nw[key] - prev[key];
+    if (span <= 0) return { a: nw, b: nw, f: 1 };
+    const over = Math.min(playhead - nw[key], EXTRAP_CAP_MS);
+    return { a: prev, b: nw, f: 1 + over / span };
+  }
+  for (let i = 0; i < m - 1; i++) {
+    const a = poseBuf[i], b = poseBuf[i + 1];
+    if (playhead >= a[key] && playhead < b[key]) {
+      const span = b[key] - a[key];
+      return { a, b, f: span > 0 ? (playhead - a[key]) / span : 1 };
+    }
+  }
+  return { a: nw, b: nw, f: 1 };
 }
 function renderPose() {
-  if (!lastTick) return null;
-  const p = prevTick || lastTick, q = lastTick, f = lerpFrac();
+  const s = sample();
+  if (!s) return null;
   return {
-    e: p.e + (q.e - p.e) * f,
-    n: p.n + (q.n - p.n) * f,
-    heading: lerpAngle(p.heading, q.heading, f),
-    speed: q.speed,
+    e: s.a.e + (s.b.e - s.a.e) * s.f,
+    n: s.a.n + (s.b.n - s.a.n) * s.f,
+    heading: lerpAngle(s.a.heading, s.b.heading, s.f),
+    speed: s.b.speed,
   };
 }
 // Cross-track error as "12 cm R" (R = right of line, +xte). Centimetres so the
@@ -4196,12 +4319,42 @@ function drawSatelliteSk(canvas) {
 // (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
 // cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
 // cov object so a new coverage-init naturally starts with a fresh (null) image.
+// Fallback-path throttle (2D canvas → full re-upload): cap the expensive whole-texture
+// rebuild at ~4 Hz. The GPU render-target path below has no such cost.
+const COV_REBUILD_MS = 250;
 function drawCoverageSk(canvas) {
   if (!cov) return;
-  if (cov.dirty || !cov.skImg) {
-    if (cov.skImg) cov.skImg.delete();
-    cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);
-    cov.dirty = false;
+  if (cov.surface) {
+    // GPU render target: draw only the pending NEW cells onto it, then snapshot (a GPU
+    // texture COW — cheap). No whole-texture upload, so no regular per-rebuild stutter.
+    if (cov.pending.length) {
+      const sk = cov.surface.getCanvas(), paint = cov.covPaint, H = cov.height;
+      let lastRgb = -1;
+      for (const c of cov.pending) {
+        for (let i = 0; i + 2 < c.length; i += 3) {
+          const x = c[i], y = c[i + 1], rgb = c[i + 2] >>> 0 & 0xFFFFFF;
+          if (rgb !== lastRgb) { paint.setColor(CK.Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 1)); lastRgb = rgb; }
+          sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
+          covCells++;
+        }
+      }
+      cov.pending.length = 0;
+      cov.surface.flush();
+      cov.dirty = true;
+    }
+    if (cov.dirty || !cov.skImg) {
+      if (cov.skImg) cov.skImg.delete();
+      cov.skImg = cov.surface.makeImageSnapshot();
+      cov.dirty = false;
+    }
+  } else {
+    const nowMs = performance.now();
+    if (!cov.skImg || (cov.dirty && nowMs - (cov.lastBuild || 0) >= COV_REBUILD_MS)) {
+      if (cov.skImg) cov.skImg.delete();
+      cov.skImg = CK.MakeImageFromCanvasImageSource(cov.canvas);
+      cov.dirty = false;
+      cov.lastBuild = nowMs;
+    }
   }
   if (!cov.skImg) return;
   const cs = cov.cellSize;

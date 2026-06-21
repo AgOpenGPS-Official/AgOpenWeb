@@ -49,13 +49,7 @@ public class NtripProfileService : INtripProfileService
         _settingsService = settingsService;
         _logger = logger;
 
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        if (string.IsNullOrEmpty(documentsPath))
-            documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-        if (string.IsNullOrEmpty(documentsPath))
-            documentsPath = Environment.CurrentDirectory;
-
-        ProfilesDirectory = Path.Combine(documentsPath, "AgValoniaGPS", "NtripProfiles");
+        ProfilesDirectory = Path.Combine(AppDataRoot.Documents, "NtripProfiles");
 
         if (!Directory.Exists(ProfilesDirectory))
         {

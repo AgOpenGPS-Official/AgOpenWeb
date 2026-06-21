@@ -254,6 +254,28 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Cap the display resolution quality (web auto-quality): ensure the multiplier is at
+    /// least <paramref name="minMultiplier"/> — i.e. quality no FINER than that level — and
+    /// rebuild the live coverage bitmap if it changed. Only ever COARSENS (idempotent; a
+    /// no-op if already at/below this quality), so a mobile client capping itself at Medium
+    /// on connect never raises a manually-chosen lower quality, and never fights a later
+    /// manual change. Mirrors CycleDisplayResolutionCommand's apply path. Multiplier scale:
+    /// 1.0 Ultra · 1.5 High · 2.5 Medium · 4.0 Low · 6.0 Min.
+    /// </summary>
+    public void CapDisplayResolution(double minMultiplier)
+    {
+        var display = ConfigStore.Display;
+        if (display.DisplayResolutionMultiplier >= minMultiplier) return; // already this coarse or coarser
+        display.DisplayResolutionMultiplier = minMultiplier;
+        OnPropertyChanged(nameof(DisplayResolutionLabel));
+        if (IsFieldOpen)
+        {
+            _coverageMapService.RebuildDisplayForResolutionChange();
+            _mapService.RebuildCoverageBitmapForResolutionChange();
+        }
+    }
+
+    /// <summary>
     /// Applies the Avalonia theme variant based on day/night mode.
     /// Day mode = Light theme, Night mode = Dark theme.
     /// </summary>

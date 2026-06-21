@@ -300,7 +300,13 @@ public sealed class SceneProjector
             v.RenderHitchEasting,
             v.RenderHitchNorthing,
             // Front-wheel sprite angle: sim slider when the internal sim drives, else WAS.
-            _state.Simulator.IsEnabled ? _state.Simulator.SteerAngle : _autoSteer.LastSteerData.ActualSteerAngle);
+            _state.Simulator.IsEnabled ? _state.Simulator.SteerAngle : _autoSteer.LastSteerData.ActualSteerAngle,
+            // Interpolation timeline: the pose's COMPUTE time (render-pull), so the client
+            // interpolates each position at the instant it corresponds to. Falls back to
+            // broadcast-now before the first render-pull (same Stopwatch basis, monotonic).
+            v.RenderPoseMs > 0
+                ? v.RenderPoseMs
+                : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

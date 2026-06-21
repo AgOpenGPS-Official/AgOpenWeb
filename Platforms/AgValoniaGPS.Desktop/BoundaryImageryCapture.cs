@@ -20,10 +20,16 @@ internal static class BoundaryImageryCapture
 
     /// <summary>
     /// Fetch + composite the Bing aerial covering the given Web-Mercator bbox into a PNG.
-    /// Returns the temp file path, or null on failure. Runs off the UI thread.
+    /// Returns the output file path, or null on failure. Runs off the UI thread.
+    ///
+    /// SkiaSharp here links libGL + libfontconfig natively and can hard-crash (SIGSEGV)
+    /// on a headless Linux board — uncatchable in-process. So the host NEVER calls this
+    /// directly; it spawns a child process (see ImageryCaptureProcess) that calls this and
+    /// exits, so a native crash takes down only the child. <paramref name="outPath"/> lets
+    /// the parent name the file it then reads back; null = a temp file (legacy callers).
     /// </summary>
     public static async Task<string?> CaptureAsync(
-        double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)
+        double mercMinX, double mercMaxX, double mercMinY, double mercMaxY, string? outPath = null)
     {
         double mercWidth = mercMaxX - mercMinX, mercHeight = mercMaxY - mercMinY;
         if (mercWidth <= 0 || mercHeight <= 0) return null;
@@ -82,9 +88,18 @@ internal static class BoundaryImageryCapture
         }
         if (drawn == 0) return null;
 
-        var dir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS_SatCap");
-        Directory.CreateDirectory(dir);
-        var path = Path.Combine(dir, "BackPic_" + Guid.NewGuid().ToString("N") + ".png");
+        string path;
+        if (outPath is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+            path = outPath;
+        }
+        else
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "AgValoniaGPS_SatCap");
+            Directory.CreateDirectory(dir);
+            path = Path.Combine(dir, "BackPic_" + Guid.NewGuid().ToString("N") + ".png");
+        }
         using (var data = bitmap.Encode(SKEncodedImageFormat.Png, 100))
         using (var fs = File.Create(path))
             data.SaveTo(fs);
