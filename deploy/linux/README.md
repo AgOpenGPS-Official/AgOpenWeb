@@ -65,6 +65,12 @@ point `AGOPENWEB_DATA` at it.
 
 ## Notes
 
+- **ICU (libicu) is required.** .NET's globalization needs it and it is NOT bundled in
+  the self-contained publish, nor shipped by default on minimal images (Armbian / Debian
+  Trixie, etc.). Without it the host won't start at all (`System.Globalization` throws on
+  load). `install.sh` apt-installs the right `libicuNN` (resolved per Debian release, e.g.
+  `libicu76` on Trixie), falling back to `libicu-dev`. On a non-apt distro install libicu
+  manually (or `libicu-dev` / `icu-devtools` both pull it in).
 - The build is **not trimmed** — the steer wizard projects step ViewModels by
   reflection, which trimming would break. Self-contained-untrimmed is ~160 MB
   (bundles the .NET runtime; the unused Avalonia desktop natives ride along but are
