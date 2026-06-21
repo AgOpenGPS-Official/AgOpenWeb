@@ -276,9 +276,9 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); applyMobileQualityCap(); },
-  onControlState(s) { lastControl = s; updateControlUi(); },
-  onStatus(s) { connState = s; renderRole(); },
+  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
+  onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
+  onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
 });
 
 // Mobile auto-quality. Phones/tablets get GPU-overloaded at Ultra resolution (large
@@ -2719,6 +2719,19 @@ function updateControlUi() {
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
   renderRole();
+}
+// Reclaim the operator seat when it is free. Control is keyed to the WebSocket
+// connection server-side and acquired once, implicitly, at connect. A browser
+// REFRESH opens a new connection while the old one is still registered as holder,
+// so the new connection's implicit acquire is denied; once the stale holder is
+// dropped/deadman-swept the seat goes empty but the new connection never retried —
+// leaving the Tier-2 right-nav menu permanently inop until a server restart. Claiming
+// the empty seat here (driven by the control-state frame the drop/sweep emits, plus
+// connect/hello) makes the operator role survive a refresh. Guarded on !held so it
+// never takes the seat from a live operator — only fills a vacant one (deadman model).
+function claimSeatIfFree() {
+  if (connState === 'connected' && myClientId && !iHoldControl && !lastControl.held)
+    transport.send('control.acquire|Browser');
 }
 // Heartbeat keeps our hold alive while we control; a lapse trips the host deadman
 // (disengage autosteer + sections).
