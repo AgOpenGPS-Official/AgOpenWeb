@@ -99,6 +99,25 @@ fi
 # Best-effort device groups (may not exist on every distro).
 for g in dialout can; do getent group "$g" >/dev/null && usermod -aG "$g" "$SVC_USER" || true; done
 
+# ICU — .NET's globalization library. HARD requirement: without libicu the host won't
+# start at all (System.Globalization throws on load, before anything runs). It is NOT part
+# of the self-contained .NET bundle, and minimal images (Armbian / Debian Trixie, etc.) do
+# not ship it by default. The runtime package is version-stamped (libicu76 on Trixie,
+# libicu72 on Bookworm, …), so resolve the concrete name from apt rather than hardcoding;
+# fall back to libicu-dev (version-agnostic — it depends on the current libicuNN).
+if command -v apt-get >/dev/null 2>&1; then
+  # || true: under `set -euo pipefail` a non-zero apt-cache (empty cache / no match) must
+  # not abort the install — an empty result just falls through to the libicu-dev fallback.
+  ICU_PKG="$(apt-cache search --names-only '^libicu[0-9][0-9]*$' 2>/dev/null | sort -V | tail -n1 | cut -d' ' -f1 || true)"
+  [[ -z "$ICU_PKG" ]] && ICU_PKG="libicu-dev"
+  echo "==> Ensuring .NET ICU dependency ($ICU_PKG)…"
+  apt-get install -y --no-install-recommends "$ICU_PKG" \
+    || { echo "   ERROR: failed to install ICU ($ICU_PKG) — the host will NOT start without it."; \
+         echo "          Install it manually, e.g.: sudo apt-get install libicu-dev"; }
+else
+  echo "==> NOTE: .NET requires ICU (libicu). Install it via your package manager or the host won't start."
+fi
+
 # SkiaSharp native deps. The host composites boundary imagery with SkiaSharp, whose
 # bundled libSkiaSharp.so dynamically links libfontconfig + libGL. They are NOT part
 # of the self-contained .NET bundle, so a minimal board (e.g. the Uno Q) lacks
