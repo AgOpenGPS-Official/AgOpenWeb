@@ -91,13 +91,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Windows is NOT built here — its sole artifact is the launcher bundle from
+        # build-deploy-bundles.yml (agopenweb-win-x64.zip). This workflow builds the
+        # macOS/Linux desktop app + Android + iOS only.
         include:
-          - os: windows-latest
-            rid: win-x64
-            name: Windows-x64
-          - os: windows-latest
-            rid: win-arm64
-            name: Windows-ARM64
           - os: macos-latest
             rid: osx-arm64
             name: macOS-ARM64
@@ -151,19 +148,7 @@ jobs:
             --self-contained true \
             -o publish/${{ matrix.name }}
 
-      - name: Build and Publish (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -c Release -r ${{ matrix.rid }} -f net10.0 --self-contained true -o publish/${{ matrix.name }}
-        shell: pwsh
-
-      - name: Create archive (Windows)
-        if: runner.os == 'Windows'
-        run: Compress-Archive -Path publish/${{ matrix.name }}/* -DestinationPath AgValoniaGPS-${{ matrix.name }}.zip
-        shell: pwsh
-
-      - name: Create archive (Unix)
-        if: runner.os != 'Windows'
+      - name: Create archive
         run: |
           cd publish
           zip -r ../AgValoniaGPS-${{ matrix.name }}.zip ${{ matrix.name }}
@@ -382,8 +367,6 @@ jobs:
 
             | Platform | File |
             |----------|------|
-            | Windows x64 | `AgValoniaGPS-Windows-x64.zip` |
-            | Windows ARM64 | `AgValoniaGPS-Windows-ARM64.zip` |
             | macOS ARM64 (M1/M2/M3) | `AgValoniaGPS-macOS-ARM64.zip` |
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
@@ -391,9 +374,11 @@ jobs:
             | Android | `AgValoniaGPS-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
+            > **Windows:** download `agopenweb-win-x64.zip` from a tagged
+            > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml) release.
+
             ### Installation Notes
             All desktop builds are self-contained - no .NET runtime install needed.
-            - **Windows**: Extract and run the .exe
             - **macOS**: Extract, right-click the app and select "Open" (first time only)
             - **Linux**: Extract, `chmod +x` the binary, then run
             - **Android**: Enable "Install from unknown sources", then install the APK
@@ -423,8 +408,6 @@ jobs:
 
             | Platform | File |
             |----------|------|
-            | Windows x64 | `AgValoniaGPS-Windows-x64.zip` |
-            | Windows ARM64 | `AgValoniaGPS-Windows-ARM64.zip` |
             | macOS ARM64 (M1/M2/M3) | `AgValoniaGPS-macOS-ARM64.zip` |
             | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
             | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
@@ -432,9 +415,11 @@ jobs:
             | Android | `AgValoniaGPS-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
 
+            > **Windows:** download `agopenweb-win-x64.zip` from a tagged
+            > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml) release.
+
             ### Installation Notes
             All desktop builds are self-contained - no .NET runtime install needed.
-            - **Windows**: Extract and run the .exe
             - **macOS**: Extract, right-click the app and select "Open" (first time only)
             - **Linux**: Extract, `chmod +x` the binary, then run
             - **Android**: Enable "Install from unknown sources", then install the APK
