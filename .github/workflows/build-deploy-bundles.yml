@@ -1,0 +1,160 @@
+name: Build Deployment Bundles
+
+# Builds the AgOpenWeb deployment bundles on clean runners — the HEADLESS host packaged for
+# each target, distinct from the Desktop/Android/iOS app artifacts in build-and-release.yml:
+#   - Linux x64 / arm64: self-contained host + systemd unit + install scripts (.tar.gz),
+#     via deploy/linux/package.sh — the in-cab daemon for mini-PCs / SBCs.
+#   - Windows x64: self-contained launcher app (.zip), via deploy/windows/package.sh — the
+#     app-like start/stop window for the Windows audience.
+# Each deploy/*/package.sh is the single source of truth; this workflow just runs them on a
+# clean runner (so arm64 / Windows bundles aren't cross-published by hand on a dev Mac). The
+# Windows bundle cross-publishes win-x64 from a Linux runner — no Windows runner needed.
+#
+# Triggers:
+#   - workflow_dispatch: build on demand. Supply a release_tag to also publish a Release;
+#     leave it empty to just upload build artifacts.
+#   - push of a v* tag: build + publish a Release for that tag.
+# (Per-commit CI lives in build-and-release.yml; this one is release/packaging-focused.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g. v26.6.7). Leave empty to only upload build artifacts.'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # needed to publish a Release
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]   # mini-PC / amd64 and Pi / Uno-Q / arm64 SBCs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # package.sh cross-publishes self-contained (-p:DesktopOnly=true collapses the shared
+      # projects' net10.0;net10.0-ios multi-target to net10.0, avoiding the Mono runtime-pack
+      # NU1102 on a cross-arch publish) and tars it with the systemd unit + install scripts.
+      - name: Build Linux appliance bundle (${{ matrix.arch }})
+        run: ./deploy/linux/package.sh --arch ${{ matrix.arch }} --out "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agopenweb-linux-${{ matrix.arch }}
+          path: dist/agopenweb-linux-*.tar.gz
+          retention-days: 30
+
+  windows:
+    runs-on: ubuntu-latest   # cross-publishes win-x64 from Linux — no Windows runner needed
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # windows/package.sh cross-publishes the self-contained launcher exe and zips it
+      # (strips the ~84 MB SkiaSharp native pdb). On Windows: extract + run the exe.
+      - name: Build Windows launcher bundle (x64)
+        run: ./deploy/windows/package.sh --arch x64 --out "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agopenweb-win-x64
+          path: dist/agopenweb-win-x64.zip
+          retention-days: 30
+
+  release:
+    needs: [linux, windows]
+    # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Resolve tag + version
+        id: meta
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: List bundles
+        run: find dist -type f \( -name '*.tar.gz' -o -name '*.zip' \)
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "AgOpenWeb ${{ steps.meta.outputs.tag }}"
+          body: |
+            ## AgOpenWeb ${{ steps.meta.outputs.tag }}
+
+            Headless guidance host — the UI is a browser at `http://<host>:5174`.
+
+            **Version:** ${{ steps.meta.outputs.version }}
+
+            ### Downloads
+
+            | Target | File | Run |
+            |--------|------|-----|
+            | Linux x86-64 (mini-PC / amd64) | `agopenweb-linux-x64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
+            | Linux ARM64 (Pi / Uno Q / SBC) | `agopenweb-linux-arm64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
+            | Windows x64 | `agopenweb-win-x64.zip` | extract, run `AgValoniaGPS.Desktop.exe` (launcher) |
+
+            ### Linux (no .NET SDK needed on the box)
+            ```bash
+            tar xzf agopenweb-linux-<arch>.tar.gz && cd agopenweb-linux-<arch>
+            sudo ./install.sh --from app
+            ```
+            Installs to `/opt/agopenweb`, runs as the `agopenweb` user, keeps data in
+            `/home/agopenweb`, enables `agopenweb.service` (auto-start on boot). The installer
+            apt-installs ICU (required) plus libfontconfig/libGL (boundary imagery).
+
+            ### Windows
+            Extract anywhere and double-click `AgValoniaGPS.Desktop.exe` — the launcher window
+            opens. Click **Start**; the browser opens automatically. Self-contained — no .NET install.
+
+            See each bundle's `README.md` for details.
+          draft: false
+          prerelease: false
+          files: |
+            dist/**/*.tar.gz
+            dist/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
