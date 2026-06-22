@@ -281,11 +281,17 @@ public partial class MainViewModel
     /// </summary>
     internal static void ApplyThemeVariant(bool isDayMode)
     {
-        if (Application.Current != null)
-        {
-            Application.Current.RequestedThemeVariant = isDayMode
-                ? ThemeVariant.Light
-                : ThemeVariant.Dark;
-        }
+        var app = Application.Current;
+        if (app == null) return; // headless daemon — no Avalonia Application to theme
+
+        var variant = isDayMode ? ThemeVariant.Light : ThemeVariant.Dark;
+        // RequestedThemeVariant is UI-thread-affine. The windowed App calls this on the UI
+        // thread (direct set); the in-process launcher constructs the VM on a worker thread
+        // while an Avalonia Application IS live, so marshal to the UI thread there instead of
+        // throwing "calling thread cannot access this object".
+        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            app.RequestedThemeVariant = variant;
+        else
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => app.RequestedThemeVariant = variant);
     }
 }

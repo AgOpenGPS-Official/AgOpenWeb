@@ -22,6 +22,13 @@ public sealed class RemoteServerHost
     private WebSocketHub? _ws;
     private MapBroadcaster? _broadcaster;
 
+    /// <summary>The TCP port the server is bound on (set by StartAsync). For the launcher
+    /// UI's "browse to …" readout.</summary>
+    public int Port { get; private set; } = 5174;
+
+    /// <summary>Number of connected browser clients — drives the launcher's live status.</summary>
+    public int ClientCount => _ws?.ClientCount ?? 0;
+
     // Satellite tile fetch (Phase MT — Draw boundary on map). Keyless Bing aerial
     // tiles via the Virtual Earth quadkey endpoint (same source as native's
     // BoundaryMapDialog). Proxied through the host so the browser draws them into the
@@ -130,6 +137,7 @@ public sealed class RemoteServerHost
         INtripProfileService ntripProfiles, IFieldService fields, ISettingsService settings,
         IVehicleProfileService vehicleProfiles, IPersistentStateService persist, int port = 5174)
     {
+        Port = port;
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);

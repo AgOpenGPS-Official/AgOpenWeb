@@ -89,5 +89,6 @@ pat.local
 *.keystore
 *.jks
 
-# Linux deployment bundles — build artifacts produced by deploy/linux/package.sh.
+# Deployment bundles — build artifacts produced by deploy/*/package.sh.
 deploy/linux/*.tar.gz
+deploy/windows/*.zip
