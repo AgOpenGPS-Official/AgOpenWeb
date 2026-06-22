@@ -153,7 +153,11 @@ internal sealed class LauncherWindow : Window
         _busy = true;
         _statusText.Text = "Stopping…";
         UpdateUi();
-        try { await _backend.StopAsync(); } catch { /* best effort — UI still returns to Stopped */ }
+        // Off the UI thread: StopAsync runs blocking work (the ApplicationStopping save does a
+        // synchronous GetResult, plus host/hostLoop disposal). Awaiting it directly on the UI
+        // thread deadlocks against Avalonia's sync context — the window froze on Stop.
+        var backend = _backend;
+        try { await Task.Run(() => backend.StopAsync()); } catch { /* best effort — UI still returns to Stopped */ }
         _backend = null;
         _busy = false;
         UpdateUi();
@@ -174,7 +178,9 @@ internal sealed class LauncherWindow : Window
 
     private async Task StopThenCloseAsync()
     {
-        try { if (_backend != null) await _backend.StopAsync(); } catch { /* close regardless */ }
+        // Off the UI thread (same deadlock reason as StopAsync), then close on the UI thread.
+        var backend = _backend;
+        try { if (backend != null) await Task.Run(() => backend.StopAsync()); } catch { /* close regardless */ }
         Close();
     }
 
