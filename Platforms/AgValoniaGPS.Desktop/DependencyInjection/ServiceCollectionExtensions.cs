@@ -71,6 +71,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ConfigurationViewModel>();
 
         // Register Services
+        services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
 
         // Core services
