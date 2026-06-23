@@ -71,6 +71,10 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ConfigurationViewModel>();
 
         // Register Services
+        services.AddSingleton<ILocalNetworkInfoProvider>(_ =>
+            new AndroidLocalNetworkInfoProvider(
+                global::Android.App.Application.Context
+                ?? throw new InvalidOperationException("Android application context is unavailable.")));
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
 
         // Core services

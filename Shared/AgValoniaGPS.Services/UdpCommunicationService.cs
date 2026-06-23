@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,6 +42,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     public event EventHandler<ModuleConnectionEventArgs>? ModuleConnectionChanged;
 
     private Socket? _udpSocket;
+    private readonly ILocalNetworkInfoProvider _localNetworkInfoProvider;
     private readonly byte[] _receiveBuffer = new byte[1024];
     private EndPoint _remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
     private CancellationTokenSource? _cancellationTokenSource;
@@ -88,6 +88,12 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     public bool IsConnected { get; private set; }
     public string? LocalIPAddress { get; private set; }
+
+    public UdpCommunicationService(ILocalNetworkInfoProvider localNetworkInfoProvider)
+    {
+        _localNetworkInfoProvider = localNetworkInfoProvider
+            ?? throw new ArgumentNullException(nameof(localNetworkInfoProvider));
+    }
 
     /// <summary>
     /// Register the AutoSteer service for zero-copy GPS processing.
@@ -565,31 +571,22 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         var dest = new IPEndPoint(IPAddress.Broadcast, 8888);
         try
         {
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            foreach (var localAddress in _localNetworkInfoProvider.GetIPv4Addresses())
             {
-                if (nic.OperationalStatus != OperationalStatus.Up) continue;
-                if (!nic.Supports(NetworkInterfaceComponent.IPv4)) continue;
-
-                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
+                try
                 {
-                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-                    if (IPAddress.IsLoopback(addr.Address)) continue;
-
-                    try
-                    {
-                        // Bind a transient socket to this NIC so the broadcast
-                        // actually egresses it (multi-homed tablets), exactly as
-                        // AgIO does. ReuseAddress lets us co-bind :9999 with the
-                        // main receive socket; replies still arrive on it.
-                        using var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-                        s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
-                        s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                        s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontRoute, true);
-                        s.Bind(new IPEndPoint(addr.Address, 9999));
-                        s.SendTo(data, dest);
-                    }
-                    catch { }
+                    // Bind a transient socket to this link so the broadcast
+                    // actually egresses it (multi-homed tablets), exactly as
+                    // AgIO does. ReuseAddress lets us co-bind :9999 with the
+                    // main receive socket; replies still arrive on it.
+                    using var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontRoute, true);
+                    s.Bind(new IPEndPoint(localAddress.Address, 9999));
+                    s.SendTo(data, dest);
                 }
+                catch { }
             }
         }
         catch (Exception ex)
@@ -632,35 +629,21 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     /// Enumerate broadcast addresses for all active IPv4 network interfaces.
     /// Always includes localhost for simulator support.
     /// </summary>
-    private static List<IPEndPoint> GetBroadcastEndpoints()
+    private List<IPEndPoint> GetBroadcastEndpoints()
     {
         var endpoints = new List<IPEndPoint> { _localhostEndpoint };
+        var seen = new HashSet<string>(StringComparer.Ordinal)
+        {
+            _localhostEndpoint.ToString()
+        };
 
         try
         {
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            foreach (var localAddress in _localNetworkInfoProvider.GetIPv4Addresses())
             {
-                if (nic.OperationalStatus != OperationalStatus.Up)
-                    continue;
-                if (!nic.Supports(NetworkInterfaceComponent.IPv4))
-                    continue;
-
-                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
-                {
-                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork)
-                        continue;
-                    if (IPAddress.IsLoopback(addr.Address))
-                        continue;
-
-                    // Calculate broadcast: IP | ~SubnetMask
-                    var ipBytes = addr.Address.GetAddressBytes();
-                    var maskBytes = addr.IPv4Mask.GetAddressBytes();
-                    var broadcastBytes = new byte[4];
-                    for (int i = 0; i < 4; i++)
-                        broadcastBytes[i] = (byte)(ipBytes[i] | ~maskBytes[i]);
-
-                    endpoints.Add(new IPEndPoint(new IPAddress(broadcastBytes), 8888));
-                }
+                var endpoint = new IPEndPoint(CalculateBroadcastAddress(localAddress), 8888);
+                if (seen.Add(endpoint.ToString()))
+                    endpoints.Add(endpoint);
             }
         }
         catch (Exception ex)
@@ -671,22 +654,41 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         return endpoints;
     }
 
+    internal static IPAddress CalculateBroadcastAddress(LocalNetworkAddress localAddress)
+    {
+        if (localAddress.Address.AddressFamily != AddressFamily.InterNetwork)
+            throw new ArgumentException("Only IPv4 addresses are supported.", nameof(localAddress));
+        if (localAddress.PrefixLength is < 0 or > 32)
+            throw new ArgumentOutOfRangeException(
+                nameof(localAddress),
+                "IPv4 prefix length must be between 0 and 32.");
+
+        uint ip = NetworkToHostUInt32(localAddress.Address.GetAddressBytes());
+        uint mask = localAddress.PrefixLength == 0
+            ? 0
+            : uint.MaxValue << (32 - localAddress.PrefixLength);
+        uint broadcast = ip | ~mask;
+
+        return new IPAddress(new[]
+        {
+            (byte)(broadcast >> 24),
+            (byte)(broadcast >> 16),
+            (byte)(broadcast >> 8),
+            (byte)broadcast
+        });
+    }
+
+    private static uint NetworkToHostUInt32(byte[] bytes) =>
+        ((uint)bytes[0] << 24)
+        | ((uint)bytes[1] << 16)
+        | ((uint)bytes[2] << 8)
+        | bytes[3];
+
     private string? GetLocalIPAddress()
     {
-        try
-        {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ip.ToString();
-                }
-            }
-        }
-        catch { }
-
-        return null;
+        return _localNetworkInfoProvider.GetIPv4Addresses()
+            .Select(address => address.Address.ToString())
+            .FirstOrDefault();
     }
 
     /// <summary>
@@ -696,25 +698,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     /// </summary>
     public IReadOnlyList<string> GetLocalIpAddresses()
     {
-        var list = new List<string>();
-        try
-        {
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-            {
-                if (nic.OperationalStatus != OperationalStatus.Up) continue;
-                if (!nic.Supports(NetworkInterfaceComponent.IPv4)) continue;
-
-                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
-                {
-                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-                    if (IPAddress.IsLoopback(addr.Address)) continue;
-                    var s = addr.Address.ToString();
-                    if (!list.Contains(s)) list.Add(s);
-                }
-            }
-        }
-        catch { }
-        return list;
+        return _localNetworkInfoProvider.GetIPv4Addresses()
+            .Select(address => address.Address.ToString())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
     }
 
     public void Dispose()
