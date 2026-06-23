@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using Android.Content;
+using Android.Net;
 using AgValoniaGPS.Services.Interfaces;
 using ConnectivityManager = Android.Net.ConnectivityManager;
 
@@ -43,12 +44,25 @@ public sealed class AndroidLocalNetworkInfoProvider : ILocalNetworkInfoProvider
 
             foreach (var network in networks)
             {
+                var capabilities = _connectivityManager?.GetNetworkCapabilities(network);
+                if (capabilities is null)
+                    continue;
+
+                bool isLan =
+                    capabilities.HasTransport(TransportType.Wifi) ||
+                    capabilities.HasTransport(TransportType.Ethernet);
+
+                if (!isLan)
+                    continue;
+
                 var properties = _connectivityManager?.GetLinkProperties(network);
-                if (properties is null) continue;
+                if (properties is null)
+                    continue;
+
 
                 foreach (var linkAddress in properties.LinkAddresses)
                 {
-                    var hostAddress =linkAddress.Address?.HostAddress;
+                    var hostAddress = linkAddress.Address?.HostAddress;
                     if (string.IsNullOrWhiteSpace(hostAddress)) continue;
 
                     // IPv6 addresses may contain a scope suffix such as "%wlan0".
