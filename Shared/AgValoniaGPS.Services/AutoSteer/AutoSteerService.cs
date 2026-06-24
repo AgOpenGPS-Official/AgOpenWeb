@@ -458,6 +458,11 @@ public class AutoSteerService : IAutoSteerService
                 return;
             }
 
+            // Real GPS fix parsed from inbound NMEA — mark the live-GPS gate so the
+            // internal simulator stays mutually exclusive with a live source. The
+            // sim feeds via GpsService.UpdateGpsData and never reaches this path.
+            _gpsService.MarkRealGpsParsed();
+
             // Publish the parsed fix to GpsService. This is the sole event the
             // cycle worker listens to; everything else runs there.
             PublishGpsData();
