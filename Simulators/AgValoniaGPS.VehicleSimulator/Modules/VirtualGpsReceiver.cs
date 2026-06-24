@@ -17,8 +17,18 @@ using System.Threading.Tasks;
 namespace AgValoniaGPS.VehicleSimulator.Modules;
 
 /// <summary>
-/// Virtual GPS receiver that sends $PANDA NMEA sentences via UDP.
-/// Supports single and dual antenna configurations.
+/// GPS message flavour. PANDA = single antenna + IMU (heading/roll as int×10,
+/// 65535 = no-IMU sentinel). PAOGI = dual antenna (heading/roll as floats).
+/// </summary>
+public enum GpsMessageType
+{
+    Panda,
+    Paogi
+}
+
+/// <summary>
+/// Virtual GPS receiver that sends $PANDA (single) or $PAOGI (dual) NMEA
+/// sentences via UDP, matching the AiO firmware wire format.
 /// </summary>
 public class VirtualGpsReceiver : IDisposable
 {
@@ -38,10 +48,17 @@ public class VirtualGpsReceiver : IDisposable
     public double Hdop { get; set; } = 0.7;
     public double DifferentialAge { get; set; } = 1.0;
 
-    // IMU data (embedded in $PANDA)
+    // IMU data (embedded in $PANDA / $PAOGI)
     public double RollDegrees { get; set; }
     public double PitchDegrees { get; set; }
     public double YawRateDegPerSec { get; set; }
+
+    /// <summary>PANDA only: when false, the heading field is sent as the 65535
+    /// "no-IMU" sentinel so the host's ImuValid=false branch can be exercised.</summary>
+    public bool ImuValid { get; set; } = true;
+
+    /// <summary>Wire format: PANDA (single+IMU) or PAOGI (dual antenna).</summary>
+    public GpsMessageType MessageType { get; set; } = GpsMessageType.Panda;
 
     // Dual antenna
     public bool IsDualAntenna { get; set; }
@@ -52,6 +69,9 @@ public class VirtualGpsReceiver : IDisposable
 
     // Counters for test verification
     public long SentCount { get; private set; }
+
+    /// <summary>Fired with each outgoing NMEA sentence (for the sim's Sent pane).</summary>
+    public Action<string>? OnSent;
 
     public VirtualGpsReceiver(int targetPort = 9999, string targetIp = "127.0.0.1")
     {
@@ -72,14 +92,16 @@ public class VirtualGpsReceiver : IDisposable
     }
 
     /// <summary>
-    /// Send a single $PANDA sentence immediately (for test control).
+    /// Send a single GPS sentence immediately (for test control). PANDA or
+    /// PAOGI depending on <see cref="MessageType"/>.
     /// </summary>
     public void SendOnce()
     {
-        var sentence = BuildPandaSentence();
+        var sentence = BuildSentence();
         var bytes = Encoding.ASCII.GetBytes(sentence);
         _udp.Send(bytes, bytes.Length, _target);
         SentCount++;
+        OnSent?.Invoke(sentence.TrimEnd('\r', '\n'));
     }
 
     /// <summary>
@@ -112,44 +134,67 @@ public class VirtualGpsReceiver : IDisposable
         }
     }
 
-    private string BuildPandaSentence()
+    private string BuildSentence()
     {
-        // Format: $PANDA,time,lat,N/S,lon,E/W,fix,sats,hdop,alt,age,speed,heading,roll,pitch,yaw*checksum
-        string time = DateTime.UtcNow.ToString("HHmmss.ff", CultureInfo.InvariantCulture);
+        // Shared layout (both flavours):
+        //   $HDR,time,lat,N/S,lon,E/W,fix,sats,hdop,alt,age,speed,heading,roll,pitch,yaw*cs
+        // Fields 12-14 (heading, roll, pitch) differ by flavour:
+        //   PANDA: heading = int(deg×10) or 65535 sentinel, roll = int(deg×10), pitch = float
+        //   PAOGI: heading = float (dual), roll = float (dual), pitch = int
+        var ci = CultureInfo.InvariantCulture;
+        bool paogi = MessageType == GpsMessageType.Paogi;
+
+        string time = DateTime.UtcNow.ToString("HHmmss.ff", ci);
         string lat = FormatLatitude(Latitude);
         string ns = Latitude >= 0 ? "N" : "S";
         string lon = FormatLongitude(Longitude);
         string ew = Longitude >= 0 ? "E" : "W";
 
         var sb = new StringBuilder();
-        sb.Append("$PANDA,");
+        sb.Append(paogi ? "$PAOGI," : "$PANDA,");
         sb.Append(time); sb.Append(',');
         sb.Append(lat); sb.Append(',');
         sb.Append(ns); sb.Append(',');
         sb.Append(lon); sb.Append(',');
         sb.Append(ew); sb.Append(',');
-        sb.Append(FixQuality.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(Satellites.ToString(CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(Hdop.ToString("F1", CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(Altitude.ToString("F1", CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(DifferentialAge.ToString("F1", CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(SpeedKnots.ToString("F2", CultureInfo.InvariantCulture)); sb.Append(',');
-        // Fields 12-13: heading and roll as (int)(deg * 10), per Teensy firmware.
-        sb.Append(((int)Math.Round(HeadingDegrees * 10.0)).ToString(CultureInfo.InvariantCulture));
-        sb.Append(',');
-        sb.Append(((int)Math.Round(RollDegrees * 10.0)).ToString(CultureInfo.InvariantCulture));
-        sb.Append(',');
-        sb.Append(PitchDegrees.ToString("F2", CultureInfo.InvariantCulture)); sb.Append(',');
-        sb.Append(YawRateDegPerSec.ToString("F2", CultureInfo.InvariantCulture));
+        sb.Append(FixQuality.ToString(ci)); sb.Append(',');
+        sb.Append(Satellites.ToString(ci)); sb.Append(',');
+        sb.Append(Hdop.ToString("F1", ci)); sb.Append(',');
+        sb.Append(Altitude.ToString("F1", ci)); sb.Append(',');
+        sb.Append(DifferentialAge.ToString("F1", ci)); sb.Append(',');
+        sb.Append(SpeedKnots.ToString("F2", ci)); sb.Append(',');
 
-        // Calculate NMEA checksum (XOR of all chars between $ and *)
+        // Field 12: heading
+        if (paogi)
+            sb.Append(HeadingDegrees.ToString("F1", ci));
+        else
+            sb.Append(ImuValid ? ((int)Math.Round(HeadingDegrees * 10.0)).ToString(ci) : "65535");
+        sb.Append(',');
+
+        // Field 13: roll
+        if (paogi)
+            sb.Append(RollDegrees.ToString("F2", ci));
+        else
+            sb.Append(((int)Math.Round(RollDegrees * 10.0)).ToString(ci));
+        sb.Append(',');
+
+        // Field 14: pitch
+        sb.Append(paogi
+            ? ((int)Math.Round(PitchDegrees)).ToString(ci)
+            : PitchDegrees.ToString("F2", ci));
+        sb.Append(',');
+
+        // Field 15: yaw rate
+        sb.Append(YawRateDegPerSec.ToString("F2", ci));
+
+        // NMEA checksum (XOR of all chars between $ and *)
         string body = sb.ToString().Substring(1); // Skip the $
         byte checksum = 0;
         foreach (char c in body)
             checksum ^= (byte)c;
 
         sb.Append('*');
-        sb.Append(checksum.ToString("X2", CultureInfo.InvariantCulture));
+        sb.Append(checksum.ToString("X2", ci));
         sb.Append("\r\n");
 
         return sb.ToString();
