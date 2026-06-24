@@ -88,6 +88,8 @@ public class MockGpsService : AgValoniaGPS.Services.Interfaces.IGpsService
     public void ProcessNmeaSentence(string sentence) { }
     public void UpdateImuData() { }
     public void MarkGpsReceived() { }
+    public void MarkRealGpsParsed() { }
+    public bool IsGpsLive => false;
     public bool IsGpsDataOk() => true;
     public bool IsImuDataOk() => true;
 }
