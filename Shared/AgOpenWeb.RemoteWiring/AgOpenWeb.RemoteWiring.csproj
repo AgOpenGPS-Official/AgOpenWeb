@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The bridge between the web transport (AgOpenWeb.RemoteServer) and the app
+    (MainViewModel + services): maps client commands → VM/service actions and
+    projects VM-owned UI state onto the wire frames. Hoisted out of the Desktop
+    head so every host (Desktop windowed, headless cab-PC, iOS/Android all-in-one)
+    reuses ONE wiring. Pure-BCL/Services — no Avalonia, no ASP.NET — so it rides
+    onto mobile heads. Platform-specific bits (imagery capture) come in via
+    IBoundaryImageryCapture.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.RemoteServer\AgOpenWeb.RemoteServer.csproj" />
+  </ItemGroup>
+
+</Project>

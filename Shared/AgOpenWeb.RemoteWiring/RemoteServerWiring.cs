@@ -12,9 +12,9 @@ using System.Threading.Tasks;
 using AgOpenWeb.Services.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AgOpenWeb.Desktop;
+namespace AgOpenWeb.RemoteWiring;
 
-public partial class App
+public static partial class RemoteServerWiring
 {
     // Wire the RemoteServer's command handler, Tier-2 gating, authority/failsafe
     // hooks, and every state projector to a live MainViewModel. Shared by the
@@ -23,16 +23,21 @@ public partial class App
     // resolved below: the Avalonia UI thread when windowed, the single-thread
     // HostLoopDispatcher when headless. Commands + projectors are otherwise
     // identical. See Plans/WEBUI_MIGRATION_PLAN.md Phase 10.
-    internal static void WireRemoteServer(
+    public static void Wire(
         AgOpenWeb.RemoteServer.RemoteServerHost server,
         AgOpenWeb.ViewModels.MainViewModel vm,
         IServiceProvider services,
-        IConfigurationService configService)
+        IConfigurationService configService,
+        IBoundaryImageryCapture imageryCapture)
     {
         // UI-thread marshaller. Windowed => AvaloniaUiDispatcher (Dispatcher.UIThread);
         // headless => HostLoopDispatcher (the dedicated host-loop thread). Replaces the
         // old hardcoded Avalonia.Threading.Dispatcher.UIThread.Post in this block.
         var dispatcher = services.GetRequiredService<IUiDispatcher>();
+
+        // AgShareRemote marshals its async cloud-op results back to the UI thread via
+        // this dispatcher (set once; it's a process singleton).
+        AgShareRemote.Ui = dispatcher;
 
         // Was the App instance field _remoteWizardActive; now a captured local
         // shared by the command-handler and wizard-projector closures below.
@@ -262,7 +267,7 @@ public partial class App
                                             var outPath = System.IO.Path.Combine(
                                                 System.IO.Path.GetTempPath(), "AgOpenWeb_SatCap",
                                                 "BackPic_" + System.Guid.NewGuid().ToString("N") + ".png");
-                                            var ok = await ImageryCaptureProcess.TryCaptureAsync(
+                                            var ok = await imageryCapture.TryCaptureAsync(
                                                 bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY, outPath);
                                             if (ok)
                                                 dispatcher.Post(() =>
@@ -439,7 +444,7 @@ public partial class App
                                     ApplyNtripCommand(
                                         services.GetRequiredService<INtripProfileService>(),
                                         services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(),
-                                        cmd, arg);
+                                        dispatcher, cmd, arg);
                                     return;
                                 // --- Field Operations (Phase 9). Lifecycle routes through the real
                                 // StartWorkSessionDialogViewModel (host-driven) so field/job open/
@@ -478,7 +483,7 @@ public partial class App
                                     return;
                                 case "app.resetSettings": case "app.setHotkey":
                                 case "app.resetHotkeys": case "app.bugReport":
-                                    ApplyAppCommand(cmd, arg);
+                                    ApplyAppCommand(services, cmd, arg);
                                     return;
                             }
 

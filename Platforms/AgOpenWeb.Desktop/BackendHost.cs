@@ -114,7 +114,8 @@ internal sealed class BackendHost
 
         // Wire on the host loop so the command handler runs serialized with the render-pull /
         // status timers, exactly as the Avalonia UI thread does in the windowed build.
-        hostLoop.Post(() => App.WireRemoteServer(remoteServer, vm, sp, configService));
+        hostLoop.Post(() => AgOpenWeb.RemoteWiring.RemoteServerWiring.Wire(
+            remoteServer, vm, sp, configService, new DesktopImageryCapture()));
 
         // Persist config + state and stop the embedded server during ApplicationStopping,
         // which fires WHILE the provider is still alive (a save after the provider is

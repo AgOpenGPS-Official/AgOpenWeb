@@ -67,6 +67,7 @@
     <ProjectReference Include="..\..\Shared\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Views\AgOpenWeb.Views.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteServer\AgOpenWeb.RemoteServer.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
   </ItemGroup>
 
 </Project>

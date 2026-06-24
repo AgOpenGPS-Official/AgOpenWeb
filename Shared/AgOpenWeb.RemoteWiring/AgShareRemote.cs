@@ -15,7 +15,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Avalonia.Threading;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.AgShare;
 using AgOpenWeb.Models.Base;
@@ -25,10 +24,14 @@ using AgOpenWeb.Services;
 using AgOpenWeb.Services.AgShare;
 using AgOpenWeb.Services.Interfaces;
 
-namespace AgOpenWeb.Desktop;
+namespace AgOpenWeb.RemoteWiring;
 
 internal static class AgShareRemote
 {
+    // Set once by RemoteServerWiring.Wire — marshals async AgShare results back to the
+    // UI thread (Avalonia UI thread when windowed, the host loop when headless).
+    internal static AgOpenWeb.Services.Interfaces.IUiDispatcher? Ui { get; set; }
+
     public static void Handle(string cmd, string arg, ApplicationState state,
         ConfigurationStore config, ISettingsService settings)
     {
@@ -49,7 +52,7 @@ internal static class AgShareRemote
     }
 
     private static void Set(ApplicationState s, string status, bool busy) =>
-        Dispatcher.UIThread.Post(() => { s.AgShare.Status = status; s.AgShare.Busy = busy; });
+        Ui?.Post(() => { s.AgShare.Status = status; s.AgShare.Busy = busy; });
 
     private static async Task TestAsync(ApplicationState s, string url, string key)
     {
@@ -70,7 +73,7 @@ internal static class AgShareRemote
                 .OrderBy(f => f.Name)
                 .Select(f => new AgShareCloudFieldInfo(f.Id.ToString(), f.Name, f.AreaHa))
                 .ToList();
-            Dispatcher.UIThread.Post(() =>
+            Ui?.Post(() =>
             {
                 s.AgShare.CloudFields = list;
                 s.AgShare.Status = "Found " + list.Count + " field(s)";
