@@ -66,6 +66,19 @@ public interface IGpsService
     void MarkGpsReceived();
 
     /// <summary>
+    /// Mark that a real GPS fix was parsed from inbound NMEA. Stamped ONLY on the
+    /// real receive/parse path — the internal simulator feeds via UpdateGpsData
+    /// and never parses, so this is a real-source-only signal. Drives <see cref="IsGpsLive"/>.
+    /// </summary>
+    void MarkRealGpsParsed();
+
+    /// <summary>
+    /// True when real (parsed-from-NMEA) GPS data has arrived recently. Used to
+    /// keep the internal simulator and a live GPS source mutually exclusive.
+    /// </summary>
+    bool IsGpsLive { get; }
+
+    /// <summary>
     /// Update IMU data timestamp (called when IMU data received)
     /// </summary>
     void UpdateImuData();

@@ -38,6 +38,13 @@ public class GpsService : IGpsService
     private const int GPS_TIMEOUT_MS = 300; // 10Hz data = 100ms cycle, allow 300ms
     private const int IMU_TIMEOUT_MS = 300; // 10Hz data = 100ms cycle, allow 300ms
 
+    // Real-GPS-live gate: stamped ONLY on a successful parse of inbound NMEA
+    // (AutoSteerService.ProcessGpsBuffer). The internal simulator feeds via
+    // UpdateGpsData and never parses, so this signal is real-source-only — used
+    // to keep the sim and a live GPS source mutually exclusive.
+    private DateTime _lastRealGpsParseTime = DateTime.MinValue;
+    private const int GPS_LIVE_TIMEOUT_MS = 2000; // wider than GPS_TIMEOUT_MS so the gate doesn't flap on a dropped packet
+
     public void Start()
     {
         IsConnected = true;
@@ -47,6 +54,19 @@ public class GpsService : IGpsService
     {
         IsConnected = false;
     }
+
+    /// <summary>
+    /// Mark that a real GPS fix was just parsed from inbound NMEA (real source
+    /// only — the simulator never reaches this path). Drives <see cref="IsGpsLive"/>.
+    /// </summary>
+    public void MarkRealGpsParsed() => _lastRealGpsParseTime = Clock.Current.Now;
+
+    /// <summary>
+    /// True when real (parsed-from-NMEA) GPS data has arrived recently. Used to
+    /// gate the internal simulator so the two can't drive the pipeline at once.
+    /// </summary>
+    public bool IsGpsLive =>
+        (Clock.Current.Now - _lastRealGpsParseTime).TotalMilliseconds < GPS_LIVE_TIMEOUT_MS;
 
     public void ProcessNmeaSentence(string sentence)
     {
