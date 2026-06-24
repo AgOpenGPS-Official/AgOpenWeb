@@ -47,6 +47,15 @@ public partial class MainViewModel
 
     private void OnSimulatorTick(object? sender, EventArgs e)
     {
+        // Mutual exclusion with a live GPS source: if real (parsed) GPS data
+        // started arriving while the sim is running, stop the sim. The internal
+        // sim and a live source must not drive the pipeline at once (see #478).
+        if (_gpsService.IsGpsLive)
+        {
+            IsSimulatorEnabled = false; // stops the timer + emits a final stationary frame
+            return;
+        }
+
         // Call simulator Tick with current steer angle
         _simulatorService.Tick(SimulatorSteerAngle);
     }
@@ -125,6 +134,14 @@ public partial class MainViewModel
         get => _isSimulatorEnabled;
         set
         {
+            // Mutual exclusion with a live GPS source: refuse to enable the sim
+            // while real (parsed) GPS data is arriving over UDP (see #478).
+            if (value && !_isSimulatorEnabled && _gpsService.IsGpsLive)
+            {
+                OnPropertyChanged(); // snap the bound toggle back to off
+                return;
+            }
+
             // Hardware parity stop: when DISABLING, emit one final stationary
             // frame BEFORE flipping the flag. OnSimulatorGpsDataUpdated guards
             // on !_isSimulatorEnabled and drops events once the flag flips,
