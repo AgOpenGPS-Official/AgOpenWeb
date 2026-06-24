@@ -32,6 +32,7 @@ public partial class App : Avalonia.Application
 
     public static IServiceProvider? Services { get; private set; }
     public static MainView? MainView { get; private set; }
+    private AgOpenWeb.RemoteServer.RemoteServerHost? _remoteServer;
 
     public override void Initialize()
     {
@@ -135,6 +136,13 @@ public partial class App : Avalonia.Application
                 AgOpenWeb.Views.Controls.Panels.SteerChartPanel.ServiceProvider = Services;
                 AgOpenWeb.Views.Controls.Panels.HeadingChartPanel.ServiceProvider = Services;
                 AgOpenWeb.Views.Controls.Panels.XTEChartPanel.ServiceProvider = Services;
+
+                // All-in-one host: start the embedded web server ALONGSIDE the native UI
+                // (the same "run alongside" pattern as the Desktop windowed build) and
+                // wire it to this live VM. Now that RemoteServer is ASP.NET-free it runs
+                // in-process on iPad; the browser / NativeWebView at http://<ipad>:5174 is
+                // the web UI, reading + commanding the same pipeline the native UI drives.
+                StartRemoteServer(viewModel);
             }
 
             base.OnFrameworkInitializationCompleted();
@@ -184,6 +192,41 @@ public partial class App : Avalonia.Application
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[Audio] Sound extraction failed: {ex.Message}");
+        }
+    }
+
+    // Start the embedded web host in-process + wire it to the live VM (all-in-one).
+    // Mirrors the Desktop windowed build's StartAsync(...) + RemoteServerWiring.Wire(...).
+    private void StartRemoteServer(MainViewModel vm)
+    {
+        try
+        {
+            var sp = Services!;
+            _remoteServer = new AgOpenWeb.RemoteServer.RemoteServerHost();
+            _ = _remoteServer.StartAsync(
+                sp.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(),
+                sp.GetRequiredService<ICoverageMapService>(),
+                sp.GetRequiredService<ISectionControlService>(),
+                sp.GetRequiredService<IToolPositionService>(),
+                sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>(),
+                sp.GetRequiredService<IJobService>(),
+                sp.GetRequiredService<IConfigurationService>(),
+                sp.GetRequiredService<IAutoSteerService>(),
+                sp.GetRequiredService<ISmartWasCalibrationService>(),
+                sp.GetRequiredService<IUdpCommunicationService>(),
+                sp.GetRequiredService<INtripProfileService>(),
+                sp.GetRequiredService<AgOpenWeb.Services.IFieldService>(),
+                sp.GetRequiredService<ISettingsService>(),
+                sp.GetRequiredService<IVehicleProfileService>(),
+                sp.GetRequiredService<IPersistentStateService>());
+            AgOpenWeb.RemoteWiring.RemoteServerWiring.Wire(
+                _remoteServer, vm, sp, sp.GetRequiredService<IConfigurationService>(),
+                new IosImageryCapture());
+            System.Diagnostics.Debug.WriteLine("[App] RemoteServer started on :5174 (all-in-one).");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[App] RemoteServer start FAILED: {ex}");
         }
     }
 
