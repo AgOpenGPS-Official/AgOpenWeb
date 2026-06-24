@@ -95,6 +95,20 @@ public static class PgnProtocol
     public static byte GetPgn(byte[] data) => data[3];
 
     /// <summary>
+    /// Human-readable one-line description of a PGN frame for the sim's
+    /// sent/received data panes: "PGN nnn: 80 81 .. .." for valid headers,
+    /// raw hex otherwise.
+    /// </summary>
+    public static string Describe(byte[] data, int length)
+    {
+        if (length <= 0) return "(empty)";
+        string hex = BitConverter.ToString(data, 0, length).Replace('-', ' ');
+        if (length >= 4 && data[0] == 0x80 && data[1] == 0x81)
+            return $"PGN {data[3],3}: {hex}";
+        return hex;
+    }
+
+    /// <summary>
     /// Extract data length from a valid packet.
     /// </summary>
     public static byte GetDataLength(byte[] data) => data[4];
