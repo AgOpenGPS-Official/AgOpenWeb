@@ -6,7 +6,7 @@ Paste the section below into a new session.
 
 ## Goal
 
-Continue the PERF-05 perf audit on the AgValoniaGPS app. Phase 1 (instrumentation), Phase 2a-b (investigation), and Phase 2c #1+#2 (display-tick fix) shipped on branch `perf-05/instrumentation` and are awaiting review as PR #406. The **next item from the priority list on issue #403 is the render-thread audit** (Phase 2c #6) — measure where the render thread's remaining ~82% CPU goes, identify which fixes have meaningful impact, then implement them.
+Continue the PERF-05 perf audit on the AgOpenWeb app. Phase 1 (instrumentation), Phase 2a-b (investigation), and Phase 2c #1+#2 (display-tick fix) shipped on branch `perf-05/instrumentation` and are awaiting review as PR #406. The **next item from the priority list on issue #403 is the render-thread audit** (Phase 2c #6) — measure where the render thread's remaining ~82% CPU goes, identify which fixes have meaningful impact, then implement them.
 
 ## What we already know
 
@@ -35,7 +35,7 @@ The Time Profiler trace from `Plans/perf_data/2026-05-20/instruments/2026-05-20_
 
 - **PERF-05 plan**: `Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md`
 - **Layered tooling**: `Stopwatch` + `GC.GetAllocatedBytesForCurrentThread()` for cheap structural measurements (Phase 1 style); Xcode Instruments Time Profiler for focused attribution (Phase 2b style).
-- **DiagFlags markers**: file-presence flags in `Shared/AgValoniaGPS.Models/Diagnostics/DiagFlags.cs`. Each subsystem's instrumentation is off by default; turn on by pushing a marker file to the app's Documents folder.
+- **DiagFlags markers**: file-presence flags in `Shared/AgOpenWeb.Models/Diagnostics/DiagFlags.cs`. Each subsystem's instrumentation is off by default; turn on by pushing a marker file to the app's Documents folder.
 - **Marker push**: `Plans/perf_data/2026-05-20/push-markers.sh` (iPad via `xcrun devicectl device copy to --domain-type appDataContainer`; Android via `adb shell run-as <pkg> cp`).
 - **Instruments capture**: `Plans/perf_data/2026-05-20/instruments-trace-ipad.sh` — attaches Time Profiler by process name, 30 s window, saves to `instruments/<timestamp>_time_profiler_s5.trace`. Override template via `TEMPLATE='Allocations' bash …` or `TEMPLATE='Metal System Trace' bash …`.
 - **Scenario protocol**: `Plans/perf_data/2026-05-20/TESTING.md` — repeatable S1–S8 captures with marker windows.
@@ -63,8 +63,8 @@ Per the user's anti-deferral pattern, don't assume — measure. In order:
 
 ## Test devices currently set up
 
-- **iPad**: UDID `d2fcb0323a90ad2954ab501f2603cd7573d99b2a`, bundle `com.agvaloniaagps.ios`. Phase 2c #2 build installed. Documents/AgValoniaGPS/ has all 8 PERF markers present.
-- **Android**: serial `R52TB090VAK`, package `com.agvaloniaagps.android`. Same build state.
+- **iPad**: UDID `d2fcb0323a90ad2954ab501f2603cd7573d99b2a`, bundle `com.agopenweb.ios`. Phase 2c #2 build installed. Documents/AgOpenWeb/ has all 8 PERF markers present.
+- **Android**: serial `R52TB090VAK`, package `com.agopenweb.android`. Same build state.
 
 ## Branch / PR state
 

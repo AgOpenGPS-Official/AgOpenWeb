@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 Licensed under GNU GPL v3. See LICENSE.md.
 -->
 
@@ -146,7 +146,7 @@ review-log protocol.
 - TMP-008's visual offset was diagnosed as "manual U-turn anchors at
   tractor position, not the pass line" — AgOpen parity work, not a
   threading bug. Filed as Issues #260 (immediate-turn-at-tractor) and
-  #261 (free-drive line follows tractor). Both in the AgValoniaGPS
+  #261 (free-drive line follows tractor). Both in the AgOpenWeb
   GitHub Project "Planning" column.
 - Phase C C4+C5 eliminated a one-cycle lag that had been masking a
   pre-existing goal-dot-at-origin bug during YouTurn. Fixed in
@@ -188,12 +188,12 @@ review-log protocol.
 git log --oneline develop..HEAD
 
 # Build + test the full solution (Desktop-only, skips iOS ILLink issue)
-dotnet build AgValoniaGPS.sln -p:DesktopOnly=true
-dotnet test Tests/AgValoniaGPS.Models.Tests/AgValoniaGPS.Models.Tests.csproj --nologo -p:DesktopOnly=true
-dotnet test Tests/AgValoniaGPS.Services.Tests/AgValoniaGPS.Services.Tests.csproj --nologo -p:DesktopOnly=true
-dotnet test Tests/AgValoniaGPS.UI.Tests/AgValoniaGPS.UI.Tests.csproj --nologo -p:DesktopOnly=true
-dotnet test Tests/AgValoniaGPS.ViewModels.Tests/AgValoniaGPS.ViewModels.Tests.csproj --nologo -p:DesktopOnly=true
+dotnet build AgOpenWeb.sln -p:DesktopOnly=true
+dotnet test Tests/AgOpenWeb.Models.Tests/AgOpenWeb.Models.Tests.csproj --nologo -p:DesktopOnly=true
+dotnet test Tests/AgOpenWeb.Services.Tests/AgOpenWeb.Services.Tests.csproj --nologo -p:DesktopOnly=true
+dotnet test Tests/AgOpenWeb.UI.Tests/AgOpenWeb.UI.Tests.csproj --nologo -p:DesktopOnly=true
+dotnet test Tests/AgOpenWeb.ViewModels.Tests/AgOpenWeb.ViewModels.Tests.csproj --nologo -p:DesktopOnly=true
 
 # Run the app for smoke tests
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -c Debug
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -c Debug
 ```

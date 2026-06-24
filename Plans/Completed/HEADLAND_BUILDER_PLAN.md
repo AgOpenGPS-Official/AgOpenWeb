@@ -16,7 +16,7 @@ Based on analysis of [AgOpenGPS](https://github.com/AgOpenGPS-Official/AgOpenGPS
 ## Current Codebase Status
 
 ### Existing Components (Ready to Use)
-- `HeadlandLine` / `HeadlandPath` models in `AgValoniaGPS.Models.Guidance`
+- `HeadlandLine` / `HeadlandPath` models in `AgOpenWeb.Models.Guidance`
 - `HeadlandLineSerializer` for file I/O (`Headlines.txt` format)
 - `HeadlandDetectionService` for point-in-headland checks
 - `HeadlandDetectionInput/Output` models
@@ -36,7 +36,7 @@ Based on analysis of [AgOpenGPS](https://github.com/AgOpenGPS-Official/AgOpenGPS
 
 ### Phase 1: Polygon Offset Algorithm
 
-**File**: `Shared/AgValoniaGPS.Services/Geometry/PolygonOffsetService.cs`
+**File**: `Shared/AgOpenWeb.Services/Geometry/PolygonOffsetService.cs`
 
 Create an inward polygon offset algorithm:
 
@@ -68,7 +68,7 @@ public class PolygonOffsetService
 
 ### Phase 2: HeadlandBuilderService
 
-**File**: `Shared/AgValoniaGPS.Services/Headland/HeadlandBuilderService.cs`
+**File**: `Shared/AgOpenWeb.Services/Headland/HeadlandBuilderService.cs`
 
 ```csharp
 public interface IHeadlandBuilderService
@@ -102,7 +102,7 @@ public class HeadlandBuildResult
 
 ### Phase 3: ViewModel Integration
 
-**File**: `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs`
+**File**: `Shared/AgOpenWeb.ViewModels/MainViewModel.cs`
 
 Add properties and commands:
 
@@ -127,7 +127,7 @@ public ICommand ToggleHeadlandCommand { get; }
 
 ### Phase 4: Headland Builder Dialog
 
-**File**: `Shared/AgValoniaGPS.Views/Controls/Dialogs/HeadlandBuilderDialogPanel.axaml`
+**File**: `Shared/AgOpenWeb.Views/Controls/Dialogs/HeadlandBuilderDialogPanel.axaml`
 
 UI Features:
 - **Distance input**: NumericUpDown for headland distance (meters)
@@ -175,7 +175,7 @@ UI Features:
 
 ### Phase 5: Map Rendering
 
-**File**: `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs`
+**File**: `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs`
 
 Add headland line rendering:
 
@@ -205,7 +205,7 @@ private void DrawHeadlandLine(DrawingContext context)
 
 ### Phase 6: Wire Up FieldToolsPanel
 
-**File**: `Shared/AgValoniaGPS.Views/Controls/Panels/FieldToolsPanel.axaml`
+**File**: `Shared/AgOpenWeb.Views/Controls/Panels/FieldToolsPanel.axaml`
 
 Connect the Headland buttons:
 
@@ -274,7 +274,7 @@ if (IsHeadlandOn && CurrentHeadlandLine != null)
 ## NuGet Dependencies
 
 ```xml
-<!-- Add to AgValoniaGPS.Services.csproj -->
+<!-- Add to AgOpenWeb.Services.csproj -->
 <PackageReference Include="Clipper2Lib" Version="1.3.0" />
 ```
 

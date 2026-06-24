@@ -1,0 +1,289 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using AgOpenWeb.Models;
+using AgOpenWeb.Services.Fields;
+using AgOpenWeb.Services.GeoJson;
+
+namespace AgOpenWeb.Services;
+
+/// <summary>
+/// Implementation of field management service
+/// Coordinates file I/O services to provide complete field management
+/// </summary>
+public class FieldService : IFieldService
+{
+    private readonly FieldPlaneFileService _fieldPlaneService;
+    private readonly BoundaryFileService _boundaryService;
+    private readonly BackgroundImageFileService _backgroundImageService;
+
+    public event EventHandler<Field?>? ActiveFieldChanged;
+    public Field? ActiveField { get; private set; }
+
+    public FieldService()
+    {
+        _fieldPlaneService = new FieldPlaneFileService();
+        _boundaryService = new BoundaryFileService();
+        _backgroundImageService = new BackgroundImageFileService();
+    }
+
+    /// <summary>
+    /// Get list of available field names in the Fields directory
+    /// </summary>
+    public List<string> GetAvailableFields(string fieldsRootDirectory)
+    {
+        if (!Directory.Exists(fieldsRootDirectory))
+        {
+            return new List<string>();
+        }
+
+        return Directory.GetDirectories(fieldsRootDirectory)
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Cast<string>()
+            .OrderBy(name => name)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Load a complete field. Prefers field.geojson when present, falls back to legacy text files.
+    /// If the GeoJSON file is corrupt (truncated write, power loss), the corrupt file is renamed
+    /// and loading falls back to legacy format.
+    /// </summary>
+    public Field LoadField(string fieldDirectory)
+    {
+        if (GeoJsonFieldService.Exists(fieldDirectory))
+        {
+            try
+            {
+                var (field, _) = GeoJsonFieldService.Load(fieldDirectory);
+                // Background image file (BackPic.png) is still loaded from the legacy service
+                // because the image itself is not stored in GeoJSON.
+                field.BackgroundImage ??= _backgroundImageService.LoadBackgroundImage(fieldDirectory);
+                return field;
+            }
+            catch (Exception ex)
+            {
+                // GeoJSON is corrupt - rename it so the next save writes a fresh file
+                var corruptPath = Path.Combine(fieldDirectory, "field.geojson");
+                var backupPath = Path.Combine(fieldDirectory, $"field.geojson.corrupt.{DateTime.UtcNow:yyyyMMdd_HHmmss}");
+                try
+                {
+                    File.Move(corruptPath, backupPath);
+                }
+                catch
+                {
+                    // If rename fails, continue with fallback anyway
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[FieldService] GeoJSON load failed for '{fieldDirectory}', falling back to legacy: {ex.Message}");
+            }
+        }
+
+        var legacyField = _fieldPlaneService.LoadField(fieldDirectory);
+        legacyField.Boundary = _boundaryService.LoadBoundary(fieldDirectory);
+        legacyField.BackgroundImage = _backgroundImageService.LoadBackgroundImage(fieldDirectory);
+
+        // Auto-convert: save as GeoJSON so future loads use the modern format
+        try
+        {
+            GeoJsonFieldService.Save(legacyField, tracks: null);
+            System.Diagnostics.Debug.WriteLine(
+                $"[FieldService] Auto-converted legacy field to GeoJSON: '{fieldDirectory}'");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[FieldService] Auto-conversion to GeoJSON failed: {ex.Message}");
+        }
+
+        return legacyField;
+    }
+
+    /// <summary>
+    /// Save a complete field. Writes both GeoJSON and legacy formats for backwards compatibility.
+    /// </summary>
+    public void SaveField(Field field)
+    {
+        if (string.IsNullOrWhiteSpace(field.DirectoryPath))
+        {
+            throw new ArgumentException("Field.DirectoryPath must be set", nameof(field));
+        }
+
+        // Legacy files (keep for AgOpenGPS interop)
+        _fieldPlaneService.SaveField(field, field.DirectoryPath);
+
+        if (field.Boundary != null)
+        {
+            _boundaryService.SaveBoundary(field.Boundary, field.DirectoryPath);
+        }
+
+        if (field.BackgroundImage != null)
+        {
+            _backgroundImageService.SaveBackgroundImage(field.BackgroundImage, field.DirectoryPath);
+        }
+
+        // GeoJSON (new canonical format -- tracks saved separately by caller)
+        try
+        {
+            GeoJsonFieldService.Save(field, tracks: null);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"GeoJSON save failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Create a new empty field
+    /// </summary>
+    public Field CreateField(string fieldsRootDirectory, string fieldName, Position originPosition)
+    {
+        var fieldDirectory = Path.Combine(fieldsRootDirectory, fieldName);
+
+        if (Directory.Exists(fieldDirectory))
+        {
+            throw new InvalidOperationException($"Field '{fieldName}' already exists");
+        }
+
+        Directory.CreateDirectory(fieldDirectory);
+
+        var field = new Field
+        {
+            Name = fieldName,
+            DirectoryPath = fieldDirectory,
+            Origin = originPosition,
+            CreatedDate = DateTime.Now,
+            LastModifiedDate = DateTime.Now
+        };
+
+        // Create empty boundary file
+        _boundaryService.CreateEmptyBoundary(fieldDirectory);
+
+        // Save field metadata
+        _fieldPlaneService.SaveField(field, fieldDirectory);
+
+        return field;
+    }
+
+    /// <summary>
+    /// Delete a field (removes entire directory)
+    /// </summary>
+    public void DeleteField(string fieldDirectory)
+    {
+        if (Directory.Exists(fieldDirectory))
+        {
+            Directory.Delete(fieldDirectory, true);
+        }
+    }
+
+    /// <summary>
+    /// Check if a field exists (GeoJSON or legacy)
+    /// </summary>
+    public bool FieldExists(string fieldDirectory)
+    {
+        return Directory.Exists(fieldDirectory) &&
+               (GeoJsonFieldService.Exists(fieldDirectory) ||
+                File.Exists(Path.Combine(fieldDirectory, "Field.txt")));
+    }
+
+    /// <summary>
+    /// Set the active field
+    /// </summary>
+    public void SetActiveField(Field? field)
+    {
+        if (ActiveField != field)
+        {
+            ActiveField = field;
+            ActiveFieldChanged?.Invoke(this, field);
+        }
+    }
+
+    public IReadOnlyList<NearbyField> FindFieldsNear(
+        string fieldsRootDirectory, double latitude, double longitude, double maxKm)
+    {
+        if (!Directory.Exists(fieldsRootDirectory))
+            return Array.Empty<NearbyField>();
+
+        var query = new Wgs84(latitude, longitude);
+        var results = new List<NearbyField>();
+
+        foreach (var dir in Directory.GetDirectories(fieldsRootDirectory))
+        {
+            var origin = TryReadFieldOrigin(dir);
+            if (origin == null) continue;
+
+            // (0,0) origin = field never georeferenced. Including it would
+            // distort the "near me" filter for every field that hasn't yet
+            // been opened in the world.
+            if (origin.Latitude == 0 && origin.Longitude == 0) continue;
+
+            var distKm = query.DistanceInKiloMeters(new Wgs84(origin.Latitude, origin.Longitude));
+            if (distKm > maxKm) continue;
+
+            var areaHa = TryReadBoundaryAreaHectares(dir);
+            results.Add(new NearbyField(
+                Name: Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar)) ?? string.Empty,
+                DirectoryPath: dir,
+                DistanceKm: distKm,
+                BoundaryAreaHectares: areaHa));
+        }
+
+        results.Sort((a, b) => a.DistanceKm.CompareTo(b.DistanceKm));
+        return results;
+    }
+
+    private Position? TryReadFieldOrigin(string fieldDirectory)
+    {
+        try
+        {
+            var fromJson = FieldJsonService.Load(fieldDirectory);
+            if (fromJson != null) return fromJson.Origin;
+        }
+        catch
+        {
+            // Fall through to legacy reader.
+        }
+
+        try
+        {
+            var legacy = _fieldPlaneService.LoadField(fieldDirectory);
+            return legacy.Origin;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private double TryReadBoundaryAreaHectares(string fieldDirectory)
+    {
+        try
+        {
+            var boundary = _boundaryService.LoadBoundary(fieldDirectory);
+            return boundary?.AreaHectares ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+}

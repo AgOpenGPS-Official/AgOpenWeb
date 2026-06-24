@@ -5,7 +5,7 @@
 Migration completed on 2025-12-04.
 
 ## Overview
-Migrate Desktop to use shared panels and dialogs from `Shared/AgValoniaGPS.Views/Controls/` instead of desktop-only implementations.
+Migrate Desktop to use shared panels and dialogs from `Shared/AgOpenWeb.Views/Controls/` instead of desktop-only implementations.
 
 ## Results
 
@@ -29,7 +29,7 @@ Migrate Desktop to use shared panels and dialogs from `Shared/AgValoniaGPS.Views
 ## What Was Done
 
 ### Phase 1: Add Shared Panels to MainWindow ✓
-- Changed namespaces from `AgValoniaGPS.Desktop.Controls.Panels` to `AgValoniaGPS.Views.Controls.Panels`
+- Changed namespaces from `AgOpenWeb.Desktop.Controls.Panels` to `AgOpenWeb.Views.Controls.Panels`
 - Added `xmlns:dialogs` for shared dialog panels
 - Added all 12 shared dialog overlays to MainWindow.axaml
 
@@ -70,7 +70,7 @@ Migrate Desktop to use shared panels and dialogs from `Shared/AgValoniaGPS.Views
 ## Current Desktop Structure
 
 ```
-Platforms/AgValoniaGPS.Desktop/
+Platforms/AgOpenWeb.Desktop/
 ├── App.axaml / App.axaml.cs        # App entry point
 ├── Program.cs                       # Main entry
 ├── ViewLocator.cs                   # View resolution

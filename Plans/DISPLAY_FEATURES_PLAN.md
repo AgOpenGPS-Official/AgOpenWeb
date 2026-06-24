@@ -3,7 +3,7 @@
 This document tracks display features with configuration infrastructure in place, documented from AgOpenGPS WinForms reference implementation.
 
 **Status**: Config wiring complete, features pending implementation
-**Reference**: `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/`
+**Reference**: `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/`
 
 ---
 
@@ -177,7 +177,7 @@ worldGrid.DrawFieldSurface(fieldColor, camera.ZoomValue, isTextureOn);
 ## 2. Audio Service
 
 ### 2.1 Sound Files
-**Location**: `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Resources/`
+**Location**: `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Resources/`
 
 | Sound File | Purpose | Config Setting |
 |------------|---------|----------------|
@@ -236,7 +236,7 @@ public class CSound
 | Headland | CHead.cs:125 | `mf.sounds.sndHeadland.Play();` |
 
 **Implementation for Avalonia**:
-- Copy WAV files to `Shared/AgValoniaGPS.Views/Assets/Sounds/`
+- Copy WAV files to `Shared/AgOpenWeb.Views/Assets/Sounds/`
 - Create `IAudioService` interface
 - Platform implementations:
   - Desktop: NAudio or System.Media.SoundPlayer
@@ -357,13 +357,13 @@ public class CSound
 ## Files to Create/Modify
 
 ### New Files
-- `Shared/AgValoniaGPS.Services/Interfaces/IAudioService.cs`
-- `Platforms/AgValoniaGPS.Desktop/Services/AudioService.cs`
-- `Platforms/AgValoniaGPS.iOS/Services/AudioService.cs`
-- `Platforms/AgValoniaGPS.Android/Services/AudioService.cs`
-- `Shared/AgValoniaGPS.Views/Assets/Sounds/` (copy WAV files)
+- `Shared/AgOpenWeb.Services/Interfaces/IAudioService.cs`
+- `Platforms/AgOpenWeb.Desktop/Services/AudioService.cs`
+- `Platforms/AgOpenWeb.iOS/Services/AudioService.cs`
+- `Platforms/AgOpenWeb.Android/Services/AudioService.cs`
+- `Shared/AgOpenWeb.Views/Assets/Sounds/` (copy WAV files)
 
 ### Modify
-- `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs` - Add display option checks
-- `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml.cs` - Keyboard handling, start fullscreen
+- `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs` - Add display option checks
+- `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml.cs` - Keyboard handling, start fullscreen
 - DI registration files for AudioService

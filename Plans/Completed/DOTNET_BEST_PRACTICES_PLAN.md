@@ -18,7 +18,7 @@ Modernize the codebase to follow Microsoft's recommended .NET and MVVM best prac
 ### Implementation Steps
 
 #### 1.1 Add NuGet Package
-Add to `Shared/AgValoniaGPS.Services/AgValoniaGPS.Services.csproj`:
+Add to `Shared/AgOpenWeb.Services/AgOpenWeb.Services.csproj`:
 ```xml
 <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
 ```
@@ -90,7 +90,7 @@ Use find/replace patterns:
 | `Console.WriteLine($"Error:` | `_logger.LogError(` |
 
 #### 1.6 Files to Modify
-- All services in `Shared/AgValoniaGPS.Services/`
+- All services in `Shared/AgOpenWeb.Services/`
 - `MainViewModel.cs` (inject logger)
 - Platform DI setup files
 
@@ -279,7 +279,7 @@ public readonly record struct Vec2(double Easting, double Northing);
 
 #### 4.1 Define Options Classes
 ```csharp
-// New file: Shared/AgValoniaGPS.Models/Configuration/NtripOptions.cs
+// New file: Shared/AgOpenWeb.Models/Configuration/NtripOptions.cs
 public class NtripOptions
 {
     public const string SectionName = "Ntrip";
@@ -290,7 +290,7 @@ public class NtripOptions
     public bool AutoReconnect { get; set; } = true;
 }
 
-// New file: Shared/AgValoniaGPS.Models/Configuration/GpsOptions.cs
+// New file: Shared/AgOpenWeb.Models/Configuration/GpsOptions.cs
 public class GpsOptions
 {
     public const string SectionName = "Gps";

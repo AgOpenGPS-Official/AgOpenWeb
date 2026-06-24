@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -169,16 +169,16 @@ Verified before this plan was drafted.
 
 | Reference | File / symbol | Notes |
 |---|---|---|
-| String parser | `Shared/AgValoniaGPS.Services/NmeaParserService.cs:25–437` — `ParseSentence(string)` | string-based, allocates per parse; called from `MainViewModel.cs:985` in `OnUdpDataReceived` |
-| Span parser | `Shared/AgValoniaGPS.Services/NmeaParserServiceFast.cs:30–493` — `ParseIntoState(ReadOnlySpan<byte>, ref VehicleState)` | zero-copy; called from `AutoSteerService.cs:308` in `ProcessGpsBuffer` |
-| AutoSteer receive-thread work | `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs:299–350` — `ProcessGpsBuffer` | parse + LocalPlane convert + guidance + PGN send, all on UDP callback thread |
+| String parser | `Shared/AgOpenWeb.Services/NmeaParserService.cs:25–437` — `ParseSentence(string)` | string-based, allocates per parse; called from `MainViewModel.cs:985` in `OnUdpDataReceived` |
+| Span parser | `Shared/AgOpenWeb.Services/NmeaParserServiceFast.cs:30–493` — `ParseIntoState(ReadOnlySpan<byte>, ref VehicleState)` | zero-copy; called from `AutoSteerService.cs:308` in `ProcessGpsBuffer` |
+| AutoSteer receive-thread work | `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs:299–350` — `ProcessGpsBuffer` | parse + LocalPlane convert + guidance + PGN send, all on UDP callback thread |
 | AutoSteer's LocalPlane | `AutoSteerService.cs:47, 318` — `_localPlane` field, constructed at line 318 | independent instance; auto-creates on first valid fix |
 | Pipeline's LocalPlane | `GpsPipelineService.cs:292` — `_appState.Field.LocalPlane = new LocalPlane(...)` | the shared observable instance; also auto-creates on first valid fix |
 | Cycle owner | `GpsPipelineService.cs:238–552` — `ProcessCycle` | `Task.Run` per tick, `Interlocked` back-pressure at `OnGpsDataUpdated:210` |
 | Pipeline-to-autosteer callback | `GpsPipelineService.cs:453` — `_autoSteerService.ProcessSimulatedPosition()` | simulator path; also receives cycle work via this entry today |
 | PGN 253 / 239 build+send | `AutoSteerService.cs:446–462` — `SendPgns` | fires from `ProcessGpsBuffer:341`, i.e. per packet, receive thread |
 | UDP send path | `_udpService.SendToModules(pgn)` — called from `AutoSteerService.SendPgns` | ships pre-built PGN bytes |
-| `ApplicationState.Field.LocalPlane` | `Shared/AgValoniaGPS.Models/State/FieldState.cs:157–162` — `ObservableObject` property | the one slot; currently competing with `AutoSteerService._localPlane` |
+| `ApplicationState.Field.LocalPlane` | `Shared/AgOpenWeb.Models/State/FieldState.cs:157–162` — `ObservableObject` property | the one slot; currently competing with `AutoSteerService._localPlane` |
 | MainViewModel UDP entry | `MainViewModel.cs:985` — `OnUdpDataReceived` → `_nmeaParser.ParseSentence` | the string-path origin |
 | Field-open `LocalPlane` creation | `MainViewModel.cs:117, 3337, 3785, 3837` | field origin → `LocalPlane`; stays as-is through Phase B |
 
@@ -205,7 +205,7 @@ cycle-worker-callable services before any parser deletion.
 same instance.
 
 **Modifies:**
-- `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs` — remove
+- `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs` — remove
   `_localPlane` field; take `ApplicationState` through the constructor;
   replace all reads of `_localPlane` with `_appState.Field.LocalPlane`.
 - `AutoSteerService.ProcessGpsBuffer` — remove the "auto-create my own
@@ -226,7 +226,7 @@ longer dual-`LocalPlane`.
 - All 583 tests pass.
 - Smoke test: open a field, drive a pass, close field. No coordinate
   glitches.
-- `grep "new LocalPlane" Shared/AgValoniaGPS.Services/AutoSteer/` returns
+- `grep "new LocalPlane" Shared/AgOpenWeb.Services/AutoSteer/` returns
   zero matches.
 
 **Risk:** If auto-create ordering differs between paths (AutoSteer
@@ -248,13 +248,13 @@ retires. The string parser continues to exist and run in the MVM path
 the relocation targets.
 
 **Adds:**
-- `Shared/AgValoniaGPS.Services/Gps/GpsHeadingFusionService.cs`
+- `Shared/AgOpenWeb.Services/Gps/GpsHeadingFusionService.cs`
   implementing `IGpsHeadingFusionService`. Owns `_previousEasting`,
   `_previousNorthing`, `_previousHeading`, `_hasPreviousPosition`.
   Single public method `FuseHeading(double gpsHeading, double speedMs,
   double easting, double northing) → double` with the exact logic from
   `NmeaParserService.ProcessHeading`.
-- `Shared/AgValoniaGPS.Services/Gps/GpsFixQualityValidator.cs`. Static
+- `Shared/AgOpenWeb.Services/Gps/GpsFixQualityValidator.cs`. Static
   helper: `bool IsAcceptable(int fixQuality, double hdop, double
   differentialAge, out string? rejectionReason)`. Reads the same
   `ConfigurationStore.Instance.Connections` fields the string parser
@@ -331,7 +331,7 @@ alive, unused now); the cycle path; guidance/PGN work.
 - Solution builds green.
 - All tests pass.
 - **Parity test (risk mitigation):** a new test in
-  `Tests/AgValoniaGPS.Services.Tests/Pipeline/NmeaParserParityTests.cs`
+  `Tests/AgOpenWeb.Services.Tests/Pipeline/NmeaParserParityTests.cs`
   that parses a representative PANDA corpus through both
   `NmeaParserService.ParseSentence` and
   `NmeaParserServiceFast.ParseIntoState`, maps the resulting
@@ -395,8 +395,8 @@ any UI binding; `YouTurnStateMachine`.
 remains.
 
 **Modifies:**
-- Deletes `Shared/AgValoniaGPS.Services/NmeaParserService.cs`.
-- Deletes `Tests/AgValoniaGPS.Services.Tests/NmeaParserServiceTests.cs`
+- Deletes `Shared/AgOpenWeb.Services/NmeaParserService.cs`.
+- Deletes `Tests/AgOpenWeb.Services.Tests/NmeaParserServiceTests.cs`
   (or migrates any unique coverage into `NmeaParserServiceFastTests` if
   that doesn't already exist — inventory during implementation).
 - Removes any DI registration for `NmeaParserService`.
@@ -421,7 +421,7 @@ the build breaks — fix and move on.
 if any phase regresses them.
 
 **Adds:**
-- `Tests/AgValoniaGPS.Services.Tests/Pipeline/UnifiedPipelineTests.cs`
+- `Tests/AgOpenWeb.Services.Tests/Pipeline/UnifiedPipelineTests.cs`
   covering:
   1. `LocalPlane_is_a_single_instance_across_paths` — construct the
      pipeline through DI (or a test-builder), drive one GPS packet,
@@ -438,7 +438,7 @@ if any phase regresses them.
      (or equivalent).
 
 **Modifies:**
-- `Tests/AgValoniaGPS.Services.Tests/SimulatorDataFlowTests.cs` — if
+- `Tests/AgOpenWeb.Services.Tests/SimulatorDataFlowTests.cs` — if
   it exercises the old receive-thread-does-everything flow, update to
   the new parse-only + cycle-driven flow.
 
@@ -461,7 +461,7 @@ Independent of individual commits — these must all hold when the
 Phase B portion of the PR is ready to advance (Phase C still follows
 on the same branch):
 
-- [ ] `dotnet build AgValoniaGPS.sln -p:DesktopOnly=true` green; same
+- [ ] `dotnet build AgOpenWeb.sln -p:DesktopOnly=true` green; same
       for the native multi-target build on macOS.
 - [ ] `dotnet test Tests/` passes. Count increases by Commit 2's
       fusion/validator unit tests, Commit 3's parity test, and Commit 6's
@@ -476,7 +476,7 @@ on the same branch):
 - [ ] `AutoSteerService._localPlane` field does not exist.
 - [ ] `AutoSteerService.ProcessGpsBuffer` body is parse-only — no
       `CalculateGuidance`, no `SendPgns`, no coordinate conversion.
-- [ ] Phase A untouched: `git diff phase-a-tip..HEAD --stat -- Shared/AgValoniaGPS.Models/Pipeline/` returns zero changes.
+- [ ] Phase A untouched: `git diff phase-a-tip..HEAD --stat -- Shared/AgOpenWeb.Models/Pipeline/` returns zero changes.
 - [ ] Phase C's four target files still byte-identical to `develop`:
       `MainViewModel.YouTurn.cs`, `MainViewModel.GpsHandling.cs`,
       `YouTurnStateMachine.cs`, `MainViewModel.ApplyResults.cs`.

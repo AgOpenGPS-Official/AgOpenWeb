@@ -11,8 +11,8 @@
 ## Task 1: AutoMotorCalibrationStepViewModel
 
 **Files:**
-- Create: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/AutoMotorCalibrationStepViewModel.cs`
-- Test: `Tests/AgValoniaGPS.Services.Tests/SteerWizardStepTests.cs`
+- Create: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/AutoMotorCalibrationStepViewModel.cs`
+- Test: `Tests/AgOpenWeb.Services.Tests/SteerWizardStepTests.cs`
 
 ### State Machine
 
@@ -158,8 +158,8 @@ private async Task RunMaxAngleMeasurement()
 ## Task 2: AXAML View
 
 **Files:**
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/AutoMotorCalibrationStepView.axaml`
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/AutoMotorCalibrationStepView.axaml.cs`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/AutoMotorCalibrationStepView.axaml`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/AutoMotorCalibrationStepView.axaml.cs`
 
 Layout changes per phase (use IsVisible bindings on Phase):
 

@@ -266,9 +266,9 @@ Replace string-based NMEA parser with Span-based zero-allocation parser.
 Create the core zero-copy data structure and real-time control service.
 
 **New files:**
-- `Shared/AgValoniaGPS.Models/VehicleState.cs` - Zero-copy state struct
-- `Shared/AgValoniaGPS.Services/AutoSteerService.cs` - Real-time control
-- `Shared/AgValoniaGPS.Services/Interfaces/IAutoSteerService.cs` - Interface
+- `Shared/AgOpenWeb.Models/VehicleState.cs` - Zero-copy state struct
+- `Shared/AgOpenWeb.Services/AutoSteerService.cs` - Real-time control
+- `Shared/AgOpenWeb.Services/Interfaces/IAutoSteerService.cs` - Interface
 
 ```csharp
 // VehicleState.cs - THE core data structure
@@ -818,7 +818,7 @@ void sendBinaryPanda() {
 - [x] Wire into `UdpCommunicationService` to use raw bytes
 
 ### Phase 1: Create VehicleState and AutoSteerService ✅ COMPLETE
-- [x] Create `VehicleState` struct in `AgValoniaGPS.Models`
+- [x] Create `VehicleState` struct in `AgOpenWeb.Models`
 - [x] Create `IAutoSteerService` interface
 - [x] Create `AutoSteerService` implementation
 - [x] Create `PgnBuilder` with thread-local buffers for zero-alloc PGN building

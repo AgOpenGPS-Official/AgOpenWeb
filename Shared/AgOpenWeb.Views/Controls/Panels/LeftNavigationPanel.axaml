@@ -1,0 +1,195 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             xmlns:controls="using:AgOpenWeb.Views.Controls.Panels"
+             mc:Ignorable="d"
+             x:Class="AgOpenWeb.Views.Controls.Panels.LeftNavigationPanel"
+             x:DataType="vm:MainViewModel"
+             ClipToBounds="False"
+             Background="{x:Null}"
+             IsHitTestVisible="True">
+
+    <UserControl.Styles>
+        <!-- Floating Panel Style -->
+        <Style Selector="Border.FloatingPanel">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <!-- Outer (left) padding removed so the buttons sit flush to the left
+                 window edge; inner (right/top/bottom) gaps preserved. -->
+            <Setter Property="Padding" Value="0,8,8,8"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- Left Panel Button Style -->
+        <Style Selector="Button.LeftPanelButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Width" Value="64"/>
+            <Setter Property="Height" Value="64"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.LeftPanelButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+        <Style Selector="Button.LeftPanelButton:pressed">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumBrush}"/>
+        </Style>
+
+    </UserControl.Styles>
+
+    <!-- Panel for proper layout measurement; Canvas overlay for sub-panels -->
+    <!-- Background must be null (not set) to allow pointer events to pass through to controls behind -->
+    <Panel ClipToBounds="False" Background="{x:Null}">
+        <!-- Navigation Button Bar -->
+        <Border Classes="FloatingPanel">
+            <StackPanel x:Name="ButtonStack" Spacing="6" Orientation="Vertical">
+                <!-- 1. File/Application Menu -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="File Menu"
+                        Command="{Binding ToggleFileMenuPanelCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/fileMenu.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 2. Screen & Alerts (display/sounds/buttons/messages settings) -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Screen &amp; Alerts"
+                        Command="{Binding ToggleScreenAlertsPanelCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/NavigationSettings.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 3. Tools -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Tools"
+                        Command="{Binding ToggleToolsPanelCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/SpecialFunctions.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 4. Vehicle / Tool Configuration — opens the picker hub directly -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Vehicle &amp; Tool Configuration"
+                        Command="{Binding ShowLoadVehicleToolDialogCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Settings48.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 5. Field Operations -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Field Operations"
+                        Command="{Binding ToggleFieldOperationsPanelCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/JobActive.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 6. Field Tools (includes Boundary) -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Field Tools"
+                        Command="{Binding ToggleFieldToolsPanelCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/FieldTools.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 7. AutoSteer Config -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="AutoSteer Configuration"
+                        Command="{Binding ShowAutoSteerConfigCommand}">
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/AutoSteerConf.png" Stretch="Uniform"/>
+                </Button>
+
+                <!-- 8. Network IO (modules + NTRIP). Vector network glyph (hub +
+                     nodes) using the theme foreground so it contrasts on the
+                     blue/gray button in both light and dark themes. -->
+                <Button Classes="LeftPanelButton" ToolTip.Tip="Network IO"
+                        Command="{Binding ToggleNetworkIoPanelCommand}">
+                    <Viewbox Stretch="Uniform">
+                        <Canvas Width="48" Height="48">
+                            <Canvas.Styles>
+                                <Style Selector="Line">
+                                    <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                    <Setter Property="StrokeThickness" Value="2.5"/>
+                                </Style>
+                                <Style Selector="Ellipse">
+                                    <Setter Property="Fill" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                </Style>
+                            </Canvas.Styles>
+                            <!-- spokes from the hub to each node -->
+                            <Line StartPoint="24,24" EndPoint="24,10"/>
+                            <Line StartPoint="24,24" EndPoint="11,37"/>
+                            <Line StartPoint="24,24" EndPoint="37,37"/>
+                            <!-- hub -->
+                            <Ellipse Canvas.Left="17" Canvas.Top="17" Width="14" Height="14"/>
+                            <!-- nodes -->
+                            <Ellipse Canvas.Left="18" Canvas.Top="4" Width="12" Height="12"/>
+                            <Ellipse Canvas.Left="5" Canvas.Top="31" Width="12" Height="12"/>
+                            <Ellipse Canvas.Left="31" Canvas.Top="31" Width="12" Height="12"/>
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- Sub-panels Canvas overlay (absolute positioning relative to nav bar) -->
+        <Canvas ClipToBounds="False">
+        <!-- Screen & Alerts Panel -->
+        <controls:ScreenAlertsPanel x:Name="ScreenAlertsPanelControl"
+                                    Canvas.Left="90" Canvas.Top="0"
+                                    ZIndex="15"
+                                    DataContext="{Binding}"/>
+
+        <!-- Network IO Panel -->
+        <controls:NetworkIoPanel x:Name="NetworkIoPanelControl"
+                                 Canvas.Left="90" Canvas.Top="0"
+                                 ZIndex="15"
+                                 DataContext="{Binding}"/>
+
+        <!-- File Menu Panel -->
+        <controls:FileMenuPanel x:Name="FileMenuPanelControl"
+                                Canvas.Left="90" Canvas.Top="0"
+                                ZIndex="15"
+                                DataContext="{Binding}"/>
+
+        <!-- Tools Panel -->
+        <controls:ToolsPanel x:Name="ToolsPanelControl"
+                             Canvas.Left="90" Canvas.Top="0"
+                             ZIndex="15"
+                             DataContext="{Binding}"/>
+
+        <!-- Field Operations Panel -->
+        <controls:FieldOperationsPanel x:Name="FieldOperationsPanelControl"
+                                       Canvas.Left="90" Canvas.Top="0"
+                                       ZIndex="15"
+                                       DataContext="{Binding}"/>
+
+        <!-- Field Tools Panel -->
+        <controls:FieldToolsPanel x:Name="FieldToolsPanelControl"
+                                  Canvas.Left="90" Canvas.Top="0"
+                                  ZIndex="15"
+                                  DataContext="{Binding}"/>
+
+        <!-- Simulator Panel moved to the window-level floating canvas (bottom-center home) -->
+
+        <!-- Boundary Recording Panel -->
+        <controls:BoundaryRecordingPanel x:Name="BoundaryRecordingPanelControl"
+                                          Canvas.Left="200" Canvas.Top="50"
+                                          ZIndex="20"
+                                          DataContext="{Binding}"/>
+
+        <!-- Boundary Player Panel -->
+        <controls:BoundaryPlayerPanel x:Name="BoundaryPlayerPanelControl"
+                                       Canvas.Left="100" Canvas.Top="0"
+                                       ZIndex="25"
+                                       DataContext="{Binding}"/>
+        </Canvas>
+    </Panel>
+</UserControl>

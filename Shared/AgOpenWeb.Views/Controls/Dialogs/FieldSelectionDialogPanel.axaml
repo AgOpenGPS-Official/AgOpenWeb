@@ -1,0 +1,132 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             mc:Ignorable="d"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.FieldSelectionDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsFieldSelectionDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsFieldSelectionDialogVisible}">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.Header">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,0,0,12"/>
+        </Style>
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="ListBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Semi-transparent overlay background -->
+    <Grid>
+        <!-- Backdrop that dims the rest of the UI -->
+        <Border Background="{DynamicResource ModalBackdropBrush}" IsHitTestVisible="True"
+                PointerPressed="Backdrop_PointerPressed"/>
+
+        <!-- Dialog panel -->
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                CornerRadius="12"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                BorderThickness="1"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="480"
+                MaxWidth="600"
+                MaxHeight="500"
+                Padding="16">
+            <Grid RowDefinitions="Auto,Auto,*,Auto">
+                <!-- Header -->
+                <TextBlock Grid.Row="0" Classes="Header" Text="{loc:Localize SelectFieldToOpen}"/>
+
+                <!-- Column Headers -->
+                <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" CornerRadius="4,4,0,0" Padding="12,8" Margin="0,0,0,0">
+                    <Grid ColumnDefinitions="*,120,80,80">
+                        <TextBlock Grid.Column="0" Text="{loc:Localize FieldName}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Column="1" Text="{loc:Localize NtripProfile}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontWeight="SemiBold"/>
+                        <TextBlock Grid.Column="2" Text="{loc:Localize Distance}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontWeight="SemiBold" TextAlignment="Right"/>
+                        <TextBlock Grid.Column="3" Text="{loc:Localize AreaHa}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontWeight="SemiBold" TextAlignment="Right"/>
+                    </Grid>
+                </Border>
+
+                <!-- Fields ListBox -->
+                <ListBox x:Name="FieldsListBox"
+                         Grid.Row="2"
+                         SelectionMode="Single"
+                         MinHeight="200"
+                         MaxHeight="300"
+                         ItemsSource="{Binding AvailableFields}"
+                         SelectedItem="{Binding SelectedFieldInfo}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid ColumnDefinitions="*,120,80,80">
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="14"/>
+                                <TextBlock Grid.Column="1" Text="{Binding NtripProfileName}" Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="13"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Distance, StringFormat='{}{0:F1}'}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" TextAlignment="Right" FontSize="14"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Area, StringFormat='{}{0:F1}'}" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" TextAlignment="Right" FontSize="14"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Action Buttons -->
+                <Grid Grid.Row="3" ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,12,0,0">
+                    <!-- Delete Field Button -->
+                    <Button Grid.Column="0" Classes="DialogButton DangerButton" Content="{loc:Localize Delete}"
+                            Command="{Binding DeleteSelectedFieldCommand}"/>
+
+                    <!-- Sort Button -->
+                    <Button Grid.Column="1" Classes="DialogButton CancelButton" Content="{loc:Localize SortAZ}"
+                            Command="{Binding SortFieldsCommand}" Margin="8,0,0,0"/>
+
+                    <!-- Spacer -->
+                    <Border Grid.Column="2"/>
+
+                    <!-- Cancel Button -->
+                    <Button Grid.Column="3" Classes="DialogButton CancelButton" Content="{loc:Localize Cancel}"
+                            Command="{Binding CancelFieldSelectionDialogCommand}"/>
+
+                    <!-- Open Button -->
+                    <Button Grid.Column="4" Classes="DialogButton" Content="{loc:Localize Open}"
+                            Command="{Binding ConfirmFieldSelectionDialogCommand}" Margin="8,0,0,0"/>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

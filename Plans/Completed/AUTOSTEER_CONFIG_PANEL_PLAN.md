@@ -155,12 +155,12 @@ Implement a dual-mode (Compact/Full-Size) AutoSteer configuration panel followin
 ### New Files
 
 1. **Model: `AutoSteerConfig.cs`**
-   - Location: `Shared/AgValoniaGPS.Models/Configuration/AutoSteerConfig.cs`
+   - Location: `Shared/AgOpenWeb.Models/Configuration/AutoSteerConfig.cs`
    - Properties for all steering parameters
    - Extends ReactiveObject for change notification
 
 2. **Panel: `AutoSteerConfigPanel.axaml/.cs`**
-   - Location: `Shared/AgValoniaGPS.Views/Controls/Dialogs/AutoSteerConfigPanel.axaml`
+   - Location: `Shared/AgOpenWeb.Views/Controls/Dialogs/AutoSteerConfigPanel.axaml`
    - Dual-mode overlay panel (not in ConfigurationDialog)
    - TabControl with icon tabs
 
@@ -173,7 +173,7 @@ Implement a dual-mode (Compact/Full-Size) AutoSteer configuration panel followin
    - `AutoSteerDisplayTab.axaml`
 
 4. **ViewModel: `AutoSteerConfigViewModel.cs`**
-   - Location: `Shared/AgValoniaGPS.ViewModels/AutoSteerConfigViewModel.cs`
+   - Location: `Shared/AgOpenWeb.ViewModels/AutoSteerConfigViewModel.cs`
    - Edit commands for all parameters
    - Test mode logic
    - Save/Send commands
@@ -324,8 +324,8 @@ Use existing ConfigurationDialog patterns:
 
 ## Critical Files Reference
 
-- `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Forms/Settings/FormSteer.cs` - AgOpenGPS implementation
-- `/Users/chris/Code/AgValoniaGPS3/Reference/PGN.md` - PGN specifications
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/ConfigurationDialog.axaml` - Dialog pattern
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs` - Command pattern
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Services/AutoSteer/PgnBuilder.cs` - PGN construction
+- `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Forms/Settings/FormSteer.cs` - AgOpenGPS implementation
+- `/Users/chris/Code/AgOpenWeb3/Reference/PGN.md` - PGN specifications
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Views/Controls/Dialogs/Configuration/ConfigurationDialog.axaml` - Dialog pattern
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.ViewModels/ConfigurationViewModel.cs` - Command pattern
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Services/AutoSteer/PgnBuilder.cs` - PGN construction

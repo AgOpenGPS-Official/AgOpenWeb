@@ -38,7 +38,7 @@ Migrate from ReactiveUI to MVVM Community Toolkit for a lighter, more modern MVV
 
 ### Phase 1: Package Changes
 **Files to modify:**
-- `Shared/AgValoniaGPS.ViewModels/AgValoniaGPS.ViewModels.csproj`
+- `Shared/AgOpenWeb.ViewModels/AgOpenWeb.ViewModels.csproj`
 
 **Changes:**
 ```xml
@@ -51,8 +51,8 @@ Migrate from ReactiveUI to MVVM Community Toolkit for a lighter, more modern MVV
 ```
 
 **Files to delete:**
-- `Shared/AgValoniaGPS.ViewModels/FodyWeavers.xml`
-- `Shared/AgValoniaGPS.ViewModels/FodyWeavers.xsd`
+- `Shared/AgOpenWeb.ViewModels/FodyWeavers.xml`
+- `Shared/AgOpenWeb.ViewModels/FodyWeavers.xsd`
 
 ---
 
@@ -60,7 +60,7 @@ Migrate from ReactiveUI to MVVM Community Toolkit for a lighter, more modern MVV
 
 Migrate the smaller ViewModel first to validate the approach.
 
-**File:** `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs`
+**File:** `Shared/AgOpenWeb.ViewModels/ConfigurationViewModel.cs`
 
 #### 2a. Update using statements
 ```csharp
@@ -130,7 +130,7 @@ SomeCommand = new RelayCommand(Some);
 
 Same process as Phase 2, but larger scope.
 
-**File:** `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs`
+**File:** `Shared/AgOpenWeb.ViewModels/MainViewModel.cs`
 
 #### Recommended approach for large file:
 1. Update using statements and class declaration first
@@ -149,7 +149,7 @@ Same process as Phase 2, but larger scope.
 
 ### Phase 4: Delete Custom RelayCommand
 
-**File to delete:** `Shared/AgValoniaGPS.ViewModels/RelayCommand.cs`
+**File to delete:** `Shared/AgOpenWeb.ViewModels/RelayCommand.cs`
 
 **Update imports in ViewModels:**
 ```csharp

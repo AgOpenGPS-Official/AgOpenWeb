@@ -1,5 +1,5 @@
 #!/bin/bash
-# Unpack and display AgValoniaGPS debug dump
+# Unpack and display AgOpenWeb debug dump
 # Usage: ./unpack-dump.sh <dump.zip> [output_dir]
 
 set -e

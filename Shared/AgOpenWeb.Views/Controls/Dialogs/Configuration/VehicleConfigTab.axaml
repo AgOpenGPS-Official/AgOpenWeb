@@ -1,0 +1,331 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:conv="clr-namespace:AgOpenWeb.Views.Converters;assembly=AgOpenWeb.Views"
+             xmlns:controls="clr-namespace:AgOpenWeb.Views.Controls;assembly=AgOpenWeb.Views"
+             mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="500"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.Configuration.VehicleConfigTab"
+             x:DataType="vm:ConfigurationViewModel">
+
+    <UserControl.Styles>
+        <!-- Sub-tab styling for left strip -->
+        <Style Selector="TabControl.VehicleSubTabs">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="TabControl.VehicleSubTabs > TabItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="8"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="MinWidth" Value="56"/>
+            <Setter Property="MinHeight" Value="56"/>
+        </Style>
+        <Style Selector="TabControl.VehicleSubTabs > TabItem:selected">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+        </Style>
+        <Style Selector="TabControl.VehicleSubTabs > TabItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+        </Style>
+
+        <!-- Value boxes -->
+        <Style Selector="Border.ValueBox">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="MinWidth" Value="80"/>
+        </Style>
+        <Style Selector="TextBlock.LargeValue">
+            <Setter Property="FontSize" Value="32"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.UnitLabel">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SectionLabel">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Dimension cards: each field sits with its own focused diagram, so the
+             input is read next to the measurement it controls (mirrors the steer
+             wizard's vehicle-dimensions step). -->
+        <Style Selector="Border.DimCard">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="VerticalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector="Border.DimImage">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="6"/>
+        </Style>
+        <Style Selector="TextBlock.DimTitle">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.DimSub">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Nested TabControl for vehicle sub-sections -->
+    <TabControl Classes="VehicleSubTabs" TabStripPlacement="Left" Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+        <!-- Vehicle Type Tab -->
+        <TabItem ToolTip.Tip="Vehicle Type">
+            <TabItem.Header>
+                <Border Width="40" Height="40" Background="{DynamicResource IconVehicleConfig}"/>
+            </TabItem.Header>
+            <ScrollViewer>
+                <StackPanel Spacing="16" Margin="16">
+                    <TextBlock Text="Select Vehicle Type" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                               HorizontalAlignment="Center" Margin="0,0,0,8"/>
+
+                    <!-- Vehicle type selector -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="16">
+                        <!-- Harvester -->
+                        <Button Command="{Binding SetVehicleTypeCommand}" CommandParameter="Harvester"
+                                Width="160" Height="120" Padding="8" CornerRadius="8"
+                                BorderThickness="3"
+                                BorderBrush="{Binding Vehicle.Type, Converter={x:Static conv:EnumToSelectionBrushConverter.Instance}, ConverterParameter=Harvester}">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                </Style>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+                                </Style>
+                            </Button.Styles>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/vehiclePageHarvester.png"
+                                       Width="80" Height="60" Stretch="Uniform"/>
+                                <TextBlock Text="Harvester" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Tractor -->
+                        <Button Command="{Binding SetVehicleTypeCommand}" CommandParameter="Tractor"
+                                Width="160" Height="120" Padding="8" CornerRadius="8"
+                                BorderThickness="3"
+                                BorderBrush="{Binding Vehicle.Type, Converter={x:Static conv:EnumToSelectionBrushConverter.Instance}, ConverterParameter=Tractor}">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                </Style>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+                                </Style>
+                            </Button.Styles>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/vehiclePageTractor.png"
+                                       Width="80" Height="60" Stretch="Uniform"/>
+                                <TextBlock Text="Tractor" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Articulated -->
+                        <Button Command="{Binding SetVehicleTypeCommand}" CommandParameter="FourWD"
+                                Width="160" Height="120" Padding="8" CornerRadius="8"
+                                BorderThickness="3"
+                                BorderBrush="{Binding Vehicle.Type, Converter={x:Static conv:EnumToSelectionBrushConverter.Instance}, ConverterParameter=FourWD}">
+                            <Button.Styles>
+                                <Style Selector="Button">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                </Style>
+                                <Style Selector="Button:pointerover">
+                                    <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+                                </Style>
+                            </Button.Styles>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/vehiclePageArticulated.png"
+                                       Width="80" Height="60" Stretch="Uniform"/>
+                                <TextBlock Text="Articulated" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Selection display -->
+                    <Border Background="{DynamicResource StatusOkBrush}" CornerRadius="8" Padding="16,12"
+                            HorizontalAlignment="Center" Margin="0,24,0,0">
+                        <TextBlock Text="{Binding Vehicle.VehicleTypeDisplayName, StringFormat='Selected: {0}'}"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold" FontSize="16"/>
+                    </Border>
+
+                    <TextBlock Text="Select your vehicle type to configure appropriate steering geometry and dimensions."
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="13" TextWrapping="Wrap"
+                               HorizontalAlignment="Center" MaxWidth="500" TextAlignment="Center"
+                               Margin="0,16,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- Hitch/Wheelbase/Track Tab -->
+        <TabItem ToolTip.Tip="Hitch, Wheelbase, Track">
+            <TabItem.Header>
+                <Border Width="40" Height="40" Background="{DynamicResource IconHitch}"/>
+            </TabItem.Header>
+            <ScrollViewer>
+                <Grid ColumnDefinitions="*,*,*" Margin="12,12,12,16">
+                    <!-- Hitch: coupling type + tractor hitch length, with the full
+                         vehicle diagram (the hitch sits at the rear of it) -->
+                    <Border Grid.Column="0" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage" IsVisible="{Binding Vehicle.HasHitchImage}">
+                                <Image Source="{Binding Vehicle.HitchCropImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Hitch" Classes="DimTitle"/>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Hitch length (rear axle &#x2192; pin)" Classes="DimSub"/>
+                                <controls:EditableNumericField HorizontalAlignment="Center"
+                                    Value="{Binding Vehicle.HitchLength, Mode=TwoWay}"
+                                    Unit="m" FormatString="F2"
+                                    EditCommand="{Binding EditHitchLengthCommand}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Coupling type" Classes="DimSub"/>
+                                <ComboBox HorizontalAlignment="Stretch"
+                                          ItemsSource="{Binding HitchTypeOptions}"
+                                          SelectedItem="{Binding SelectedVehicleHitchType, Mode=TwoWay}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Wheelbase: focused crop + field -->
+                    <Border Grid.Column="1" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.WheelbaseCropImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Wheelbase" Classes="DimTitle"/>
+                            <TextBlock Text="Front to rear axle" Classes="DimSub"/>
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Vehicle.Wheelbase, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditWheelbaseCommand}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Track width: focused diagram + field -->
+                    <Border Grid.Column="2" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.TrackWidthImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="150" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Track" Classes="DimTitle"/>
+                            <TextBlock Text="Left to right wheel center" Classes="DimSub"/>
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Vehicle.TrackWidth, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditTrackWidthCommand}"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- Antenna Position Tab -->
+        <TabItem ToolTip.Tip="Antenna Position">
+            <TabItem.Header>
+                <Border Width="40" Height="40" Background="{DynamicResource IconAntenna}"/>
+            </TabItem.Header>
+            <ScrollViewer>
+                <Grid ColumnDefinitions="*,*" Margin="12,12,12,16">
+                    <!-- Side view: pivot (fore/aft) + height are both measured on this view,
+                         so they share the one diagram. -->
+                    <Border Grid.Column="0" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.AntennaSideImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="180" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Pivot &amp; Height" Classes="DimTitle"/>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Pivot distance (axle &#x2192; antenna)" Classes="DimSub"/>
+                                <controls:EditableNumericField HorizontalAlignment="Center"
+                                    Value="{Binding Vehicle.AntennaPivot, Mode=TwoWay}"
+                                    Unit="m" FormatString="F2"
+                                    EditCommand="{Binding EditAntennaPivotCommand}"/>
+                            </StackPanel>
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Antenna height (above ground)" Classes="DimSub"/>
+                                <controls:EditableNumericField HorizontalAlignment="Center"
+                                    Value="{Binding Vehicle.AntennaHeight, Mode=TwoWay}"
+                                    Unit="m" FormatString="F2"
+                                    EditCommand="{Binding EditAntennaHeightCommand}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Top-down view: left/right offset from centerline -->
+                    <Border Grid.Column="1" Classes="DimCard">
+                        <StackPanel Spacing="8">
+                            <Border Classes="DimImage">
+                                <Image Source="{Binding Vehicle.AntennaOffsetImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                                       Stretch="Uniform" MaxHeight="180" HorizontalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Offset" Classes="DimTitle"/>
+                            <TextBlock Text="Left / right of centerline" Classes="DimSub"/>
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Vehicle.AntennaOffset, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditAntennaOffsetCommand}"/>
+
+                            <!-- Offset selector buttons: Left = antenna left of center (negative), Right = antenna right of center (positive) -->
+                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                <Button Width="50" Height="36" Padding="4" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" ToolTip.Tip="Antenna Left of Center"
+                                        Command="{Binding SetAntennaOffsetLeftCommand}">
+                                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/AntennaLeftOffset.png" Stretch="Uniform"/>
+                                </Button>
+                                <Button Width="50" Height="36" Padding="4" Background="{DynamicResource StatusOkBrush}" ToolTip.Tip="Antenna on Centerline"
+                                        Command="{Binding SetAntennaOffsetCenterCommand}">
+                                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/AntennaNoOffset.png" Stretch="Uniform"/>
+                                </Button>
+                                <Button Width="50" Height="36" Padding="4" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" ToolTip.Tip="Antenna Right of Center"
+                                        Command="{Binding SetAntennaOffsetRightCommand}">
+                                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/AntennaRightOffset.png" Stretch="Uniform"/>
+                                </Button>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </ScrollViewer>
+        </TabItem>
+    </TabControl>
+</UserControl>

@@ -14,7 +14,7 @@
   </defs>
 
   <!-- ==================== TITLE ==================== -->
-  <text x="640" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#212121">AgValoniaGPS — Current threading model</text>
+  <text x="640" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#212121">AgOpenWeb — Current threading model</text>
   <text x="640" y="68" text-anchor="middle" font-size="14" fill="#b71c1c" font-weight="700">Problems in red. Compare with threading_model.svg for the target.</text>
   <text x="640" y="88" text-anchor="middle" font-size="13" fill="#616161">Two parallel parse paths, state machine on the wrong thread, ObservableObject written from background.</text>
 

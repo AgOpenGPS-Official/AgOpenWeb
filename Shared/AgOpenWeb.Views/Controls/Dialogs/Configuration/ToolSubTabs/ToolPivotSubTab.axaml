@@ -1,0 +1,112 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:controls="clr-namespace:AgOpenWeb.Views.Controls;assembly=AgOpenWeb.Views"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.Configuration.ToolSubTabs.ToolPivotSubTab"
+             x:DataType="vm:ConfigurationViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.SettingRow">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="0,4"/>
+        </Style>
+        <Style Selector="Button.DirectionBtn">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="MinWidth" Value="100"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Spacing="12" Margin="16,8,16,16">
+            <!-- Only relevant for Trailing/TBT -->
+            <Border Background="{DynamicResource WarningPanelBackgroundBrush}" CornerRadius="6" Padding="12" Margin="0,0,0,16"
+                    IsVisible="{Binding !Tool.IsToolTrailing}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="Note:" Foreground="#DAA520" FontWeight="SemiBold"/>
+                    <TextBlock Text="Pivot settings are only used for Trailing and TBT tool types."
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Dynamic Pivot Diagram -->
+            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="8" Height="150" Margin="0,0,0,16" Padding="8">
+                <Panel>
+                    <!-- Show positive pivot (behind) when value >= 0 -->
+                    <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ToolHitchPivotOffsetPos.png"
+                           Stretch="Uniform"/>
+                </Panel>
+            </Border>
+
+            <!-- Pivot Distance -->
+            <TextBlock Text="Tool Pivot Distance" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Margin="0,8,0,4"/>
+            <TextBlock Text="Distance from hitch pivot point to the tool working point"
+                       Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12" Margin="0,0,0,8"/>
+
+            <Border Classes="SettingRow">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <!-- Direction buttons -->
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Button Classes="DirectionBtn" Content="Behind Pivot"
+                                Command="{Binding SetPivotBehindCommand}"/>
+                        <Button Classes="DirectionBtn" Content="Ahead of Pivot"
+                                Command="{Binding SetPivotAheadCommand}"/>
+                    </StackPanel>
+
+                    <!-- Spacer -->
+                    <Border Grid.Column="1"/>
+
+                    <!-- Value -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                        <controls:EditableNumericField
+                            Value="{Binding Tool.TrailingToolToPivotLength, Mode=TwoWay}"
+                            Unit="m" FormatString="F2"
+                            EditCommand="{Binding EditToolPivotCommand}"/>
+                        <Button Content="Zero" Command="{Binding ZeroToolPivotCommand}"
+                                Background="{DynamicResource SecondaryButtonBackgroundBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Info box -->
+            <Border Background="{DynamicResource InfoPanelBackgroundBrush}" CornerRadius="6" Padding="12" Margin="0,16,0,0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Pivot Explanation:" Foreground="{DynamicResource AccentForegroundBrush}" FontWeight="SemiBold"/>
+                    <TextBlock Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12" TextWrapping="Wrap">
+                        <Run Text="Behind Pivot (positive)"/>
+                        <Run Text=" - Tool working point is behind the hitch pivot (most common)"/>
+                    </TextBlock>
+                    <TextBlock Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12" TextWrapping="Wrap">
+                        <Run Text="Ahead of Pivot (negative)"/>
+                        <Run Text=" - Tool working point is ahead of the hitch pivot (rare)"/>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

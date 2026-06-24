@@ -1,0 +1,480 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+
+using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.State;
+using AgOpenWeb.Models.Track;
+using AgOpenWeb.Services;
+using Microsoft.Extensions.Logging;
+using CommunityToolkit.Mvvm.Input;
+using TrackModel = AgOpenWeb.Models.Track.Track;
+
+namespace AgOpenWeb.ViewModels;
+
+/// <summary>
+/// Track management features: recorded path display, track import,
+/// contour recording/deletion, contour guidance.
+/// </summary>
+public partial class MainViewModel
+{
+    #region Contour Recording State
+
+    private readonly List<Vec3> _contourRecordingPoints = new();
+    private Vec3? _lastContourPoint;
+    private const double ContourMinPointSpacing = 1.0; // Minimum 1m between contour points
+
+    #endregion
+
+    #region Recorded Path Recording State
+
+    private readonly List<RecPathPoint> _recPathRecordingPoints = new();
+    private RecPathPoint? _lastRecPathPoint;
+    private const double RecPathMinPointSpacing = 2.0; // Minimum 2m between recorded path points
+
+    /// <summary>
+    /// Snapshot of the points captured so far in the active recording (empty when not
+    /// recording). Used by the remote web Recorded Path panel to draw the path growing
+    /// on the map as it's driven (native does this via IMapService.SetRecordedPaths).
+    /// Returns a copy so background readers don't trip on the live list being appended.
+    /// </summary>
+    public IReadOnlyList<RecPathPoint> LiveRecordingPoints =>
+        IsRecordingPath ? _recPathRecordingPoints.ToList() : System.Array.Empty<RecPathPoint>();
+
+    #endregion
+
+    #region Track Management Command Initialization
+
+    private void InitializeTrackManagementCommands()
+    {
+        ToggleRecordedPathsCommand = new RelayCommand(() =>
+        {
+            ShowRecordedPaths = !ShowRecordedPaths;
+            StatusMessage = ShowRecordedPaths ? "Recorded paths visible" : "Recorded paths hidden";
+            UpdateRecordedPathsOnMap();
+        });
+
+        StartRecordedPathCommand = new RelayCommand(() =>
+        {
+            if (!IsFieldOpen)
+            {
+                StatusMessage = "Open a field first";
+                return;
+            }
+            _recPathRecordingPoints.Clear();
+            _lastRecPathPoint = null;
+            IsRecordingPath = true;
+            StatusMessage = "Recording path...";
+        });
+
+        StopRecordedPathCommand = new RelayCommand(() =>
+        {
+            if (!IsRecordingPath) return;
+            IsRecordingPath = false;
+
+            if (_recPathRecordingPoints.Count < 5)
+            {
+                StatusMessage = $"Path too short ({_recPathRecordingPoints.Count} points)";
+                _recPathRecordingPoints.Clear();
+                _lastRecPathPoint = null;
+                return;
+            }
+
+            // Create Track for map display
+            var vec3List = _recPathRecordingPoints.Select(p =>
+                new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+            var track = Track.FromRecordedPath(
+                $"RecPath {DateTime.Now:HH:mm:ss}", vec3List);
+
+            RecordedPathTracks.Add(track);
+            SavedTracks.Add(track);
+            UpdateRecordedPathsOnMap();
+
+            // Save as RecPath.txt (current/default)
+            var activeField = _fieldService.ActiveField;
+            if (activeField != null && !string.IsNullOrEmpty(activeField.DirectoryPath))
+            {
+                try
+                {
+                    var pointsCopy = new List<RecPathPoint>(_recPathRecordingPoints);
+                    Services.RecPathFileService.SaveRecPath(activeField.DirectoryPath, pointsCopy);
+                    _logger.LogDebug($"[RecPath] Saved {pointsCopy.Count} points to RecPath.txt");
+                }
+                catch (Exception ex) { _logger.LogDebug($"[RecPath] Save failed: {ex.Message}"); }
+            }
+
+            // Store in playback state for immediate use
+            State.RecordedPath.RecordedPoints = new List<RecPathPoint>(_recPathRecordingPoints);
+            State.RecordedPath.CurrentPositionIndex = 0;
+
+            // Prompt for name
+            HasUnsavedRecordedPath = true;
+            RecordedPathName = $"RecPath_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}";
+
+            StatusMessage = $"Recorded {_recPathRecordingPoints.Count} points - enter a name to save";
+            _recPathRecordingPoints.Clear();
+            _lastRecPathPoint = null;
+        });
+
+        ImportTracksCommand = new RelayCommand(() =>
+        {
+            var activeField = _fieldService.ActiveField;
+            if (activeField == null || string.IsNullOrEmpty(activeField.DirectoryPath))
+            {
+                StatusMessage = "Open a field first before importing tracks";
+                return;
+            }
+
+            // Populate available fields for import
+            ImportFieldsList.Clear();
+            var fieldsDir = FieldsRootDirectory;
+            if (string.IsNullOrEmpty(fieldsDir) || !Directory.Exists(fieldsDir))
+            {
+                StatusMessage = "No fields directory found";
+                return;
+            }
+
+            foreach (var dir in Directory.GetDirectories(fieldsDir))
+            {
+                var fieldName = Path.GetFileName(dir);
+                // Skip the current active field
+                if (dir == activeField.DirectoryPath)
+                    continue;
+                // Only include fields that have tracks
+                if (Services.TrackFilesService.Exists(dir))
+                    ImportFieldsList.Add(fieldName);
+            }
+
+            if (ImportFieldsList.Count == 0)
+            {
+                StatusMessage = "No other fields with tracks found";
+                return;
+            }
+
+            OpenChainDialog(DialogType.ImportTracks);
+        });
+
+        ImportTracksFromFieldCommand = new RelayCommand<string>(fieldName =>
+        {
+            if (string.IsNullOrEmpty(fieldName))
+                return;
+
+            var fieldsDir = FieldsRootDirectory;
+            var sourceDir = Path.Combine(fieldsDir, fieldName);
+
+            try
+            {
+                var importedTracks = Services.TrackFilesService.Load(sourceDir);
+                if (importedTracks.Count == 0)
+                {
+                    StatusMessage = "No tracks found in selected field";
+                    return;
+                }
+
+                // Transform tracks from source field's local plane into the
+                // active field's local plane. Without this, tracks from a
+                // field with a different origin land at completely wrong
+                // physical locations.
+                var transformed = TransformImportedTracks(importedTracks, sourceDir);
+
+                int importCount = 0;
+                foreach (var track in transformed)
+                {
+                    track.IsActive = false;
+                    SavedTracks.Add(track);
+
+                    if (track.Type == TrackType.RecordedPath)
+                        RecordedPathTracks.Add(track);
+                    else if (track.Type == TrackType.Contour)
+                        ContourStrips.Add(track);
+
+                    importCount++;
+                }
+
+                SaveTracksToFile();
+                UpdateRecordedPathsOnMap();
+                UpdateContourStripsOnMap();
+                State.UI.CloseDialog();
+                StatusMessage = $"Imported {importCount} track(s) from '{fieldName}'";
+                _logger.LogDebug("[TrackImport] Imported {Count} tracks from {Field}", importCount, fieldName);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Import failed: {ex.Message}";
+                _logger.LogWarning(ex, "[TrackImport] Failed to import tracks from {Field}", fieldName);
+            }
+        });
+
+        CloseImportTracksDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        DeleteContourTrackCommand = new RelayCommand(() =>
+        {
+            if (SelectedTrack == null)
+            {
+                StatusMessage = "No track selected";
+                return;
+            }
+
+            var trackName = SelectedTrack.Name;
+            var trackToRemove = SelectedTrack;
+            bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
+            SelectedTrack = null;
+            SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
+            RebuildRecordedPathsAndContours();
+            SaveTracksToFile();
+            // A recorded path is re-loaded from RecPath.txt on every field open
+            // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
+            // the file must go too, else it reappears after restart.
+            if (wasRecPath && _fieldService.ActiveField is { } f)
+                RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+            StatusMessage = $"Deleted track '{trackName}'";
+        });
+
+        StartContourRecordingCommand = new RelayCommand(() =>
+        {
+            if (!IsContourModeOn)
+            {
+                StatusMessage = "Enable contour mode first";
+                return;
+            }
+
+            _contourRecordingPoints.Clear();
+            _lastContourPoint = null;
+            IsRecordingContour = true;
+
+            // Capture first point at current GPS position
+            if (Easting != 0 || Northing != 0)
+            {
+                var headingRadians = Heading * Math.PI / 180.0;
+                var firstPoint = new Vec3(Easting, Northing, headingRadians);
+                _contourRecordingPoints.Add(firstPoint);
+                _lastContourPoint = firstPoint;
+            }
+
+            StatusMessage = $"Contour recording started ({_contourRecordingPoints.Count} pts)";
+        });
+
+        StopContourRecordingCommand = new RelayCommand(() =>
+        {
+            if (!IsRecordingContour)
+                return;
+
+            IsRecordingContour = false;
+
+            if (_contourRecordingPoints.Count < 3)
+            {
+                StatusMessage = $"Need at least 3 points for contour (have {_contourRecordingPoints.Count})";
+                _contourRecordingPoints.Clear();
+                _lastContourPoint = null;
+                return;
+            }
+
+            // Create contour track from recorded points
+            var contourTrack = Track.FromContour(
+                $"Contour {DateTime.Now:HH:mm:ss}",
+                new List<Vec3>(_contourRecordingPoints));
+
+            ContourStrips.Add(contourTrack);
+            SavedTracks.Add(contourTrack);
+            SaveTracksToFile();
+            UpdateContourStripsOnMap();
+
+            StatusMessage = $"Contour saved with {_contourRecordingPoints.Count} points";
+            _logger.LogDebug("[Contour] Created contour strip with {Count} points", _contourRecordingPoints.Count);
+
+            _contourRecordingPoints.Clear();
+            _lastContourPoint = null;
+        });
+    }
+
+    #endregion
+
+    /// <summary>
+    /// Called by TracksDialogPanel when a track visibility checkbox is toggled.
+    /// </summary>
+    public void OnTrackVisibilityChanged()
+    {
+        SaveTracksToFile();
+        RebuildRecordedPathsAndContours();
+    }
+
+    #region Recorded Path Display
+
+    private void UpdateRecordedPathsOnMap()
+    {
+        if (ShowRecordedPaths)
+        {
+            var visiblePaths = RecordedPathTracks.Where(t => t.IsVisible).ToList();
+            _mapService.SetRecordedPaths(visiblePaths);
+        }
+        else
+        {
+            _mapService.SetRecordedPaths(Array.Empty<Track>());
+        }
+    }
+
+    private void UpdateContourStripsOnMap()
+    {
+        var visibleStrips = ContourStrips.Where(t => t.IsVisible).ToList();
+        _mapService.SetContourStrips(visibleStrips);
+    }
+
+    /// <summary>
+    /// Rebuild recorded paths and contour strips from SavedTracks after loading a field.
+    /// </summary>
+    private void RebuildRecordedPathsAndContours()
+    {
+        RecordedPathTracks.Clear();
+        ContourStrips.Clear();
+
+        foreach (var track in SavedTracks)
+        {
+            if (track.Type == TrackType.RecordedPath)
+                RecordedPathTracks.Add(track);
+            else if (track.Type == TrackType.Contour)
+                ContourStrips.Add(track);
+        }
+
+        UpdateRecordedPathsOnMap();
+        UpdateContourStripsOnMap();
+    }
+
+    #endregion
+
+    #region Contour Recording (GPS point capture)
+
+    /// <summary>
+    /// Add a point to the contour being recorded, with minimum spacing filtering.
+    /// Called from GPS update handler when IsRecordingContour is true.
+    /// </summary>
+    private void AddContourPoint(double easting, double northing, double headingDegrees)
+    {
+        double headingRadians = headingDegrees * Math.PI / 180.0;
+
+        // Check minimum spacing from last point
+        if (_lastContourPoint.HasValue)
+        {
+            double dx = easting - _lastContourPoint.Value.Easting;
+            double dy = northing - _lastContourPoint.Value.Northing;
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+
+            if (distance < ContourMinPointSpacing)
+                return;
+        }
+
+        var point = new Vec3(easting, northing, headingRadians);
+        _contourRecordingPoints.Add(point);
+        _lastContourPoint = point;
+
+        // Show recording on map
+        var displayPoints = _contourRecordingPoints.Select(p => (p.Easting, p.Northing)).ToList();
+        _mapService.SetRecordingPoints(displayPoints);
+
+        // Update UI periodically
+        if (_contourRecordingPoints.Count % 10 == 0)
+        {
+            StatusMessage = $"Recording contour: {_contourRecordingPoints.Count} points";
+        }
+    }
+
+    #endregion
+
+    #region Recorded Path Recording (GPS point capture)
+
+    /// <summary>
+    /// Add a point to the recorded path, with minimum spacing filtering.
+    /// Called from GPS update handler when IsRecordingPath is true.
+    /// </summary>
+    private void AddRecordedPathPoint(double easting, double northing, double headingDegrees)
+    {
+        double headingRadians = headingDegrees * Math.PI / 180.0;
+
+        if (_lastRecPathPoint.HasValue)
+        {
+            double dx = easting - _lastRecPathPoint.Value.Easting;
+            double dy = northing - _lastRecPathPoint.Value.Northing;
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+
+            if (distance < RecPathMinPointSpacing)
+                return;
+        }
+
+        // Capture speed (minimum 1.0 kmh, matching legacy) and section state
+        double speed = Math.Max(SpeedKmh, 1.0);
+        bool autoBtnState = IsSectionMasterOn;
+
+        var point = new RecPathPoint(easting, northing, headingRadians, speed, autoBtnState);
+        _recPathRecordingPoints.Add(point);
+        _lastRecPathPoint = point;
+
+        // Show path growing on map every 5 points
+        if (_recPathRecordingPoints.Count % 5 == 0)
+        {
+            var vec3List = _recPathRecordingPoints.Select(p =>
+                new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
+            var liveTrack = Track.FromRecordedPath("Recording...", vec3List);
+            _mapService.SetRecordedPaths(new[] { liveTrack });
+        }
+
+        if (_recPathRecordingPoints.Count % 20 == 0)
+            StatusMessage = $"Recording path: {_recPathRecordingPoints.Count} points";
+    }
+
+    /// <summary>
+/// Transform tracks from a source field's local plane into the active
+/// field's local plane. If the active field's origin can't be determined
+/// or the source has no Field.txt, falls back to returning the input
+/// unchanged so the legacy "untransformed" import path still works
+/// (better than failing entirely on partial field data).
+/// </summary>
+private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourceTracks, string sourceDir)
+{
+    var activeField = ActiveField;
+    if (activeField == null) return sourceTracks.ToList();
+
+    Wgs84 sourceOrigin;
+    try
+    {
+        var sourceField = new FieldPlaneFileService().LoadField(sourceDir);
+        sourceOrigin = new Wgs84(sourceField.Origin.Latitude, sourceField.Origin.Longitude);
+    }
+    catch
+    {
+        // No Field.txt in the source directory or the file is malformed.
+        // Treat tracks as already in the active field's plane (legacy behavior).
+        _logger.LogWarning("[TrackImport] Could not read source field origin; importing tracks without coordinate transform");
+        return sourceTracks.ToList();
+    }
+
+    var targetOrigin = new Wgs84(activeField.Origin.Latitude, activeField.Origin.Longitude);
+    var props = new SharedFieldProperties();
+    var sourcePlane = new LocalPlane(sourceOrigin, props);
+    var targetPlane = new LocalPlane(targetOrigin, props);
+
+    return _trackCopierService.ConvertTracks(sourceTracks, sourcePlane, targetPlane);
+}
+
+    #endregion
+}

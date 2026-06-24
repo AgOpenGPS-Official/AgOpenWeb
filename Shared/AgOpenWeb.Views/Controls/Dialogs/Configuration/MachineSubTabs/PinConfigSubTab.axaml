@@ -1,0 +1,231 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="550"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.Configuration.MachineSubTabs.PinConfigSubTab"
+             x:DataType="vm:ConfigurationViewModel">
+
+    <UserControl.Styles>
+        <!-- Pin Label -->
+        <Style Selector="TextBlock.PinLabel">
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+        </Style>
+
+        <!-- Pin ComboBox -->
+        <Style Selector="ComboBox.PinCombo">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+
+        <!-- Action Button -->
+        <Style Selector="Button.ActionButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ActionButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="*,Auto">
+        <ScrollViewer Grid.Row="0">
+            <StackPanel Spacing="12" Margin="16,8,16,16">
+                <!-- Row 1: Pins 1-5 -->
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Pin 1" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin1Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Pin 2" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin2Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Pin 3" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin3Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="Pin 4" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin4Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="Pin 5" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin5Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Row 2: Pins 6-10 -->
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Pin 6" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin6Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Pin 7" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin7Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Pin 8" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin8Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="Pin 9" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin9Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="Pin 10" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin10Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Row 3: Pins 11-15 -->
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Pin 11" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin11Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Pin 12" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin12Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Pin 13" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin13Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="Pin 14" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin14Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="Pin 15" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin15Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Row 4: Pins 16-20 -->
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Pin 16" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin16Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Pin 17" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin17Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Pin 18" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin18Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="Pin 19" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin19Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Text="Pin 20" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin20Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Row 5: Pins 21-24 -->
+                <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="8">
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Pin 21" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin21Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Pin 22" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin22Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Pin 23" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin23Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="Pin 24" Classes="PinLabel"/>
+                        <ComboBox Classes="PinCombo" ItemsSource="{Binding PinFunctionOptions}"
+                                  SelectedItem="{Binding Pin24Function}" HorizontalAlignment="Stretch"/>
+                    </StackPanel>
+                    <!-- Empty column 5 -->
+                    <StackPanel Grid.Column="4"/>
+                </Grid>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Bottom Action Buttons -->
+        <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundListLowBrush}" Padding="16,12">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto">
+                <!-- Reset Button -->
+                <Button Grid.Column="0" Classes="ActionButton" Command="{Binding ResetPinConfigCommand}">
+                    <TextBlock Text="&#x21BA;" FontSize="20" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+                </Button>
+
+                <!-- Upload Button -->
+                <Button Grid.Column="1" Classes="ActionButton" Command="{Binding UploadPinConfigCommand}" Margin="8,0,0,0">
+                    <TextBlock Text="&#x2191;" FontSize="20" Foreground="{DynamicResource StatusOkBrush}"/>
+                </Button>
+
+                <!-- Send + Save -->
+                <Button Grid.Column="3" Classes="ActionButton" Command="{Binding SendAndSaveMachineConfigCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Send + Save" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#x2699;" FontSize="18" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#x2192;" FontSize="18" Foreground="{DynamicResource StatusOkBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

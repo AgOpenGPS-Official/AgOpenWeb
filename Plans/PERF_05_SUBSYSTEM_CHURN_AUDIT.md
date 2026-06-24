@@ -124,12 +124,12 @@ Markers pushed without rebuild on each platform:
   ```
   xcrun devicectl device copy to \
     --device <UDID> --domain-type appDataContainer \
-    --domain-identifier com.agvaloniaagps.ios \
-    --source <marker-file> --destination Documents/AgValoniaGPS/<marker>
+    --domain-identifier com.agopenweb.ios \
+    --source <marker-file> --destination Documents/AgOpenWeb/<marker>
   ```
 - **Android (adb):**
   ```
-  adb push <marker-file> /storage/emulated/0/Documents/AgValoniaGPS/<marker>
+  adb push <marker-file> /storage/emulated/0/Documents/AgOpenWeb/<marker>
   ```
   (Verify path matches `Environment.SpecialFolder.MyDocuments` on Android.)
 

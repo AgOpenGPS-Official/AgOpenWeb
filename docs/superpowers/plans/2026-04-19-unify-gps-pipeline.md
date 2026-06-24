@@ -111,19 +111,19 @@ AutoSteerService.ProcessGpsBuffer (single entry point)
 ## Files Affected
 
 **Remove:**
-- Shared/AgValoniaGPS.Services/NmeaParserService.cs (~260 lines)
-- Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs (~550 lines)
+- Shared/AgOpenWeb.Services/NmeaParserService.cs (~260 lines)
+- Shared/AgOpenWeb.Services/Pipeline/GpsPipelineService.cs (~550 lines)
 
 **Modify heavily:**
-- Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs (add tool/section/coverage)
-- Shared/AgValoniaGPS.ViewModels/MainViewModel.cs (subscribe to AutoSteerService instead of pipeline)
-- Shared/AgValoniaGPS.ViewModels/MainViewModel.ApplyResults.cs
-- Shared/AgValoniaGPS.Services/UdpCommunicationService.cs (simplify receive path)
-- Shared/AgValoniaGPS.Services/GpsService.cs (simplify or remove)
+- Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs (add tool/section/coverage)
+- Shared/AgOpenWeb.ViewModels/MainViewModel.cs (subscribe to AutoSteerService instead of pipeline)
+- Shared/AgOpenWeb.ViewModels/MainViewModel.ApplyResults.cs
+- Shared/AgOpenWeb.Services/UdpCommunicationService.cs (simplify receive path)
+- Shared/AgOpenWeb.Services/GpsService.cs (simplify or remove)
 
 **Modify lightly:**
-- Shared/AgValoniaGPS.Services/Interfaces/IGpsService.cs
-- Shared/AgValoniaGPS.Services/Interfaces/IGpsPipelineService.cs (remove)
+- Shared/AgOpenWeb.Services/Interfaces/IGpsService.cs
+- Shared/AgOpenWeb.Services/Interfaces/IGpsPipelineService.cs (remove)
 - Platform DI setup files (remove pipeline registration)
 
 **Estimated net:** -500 to -700 lines removed

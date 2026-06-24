@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <RuntimeIdentifier>iossimulator-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <MtouchLink>None</MtouchLink>
+    <ApplicationId>com.agopenweb.ios</ApplicationId>
+    <ApplicationTitle>AgOpenWeb</ApplicationTitle>
+  </PropertyGroup>
+
+  <!-- iOS Device Signing Configuration -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('ios-'))">
+    <CodesignKey>Apple Development</CodesignKey>
+    <CodesignProvision>Automatic</CodesignProvision>
+    <DevTeam>7LRC55SQS3</DevTeam>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <BundleResource Include="Resources\LaunchScreen.storyboard" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.3" />
+    <PackageReference Include="Avalonia.iOS" Version="12.0.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
+    <!-- HotAvalonia removed - uses DynamicMethod which is not supported on iOS (no JIT allowed) -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Views\AgOpenWeb.Views.csproj" />
+  </ItemGroup>
+
+</Project>

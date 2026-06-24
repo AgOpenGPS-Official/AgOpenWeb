@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -34,13 +34,13 @@ touching any field.
 Two grep checks confirm:
 
 ```
-$ grep -rn 'ConnectionState\|\.Connections\.\w\+\s*=' Shared/AgValoniaGPS.Services
+$ grep -rn 'ConnectionState\|\.Connections\.\w\+\s*=' Shared/AgOpenWeb.Services
 (no output)
 
-$ grep -rn 'State\.Connections\.\w\+\s*=' Shared/AgValoniaGPS.ViewModels
-Shared/AgValoniaGPS.ViewModels/MainViewModel.cs:514-518      (UI hello-timer)
-Shared/AgValoniaGPS.ViewModels/MainViewModel.Ntrip.cs:195-196 (Dispatcher-Posted)
-Shared/AgValoniaGPS.ViewModels/MainViewModel.Ntrip.cs:218    (Dispatcher-Posted)
+$ grep -rn 'State\.Connections\.\w\+\s*=' Shared/AgOpenWeb.ViewModels
+Shared/AgOpenWeb.ViewModels/MainViewModel.cs:514-518      (UI hello-timer)
+Shared/AgOpenWeb.ViewModels/MainViewModel.Ntrip.cs:195-196 (Dispatcher-Posted)
+Shared/AgOpenWeb.ViewModels/MainViewModel.Ntrip.cs:218    (Dispatcher-Posted)
 ```
 
 Every writer is on the UI thread. Every service-originated event
@@ -147,11 +147,11 @@ path instead.
 - **`VehicleState`, `UIState`, `SimulatorState`, `SectionState`**
   weren't in the parent plan's phase list but the same audit logic
   applies. Grep for `State\.\w+\.\w+\s*=` from
-  `Shared/AgValoniaGPS.Services/`:
+  `Shared/AgOpenWeb.Services/`:
 
   ```
   $ grep -rn 'State\.\w\+\.\w\+\s*=\|_appState\.\w\+\.\w\+\s*='
-       Shared/AgValoniaGPS.Services
+       Shared/AgOpenWeb.Services
   (no output after Phase E)
   ```
 
@@ -173,7 +173,7 @@ path instead.
 - Add the thread-ownership doc block to `ConnectionState.cs` listing
   each property's writer + source path.
 - New `ConnectionStateCycleTests.cs` in
-  `Tests/AgValoniaGPS.Services.Tests/Pipeline/`:
+  `Tests/AgOpenWeb.Services.Tests/Pipeline/`:
   - `IGpsPipelineService_has_no_ConnectionState_parameter`
   - `INtripClientService_has_no_ConnectionState_parameter`
   - `IUdpCommunicationService_has_no_ConnectionState_parameter`
@@ -212,7 +212,7 @@ change possible.
 Phase F is done when:
 
 1. `grep -rn 'State\.\w+\.\w+\s*=\|_appState\.\w+\.\w+\s*='
-   Shared/AgValoniaGPS.Services` returns **zero** (already true
+   Shared/AgOpenWeb.Services` returns **zero** (already true
    as of Phase E close; Phase F formalizes the end state).
 2. Full test suite passes.
 3. `ConnectionState.cs` has a thread-ownership doc block.
@@ -227,5 +227,5 @@ Phase F is done when:
   template; FieldState got the same doc + guard treatment.
 - [THREADING_MIGRATION_PARKING_LOT.md](THREADING_MIGRATION_PARKING_LOT.md)
   — final review happens here.
-- PR [#259](https://github.com/AgOpenGPS-Official/AgValoniaGPS/pull/259)
+- PR [#259](https://github.com/AgOpenGPS-Official/AgOpenWeb/pull/259)
   — draft → ready-for-review.

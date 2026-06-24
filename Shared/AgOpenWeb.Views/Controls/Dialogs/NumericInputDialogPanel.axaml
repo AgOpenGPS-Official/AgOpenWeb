@@ -1,0 +1,91 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:controls="clr-namespace:AgOpenWeb.Views.Controls;assembly=AgOpenWeb.Views"
+             xmlns:conv="clr-namespace:AgOpenWeb.Views.Converters;assembly=AgOpenWeb.Views"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="400"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.NumericInputDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsNumericInputDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsNumericInputDialogVisible}">
+
+    <UserControl.Resources>
+        <conv:InverseBoolConverter x:Key="InverseBool"/>
+    </UserControl.Resources>
+
+    <!-- Full screen overlay with backdrop -->
+    <Grid>
+        <!-- Semi-transparent backdrop - clicking dismisses -->
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
+
+        <!-- Centered dialog -->
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="16"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                MinWidth="300" MaxWidth="350">
+            <StackPanel Spacing="12">
+                <!-- Title -->
+                <TextBlock Text="{Binding NumericInputDialogTitle}" FontSize="18" FontWeight="Bold"
+                           Foreground="{DynamicResource InfoAccentBrush}" HorizontalAlignment="Center"/>
+
+                <!-- Current Value Display (shown with on-screen keyboard) -->
+                <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="12,8"
+                        IsVisible="{Binding Display.KeyboardEnabled}">
+                    <TextBlock x:Name="ValueDisplay" FontSize="32" FontWeight="Bold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" HorizontalAlignment="Center"
+                               Text="{Binding NumericInputDialogDisplayText}"/>
+                </Border>
+
+                <!-- Numeric Keyboard (visible when KeyboardEnabled) -->
+                <controls:NumericKeyboardPanel x:Name="Keyboard"
+                    IsVisible="{Binding Display.KeyboardEnabled}"
+                    Value="{Binding NumericInputDialogValue, Mode=TwoWay}"
+                    DisplayText="{Binding NumericInputDialogDisplayText, Mode=OneWayToSource}"
+                    IntegerOnly="{Binding NumericInputDialogIntegerOnly}"
+                    AllowNegative="{Binding NumericInputDialogAllowNegative}"/>
+
+                <!-- Text input fallback (shown when on-screen keyboard is disabled) -->
+                <TextBox x:Name="DirectInput"
+                         IsVisible="{Binding Display.KeyboardEnabled, Converter={StaticResource InverseBool}}"
+                         Text="{Binding NumericInputDialogDisplayText, Mode=TwoWay}"
+                         FontSize="32" FontWeight="Bold"
+                         HorizontalContentAlignment="Center"
+                         Watermark="Enter value..."
+                         Margin="0,4"/>
+
+                <!-- Action Buttons -->
+                <Grid ColumnDefinitions="*,*" Margin="0,8,0,0">
+                    <Button Grid.Column="0" Content="{loc:Localize Cancel}" Margin="0,0,4,0"
+                            Command="{Binding CancelNumericInputDialogCommand}"
+                            Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            HorizontalAlignment="Stretch" Height="44" FontSize="16"
+                            HorizontalContentAlignment="Center" CornerRadius="6"/>
+                    <Button Grid.Column="1" Content="{loc:Localize OK}" Margin="4,0,0,0"
+                            Command="{Binding ConfirmNumericInputDialogCommand}"
+                            Background="{DynamicResource InfoAccentBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            HorizontalAlignment="Stretch" Height="44" FontSize="16"
+                            HorizontalContentAlignment="Center" CornerRadius="6"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

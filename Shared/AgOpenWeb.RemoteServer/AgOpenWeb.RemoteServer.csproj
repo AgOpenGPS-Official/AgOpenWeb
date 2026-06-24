@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Phase 1 (Plans/REMOTE_WEB_UI_SPLIT.md §7) — embedded ASP.NET Core + SignalR
+    server that runs ALONGSIDE the Avalonia app and streams a Scene + Tick feed
+    to a browser map client. Lives in Shared so the eventual headless cab-PC
+    host reuses it. Reads ApplicationState (Models) directly — the live DI
+    instance is passed in by the host.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <!-- Phase 2: coverage streaming reads ICoverageMapService (Avalonia-free). -->
+    <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+  </ItemGroup>
+
+  <!-- Client assets shipped inside the assembly (no content-root/copy plumbing). -->
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot\**" />
+  </ItemGroup>
+
+</Project>

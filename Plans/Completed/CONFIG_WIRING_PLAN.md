@@ -1,6 +1,6 @@
 # Configuration Wiring Plan
 
-This document tracks the wiring of UI configuration settings to AgValonia backend services.
+This document tracks the wiring of UI configuration settings to AgOpenWeb backend services.
 
 ## ✅ Architecture Status (Complete)
 

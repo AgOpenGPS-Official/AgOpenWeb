@@ -1,0 +1,174 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:steer="clr-namespace:AgOpenWeb.ViewModels.Wizards.SteerWizard;assembly=AgOpenWeb.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="650"
+             x:Class="AgOpenWeb.Views.Controls.Wizards.SteerWizard.AutoMotorCalibrationStepView"
+             x:DataType="steer:AutoMotorCalibrationStepViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <TextBlock Grid.Row="0"
+                   Text="{Binding Title}"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                   Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="1"
+                   Text="{Binding PhaseDescription}"
+                   FontSize="16"
+                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                   TextWrapping="Wrap"
+                   LineHeight="22"
+                   Margin="0,0,0,24"/>
+
+        <ScrollViewer Grid.Row="2">
+            <StackPanel Spacing="16">
+
+                <!-- Live WAS angle -->
+                <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        CornerRadius="12"
+                        Padding="20"
+                        HorizontalAlignment="Center">
+                    <StackPanel HorizontalAlignment="Center" Spacing="4">
+                        <TextBlock Text="Live Steer Angle"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding LiveSteerAngle, StringFormat='{}{0:F1}'}"
+                                   FontSize="36"
+                                   FontWeight="Bold"
+                                   Foreground="{DynamicResource SystemControlHighlightAccentBrush}"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== Phase A0: Start + gate hints ===== -->
+                <StackPanel IsVisible="{Binding IsPhaseA0}" Spacing="12">
+                    <Button Command="{Binding StartTestCommand}"
+                            Content="Start Motor Test"
+                            HorizontalAlignment="Center"
+                            Padding="24,12"
+                            FontSize="18"
+                            FontWeight="SemiBold"
+                            Background="{DynamicResource SystemControlHighlightAccentBrush}"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            CornerRadius="8"
+                            Cursor="Hand"
+                            IsVisible="{Binding HasHardware}"
+                            IsEnabled="{Binding CanStartTest}"/>
+
+                    <TextBlock Text="{Binding PhysicalSwitchPromptText}"
+                               FontSize="14"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding WaitingForPhysicalSwitch}"/>
+
+                    <TextBlock Text="No hardware connected - connect AutoSteer module to run calibration."
+                               FontSize="14"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding !HasHardware}"/>
+                </StackPanel>
+
+                <!-- ===== Phase A1: Progress (Kp ramp) ===== -->
+                <StackPanel IsVisible="{Binding IsPhaseA1}" Spacing="12">
+                    <ProgressBar Value="{Binding Progress}"
+                                 Minimum="0" Maximum="1"
+                                 Height="8"
+                                 CornerRadius="4"
+                                 Foreground="{DynamicResource SystemControlHighlightAccentBrush}"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="32">
+                        <StackPanel>
+                            <TextBlock Text="Current Kp"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding CurrentKp}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Module PWM"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding ReportedModulePwm}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource SystemControlHighlightAccentBrush}"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="WAS Angle"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding LiveSteerAngle, StringFormat='{}{0:F1}°'}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- ===== Phase A Result ===== -->
+                <StackPanel IsVisible="{Binding IsPhaseAResult}" Spacing="16">
+                    <Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                            CornerRadius="8" Padding="16">
+                        <TextBlock Text="{Binding PhaseResult}"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                   TextWrapping="Wrap"/>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12">
+                        <Button Command="{Binding RedoPhaseACommand}"
+                                Content="Redo"
+                                Padding="16,8"
+                                FontSize="14"
+                                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                CornerRadius="8"
+                                Cursor="Hand"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="3"
+                Background="#C0392B"
+                CornerRadius="8"
+                Padding="12"
+                Margin="0,16,0,0"
+                IsVisible="{Binding HasValidationError}">
+            <TextBlock Text="{Binding ValidationMessage}"
+                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                       FontSize="14"
+                       TextWrapping="Wrap"/>
+        </Border>
+    </Grid>
+</UserControl>

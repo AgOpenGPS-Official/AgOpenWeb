@@ -1,6 +1,6 @@
-# AgValoniaGPS3 Architecture
+# AgOpenWeb3 Architecture
 
-This document describes the current architecture of AgValoniaGPS3, including service communication patterns, state management, domain models, and data flow.
+This document describes the current architecture of AgOpenWeb3, including service communication patterns, state management, domain models, and data flow.
 
 **Last Updated:** December 2025
 
@@ -25,7 +25,7 @@ This document describes the current architecture of AgValoniaGPS3, including ser
 
 ## Overview
 
-AgValoniaGPS3 is a cross-platform agricultural GPS guidance application built with:
+AgOpenWeb3 is a cross-platform agricultural GPS guidance application built with:
 - **Avalonia UI 11.3** - Cross-platform UI framework
 - **ReactiveUI 20.1** - MVVM with reactive extensions
 - **.NET 10.0** - Target framework
@@ -57,9 +57,9 @@ See issues #187-192 for examples of violations that were fixed: status bars, loc
 ## Project Structure
 
 ```
-AgValoniaGPS3/
+AgOpenWeb3/
 ├── Shared/                              # 91.7% - Platform-agnostic code
-│   ├── AgValoniaGPS.Models/            # Data models, geometry, state, configuration
+│   ├── AgOpenWeb.Models/            # Data models, geometry, state, configuration
 │   │   ├── Base/                       # Core types: Vec2, Vec3, GeometryMath
 │   │   ├── Configuration/              # Config models: VehicleConfig, ToolConfig, etc.
 │   │   ├── State/                      # Runtime state: VehicleState, GuidanceState
@@ -68,7 +68,7 @@ AgValoniaGPS3/
 │   │   ├── Field/                      # Field, boundaries, flags
 │   │   └── Communication/              # UDP/PGN message models
 │   │
-│   ├── AgValoniaGPS.Services/          # Business logic
+│   ├── AgOpenWeb.Services/          # Business logic
 │   │   ├── AutoSteer/                  # AutoSteerService, PgnBuilder
 │   │   ├── Track/                      # TrackGuidanceService, TrackNudgingService
 │   │   ├── YouTurn/                    # YouTurnCreationService, YouTurnGuidanceService
@@ -78,11 +78,11 @@ AgValoniaGPS3/
 │   │   ├── IsoXml/                     # ISOBUS XML import/export
 │   │   └── Interfaces/                 # Service interfaces
 │   │
-│   ├── AgValoniaGPS.ViewModels/        # MVVM ViewModels
+│   ├── AgOpenWeb.ViewModels/        # MVVM ViewModels
 │   │   ├── MainViewModel.cs            # Main orchestrator (26+ dependencies)
 │   │   └── ConfigurationViewModel.cs   # Configuration dialog logic
 │   │
-│   └── AgValoniaGPS.Views/             # Shared UI
+│   └── AgOpenWeb.Views/             # Shared UI
 │       ├── Controls/
 │       │   ├── DrawingContextMapControl.cs  # Map rendering (30 FPS)
 │       │   ├── Panels/                 # Navigation, simulator, section controls
@@ -91,17 +91,17 @@ AgValoniaGPS3/
 │       └── Assets/                     # Icons, images
 │
 ├── Platforms/                           # 8.3% - Platform-specific code
-│   ├── AgValoniaGPS.Desktop/           # Windows/macOS/Linux
+│   ├── AgOpenWeb.Desktop/           # Windows/macOS/Linux
 │   │   ├── Views/MainWindow.axaml      # Desktop window with drag handlers
 │   │   ├── Services/                   # DialogService, MapService
 │   │   └── DependencyInjection/        # DI registration
 │   │
-│   ├── AgValoniaGPS.iOS/               # iOS/iPadOS
+│   ├── AgOpenWeb.iOS/               # iOS/iPadOS
 │   │   ├── Views/MainView.axaml        # iOS view with drag handlers
 │   │   ├── Services/                   # Platform services
 │   │   └── DependencyInjection/        # DI registration
 │   │
-│   └── AgValoniaGPS.Android/           # Android
+│   └── AgOpenWeb.Android/           # Android
 │
 ├── TestRunner/                          # Test harness for guidance algorithms
 ├── Reference/                           # PGN specs, protocol documentation
@@ -114,7 +114,7 @@ AgValoniaGPS3/
 
 ### Core Geometry Types
 
-Located in `Shared/AgValoniaGPS.Models/Base/`:
+Located in `Shared/AgOpenWeb.Models/Base/`:
 
 #### Vec2 - 2D Point
 ```csharp
@@ -172,7 +172,7 @@ public static class GeometryMath
 
 The key architectural insight: **"An AB line is just a curve with 2 points."**
 
-Located in `Shared/AgValoniaGPS.Models/Track/Track.cs`:
+Located in `Shared/AgOpenWeb.Models/Track/Track.cs`:
 
 ```csharp
 public enum TrackType
@@ -221,7 +221,7 @@ public class Track
 
 ### ConfigurationStore (Static Singleton)
 
-Central repository for all user-configurable settings. Located in `Shared/AgValoniaGPS.Models/Configuration/ConfigurationStore.cs`:
+Central repository for all user-configurable settings. Located in `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs`:
 
 ```csharp
 public class ConfigurationStore : ReactiveObject
@@ -356,7 +356,7 @@ User Input (UI) → ConfigurationViewModel → ConfigurationStore.Instance
 
 ### ApplicationState (Static Singleton)
 
-Runtime state that is **not** persisted. Located in `Shared/AgValoniaGPS.Models/State/ApplicationState.cs`:
+Runtime state that is **not** persisted. Located in `Shared/AgOpenWeb.Models/State/ApplicationState.cs`:
 
 ```csharp
 public class ApplicationState : ReactiveObject
@@ -449,7 +449,7 @@ This enables:
 All services registered as **singletons** in `ServiceCollectionExtensions.cs`:
 
 ```csharp
-public static IServiceCollection AddAgValoniaServices(this IServiceCollection services)
+public static IServiceCollection AddAgOpenWebServices(this IServiceCollection services)
 {
     // State
     services.AddSingleton<ApplicationState>();
@@ -586,7 +586,7 @@ var minFix = ConfigurationStore.Instance.Connection.MinFixQuality;
 
 ### TrackGuidanceService
 
-Located in `Shared/AgValoniaGPS.Services/Track/TrackGuidanceService.cs`.
+Located in `Shared/AgOpenWeb.Services/Track/TrackGuidanceService.cs`.
 
 Handles both **Pure Pursuit** and **Stanley** algorithms for all track types (AB lines and curves).
 
@@ -752,7 +752,7 @@ Byte 13: CRC
 
 ### PgnBuilder (Zero-Allocation)
 
-Located in `Shared/AgValoniaGPS.Services/AutoSteer/PgnBuilder.cs`:
+Located in `Shared/AgOpenWeb.Services/AutoSteer/PgnBuilder.cs`:
 
 ```csharp
 public static class PgnBuilder
@@ -1096,16 +1096,16 @@ See `MICROKERNEL_MIGRATION_PLAN.md` for proposed evolution toward:
 | Area | Key Files |
 |------|-----------|
 | **DI Setup** | `Platforms/*/DependencyInjection/ServiceCollectionExtensions.cs` |
-| **State** | `Shared/AgValoniaGPS.Models/State/ApplicationState.cs` |
-| **Config** | `Shared/AgValoniaGPS.Models/Configuration/ConfigurationStore.cs` |
-| **MainViewModel** | `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` |
-| **AutoSteer** | `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs` |
-| **PGN Builder** | `Shared/AgValoniaGPS.Services/AutoSteer/PgnBuilder.cs` |
-| **UDP** | `Shared/AgValoniaGPS.Services/UdpCommunicationService.cs` |
-| **Guidance** | `Shared/AgValoniaGPS.Services/Track/TrackGuidanceService.cs` |
-| **Track Model** | `Shared/AgValoniaGPS.Models/Track/Track.cs` |
-| **Geometry** | `Shared/AgValoniaGPS.Models/Base/GeometryMath.cs` |
-| **Vec Types** | `Shared/AgValoniaGPS.Models/Base/Vec2.cs`, `Vec3.cs` |
-| **Map Render** | `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs` |
-| **Desktop Main** | `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml` |
-| **iOS Main** | `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml` |
+| **State** | `Shared/AgOpenWeb.Models/State/ApplicationState.cs` |
+| **Config** | `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs` |
+| **MainViewModel** | `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` |
+| **AutoSteer** | `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs` |
+| **PGN Builder** | `Shared/AgOpenWeb.Services/AutoSteer/PgnBuilder.cs` |
+| **UDP** | `Shared/AgOpenWeb.Services/UdpCommunicationService.cs` |
+| **Guidance** | `Shared/AgOpenWeb.Services/Track/TrackGuidanceService.cs` |
+| **Track Model** | `Shared/AgOpenWeb.Models/Track/Track.cs` |
+| **Geometry** | `Shared/AgOpenWeb.Models/Base/GeometryMath.cs` |
+| **Vec Types** | `Shared/AgOpenWeb.Models/Base/Vec2.cs`, `Vec3.cs` |
+| **Map Render** | `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs` |
+| **Desktop Main** | `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml` |
+| **iOS Main** | `Platforms/AgOpenWeb.iOS/Views/MainView.axaml` |

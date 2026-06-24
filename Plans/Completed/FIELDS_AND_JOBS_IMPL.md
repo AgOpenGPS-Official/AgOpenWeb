@@ -39,18 +39,18 @@ testable in isolation, but no milestone is merged to `develop` on its own.
 **Goal:** define `Job`, `JobSummary`, `JobStatus`, `JobWorkTypeSuggestions`, plus the `field.json` / `job.json` shapes. The app behaves identically; new files appear silently when fields are saved/loaded.
 
 **New files**
-- `Shared/AgValoniaGPS.Models/Job/Job.cs`
-- `Shared/AgValoniaGPS.Models/Job/JobSummary.cs`
-- `Shared/AgValoniaGPS.Models/Job/JobStatus.cs`
-- `Shared/AgValoniaGPS.Models/Job/JobWorkTypeSuggestions.cs` (seed list + helper for distinct prior labels)
-- `Shared/AgValoniaGPS.Services/Fields/FieldJsonService.cs` — write/read `field.json` (folder is `Fields/` plural; `Services.Field` namespace collides with the `Field` class)
-- `Shared/AgValoniaGPS.Services/Fields/JobJsonService.cs` — write/read `<field>/jobs/<task>/job.json`
+- `Shared/AgOpenWeb.Models/Job/Job.cs`
+- `Shared/AgOpenWeb.Models/Job/JobSummary.cs`
+- `Shared/AgOpenWeb.Models/Job/JobStatus.cs`
+- `Shared/AgOpenWeb.Models/Job/JobWorkTypeSuggestions.cs` (seed list + helper for distinct prior labels)
+- `Shared/AgOpenWeb.Services/Fields/FieldJsonService.cs` — write/read `field.json` (folder is `Fields/` plural; `Services.Field` namespace collides with the `Field` class)
+- `Shared/AgOpenWeb.Services/Fields/JobJsonService.cs` — write/read `<field>/jobs/<task>/job.json`
 
 **Modified**
-- `Shared/AgValoniaGPS.Models/Field.cs` — add `LastOpenedDate` (separate from `LastModifiedDate` so view-only opens don't bump modified).
-- `Shared/AgValoniaGPS.Services/FieldService.cs` — on save, write `field.json` alongside legacy `Field.txt` / `field.geojson`. On load, prefer `field.json` if present.
+- `Shared/AgOpenWeb.Models/Field.cs` — add `LastOpenedDate` (separate from `LastModifiedDate` so view-only opens don't bump modified).
+- `Shared/AgOpenWeb.Services/FieldService.cs` — on save, write `field.json` alongside legacy `Field.txt` / `field.geojson`. On load, prefer `field.json` if present.
 
-**Key shapes** (see `Shared/AgValoniaGPS.Models/Job/` for the canonical source):
+**Key shapes** (see `Shared/AgOpenWeb.Models/Job/` for the canonical source):
 
 ```csharp
 public enum JobStatus { InProgress, Done, Abandoned }
@@ -89,15 +89,15 @@ public sealed record JobSummary(
 **Goal:** every field-load flow now goes through a default auto-created job. Coverage path becomes `<Field>/jobs/<TaskName>/coverage.bin`. No visible UX change yet — the dialog still says "Open Field"; under the hood a job is created.
 
 **New files**
-- `Shared/AgValoniaGPS.Services/Interfaces/IJobService.cs`
-- `Shared/AgValoniaGPS.Services/JobService.cs`
-- `Tests/AgValoniaGPS.Services.Tests/JobServiceTests.cs`
+- `Shared/AgOpenWeb.Services/Interfaces/IJobService.cs`
+- `Shared/AgOpenWeb.Services/JobService.cs`
+- `Tests/AgOpenWeb.Services.Tests/JobServiceTests.cs`
 
 **Modified**
-- `Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs` — coverage save/load keyed by `(fieldName, taskName)`, not just field name. Add `SetActiveJob(string fieldName, string taskName)`.
-- `Shared/AgValoniaGPS.Models/Configuration/ConfigurationStore.cs` — add `ActiveJobTaskName` (string, parallels `ActiveVehicleProfileName`).
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` — on field open, call `JobService.GetOrCreateDefaultJob(fieldName)` and `_coverageMapService.SetActiveJob(...)`.
-- `Shared/AgValoniaGPS.Services/FieldService.cs` — `OpenField` now returns the loaded field *and* a job context (or fires an event the VM picks up).
+- `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` — coverage save/load keyed by `(fieldName, taskName)`, not just field name. Add `SetActiveJob(string fieldName, string taskName)`.
+- `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs` — add `ActiveJobTaskName` (string, parallels `ActiveVehicleProfileName`).
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` — on field open, call `JobService.GetOrCreateDefaultJob(fieldName)` and `_coverageMapService.SetActiveJob(...)`.
+- `Shared/AgOpenWeb.Services/FieldService.cs` — `OpenField` now returns the loaded field *and* a job context (or fires an event the VM picks up).
 
 **Key shapes**
 ```csharp
@@ -137,7 +137,7 @@ For each field directory with `Coverage.bin` but no `jobs/`:
 2. Move `Coverage.bin` → `jobs/imported-<...>/coverage.bin`.
 3. Idempotent (check for `jobs/` first).
 
-`Tests/AgValoniaGPS.Services.Tests/LegacyFieldMigrationTests.cs` — covers idempotency, mtime parsing, missing-coverage fields untouched.
+`Tests/AgOpenWeb.Services.Tests/LegacyFieldMigrationTests.cs` — covers idempotency, mtime parsing, missing-coverage fields untouched.
 
 **Risks**
 - The active-job lifecycle (when does default open trigger?) needs to be exactly one place — `MainViewModel.OpenFieldAsync` — to avoid coverage being written under the wrong job during edge flows (cancelled load, error).
@@ -148,16 +148,16 @@ For each field directory with `Coverage.bin` but no `jobs/`:
 **Goal:** the new two-column picker is the default "Open Field / Job" entry. Operator can pick a field and either `Open Field Only`, start a `New Job`, or resume an existing job from the per-field history grid.
 
 **New files**
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/StartWorkSessionDialogPanel.axaml`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/StartWorkSessionDialogPanel.axaml.cs`
-- `Shared/AgValoniaGPS.ViewModels/StartWorkSessionDialogViewModel.cs`
-- `Tests/AgValoniaGPS.UI.Tests/StartWorkSessionDialogTests.cs`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/StartWorkSessionDialogPanel.axaml`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/StartWorkSessionDialogPanel.axaml.cs`
+- `Shared/AgOpenWeb.ViewModels/StartWorkSessionDialogViewModel.cs`
+- `Tests/AgOpenWeb.UI.Tests/StartWorkSessionDialogTests.cs`
 
 **Modified**
-- `Shared/AgValoniaGPS.Models/State/UIState.cs` — add `DialogType.StartWorkSession`.
-- `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml` — register the new panel.
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` — add `StartWorkSessionDialogVm` property, `ShowStartWorkSessionDialogCommand`.
-- `Shared/AgValoniaGPS.Views/Controls/Panels/JobMenuPanel.axaml` — re-point `Open Field` button at `ShowStartWorkSessionDialogCommand` (the legacy `FieldSelectionDialog` is left wired to its own button until M5 cleanup so nothing breaks if M3 is reverted).
+- `Shared/AgOpenWeb.Models/State/UIState.cs` — add `DialogType.StartWorkSession`.
+- `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml` — register the new panel.
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` — add `StartWorkSessionDialogVm` property, `ShowStartWorkSessionDialogCommand`.
+- `Shared/AgOpenWeb.Views/Controls/Panels/JobMenuPanel.axaml` — re-point `Open Field` button at `ShowStartWorkSessionDialogCommand` (the legacy `FieldSelectionDialog` is left wired to its own button until M5 cleanup so nothing breaks if M3 is reverted).
 
 **Layout** (mirrors picker convention from #346)
 ```
@@ -209,14 +209,14 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
 **Goal:** cross-field resume UX. `Resume Last Job` button on the JobMenu reopens the most recent job in one tap. `Resume Task` button opens a flat list across all fields, ordered by `LastOpenedAt DESC`.
 
 **New files**
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/ResumeTaskDialogPanel.axaml(.cs)`
-- `Shared/AgValoniaGPS.ViewModels/ResumeTaskDialogViewModel.cs`
-- `Tests/AgValoniaGPS.UI.Tests/ResumeTaskDialogTests.cs`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/ResumeTaskDialogPanel.axaml(.cs)`
+- `Shared/AgOpenWeb.ViewModels/ResumeTaskDialogViewModel.cs`
+- `Tests/AgOpenWeb.UI.Tests/ResumeTaskDialogTests.cs`
 
 **Modified**
-- `Shared/AgValoniaGPS.Models/State/UIState.cs` — add `DialogType.ResumeTask`.
-- `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml`.
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` — `ResumeLastJobCommand`, `ShowResumeTaskDialogCommand`.
+- `Shared/AgOpenWeb.Models/State/UIState.cs` — add `DialogType.ResumeTask`.
+- `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml`.
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` — `ResumeLastJobCommand`, `ShowResumeTaskDialogCommand`.
 
 **Row format** (per the parent plan / screencap 3)
 ```
@@ -238,16 +238,16 @@ Notes: First pass, north section…              <-- 12pt SubHeader, truncated 8
 **Goal:** the operator-facing button hub matches the spec in the parent plan. Closing a job offers AgShare upload / KML export / ISOXML export based on per-profile opt-in flags.
 
 **Modified**
-- `Shared/AgValoniaGPS.Views/Controls/Panels/JobMenuPanel.axaml` — reduce to the 9-button set in the parent plan §UI.
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.Commands.Fields.cs` — new commands:
+- `Shared/AgOpenWeb.Views/Controls/Panels/JobMenuPanel.axaml` — reduce to the 9-button set in the parent plan §UI.
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.Commands.Fields.cs` — new commands:
     - `ResumeLastJobCommand` (M4 already wires this — keep)
     - `InFieldCommand` (existing `DriveInCommand` rewire — uses `IFieldService.FindFieldsNear` from §service work)
     - `CloseJobCommand` — fires hooks then `JobService.CloseCurrentJob(Done)`
-- `Shared/AgValoniaGPS.Models/Configuration/AppSettings.cs`:
+- `Shared/AgOpenWeb.Models/Configuration/AppSettings.cs`:
     - `bool AutoUploadOnClose { get; set; }` (AgShare)
     - `bool AutoExportKmlOnClose { get; set; }`
     - `bool AutoExportIsoXmlOnClose { get; set; }`
-- New `Shared/AgValoniaGPS.Services/JobCloseHookRunner.cs` — sequenced runner so hook failure on AgShare doesn't block local KML/ISOXML export.
+- New `Shared/AgOpenWeb.Services/JobCloseHookRunner.cs` — sequenced runner so hook failure on AgShare doesn't block local KML/ISOXML export.
 
 **Removed (after verification)**
 - `FieldSelectionDialogPanel.axaml` and its VM (replaced by `StartWorkSessionDialogPanel` in M3 — left in place during M3/M4 for safety, deleted in M5 cleanup).

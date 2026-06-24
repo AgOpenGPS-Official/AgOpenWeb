@@ -6,7 +6,7 @@ App-like launcher for the **headless** AgOpenWeb guidance host. Unlike the Linux
 ## Run
 
 1. Extract the zip anywhere (e.g. `C:\AgOpenWeb`).
-2. Double-click **`AgValoniaGPS.Desktop.exe`**.
+2. Double-click **`AgOpenWeb.Desktop.exe`**.
 3. In the launcher window, click **Start**. The browser opens to the web UI automatically
    (uncheck "Open browser when started" to disable). Click **Open in Browser** any time.
 4. To connect a tablet/phone in the cab, browse the other device to the **LAN URL** shown
@@ -20,7 +20,7 @@ It's self-contained — no .NET install needed.
 - **Start with Windows** (checkbox) launches the app on sign-in (per-user; uses the
   `HKCU\…\Run` key). Untick to remove.
 - Field data, vehicles, tools and config live under your Documents folder
-  (`Documents\AgValoniaGPS`), so they survive replacing the program folder on update.
+  (`Documents\AgOpenWeb`), so they survive replacing the program folder on update.
 - The launcher hosts the backend **in-process**; there is no separate service. To run it
   display-less as a background daemon instead, start the exe with `--headless`.
 - This same exe is the cross-platform app: `--windowed` opens the legacy native UI,

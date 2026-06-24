@@ -20,7 +20,7 @@ def main():
     catalog_dir = sys.argv[1]
     small = "--small" in sys.argv
     remaining = [a for a in sys.argv[2:] if a != "--small"]
-    output = remaining[0] if remaining else "AgValoniaGPS_UI_Catalog.pdf"
+    output = remaining[0] if remaining else "AgOpenWeb_UI_Catalog.pdf"
 
     pages = []
 

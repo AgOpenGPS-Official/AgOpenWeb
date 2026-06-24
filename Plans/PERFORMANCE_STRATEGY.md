@@ -1,6 +1,6 @@
 # Performance Strategy
 
-Umbrella document for all performance work on AgValoniaGPS. Captures what we
+Umbrella document for all performance work on AgOpenWeb. Captures what we
 know from diagnostic measurement, ranks fixes by product impact, and acts as
 the index for individual implementation plans.
 

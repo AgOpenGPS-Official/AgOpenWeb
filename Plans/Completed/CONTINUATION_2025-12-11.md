@@ -47,7 +47,7 @@ Updated iOS to use shared components for consistent appearance.
 ## New Shared Files Created
 
 ```
-Shared/AgValoniaGPS.Views/
+Shared/AgOpenWeb.Views/
 ├── Behaviors/
 │   └── DragBehavior.cs              # Reusable drag helper
 ├── Controls/
@@ -72,7 +72,7 @@ Shared/AgValoniaGPS.Views/
 <TabControl TabStripPlacement="Left" Classes="MainConfigTabs">
     <TabItem ToolTip.Tip="Vehicle">
         <TabItem.Header>
-            <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/..." Width="40" Height="40"/>
+            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/..." Width="40" Height="40"/>
         </TabItem.Header>
         <config:VehicleConfigTab/>
     </TabItem>
@@ -84,7 +84,7 @@ Shared/AgValoniaGPS.Views/
 <!-- In platform App.axaml -->
 <Application.Styles>
     <FluentTheme />
-    <StyleInclude Source="avares://AgValoniaGPS.Views/Styles/SharedStyles.axaml"/>
+    <StyleInclude Source="avares://AgOpenWeb.Views/Styles/SharedStyles.axaml"/>
 </Application.Styles>
 ```
 
@@ -93,7 +93,7 @@ Shared/AgValoniaGPS.Views/
 <Application.Resources>
     <ResourceDictionary>
         <ResourceDictionary.MergedDictionaries>
-            <ResourceInclude Source="avares://AgValoniaGPS.Views/Styles/SharedResources.axaml"/>
+            <ResourceInclude Source="avares://AgOpenWeb.Views/Styles/SharedResources.axaml"/>
         </ResourceDictionary.MergedDictionaries>
     </ResourceDictionary>
 </Application.Resources>
@@ -138,11 +138,11 @@ iOS is missing some Desktop features:
 
 ```bash
 # Desktop
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 
 # iOS
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
 ```
 
 ## Git Status at End of Session

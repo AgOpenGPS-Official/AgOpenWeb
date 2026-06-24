@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -317,7 +317,7 @@ asserts the sum lands on the working state.
 
 **Acceptance.** Select a track — pass number and nudge offset
 snap to the track's saved values within one cycle. Delete contours
-— offset zeroes. `grep -rn "State\.Guidance\.\w\+\s*=" Shared/AgValoniaGPS.ViewModels`
+— offset zeroes. `grep -rn "State\.Guidance\.\w\+\s*=" Shared/AgOpenWeb.ViewModels`
 returns only the `ApplyResults.cs` lines and the `Reset()` /
 `UpdateFromGuidance` methods on `GuidanceState.cs`.
 
@@ -456,7 +456,7 @@ Phase D is done when, on a Bing Test field drive:
    acquired.
 7. Manual U-turn — triggers, executes, completes.
 8. Close field — autosteer disengages, all state clears.
-9. `grep -rn "State\.Guidance\.\w\+\s*=" Shared/AgValoniaGPS.ViewModels`
+9. `grep -rn "State\.Guidance\.\w\+\s*=" Shared/AgOpenWeb.ViewModels`
    returns only `MainViewModel.ApplyResults.cs`.
 10. Line-count delta from Phase C close recorded on TMP-007.
 

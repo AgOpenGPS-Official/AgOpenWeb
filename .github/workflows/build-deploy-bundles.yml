@@ -135,7 +135,7 @@ jobs:
             |--------|------|-----|
             | Linux x86-64 (mini-PC / amd64) | `agopenweb-linux-x64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
             | Linux ARM64 (Pi / Uno Q / SBC) | `agopenweb-linux-arm64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
-            | Windows x64 | `agopenweb-win-x64.zip` | extract, run `AgValoniaGPS.Desktop.exe` (launcher) |
+            | Windows x64 | `agopenweb-win-x64.zip` | extract, run `AgOpenWeb.Desktop.exe` (launcher) |
 
             ### Linux (no .NET SDK needed on the box)
             ```bash
@@ -147,7 +147,7 @@ jobs:
             apt-installs ICU (required) plus libfontconfig/libGL (boundary imagery).
 
             ### Windows
-            Extract anywhere and double-click `AgValoniaGPS.Desktop.exe` — the launcher window
+            Extract anywhere and double-click `AgOpenWeb.Desktop.exe` — the launcher window
             opens. Click **Start**; the browser opens automatically. Self-contained — no .NET install.
 
             See each bundle's `README.md` for details.

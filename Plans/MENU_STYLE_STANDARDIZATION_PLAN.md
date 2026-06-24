@@ -45,7 +45,7 @@ Do this in its own branch off `develop`. Mechanical but broad (touches most dial
 ## Approach
 
 ### 1. Add semantic brushes + shared button styles to `SharedResources.axaml`
-File: `Shared/AgValoniaGPS.Views/Styles/SharedResources.axaml` (already has the
+File: `Shared/AgOpenWeb.Views/Styles/SharedResources.axaml` (already has the
 `ThemeDictionaries` with `ToggleOn/OffBrush`). Add to BOTH Light and Dark variants:
 - `PrimaryButtonBrush` (← `SystemControlHighlightAccentBrush` value), `PrimaryButtonHoverBrush` (#2980B9)
 - `SuccessButtonBrush` (#27AE60) / `SuccessButtonHoverBrush` (#2ECC71)
@@ -82,14 +82,14 @@ LogViewer, Hotkey, ImportTracks (drop its `#3498DB`).
   `DialogButton`/`CancelButton` (confirm whether `ModernButton` resolves there first).
 
 ## Files
-- `Shared/AgValoniaGPS.Views/Styles/SharedResources.axaml` — new brushes (Light+Dark) + shared button styles.
-- `Shared/AgValoniaGPS.Views/Controls/FloatingPanel.axaml` and `DialogChrome.axaml` — reconcile card/header brushes.
-- ~20 dialogs under `Shared/AgValoniaGPS.Views/Controls/Dialogs/` — strip local styles/hex, use shared classes.
+- `Shared/AgOpenWeb.Views/Styles/SharedResources.axaml` — new brushes (Light+Dark) + shared button styles.
+- `Shared/AgOpenWeb.Views/Controls/FloatingPanel.axaml` and `DialogChrome.axaml` — reconcile card/header brushes.
+- ~20 dialogs under `Shared/AgOpenWeb.Views/Controls/Dialogs/` — strip local styles/hex, use shared classes.
 - `RecordedPathDialogPanel.axaml(.cs)` — convert to FloatingPanel.
 - Hardcoded `#4A9A7E`/status colors in `ScreenAlertsPanel.axaml`, `NetworkIoPanel.axaml` → `StatusOkBrush`.
 
 ## Verification
-1. `dotnet build Platforms/AgValoniaGPS.Desktop/...` clean; `dotnet test Tests/AgValoniaGPS.UI.Tests/` (147 pass).
+1. `dotnet build Platforms/AgOpenWeb.Desktop/...` clean; `dotnet test Tests/AgOpenWeb.UI.Tests/` (147 pass).
 2. Run Desktop; open every fly-out and a dialog from each chain in BOTH day and night
    mode (toggle theme) — confirm cards/headers/buttons read identically and there's no
    stray accent color. Charts + tool overlays included.

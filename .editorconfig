@@ -44,30 +44,30 @@ dotnet_diagnostic.CA1311.severity = none
 # Persistence & wire-format paths: a culture miss here is a real,
 # user-visible bug (see Field.txt fi-FI regression that prompted this).
 # Promote to error so the build breaks before the bug ships.
-[Shared/AgValoniaGPS.Services/Fields/**/*.cs]
+[Shared/AgOpenWeb.Services/Fields/**/*.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/AutoSteer/PgnBuilder.cs]
+[Shared/AgOpenWeb.Services/AutoSteer/PgnBuilder.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/NmeaParser*.cs]
+[Shared/AgOpenWeb.Services/NmeaParser*.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/NtripClientService.cs]
+[Shared/AgOpenWeb.Services/NtripClientService.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/FieldPlaneFileService.cs]
+[Shared/AgOpenWeb.Services/FieldPlaneFileService.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/AgShare/**/*.cs]
+[Shared/AgOpenWeb.Services/AgShare/**/*.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/IsoXml/**/*.cs]
+[Shared/AgOpenWeb.Services/IsoXml/**/*.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/Tram/**/*.cs]
+[Shared/AgOpenWeb.Services/Tram/**/*.cs]
 dotnet_diagnostic.CA1305.severity = error
-[Shared/AgValoniaGPS.Services/Pipeline/**/*.cs]
+[Shared/AgOpenWeb.Services/Pipeline/**/*.cs]
 dotnet_diagnostic.CA1305.severity = error
 [Simulators/**/Modules/*.cs]
 dotnet_diagnostic.CA1305.severity = error
 
 # UI views: bindings and codegen create lots of ToString calls; current
 # culture is correct for display. Silence the rule here.
-[Shared/AgValoniaGPS.Views/**/*.cs]
+[Shared/AgOpenWeb.Views/**/*.cs]
 dotnet_diagnostic.CA1305.severity = none
 [*.{xaml,axaml}]
 dotnet_diagnostic.CA1305.severity = none

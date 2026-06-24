@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document captures the implementation plan for three AB-related panels in AgValoniaGPS3, based on research of AgOpenGPS source code and user-provided screenshots.
+This document captures the implementation plan for three AB-related panels in AgOpenWeb3, based on research of AgOpenGPS source code and user-provided screenshots.
 
 ## Panel Structure
 
@@ -190,19 +190,19 @@ ICommand ClearDrawnPointsCommand
 ## Files to Create/Modify
 
 ### New Files
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/TracksDialogPanel.axaml`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/TracksDialogPanel.axaml.cs`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/QuickABSelectorPanel.axaml`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/QuickABSelectorPanel.axaml.cs`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/DrawABDialogPanel.axaml`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/DrawABDialogPanel.axaml.cs`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/TracksDialogPanel.axaml`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/TracksDialogPanel.axaml.cs`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/QuickABSelectorPanel.axaml`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/QuickABSelectorPanel.axaml.cs`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/DrawABDialogPanel.axaml`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/DrawABDialogPanel.axaml.cs`
 
 ### Modified Files
-- `Shared/AgValoniaGPS.Views/Controls/Panels/BottomNavigationPanel.axaml` - Update flyout icons
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Add properties and commands
-- `Shared/AgValoniaGPS.Models/ABCreationMode.cs` - New enum (if needed)
-- `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml` - Add dialog panels
-- `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml` - Add dialog panels
+- `Shared/AgOpenWeb.Views/Controls/Panels/BottomNavigationPanel.axaml` - Update flyout icons
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Add properties and commands
+- `Shared/AgOpenWeb.Models/ABCreationMode.cs` - New enum (if needed)
+- `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml` - Add dialog panels
+- `Platforms/AgOpenWeb.iOS/Views/MainView.axaml` - Add dialog panels
 
 ### Icon Files Added
 - `ABDraw.png` - Copied from AgOpenGPS

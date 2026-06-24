@@ -57,7 +57,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Auto-detect a bundle: if no mode was forced and a published app/ sits next to this
 # script (the package.sh tarball layout), install from it instead of trying to build.
 # Lets a bare `sudo ./install.sh` Just Work on a target with no .NET SDK.
-if [[ "$MODE" == "build" && -f "$SCRIPT_DIR/app/AgValoniaGPS.Desktop" ]]; then
+if [[ "$MODE" == "build" && -f "$SCRIPT_DIR/app/AgOpenWeb.Desktop" ]]; then
   MODE="from"; FROM_DIR="$SCRIPT_DIR/app"
   echo "==> Detected published bundle in ./app — installing from it (no build)."
 fi
@@ -68,7 +68,7 @@ PUBLISH_SRC=""
 if [[ "$MODE" == "build" ]]; then
   command -v dotnet >/dev/null || { echo "error: dotnet SDK not found (use --from <dir> to install a pre-published bundle)" >&2; exit 1; }
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  CSPROJ="$REPO_ROOT/Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj"
+  CSPROJ="$REPO_ROOT/Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj"
   echo "==> Publishing self-contained build (no trim — the app uses reflection)…"
   # Self-contained: no .NET runtime needed on the appliance. NOT trimmed: the steer
   # wizard projects step ViewModels by reflection, which trimming would break.
@@ -83,8 +83,8 @@ if [[ "$MODE" == "build" ]]; then
     -o /tmp/agopenweb-publish
   PUBLISH_SRC="/tmp/agopenweb-publish"
 elif [[ "$MODE" == "from" ]]; then
-  [[ -d "$FROM_DIR" && -f "$FROM_DIR/AgValoniaGPS.Desktop" ]] \
-    || { echo "error: --from '$FROM_DIR' is not a published app dir (no AgValoniaGPS.Desktop)" >&2; exit 1; }
+  [[ -d "$FROM_DIR" && -f "$FROM_DIR/AgOpenWeb.Desktop" ]] \
+    || { echo "error: --from '$FROM_DIR' is not a published app dir (no AgOpenWeb.Desktop)" >&2; exit 1; }
   PUBLISH_SRC="$(cd "$FROM_DIR" && pwd)"
 fi
 
@@ -137,13 +137,13 @@ if [[ -n "$PUBLISH_SRC" ]]; then
   systemctl stop "$UNIT" 2>/dev/null || true
   mkdir -p "$PREFIX" "$STATE_DIR"
   # One-time recovery from earlier data locations: pre-v26.5.110 builds could store data
-  # INSIDE the program dir (/opt/agopenweb/AgValoniaGPS); v26.5.110–112 used /var/lib/
+  # INSIDE the program dir (/opt/agopenweb/AgOpenWeb); v26.5.110–112 used /var/lib/
   # agopenweb. If the /home data root has none yet, bring the first one found across (the
   # /opt one must be rescued before /opt is wiped below).
-  if [[ ! -d "$STATE_DIR/AgValoniaGPS" ]]; then
-    for old in "$PREFIX/AgValoniaGPS" /var/lib/agopenweb/AgValoniaGPS; do
+  if [[ ! -d "$STATE_DIR/AgOpenWeb" ]]; then
+    for old in "$PREFIX/AgOpenWeb" /var/lib/agopenweb/AgOpenWeb; do
       if [[ -d "$old" ]]; then
-        echo "==> Recovering data from $old → $STATE_DIR/AgValoniaGPS"
+        echo "==> Recovering data from $old → $STATE_DIR/AgOpenWeb"
         cp -a "$old" "$STATE_DIR/"
         break
       fi
@@ -153,7 +153,7 @@ if [[ -n "$PUBLISH_SRC" ]]; then
   [[ -n "$(ls -A "$PREFIX" 2>/dev/null)" ]] && cp -a "$PREFIX" "$PREFIX.old" || true
   rm -rf "${PREFIX:?}/"*
   cp -a "$PUBLISH_SRC/." "$PREFIX/"
-  chmod +x "$PREFIX/AgValoniaGPS.Desktop"
+  chmod +x "$PREFIX/AgOpenWeb.Desktop"
 fi
 
 mkdir -p "$STATE_DIR"
@@ -163,7 +163,7 @@ chown -R "$SVC_USER":"$SVC_USER" "$PREFIX" "$STATE_DIR"
 # UMask keep NEW files this way; this opens up any pre-existing 0700/0600 data (and the
 # data just migrated in from /opt). a+rX = read for all + traverse on dirs, NO write.
 chmod 0755 "$STATE_DIR"
-[[ -d "$STATE_DIR/AgValoniaGPS" ]] && chmod -R a+rX "$STATE_DIR/AgValoniaGPS"
+[[ -d "$STATE_DIR/AgOpenWeb" ]] && chmod -R a+rX "$STATE_DIR/AgOpenWeb"
 
 echo "==> Installing systemd unit…"
 install -m 0644 "$SCRIPT_DIR/$UNIT" "/etc/systemd/system/$UNIT"

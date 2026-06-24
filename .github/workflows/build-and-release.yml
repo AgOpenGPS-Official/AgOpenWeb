@@ -73,13 +73,13 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Run Model Tests
-        run: dotnet test Tests/AgValoniaGPS.Models.Tests/ --verbosity normal
+        run: dotnet test Tests/AgOpenWeb.Models.Tests/ --verbosity normal
 
       - name: Run Service Tests
-        run: dotnet test Tests/AgValoniaGPS.Services.Tests/ --verbosity normal
+        run: dotnet test Tests/AgOpenWeb.Services.Tests/ --verbosity normal
 
       - name: Run UI Tests
-        run: dotnet test Tests/AgValoniaGPS.UI.Tests/ --verbosity normal
+        run: dotnet test Tests/AgOpenWeb.UI.Tests/ --verbosity normal
 
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
@@ -120,17 +120,17 @@ jobs:
 
       - name: Restore dependencies (macOS)
         if: runner.os == 'macOS'
-        run: dotnet restore Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -p:DesktopOnly=true
+        run: dotnet restore Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
 
       - name: Restore dependencies (other)
         if: runner.os != 'macOS'
-        run: dotnet restore Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+        run: dotnet restore Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 
       # macOS uses DesktopOnly=true to skip iOS multi-targeting, enabling self-contained builds
       - name: Build and Publish (macOS)
         if: runner.os == 'macOS'
         run: |
-          dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
+          dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
             -c Release \
             -r ${{ matrix.rid }} \
             -f net10.0 \
@@ -141,7 +141,7 @@ jobs:
       - name: Build and Publish (Linux)
         if: runner.os == 'Linux'
         run: |
-          dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
+          dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
             -c Release \
             -r ${{ matrix.rid }} \
             -f net10.0 \
@@ -151,13 +151,13 @@ jobs:
       - name: Create archive
         run: |
           cd publish
-          zip -r ../AgValoniaGPS-${{ matrix.name }}.zip ${{ matrix.name }}
+          zip -r ../AgOpenWeb-${{ matrix.name }}.zip ${{ matrix.name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgValoniaGPS-${{ matrix.name }}
-          path: AgValoniaGPS-${{ matrix.name }}.zip
+          name: AgOpenWeb-${{ matrix.name }}
+          path: AgOpenWeb-${{ matrix.name }}.zip
           retention-days: 30
 
   # Build Android APK
@@ -189,7 +189,7 @@ jobs:
           done
 
       - name: Restore dependencies
-        run: dotnet restore Platforms/AgValoniaGPS.Android/AgValoniaGPS.Android.csproj
+        run: dotnet restore Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
 
       - name: Decode signing keystore
         id: keystore
@@ -211,7 +211,7 @@ jobs:
           # Read by AndroidSigning*Pass=env: below (keeps secrets off the command line)
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          ARGS=(publish Platforms/AgValoniaGPS.Android/AgValoniaGPS.Android.csproj
+          ARGS=(publish Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
                 -c Release
                 -f net10.0-android
                 -o publish/android)
@@ -228,7 +228,7 @@ jobs:
         run: |
           APK=$(find publish/android -type f -name "*-Signed.apk" | head -1)
           if [ -n "$APK" ]; then
-            cp "$APK" AgValoniaGPS-Android-Signed.apk
+            cp "$APK" AgOpenWeb-Android-Signed.apk
           else
             echo "No signed APK found!"
             exit 1
@@ -237,8 +237,8 @@ jobs:
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgValoniaGPS-Android
-          path: AgValoniaGPS-Android-Signed.apk
+          name: AgOpenWeb-Android
+          path: AgOpenWeb-Android-Signed.apk
           retention-days: 30
 
   # Build iOS (simulator .app bundle)
@@ -276,21 +276,21 @@ jobs:
           done
 
       - name: Restore dependencies
-        run: dotnet restore Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj
+        run: dotnet restore Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj
 
       - name: Build iOS
         run: |
-          dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+          dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
             -c Debug \
             -f net10.0-ios \
             -r iossimulator-arm64
 
       - name: Package iOS app
         run: |
-          APP=$(find Platforms/AgValoniaGPS.iOS/bin/Debug -name "*.app" -type d | head -1)
+          APP=$(find Platforms/AgOpenWeb.iOS/bin/Debug -name "*.app" -type d | head -1)
           if [ -n "$APP" ]; then
             cd "$(dirname "$APP")"
-            zip -r "$GITHUB_WORKSPACE/AgValoniaGPS-iOS-Simulator.zip" "$(basename "$APP")"
+            zip -r "$GITHUB_WORKSPACE/AgOpenWeb-iOS-Simulator.zip" "$(basename "$APP")"
           else
             echo "No .app bundle found!"
             exit 1
@@ -299,8 +299,8 @@ jobs:
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AgValoniaGPS-iOS-Simulator
-          path: AgValoniaGPS-iOS-Simulator.zip
+          name: AgOpenWeb-iOS-Simulator
+          path: AgOpenWeb-iOS-Simulator.zip
           retention-days: 30
 
   # Create a release with all artifacts
@@ -356,7 +356,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "AgValoniaGPS ${{ steps.version.outputs.tag }}"
+          name: "AgOpenWeb ${{ steps.version.outputs.tag }}"
           body: |
             ## Release ${{ steps.version.outputs.tag }}
 
@@ -367,12 +367,12 @@ jobs:
 
             | Platform | File |
             |----------|------|
-            | macOS ARM64 (M1/M2/M3) | `AgValoniaGPS-macOS-ARM64.zip` |
-            | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
-            | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
-            | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
-            | Android | `AgValoniaGPS-Android-Signed.apk` |
-            | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
+            | macOS ARM64 (M1/M2/M3) | `AgOpenWeb-macOS-ARM64.zip` |
+            | macOS x64 (Intel) | `AgOpenWeb-macOS-x64.zip` |
+            | Linux x64 | `AgOpenWeb-Linux-x64.zip` |
+            | Linux ARM64 | `AgOpenWeb-Linux-ARM64.zip` |
+            | Android | `AgOpenWeb-Android-Signed.apk` |
+            | iOS Simulator (ARM64) | `AgOpenWeb-iOS-Simulator.zip` |
 
             > **Windows:** download `agopenweb-win-x64.zip` from a tagged
             > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml) release.
@@ -382,7 +382,7 @@ jobs:
             - **macOS**: Extract, right-click the app and select "Open" (first time only)
             - **Linux**: Extract, `chmod +x` the binary, then run
             - **Android**: Enable "Install from unknown sources", then install the APK
-            - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgValoniaGPS.iOS.app`
+            - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgOpenWeb.iOS.app`
           draft: false
           prerelease: false
           files: |
@@ -408,12 +408,12 @@ jobs:
 
             | Platform | File |
             |----------|------|
-            | macOS ARM64 (M1/M2/M3) | `AgValoniaGPS-macOS-ARM64.zip` |
-            | macOS x64 (Intel) | `AgValoniaGPS-macOS-x64.zip` |
-            | Linux x64 | `AgValoniaGPS-Linux-x64.zip` |
-            | Linux ARM64 | `AgValoniaGPS-Linux-ARM64.zip` |
-            | Android | `AgValoniaGPS-Android-Signed.apk` |
-            | iOS Simulator (ARM64) | `AgValoniaGPS-iOS-Simulator.zip` |
+            | macOS ARM64 (M1/M2/M3) | `AgOpenWeb-macOS-ARM64.zip` |
+            | macOS x64 (Intel) | `AgOpenWeb-macOS-x64.zip` |
+            | Linux x64 | `AgOpenWeb-Linux-x64.zip` |
+            | Linux ARM64 | `AgOpenWeb-Linux-ARM64.zip` |
+            | Android | `AgOpenWeb-Android-Signed.apk` |
+            | iOS Simulator (ARM64) | `AgOpenWeb-iOS-Simulator.zip` |
 
             > **Windows:** download `agopenweb-win-x64.zip` from a tagged
             > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml) release.
@@ -423,7 +423,7 @@ jobs:
             - **macOS**: Extract, right-click the app and select "Open" (first time only)
             - **Linux**: Extract, `chmod +x` the binary, then run
             - **Android**: Enable "Install from unknown sources", then install the APK
-            - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgValoniaGPS.iOS.app`
+            - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgOpenWeb.iOS.app`
 
             ---
             *Built automatically from the latest commit*

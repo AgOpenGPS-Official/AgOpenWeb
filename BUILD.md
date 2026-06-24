@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2025 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,9 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 -->
 
-# AgValoniaGPS Build Guide
+# AgOpenWeb Build Guide
 
-This guide covers building AgValoniaGPS on Windows, macOS (Intel and Apple Silicon), and Linux.
+This guide covers building AgOpenWeb on Windows, macOS (Intel and Apple Silicon), and Linux.
 
 ## Table of Contents
 
@@ -54,13 +54,13 @@ This guide covers building AgValoniaGPS on Windows, macOS (Intel and Apple Silic
 
 2. **Git** (for cloning the repository)
    ```bash
-   git clone https://github.com/your-repo/AgValoniaGPS.git
-   cd AgValoniaGPS
+   git clone https://github.com/your-repo/AgOpenWeb.git
+   cd AgOpenWeb
    ```
 
 3. **Restore NuGet packages** (automatic on first build, or manual):
    ```bash
-   dotnet restore AgValoniaGPS.sln
+   dotnet restore AgOpenWeb.sln
    ```
 
 ### Windows
@@ -122,83 +122,83 @@ sudo pacman -S libx11 libxext libxrandr libxcursor libxi mesa alsa-lib fontconfi
 
 **Build (Debug):**
 ```cmd
-dotnet build Platforms\AgValoniaGPS.Desktop\AgValoniaGPS.Desktop.csproj
+dotnet build Platforms\AgOpenWeb.Desktop\AgOpenWeb.Desktop.csproj
 ```
 
 **Build (Release):**
 ```cmd
-dotnet build Platforms\AgValoniaGPS.Desktop\AgValoniaGPS.Desktop.csproj -c Release
+dotnet build Platforms\AgOpenWeb.Desktop\AgOpenWeb.Desktop.csproj -c Release
 ```
 
 **Run:**
 ```cmd
-dotnet run --project Platforms\AgValoniaGPS.Desktop\AgValoniaGPS.Desktop.csproj
+dotnet run --project Platforms\AgOpenWeb.Desktop\AgOpenWeb.Desktop.csproj
 ```
 
 **Build entire solution:**
 ```cmd
-dotnet build AgValoniaGPS.sln
+dotnet build AgOpenWeb.sln
 ```
 
 ### macOS (Intel)
 
 **Build (Debug):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 **Build (Release):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -c Release
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -c Release
 ```
 
 **Run:**
 ```bash
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 **Build for x64 specifically:**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -r osx-x64
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -r osx-x64
 ```
 
 ### macOS (Apple Silicon)
 
 **Build (Debug):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 **Build (Release):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -c Release
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -c Release
 ```
 
 **Run:**
 ```bash
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 **Build for ARM64 specifically:**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -r osx-arm64
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -r osx-arm64
 ```
 
 ### Linux
 
 **Build (Debug):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 **Build (Release):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj -c Release
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -c Release
 ```
 
 **Run:**
 ```bash
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 ---
@@ -228,7 +228,7 @@ dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
 
 **Apple Silicon Mac (ARM64 simulator):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
   -c Debug \
   -f net10.0-ios \
   -r iossimulator-arm64
@@ -236,7 +236,7 @@ dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
 
 **Intel Mac (x64 simulator):**
 ```bash
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
   -c Debug \
   -f net10.0-ios \
   -r iossimulator-x64
@@ -247,14 +247,14 @@ dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
 **Method 1: Using dotnet build with Run target**
 ```bash
 # Apple Silicon
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
   -c Debug \
   -f net10.0-ios \
   -r iossimulator-arm64 \
   -t:Run
 
 # Intel
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
   -c Debug \
   -f net10.0-ios \
   -r iossimulator-x64 \
@@ -281,16 +281,16 @@ If the `-t:Run` target doesn't work, use this approach:
    ```bash
    # Apple Silicon
    xcrun simctl install booted \
-     Platforms/AgValoniaGPS.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/AgValoniaGPS.iOS.app
+     Platforms/AgOpenWeb.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/AgOpenWeb.iOS.app
 
    # Intel
    xcrun simctl install booted \
-     Platforms/AgValoniaGPS.iOS/bin/Debug/net10.0-ios/iossimulator-x64/AgValoniaGPS.iOS.app
+     Platforms/AgOpenWeb.iOS/bin/Debug/net10.0-ios/iossimulator-x64/AgOpenWeb.iOS.app
    ```
 
 3. Launch the app:
    ```bash
-   xcrun simctl launch booted com.agvaloniaagps.ios
+   xcrun simctl launch booted com.agopenweb.ios
    ```
 
 ### Building for Physical iOS Device
@@ -298,7 +298,7 @@ If the `-t:Run` target doesn't work, use this approach:
 > **Note:** Requires Apple Developer account and provisioning profiles.
 
 ```bash
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
   -c Release \
   -f net10.0-ios \
   -r ios-arm64
@@ -311,7 +311,7 @@ dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
 ### Windows Self-Contained Executable
 
 ```cmd
-dotnet publish Platforms\AgValoniaGPS.Desktop\AgValoniaGPS.Desktop.csproj ^
+dotnet publish Platforms\AgOpenWeb.Desktop\AgOpenWeb.Desktop.csproj ^
   -c Release ^
   -r win-x64 ^
   --self-contained true ^
@@ -321,7 +321,7 @@ dotnet publish Platforms\AgValoniaGPS.Desktop\AgValoniaGPS.Desktop.csproj ^
 ### macOS App Bundle (Intel)
 
 ```bash
-dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
+dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
   -c Release \
   -r osx-x64 \
   --self-contained true \
@@ -331,7 +331,7 @@ dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
 ### macOS App Bundle (Apple Silicon)
 
 ```bash
-dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
+dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
   -c Release \
   -r osx-arm64 \
   --self-contained true \
@@ -341,7 +341,7 @@ dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
 ### Linux
 
 ```bash
-dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
+dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
   -c Release \
   -r linux-x64 \
   --self-contained true \
@@ -351,7 +351,7 @@ dotnet publish Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj \
 ### iOS App Store (IPA)
 
 ```bash
-dotnet publish Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj \
+dotnet publish Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
   -c Release \
   -f net10.0-ios \
   -r ios-arm64
@@ -398,7 +398,7 @@ Tests verify:
 **NuGet restore failures**
 ```bash
 dotnet nuget locals all --clear
-dotnet restore AgValoniaGPS.sln
+dotnet restore AgOpenWeb.sln
 ```
 
 **iOS simulator not found**
@@ -429,16 +429,16 @@ sudo apt install libfontconfig1
 
 | Platform | Configuration | Output Path |
 |----------|---------------|-------------|
-| Windows | Debug | `Platforms/AgValoniaGPS.Desktop/bin/Debug/net10.0/` |
-| Windows | Release | `Platforms/AgValoniaGPS.Desktop/bin/Release/net10.0/` |
-| macOS | Debug | `Platforms/AgValoniaGPS.Desktop/bin/Debug/net10.0/` |
-| iOS Simulator | Debug | `Platforms/AgValoniaGPS.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/` |
+| Windows | Debug | `Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/` |
+| Windows | Release | `Platforms/AgOpenWeb.Desktop/bin/Release/net10.0/` |
+| macOS | Debug | `Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/` |
+| iOS Simulator | Debug | `Platforms/AgOpenWeb.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/` |
 
 ### Getting Help
 
 - Avalonia Documentation: https://docs.avaloniaui.net/
 - .NET Documentation: https://docs.microsoft.com/dotnet/
-- Report issues: https://github.com/your-repo/AgValoniaGPS/issues
+- Report issues: https://github.com/your-repo/AgOpenWeb/issues
 
 ---
 

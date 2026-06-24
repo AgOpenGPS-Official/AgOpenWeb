@@ -1,0 +1,56 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             xmlns:controls="using:AgOpenWeb.Views.Controls"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.HelpDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsHelpDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsHelpDialogVisible}">
+
+    <Grid>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
+
+        <controls:DialogChrome Title="Help"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                MaxWidth="420">
+            <StackPanel Spacing="16">
+                <TextBlock Text="AgOpenWeb - Agricultural GPS Guidance"
+                           FontSize="14" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+
+                <!-- Link buttons -->
+                <StackPanel Spacing="8">
+                    <Button Classes="ModernButton" HorizontalAlignment="Stretch" MinHeight="44"
+                            x:Name="BtnGitHub" Click="OnGitHubClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                            <TextBlock Text="GitHub Repository" FontSize="15" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="ModernButton" HorizontalAlignment="Stretch" MinHeight="44"
+                            x:Name="BtnDiscussions" Click="OnDiscussionsClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                            <TextBlock Text="Discussions / Forum" FontSize="15" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="ModernButton" HorizontalAlignment="Stretch" MinHeight="44"
+                            x:Name="BtnReleases" Click="OnReleasesClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                            <TextBlock Text="Check for Updates" FontSize="15" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="ModernButton" HorizontalAlignment="Stretch" MinHeight="44"
+                            x:Name="BtnYouTube" Click="OnYouTubeClick">
+                        <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                            <TextBlock Text="YouTube Tutorials" FontSize="15" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+            </StackPanel>
+        </controls:DialogChrome>
+    </Grid>
+</UserControl>

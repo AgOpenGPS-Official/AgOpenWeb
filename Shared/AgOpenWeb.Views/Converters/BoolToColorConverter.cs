@@ -1,0 +1,501 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using AgOpenWeb.Models.State;
+using Avalonia.Data;
+using Avalonia.Data.Converters;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+
+namespace AgOpenWeb.Views.Converters;
+
+/// <summary>
+/// Network IO module status dot: inputs [configured, present].
+/// Not configured → gray (don't care); configured &amp; present → green;
+/// configured &amp; absent → red. "Present" = the module is responding
+/// (data-ok / scan reply).
+/// </summary>
+public class ModulePresenceToColorConverter : IMultiValueConverter
+{
+    public static readonly ModulePresenceToColorConverter Instance = new();
+
+    private static readonly IBrush PresentBrush = new SolidColorBrush(Color.Parse("#2ECC71")); // green
+    private static readonly IBrush AbsentBrush = new SolidColorBrush(Color.Parse("#E74C3C"));  // red
+    private static readonly IBrush NotConfiguredBrush = new SolidColorBrush(Color.Parse("#5A6473")); // gray
+
+    public object? Convert(IList<object?> values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        bool configured = values.Count > 0 && values[0] is bool c && c;
+        bool present = values.Count > 1 && values[1] is bool p && p;
+        if (!configured) return NotConfiguredBrush;
+        return present ? PresentBrush : AbsentBrush;
+    }
+}
+
+public class BoolToColorConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue ? Brushes.LimeGreen : Brushes.Gray;
+        }
+        return Brushes.Gray;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Converts bool to toggle button background brush.
+/// True = green (#DD1E8449), False = gray (#DD34495E)
+/// </summary>
+public class BoolToToggleBackgroundConverter : IValueConverter
+{
+    public static readonly BoolToToggleBackgroundConverter Instance = new();
+
+    private static readonly IBrush ActiveBrush = new SolidColorBrush(Color.FromRgb(30, 132, 73));
+    private static readonly IBrush InactiveBrush = new SolidColorBrush(Color.FromRgb(200, 208, 216));
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isActive)
+            return isActive ? ActiveBrush : InactiveBrush;
+        return InactiveBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts bool to toggle button border brush.
+/// True = green border (#4A9A7E), False = gray border (#555)
+/// </summary>
+public class BoolToToggleBorderConverter : IValueConverter
+{
+    public static readonly BoolToToggleBorderConverter Instance = new();
+
+    private static readonly IBrush ActiveBrush = new SolidColorBrush(Color.Parse("#4A9A7E"));
+    private static readonly IBrush InactiveBrush = new SolidColorBrush(Color.Parse("#555555"));
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isActive)
+        {
+            return isActive ? ActiveBrush : InactiveBrush;
+        }
+        return InactiveBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts int to toggle button background brush by comparing to parameter.
+/// Matching = green (#DD1E8449), Not matching = gray (#DD34495E)
+/// </summary>
+public class IntToToggleBackgroundConverter : IValueConverter
+{
+    public static readonly IntToToggleBackgroundConverter Instance = new();
+
+    private static readonly IBrush ActiveBrush = new SolidColorBrush(Color.Parse("#DD1E8449"));
+    private static readonly IBrush InactiveBrush = new SolidColorBrush(Color.Parse("#DD34495E"));
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is int intValue && parameter != null)
+        {
+            if (int.TryParse(parameter.ToString(), out int paramValue))
+            {
+                return intValue == paramValue ? ActiveBrush : InactiveBrush;
+            }
+        }
+        return InactiveBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts int to toggle button border brush by comparing to parameter.
+/// Matching = green border (#4A9A7E), Not matching = gray border (#555)
+/// </summary>
+public class IntToToggleBorderConverter : IValueConverter
+{
+    public static readonly IntToToggleBorderConverter Instance = new();
+
+    private static readonly IBrush ActiveBrush = new SolidColorBrush(Color.Parse("#4A9A7E"));
+    private static readonly IBrush InactiveBrush = new SolidColorBrush(Color.Parse("#555555"));
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is int intValue && parameter != null)
+        {
+            if (int.TryParse(parameter.ToString(), out int paramValue))
+            {
+                return intValue == paramValue ? ActiveBrush : InactiveBrush;
+            }
+        }
+        return InactiveBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+public class BoolToStatusConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            return boolValue ? "Connected" : "Disconnected";
+        }
+        return "Unknown";
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class FixQualityToColorConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is string fixQuality)
+        {
+            return fixQuality switch
+            {
+                "RTK Fixed" => Brushes.LimeGreen,      // Green for RTK Fixed
+                "RTK Float" => Brushes.Yellow,          // Yellow for RTK Float
+                _ => Brushes.Red                        // Red for everything else (No Fix, GPS Fix, DGPS)
+            };
+        }
+        return Brushes.Red;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Maps the rotator's paused/running state to a play/pause glyph. True =
+/// paused → ▶ (tap to resume); false = running → ⏸ (tap to pause).
+/// </summary>
+public class BoolToPlayPauseConverter : IValueConverter
+{
+    public static readonly BoolToPlayPauseConverter Instance = new();
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is bool paused && paused ? "▶" : "⏸";
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => BindingOperations.DoNothing;
+}
+
+/// <summary>
+/// Aggregate module-presence indicator: green when every configured module is
+/// producing data, yellow when ≥1 is missing, red when none are present.
+/// </summary>
+public class ModuleStatusKindToColorConverter : IValueConverter
+{
+    public static readonly ModuleStatusKindToColorConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is ModuleStatusKind kind)
+        {
+            return kind switch
+            {
+                ModuleStatusKind.AllPresent       => Brushes.LimeGreen,
+                ModuleStatusKind.PartiallyPresent => Brushes.Gold,
+                _                                  => Brushes.OrangeRed,
+            };
+        }
+        return Brushes.OrangeRed;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+public class BoolToSteerColorConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isActive)
+        {
+            return isActive ? new SolidColorBrush(Color.Parse("#27AE60")) : new SolidColorBrush(Color.Parse("#7F8C8D"));
+        }
+        return new SolidColorBrush(Color.Parse("#7F8C8D"));
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class BoolToSteerTextConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isActive)
+        {
+            return isActive ? "STEER" : "OFF";
+        }
+        return "OFF";
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class BoolToSectionColorConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool isActive)
+        {
+            return isActive ? new SolidColorBrush(Color.Parse("#E74C3C")) : new SolidColorBrush(Color.Parse("#2C3E50"));
+        }
+        return new SolidColorBrush(Color.Parse("#2C3E50"));
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class InverseBoolConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            return !boolValue;
+        }
+        return true;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is bool boolValue)
+        {
+            return !boolValue;
+        }
+        return false;
+    }
+}
+
+/// <summary>
+/// Compares an enum value with a parameter for equality.
+/// Returns a highlight brush when matched, transparent when not.
+/// </summary>
+public class EnumToSelectionBrushConverter : IValueConverter
+{
+    public static readonly EnumToSelectionBrushConverter Instance = new();
+
+    private static readonly IBrush SelectedBrush = new SolidColorBrush(Color.Parse("#4A9A7E"));
+    private static readonly IBrush UnselectedBrush = Brushes.Transparent;
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value == null || parameter == null)
+            return UnselectedBrush;
+
+        var enumType = value.GetType();
+        if (!enumType.IsEnum)
+            return UnselectedBrush;
+
+        var paramString = parameter.ToString();
+        if (string.IsNullOrEmpty(paramString))
+            return UnselectedBrush;
+
+        if (Enum.TryParse(enumType, paramString, true, out var paramValue))
+        {
+            return value.Equals(paramValue) ? SelectedBrush : UnselectedBrush;
+        }
+
+        return UnselectedBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts a string path (avares://) to a Bitmap image.
+/// Used for dynamic image source binding.
+/// </summary>
+public class StringToImageConverter : IValueConverter
+{
+    public static readonly StringToImageConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is string path && !string.IsNullOrEmpty(path))
+        {
+            try
+            {
+                var uri = new Uri(path);
+                using var stream = AssetLoader.Open(uri);
+                return new Bitmap(stream);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts section color code to background brush for section buttons.
+/// Mirrors the renderer's 6-state palette:
+///   0 = Off (red)
+///   1 = Manual ON (yellow)
+///   2 = Auto ON (green)
+///   3 = Turning OFF (cyan)
+///   4 = Turning ON (orange)
+///   5 = Auto OFF (gray)
+/// </summary>
+public class SectionColorCodeToBackgroundConverter : IValueConverter
+{
+    public static readonly SectionColorCodeToBackgroundConverter Instance = new();
+
+    // Match the exact colors used by the map renderer
+    private static readonly IBrush RedBrush         = new SolidColorBrush(Color.FromRgb(242,  51,  51)); // #F23333 - Off
+    private static readonly IBrush YellowBrush      = new SolidColorBrush(Color.FromRgb(247, 247,   0)); // #F7F700 - Manual On
+    private static readonly IBrush GreenBrush       = new SolidColorBrush(Color.FromRgb(  0, 242,   0)); // #00F200 - Auto On
+    private static readonly IBrush CyanBrush        = new SolidColorBrush(Color.FromRgb(  0, 222, 222)); // #00DEDE - Turning Off
+    private static readonly IBrush OrangeBrush      = new SolidColorBrush(Color.FromRgb(255, 165,   0)); // #FFA500 - Turning On
+    private static readonly IBrush GrayBrush        = new SolidColorBrush(Color.FromRgb(150, 150, 150)); // #969696 - Auto Off
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is int colorCode)
+        {
+            return colorCode switch
+            {
+                0 => RedBrush,
+                1 => YellowBrush,
+                2 => GreenBrush,
+                3 => CyanBrush,
+                4 => OrangeBrush,
+                5 => GrayBrush,
+                _ => GrayBrush
+            };
+        }
+        return GrayBrush;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts bool to opacity value (double).
+/// Parameter format: "trueOpacity|falseOpacity" e.g. "1|0.3"
+/// </summary>
+public class BoolToOpacityConverter : IValueConverter
+{
+    public static readonly BoolToOpacityConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        bool boolValue = value is bool b && b;
+
+        if (parameter is string param && param.Contains('|'))
+        {
+            var parts = param.Split('|');
+            if (parts.Length == 2 &&
+                double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double trueOpacity) &&
+                double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double falseOpacity))
+            {
+                return boolValue ? trueOpacity : falseOpacity;
+            }
+        }
+
+        // Default: 1.0 for true, 0.3 for false
+        return boolValue ? 1.0 : 0.3;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// Converts a uint color value (0xRRGGBB) to an Avalonia SolidColorBrush.
+/// </summary>
+public class UintToBrushConverter : IValueConverter
+{
+    public static readonly UintToBrushConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is uint colorValue)
+        {
+            byte r = (byte)((colorValue >> 16) & 0xFF);
+            byte g = (byte)((colorValue >> 8) & 0xFF);
+            byte b = (byte)(colorValue & 0xFF);
+            return new SolidColorBrush(Color.FromRgb(r, g, b));
+        }
+        return Brushes.Gray;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return BindingOperations.DoNothing;
+    }
+}

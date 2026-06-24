@@ -60,9 +60,9 @@ Mapping On/Off (triggers triangle painting)
 
 ### ~~Phase 0: Coverage Data Model~~ ✅ COMPLETE
 **Already implemented in:**
-- `Shared/AgValoniaGPS.Models/Coverage/CoveragePatch.cs`
-- `Shared/AgValoniaGPS.Services/Interfaces/ICoverageMapService.cs`
-- `Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs`
+- `Shared/AgOpenWeb.Models/Coverage/CoveragePatch.cs`
+- `Shared/AgOpenWeb.Services/Interfaces/ICoverageMapService.cs`
+- `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs`
 
 ---
 
@@ -101,10 +101,10 @@ Mapping On/Off (triggers triangle painting)
    - Call `MapControl.SetCoveragePatches()` on update
 
 #### Files to Modify
-- `Shared/AgValoniaGPS.Services/Interfaces/IMapControl.cs`
-- `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs`
-- `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml.cs`
-- `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml.cs`
+- `Shared/AgOpenWeb.Services/Interfaces/IMapControl.cs`
+- `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs`
+- `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml.cs`
+- `Platforms/AgOpenWeb.iOS/Views/MainView.axaml.cs`
 
 ---
 
@@ -149,7 +149,7 @@ Mapping On/Off (triggers triangle painting)
 3. Add minimum speed check (don't paint when stationary)
 
 #### Files to Modify
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs`
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs`
 
 ---
 
@@ -166,11 +166,11 @@ Mapping On/Off (triggers triangle painting)
 - Created `UintToBrushConverter` for color display
 
 #### Files Modified
-- `Shared/AgValoniaGPS.Models/Configuration/ToolConfig.cs`
-- `Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/ToolSubTabs/ToolSectionsSubTab.axaml`
-- `Shared/AgValoniaGPS.Views/Converters/BoolToColorConverter.cs`
-- `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs`
+- `Shared/AgOpenWeb.Models/Configuration/ToolConfig.cs`
+- `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/Configuration/ToolSubTabs/ToolSectionsSubTab.axaml`
+- `Shared/AgOpenWeb.Views/Converters/BoolToColorConverter.cs`
+- `Shared/AgOpenWeb.ViewModels/ConfigurationViewModel.cs`
 
 ---
 
@@ -192,13 +192,13 @@ Mapping On/Off (triggers triangle painting)
 - `ToolSectionsSubTab.axaml`: Added "Section Off In Headland" toggle
 
 #### Files Modified
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Headland line sync
-- `Shared/AgValoniaGPS.Models/Configuration/ToolConfig.cs` - Config option
-- `Shared/AgValoniaGPS.Models/Tool/ToolConfiguration.cs` - Config option
-- `Shared/AgValoniaGPS.Services/Section/SectionControlService.cs` - Config check
-- `Shared/AgValoniaGPS.Services/VehicleProfileService.cs` - Persistence
-- `Shared/AgValoniaGPS.Services/ConfigurationService.cs` - Persistence
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/ToolSubTabs/ToolSectionsSubTab.axaml` - UI
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Headland line sync
+- `Shared/AgOpenWeb.Models/Configuration/ToolConfig.cs` - Config option
+- `Shared/AgOpenWeb.Models/Tool/ToolConfiguration.cs` - Config option
+- `Shared/AgOpenWeb.Services/Section/SectionControlService.cs` - Config check
+- `Shared/AgOpenWeb.Services/VehicleProfileService.cs` - Persistence
+- `Shared/AgOpenWeb.Services/ConfigurationService.cs` - Persistence
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/Configuration/ToolSubTabs/ToolSectionsSubTab.axaml` - UI
 
 ---
 
@@ -219,11 +219,11 @@ Mapping On/Off (triggers triangle painting)
 - **iOS**: Right side of top status bar with same stats
 
 #### Files Modified
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Properties and refresh method
-- `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml` - Stats panel
-- `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml.cs` - Event subscription
-- `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml` - Stats in status bar
-- `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml.cs` - Event subscription
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Properties and refresh method
+- `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml` - Stats panel
+- `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml.cs` - Event subscription
+- `Platforms/AgOpenWeb.iOS/Views/MainView.axaml` - Stats in status bar
+- `Platforms/AgOpenWeb.iOS/Views/MainView.axaml.cs` - Event subscription
 
 ---
 
@@ -239,7 +239,7 @@ Mapping On/Off (triggers triangle painting)
 - File format compatible with AgOpenGPS
 
 #### Files Modified
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Added save/clear/load in `UpdateActiveField()`
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Added save/clear/load in `UpdateActiveField()`
 
 ---
 

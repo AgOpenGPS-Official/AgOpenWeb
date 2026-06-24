@@ -17,9 +17,9 @@
 The base wizard currently navigates linearly through all steps. We need it to skip steps based on the HardwareInstalled selection (GPS Only skips autosteer steps 6-10).
 
 **Files:**
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/WizardViewModel.cs`
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/WizardStepViewModel.cs`
-- Test: `Tests/AgValoniaGPS.Services.Tests/SteerWizardE2ETests.cs`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/WizardViewModel.cs`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/WizardStepViewModel.cs`
+- Test: `Tests/AgOpenWeb.Services.Tests/SteerWizardE2ETests.cs`
 
 - [ ] **Step 1: Add ShouldSkip to WizardStepViewModel**
 
@@ -77,13 +77,13 @@ private void GoBack()
 
 - [ ] **Step 4: Build and verify**
 
-Run: `~/.dotnet/dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj`
+Run: `~/.dotnet/dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj`
 Expected: 0 errors
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Shared/AgValoniaGPS.ViewModels/Wizards/WizardViewModel.cs Shared/AgValoniaGPS.ViewModels/Wizards/WizardStepViewModel.cs
+git add Shared/AgOpenWeb.ViewModels/Wizards/WizardViewModel.cs Shared/AgOpenWeb.ViewModels/Wizards/WizardStepViewModel.cs
 git commit -m "Add ShouldSkip to WizardStepViewModel for conditional step navigation"
 ```
 
@@ -92,8 +92,8 @@ git commit -m "Add ShouldSkip to WizardStepViewModel for conditional step naviga
 Steps 6-10 (HardwareConfig through SteeringGains) should be skipped when GPS Only is selected. The HardwareInstalledStepViewModel needs to propagate its selection to downstream steps.
 
 **Files:**
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/SteerWizardViewModel.cs`
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/HardwareInstalledStepViewModel.cs`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/SteerWizardViewModel.cs`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/HardwareInstalledStepViewModel.cs`
 - Modify: All autosteer step ViewModels (HardwareConfig, RollCalibration, WasCalibration, PwmCalibration, SteeringGains)
 
 - [ ] **Step 1: Add hardware level reference to SteerWizardViewModel**
@@ -125,8 +125,8 @@ public override bool ShouldSkip => _hardwareStep?.HardwareLevel == 0; // Skip fo
 
 - [ ] **Step 3: Build and test**
 
-Run: `~/.dotnet/dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj`
-Run: `~/.dotnet/dotnet test Tests/AgValoniaGPS.Services.Tests/ --filter "SteerWizard"`
+Run: `~/.dotnet/dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj`
+Run: `~/.dotnet/dotnet test Tests/AgOpenWeb.Services.Tests/ --filter "SteerWizard"`
 
 - [ ] **Step 4: Commit**
 
@@ -135,8 +135,8 @@ Run: `~/.dotnet/dotnet test Tests/AgValoniaGPS.Services.Tests/ --filter "SteerWi
 A persistent bottom bar showing live hardware data across all steps: WAS angle, Roll, GPS fix quality, Module connection, PWM output.
 
 **Files:**
-- Modify: `Shared/AgValoniaGPS.Views/Controls/Wizards/WizardHost.axaml`
-- Create: `Shared/AgValoniaGPS.ViewModels/Wizards/WizardStatusBarViewModel.cs`
+- Modify: `Shared/AgOpenWeb.Views/Controls/Wizards/WizardHost.axaml`
+- Create: `Shared/AgOpenWeb.ViewModels/Wizards/WizardStatusBarViewModel.cs`
 
 - [ ] **Step 1: Create WizardStatusBarViewModel**
 
@@ -182,11 +182,11 @@ Between step dots and navigation buttons, add a compact row:
 Legacy step: "Drive slowly and enable Auto Steer. Invert Direction if steer motor turns the wrong direction." Our improvement: pulse buttons that send a 0.5s motor burst, user verifies direction visually.
 
 **Files:**
-- Create: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/MotorDirectionTestStepViewModel.cs`
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/MotorDirectionTestStepView.axaml`
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/MotorDirectionTestStepView.axaml.cs`
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/SteerWizardViewModel.cs`
-- Modify: `Shared/AgValoniaGPS.Views/Controls/Wizards/WizardHost.axaml.cs`
+- Create: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/MotorDirectionTestStepViewModel.cs`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/MotorDirectionTestStepView.axaml`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/MotorDirectionTestStepView.axaml.cs`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/SteerWizardViewModel.cs`
+- Modify: `Shared/AgOpenWeb.Views/Controls/Wizards/WizardHost.axaml.cs`
 
 - [ ] **Step 1: Create MotorDirectionTestStepViewModel**
 
@@ -232,9 +232,9 @@ Legacy: "Turn steering wheel to RIGHT about 20 degrees. While driving in a stead
 Prerequisites: RTK Fixed, vehicle moving, module connected.
 
 **Files:**
-- Create: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/CpdCircleTestStepViewModel.cs`
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/CpdCircleTestStepView.axaml`
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/CpdCircleTestStepView.axaml.cs`
+- Create: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/CpdCircleTestStepViewModel.cs`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/CpdCircleTestStepView.axaml`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/CpdCircleTestStepView.axaml.cs`
 
 - [ ] **Step 1: Create CpdCircleTestStepViewModel**
 
@@ -300,8 +300,8 @@ if (stableCounter > 9) // diameter stabilized
 Same as CPD but driving left circle. Only available after CPD test (Ackermann != 100 blocks this).
 
 **Files:**
-- Create: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/AckermannTestStepViewModel.cs`
-- Create: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/AckermannTestStepView.axaml`
+- Create: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/AckermannTestStepViewModel.cs`
+- Create: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/AckermannTestStepView.axaml`
 
 - [ ] **Step 1: Create AckermannTestStepViewModel**
 
@@ -323,7 +323,7 @@ All wizard steps need larger text and fixed contrast in light mode.
 
 **Files:**
 - Modify: All step AXAML views (12+ files)
-- Modify: `Shared/AgValoniaGPS.Views/Controls/Wizards/WizardHost.axaml`
+- Modify: `Shared/AgOpenWeb.Views/Controls/Wizards/WizardHost.axaml`
 
 - [ ] **Step 1: Increase base text sizes**
 
@@ -353,8 +353,8 @@ Already done for VehicleType. Verify HardwareInstalled also has descriptions ins
 ### Task 8: Improve WAS step with units, slider, guide text
 
 **Files:**
-- Modify: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/WasCalibrationStepView.axaml`
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/WasCalibrationStepViewModel.cs`
+- Modify: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/WasCalibrationStepView.axaml`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/WasCalibrationStepViewModel.cs`
 
 - [ ] **Step 1: Add units to all fields**
 
@@ -385,7 +385,7 @@ Already done for VehicleType. Verify HardwareInstalled also has descriptions ins
 ### Task 9: Improve Roll step ordering and guide text
 
 **Files:**
-- Modify: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/RollCalibrationStepView.axaml`
+- Modify: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/RollCalibrationStepView.axaml`
 
 - [ ] **Step 1: Reorder - Invert above Zero**
 
@@ -408,8 +408,8 @@ Move the Invert Roll toggle above the Zero Roll button.
 Replace the current hold-to-steer buttons with single-press 0.5s pulse buttons matching legacy behavior.
 
 **Files:**
-- Modify: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/PwmCalibrationStepViewModel.cs`
-- Modify: `Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/PwmCalibrationStepView.axaml`
+- Modify: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/PwmCalibrationStepViewModel.cs`
+- Modify: `Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/PwmCalibrationStepView.axaml`
 
 - [ ] **Step 1: Add pulse commands to PwmCalibrationStepViewModel**
 

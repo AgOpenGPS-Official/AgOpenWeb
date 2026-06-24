@@ -1,0 +1,706 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Windows.Input;
+using AgOpenWeb.Models;
+using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Logging;
+using Avalonia.Threading;
+using Microsoft.Extensions.Logging;
+using CommunityToolkit.Mvvm.Input;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace AgOpenWeb.ViewModels;
+
+public partial class MainViewModel
+{
+    private void InitializeSettingsCommands()
+    {
+        ShowAppSettingsDialogCommand = new RelayCommand(() =>
+        {
+            // Units/System toggles bind to ConfigurationViewModel; lazy-init it
+            // (mirrors ShowConfigurationDialogCommand) so they work even if the
+            // user never opened Configuration first. App Directories (folded in
+            // from the old separate dialog) needs its list refreshed.
+            if (ConfigurationViewModel == null)
+            {
+                ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
+            }
+            RefreshAppDirectories();
+            OpenChainDialog(Models.State.DialogType.AppSettings);
+        });
+
+        CloseAppSettingsDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        ShowAboutDialogCommand = new RelayCommand(() =>
+        {
+            OpenChainDialog(Models.State.DialogType.About);
+        });
+
+        CloseAboutDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        ResetAllSettingsCommand = new RelayCommand(() =>
+        {
+            ShowConfirmationDialog(
+                "Reset All Settings",
+                "Are you sure you want to reset all settings to their defaults? This cannot be undone.",
+                () =>
+                {
+                    // Reset to defaults IN PLACE — persist the default DTO, then
+                    // reload it into the *existing* ConfigurationStore object.
+                    // Must not swap the store instance (SetInstance(new …)): every
+                    // service/VM now receives the store by injection and would be
+                    // left holding the old object. LoadAppSettings reapplies the
+                    // saved defaults into the same instance, preserving identity
+                    // and PropertyChanged subscriptions.
+                    _settingsService.ResetToDefaults();
+                    _settingsService.Save();
+                    _configurationService.LoadAppSettings();
+                    StatusMessage = "All settings reset to defaults. Restart recommended.";
+                });
+        });
+
+        // Log Viewer (#22)
+        ShowLogViewerDialogCommand = new RelayCommand(() =>
+        {
+            RefreshLogEntries();
+            // Guard against a double subscription: with the chain model the dialog
+            // can be dismissed via Back/Close (cleanup runs on hide), so only wire
+            // the LogStore handler when not already subscribed.
+            if (!_logStoreSubscribed)
+            {
+                LogStore.Instance.LogAdded += OnLogStoreUpdated;
+                _logStoreSubscribed = true;
+            }
+            OpenChainDialog(Models.State.DialogType.LogViewer);
+        });
+
+        CloseLogViewerDialogCommand = new RelayCommand(() =>
+        {
+            if (_logStoreSubscribed)
+            {
+                LogStore.Instance.LogAdded -= OnLogStoreUpdated;
+                _logStoreSubscribed = false;
+            }
+            State.UI.CloseDialog();
+        });
+
+        ClearLogEntriesCommand = new RelayCommand(() =>
+        {
+            LogStore.Instance.Clear();
+            FilteredLogEntries.Clear();
+        });
+
+        SetLogFilterCommand = new RelayCommand<string>(level =>
+        {
+            LogFilterLevel = Enum.TryParse<LogLevel>(level, out var parsed) ? parsed : LogLevel.Debug;
+            RefreshLogEntries();
+        });
+
+        // Flag By Lat/Lon (#23)
+        ShowFlagByLatLonDialogCommand = new RelayCommand(() =>
+        {
+            FlagLatitudeInput = "";
+            FlagLongitudeInput = "";
+            FlagByLatLonError = "";
+            State.UI.ShowDialog(Models.State.DialogType.FlagByLatLon);
+        });
+
+        CloseFlagByLatLonDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        PlaceFlagByLatLonCommand = new RelayCommand(() =>
+        {
+            PlaceFlagAtLatLon();
+        });
+
+        // View All Settings (#29)
+        ShowViewSettingsDialogCommand = new RelayCommand(() =>
+        {
+            RefreshSettingsTree();
+            OpenChainDialog(Models.State.DialogType.ViewSettings);
+        });
+
+        CloseViewSettingsDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        // Help (#16)
+        ShowHelpDialogCommand = new RelayCommand(() =>
+        {
+            OpenChainDialog(Models.State.DialogType.Help);
+        });
+
+        CloseHelpDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        // Language Selection (#40)
+        ShowLanguageDialogCommand = new RelayCommand(() =>
+        {
+            OpenChainDialog(Models.State.DialogType.Language);
+        });
+
+        CloseLanguageDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.CloseDialog();
+        });
+
+        SetLanguageCommand = new RelayCommand<string>(code =>
+        {
+            if (string.IsNullOrEmpty(code)) return;
+            // Language lives only in AppSettings (no store mirror); set it on the
+            // DTO, then persist via SaveAppSettings so the rest of the file stays
+            // in sync with the store (avoids writing a stale DTO).
+            _settingsService.Settings.Language = code;
+            _configurationService.SaveAppSettings();
+
+            // Notify that language changed - Views layer applies via LanguageChanged event
+            LanguageChanged?.Invoke(code);
+
+            try
+            {
+                var culture = new System.Globalization.CultureInfo(code);
+                StatusMessage = $"Language: {culture.NativeName}";
+            }
+            catch
+            {
+                StatusMessage = $"Language: {code}";
+            }
+            State.UI.CloseDialog();
+        });
+        // Debug Dump (#127) - silent dump for integration tests
+        CreateDebugDumpCommand = new RelayCommand(() =>
+        {
+            try
+            {
+                byte[]? screenshot = null;
+                try { screenshot = ScreenshotProvider?.Invoke(); }
+                catch { /* screenshot is optional */ }
+
+                var zipPath = Services.DebugDumpService.CreateDump(
+                    _settingsService, _appState, _configStore, screenshotPng: screenshot);
+                StatusMessage = $"Debug dump saved: {zipPath}";
+                _logger.LogInformation($"Debug dump created: {zipPath}");
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Debug dump failed: {ex.Message}";
+                _logger.LogError(ex, "Debug dump failed");
+            }
+        });
+
+        // Bug Report Dialog (#249)
+        ShowBugReportDialogCommand = new RelayCommand(() =>
+        {
+            // Capture screenshot AND the full state-snapshot zip the moment
+            // the button is pressed, so the dump reflects app state when the
+            // bug occurred — not whatever state the operator drifts into
+            // while typing the title and description. Notes + user
+            // attachments get appended to the captured zip on submit.
+            _bugReportScreenshot = null;
+            try { _bugReportScreenshot = ScreenshotProvider?.Invoke(); }
+            catch { /* screenshot is optional */ }
+
+            BugReportTitle = string.Empty;
+            BugReportDescription = string.Empty;
+            BugReportAttachments.Clear();
+
+            _bugReportTempZipPath = null;
+            try
+            {
+                _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
+                    _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Bug report state-snapshot capture failed");
+                StatusMessage = $"Bug report capture failed: {ex.Message}";
+            }
+
+            OpenChainDialog(Models.State.DialogType.BugReport);
+        });
+
+        CloseBugReportDialogCommand = new RelayCommand(() =>
+        {
+            _bugReportScreenshot = null;
+            BugReportAttachments.Clear();
+
+            // User cancelled — keep the captured snapshot but finalize it
+            // without notes/attachments so the dump (which reflects app
+            // state at the moment they pressed the button) isn't lost.
+            if (_bugReportTempZipPath != null && File.Exists(_bugReportTempZipPath))
+            {
+                try
+                {
+                    var bugReportsDir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                        "AgOpenWeb", "BugReports");
+
+                    var savedPath = Services.DebugDumpService.FinalizeBugReport(
+                        sourceZipPath: _bugReportTempZipPath,
+                        outputDirectory: bugReportsDir,
+                        filePrefix: "bugreport_unnamed",
+                        notes: null,
+                        userAttachments: null);
+
+                    StatusMessage = $"Bug report saved (no details): {savedPath}";
+                    _logger.LogInformation("Bug report saved on cancel: {ZipPath}", savedPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to finalize cancelled bug report snapshot");
+                }
+            }
+            _bugReportTempZipPath = null;
+
+            State.UI.CloseDialog();
+        });
+
+        RemoveBugReportAttachmentCommand = new RelayCommand<BugReportAttachment>(attachment =>
+        {
+            if (attachment != null)
+                BugReportAttachments.Remove(attachment);
+        });
+
+        SubmitBugReportCommand = new AsyncRelayCommand(async () =>
+        {
+            try
+            {
+                State.UI.CloseDialog();
+                State.UI.BusyMessage = "Creating bug report...";
+                State.UI.IsBusy = true;
+
+                // Force UI to render busy overlay
+                await _dispatcher.InvokeAsync(() => { }, UiDispatcherPriority.Render);
+                await System.Threading.Tasks.Task.Delay(50);
+
+                var bugReportsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "AgOpenWeb", "BugReports");
+
+                // Build filename from title: sanitize, replace spaces with hyphens
+                var titleSlug = string.IsNullOrWhiteSpace(BugReportTitle)
+                    ? "untitled"
+                    : string.Join("-", BugReportTitle.Trim().Split(
+                        Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
+                        .Replace(' ', '-').ToLowerInvariant();
+                if (titleSlug.Length > 60) titleSlug = titleSlug[..60];
+
+                var attachmentPaths = BugReportAttachments.Count > 0
+                    ? BugReportAttachments.Select(a => a.FilePath).ToList()
+                    : null;
+
+                // Combine title + description for the notes file
+                var notes = string.IsNullOrWhiteSpace(BugReportTitle)
+                    ? BugReportDescription
+                    : $"# {BugReportTitle}\n\n{BugReportDescription}";
+
+                string zipPath;
+                if (_bugReportTempZipPath != null && File.Exists(_bugReportTempZipPath))
+                {
+                    // Snapshot already exists from button-press; just append
+                    // the user's title/description/attachments and rename.
+                    zipPath = Services.DebugDumpService.FinalizeBugReport(
+                        sourceZipPath: _bugReportTempZipPath,
+                        outputDirectory: bugReportsDir,
+                        filePrefix: $"bugreport_{titleSlug}",
+                        notes: notes,
+                        userAttachments: attachmentPaths);
+                    _bugReportTempZipPath = null;
+                }
+                else
+                {
+                    // Fallback: snapshot capture failed at button-press; do
+                    // everything in one shot now.
+                    zipPath = Services.DebugDumpService.CreateDump(
+                        _settingsService,
+                        _appState,
+                        _configStore,
+                        additionalNotes: notes,
+                        screenshotPng: _bugReportScreenshot,
+                        outputDirectory: bugReportsDir,
+                        filePrefix: $"bugreport_{titleSlug}",
+                        userAttachments: attachmentPaths);
+                }
+
+                _bugReportScreenshot = null;
+                BugReportAttachments.Clear();
+
+                _logger.LogInformation("Bug report created: {ZipPath}", zipPath);
+                ShowConfirmationDialog(
+                    "Bug Report Saved",
+                    $"Your bug report has been saved to:\n\n{zipPath}\n\nAttach this file to a GitHub issue.",
+                    () => { });
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Bug report failed: {ex.Message}";
+                _logger.LogError(ex, "Bug report creation failed");
+            }
+            finally
+            {
+                State.UI.IsBusy = false;
+            }
+        });
+
+        // Offset Fix (#36) - GPS drift compensation
+        const double OFFSET_STEP = 0.01; // 1cm per click
+
+        ShowOffsetFixDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.IsOffsetFixPanelVisible = !State.UI.IsOffsetFixPanelVisible;
+        });
+
+        CloseOffsetFixDialogCommand = new RelayCommand(() =>
+        {
+            State.UI.IsOffsetFixPanelVisible = false;
+        });
+
+        OffsetFixNorthCommand = new RelayCommand(() => ApplyDrift(0, OFFSET_STEP));
+        OffsetFixSouthCommand = new RelayCommand(() => ApplyDrift(0, -OFFSET_STEP));
+        OffsetFixEastCommand = new RelayCommand(() => ApplyDrift(OFFSET_STEP, 0));
+        OffsetFixWestCommand = new RelayCommand(() => ApplyDrift(-OFFSET_STEP, 0));
+        OffsetFixZeroCommand = new RelayCommand(() =>
+        {
+            State.Field.DriftEasting = 0;
+            State.Field.DriftNorthing = 0;
+            _autoSteerService.SetDriftCompensation(0, 0);
+            double headingRad = Heading * Math.PI / 180.0;
+            _toolPositionService.ResetTrailingState(
+                new Models.Base.Vec3(Easting, Northing, headingRad), headingRad);
+            SyncGuidanceStateToPipeline();
+        });
+    }
+
+    public ICommand? CreateDebugDumpCommand { get; private set; }
+    public ICommand? ShowBugReportDialogCommand { get; private set; }
+    public ICommand? CloseBugReportDialogCommand { get; private set; }
+    public ICommand? SubmitBugReportCommand { get; private set; }
+    public ICommand? RemoveBugReportAttachmentCommand { get; private set; }
+
+    private byte[]? _bugReportScreenshot;
+    // Path to the dump zip captured the moment the user pressed the Bug
+    // Report button. Cleared on submit or dialog cancel.
+    private string? _bugReportTempZipPath;
+
+    private string _bugReportTitle = string.Empty;
+    public string BugReportTitle
+    {
+        get => _bugReportTitle;
+        set { _bugReportTitle = value; OnPropertyChanged(); }
+    }
+
+    private string _bugReportDescription = string.Empty;
+    public string BugReportDescription
+    {
+        get => _bugReportDescription;
+        set { _bugReportDescription = value; OnPropertyChanged(); }
+    }
+
+    public ObservableCollection<BugReportAttachment> BugReportAttachments { get; } = new();
+
+    public void AddBugReportAttachment(string filePath)
+    {
+        if (!File.Exists(filePath)) return;
+        // Avoid duplicates
+        if (BugReportAttachments.Any(a => a.FilePath == filePath)) return;
+        var info = new FileInfo(filePath);
+        BugReportAttachments.Add(new BugReportAttachment(
+            info.Name, filePath, FormatFileSize(info.Length)));
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private void ApplyDrift(double deltaEasting, double deltaNorthing)
+    {
+        State.Field.DriftEasting += deltaEasting;
+        State.Field.DriftNorthing += deltaNorthing;
+        _autoSteerService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
+
+        // Reset trailing tool at the NEW drifted position.
+        // Easting/Northing still reflect the OLD drift (pre-delta), so add the delta.
+        double headingRad = Heading * Math.PI / 180.0;
+        var driftedPos = new Models.Base.Vec3(
+            Easting + deltaEasting,
+            Northing + deltaNorthing,
+            headingRad);
+        _toolPositionService.ResetTrailingState(driftedPos, headingRad);
+        SyncGuidanceStateToPipeline();
+    }
+
+    /// <summary>
+    /// Set the GPS drift offset to absolute values (meters). Used by the remote web
+    /// Offset Fix panel's manual Easting/Northing inputs; applies the same trailing-tool
+    /// reset + pipeline sync as the directional nudges by routing through the delta path.
+    /// </summary>
+    public void OffsetFixSet(double easting, double northing)
+    {
+        ApplyDrift(easting - State.Field.DriftEasting, northing - State.Field.DriftNorthing);
+    }
+
+    private void RefreshAppDirectories()
+    {
+        var dirs = new ObservableCollection<AppDirectoryInfo>();
+
+        var settingsPath = _settingsService.GetSettingsFilePath();
+        dirs.Add(new AppDirectoryInfo("Settings", Path.GetDirectoryName(settingsPath) ?? ""));
+        dirs.Add(new AppDirectoryInfo("Fields", _settingsService.Settings.FieldsDirectory));
+        dirs.Add(new AppDirectoryInfo("Vehicle Profiles", _vehicleProfileService.VehiclesDirectory));
+        dirs.Add(new AppDirectoryInfo("NTRIP Profiles", _ntripProfileService.ProfilesDirectory));
+
+        AppDirectories = dirs;
+    }
+}
+
+// --- Log Viewer (#22) ---
+public partial class MainViewModel
+{
+    private bool _logStoreSubscribed;
+
+    private LogLevel _logFilterLevel = LogLevel.Debug;
+    public LogLevel LogFilterLevel
+    {
+        get => _logFilterLevel;
+        set => SetProperty(ref _logFilterLevel, value);
+    }
+
+    public ObservableCollection<LogEntry> FilteredLogEntries { get; } = new();
+
+    private void OnLogStoreUpdated()
+    {
+        _dispatcher.Post(RefreshLogEntries);
+    }
+
+    private void RefreshLogEntries()
+    {
+        var entries = LogStore.Instance.GetSnapshot()
+            .Where(e => e.Level >= _logFilterLevel)
+            .TakeLast(500)
+            .ToList();
+        FilteredLogEntries.Clear();
+        foreach (var entry in entries)
+            FilteredLogEntries.Add(entry);
+    }
+
+    public ICommand? ShowLogViewerDialogCommand { get; private set; }
+    public ICommand? CloseLogViewerDialogCommand { get; private set; }
+    public ICommand? ClearLogEntriesCommand { get; private set; }
+    public ICommand? SetLogFilterCommand { get; private set; }
+
+    // Offset Fix (#36)
+    public ICommand? ShowOffsetFixDialogCommand { get; private set; }
+    public ICommand? CloseOffsetFixDialogCommand { get; private set; }
+    public ICommand? OffsetFixNorthCommand { get; private set; }
+    public ICommand? OffsetFixSouthCommand { get; private set; }
+    public ICommand? OffsetFixEastCommand { get; private set; }
+    public ICommand? OffsetFixWestCommand { get; private set; }
+    public ICommand? OffsetFixZeroCommand { get; private set; }
+}
+
+// --- Flag By Lat/Lon (#23) ---
+public partial class MainViewModel
+{
+    private string _flagLatitudeInput = "";
+    public string FlagLatitudeInput
+    {
+        get => _flagLatitudeInput;
+        set => SetProperty(ref _flagLatitudeInput, value);
+    }
+
+    private string _flagLongitudeInput = "";
+    public string FlagLongitudeInput
+    {
+        get => _flagLongitudeInput;
+        set => SetProperty(ref _flagLongitudeInput, value);
+    }
+
+    private string _flagByLatLonError = "";
+    public string FlagByLatLonError
+    {
+        get => _flagByLatLonError;
+        set => SetProperty(ref _flagByLatLonError, value);
+    }
+
+    private void PlaceFlagAtLatLon()
+    {
+        if (!double.TryParse(FlagLatitudeInput, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double lat) ||
+            lat < -90 || lat > 90)
+        {
+            FlagByLatLonError = "Invalid latitude (must be -90 to 90)";
+            return;
+        }
+
+        if (!double.TryParse(FlagLongitudeInput, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double lon) ||
+            lon < -180 || lon > 180)
+        {
+            FlagByLatLonError = "Invalid longitude (must be -180 to 180)";
+            return;
+        }
+
+        if (State.Field.OriginLatitude == 0 && State.Field.OriginLongitude == 0 &&
+            Latitude == 0 && Longitude == 0)
+        {
+            FlagByLatLonError = "No field or GPS origin available";
+            return;
+        }
+
+        // Use field origin if available, else current GPS position as origin
+        double originLat = State.Field.OriginLatitude != 0 ? State.Field.OriginLatitude : Latitude;
+        double originLon = State.Field.OriginLongitude != 0 ? State.Field.OriginLongitude : Longitude;
+
+        var converter = new Models.Base.GeoConversion(originLat, originLon);
+        var local = converter.ToLocal(lat, lon);
+
+        var id = _nextFlagId++;
+        var flag = new Flag(local.Easting, local.Northing, FlagColor.Red, id, $"Flag {id}");
+        Flags.Add(flag);
+        UpdateFlagsOnMap();
+        StatusMessage = $"Flag '{flag.Name}' placed at {lat:F6}, {lon:F6}";
+        FlagByLatLonError = "";
+
+        State.UI.CloseDialog();
+    }
+
+    public ICommand? ShowFlagByLatLonDialogCommand { get; private set; }
+    public ICommand? CloseFlagByLatLonDialogCommand { get; private set; }
+    public ICommand? PlaceFlagByLatLonCommand { get; private set; }
+}
+
+// --- View All Settings (#29) ---
+public partial class MainViewModel
+{
+    public ObservableCollection<SettingsGroupItem> SettingsTree { get; } = new();
+
+    private void RefreshSettingsTree()
+    {
+        SettingsTree.Clear();
+        var store = _configStore;
+
+        AddConfigGroup("Vehicle", store.Vehicle);
+        AddConfigGroup("Tool", store.Tool);
+        AddConfigGroup("Guidance", store.Guidance);
+        AddConfigGroup("Display", store.Display);
+        AddConfigGroup("Simulator", store.Simulator);
+        AddConfigGroup("Connections", store.Connections);
+        AddConfigGroup("AHRS", store.Ahrs);
+        AddConfigGroup("Machine", store.Machine);
+        AddConfigGroup("Tram", store.Tram);
+        AddConfigGroup("AutoSteer", store.AutoSteer);
+
+        // Global settings
+        var global = new SettingsGroupItem("Global");
+        global.Items.Add(new SettingsValueItem("Active Profile", store.ActiveVehicleProfileName));
+        global.Items.Add(new SettingsValueItem("Is Metric", store.IsMetric.ToString()));
+        global.Items.Add(new SettingsValueItem("Num Sections", store.NumSections.ToString()));
+        global.Items.Add(new SettingsValueItem("Actual Tool Width", $"{store.ActualToolWidth:F2} m"));
+        SettingsTree.Add(global);
+    }
+
+    private void AddConfigGroup(string name, object config)
+    {
+        var group = new SettingsGroupItem(name);
+        var props = config.GetType()
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanRead && !p.GetIndexParameters().Any())
+            .OrderBy(p => p.Name);
+
+        foreach (var prop in props)
+        {
+            try
+            {
+                var value = prop.GetValue(config);
+                var display = value?.ToString() ?? "(null)";
+                group.Items.Add(new SettingsValueItem(prop.Name, display));
+            }
+            catch
+            {
+                // Skip properties that throw
+            }
+        }
+
+        SettingsTree.Add(group);
+    }
+
+    public ICommand? ShowViewSettingsDialogCommand { get; private set; }
+    public ICommand? CloseViewSettingsDialogCommand { get; private set; }
+    public ICommand? ShowHelpDialogCommand { get; private set; }
+    public ICommand? CloseHelpDialogCommand { get; private set; }
+    public ICommand? ShowLanguageDialogCommand { get; private set; }
+    public ICommand? CloseLanguageDialogCommand { get; private set; }
+    public ICommand? SetLanguageCommand { get; private set; }
+}
+
+public class SettingsGroupItem
+{
+    public string Name { get; }
+    public ObservableCollection<SettingsValueItem> Items { get; } = new();
+
+    public SettingsGroupItem(string name) => Name = name;
+}
+
+public class SettingsValueItem
+{
+    public string Name { get; }
+    public string Value { get; }
+
+    public SettingsValueItem(string name, string value)
+    {
+        Name = name;
+        Value = value;
+    }
+}
+
+public class AppDirectoryInfo
+{
+    public string Name { get; }
+    public string Path { get; }
+    public bool Exists { get; }
+
+    public AppDirectoryInfo(string name, string path)
+    {
+        Name = name;
+        Path = path;
+        Exists = Directory.Exists(path);
+    }
+}
+
+public record BugReportAttachment(string FileName, string FilePath, string FileSize);

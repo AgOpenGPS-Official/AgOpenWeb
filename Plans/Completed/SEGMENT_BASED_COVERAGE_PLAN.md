@@ -116,7 +116,7 @@ This means:
 
 #### CoverageResult Record
 ```csharp
-// New file: Shared/AgValoniaGPS.Models/Coverage/CoverageResult.cs
+// New file: Shared/AgOpenWeb.Models/Coverage/CoverageResult.cs
 
 /// <summary>
 /// Result of segment-based coverage analysis.
@@ -138,7 +138,7 @@ public readonly record struct CoverageResult(
 
 #### BoundaryResult Record
 ```csharp
-// New file: Shared/AgValoniaGPS.Models/Boundary/BoundaryResult.cs
+// New file: Shared/AgOpenWeb.Models/Boundary/BoundaryResult.cs
 
 /// <summary>
 /// Result of segment-based boundary analysis.
@@ -162,7 +162,7 @@ public readonly record struct BoundaryResult(
 
 #### LocalCoordinate Transform
 ```csharp
-// Add to: Shared/AgValoniaGPS.Models/Base/GeometryMath.cs
+// Add to: Shared/AgOpenWeb.Models/Base/GeometryMath.cs
 
 /// <summary>
 /// Transform a world point to local coordinates where the section
@@ -231,7 +231,7 @@ public static double? GetXInterceptAtYZero(Vec2 p1, Vec2 p2)
 
 #### Interface Addition
 ```csharp
-// Update: Shared/AgValoniaGPS.Services/Interfaces/ICoverageMapService.cs
+// Update: Shared/AgOpenWeb.Services/Interfaces/ICoverageMapService.cs
 
 public interface ICoverageMapService
 {
@@ -277,7 +277,7 @@ public interface ICoverageMapService
 
 #### Implementation
 ```csharp
-// Update: Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs
+// Update: Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs
 
 public CoverageResult GetSegmentCoverage(Vec2 sectionCenter, double heading, double halfWidth)
 {
@@ -411,7 +411,7 @@ private List<(double xStart, double xEnd)> MergeIntervals(List<(double xStart, d
 
 #### Update SectionControlService
 ```csharp
-// Update: Shared/AgValoniaGPS.Services/Section/SectionControlService.cs
+// Update: Shared/AgOpenWeb.Services/Section/SectionControlService.cs
 
 // Add configurable overlap threshold
 private const double COVERAGE_OVERLAP_THRESHOLD = 0.70; // 70% covered = "covered"
@@ -443,7 +443,7 @@ bool lookOnCovered = coverage.CoveragePercent >= COVERAGE_OVERLAP_THRESHOLD;
 Apply same transform approach to boundary detection:
 
 ```csharp
-// Update: Shared/AgValoniaGPS.Services/Interfaces/IBoundaryService.cs
+// Update: Shared/AgOpenWeb.Services/Interfaces/IBoundaryService.cs
 
 BoundaryResult GetSegmentBoundaryStatus(Vec2 sectionCenter, double heading, double halfWidth);
 ```

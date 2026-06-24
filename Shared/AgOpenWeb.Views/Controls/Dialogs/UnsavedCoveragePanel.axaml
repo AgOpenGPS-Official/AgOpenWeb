@@ -1,0 +1,73 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="260"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.UnsavedCoveragePanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsUnsavedCoverageDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsUnsavedCoverageDialogVisible}">
+
+    <Grid>
+        <!-- Backdrop. Clicking it is the safe choice: cancel the close. -->
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
+
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="12" Padding="20"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                MinWidth="360" MaxWidth="440">
+            <StackPanel Spacing="16">
+                <TextBlock Text="Unsaved coverage" FontSize="20" FontWeight="Bold"
+                           Foreground="{DynamicResource DangerButtonBrush}" HorizontalAlignment="Center"/>
+
+                <TextBlock Text="{Binding UnsavedCoverageMessage}" FontSize="14"
+                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" TextAlignment="Center"
+                           Margin="0,8"/>
+
+                <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="8" Margin="0,12,0,0">
+                    <Button Grid.Column="0" Content="Cancel"
+                            Command="{Binding CancelUnsavedCoverageCommand}"
+                            Background="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Height="50" FontSize="15" FontWeight="Bold"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Padding="14,0" CornerRadius="6"/>
+                    <Button Grid.Column="1" Content="Discard &amp; close"
+                            Command="{Binding DiscardCoverageAndCloseCommand}"
+                            Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Height="50" FontSize="15" FontWeight="Bold"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Padding="4,0" CornerRadius="6"/>
+                    <Button Grid.Column="2" Content="Save to a job"
+                            Command="{Binding SaveCoverageToJobCommand}"
+                            Background="{DynamicResource SuccessButtonBrush}"
+                            Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                            Height="50" FontSize="15" FontWeight="Bold"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                            Padding="4,0" CornerRadius="6"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

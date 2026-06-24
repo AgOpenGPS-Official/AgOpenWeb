@@ -6,7 +6,7 @@ Convert Desktop's Window-based dialogs to shared UserControl-based panels that w
 ## Architecture
 
 ### Current State
-- **Desktop**: Uses `Window`-based dialogs in `Platforms/AgValoniaGPS.Desktop/Views/`
+- **Desktop**: Uses `Window`-based dialogs in `Platforms/AgOpenWeb.Desktop/Views/`
   - Opened via `IDialogService` returning `Task<Result>`
   - Not compatible with iOS (no Window support)
 
@@ -14,7 +14,7 @@ Convert Desktop's Window-based dialogs to shared UserControl-based panels that w
   - Buttons that depend on dialogs don't work
 
 ### Target State
-- **Shared panels** in `Shared/AgValoniaGPS.Views/Controls/Dialogs/`
+- **Shared panels** in `Shared/AgOpenWeb.Views/Controls/Dialogs/`
   - `UserControl`-based overlays with visibility bindings
   - Work on both iOS and Desktop
   - Desktop can optionally keep Window dialogs or migrate to panels
@@ -26,7 +26,7 @@ Convert Desktop's Window-based dialogs to shared UserControl-based panels that w
 - [x] `FieldSelectionDialogPanel` - Open existing field
 - [x] `NewFieldDialogPanel` - Create new field (with TextBox dark theme fix)
 - [x] `FromExistingFieldDialogPanel` - Copy from existing field (with toggle buttons for copy options)
-- [x] `KmlImportDialogPanel` - Import from KML file (scans Documents/AgValoniaGPS/Import for *.kml files)
+- [x] `KmlImportDialogPanel` - Import from KML file (scans Documents/AgOpenWeb/Import for *.kml files)
 - [x] `IsoXmlImportDialogPanel` - Import from ISO-XML (scans Import folder for TASKDATA.xml directories)
 - [x] `BoundaryMapDialogPanel` - Draw boundary on satellite map using Mapsui (Esri World Imagery tiles)
 
@@ -101,7 +101,7 @@ ConfirmXxxDialogCommand = new RelayCommand(() =>
 });
 ```
 
-### 3. Panel AXAML (in Shared/AgValoniaGPS.Views/Controls/Dialogs/)
+### 3. Panel AXAML (in Shared/AgOpenWeb.Views/Controls/Dialogs/)
 ```xml
 <UserControl ...
     IsVisible="{Binding IsXxxDialogVisible}"
@@ -132,10 +132,10 @@ ConfirmXxxDialogCommand = new RelayCommand(() =>
 
 | Component | Location |
 |-----------|----------|
-| Shared Panels | `Shared/AgValoniaGPS.Views/Controls/Dialogs/` |
-| ViewModel | `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` |
-| iOS MainView | `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml` |
-| Desktop MainView | `Platforms/AgValoniaGPS.Desktop/Views/MainView.axaml` |
+| Shared Panels | `Shared/AgOpenWeb.Views/Controls/Dialogs/` |
+| ViewModel | `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` |
+| iOS MainView | `Platforms/AgOpenWeb.iOS/Views/MainView.axaml` |
+| Desktop MainView | `Platforms/AgOpenWeb.Desktop/Views/MainView.axaml` |
 
 ## Notes
 

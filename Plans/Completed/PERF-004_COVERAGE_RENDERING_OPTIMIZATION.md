@@ -116,5 +116,5 @@ Phase 2 test results showed ~1.1GB memory with legacy polygon data still loaded.
 
 - `CoverageMapService.cs` - Spatial queries, fixed 0.1m detection
 - `DrawingContextMapControl.cs` - Incremental updates, direct framebuffer writes, dynamic scaling
-- `AgValoniaGPS.Views.csproj` - AllowUnsafeBlocks for direct memory access
+- `AgOpenWeb.Views.csproj` - AllowUnsafeBlocks for direct memory access
 - Platform MainView/MainWindow files - Updated provider signatures

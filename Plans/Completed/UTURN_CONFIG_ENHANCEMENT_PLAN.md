@@ -100,7 +100,7 @@ Use the existing ConU_*.png graphics, displayed at 160x120 (matching Tool Config
 <Grid ColumnDefinitions="Auto,*">
     <Border Background="#1A1A2E" CornerRadius="6" Padding="4"
             Width="160" Height="120" Margin="0,0,12,0">
-        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConU_UturnRadius.png"
+        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConU_UturnRadius.png"
                Stretch="Uniform"/>
     </Border>
     <StackPanel Grid.Column="1" VerticalAlignment="Center">

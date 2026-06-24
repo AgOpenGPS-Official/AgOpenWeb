@@ -45,7 +45,7 @@ f9a9146 Add ConfigurationStore infrastructure and refactor ConfigurationViewMode
 
 ### New Files Created
 ```
-Shared/AgValoniaGPS.Models/Configuration/
+Shared/AgOpenWeb.Models/Configuration/
 ├── ConfigurationStore.cs      # Singleton, single source of truth
 ├── VehicleConfig.cs           # Vehicle physical settings
 ├── ToolConfig.cs              # Tool/implement settings
@@ -56,10 +56,10 @@ Shared/AgValoniaGPS.Models/Configuration/
 ├── AhrsConfig.cs              # IMU configuration
 └── SensorState.cs             # Runtime sensor values
 
-Shared/AgValoniaGPS.Models/Enums/
+Shared/AgOpenWeb.Models/Enums/
 └── VehicleEnums.cs            # VehicleType, SteeringAlgorithm
 
-Shared/AgValoniaGPS.Services/
+Shared/AgOpenWeb.Services/
 ├── ConfigurationService.cs    # Bridges ConfigurationStore with persistence
 └── Interfaces/IConfigurationService.cs
 ```
@@ -88,10 +88,10 @@ The meta plan has two more refactors planned:
 
 ```bash
 # Build
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 
 # Run
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 
 # Check branch status
 git log --oneline refactor/configuration ^master

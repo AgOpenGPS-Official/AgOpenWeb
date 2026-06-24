@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2025 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,9 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 -->
 
-# Contributing to AgValoniaGPS
+# Contributing to AgOpenWeb
 
-Thank you for your interest in contributing to AgValoniaGPS! This document lists features that need implementation and provides guidance for contributors.
+Thank you for your interest in contributing to AgOpenWeb! This document lists features that need implementation and provides guidance for contributors.
 
 ## Getting Started
 
@@ -44,15 +44,15 @@ Thank you for your interest in contributing to AgValoniaGPS! This document lists
 ## Architecture Overview
 
 - **Shared code** (~92%): Located in `Shared/` folder
-  - `AgValoniaGPS.Models/` - Data models
-  - `AgValoniaGPS.Services/` - Business logic
-  - `AgValoniaGPS.ViewModels/` - MVVM ViewModels (ReactiveUI)
-  - `AgValoniaGPS.Views/` - Shared UI controls, panels, dialogs
+  - `AgOpenWeb.Models/` - Data models
+  - `AgOpenWeb.Services/` - Business logic
+  - `AgOpenWeb.ViewModels/` - MVVM ViewModels (ReactiveUI)
+  - `AgOpenWeb.Views/` - Shared UI controls, panels, dialogs
 
 - **Platform code** (~8%): Located in `Platforms/`
-  - `AgValoniaGPS.Desktop/` - Windows/macOS/Linux
-  - `AgValoniaGPS.iOS/` - iOS/iPadOS
-  - `AgValoniaGPS.Android/` - Android
+  - `AgOpenWeb.Desktop/` - Windows/macOS/Linux
+  - `AgOpenWeb.iOS/` - iOS/iPadOS
+  - `AgOpenWeb.Android/` - Android
 
 ### Cross-Platform Parity Rule
 
@@ -70,16 +70,16 @@ Thank you for your interest in contributing to AgValoniaGPS! This document lists
 
 ## MVVM Discipline
 
-AgValoniaGPS follows strict MVVM layering. An earlier refactor cleaned up significant violations of this pattern — regressions are not welcome.
+AgOpenWeb follows strict MVVM layering. An earlier refactor cleaned up significant violations of this pattern — regressions are not welcome.
 
 > **Pipeline computes, ViewModel coordinates, View binds.**
 
 ### What goes where
 
-- **Services / pipeline** (`AgValoniaGPS.Services/`): all domain computation. Geometry, guidance math, coordinate conversion, coverage painting, section logic, pathing, state machines. These are the units under test.
-- **Models** (`AgValoniaGPS.Models/`): data shapes. `*WorkingState` POCOs, `*State : ObservableObject` mirrors, records, DTOs, geometry primitives. Behavior is limited to pure helpers (e.g., `GeometryMath`).
-- **ViewModels** (`AgValoniaGPS.ViewModels/`): orchestration only. Expose bindable properties, wire commands to services, translate user intent into intents/service calls. ViewModels are thin.
-- **Views** (`AgValoniaGPS.Views/`): AXAML bindings and presentation. Code-behind is limited to view concerns (pointer handlers for dragging, focus, keyboard routing).
+- **Services / pipeline** (`AgOpenWeb.Services/`): all domain computation. Geometry, guidance math, coordinate conversion, coverage painting, section logic, pathing, state machines. These are the units under test.
+- **Models** (`AgOpenWeb.Models/`): data shapes. `*WorkingState` POCOs, `*State : ObservableObject` mirrors, records, DTOs, geometry primitives. Behavior is limited to pure helpers (e.g., `GeometryMath`).
+- **ViewModels** (`AgOpenWeb.ViewModels/`): orchestration only. Expose bindable properties, wire commands to services, translate user intent into intents/service calls. ViewModels are thin.
+- **Views** (`AgOpenWeb.Views/`): AXAML bindings and presentation. Code-behind is limited to view concerns (pointer handlers for dragging, focus, keyboard routing).
 
 ### Rules
 
@@ -95,7 +95,7 @@ Services are unit-testable without a dispatcher, a view, or a mocked VM. Once co
 
 ## Threading Model
 
-AgValoniaGPS uses a strict one-way data flow driven by a dedicated background cycle worker. This is a hard architectural requirement, not a convention — violating it reintroduces the AgOpenGPS/WinForms failure mode where domain logic races on the UI thread.
+AgOpenWeb uses a strict one-way data flow driven by a dedicated background cycle worker. This is a hard architectural requirement, not a convention — violating it reintroduces the AgOpenGPS/WinForms failure mode where domain logic races on the UI thread.
 
 ![Threading model](Plans/Completed/threading_model.svg)
 
@@ -157,17 +157,17 @@ or the other, never the implicit default).
 
 ## What Needs Doing
 
-Open work is tracked on the [AgValoniaGPS project board](https://github.com/orgs/AgOpenGPS-Official/projects/16). Pick a card, comment on the linked issue to claim it, and open your PR against `develop`.
+Open work is tracked on the [AgOpenWeb project board](https://github.com/orgs/AgOpenGPS-Official/projects/16). Pick a card, comment on the linked issue to claim it, and open your PR against `develop`.
 
 ## Translations
 
-Translation contributions are **on hold** until we decide how AgValoniaGPS will connect to the shared [AgOpenGPS Weblate project](https://hosted.weblate.org/engage/agopengps/). AgOpen has used Weblate for over a year; our goal is to let one Weblate contribution benefit both projects rather than maintain parallel hand-edited `.resx` files.
+Translation contributions are **on hold** until we decide how AgOpenWeb will connect to the shared [AgOpenGPS Weblate project](https://hosted.weblate.org/engage/agopengps/). AgOpen has used Weblate for over a year; our goal is to let one Weblate contribution benefit both projects rather than maintain parallel hand-edited `.resx` files.
 
-Until that workflow is decided, please do not open PRs that add or edit files under `Shared/AgValoniaGPS.Views/Localization/`. If you'd like to translate, watch this section — we'll link to the Weblate project here once it's set up.
+Until that workflow is decided, please do not open PRs that add or edit files under `Shared/AgOpenWeb.Views/Localization/`. If you'd like to translate, watch this section — we'll link to the Weblate project here once it's set up.
 
 ## How to Implement a Button Feature
 
-1. **Find the button** in the relevant AXAML file under `Shared/AgValoniaGPS.Views/Controls/`
+1. **Find the button** in the relevant AXAML file under `Shared/AgOpenWeb.Views/Controls/`
 
 2. **Add a Command binding** to the button:
    ```xml
@@ -189,7 +189,7 @@ Until that workflow is decided, please do not open PRs that add or edit files un
 
 4. **For dialogs**, follow the existing pattern:
    - Add `IsMyDialogVisible` property to ViewModel
-   - Create dialog panel in `Shared/AgValoniaGPS.Views/Controls/Dialogs/`
+   - Create dialog panel in `Shared/AgOpenWeb.Views/Controls/Dialogs/`
    - Add dialog to `MainWindow.axaml` (Desktop) and `MainView.axaml` (iOS/Android)
 
 ## Questions?

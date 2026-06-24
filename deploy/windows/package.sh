@@ -2,7 +2,7 @@
 # AgOpenWeb — build a deployable Windows bundle (Phase 10 launcher).
 #
 # Cross-publishes the self-contained Desktop exe on a build machine (dev Mac / Linux / CI)
-# and zips it. On Windows the user just extracts and double-clicks AgValoniaGPS.Desktop.exe:
+# and zips it. On Windows the user just extracts and double-clicks AgOpenWeb.Desktop.exe:
 # no args → the in-process launcher window (Start / Stop / Open in Browser). No installer,
 # no service, no .NET install needed — it's app-like, the way the Windows AgOpen audience
 # expects. (Linux/macOS use deploy/linux instead.)
@@ -38,7 +38,7 @@ command -v zip >/dev/null || { echo "error: zip not found" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CSPROJ="$REPO_ROOT/Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj"
+CSPROJ="$REPO_ROOT/Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj"
 
 NAME="agopenweb-$RID"
 STAGE="$(mktemp -d)/$NAME"
@@ -68,4 +68,4 @@ rm -rf "$(dirname "$STAGE")"
 
 echo "==> Done: $ZIP ($(du -h "$ZIP" | cut -f1))"
 echo
-echo "On Windows: extract the zip and run AgValoniaGPS.Desktop.exe — the launcher opens."
+echo "On Windows: extract the zip and run AgOpenWeb.Desktop.exe — the launcher opens."

@@ -184,31 +184,31 @@ Host publishes desired state. Firmware decides what to act on. Independent clock
 
 | File | Purpose |
 |---|---|
-| `Shared/AgValoniaGPS.Services/Pipeline/IPositionEstimator.cs` | Interface for the estimator |
-| `Shared/AgValoniaGPS.Services/Pipeline/PositionEstimator.cs` | Implementation; atomic snapshot swap |
-| `Shared/AgValoniaGPS.Models/Pipeline/PoseSnapshot.cs` | Snapshot record |
-| `Shared/AgValoniaGPS.Models/Pipeline/InterpolatedPose.cs` | Interpolation result struct |
-| `Shared/AgValoniaGPS.Services/Pipeline/IControlLoopService.cs` | Control loop interface |
-| `Shared/AgValoniaGPS.Services/Pipeline/ControlLoopService.cs` | Production 100 Hz timer-driven implementation |
-| `Shared/AgValoniaGPS.Services/Pipeline/ManualControlLoop.cs` | Test implementation |
-| `Tests/AgValoniaGPS.Services.Tests/Pipeline/PositionEstimatorTests.cs` | Estimator math + atomicity |
-| `Tests/AgValoniaGPS.Services.Tests/Pipeline/ControlLoopServiceTests.cs` | Manual loop drives section/coverage updates correctly |
+| `Shared/AgOpenWeb.Services/Pipeline/IPositionEstimator.cs` | Interface for the estimator |
+| `Shared/AgOpenWeb.Services/Pipeline/PositionEstimator.cs` | Implementation; atomic snapshot swap |
+| `Shared/AgOpenWeb.Models/Pipeline/PoseSnapshot.cs` | Snapshot record |
+| `Shared/AgOpenWeb.Models/Pipeline/InterpolatedPose.cs` | Interpolation result struct |
+| `Shared/AgOpenWeb.Services/Pipeline/IControlLoopService.cs` | Control loop interface |
+| `Shared/AgOpenWeb.Services/Pipeline/ControlLoopService.cs` | Production 100 Hz timer-driven implementation |
+| `Shared/AgOpenWeb.Services/Pipeline/ManualControlLoop.cs` | Test implementation |
+| `Tests/AgOpenWeb.Services.Tests/Pipeline/PositionEstimatorTests.cs` | Estimator math + atomicity |
+| `Tests/AgOpenWeb.Services.Tests/Pipeline/ControlLoopServiceTests.cs` | Manual loop drives section/coverage updates correctly |
 
 ### Modified files
 
 | File | Change |
 |---|---|
-| `Shared/AgValoniaGPS.Services/GpsService.cs` | On GPS sample receive: build `PoseSnapshot`, call `_positionEstimator.UpdateFromGps`. Keep raising `GpsDataUpdated` for everything else (UI flows). |
-| `Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs` | Shrink. `ProcessCycle` stops calling `SectionControlService.Update` and `AutoSteerService.SendPgns`. Keep building the `GpsCycleResult` snapshot for `MainViewModel.ApplyResults` (UI/section-bar data). Consider rename in a follow-up commit. |
-| `Shared/AgValoniaGPS.Services/Section/SectionControlService.cs` | `Update(toolPos, heading, speed)` is now called by `ControlLoopService` at 100 Hz. Phase counters that were "frames at 10 Hz" become "ticks at 100 Hz". `SECTION_ON_DELAY = 2` (frames at 10 Hz = 200 ms) becomes `SECTION_ON_DELAY_TICKS = 20` (ticks at 100 Hz = 200 ms). `LookAheadOnSetting * 10` (frames) becomes `LookAheadOnSetting * 100` (ticks). Keep the seconds-based math centralized so the constants are derived, not hardcoded. |
-| `Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs` | No structural change. `AddCoveragePoint` gets called from control loop at 100 Hz. Existing `MIN_COVERAGE_POINT_DISTANCE_SQ = 0.0144 m²` (0.12 m) self-throttles rasterization to ~one quad per 12 cm of travel — at 100 Hz that's at most one rasterize per 12 cm × 16 sections. At 25 km/h (7 m/s) per section that's ~58 quads/sec, total ~930/sec across all sections. Same order of magnitude as today. Profile to confirm; add a hard upper bound if needed. |
-| `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs` | `SendPgns()` becomes called from `ControlLoopService` at 100 Hz instead of `GpsPipelineService.ProcessCycle`. v1: `_state.SteerAngle` continues to update only on GPS samples (via existing `ProcessGpsBuffer` path); we just resend the same value 10× per second. The firmware autosteer task uses the freshest. |
-| `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs` | Inject `IPositionEstimator` and `ISectionControlService`. In the render path, pull live pose and section snapshot at draw time instead of reading bound properties. Coverage bitmap path unchanged. |
-| `Shared/AgValoniaGPS.ViewModels/MainViewModel.ApplyResults.cs` | Unchanged behavior — still fires on `CycleCompleted` (GPS rate) for section bar / fix quality / non-map UI. |
-| `Platforms/AgValoniaGPS.Desktop/DependencyInjection/ServiceCollectionExtensions.cs` | Register `IPositionEstimator`, `IControlLoopService` (production = `ControlLoopService`). Same for iOS/Android DI. |
-| `Tests/AgValoniaGPS.Services.Tests/LookAheadSlitTests.cs` | Replace `pipeline.SynchronousMode = true` driving with `ManualControlLoop` + `TestClock`. Each test step: feed GPS sample → estimator, advance clock by N×10 ms, tick loop N times. Add new tests at 25 and 40 km/h with thresholds tightened to ≤ 0.05 m. |
-| `Tests/AgValoniaGPS.Services.Tests/SectionControlServiceTests.cs` | Update tests that assumed 10 Hz tick. Existing 13 tests should still pass after the constants are adjusted (logic unchanged, just denominated in ticks instead of frames). |
-| `Tests/AgValoniaGPS.Services.Tests/AsymmetricSectionTurnTests.cs` | Same as above. |
+| `Shared/AgOpenWeb.Services/GpsService.cs` | On GPS sample receive: build `PoseSnapshot`, call `_positionEstimator.UpdateFromGps`. Keep raising `GpsDataUpdated` for everything else (UI flows). |
+| `Shared/AgOpenWeb.Services/Pipeline/GpsPipelineService.cs` | Shrink. `ProcessCycle` stops calling `SectionControlService.Update` and `AutoSteerService.SendPgns`. Keep building the `GpsCycleResult` snapshot for `MainViewModel.ApplyResults` (UI/section-bar data). Consider rename in a follow-up commit. |
+| `Shared/AgOpenWeb.Services/Section/SectionControlService.cs` | `Update(toolPos, heading, speed)` is now called by `ControlLoopService` at 100 Hz. Phase counters that were "frames at 10 Hz" become "ticks at 100 Hz". `SECTION_ON_DELAY = 2` (frames at 10 Hz = 200 ms) becomes `SECTION_ON_DELAY_TICKS = 20` (ticks at 100 Hz = 200 ms). `LookAheadOnSetting * 10` (frames) becomes `LookAheadOnSetting * 100` (ticks). Keep the seconds-based math centralized so the constants are derived, not hardcoded. |
+| `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` | No structural change. `AddCoveragePoint` gets called from control loop at 100 Hz. Existing `MIN_COVERAGE_POINT_DISTANCE_SQ = 0.0144 m²` (0.12 m) self-throttles rasterization to ~one quad per 12 cm of travel — at 100 Hz that's at most one rasterize per 12 cm × 16 sections. At 25 km/h (7 m/s) per section that's ~58 quads/sec, total ~930/sec across all sections. Same order of magnitude as today. Profile to confirm; add a hard upper bound if needed. |
+| `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs` | `SendPgns()` becomes called from `ControlLoopService` at 100 Hz instead of `GpsPipelineService.ProcessCycle`. v1: `_state.SteerAngle` continues to update only on GPS samples (via existing `ProcessGpsBuffer` path); we just resend the same value 10× per second. The firmware autosteer task uses the freshest. |
+| `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs` | Inject `IPositionEstimator` and `ISectionControlService`. In the render path, pull live pose and section snapshot at draw time instead of reading bound properties. Coverage bitmap path unchanged. |
+| `Shared/AgOpenWeb.ViewModels/MainViewModel.ApplyResults.cs` | Unchanged behavior — still fires on `CycleCompleted` (GPS rate) for section bar / fix quality / non-map UI. |
+| `Platforms/AgOpenWeb.Desktop/DependencyInjection/ServiceCollectionExtensions.cs` | Register `IPositionEstimator`, `IControlLoopService` (production = `ControlLoopService`). Same for iOS/Android DI. |
+| `Tests/AgOpenWeb.Services.Tests/LookAheadSlitTests.cs` | Replace `pipeline.SynchronousMode = true` driving with `ManualControlLoop` + `TestClock`. Each test step: feed GPS sample → estimator, advance clock by N×10 ms, tick loop N times. Add new tests at 25 and 40 km/h with thresholds tightened to ≤ 0.05 m. |
+| `Tests/AgOpenWeb.Services.Tests/SectionControlServiceTests.cs` | Update tests that assumed 10 Hz tick. Existing 13 tests should still pass after the constants are adjusted (logic unchanged, just denominated in ticks instead of frames). |
+| `Tests/AgOpenWeb.Services.Tests/AsymmetricSectionTurnTests.cs` | Same as above. |
 
 ## Threading boundaries
 
@@ -269,7 +269,7 @@ Single feature branch `feature/unified-control-loop`. Commits in this order; eac
    - Add `SnapshotStates()` to `ISectionControlService` (defensive copy of `_sectionStates`).
    - Replace property-bound chevron position/heading with `_positionEstimator.GetPose(now)`.
    - Replace property-bound section colors on map with snapshot read.
-   - Headless UI tests in `AgValoniaGPS.UI.Tests` must still pass.
+   - Headless UI tests in `AgOpenWeb.UI.Tests` must still pass.
 
 7. **Coverage timing audit** ✓
    - Static analysis: `GetSegmentCoverageMulti` is cache-throttled at 150 ms (~6.7 Hz) so the most expensive per-section op is unchanged from 10 Hz.
@@ -308,7 +308,7 @@ Single feature branch `feature/unified-control-loop`. Commits in this order; eac
 - `HydraulicLiftTests` likely unaffected (operates on per-frame state) but verify after constant retuning.
 
 ### Headless UI tests
-- `AgValoniaGPS.UI.Tests` (123 tests) must continue to pass — no behavioral change visible at the MVVM/UI layer except smoother map updates.
+- `AgOpenWeb.UI.Tests` (123 tests) must continue to pass — no behavioral change visible at the MVVM/UI layer except smoother map updates.
 
 ### Manual / hardware
 - Simulator smoke (FPS floor, smooth chevron, clean coverage edges).

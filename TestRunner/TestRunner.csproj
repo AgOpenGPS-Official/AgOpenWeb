@@ -8,8 +8,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Shared/AgValoniaGPS.Services/AgValoniaGPS.Services.csproj" />
-    <ProjectReference Include="../Shared/AgValoniaGPS.Models/AgValoniaGPS.Models.csproj" />
+    <ProjectReference Include="../Shared/AgOpenWeb.Services/AgOpenWeb.Services.csproj" />
+    <ProjectReference Include="../Shared/AgOpenWeb.Models/AgOpenWeb.Models.csproj" />
   </ItemGroup>
 
 </Project>

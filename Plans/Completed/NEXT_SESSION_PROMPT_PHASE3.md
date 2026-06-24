@@ -16,8 +16,8 @@ DrawingContextMapControl in 2D mode on iPad:
 
 The `.use_skia_map` DiagFlag selects DCMC vs SkiaMap as the 2D control
 at app startup. The flag file lives at
-`/private/var/mobile/Containers/Data/Application/<UUID>/Documents/AgValoniaGPS/.use_skia_map`
-on the iPad — push it with `xcrun devicectl device copy to ... --domain-type appDataContainer --domain-identifier com.agvaloniaagps.ios --destination Documents/AgValoniaGPS/.use_skia_map`.
+`/private/var/mobile/Containers/Data/Application/<UUID>/Documents/AgOpenWeb/.use_skia_map`
+on the iPad — push it with `xcrun devicectl device copy to ... --domain-type appDataContainer --domain-identifier com.agopenweb.ios --destination Documents/AgOpenWeb/.use_skia_map`.
 
 iPad FPS at each phase (idle scene, no driving):
 
@@ -45,7 +45,7 @@ From the plan:
 Reference material:
 
 - The Phase 0 perspective spike is at
-  `Shared/AgValoniaGPS.Views/Controls/Spikes/PerspectiveSkiaSpike.cs`.
+  `Shared/AgOpenWeb.Views/Controls/Spikes/PerspectiveSkiaSpike.cs`.
   F9 toggles it on Desktop. It proves the math works; just need to plumb
   it into `SkiaMapVisualHandler.GetCameraTransform` and the
   `SendStateToHandler` pipeline.
@@ -76,7 +76,7 @@ Phase 3 will need to:
 
 ## Known open items
 
-- **Issue [#416](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/416) — Active curve track renders as short V** instead of tracing the full base curve. Reproduces on DCMC too — latent VM bug, not introduced by Phase 2. Filed and parked.
+- **Issue [#416](https://github.com/AgOpenGPS-Official/AgOpenWeb/issues/416) — Active curve track renders as short V** instead of tracing the full base curve. Reproduces on DCMC too — latent VM bug, not introduced by Phase 2. Filed and parked.
 - **Phase 2 exit criterion: "FPS within 10% of DCMC"** — we measured
   SkiaMap S6 idle at ~55–58 FPS on iPad but never grabbed the DCMC S6
   number for direct comparison. Worth taking that reading early in the
@@ -121,7 +121,7 @@ The session can be opened fresh — no need to recap Phases 1–2. Load via
 Read at session start:
 
 1. `Plans/GL_MAP_PIVOT_PLAN.md` — the plan, see Phase 3 section.
-2. `Shared/AgValoniaGPS.Views/Controls/SkiaMapControl.cs` — `SendStateToHandler` (lines ~240–340) is where pitch/3D-mode flows in, and `GetCameraTransform` in the handler is what gets replaced.
-3. `Shared/AgValoniaGPS.Views/Controls/Spikes/PerspectiveSkiaSpike.cs` — Phase 0 reference impl.
+2. `Shared/AgOpenWeb.Views/Controls/SkiaMapControl.cs` — `SendStateToHandler` (lines ~240–340) is where pitch/3D-mode flows in, and `GetCameraTransform` in the handler is what gets replaced.
+3. `Shared/AgOpenWeb.Views/Controls/Spikes/PerspectiveSkiaSpike.cs` — Phase 0 reference impl.
 4. Memory: [[gl-compositionvisual-pivot]], [[skiasharp-skmatrix44]],
    [[visibility-toggle-rule]], [[no-later-deferred]] — auto-load.

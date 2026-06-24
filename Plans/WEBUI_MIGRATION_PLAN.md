@@ -21,10 +21,10 @@ we are bringing the web to parity with it, region by region.
    (a) project more *state* over the wire, (b) accept more *command ids* through a
    safe allowlist, (c) build HTML/JS that renders the state and sends the commands.
    We do **not** port business logic into JavaScript.
-   - Seam files (already in place): `Shared/AgValoniaGPS.RemoteServer/Contracts.cs`,
+   - Seam files (already in place): `Shared/AgOpenWeb.RemoteServer/Contracts.cs`,
      `WireCodec.cs`, `SceneProjector.cs`, `CoverageProjector.cs`, `MapBroadcaster.cs`,
      `WebSocketHub.cs`, `RemoteServerHost.cs`; client `wwwroot/{transport.js,app.js}`;
-     command map in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
+     command map in `Platforms/AgOpenWeb.Desktop/App.axaml.cs`.
 2. **Project state, not the View.** Runtime map data is pushed to `IMapService`
    (a View), *not* always present in `ApplicationState`. For each new element:
    find where the VM pushes it to the View → mirror it into state → project it.

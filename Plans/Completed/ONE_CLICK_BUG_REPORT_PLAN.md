@@ -2,7 +2,7 @@
 
 ## Context
 
-As AgValoniaGPS approaches beta testing, structured bug reports from testers are critical. Currently, `DebugDumpService` silently creates a diagnostic zip in the temp directory — the user never gets to describe the problem, and the zip is hard to find. The goal is a 1-click experience: user taps a button, sees a dialog to describe the issue, and gets a zip they can attach to a GitHub issue. A future phase will auto-create GitHub issues and upload the data, enabling AI triage.
+As AgOpenWeb approaches beta testing, structured bug reports from testers are critical. Currently, `DebugDumpService` silently creates a diagnostic zip in the temp directory — the user never gets to describe the problem, and the zip is hard to find. The goal is a 1-click experience: user taps a button, sees a dialog to describe the issue, and gets a zip they can attach to a GitHub issue. A future phase will auto-create GitHub issues and upload the data, enabling AI triage.
 
 ## Phase 1: 1-Click Bug Report Dialog (this implementation)
 
@@ -14,28 +14,28 @@ As AgValoniaGPS approaches beta testing, structured bug reports from testers are
    - Read-only summary of what will be included (system info, config, GPS state, field data, logs, screenshot)
    - Text area for user to describe the issue (required — placeholder: "What happened? What did you expect?")
    - **File drop area** — dashed-border zone where users can drag & drop their own screenshots, screen recordings, videos, log files, or any other supporting files. On mobile, an "Add Files" button opens the system file picker instead. Attached files are shown in a list below with filename, size, and a remove button. All user-attached files get bundled into an `attachments/` folder inside the zip.
-   - "Submit" button (creates zip, saves to Documents/AgValoniaGPS/BugReports/, shows success with path)
+   - "Submit" button (creates zip, saves to Documents/AgOpenWeb/BugReports/, shows success with path)
    - "Cancel" button
 4. On submit: busy overlay while zip is created, then status message with the file path
 
-**Save location:** `Documents/AgValoniaGPS/BugReports/bugreport_{timestamp}.zip` — visible to the user in their file browser, not buried in temp.
+**Save location:** `Documents/AgOpenWeb/BugReports/bugreport_{timestamp}.zip` — visible to the user in their file browser, not buried in temp.
 
 ### Files to Modify
 
 #### 1. Add InMemoryLoggerProvider to iOS and Android DI
 Currently only Desktop captures logs. Bug reports from mobile devices would be useless without them.
 
-- `Platforms/AgValoniaGPS.iOS/DependencyInjection/ServiceCollectionExtensions.cs` — add `builder.AddProvider(new InMemoryLoggerProvider());`
-- `Platforms/AgValoniaGPS.Android/DependencyInjection/ServiceCollectionExtensions.cs` — same
+- `Platforms/AgOpenWeb.iOS/DependencyInjection/ServiceCollectionExtensions.cs` — add `builder.AddProvider(new InMemoryLoggerProvider());`
+- `Platforms/AgOpenWeb.Android/DependencyInjection/ServiceCollectionExtensions.cs` — same
 
 #### 2. Add `BugReport` dialog type to UIState
-- `Shared/AgValoniaGPS.Models/State/UIState.cs`
+- `Shared/AgOpenWeb.Models/State/UIState.cs`
   - Add `BugReport` to `DialogType` enum
   - Add `IsBugReportDialogVisible` computed property
   - Add `RaisePropertyChanged` call in `ShowDialog`/`CloseDialog`
 
 #### 3. Create BugReportDialogPanel
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/BugReportDialogPanel.axaml` — new dialog
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/BugReportDialogPanel.axaml` — new dialog
   - Semi-transparent backdrop (standard pattern)
   - Centered card with:
     - "Report a Bug" title
@@ -44,38 +44,38 @@ Currently only Desktop captures logs. Bug reports from mobile devices would be u
     - File drop area — dashed border zone where users can drag & drop screenshots, videos, or other files to include. Uses Avalonia's `DragDrop` API. Shows attached file list with filename, size, and a remove button for each.
     - Submit + Cancel buttons
   - Binds `IsVisible` to `State.UI.IsBugReportDialogVisible`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/BugReportDialogPanel.axaml.cs` — code-behind
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/BugReportDialogPanel.axaml.cs` — code-behind
   - Backdrop click handler to close
   - DragOver/Drop event handlers to accept file drops
   - On mobile (iOS/Android): include an "Add Files" button as alternative to drag & drop (touch doesn't support drag from outside the app easily)
 
 #### 4. Register dialog in DialogOverlayHost
-- `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml` — add BugReportDialogPanel
+- `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml` — add BugReportDialogPanel
 
 #### 5. Update DebugDumpService for user-friendly output
-- `Shared/AgValoniaGPS.Services/DebugDumpService.cs`
-  - Add overload or parameter for custom output directory (default to `Documents/AgValoniaGPS/BugReports/`)
+- `Shared/AgOpenWeb.Services/DebugDumpService.cs`
+  - Add overload or parameter for custom output directory (default to `Documents/AgOpenWeb/BugReports/`)
   - Rename output file pattern from `debug_dump_` to `bugreport_`
   - Add `userAttachments` parameter (list of file paths) — copies each into `attachments/` folder in the zip
 
 #### 6. Wire up commands in MainViewModel
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.Commands.Settings.cs`
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.Commands.Settings.cs`
   - Replace `CreateDebugDumpCommand` with `ShowBugReportDialogCommand` (opens dialog)
   - Add `CloseBugReportDialogCommand`
   - Add `SubmitBugReportCommand`:
     1. Capture screenshot (already done before dialog opened, stored in field)
     2. Call `DebugDumpService.CreateDump()` with user's description
-    3. Save to Documents/AgValoniaGPS/BugReports/
+    3. Save to Documents/AgOpenWeb/BugReports/
     4. Close dialog, show status message with path
   - Add `BugReportDescription` string property for TextBox binding
   - Add `BugReportAttachments` ObservableCollection<BugReportAttachment> (filename + path) for the file list
   - Add `RemoveBugReportAttachmentCommand` to remove items from the list
   - Add `AddBugReportFilesCommand` for the mobile "Add Files" button (opens file picker via Avalonia StorageProvider)
   - Add `_bugReportScreenshot` byte[] field to hold pre-captured screenshot
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` — add command property declarations
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` — add command property declarations
 
 #### 7. Update File menu button
-- `Shared/AgValoniaGPS.Views/Controls/Panels/FileMenuPanel.axaml`
+- `Shared/AgOpenWeb.Views/Controls/Panels/FileMenuPanel.axaml`
   - Change `CreateDebugDumpCommand` to `ShowBugReportDialogCommand`
   - Keep localization key or update to match
 
@@ -111,7 +111,7 @@ Currently only Desktop captures logs. Bug reports from mobile devices would be u
    - Open File menu, tap "Bug Report"
    - Verify screenshot captured is of the screen BEFORE the dialog
    - Enter a description, tap Submit
-   - Verify zip appears in Documents/AgValoniaGPS/BugReports/
+   - Verify zip appears in Documents/AgOpenWeb/BugReports/
    - Open zip, confirm it contains: system_info.txt, appsettings.json, configuration.json, runtime_state.json, logs.txt, screenshot.png, user_notes.txt, field/ directory (if field open)
    - Drag & drop a file onto the drop area (Desktop), or tap "Add Files" (mobile) — verify it appears in the attached list
    - Remove an attachment, verify it disappears

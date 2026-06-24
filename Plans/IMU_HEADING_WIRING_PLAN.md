@@ -10,7 +10,7 @@ Three concrete defects:
 
 1. **PANDA heading is parsed at 10× the real value.** The AiO firmware (`AiO_New_Dawn/lib/aio_navigation/NAVProcessor.cpp:157`) emits PANDA field 12 as `(int)(heading * 10.0)` — e.g. 90.5° → `"905"`. AgOpenGPS divides by 0.1 on receive (`UDPComm.Designer.cs:137`). `NmeaParserServiceFast.ParsePandaFieldsIntoState` parses field 12 as a raw double with no scaling, so `_state.Heading = 905.0` for a real heading of 90.5°. PAOGI sends field 12 as a float without scaling, so PAOGI is correct.
 
-2. **No "no IMU" sentinel detection.** AiO sends the literal string `"65535"` in PANDA field 12 when no IMU is present. AgValoniaGPS parses that as `_state.Heading = 65535.0`.
+2. **No "no IMU" sentinel detection.** AiO sends the literal string `"65535"` in PANDA field 12 when no IMU is present. AgOpenWeb parses that as `_state.Heading = 65535.0`.
 
 3. **The fusion slider does nothing.** `GpsHeadingFusionService.FuseHeading` gates the IMU blend on `SensorState.Instance.HasValidImu`, which compares `ImuHeading != 99999`. Nothing in production code writes `SensorState.Instance.ImuHeading` (verified across all branches via `git log -S`). So `HasValidImu` is always false and the blend never runs.
 
@@ -31,7 +31,7 @@ From `Firmware_Teensy_AiO_26/lib/aio_navigation/NAVProcessor.cpp`, `IMUProcessor
 
 **Roll wire format clarified.** It looked at first like PANDA roll was raw integer degrees because `NAVProcessor.cpp:158` does `(int)round(imuData.roll)` — no ×10. But `IMUProcessor.cpp:255-303` populates `currentData.roll = 10.0f * bnoParser->getRoll()` (and similar for TM171), so the value sitting in `currentData.roll` is already `degrees * 10` despite the misleading `// degrees` comment in `IMUProcessor.h:27`. Net wire format for PANDA roll: same ×10 integer convention as heading. AgOpenGPS's `* 0.1` decode is correct. PR #294's `data.ImuRoll = _state.Roll` is operating on values 10× too large against real firmware — its test passes only because `VirtualGpsReceiver.cs:138` emits roll as float `"5.70"`, not the canonical scaled-int. Both heading and roll need `* 0.1` in the parser; both fixture encoders need to scale.
 
-PGN 211 (binary IMU PGN, `IMUProcessor.cpp:464-498`) over-scales roll by another factor of 10 (`(int16_t)(currentData.roll * 10)` on top of the already-pre-multiplied source). That's a separate firmware bug; AgValoniaGPS doesn't consume PGN 211, so out of scope.
+PGN 211 (binary IMU PGN, `IMUProcessor.cpp:464-498`) over-scales roll by another factor of 10 (`(int16_t)(currentData.roll * 10)` on top of the already-pre-multiplied source). That's a separate firmware bug; AgOpenWeb doesn't consume PGN 211, so out of scope.
 
 ## Goals
 
@@ -45,7 +45,7 @@ PGN 211 (binary IMU PGN, `IMUProcessor.cpp:464-498`) over-scales roll by another
 ## Non-goals
 
 - Pitch / yaw rate scaling. PANDA pitch is rounded integer degrees (1° resolution baked into wire format); yaw rate is float. Neither needs scaling and neither is currently consumed by guidance — leave alone.
-- External IMU module (PGN 211 / 0xD3) handler. AgValoniaGPS doesn't have one and the AiO ecosystem packs IMU into PANDA anyway.
+- External IMU module (PGN 211 / 0xD3) handler. AgOpenWeb doesn't have one and the AiO ecosystem packs IMU into PANDA anyway.
 - Firmware patches. PGN 211's roll over-scaling and any related `IMUProcessor` cleanups are upstream concerns.
 - Removing `SensorState` entirely. After this PR, `GpsService.cs:133` is the only remaining `SensorState.Instance.ImuRoll` reader, and it lives inside the now-dead `TransformAntennaToPivot` body (already early-returns for the production E/N=0 path). Cleaning that up is a separate trivial PR.
 
@@ -61,7 +61,7 @@ Currently both inputs collapse into `_state.Heading` / `pos.Heading`, so the ble
    - **PANDA**: parse field 12 as int. If `== 65535` → set `state.ImuValid = false`, leave `state.Heading = 0` and `state.ImuHeading = 0`. If valid → `state.ImuHeading = value * 0.1`, `state.ImuValid = true`. For consistency seed `state.Heading = state.ImuHeading` so first-cycle / standstill has a sensible default; pipeline's fix-to-fix overrides at any real speed. Field 13 (roll) `* 0.1` when `ImuValid`, else 0. Field 14 (pitch) raw int. Field 15 (yawRate) raw float.
    - **PAOGI**: field 12 → `state.Heading` directly. Field 13 (roll) → `state.Roll` directly (already float). `state.ImuValid` stays false — dual antenna is ground truth, no fusion needed; `state.ImuHeading` left at 0.
 
-2. **State** — add `double ImuHeading` to `VehicleState` (struct, `Shared/AgValoniaGPS.Models/VehicleState.cs`). Reuse the existing `ImuValid` flag — PANDA parser sets it based on the 65535 sentinel.
+2. **State** — add `double ImuHeading` to `VehicleState` (struct, `Shared/AgOpenWeb.Models/VehicleState.cs`). Reuse the existing `ImuValid` flag — PANDA parser sets it based on the 65535 sentinel.
 
 3. **DTO** — add `double ImuHeading` and `bool ImuValid` to `GpsData` (parallel to PR #294's `ImuRoll`).
 

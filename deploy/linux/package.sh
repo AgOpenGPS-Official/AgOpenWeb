@@ -39,7 +39,7 @@ command -v dotnet >/dev/null || { echo "error: dotnet SDK not found" >&2; exit 1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CSPROJ="$REPO_ROOT/Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj"
+CSPROJ="$REPO_ROOT/Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj"
 
 NAME="agopenweb-$RID"
 STAGE="$(mktemp -d)/$NAME"

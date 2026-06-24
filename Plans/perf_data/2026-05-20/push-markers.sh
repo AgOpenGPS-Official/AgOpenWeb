@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # PERF-05 Phase 1 marker push — drops all 7 marker files into the app's
-# Documents/AgValoniaGPS directory on both devices. Restart the app after
+# Documents/AgOpenWeb directory on both devices. Restart the app after
 # (DiagFlags reads markers once at startup).
 
 set -euo pipefail
 
 IPAD_UDID="d2fcb0323a90ad2954ab501f2603cd7573d99b2a"
-IPAD_BUNDLE="com.agvaloniaagps.ios"
+IPAD_BUNDLE="com.agopenweb.ios"
 ANDROID_SERIAL="R52TB090VAK"
 
 MARKERS=(
@@ -24,23 +24,23 @@ STAGE=$(mktemp -d)
 trap "rm -rf $STAGE" EXIT
 for m in "${MARKERS[@]}"; do touch "$STAGE/$m"; done
 
-echo "iPad → $IPAD_BUNDLE Documents/AgValoniaGPS/"
+echo "iPad → $IPAD_BUNDLE Documents/AgOpenWeb/"
 for m in "${MARKERS[@]}"; do
   xcrun devicectl device copy to \
     --device "$IPAD_UDID" \
     --domain-type appDataContainer \
     --domain-identifier "$IPAD_BUNDLE" \
     --source "$STAGE/$m" \
-    --destination "Documents/AgValoniaGPS/$m" \
+    --destination "Documents/AgOpenWeb/$m" \
     --quiet
   echo "  pushed $m"
 done
 
 echo
-echo "Android → shared MyDocuments at /storage/emulated/0/Documents/AgValoniaGPS/"
-adb -s "$ANDROID_SERIAL" shell "mkdir -p /storage/emulated/0/Documents/AgValoniaGPS" >/dev/null
+echo "Android → shared MyDocuments at /storage/emulated/0/Documents/AgOpenWeb/"
+adb -s "$ANDROID_SERIAL" shell "mkdir -p /storage/emulated/0/Documents/AgOpenWeb" >/dev/null
 for m in "${MARKERS[@]}"; do
-  adb -s "$ANDROID_SERIAL" push "$STAGE/$m" "/storage/emulated/0/Documents/AgValoniaGPS/$m" >/dev/null
+  adb -s "$ANDROID_SERIAL" push "$STAGE/$m" "/storage/emulated/0/Documents/AgOpenWeb/$m" >/dev/null
   echo "  pushed $m"
 done
 

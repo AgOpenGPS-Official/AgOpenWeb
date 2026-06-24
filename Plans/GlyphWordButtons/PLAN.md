@@ -72,7 +72,7 @@ Visual reference: `mockups/glyph_over_word.png` (and `.svg`).
 
 Two options:
 
-1. **Hand-rolled SVGs** in `Shared/AgValoniaGPS.Views/Icons/`, one file
+1. **Hand-rolled SVGs** in `Shared/AgOpenWeb.Views/Icons/`, one file
    per glyph, named after the element ID. Maximum control over the
    2 pt stroke and visual consistency.
 2. **External library** — Lucide (MIT), Tabler Icons (MIT), or Fluent
@@ -124,7 +124,7 @@ Reference targets:
 Each phase leaves a working, releasable app.
 
 ### Phase 1 — Icon assets + naming
-- Create `Shared/AgValoniaGPS.Views/Icons/` and a naming convention
+- Create `Shared/AgOpenWeb.Views/Icons/` and a naming convention
   (e.g. `glyph.vehicle.svg`).
 - Hand-roll the ~25 starter glyphs per the mockup.
 - Add to project as embedded resources.

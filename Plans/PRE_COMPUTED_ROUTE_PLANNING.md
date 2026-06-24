@@ -1,6 +1,6 @@
 # Pre-Computed Route Planning: Phased Implementation Plan
 
-## Issue #128 -- AgValoniaGPS
+## Issue #128 -- AgOpenWeb
 
 ### Date: 2026-04-03
 ### Status: Draft
@@ -34,7 +34,7 @@ The current guidance system is a "white-cane" reactive approach:
 
 ## 3. Data Model Design
 
-### 3.1 New Models (in `Shared/AgValoniaGPS.Models/RoutePlanning/`)
+### 3.1 New Models (in `Shared/AgOpenWeb.Models/RoutePlanning/`)
 
 ```csharp
 RoutePlan                    // Top-level immutable plan
@@ -69,7 +69,7 @@ RoutePlanProgress            // Runtime tracking state
 GuidanceMode (enum)          // WhiteCane | PreComputedRoute
 ```
 
-### 3.2 New State (in `Shared/AgValoniaGPS.Models/State/`)
+### 3.2 New State (in `Shared/AgOpenWeb.Models/State/`)
 
 ```csharp
 RoutePlanState : ReactiveObject    // Added to ApplicationState
@@ -84,7 +84,7 @@ RoutePlanState : ReactiveObject    // Added to ApplicationState
 
 ## 4. Service Architecture
 
-### 4.1 New Services (in `Shared/AgValoniaGPS.Services/RoutePlanning/`)
+### 4.1 New Services (in `Shared/AgOpenWeb.Services/RoutePlanning/`)
 
 **`IRoutePlanningService` / `RoutePlanningService`** -- The orchestrator. Public API:
 
@@ -271,7 +271,7 @@ Each is an independent PR:
 New files:
 
 ```
-AgValoniaGPS.Models/RoutePlanning/
+AgOpenWeb.Models/RoutePlanning/
   GuidanceMode.cs
   RoutePlan.cs
   RouteSegment.cs
@@ -279,10 +279,10 @@ AgValoniaGPS.Models/RoutePlanning/
   RoutePlanRequest.cs
   RoutePlanProgress.cs
 
-AgValoniaGPS.Models/State/
+AgOpenWeb.Models/State/
   RoutePlanState.cs
 
-AgValoniaGPS.Services/RoutePlanning/
+AgOpenWeb.Services/RoutePlanning/
   IRoutePlanningService.cs
   RoutePlanningService.cs
   SwathGenerationService.cs
@@ -291,13 +291,13 @@ AgValoniaGPS.Services/RoutePlanning/
   RouteStitchingService.cs
   RouteGuidanceService.cs
 
-AgValoniaGPS.ViewModels/
+AgOpenWeb.ViewModels/
   MainViewModel.RoutePlanning.cs
 
-AgValoniaGPS.Views/Controls/Panels/
+AgOpenWeb.Views/Controls/Panels/
   RoutePlanningPanel.axaml/cs
 
-Tests/AgValoniaGPS.Services.Tests/RoutePlanning/
+Tests/AgOpenWeb.Services.Tests/RoutePlanning/
   SwathGenerationServiceTests.cs
   SwathClippingServiceTests.cs
   TurnPathServiceTests.cs
@@ -308,11 +308,11 @@ Tests/AgValoniaGPS.Services.Tests/RoutePlanning/
 Modified files:
 
 ```
-AgValoniaGPS.Models/State/ApplicationState.cs
-AgValoniaGPS.Services/Interfaces/IMapService.cs
-AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs
-AgValoniaGPS.ViewModels/MainViewModel.Guidance.cs
-AgValoniaGPS.ViewModels/MainViewModel.cs
+AgOpenWeb.Models/State/ApplicationState.cs
+AgOpenWeb.Services/Interfaces/IMapService.cs
+AgOpenWeb.Views/Controls/DrawingContextMapControl.cs
+AgOpenWeb.ViewModels/MainViewModel.Guidance.cs
+AgOpenWeb.ViewModels/MainViewModel.cs
 Platforms/*/DependencyInjection/ServiceCollectionExtensions.cs
 ```
 
@@ -336,7 +336,7 @@ Platforms/*/DependencyInjection/ServiceCollectionExtensions.cs
 
 ### CI Pipeline
 
-All route planning tests run in the existing CI `test` job (gates all builds). No workflow changes needed — tests in `Tests/AgValoniaGPS.Services.Tests/RoutePlanning/` are automatically discovered.
+All route planning tests run in the existing CI `test` job (gates all builds). No workflow changes needed — tests in `Tests/AgOpenWeb.Services.Tests/RoutePlanning/` are automatically discovered.
 
 Critical regression guards:
 - **Route generation round-trip**: generate plan → serialize → deserialize → verify identical

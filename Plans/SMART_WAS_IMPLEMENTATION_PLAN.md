@@ -2,9 +2,9 @@
 
 ## 0. Summary of the port
 
-`CSmartWAS.cs` is a 282-line self-contained statistical analyzer. The port lifts cleanly into AgValoniaGPS as one service plus one ViewModel plus one dialog, because the upstream class only depends on three external things — all of which already exist in AgValoniaGPS:
+`CSmartWAS.cs` is a 282-line self-contained statistical analyzer. The port lifts cleanly into AgOpenWeb as one service plus one ViewModel plus one dialog, because the upstream class only depends on three external things — all of which already exist in AgOpenWeb:
 
-| Upstream dependency | AgValoniaGPS equivalent |
+| Upstream dependency | AgOpenWeb equivalent |
 |---|---|
 | `mf.isBtnAutoSteerOn` | `IAutoSteerService.IsEngaged` |
 | `mf.avgSpeed` (km/h) | `VehicleState.Speed` (m/s) — **scale change required** |
@@ -16,27 +16,27 @@ No new PGNs; no upstream behavior beyond the analyzer needs porting.
 
 ---
 
-## 1. File map (upstream → AgValonia)
+## 1. File map (upstream → AgOpenWeb)
 
 | Role | New file | Namespace |
 |---|---|---|
-| Analyzer / service implementation | `Shared/AgValoniaGPS.Services/AutoSteer/SmartWasCalibrationService.cs` | `AgValoniaGPS.Services.AutoSteer` |
-| Service interface | `Shared/AgValoniaGPS.Services/Interfaces/ISmartWasCalibrationService.cs` | `AgValoniaGPS.Services.Interfaces` |
-| Snapshot DTO (results bundle for UI) | embedded in interface file as `readonly struct SmartWasSnapshot` | `AgValoniaGPS.Services.Interfaces` |
-| Dialog ViewModel | `Shared/AgValoniaGPS.ViewModels/SmartWasViewModel.cs` | `AgValoniaGPS.ViewModels` |
-| Dialog AXAML | `Shared/AgValoniaGPS.Views/Controls/Dialogs/SmartWasDialogPanel.axaml` | `AgValoniaGPS.Views.Controls.Dialogs` |
-| Dialog code-behind | `Shared/AgValoniaGPS.Views/Controls/Dialogs/SmartWasDialogPanel.axaml.cs` | `AgValoniaGPS.Views.Controls.Dialogs` |
-| Service unit tests | `Tests/AgValoniaGPS.Services.Tests/SmartWasCalibrationServiceTests.cs` | n/a |
-| ViewModel/headless UI tests | `Tests/AgValoniaGPS.UI.Tests/SmartWasViewModelTests.cs` | n/a |
+| Analyzer / service implementation | `Shared/AgOpenWeb.Services/AutoSteer/SmartWasCalibrationService.cs` | `AgOpenWeb.Services.AutoSteer` |
+| Service interface | `Shared/AgOpenWeb.Services/Interfaces/ISmartWasCalibrationService.cs` | `AgOpenWeb.Services.Interfaces` |
+| Snapshot DTO (results bundle for UI) | embedded in interface file as `readonly struct SmartWasSnapshot` | `AgOpenWeb.Services.Interfaces` |
+| Dialog ViewModel | `Shared/AgOpenWeb.ViewModels/SmartWasViewModel.cs` | `AgOpenWeb.ViewModels` |
+| Dialog AXAML | `Shared/AgOpenWeb.Views/Controls/Dialogs/SmartWasDialogPanel.axaml` | `AgOpenWeb.Views.Controls.Dialogs` |
+| Dialog code-behind | `Shared/AgOpenWeb.Views/Controls/Dialogs/SmartWasDialogPanel.axaml.cs` | `AgOpenWeb.Views.Controls.Dialogs` |
+| Service unit tests | `Tests/AgOpenWeb.Services.Tests/SmartWasCalibrationServiceTests.cs` | n/a |
+| ViewModel/headless UI tests | `Tests/AgOpenWeb.UI.Tests/SmartWasViewModelTests.cs` | n/a |
 
 Edits (no new file):
-- `Shared/AgValoniaGPS.Models/State/UIState.cs` — add enum + visibility property + `OnPropertyChanged` line
-- `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml` — add `<dialogs:SmartWasDialogPanel/>`
-- `Shared/AgValoniaGPS.ViewModels/AutoSteerConfigViewModel.cs` — add `OpenSmartWasCommand`, accept a `Action? openSmartWas` in ctor
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` — add `SmartWasViewModel` property
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.Commands.Configuration.cs` — wire `ShowAutoSteerConfig` to pass the Smart WAS opener; add `ShowSmartWasCommand`
-- `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs` — emit a single new internal hook into Smart WAS at the end of `ProcessSteerData`
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/AutoSteerConfigPanel.axaml` — re-enable the unused "Wizard" button cell (Grid.Column 0) into a "Smart WAS" entry, or add a fifth button column. Currently that button is `IsEnabled="False" Opacity="0.5"`; the simplest path is to repurpose it and bind `Command="{Binding OpenSmartWasCommand}"`.
+- `Shared/AgOpenWeb.Models/State/UIState.cs` — add enum + visibility property + `OnPropertyChanged` line
+- `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml` — add `<dialogs:SmartWasDialogPanel/>`
+- `Shared/AgOpenWeb.ViewModels/AutoSteerConfigViewModel.cs` — add `OpenSmartWasCommand`, accept a `Action? openSmartWas` in ctor
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` — add `SmartWasViewModel` property
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.Commands.Configuration.cs` — wire `ShowAutoSteerConfig` to pass the Smart WAS opener; add `ShowSmartWasCommand`
+- `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs` — emit a single new internal hook into Smart WAS at the end of `ProcessSteerData`
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/AutoSteerConfigPanel.axaml` — re-enable the unused "Wizard" button cell (Grid.Column 0) into a "Smart WAS" entry, or add a fifth button column. Currently that button is `IsEnabled="False" Opacity="0.5"`; the simplest path is to repurpose it and bind `Command="{Binding OpenSmartWasCommand}"`.
 - All three `Platforms/*/DependencyInjection/ServiceCollectionExtensions.cs` — register `ISmartWasCalibrationService`
 
 ---
@@ -189,7 +189,7 @@ The most natural place is the AutoSteerConfigPanel bottom-action row. There's al
         Background="#DD2196F3"
         Command="{Binding OpenSmartWasCommand}">
     <StackPanel HorizontalAlignment="Center">
-        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/SteerWheel.png"
+        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/SteerWheel.png"
                Width="32" Height="32" Stretch="Uniform" HorizontalAlignment="Center"/>
         <TextBlock Text="Smart WAS" FontSize="10" HorizontalAlignment="Center"
                    Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
@@ -203,7 +203,7 @@ Choose any existing icon (`SteerWheel.png` is the closest semantic). The `OpenSm
 
 ## 6. DialogType enum addition
 
-Edit `Shared/AgValoniaGPS.Models/State/UIState.cs`:
+Edit `Shared/AgOpenWeb.Models/State/UIState.cs`:
 
 1. Inside the `DialogType` enum, append `SmartWas` as the last member.
 2. In `UIState`, add the convenience property near the others around line ~116:
@@ -212,7 +212,7 @@ Edit `Shared/AgValoniaGPS.Models/State/UIState.cs`:
    ```
 3. In the giant `OnPropertyChanged(...)` block in `ActiveDialog.set` (around lines 41–73), add `OnPropertyChanged(nameof(IsSmartWasDialogVisible));`.
 
-Then in `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml`, append (after the `AutoSteerConfigPanel` line at 68):
+Then in `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml`, append (after the `AutoSteerConfigPanel` line at 68):
 
 ```xml
 <dialogs:SmartWasDialogPanel DataContext="{Binding SmartWasViewModel}"/>
@@ -225,9 +225,9 @@ The `SmartWasDialogPanel.axaml` itself binds `IsVisible` via the centralized `UI
 ## 7. DI wiring (all three platforms)
 
 In each of:
-- `Platforms/AgValoniaGPS.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
-- `Platforms/AgValoniaGPS.iOS/DependencyInjection/ServiceCollectionExtensions.cs`
-- `Platforms/AgValoniaGPS.Android/DependencyInjection/ServiceCollectionExtensions.cs`
+- `Platforms/AgOpenWeb.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
+- `Platforms/AgOpenWeb.iOS/DependencyInjection/ServiceCollectionExtensions.cs`
+- `Platforms/AgOpenWeb.Android/DependencyInjection/ServiceCollectionExtensions.cs`
 
 Add immediately after the `AutoSteerService` registration:
 
@@ -250,7 +250,7 @@ Add `ISmartWasCalibrationService _smartWasService` to the field list and the con
 
 ### 8.1 Pure math — unit-testable, no hardware
 
-`Tests/AgValoniaGPS.Services.Tests/SmartWasCalibrationServiceTests.cs`. Construct the service with a stub `IAutoSteerService` (NSubstitute, `IsEngaged.Returns(true)`) and a real `ApplicationState` whose `Vehicle.Speed` and `Vehicle.CrossTrackError` we set directly. Tests:
+`Tests/AgOpenWeb.Services.Tests/SmartWasCalibrationServiceTests.cs`. Construct the service with a stub `IAutoSteerService` (NSubstitute, `IsEngaged.Returns(true)`) and a real `ApplicationState` whose `Vehicle.Speed` and `Vehicle.CrossTrackError` we set directly. Tests:
 
 1. **Mean/median/stddev correctness** — feed 200 samples drawn from `N(μ=-0.5, σ=0.2)` (deterministic seed), assert mean within tolerance, median within tolerance, stddev within tolerance, `RecommendedOffset ≈ +0.5°`.
 2. **Confidence math** — feed exactly the normal distribution (matches expected1Std=0.68 and expected2Std=0.95), assert `Confidence ≥ 90`.
@@ -268,7 +268,7 @@ Add `ISmartWasCalibrationService _smartWasService` to the field list and the con
 
 ### 8.2 ViewModel / threading
 
-`Tests/AgValoniaGPS.UI.Tests/SmartWasViewModelTests.cs` (Avalonia headless):
+`Tests/AgOpenWeb.UI.Tests/SmartWasViewModelTests.cs` (Avalonia headless):
 
 1. **Apply writes WasOffset additively** — set existing `WasOffset=10`, `CountsPerDegree=100`, recommended offset `+0.5°`. After Apply, `WasOffset == 60`.
 2. **Apply calls `ApplyOffsetCorrection`** — verify via NSubstitute.
@@ -305,9 +305,9 @@ Add `ISmartWasCalibrationService _smartWasService` to the field list and the con
 
 ## 10. Risk callouts
 
-1. **Unit conversions, not just refactors** — upstream's `MIN_SPEED_KMH = 2.0` compares against `mf.avgSpeed` (km/h). AgValonia's `VehicleState.Speed` is m/s. Compare against `0.5556` (or convert each sample to km/h first via `* 3.6`). Same for XTE: upstream's `MAX_DIST_OFF_MM = 500` compares against millimeters; AgValonia's `CrossTrackError` is meters, so the constant becomes `0.5`. Get this wrong and the gating effectively disables itself or never opens. Add a test that verifies units.
+1. **Unit conversions, not just refactors** — upstream's `MIN_SPEED_KMH = 2.0` compares against `mf.avgSpeed` (km/h). AgOpenWeb's `VehicleState.Speed` is m/s. Compare against `0.5556` (or convert each sample to km/h first via `* 3.6`). Same for XTE: upstream's `MAX_DIST_OFF_MM = 500` compares against millimeters; AgOpenWeb's `CrossTrackError` is meters, so the constant becomes `0.5`. Get this wrong and the gating effectively disables itself or never opens. Add a test that verifies units.
 
-2. **InvertWas semantics drift risk** — upstream reads `Properties.VehicleSettings.Default.setArdSteer_setting0 & 1`. In AgValonia, the equivalent is `ConfigurationStore.Instance.AutoSteer.InvertWas`. Verify these are wired the same way to the module: `AutoSteerConfig.cs` line 543 `if (InvertWas) result |= 0x01;` confirms parity. ✓
+2. **InvertWas semantics drift risk** — upstream reads `Properties.VehicleSettings.Default.setArdSteer_setting0 & 1`. In AgOpenWeb, the equivalent is `ConfigurationStore.Instance.AutoSteer.InvertWas`. Verify these are wired the same way to the module: `AutoSteerConfig.cs` line 543 `if (InvertWas) result |= 0x01;` confirms parity. ✓
 
 3. **Threading on `SnapshotChanged`** — fired from the UDP receive thread. The ViewModel's subscriber MUST `Dispatcher.UIThread.Post` before mutating any INPC properties. The PR #320 commit (`ea9516c`) is the canonical reference. Add an explicit headless test (test #5 above) that fires the event off-thread and asserts the UI property updated after a dispatcher drain.
 
@@ -319,7 +319,7 @@ Add `ISmartWasCalibrationService _smartWasService` to the field list and the con
 
 7. **Buffer survives Stop** — upstream `Stop()` only flips `IsCollecting=false`, doesn't reset. Operator-friendly: pause to look at numbers, resume. Preserve this.
 
-8. **`mf.isBtnAutoSteerOn` vs `IsEngaged` semantics** — upstream gates on the *button*, not the actual engaged state. AgValonia's `IsEngaged` is the engaged state. Equivalent for steady-state operation; differs during the brief engage/disengage transient. Acceptable.
+8. **`mf.isBtnAutoSteerOn` vs `IsEngaged` semantics** — upstream gates on the *button*, not the actual engaged state. AgOpenWeb's `IsEngaged` is the engaged state. Equivalent for steady-state operation; differs during the brief engage/disengage transient. Acceptable.
 
 9. **AutoSteerConfigPanel coexistence** — the Smart WAS dialog uses `UIState.ActiveDialog` (so opening it closes any other dialog), but `AutoSteerConfigPanel` uses its own `IsPanelVisible` flag (NOT in `UIState`'s dialog state machine). This means opening Smart WAS from the AutoSteer panel does NOT auto-close the AutoSteer panel. Behavior matches the existing wizard launch (`WizardCommand` at AutoSteerConfigViewModel.cs:978–984 explicitly sets `IsPanelVisible = false`). Decide: do we want Smart WAS to auto-close AutoSteerConfig or float on top? **Recommend: float on top** — operator likely wants both readouts visible. If float-on-top causes z-order issues, set `IsPanelVisible = false` in the opener like the wizard does.
 
@@ -329,7 +329,7 @@ Add `ISmartWasCalibrationService _smartWasService` to the field list and the con
 
 ## 11. Effort estimate
 
-After reading the upstream code (clean, ~280 lines, no surprises) and confirming AgValonia patterns are a tight match:
+After reading the upstream code (clean, ~280 lines, no surprises) and confirming AgOpenWeb patterns are a tight match:
 
 | Phase | Hours |
 |---|---|
@@ -350,8 +350,8 @@ Realistic single-PR landing window: **1.5 working days**. The "~1 day" earlier g
 
 ### Critical Files for Implementation
 
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs`
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Models/State/UIState.cs`
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.ViewModels/AutoSteerConfigViewModel.cs`
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml`
-- `/Users/chris/Code/AgValoniaGPS3/Platforms/AgValoniaGPS.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs`
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Models/State/UIState.cs`
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.ViewModels/AutoSteerConfigViewModel.cs`
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml`
+- `/Users/chris/Code/AgOpenWeb3/Platforms/AgOpenWeb.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`

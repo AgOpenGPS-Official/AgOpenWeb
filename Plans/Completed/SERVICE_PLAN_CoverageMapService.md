@@ -134,7 +134,7 @@ public void TurnMappingOff()
 Uses the shoelace formula to calculate area of triangles:
 
 ```csharp
-// From WorkedAreaService.cs (already in AgValoniaGPS.Services)
+// From WorkedAreaService.cs (already in AgOpenWeb.Services)
 public double CalculateTriangleStripArea(Vec3[] points, int startIndex)
 {
     int c = startIndex + 3;
@@ -310,6 +310,6 @@ public void RenderCoverage(DrawingContext dc, ICoverageMapService coverageServic
 
 ## Existing Code to Reuse
 
-- `Shared/AgValoniaGPS.Services/Geometry/WorkedAreaService.cs` - Area calculations
-- `Shared/AgValoniaGPS.Models/Base/Vec3.cs` - Vertex type
+- `Shared/AgOpenWeb.Services/Geometry/WorkedAreaService.cs` - Area calculations
+- `Shared/AgOpenWeb.Models/Base/Vec3.cs` - Vertex type
 

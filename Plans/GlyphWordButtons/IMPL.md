@@ -55,7 +55,7 @@ localized string through a single Style is awkward in Avalonia. We pay
 
 ### 3. Localization
 
-Existing `Shared/AgValoniaGPS.Views/Localization/`:
+Existing `Shared/AgOpenWeb.Views/Localization/`:
 - `Strings.resx` (neutral / English) plus 8 language files (de, fr, es,
   da, no, et, ko, lv, uk)
 
@@ -81,7 +81,7 @@ isolation.
 
 ### Phase A — Build `GlyphButton` UserControl
 
-`Shared/AgValoniaGPS.Views/Controls/GlyphButton.axaml(.cs)`
+`Shared/AgOpenWeb.Views/Controls/GlyphButton.axaml(.cs)`
 
 DPs needed:
 - `Glyph` (`Geometry`) — the path icon
@@ -105,7 +105,7 @@ tests via `Avalonia.Headless.NUnit` already cover that pattern.
 
 ### Phase B — Icon resource library
 
-`Shared/AgValoniaGPS.Views/Icons/Glyphs.axaml`
+`Shared/AgOpenWeb.Views/Icons/Glyphs.axaml`
 
 A `ResourceDictionary` of named `StreamGeometry` resources, one per
 glyph. Reference the mockup
@@ -128,7 +128,7 @@ Register the dictionary in `App.axaml` so the resources are app-global.
 
 ### Phase C — Localization keys
 
-Add to `Shared/AgValoniaGPS.Views/Localization/Strings.resx`:
+Add to `Shared/AgOpenWeb.Views/Localization/Strings.resx`:
 
 ```
 Btn.File           = File
@@ -170,7 +170,7 @@ Per button:
 <!-- before -->
 <Button Classes="LeftPanelButton" ToolTip.Tip="File Menu"
         Command="{Binding ToggleFileMenuPanelCommand}">
-  <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/fileMenu.png"
+  <Image Source="avares://AgOpenWeb.Views/Assets/Icons/fileMenu.png"
          Stretch="Uniform"/>
 </Button>
 

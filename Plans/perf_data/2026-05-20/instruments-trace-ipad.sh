@@ -5,7 +5,7 @@
 #
 # Prerequisites:
 #   - iPad connected, paired, developer-mode on.
-#   - AgValoniaGPS.iOS running on iPad, ideally already in the S5 state
+#   - AgOpenWeb.iOS running on iPad, ideally already in the S5 state
 #     (sim driving, sections off, panel closed) before this script starts
 #     the recording window.
 #   - xctrace available (ships with Xcode command-line tools).
@@ -27,7 +27,7 @@
 set -euo pipefail
 
 IPAD_UDID="d2fcb0323a90ad2954ab501f2603cd7573d99b2a"
-PROCESS="AgValoniaGPS.iOS"   # xctrace --attach matches by process name
+PROCESS="AgOpenWeb.iOS"   # xctrace --attach matches by process name
 TEMPLATE="${TEMPLATE:-Time Profiler}"
 DURATION="${DURATION:-30s}"
 

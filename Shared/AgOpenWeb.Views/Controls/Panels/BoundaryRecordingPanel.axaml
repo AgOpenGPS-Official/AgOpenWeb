@@ -1,0 +1,160 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             xmlns:controls="using:AgOpenWeb.Views.Controls"
+             x:Class="AgOpenWeb.Views.Controls.Panels.BoundaryRecordingPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding IsBoundaryPanelVisible}"
+             IsHitTestVisible="{Binding IsBoundaryPanelVisible}">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="TrueColor" Color="#1ABC9C"/>
+        <SolidColorBrush x:Key="FalseColor" Color="#E74C3C"/>
+    </UserControl.Resources>
+
+    <controls:FloatingPanel x:Name="FP"
+                            MinWidth="480"
+                            Title="{Binding BoundaryRecordingHeaderText}"
+                            BackCommand="{Binding BackToFieldToolsCommand}"
+                            CloseCommand="{Binding ToggleBoundaryPanelCommand}">
+        <controls:FloatingPanel.PanelContent>
+            <StackPanel Spacing="4">
+
+                <!-- Toolbar Row -->
+                <Grid ColumnDefinitions="*,*,*,*,*,*,*" Margin="4,4,4,8">
+                    <Button Grid.Column="0" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Delete selected boundary"
+                            Command="{Binding DeleteBoundaryCommand}">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Trash.png" Width="32" Height="32"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Button>
+                    <Button Grid.Column="1" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Import boundary from KML file"
+                            Command="{Binding ImportKmlBoundaryCommand}">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/BoundaryLoadFromGE.png" Width="32" Height="32"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Button>
+                    <Button Grid.Column="2" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Draw boundary on satellite map"
+                            Command="{Binding DrawMapBoundaryCommand}">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/BoundaryByMap.png" Width="32" Height="32"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Button>
+                    <Button Grid.Column="3" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Build boundary from driven tracks"
+                            Command="{Binding BuildFromTracksCommand}">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/BoundaryFromTracks.png" Width="32" Height="32"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Button>
+                    <Button Grid.Column="4" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Drive around field to record boundary"
+                            Command="{Binding DriveAroundFieldCommand}">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/ST_SteerTab.png" Width="32" Height="32"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Button>
+                    <Button Grid.Column="5" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Add inner boundary / obstacle">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuItem Header="Drive Around Obstacle" Command="{Binding DriveAroundInnerBoundaryCommand}">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/ST_SteerTab.png" Width="20" Height="20"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Draw on Satellite Map" Command="{Binding DrawMapInnerBoundaryCommand}">
+                                    <MenuItem.Icon>
+                                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/BoundaryByMap.png" Width="20" Height="20"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                        <Grid>
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Boundary.png" Width="32" Height="32"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <TextBlock Text="+" FontSize="16" FontWeight="Bold" Foreground="#F5F54D"
+                                       HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,2,0"
+                                       IsHitTestVisible="False"/>
+                        </Grid>
+                    </Button>
+                    <Button Grid.Column="6" Classes="ModernButton" Margin="2" Height="50"
+                            ToolTip.Tip="Accept and close"
+                            Command="{Binding ToggleBoundaryPanelCommand}">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/OK64.png" Width="32" Height="32"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                    </Button>
+                </Grid>
+
+                <!-- Column Headers -->
+                <Grid ColumnDefinitions="*,*,*,*" Background="{DynamicResource SystemControlHighlightAccentBrush}" Margin="4,0,4,0">
+                    <TextBlock Grid.Column="0" Text="{loc:Localize Boundary}" HorizontalAlignment="Center"
+                               FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                    <TextBlock Grid.Column="1" Text="{loc:Localize Area}" HorizontalAlignment="Center"
+                               FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                    <TextBlock Grid.Column="2" Text="{loc:Localize DriveThru}" HorizontalAlignment="Center"
+                               FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                    <TextBlock Grid.Column="3" Text="Hard" HorizontalAlignment="Center"
+                               FontWeight="Bold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                </Grid>
+
+                <!-- Boundary List -->
+                <Border Background="#DD1a252f" Margin="4,0,4,4" MinHeight="60" MaxHeight="150">
+                    <ListBox ItemsSource="{Binding BoundaryItems}"
+                             SelectedIndex="{Binding SelectedBoundaryIndex}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="*,*,*,*">
+                                    <TextBlock Grid.Column="0" Text="{Binding BoundaryType}"
+                                               HorizontalAlignment="Center" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding AreaDisplay}"
+                                               HorizontalAlignment="Center" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Padding="8,6"/>
+                                    <Button Grid.Column="2" Content="{Binding DriveThruDisplay}"
+                                            HorizontalAlignment="Center" Padding="8,6"
+                                            Foreground="{Binding IsDriveThrough, Converter={StaticResource BoolToColorConverter}}"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                            Command="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).ToggleDriveThroughCommand}"/>
+                                    <Button Grid.Column="3" Content="{Binding HardDisplay}"
+                                            HorizontalAlignment="Center" Padding="8,6"
+                                            Foreground="{Binding IsHard, Converter={StaticResource BoolToColorConverter}}"
+                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                            Command="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).ToggleHardCommand}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem">
+                                <Setter Property="Background" Value="#334C566A"/>
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0,1,0,0"/>
+                            </Style>
+                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+                            </Style>
+                        </ListBox.Styles>
+                    </ListBox>
+                </Border>
+
+            </StackPanel>
+        </controls:FloatingPanel.PanelContent>
+    </controls:FloatingPanel>
+
+</UserControl>

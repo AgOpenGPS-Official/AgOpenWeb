@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,9 +16,9 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 -->
 
-# AgValoniaGPS Threading Migration Plan
+# AgOpenWeb Threading Migration Plan
 
-The authoritative plan for moving AgValoniaGPS off the AgOpenGPS /
+The authoritative plan for moving AgOpenWeb off the AgOpenGPS /
 WinForms threading pattern onto a strict one-way data flow driven by a
 dedicated background cycle worker. Covers both the GPS pipeline
 unification and the domain-state migration — one plan, six phases, one
@@ -161,7 +161,7 @@ nothing else writes.
 
 ## 4. Inventory
 
-State objects under `Shared/AgValoniaGPS.Models/State/`:
+State objects under `Shared/AgOpenWeb.Models/State/`:
 
 | State object | Today | Plan |
 |---|---|---|
@@ -345,9 +345,9 @@ only ones allowed to bypass the intent queue.
 
 Two options:
 
-- `Shared/AgValoniaGPS.Models/Pipeline/` — alongside the existing state
+- `Shared/AgOpenWeb.Models/Pipeline/` — alongside the existing state
   types.
-- `Shared/AgValoniaGPS.Services/Pipeline/WorkingState/` — owned by the
+- `Shared/AgOpenWeb.Services/Pipeline/WorkingState/` — owned by the
   service that consumes them.
 
 **Lean Models** for testability — the working states want unit tests

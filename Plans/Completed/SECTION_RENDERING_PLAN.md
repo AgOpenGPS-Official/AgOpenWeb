@@ -15,7 +15,7 @@ Enhance tool rendering to display individual sections with state-based coloring,
 
 ## WinForms Reference
 
-**File:** `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Classes/CTool.cs` (lines 499-534)
+**File:** `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Classes/CTool.cs` (lines 499-534)
 
 **Key Implementation Details:**
 
@@ -117,12 +117,12 @@ A floating panel already exists showing sections 1-6 as buttons:
 
 | Component | Location |
 |-----------|----------|
-| UI Panel | `Shared/AgValoniaGPS.Views/Controls/Panels/SectionControlPanel.axaml` |
-| Rendering | `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs` |
-| Tool Config | `Shared/AgValoniaGPS.Models/Configuration/ToolConfig.cs` |
-| Section State | `Shared/AgValoniaGPS.Models/State/SectionState.cs` |
-| Section Service | `Shared/AgValoniaGPS.Services/Section/SectionControlService.cs` |
-| Config Store | `Shared/AgValoniaGPS.Models/Configuration/ConfigurationStore.cs` |
+| UI Panel | `Shared/AgOpenWeb.Views/Controls/Panels/SectionControlPanel.axaml` |
+| Rendering | `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs` |
+| Tool Config | `Shared/AgOpenWeb.Models/Configuration/ToolConfig.cs` |
+| Section State | `Shared/AgOpenWeb.Models/State/SectionState.cs` |
+| Section Service | `Shared/AgOpenWeb.Services/Section/SectionControlService.cs` |
+| Config Store | `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs` |
 
 ## Implementation Plan
 

@@ -46,7 +46,7 @@ The current guidance system is a hybrid: **point-based storage** with **segment-
 ### Track Model (Point-Based Storage)
 
 ```csharp
-// Shared/AgValoniaGPS.Models/Track/Track.cs
+// Shared/AgOpenWeb.Models/Track/Track.cs
 public class Track
 {
     public string Name { get; set; }
@@ -399,7 +399,7 @@ GPS Update (10 Hz)
 
 **Files to create:**
 ```
-Shared/AgValoniaGPS.Models/Track/
+Shared/AgOpenWeb.Models/Track/
 ├── TrackSegment.cs                    (New)
 ├── SegmentTrack.cs                     (New)
 └── ISpatialIndex.cs                    (New)
@@ -422,7 +422,7 @@ Shared/AgValoniaGPS.Models/Track/
 
 **Files to create:**
 ```
-Shared/AgValoniaGPS.Models/Track/
+Shared/AgOpenWeb.Models/Track/
 ├── Spatial/
 │   ├── GridSpatialIndex.cs            (New)
 │   ├── RTreeSpatialIndex.cs            (New, optional)
@@ -444,7 +444,7 @@ Shared/AgValoniaGPS.Models/Track/
 
 **Files to modify:**
 ```
-Shared/AgValoniaGPS.Services/Track/
+Shared/AgOpenWeb.Services/Track/
 ├── TrackGuidanceService.cs             (Modify - add overload)
 └── SegmentTrackGuidanceService.cs      (New, or merge into existing)
 ```
@@ -464,7 +464,7 @@ Shared/AgValoniaGPS.Services/Track/
 
 **Files to create:**
 ```
-Shared/AgValoniaGPS.Services/Track/
+Shared/AgOpenWeb.Services/Track/
 ├── TrackSimplificationService.cs       (New)
 └── CurveUtils.cs                       (Extend existing)
 ```
@@ -484,11 +484,11 @@ Shared/AgValoniaGPS.Services/Track/
 
 **Files to modify:**
 ```
-Shared/AgValoniaGPS.ViewModels/
+Shared/AgOpenWeb.ViewModels/
 ├── MainViewModel.Commands.Track.cs     (Modify)
 └── MainViewModel.cs                     (Minor updates)
 
-Shared/AgValoniaGPS.Services/
+Shared/AgOpenWeb.Services/
 ├── TrackFilesService.cs                (Modify - add format detection)
 └── ConfigurationService.cs             (Modify - add segment track option)
 ```
@@ -711,7 +711,7 @@ public static class TrackConverter
 ### Unit Tests
 
 ```csharp
-// Tests/AgValoniaGPS.Models.Tests/SegmentTrackTests.cs
+// Tests/AgOpenWeb.Models.Tests/SegmentTrackTests.cs
 [TestFixture]
 public class SegmentTrackTests
 {
@@ -753,7 +753,7 @@ public class SegmentTrackTests
 ### Integration Tests
 
 ```csharp
-// Tests/AgValoniaGPS.Services.Tests/SegmentGuidanceTests.cs
+// Tests/AgOpenWeb.Services.Tests/SegmentGuidanceTests.cs
 [TestFixture]
 public class SegmentGuidanceTests
 {
@@ -890,10 +890,10 @@ If issues arise:
 ### TrackSegment Implementation
 
 ```csharp
-// Shared/AgValoniaGPS.Models/Track/TrackSegment.cs
-using AgValoniaGPS.Models.Base;
+// Shared/AgOpenWeb.Models/Track/TrackSegment.cs
+using AgOpenWeb.Models.Base;
 
-namespace AgValoniaGPS.Models.Track;
+namespace AgOpenWeb.Models.Track;
 
 public class TrackSegment
 {
@@ -1022,11 +1022,11 @@ public class BoundingBox
 ### SegmentTrack Implementation
 
 ```csharp
-// Shared/AgValoniaGPS.Models/Track/SegmentTrack.cs
+// Shared/AgOpenWeb.Models/Track/SegmentTrack.cs
 using System.Collections.Generic;
 using System.Linq;
 
-namespace AgValoniaGPS.Models.Track;
+namespace AgOpenWeb.Models.Track;
 
 public class SegmentTrack
 {

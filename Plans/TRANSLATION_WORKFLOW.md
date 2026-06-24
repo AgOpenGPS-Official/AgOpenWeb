@@ -2,18 +2,18 @@
 
 **Status:** Decision pending. Translation PRs are paused until we pick a direction (see `CONTRIBUTING.md`).
 
-**Problem:** We want translators to contribute in one place and have their work flow to the right codebases without anyone hand-maintaining diverging `.resx` files. AgOpenGPS has used [Weblate](https://hosted.weblate.org/engage/agopengps/) for over a year. AgValoniaGPS is currently accumulating translations via ad-hoc PRs (last one: #282, closed pending this decision).
+**Problem:** We want translators to contribute in one place and have their work flow to the right codebases without anyone hand-maintaining diverging `.resx` files. AgOpenGPS has used [Weblate](https://hosted.weblate.org/engage/agopengps/) for over a year. AgOpenWeb is currently accumulating translations via ad-hoc PRs (last one: #282, closed pending this decision).
 
 ## Current state
 
 | Project | File location | Format | Key convention | Key count |
 |---|---|---|---|---|
 | AgOpenGPS | `AgOpenGPS.Core/Translations/gStr.*.resx` | .resx | `gs*` prefix (`gsABline`, `gsAckermann`) | 467 |
-| AgValoniaGPS | `Shared/AgValoniaGPS.Views/Localization/Strings.*.resx` | .resx | Plain (`ABLine`, `Ackermann`) | 383 |
+| AgOpenWeb | `Shared/AgOpenWeb.Views/Localization/Strings.*.resx` | .resx | Plain (`ABLine`, `Ackermann`) | 383 |
 
-**Key overlap: 0.** Value overlap: **102 English strings** appear verbatim in both (≈27% of AgValonia's strings).
+**Key overlap: 0.** Value overlap: **102 English strings** appear verbatim in both (≈27% of AgOpenWeb's strings).
 
-Most existing AgValonia locales are severely incomplete — 28 keys each out of 383, versus AgOpen's locales which are broadly complete.
+Most existing AgOpenWeb locales are severely incomplete — 28 keys each out of 383, versus AgOpen's locales which are broadly complete.
 
 ## Goals
 
@@ -24,9 +24,9 @@ Most existing AgValonia locales are severely incomplete — 28 keys each out of 
 
 ## Options
 
-### Option A — Rename AgValonia keys to match AgOpen convention
+### Option A — Rename AgOpenWeb keys to match AgOpen convention
 
-Rewrite every AgValonia key to use AgOpen's `gs*` convention (or some shared scheme). For the 102 strings where English text matches, keys converge and translators do them once. For the remaining 278 AgValonia-only strings, we invent keys in the same convention.
+Rewrite every AgOpenWeb key to use AgOpen's `gs*` convention (or some shared scheme). For the 102 strings where English text matches, keys converge and translators do them once. For the remaining 278 AgOpenWeb-only strings, we invent keys in the same convention.
 
 **Effort:** ~380 string-key edits, plus every `{loc:Localize X}` binding across all AXAML files and any code references. Mechanical but large.
 
@@ -34,7 +34,7 @@ Rewrite every AgValonia key to use AgOpen's `gs*` convention (or some shared sch
 
 **Translator experience:** Best. Weblate sees shared source strings across both projects; translator does each string once.
 
-**Ongoing cost:** Must maintain the shared convention forever. Adding a new AgValonia string means inventing a key that won't conflict with AgOpen's namespace.
+**Ongoing cost:** Must maintain the shared convention forever. Adding a new AgOpenWeb string means inventing a key that won't conflict with AgOpen's namespace.
 
 **Auto-sharing:** ~100% of English-text-matching strings.
 
@@ -42,7 +42,7 @@ Rewrite every AgValonia key to use AgOpen's `gs*` convention (or some shared sch
 
 ### Option B — Keep separate translation sources, rely on Translation Memory
 
-AgOpen and AgValonia stay as distinct translation targets. Weblate's built-in **Translation Memory** indexes every saved translation and auto-suggests matching entries whenever the same English source string appears anywhere else — **bidirectionally**. A translator clicks *Accept* instead of retyping.
+AgOpen and AgOpenWeb stay as distinct translation targets. Weblate's built-in **Translation Memory** indexes every saved translation and auto-suggests matching entries whenever the same English source string appears anywhere else — **bidirectionally**. A translator clicks *Accept* instead of retyping.
 
 There are two valid layouts; pick based on admin preference:
 
@@ -53,18 +53,18 @@ There are two valid layouts; pick based on admin preference:
 
 TM flows both ways regardless of layout:
 
-- AgValonia translator approves a string AgOpen doesn't yet have → AgOpen translators get it as a suggestion next time they hit the same English source.
-- AgOpen already has translations for 102 of our English strings → AgValonia translators get them pre-suggested from day one.
+- AgOpenWeb translator approves a string AgOpen doesn't yet have → AgOpen translators get it as a suggestion next time they hit the same English source.
+- AgOpen already has translations for 102 of our English strings → AgOpenWeb translators get them pre-suggested from day one.
 
-**Effort:** Zero code changes. Create one Weblate target (component or project) pointing at `Shared/AgValoniaGPS.Views/Localization/` with the standard `.resx` file filter.
+**Effort:** Zero code changes. Create one Weblate target (component or project) pointing at `Shared/AgOpenWeb.Views/Localization/` with the standard `.resx` file filter.
 
 **Risk:** Minimal. Existing `.resx` files keep their structure.
 
-**Translator experience:** Decent. They navigate to AgValonia's target; familiar strings auto-suggest from AgOpen's existing translations (and vice versa). No retyping for matching strings.
+**Translator experience:** Decent. They navigate to AgOpenWeb's target; familiar strings auto-suggest from AgOpen's existing translations (and vice versa). No retyping for matching strings.
 
 **Ongoing cost:** Zero beyond Weblate hosting.
 
-**Caveat with separate projects on `hosted.weblate.org`:** the cross-project TM pool includes *all* public projects on the instance, not just AgOpen + AgValonia. Expect occasional noisy suggestions from unrelated apps — translators can ignore them. Within a single project the TM pool is scoped cleanly to our two components only.
+**Caveat with separate projects on `hosted.weblate.org`:** the cross-project TM pool includes *all* public projects on the instance, not just AgOpen + AgOpenWeb. Expect occasional noisy suggestions from unrelated apps — translators can ignore them. Within a single project the TM pool is scoped cleanly to our two components only.
 
 **Auto-sharing:** ~27% of strings get exact-match suggestions (the 102 English value matches). Fuzzy matches surface additional near-duplicates ranked by similarity. Translator still clicks *Accept* per string — TM is suggestion-only, not auto-apply, so a bad translation can't silently propagate.
 
@@ -72,7 +72,7 @@ TM flows both ways regardless of layout:
 
 ### Option C — Partial key rename (match the 102 where possible)
 
-Rename only the 102 AgValonia keys whose English values match AgOpen. Those become genuinely shared-source; the remaining 278 AgValonia-only keys stay on the current naming.
+Rename only the 102 AgOpenWeb keys whose English values match AgOpen. Those become genuinely shared-source; the remaining 278 AgOpenWeb-only keys stay on the current naming.
 
 **Effort:** Medium — 102 key renames across resx + AXAML bindings. Smaller scope than Option A.
 
@@ -86,7 +86,7 @@ Rename only the 102 AgValonia keys whose English values match AgOpen. Those beco
 
 ## Recommendation
 
-**Start with Option B.** It's the cheapest, lowest-risk path to a working Weblate setup. Translation Memory covers the 27% automatic-match case. If after a few months translators are complaining about the ~73% of AgValonia-only strings that don't benefit from AgOpen's work, revisit Option A as a followup — at that point we'll know whether the ceiling is actually worth the churn.
+**Start with Option B.** It's the cheapest, lowest-risk path to a working Weblate setup. Translation Memory covers the 27% automatic-match case. If after a few months translators are complaining about the ~73% of AgOpenWeb-only strings that don't benefit from AgOpen's work, revisit Option A as a followup — at that point we'll know whether the ceiling is actually worth the churn.
 
 **Option C is the worst of both worlds** — still has the rename risk and ongoing cost, without eliminating the duplicate effort on the non-matching strings.
 
@@ -95,7 +95,7 @@ Rename only the 102 AgValonia keys whose English values match AgOpen. Those beco
 ## Open questions
 
 1. Do we want to make Weblate the *only* translation channel, or keep a PR escape hatch for languages Weblate doesn't support well? AgOpen's README suggests Weblate-only — seems fine.
-2. What about existing AgValonia locales with 28/383 keys? They stay as-is and fill in through Weblate over time; Weblate doesn't need them to be complete to start.
+2. What about existing AgOpenWeb locales with 28/383 keys? They stay as-is and fill in through Weblate over time; Weblate doesn't need them to be complete to start.
 3. Any strings we should keep untranslated on principle (brand names, unit labels like "ft/ha")? Not urgent — can mark strings non-translatable in Weblate whenever.
 
 ## References

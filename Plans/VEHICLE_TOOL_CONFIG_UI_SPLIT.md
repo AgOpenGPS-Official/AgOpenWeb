@@ -48,7 +48,7 @@ tools. Those are two different physical quantities and must be split.
   the geometry must branch correctly by tool type.
 
 ### Reuse (no rewrites)
-- The 6 tab UserControls in `Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/`
+- The 6 tab UserControls in `Shared/AgOpenWeb.Views/Controls/Dialogs/Configuration/`
   are self-contained (`x:DataType="vm:ConfigurationViewModel"`) and are reused as-is.
 - The **same `ConfigurationViewModel` instance** backs both new dialogs (both edit the
   same live store; no DI change — the VM is constructed lazily in a command, not by DI).
@@ -64,14 +64,14 @@ Do this first; it is independent of the UI split and the riskiest piece. The cor
 hitch pin, used only by trailing/TBT) and keep `Tool.HitchLength` (#2/#3, the rigid
 working-center, tool-dependent). Geometry branches by tool type.
 
-**A1. Add `VehicleConfig.HitchLength`** (#1) — `Shared/AgValoniaGPS.Models/Configuration/VehicleConfig.cs`
+**A1. Add `VehicleConfig.HitchLength`** (#1) — `Shared/AgOpenWeb.Models/Configuration/VehicleConfig.cs`
 (after the antenna block ~line 98). `double` default 1.8, rear axle → tractor hitch pin. Keep
 unclamped/signed; trailing geometry takes `Math.Abs()` and applies the rear sign itself.
 `Tool.HitchLength` (ToolConfig.cs:63) stays; clarify its comment as "rigid tool: axle center →
 implement working center (front +, rear −)."
 
 **A2. Geometry — branch the hitch reference by tool type** —
-`Shared/AgValoniaGPS.Services/Tool/ToolPositionService.cs`
+`Shared/AgOpenWeb.Services/Tool/ToolPositionService.cs`
 - `Update` (~line 114): the hitch distance feeding `_hitchPosition` depends on tool type.
   Rigid tools use the tool's working-center (#2/#3); trailing/TBT use the vehicle pin (#1):
   ```csharp
@@ -87,29 +87,29 @@ implement working center (front +, rear −)."
 - `:455` (the other `Math.Abs(tool.HitchLength)` site) — apply the same tool-type branch.
 
 **A3. Repoint the other runtime consumers** (verified list):
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs:626` — `Math.Abs(tool.HitchLength)`: confirm
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs:626` — `Math.Abs(tool.HitchLength)`: confirm
   context (hitch-point calc) and apply the same tool-type branch (rigid → `Tool.HitchLength`,
   trailing/TBT → `Vehicle.HitchLength`).
-- `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs:567` —
+- `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs:567` —
   `config.Tool.HitchLength + config.Tool.TrailingHitchLength` is a trailing-geometry sum, so
   the pin term → `config.Vehicle.HitchLength + config.Tool.TrailingHitchLength`.
-- `Shared/AgValoniaGPS.Views/Controls/SkiaMapControl.cs:376` — `HitchLength = toolCfg.HitchLength`:
+- `Shared/AgOpenWeb.Views/Controls/SkiaMapControl.cs:376` — `HitchLength = toolCfg.HitchLength`:
   check what the renderer draws; if it's the trailing hitch link, use `vehicleCfg.HitchLength`
   (in scope ~338), if the rigid mount keep `toolCfg.HitchLength`. Verify against the draw code.
 
-**A4. Vehicle JSON** — `Shared/AgValoniaGPS.Services/Profile/VehicleProfileJsonService.cs`
+**A4. Vehicle JSON** — `Shared/AgOpenWeb.Services/Profile/VehicleProfileJsonService.cs`
 - `VehicleDto`: add `public double? HitchLength { get; set; }` (nullable → detect absence for migration).
 - `ToDto`: write `HitchLength = store.Vehicle.HitchLength`.
 - `ApplyDtoToStore`: `store.Vehicle.HitchLength = dto.Vehicle?.HitchLength ?? double.NaN`
   (NaN sentinel = "not present"; resolved in A6).
 
-**A5. Tool JSON** — `Shared/AgValoniaGPS.Services/Profile/ToolProfileJsonService.cs`
+**A5. Tool JSON** — `Shared/AgOpenWeb.Services/Profile/ToolProfileJsonService.cs`
 - **Keep** `Tool.HitchLength` fully (read line 172 + write line 124) — it remains a live tool
   field (#2/#3 rigid working center). No change here beyond confirming it persists.
 - v1 reader `ProfileJsonServiceV1.cs` (read 271 / write 160) — unchanged.
 
 **A6. One-way migration — seed `Vehicle.HitchLength` for legacy profiles** —
-`Shared/AgValoniaGPS.Services/ConfigurationService.cs`, in `LoadProfiles` **after** the tool
+`Shared/AgOpenWeb.Services/ConfigurationService.cs`, in `LoadProfiles` **after** the tool
 load (~line 110, both files loaded), before `LoadAutoSteerConfig`:
 ```csharp
 // Legacy profiles stored the trailing/TBT tractor-pin distance under Tool.HitchLength.
@@ -128,7 +128,7 @@ calls `LoadProfiles`, so it's covered.
   (Leave the tool's own hitch import to its existing path.)
 - `VehicleProfileService.cs:242` `CreateDefaultProfile`: add `store.Vehicle.HitchLength = 1.8;`.
 
-**A7. Edit commands** — `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs`
+**A7. Edit commands** — `Shared/AgOpenWeb.ViewModels/ConfigurationViewModel.cs`
 - Add a `EditVehicleHitchLengthCommand` (seed/set `Vehicle.HitchLength`) for the new Vehicle field.
 - `EditHitchLengthCommand` (1083–1086): this currently backs the Vehicle-tab "Hitch Length"
   bound to `Tool.HitchLength`. **Move this field to the Tool dialog** (it's the rigid working
@@ -156,7 +156,7 @@ The numeric-keypad / text-input / color-picker overlays (`ConfigurationDialog.ax
 (`IsNumericInputVisible`, `NumericInput*Command`, `IsTextInputVisible`,
 `IsColorPickerVisible`, `PresetColors`, …). Extract them rather than duplicate 320 lines.
 
-**New:** `Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/ConfigInputOverlays.axaml` (+ `.axaml.cs`)
+**New:** `Shared/AgOpenWeb.Views/Controls/Dialogs/Configuration/ConfigInputOverlays.axaml` (+ `.axaml.cs`)
 - Root `Panel`, `x:DataType="vm:ConfigurationViewModel"`, three overlay `Border`s lifted verbatim.
 - Declare the `UintToBrushConverter` (today at `ConfigurationDialog.axaml:99`) locally.
 - Inherits the parent dialog's DataContext (the shared VM), so bindings resolve unchanged.
@@ -165,7 +165,7 @@ The numeric-keypad / text-input / color-picker overlays (`ConfigurationDialog.ax
 
 ## Part C — Two new tabbed dialogs
 
-**New shells** under `Shared/AgValoniaGPS.Views/Controls/Dialogs/` (copy `ConfigurationDialog.axaml` shell: header, fixed-size Border, footer Apply ✓ bound to `ApplyCommand`):
+**New shells** under `Shared/AgOpenWeb.Views/Controls/Dialogs/` (copy `ConfigurationDialog.axaml` shell: header, fixed-size Border, footer Apply ✓ bound to `ApplyCommand`):
 
 - **`VehicleConfigDialog.axaml`** (+ `.axaml.cs`): `IsVisible="{Binding IsVehicleDialogVisible}"`,
   left-strip TabControl with `<config:VehicleConfigTab/>` (IconVehicle) + `<config:SourcesConfigTab/>`
@@ -180,7 +180,7 @@ The numeric-keypad / text-input / color-picker overlays (`ConfigurationDialog.ax
 **VM visibility flags** — `ConfigurationViewModel.cs` (#region Dialog Visibility ~42–51):
 replace `IsDialogVisible` with `IsVehicleDialogVisible` and `IsToolDialogVisible` (`SetProperty` bools).
 
-**Show/Cancel commands** — `Shared/AgValoniaGPS.ViewModels/MainViewModel.Commands.Configuration.cs`:
+**Show/Cancel commands** — `Shared/AgOpenWeb.ViewModels/MainViewModel.Commands.Configuration.cs`:
 replace `ShowConfigurationDialogCommand` with `ShowVehicleConfigDialogCommand` /
 `ShowToolConfigDialogCommand` (+ Cancel variants). Construct the VM once (lazy `EnsureConfigVm()`),
 wire `CloseRequested` to clear **both** flags (only one is open at a time). Declare the new `ICommand?`
@@ -227,10 +227,10 @@ members: `ConfigurationViewModel.IsDialogVisible`, the old `ShowConfigurationDia
 
 ## Verification
 
-**Build:** `dotnet build AgValoniaGPS.sln` (Shared covers cross-platform parity; confirm the three
+**Build:** `dotnet build AgOpenWeb.sln` (Shared covers cross-platform parity; confirm the three
 `ServiceCollectionExtensions.cs` compile untouched — no DI change expected).
 
-**Tests** (`Tests/AgValoniaGPS.Services.Tests/`):
+**Tests** (`Tests/AgOpenWeb.Services.Tests/`):
 - Migration: tool profile with `hitchLength=2.3` + vehicle profile *without* `hitchLength` →
   `LoadProfiles` → assert `Store.Vehicle.HitchLength == 2.3` (legacy pin seeded).
 - No-clobber: vehicle `hitchLength=1.1` + tool `9.9` → assert `Store.Vehicle.HitchLength == 1.1`.
@@ -242,7 +242,7 @@ members: `ConfigurationViewModel.IsDialogVisible`, the old `ShowConfigurationDia
   for the arms. Set Vehicle vs Tool hitch to distinct values per tool type and assert the resulting
   tool/tank positions.
 
-**Manual** (`dotnet run --project Platforms/AgValoniaGPS.Desktop/...`):
+**Manual** (`dotnet run --project Platforms/AgOpenWeb.Desktop/...`):
 1. Config panel → "Load Profile" → picker shows "Configure Vehicle"/"Configure Tool" under their columns.
 2. Configure Vehicle → Vehicle + GPS Data Sources tabs; Dimensions → tap the new **Vehicle Hitch Length** field → keypad overlay (proves `ConfigInputOverlays`) → Apply.
 3. Configure Tool → Tool/Implement + U-Turn + Machine + Tram tabs; the hitch sub-tab shows the rigid working-center field for fixed tools and Trailing/Tank fields for trailing/TBT, switched by tool type; color picker on Sections works.

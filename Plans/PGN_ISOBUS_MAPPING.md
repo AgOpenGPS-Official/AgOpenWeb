@@ -37,7 +37,7 @@ certified stack.
 - **Not on-the-wire ISOBUS.** A real CAN implement/VT won't see UDP. Bridging to
   a physical ISOBUS requires a **UDP↔CAN gateway**, which re-introduces address
   claiming + TP/ETP — confined to that one box. That seam aligns with the project
-  boundary: live ISO 11783 over CAN is another group's domain (AgValoniaGPS stays
+  boundary: live ISO 11783 over CAN is another group's domain (AgOpenWeb stays
   file-level / ISOXML).
 - **No formal ISOBUS certification** — conformance is CAN-bound.
 - **Proprietary content stays opaque** to other vendors (by definition). You gain

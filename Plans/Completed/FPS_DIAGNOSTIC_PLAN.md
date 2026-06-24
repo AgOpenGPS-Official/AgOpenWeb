@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Characterize the mobile rendering cost of AgValoniaGPS on the Android tablet
+Characterize the mobile rendering cost of AgOpenWeb on the Android tablet
 (historical 11 FPS with a field open) by isolating each contributor to the
 frame budget. Produce a data table that tells us, per scenario, how many FPS
 each of {coverage bitmap, per-draw-op work, panel overlays, compositor
@@ -102,7 +102,7 @@ Build all of this **before any measurement runs**. Rebuild cost per scenario mus
 
 ### 1. Diagnostic flag registry
 
-File-presence flags in the app's `Documents/AgValoniaGPS/` directory. Read once
+File-presence flags in the app's `Documents/AgOpenWeb/` directory. Read once
 at process startup (no per-frame cost). Each flag toggles one render-path
 variable. Relaunch to change state; no rebuild.
 

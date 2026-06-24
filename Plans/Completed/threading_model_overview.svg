@@ -10,7 +10,7 @@
   </defs>
 
   <!-- ==================== TITLE ==================== -->
-  <text x="700" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#212121">AgValoniaGPS — Threading architecture: the whole picture</text>
+  <text x="700" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#212121">AgOpenWeb — Threading architecture: the whole picture</text>
   <text x="700" y="68" text-anchor="middle" font-size="14" fill="#616161">Current reality (top) → six phases (middle) → target (bottom). Problem numbers and phase letters trace through all three.</text>
 
   <!-- ==================== §0 NON-NEGOTIABLE BAND ==================== -->

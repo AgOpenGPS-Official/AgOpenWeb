@@ -2,7 +2,7 @@
 
 Status: **exploration** · No branch yet · Owner: chris
 
-The Web UI migration turns AgValoniaGPS into a **headless host + thin browser
+The Web UI migration turns AgOpenWeb into a **headless host + thin browser
 client** model: the guidance "brain" runs as a server, the cab tablet is just a
 browser over WiFi. That seam opens up new hardware deployment patterns — instead
 of "cab PC + AiO/Teensy box on Ethernet," we can collapse the whole stack into a
@@ -77,7 +77,7 @@ RPC, not something both sides mutate in place.
 
 ⚠ **.NET binding caveat (two-chip bridges).** Arduino's Bridge/RPC SDK targets
 their **App Lab** world — Python on the Linux side ↔ C++ sketches on the MCU.
-AgValonia's brain is **.NET**, so the Linux side needs a binding step to reach
+AgOpenWeb's brain is **.NET**, so the Linux side needs a binding step to reach
 the bridge: P/Invoke into the bridge library, a local bridge daemon spoken over
 IPC, or reimplementing the shared-region protocol against the same region.
 Not hard, but it is **not** "Arduino hands .NET a shared struct." Budget it
@@ -106,7 +106,7 @@ STM32U585 (front-end + real-time control)
         ▲
         │  shared memory (Uno Q bridge)
         ▼
-Qualcomm Linux: AgValonia server + RemoteServer web host ──WiFi──▶ tablet
+Qualcomm Linux: AgOpenWeb server + RemoteServer web host ──WiFi──▶ tablet
 ```
 
 **Decisions taken (this exploration):**
@@ -275,7 +275,7 @@ the headless backend drops the rendering, so it sits *below* the floor device's
 load.)
 
 **Why it's the lowest-risk .NET path.** .NET's JIT/runtime is most mature on x64,
-and AgValonia **already ships a Desktop x64 target** (Win / macOS-x64 / Linux-x64
+and AgOpenWeb **already ships a Desktop x64 target** (Win / macOS-x64 / Linux-x64
 in CI). An x86-64 Linux backend is *literally the existing Desktop x64 build minus
 the UI* — the least-risk headless port of any option.
 
@@ -435,7 +435,7 @@ Linux cab-PC / SBC targets.
 
 ## Suggested de-risk spikes (order)
 
-1. **Linux host spike** (lowest risk, pattern-independent): AgValonia headless
+1. **Linux host spike** (lowest risk, pattern-independent): AgOpenWeb headless
    server + RemoteServer on the target Debian/arm64, tablet on WiFi. Proves the
    brain + UI half.
 2. **Shared-memory bridge spike:** trivial RT↔.NET loop (Uno Q bridge, or

@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -35,7 +35,7 @@ paths keep running; new types are inert scaffolding.
 At the end of Phase A:
 
 1. `YouTurnWorkingState` and `GuidanceWorkingState` POCOs exist under
-   `Shared/AgValoniaGPS.Models/Pipeline/`.
+   `Shared/AgOpenWeb.Models/Pipeline/`.
 2. `YouTurnSnapshot` and `GuidanceSnapshot` records exist in the same
    namespace, and `GpsCycleResult` carries them as optional fields.
 3. `IPipelineIntents` interface exists (Models), with a concrete
@@ -59,15 +59,15 @@ Phase A concrete. The others (§6.1, §6.3, §6.5, §6.6) are deferred.
 
 ### 2.1 §6.4 — Where working state lives → **`Models/Pipeline/`**
 
-Working states and snapshot records go in `Shared/AgValoniaGPS.Models/Pipeline/`,
+Working states and snapshot records go in `Shared/AgOpenWeb.Models/Pipeline/`,
 co-located with `GpsCycleResult`. Rationale:
 
-- Testability — working-state POCO tests in `AgValoniaGPS.Models.Tests`
+- Testability — working-state POCO tests in `AgOpenWeb.Models.Tests`
   need zero service dependencies.
 - Proximity — `GpsCycleResult` already lives in Models under `State/`;
   snapshots are the same kind of thing and belong next to it.
 - The interface `IPipelineIntents` also lives in Models.Pipeline. The
-  *implementation* `PipelineIntents` lives in `AgValoniaGPS.Services/Pipeline/`
+  *implementation* `PipelineIntents` lives in `AgOpenWeb.Services/Pipeline/`
   next to `GpsPipelineService`.
 
 We will **not** move `GpsCycleResult` itself in this phase. It stays in
@@ -123,12 +123,12 @@ Verified before the plan was drafted. Referenced by commits below.
 
 | Reference | File | Notes |
 |---|---|---|
-| Cycle owner | `Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs` | `ProcessCycle` runs on `Task.Run` per tick; `Interlocked` back-pressure at line ~210 |
-| Cycle result | `Shared/AgValoniaGPS.Models/State/GpsCycleResult.cs` | 26 init-only fields; pattern to extend |
-| UI marshal | `Shared/AgValoniaGPS.ViewModels/MainViewModel.ApplyResults.cs` | `Dispatcher.UIThread.Post(() => ApplyGpsCycleResult(result))` |
-| State machine | `Shared/AgValoniaGPS.Services/YouTurn/YouTurnStateMachine.cs` | `Tick(ctx, GuidanceState, YouTurnState) → YouTurnEffects` |
-| Observable state | `Shared/AgValoniaGPS.Models/State/YouTurnState.cs`, `GuidanceState.cs` | shape to mirror into working states |
-| DI registration | `Platforms/AgValoniaGPS.Desktop/DependencyInjection/ServiceCollectionExtensions.cs` (+ iOS / Android equivalents) | where `PipelineIntents` will register |
+| Cycle owner | `Shared/AgOpenWeb.Services/Pipeline/GpsPipelineService.cs` | `ProcessCycle` runs on `Task.Run` per tick; `Interlocked` back-pressure at line ~210 |
+| Cycle result | `Shared/AgOpenWeb.Models/State/GpsCycleResult.cs` | 26 init-only fields; pattern to extend |
+| UI marshal | `Shared/AgOpenWeb.ViewModels/MainViewModel.ApplyResults.cs` | `Dispatcher.UIThread.Post(() => ApplyGpsCycleResult(result))` |
+| State machine | `Shared/AgOpenWeb.Services/YouTurn/YouTurnStateMachine.cs` | `Tick(ctx, GuidanceState, YouTurnState) → YouTurnEffects` |
+| Observable state | `Shared/AgOpenWeb.Models/State/YouTurnState.cs`, `GuidanceState.cs` | shape to mirror into working states |
+| DI registration | `Platforms/AgOpenWeb.Desktop/DependencyInjection/ServiceCollectionExtensions.cs` (+ iOS / Android equivalents) | where `PipelineIntents` will register |
 
 ---
 
@@ -140,8 +140,8 @@ leaves the solution in a working state.
 ### Commit 1 — Working-state POCOs
 
 **Adds:**
-- `Shared/AgValoniaGPS.Models/Pipeline/YouTurnWorkingState.cs`
-- `Shared/AgValoniaGPS.Models/Pipeline/GuidanceWorkingState.cs`
+- `Shared/AgOpenWeb.Models/Pipeline/YouTurnWorkingState.cs`
+- `Shared/AgOpenWeb.Models/Pipeline/GuidanceWorkingState.cs`
 
 **Shape of `YouTurnWorkingState`** — mirror `YouTurnState` data, drop the
 observable machinery. Auto-properties, no `ObservableObject` base, no
@@ -176,7 +176,7 @@ IsContourMode
 **Not added yet:** no callers, no constructors from `YouTurnState`, no
 snapshot builders. Pure data holders.
 
-**Verification:** `dotnet build AgValoniaGPS.sln` green. No existing code
+**Verification:** `dotnet build AgOpenWeb.sln` green. No existing code
 references these types, so no test regressions are possible.
 
 ---
@@ -184,15 +184,15 @@ references these types, so no test regressions are possible.
 ### Commit 2 — Snapshot records + `GpsCycleResult` extension
 
 **Adds:**
-- `Shared/AgValoniaGPS.Models/Pipeline/YouTurnSnapshot.cs`
-- `Shared/AgValoniaGPS.Models/Pipeline/GuidanceSnapshot.cs`
+- `Shared/AgOpenWeb.Models/Pipeline/YouTurnSnapshot.cs`
+- `Shared/AgOpenWeb.Models/Pipeline/GuidanceSnapshot.cs`
 
 **Shape:** immutable `record` types matching the working-state fields
 one-for-one. Records give value equality for the future §6.1 decision
 (Phase C) without committing to it now. All properties `init`-only.
 
 **Modifies:**
-- `Shared/AgValoniaGPS.Models/State/GpsCycleResult.cs` — add two nullable
+- `Shared/AgOpenWeb.Models/State/GpsCycleResult.cs` — add two nullable
   fields:
 
 ```
@@ -214,9 +214,9 @@ snapshots.
 ### Commit 3 — `IPipelineIntents` interface + concrete implementation
 
 **Adds:**
-- `Shared/AgValoniaGPS.Models/Pipeline/IPipelineIntents.cs`
-- `Shared/AgValoniaGPS.Models/Pipeline/PipelineIntentBatch.cs`
-- `Shared/AgValoniaGPS.Services/Pipeline/PipelineIntents.cs`
+- `Shared/AgOpenWeb.Models/Pipeline/IPipelineIntents.cs`
+- `Shared/AgOpenWeb.Models/Pipeline/PipelineIntentBatch.cs`
+- `Shared/AgOpenWeb.Services/Pipeline/PipelineIntents.cs`
 
 **Interface surface:**
 
@@ -264,10 +264,10 @@ code — tests come in Commit 5.
 ### Commit 4 — DI wiring + Drain hook in `GpsPipelineService`
 
 **Modifies:**
-- `Platforms/AgValoniaGPS.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
-- `Platforms/AgValoniaGPS.iOS/` DI setup (grep for the equivalent file)
-- `Platforms/AgValoniaGPS.Android/` DI setup
-- `Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs`
+- `Platforms/AgOpenWeb.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
+- `Platforms/AgOpenWeb.iOS/` DI setup (grep for the equivalent file)
+- `Platforms/AgOpenWeb.Android/` DI setup
+- `Shared/AgOpenWeb.Services/Pipeline/GpsPipelineService.cs`
 
 **DI registration:** register `PipelineIntents` as a singleton bound to
 `IPipelineIntents`. Singleton because UI commands (on UI thread) and the
@@ -299,9 +299,9 @@ running or at least building each platform project.
 ### Commit 5 — Tests
 
 **Adds:**
-- `Tests/AgValoniaGPS.Models.Tests/Pipeline/YouTurnWorkingStateTests.cs`
-- `Tests/AgValoniaGPS.Models.Tests/Pipeline/GuidanceWorkingStateTests.cs`
-- `Tests/AgValoniaGPS.Services.Tests/Pipeline/PipelineIntentsTests.cs`
+- `Tests/AgOpenWeb.Models.Tests/Pipeline/YouTurnWorkingStateTests.cs`
+- `Tests/AgOpenWeb.Models.Tests/Pipeline/GuidanceWorkingStateTests.cs`
+- `Tests/AgOpenWeb.Services.Tests/Pipeline/PipelineIntentsTests.cs`
 
 **Working-state tests (thin):**
 - Default values match those of the corresponding `*State : ObservableObject`.
@@ -344,7 +344,7 @@ later, the test catches it.
 Independent of individual commits — these must all hold when the branch
 is ready to merge:
 
-- [ ] `dotnet build AgValoniaGPS.sln` green on Desktop, iOS, Android.
+- [ ] `dotnet build AgOpenWeb.sln` green on Desktop, iOS, Android.
 - [ ] `dotnet test Tests/` passes; count increases by the new tests
       from Commit 5, no existing test changes status.
 - [ ] `MainViewModel.YouTurn.cs` is byte-identical to its state before
@@ -356,7 +356,7 @@ is ready to merge:
       simulated pass, trigger a manual U-turn, complete the turn. No
       exceptions, no visual regressions. FPS unchanged from baseline on
       the same hardware.
-- [ ] `grep -r "IPipelineIntents" Shared/AgValoniaGPS.Services/` returns
+- [ ] `grep -r "IPipelineIntents" Shared/AgOpenWeb.Services/` returns
       exactly one production call site (`GpsPipelineService`'s
       `Drain()`) plus DI registration.
 - [ ] No property on `YouTurnState` exists that isn't also on

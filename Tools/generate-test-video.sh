@@ -15,16 +15,16 @@ TEST_MODE="${1:---uturn-test}"
 OUTPUT="${2:-$REPO_ROOT/test_video.mp4}"
 
 echo "=== Running integration test: $TEST_MODE ==="
-dotnet run --project "$REPO_ROOT/Tests/AgValoniaGPS.IntegrationTests/" -- --headless "$TEST_MODE"
+dotnet run --project "$REPO_ROOT/Tests/AgOpenWeb.IntegrationTests/" -- --headless "$TEST_MODE"
 
 # Find the GIF output
 case "$TEST_MODE" in
     --field-test)
-        GIF_DIR="$REPO_ROOT/Tests/AgValoniaGPS.IntegrationTests/bin/Debug/net10.0/screenshots/field-test"
+        GIF_DIR="$REPO_ROOT/Tests/AgOpenWeb.IntegrationTests/bin/Debug/net10.0/screenshots/field-test"
         GIF="$GIF_DIR/autosteer_drive.gif"
         ;;
     --uturn-test)
-        GIF_DIR="$REPO_ROOT/Tests/AgValoniaGPS.IntegrationTests/bin/Debug/net10.0/screenshots/uturn-test"
+        GIF_DIR="$REPO_ROOT/Tests/AgOpenWeb.IntegrationTests/bin/Debug/net10.0/screenshots/uturn-test"
         GIF="$GIF_DIR/uturn_test.gif"
         ;;
     *)

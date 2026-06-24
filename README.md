@@ -1,4 +1,4 @@
-# AgValoniaGPS
+# AgOpenWeb
 
 Cross-platform rewrite of [AgOpenGPS](https://github.com/farmerbriantee/AgOpenGPS) using Avalonia, .NET 10, and C#. Uses the MVVM pattern to separate backend services from the UI.
 
@@ -23,13 +23,13 @@ Prerequisites: .NET 10 SDK
 
 ```bash
 # Desktop (Windows/macOS/Linux)
-dotnet build Platforms/AgValoniaGPS.Desktop
+dotnet build Platforms/AgOpenWeb.Desktop
 
 # Run
-dotnet run --project Platforms/AgValoniaGPS.Desktop
+dotnet run --project Platforms/AgOpenWeb.Desktop
 
 # Android
-dotnet build Platforms/AgValoniaGPS.Android
+dotnet build Platforms/AgOpenWeb.Android
 
 # Run tests
 dotnet test

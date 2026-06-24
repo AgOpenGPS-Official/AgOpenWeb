@@ -38,8 +38,8 @@ Refactor MainWindow.axaml.cs (3500 lines, 89 methods) to proper MVVM architectur
 
 ## Phase 2: Create Shared Behaviors
 
-- [x] Create `Shared/AgValoniaGPS.Views` project
-- [x] Create `DraggableBehavior` in Shared/AgValoniaGPS.Views/Behaviors
+- [x] Create `Shared/AgOpenWeb.Views` project
+- [x] Create `DraggableBehavior` in Shared/AgOpenWeb.Views/Behaviors
   - Attach to any Border/Panel in XAML
   - Handles PointerPressed/Moved/Released
   - Supports optional DragHandleName for handle-only dragging
@@ -107,7 +107,7 @@ For each `Btn*_Click` handler:
 ## Phase 4: Move Map Interaction to IMapService
 
 - [x] Create platform-specific `MapService` implementations
-  - Desktop: Wraps OpenGLMapControl (`Platforms/AgValoniaGPS.Desktop/Services/MapService.cs`)
+  - Desktop: Wraps OpenGLMapControl (`Platforms/AgOpenWeb.Desktop/Services/MapService.cs`)
   - iOS: Will wrap SkiaMapControl
 - [x] Register IMapService in DI container
 - [x] Inject IMapService into MainViewModel (constructor updated)
@@ -128,7 +128,7 @@ For each `Btn*_Click` handler:
 ## Phase 6: Create IDialogService Implementation
 
 - [x] Define dialog service interface with async methods (`IDialogService.cs`)
-- [x] Create Desktop implementation (`Platforms/AgValoniaGPS.Desktop/Services/DialogService.cs`)
+- [x] Create Desktop implementation (`Platforms/AgOpenWeb.Desktop/Services/DialogService.cs`)
 - [ ] Create iOS implementation (shows appropriate dialogs)
 - [x] Inject into ViewModel (constructor updated)
 - [ ] Replace all `dialog.ShowDialog(this)` calls in code-behind with ViewModel commands
@@ -169,7 +169,7 @@ Target: < 100 lines
 
 ## Phase 8: Create Shared View Project
 
-- [x] Create `Shared/AgValoniaGPS.Views` project (created in Phase 2)
+- [x] Create `Shared/AgOpenWeb.Views` project (created in Phase 2)
 - [x] Create shared styles in `Styles/AppStyles.axaml`
 - [x] Create `MainView.axaml` as UserControl in Shared
 - [x] Add shared Views project reference to Desktop
@@ -179,8 +179,8 @@ Target: < 100 lines
 
 ### Current Structure
 ```
-Shared/AgValoniaGPS.Views/
-├── AgValoniaGPS.Views.csproj
+Shared/AgOpenWeb.Views/
+├── AgOpenWeb.Views.csproj
 ├── Behaviors/
 │   └── DraggableBehavior.cs
 ├── Styles/

@@ -1,0 +1,78 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             xmlns:controls="using:AgOpenWeb.Views.Controls"
+             x:Class="AgOpenWeb.Views.Controls.Panels.FileMenuPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding IsFileMenuPanelVisible}"
+             IsHitTestVisible="{Binding IsFileMenuPanelVisible}">
+    <UserControl.Styles>
+      <Style Selector="Button.MenuListButton">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        <Setter Property="Cursor" Value="Hand"/>
+      </Style>
+      <Style Selector="Button.MenuListButton:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseMediumLowBrush}"/>
+      </Style>
+    </UserControl.Styles>
+    <controls:FloatingPanel x:Name="FP"
+                            Title="{loc:Localize ApplicationSettings}"
+                            CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
+        <controls:FloatingPanel.PanelContent>
+            <StackPanel Spacing="4">
+
+                <!-- General Settings -->
+                <Button Classes="MenuListButton" Content="{loc:Localize Language}"         HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowLanguageDialogCommand}"/>
+                <Button Classes="MenuListButton" Content="{loc:Localize ResetAllSettings}" HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ResetAllSettingsCommand}"/>
+
+                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
+
+                <!-- App Configuration -->
+                <Button Classes="MenuListButton" Content="App Settings"                    HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowAppSettingsDialogCommand}"/>
+                <Button Classes="MenuListButton" Content="{loc:Localize ViewAllSettings}"  HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowViewSettingsDialogCommand}"/>
+                <Button Classes="MenuListButton" Content="{loc:Localize LogViewer}"        HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowLogViewerDialogCommand}"/>
+                <Button Classes="MenuListButton" Content="{loc:Localize Hotkeys}"          HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowHotkeyConfigDialogCommand}"/>
+
+                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
+
+                <!-- NTRIP moved to the Network IO panel (left-nav). -->
+
+                <!-- Simulator -->
+                <Button Classes="MenuListButton" Content="{loc:Localize Simulator}"        HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ToggleSimulatorPanelCommand}"/>
+
+                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,4"/>
+
+                <!-- Help & Info -->
+                <Button Classes="MenuListButton" Content="{loc:Localize Help}"             HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowHelpDialogCommand}"/>
+                <Button Classes="MenuListButton" Content="{loc:Localize About}"            HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowAboutDialogCommand}"/>
+                <Button Classes="MenuListButton" Content="{loc:Localize BugReportDump}"    HorizontalAlignment="Stretch" Margin="0,2" ClickMode="Press" Command="{Binding ShowBugReportDialogCommand}"/>
+
+            </StackPanel>
+        </controls:FloatingPanel.PanelContent>
+    </controls:FloatingPanel>
+
+</UserControl>

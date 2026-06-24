@@ -1,0 +1,177 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             xmlns:mapsui="clr-namespace:Mapsui.UI.Avalonia;assembly=AgOpenWeb.Views"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.BoundaryMapDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsBoundaryMapDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsBoundaryMapDialogVisible}">
+
+    <UserControl.Styles>
+        <Style Selector="Button.ToolButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="MinWidth" Value="70"/>
+            <Setter Property="MinHeight" Value="44"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ToolButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        </Style>
+        <Style Selector="Button.ToolButton:pressed">
+            <Setter Property="Background" Value="{DynamicResource InfoAccentBrush}"/>
+        </Style>
+        <Style Selector="Button.ToolButton.active">
+            <Setter Property="Background" Value="{DynamicResource InfoAccentBrush}"/>
+        </Style>
+
+        <Style Selector="Button.CancelButton">
+            <Setter Property="Background" Value="{DynamicResource DangerButtonHoverBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="MinHeight" Value="44"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.CancelButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource DangerButtonBrush}"/>
+        </Style>
+
+        <Style Selector="Button.OkButton">
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="MinHeight" Value="44"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.OkButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SuccessButtonHoverBrush}"/>
+        </Style>
+        <Style Selector="Button.OkButton:disabled">
+            <Setter Property="Opacity" Value="0.5"/>
+        </Style>
+
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid>
+        <!-- Semi-transparent backdrop -->
+        <Border Background="{DynamicResource ModalBackdropBrush}" PointerPressed="Backdrop_PointerPressed"/>
+
+        <!-- Dialog panel - full screen with margin for touch targets -->
+        <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                CornerRadius="12"
+                Margin="20"
+                BoxShadow="0 8 32 #40000000">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- Header with instructions -->
+                <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="15" CornerRadius="12,12,0,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Boundary.png" Width="24" Height="24"/>
+                                <TextBlock Text="{loc:Localize DrawFieldBoundary}" Foreground="{DynamicResource InfoAccentBrush}" FontWeight="Bold" FontSize="18"/>
+                                <Border Background="#F5F54D" CornerRadius="4" Padding="6,2" VerticalAlignment="Center"
+                                        IsVisible="{Binding IsInnerBoundaryMode}">
+                                    <TextBlock Text="INNER" FontSize="12" FontWeight="Bold" Foreground="#333333"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{loc:Localize TapOnTheMapToAddBoundaryPointsPanWithDragPinchToZoom}"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="13" Margin="0,5,0,0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                            <TextBlock x:Name="PointCountLabel" Text="{Binding BoundaryMapPointCount, StringFormat='Points: {0}'}"
+                                       Foreground="{DynamicResource InfoAccentBrush}" FontSize="14"
+                                       FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="CoordinateLabel" Text="{Binding BoundaryMapCoordinateText}"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="12"
+                                       VerticalAlignment="Center" MinWidth="150"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Map Control -->
+                <mapsui:MapControl x:Name="MapControl" Grid.Row="1"/>
+
+                <!-- Bottom toolbar -->
+                <Border Grid.Row="1" Background="{DynamicResource ModalBackdropBrush}" Padding="10"
+                        VerticalAlignment="Top" HorizontalAlignment="Left"
+                        CornerRadius="0,0,8,0" Margin="0">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="BtnDraw" Classes="ToolButton"
+                                Click="BtnDraw_Click" ToolTip.Tip="Toggle drawing mode">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Boundary.png" Width="20" Height="20"/>
+                                <TextBlock x:Name="BtnDrawText" Text="{loc:Localize Draw}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnUndo" Classes="ToolButton"
+                                Click="BtnUndo_Click" ToolTip.Tip="Remove last point" IsEnabled="False">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/BackSpace.png" Width="20" Height="20"/>
+                                <TextBlock Text="{loc:Localize Undo}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnClear" Classes="ToolButton"
+                                Click="BtnClear_Click" ToolTip.Tip="Clear all points" IsEnabled="False">
+                            <TextBlock Text="{loc:Localize Clear}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <!-- Bottom action bar -->
+                <Border Grid.Row="2" Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Padding="15" CornerRadius="0,0,12,12">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                        <CheckBox x:Name="ChkSaveBackground" Grid.Column="0" Content="{loc:Localize IncludeBackgroundImage}"
+                                  IsChecked="{Binding BoundaryMapIncludeBackground}"
+                                  VerticalAlignment="Center"/>
+
+                        <Border Grid.Column="1"/>
+
+                        <Button Grid.Column="2" Classes="CancelButton" Margin="0,0,10,0"
+                                Command="{Binding CancelBoundaryMapDialogCommand}" ToolTip.Tip="Cancel">
+                            <TextBlock Text="{loc:Localize Cancel}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        </Button>
+
+                        <Button x:Name="BtnSave" Grid.Column="3" Classes="OkButton"
+                                Click="BtnSave_Click" ToolTip.Tip="Save boundary"
+                                IsEnabled="{Binding BoundaryMapCanSave}">
+                            <TextBlock Text="{loc:Localize Save}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="Bold"/>
+                        </Button>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

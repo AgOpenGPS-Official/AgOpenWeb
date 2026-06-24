@@ -139,7 +139,7 @@ control reaches parity. Then it gets deleted.
 ### Phase 0 — Research (answer the open questions)
 
 Three standalone-control spikes, each in its own file under
-`Shared/AgValoniaGPS.Views/Controls/Spikes/`, gitignored, removed when the
+`Shared/AgOpenWeb.Views/Controls/Spikes/`, gitignored, removed when the
 pivot lands:
 
 - `PerspectiveSpike.cs` — `SKMatrix44` perspective test (question 1).

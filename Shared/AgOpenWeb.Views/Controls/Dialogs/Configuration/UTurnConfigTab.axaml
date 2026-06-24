@@ -1,0 +1,179 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:controls="clr-namespace:AgOpenWeb.Views.Controls;assembly=AgOpenWeb.Views"
+             mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="550"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.Configuration.UTurnConfigTab"
+             x:DataType="vm:ConfigurationViewModel">
+
+    <UserControl.Styles>
+        <!-- Parameter Card -->
+        <Style Selector="Border.ParamCard">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+
+        <!-- Turn-style selector card -->
+        <Style Selector="Border.StyleCard">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundChromeMediumBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Border.StyleCard:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+        </Style>
+        <Style Selector="Border.StyleCard.Selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Header -->
+        <TextBlock Text="U-Turn Settings" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Margin="16,12,16,8"/>
+
+        <ScrollViewer Grid.Row="1">
+          <StackPanel Spacing="4">
+
+            <!-- Turn Style Selector -->
+            <Border Classes="ParamCard" Margin="16,0,16,4">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Turn Style" FontWeight="SemiBold"
+                               Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                    <Grid ColumnDefinitions="*,*">
+                        <!-- Omega -->
+                        <Border Grid.Column="0" Classes="StyleCard" Margin="0,0,4,0"
+                                Classes.Selected="{Binding IsOmegaTurnStyle}"
+                                PointerPressed="OnOmegaTurnStylePressed">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Omega" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                <TextBlock Text="Tight constant-radius semicircle. Sharper leg-to-arc transition."
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                           FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        <!-- Sagitta -->
+                        <Border Grid.Column="1" Classes="StyleCard" Margin="4,0,0,0"
+                                Classes.Selected="{Binding IsSagittaTurnStyle}"
+                                PointerPressed="OnSagittaTurnStylePressed">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Sagitta" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                                <TextBlock Text="Smoother offset arc with tangential entry. Gentler on the operator."
+                                           Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                                           FontSize="11" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 3-Column Layout matching AgOpenGPS -->
+            <Grid ColumnDefinitions="*,*,*" Margin="12,8,12,16">
+
+                <!-- LEFT COLUMN: Extension Length -->
+                <Border Grid.Column="0" Classes="ParamCard" Margin="4">
+                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                        <!-- Graphic -->
+                        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Height="120">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConU_UturnLength.png" Stretch="Uniform"/>
+                        </Border>
+
+                        <!-- Value Display -->
+                        <controls:EditableNumericField HorizontalAlignment="Center"
+                            Value="{Binding Guidance.UTurnExtension, Mode=TwoWay}"
+                            Unit="m" FormatString="F1"
+                            EditCommand="{Binding EditUTurnExtensionCommand}"/>
+
+                        <!-- Tip Text -->
+                        <TextBlock Text="Set extension length to 2 or 3x Radius"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- MIDDLE COLUMN: Smoothing -->
+                <Border Grid.Column="1" Classes="ParamCard" Margin="4">
+                    <StackPanel Spacing="8" HorizontalAlignment="Center">
+                        <!-- Graphic -->
+                        <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Height="120">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConU_UturnSmooth.png" Stretch="Uniform"/>
+                        </Border>
+
+                        <!-- Value Display -->
+                        <controls:EditableNumericField HorizontalAlignment="Center"
+                            Value="{Binding Guidance.UTurnSmoothing, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditUTurnSmoothingCommand}"/>
+
+                        <!-- Tip Text -->
+                        <TextBlock Text="Set Smoothing 3-4x Radius"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" TextAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- RIGHT COLUMN: Turn Radius + Trigger Distance stacked -->
+                <StackPanel Grid.Column="2" Spacing="8">
+                    <!-- Turn Radius (Top) -->
+                    <Border Classes="ParamCard" Margin="4">
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <!-- Graphic -->
+                            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Height="80">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConU_UturnRadius.png" Stretch="Uniform"/>
+                            </Border>
+
+                            <!-- Value Display -->
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Guidance.UTurnRadius, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditUTurnRadiusCommand}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Trigger Distance (Bottom) -->
+                    <Border Classes="ParamCard" Margin="4">
+                        <StackPanel Spacing="8" HorizontalAlignment="Center">
+                            <!-- Graphic -->
+                            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Height="80">
+                                <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConU_UturnDistance.png" Stretch="Uniform"/>
+                            </Border>
+
+                            <!-- Value Display -->
+                            <controls:EditableNumericField HorizontalAlignment="Center"
+                                Value="{Binding Guidance.UTurnDistanceFromBoundary, Mode=TwoWay}"
+                                Unit="m" FormatString="F2"
+                                EditCommand="{Binding EditUTurnDistanceCommand}"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

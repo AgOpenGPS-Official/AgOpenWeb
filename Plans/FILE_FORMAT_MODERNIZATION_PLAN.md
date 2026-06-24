@@ -2,11 +2,11 @@
 
 ## Overview
 
-Modernize AgValoniaGPS file formats from legacy AgOpenGPS text/XML formats to **GeoJSON (WGS84)** for geospatial data and **JSON** for configuration, improving maintainability, GIS interoperability, and developer experience while providing one-way import from legacy formats.
+Modernize AgOpenWeb file formats from legacy AgOpenGPS text/XML formats to **GeoJSON (WGS84)** for geospatial data and **JSON** for configuration, improving maintainability, GIS interoperability, and developer experience while providing one-way import from legacy formats.
 
 ## Design Philosophy
 
-> AgValoniaGPS may use different/improved formats from AgOpenGPS when it benefits code simplicity or features. Provide one-way import from AgOpenGPS formats rather than maintaining full backwards compatibility.
+> AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits code simplicity or features. Provide one-way import from AgOpenGPS formats rather than maintaining full backwards compatibility.
 
 ### Coordinate System Architecture
 
@@ -63,7 +63,7 @@ Modernize AgValoniaGPS file formats from legacy AgOpenGPS text/XML formats to **
 |------|--------|---------|
 | `Sections.txt` | Triangle strip text | Applied/worked area coverage |
 
-**Current AgValonia format:**
+**Current AgOpenWeb format:**
 ```
 5                              <- vertex count (includes color vertex)
 152.000,251.000,152.00000      <- RGB color as first vertex
@@ -83,12 +83,12 @@ Modernize AgValoniaGPS file formats from legacy AgOpenGPS text/XML formats to **
 ```
 
 **Issues:**
-- **Massive file size**: AgValonia 1.2MB vs AgOpenGPS 4KB for same 0.62ha field
+- **Massive file size**: AgOpenWeb 1.2MB vs AgOpenGPS 4KB for same 0.62ha field
 - **Tiny patches**: Each section start/stop creates new patch (often only 2 quads)
 - **No merging**: Adjacent patches with same color stored separately
 - **No simplification**: Every vertex stored at full precision
 - **Triangle strips**: Format optimized for OpenGL rendering, not storage
-- **Per-section colors**: AgValonia unique feature - each section can have different color (AgOpenGPS uses single color for all sections)
+- **Per-section colors**: AgOpenWeb unique feature - each section can have different color (AgOpenGPS uses single color for all sections)
 
 ### Vehicle Profiles (XML)
 
@@ -344,7 +344,7 @@ Vehicle profiles remain as regular JSON (not GeoJSON) since they're configuratio
 
 ### 3. Coverage Format: GeoJSON (`coverage.geojson`)
 
-Coverage data stored as GeoJSON MultiPolygons, grouped by color. This supports AgValonia's per-section color feature while dramatically reducing file size through polygon merging.
+Coverage data stored as GeoJSON MultiPolygons, grouped by color. This supports AgOpenWeb's per-section color feature while dramatically reducing file size through polygon merging.
 
 ```json
 {
@@ -526,9 +526,9 @@ When saving:
 4. Keep legacy services unchanged
 
 **Files to create:**
-- `Shared/AgValoniaGPS.Services/Field/GeoJsonFieldService.cs`
-- `Shared/AgValoniaGPS.Services/Coordinates/CoordinateConverter.cs`
-- `Shared/AgValoniaGPS.Services/Profile/ProfileJsonService.cs`
+- `Shared/AgOpenWeb.Services/Field/GeoJsonFieldService.cs`
+- `Shared/AgOpenWeb.Services/Coordinates/CoordinateConverter.cs`
+- `Shared/AgOpenWeb.Services/Profile/ProfileJsonService.cs`
 
 ### Phase 2: Auto-Detection & Import
 
@@ -565,10 +565,10 @@ public async Task<Field> LoadField(string path)
 5. Auto-detect and migrate legacy `Sections.txt` files
 
 **Files to create:**
-- `Shared/AgValoniaGPS.Services/Coverage/GeoJsonCoverageService.cs`
-- `Shared/AgValoniaGPS.Services/Geometry/PolygonMerger.cs`
-- `Shared/AgValoniaGPS.Services/Geometry/PolygonSimplifier.cs`
-- `Shared/AgValoniaGPS.Services/Geometry/PolygonTriangulator.cs`
+- `Shared/AgOpenWeb.Services/Coverage/GeoJsonCoverageService.cs`
+- `Shared/AgOpenWeb.Services/Geometry/PolygonMerger.cs`
+- `Shared/AgOpenWeb.Services/Geometry/PolygonSimplifier.cs`
+- `Shared/AgOpenWeb.Services/Geometry/PolygonTriangulator.cs`
 
 **Key algorithms needed:**
 
@@ -630,7 +630,7 @@ public async Task<Field> LoadField(string path)
 
 ### GIS Tool Interoperability
 
-With GeoJSON format, AgValoniaGPS fields can be:
+With GeoJSON format, AgOpenWeb fields can be:
 - Opened directly in QGIS, ArcGIS, Google Earth
 - Edited in any GeoJSON editor
 - Visualized on web maps (Leaflet, Mapbox, etc.)
@@ -638,15 +638,15 @@ With GeoJSON format, AgValoniaGPS fields can be:
 
 ### AgOpenGPS Interoperability
 
-After migration, AgValoniaGPS fields will NOT be directly readable by AgOpenGPS. Options:
+After migration, AgOpenWeb fields will NOT be directly readable by AgOpenGPS. Options:
 
 1. **Export feature**: Add "Export to AgOpenGPS format" menu option
 2. **Standalone converter**: Small utility to convert GeoJSON → legacy text
 3. **Documentation**: Clear notes that formats are incompatible
 
-### Sharing Between AgValoniaGPS Users
+### Sharing Between AgOpenWeb Users
 
-GeoJSON format is the standard for sharing between AgValoniaGPS installations.
+GeoJSON format is the standard for sharing between AgOpenWeb installations.
 
 ---
 
@@ -681,7 +681,7 @@ GeoJSON field data is slightly larger than custom formats due to verbose coordin
 ### Coverage Format
 - [ ] Coverage saves as GeoJSON with merged polygons per color
 - [ ] Legacy `Sections.txt` files import correctly
-- [ ] Per-section colors preserved (AgValonia unique feature)
+- [ ] Per-section colors preserved (AgOpenWeb unique feature)
 - [ ] File size reduction of 90%+ achieved
 - [ ] Coverage can be viewed in QGIS/ArcGIS
 - [ ] Triangle strip rendering works after load (polygon → triangles)

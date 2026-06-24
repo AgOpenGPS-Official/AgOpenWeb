@@ -1,0 +1,63 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:subtabs="clr-namespace:AgOpenWeb.Views.Controls.Dialogs.Configuration.MachineSubTabs"
+             mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="600"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.Configuration.MachineControlConfigTab"
+             x:DataType="vm:ConfigurationViewModel">
+
+    <UserControl.Styles>
+        <!-- Sub-tab styling -->
+        <Style Selector="TabControl.SubTabs">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+        </Style>
+        <Style Selector="TabControl.SubTabs > TabItem">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+        </Style>
+        <Style Selector="TabControl.SubTabs > TabItem:selected">
+            <Setter Property="Background" Value="{DynamicResource SystemControlHighlightAccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+        </Style>
+        <Style Selector="TabControl.SubTabs > TabItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Header -->
+        <TextBlock Text="Machine Control" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" Margin="16,12,16,8"/>
+
+        <!-- Sub-Tab Control -->
+        <TabControl Grid.Row="1" Classes="SubTabs" Margin="8,0,8,8">
+            <TabItem Header="Machine Module">
+                <subtabs:MachineModuleSubTab/>
+            </TabItem>
+            <TabItem Header="Pin Config">
+                <subtabs:PinConfigSubTab/>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

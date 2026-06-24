@@ -2,7 +2,7 @@
 
 ## Context
 
-We were fixing headland curve issues in AgValoniaGPS3. The headland building now works with smooth curves (changed boundary recording from 5m to 1m spacing like AgOpenGPS, and implemented perpendicular offset like AgOpenGPS).
+We were fixing headland curve issues in AgOpenWeb3. The headland building now works with smooth curves (changed boundary recording from 5m to 1m spacing like AgOpenGPS, and implemented perpendicular offset like AgOpenGPS).
 
 However, the **headland clip function causes the app to hang** so badly it can't be killed.
 
@@ -21,9 +21,9 @@ The issue is likely still in the clip-related code. Possible culprits:
 
 ## Files Modified This Session
 
-- `Shared/AgValoniaGPS.Services/BoundaryRecordingService.cs` - changed spacing from 5m to 1m
-- `Shared/AgValoniaGPS.Services/Geometry/PolygonOffsetService.cs` - perpendicular offset + O(n²) fix
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - clip path caching
+- `Shared/AgOpenWeb.Services/BoundaryRecordingService.cs` - changed spacing from 5m to 1m
+- `Shared/AgOpenWeb.Services/Geometry/PolygonOffsetService.cs` - perpendicular offset + O(n²) fix
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - clip path caching
 
 ## Next Steps
 

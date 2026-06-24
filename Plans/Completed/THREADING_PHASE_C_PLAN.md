@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -172,14 +172,14 @@ Verified before this plan was drafted.
 | Tick guards | `GpsHandling.cs:236` | `IsYouTurnEnabled && _currentHeadlandLine != null && _currentHeadlandLine.Count >= 3` — migrate with the tick |
 | Counter increment | `GpsHandling.cs:234` | `State.YouTurn.YouTurnCounter++` before tick. Cycle worker takes over |
 | State push to pipeline | `GpsHandling.cs:242–243` | `_gpsPipelineService.SetYouTurnState(...)` — vestigial after C4; cycle owns the state directly |
-| `Tick` / `TriggerManual` / `ClearState` | `Shared/AgValoniaGPS.Services/YouTurn/YouTurnStateMachine.cs:89,237,311` | public surface to migrate |
+| `Tick` / `TriggerManual` / `ClearState` | `Shared/AgOpenWeb.Services/YouTurn/YouTurnStateMachine.cs:89,237,311` | public surface to migrate |
 | `YouTurnEffects` | `YouTurnStateMachine.cs:587–612` | retires per §2.2 |
 | `ApplyEffects` | `MainViewModel.YouTurn.cs:177–203` | retires per §2.2 |
 | `TriggerManual*` commands | `MainViewModel.Commands.Track.cs:75, 863–864` | become intent pushes in C6 |
 | `ClearYouTurnState` call sites | `MainViewModel.YouTurn.cs:79`, plus track-deselect and field-close paths | become intent push in C7 |
 | Current `ApplyGpsCycleResult` YouTurn handling | `MainViewModel.ApplyResults.cs:57–60` | flat fields read but **NOT assigned to `State.YouTurn.*`** — C5 adds those assignments |
-| Working state types | `Shared/AgValoniaGPS.Models/Pipeline/YouTurnWorkingState.cs`, `YouTurnSnapshot.cs` | from Phase A, ready to consume |
-| Intent API | `Shared/AgValoniaGPS.Models/Pipeline/IPipelineIntents.cs` | from Phase A; `RequestManualYouTurn(bool)` and `RequestClearYouTurn()` already defined |
+| Working state types | `Shared/AgOpenWeb.Models/Pipeline/YouTurnWorkingState.cs`, `YouTurnSnapshot.cs` | from Phase A, ready to consume |
+| Intent API | `Shared/AgOpenWeb.Models/Pipeline/IPipelineIntents.cs` | from Phase A; `RequestManualYouTurn(bool)` and `RequestClearYouTurn()` already defined |
 
 ---
 
@@ -215,7 +215,7 @@ thread migration. Spoiler (filled in after investigation): it isn't.
 **Result:**
 - TMP-008 closed as "works as designed, AgOpen parity deferred"
 - AgOpen-style immediate manual U-turn → GitHub issue #260 (Project
-  "AgValoniaGPS", Planning column)
+  "AgOpenWeb", Planning column)
 - Free-drive line-follows-tractor → GitHub issue #261 (same)
 - Diagnostic logging stripped (this commit)
 - Phase C C2+ proceeds unchanged
@@ -402,7 +402,7 @@ from C7. The `grep -rn "result\.IsInYouTurn\|YouTurnTriggered\|YouTurnCompleted"
 **Goal:** Lock the new invariants and close Phase C's open items.
 
 **Adds / modifies:**
-- `Tests/AgValoniaGPS.Services.Tests/Pipeline/YouTurnCycleTests.cs` —
+- `Tests/AgOpenWeb.Services.Tests/Pipeline/YouTurnCycleTests.cs` —
   unit tests around the cycle-worker's YouTurn handling:
   - `Tick_mutates_working_state_not_observable_state` — confirms the
     state machine's signature migration.
@@ -410,7 +410,7 @@ from C7. The `grep -rn "result\.IsInYouTurn\|YouTurnTriggered\|YouTurnCompleted"
     intent flow.
   - `YouTurnSnapshot_emitted_when_state_changes` — verifies the
     cycle fills the snapshot.
-- `Tests/AgValoniaGPS.UI.Tests/ApplyGpsCycleResultTests.cs` (or
+- `Tests/AgOpenWeb.UI.Tests/ApplyGpsCycleResultTests.cs` (or
   extend existing) — `State.YouTurn` gets written from
   `result.YouTurn` on the UI thread; `_mapService.SetYouTurnPath`
   called with the snapshot's path.
@@ -429,9 +429,9 @@ next pass → manual U-turn → close field) with no exceptions, FPS ≥
 
 ## 6. Acceptance criteria (Phase C-wide)
 
-- [ ] `dotnet build AgValoniaGPS.sln -p:DesktopOnly=true` green
+- [ ] `dotnet build AgOpenWeb.sln -p:DesktopOnly=true` green
 - [ ] `dotnet test Tests/` passes; count increases by C9 additions
-- [ ] `grep "State\.YouTurn\." Shared/AgValoniaGPS.ViewModels/ Shared/AgValoniaGPS.Services/`
+- [ ] `grep "State\.YouTurn\." Shared/AgOpenWeb.ViewModels/ Shared/AgOpenWeb.Services/`
       returns **only** reads outside `ApplyGpsCycleResult`. Zero writes
       outside the apply-results path.
 - [ ] `MainViewModel.YouTurn.cs` line count < 100 (Phase A TMP-007

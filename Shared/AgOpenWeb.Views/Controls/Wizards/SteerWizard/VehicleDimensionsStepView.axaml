@@ -1,0 +1,118 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:steer="clr-namespace:AgOpenWeb.ViewModels.Wizards.SteerWizard;assembly=AgOpenWeb.ViewModels"
+             xmlns:conv="using:AgOpenWeb.Views.Converters"
+             mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="550"
+             x:Class="AgOpenWeb.Views.Controls.Wizards.SteerWizard.VehicleDimensionsStepView"
+             x:DataType="steer:VehicleDimensionsStepViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <!-- Title -->
+        <TextBlock Grid.Row="0"
+                   Text="{Binding Title}"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                   Margin="0,0,0,12"/>
+
+        <!-- Description -->
+        <TextBlock Grid.Row="1"
+                   Text="{Binding Description}"
+                   FontSize="16"
+                   Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"
+                   TextWrapping="Wrap"
+                   LineHeight="22"
+                   Margin="0,0,0,24"/>
+
+        <!-- Two columns: Left = Wheelbase, Right = Track Width -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" VerticalAlignment="Center">
+            <!-- Left column: Wheelbase -->
+            <StackPanel Grid.Column="0" Spacing="8" Margin="0,0,8,0">
+                <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        CornerRadius="12" Padding="4">
+                    <Image Source="{Binding WheelbaseCropImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                           Stretch="Uniform" MaxHeight="220" HorizontalAlignment="Center"/>
+                </Border>
+                <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        CornerRadius="10" Padding="12,8">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Wheelbase" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        <TextBlock Text="Front to rear axle distance" FontSize="12"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBox Text="{Binding Wheelbase, StringFormat='{}{0:F2}'}"
+                                     FontSize="22" FontWeight="Bold" Width="120" TextAlignment="Center"
+                                     Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                     Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                     BorderBrush="{DynamicResource SystemControlHighlightAccentBrush}"
+                                     BorderThickness="2" CornerRadius="8" Padding="8,6"/>
+                            <TextBlock Text="m" FontSize="18" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- Right column: Track Width -->
+            <StackPanel Grid.Column="1" Spacing="8" Margin="8,0,0,0">
+                <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        CornerRadius="12" Padding="4">
+                    <Image Source="{Binding TrackWidthImageSource, Converter={x:Static conv:StringToImageConverter.Instance}}"
+                           Stretch="Uniform" MaxHeight="220" HorizontalAlignment="Center"/>
+                </Border>
+                <Border Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                        CornerRadius="10" Padding="12,8">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Track Width" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+                        <TextBlock Text="Left to right wheel center" FontSize="12"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBox Text="{Binding TrackWidth, StringFormat='{}{0:F2}'}"
+                                     FontSize="22" FontWeight="Bold" Width="120" TextAlignment="Center"
+                                     Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+                                     Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                                     BorderBrush="{DynamicResource SystemControlHighlightAccentBrush}"
+                                     BorderThickness="2" CornerRadius="8" Padding="8,6"/>
+                            <TextBlock Text="m" FontSize="18" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- Validation message -->
+        <Border Grid.Row="3"
+                Background="#C0392B"
+                CornerRadius="8"
+                Padding="12"
+                Margin="0,16,0,0"
+                IsVisible="{Binding HasValidationError}">
+            <TextBlock Text="{Binding ValidationMessage}"
+                       Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"
+                       FontSize="14"
+                       TextWrapping="Wrap"/>
+        </Border>
+    </Grid>
+</UserControl>

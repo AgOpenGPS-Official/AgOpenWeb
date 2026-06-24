@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Configuration Panel is the most complex UI component in AgOpenGPS, providing comprehensive vehicle, tool, and system configuration. This document outlines the implementation plan for AgValoniaGPS3, following the established patterns in the codebase.
+The Configuration Panel is the most complex UI component in AgOpenGPS, providing comprehensive vehicle, tool, and system configuration. This document outlines the implementation plan for AgOpenWeb3, following the established patterns in the codebase.
 
 ## AgOpenGPS Reference Structure
 
@@ -45,7 +45,7 @@ Configuration Dialog
 ### File Structure
 
 ```
-Shared/AgValoniaGPS.Views/Controls/Dialogs/
+Shared/AgOpenWeb.Views/Controls/Dialogs/
 ├── ConfigurationDialog.axaml           # Main dialog container
 ├── ConfigurationDialog.axaml.cs        # Dialog code-behind
 └── ConfigTabs/                         # Individual tab controls
@@ -58,7 +58,7 @@ Shared/AgValoniaGPS.Views/Controls/Dialogs/
     ├── ConfigHardwareTab.axaml
     └── ConfigDisplayTab.axaml
 
-Shared/AgValoniaGPS.ViewModels/
+Shared/AgOpenWeb.ViewModels/
 └── ConfigurationViewModel.cs           # Dedicated ViewModel for configuration
 ```
 
@@ -77,7 +77,7 @@ Shared/AgValoniaGPS.ViewModels/
 
 ### 1.1 Create ConfigurationViewModel
 
-**File**: `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs`
+**File**: `Shared/AgOpenWeb.ViewModels/ConfigurationViewModel.cs`
 
 ```csharp
 public class ConfigurationViewModel : ReactiveObject
@@ -147,7 +147,7 @@ services.AddTransient<ConfigurationViewModel>();
 
 ### 1.3 Create Main Dialog Container
 
-**File**: `Shared/AgValoniaGPS.Views/Controls/Dialogs/ConfigurationDialog.axaml`
+**File**: `Shared/AgOpenWeb.Views/Controls/Dialogs/ConfigurationDialog.axaml`
 
 Key features:
 - Full-screen modal overlay with semi-transparent backdrop
@@ -466,7 +466,7 @@ Update existing `ConfigurationPanel.axaml` to launch the dialog:
 <Button Classes="ModernButton"
         Command="{Binding ShowConfigurationDialogCommand}">
     <StackPanel>
-        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Settings48.png"/>
+        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Settings48.png"/>
         <TextBlock Text="Configuration"/>
     </StackPanel>
 </Button>
@@ -475,8 +475,8 @@ Update existing `ConfigurationPanel.axaml` to launch the dialog:
 ### 5.3 Platform Integration
 
 Add to both platform main views:
-- `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml`
-- `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml`
+- `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml`
+- `Platforms/AgOpenWeb.iOS/Views/MainView.axaml`
 
 ```xaml
 <dialogs:ConfigurationDialog
@@ -548,15 +548,15 @@ Add to both platform main views:
 
 ### AgOpenGPS Icon Library
 
-The project includes a comprehensive icon library at `/btnImages/` with **240 icons** including a dedicated `Config/` subfolder. These should be copied to `Shared/AgValoniaGPS.Views/Assets/Icons/` and referenced in the Configuration Panel.
+The project includes a comprehensive icon library at `/btnImages/` with **240 icons** including a dedicated `Config/` subfolder. These should be copied to `Shared/AgOpenWeb.Views/Assets/Icons/` and referenced in the Configuration Panel.
 
-**Source Location**: `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/btnImages/`
+**Source Location**: `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/btnImages/`
 
 The btnImages folder is already synchronized with AgOpenGPS source. Additional resources can be found at:
 - **Config icons** (90 icons): `/btnImages/Config/` - Tab icons, sub-tab icons, setting diagrams
 - **Steer icons**: `/btnImages/Steer/` - Pure Pursuit, Stanley, gain settings
-- **Runtime images**: `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/btnImages/Images/` - Compass, speedo, floor texture, etc.
-- **Sound files**: `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Resources/` - Audio feedback (.wav files)
+- **Runtime images**: `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/btnImages/Images/` - Compass, speedo, floor texture, etc.
+- **Sound files**: `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Resources/` - Audio feedback (.wav files)
 
 #### Main Tab Icons (from /btnImages/)
 | Tab | Icon | File |
@@ -681,16 +681,16 @@ Display Setting Icons:
 
 1. **Copy icons to shared assets**:
    ```bash
-   cp -r btnImages/Config/* Shared/AgValoniaGPS.Views/Assets/Icons/Config/
-   cp btnImages/Settings48.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/vehiclePage*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/ToolChk*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/ToolHitchPage*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/Antenna*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/YouTurn*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/Mode*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/HydraulicLift*.png Shared/AgValoniaGPS.Views/Assets/Icons/
-   cp btnImages/Window*.png Shared/AgValoniaGPS.Views/Assets/Icons/
+   cp -r btnImages/Config/* Shared/AgOpenWeb.Views/Assets/Icons/Config/
+   cp btnImages/Settings48.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/vehiclePage*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/ToolChk*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/ToolHitchPage*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/Antenna*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/YouTurn*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/Mode*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/HydraulicLift*.png Shared/AgOpenWeb.Views/Assets/Icons/
+   cp btnImages/Window*.png Shared/AgOpenWeb.Views/Assets/Icons/
    ```
 
 2. **Update .csproj to include icons as AvaloniaResource**:
@@ -702,7 +702,7 @@ Display Setting Icons:
 
 3. **Reference in XAML**:
    ```xml
-   <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/Con_VehicleMenu.png"
+   <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_VehicleMenu.png"
           Width="32" Height="32"/>
    ```
 

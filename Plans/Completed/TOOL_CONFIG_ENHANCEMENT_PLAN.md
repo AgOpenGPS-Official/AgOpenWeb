@@ -5,7 +5,7 @@
 
 ## Executive Summary
 
-The current AgValoniaGPS3 Tool Configuration is a simplified single-page implementation. The original AgOpenGPS has **7 distinct sub-tabs** with extensive functionality including dynamic diagrams, section width editors, zone configuration, and work switch settings.
+The current AgOpenWeb3 Tool Configuration is a simplified single-page implementation. The original AgOpenGPS has **7 distinct sub-tabs** with extensive functionality including dynamic diagrams, section width editors, zone configuration, and work switch settings.
 
 **Current state:** Basic tool type, dimensions, and hitch settings on one page
 **Target state:** Full 7 sub-tab implementation matching AgOpenGPS functionality

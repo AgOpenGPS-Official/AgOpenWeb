@@ -40,7 +40,7 @@ layer; `SourceCode/AgOpenGPS.Core/Models/Field/` is the cleaner model-only futur
    come from the AB reference, with only **two** boundary-follow tracks.
 4. No external clipping library; no spatial index (decimation alone keeps O(n) cheap).
 
-Where **we are already ahead**: AgValonia uses **Clipper2** for offsetting
+Where **we are already ahead**: AgOpenWeb uses **Clipper2** for offsetting
 (`PolygonOffsetService`) and has a **spatial index** on `BoundaryPolygon` (used by section
 control). We also already have `DouglasPeuckerSimplify`, `ResamplePolygon`,
 `DensifyPolygon` — but they are **private/orphaned** and unreachable from any public path.
@@ -72,7 +72,7 @@ control). We also already have `DouglasPeuckerSimplify`, `ResamplePolygon`,
 ## Phasing
 
 ### Phase 1 — Normalize keystone + immediate tram relief *(this PR)*
-- `BoundaryResolution.Normalize` in `AgValoniaGPS.Models` (DP ε≈0.1 m + max-gap densify
+- `BoundaryResolution.Normalize` in `AgOpenWeb.Models` (DP ε≈0.1 m + max-gap densify
   for closed rings, recompute per-point heading). Unit tests.
 - Apply at boundary finalize (recording stop), build-from-tracks finalize, and import
   (AgOpen + GeoJSON). Existing dense boundaries normalized + resaved on field open
@@ -106,9 +106,9 @@ control). We also already have `DouglasPeuckerSimplify`, `ResamplePolygon`,
 
 ## Key files
 
-- Model: `Shared/AgValoniaGPS.Models/Boundary.cs`, `BoundaryPolygon.cs` (spatial index),
+- Model: `Shared/AgOpenWeb.Models/Boundary.cs`, `BoundaryPolygon.cs` (spatial index),
   `Base/GeometryMath.cs`.
-- New: `Shared/AgValoniaGPS.Models/Base/BoundaryResolution.cs` (normalizer).
+- New: `Shared/AgOpenWeb.Models/Base/BoundaryResolution.cs` (normalizer).
 - Capture/build/import: `Services/BoundaryRecordingService.cs`,
   `Services/BoundaryBuilderService.cs`, `Services/BoundaryFileService.cs`,
   `Services/GeoJson/GeoJsonFieldService.cs`.

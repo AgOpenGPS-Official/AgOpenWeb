@@ -50,7 +50,7 @@ it's jammed into the config DTO (`AppSettings`), and the guard test has to speci
 
 ## 4. Root cause of the recurring bug
 
-`Tests/AgValoniaGPS.Services.Tests/ConfigurationServiceMappingTests.cs`
+`Tests/AgOpenWeb.Services.Tests/ConfigurationServiceMappingTests.cs`
 → `Completeness_AllPersistableProperties_AreMapped` enumerates **`typeof(AppSettings).GetProperties()`**.
 It only proves every *AppSettings* field round-trips. It is **structurally blind to store
 properties that have no AppSettings backing at all.** So you can add a `DisplayConfig` toggle,
@@ -163,9 +163,9 @@ Ships atomically (build order is dev convenience only, per project convention). 
 changes touch **Desktop + iOS + Android** in the same commit.
 
 ### Step 1 — Build the persistent application-state tier (store #2)
-- New model `ApplicationStateSnapshot` (POCO/DTO of tier-2 values) in `AgValoniaGPS.Models`.
-- New `IApplicationStateService` + `ApplicationStateService` in `AgValoniaGPS.Services`, persisting
-  `appstate.json` in `Documents/AgValoniaGPS/` via the existing `AtomicJsonFile` (same `.bak`
+- New model `ApplicationStateSnapshot` (POCO/DTO of tier-2 values) in `AgOpenWeb.Models`.
+- New `IApplicationStateService` + `ApplicationStateService` in `AgOpenWeb.Services`, persisting
+  `appstate.json` in `Documents/AgOpenWeb/` via the existing `AtomicJsonFile` (same `.bak`
   crash-safe recovery, camelCase, `Populate` creation-handling as `SettingsService`).
 - Load on startup (alongside `LoadAppSettings`); save on the same hooks that already call
   `SaveAppSettings` (Desktop `MainWindow.OnClosing`, iOS/Android lifecycle).
@@ -267,7 +267,7 @@ The VM depends directly on `Avalonia.Threading.Dispatcher.UIThread` — a static
 *presentation* framework — in **~10 `MainViewModel` partials**: ~18 `Post`, 5 `InvokeAsync`,
 7 `CheckAccess`. By the project's own MVVM rule (VM coordinates, doesn't bind itself to the View
 framework), this should be an injected `IDispatcher`:
-- Define `IDispatcher` (Post / InvokeAsync / CheckAccess) in `AgValoniaGPS.Services` (or Models).
+- Define `IDispatcher` (Post / InvokeAsync / CheckAccess) in `AgOpenWeb.Services` (or Models).
 - Avalonia-backed implementation registered in **Desktop + iOS + Android** (three-platform DI rule).
 - VM partials take `IDispatcher` via ctor; replace every `Dispatcher.UIThread.*` call.
 - Behavior-preserving for the current apps; independently shippable; no data-tier change.
@@ -306,7 +306,7 @@ The same "ambient, not injected" smell applied to `ConfigurationStore.Instance` 
 - The static `Instance`/`SetInstance` accessors remain **only** as the seam for framework-instantiated
   Avalonia Views (the XAML loader news them up outside DI — 7 View files keep reading the shared
   singleton) and for test setup. A new guard test `NoAmbientStoreAccessTests` source-scans
-  `Shared/AgValoniaGPS.{Services,ViewModels}` and fails CI if `ConfigurationStore.Instance` /
+  `Shared/AgOpenWeb.{Services,ViewModels}` and fails CI if `ConfigurationStore.Instance` /
   `ApplicationState.Instance` regrows in business logic. 1502 tests green.
 
 ### 11.3 Injectable `ITimer` / scheduler (the remaining headless blocker)

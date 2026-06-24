@@ -23,7 +23,7 @@ Wants=network-online.target
 Type=notify
 NotifyAccess=main
 
-ExecStart=/opt/agopenweb/AgValoniaGPS.Desktop
+ExecStart=/opt/agopenweb/AgOpenWeb.Desktop
 WorkingDirectory=/opt/agopenweb
 
 # Dedicated unprivileged service account. Device-group membership (dialout for USB
@@ -42,7 +42,7 @@ Group=agopenweb
 # /home alongside the real users). install.sh creates it (0755, owned by agopenweb).
 # UMask=0022 keeps everything the daemon writes WORLD-READABLE but daemon-write-only: any
 # login user can browse/back up the fields, only the service can modify them. AGOPENWEB_DATA
-# is the explicit data-root the app honors (see AppDataRoot) → /home/agopenweb/AgValoniaGPS.
+# is the explicit data-root the app honors (see AppDataRoot) → /home/agopenweb/AgOpenWeb.
 UMask=0022
 Environment=AGOPENWEB_DATA=/home/agopenweb
 Environment=HOME=/home/agopenweb

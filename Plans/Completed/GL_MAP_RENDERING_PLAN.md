@@ -19,7 +19,7 @@ C# GL code path across all five supported platforms.
 | Linux (Parallels arm64 VM) | X11 EGL/GLX | Validated | None — Av12 default |
 | Android (Adreno 642L tablet) | Native GLES | Validated | None — Av12 default |
 
-Spike control (`Shared/AgValoniaGPS.Views/Controls/GlSpikeControl.cs`) renders
+Spike control (`Shared/AgOpenWeb.Views/Controls/GlSpikeControl.cs`) renders
 a green ground, yellow boundary rectangle, and red vehicle cross identically
 on all five platforms. The reusable findings the spike produced:
 
@@ -46,8 +46,8 @@ GPS service) and the same `MainViewModel` properties — no service-layer or
 ViewModel changes needed.
 
 Per-platform `MapService` registers the GL control via the existing DI path.
-The macOS + iOS rendering-mode shims live in `Platforms/AgValoniaGPS.Desktop/Program.cs`
-and `Platforms/AgValoniaGPS.iOS/AppDelegate.cs` respectively.
+The macOS + iOS rendering-mode shims live in `Platforms/AgOpenWeb.Desktop/Program.cs`
+and `Platforms/AgOpenWeb.iOS/AppDelegate.cs` respectively.
 
 The 2D path stays on `DrawingContextMapControl` indefinitely. Retiring it is
 deferred to Phase 6 and is conditional on the GL path beating it at top-down
@@ -217,7 +217,7 @@ doesn't (it uses row-vector math), so the transpose flag has to flip.
 
 See `reference_glsl_matrix_transpose` memory note for the long version.
 
-**Single-line fix:** `Shared/AgValoniaGPS.Views/Controls/GlMapControl.cs`,
+**Single-line fix:** `Shared/AgOpenWeb.Views/Controls/GlMapControl.cs`,
 `SetMvp(...)` and the ground shader's `u_inv_mvp` upload both use
 `transpose=false`.
 
@@ -356,10 +356,10 @@ findings:
 ## References
 
 - Spike branch: `spike/angle-silk-opengl-eval`
-- Spike control: `Shared/AgValoniaGPS.Views/Controls/GlSpikeControl.cs`
+- Spike control: `Shared/AgOpenWeb.Views/Controls/GlSpikeControl.cs`
 - Rendering-mode shims:
-  - `Platforms/AgValoniaGPS.Desktop/Program.cs`
-  - `Platforms/AgValoniaGPS.iOS/AppDelegate.cs`
+  - `Platforms/AgOpenWeb.Desktop/Program.cs`
+  - `Platforms/AgOpenWeb.iOS/AppDelegate.cs`
 - CI validation run: GitHub Actions run 26048318624 (all five desktop
   artifacts plus Android + iOS).
 - Related memory:

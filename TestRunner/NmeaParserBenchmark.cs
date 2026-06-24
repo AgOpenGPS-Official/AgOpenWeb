@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Text;
-using AgValoniaGPS.Services;
+using AgOpenWeb.Services;
 
 namespace TestRunner;
 
@@ -69,15 +69,15 @@ public static class NmeaParserBenchmark
 /// <summary>
 /// Mock GPS service for benchmarking - does nothing with the data.
 /// </summary>
-public class MockGpsService : AgValoniaGPS.Services.Interfaces.IGpsService
+public class MockGpsService : AgOpenWeb.Services.Interfaces.IGpsService
 {
-    public AgValoniaGPS.Models.GpsData CurrentData { get; private set; } = new();
+    public AgOpenWeb.Models.GpsData CurrentData { get; private set; } = new();
 
     public bool IsConnected => true;
 
-    public event EventHandler<AgValoniaGPS.Models.GpsData>? GpsDataUpdated;
+    public event EventHandler<AgOpenWeb.Models.GpsData>? GpsDataUpdated;
 
-    public void UpdateGpsData(AgValoniaGPS.Models.GpsData data)
+    public void UpdateGpsData(AgOpenWeb.Models.GpsData data)
     {
         CurrentData = data;
         // Don't fire event in benchmark to isolate parser performance

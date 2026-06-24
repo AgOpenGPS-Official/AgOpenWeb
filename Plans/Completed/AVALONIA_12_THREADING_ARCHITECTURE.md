@@ -90,7 +90,7 @@ Render Thread (via ICustomDrawOperation / CompositionCustomVisualHandler):
 
 #### B1: Create `GpsPipelineService`
 
-New service in `Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs`:
+New service in `Shared/AgOpenWeb.Services/Pipeline/GpsPipelineService.cs`:
 
 ```csharp
 public class GpsPipelineService : IGpsPipelineService
@@ -244,7 +244,7 @@ Fix the ~8 AXAML files that need `x:DataType` and enable compiled bindings.
 
 We need tests that validate the current behavior BEFORE we extract computation to services. These tests become the safety net for the refactor and the regression suite going forward.
 
-#### 0A: Create `Tests/AgValoniaGPS.ViewModels.Tests/` project
+#### 0A: Create `Tests/AgOpenWeb.ViewModels.Tests/` project
 
 A pure C# test project — no Avalonia headless dependency. Uses `MainViewModelBuilder` (moved from UI.Tests) with NSubstitute mocks.
 
@@ -408,7 +408,7 @@ The `MainViewModel` partial classes are actually **services in disguise**:
 | `MainViewModel.BoundaryRecording.cs` | BoundaryRecordingService (already exists) | Move logic to service |
 | `MainViewModel.Ntrip.cs` | NtripClientService (already exists) | Already background, fix Invoke→Post |
 
-Many of these services already exist in `Shared/AgValoniaGPS.Services/` — the ViewModel just duplicates their work or orchestrates them synchronously on the UI thread.
+Many of these services already exist in `Shared/AgOpenWeb.Services/` — the ViewModel just duplicates their work or orchestrates them synchronously on the UI thread.
 
 ## Service Pipeline Architecture
 

@@ -1,13 +1,13 @@
 # Web-UI Migration — Session Handoff (continuation prompt)
 
-Paste the section below to continue the AgValoniaGPS web-UI migration in a fresh session.
+Paste the section below to continue the AgOpenWeb web-UI migration in a fresh session.
 
 ---
 
-**Continue the AgValoniaGPS web-UI migration.**
+**Continue the AgOpenWeb web-UI migration.**
 
 ## Repo / branch
-- Repo: `/Users/chris/Code/AgValoniaGPS3` (Avalonia/.NET 10 agricultural GPS app).
+- Repo: `/Users/chris/Code/AgOpenWeb3` (Avalonia/.NET 10 agricultural GPS app).
 - Branch: `feature/web-ui-phase2` (off **develop** — PRs target develop, NOT master).
   Stays unmerged until field-validated; commit + push to it as we go. **develop has been
   merged in** (the §13/§14 config/state apply-gap fixes — `SectionState` class was deleted
@@ -87,7 +87,7 @@ Continuation after Phase MT. All committed + pushed to `feature/web-ui-phase2`.
   `ConfigStore.Tram.Systems`; tram LINES need ALL FOUR `ITramLineService` collections
   projected (outer+inner boundary tracks, parallel, boundary-extra), not just ParallelTramLines.
 - **Import-KML boundary picker — DONE** (v26.5.90): Boundary menu → Import-KML → picks a
-  KML/KMZ from `Documents/AgValoniaGPS/Import` (FieldOps `KmlFiles` list) → host parses +
+  KML/KMZ from `Documents/AgOpenWeb/Import` (FieldOps `KmlFiles` list) → host parses +
   imports into the open field. Cmd `boundary.importKmlFile|<name>`.
 - **Fixed latent native bugs along the way:** `BuildTramLinesCommand` null-deref when the
   last tram system is deleted with no track selected (now null-safe).
@@ -96,7 +96,7 @@ Continuation after Phase MT. All committed + pushed to `feature/web-ui-phase2`.
 
 ## What this is
 Replacing the native in-cab Avalonia UI with a browser client served by an embedded
-ASP.NET Core server (`Shared/AgValoniaGPS.RemoteServer`) that runs alongside the app.
+ASP.NET Core server (`Shared/AgOpenWeb.RemoteServer`) that runs alongside the app.
 Browse to `http://<host>:5174`. The **host stays the brain** (Avalonia-free
 `ApplicationState` + services + `MainViewModel`); the browser is a thin client that
 receives projected *state* over a binary WebSocket and sends *command ids* back through a
@@ -107,7 +107,7 @@ safe allowlist. Migration = project more state + accept more command ids + build
 - **Seam files:** `RemoteServer/{Contracts.cs, WireCodec.cs, SceneProjector.cs,
   CoverageProjector.cs, MapBroadcaster.cs, WebSocketHub.cs, ControlAuthority.cs,
   RemoteServerHost.cs}`; client `wwwroot/{app.js, transport.js, index.html}`; command map +
-  safety wiring + host-side projectors/handlers in `Platforms/AgValoniaGPS.Desktop/App.axaml.cs`.
+  safety wiring + host-side projectors/handlers in `Platforms/AgOpenWeb.Desktop/App.axaml.cs`.
 
 ## Done & pushed
 - **Phase MT — map-tap interaction (session 2026-06-18 → -19), v26.5.81–86:**
@@ -251,14 +251,14 @@ safe allowlist. Migration = project more state + accept more command ids + build
     Fixed native `LightBarPanel`/`SkiaMapControl`/callers + web (SteerAngleError on Tick).
 
 ## ⚠ Test rig — VehicleSimulator (you need this to test the AutoSteer/calibration surface)
-`Simulators/AgValoniaGPS.VehicleSimulator/` is a virtual AiO that speaks the **real UDP/PGN
+`Simulators/AgOpenWeb.VehicleSimulator/` is a virtual AiO that speaks the **real UDP/PGN
 protocol** (ports line up: sim→app 9999, app→sim 8888, loopback). It streams **PGN 253**
 (live WAS angle/PWM, responds to PGN 254) + GPS motion. This is the ONLY way to exercise
 Smart-WAS collection, the AutoSteer Test-Mode live angle / free-drive, the steer bar, and the
 wizard calibration steps — the app's *internal* simulator does NOT emit steer data, so those
 read 0 without it.
 - Run: app with its **internal sim OFF**, then `dotnet run --project
-  Simulators/AgValoniaGPS.VehicleSimulator/AgValoniaGPS.VehicleSimulator.csproj`, set
+  Simulators/AgOpenWeb.VehicleSimulator/AgOpenWeb.VehicleSimulator.csproj`, set
   **Speed > 2 km/h**, engage autosteer. (GPS source is exclusive — don't run both sims.)
 - The sim got QoL this session: STOP/center(`>0<`)/zero + ±0.5 nudge buttons on Speed/Wheel/
   Roll; persisted GPS pose (`vehsim.json`) with **8-digit** coords + a **Save Position** button.
@@ -419,7 +419,7 @@ model is a **web-led improvement** (web is the end-state UI). Whether to backpor
   The wizard adds a Wizard frame + reflection-driven `wizard.set`/`wizard.action` +
   `MapBroadcaster.WizardProvider`.
 - **Icons:** the `/icons/{file}` endpoint serves **embedded** `RemoteServer/wwwroot/icons/*`.
-  Native icons live in `Shared/AgValoniaGPS.Views/Assets/Icons[/Config]/` — **copy the PNGs
+  Native icons live in `Shared/AgOpenWeb.Views/Assets/Icons[/Config]/` — **copy the PNGs
   in** before referencing them, else broken-link. Rebuild RemoteServer to embed.
 - **Frame types:** Scene=1 Tick=2 CoverageInit=3 CoverageCells=4 Status=5 ControlState=6
   Hello=7 Config=8 Profiles=9 Wizard=10 NtripProfiles=11 FieldOps=12 AgShare=13 AppInfo=14
@@ -450,13 +450,13 @@ separate §13 audit work (now merged from develop), **not** the web migration.
 
 ## Workflow rules
 - **Embedded assets:** `wwwroot/*` (incl. `icons/*`) are `EmbeddedResource` in RemoteServer.
-  `dotnet build Platforms/AgValoniaGPS.Desktop/...` re-embeds changed files without nuking bin.
+  `dotnet build Platforms/AgOpenWeb.Desktop/...` re-embeds changed files without nuking bin.
   After any `wwwroot` change the user must **restart** the app to load the new DLL (JS-only
   edits still need the rebuild+restart to re-embed; a pure browser reload only helps if the
   file is served from disk, which it is NOT — it's embedded). Verify embed with
-  `strings .../AgValoniaGPS.RemoteServer.dll | grep <marker>` if unsure.
+  `strings .../AgOpenWeb.RemoteServer.dll | grep <marker>` if unsure.
 - **Can't meaningfully run the GUI** — user runs `dotnet run --project Platforms/
-  AgValoniaGPS.Desktop/...` and reports. **Build to verify compile; wait for the user to
+  AgOpenWeb.Desktop/...` and reports. **Build to verify compile; wait for the user to
   confirm before committing. One commit + push per verified fix.** Bump `sys/version.h` each.
 - **Match native by screenshot, not just AXAML** — this session the AutoSteer panel took 3
   passes because AXAML alone hid the tab orientation + the collapsed/expanded modes. Ask for
@@ -498,7 +498,7 @@ separate §13 audit work (now merged from develop), **not** the web migration.
 3. **Phase 10** — headless cutover (host goes UI-less; browser is the only UI).
 
 **Working rules recap:** build to verify compile → user runs `dotnet run --project Platforms/
-AgValoniaGPS.Desktop/...` and reports → **wait for confirm, then one commit+push per verified
+AgOpenWeb.Desktop/...` and reports → **wait for confirm, then one commit+push per verified
 fix, bump `sys/version.h`**. `wwwroot` is embedded → restart after JS/HTML edits. Tier-2 gate
 the actuation-ish ids; data/geometry capture is Tier-1. Use the **VehicleSimulator** rig for
 steer/GPS/calibration. Host-driven provider pattern (Wizard/RecordedPath/Boundary) for

@@ -10,7 +10,7 @@ Mirror AgOpenGPS 6.8.2's split of the merged "Vehicle" profile into two
 independently-selectable profiles — **Vehicle** and **Tool** — so operators can
 mix-and-match (e.g. one tractor with multiple implements, or one implement
 moved between tractors) without retyping configs. Operator muscle memory is
-already aligned with this model in AgOpen, so AgValonia should match it
+already aligned with this model in AgOpen, so AgOpenWeb should match it
 rather than diverge.
 
 ## Non-goals
@@ -27,7 +27,7 @@ rather than diverge.
 
 - `Vehicles/<name>.json` holds **everything**: vehicle, guidance, tool,
   sections, you-turn, general. Schema lives in
-  `Shared/AgValoniaGPS.Services/Profile/ProfileJsonService.cs` (`ProfileDto`).
+  `Shared/AgOpenWeb.Services/Profile/ProfileJsonService.cs` (`ProfileDto`).
 - `ConfigurationStore` already keeps `Vehicle`, `Tool`, `Guidance`, etc.
   as separate sub-stores in memory. The split exists in RAM but not on disk.
 - `AppSettings.LastUsedVehicleProfile` is a single string. There is no
@@ -43,7 +43,7 @@ rather than diverge.
 ## 2. Target state
 
 ```
-~/Documents/AgValoniaGPS/
+~/Documents/AgOpenWeb/
 ├── Vehicles/
 │   ├── TractorA.json       # Vehicle + Guidance + YouTurn fields
 │   ├── TractorA.xml        # legacy AOG import (still readable)
@@ -165,7 +165,7 @@ not preserved, since the v2 vehicle file is a strict superset of the v1
 ## 6. UI: unified picker dialog
 
 **Dialog:** `LoadVehicleToolDialogPanel.axaml` in
-`Shared/AgValoniaGPS.Views/Controls/Dialogs/`.
+`Shared/AgOpenWeb.Views/Controls/Dialogs/`.
 
 **Registered in:** `DialogOverlayHost.axaml`.
 
@@ -219,7 +219,7 @@ not preserved, since the v2 vehicle file is a strict superset of the v1
 
 ### ViewModel
 
-`LoadVehicleToolDialogViewModel` in `Shared/AgValoniaGPS.ViewModels/`:
+`LoadVehicleToolDialogViewModel` in `Shared/AgOpenWeb.ViewModels/`:
 - `ObservableCollection<string> Vehicles`, `Tools`
 - `string? SelectedVehicle`, `SelectedTool`
 - `string CurrentVehicle`, `CurrentTool` (read from store)
@@ -238,7 +238,7 @@ Wire it through DI in `ServiceCollectionExtensions`.
 
 ## 7. Tests
 
-Add to `Tests/AgValoniaGPS.Services.Tests/`:
+Add to `Tests/AgOpenWeb.Services.Tests/`:
 - `VehicleProfileServiceTests`: round-trip v2 save/load, rename
   (case-only included), delete-active-blocked, delete-non-active-allowed,
   rename-collision-blocked.
@@ -246,7 +246,7 @@ Add to `Tests/AgValoniaGPS.Services.Tests/`:
 - `ProfileMigrationTests`: v1 file becomes a paired v2 vehicle + tool,
   same name, fields preserved, `LastUsedToolProfile` initialized.
 
-Add to `Tests/AgValoniaGPS.UI.Tests/`:
+Add to `Tests/AgOpenWeb.UI.Tests/`:
 - `LoadVehicleToolDialogTests`: dialog visibility, Load disabled until
   selection differs, delete-active disabled, rename round-trip, picker
   closes on successful Load. Use `MainViewModelBuilder` for VM

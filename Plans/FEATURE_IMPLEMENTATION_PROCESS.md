@@ -1,10 +1,10 @@
 # Feature Implementation Process
 
-This document outlines the standard process for implementing UI features in AgValoniaGPS by studying the WinForms reference implementation.
+This document outlines the standard process for implementing UI features in AgOpenWeb by studying the WinForms reference implementation.
 
 ## Overview
 
-AgValoniaGPS3 is built on services ported from AgOpenGPS.Core. When implementing UI features, we need to:
+AgOpenWeb3 is built on services ported from AgOpenGPS.Core. When implementing UI features, we need to:
 1. Understand how WinForms wires up the UI to the core services
 2. Replicate that wiring in our MVVM architecture
 
@@ -12,11 +12,11 @@ AgValoniaGPS3 is built on services ported from AgOpenGPS.Core. When implementing
 
 | Component | Location |
 |-----------|----------|
-| WinForms UI | `/Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Forms/` |
-| AgOpenGPS.Core Services | `/Users/chris/Code/AgValoniaGPS2/SourceCode/AgOpenGPS.Core/` |
-| AgValoniaGPS Services | `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Services/` |
-| AgValoniaGPS ViewModels | `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.ViewModels/` |
-| AgValoniaGPS Views | `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Views/` |
+| WinForms UI | `/Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Forms/` |
+| AgOpenGPS.Core Services | `/Users/chris/Code/AgOpenWeb2/SourceCode/AgOpenGPS.Core/` |
+| AgOpenWeb Services | `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Services/` |
+| AgOpenWeb ViewModels | `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.ViewModels/` |
+| AgOpenWeb Views | `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Views/` |
 
 ## Implementation Process
 
@@ -31,10 +31,10 @@ AgValoniaGPS3 is built on services ported from AgOpenGPS.Core. When implementing
 1. **Find the UI handler** in WinForms:
    ```bash
    # Search for icon name or button name
-   grep -r "IconName" /Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Forms/
+   grep -r "IconName" /Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Forms/
 
    # Search for click handlers
-   grep -r "btnFeatureName_Click" /Users/chris/Code/AgValoniaGPS2/SourceCode/GPS/Forms/
+   grep -r "btnFeatureName_Click" /Users/chris/Code/AgOpenWeb2/SourceCode/GPS/Forms/
    ```
 
 2. **Trace the code path**:
@@ -79,19 +79,19 @@ Before implementing, research how to recreate the AgOpenGPS functionality using 
 
 ### Step 4: Verify Service Availability
 
-1. **Check if the service exists** in AgValoniaGPS.Services:
+1. **Check if the service exists** in AgOpenWeb.Services:
    ```bash
-   ls Shared/AgValoniaGPS.Services/
+   ls Shared/AgOpenWeb.Services/
    ```
 
-2. **Compare service methods** between AgOpenGPS.Core and AgValoniaGPS.Services:
+2. **Compare service methods** between AgOpenGPS.Core and AgOpenWeb.Services:
    - Are all required methods present?
    - Are method signatures identical?
    - Are any input/output types different?
 
 3. **Check DI registration** in both platforms:
-   - `Platforms/AgValoniaGPS.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
-   - `Platforms/AgValoniaGPS.iOS/DependencyInjection/ServiceCollectionExtensions.cs`
+   - `Platforms/AgOpenWeb.Desktop/DependencyInjection/ServiceCollectionExtensions.cs`
+   - `Platforms/AgOpenWeb.iOS/DependencyInjection/ServiceCollectionExtensions.cs`
 
 ### Step 5: Create Implementation Plan
 
@@ -132,7 +132,7 @@ Document how to build input objects for service methods:
 - State changes: ...
 ```
 
-### Step 6: Implement in AgValoniaGPS
+### Step 6: Implement in AgOpenWeb
 
 1. **ViewModel changes** (`MainViewModel.cs`):
    - Add backing fields for state
@@ -156,12 +156,12 @@ Document how to build input objects for service methods:
 
 1. **Build**:
    ```bash
-   dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+   dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
    ```
 
 2. **Run**:
    ```bash
-   dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+   dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
    ```
 
 3. **Test scenarios**:

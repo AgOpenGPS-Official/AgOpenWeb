@@ -53,9 +53,9 @@ public Position TransformAntennaToPivot(GpsData gpsData)
 Apply transformation where GPS data is consumed in `CalculateAutoSteerGuidance()`.
 
 ### Files to Modify
-- `Shared/AgValoniaGPS.Services/GpsService.cs` - Add transformation method
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Use transformed position
-- `Shared/AgValoniaGPS.Services/Interfaces/IGpsService.cs` - Add interface method
+- `Shared/AgOpenWeb.Services/GpsService.cs` - Add transformation method
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Use transformed position
+- `Shared/AgOpenWeb.Services/Interfaces/IGpsService.cs` - Add interface method
 
 ### Testing
 1. Set AntennaPivot to 2.0m, verify vehicle icon moves relative to GPS position
@@ -80,7 +80,7 @@ double toolWidth = Tool.Width;
 ```
 
 ### Files Modified
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Line 1453 fixed
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Line 1453 fixed
 
 ### Testing
 1. Set Tool.Width to different value than Vehicle.TrackWidth
@@ -151,11 +151,11 @@ public Vec3 CalculateToolPosition(Vec3 vehiclePivot, double vehicleHeading)
 ```
 
 ### Files to Create
-- `Shared/AgValoniaGPS.Services/Tool/ToolPositionService.cs`
-- `Shared/AgValoniaGPS.Services/Interfaces/IToolPositionService.cs`
+- `Shared/AgOpenWeb.Services/Tool/ToolPositionService.cs`
+- `Shared/AgOpenWeb.Services/Interfaces/IToolPositionService.cs`
 
 ### Files to Modify
-- `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` - Use tool position for coverage
+- `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` - Use tool position for coverage
 - DI registration files
 
 ---

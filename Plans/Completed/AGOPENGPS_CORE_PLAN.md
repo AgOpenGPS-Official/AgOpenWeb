@@ -2,19 +2,19 @@
 
 ## Decision: Do NOT integrate AgOpenGPS.Core directly
 
-AgValoniaGPS3 already has its own services in `Shared/AgValoniaGPS.Services/` that largely duplicate what's in AgOpenGPS.Core. Rather than maintaining two sets of similar services, we will:
+AgOpenWeb3 already has its own services in `Shared/AgOpenWeb.Services/` that largely duplicate what's in AgOpenGPS.Core. Rather than maintaining two sets of similar services, we will:
 
 ## Action Items
 
-### 1. Revert AgOpenGPS.Core from AgValoniaGPS3 ✅ DONE
+### 1. Revert AgOpenGPS.Core from AgOpenWeb3 ✅ DONE
 - [x] Remove `Shared/AgOpenGPS.Core/` directory
 - [x] Remove AgOpenGPS.Core from solution file
 - [x] Verify build still works
 
-### 2. Audit AgValoniaGPS.Services against AgOpenGPS.Core ✅ DONE
+### 2. Audit AgOpenWeb.Services against AgOpenGPS.Core ✅ DONE
 Compare implementations to ensure correctness. Key services to audit:
 
-| AgValoniaGPS.Services | AgOpenGPS.Core Reference | Status |
+| AgOpenWeb.Services | AgOpenGPS.Core Reference | Status |
 |-----------------------|--------------------------|--------|
 | Guidance/PurePursuitGuidanceService.cs | Services/Guidance/PurePursuitGuidanceService.cs | ✅ PASS (identical) |
 | Guidance/StanleyGuidanceService.cs | Services/Guidance/StanleyGuidanceService.cs | ✅ PASS (identical) |
@@ -39,35 +39,35 @@ Compare implementations to ensure correctness. Key services to audit:
 
 ### Audit Notes
 
-**GpsSimulationService.cs** - AgValoniaGPS3 version has enhanced acceleration constants:
+**GpsSimulationService.cs** - AgOpenWeb3 version has enhanced acceleration constants:
 - Faster acceleration (0.03 vs 0.02 step)
 - Higher max speed (25 kph vs ~4.8 kph stepDistance limit)
 - Full reverse support (-10 kph)
 - Better documented constants
 
-**FieldStatisticsService.cs** - AgValoniaGPS3 version has additional features:
+**FieldStatisticsService.cs** - AgOpenWeb3 version has additional features:
 - `WorkedAreaSquareMeters`, `UserDistance`, `BoundaryAreaSquareMeters` properties
 - `UpdateBoundaryArea(Boundary?)` overload for direct boundary object
 - `CalculateOverlap()`, `GetRemainingAreaHectares()`, `FormatArea()`, `FormatDistance()` methods
 - Different `GetDescription()` formatting
 
-Both enhancements in AgValoniaGPS3 are improvements over the original - no action needed.
+Both enhancements in AgOpenWeb3 are improvements over the original - no action needed.
 
 ### 3. Use AgOpenGPS.Core as Reference
-- AgOpenGPS.Core lives in `../AgValoniaGPS2/Shared/AgOpenGPS.Core/`
-- When creating new services in AgValoniaGPS3, check AgOpenGPS.Core for proven implementations
-- Copy algorithms/logic as needed, adapting to AgValoniaGPS3 patterns
+- AgOpenGPS.Core lives in `../AgOpenWeb2/Shared/AgOpenGPS.Core/`
+- When creating new services in AgOpenWeb3, check AgOpenGPS.Core for proven implementations
+- Copy algorithms/logic as needed, adapting to AgOpenWeb3 patterns
 
 ## Rationale
 
-1. **Duplication**: Most services already exist in AgValoniaGPS.Services
+1. **Duplication**: Most services already exist in AgOpenWeb.Services
 2. **Maintenance burden**: Two sets of similar services is confusing
 3. **WPF baggage**: AgOpenGPS.Core has WPF-specific code that needs stripping
-4. **AgValoniaGPS3 has evolved**: The codebase has its own patterns and DI setup
+4. **AgOpenWeb3 has evolved**: The codebase has its own patterns and DI setup
 
 ## Reference Location
 
 AgOpenGPS.Core source (for comparison/reference):
 ```
-/Users/chris/Code/AgValoniaGPS2/SourceCode/AgOpenGPS.Core/
+/Users/chris/Code/AgOpenWeb2/SourceCode/AgOpenGPS.Core/
 ```

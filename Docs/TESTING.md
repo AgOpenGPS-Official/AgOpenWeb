@@ -1,6 +1,6 @@
 # Testing Guide
 
-Comprehensive guide to the AgValoniaGPS test suite: what exists, how to run it, how to write new tests, and when tests are required.
+Comprehensive guide to the AgOpenWeb test suite: what exists, how to run it, how to write new tests, and when tests are required.
 
 **Last Updated:** April 2026
 
@@ -10,18 +10,18 @@ Comprehensive guide to the AgValoniaGPS test suite: what exists, how to run it, 
 
 ```bash
 # Run all tests (317 total)
-dotnet test Tests/AgValoniaGPS.Models.Tests/
-dotnet test Tests/AgValoniaGPS.Services.Tests/
-dotnet test Tests/AgValoniaGPS.UI.Tests/
+dotnet test Tests/AgOpenWeb.Models.Tests/
+dotnet test Tests/AgOpenWeb.Services.Tests/
+dotnet test Tests/AgOpenWeb.UI.Tests/
 
 # Run with coverage
-dotnet test Tests/AgValoniaGPS.Services.Tests/ --collect:"XPlat Code Coverage"
+dotnet test Tests/AgOpenWeb.Services.Tests/ --collect:"XPlat Code Coverage"
 
 # Run specific test class
-dotnet test Tests/AgValoniaGPS.Services.Tests/ --filter "TrackGuidanceServiceTests"
+dotnet test Tests/AgOpenWeb.Services.Tests/ --filter "TrackGuidanceServiceTests"
 
 # Run single test
-dotnet test Tests/AgValoniaGPS.Services.Tests/ --filter "PurePursuit_VehicleLeftOfLine_SteersRight"
+dotnet test Tests/AgOpenWeb.Services.Tests/ --filter "PurePursuit_VehicleLeftOfLine_SteersRight"
 ```
 
 **Current counts:** 72 model + 150 service + 95 UI = 317 tests
@@ -31,7 +31,7 @@ dotnet test Tests/AgValoniaGPS.Services.Tests/ --filter "PurePursuit_VehicleLeft
 
 ## Test Projects
 
-### AgValoniaGPS.Models.Tests (72 tests)
+### AgOpenWeb.Models.Tests (72 tests)
 
 Pure unit tests for geometry, coordinate conversion, and math utilities. No mocking needed - these test pure functions.
 
@@ -45,7 +45,7 @@ Pure unit tests for geometry, coordinate conversion, and math utilities. No mock
 
 **When to add tests here:** Any new method in `GeometryMath`, coordinate conversion, or pure data model logic.
 
-### AgValoniaGPS.Services.Tests (150 tests)
+### AgOpenWeb.Services.Tests (150 tests)
 
 Service-level tests that verify business logic. Some use mocks (NSubstitute), some are integration tests with real service instances.
 
@@ -67,7 +67,7 @@ Service-level tests that verify business logic. Some use mocks (NSubstitute), so
 
 **When to add tests here:** Any new service, algorithm, file format, or configuration persistence change.
 
-### AgValoniaGPS.UI.Tests (95 tests)
+### AgOpenWeb.UI.Tests (95 tests)
 
 Headless Avalonia UI tests. Uses `[AvaloniaTest]` attribute for tests that need a rendering context, plain `[Test]` for ViewModel-only tests.
 
@@ -134,7 +134,7 @@ var settings = new TestSettingsService();
 
 ### Integration Test Harness
 
-`Tests/AgValoniaGPS.IntegrationTests/Program.cs` provides 14+ multi-step scenarios (app startup, field loading, simulator driving, coverage painting, etc.) that can run with a real window or headless.
+`Tests/AgOpenWeb.IntegrationTests/Program.cs` provides 14+ multi-step scenarios (app startup, field loading, simulator driving, coverage painting, etc.) that can run with a real window or headless.
 
 ---
 
@@ -143,7 +143,7 @@ var settings = new TestSettingsService();
 ### Required (must have tests)
 
 - **New algorithm or calculation** - Guidance, geometry, coordinate conversion
-  - Test in `AgValoniaGPS.Models.Tests` or `AgValoniaGPS.Services.Tests`
+  - Test in `AgOpenWeb.Models.Tests` or `AgOpenWeb.Services.Tests`
   - Cover: normal case, edge cases, boundary values
 
 - **New file format or I/O** - Any new file read/write
@@ -300,7 +300,7 @@ Coverage collection is set up via `coverlet.collector` in all test projects.
 
 ```bash
 # Collect coverage
-dotnet test Tests/AgValoniaGPS.Services.Tests/ --collect:"XPlat Code Coverage"
+dotnet test Tests/AgOpenWeb.Services.Tests/ --collect:"XPlat Code Coverage"
 
 # Output: TestResults/{guid}/coverage.cobertura.xml
 ```

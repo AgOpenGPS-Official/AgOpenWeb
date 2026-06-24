@@ -1,10 +1,10 @@
 # Field File Compatibility Analysis
 
-This document compares file formats between AgOpenGPS WinForms and AgValoniaGPS to ensure compatibility.
+This document compares file formats between AgOpenGPS WinForms and AgOpenWeb to ensure compatibility.
 
 ## Summary of Issues
 
-| File Type | WinForms Name | AgValoniaGPS Name | Format Compatible? | Critical? |
+| File Type | WinForms Name | AgOpenWeb Name | Format Compatible? | Critical? |
 |-----------|---------------|-------------------|-------------------|-----------|
 | Tracks/AB Lines | `TrackLines.txt` | `ABLines.txt` | **NO** | **YES** |
 | Boundary | `Boundary.txt` | `Boundary.txt` | Needs verification | YES |
@@ -39,7 +39,7 @@ $TrackLines                     ← Header (required, starts with $)
 - Supports both AB lines and curves in same file
 - Includes nudge distance, mode, visibility
 
-### AgValoniaGPS Format (`ABLines.txt`)
+### AgOpenWeb Format (`ABLines.txt`)
 
 **Location:** `MainViewModel.cs:6557` (SaveABLinesToFile), `6593` (LoadABLinesFromField)
 
@@ -61,18 +61,18 @@ Name,Heading,PointA_Easting,PointA_Northing,PointB_Easting,PointB_Northing
 1. **Filename mismatch**: `TrackLines.txt` vs `ABLines.txt`
 2. **Format mismatch**: Multi-line vs single-line CSV
 3. **Heading units**: Radians vs degrees
-4. **Missing fields in AgValoniaGPS**:
+4. **Missing fields in AgOpenWeb**:
    - `nudgeDistance`
    - `mode` (TrackMode enum)
    - `isVisible`
    - `curvePts` (curve point list)
-5. **Missing header**: AgValoniaGPS doesn't use `$` header
+5. **Missing header**: AgOpenWeb doesn't use `$` header
 
 ### Impact
 
-- **AgValoniaGPS cannot read WinForms fields** - different filename and format
-- **WinForms cannot read AgValoniaGPS fields** - different filename and format
-- **Curve tracks lost** - AgValoniaGPS only stores AB lines, not curves
+- **AgOpenWeb cannot read WinForms fields** - different filename and format
+- **WinForms cannot read AgOpenWeb fields** - different filename and format
+- **Curve tracks lost** - AgOpenWeb only stores AB lines, not curves
 
 ## Proposed Fix
 
@@ -81,7 +81,7 @@ Name,Heading,PointA_Easting,PointA_Northing,PointB_Easting,PointB_Northing
 1. Rename file to `TrackLines.txt`
 2. Match WinForms format exactly
 3. Add curve support to ABLine model
-4. Create proper TrackFiles service in AgValoniaGPS.Services
+4. Create proper TrackFiles service in AgOpenWeb.Services
 
 ### Option B: Dual Format Support
 
@@ -98,7 +98,7 @@ Name,Heading,PointA_Easting,PointA_Northing,PointB_Easting,PointB_Northing
    public List<Vec3> CurvePoints { get; set; }
    ```
 
-2. **Create TrackFilesService** in `AgValoniaGPS.Services`:
+2. **Create TrackFilesService** in `AgOpenWeb.Services`:
    - Port from `GPS/IO/TrackFiles.cs`
    - Use same format as WinForms
 
@@ -114,17 +114,17 @@ Name,Heading,PointA_Easting,PointA_Northing,PointB_Easting,PointB_Northing
 
 ### Boundary.txt
 - WinForms: Uses `BoundaryStreamer.cs`
-- AgValoniaGPS: Uses `BoundaryFileService.cs`
+- AgOpenWeb: Uses `BoundaryFileService.cs`
 - **Action**: Compare formats
 
 ### Headlines.txt / Headland.txt
 - WinForms: Uses `HeadlandLineSerializer.cs` → `Headlines.txt`
-- AgValoniaGPS: Check what filename/format we use
+- AgOpenWeb: Check what filename/format we use
 - **Action**: Compare formats
 
 ### Field.txt
 - WinForms: Uses `OverviewStreamer.cs`
-- AgValoniaGPS: Uses `FieldPlaneFileService.cs`?
+- AgOpenWeb: Uses `FieldPlaneFileService.cs`?
 - **Action**: Compare formats
 
 ## File Naming Reference (WinForms)

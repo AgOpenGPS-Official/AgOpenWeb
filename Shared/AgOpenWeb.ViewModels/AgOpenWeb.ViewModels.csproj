@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- DesktopOnly=true skips iOS targeting for self-contained desktop builds -->
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DesktopOnly)' != 'true'">net10.0;net10.0-ios</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('OSX')) Or '$(DesktopOnly)' == 'true'">net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+  </PropertyGroup>
+
+  <!-- Define IOS symbol for iOS builds -->
+  <PropertyGroup Condition="$(TargetFramework.Contains('ios'))">
+    <DefineConstants>$(DefineConstants);IOS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgOpenWeb.Services.Tests" />
+    <InternalsVisibleTo Include="AgOpenWeb.UI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.3" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+  </ItemGroup>
+
+</Project>

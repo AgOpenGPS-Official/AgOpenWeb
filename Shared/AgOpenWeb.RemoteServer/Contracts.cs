@@ -1,0 +1,504 @@
+// Phase 1 wire contract (deliberate, not VM-mirroring). Field-local meters;
+// the host sends the field origin once in the Scene, everything else is x=E, y=N.
+// Camera is NOT here — it's client-owned (REMOTE_WEB_UI_SPLIT.md §5 rule 3).
+
+namespace AgOpenWeb.RemoteServer;
+
+/// <summary>A field-local point in meters (x = easting, y = northing).</summary>
+public record Vec2Dto(double E, double N);
+
+public record TrackDto(string Id, string Name, int Type, IReadOnlyList<Vec2Dto> Points);
+
+/// <summary>One row in the Tracks-manager list: index into the field's track list,
+/// name, a display type label (Line/Curve/Path/Contour — derived host-side like native's
+/// TracksDialog), and the active/visible flags. Carries NO points (the manager only
+/// lists/selects); the render geometry rides SceneDto.Tracks.</summary>
+public record TrackInfoDto(int Index, string Name, string Type, bool Active, bool Visible);
+
+/// <summary>One row in the Field Builder Headland tab: index into the VM's HeadlandSegments
+/// list, name, a type label (Line/Curve/Boundary), the inward offset (m), and Effective
+/// (false = the segment doesn't reach the boundary on both ends so it has no effect on the
+/// built headland → shown red, mirroring native). Carries NO points; the built headland
+/// polygon rides SceneDto.Headland.</summary>
+public record HeadlandSegInfoDto(int Index, string Name, string Type, double Offset, bool Effective,
+    IReadOnlyList<Vec2Dto> EditLine, // offset line + overshoot extensions, drawn while editing
+    Vec2Dto EndA, Vec2Dto EndB);     // the two boundary endpoints (drag handles for on-map edit)
+
+/// <summary>One Field Builder tram system (ConfigStore.Tram.Systems). RefLabel = the
+/// reference track name or "(Boundary)"; IsBoundary hides direction/offset client-side
+/// (they don't apply to boundary-referenced systems). Mode 0=TrackLine 1=Edge;
+/// Direction 0=Symmetric 1=Left 2=Right.</summary>
+public record TramSystemDto(int Index, string Name, string RefLabel, double Width, int Mode,
+    double Offset, int Direction, int PassCount, bool Enabled, bool IsBoundary);
+
+/// <summary>Static-ish geometry: sent on connect and whenever the fingerprint changes.</summary>
+public record SceneDto(
+    long Version,
+    double OriginLat,
+    double OriginLon,
+    string FieldName,
+    bool HasField,
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> Boundaries, // outer ring first, then inner holes
+    IReadOnlyList<bool> BoundaryInner, // parallel to Boundaries: true = inner/obstacle (drawn yellow)
+    IReadOnlyList<TrackDto> Tracks,
+    IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
+    IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding
+    IReadOnlyList<SectionSpanDto> ToolSections, // section spans (static layout); pose is per-Tick
+    IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
+    IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
+    IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
+    ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
+    IReadOnlyList<TrackInfoDto> TrackList, // ALL tracks (incl. hidden) for the Tracks manager
+    IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs, // Field Builder Headland-tab segment list
+    IReadOnlyList<TramSystemDto> TramSystems, // Field Builder Tram-tab system list
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines); // generated tram lines, for the map
+
+/// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
+public record FlagDto(double E, double N, string ColorHex, string Name);
+
+/// <summary>Background-imagery placement: the field-local world rectangle the
+/// PNG (fetched from /backpic.png) covers, plus a version that changes per field
+/// so the client cache-busts. Null when no enabled imagery.</summary>
+public record ImageryDto(double MinE, double MinN, double MaxE, double MaxN, long Version);
+
+/// <summary>One section's signed offsets from the tool centerline (meters; left
+/// negative, right positive), perpendicular to the tool heading. Static-ish —
+/// changes only with tool/section config.</summary>
+public record SectionSpanDto(double Left, double Right);
+
+/// <summary>Vehicle pose. Heading is RADIANS (0 = north, clockwise); Speed is m/s.</summary>
+public record PoseDto(double E, double N, double Heading, double Speed);
+
+// --- Coverage (Phase 2). Display layer streamed as RGB cells; init carries the
+//     grid geometry, cells carry painted cells (snapshot on connect, deltas after). ---
+public record CoverageInitDto(double CellSize, double OriginE, double OriginN, int Width, int Height);
+
+/// <summary>Flat triples: [cellX, cellY, packedRgb, ...] where packedRgb = (R&lt;&lt;16)|(G&lt;&lt;8)|B.</summary>
+public record CoverageCellsDto(int[] Cells);
+
+/// <summary>~10 Hz dynamic feed the client extrapolates/draws from.</summary>
+public record TickDto(
+    long SceneVersion,
+    PoseDto Pose,
+    int Fix,
+    byte[] Sections, // per-section SectionControlState.ColorCode: 0 off(red) 1 manual-on(yellow)
+                     // 2 auto-on(green) 3 turning-off(cyan) 4 turning-on(orange) 5 auto-off(gray)
+    // Guidance HUD: cross-track error (m, +right of line), whether guidance is
+    // engaged, the line label ("3L"), and the name of the followed track so the
+    // client can highlight it among the Scene tracks. CrossTrackError is only
+    // meaningful when GuidanceActive.
+    double CrossTrackError,
+    bool GuidanceActive,
+    string LineLabel,
+    string? ActiveTrackName,
+    // Tool pose (the section spans in the Scene are drawn relative to this).
+    // Matches SectionControlService.GetSectionWorldPosition's frame: world edge =
+    // (ToolE,ToolN) + (sin,cos)(ToolHeading + π/2) × span. ToolReady gates drawing.
+    double ToolE,
+    double ToolN,
+    double ToolHeading,
+    bool ToolReady,
+    // Operational state for the right-nav toolbar (Phase 3). Lives at Tick rate so
+    // the autosteer 3-state, U-turn arming and distance-to-trigger stay live.
+    bool IsAutoSteerEngaged,
+    bool AutoSteerAvailable,   // a track is active → autosteer may engage (else greyed)
+    bool IsContourMode,
+    bool IsSectionAutoMaster,
+    bool IsSectionManualAll,
+    bool IsYouTurnEnabled,
+    bool TurnIsLeft,
+    double DistanceToTrigger,
+    bool IsActiveTrackClosed,
+    double Roll, // vehicle roll angle (degrees) for the roll gauge
+    // Bottom-nav field-tools (Phase 8). Toggle states for the bottom toolbar; the
+    // AB-dependent buttons gate on ActiveTrackName client-side. TramMode is the
+    // TramDisplayMode enum (0 Off / 1 All / 2 LinesOnly / 3 OuterOnly).
+    bool HeadlandOn,
+    bool SectionInHeadland,
+    bool AutoTrack,
+    int SkipRows,
+    bool SkipRowsOn,
+    int TramMode,
+    // Headland-distance HUD: live distance to the headland (m; -1 = no headland / not
+    // driving → HUD hidden) + the proximity warning flag (near → red box). Gated
+    // client-side by Display.HeadlandDistanceVisible (Config frame). Mirrors
+    // FieldState.HeadlandProximityDistance/…Warning.
+    double HeadlandProximityDistance,
+    bool HeadlandProximityWarning,
+    // Steer-bar value: steer-angle error (actual WAS − commanded guidance angle, deg).
+    // The web top bar shows this in steer-bar mode (light-bar mode uses CrossTrackError).
+    double SteerAngleError,
+    // Diagnostic-chart scalars (Tools panel: Steer / Heading / XTE charts). Streamed
+    // at Tick rate so the browser keeps its own rolling display buffer — the host
+    // IChartDataService stays the native SoT; this is the thin-client display feed,
+    // same precedent as SteerAngleError above. ChartSetSteer = commanded guidance
+    // angle (deg), ChartActualSteer = WAS wheel angle (deg), ChartPwm = PWM output
+    // magnitude (0..255), ChartImuHeading = IMU heading (deg). XTE = CrossTrackError
+    // and GPS heading = Pose.Heading (already on this frame).
+    double ChartSetSteer,
+    double ChartActualSteer,
+    double ChartPwm,
+    double ChartImuHeading,
+    // Hitch pivot on the vehicle (field-local m) — the web draws the implement hitch
+    // line from here to the tool. Mirrors IToolPositionService.HitchPosition. f64 for
+    // position precision like the pose/tool coords. Meaningful only when ToolReady.
+    double HitchE,
+    double HitchN,
+    // Live front-wheel angle for the steerable front-wheel sprite (deg, +right). Sim
+    // slider value when the internal sim drives, else the real WAS reading — mirrors
+    // native MainViewModel.ApplyResults (SetVehicleSteerAngle).
+    double VehicleSteerAngle,
+    // Host monotonic timestamp (ms) when this Tick was built. The client interpolates
+    // pose/tool on THIS timeline, not on frame-receipt time — so WiFi arrival jitter
+    // (which warped the receipt-delta and made the heading/map wiggle) only shifts the
+    // playback buffer, absorbed by RENDER_DELAY, instead of varying the interp rate.
+    double HostMs);
+
+/// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
+/// + correction age + sat count; the units preference (so the client formats speed
+/// itself — speed rides the Tick); and the four module connection states
+/// (GPS/IMU/AutoSteer/Machine) with their detected IPs ("" = not detected).</summary>
+public record StatusDto(
+    int FixQuality,
+    string FixQualityText,
+    double Age,
+    int SatelliteCount,
+    bool IsMetric,
+    bool GpsOk,
+    bool ImuOk,
+    bool AutoSteerOk,
+    bool MachineOk,
+    string ImuIp,
+    string AutoSteerIp,
+    string MachineIp,
+    // Module-configured flags (the aggregate "Modules" dot is green only when every
+    // CONFIGURED module is present — mirrors MainViewModel.ModuleStatusKind).
+    bool GpsConfigured,
+    bool ImuConfigured,
+    bool AutoSteerConfigured,
+    bool MachineConfigured,
+    // Rotating bottom-line inputs the client can't derive from the Scene: the active
+    // job's task name and the worked area (m²). Field name, workable area (boundary/
+    // headland), tool width and speed the client already has, so it formats + rotates
+    // the three pages (Field / Stats / AB-line) itself, matching the native strip.
+    string JobName,
+    double WorkedAreaSqM,
+    // GPS-detail card (Phase 5): lat/lon (degrees), altitude (m) and HDOP for the
+    // popup toggled by the strip's fix dot. Rides the ~2 Hz Status — plenty for a
+    // readout. (Heading + roll for that card ride the 10 Hz Tick; sats/age/fix are
+    // already above.) Lat/lon need f64 precision; alt/hdop go out as f32.
+    double Latitude,
+    double Longitude,
+    double Altitude,
+    double Hdop,
+    // Simulator panel (Phase 6): enabled + raw speed (kph, before 10×) + steer angle
+    // (deg) + 10× toggle. The client applies the 10× multiplier + unit formatting.
+    bool SimEnabled,
+    double SimSpeedKph,
+    double SimSteerAngle,
+    bool Sim10x,
+    // AutoSteer live telemetry (Phase 9 AutoSteer panel): the steering-sensor /
+    // test-mode tabs and Zero-WAS need the module's live readout. ActualSteerAngle is
+    // the smoothed wheel angle (deg, from PGN 253); SensorPercent is the WAS position
+    // 0..100; SetSteerAngle is the commanded angle; FreeDriveAngle / SteerFreeDrive
+    // drive the free-drive test display. Rides the ~2 Hz Status (the panel display is
+    // throttled to ~10 Hz native anyway).
+    double ActualSteerAngle,
+    double SensorPercent,
+    double SetSteerAngle,
+    double FreeDriveAngle,
+    bool SteerFreeDrive,
+    // Smart-WAS calibration (the dialog launched from the AutoSteer panel). Live
+    // snapshot of the accumulating analysis — mirrors ISmartWasCalibrationService
+    // .GetSnapshot(). Offset is degrees; the client multiplies by CountsPerDegree
+    // for the counts readout. Rides Status (mostly zero unless collecting).
+    bool SmartWasCollecting,
+    int SmartWasSamples,
+    double SmartWasMean,
+    double SmartWasMedian,
+    double SmartWasStdDev,
+    double SmartWasOffsetDeg,
+    double SmartWasConfidence,
+    bool SmartWasValid,
+    // Network IO panel (Phase 9). The GPS module IP (the other three already ride
+    // above), the detected module /24 (from a PGN 203 scan reply), the host's own
+    // IPv4 list (newline-separated), the NTRIP connection status line + bytes, and
+    // the last "Test Connection" result for the remote NTRIP editor. All slow-moving
+    // → Status frame.
+    string GpsIp,
+    string ModuleSubnet,
+    string HostIps,
+    bool NtripConnected,
+    string NtripStatus,
+    double NtripBytes,
+    string NtripTestStatus,
+    // Simulator panel visibility (persisted in PersistentAppState.SimulatorPanelVisible) —
+    // the web sim bar shows/hides from this so the choice survives app restarts.
+    bool SimPanelVisible,
+    // Field Tools → Offset Fix: the current GPS drift offset (meters) the D-pad nudges
+    // and the manual inputs edit. Mirrors ApplicationState.Field.Drift{Easting,Northing}.
+    double DriftEasting,
+    double DriftNorthing,
+    // Unsaved-coverage guard (server-driven). True while CloseFieldCommand has surfaced the
+    // "coverage painted with no open job" prompt (DialogType.UnsavedCoverage). The web client
+    // renders its own Save/Discard/Cancel prompt off this flag — without it the host opens a
+    // dialog nothing renders and the close hangs. Message text is static (client owns it).
+    bool UnsavedCoveragePrompt);
+
+/// <summary>Config read-frame (Phase 9). A structured projection of
+/// ConfigurationStore for the left-nav settings panels — seeded on connect and
+/// re-sent when the config fingerprint changes. Grows a section per sub-phase;
+/// the wire stays append-only. Vehicle dialog = Vehicle + Gps + Roll; Tool dialog =
+/// Tool + Uturn + Tram + Machine.</summary>
+public record ConfigDto(VehicleConfigDto Vehicle, GpsConfigDto Gps, RollConfigDto Roll,
+    ToolConfigDto Tool, UturnConfigDto Uturn, TramConfigDto Tram, MachineConfigDto Machine,
+    DisplayConfigDto Display, AutoSteerConfigDto AutoSteer);
+
+/// <summary>AutoSteer config panel (ConfigStore.AutoSteer) — the full native 9-tab
+/// surface. Grouped by tab: Pure-Pursuit/Stanley, Steering-Sensor, Deadzone/Timing,
+/// Gain/PWM, Turn-Sensors, Hardware-Config, Algorithm, Speed-Limits, Display. Mirrors
+/// AutoSteerConfig 1:1 so config.set|autosteer.&lt;field&gt; round-trips.</summary>
+public record AutoSteerConfigDto(
+    // Tab 1 — Pure Pursuit / Stanley
+    double SteerResponseHold, double IntegralGain, bool IsStanleyMode,
+    double StanleyAggressiveness, double StanleyOvershootReduction,
+    // Tab 2 — Steering Sensor
+    int WasOffset, double CountsPerDegree, int Ackermann, int MaxSteerAngle,
+    // Tab 3 — Deadzone / Timing
+    double DeadzoneHeading, int DeadzoneDelay, double SpeedFactor, double AcquireFactor,
+    // Tab 4 — Gain / PWM
+    int ProportionalGain, int MaxPwm, int MinPwm,
+    // Tab 5 — Turn Sensors
+    bool TurnSensorEnabled, bool PressureSensorEnabled, bool CurrentSensorEnabled,
+    int TurnSensorCounts, int PressureTripPoint, int CurrentTripPoint,
+    // Tab 6 — Hardware Config
+    bool DanfossEnabled, bool InvertWas, bool InvertMotor, bool InvertRelays,
+    int MotorDriver, int AdConverter, int ImuAxisSwap, int ExternalEnable,
+    // Tab 7 — Algorithm
+    double UTurnCompensation, double SideHillCompensation, bool SteerInReverse,
+    // Tab 8 — Speed Limits
+    bool ManualTurnsEnabled, double ManualTurnsSpeed, double MinSteerSpeed, double MaxSteerSpeed,
+    // Tab 9 — Display
+    int LineWidth, int NudgeDistance, double NextGuidanceTime, int CmPerPixel,
+    bool LightbarEnabled, bool SteerBarEnabled, bool GuidanceBarOn);
+
+/// <summary>Screen &amp; Alerts panel (ConfigStore.Display): display toggles, on-screen
+/// buttons, alert sounds, plus the App-Settings device flags (keyboard / start
+/// fullscreen / elevation log). ResolutionLabel mirrors DisplayResolutionLabel.</summary>
+public record DisplayConfigDto(
+    bool GridVisible, bool FieldTextureVisible, bool FieldTextureMoveable, bool SvennArrowVisible,
+    bool HeadlandDistanceVisible, bool LineSmoothEnabled, bool AutoDayNight, bool HardwareMessagesEnabled,
+    bool ExtraGuidelines, int ExtraGuidelinesCount, string ResolutionLabel,
+    bool UTurnButtonVisible, bool LateralButtonVisible,
+    bool AutoSteerSound, bool UTurnSound, bool HydraulicSound, bool SectionsSound,
+    bool KeyboardEnabled, bool StartFullscreen, bool ElevationLogEnabled,
+    // Numeric quality multiplier (1.0 Ultra … 6.0 Min). The web scales its imagery LOD by
+    // this so the quality button degrades the background like native's Apple composite path.
+    double DisplayResolutionMultiplier);
+
+/// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
+/// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>
+public record ToolConfigDto(
+    int Type, int HitchType, double HitchLength, double TrailingHitchLength,
+    double TankTrailingHitchLength, double Length,
+    double LookAheadOn, double LookAheadOff, double TurnOffDelay,
+    double Offset, double Overlap, double TrailingToolToPivotLength,
+    bool IsSectionsNotZones, int NumSections, double DefaultSectionWidth,
+    IReadOnlyList<double> SectionWidths, int Zones, IReadOnlyList<int> ZoneRanges,
+    bool IsMultiColoredSections, IReadOnlyList<int> SectionColors, int SingleCoverageColor,
+    bool IsSectionOffWhenOut, bool IsHeadlandSectionControl, int MinCoverage,
+    double SlowSpeedCutoff, double CoverageMargin,
+    bool IsWorkSwitchEnabled, bool IsWorkSwitchActiveLow, bool IsWorkSwitchManualSections,
+    bool IsSteerSwitchEnabled, bool IsSteerSwitchManualSections,
+    double TotalWidth);
+
+/// <summary>U-Turn tab (ConfigStore.Guidance). Style: 0 Omega, 1 Sagitta.</summary>
+public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
+
+/// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
+public record TramConfigDto(int Passes, bool Display, int Line);
+
+/// <summary>Machine Control tab (ConfigStore.Machine). PinAssignments: 24 PinFunction ints.</summary>
+public record MachineConfigDto(
+    bool HydraulicLiftEnabled, int RaiseTime, double LookAhead, int LowerTime, bool InvertRelay,
+    int User1, int User2, int User3, int User4, IReadOnlyList<int> PinAssignments);
+
+/// <summary>Vehicle &amp; Tool picker hub (Phase 9): available profiles (name + preview)
+/// and the active pair. Seeded on connect, re-sent when the list/active/config changes.</summary>
+public record ProfilesDto(
+    string ActiveVehicle,
+    string ActiveTool,
+    IReadOnlyList<ProfileEntryDto> Vehicles,
+    IReadOnlyList<ProfileEntryDto> Tools);
+
+public record ProfileEntryDto(string Name, string Preview);
+
+/// <summary>Steer Wizard frame (Phase 9) — host-driven: the real SteerWizardViewModel
+/// runs on the host and this projects its state each tick while the remote wizard is
+/// open. The browser renders a layout per <see cref="StepKind"/> (binding editable
+/// values to the existing Config frame + writing via wizard.set) and forwards
+/// navigation / actions. The live blob carries the calibration-step dynamics (phase /
+/// progress / measured diameter / RTK gating) that aren't in ConfigStore.</summary>
+public record WizardDto(
+    int StepIndex, int TotalSteps, string StepKind, string Title, string Description,
+    bool CanBack, bool CanNext, bool CanSkip, bool IsLast, string Validation,
+    // Persistent status bar (live hardware data across every step).
+    double StatusWas, double StatusRoll, string StatusGps, double StatusSpeed, int StatusPwm, bool StatusConnected,
+    // Per-step live state (zeroed/empty for steps that don't use a field).
+    int HardwareLevel,
+    double LiveAngle, double LiveRoll, double LiveError,
+    string TestPhase, string TestResult, double TestProgress, bool TestActive,
+    bool RtkFixed, string FixLabel, double Diameter);
+
+/// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
+public record VehicleConfigDto(
+    string Name,
+    int Type,            // VehicleType: 0 Tractor, 1 Harvester, 2 FourWD
+    int HitchType,       // code; index into HitchTypeOptions = HitchType + 1
+    double HitchLength,
+    double Wheelbase,
+    double TrackWidth,
+    double AntennaPivot,
+    double AntennaHeight,
+    double AntennaOffset);
+
+/// <summary>Data Sources → GPS tab (ConfigStore.Connections).</summary>
+public record GpsConfigDto(
+    bool IsDualGps,
+    double DualHeadingOffset,
+    double DualReverseDistance,
+    bool AutoDualFix,
+    double DualSwitchSpeed,
+    double MinGpsStep,
+    double FixToFixDistance,
+    double HeadingFusionWeight,
+    bool ReverseDetection,
+    bool RtkLostAlarm,
+    int RtkLostAction);  // 0 Warn, 1 Pause AutoSteer
+
+/// <summary>Data Sources → Roll tab (ConfigStore.Ahrs).</summary>
+public record RollConfigDto(
+    double RollZero,
+    double RollFilter,
+    bool IsRollInvert);
+
+/// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
+/// client compares HolderId to its own id (sent once in the Hello frame) to know
+/// whether it is the holder. Held=false means no client has control.</summary>
+public record ControlStateDto(bool Held, string HolderId, string HolderName);
+
+/// <summary>NTRIP profiles read-frame (Phase 9 Network IO) — the saved caster
+/// profiles plus the list of fields they can associate with. Seeded on connect +
+/// re-sent when the profile set changes (fingerprint). The browser edits a
+/// client-side buffer and writes back via ntrip.* commands; passwords ride the wire
+/// (LAN trust model, same as all config) so an edit preserves them.</summary>
+public record NtripProfilesDto(
+    IReadOnlyList<NtripProfileDto> Profiles,
+    IReadOnlyList<string> AvailableFields);
+
+public record NtripProfileDto(
+    string Id, string Name, string CasterHost, int CasterPort, string MountPoint,
+    string Username, string Password, bool AutoConnectOnFieldLoad, bool IsDefault,
+    IReadOnlyList<string> AssociatedFields);
+
+/// <summary>Field Operations read-frame (Phase 9 Field Ops) — the field/job lifecycle
+/// lists for the Fields-and-Jobs dialog. Fields = every field on disk (distance enriched
+/// when a GPS fix exists); Jobs = ALL jobs across fields (the client filters by the
+/// selected field). Seeded on connect + re-sent on a fingerprint change (field/job
+/// add/delete/open). IsoXml/Kml lists feed the From-ISO-XML / From-KML creation pickers.</summary>
+public record FieldOpsDto(
+    IReadOnlyList<FieldEntryDto> Fields,
+    IReadOnlyList<JobEntryDto> Jobs,
+    IReadOnlyList<string> WorkTypeSuggestions,
+    IReadOnlyList<string> IsoXmlFiles,
+    IReadOnlyList<string> KmlFiles,
+    string ActiveFieldName);
+
+/// <summary>One field row: name + great-circle distance (HasDistance=false → "—") +
+/// outer-boundary area (ha). Mirrors NearbyField.</summary>
+public record FieldEntryDto(string Name, bool HasDistance, double DistanceKm, double AreaHa);
+
+/// <summary>One job row (mirrors JobSummary). Status: 0 InProgress, 1 Done, 2 Abandoned.
+/// LastOpened is a preformatted "yyyy-MM-dd HH:mm" string.</summary>
+public record JobEntryDto(
+    string FieldName, string TaskName, string WorkType, int Status, string LastOpened, string Notes);
+
+/// <summary>AgShare read-frame (Phase 9 Field Ops) — cloud sync settings + transient action
+/// state. Settings come from ConfigStore.Connections; Status/Busy/CloudFields are the live
+/// result of the last test/fetch/upload/download (ApplicationState.AgShare). LocalFields are
+/// the upload candidates (every field on disk + whether it has a boundary).</summary>
+public record AgShareDto(
+    string ServerUrl, string ApiKey, bool Enabled,
+    string Status, bool Busy,
+    IReadOnlyList<AgShareLocalFieldDto> LocalFields,
+    IReadOnlyList<AgShareCloudFieldDto> CloudFields);
+
+public record AgShareLocalFieldDto(string Name, bool HasBoundary);
+public record AgShareCloudFieldDto(string Id, string Name, double AreaHa);
+
+/// <summary>File / Application Menu read-frame (Phase 9). The slow-changing data behind the
+/// App Settings / Language / Hotkeys / About / Log Viewer dialogs: app version + git hash,
+/// the current + available UI languages, the app directories, the hotkey bindings, the recent
+/// in-memory log entries, and the last bug-report submit status. Seeded on connect + re-sent on
+/// a fingerprint change (settings/hotkeys/log-growth/bug-report).</summary>
+public record AppInfoDto(
+    string Version, string GitHash,
+    string CurrentLanguage,
+    IReadOnlyList<AppLangDto> Languages,
+    IReadOnlyList<AppDirDto> Directories,
+    IReadOnlyList<AppHotkeyDto> Hotkeys,
+    IReadOnlyList<AppLogDto> Logs,
+    string BugReportStatus);
+
+/// <summary>Field Tools read-frame. Grows per sub-increment (append-only). Import
+/// Tracks: the other fields on disk that have saved tracks (current field excluded).
+/// Re-sent on a fingerprint change (field add/delete/open).</summary>
+public record FieldToolsDto(
+    IReadOnlyList<string> ImportFields);
+
+/// <summary>Recorded Path read-frame (host-driven, like the Wizard — the panel's UI
+/// state lives in the VM, not ApplicationState). RecFiles = saved .rec files in the
+/// active field; the booleans + info/label mirror the live VM. RecordedPathName is the
+/// client's own text input, so it isn't projected. Re-sent on a fingerprint change.</summary>
+public record RecordedPathDto(
+    IReadOnlyList<string> RecFiles,
+    bool IsRecording,
+    bool IsPlaying,
+    bool HasUnsaved,
+    string RecordedPathInfo,
+    string ResumeModeLabel,
+    // Host-generated default name on Stop ("RecPath_<timestamp>") so the browser can
+    // pre-fill the Save-as field like native; the browser shows it when its input isn't
+    // focused (the user can still edit). Empty unless a recording is awaiting a name.
+    string RecordedPathName,
+    // Live recording markers: the points captured so far this recording session, as a
+    // flat [E,N,E,N,…] (field-local m). Empty when not recording. The browser draws
+    // these as dots so the path is visible as it's driven (native shows the same).
+    IReadOnlyList<double> RecordingPoints);
+
+/// <summary>Boundary read-frame (host-driven). Items = the field's boundaries for the
+/// recording menu (Outer / Inner N, area, drive-thru / hard flags). The Player.* fields
+/// mirror the live drive-around recording (State.BoundaryRec + the VM toggles). Re-sent on
+/// a fingerprint change. Draw-on-map point drawing is Phase MT and not here.</summary>
+public record BoundaryItemDto(int Index, string BoundaryType, string AreaDisplay, bool DriveThru, bool Hard);
+
+public record BoundaryDto(
+    IReadOnlyList<BoundaryItemDto> Items,
+    int SelectedIndex,
+    bool PlayerVisible,
+    bool IsRecording,
+    bool IsPaused,
+    int PointCount,
+    double AreaHa,
+    double OffsetCm,
+    bool DrawRightSide,
+    bool DrawAtPivot,
+    bool SectionControlOn,
+    // Live drive-around markers (field-local m, flat [E,N,…]); empty when idle.
+    IReadOnlyList<double> RecordingPoints);
+
+public record AppLangDto(string Code, string Name);
+public record AppDirDto(string Name, string Path, bool Exists);
+public record AppHotkeyDto(string Action, string Key, string Label);
+/// <summary>One log line. Level: 0 Trace,1 Debug,2 Info,3 Warn,4 Error,5 Critical (Microsoft LogLevel).</summary>
+public record AppLogDto(string Time, int Level, string Message);

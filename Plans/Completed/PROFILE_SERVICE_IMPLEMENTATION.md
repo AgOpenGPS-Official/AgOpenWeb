@@ -6,7 +6,7 @@ The Vehicle Profile Service provides the navigation system with detailed informa
 
 ## AgOpenGPS Reference Format
 
-Vehicle profiles are stored as XML files in `~/Documents/AgValoniaGPS/Vehicles/` directory using the AgOpenGPS format:
+Vehicle profiles are stored as XML files in `~/Documents/AgOpenWeb/Vehicles/` directory using the AgOpenGPS format:
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -186,15 +186,15 @@ public class VehicleProfile
 ## Implementation Steps
 
 ### Step 1: Create New Model Classes
-1. [ ] Create `YouTurnConfiguration.cs` in `AgValoniaGPS.Models`
+1. [ ] Create `YouTurnConfiguration.cs` in `AgOpenWeb.Models`
 2. [ ] Create `SectionConfiguration.cs` for per-section settings
 3. [ ] Create `VehicleProfile.cs` as the aggregate model
 
 ### Step 2: Create Service Interface
-1. [ ] Create `IVehicleProfileService.cs` in `AgValoniaGPS.Services/Interfaces/`
+1. [ ] Create `IVehicleProfileService.cs` in `AgOpenWeb.Services/Interfaces/`
 
 ### Step 3: Implement Service
-1. [ ] Create `VehicleProfileService.cs` in `AgValoniaGPS.Services/`
+1. [ ] Create `VehicleProfileService.cs` in `AgOpenWeb.Services/`
 2. [ ] Implement XML parsing for AgOpenGPS format
 3. [ ] Implement save functionality maintaining AgOpenGPS format
 4. [ ] Handle profile listing and directory management
@@ -218,11 +218,11 @@ public class VehicleProfile
 
 | Component | Path |
 |-----------|------|
-| Models | `Shared/AgValoniaGPS.Models/VehicleProfile.cs` |
-| YouTurn Config | `Shared/AgValoniaGPS.Models/YouTurnConfiguration.cs` |
-| Interface | `Shared/AgValoniaGPS.Services/Interfaces/IVehicleProfileService.cs` |
-| Service | `Shared/AgValoniaGPS.Services/VehicleProfileService.cs` |
-| Vehicles Dir | `~/Documents/AgValoniaGPS/Vehicles/` |
+| Models | `Shared/AgOpenWeb.Models/VehicleProfile.cs` |
+| YouTurn Config | `Shared/AgOpenWeb.Models/YouTurnConfiguration.cs` |
+| Interface | `Shared/AgOpenWeb.Services/Interfaces/IVehicleProfileService.cs` |
+| Service | `Shared/AgOpenWeb.Services/VehicleProfileService.cs` |
+| Vehicles Dir | `~/Documents/AgOpenWeb/Vehicles/` |
 
 ## XML Parsing Strategy
 

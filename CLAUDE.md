@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 -->
 
-# CLAUDE.md - AgValoniaGPS3
+# CLAUDE.md - AgOpenWeb3
 
 This file provides guidance to Claude Code when working with this repository.
 
@@ -27,7 +27,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-AgValoniaGPS3 is a cross-platform agricultural GPS guidance application built with Avalonia UI. It's a clean rewrite achieving **91.7% shared code** across platforms.
+AgOpenWeb3 is a cross-platform agricultural GPS guidance application built with Avalonia UI. It's a clean rewrite achieving **91.7% shared code** across platforms.
 
 **What it does:**
 - Real-time GPS guidance for agricultural equipment
@@ -42,59 +42,59 @@ AgValoniaGPS3 is a cross-platform agricultural GPS guidance application built wi
 ## Architecture
 
 ```
-AgValoniaGPS3/
+AgOpenWeb3/
 ├── Shared/                              # ~92% - Platform-agnostic code
-│   ├── AgValoniaGPS.Models/            # Data models, geometry, configuration, DTOs
-│   ├── AgValoniaGPS.Services/          # Business logic, GPS, NTRIP, UDP
-│   ├── AgValoniaGPS.ViewModels/        # MVVM ViewModels (ReactiveUI)
-│   └── AgValoniaGPS.Views/             # Shared UI controls, panels, dialogs
+│   ├── AgOpenWeb.Models/            # Data models, geometry, configuration, DTOs
+│   ├── AgOpenWeb.Services/          # Business logic, GPS, NTRIP, UDP
+│   ├── AgOpenWeb.ViewModels/        # MVVM ViewModels (ReactiveUI)
+│   └── AgOpenWeb.Views/             # Shared UI controls, panels, dialogs
 │
 ├── Platforms/                           # ~8% - Platform-specific code
-│   ├── AgValoniaGPS.Desktop/           # Windows/macOS/Linux
-│   ├── AgValoniaGPS.iOS/              # iOS/iPadOS
-│   └── AgValoniaGPS.Android/          # Android
+│   ├── AgOpenWeb.Desktop/           # Windows/macOS/Linux
+│   ├── AgOpenWeb.iOS/              # iOS/iPadOS
+│   └── AgOpenWeb.Android/          # Android
 │
 ├── Tests/                              # NUnit test projects
-│   ├── AgValoniaGPS.Models.Tests/     # Geometry, coordinate conversion (72 tests)
-│   ├── AgValoniaGPS.Services.Tests/   # NMEA parsing, guidance (21 tests)
-│   └── AgValoniaGPS.UI.Tests/         # Headless UI tests via Avalonia.Headless (18 tests)
+│   ├── AgOpenWeb.Models.Tests/     # Geometry, coordinate conversion (72 tests)
+│   ├── AgOpenWeb.Services.Tests/   # NMEA parsing, guidance (21 tests)
+│   └── AgOpenWeb.UI.Tests/         # Headless UI tests via Avalonia.Headless (18 tests)
 │
 ├── TestRunner/                         # Legacy test harness for guidance algorithms
-└── AgValoniaGPS.sln                    # Solution file
+└── AgOpenWeb.sln                    # Solution file
 ```
 
 ### Platform Support
 
 | Platform | Project | Notes |
 |----------|---------|-------|
-| Windows | AgValoniaGPS.Desktop | Same codebase as macOS/Linux |
-| macOS | AgValoniaGPS.Desktop | Same codebase as Windows/Linux |
-| Linux | AgValoniaGPS.Desktop | Same codebase as Windows/macOS |
-| iOS/iPadOS | AgValoniaGPS.iOS | Requires Xcode 26.3+, runs on ARM64 simulator |
-| Android | AgValoniaGPS.Android | APK build, sideload install |
+| Windows | AgOpenWeb.Desktop | Same codebase as macOS/Linux |
+| macOS | AgOpenWeb.Desktop | Same codebase as Windows/Linux |
+| Linux | AgOpenWeb.Desktop | Same codebase as Windows/macOS |
+| iOS/iPadOS | AgOpenWeb.iOS | Requires Xcode 26.3+, runs on ARM64 simulator |
+| Android | AgOpenWeb.Android | APK build, sideload install |
 
 ## Build Commands
 
 ```bash
 # Build and run Desktop (works on Windows, macOS, Linux)
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 
 # Build iOS (requires macOS with Xcode 26.3+)
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
 
 # Deploy and run iOS on simulator
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64 -t:Run
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64 -t:Run
 
 # Alternative iOS deployment (if -t:Run doesn't work)
-xcrun simctl install booted Platforms/AgValoniaGPS.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/AgValoniaGPS.iOS.app
-xcrun simctl launch booted com.agvaloniaagps.ios
+xcrun simctl install booted Platforms/AgOpenWeb.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/AgOpenWeb.iOS.app
+xcrun simctl launch booted com.agopenweb.ios
 
 # Build Android APK
-dotnet build Platforms/AgValoniaGPS.Android/AgValoniaGPS.Android.csproj
+dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
 
 # Build entire solution
-dotnet build AgValoniaGPS.sln
+dotnet build AgOpenWeb.sln
 
 # Run tests
 dotnet test Tests/
@@ -112,7 +112,7 @@ True perspective comes from `SKMatrix44`; top-down mode is just
 `pitch = 90°` on the same control — no second renderer behind a toggle.
 
 ### Shared UI Components
-All panels, dialogs, and controls live in `AgValoniaGPS.Views`:
+All panels, dialogs, and controls live in `AgOpenWeb.Views`:
 - `Controls/SkiaMapControl.cs` - Main map rendering
 - `Controls/DialogOverlayHost.axaml` - Hosts all modal dialog overlays (shared across platforms)
 - `Controls/Panels/` - LeftNavigationPanel, SimulatorPanel, SectionControlPanel, etc.
@@ -185,7 +185,7 @@ Panels use Canvas positioning with pointer event handlers for dragging:
 ### Unified Track Architecture
 **Key insight from AgOpenGPS creator Brian:** "An AB line is just a curve with 2 points."
 
-All guidance track types use a single `Track` model (`Shared/AgValoniaGPS.Models/Track/Track.cs`):
+All guidance track types use a single `Track` model (`Shared/AgOpenWeb.Models/Track/Track.cs`):
 
 ```csharp
 public class Track
@@ -211,7 +211,7 @@ public class Track
 - `PIBy2`, `twoPI` - common constants
 
 ### File Format Philosophy
-AgValoniaGPS may use different/improved formats from AgOpenGPS when it benefits code simplicity or features. Provide **one-way import** from AgOpenGPS formats rather than maintaining full backwards compatibility.
+AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits code simplicity or features. Provide **one-way import** from AgOpenGPS formats rather than maintaining full backwards compatibility.
 
 - **Current**: Legacy text formats (Field.txt, Boundary.txt, etc.) and XML profiles
 - **Future**: Unified JSON formats (see `Plans/FILE_FORMAT_MODERNIZATION_PLAN.md`)
@@ -230,27 +230,27 @@ AgValoniaGPS may use different/improved formats from AgOpenGPS when it benefits 
 
 | File | Purpose |
 |------|---------|
-| `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` | Main application state, constructor, DI |
-| `Shared/AgValoniaGPS.Views/Controls/SkiaMapControl.cs` | Map rendering (Skia via CompositionCustomVisualHandler) |
-| `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml` | All dialog overlay registrations |
-| `Shared/AgValoniaGPS.Views/Controls/Panels/LeftNavigationPanel.axaml` | Main navigation sidebar |
-| `Shared/AgValoniaGPS.Models/Track/Track.cs` | Unified track model (AB lines + curves) |
-| `Shared/AgValoniaGPS.Models/Base/GeometryMath.cs` | Shared geometry utilities |
-| `Shared/AgValoniaGPS.Models/State/UIState.cs` | Dialog state machine, panel visibility |
-| `Shared/AgValoniaGPS.Models/Configuration/ConfigurationStore.cs` | Reactive config singleton |
-| `Shared/AgValoniaGPS.Models/Configuration/HotkeyConfig.cs` | Hotkey bindings model |
-| `Shared/AgValoniaGPS.Services/Track/TrackGuidanceService.cs` | Pure Pursuit + Stanley guidance |
-| `Shared/AgValoniaGPS.Services/YouTurn/YouTurnGuidanceService.cs` | U-turn path following |
-| `Shared/AgValoniaGPS.Services/NtripClientService.cs` | NTRIP RTK corrections |
-| `Shared/AgValoniaGPS.Services/GpsService.cs` | GPS data processing |
-| `Shared/AgValoniaGPS.Services/ConfigurationService.cs` | AppSettings ↔ ConfigurationStore sync |
-| `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml` | Desktop main window |
-| `Platforms/AgValoniaGPS.iOS/Views/MainView.axaml` | iOS main view |
-| `Tests/AgValoniaGPS.UI.Tests/MainViewModelBuilder.cs` | Test helper: builds fully-mocked MainViewModel |
+| `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` | Main application state, constructor, DI |
+| `Shared/AgOpenWeb.Views/Controls/SkiaMapControl.cs` | Map rendering (Skia via CompositionCustomVisualHandler) |
+| `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml` | All dialog overlay registrations |
+| `Shared/AgOpenWeb.Views/Controls/Panels/LeftNavigationPanel.axaml` | Main navigation sidebar |
+| `Shared/AgOpenWeb.Models/Track/Track.cs` | Unified track model (AB lines + curves) |
+| `Shared/AgOpenWeb.Models/Base/GeometryMath.cs` | Shared geometry utilities |
+| `Shared/AgOpenWeb.Models/State/UIState.cs` | Dialog state machine, panel visibility |
+| `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs` | Reactive config singleton |
+| `Shared/AgOpenWeb.Models/Configuration/HotkeyConfig.cs` | Hotkey bindings model |
+| `Shared/AgOpenWeb.Services/Track/TrackGuidanceService.cs` | Pure Pursuit + Stanley guidance |
+| `Shared/AgOpenWeb.Services/YouTurn/YouTurnGuidanceService.cs` | U-turn path following |
+| `Shared/AgOpenWeb.Services/NtripClientService.cs` | NTRIP RTK corrections |
+| `Shared/AgOpenWeb.Services/GpsService.cs` | GPS data processing |
+| `Shared/AgOpenWeb.Services/ConfigurationService.cs` | AppSettings ↔ ConfigurationStore sync |
+| `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml` | Desktop main window |
+| `Platforms/AgOpenWeb.iOS/Views/MainView.axaml` | iOS main view |
+| `Tests/AgOpenWeb.UI.Tests/MainViewModelBuilder.cs` | Test helper: builds fully-mocked MainViewModel |
 
 ## Service Interfaces
 
-Services use interface-based design in `Shared/AgValoniaGPS.Services/Interfaces/`:
+Services use interface-based design in `Shared/AgOpenWeb.Services/Interfaces/`:
 - `ITrackGuidanceService` - Unified guidance (Pure Pursuit + Stanley) for all track types
 - `IGpsService` - GPS data processing and position updates
 - `IUdpCommunicationService` - UDP communication with AgOpenGPS modules
@@ -293,12 +293,12 @@ Platform projects contain only what **must** differ per platform. All UI, dialog
 ## Common Tasks
 
 ### Adding a New Dialog
-1. Add a new `DialogType` enum value in `Shared/AgValoniaGPS.Models/State/UIState.cs`
+1. Add a new `DialogType` enum value in `Shared/AgOpenWeb.Models/State/UIState.cs`
 2. Add `IsYourDialogVisible` computed property and `RaisePropertyChanged` call in `UIState`
-3. Create `YourDialogPanel.axaml/cs` in `Shared/AgValoniaGPS.Views/Controls/Dialogs/`
+3. Create `YourDialogPanel.axaml/cs` in `Shared/AgOpenWeb.Views/Controls/Dialogs/`
    - Bind `IsVisible` and `IsHitTestVisible` to `State.UI.IsYourDialogVisible`
    - Include semi-transparent backdrop with `PointerPressed` handler to close
-4. Register in `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml`
+4. Register in `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml`
 5. Add show/close commands in a `MainViewModel.Commands.*.cs` partial class file:
    ```csharp
    ShowYourDialogCommand = ReactiveCommand.Create(() =>
@@ -308,7 +308,7 @@ Platform projects contain only what **must** differ per platform. All UI, dialog
    ```
 
 ### Adding a New Panel
-1. Create `YourPanel.axaml/cs` in `Shared/AgValoniaGPS.Views/Controls/Panels/`
+1. Create `YourPanel.axaml/cs` in `Shared/AgOpenWeb.Views/Controls/Panels/`
 2. Add to `LeftNavigationPanel.axaml` if it's a sub-panel
 3. Or add directly to platform views if standalone
 
@@ -326,7 +326,7 @@ GET /mountpoint HTTP/1.1
 Host: caster.example.com
 Ntrip-Version: Ntrip/2.0
 Authorization: Basic base64(username:password)
-User-Agent: NTRIP AgValoniaGPS
+User-Agent: NTRIP AgOpenWeb
 ```
 
 ## Debugging Tips
@@ -353,18 +353,18 @@ User-Agent: NTRIP AgValoniaGPS
 dotnet test Tests/
 
 # Run specific test project
-dotnet test Tests/AgValoniaGPS.Models.Tests/
-dotnet test Tests/AgValoniaGPS.Services.Tests/
-dotnet test Tests/AgValoniaGPS.UI.Tests/
+dotnet test Tests/AgOpenWeb.Models.Tests/
+dotnet test Tests/AgOpenWeb.Services.Tests/
+dotnet test Tests/AgOpenWeb.UI.Tests/
 
 # Legacy guidance algorithm test harness
 dotnet run --project TestRunner/TestRunner.csproj
 ```
 
 **Test projects:**
-- `AgValoniaGPS.Models.Tests` - GeometryMath, GeoConversion, boundary/curve utilities
-- `AgValoniaGPS.Services.Tests` - NMEA parsing, TrackGuidanceService
-- `AgValoniaGPS.UI.Tests` - Headless Avalonia UI tests using `[AvaloniaTest]` attribute, `MainViewModelBuilder` for fully-mocked VM construction
+- `AgOpenWeb.Models.Tests` - GeometryMath, GeoConversion, boundary/curve utilities
+- `AgOpenWeb.Services.Tests` - NMEA parsing, TrackGuidanceService
+- `AgOpenWeb.UI.Tests` - Headless Avalonia UI tests using `[AvaloniaTest]` attribute, `MainViewModelBuilder` for fully-mocked VM construction
 
 ## U-Turn System
 

@@ -30,7 +30,7 @@
 
 ### Phase 1: Add Zig-Zag Turn Type to YouTurnCreationService
 
-**File:** `Shared/AgValoniaGPS.Services/YouTurn/YouTurnCreationService.cs`
+**File:** `Shared/AgOpenWeb.Services/YouTurn/YouTurnCreationService.cs`
 
 1. Add new `ZigZagStyle` value to `YouTurnType` enum:
    ```csharp
@@ -70,7 +70,7 @@
 
 ### Phase 2: Improve YouTurn Path Following During Turn
 
-**File:** `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs`
+**File:** `Shared/AgOpenWeb.ViewModels/MainViewModel.cs`
 
 Currently when `_isInYouTurn` is true, the code uses `YouTurnGuidanceService.CalculateGuidance()`. This needs integration:
 

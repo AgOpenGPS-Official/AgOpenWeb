@@ -1,8 +1,8 @@
-# Wizard Implementation Plan - AgValoniaGPS3
+# Wizard Implementation Plan - AgOpenWeb3
 
 ## Overview
 
-This plan covers the implementation of wizard-style configuration dialogs for AgValoniaGPS3, based on analysis of the AgOpenGPS `FormSteerWiz` and `FormConfig` implementations.
+This plan covers the implementation of wizard-style configuration dialogs for AgOpenWeb3, based on analysis of the AgOpenGPS `FormSteerWiz` and `FormConfig` implementations.
 
 ## AgOpenGPS Wizard Analysis
 
@@ -70,13 +70,13 @@ This plan covers the implementation of wizard-style configuration dialogs for Ag
 
 ---
 
-## Implementation Plan for AgValoniaGPS3
+## Implementation Plan for AgOpenWeb3
 
 ### Phase 1: Base Wizard Infrastructure
 
 #### 1.1 Create Wizard Base Classes
 
-**File: `Shared/AgValoniaGPS.ViewModels/Wizards/WizardStepViewModel.cs`**
+**File: `Shared/AgOpenWeb.ViewModels/Wizards/WizardStepViewModel.cs`**
 ```csharp
 public abstract class WizardStepViewModel : ViewModelBase
 {
@@ -94,7 +94,7 @@ public abstract class WizardStepViewModel : ViewModelBase
 }
 ```
 
-**File: `Shared/AgValoniaGPS.ViewModels/Wizards/WizardViewModel.cs`**
+**File: `Shared/AgOpenWeb.ViewModels/Wizards/WizardViewModel.cs`**
 ```csharp
 public abstract class WizardViewModel : ViewModelBase
 {
@@ -114,7 +114,7 @@ public abstract class WizardViewModel : ViewModelBase
 
 #### 1.2 Create Wizard Host Control
 
-**File: `Shared/AgValoniaGPS.Views/Controls/Wizards/WizardHost.axaml`**
+**File: `Shared/AgOpenWeb.Views/Controls/Wizards/WizardHost.axaml`**
 ```xml
 <UserControl>
     <Grid RowDefinitions="Auto,*,Auto,Auto">
@@ -146,7 +146,7 @@ The Steer Wizard is the primary wizard users rely on. It will be implemented in 
 
 #### 2.1 SteerWizard ViewModel Structure
 
-**File: `Shared/AgValoniaGPS.ViewModels/Wizards/SteerWizard/SteerWizardViewModel.cs`**
+**File: `Shared/AgOpenWeb.ViewModels/Wizards/SteerWizard/SteerWizardViewModel.cs`**
 
 #### 2.2 Step ViewModels (Grouped by Category)
 
@@ -194,7 +194,7 @@ The Steer Wizard is the primary wizard users rely on. It will be implemented in 
 
 **File Structure:**
 ```
-Shared/AgValoniaGPS.Views/Controls/Wizards/SteerWizard/
+Shared/AgOpenWeb.Views/Controls/Wizards/SteerWizard/
     SteerWizardView.axaml
     Steps/
         WelcomeStepView.axaml

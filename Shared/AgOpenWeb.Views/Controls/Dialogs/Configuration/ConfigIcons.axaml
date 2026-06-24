@@ -1,0 +1,54 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
+
+Licensed under GNU GPL v3. See LICENSE.md.
+
+Shared config dialog tab icons (light/dark). Merged by both the Vehicle and
+Tool configuration dialogs so the icon set lives in one place.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <!-- Main tab icons -->
+            <ImageBrush x:Key="IconVehicle" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_VehicleMenu.png"/>
+            <ImageBrush x:Key="IconTool" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_ImplementMenu.png"/>
+            <ImageBrush x:Key="IconUTurn" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_UTurnMenu.png"/>
+            <ImageBrush x:Key="IconMachine" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_ModulesMenu.png"/>
+            <ImageBrush x:Key="IconTram" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_TramMenu.png"/>
+            <ImageBrush x:Key="IconSources" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_SourcesMenu.png"/>
+            <ImageBrush x:Key="IconDisplay" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_Display.png"/>
+            <ImageBrush x:Key="IconFeatures" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_FeatureMenu.png"/>
+            <!-- Sub-tab icons -->
+            <ImageBrush x:Key="IconVehicleConfig" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConS_VehicleConfig.png"/>
+            <ImageBrush x:Key="IconHitch" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConS_ImplementHitch.png"/>
+            <ImageBrush x:Key="IconAntenna" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConS_ImplementAntenna.png"/>
+            <ImageBrush x:Key="IconModulesMachine" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConS_ModulesMachine.png"/>
+            <ImageBrush x:Key="IconGPSDual" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_SourcesGPSDual.png"/>
+            <ImageBrush x:Key="IconGPSSingle" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_SourcesGPSSingle.png"/>
+            <ImageBrush x:Key="IconSourcesHead" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_SourcesHead.png"/>
+            <ImageBrush x:Key="IconRTKAlarm" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_SourcesRTKAlarm.png"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <!-- Main tab icons -->
+            <ImageBrush x:Key="IconVehicle" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_VehicleMenu.png"/>
+            <ImageBrush x:Key="IconTool" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_ImplementMenu.png"/>
+            <ImageBrush x:Key="IconUTurn" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_UTurnMenu.png"/>
+            <ImageBrush x:Key="IconMachine" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_ModulesMenu.png"/>
+            <ImageBrush x:Key="IconTram" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_TramMenu.png"/>
+            <ImageBrush x:Key="IconSources" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_SourcesMenu.png"/>
+            <ImageBrush x:Key="IconDisplay" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_Display.png"/>
+            <ImageBrush x:Key="IconFeatures" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_FeatureMenu.png"/>
+            <!-- Sub-tab icons -->
+            <ImageBrush x:Key="IconVehicleConfig" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/ConS_VehicleConfig.png"/>
+            <ImageBrush x:Key="IconHitch" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/ConS_ImplementHitch.png"/>
+            <ImageBrush x:Key="IconAntenna" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/ConS_ImplementAntenna.png"/>
+            <ImageBrush x:Key="IconModulesMachine" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/ConS_ModulesMachine.png"/>
+            <ImageBrush x:Key="IconGPSDual" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_SourcesGPSDual.png"/>
+            <ImageBrush x:Key="IconGPSSingle" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_SourcesGPSSingle.png"/>
+            <ImageBrush x:Key="IconSourcesHead" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_SourcesHead.png"/>
+            <ImageBrush x:Key="IconRTKAlarm" Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Dark/Con_SourcesRTKAlarm.png"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

@@ -1,29 +1,29 @@
 # Cross-Platform Migration Plan
 
-## Decision: Fresh Start in AgValoniaGPS3
+## Decision: Fresh Start in AgOpenWeb3
 
-Instead of refactoring the tangled AgValoniaGPS2 project in place, we'll create a clean new project `AgValoniaGPS3` that:
-1. Takes only the working, known-good code from AgValoniaGPS2
+Instead of refactoring the tangled AgOpenWeb2 project in place, we'll create a clean new project `AgOpenWeb3` that:
+1. Takes only the working, known-good code from AgOpenWeb2
 2. Has NO reference to SourceCode/AgOpenGPS.Core
 3. Is designed from the start for 95%/5% cross-platform split
 
 ### Why Fresh Start?
-- AgValoniaGPS2 has tangled references to SourceCode/AgOpenGPS.Core
+- AgOpenWeb2 has tangled references to SourceCode/AgOpenGPS.Core
 - Failed iOS attempt left confusing state
 - Clean break is safer and easier to reason about
-- Can always reference AgValoniaGPS2 for working code
+- Can always reference AgOpenWeb2 for working code
 
 ---
 
-## What We're Taking from AgValoniaGPS2 (Known Working)
+## What We're Taking from AgOpenWeb2 (Known Working)
 
-### From AgValoniaGPS.Models/ (models that work)
+### From AgOpenWeb.Models/ (models that work)
 - GpsData.cs, Position.cs
 - VehicleConfiguration.cs, Vehicle.cs
 - BackgroundImage.cs
 - Other domain models (no AgOpenGPS.Core dependencies)
 
-### From AgValoniaGPS.Services/ (services that work WITHOUT AgOpenGPS.Core refs)
+### From AgOpenWeb.Services/ (services that work WITHOUT AgOpenGPS.Core refs)
 - UdpCommunicationService.cs + IUdpCommunicationService.cs
 - NtripClientService.cs + INtripClientService.cs
 - NmeaParserService.cs
@@ -34,10 +34,10 @@ Instead of refactoring the tangled AgValoniaGPS2 project in place, we'll create 
 - BoundaryFileService.cs, FieldPlaneFileService.cs, BackgroundImageFileService.cs
 - DisplaySettingsService.cs + IDisplaySettingsService.cs
 
-### From AgValoniaGPS.ViewModels/
+### From AgOpenWeb.ViewModels/
 - MainViewModel.cs (bindings for GPS, modules, etc.)
 
-### From AgValoniaGPS.Desktop/ (platform-specific)
+### From AgOpenWeb.Desktop/ (platform-specific)
 - Views/MainWindow.axaml + .cs
 - Views/DataIODialog.axaml + .cs
 - Controls/OpenGLMapControl.cs
@@ -47,27 +47,27 @@ Instead of refactoring the tangled AgValoniaGPS2 project in place, we'll create 
 
 ---
 
-## New Project Structure: AgValoniaGPS3
+## New Project Structure: AgOpenWeb3
 
 ```
-/Users/chris/Code/AgValoniaGPS3/
-├── AgValoniaGPS.sln
+/Users/chris/Code/AgOpenWeb3/
+├── AgOpenWeb.sln
 ├── CLAUDE.md
 │
 ├── Shared/ (95% - cross-platform)
-│   ├── AgValoniaGPS.Models/        # Data models only
-│   ├── AgValoniaGPS.Services/      # Business logic services
-│   └── AgValoniaGPS.ViewModels/    # MVVM ViewModels
+│   ├── AgOpenWeb.Models/        # Data models only
+│   ├── AgOpenWeb.Services/      # Business logic services
+│   └── AgOpenWeb.ViewModels/    # MVVM ViewModels
 │
 └── Platforms/ (5% - platform-specific)
-    ├── AgValoniaGPS.Desktop/       # Windows/macOS/Linux desktop
+    ├── AgOpenWeb.Desktop/       # Windows/macOS/Linux desktop
     │   ├── App.axaml + .cs
     │   ├── Views/
     │   ├── Controls/OpenGLMapControl.cs
     │   ├── Converters/
     │   └── DependencyInjection/
     │
-    └── AgValoniaGPS.iOS/           # iOS
+    └── AgOpenWeb.iOS/           # iOS
         ├── App.axaml + .cs
         ├── Views/iOSMainView.axaml + .cs
         ├── Controls/ (SkiaMapControl future)
@@ -81,29 +81,29 @@ Instead of refactoring the tangled AgValoniaGPS2 project in place, we'll create 
 
 ### Phase 1: Create Project Structure
 ```bash
-mkdir -p /Users/chris/Code/AgValoniaGPS3
-cd /Users/chris/Code/AgValoniaGPS3
+mkdir -p /Users/chris/Code/AgOpenWeb3
+cd /Users/chris/Code/AgOpenWeb3
 
 # Create shared projects
-mkdir -p Shared/AgValoniaGPS.Models
-mkdir -p Shared/AgValoniaGPS.Services/Interfaces
-mkdir -p Shared/AgValoniaGPS.ViewModels
+mkdir -p Shared/AgOpenWeb.Models
+mkdir -p Shared/AgOpenWeb.Services/Interfaces
+mkdir -p Shared/AgOpenWeb.ViewModels
 
 # Create platform projects
-mkdir -p Platforms/AgValoniaGPS.Desktop/Views
-mkdir -p Platforms/AgValoniaGPS.Desktop/Controls
-mkdir -p Platforms/AgValoniaGPS.Desktop/Converters
-mkdir -p Platforms/AgValoniaGPS.Desktop/DependencyInjection
-mkdir -p Platforms/AgValoniaGPS.Desktop/Assets
+mkdir -p Platforms/AgOpenWeb.Desktop/Views
+mkdir -p Platforms/AgOpenWeb.Desktop/Controls
+mkdir -p Platforms/AgOpenWeb.Desktop/Converters
+mkdir -p Platforms/AgOpenWeb.Desktop/DependencyInjection
+mkdir -p Platforms/AgOpenWeb.Desktop/Assets
 
-mkdir -p Platforms/AgValoniaGPS.iOS/Views
-mkdir -p Platforms/AgValoniaGPS.iOS/Converters
-mkdir -p Platforms/AgValoniaGPS.iOS/DependencyInjection
+mkdir -p Platforms/AgOpenWeb.iOS/Views
+mkdir -p Platforms/AgOpenWeb.iOS/Converters
+mkdir -p Platforms/AgOpenWeb.iOS/DependencyInjection
 ```
 
 ### Phase 2: Create .csproj Files (No SourceCode References!)
 
-**Shared/AgValoniaGPS.Models/AgValoniaGPS.Models.csproj**
+**Shared/AgOpenWeb.Models/AgOpenWeb.Models.csproj**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -114,7 +114,7 @@ mkdir -p Platforms/AgValoniaGPS.iOS/DependencyInjection
 </Project>
 ```
 
-**Shared/AgValoniaGPS.Services/AgValoniaGPS.Services.csproj**
+**Shared/AgOpenWeb.Services/AgOpenWeb.Services.csproj**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -123,12 +123,12 @@ mkdir -p Platforms/AgValoniaGPS.iOS/DependencyInjection
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\AgValoniaGPS.Models\AgValoniaGPS.Models.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
   </ItemGroup>
 </Project>
 ```
 
-**Shared/AgValoniaGPS.ViewModels/AgValoniaGPS.ViewModels.csproj**
+**Shared/AgOpenWeb.ViewModels/AgOpenWeb.ViewModels.csproj**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -139,13 +139,13 @@ mkdir -p Platforms/AgValoniaGPS.iOS/DependencyInjection
   <ItemGroup>
     <PackageReference Include="ReactiveUI" Version="20.1.1" />
     <PackageReference Include="ReactiveUI.Fody" Version="19.5.41" />
-    <ProjectReference Include="..\AgValoniaGPS.Models\AgValoniaGPS.Models.csproj" />
-    <ProjectReference Include="..\AgValoniaGPS.Services\AgValoniaGPS.Services.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
   </ItemGroup>
 </Project>
 ```
 
-**Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj**
+**Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -168,14 +168,14 @@ mkdir -p Platforms/AgValoniaGPS.iOS/DependencyInjection
     <PackageReference Include="System.IO.Ports" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Shared\AgValoniaGPS.Models\AgValoniaGPS.Models.csproj" />
-    <ProjectReference Include="..\..\Shared\AgValoniaGPS.Services\AgValoniaGPS.Services.csproj" />
-    <ProjectReference Include="..\..\Shared\AgValoniaGPS.ViewModels\AgValoniaGPS.ViewModels.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
   </ItemGroup>
 </Project>
 ```
 
-**Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj**
+**Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj**
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -194,15 +194,15 @@ mkdir -p Platforms/AgValoniaGPS.iOS/DependencyInjection
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Shared\AgValoniaGPS.Models\AgValoniaGPS.Models.csproj" />
-    <ProjectReference Include="..\..\Shared\AgValoniaGPS.Services\AgValoniaGPS.Services.csproj" />
-    <ProjectReference Include="..\..\Shared\AgValoniaGPS.ViewModels\AgValoniaGPS.ViewModels.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
   </ItemGroup>
 </Project>
 ```
 
 ### Phase 3: Copy Models (Clean, No Dependencies)
-Copy from AgValoniaGPS2/AgValoniaGPS/AgValoniaGPS.Models/ to AgValoniaGPS3/Shared/AgValoniaGPS.Models/
+Copy from AgOpenWeb2/AgOpenWeb/AgOpenWeb.Models/ to AgOpenWeb3/Shared/AgOpenWeb.Models/
 
 Files to copy:
 - GpsData.cs
@@ -213,7 +213,7 @@ Files to copy:
 - Other models that don't reference AgOpenGPS.Core
 
 ### Phase 4: Copy Services (Remove AgOpenGPS.Core References)
-Copy from AgValoniaGPS2/AgValoniaGPS/AgValoniaGPS.Services/ to AgValoniaGPS3/Shared/AgValoniaGPS.Services/
+Copy from AgOpenWeb2/AgOpenWeb/AgOpenWeb.Services/ to AgOpenWeb3/Shared/AgOpenWeb.Services/
 
 Key services needed for working desktop app:
 - Interfaces/IUdpCommunicationService.cs
@@ -232,15 +232,15 @@ Key services needed for working desktop app:
 - BoundaryRecordingService.cs
 - DisplaySettingsService.cs
 
-**Important**: Remove any `using AgOpenGPS.Core.*` statements and ensure all types come from AgValoniaGPS.Models
+**Important**: Remove any `using AgOpenGPS.Core.*` statements and ensure all types come from AgOpenWeb.Models
 
 ### Phase 5: Copy ViewModels
-Copy MainViewModel.cs from AgValoniaGPS2 to AgValoniaGPS3/Shared/AgValoniaGPS.ViewModels/
+Copy MainViewModel.cs from AgOpenWeb2 to AgOpenWeb3/Shared/AgOpenWeb.ViewModels/
 
-Update imports to use AgValoniaGPS.Services.Interfaces (not AgOpenGPS.Core)
+Update imports to use AgOpenWeb.Services.Interfaces (not AgOpenGPS.Core)
 
 ### Phase 6: Copy Desktop Platform Code
-Copy from AgValoniaGPS2/AgValoniaGPS/AgValoniaGPS.Desktop/:
+Copy from AgOpenWeb2/AgOpenWeb/AgOpenWeb.Desktop/:
 - Program.cs
 - App.axaml + App.axaml.cs
 - Views/MainWindow.axaml + .cs
@@ -251,13 +251,13 @@ Copy from AgValoniaGPS2/AgValoniaGPS/AgValoniaGPS.Desktop/:
 
 Update DependencyInjection/ServiceCollectionExtensions.cs to:
 - Remove all AgOpenGPS.Core references
-- Use AgValoniaGPS.Services.Interfaces for all services
+- Use AgOpenWeb.Services.Interfaces for all services
 
 ### Phase 7: Build and Test Desktop
 ```bash
-cd /Users/chris/Code/AgValoniaGPS3
-dotnet build Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+cd /Users/chris/Code/AgOpenWeb3
+dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 Verify:
@@ -277,12 +277,12 @@ Create minimal iOS entry point:
 
 ### Phase 9: Build and Test iOS
 ```bash
-cd /Users/chris/Code/AgValoniaGPS3
-dotnet build Platforms/AgValoniaGPS.iOS/AgValoniaGPS.iOS.csproj
+cd /Users/chris/Code/AgOpenWeb3
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj
 
 # Install on simulator
 open -a Simulator
-xcrun simctl install booted bin/Debug/net10.0-ios/iossimulator-arm64/AgValoniaGPS.iOS.app
+xcrun simctl install booted bin/Debug/net10.0-ios/iossimulator-arm64/AgOpenWeb.iOS.app
 xcrun simctl launch booted com.agopengps.agvaloniagps
 ```
 
@@ -298,7 +298,7 @@ Verify:
 
 ---
 
-## Key Rules for AgValoniaGPS3
+## Key Rules for AgOpenWeb3
 
 1. **NO references to SourceCode/AgOpenGPS.Core** - ever
 2. **Shared/ projects have NO Avalonia dependencies** - pure .NET
@@ -310,9 +310,9 @@ Verify:
 
 ## Rollback Plan
 
-AgValoniaGPS2 remains untouched at:
-- `/Users/chris/Code/AgValoniaGPS2/`
+AgOpenWeb2 remains untouched at:
+- `/Users/chris/Code/AgOpenWeb2/`
 - Branch: feature/skiasharp-mobile
 - Commit: ede90f8
 
-If AgValoniaGPS3 fails, we still have the original working Desktop app in AgValoniaGPS2.
+If AgOpenWeb3 fails, we still have the original working Desktop app in AgOpenWeb2.

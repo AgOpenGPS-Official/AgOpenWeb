@@ -1,7 +1,7 @@
 # Remote / Web UI Split — Plan
 
 **Status:** Direction settled (2026-06-14). Goal and topology decided (see §0); contract design and coverage codec carried over from the original exploration. Phased plan in §7. Not yet scheduled.
-**Question that started it:** "Can we have the AgValonia UI as a web page / WASM, with the ViewModel and Model living on the host PC?"
+**Question that started it:** "Can we have the AgOpenWeb UI as a web page / WASM, with the ViewModel and Model living on the host PC?"
 
 ---
 
@@ -29,7 +29,7 @@
 
 ## 1. Why "Avalonia as WASM" isn't the answer to the question asked
 
-Avalonia has a first-class **Browser** backend (`net10.0-browser`) that compiles the .NET app to WebAssembly and renders via SkiaSharp onto an HTML canvas. Our ~92% shared layer would largely compile, and we'd add a `AgValoniaGPS.Browser` platform project alongside Desktop/iOS/Android.
+Avalonia has a first-class **Browser** backend (`net10.0-browser`) that compiles the .NET app to WebAssembly and renders via SkiaSharp onto an HTML canvas. Our ~92% shared layer would largely compile, and we'd add a `AgOpenWeb.Browser` platform project alongside Desktop/iOS/Android.
 
 But Avalonia binding is **in-process**: a View binds to a ViewModel as live .NET objects via `INotifyPropertyChanged` in the same address space. Compiling to WASM ships **View + VM + Model together into the browser**. There is no built-in seam that lets a browser-side View bind to a VM living in another process on the host.
 
@@ -269,7 +269,7 @@ message FieldState { bool field_open = 1; bool unsaved_changes = 2; }
 
 ### What the implementation forces
 
-The coverage system is already a two-layer, dirty-tracked, RLE-serialized design (`Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs`), so most streaming machinery already exists:
+The coverage system is already a two-layer, dirty-tracked, RLE-serialized design (`Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs`), so most streaming machinery already exists:
 
 | Fact from the code | Consequence |
 |---|---|
@@ -381,9 +381,9 @@ The native app keeps running throughout. **Do not cut over until parity is field
 A read-only probe of the codebase (not yet the headless-boot harness) tested both load-bearing assumptions. **No hard blocker found — the architecture is more amenable to the split than this plan originally assumed.** Verified against current `develop`:
 
 ### 9.1 VM/service view-independence (litmus test) — largely PASSES
-- **Services & Models are Avalonia-free.** `AgValoniaGPS.Services` and `AgValoniaGPS.Models` have **no** Avalonia/Skia/ReactiveUI package refs and **no** `using Avalonia` in source. Headless-ready as-is.
-- **VM Avalonia coupling is shallow.** `AgValoniaGPS.ViewModels` references `Avalonia 12.0.3`, but usage is only `Avalonia.Threading` (Dispatcher — 8 files, ~47 calls) plus a handful of `Point`/`Color`/`Application`/`Visual`/`Control` uses. No control/binding/rendering entanglement. Needs a headless dispatcher (Avalonia.Headless supplies one) + minor type localization — not surgery.
-- **The wire contract already exists in-process as `MapRenderState`.** `Shared/AgValoniaGPS.Views/Controls/MapRenderState.cs` (164 lines) is a plain-data snapshot bundling everything the map draws — camera, vehicle pose, tool/sections, coverage, boundary, headland, U-turn path, tracks, tram lines, flags. It is assembled from the `ConfigurationStore` + `ApplicationState` singletons (the pipeline) and *pushed* to the render handler; the renderer never reaches back into the VM. This maps ~1:1 onto `Scene` (boundary/tracks/headland) + `Tick` (pose/sections/youturn/guidance) + `Coverage`.
+- **Services & Models are Avalonia-free.** `AgOpenWeb.Services` and `AgOpenWeb.Models` have **no** Avalonia/Skia/ReactiveUI package refs and **no** `using Avalonia` in source. Headless-ready as-is.
+- **VM Avalonia coupling is shallow.** `AgOpenWeb.ViewModels` references `Avalonia 12.0.3`, but usage is only `Avalonia.Threading` (Dispatcher — 8 files, ~47 calls) plus a handful of `Point`/`Color`/`Application`/`Visual`/`Control` uses. No control/binding/rendering entanglement. Needs a headless dispatcher (Avalonia.Headless supplies one) + minor type localization — not surgery.
+- **The wire contract already exists in-process as `MapRenderState`.** `Shared/AgOpenWeb.Views/Controls/MapRenderState.cs` (164 lines) is a plain-data snapshot bundling everything the map draws — camera, vehicle pose, tool/sections, coverage, boundary, headland, U-turn path, tracks, tram lines, flags. It is assembled from the `ConfigurationStore` + `ApplicationState` singletons (the pipeline) and *pushed* to the render handler; the renderer never reaches back into the VM. This maps ~1:1 onto `Scene` (boundary/tracks/headland) + `Tick` (pose/sections/youturn/guidance) + `Coverage`.
 
 **Caveats to resolve when projecting `MapRenderState` → wire contract:**
 - It mixes pure data with **render objects** (`IImage`/`Bitmap`/`SKImage`/`SKBitmap`/`IBrush`/`Geometry`). The contract needs a serializable projection (coverage → tile bytes per §6; images → handles/paths). The *shape* is right; the payload is not directly serializable.
@@ -411,6 +411,6 @@ The remaining Phase 0 work is **projection/serialization + a headless dispatcher
 - `Plans/ARCHITECTURE.md` — services, state, data flow
 - `Plans/Completed/UNIFIED_CONTROL_LOOP_PLAN.md` — decoupled cadences (100/50/10 Hz, dead-reckoned position)
 - `Plans/CONFIG_STATE_AUDIT.md` — SoT cleanup the headless-VM split would force/benefit from
-- `Shared/AgValoniaGPS.Services/Coverage/CoverageMapService.cs` — coverage layers, dirty rects, COVD/COVS formats
-- `Shared/AgValoniaGPS.Models/Track/Track.cs` — unified track model
+- `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` — coverage layers, dirty rects, COVD/COVS formats
+- `Shared/AgOpenWeb.Models/Track/Track.cs` — unified track model
 - Memory: "Coverage is cell-based, not patches"; "Control cadences decoupled from GPS"; "Map-centric is non-negotiable"

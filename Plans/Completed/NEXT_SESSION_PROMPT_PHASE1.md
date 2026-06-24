@@ -21,8 +21,8 @@ Three commits landed on the branch:
 - `fa210fb` — Q4 HiddenVisualSpike (F4)
 
 All three spike controls live in
-`Shared/AgValoniaGPS.Views/Controls/Spikes/` and are wired to F-key
-toggles in `Platforms/AgValoniaGPS.Desktop/Views/MainWindow.axaml.cs`
+`Shared/AgOpenWeb.Views/Controls/Spikes/` and are wired to F-key
+toggles in `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml.cs`
 for visual A/B testing on Desktop. They are NOT mounted on iOS or
 Android (one-shot Q1/Q3 iPad verifications used a temporary swap in
 MainView that was reverted same session).
@@ -92,7 +92,7 @@ The session can be opened fresh — no need to recap Phase 0 history.
 The key reference docs to load via Read at session start:
 
 1. `Plans/GL_MAP_PIVOT_PLAN.md` — the plan
-2. `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs`
+2. `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs`
    line 3223 onward — the existing MapCompositionHandler to mirror
 3. Memory: [[gl-compositionvisual-pivot]], [[skiasharp-skmatrix44]],
    [[visibility-toggle-rule]] — all auto-load via MEMORY.md

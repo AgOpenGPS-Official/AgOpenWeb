@@ -1,6 +1,6 @@
 # Missing Services from AgOpenGPS
 
-This document tracks services and features from the original AgOpenGPS that were not extracted into AgOpenGPS.Core and need to be ported to AgValoniaGPS3.
+This document tracks services and features from the original AgOpenGPS that were not extracted into AgOpenGPS.Core and need to be ported to AgOpenWeb3.
 
 ## 1. BoundaryBuilder Service (Build Boundary From Tracks)
 
@@ -43,7 +43,7 @@ This document tracks services and features from the original AgOpenGPS that were
 **Source Files to Reference:**
 - `/SourceCodeLatest/GPS/Classes/BoundaryBuilder.cs` - Core logic
 - `/SourceCodeLatest/GPS/Forms/Field/FormBuildBoundaryFromTracks.cs` - UI/Form
-- `/AgValoniaGPS/AgValoniaGPS.ViewModels/Dialogs/FieldManagement/BuildBoundaryFromTracksViewModel.cs` - Partial Avalonia port (stub)
+- `/AgOpenWeb/AgOpenWeb.ViewModels/Dialogs/FieldManagement/BuildBoundaryFromTracksViewModel.cs` - Partial Avalonia port (stub)
 
 **Priority:** Medium - Useful for creating boundaries from guidance lines
 
@@ -145,7 +145,7 @@ This document tracks services and features from the original AgOpenGPS that were
 
 ## Notes
 
-- Services should be added to `Shared/AgValoniaGPS.Services/`
-- Interfaces should be in `Shared/AgValoniaGPS.Services/Interfaces/`
-- Models should be in `Shared/AgValoniaGPS.Models/`
-- UI panels should be in `Shared/AgValoniaGPS.Views/Controls/Dialogs/` or `Controls/Panels/`
+- Services should be added to `Shared/AgOpenWeb.Services/`
+- Interfaces should be in `Shared/AgOpenWeb.Services/Interfaces/`
+- Models should be in `Shared/AgOpenWeb.Models/`
+- UI panels should be in `Shared/AgOpenWeb.Views/Controls/Dialogs/` or `Controls/Panels/`

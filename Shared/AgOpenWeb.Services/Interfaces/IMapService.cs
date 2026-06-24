@@ -1,0 +1,146 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System.Collections.Generic;
+using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Track;
+
+namespace AgOpenWeb.Services.Interfaces;
+
+/// <summary>
+/// Service interface for map rendering and camera control.
+/// Platform-specific implementations wrap the actual map control.
+/// No Avalonia dependencies - uses primitives only.
+/// </summary>
+public interface IMapService
+{
+    // Camera/View control
+    void Toggle3DMode();
+    void Set3DMode(bool is3D);
+    bool Is3DMode { get; }
+
+    void SetPitch(double deltaRadians);
+    void SetPitchAbsolute(double pitchRadians);
+    double Pitch { get; }
+
+    void Pan(double deltaX, double deltaY);
+    void PanTo(double x, double y);
+
+    void Zoom(double factor);
+    double ZoomLevel { get; }
+
+    void Rotate(double deltaRadians);
+    void SetRotation(double radians);
+    double Rotation { get; }
+
+    void SetCamera(double x, double y, double zoom, double rotation);
+
+    // Mouse/touch interaction (position in screen coordinates)
+    void StartPan(double x, double y);
+    void StartRotate(double x, double y);
+    void UpdatePointer(double x, double y);
+    void EndInteraction();
+
+    // Content
+    void SetBoundary(Boundary? boundary);
+    void SetVehiclePosition(double easting, double northing, double headingRadians);
+
+    /// <summary>
+    /// Push the live wheel angle (signed radians, positive = right turn) so
+    /// the renderer can rotate the front-wheel sprite. Real WAS reading or
+    /// simulator slider value — see issue #336.
+    /// </summary>
+    void SetVehicleSteerAngle(double radians);
+
+    /// <summary>
+    /// Atomic update of vehicle + tool + hitch positions in a single call.
+    /// </summary>
+    void SetAllPositions(double vehicleX, double vehicleY, double vehicleHeading,
+        double toolX, double toolY, double toolHeading, double toolWidth,
+        double hitchX, double hitchY, bool toolReady);
+
+    /// <summary>
+    /// Push section layout (count + per-section width) and current states
+    /// (on/off + button color codes) to the map renderer. Pushed every cycle
+    /// from ApplyGpsCycleResult so the renderer always has fresh layout, not
+    /// just on per-property change events.
+    /// </summary>
+    void SetSectionStates(bool[] sectionOn, double[] sectionWidths, int numSections, int[] buttonStates);
+
+    // Vehicle state
+    void SetReversing(bool isReversing);
+    void SetGuidancePoints(double goalEasting, double goalNorthing, bool isActive);
+
+    // View settings
+    void SetNorthUp(bool isNorthUp);
+    void SetAutoPan(bool enabled);
+    void SetCameraFollowMode(int mode);
+    (double X, double Y) GetCameraCenter();
+    void SetDayMode(bool isDayMode);
+
+    // Flag markers
+    void SetFlags(IReadOnlyList<(double Easting, double Northing, string Color, string Name)> flags);
+
+    // Boundary recording visualization
+    void SetRecordingPoints(IReadOnlyList<(double Easting, double Northing)> points);
+    void ClearRecordingPoints();
+    void SetBoundaryOffsetIndicator(bool show, double offsetMeters = 0.0);
+
+    // Background imagery
+    void SetBackgroundImage(string imagePath, double minX, double maxY, double maxX, double minY);
+    void SetBackgroundImageWithMercator(string imagePath, double minX, double maxY, double maxX, double minY,
+        double mercMinX, double mercMaxX, double mercMinY, double mercMaxY,
+        double originLat, double originLon);
+    void ClearBackground();
+
+    // Headland visualization
+    void SetHeadlandLine(IReadOnlyList<Vec3>? headlandPoints);
+    void SetHeadlandPreview(IReadOnlyList<Vec2>? previewPoints);
+    void SetHeadlandVisible(bool visible);
+
+    // YouTurn path visualization
+    void SetYouTurnPath(IReadOnlyList<(double Easting, double Northing)>? turnPath);
+
+    // Tram line visualization
+    void SetTramLines(
+        IReadOnlyList<AgOpenWeb.Models.Base.Vec2>? outerTrack,
+        IReadOnlyList<AgOpenWeb.Models.Base.Vec2>? innerTrack,
+        IReadOnlyList<IReadOnlyList<AgOpenWeb.Models.Base.Vec2>>? parallelLines,
+        IReadOnlyList<IReadOnlyList<AgOpenWeb.Models.Base.Vec2>>? boundaryExtraLines = null);
+    void SetTramControlByte(byte controlByte);
+
+    // Track visualization for U-turns
+    void SetNextTrack(AgOpenWeb.Models.Track.Track? track);
+    void SetIsInYouTurn(bool isInTurn);
+
+    // Active Track for guidance
+    void SetActiveTrack(AgOpenWeb.Models.Track.Track? track);
+    void SetBaseTrack(AgOpenWeb.Models.Track.Track? track);
+
+    // Recorded path / contour strip visualization
+    void SetRecordedPaths(IReadOnlyList<AgOpenWeb.Models.Track.Track> paths);
+    void SetContourStrips(IReadOnlyList<AgOpenWeb.Models.Track.Track> strips);
+
+    // Coverage bitmap initialization
+    // Initialize coverage bitmap with field bounds on field load
+    // If background image is set, composites it; otherwise initializes to black
+    void InitializeCoverageBitmapWithBounds(double minE, double maxE, double minN, double maxN);
+
+    // Rebuild the coverage display bitmap at the current bounds after a
+    // DisplayResolutionMultiplier change (repaints from detection cells; preserves camera).
+    void RebuildCoverageBitmapForResolutionChange();
+}

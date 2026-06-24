@@ -1,0 +1,294 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:vm="using:AgOpenWeb.ViewModels"
+             xmlns:controls="using:AgOpenWeb.Views.Controls"
+             x:Class="AgOpenWeb.Views.Controls.Panels.ScreenAlertsPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding IsScreenAlertsPanelVisible}"
+             IsHitTestVisible="{Binding IsScreenAlertsPanelVisible}">
+
+    <UserControl.Styles>
+        <!-- Horizontal toggle row: icon on the left, label next to it. State is
+             driven by Classes.Active (per the project's prefer-classes-over-
+             converters guidance): light blue-gray off, dark blue-gray on, both
+             pulled from the Fluent theme palette. Font matches the other panels
+             (size 12, normal weight, theme foreground). Custom template so the
+             bound fill isn't replaced on pointer-over. -->
+        <Style Selector="Button.SaRow">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.SaRow.Active">
+            <Setter Property="Background" Value="{DynamicResource ToggleOnBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ToggleOnForegroundBrush}"/>
+        </Style>
+        <!-- Glyph "icon" for rows that have no PNG, sized to match the 24px images -->
+        <Style Selector="TextBlock.SaGlyph">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.SaGroupHeader">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
+            <Setter Property="Margin" Value="2,4,0,2"/>
+        </Style>
+
+        <!-- Extra-Guides numeric entry box, styled to match the toggle rows:
+             rounded, borderless, light blue-gray fill. -->
+        <Style Selector="Button.TappableValue">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="MinWidth" Value="64"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.TappableValue:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+        </Style>
+        <Style Selector="Button.TappableValue TextBlock.LargeValue">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Desktop (KeyboardEnabled off) shows the inline TextBox instead of the
+             tappable button — restyle it the same way: rounded, borderless,
+             light blue-gray fill, including its template border across states so
+             the Fluent outline/underline doesn't show through. -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="MinHeight" Value="44"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{DynamicResource ToggleOffBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+    </UserControl.Styles>
+
+    <controls:FloatingPanel x:Name="FP"
+                            Title="{loc:Localize ScreenAndAlerts}"
+                            CloseCommand="{Binding CloseAllNavFlyoutsCommand}">
+        <controls:FloatingPanel.PanelContent>
+            <StackPanel Spacing="2" Width="470"
+                        DataContext="{Binding ConfigurationViewModel}" x:DataType="vm:ConfigurationViewModel">
+
+                <!-- ===== Display ===== -->
+                <TextBlock Text="{loc:Localize Display}" Classes="SaGroupHeader"/>
+                <UniformGrid Columns="3">
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.GridVisible}"
+                            Command="{Binding ToggleGridCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_Grid.png" Width="24" Height="24"/>
+                            <TextBlock Text="{loc:Localize Grid}" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.FieldTextureVisible}"
+                            Command="{Binding ToggleFieldTextureCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_FloorTexture.png" Width="24" Height="24"/>
+                            <TextBlock Text="Field Texture" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.FieldTextureMoveable}"
+                            Command="{Binding ToggleFieldTextureMoveableCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_FloorTexture.png" Width="24" Height="24"/>
+                            <TextBlock Text="Texture Moves" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.SvennArrowVisible}"
+                            Command="{Binding ToggleSvennArrowCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_SvennArrow.png" Width="24" Height="24"/>
+                            <TextBlock Text="Svenn Arrow" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.HeadlandDistanceVisible}"
+                            Command="{Binding ToggleHeadlandDistanceCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_HeadlandDistance.png" Width="24" Height="24"/>
+                            <TextBlock Text="Next Boundary Dist" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.LineSmoothEnabled}"
+                            Command="{Binding ToggleLineSmoothCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <TextBlock Classes="SaGlyph" Text="AA"/>
+                            <TextBlock Text="Smoothing" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.AutoDayNight}"
+                            Command="{Binding ToggleAutoDayNightCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_AutoDayNight.png" Width="24" Height="24"/>
+                            <TextBlock Text="Auto Day/Night" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding PersistentState.IsDayMode}"
+                            Command="{Binding ToggleDayNightThemeCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <TextBlock Classes="SaGlyph" Text="☀"/>
+                            <TextBlock Text="Light Theme" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding !PersistentState.IsDayMode}"
+                            Command="{Binding ToggleDayNightThemeCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <TextBlock Classes="SaGlyph" Text="☾"/>
+                            <TextBlock Text="Dark Theme" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.HardwareMessagesEnabled}"
+                            Command="{Binding ToggleHardwareMessagesCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Border Width="24" Height="24" Background="{DynamicResource IconModulesMachine}"/>
+                            <TextBlock Text="AiO Board Msgs" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- Row 4: Extra Guides toggle next to its guide-count field
+                         (field sized to one button width). -->
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.ExtraGuidelines}"
+                            Command="{Binding ToggleExtraGuidelinesCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConD_ExtraGuides.png" Width="24" Height="24"/>
+                            <TextBlock Text="Extra Guides" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <controls:EditableNumericField Margin="2" BoxWidth="139"
+                        HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                        Value="{Binding Display.ExtraGuidelinesCount, Mode=TwoWay}"
+                        Unit="" FormatString="F0"
+                        EditCommand="{Binding EditExtraGuidelinesCountCommand}"/>
+                    <!-- Row 5: Quality cycle, styled like an off-state row, loner -->
+                    <Button Classes="SaRow" ClickMode="Press"
+                            DataContext="{Binding $parent[UserControl].DataContext}" x:DataType="vm:MainViewModel"
+                            Command="{Binding CycleDisplayResolutionCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <TextBlock Text="Quality:" VerticalAlignment="Center" FontSize="12"/>
+                            <TextBlock Text="{Binding DisplayResolutionLabel}" FontWeight="Bold" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                </UniformGrid>
+
+                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,6"/>
+
+                <!-- ===== On-Screen Buttons ===== -->
+                <TextBlock Text="{loc:Localize OnScreenButtons}" Classes="SaGroupHeader"/>
+                <UniformGrid Columns="3">
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.UTurnButtonVisible}"
+                            Command="{Binding ToggleUTurnButtonCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/Con_UTurnMenu.png" Width="24" Height="24"/>
+                            <TextBlock Text="U-Turn" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.LateralButtonVisible}"
+                            Command="{Binding ToggleLateralButtonCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/ABSnapNudgeMenu.png" Width="24" Height="24"/>
+                            <TextBlock Text="Lateral" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                </UniformGrid>
+
+                <Separator Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="0,6"/>
+
+                <!-- ===== Alerts & Sounds ===== -->
+                <TextBlock Text="{loc:Localize AlertsSounds}" Classes="SaGroupHeader"/>
+                <UniformGrid Columns="3">
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.AutoSteerSound}"
+                            Command="{Binding ToggleAutoSteerSoundCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConF_SteerSound.png" Width="24" Height="24"/>
+                            <TextBlock Text="Auto Steer" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.UTurnSound}"
+                            Command="{Binding ToggleUTurnSoundCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConF_TurnSound.png" Width="24" Height="24"/>
+                            <TextBlock Text="U-Turn" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.HydraulicSound}"
+                            Command="{Binding ToggleHydraulicSoundCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConF_HydLiftSound.png" Width="24" Height="24"/>
+                            <TextBlock Text="Hydraulic" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="SaRow" Classes.Active="{Binding Display.SectionsSound}"
+                            Command="{Binding ToggleSectionsSoundCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" IsHitTestVisible="False">
+                            <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConF_SoundSections.png" Width="24" Height="24"/>
+                            <TextBlock Text="Sections" VerticalAlignment="Center" FontSize="12"/>
+                        </StackPanel>
+                    </Button>
+                </UniformGrid>
+
+            </StackPanel>
+        </controls:FloatingPanel.PanelContent>
+    </controls:FloatingPanel>
+
+</UserControl>

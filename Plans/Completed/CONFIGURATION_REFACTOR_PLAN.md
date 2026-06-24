@@ -647,9 +647,9 @@ public class ConfigurationViewModel : ReactiveObject
     // Image sources based on vehicle type (computed)
     public string WheelbaseImageSource => Vehicle.Type switch
     {
-        VehicleType.Harvester => "avares://AgValoniaGPS.Views/Assets/Icons/RadiusWheelBaseHarvester.png",
-        VehicleType.FourWD => "avares://AgValoniaGPS.Views/Assets/Icons/RadiusWheelBaseArticulated.png",
-        _ => "avares://AgValoniaGPS.Views/Assets/Icons/RadiusWheelBase.png"
+        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/RadiusWheelBaseHarvester.png",
+        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/RadiusWheelBaseArticulated.png",
+        _ => "avares://AgOpenWeb.Views/Assets/Icons/RadiusWheelBase.png"
     };
 
     private void Save()

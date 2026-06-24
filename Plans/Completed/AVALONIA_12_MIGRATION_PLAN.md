@@ -73,7 +73,7 @@ Add `CommunityToolkit.Mvvm` to ViewModels and Models projects. Keep ReactiveUI t
 
 Convert `ReactiveObject` → `ObservableObject`, `RaiseAndSetIfChanged` → `SetProperty` or `[ObservableProperty]`.
 
-**Files** in `Shared/AgValoniaGPS.Models/Configuration/` and `Shared/AgValoniaGPS.Models/State/`:
+**Files** in `Shared/AgOpenWeb.Models/Configuration/` and `Shared/AgOpenWeb.Models/State/`:
 - VehicleConfig, ToolConfig, GuidanceConfig, AutoSteerConfig, DisplayConfig
 - HotkeyConfig, NtripConfig, UDPConfig
 - GuidanceState, FieldState, VehicleState, UIState, RecordedPathState
@@ -106,7 +106,7 @@ Note: `[ObservableProperty]` generates the public property, PropertyChanged, and
 
 Convert `ReactiveCommand` → `[RelayCommand]` attributes.
 
-**Files** in `Shared/AgValoniaGPS.ViewModels/`:
+**Files** in `Shared/AgOpenWeb.ViewModels/`:
 - `MainViewModel.cs` + all `MainViewModel.Commands.*.cs` partials (~469 commands)
 - `ConfigurationViewModel.cs`
 - `AutoSteerConfigViewModel.cs`
@@ -187,7 +187,7 @@ Change to:
 3. When done, `Dispatcher.UIThread.Post(() => InvalidateVisual())`
 4. LOD rebuilds also move to background
 
-**File**: `Shared/AgValoniaGPS.Views/Controls/DrawingContextMapControl.cs`
+**File**: `Shared/AgOpenWeb.Views/Controls/DrawingContextMapControl.cs`
 
 ### Phase 3: Avalonia 12 Package Swap ✅ Done
 

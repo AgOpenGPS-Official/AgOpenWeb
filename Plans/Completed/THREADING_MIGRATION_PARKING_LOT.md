@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -267,7 +267,7 @@ can miss aliased writes). Or both.
   All three mutable `ObservableObject` types in `ApplicationState`
   now have reflection-level cycle-to-UI direction enforcement. The
   final acceptance grep — `grep -rn '_appState\.\w+\.\w+\s*='
-  Shared/AgValoniaGPS.Services` — returns **zero** after E1 moved
+  Shared/AgOpenWeb.Services` — returns **zero** after E1 moved
   the LocalPlane auto-create off the cycle thread. §0 invariant
   satisfied end-to-end for `FieldState`/`YouTurnState`/`GuidanceState`.
   Only `ConnectionState` remains (Phase F). Post-migration analyzer
@@ -283,7 +283,7 @@ can miss aliased writes). Or both.
   every service-side write to any observable state returns **zero**:
   ```
   grep -rn 'State\.\w+\.\w+\s*=\|_appState\.\w+\.\w+\s*='
-       Shared/AgValoniaGPS.Services
+       Shared/AgOpenWeb.Services
   ```
   The migration is complete. Post-migration TMP-006 resolution
   (analyzer / CI grep) is now a **deliberate choice** rather than
@@ -415,7 +415,7 @@ day Phase C's branch is cut; commit alongside the Phase C PR.
 - **Decide by:** Phase B C6 (acceptance smoke test) — if the behavior
   change is noticeable on real hardware, decide whether to keep,
   temporarily disable, or back out.
-- **Source:** `Shared/AgValoniaGPS.Services/NmeaParserService.cs:209` —
+- **Source:** `Shared/AgOpenWeb.Services/NmeaParserService.cs:209` —
   `ProcessHeading(gpsHeading, speedMs, gpsData.CurrentPosition.Easting, gpsData.CurrentPosition.Northing)`
 
 **Why parked.** Today `NmeaParserService.ProcessHeading` is called with
@@ -464,7 +464,7 @@ imperceptible. If regression, options:
 - **Decide by:** Post-threading-migration — investigated separately from
   the threading work since it is not caused by it.
 - **Tracked as:** [Issue #267 — UI stalls for a fraction of a second on
-  tooltip balloon appearance](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/267)
+  tooltip balloon appearance](https://github.com/AgOpenGPS-Official/AgOpenWeb/issues/267)
 
 **Symptom.** Mouse hovers over any button (sidebar, bottom bar, or
 floating panel); after the normal tooltip delay, the balloon appears
@@ -567,12 +567,12 @@ with zero Phase-C code on the UI thread exhibits the same stall.
   plots an **immediate** Dubins-like arc at the tractor's current
   position rather than a headland-based entry-arc-exit, and (b) the
   guidance line visually shifts to the new post-turn pass. That's not
-  a bug in AgValoniaGPS — it's a missing feature. Tracked as a real
+  a bug in AgOpenWeb — it's a missing feature. Tracked as a real
   feature request, not a threading-migration blocker:
   - [Issue #260 — Manual U-turn: immediate turn at tractor position
-    (AgOpen parity)](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/260)
-    (GitHub project "AgValoniaGPS", Planning column)
-  - [Issue #261 — Free-drive: guidance line follows the tractor](https://github.com/AgOpenGPS-Official/AgValoniaGPS/issues/261)
+    (AgOpen parity)](https://github.com/AgOpenGPS-Official/AgOpenWeb/issues/260)
+    (GitHub project "AgOpenWeb", Planning column)
+  - [Issue #261 — Free-drive: guidance line follows the tractor](https://github.com/AgOpenGPS-Official/AgOpenWeb/issues/261)
     (same project, Planning column)
 
   Phase C C2 proceeds on the existing manual-U-turn behavior; the

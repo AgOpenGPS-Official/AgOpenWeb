@@ -5,9 +5,9 @@ Branch: `perf-05/instrumentation`.
 
 Devices:
 - **iPad Pro 12.9" 2nd gen** (UDID `d2fcb0323a90ad2954ab501f2603cd7573d99b2a`,
-  bundle `com.agvaloniaagps.ios`)
+  bundle `com.agopenweb.ios`)
 - **Samsung Android tablet R52TB090VAK** (package
-  `com.agvaloniaagps.android`)
+  `com.agopenweb.android`)
 
 Output: one log file per (platform, scenario) at
 `Plans/perf_data/2026-05-20/<platform>/<scenario>.log`. The whole `*.log` set

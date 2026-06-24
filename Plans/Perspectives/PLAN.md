@@ -19,7 +19,7 @@ overlays stay constant across all tabs.
 1. The toolbar redesign (PRs #155 onward) reduced cognitive load but
    the cockpit still has too many simultaneously-visible controls for a
    tablet operator running one job.
-2. AgValoniaGPS targets tablets used in landscape inside a tractor cab.
+2. AgOpenWeb targets tablets used in landscape inside a tractor cab.
    Mobile apps almost universally use task-scoped tabs for this exact
    reason; a vertical tab strip is the natural shape on landscape
    tablets.
@@ -53,7 +53,7 @@ overlays stay constant across all tabs.
 ## Data model
 
 ```csharp
-// Shared/AgValoniaGPS.Models/Perspectives/
+// Shared/AgOpenWeb.Models/Perspectives/
 
 public class Perspective : ObservableObject
 {
@@ -97,7 +97,7 @@ Behavior:
 ### Element registry
 
 A static catalog of every toggleable element, owned by
-`Shared/AgValoniaGPS.Models/Perspectives/ElementRegistry.cs`.
+`Shared/AgOpenWeb.Models/Perspectives/ElementRegistry.cs`.
 
 ```csharp
 public static class ElementRegistry

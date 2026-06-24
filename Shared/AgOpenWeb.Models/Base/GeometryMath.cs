@@ -1,0 +1,617 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+
+namespace AgOpenWeb.Models.Base
+{
+    /// <summary>
+    /// Geometry and mathematical utility functions for agricultural applications
+    /// </summary>
+    public static class GeometryMath
+    {
+        #region Unit Conversion Constants
+
+        // Inches to meters
+        public const double in2m = 0.0254;
+
+        // Meters to inches
+        public const double m2in = 39.3701;
+
+        // Meters to feet
+        public const double m2ft = 3.28084;
+
+        // Feet to meters
+        public const double ft2m = 0.3048;
+
+        // Hectare to Acres
+        public const double ha2ac = 2.47105;
+
+        // Acres to Hectare
+        public const double ac2ha = 0.404686;
+
+        // Meters to Acres
+        public const double m2ac = 0.000247105;
+
+        // Meters to Hectare
+        public const double m2ha = 0.0001;
+
+        // Liters per hectare to US gal per acre
+        public const double galAc2Lha = 9.35396;
+
+        // US gal per acre to liters per hectare
+        public const double LHa2galAc = 0.106907;
+
+        // Liters to Gallons
+        public const double L2Gal = 0.264172;
+
+        // Gallons to Liters
+        public const double Gal2L = 3.785412534258;
+
+        // The pi's
+        public const double twoPI = 6.28318530717958647692;
+        public const double PIBy2 = 1.57079632679489661923;
+
+        #endregion
+
+        #region Angle Conversions
+
+        public static double ToDegrees(double radians)
+        {
+            return radians * 57.295779513082325225835265587528;
+        }
+
+        public static double ToRadians(double degrees)
+        {
+            return degrees * 0.01745329251994329576923690768489;
+        }
+
+        /// <summary>
+        /// Absolute angle difference (range 0–π)
+        /// </summary>
+        public static double AngleDiff(double angle1, double angle2)
+        {
+            double diff = Math.Abs(angle1 - angle2);
+            if (diff > Math.PI) diff = twoPI - diff;
+            return diff;
+        }
+
+        #endregion
+
+        #region Point and Range Tests
+
+        public static bool InRangeBetweenAB(double start_x, double start_y, double end_x, double end_y,
+            double point_x, double point_y)
+        {
+            double dx = end_x - start_x;
+            double dy = end_y - start_y;
+            double innerProduct = (point_x - start_x) * dx + (point_y - start_y) * dy;
+            return 0 <= innerProduct && innerProduct <= dx * dx + dy * dy;
+        }
+
+        public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec3 testPoint)
+        {
+            bool result = false;
+            int j = polygon.Count - 1;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
+                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
+                {
+                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
+                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
+                        < testPoint.Northing)
+                    {
+                        result = !result;
+                    }
+                }
+                j = i;
+            }
+            return result;
+        }
+
+        public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec2 testPoint)
+        {
+            bool result = false;
+            int j = polygon.Count - 1;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
+                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
+                {
+                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
+                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
+                        < testPoint.Northing)
+                    {
+                        result = !result;
+                    }
+                }
+                j = i;
+            }
+            return result;
+        }
+
+        public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec2 testPoint)
+        {
+            bool result = false;
+            int j = polygon.Count - 1;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
+                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
+                {
+                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
+                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
+                        < testPoint.Northing)
+                    {
+                        result = !result;
+                    }
+                }
+                j = i;
+            }
+            return result;
+        }
+
+        public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec3 testPoint)
+        {
+            bool result = false;
+            int j = polygon.Count - 1;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
+                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
+                {
+                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
+                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
+                        < testPoint.Northing)
+                    {
+                        result = !result;
+                    }
+                }
+                j = i;
+            }
+            return result;
+        }
+
+        #endregion
+
+        #region Polyline simplification
+
+        /// <summary>
+        /// Douglas-Peucker simplification of an open polyline (iterative; safe for very
+        /// large inputs). Drops points whose perpendicular deviation from the retained
+        /// chord is within <paramref name="tolerance"/> meters, preserving endpoints and
+        /// curve detail. Used to decimate dense derived geometry (e.g. tram lines built
+        /// from a dense boundary) for storage and rendering.
+        /// </summary>
+        public static List<Vec2> SimplifyPolyline(IReadOnlyList<Vec2> points, double tolerance)
+        {
+            int n = points?.Count ?? 0;
+            if (points == null || n < 3)
+                return points == null ? new List<Vec2>() : new List<Vec2>(points);
+
+            var keep = new bool[n];
+            keep[0] = true;
+            keep[n - 1] = true;
+
+            double tolSq = tolerance * tolerance;
+            var stack = new Stack<(int start, int end)>();
+            stack.Push((0, n - 1));
+
+            while (stack.Count > 0)
+            {
+                var (start, end) = stack.Pop();
+                if (end - start < 2) continue;
+
+                var a = points[start];
+                var b = points[end];
+                double dx = b.Easting - a.Easting;
+                double dy = b.Northing - a.Northing;
+                double lenSq = dx * dx + dy * dy;
+
+                double maxDistSq = -1;
+                int maxIdx = -1;
+                for (int i = start + 1; i < end; i++)
+                {
+                    var p = points[i];
+                    double distSq;
+                    if (lenSq < 1e-12)
+                    {
+                        double ddx = p.Easting - a.Easting, ddy = p.Northing - a.Northing;
+                        distSq = ddx * ddx + ddy * ddy;
+                    }
+                    else
+                    {
+                        double cross = (p.Easting - a.Easting) * dy - (p.Northing - a.Northing) * dx;
+                        distSq = (cross * cross) / lenSq;
+                    }
+                    if (distSq > maxDistSq) { maxDistSq = distSq; maxIdx = i; }
+                }
+
+                if (maxIdx >= 0 && maxDistSq > tolSq)
+                {
+                    keep[maxIdx] = true;
+                    stack.Push((start, maxIdx));
+                    stack.Push((maxIdx, end));
+                }
+            }
+
+            var result = new List<Vec2>(n);
+            for (int i = 0; i < n; i++)
+                if (keep[i]) result.Add(points[i]);
+            return result;
+        }
+
+        #endregion
+
+        #region Catmull-Rom Spline
+
+        /// <summary>
+        /// Catmull-Rom interpoint spline calculation
+        /// </summary>
+        public static Vec3 Catmull(double t, Vec3 p0, Vec3 p1, Vec3 p2, Vec3 p3)
+        {
+            double tt = t * t;
+            double ttt = tt * t;
+
+            double q1 = -ttt + 2.0f * tt - t;
+            double q2 = 3.0f * ttt - 5.0f * tt + 2.0f;
+            double q3 = -3.0f * ttt + 4.0f * tt + t;
+            double q4 = ttt - tt;
+
+            double tx = 0.5f * (p0.Easting * q1 + p1.Easting * q2 + p2.Easting * q3 + p3.Easting * q4);
+            double ty = 0.5f * (p0.Northing * q1 + p1.Northing * q2 + p2.Northing * q3 + p3.Northing * q4);
+
+            return new Vec3(tx, ty, 0);
+        }
+
+        #endregion
+
+        #region Distance Calculations
+
+        public static double Distance(double east1, double north1, double east2, double north2)
+        {
+            double de = east1 - east2, dn = north1 - north2;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(Vec2 first, Vec2 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(Vec2 first, Vec3 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(Vec3 first, Vec2 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(Vec3 first, Vec3 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(Vec2 first, double east, double north)
+        {
+            double de = first.Easting - east, dn = first.Northing - north;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(Vec3 first, double east, double north)
+        {
+            double de = first.Easting - east, dn = first.Northing - north;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(VecFix2Fix first, Vec2 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        public static double Distance(VecFix2Fix first, VecFix2Fix second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return Math.Sqrt(de * de + dn * dn);
+        }
+
+        #endregion
+
+        #region Distance Squared (Optimized)
+
+        /// <summary>
+        /// Not normalized distance, no square root - faster for comparisons
+        /// </summary>
+        public static double DistanceSquared(double northing1, double easting1, double northing2, double easting2)
+        {
+            double de = easting1 - easting2, dn = northing1 - northing2;
+            return de * de + dn * dn;
+        }
+
+        public static double DistanceSquared(Vec3 first, Vec2 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return de * de + dn * dn;
+        }
+
+        public static double DistanceSquared(Vec2 first, Vec3 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return de * de + dn * dn;
+        }
+
+        public static double DistanceSquared(Vec3 first, Vec3 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return de * de + dn * dn;
+        }
+
+        public static double DistanceSquared(Vec2 first, Vec2 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return de * de + dn * dn;
+        }
+
+        public static double DistanceSquared(VecFix2Fix first, Vec2 second)
+        {
+            double de = first.Easting - second.Easting, dn = first.Northing - second.Northing;
+            return de * de + dn * dn;
+        }
+
+        #endregion
+
+        #region Raycasting
+
+        /// <summary>
+        /// Performs a raycast from the origin point in the direction of the heading.
+        /// Used for HeadlandProximity and the distance to the headland.
+        /// </summary>
+        public static Vec2? RaycastToPolygon(Vec3 origin, IReadOnlyList<Vec3> polygon)
+        {
+            Vec2 from = origin.ToVec2();
+            Vec2 dir = new Vec2(Math.Sin(origin.Heading), Math.Cos(origin.Heading));
+
+            double minDist = double.MaxValue;
+            Vec2? closest = null;
+
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Vec2 p1 = polygon[i].ToVec2();
+                Vec2 p2 = polygon[(i + 1) % polygon.Count].ToVec2();
+
+                if (TryRaySegmentIntersection(from, dir, p1, p2, out Vec2 intersection))
+                {
+                    double dist = Distance(from, intersection);
+                    if (dist < minDist)
+                    {
+                        minDist = dist;
+                        closest = intersection;
+                    }
+                }
+            }
+
+            return closest;
+        }
+
+        public static bool TryRaySegmentIntersection(Vec2 rayOrigin, Vec2 rayDir, Vec2 segA, Vec2 segB, out Vec2 intersection)
+        {
+            intersection = new Vec2();
+
+            double dx = segB.Easting - segA.Easting;
+            double dy = segB.Northing - segA.Northing;
+
+            double det = (-rayDir.Easting * dy + dx * rayDir.Northing);
+            if (Math.Abs(det) < 1e-8) return false; // parallel
+
+            double s = (-dy * (segA.Easting - rayOrigin.Easting) + dx * (segA.Northing - rayOrigin.Northing)) / det;
+            double t = (rayDir.Easting * (segA.Northing - rayOrigin.Northing) - rayDir.Northing * (segA.Easting - rayOrigin.Easting)) / det;
+
+            if (s >= 0 && t >= 0 && t <= 1)
+            {
+                intersection = new Vec2(rayOrigin.Easting + s * rayDir.Easting, rayOrigin.Northing + s * rayDir.Northing);
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Shortest distance from a point to a finite line segment.
+        /// Degenerate segments (zero length) fall back to point-to-point distance.
+        /// </summary>
+        public static double PointToSegmentDistance(double px, double py, double ax, double ay, double bx, double by)
+        {
+            double dx = bx - ax;
+            double dy = by - ay;
+            double lenSq = dx * dx + dy * dy;
+
+            if (lenSq < 1e-10)
+                return Math.Sqrt((px - ax) * (px - ax) + (py - ay) * (py - ay));
+
+            double t = Math.Max(0, Math.Min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+            double projX = ax + t * dx;
+            double projY = ay + t * dy;
+
+            return Math.Sqrt((px - projX) * (px - projX) + (py - projY) * (py - projY));
+        }
+
+        /// <summary>
+        /// Shortest distance from a point to a finite line segment (Vec2 overload).
+        /// </summary>
+        public static double PointToSegmentDistance(Vec2 point, Vec2 segA, Vec2 segB)
+            => PointToSegmentDistance(point.Easting, point.Northing,
+                segA.Easting, segA.Northing, segB.Easting, segB.Northing);
+
+        /// <summary>
+        /// True iff the two closed line segments A1-A2 and B1-B2 intersect (endpoints inclusive).
+        /// Collinear (parallel) segments return false.
+        /// </summary>
+        public static bool SegmentsIntersect(double ax1, double ay1, double ax2, double ay2,
+                                             double bx1, double by1, double bx2, double by2)
+        {
+            double d = (ax1 - ax2) * (by1 - by2) - (ay1 - ay2) * (bx1 - bx2);
+            if (Math.Abs(d) < 1e-10) return false;
+
+            double t = ((ax1 - bx1) * (by1 - by2) - (ay1 - by1) * (bx1 - bx2)) / d;
+            double u = -((ax1 - ax2) * (ay1 - by1) - (ay1 - ay2) * (ax1 - bx1)) / d;
+
+            return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+        }
+
+        /// <summary>
+        /// Intersection point of the two closed segments A1-A2 and B1-B2, or null if they
+        /// don't meet (including collinear/parallel cases).
+        /// </summary>
+        public static Vec2? TryGetSegmentIntersection(double ax1, double ay1, double ax2, double ay2,
+                                                      double bx1, double by1, double bx2, double by2)
+        {
+            double d = (ax1 - ax2) * (by1 - by2) - (ay1 - ay2) * (bx1 - bx2);
+            if (Math.Abs(d) < 1e-10) return null;
+
+            double t = ((ax1 - bx1) * (by1 - by2) - (ay1 - by1) * (bx1 - bx2)) / d;
+            double u = -((ax1 - ax2) * (ay1 - by1) - (ay1 - ay2) * (ax1 - bx1)) / d;
+
+            if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
+                return new Vec2(ax1 + t * (ax2 - ax1), ay1 + t * (ay2 - ay1));
+
+            return null;
+        }
+
+        #endregion
+
+        #region Coordinate Transform (for Segment-Based Coverage)
+
+        /// <summary>
+        /// Transform a world point to local coordinates where the section
+        /// center is at origin and section heading aligns with positive Y-axis.
+        /// X-axis represents the section width (left = negative, right = positive).
+        /// </summary>
+        /// <param name="worldPoint">Point in world coordinates.</param>
+        /// <param name="sectionCenter">Center of the section in world coordinates.</param>
+        /// <param name="sectionHeading">Section heading in radians.</param>
+        /// <returns>Point in local coordinates (X = across section, Y = along heading).</returns>
+        public static Vec2 ToLocalCoords(Vec2 worldPoint, Vec2 sectionCenter, double sectionHeading)
+        {
+            double cos = Math.Cos(-sectionHeading);
+            double sin = Math.Sin(-sectionHeading);
+
+            double dx = worldPoint.Easting - sectionCenter.Easting;
+            double dy = worldPoint.Northing - sectionCenter.Northing;
+
+            return new Vec2(
+                dx * cos - dy * sin,  // X in local coords (across section)
+                dx * sin + dy * cos   // Y in local coords (along heading)
+            );
+        }
+
+        /// <summary>
+        /// Optimized transform using precomputed sin/cos values.
+        /// Use this when transforming many points with the same heading.
+        /// </summary>
+        public static Vec2 ToLocalCoords(Vec2 worldPoint, Vec2 sectionCenter, double cos, double sin)
+        {
+            double dx = worldPoint.Easting - sectionCenter.Easting;
+            double dy = worldPoint.Northing - sectionCenter.Northing;
+
+            return new Vec2(dx * cos - dy * sin, dx * sin + dy * cos);
+        }
+
+        /// <summary>
+        /// Find X coordinate where edge from p1 to p2 crosses a given Y threshold.
+        /// Returns null if edge doesn't cross the threshold.
+        /// Points are in local coordinates where Y is the heading direction.
+        /// </summary>
+        /// <param name="p1">First point of edge (in local coords).</param>
+        /// <param name="p2">Second point of edge (in local coords).</param>
+        /// <param name="yThreshold">Y value to check (0 = current position, positive = look-ahead).</param>
+        /// <returns>X intercept or null if edge doesn't cross threshold.</returns>
+        public static double? GetXInterceptAtY(Vec2 p1, Vec2 p2, double yThreshold = 0)
+        {
+            // Shift Y values relative to threshold
+            double y1 = p1.Northing - yThreshold;
+            double y2 = p2.Northing - yThreshold;
+
+            // Both above or both below threshold? No crossing.
+            if ((y1 > 0) == (y2 > 0) && y1 != 0 && y2 != 0)
+                return null;
+
+            // Avoid division by zero for horizontal edges
+            double dy = y2 - y1;
+            if (Math.Abs(dy) < 1e-10)
+                return null;
+
+            // Linear interpolation: find t where Y = yThreshold
+            double t = -y1 / dy;
+            return p1.Easting + t * (p2.Easting - p1.Easting);
+        }
+
+        /// <summary>
+        /// Convenience overload for Y=0 (current section position).
+        /// </summary>
+        public static double? GetXInterceptAtYZero(Vec2 p1, Vec2 p2)
+            => GetXInterceptAtY(p1, p2, 0);
+
+        #endregion
+
+        #region Interval Merging
+
+        /// <summary>
+        /// Merge overlapping or adjacent intervals into non-overlapping set.
+        /// </summary>
+        /// <param name="intervals">List of (start, end) intervals.</param>
+        /// <returns>Merged non-overlapping intervals sorted by start.</returns>
+        public static List<(double Start, double End)> MergeIntervals(List<(double Start, double End)> intervals)
+        {
+            if (intervals.Count == 0)
+                return new List<(double, double)>();
+
+            // Sort by start position
+            intervals.Sort((a, b) => a.Start.CompareTo(b.Start));
+
+            var merged = new List<(double Start, double End)>();
+            var current = intervals[0];
+
+            for (int i = 1; i < intervals.Count; i++)
+            {
+                if (intervals[i].Start <= current.End)
+                {
+                    // Overlapping or adjacent - extend current
+                    current.End = Math.Max(current.End, intervals[i].End);
+                }
+                else
+                {
+                    // Gap - save current, start new
+                    merged.Add(current);
+                    current = intervals[i];
+                }
+            }
+
+            merged.Add(current);
+            return merged;
+        }
+
+        #endregion
+    }
+}

@@ -1,0 +1,208 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:conv="clr-namespace:AgOpenWeb.Views.Converters;assembly=AgOpenWeb.Views"
+             xmlns:controls="clr-namespace:AgOpenWeb.Views.Controls;assembly=AgOpenWeb.Views"
+             mc:Ignorable="d" d:DesignWidth="620" d:DesignHeight="550"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.Configuration.MachineSubTabs.MachineModuleSubTab"
+             x:DataType="vm:ConfigurationViewModel">
+
+    <UserControl.Styles>
+        <!-- Toggle Button with custom template for instant feedback -->
+        <Style Selector="Button.ToggleButton">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- Action Button (non-toggle) -->
+        <Style Selector="Button.ActionButton">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundAltHighBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseMediumHighBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style Selector="Button.ActionButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+        </Style>
+
+        <!-- Settings Panel -->
+        <Style Selector="Border.SettingsPanel">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12"/>
+        </Style>
+
+        <!-- Section Header -->
+        <Style Selector="TextBlock.SectionHeader">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource StatusOkBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <Grid ColumnDefinitions="*,Auto" Margin="16,8,16,16">
+            <!-- LEFT: Hydraulic Lift Config -->
+            <StackPanel Grid.Column="0" Spacing="12">
+                <TextBlock Text="Hydraulic Lift Config" Classes="SectionHeader" FontSize="14"/>
+
+                <!-- Row 1: Enable + Raise Time + Graphic -->
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="16">
+                    <!-- Enable Button -->
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Enable" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <Button Classes="ToggleButton"
+                                Background="{Binding Machine.HydraulicLiftEnabled, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
+                                BorderBrush="{Binding Machine.HydraulicLiftEnabled, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
+                                Command="{Binding ToggleHydraulicLiftCommand}"
+                                Width="70" Height="70">
+                            <TextBlock Text="&#x23FB;" FontSize="28" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" HorizontalAlignment="Center"/>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Raise Time -->
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <TextBlock Text="Raise Time" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Center"
+                            Value="{Binding Machine.RaiseTime, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditRaiseTimeCommand}"/>
+                        <TextBlock Text="Plant Pop" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="10" HorizontalAlignment="Center"/>
+                    </StackPanel>
+
+                    <!-- Raise Time Graphic -->
+                    <Border Grid.Column="2" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Height="100">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConMa_LiftRaiseTime.png" Stretch="Uniform"/>
+                    </Border>
+                </Grid>
+
+                <!-- Row 2: Look Ahead + Lower Time + Graphic -->
+                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="16">
+                    <!-- Look Ahead -->
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="Look Ahead" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Center"
+                            Value="{Binding Machine.LookAhead, Mode=TwoWay}"
+                            Unit="" FormatString="F1"
+                            EditCommand="{Binding EditLookAheadCommand}"/>
+                    </StackPanel>
+
+                    <!-- Lower Time -->
+                    <StackPanel Grid.Column="1" Spacing="4">
+                        <TextBlock Text="Lower Time" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Center"
+                            Value="{Binding Machine.LowerTime, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditLowerTimeCommand}"/>
+                    </StackPanel>
+
+                    <!-- Lower Time Graphic -->
+                    <Border Grid.Column="2" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="8" Height="100">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConMa_LiftLowerTime.png" Stretch="Uniform"/>
+                    </Border>
+                </Grid>
+
+                <!-- Invert Relay -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Invert Relay" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11"/>
+                    <Button Classes="ToggleButton"
+                            Background="{Binding Machine.InvertRelay, Converter={x:Static conv:BoolToToggleBackgroundConverter.Instance}}"
+                            BorderBrush="{Binding Machine.InvertRelay, Converter={x:Static conv:BoolToToggleBorderConverter.Instance}}"
+                            Command="{Binding ToggleInvertRelayCommand}"
+                            HorizontalAlignment="Left" Width="120" Height="60">
+                        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConSt_InvertRelay.png"
+                               Width="80" Height="40" Stretch="Uniform"/>
+                    </Button>
+                </StackPanel>
+
+                <!-- Send + Save Button -->
+                <Button Classes="ActionButton" Command="{Binding SendAndSaveMachineConfigCommand}"
+                        HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="Send + Save" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#x2699;" FontSize="18" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="&#x2192;" FontSize="18" Foreground="{DynamicResource StatusOkBrush}" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <!-- RIGHT: User Values -->
+            <Border Grid.Column="1" Classes="SettingsPanel" Margin="16,0,0,0" VerticalAlignment="Top">
+                <StackPanel Spacing="8" Width="100">
+                    <!-- User 1 -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="User 1" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Stretch"
+                            Value="{Binding Machine.User1Value, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditUser1Command}"/>
+                    </StackPanel>
+
+                    <!-- User 2 -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="User 2" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Stretch"
+                            Value="{Binding Machine.User2Value, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditUser2Command}"/>
+                    </StackPanel>
+
+                    <!-- User 3 -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="User 3" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Stretch"
+                            Value="{Binding Machine.User3Value, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditUser3Command}"/>
+                    </StackPanel>
+
+                    <!-- User 4 -->
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="User 4" Foreground="{DynamicResource SystemControlForegroundBaseMediumHighBrush}" FontSize="11" HorizontalAlignment="Center"/>
+                        <controls:EditableNumericField HorizontalAlignment="Stretch"
+                            Value="{Binding Machine.User4Value, Mode=TwoWay}"
+                            Unit="" FormatString="F0"
+                            EditCommand="{Binding EditUser4Command}"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

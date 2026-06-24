@@ -14,7 +14,7 @@
 set -euo pipefail
 
 IPAD_UDID="d2fcb0323a90ad2954ab501f2603cd7573d99b2a"
-IPAD_BUNDLE="com.agvaloniaagps.ios"
+IPAD_BUNDLE="com.agopenweb.ios"
 ANDROID_SERIAL="R52TB090VAK"
 
 MARKERS=(
@@ -29,7 +29,7 @@ MARKERS=(
 
 echo "Android — deleting marker files via adb shell rm"
 for m in "${MARKERS[@]}"; do
-  adb -s "$ANDROID_SERIAL" shell "rm -f /storage/emulated/0/Documents/AgValoniaGPS/$m" || true
+  adb -s "$ANDROID_SERIAL" shell "rm -f /storage/emulated/0/Documents/AgOpenWeb/$m" || true
   echo "  rm $m"
 done
 
@@ -39,7 +39,7 @@ echo "  1. Stop the app on the iPad."
 echo "  2. Reinstall: mlaunch --installdev … (overwrites the bundle but"
 echo "     not the data container)."
 echo "  3. Or fully uninstall + reinstall via the Home screen / Xcode if you"
-echo "     want a clean Documents/AgValoniaGPS."
+echo "     want a clean Documents/AgOpenWeb."
 echo
 echo "Practical: leave iPad markers in place until the next reinstall — the"
 echo "perf logging is harmless when no analyst is reading it."

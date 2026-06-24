@@ -41,7 +41,7 @@ public class NtripProfile
 ```
 
 ### Storage
-- **Location**: `Documents/AgValoniaGPS/NtripProfiles/`
+- **Location**: `Documents/AgOpenWeb/NtripProfiles/`
 - **Format**: JSON files, one per profile (`{ProfileName}.json`)
 
 ### Service Interface: INtripProfileService
@@ -106,20 +106,20 @@ On first run, if no profiles exist but legacy NTRIP settings are present:
 ### New Files
 | File | Purpose |
 |------|---------|
-| `Shared/AgValoniaGPS.Models/Ntrip/NtripProfile.cs` | Profile data model |
-| `Shared/AgValoniaGPS.Models/Ntrip/FieldAssociationItem.cs` | UI helper for field selection |
-| `Shared/AgValoniaGPS.Services/Interfaces/INtripProfileService.cs` | Service interface |
-| `Shared/AgValoniaGPS.Services/NtripProfileService.cs` | Service implementation |
-| `Shared/AgValoniaGPS.Views/Controls/Dialogs/NtripProfilesDialogPanel.axaml(.cs)` | Profile list dialog |
-| `Shared/AgValoniaGPS.Views/Controls/Dialogs/NtripProfileEditorPanel.axaml(.cs)` | Profile editor dialog |
+| `Shared/AgOpenWeb.Models/Ntrip/NtripProfile.cs` | Profile data model |
+| `Shared/AgOpenWeb.Models/Ntrip/FieldAssociationItem.cs` | UI helper for field selection |
+| `Shared/AgOpenWeb.Services/Interfaces/INtripProfileService.cs` | Service interface |
+| `Shared/AgOpenWeb.Services/NtripProfileService.cs` | Service implementation |
+| `Shared/AgOpenWeb.Views/Controls/Dialogs/NtripProfilesDialogPanel.axaml(.cs)` | Profile list dialog |
+| `Shared/AgOpenWeb.Views/Controls/Dialogs/NtripProfileEditorPanel.axaml(.cs)` | Profile editor dialog |
 
 ### Modified Files
 | File | Changes |
 |------|---------|
-| `Shared/AgValoniaGPS.Models/State/UIState.cs` | Added NtripProfiles, NtripProfileEditor dialog types |
-| `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs` | Profile properties, commands, field load integration |
-| `Shared/AgValoniaGPS.Views/Controls/DialogOverlayHost.axaml` | Registered new dialogs |
-| `Shared/AgValoniaGPS.Views/Controls/Panels/FileMenuPanel.axaml` | Added NTRIP Profiles menu item |
+| `Shared/AgOpenWeb.Models/State/UIState.cs` | Added NtripProfiles, NtripProfileEditor dialog types |
+| `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` | Profile properties, commands, field load integration |
+| `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml` | Registered new dialogs |
+| `Shared/AgOpenWeb.Views/Controls/Panels/FileMenuPanel.axaml` | Added NTRIP Profiles menu item |
 | `Platforms/*/DependencyInjection/ServiceCollectionExtensions.cs` | Registered INtripProfileService |
 
 ---

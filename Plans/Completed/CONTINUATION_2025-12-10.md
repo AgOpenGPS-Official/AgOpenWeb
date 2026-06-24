@@ -1,11 +1,11 @@
-# AgValoniaGPS3 Continuation - December 10, 2025
+# AgOpenWeb3 Continuation - December 10, 2025
 
 ## Last Completed Work: Configuration Dialog - Antenna Position Panel
 
 Successfully completed the Antenna Position panel layout in the Configuration Dialog:
 
 ### File Modified
-- `/Users/chris/Code/AgValoniaGPS3/Shared/AgValoniaGPS.Views/Controls/Dialogs/ConfigurationDialog.axaml`
+- `/Users/chris/Code/AgOpenWeb3/Shared/AgOpenWeb.Views/Controls/Dialogs/ConfigurationDialog.axaml`
 
 ### Changes Made
 1. **Antenna Offset Section** (around line 451-479):
@@ -44,14 +44,14 @@ Successfully completed the Antenna Position panel layout in the Configuration Di
 
 ## Build/Run Command
 ```bash
-dotnet run --project Platforms/AgValoniaGPS.Desktop/AgValoniaGPS.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 ```
 
 ## Key Files for Configuration Dialog
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/ConfigurationDialog.axaml` - Main dialog XAML
-- `Shared/AgValoniaGPS.Views/Controls/Dialogs/ConfigurationDialog.axaml.cs` - Code-behind
-- `Shared/AgValoniaGPS.ViewModels/ConfigurationViewModel.cs` - ViewModel
-- `Shared/AgValoniaGPS.Views/Converters/BoolToStringConverter.cs` - For unit display (cm|in)
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/ConfigurationDialog.axaml` - Main dialog XAML
+- `Shared/AgOpenWeb.Views/Controls/Dialogs/ConfigurationDialog.axaml.cs` - Code-behind
+- `Shared/AgOpenWeb.ViewModels/ConfigurationViewModel.cs` - ViewModel
+- `Shared/AgOpenWeb.Views/Converters/BoolToStringConverter.cs` - For unit display (cm|in)
 
 ## Reference Screenshot
 The target design is based on: `/Users/chris/Desktop/Hitch Wheelbase Track Panel.png`

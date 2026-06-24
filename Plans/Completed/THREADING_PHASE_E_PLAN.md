@@ -1,6 +1,6 @@
 <!--
-AgValoniaGPS
-Copyright (C) 2024-2026 AgValoniaGPS Contributors
+AgOpenWeb
+Copyright (C) 2024-2026 AgOpenWeb Contributors
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -30,13 +30,13 @@ document the read/write boundaries. Likely small or no-op." That
 prediction holds. The grep
 
 ```
-grep -rn 'State\.\w+\.\w+\s*=\|_appState\.\w+\.\w+\s*=' Shared/AgValoniaGPS.Services
+grep -rn 'State\.\w+\.\w+\s*=\|_appState\.\w+\.\w+\s*=' Shared/AgOpenWeb.Services
 ```
 
-returns exactly **one** match in all of `Shared/AgValoniaGPS.Services`:
+returns exactly **one** match in all of `Shared/AgOpenWeb.Services`:
 
 ```
-Shared/AgValoniaGPS.Services/Pipeline/GpsPipelineService.cs:383
+Shared/AgOpenWeb.Services/Pipeline/GpsPipelineService.cs:383
     _appState.Field.LocalPlane = new LocalPlane(...)
 ```
 
@@ -140,7 +140,7 @@ From `grep -rn 'State\.Field\.\w+\s*=' Shared/`:
 
 ### 3.2 Cycle-side reads of FieldState
 
-From `grep -rn '_appState\.Field' Shared/AgValoniaGPS.Services`:
+From `grep -rn '_appState\.Field' Shared/AgOpenWeb.Services`:
 
 | Location | Field | Notes |
 |---|---|---|
@@ -202,7 +202,7 @@ UI thread.
 
 **Acceptance.** Simulator opens without a field, first tick creates
 a LocalPlane, map renders correctly. `grep -rn '_appState\.Field\.\w+\s*='
-Shared/AgValoniaGPS.Services` returns zero.
+Shared/AgOpenWeb.Services` returns zero.
 
 ### Commit 2 — Delete dead `UpdateHeadlandProximity`
 
@@ -274,7 +274,7 @@ doc. The main risk is getting the LocalPlane handoff wrong:
 Phase E is done when:
 
 1. `grep -rn '_appState\.\w+\.\w+\s*=\|State\.\w+\.\w+\s*='
-   Shared/AgValoniaGPS.Services` returns zero.
+   Shared/AgOpenWeb.Services` returns zero.
 2. Full test suite (all 793+ tests) passes.
 3. Simulator cold start (no field) → first tick creates LocalPlane,
    subsequent ticks convert correctly. No observable difference from
@@ -293,6 +293,6 @@ Phase E is done when:
   emission pattern this phase reuses.
 - [THREADING_MIGRATION_PARKING_LOT.md](THREADING_MIGRATION_PARKING_LOT.md)
   — TMP-006 extends here.
-- `Shared/AgValoniaGPS.Services/AutoSteer/AutoSteerService.cs`
+- `Shared/AgOpenWeb.Services/AutoSteer/AutoSteerService.cs`
   (commit `5d6bccd`) — Phase B introduced the shared LocalPlane;
   Phase E finishes the write-thread story.

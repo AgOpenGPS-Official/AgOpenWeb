@@ -2,7 +2,7 @@
 
 ## Current State
 
-- **File**: `Shared/AgValoniaGPS.ViewModels/MainViewModel.cs`
+- **File**: `Shared/AgOpenWeb.ViewModels/MainViewModel.cs`
 - **Size**: ~6,072 lines (after PR #6 command extraction)
 - **Members**: ~739 properties, fields, and methods
 - **Problem**: God object with too many responsibilities
@@ -173,7 +173,7 @@ Complete the extraction:
 ## File Structure After Refactoring
 
 ```
-Shared/AgValoniaGPS.ViewModels/
+Shared/AgOpenWeb.ViewModels/
 ├── MainViewModel.cs                         (~1,500 lines - core, constructor, DI)
 ├── MainViewModel.Commands.Navigation.cs
 ├── MainViewModel.Commands.Simulator.cs

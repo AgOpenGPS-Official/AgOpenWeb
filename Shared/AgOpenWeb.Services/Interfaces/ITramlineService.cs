@@ -1,0 +1,181 @@
+// AgOpenWeb
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+using System;
+using System.Collections.Generic;
+using AgOpenWeb.Models.Base;
+
+namespace AgOpenWeb.Services.Interfaces;
+
+/// <summary>
+/// Service for managing tram lines for controlled traffic farming (CTF).
+/// Tram lines are permanent wheel tracks that reduce soil compaction.
+/// </summary>
+public interface ITramLineService
+{
+    /// <summary>
+    /// Outer boundary wheel track (follows field boundary)
+    /// </summary>
+    IReadOnlyList<Vec2> OuterBoundaryTrack { get; }
+
+    /// <summary>
+    /// Inner boundary wheel track (follows field boundary, offset inward)
+    /// </summary>
+    IReadOnlyList<Vec2> InnerBoundaryTrack { get; }
+
+    /// <summary>
+    /// Parallel tram lines generated from guidance tracks
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<Vec2>> ParallelTramLines { get; }
+
+    /// <summary>
+    /// Additional boundary tram passes (beyond pass 0 which is in OuterBoundaryTrack/InnerBoundaryTrack)
+    /// </summary>
+    IReadOnlyList<IReadOnlyList<Vec2>> BoundaryExtraLines { get; }
+
+    /// <summary>
+    /// Whether any tram lines exist
+    /// </summary>
+    bool HasTramLines { get; }
+
+    /// <summary>
+    /// Set boundary fence for clipping parallel tram lines to the field area.
+    /// </summary>
+    void SetBoundaryFence(IReadOnlyList<Vec3>? fence);
+
+    /// <summary>
+    /// Generate tram lines for a specific TramSystem with full options.
+    /// </summary>
+    List<List<Vec2>> GenerateForSystem(
+        Models.Tram.TramSystem system,
+        Models.Track.Track referenceTrack,
+        double fieldWidth);
+
+    /// <summary>
+    /// Generate boundary tram tracks from a fence line (headland or outer boundary)
+    /// </summary>
+    /// <param name="fenceLine">Boundary fence line points with headings</param>
+    void GenerateBoundaryTramTracks(IReadOnlyList<Vec3> fenceLine, int passCount = 1,
+        AgOpenWeb.Models.Tram.TramSystemMode mode = AgOpenWeb.Models.Tram.TramSystemMode.Edge,
+        double tramWidthOverride = 0);
+
+    /// <summary>
+    /// Generate parallel tram lines from a guidance track
+    /// </summary>
+    /// <param name="referenceTrack">Reference guidance track</param>
+    /// <param name="fieldWidth">Total field width to generate tram lines across</param>
+    void GenerateParallelTramLines(Models.Track.Track referenceTrack, double fieldWidth);
+
+    /// <summary>
+    /// Generate controlled-traffic tram lanes as clean concentric Clipper offsets of
+    /// the field boundary, spaced at the tram (sprayer/CTF) width. Concave-safe;
+    /// avoids the self-intersecting "web" of per-point lateral offsets on curved fields.
+    /// </summary>
+    /// <param name="tramWidthOverride">Override tram width (m); 0 = use config TramWidth.</param>
+    void GenerateConcentricTramLanes(double tramWidthOverride = 0);
+
+    /// <summary>
+    /// Add a tram line at the current position (for manual recording)
+    /// </summary>
+    /// <param name="points">Points defining the tram line</param>
+    void AddTramLine(IReadOnlyList<Vec2> points);
+
+    /// <summary>
+    /// Check if a position is on or near a tram line
+    /// </summary>
+    /// <param name="position">Position to check</param>
+    /// <param name="tolerance">Distance tolerance in meters</param>
+    /// <returns>True if position is on a tram line</returns>
+    bool IsOnTramLine(Vec3 position, double tolerance);
+
+    /// <summary>
+    /// Get distance to the nearest tram line
+    /// </summary>
+    /// <param name="position">Position to check</param>
+    /// <returns>Distance in meters, or double.MaxValue if no tram lines</returns>
+    double DistanceToNearestTramLine(Vec3 position);
+
+    /// <summary>
+    /// Detect which wheels are on tram lines.
+    /// Returns a byte: bit 0 = right wheel, bit 1 = left wheel.
+    /// Includes manual override flags.
+    /// </summary>
+    byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance);
+
+    /// <summary>
+    /// Left wheel manual override - force recording left wheel track
+    /// </summary>
+    bool IsLeftManualOn { get; set; }
+
+    /// <summary>
+    /// Right wheel manual override - force recording right wheel track
+    /// </summary>
+    bool IsRightManualOn { get; set; }
+
+    /// <summary>
+    /// Clear all tram lines
+    /// </summary>
+    void Clear();
+
+    /// <summary>
+    /// Save tram lines to field directory
+    /// </summary>
+    /// <param name="fieldDirectory">Path to field directory</param>
+    void SaveToFile(string fieldDirectory);
+
+    /// <summary>
+    /// Load tram lines from field directory
+    /// </summary>
+    /// <param name="fieldDirectory">Path to field directory</param>
+    void LoadFromFile(string fieldDirectory);
+
+    /// <summary>
+    /// Event fired when tram lines are updated
+    /// </summary>
+    event EventHandler? TramLinesUpdated;
+}
+
+/// <summary>
+/// Low-level service for generating tramline offset paths from boundary fence lines.
+/// Used internally by ITramLineService.
+/// </summary>
+public interface ITramLineOffsetService
+{
+    /// <summary>
+    /// Generate inner tramline offset from boundary fence line.
+    /// Inner tramline is offset inward by (tramWidth * 0.5) + halfWheelTrack.
+    /// </summary>
+    /// <param name="fenceLine">Boundary fence line points with headings</param>
+    /// <param name="tramWidth">Width of tram passes</param>
+    /// <param name="halfWheelTrack">Half of vehicle wheel track width</param>
+    /// <returns>List of inner tramline points</returns>
+    List<Vec2> GenerateInnerTramline(List<Vec3> fenceLine, double tramWidth, double halfWheelTrack);
+
+    /// <summary>
+    /// Generate outer tramline offset from boundary fence line.
+    /// Outer tramline is offset inward by (tramWidth * 0.5) - halfWheelTrack.
+    /// </summary>
+    /// <param name="fenceLine">Boundary fence line points with headings</param>
+    /// <param name="tramWidth">Width of tram passes</param>
+    /// <param name="halfWheelTrack">Half of vehicle wheel track width</param>
+    /// <returns>List of outer tramline points</returns>
+    List<Vec2> GenerateOuterTramline(List<Vec3> fenceLine, double tramWidth, double halfWheelTrack);
+
+    /// <summary>
+    /// Generate inward offset at a specific distance from fence line.
+    /// </summary>
+    List<Vec2> GenerateClipperOffsetPublic(List<Vec3> fenceLine, double offset);
+}

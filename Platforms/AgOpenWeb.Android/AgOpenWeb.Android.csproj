@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>14</LangVersion>
+    <ApplicationId>com.agopenweb.android</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationTitle>AgOpenWeb</ApplicationTitle>
+    <OutputType>Exe</OutputType>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidCreatePackagePerAbi>false</AndroidCreatePackagePerAbi>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+    <RuntimeIdentifiers>android-arm;android-arm64;android-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <!-- Avalonia packages -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.0.3" />
+    <PackageReference Include="Avalonia.Android" Version="12.0.3" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- Shared project references -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Views\AgOpenWeb.Views.csproj" />
+  </ItemGroup>
+
+</Project>

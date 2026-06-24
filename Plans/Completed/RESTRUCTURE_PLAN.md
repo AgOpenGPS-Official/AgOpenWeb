@@ -1,4 +1,4 @@
-# AgValoniaGPS3 Restructure Plan: 80/20 Architecture
+# AgOpenWeb3 Restructure Plan: 80/20 Architecture
 
 ## Overview
 
@@ -17,21 +17,21 @@ The current approach tried to share Views (XAML) between Desktop and iOS. This f
 ## New Architecture
 
 ```
-AgValoniaGPS3/
+AgOpenWeb3/
 ├── Shared/                              # 80% - Platform-agnostic
-│   ├── AgValoniaGPS.Models/            # Data models (100% shared)
-│   ├── AgValoniaGPS.Services/          # Business logic (100% shared)
-│   ├── AgValoniaGPS.ViewModels/        # MVVM ViewModels (100% shared)
-│   └── AgValoniaGPS.Views/             # SHARED ASSETS ONLY
+│   ├── AgOpenWeb.Models/            # Data models (100% shared)
+│   ├── AgOpenWeb.Services/          # Business logic (100% shared)
+│   ├── AgOpenWeb.ViewModels/        # MVVM ViewModels (100% shared)
+│   └── AgOpenWeb.Views/             # SHARED ASSETS ONLY
 │       └── Assets/Icons/               # PNG icons used by both platforms
 │
 ├── Platforms/
-│   ├── AgValoniaGPS.Desktop/           # 10% - Desktop-specific
+│   ├── AgOpenWeb.Desktop/           # 10% - Desktop-specific
 │   │   ├── Views/                      # Desktop XAML (floating panels, drag)
 │   │   ├── Controls/                   # OpenGLMapControl, etc.
 │   │   └── ...
 │   │
-│   └── AgValoniaGPS.iOS/               # 10% - iOS-specific
+│   └── AgOpenWeb.iOS/               # 10% - iOS-specific
 │       ├── Views/                      # iOS XAML (touch-native, modal sheets)
 │       ├── Controls/                   # SkiaMapControl
 │       └── ...
@@ -41,10 +41,10 @@ AgValoniaGPS3/
 
 | Component | Location | Notes |
 |-----------|----------|-------|
-| Models | `Shared/AgValoniaGPS.Models/` | 100% shared |
-| Services | `Shared/AgValoniaGPS.Services/` | 100% shared |
-| ViewModels | `Shared/AgValoniaGPS.ViewModels/` | 100% shared |
-| Icons/Assets | `Shared/AgValoniaGPS.Views/Assets/` | PNG icons referenced by both |
+| Models | `Shared/AgOpenWeb.Models/` | 100% shared |
+| Services | `Shared/AgOpenWeb.Services/` | 100% shared |
+| ViewModels | `Shared/AgOpenWeb.ViewModels/` | 100% shared |
+| Icons/Assets | `Shared/AgOpenWeb.Views/Assets/` | PNG icons referenced by both |
 | Styles | TBD | May share color constants |
 
 ## What Becomes Platform-Specific
@@ -72,9 +72,9 @@ Instead of draggable floating panels, iOS will use:
 # Implementation Checklist
 
 ## Phase 1: Restructure Shared Views Project
-- [ ] Remove all Controls/*.axaml files from `Shared/AgValoniaGPS.Views/`
+- [ ] Remove all Controls/*.axaml files from `Shared/AgOpenWeb.Views/`
 - [ ] Keep only `Assets/Icons/` folder in shared Views
-- [ ] Update `AgValoniaGPS.Views.csproj` to only include Assets
+- [ ] Update `AgOpenWeb.Views.csproj` to only include Assets
 - [ ] Verify Desktop still builds (may need to copy controls back)
 
 ## Phase 2: Move Desktop Views Back
@@ -103,7 +103,7 @@ Instead of draggable floating panels, iOS will use:
 - [ ] Create `Views/Panels/FileMenuSheet.axaml`
 - [ ] Use modal bottom sheet pattern
 - [ ] Add buttons: New Field, Open Field, Close Field, Previous Field
-- [ ] Use shared icons: `avares://AgValoniaGPS.Views/Assets/Icons/FileNew.png` etc.
+- [ ] Use shared icons: `avares://AgOpenWeb.Views/Assets/Icons/FileNew.png` etc.
 - [ ] Wire to ViewModel commands
 - [ ] Add open/close animation
 
@@ -152,7 +152,7 @@ Instead of draggable floating panels, iOS will use:
 
 ## Icon Reference (Shared)
 
-All icons are in `avares://AgValoniaGPS.Views/Assets/Icons/`
+All icons are in `avares://AgOpenWeb.Views/Assets/Icons/`
 
 | Icon | File |
 |------|------|

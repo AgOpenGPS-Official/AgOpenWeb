@@ -109,10 +109,10 @@ Decisive outcome:
 
 ## State that's already in place
 
-- `~/Documents/AgValoniaGPS/.use_skia_map` marker is present (Phase 3
+- `~/Documents/AgOpenWeb/.use_skia_map` marker is present (Phase 3
   perspective is the active 2D control).
 - All six PERF-05 markers are enabled in
-  `~/Documents/AgValoniaGPS/`:
+  `~/Documents/AgOpenWeb/`:
   `.perf_state_mirror`, `.perf_gps_pipeline`, `.perf_apply_gps_cycle`,
   `.perf_guidance`, `.perf_coverage`, `.perf_autosteer`. (NOT
   `.perf_udp` — not necessary, UDP cost is now negligible.)
@@ -157,7 +157,7 @@ line. Report the finding; pick the next-step branch based on it.
 2. `Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md` and
    `Plans/perf_data/2026-05-20/ANALYSIS.md` — the existing perf
    instrumentation framework.
-3. `Shared/AgValoniaGPS.ViewModels/MainViewModel.ApplyResults.cs` —
+3. `Shared/AgOpenWeb.ViewModels/MainViewModel.ApplyResults.cs` —
    where to add the GC instrumentation.
 4. Memory: [[test-devices]], [[fps-floor]], [[no-quick-fixes]],
    [[root-cause-over-symptom]] — applicable.

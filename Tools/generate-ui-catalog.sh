@@ -11,12 +11,12 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT="${1:-$REPO_ROOT/AgValoniaGPS_UI_Catalog.pdf}"
+OUTPUT="${1:-$REPO_ROOT/AgOpenWeb_UI_Catalog.pdf}"
 
 echo "=== Capturing screenshots ==="
-dotnet run --project "$REPO_ROOT/Tests/AgValoniaGPS.IntegrationTests/" -- --headless --catalog
+dotnet run --project "$REPO_ROOT/Tests/AgOpenWeb.IntegrationTests/" -- --headless --catalog
 
-CATDIR="$REPO_ROOT/Tests/AgValoniaGPS.IntegrationTests/bin/Debug/net10.0/screenshots/catalog"
+CATDIR="$REPO_ROOT/Tests/AgOpenWeb.IntegrationTests/bin/Debug/net10.0/screenshots/catalog"
 
 if [ ! -d "$CATDIR/dark" ] || [ ! -d "$CATDIR/light" ]; then
     echo "ERROR: Screenshots not found in $CATDIR"

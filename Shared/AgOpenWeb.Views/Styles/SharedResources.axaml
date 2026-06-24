@@ -1,0 +1,123 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:converters="clr-namespace:AgOpenWeb.Views.Converters;assembly=AgOpenWeb.Views">
+
+    <!--
+    Shared resources (converters, etc.) used across all platforms.
+    Include this in each platform's App.axaml Application.Resources section.
+    -->
+
+    <converters:BoolToColorConverter x:Key="BoolToColorConverter"/>
+    <converters:BoolToStatusConverter x:Key="BoolToStatusConverter"/>
+    <converters:FixQualityToColorConverter x:Key="FixQualityToColorConverter"/>
+    <converters:ModuleStatusKindToColorConverter x:Key="ModuleStatusKindToColorConverter"/>
+    <converters:BoolToPlayPauseConverter x:Key="BoolToPlayPauseConverter"/>
+    <converters:FixQualityNameConverter x:Key="FixQualityNameConverter"/>
+    <converters:BoolToSteerColorConverter x:Key="BoolToSteerColorConverter"/>
+    <converters:BoolToSteerTextConverter x:Key="BoolToSteerTextConverter"/>
+    <converters:BoolToSectionColorConverter x:Key="BoolToSectionColorConverter"/>
+    <converters:GreaterThanConverter x:Key="GreaterThanConverter"/>
+    <converters:EqualityConverter x:Key="EqualityConverter"/>
+
+    <!-- Theme overrides for both variants -->
+    <ResourceDictionary.ThemeDictionaries>
+        <!-- Light: replace semi-transparent overlays with solid colors for readability -->
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="SystemControlBackgroundAltHighBrush" Color="#FAFAFA"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumBrush" Color="#E8E8E8"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="#EFEFEF"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundListLowBrush" Color="#F2F2F2"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseLowBrush" Color="#CCCCCC"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseMediumLowBrush" Color="#BBBBBB"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseMediumBrush" Color="#AAAAAA"/>
+            <SolidColorBrush x:Key="SystemControlForegroundBaseHighBrush" Color="#1A1A1A"/>
+            <SolidColorBrush x:Key="SystemControlForegroundBaseMediumHighBrush" Color="#333333"/>
+            <SolidColorBrush x:Key="SystemControlForegroundBaseMediumBrush" Color="#555555"/>
+            <SolidColorBrush x:Key="SystemControlForegroundBaseLowBrush" Color="#888888"/>
+
+            <!-- Semantic accent panels used in configuration dialogs -->
+            <SolidColorBrush x:Key="InfoPanelBackgroundBrush" Color="#E8F5EE"/>
+            <SolidColorBrush x:Key="CardPanelBackgroundBrush" Color="#EEF1F7"/>
+            <SolidColorBrush x:Key="HighlightPanelBackgroundBrush" Color="#C8E8D6"/>
+            <SolidColorBrush x:Key="WarningPanelBackgroundBrush" Color="#F5F1DC"/>
+            <SolidColorBrush x:Key="SecondaryButtonBackgroundBrush" Color="#E8DCD8"/>
+            <SolidColorBrush x:Key="AccentForegroundBrush" Color="#1E8449"/>
+
+            <!-- Toggle states (Screen & Alerts rows): light blue-gray off,
+                 dark blue-gray on, with light text on the active fill. -->
+            <SolidColorBrush x:Key="ToggleOffBrush" Color="#C2CBD4"/>
+            <SolidColorBrush x:Key="ToggleOnBrush" Color="#44566A"/>
+            <SolidColorBrush x:Key="ToggleOnForegroundBrush" Color="#F5F7FA"/>
+
+            <!-- Semantic button + status brushes (menu-system standardization).
+                 Primary buttons keep using the live theme accent
+                 (SystemControlHighlightAccentBrush) so it remains the single
+                 accent source; only the hover shade is named here. The success
+                 / danger colors are saturated brand colors (white text on fill)
+                 and are theme-independent, so the Light and Dark values match. -->
+            <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="#2980B9"/>
+            <SolidColorBrush x:Key="SuccessButtonBrush" Color="#27AE60"/>
+            <SolidColorBrush x:Key="SuccessButtonHoverBrush" Color="#229954"/>
+            <SolidColorBrush x:Key="DangerButtonBrush" Color="#E74C3C"/>
+            <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="#C0392B"/>
+            <SolidColorBrush x:Key="StatusOkBrush" Color="#4A9A7E"/>
+            <SolidColorBrush x:Key="InfoAccentBrush" Color="#1ABC9C"/>
+            <SolidColorBrush x:Key="ModalBackdropBrush" Color="#80000000"/>
+        </ResourceDictionary>
+        <!-- Dark: use dark blue-gray instead of pure black -->
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="SystemControlBackgroundAltHighBrush" Color="#1E1E2E"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumBrush" Color="#282838"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundChromeMediumLowBrush" Color="#2D2D3D"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundListLowBrush" Color="#323245"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseLowBrush" Color="#3A3A4E"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseMediumLowBrush" Color="#45455A"/>
+            <SolidColorBrush x:Key="SystemControlBackgroundBaseMediumBrush" Color="#505068"/>
+
+            <!-- Semantic accent panels used in configuration dialogs -->
+            <SolidColorBrush x:Key="InfoPanelBackgroundBrush" Color="#DD2A4A3A"/>
+            <SolidColorBrush x:Key="CardPanelBackgroundBrush" Color="#DD1A1A2E"/>
+            <SolidColorBrush x:Key="HighlightPanelBackgroundBrush" Color="#DD1E8449"/>
+            <SolidColorBrush x:Key="WarningPanelBackgroundBrush" Color="#DD3A3A2A"/>
+            <SolidColorBrush x:Key="SecondaryButtonBackgroundBrush" Color="#DD4A3A3A"/>
+            <SolidColorBrush x:Key="AccentForegroundBrush" Color="#4A9A7E"/>
+
+            <!-- Toggle states (Screen & Alerts rows): blue-gray off, deeper
+                 blue-gray on, with light text on the active fill. -->
+            <SolidColorBrush x:Key="ToggleOffBrush" Color="#515C6B"/>
+            <SolidColorBrush x:Key="ToggleOnBrush" Color="#34495E"/>
+            <SolidColorBrush x:Key="ToggleOnForegroundBrush" Color="#F5F7FA"/>
+
+            <!-- Semantic button + status brushes (menu-system standardization).
+                 Saturated brand colors match the Light variant (white text on
+                 the fill reads correctly in both themes); the primary hover is
+                 the same accent-darkened blue. -->
+            <SolidColorBrush x:Key="PrimaryButtonHoverBrush" Color="#2980B9"/>
+            <SolidColorBrush x:Key="SuccessButtonBrush" Color="#27AE60"/>
+            <SolidColorBrush x:Key="SuccessButtonHoverBrush" Color="#229954"/>
+            <SolidColorBrush x:Key="DangerButtonBrush" Color="#E74C3C"/>
+            <SolidColorBrush x:Key="DangerButtonHoverBrush" Color="#C0392B"/>
+            <SolidColorBrush x:Key="StatusOkBrush" Color="#4A9A7E"/>
+            <SolidColorBrush x:Key="InfoAccentBrush" Color="#1ABC9C"/>
+            <SolidColorBrush x:Key="ModalBackdropBrush" Color="#80000000"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+</ResourceDictionary>

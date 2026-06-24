@@ -1,0 +1,84 @@
+<!--
+AgOpenWeb
+Copyright (C) 2024-2025 AgOpenWeb Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:AgOpenWeb.Views.Localization;assembly=AgOpenWeb.Views"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AgOpenWeb.ViewModels;assembly=AgOpenWeb.ViewModels"
+             xmlns:logging="clr-namespace:AgOpenWeb.Services.Logging;assembly=AgOpenWeb.Services"
+             xmlns:controls="using:AgOpenWeb.Views.Controls"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="AgOpenWeb.Views.Controls.Dialogs.LogViewerDialogPanel"
+             x:DataType="vm:MainViewModel"
+             IsVisible="{Binding State.UI.IsLogViewerDialogVisible}"
+             IsHitTestVisible="{Binding State.UI.IsLogViewerDialogVisible}">
+
+    <Grid>
+        <Border Background="Transparent" PointerPressed="Backdrop_PointerPressed"/>
+
+        <controls:DialogChrome Title="{loc:Localize ApplicationLog}"
+                BackCommand="{Binding NavBackCommand}"
+                CloseCommand="{Binding NavCloseChainCommand}"
+                Width="750" Height="520">
+            <Grid RowDefinitions="Auto,*">
+                <!-- Filter bar -->
+                <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundListLowBrush}" Padding="12,8">
+                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                        <Button Content="{loc:Localize Debug}" Padding="10,4" CornerRadius="4"
+                                Background="{DynamicResource SystemControlBackgroundBaseLowBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Command="{Binding SetLogFilterCommand}" CommandParameter="Debug"/>
+                        <Button Content="{loc:Localize Info}" Padding="10,4" CornerRadius="4"
+                                Background="{DynamicResource PrimaryButtonHoverBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Command="{Binding SetLogFilterCommand}" CommandParameter="Information"/>
+                        <Button Content="{loc:Localize Warning}" Padding="10,4" CornerRadius="4"
+                                Background="#F39C12" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Command="{Binding SetLogFilterCommand}" CommandParameter="Warning"/>
+                        <Button Content="{loc:Localize Error}" Padding="10,4" CornerRadius="4"
+                                Background="{DynamicResource DangerButtonBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Command="{Binding SetLogFilterCommand}" CommandParameter="Error"/>
+                        <Border Width="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Margin="4,0"/>
+                        <Button Content="{loc:Localize Clear}" Padding="10,4" CornerRadius="4"
+                                Background="{DynamicResource SystemControlForegroundBaseLowBrush}" Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="12"
+                                Command="{Binding ClearLogEntriesCommand}"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Log entries list (non-virtualizing for headless rendering) -->
+                <Border Grid.Row="1" Margin="0,8,0,0" Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}" CornerRadius="6" Padding="4">
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding FilteredLogEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="logging:LogEntry">
+                                    <Grid ColumnDefinitions="140,70,*" Margin="2,1">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Timestamp, StringFormat='{}{0:HH:mm:ss.fff}'}"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseLowBrush}" FontSize="11" FontFamily="Consolas"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Level}"
+                                                   FontSize="11" FontWeight="SemiBold" FontFamily="Consolas"
+                                                   VerticalAlignment="Center"
+                                                   Margin="4,0"/>
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding Message}"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}" FontSize="11" FontFamily="Consolas"
+                                                   TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+            </Grid>
+        </controls:DialogChrome>
+    </Grid>
+</UserControl>

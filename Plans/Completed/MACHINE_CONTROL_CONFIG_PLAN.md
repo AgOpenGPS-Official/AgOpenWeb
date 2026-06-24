@@ -33,7 +33,7 @@ Add a Machine Control configuration tab to the Configuration dialog with two sub
 
 ### Phase 1: Create MachineConfig Model
 
-**File**: `Shared/AgValoniaGPS.Models/Configuration/MachineConfig.cs`
+**File**: `Shared/AgOpenWeb.Models/Configuration/MachineConfig.cs`
 
 ```csharp
 public class MachineConfig : ReactiveObject
@@ -74,7 +74,7 @@ public enum PinFunction
 
 ### Phase 2: Add to ConfigurationStore
 
-**File**: `Shared/AgValoniaGPS.Models/Configuration/ConfigurationStore.cs`
+**File**: `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs`
 
 Add:
 ```csharp
@@ -85,7 +85,7 @@ public MachineConfig Machine { get; } = new();
 
 **Files to create**:
 ```
-Shared/AgValoniaGPS.Views/Controls/Dialogs/Configuration/
+Shared/AgOpenWeb.Views/Controls/Dialogs/Configuration/
 ├── MachineControlConfigTab.axaml       # Parent tab with sub-tabs
 ├── MachineControlConfigTab.axaml.cs
 └── MachineSubTabs/
@@ -165,14 +165,14 @@ public MachineConfig Machine => Config.Machine;
 
 ### Phase 7: Add Tab to ConfigurationDialog
 
-**File**: `Shared/AgValoniaGPS.Views/Controls/Dialogs/ConfigurationDialog.axaml`
+**File**: `Shared/AgOpenWeb.Views/Controls/Dialogs/ConfigurationDialog.axaml`
 
 Add new TabItem after U-Turn tab (before Data Sources):
 ```xml
 <!-- Machine Control Tab -->
 <TabItem ToolTip.Tip="Machine Control">
     <TabItem.Header>
-        <Image Source="avares://AgValoniaGPS.Views/Assets/Icons/Config/ConS_ModulesMachine.png"
+        <Image Source="avares://AgOpenWeb.Views/Assets/Icons/Config/ConS_ModulesMachine.png"
                Width="40" Height="40" Stretch="Uniform"/>
     </TabItem.Header>
     <config:MachineControlConfigTab/>

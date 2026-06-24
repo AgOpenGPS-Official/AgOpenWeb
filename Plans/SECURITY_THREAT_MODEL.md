@@ -1,4 +1,4 @@
-# AgValoniaGPS Security Threat Model
+# AgOpenWeb Security Threat Model
 
 **Status:** Initial pass for team review. Not a formal certification artifact.
 **Method:** STRIDE against each untrusted-input boundary. Focused on what an attacker can actually reach given how the app is deployed.
@@ -6,7 +6,7 @@
 
 ## Deployment context
 
-- AgValoniaGPS runs on a tablet in a tractor cab. Single-user, no remote-access path.
+- AgOpenWeb runs on a tablet in a tractor cab. Single-user, no remote-access path.
 - Tablet is usually **on the internet** (for NTRIP/RTCM). LAN hosts the ag hardware modules (AutoSteer, Machine, IMU on port 8888/9999).
 - UDP modules are broadcast-based with no authentication. "Trust on first response" is the current posture.
 - Safety-critical output: steering commands to AutoSteer module. Wrong values can cause real-world damage or injury.
@@ -217,17 +217,17 @@ if (data[crcIndex] != expected) return;     // CRC mismatch — drop
 
 **Severity:** Medium — **safety-adjacent**
 
-There is no authentication between AgValoniaGPS and the UDP modules. Once `LockToSubnet` fires on the first HELLO response, the subnet is fixed — but any host within that /24 is still accepted as valid source for subsequent packets. An attacker on the farm WiFi can:
+There is no authentication between AgOpenWeb and the UDP modules. Once `LockToSubnet` fires on the first HELLO response, the subnet is fixed — but any host within that /24 is still accepted as valid source for subsequent packets. An attacker on the farm WiFi can:
 
 1. Race-win the initial HELLO (get `LockToSubnet` pointed at their subnet) — easy if they boot up before the legit hardware.
 2. Impersonate SENSOR_DATA or AUTOSTEER_DATA packets after lock, injecting false steering-angle readings into the guidance loop.
 
-Threat scenario: compromised device on a shared farm WiFi → fake sensor data → guidance computes wrong corrective steering → tractor steers into a ditch/fence/boundary. The tractor's physical steering actuators won't apply AgValoniaGPS's output blindly — the operator can disengage at any time — but depending on disengage latency and attack timing, real damage is possible.
+Threat scenario: compromised device on a shared farm WiFi → fake sensor data → guidance computes wrong corrective steering → tractor steers into a ditch/fence/boundary. The tractor's physical steering actuators won't apply AgOpenWeb's output blindly — the operator can disengage at any time — but depending on disengage latency and attack timing, real damage is possible.
 
 **Why accepted as medium and not high:** requires attacker on the same LAN (not internet), and operator-in-the-loop is a meaningful mitigation. But it's the worst safety-implication path we have.
 
 **Recommendation:**
-1. Document that AgValoniaGPS requires a trusted LAN (no IoT, no guest WiFi) — add to user-facing docs and README.
+1. Document that AgOpenWeb requires a trusted LAN (no IoT, no guest WiFi) — add to user-facing docs and README.
 2. Longer term: consider a shared-secret HMAC per deployment. Operator configures a small secret once (setup wizard); modules and app both include it in a trailing byte range. Doesn't need to be crypto-strong — just needs to prevent a casual LAN peer from walking in. This would require firmware changes on the module side (Teensy), so a coordinated change across projects.
 
 ### <a name="f6"></a>F6 — RTCM bytes forwarded to GPS hardware unvalidated
@@ -236,7 +236,7 @@ Threat scenario: compromised device on a shared farm WiFi → fake sensor data �
 
 `NtripClientService.ForwardRtcmData` enqueues every byte received from the caster post-header and forwards them verbatim to the GPS module over UDP broadcast (port 2233). No RTCM3 framing validation, no message-type filter.
 
-A compromised/malicious caster can send arbitrary bytes. Some GPS hardware may have parser bugs; in the worst case a crafted stream could brick or misconfigure the GPS module. That's a hardware-level concern not directly exploitable inside AgValoniaGPS, but we're the injection point.
+A compromised/malicious caster can send arbitrary bytes. Some GPS hardware may have parser bugs; in the worst case a crafted stream could brick or misconfigure the GPS module. That's a hardware-level concern not directly exploitable inside AgOpenWeb, but we're the injection point.
 
 **Why accepted as medium:** the GPS module is hardware we don't control; RTCM3 validation is non-trivial and the caster trust model already assumes a reputable provider.
 
@@ -285,7 +285,7 @@ If the caster has multiple A records for redundancy, we only ever try the first.
 - **Physical tampering with Teensy firmware** — separate project (`Firmware_Teensy_*`), own threat model.
 - **Side-channel attacks on RTK signatures** — unrealistic threat class for this deployment.
 - **Denial of service by the operator on themselves** — they already have the disengage switch.
-- **Supply-chain of AgValoniaGPS builds themselves** (release artifact signing) — worth considering but outside scope of this first pass.
+- **Supply-chain of AgOpenWeb builds themselves** (release artifact signing) — worth considering but outside scope of this first pass.
 
 ## Proposed next steps
 

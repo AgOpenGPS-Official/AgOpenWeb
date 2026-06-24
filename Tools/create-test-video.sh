@@ -3,7 +3,7 @@
 # Usage: ./create-test-video.sh [input.gif] [output.mp4]
 set -e
 
-INPUT="${1:-Tests/AgValoniaGPS.IntegrationTests/bin/Debug/net10.0/screenshots/headless/pass_rendering.gif}"
+INPUT="${1:-Tests/AgOpenWeb.IntegrationTests/bin/Debug/net10.0/screenshots/headless/pass_rendering.gif}"
 OUTPUT="${2:-/tmp/claude/test_video.mp4}"
 
 mkdir -p "$(dirname "$OUTPUT")"
