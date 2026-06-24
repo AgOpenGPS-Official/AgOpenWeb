@@ -1,21 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Phase 1 (Plans/REMOTE_WEB_UI_SPLIT.md §7) — embedded ASP.NET Core + SignalR
-    server that runs ALONGSIDE the Avalonia app and streams a Scene + Tick feed
-    to a browser map client. Lives in Shared so the eventual headless cab-PC
-    host reuses it. Reads ApplicationState (Models) directly — the live DI
-    instance is passed in by the host.
+    Embedded web host that runs ALONGSIDE the Avalonia app (or as a headless
+    cab-PC daemon) and streams a Scene + Tick feed to a browser map client over a
+    raw binary WebSocket. Reads ApplicationState (Models) directly — the live
+    instances are passed in by the host.
+
+    Transport is SimpleWebServer (pure-BCL TcpListener), NOT Kestrel: ASP.NET Core
+    has no iOS runtime pack (NETSDK1082), so this project must stay ASP.NET-free to
+    be referenceable by the iOS all-in-one head. No FrameworkReference here.
   -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
-
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />

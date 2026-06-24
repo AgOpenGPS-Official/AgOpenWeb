@@ -1,15 +1,15 @@
-// Embeds a minimal Kestrel server inside the running app and streams the map
-// feed over a raw binary WebSocket (no SignalR). The host passes in the live
-// ApplicationState (the DI singleton the pipeline writes to), and we bridge it
-// into the server's own DI container as a singleton instance.
+// Embeds a minimal web host inside the running app and streams the map feed over a
+// raw binary WebSocket (no SignalR). The host passes in the live ApplicationState
+// (the DI singleton the pipeline writes to) and the other services it needs.
+//
+// The transport is SimpleWebServer (a pure-BCL TcpListener host), NOT Kestrel:
+// ASP.NET Core has no iOS runtime pack (publish fails with NETSDK1082), so Kestrel
+// can't ship on iOS. SimpleWebServer runs anywhere .NET runs, including under iOS
+// AOT. The hub, WireCodec, and projectors are transport-agnostic and unchanged —
+// only this host's shell swapped from a Kestrel WebApplication to SimpleWebServer,
+// and the ASP.NET DI container to direct construction.
 
 using System.Reflection;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
@@ -18,7 +18,7 @@ namespace AgOpenWeb.RemoteServer;
 
 public sealed class RemoteServerHost
 {
-    private WebApplication? _app;
+    private SimpleWebServer? _server;
     private WebSocketHub? _ws;
     private MapBroadcaster? _broadcaster;
 
@@ -138,122 +138,22 @@ public sealed class RemoteServerHost
         IVehicleProfileService vehicleProfiles, IPersistentStateService persist, int port = 5174)
     {
         Port = port;
-        var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
-        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
-        // This is an EMBEDDED server, not the process owner. Suppress its default
-        // ConsoleLifetime so it does NOT grab SIGTERM / Ctrl+C — the host process
-        // (the Avalonia app when windowed, HeadlessHost as a daemon) owns process
-        // signals and stops us explicitly via StopAsync. Without this, the embedded
-        // host self-stops on SIGTERM and races the host's StopAsync (disposed CTS).
-        builder.Services.AddSingleton<IHostLifetime, NoopHostLifetime>();
+        // Direct construction — no ASP.NET DI container. (The old Kestrel host
+        // registered these as singletons and resolved them; the ctors are unchanged,
+        // the mapping is 1:1.)
+        var authority = new ControlAuthority();
+        var sceneProjector = new SceneProjector(state, sections, tool, config, coverage, jobs,
+            configService, autoSteer, smartWas, udp, ntripProfiles, fields, settings,
+            vehicleProfiles, persist);
+        var coverageProjector = new CoverageProjector(coverage);
+        _ws = new WebSocketHub(authority);
+        _broadcaster = new MapBroadcaster(_ws, sceneProjector, coverage, coverageProjector, authority);
 
-        // Cap the graceful-shutdown wait so Ctrl-C / SIGTERM stops promptly even if
-        // a request is still in flight. The long-lived /ws request already exits on
-        // ApplicationStopping (linked token below); this is the safety net.
-        builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = System.TimeSpan.FromSeconds(2));
-
-        builder.Services.AddSingleton(state);
-        builder.Services.AddSingleton(coverage);
-        builder.Services.AddSingleton(sections);
-        builder.Services.AddSingleton(tool);
-        builder.Services.AddSingleton(config);
-        builder.Services.AddSingleton(jobs);
-        builder.Services.AddSingleton(configService);
-        builder.Services.AddSingleton(autoSteer);
-        builder.Services.AddSingleton(smartWas);
-        builder.Services.AddSingleton(udp);
-        builder.Services.AddSingleton(ntripProfiles);
-        builder.Services.AddSingleton(fields);
-        builder.Services.AddSingleton(settings);
-        builder.Services.AddSingleton(vehicleProfiles);
-        builder.Services.AddSingleton(persist);
-        builder.Services.AddSingleton<ControlAuthority>();
-        builder.Services.AddSingleton<SceneProjector>();
-        builder.Services.AddSingleton<CoverageProjector>();
-        builder.Services.AddSingleton<WebSocketHub>();
-        builder.Services.AddSingleton<MapBroadcaster>();
-
-        var app = builder.Build();
-
-        app.UseWebSockets();
-        app.Map("/ws", async context =>
-        {
-            if (!context.WebSockets.IsWebSocketRequest)
-            {
-                context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                return;
-            }
-            using var socket = await context.WebSockets.AcceptWebSocketAsync();
-            var hub = context.RequestServices.GetRequiredService<WebSocketHub>();
-            // Link the long-lived receive loop to ApplicationStopping so a graceful
-            // shutdown (Ctrl-C / SIGTERM) cancels it immediately instead of waiting
-            // out the host shutdown timeout — RequestAborted alone does NOT fire on
-            // shutdown, only on client disconnect, so a connected browser would stall
-            // the stop. HandleAsync's loop already exits when its token cancels.
-            var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
-            using var linked = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(
-                context.RequestAborted, lifetime.ApplicationStopping);
-            await hub.HandleAsync(socket, linked.Token);
-        });
-
-        app.MapGet("/", () => Results.Content(ReadAsset("index.html"), "text/html"));
-        app.MapGet("/app.js", () => Results.Content(ReadAsset("app.js"), "text/javascript"));
-        app.MapGet("/transport.js", () => Results.Content(ReadAsset("transport.js"), "text/javascript"));
-        // PWA manifest — lets "Add to home screen" launch fullscreen (no browser chrome).
-        app.MapGet("/manifest.webmanifest", () => Results.Content(ReadAsset("manifest.webmanifest"), "application/manifest+json"));
-
-        // CanvasKit (WASM Skia) — bundled locally for offline in-cab use. The
-        // wasm is served as application/wasm so the browser can streaming-compile.
-        app.MapGet("/vendor/canvaskit.js", () => Results.Content(ReadAsset("vendor.canvaskit.js"), "text/javascript"));
-        app.MapGet("/vendor/canvaskit.wasm", () => Results.File(ReadAssetBytes("vendor.canvaskit.wasm"), "application/wasm"));
-
-        // Right-nav toolbar icons (PNG), embedded from wwwroot/icons. Filename-only
-        // (no path traversal); unknown names 404.
-        app.MapGet("/icons/{file}", (string file) =>
-        {
-            if (file.Contains('/') || file.Contains('\\') || file.Contains(".."))
-                return Results.NotFound();
-            var mime = file.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? "image/gif" : "image/png";
-            try { return Results.File(ReadAssetBytes("icons." + file), mime); }
-            catch (FileNotFoundException) { return Results.NotFound(); }
-        });
-
-        // Field background imagery (BackPic.png). The heavy bytes go over HTTP
-        // (browser-decoded/cached); only the small world rectangle rides the WS
-        // Scene. The client cache-busts with ?v=<version> on field change.
-        app.MapGet("/backpic.png", () =>
-        {
-            var im = state.Field.Imagery;
-            // Serve the raw bytes — Results.File(string) resolves relative to the
-            // web root, which would 404 the absolute field-directory path.
-            return im is not null && File.Exists(im.Path)
-                ? Results.File(File.ReadAllBytes(im.Path), "image/png")
-                : Results.NotFound();
-        });
-
-        // Satellite tile proxy (Phase MT — Draw boundary on map). Quadkey-addressed,
-        // served same-origin (no CORS taint) + hard browser cache.
-        app.MapGet("/sattile/{quadkey}", async (string quadkey, HttpContext ctx) =>
-        {
-            bool valid = quadkey.Length is > 0 and <= 23;
-            foreach (var c in quadkey) if (c is < '0' or > '3') { valid = false; break; }
-            if (!valid) return Results.NotFound();
-            var bytes = await FetchSatTileAsync(quadkey);
-            if (bytes is null) return Results.NotFound();
-            ctx.Response.Headers.CacheControl = "public, max-age=604800"; // a week
-            return Results.File(bytes, "image/jpeg");
-        });
-
-        // Build the broadcaster now so it wires SeedProvider before clients connect.
-        app.Services.GetRequiredService<MapBroadcaster>();
-
-        // Hook the WS hub for inbound commands (apply any handler set pre-start).
-        _ws = app.Services.GetRequiredService<WebSocketHub>();
+        // Hook the WS hub for inbound commands + apply any providers/handlers set
+        // before start (identical wiring to the old host).
         _ws.CommandHandler = _commandHandler;
         _ws.IsRestrictedCommand = _isRestricted;
-        _broadcaster = app.Services.GetRequiredService<MapBroadcaster>();
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
@@ -262,7 +162,6 @@ public sealed class RemoteServerHost
 
         // Control authority → broadcast state to clients + drive the native banner;
         // involuntary loss → failsafe.
-        var authority = app.Services.GetRequiredService<ControlAuthority>();
         authority.Changed += st =>
         {
             _ = _ws.BroadcastAsync(WireCodec.EncodeControlState(st));
@@ -270,31 +169,69 @@ public sealed class RemoteServerHost
         };
         authority.Revoked += reason => FailsafeHandler?.Invoke(reason);
 
-        await app.StartAsync();
-        app.Services.GetRequiredService<MapBroadcaster>().Start();
-        _app = app;
+        var server = new SimpleWebServer(port);
+
+        // The /ws receive loop's token is linked to the server's shutdown inside
+        // SimpleWebServer, so StopAsync cancels connected browsers promptly.
+        server.MapWebSocket("/ws", (socket, ct) => _ws.HandleAsync(socket, ct));
+
+        server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html"));
+        server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript"));
+        server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript"));
+        // PWA manifest — lets "Add to home screen" launch fullscreen (no browser chrome).
+        server.MapGet("/manifest.webmanifest", () => SimpleWebServer.Response.Text(ReadAsset("manifest.webmanifest"), "application/manifest+json"));
+
+        // CanvasKit (WASM Skia) — bundled locally for offline in-cab use. The wasm is
+        // served as application/wasm so the browser can streaming-compile it.
+        server.MapGet("/vendor/canvaskit.js", () => SimpleWebServer.Response.Text(ReadAsset("vendor.canvaskit.js"), "text/javascript"));
+        server.MapGet("/vendor/canvaskit.wasm", () => SimpleWebServer.Response.Bytes(ReadAssetBytes("vendor.canvaskit.wasm"), "application/wasm"));
+
+        // Right-nav toolbar icons (PNG/GIF), embedded from wwwroot/icons. Filename-only
+        // (no path traversal); unknown names 404.
+        server.MapGetPrefix("/icons/", file =>
+        {
+            if (file.Contains('/') || file.Contains('\\') || file.Contains(".."))
+                return SimpleWebServer.Response.NotFound;
+            var mime = file.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? "image/gif" : "image/png";
+            try { return SimpleWebServer.Response.Bytes(ReadAssetBytes("icons." + file), mime); }
+            catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
+        });
+
+        // Field background imagery (BackPic.png). The heavy bytes go over HTTP
+        // (browser-decoded/cached); only the small world rectangle rides the WS Scene.
+        // The client cache-busts with ?v=<version> on field change.
+        server.MapGet("/backpic.png", () =>
+        {
+            var im = state.Field.Imagery;
+            return im is not null && File.Exists(im.Path)
+                ? SimpleWebServer.Response.Bytes(File.ReadAllBytes(im.Path), "image/png")
+                : SimpleWebServer.Response.NotFound;
+        });
+
+        // Satellite tile proxy (Phase MT — Draw boundary on map). Quadkey-addressed,
+        // served same-origin (no CORS taint) + hard browser cache.
+        server.MapGetPrefix("/sattile/", async quadkey =>
+        {
+            bool valid = quadkey.Length is > 0 and <= 23;
+            foreach (var c in quadkey) if (c is < '0' or > '3') { valid = false; break; }
+            if (!valid) return SimpleWebServer.Response.NotFound;
+            var bytes = await FetchSatTileAsync(quadkey).ConfigureAwait(false);
+            if (bytes is null) return SimpleWebServer.Response.NotFound;
+            return SimpleWebServer.Response.Bytes(bytes, "image/jpeg",
+                new[] { ("Cache-Control", "public, max-age=604800") }); // a week
+        });
+
+        await server.StartAsync().ConfigureAwait(false);
+        _broadcaster.Start();
+        _server = server;
     }
 
     public async Task StopAsync()
     {
-        if (_app is null) return;
-        await _app.Services.GetRequiredService<MapBroadcaster>().DisposeAsync();
-        await _app.StopAsync();
-        await _app.DisposeAsync();
-        _app = null;
-    }
-
-    /// <summary>
-    /// No-op <see cref="IHostLifetime"/> that replaces the embedded web host's
-    /// default ConsoleLifetime, so the embedded server never installs process
-    /// signal handlers. Process-signal handling belongs to the owning host.
-    /// </summary>
-    private sealed class NoopHostLifetime : IHostLifetime
-    {
-        public System.Threading.Tasks.Task WaitForStartAsync(System.Threading.CancellationToken ct)
-            => System.Threading.Tasks.Task.CompletedTask;
-        public System.Threading.Tasks.Task StopAsync(System.Threading.CancellationToken ct)
-            => System.Threading.Tasks.Task.CompletedTask;
+        if (_server is null) return;
+        if (_broadcaster is not null) await _broadcaster.DisposeAsync().ConfigureAwait(false);
+        await _server.StopAsync().ConfigureAwait(false);
+        _server = null;
     }
 
     private static string ReadAsset(string name)
