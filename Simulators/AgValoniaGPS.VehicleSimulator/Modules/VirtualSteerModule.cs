@@ -208,7 +208,7 @@ public class VirtualSteerModule : IDisposable
         data[7] = PwmDisplay;
 
         var packet = PgnProtocol.BuildPacket(PgnProtocol.PGN_STEER_DATA, data);
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        Emit(packet);
         SentFeedbackCount++;
     }
 
@@ -220,7 +220,7 @@ public class VirtualSteerModule : IDisposable
         var data = new byte[8];
         data[0] = sensorValue;
         var packet = PgnProtocol.BuildPacket(PgnProtocol.PGN_SENSOR_DATA, data);
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        Emit(packet);
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -237,8 +237,19 @@ public class VirtualSteerModule : IDisposable
         }
     }
 
+    /// <summary>Taps for the sim's data panes (outgoing / incoming raw frames).</summary>
+    public Action<string>? OnSent;
+    public Action<string>? OnReceived;
+
+    private void Emit(byte[] packet)
+    {
+        OnSent?.Invoke(PgnProtocol.Describe(packet, packet.Length));
+        _udp.Send(packet, packet.Length, _hostEndpoint);
+    }
+
     private void ProcessPacket(byte[] data)
     {
+        OnReceived?.Invoke(PgnProtocol.Describe(data, data.Length));
         if (!PgnProtocol.IsValidPacket(data, data.Length))
             return;
 
@@ -325,7 +336,7 @@ public class VirtualSteerModule : IDisposable
     private void SendHello()
     {
         var packet = PgnProtocol.BuildHelloPacket(PgnProtocol.PGN_HELLO_AUTOSTEER);
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        Emit(packet);
         SentHelloCount++;
     }
 
