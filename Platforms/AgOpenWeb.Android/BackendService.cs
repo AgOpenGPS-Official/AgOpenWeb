@@ -27,7 +27,10 @@ namespace AgOpenWeb.Android;
     ForegroundServiceType = global::Android.Content.PM.ForegroundService.TypeSpecialUse)]
 internal sealed class BackendService : Service
 {
-    private const string ChannelId = "agopenweb_host";
+    // _v2: channel settings are immutable once created, so bumping the id is the only way to
+    // turn OFF the launcher-icon badge that the original "agopenweb_host" channel showed.
+    private const string ChannelId = "agopenweb_host_v2";
+    private const string OldChannelId = "agopenweb_host";
     private const int NotificationId = 1;
 
     private static AndroidBackendHost? _host;
@@ -129,11 +132,16 @@ internal sealed class BackendService : Service
     private void CreateNotificationChannel()
     {
         if (!OperatingSystem.IsAndroidVersionAtLeast(26)) return;
+        var manager = (NotificationManager?)GetSystemService(NotificationService);
+        if (manager == null) return;
+        // Drop the old badged channel so it doesn't linger in the app's notification settings.
+        manager.DeleteNotificationChannel(OldChannelId);
         var channel = new NotificationChannel(ChannelId, "AgOpenWeb host", NotificationImportance.Low)
         {
             Description = "Keeps the guidance host running in the background.",
         };
-        var manager = (NotificationManager?)GetSystemService(NotificationService);
-        manager?.CreateNotificationChannel(channel);
+        // An ongoing foreground-service notification shouldn't put a count/dot on the launcher icon.
+        channel.SetShowBadge(false);
+        manager.CreateNotificationChannel(channel);
     }
 }
