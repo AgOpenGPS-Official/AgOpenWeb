@@ -23,7 +23,13 @@ public sealed class LauncherApplication : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new LauncherWindow(LauncherEntry.Args);
+            // Default = the all-in-one WebView app (host + embedded UI, one double-click,
+            // the desktop twin of the iOS launcher). --console = the supervisor/control-panel
+            // window (start/stop + LAN URL) for boxes run purely as a server for other devices.
+            bool console = System.Array.IndexOf(LauncherEntry.Args, "--console") >= 0;
+            desktop.MainWindow = console
+                ? new LauncherWindow(LauncherEntry.Args)
+                : new WebViewLauncherWindow(LauncherEntry.Args);
             desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
         }
         base.OnFrameworkInitializationCompleted();
