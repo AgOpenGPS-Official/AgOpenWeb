@@ -1,11 +1,13 @@
 name: Build Deployment Bundles
 
-# Builds the AgOpenWeb deployment bundles on clean runners — the HEADLESS host packaged for
+# Builds the AgOpenWeb deployment bundles on clean runners — the guidance host packaged for
 # each target, distinct from the Desktop/Android/iOS app artifacts in build-and-release.yml:
-#   - Linux x64 / arm64: self-contained host + systemd unit + install scripts (.tar.gz),
-#     via deploy/linux/package.sh — the in-cab daemon for mini-PCs / SBCs.
-#   - Windows x64: self-contained launcher app (.zip), via deploy/windows/package.sh — the
-#     app-like start/stop window for the Windows audience.
+#   - Linux x64 / arm64 daemon: self-contained host + systemd unit + install scripts (.tar.gz),
+#     via deploy/linux/package.sh — the in-cab headless daemon for mini-PCs / SBCs.
+#   - Linux x64 / arm64 launcher: self-contained desktop app (.tar.gz), via
+#     deploy/linux/launcher/package.sh — the all-in-one window (host + embedded WebView UI).
+#   - Windows x64: self-contained all-in-one launcher app (.zip), via deploy/windows/package.sh
+#     — the maximized window with the embedded WebView UI for the Windows audience.
 # Each deploy/*/package.sh is the single source of truth; this workflow just runs them on a
 # clean runner (so arm64 / Windows bundles aren't cross-published by hand on a dev Mac). The
 # Windows bundle cross-publishes win-x64 from a Linux runner — no Windows runner needed.
@@ -67,6 +69,33 @@ jobs:
           path: dist/agopenweb-linux-*.tar.gz
           retention-days: 30
 
+  linux-launcher:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]   # desktop Linux (amd64) and ARM desktop / SBC with a display
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # The desktop twin of the Windows/macOS launcher: self-contained app + run wrapper +
+      # .desktop entry + per-user installer. The embedded WebView needs a system WebKit on the
+      # target (documented in the bundle README); not bundled — normal for a desktop app.
+      - name: Build Linux desktop launcher bundle (${{ matrix.arch }})
+        run: ./deploy/linux/launcher/package.sh --arch ${{ matrix.arch }} --out "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agopenweb-launcher-linux-${{ matrix.arch }}
+          path: dist/agopenweb-launcher-linux-*.tar.gz
+          retention-days: 30
+
   windows:
     runs-on: ubuntu-latest   # cross-publishes win-x64 from Linux — no Windows runner needed
     steps:
@@ -90,7 +119,7 @@ jobs:
           retention-days: 30
 
   release:
-    needs: [linux, windows]
+    needs: [linux, linux-launcher, windows]
     # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
     runs-on: ubuntu-latest
@@ -133,23 +162,36 @@ jobs:
 
             | Target | File | Run |
             |--------|------|-----|
-            | Linux x86-64 (mini-PC / amd64) | `agopenweb-linux-x64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
-            | Linux ARM64 (Pi / Uno Q / SBC) | `agopenweb-linux-arm64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
-            | Windows x64 | `agopenweb-win-x64.zip` | extract, run `AgOpenWeb.Desktop.exe` (launcher) |
+            | Linux x86-64 daemon (mini-PC / amd64) | `agopenweb-linux-x64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
+            | Linux ARM64 daemon (Pi / Uno Q / SBC) | `agopenweb-linux-arm64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
+            | Linux x86-64 desktop launcher | `agopenweb-launcher-linux-x64.tar.gz` | extract, `./run.sh` (host + UI window) |
+            | Linux ARM64 desktop launcher | `agopenweb-launcher-linux-arm64.tar.gz` | extract, `./run.sh` (host + UI window) |
+            | Windows x64 | `agopenweb-win-x64.zip` | extract, run `AgOpenWeb.Desktop.exe` (host + UI window) |
 
-            ### Linux (no .NET SDK needed on the box)
+            ### Linux appliance daemon (no .NET SDK needed on the box)
             ```bash
             tar xzf agopenweb-linux-<arch>.tar.gz && cd agopenweb-linux-<arch>
             sudo ./install.sh --from app
             ```
             Installs to `/opt/agopenweb`, runs as the `agopenweb` user, keeps data in
             `/home/agopenweb`, enables `agopenweb.service` (auto-start on boot). The installer
-            apt-installs ICU (required) plus libfontconfig/libGL (boundary imagery).
+            apt-installs ICU (required) plus libfontconfig/libGL (boundary imagery). The UI is a
+            browser at `http://<host>:5174`.
+
+            ### Linux desktop launcher
+            ```bash
+            tar xzf agopenweb-launcher-linux-<arch>.tar.gz && cd agopenweb-launcher-linux-<arch>
+            ./run.sh            # or ./install.sh for an application-menu entry
+            ```
+            A window opens with the guidance UI (host runs in-process). Needs a system WebKit +
+            libsoup for the embedded WebView — see the bundle `README.md` for the apt line.
 
             ### Windows
-            Extract anywhere and double-click `AgOpenWeb.Desktop.exe` — the launcher window
-            opens. Click **Start**; the browser opens automatically. Self-contained — no .NET install.
+            Extract anywhere and double-click `AgOpenWeb.Desktop.exe` — a window opens showing the
+            guidance UI (the host starts in-process automatically). Needs the WebView2 Evergreen
+            Runtime (pre-installed on Windows 11). Self-contained — no .NET install.
 
+            All launchers also bind `0.0.0.0:5174`, so cab tablets/phones can connect over the LAN.
             See each bundle's `README.md` for details.
           draft: false
           prerelease: false

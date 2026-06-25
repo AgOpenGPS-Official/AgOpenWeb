@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AgOpenWeb
+Comment=Agricultural GPS guidance — all-in-one launcher (host + UI)
+Exec=__EXEC__
+Icon=__ICON__
+Terminal=false
+Categories=Utility;Science;
+StartupNotify=true
