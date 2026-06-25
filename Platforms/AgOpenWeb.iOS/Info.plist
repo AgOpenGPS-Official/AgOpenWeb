@@ -29,5 +29,11 @@
     <false/>
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>
+    <!-- Let the WKWebView (thin launcher mode) load the in-process http://localhost host. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
 </dict>
 </plist>

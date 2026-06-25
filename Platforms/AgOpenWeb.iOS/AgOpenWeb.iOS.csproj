@@ -32,6 +32,8 @@
     <PackageReference Include="Avalonia" Version="12.0.3" />
     <PackageReference Include="Avalonia.iOS" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
+    <!-- NativeWebView (WKWebView) for the thin all-in-one launcher mode. -->
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />

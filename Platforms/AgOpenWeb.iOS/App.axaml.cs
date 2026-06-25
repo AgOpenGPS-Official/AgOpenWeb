@@ -105,44 +105,57 @@ public partial class App : Avalonia.Application
             {
                 System.Diagnostics.Debug.WriteLine("[App] Creating MainView with ViewModel...");
 
-                // Get MainViewModel and services from DI and create view with them
+                // The VM runs in BOTH modes (its ctor-started timers advance the pipeline
+                // on the Avalonia UI thread — no native map control required). The host
+                // reads + commands this same VM.
                 var viewModel = Services.GetRequiredService<MainViewModel>();
                 System.Diagnostics.Debug.WriteLine("[App] MainViewModel created from DI.");
 
-                var mapService = Services.GetRequiredService<AgOpenWeb.Services.Interfaces.IMapService>();
-                var concreteMapService = mapService as AgOpenWeb.iOS.Services.MapService;
-                System.Diagnostics.Debug.WriteLine($"[App] MapService retrieved from DI: {concreteMapService != null}");
+                // Start the embedded host first so it is bound before the WebView (below)
+                // navigates to it. RemoteServerHost.StartAsync binds synchronously.
+                StartRemoteServer(viewModel);
 
-                var coverageService = Services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>();
-                System.Diagnostics.Debug.WriteLine("[App] CoverageMapService retrieved from DI.");
-
-                var mainView = new MainView(viewModel, concreteMapService!, coverageService);
-                singleViewPlatform.MainView = mainView;
-                MainView = mainView;
-                System.Diagnostics.Debug.WriteLine("[App] MainView created and assigned.");
-
-                // Wire language change to TranslationSource (#40)
-                viewModel.LanguageChanged += code =>
+                if (AgOpenWeb.Models.Diagnostics.DiagFlags.WebViewLauncher)
                 {
-                    try
+                    // THIN ALL-IN-ONE LAUNCHER: no native UI — a full-screen WebView showing
+                    // the local web app. The VM + host still run; the web client renders +
+                    // dead-reckons. (Marker: Documents/AgOpenWeb/.use_webview_launcher)
+                    var webView = new Avalonia.Controls.NativeWebView
                     {
-                        AgOpenWeb.Views.Localization.TranslationSource.Instance.CurrentCulture =
-                            new System.Globalization.CultureInfo(code);
-                    }
-                    catch { }
-                };
+                        HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+                        VerticalAlignment = Avalonia.Layout.VerticalAlignment.Stretch,
+                        Source = new System.Uri("http://localhost:5174/"),
+                    };
+                    singleViewPlatform.MainView = webView;
+                    System.Diagnostics.Debug.WriteLine("[App] Thin WebView launcher mode (no native UI).");
+                }
+                else
+                {
+                    var mapService = Services.GetRequiredService<AgOpenWeb.Services.Interfaces.IMapService>();
+                    var concreteMapService = mapService as AgOpenWeb.iOS.Services.MapService;
+                    var coverageService = Services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>();
+
+                    var mainView = new MainView(viewModel, concreteMapService!, coverageService);
+                    singleViewPlatform.MainView = mainView;
+                    MainView = mainView;
+                    System.Diagnostics.Debug.WriteLine("[App] Native MainView created and assigned.");
+
+                    // Wire language change to TranslationSource (#40)
+                    viewModel.LanguageChanged += code =>
+                    {
+                        try
+                        {
+                            AgOpenWeb.Views.Localization.TranslationSource.Instance.CurrentCulture =
+                                new System.Globalization.CultureInfo(code);
+                        }
+                        catch { }
+                    };
+                }
 
                 // Provide DI to chart panels for auto-configuration
                 AgOpenWeb.Views.Controls.Panels.SteerChartPanel.ServiceProvider = Services;
                 AgOpenWeb.Views.Controls.Panels.HeadingChartPanel.ServiceProvider = Services;
                 AgOpenWeb.Views.Controls.Panels.XTEChartPanel.ServiceProvider = Services;
-
-                // All-in-one host: start the embedded web server ALONGSIDE the native UI
-                // (the same "run alongside" pattern as the Desktop windowed build) and
-                // wire it to this live VM. Now that RemoteServer is ASP.NET-free it runs
-                // in-process on iPad; the browser / NativeWebView at http://<ipad>:5174 is
-                // the web UI, reading + commanding the same pipeline the native UI drives.
-                StartRemoteServer(viewModel);
             }
 
             base.OnFrameworkInitializationCompleted();
