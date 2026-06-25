@@ -10,16 +10,22 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using NativeWebView = Avalonia.Controls.NativeWebView;
 
 namespace AgOpenWeb.Desktop.Launcher;
 
 /// <summary>
-/// The all-in-one Windows launcher (the desktop twin of the iOS thin launcher): a single
-/// maximized window that starts the in-process guidance backend (<see cref="BackendHost"/>)
-/// and then fills itself with a <see cref="NativeWebView"/> (WebView2) pointed at the local
-/// web UI. One double-click = host + UI on this box, no separate browser. The host still
-/// binds 0.0.0.0, so other devices on the LAN can connect too.
+/// The all-in-one launcher (the desktop twin of the iOS thin launcher): a single maximized
+/// window that starts the in-process guidance backend (<see cref="BackendHost"/>) and then
+/// fills itself with a <see cref="NativeWebView"/> pointed at the local web UI. One double-click
+/// = host + UI on this box, no separate browser. The host still binds 0.0.0.0, so other devices
+/// on the LAN can connect too.
+///
+/// Backends: WebView2 on Windows, WKWebView on macOS, WebKitGTK on Linux — all embedded in-window
+/// and GPU-accelerated. On Linux the WebView is a reparented WebKitGTK child (NativeControlHost);
+/// its hardware-GL surface presents on real GPUs but comes up black on virtualized GPUs (e.g. the
+/// virtio-gpu in a VM) — the Linux launcher is supported on real hardware only, not in a VM.
 /// </summary>
 internal sealed class WebViewLauncherWindow : Window
 {
@@ -27,9 +33,9 @@ internal sealed class WebViewLauncherWindow : Window
     private BackendHost? _backend;
     private bool _closing;
 
-    // The WebView lives in the visual tree from window open (so the native WKWebView/WebView2
-    // is realized + sized by the maximized window) — we only navigate it once the host is up.
-    // A native control swapped in AFTER layout settled tends to come up zero-sized/invisible.
+    // The WebView lives in the visual tree from window open (so the native WKWebView/WebView2/
+    // WebKitGTK is realized + sized by the maximized window) — we only navigate it once the host
+    // is up. A native control swapped in AFTER layout settled tends to come up zero-sized/invisible.
     private readonly NativeWebView _web = new()
     {
         HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -50,31 +56,47 @@ internal sealed class WebViewLauncherWindow : Window
             Background = new SolidColorBrush(Color.Parse("#0b1020")),
             Child = SplashText("Starting AgOpenWeb…"),
         };
-        _web.NavigationStarted += (_, _) => Console.WriteLine("[webview] navigating");
+        _web.NavigationStarted += (_, _) =>
+        {
+            Console.WriteLine("[webview] navigating");
+            // The native child window exists by now (navigation needs the adapter) — sync its size.
+            SyncNativeWebViewSize();
+        };
         _web.NavigationCompleted += (_, e) =>
         {
             Console.WriteLine($"[webview] completed IsSuccess={e.IsSuccess}");
-            if (e.IsSuccess) _splash.IsVisible = false; // reveal the loaded UI
-        };
-        // Linux backend selection. Avalonia's default Linux WebView backend is WPE, whose
-        // EGL/DMA-BUF GPU paths render BLACK on virtualized / weak GPUs (e.g. a Parallels VM)
-        // even though the page loads — while standalone WebKitGTK renders fine there. So on
-        // Linux prefer the WebKitGTK backend, and if WPE is used anyway, force its software
-        // (Shm) rendering mode instead of EGL/DMA-BUF. No-op on Windows/macOS: the cast only
-        // matches the Linux WPE args type.
-        _web.EnvironmentRequested += (_, e) =>
-        {
-            if (e is Avalonia.Platform.LinuxWpeWebViewEnvironmentRequestedEventArgs linux)
-            {
-                linux.PreferWebKitGtkInstead = true;
-                linux.RenderingMode = Avalonia.Platform.WpeRenderingMode.Shm;
-                Console.WriteLine("[webview] Linux: preferring WebKitGTK backend (Shm fallback for WPE)");
-            }
+            // Reveal the loaded UI. The WebKitGTK backend can raise this off the UI thread, so
+            // marshal the property change — setting IsVisible off-thread silently no-ops on X11.
+            if (e.IsSuccess) Dispatcher.UIThread.Post(() => _splash.IsVisible = false);
         };
 
         // WebView underneath, splash on top until the page loads.
         Content = new Grid { Children = { _web, _splash } };
         Opened += (_, _) => _ = StartAsync();
+    }
+
+    /// <summary>
+    /// Linux (X11) only: re-sync the embedded WebView's native child window to the control's bounds.
+    /// Avalonia's <c>NativeControlHost</c> creates the native window asynchronously (after the
+    /// WebKitGTK adapter is built) — which is after the maximized window's initial arrange — and
+    /// then never re-arranges it, so the native window stays at its 1×1 creation size while the
+    /// Avalonia-side bounds are already full. The page then renders into a 1-pixel corner (the
+    /// window looks black). Forcing a re-arrange once the adapter is up snaps the native window to
+    /// full size. No-op on Windows/macOS (their backends size correctly), so it's gated to Linux.
+    /// </summary>
+    private void SyncNativeWebViewSize()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        void Rearrange()
+        {
+            _web.InvalidateMeasure();
+            _web.InvalidateArrange();
+        }
+        // Post so the re-arrange runs after the current layout pass; a couple of staggered retries
+        // absorb the race between async adapter/native-window creation and the arrange we trigger.
+        Dispatcher.UIThread.Post(Rearrange, DispatcherPriority.Background);
+        DispatcherTimer.RunOnce(Rearrange, TimeSpan.FromMilliseconds(300));
+        DispatcherTimer.RunOnce(Rearrange, TimeSpan.FromMilliseconds(1000));
     }
 
     private async Task StartAsync()
