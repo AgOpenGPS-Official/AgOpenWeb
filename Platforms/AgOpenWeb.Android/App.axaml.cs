@@ -162,8 +162,14 @@ public partial class App : Avalonia.Application
     }
 
     // The launcher view: a full-screen NativeWebView with a splash on top until the page loads.
-    // We navigate only after BackendService signals the host is bound, so the first paint isn't a
-    // "connection refused" against a not-yet-listening port.
+    // The in-process host binds :5174 from the foreground BackendService, which may still be
+    // starting (cold start) or restarting (the Activity can outlive a stopped host, leaving the
+    // static HostReady signal stale). So we navigate as soon as the host SIGNALS ready (bounded
+    // wait, so a stale/pending signal can't block us), then RETRY on any load failure until the
+    // page actually comes up — that bridges the startup gap instead of leaving a dead
+    // "Webpage not available" on the first miss.
+    private const int LauncherPort = 5174;
+
     private static Control BuildWebViewLauncherView()
     {
         var web = new Avalonia.Controls.NativeWebView
@@ -183,28 +189,44 @@ public partial class App : Avalonia.Application
                 VerticalAlignment = VerticalAlignment.Center,
             },
         };
+
+        var uri = new Uri($"http://localhost:{LauncherPort}/");
+        int attempts = 0;
+        const int maxAttempts = 60; // ~45 s of retries at 750 ms — covers a slow cold start
+
+        void TryNavigate()
+        {
+            attempts++;
+            Console.WriteLine($"[App] webview navigate attempt {attempts} → {uri}");
+            try { web.Navigate(uri); } catch (Exception ex) { Console.WriteLine($"[App] navigate threw: {ex.Message}"); }
+        }
+
         web.NavigationCompleted += (_, e) =>
         {
-            Console.WriteLine($"[App] webview completed IsSuccess={e.IsSuccess}");
-            if (e.IsSuccess) splash.IsVisible = false;
+            Console.WriteLine($"[App] webview completed IsSuccess={e.IsSuccess} attempt={attempts}");
+            if (e.IsSuccess) { splash.IsVisible = false; return; }
+            // Failed (host not listening yet / transient). Retry until it loads.
+            if (attempts < maxAttempts)
+                DelayThenPost(750, TryNavigate);
         };
 
-        _ = NavigateWhenHostReady(web);
+        _ = StartNavigationAsync(TryNavigate);
         return new Grid { Children = { web, splash } };
     }
 
-    private static async Task NavigateWhenHostReady(Avalonia.Controls.NativeWebView web)
+    // Navigate as soon as the host signals ready, but wait no longer than a few seconds for that
+    // signal — the retry-on-failure loop covers any remaining gap (and the case where HostReady is
+    // a stale leftover from a previous run in the same process).
+    private static async Task StartNavigationAsync(Action tryNavigate)
     {
-        try
-        {
-            var port = await BackendService.HostReady.Task.ConfigureAwait(false);
-            Dispatcher.UIThread.Post(() => web.Source = new Uri($"http://localhost:{port}/"));
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[App] backend host not ready: {ex.Message}");
-        }
+        try { await Task.WhenAny(BackendService.HostReady.Task, Task.Delay(8000)).ConfigureAwait(false); }
+        catch { /* host start may have faulted; try anyway — the server can still come up */ }
+        Dispatcher.UIThread.Post(tryNavigate);
     }
+
+    private static void DelayThenPost(int milliseconds, Action action) =>
+        _ = Task.Delay(milliseconds).ContinueWith(
+            _ => Dispatcher.UIThread.Post(action), TaskScheduler.Default);
 
     private static void ExtractSoundFiles(IServiceProvider services)
     {
