@@ -17,7 +17,13 @@ namespace AgOpenWeb.Desktop.Launcher;
 /// </summary>
 public sealed class LauncherApplication : Application
 {
-    public override void Initialize() => Styles.Add(new FluentTheme());
+    public override void Initialize()
+    {
+        // The app name (macOS menu-bar title next to the Apple menu, taskbar/Alt-Tab name)
+        // — without this Avalonia defaults to "Avalonia Application".
+        Name = "AgOpenWeb";
+        Styles.Add(new FluentTheme());
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
