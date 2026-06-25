@@ -10,11 +10,10 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using SkiaSharp;
-using AgOpenWeb.RemoteServer;
 
-namespace AgOpenWeb.Desktop;
+namespace AgOpenWeb.RemoteServer;
 
-internal static class BoundaryImageryCapture
+public static class BoundaryImageryCapture
 {
     private const double WorldSize = 2.0 * Math.PI * 6378137.0; // Web-Mercator extent (m)
 

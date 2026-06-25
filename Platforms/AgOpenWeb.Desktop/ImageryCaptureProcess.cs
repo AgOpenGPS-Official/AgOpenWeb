@@ -10,6 +10,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Threading.Tasks;
+using AgOpenWeb.RemoteServer; // BoundaryImageryCapture (the SkiaSharp compositor, now Shared)
 
 namespace AgOpenWeb.Desktop;
 
