@@ -34,9 +34,10 @@ adb shell run-as com.agopenweb.android rm files/Documents/AgOpenWeb/.use_webview
   running while the app is **backgrounded** (home / app-switch) or the screen is off.
 - The backend runs on its own host-loop thread (not the Avalonia UI thread, which Android pauses
   when backgrounded) — the same model as the headless daemon.
-- **Swiping the app away from Recents** is treated as "quit": the service stops and saves config
-  + field state first (the Android parallel to closing the desktop launcher window). Merely
-  backgrounding does not stop it.
+- The host runs **until you force-stop the app** — backgrounding and even swiping the app away
+  from Recents leave it serving, because LAN clients may still be connected (like a navigation or
+  music app). Config + field state are saved every time the Activity is backgrounded. To stop the
+  host, force-stop AgOpenWeb from the app info screen (or Recents → app info).
 - Android 13+ shows the notification only after the user grants `POST_NOTIFICATIONS` (requested
   on first launch); the service runs regardless.
 

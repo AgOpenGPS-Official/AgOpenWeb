@@ -94,16 +94,12 @@ internal sealed class BackendService : Service
         return StartCommandResult.Sticky;
     }
 
-    // Swiping the app away from Recents is the user's "quit" — stop the host (→ OnDestroy save),
-    // the Android parallel to closing the desktop launcher window. NOTE: this fires ONLY on a
-    // task swipe-away, NOT when the app is merely backgrounded (home / app-switch), so the host
-    // keeps running in the background as intended and only a deliberate close tears it down.
-    public override void OnTaskRemoved(Intent? rootIntent)
-    {
-        Console.WriteLine("[BackendService] task removed — stopping host.");
-        StopSelf();
-        base.OnTaskRemoved(rootIntent);
-    }
+    // NOTE: we deliberately do NOT stop the host on OnTaskRemoved (swipe-away from Recents).
+    // This is an in-cab guidance host that LAN clients connect to, so it must keep serving even
+    // when the local WebView Activity is dismissed — like a navigation or music app. Tying
+    // shutdown to task-removal also raced badly: the Activity/WebView can outlive the removed
+    // task and then retry forever against a host that was stopped but not restarted. The host
+    // now runs until the user force-stops the app (state is saved on every Activity OnPause).
 
     public override void OnDestroy()
     {
