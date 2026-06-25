@@ -9,7 +9,9 @@
 // only this host's shell swapped from a Kestrel WebApplication to SimpleWebServer,
 // and the ASP.NET DI container to direct construction.
 
+using System.Collections.Concurrent;
 using System.Reflection;
+using SkiaSharp;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
@@ -197,15 +199,18 @@ public sealed class RemoteServerHost
             catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
         });
 
-        // Field background imagery (BackPic.png). The heavy bytes go over HTTP
-        // (browser-decoded/cached); only the small world rectangle rides the WS Scene.
-        // The client cache-busts with ?v=<version> on field change.
+        // Field background imagery. Served DOWNSCALED for the web: native composites
+        // are huge (tens of MB) and an iOS WKWebView <img>/CanvasKit decode of that
+        // OOMs — so big PNGs are decoded in THIS (app) process (which already decodes
+        // them for the native map) and re-encoded as a capped JPEG. Small images pass
+        // through untouched. The client cache-busts with ?v=<version> on field change.
         server.MapGet("/backpic.png", () =>
         {
             var im = state.Field.Imagery;
-            return im is not null && File.Exists(im.Path)
-                ? SimpleWebServer.Response.Bytes(File.ReadAllBytes(im.Path), "image/png")
-                : SimpleWebServer.Response.NotFound;
+            if (im is null) return SimpleWebServer.Response.NotFound;
+            var web = GetBackpicForWeb(im.Path);
+            return web is { } w ? SimpleWebServer.Response.Bytes(w.Bytes, w.ContentType)
+                                 : SimpleWebServer.Response.NotFound;
         });
 
         // Satellite tile proxy (Phase MT — Draw boundary on map). Quadkey-addressed,
@@ -232,6 +237,58 @@ public sealed class RemoteServerHost
         if (_broadcaster is not null) await _broadcaster.DisposeAsync().ConfigureAwait(false);
         await _server.StopAsync().ConfigureAwait(false);
         _server = null;
+    }
+
+    // Web imagery: cap the longest side so an iOS WKWebView can decode it. Native
+    // composites are often 6000+ px / tens of MB; the WebView's image-decode budget is
+    // far smaller than the app's. Cache the result by path + mtime + size so a 42 MB
+    // PNG is decoded at most once per change. Small images pass through as-is (PNG).
+    private const int WebImageryMaxDim = 2048;
+    private static readonly ConcurrentDictionary<string, (long Stamp, byte[] Bytes, string ContentType)> _backpicCache = new();
+
+    private readonly record struct WebImage(byte[] Bytes, string ContentType);
+
+    private static WebImage? GetBackpicForWeb(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return null;
+            var fi = new FileInfo(path);
+            long stamp = fi.LastWriteTimeUtc.Ticks ^ fi.Length;
+            if (_backpicCache.TryGetValue(path, out var c) && c.Stamp == stamp)
+                return new WebImage(c.Bytes, c.ContentType);
+
+            // Peek dimensions cheaply (no full decode) — pass through if already small.
+            int w, h;
+            using (var codec = SKCodec.Create(path))
+            {
+                if (codec is null) return new WebImage(File.ReadAllBytes(path), "image/png");
+                w = codec.Info.Width; h = codec.Info.Height;
+            }
+            if (System.Math.Max(w, h) <= WebImageryMaxDim)
+            {
+                var raw = File.ReadAllBytes(path);
+                _backpicCache[path] = (stamp, raw, "image/png");
+                return new WebImage(raw, "image/png");
+            }
+
+            // Downscale: decode (the app process already decodes this for the native map,
+            // so the memory is proven) → resize → JPEG. Bound the cache.
+            using var src = SKBitmap.Decode(path);
+            if (src is null) return new WebImage(File.ReadAllBytes(path), "image/png");
+            double scale = (double)WebImageryMaxDim / System.Math.Max(w, h);
+            int nw = System.Math.Max(1, (int)System.Math.Round(w * scale));
+            int nh = System.Math.Max(1, (int)System.Math.Round(h * scale));
+            using var scaled = src.Resize(new SKImageInfo(nw, nh), new SKSamplingOptions(SKCubicResampler.Mitchell));
+            if (scaled is null) return new WebImage(File.ReadAllBytes(path), "image/png");
+            using var img = SKImage.FromBitmap(scaled);
+            using var data = img.Encode(SKEncodedImageFormat.Jpeg, 85);
+            var jpg = data.ToArray();
+            if (_backpicCache.Count > 8) _backpicCache.Clear();
+            _backpicCache[path] = (stamp, jpg, "image/jpeg");
+            return new WebImage(jpg, "image/jpeg");
+        }
+        catch { return null; }
     }
 
     private static string ReadAsset(string name)

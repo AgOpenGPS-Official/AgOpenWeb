@@ -17,6 +17,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Server-side imagery downscale for the web (/backpic.png). Managed-only; the
+         native libSkiaSharp is already loaded by each head via Avalonia.Skia. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
     <!-- Phase 2: coverage streaming reads ICoverageMapService (Avalonia-free). -->
     <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
