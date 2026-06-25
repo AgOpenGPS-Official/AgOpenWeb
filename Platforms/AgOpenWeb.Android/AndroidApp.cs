@@ -21,7 +21,10 @@ using Avalonia.Android;
 
 namespace AgOpenWeb.Android;
 
-[global::Android.App.Application]
+// UsesCleartextTraffic: the embedded host serves plain HTTP (the web UI + LAN feed on :5174).
+// Android 9+ blocks cleartext by default, which would fail the launcher's WebView load of
+// http://localhost:5174 (and any LAN client) with ERR_CLEARTEXT_NOT_PERMITTED.
+[global::Android.App.Application(UsesCleartextTraffic = true)]
 public class AndroidApp : AvaloniaAndroidApplication<App>
 {
     protected AndroidApp(IntPtr javaReference, JniHandleOwnership transfer)

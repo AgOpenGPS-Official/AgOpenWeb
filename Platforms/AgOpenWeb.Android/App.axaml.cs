@@ -15,10 +15,15 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Android;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using AgOpenWeb.Android.DependencyInjection;
 using AgOpenWeb.Android.Views;
@@ -32,7 +37,9 @@ public partial class App : Avalonia.Application
 {
     private IServiceProvider? _serviceProvider;
 
-    public static IServiceProvider? Services { get; private set; }
+    // internal set: in all-in-one launcher mode the foreground BackendService's AndroidBackendHost
+    // owns the DI provider and publishes it here so incidental App.Services lookups still resolve.
+    public static IServiceProvider? Services { get; internal set; }
     public static MainView? MainView { get; private set; }
 
     public override void Initialize()
@@ -47,6 +54,22 @@ public partial class App : Avalonia.Application
         Console.WriteLine("[App] Framework initialization starting...");
 
         AgOpenWeb.Views.Diagnostics.DiagFlagsBootstrap.ApplyAtStartup(this);
+
+        if (AgOpenWeb.Models.Diagnostics.DiagFlags.WebViewLauncher)
+        {
+            // ALL-IN-ONE LAUNCHER: no native UI and NO app-side DI here. The foreground
+            // BackendService (started by MainActivity) owns the in-process host on its own
+            // host-loop thread; this Activity is just a full-screen WebView showing the local
+            // web app once the host is bound. Marker: Documents/AgOpenWeb/.use_webview_launcher.
+            Console.WriteLine("[App] WebView launcher mode (no native UI).");
+            if (ApplicationLifetime is IActivityApplicationLifetime launcherActivity)
+                launcherActivity.MainViewFactory = BuildWebViewLauncherView;
+            else if (ApplicationLifetime is ISingleViewApplicationLifetime launcherSingleView)
+                launcherSingleView.MainView = BuildWebViewLauncherView();
+
+            base.OnFrameworkInitializationCompleted();
+            return;
+        }
 
         // Set up dependency injection
         var services = new ServiceCollection();
@@ -136,6 +159,51 @@ public partial class App : Avalonia.Application
 
         base.OnFrameworkInitializationCompleted();
         Console.WriteLine("[App] Framework initialization completed.");
+    }
+
+    // The launcher view: a full-screen NativeWebView with a splash on top until the page loads.
+    // We navigate only after BackendService signals the host is bound, so the first paint isn't a
+    // "connection refused" against a not-yet-listening port.
+    private static Control BuildWebViewLauncherView()
+    {
+        var web = new Avalonia.Controls.NativeWebView
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        var splash = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#0b1020")),
+            Child = new TextBlock
+            {
+                Text = "Starting AgOpenWeb…",
+                Foreground = Brushes.White,
+                FontSize = 16,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            },
+        };
+        web.NavigationCompleted += (_, e) =>
+        {
+            Console.WriteLine($"[App] webview completed IsSuccess={e.IsSuccess}");
+            if (e.IsSuccess) splash.IsVisible = false;
+        };
+
+        _ = NavigateWhenHostReady(web);
+        return new Grid { Children = { web, splash } };
+    }
+
+    private static async Task NavigateWhenHostReady(Avalonia.Controls.NativeWebView web)
+    {
+        try
+        {
+            var port = await BackendService.HostReady.Task.ConfigureAwait(false);
+            Dispatcher.UIThread.Post(() => web.Source = new Uri($"http://localhost:{port}/"));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[App] backend host not ready: {ex.Message}");
+        }
     }
 
     private static void ExtractSoundFiles(IServiceProvider services)

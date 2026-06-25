@@ -36,8 +36,34 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnCreate(savedInstanceState);
 
+        // All-in-one launcher mode: start the foreground service that owns the in-process
+        // guidance host so it survives this Activity backgrounding. The WebView (built by
+        // App in launcher mode) waits on BackendService.HostReady before navigating.
+        if (AgOpenWeb.Models.Diagnostics.DiagFlags.WebViewLauncher)
+        {
+            RequestNotificationPermissionIfNeeded();
+            BackendService.Start(this);
+        }
+
         // Enable immersive full-screen mode
         EnableImmersiveMode();
+    }
+
+    // Android 13+ (API 33) gates notification display behind a runtime permission; without it
+    // the foreground-service notification is suppressed (the service still runs). Best-effort.
+    private void RequestNotificationPermissionIfNeeded()
+    {
+        if (!OperatingSystem.IsAndroidVersionAtLeast(33)) return;
+        try
+        {
+            const string perm = global::Android.Manifest.Permission.PostNotifications;
+            if (CheckSelfPermission(perm) != global::Android.Content.PM.Permission.Granted)
+                RequestPermissions(new[] { perm }, 1001);
+        }
+        catch (System.Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainActivity] notif permission request failed: {ex.Message}");
+        }
     }
 
     protected override void OnResume()

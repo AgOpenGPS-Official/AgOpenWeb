@@ -22,6 +22,8 @@
     <PackageReference Include="Avalonia" Version="12.0.3" />
     <PackageReference Include="Avalonia.Android" Version="12.0.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
+    <!-- NativeWebView (Android System WebView) for the all-in-one launcher mode. -->
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
@@ -34,6 +36,10 @@
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.ViewModels\AgOpenWeb.ViewModels.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Views\AgOpenWeb.Views.csproj" />
+    <!-- All-in-one host: the embedded web server (ASP.NET-free SimpleWebServer) +
+         the shared web-command wiring, same as the iOS all-in-one head. -->
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteServer\AgOpenWeb.RemoteServer.csproj" />
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
   </ItemGroup>
 
 </Project>
