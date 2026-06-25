@@ -23,7 +23,7 @@ Wants=network-online.target
 Type=notify
 NotifyAccess=main
 
-ExecStart=/opt/agopenweb/AgOpenWeb.Desktop
+ExecStart=/opt/agopenweb/AgOpenWeb.Desktop --headless
 WorkingDirectory=/opt/agopenweb
 
 # Dedicated unprivileged service account. Device-group membership (dialout for USB

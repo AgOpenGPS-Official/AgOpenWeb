@@ -42,12 +42,13 @@ sealed class Program
 
         // Mode selection. The backend is identical in every mode; only how it's hosted differs:
         //   --windowed (or AGOPENWEB_WINDOWED=1) → legacy full native UI (verify/compare).
-        //   --launcher                           → in-process launcher window (app-like).
-        //   --headless                           → display-less daemon (force, e.g. Windows Service).
-        //   no flag                              → Windows: launcher (the AgOpen audience expects a
-        //                                          program); Linux/macOS: headless daemon (systemd).
-        // The browser at http://<host>:5174 is the UI in launcher + headless modes alike.
-        // See WEBUI_SESSION_HANDOFF.md.
+        //   --launcher                           → in-process launcher window (app-like, force).
+        //   --headless                           → display-less daemon (force; systemd / Windows Service).
+        //   no flag                              → Windows + macOS: the all-in-one WebView launcher
+        //                                          (a desktop app); Linux: headless daemon (the SBC/
+        //                                          mini-PC server case). Linux launcher bundles pass
+        //                                          --launcher; daemon bundles pass --headless.
+        // The browser/WebView at http://<host>:5174 is the UI in launcher + headless modes alike.
         bool windowed = Array.IndexOf(args, "--windowed") >= 0
             || Environment.GetEnvironmentVariable("AGOPENWEB_WINDOWED") == "1";
         bool forceHeadless = Array.IndexOf(args, "--headless") >= 0;
@@ -55,7 +56,7 @@ sealed class Program
 
         if (windowed)
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-        else if (forceLauncher || (OperatingSystem.IsWindows() && !forceHeadless))
+        else if (forceLauncher || ((OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()) && !forceHeadless))
             Launcher.LauncherEntry.Run(args);
         else
             HeadlessHost.RunAsync(args).GetAwaiter().GetResult();
