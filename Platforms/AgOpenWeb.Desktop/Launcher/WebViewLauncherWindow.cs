@@ -56,6 +56,21 @@ internal sealed class WebViewLauncherWindow : Window
             Console.WriteLine($"[webview] completed IsSuccess={e.IsSuccess}");
             if (e.IsSuccess) _splash.IsVisible = false; // reveal the loaded UI
         };
+        // Linux backend selection. Avalonia's default Linux WebView backend is WPE, whose
+        // EGL/DMA-BUF GPU paths render BLACK on virtualized / weak GPUs (e.g. a Parallels VM)
+        // even though the page loads — while standalone WebKitGTK renders fine there. So on
+        // Linux prefer the WebKitGTK backend, and if WPE is used anyway, force its software
+        // (Shm) rendering mode instead of EGL/DMA-BUF. No-op on Windows/macOS: the cast only
+        // matches the Linux WPE args type.
+        _web.EnvironmentRequested += (_, e) =>
+        {
+            if (e is Avalonia.Platform.LinuxWpeWebViewEnvironmentRequestedEventArgs linux)
+            {
+                linux.PreferWebKitGtkInstead = true;
+                linux.RenderingMode = Avalonia.Platform.WpeRenderingMode.Shm;
+                Console.WriteLine("[webview] Linux: preferring WebKitGTK backend (Shm fallback for WPE)");
+            }
+        };
 
         // WebView underneath, splash on top until the page loads.
         Content = new Grid { Children = { _web, _splash } };
