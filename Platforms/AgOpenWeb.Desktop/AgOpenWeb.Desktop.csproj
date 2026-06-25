@@ -64,6 +64,20 @@
     <PackageReference Include="NetCoreAudio" Version="2.0.1" />
   </ItemGroup>
 
+  <!-- The all-in-one launcher's NativeWebView uses Avalonia.Controls.WebView's WebView2 backend,
+       which carries its own COM interop (Avalonia.Controls.Win.WebView2.Interop) and P/Invokes
+       the native WebView2Loader.dll — but that package ships no native asset (its net10.0 dep
+       group pulls only Avalonia), so the loader is absent from a win-x64/arm64 self-contained
+       publish and the WebView renders blank. Reference Microsoft.Web.WebView2 on Windows RIDs to
+       supply WebView2Loader.dll. IncludeAssets="native;runtime" takes ONLY the loader: the
+       package's build targets otherwise hardcode WPF + WinForms managed flavor references (no
+       opt-out) that are dead weight on our non-"-windows" net10.0 TFM and drag in a WindowsBase
+       conflict (MSB3277). Windows-only — absent from the macOS/iOS/Linux/Android publishes. -->
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('win'))">
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49"
+                      IncludeAssets="native;runtime" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />

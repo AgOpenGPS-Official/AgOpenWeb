@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# AgOpenWeb — build a deployable Windows bundle (Phase 10 launcher).
+# AgOpenWeb — build a deployable Windows bundle (all-in-one WebView launcher).
 #
 # Cross-publishes the self-contained Desktop exe on a build machine (dev Mac / Linux / CI)
 # and zips it. On Windows the user just extracts and double-clicks AgOpenWeb.Desktop.exe:
-# no args → the in-process launcher window (Start / Stop / Open in Browser). No installer,
+# no args → a maximized window that starts the in-process guidance host and fills itself
+# with the web UI in an embedded WebView2 (one double-click = host + UI on this box). The
+# host still binds 0.0.0.0, so cab tablets/phones can connect over the LAN too. No installer,
 # no service, no .NET install needed — it's app-like, the way the Windows AgOpen audience
 # expects. (Linux/macOS use deploy/linux instead.)
+#
+# Requires the WebView2 Evergreen Runtime on the target PC for the embedded UI to render.
+# It's pre-installed on Windows 11 and current Windows 10; the publish bundles the native
+# WebView2Loader.dll (via Microsoft.Web.WebView2) but not the runtime itself.
 #
 # Usage:
 #   ./package.sh                  # win-x64 bundle (default)
