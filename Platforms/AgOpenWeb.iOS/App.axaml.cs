@@ -127,7 +127,9 @@ public partial class App : Avalonia.Application
                         Source = new System.Uri("http://localhost:5174/"),
                     };
                     singleViewPlatform.MainView = webView;
-                    System.Diagnostics.Debug.WriteLine("[App] Thin WebView launcher mode (no native UI).");
+                    // Console.WriteLine (not Debug.WriteLine) so it shows in a Release
+                    // device console (devicectl --console) — Debug is stripped in Release.
+                    Console.WriteLine("[App] Thin WebView launcher mode (no native UI).");
                 }
                 else
                 {
@@ -235,11 +237,11 @@ public partial class App : Avalonia.Application
             AgOpenWeb.RemoteWiring.RemoteServerWiring.Wire(
                 _remoteServer, vm, sp, sp.GetRequiredService<IConfigurationService>(),
                 new IosImageryCapture());
-            System.Diagnostics.Debug.WriteLine("[App] RemoteServer started on :5174 (all-in-one).");
+            Console.WriteLine("[App] RemoteServer started on :5174 (all-in-one).");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[App] RemoteServer start FAILED: {ex}");
+            Console.WriteLine($"[App] RemoteServer start FAILED: {ex}");
         }
     }
 
