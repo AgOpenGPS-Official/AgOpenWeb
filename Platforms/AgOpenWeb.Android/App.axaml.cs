@@ -191,23 +191,30 @@ public partial class App : Avalonia.Application
         };
 
         var uri = new Uri($"http://localhost:{LauncherPort}/");
+        var loaded = false;
         int attempts = 0;
-        const int maxAttempts = 60; // ~45 s of retries at 750 ms — covers a slow cold start
+        const int maxAttempts = 20;       // ~50 s total at the 2.5 s watchdog cadence
+        const int watchdogMs = 2500;
 
+        // Watchdog-driven retry (event-independent): re-navigate until a load is CONFIRMED.
+        // We can't rely on NavigationCompleted(IsSuccess=false) to fire — Android's WebView may
+        // surface a connection-refused (host not listening yet) as a silent failure with no
+        // completion event — so instead, after each attempt, if no success arrived within the
+        // window, navigate again. Stops the moment a successful load flips `loaded`.
         void TryNavigate()
         {
+            if (loaded) return;
             attempts++;
             Console.WriteLine($"[App] webview navigate attempt {attempts} → {uri}");
             try { web.Navigate(uri); } catch (Exception ex) { Console.WriteLine($"[App] navigate threw: {ex.Message}"); }
+            if (attempts < maxAttempts)
+                DelayThenPost(watchdogMs, () => { if (!loaded) TryNavigate(); });
         }
 
         web.NavigationCompleted += (_, e) =>
         {
             Console.WriteLine($"[App] webview completed IsSuccess={e.IsSuccess} attempt={attempts}");
-            if (e.IsSuccess) { splash.IsVisible = false; return; }
-            // Failed (host not listening yet / transient). Retry until it loads.
-            if (attempts < maxAttempts)
-                DelayThenPost(750, TryNavigate);
+            if (e.IsSuccess) { loaded = true; splash.IsVisible = false; }
         };
 
         _ = StartNavigationAsync(TryNavigate);
