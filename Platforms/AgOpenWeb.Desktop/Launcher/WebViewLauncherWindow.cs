@@ -27,17 +27,38 @@ internal sealed class WebViewLauncherWindow : Window
     private BackendHost? _backend;
     private bool _closing;
 
+    // The WebView lives in the visual tree from window open (so the native WKWebView/WebView2
+    // is realized + sized by the maximized window) — we only navigate it once the host is up.
+    // A native control swapped in AFTER layout settled tends to come up zero-sized/invisible.
+    private readonly NativeWebView _web = new()
+    {
+        HorizontalAlignment = HorizontalAlignment.Stretch,
+        VerticalAlignment = VerticalAlignment.Stretch,
+    };
+    private readonly Border _splash;
+
     public WebViewLauncherWindow(string[] args)
     {
         _args = args;
         Title = "AgOpenWeb";
         WindowState = WindowState.Maximized;
         RequestedThemeVariant = ThemeVariant.Dark;
-        Background = new SolidColorBrush(Color.Parse("#0b1020"));
         TryLoadIcon();
 
-        Content = Splash("Starting AgOpenWeb…");
-        // Start once the window exists; the host binds before the WebView navigates to it.
+        _splash = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#0b1020")),
+            Child = SplashText("Starting AgOpenWeb…"),
+        };
+        _web.NavigationStarted += (_, _) => Console.WriteLine("[webview] navigating");
+        _web.NavigationCompleted += (_, e) =>
+        {
+            Console.WriteLine($"[webview] completed IsSuccess={e.IsSuccess}");
+            if (e.IsSuccess) _splash.IsVisible = false; // reveal the loaded UI
+        };
+
+        // WebView underneath, splash on top until the page loads.
+        Content = new Grid { Children = { _web, _splash } };
         Opened += (_, _) => _ = StartAsync();
     }
 
@@ -58,20 +79,15 @@ internal sealed class WebViewLauncherWindow : Window
             var log = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "agopenweb-launcher-error.log");
             try { System.IO.File.WriteAllText(log, ex.ToString()); } catch { }
             try { await backend.StopAsync(); } catch { /* best effort */ }
-            Content = Splash($"AgOpenWeb failed to start.\n\n{ex.Message}\n\nDetails: {log}");
+            _splash.Child = SplashText($"AgOpenWeb failed to start.\n\n{ex.Message}\n\nDetails: {log}");
             return;
         }
 
         var port = _backend.Server?.Port ?? 5174;
-        Content = new NativeWebView
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-            Source = new Uri($"http://localhost:{port}/"),
-        };
+        _web.Source = new Uri($"http://localhost:{port}/");
     }
 
-    private static Control Splash(string message) => new TextBlock
+    private static Control SplashText(string message) => new TextBlock
     {
         Text = message,
         Foreground = Brushes.White,
