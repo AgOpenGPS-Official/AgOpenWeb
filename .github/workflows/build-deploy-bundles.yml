@@ -281,53 +281,54 @@ jobs:
 
             ${{ steps.meta.outputs.banner }}
 
-            All-in-one guidance host + UI. Each launcher opens a window showing the UI and runs
-            the host in-process; it also binds `0.0.0.0:5174`, so cab tablets/phones can connect
-            over the LAN. The Linux daemon and Windows Service run it headless (UI in a browser).
+            **One self-contained app per OS** (no .NET install on any target), and it runs **two
+            ways**:
+
+            - **Launcher (desktop):** run it and a window opens with the guidance UI; the host runs
+              inside it.
+            - **Headless (server / in-cab appliance):** no window — the host runs in the background
+              and you open the UI from any browser or cab tablet at `http://<host>:5174`. It can run
+              on boot via the Linux systemd daemon or the Windows Service, and the same exe takes
+              `--headless` directly on **any** desktop OS (Windows, macOS, Linux).
+
+            Either way the host binds `0.0.0.0:5174`, so other devices on the LAN connect in a browser.
 
             **Version:** ${{ steps.meta.outputs.version }}
 
             ### Downloads
 
-            | Target | File | Run |
-            |--------|------|-----|
-            | Linux x86-64 daemon (mini-PC / amd64) | `agopenweb-linux-x64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
-            | Linux ARM64 daemon (Pi / Uno Q / SBC) | `agopenweb-linux-arm64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
-            | Linux x86-64 desktop launcher | `agopenweb-launcher-linux-x64.tar.gz` | extract, `./run.sh` (host + UI window) |
-            | Linux ARM64 desktop launcher | `agopenweb-launcher-linux-arm64.tar.gz` | extract, `./run.sh` (host + UI window) |
-            | Windows x64 | `agopenweb-win-x64.zip` | run `AgOpenWeb.Desktop.exe` (UI window), or `install-service.cmd` (headless service) |
-            | macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` | open the `.dmg`, drag **AgOpenWeb** to Applications, launch it |
-            | Android (tablet/phone) | `agopenweb-android.apk` | sideload the APK |
+            | Platform | Download |
+            |---|---|
+            | Windows x64 | `agopenweb-win-x64.zip` |
+            | macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` |
+            | Linux x64 / arm64 — desktop launcher | `agopenweb-launcher-linux-<arch>.tar.gz` |
+            | Linux x64 / arm64 — headless daemon | `agopenweb-linux-<arch>.tar.gz` |
+            | Android (tablet / phone) | `agopenweb-android.apk` |
 
-            ### Linux appliance daemon (no .NET SDK needed on the box)
-            ```bash
-            tar xzf agopenweb-linux-<arch>.tar.gz && cd agopenweb-linux-<arch>
-            sudo ./install.sh --from app
-            ```
-            Installs to `/opt/agopenweb`, runs as the `agopenweb` user, keeps data in
-            `/home/agopenweb`, enables `agopenweb.service` (auto-start on boot). The installer
-            apt-installs ICU (required) plus libfontconfig/libGL (boundary imagery). The UI is a
-            browser at `http://<host>:5174`.
+            ### Run as a desktop launcher (window + UI)
+            - **Windows:** extract the zip, run `AgOpenWeb.Desktop.exe`. Needs the WebView2 Evergreen
+              Runtime (pre-installed on Windows 11).
+            - **macOS:** open the `.dmg`, drag **AgOpenWeb** to Applications, launch it. Ad-hoc signed
+              (not yet notarized) — first launch may need right-click → **Open** to pass Gatekeeper.
+            - **Linux:** `tar xzf agopenweb-launcher-linux-<arch>.tar.gz && cd … && ./run.sh` (or
+              `./install.sh` for an app-menu entry). Needs system WebKitGTK + libsoup — see the
+              bundle `README.md` for the apt line.
 
-            ### Linux desktop launcher
-            ```bash
-            tar xzf agopenweb-launcher-linux-<arch>.tar.gz && cd agopenweb-launcher-linux-<arch>
-            ./run.sh            # or ./install.sh for an application-menu entry
-            ```
-            A window opens with the guidance UI (host runs in-process). Needs a system WebKit +
-            libsoup for the embedded WebView — see the bundle `README.md` for the apt line.
+            ### Run headless (no window — browse to `http://<host>:5174`)
+            Same app, no display needed — for a cab PC / mini-PC / SBC that serves browser & tablet
+            clients:
+            - **Linux (systemd):** `tar xzf agopenweb-linux-<arch>.tar.gz && cd … && sudo ./install.sh
+              --from app`. Installs to `/opt/agopenweb`, runs as the `agopenweb` user, data in
+              `/home/agopenweb`, auto-starts on boot; apt-installs ICU + libfontconfig/libGL.
+            - **Windows (Service):** in the win zip, right-click `install-service.cmd` → **Run as
+              administrator**. Auto-starts on boot, opens TCP 5174 for LAN clients.
+            - **macOS / any OS:** run the binary directly with `--headless` (e.g.
+              `AgOpenWeb.app/Contents/MacOS/AgOpenWeb.Desktop --headless`). No auto-start installer
+              on macOS yet.
 
-            ### Windows
-            Extract anywhere and double-click `AgOpenWeb.Desktop.exe` — a window opens showing the
-            guidance UI (the host starts in-process automatically). For a cab PC that should run
-            headless on boot, right-click `install-service.cmd` → **Run as administrator** to
-            install it as a Windows Service instead. Needs the WebView2 Evergreen Runtime
-            (pre-installed on Windows 11). Self-contained — no .NET install.
-
-            ### macOS
-            Open `agopenweb-macos-arm64.dmg` and drag **AgOpenWeb** to Applications. It's ad-hoc
-            signed (not yet notarized), so the first launch may need right-click → **Open** to get
-            past Gatekeeper. Apple silicon; self-contained.
+            ### Android
+            Sideload `agopenweb-android.apk` — all-in-one (host + UI on the tablet); also serves the
+            LAN.
 
             See each bundle's `README.md` for details.
           draft: false
