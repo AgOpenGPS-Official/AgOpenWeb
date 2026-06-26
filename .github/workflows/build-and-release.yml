@@ -2,15 +2,13 @@ name: Build and Release
 
 on:
   push:
-    branches: [master, develop]
+    branches: [main]
   pull_request:
-    branches: [develop]
+    branches: [main]
+  # Tagged releases are published by build-deploy-bundles.yml (the single release publisher,
+  # triggered by a v* tag) with ALL bundles + the Android APK. This workflow is per-commit CI
+  # plus the rolling nightly prerelease only.
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag (e.g. v26.2.0). Leave empty for nightly build.'
-        required: false
-        default: ''
   schedule:
     # Run daily at 6 AM UTC (if there were changes)
     - cron: '0 6 * * *'
@@ -328,71 +326,23 @@ jobs:
           fi
           DATE=$(date +'%Y%m%d')
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          RELEASE_TAG="${{ github.event.inputs.release_tag }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "date=${DATE}" >> $GITHUB_OUTPUT
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          if [ -n "$RELEASE_TAG" ]; then
-            echo "tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "tag=nightly-${DATE}" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
-          fi
+          # Nightly only — tagged releases live in build-deploy-bundles.yml.
+          echo "tag=nightly-${DATE}" >> $GITHUB_OUTPUT
 
       - name: List artifacts
         run: find artifacts -type f \( -name "*.zip" -o -name "*.apk" -o -name "*.ipa" \) | head -20
 
-      - name: Delete existing release (nightly only)
-        if: steps.version.outputs.is_release != 'true'
+      - name: Delete existing release (rolling nightly)
         run: |
           gh release delete ${{ steps.version.outputs.tag }} --yes || true
           git push origin :refs/tags/${{ steps.version.outputs.tag }} || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create Tagged Release
-        if: steps.version.outputs.is_release == 'true'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "AgOpenWeb ${{ steps.version.outputs.tag }}"
-          body: |
-            ## Release ${{ steps.version.outputs.tag }}
-
-            **Version:** ${{ steps.version.outputs.version }}
-            **Commit:** ${{ steps.version.outputs.short_sha }}
-
-            ### Downloads
-
-            | Platform | File |
-            |----------|------|
-            | macOS ARM64 (M1/M2/M3) | `AgOpenWeb-macOS-ARM64.zip` |
-            | macOS x64 (Intel) | `AgOpenWeb-macOS-x64.zip` |
-            | Linux x64 | `AgOpenWeb-Linux-x64.zip` |
-            | Linux ARM64 | `AgOpenWeb-Linux-ARM64.zip` |
-            | Android | `AgOpenWeb-Android-Signed.apk` |
-            | iOS Simulator (ARM64) | `AgOpenWeb-iOS-Simulator.zip` |
-
-            > **Windows:** download `agopenweb-win-x64.zip` from a tagged
-            > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml) release.
-
-            ### Installation Notes
-            All desktop builds are self-contained - no .NET runtime install needed.
-            - **macOS**: Extract, right-click the app and select "Open" (first time only)
-            - **Linux**: Extract, `chmod +x` the binary, then run
-            - **Android**: Enable "Install from unknown sources", then install the APK
-            - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgOpenWeb.iOS.app`
-          draft: false
-          prerelease: false
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create Nightly Release
-        if: steps.version.outputs.is_release != 'true'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.tag }}

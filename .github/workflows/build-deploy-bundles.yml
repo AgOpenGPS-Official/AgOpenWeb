@@ -1,13 +1,18 @@
 name: Build Deployment Bundles
 
-# Builds the AgOpenWeb deployment bundles on clean runners — the guidance host packaged for
-# each target, distinct from the Desktop/Android/iOS app artifacts in build-and-release.yml:
+# Builds the AgOpenWeb deployment bundles on clean runners and publishes ONE complete Release
+# with every user-facing artifact (the single release publisher; build-and-release.yml is for
+# per-commit CI + nightly only):
 #   - Linux x64 / arm64 daemon: self-contained host + systemd unit + install scripts (.tar.gz),
 #     via deploy/linux/package.sh — the in-cab headless daemon for mini-PCs / SBCs.
 #   - Linux x64 / arm64 launcher: self-contained desktop app (.tar.gz), via
 #     deploy/linux/launcher/package.sh — the all-in-one window (host + embedded WebView UI).
-#   - Windows x64: self-contained all-in-one launcher app (.zip), via deploy/windows/package.sh
-#     — the maximized window with the embedded WebView UI for the Windows audience.
+#   - Windows x64: self-contained all-in-one launcher app + Windows Service installer (.zip),
+#     via deploy/windows/package.sh — double-click launcher OR install-service.cmd for a daemon.
+#   - macOS arm64: self-contained all-in-one launcher .dmg, via deploy/macos/package.sh
+#     (needs a macOS runner for codesign/hdiutil; ad-hoc signed — notarization is a later step).
+#   - Android: signed APK (the all-in-one launcher / native app), built inline (same steps as
+#     build-and-release.yml's build-android, using the ANDROID_KEYSTORE_BASE64 secret).
 # Each deploy/*/package.sh is the single source of truth; this workflow just runs them on a
 # clean runner (so arm64 / Windows bundles aren't cross-published by hand on a dev Mac). The
 # Windows bundle cross-publishes win-x64 from a Linux runner — no Windows runner needed.
@@ -118,8 +123,102 @@ jobs:
           path: dist/agopenweb-win-x64.zip
           retention-days: 30
 
+  macos:
+    runs-on: macos-14   # Apple silicon (arm64) — the .dmg is osx-arm64; needs macOS for hdiutil/codesign
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # macos/package.sh publishes the self-contained osx-arm64 launcher (-p:DesktopOnly=true,
+      # so no iOS workload needed), wraps it as AgOpenWeb.app, ad-hoc-signs, and makes a .dmg.
+      - name: Build macOS launcher bundle (arm64 .dmg)
+        run: ./deploy/macos/package.sh --out "$GITHUB_WORKSPACE/dist"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agopenweb-macos-arm64
+          path: dist/agopenweb-macos-arm64.dmg
+          retention-days: 30
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '17'
+
+      - name: Install Android workload
+        run: |
+          for i in 1 2 3; do
+            dotnet workload install android && break
+            echo "Attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
+
+      - name: Restore dependencies
+        run: dotnet restore Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
+
+      # Use the committed release keystore (stable signing identity for over-the-top updates);
+      # fall back to the ephemeral debug key with a warning if the secret is absent.
+      - name: Decode signing keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/agvalonia-release.keystore"
+            echo "path=$RUNNER_TEMP/agvalonia-release.keystore" >> "$GITHUB_OUTPUT"
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set — APK signed with the runner's ephemeral debug key (won't update over differently-signed installs)."
+          fi
+
+      - name: Build Android APK
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          ARGS=(publish Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
+                -c Release -f net10.0-android -o publish/android)
+          if [ "${{ steps.keystore.outputs.present }}" = "true" ]; then
+            ARGS+=(-p:AndroidKeyStore=true
+                   "-p:AndroidSigningKeyStore=${{ steps.keystore.outputs.path }}"
+                   -p:AndroidSigningKeyAlias=agvalonia
+                   -p:AndroidSigningStorePass=env:KS_PASS
+                   -p:AndroidSigningKeyPass=env:KS_PASS)
+          fi
+          dotnet "${ARGS[@]}"
+
+      - name: Collect signed APK
+        run: |
+          mkdir -p dist
+          APK=$(find publish/android -type f -name "*-Signed.apk" | head -1)
+          [ -n "$APK" ] || { echo "No signed APK found!"; exit 1; }
+          cp "$APK" dist/agopenweb-android.apk
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agopenweb-android
+          path: dist/agopenweb-android.apk
+          retention-days: 30
+
   release:
-    needs: [linux, linux-launcher, windows]
+    needs: [linux, linux-launcher, windows, macos, android]
     # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
     runs-on: ubuntu-latest
@@ -154,7 +253,9 @@ jobs:
           body: |
             ## AgOpenWeb ${{ steps.meta.outputs.tag }}
 
-            Headless guidance host — the UI is a browser at `http://<host>:5174`.
+            All-in-one guidance host + UI. Each launcher opens a window showing the UI and runs
+            the host in-process; it also binds `0.0.0.0:5174`, so cab tablets/phones can connect
+            over the LAN. The Linux daemon and Windows Service run it headless (UI in a browser).
 
             **Version:** ${{ steps.meta.outputs.version }}
 
@@ -166,7 +267,9 @@ jobs:
             | Linux ARM64 daemon (Pi / Uno Q / SBC) | `agopenweb-linux-arm64.tar.gz` | `sudo ./install.sh --from app` (systemd daemon) |
             | Linux x86-64 desktop launcher | `agopenweb-launcher-linux-x64.tar.gz` | extract, `./run.sh` (host + UI window) |
             | Linux ARM64 desktop launcher | `agopenweb-launcher-linux-arm64.tar.gz` | extract, `./run.sh` (host + UI window) |
-            | Windows x64 | `agopenweb-win-x64.zip` | extract, run `AgOpenWeb.Desktop.exe` (host + UI window) |
+            | Windows x64 | `agopenweb-win-x64.zip` | run `AgOpenWeb.Desktop.exe` (UI window), or `install-service.cmd` (headless service) |
+            | macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` | open the `.dmg`, drag **AgOpenWeb** to Applications, launch it |
+            | Android (tablet/phone) | `agopenweb-android.apk` | sideload the APK |
 
             ### Linux appliance daemon (no .NET SDK needed on the box)
             ```bash
@@ -188,15 +291,23 @@ jobs:
 
             ### Windows
             Extract anywhere and double-click `AgOpenWeb.Desktop.exe` — a window opens showing the
-            guidance UI (the host starts in-process automatically). Needs the WebView2 Evergreen
-            Runtime (pre-installed on Windows 11). Self-contained — no .NET install.
+            guidance UI (the host starts in-process automatically). For a cab PC that should run
+            headless on boot, right-click `install-service.cmd` → **Run as administrator** to
+            install it as a Windows Service instead. Needs the WebView2 Evergreen Runtime
+            (pre-installed on Windows 11). Self-contained — no .NET install.
 
-            All launchers also bind `0.0.0.0:5174`, so cab tablets/phones can connect over the LAN.
+            ### macOS
+            Open `agopenweb-macos-arm64.dmg` and drag **AgOpenWeb** to Applications. It's ad-hoc
+            signed (not yet notarized), so the first launch may need right-click → **Open** to get
+            past Gatekeeper. Apple silicon; self-contained.
+
             See each bundle's `README.md` for details.
           draft: false
           prerelease: false
           files: |
             dist/**/*.tar.gz
             dist/**/*.zip
+            dist/**/*.dmg
+            dist/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
