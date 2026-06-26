@@ -18,10 +18,11 @@ name: Build Deployment Bundles
 # Windows bundle cross-publishes win-x64 from a Linux runner — no Windows runner needed.
 #
 # Triggers:
-#   - workflow_dispatch: build on demand. Supply a release_tag to also publish a Release;
-#     leave it empty to just upload build artifacts.
-#   - push of a v* tag: build + publish a Release for that tag.
-# (Per-commit CI lives in build-and-release.yml; this one is release/packaging-focused.)
+#   - push of a v* tag: build + publish the tagged Release for that tag.
+#   - schedule (daily): build + refresh the rolling "nightly" prerelease.
+#   - workflow_dispatch: build on demand. Supply a release_tag to also publish that Release;
+#     leave it empty to just upload build artifacts (a dry run — no Release).
+# (Per-commit CI — tests + compile checks — lives in build-and-release.yml.)
 
 on:
   workflow_dispatch:
@@ -33,13 +34,16 @@ on:
   push:
     tags:
       - 'v*'
+  schedule:
+    # Daily rolling nightly prerelease at 06:00 UTC.
+    - cron: '0 6 * * *'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
-  contents: write   # needed to publish a Release
+  contents: read    # build jobs only read; the release job grants itself write
 
 env:
   DOTNET_VERSION: '10.0.x'
@@ -220,8 +224,12 @@ jobs:
   release:
     needs: [linux, linux-launcher, windows, macos, android]
     # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    # Publish for a v* tag, a dispatch that supplied a release_tag, or the scheduled nightly.
+    # A plain dispatch with no tag still builds the artifacts (above) but skips publishing.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != '' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # publish/refresh the Release
     steps:
       - uses: actions/checkout@v4
 
@@ -230,28 +238,48 @@ jobs:
         with:
           path: dist
 
-      - name: Resolve tag + version
+      - name: Resolve release metadata
         id: meta
         run: |
-          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            TAG="${{ github.event.inputs.release_tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
           VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            # Rolling nightly: a single reused "nightly" tag/release, refreshed each run.
+            echo "tag=nightly" >> "$GITHUB_OUTPUT"
+            echo "name=Nightly Build ($(date +'%Y-%m-%d'))" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "nightly=true" >> "$GITHUB_OUTPUT"
+            echo "banner=> ⚠️ Automated nightly prerelease of the latest \`main\` — unversioned, may be unstable." >> "$GITHUB_OUTPUT"
+          else
+            if [ -n "${{ github.event.inputs.release_tag }}" ]; then TAG="${{ github.event.inputs.release_tag }}"; else TAG="${GITHUB_REF#refs/tags/}"; fi
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "name=AgOpenWeb ${TAG}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "nightly=false" >> "$GITHUB_OUTPUT"
+            echo "banner=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: List bundles
-        run: find dist -type f \( -name '*.tar.gz' -o -name '*.zip' \)
+        run: find dist -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' -o -name '*.apk' \)
+
+      # The nightly reuses one tag/release; delete the prior one so assets don't accumulate.
+      - name: Refresh rolling nightly
+        if: steps.meta.outputs.nightly == 'true'
+        run: |
+          gh release delete nightly --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: "AgOpenWeb ${{ steps.meta.outputs.tag }}"
+          name: ${{ steps.meta.outputs.name }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
           body: |
-            ## AgOpenWeb ${{ steps.meta.outputs.tag }}
+            ## ${{ steps.meta.outputs.name }}
+
+            ${{ steps.meta.outputs.banner }}
 
             All-in-one guidance host + UI. Each launcher opens a window showing the UI and runs
             the host in-process; it also binds `0.0.0.0:5174`, so cab tablets/phones can connect
@@ -303,7 +331,6 @@ jobs:
 
             See each bundle's `README.md` for details.
           draft: false
-          prerelease: false
           files: |
             dist/**/*.tar.gz
             dist/**/*.zip

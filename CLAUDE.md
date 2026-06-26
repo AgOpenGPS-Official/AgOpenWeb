@@ -382,12 +382,19 @@ The arc must fit between the headland boundary (green line) and outer boundary (
 
 ## CI/CD
 
-GitHub Actions workflow (`.github/workflows/build-and-release.yml`) builds all platforms on every push to master:
-- **Desktop**: Windows x64, macOS ARM64, macOS x64, Linux x64
-- **Android**: APK via ubuntu-latest
-- **iOS**: Simulator .app via macos-26 (Debug config to avoid AOT hang)
+Two GitHub Actions workflows, split by purpose:
 
-Manual workflow dispatch accepts an optional **release tag** (e.g. `v26.2.0`). With a tag, it creates a proper GitHub release. Without a tag, it creates a nightly prerelease.
+- **`build-and-release.yml`** ("CI") — on every push / PR to `main`: runs the test suite plus a
+  compile-check of each platform head (Desktop, Android, iOS). No packaging, no releases.
+- **`build-deploy-bundles.yml`** — the single packaging + release publisher. Runs the
+  `deploy/{linux,windows,macos}/package.sh` scripts + builds the signed Android APK on clean runners:
+  - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release with every
+    artifact: Linux daemon (x64/arm64) + desktop launcher (x64/arm64) tarballs, Windows zip
+    (launcher + service installer), macOS `.dmg`, and the Android APK;
+  - on a **daily schedule** → refreshes a rolling `nightly` prerelease with the same artifacts;
+  - on a plain dispatch with no tag → builds + uploads artifacts only (dry run, no Release).
+
+To cut a release: bump `sys/version.h`, then push a tag — `git tag v26.6.x && git push origin v26.6.x`.
 
 ## Legacy Code
 

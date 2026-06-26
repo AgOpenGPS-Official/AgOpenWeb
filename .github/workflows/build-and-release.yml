@@ -1,26 +1,21 @@
-name: Build and Release
+name: CI
 
+# Per-commit CI: run the test suite and compile-check every platform head on push/PR to main.
+# It does NOT package or publish anything — all artifacts, tagged releases, and the nightly
+# prerelease are produced by the single packaging workflow, build-deploy-bundles.yml.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  # Tagged releases are published by build-deploy-bundles.yml (the single release publisher,
-  # triggered by a v* tag) with ALL bundles + the Android APK. This workflow is per-commit CI
-  # plus the rolling nightly prerelease only.
   workflow_dispatch:
-  schedule:
-    # Run daily at 6 AM UTC (if there were changes)
-    - cron: '0 6 * * *'
 
-# Cancel in-progress runs for the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Permissions needed for creating releases
 permissions:
-  contents: write
+  contents: read   # CI only — no releases here
 
 env:
   DOTNET_VERSION: '10.0.x'
@@ -28,40 +23,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  # Check if there are new commits (for scheduled runs)
-  check-changes:
-    runs-on: ubuntu-latest
-    outputs:
-      should_build: ${{ steps.check.outputs.should_build }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check for changes
-        id: check
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            # For scheduled runs, check if there were commits in the last 24 hours
-            COMMITS=$(git log --since="24 hours ago" --oneline | wc -l)
-            if [ "$COMMITS" -gt 0 ]; then
-              echo "should_build=true" >> $GITHUB_OUTPUT
-              echo "Found $COMMITS commits in last 24 hours, will build"
-            else
-              echo "should_build=false" >> $GITHUB_OUTPUT
-              echo "No commits in last 24 hours, skipping build"
-            fi
-          else
-            # For push and manual triggers, always build
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          fi
-
-  # Run all tests before building
   test:
-    needs: check-changes
-    if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -82,36 +45,10 @@ jobs:
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 
-  # Build Desktop versions (Windows, macOS, Linux)
+  # Compile-check each platform head (no packaging — build-deploy-bundles.yml does the publishes).
   build-desktop:
-    needs: [check-changes, test]
-    if: needs.check-changes.outputs.should_build == 'true' && github.event_name != 'pull_request'
-    strategy:
-      fail-fast: false
-      matrix:
-        # Per-commit CI + nightly desktop apps (raw self-contained publish, zipped). Windows is
-        # cross-published from the ubuntu runner (same as linux-arm64). NOTE: the *release*
-        # Windows artifact is the richer launcher bundle (agopenweb-win-x64.zip with the service
-        # installer) from build-deploy-bundles.yml; this is just the nightly desktop zip.
-        include:
-          - os: macos-latest
-            rid: osx-arm64
-            name: macOS-ARM64
-          - os: macos-latest
-            rid: osx-x64
-            name: macOS-x64
-          - os: ubuntu-latest
-            rid: linux-x64
-            name: Linux-x64
-          - os: ubuntu-latest
-            rid: linux-arm64
-            name: Linux-ARM64
-          - os: ubuntu-latest
-            rid: win-x64
-            name: Windows-x64
-
-    runs-on: ${{ matrix.os }}
-
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
@@ -120,55 +57,14 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: dotnet restore Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
+      # -p:DesktopOnly=true collapses the shared net10.0;net10.0-ios multi-target to net10.0
+      # so the desktop head compiles without the iOS workload.
+      - name: Compile Desktop
+        run: dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -c Release -p:DesktopOnly=true
 
-      - name: Restore dependencies (other)
-        if: runner.os != 'macOS'
-        run: dotnet restore Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
-
-      # macOS uses DesktopOnly=true to skip iOS multi-targeting, enabling self-contained builds
-      - name: Build and Publish (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            -f net10.0 \
-            -p:DesktopOnly=true \
-            --self-contained true \
-            -o publish/${{ matrix.name }}
-
-      # Linux x64/arm64 AND Windows x64 are all cross-published from the ubuntu runner.
-      - name: Build and Publish (Linux / Windows cross)
-        if: runner.os == 'Linux'
-        run: |
-          dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
-            -c Release \
-            -r ${{ matrix.rid }} \
-            -f net10.0 \
-            --self-contained true \
-            -o publish/${{ matrix.name }}
-
-      - name: Create archive
-        run: |
-          cd publish
-          zip -r ../AgOpenWeb-${{ matrix.name }}.zip ${{ matrix.name }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AgOpenWeb-${{ matrix.name }}
-          path: AgOpenWeb-${{ matrix.name }}.zip
-          retention-days: 30
-
-  # Build Android APK
   build-android:
-    needs: [check-changes, test]
-    if: needs.check-changes.outputs.should_build == 'true' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
@@ -191,76 +87,18 @@ jobs:
             sleep 10
           done
 
-      - name: Restore dependencies
-        run: dotnet restore Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
+      - name: Compile Android
+        run: dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj -c Release
 
-      - name: Decode signing keystore
-        id: keystore
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/agvalonia-release.keystore"
-            echo "path=$RUNNER_TEMP/agvalonia-release.keystore" >> "$GITHUB_OUTPUT"
-            echo "present=true" >> "$GITHUB_OUTPUT"
-            echo "Using committed release keystore for a stable signing identity."
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set — falling back to the runner's ephemeral debug key. The resulting APK will NOT update over installs signed by a different build."
-          fi
-
-      - name: Build Android APK
-        env:
-          # Read by AndroidSigning*Pass=env: below (keeps secrets off the command line)
-          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        run: |
-          ARGS=(publish Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
-                -c Release
-                -f net10.0-android
-                -o publish/android)
-          if [ "${{ steps.keystore.outputs.present }}" = "true" ]; then
-            ARGS+=(-p:AndroidKeyStore=true
-                   "-p:AndroidSigningKeyStore=${{ steps.keystore.outputs.path }}"
-                   -p:AndroidSigningKeyAlias=agvalonia
-                   -p:AndroidSigningStorePass=env:KS_PASS
-                   -p:AndroidSigningKeyPass=env:KS_PASS)
-          fi
-          dotnet "${ARGS[@]}"
-
-      - name: Find and rename APK
-        run: |
-          APK=$(find publish/android -type f -name "*-Signed.apk" | head -1)
-          if [ -n "$APK" ]; then
-            cp "$APK" AgOpenWeb-Android-Signed.apk
-          else
-            echo "No signed APK found!"
-            exit 1
-          fi
-
-      - name: Upload Android artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AgOpenWeb-Android
-          path: AgOpenWeb-Android-Signed.apk
-          retention-days: 30
-
-  # Build iOS (simulator .app bundle)
   build-ios:
-    needs: [check-changes, test]
-    if: needs.check-changes.outputs.should_build == 'true' && github.event_name != 'pull_request'
     runs-on: macos-26
-
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode 26.4.1
-        # The .NET for iOS workload is pinned to 26.4.x via
-        # .github/workflows/dotnet-ios-rollback.json so it matches the
-        # Xcode_26.4.1.app that's fully installed on macos-26. The runner
-        # also has Xcode_26.5_beta_2.app, but its iOS 26.5 platform isn't
-        # actually downloaded ("iOS 26.5 Platform Not Installed" from
-        # ibtool), so the 26.5 track is unusable. Roll forward when Apple
-        # ships Xcode 26.5 GA and the runner image installs it complete.
+        # The .NET for iOS workload is pinned to 26.4.x via dotnet-ios-rollback.json to match
+        # Xcode_26.4.1.app on macos-26 (the runner's 26.5 beta has no downloaded iOS platform).
         run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
 
       - name: Setup .NET
@@ -278,117 +116,5 @@ jobs:
             sleep 10
           done
 
-      - name: Restore dependencies
-        run: dotnet restore Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj
-
-      - name: Build iOS
-        run: |
-          dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj \
-            -c Debug \
-            -f net10.0-ios \
-            -r iossimulator-arm64
-
-      - name: Package iOS app
-        run: |
-          APP=$(find Platforms/AgOpenWeb.iOS/bin/Debug -name "*.app" -type d | head -1)
-          if [ -n "$APP" ]; then
-            cd "$(dirname "$APP")"
-            zip -r "$GITHUB_WORKSPACE/AgOpenWeb-iOS-Simulator.zip" "$(basename "$APP")"
-          else
-            echo "No .app bundle found!"
-            exit 1
-          fi
-
-      - name: Upload iOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: AgOpenWeb-iOS-Simulator
-          path: AgOpenWeb-iOS-Simulator.zip
-          retention-days: 30
-
-  # Create a release with all artifacts
-  create-release:
-    needs: [check-changes, test, build-desktop, build-android, build-ios]
-    if: always() && needs.check-changes.outputs.should_build == 'true' && needs.test.result == 'success' && (needs.build-desktop.result == 'success' || needs.build-android.result == 'success' || needs.build-ios.result == 'success')
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Get version and date
-        id: version
-        run: |
-          # Try to get version from version.h if it exists
-          if [ -f "sys/version.h" ]; then
-            VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
-          else
-            VERSION="0.0.0"
-          fi
-          DATE=$(date +'%Y%m%d')
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "date=${DATE}" >> $GITHUB_OUTPUT
-          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          # Nightly only — tagged releases live in build-deploy-bundles.yml.
-          echo "tag=nightly-${DATE}" >> $GITHUB_OUTPUT
-
-      - name: List artifacts
-        run: find artifacts -type f \( -name "*.zip" -o -name "*.apk" -o -name "*.ipa" \) | head -20
-
-      - name: Delete existing release (rolling nightly)
-        run: |
-          gh release delete ${{ steps.version.outputs.tag }} --yes || true
-          git push origin :refs/tags/${{ steps.version.outputs.tag }} || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Nightly Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "Nightly Build - ${{ steps.version.outputs.date }}"
-          body: |
-            ## Automated Nightly Build
-
-            **Date:** ${{ steps.version.outputs.date }}
-            **Commit:** ${{ steps.version.outputs.short_sha }}
-            **Version:** ${{ steps.version.outputs.version }}
-
-            ### Downloads
-
-            | Platform | File |
-            |----------|------|
-            | macOS ARM64 (M1/M2/M3) | `AgOpenWeb-macOS-ARM64.zip` |
-            | macOS x64 (Intel) | `AgOpenWeb-macOS-x64.zip` |
-            | Linux x64 | `AgOpenWeb-Linux-x64.zip` |
-            | Linux ARM64 | `AgOpenWeb-Linux-ARM64.zip` |
-            | Windows x64 | `AgOpenWeb-Windows-x64.zip` |
-            | Android | `AgOpenWeb-Android-Signed.apk` |
-            | iOS Simulator (ARM64) | `AgOpenWeb-iOS-Simulator.zip` |
-
-            > These are the raw desktop apps. For the polished **launcher bundles** + the Windows
-            > **service** installer + macOS `.dmg`, use a tagged release from
-            > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml).
-
-            ### Installation Notes
-            All desktop builds are self-contained - no .NET runtime install needed.
-            - **macOS**: Extract, right-click the app and select "Open" (first time only)
-            - **Linux**: Extract, `chmod +x` the binary, then run
-            - **Windows**: Extract and run `AgOpenWeb.Desktop.exe` (needs the WebView2 Runtime)
-            - **Android**: Enable "Install from unknown sources", then install the APK
-            - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgOpenWeb.iOS.app`
-
-            ---
-            *Built automatically from the latest commit*
-          draft: false
-          prerelease: true
-          files: |
-            artifacts/**/*.zip
-            artifacts/**/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compile iOS
+        run: dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64

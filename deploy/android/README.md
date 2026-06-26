@@ -8,8 +8,8 @@ The Android APK ships two modes from one build:
   Android System WebView at `http://localhost:5174`. The host binds `0.0.0.0`, so cab
   tablets/phones can connect over the LAN alongside the on-screen UI.
 
-The APK itself is built by `.github/workflows/build-and-release.yml` (the `build-android` job);
-there is no separate launcher artifact — the mode is a runtime marker.
+The signed APK is built + released by `.github/workflows/build-deploy-bundles.yml` (the `android`
+job); there is no separate launcher artifact — the mode is a runtime marker.
 
 ## Enabling launcher mode
 
