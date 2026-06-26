@@ -24,6 +24,11 @@ public class VirtualModuleHub : IDisposable
     public VirtualSteerModule Steer { get; }
     public VirtualMachineModule Machine { get; }
 
+    /// <summary>Shared destination set for GPS + module PGN traffic — updated live from the
+    /// UI's network-interface checkboxes. Defaults to localhost so the sim works out of the
+    /// box on the same machine; check a LAN interface to drive a host on another box.</summary>
+    public UdpTargets Targets { get; }
+
     /// <summary>Port the app should listen on (where GPS/modules send data).</summary>
     public int HostReceivePort { get; }
 
@@ -34,12 +39,13 @@ public class VirtualModuleHub : IDisposable
     {
         HostReceivePort = hostReceivePort;
         ModuleListenPort = moduleListenPort;
+        Targets = new UdpTargets(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, hostReceivePort));
 
-        Gps = new VirtualGpsReceiver(targetPort: hostReceivePort);
-        Steer = new VirtualSteerModule(listenPort: moduleListenPort, hostPort: hostReceivePort);
+        Gps = new VirtualGpsReceiver(Targets);
+        Steer = new VirtualSteerModule(Targets, listenPort: moduleListenPort);
         // Machine can't bind to the same port as Steer. In real hardware, one Teensy
         // handles both. Offset the machine to moduleListenPort + 1.
-        Machine = new VirtualMachineModule(listenPort: moduleListenPort + 1, hostPort: hostReceivePort);
+        Machine = new VirtualMachineModule(Targets, listenPort: moduleListenPort + 1);
     }
 
     public void Start()

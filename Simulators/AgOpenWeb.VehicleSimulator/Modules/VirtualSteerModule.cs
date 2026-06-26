@@ -22,7 +22,7 @@ namespace AgOpenWeb.VehicleSimulator.Modules;
 public class VirtualSteerModule : IDisposable
 {
     private readonly UdpClient _udp;
-    private readonly IPEndPoint _hostEndpoint;
+    private readonly UdpTargets _targets;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
     private Task? _helloTask;
@@ -128,11 +128,15 @@ public class VirtualSteerModule : IDisposable
     // simulator exposes it as a settable flag.
     public bool WorkSwitchEnabled { get; set; }
 
-    public VirtualSteerModule(int listenPort = 8888, int hostPort = 9999, string hostIp = "127.0.0.1")
+    public VirtualSteerModule(UdpTargets targets, int listenPort = 8888)
     {
-        _udp = new UdpClient(new IPEndPoint(IPAddress.Any, listenPort));
-        _hostEndpoint = new IPEndPoint(IPAddress.Parse(hostIp), hostPort);
+        _udp = new UdpClient(new IPEndPoint(IPAddress.Any, listenPort)) { EnableBroadcast = true };
+        _targets = targets;
     }
+
+    /// <summary>Convenience ctor (tests): a single fixed host destination.</summary>
+    public VirtualSteerModule(int listenPort = 8888, int hostPort = 9999, string hostIp = "127.0.0.1")
+        : this(new UdpTargets(new IPEndPoint(IPAddress.Parse(hostIp), hostPort)), listenPort) { }
 
     public void Start()
     {
@@ -244,7 +248,10 @@ public class VirtualSteerModule : IDisposable
     private void Emit(byte[] packet)
     {
         OnSent?.Invoke(PgnProtocol.Describe(packet, packet.Length));
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        foreach (var ep in _targets.Endpoints)
+        {
+            try { _udp.Send(packet, packet.Length, ep); } catch { /* one bad dest must not stop the others */ }
+        }
     }
 
     private void ProcessPacket(byte[] data)

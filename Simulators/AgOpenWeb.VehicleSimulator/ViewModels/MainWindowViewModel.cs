@@ -8,7 +8,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Avalonia.Threading;
@@ -488,6 +491,32 @@ public class MainWindowViewModel : INotifyPropertyChanged
         HeadingDownCommand = new RelayCommand(() => Heading -= NudgeStep);
         SavePositionCommand = new RelayCommand(() => { SavePose(); StatusText = "Position saved"; });
         PlayPauseCommand = new RelayCommand(() => IsPaused = !IsPaused);
+
+        // "Send to" interface checkboxes: loopback + every up IPv4 NIC. Each checked NIC
+        // targets its subnet broadcast on :9999 so a host on that LAN (e.g. a headless SBC)
+        // receives the GPS/PGN — the old sim was localhost-only.
+        foreach (var opt in NetworkTargetOption.Enumerate(HostReceivePort, _settings.SelectedTargets))
+        {
+            opt.SelectionChanged = OnNetworkTargetsChanged;
+            NetworkTargets.Add(opt);
+        }
+    }
+
+    /// <summary>The UDP port the AgOpenWeb host receives GPS/PGN on (AgIO convention).</summary>
+    private const int HostReceivePort = 9999;
+
+    /// <summary>Checkable destinations shown in the "Send to" list.</summary>
+    public ObservableCollection<NetworkTargetOption> NetworkTargets { get; } = new();
+
+    private IEnumerable<IPEndPoint> SelectedEndpoints() =>
+        NetworkTargets.Where(t => t.IsSelected).Select(t => t.Endpoint);
+
+    private void OnNetworkTargetsChanged()
+    {
+        // Persist the selection and, if running, retarget the live modules immediately.
+        _settings.SelectedTargets = NetworkTargets.Where(t => t.IsSelected).Select(t => t.Key).ToList();
+        _settings.Save();
+        _hub?.Targets.Set(SelectedEndpoints());
     }
 
     private void ToggleRunning()
@@ -510,7 +539,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _vehicle.SteerAngleDeg = WasAngle;
             _vehicle.Wheelbase = Wheelbase;
 
-            _hub = new VirtualModuleHub(hostReceivePort: 9999, moduleListenPort: 8888);
+            _hub = new VirtualModuleHub(hostReceivePort: HostReceivePort, moduleListenPort: 8888);
+            _hub.Targets.Set(SelectedEndpoints()); // GPS/PGN go to the checked interfaces
             _hub.Gps.Latitude = Latitude;
             _hub.Gps.Longitude = Longitude;
             _hub.Gps.HeadingDegrees = Heading;

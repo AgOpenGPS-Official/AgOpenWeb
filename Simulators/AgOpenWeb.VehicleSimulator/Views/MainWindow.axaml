@@ -302,13 +302,32 @@
         </Grid>
 
         <!-- Bottom bar -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,*">
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
             <Button Grid.Column="0" Command="{Binding StartStopCommand}"
                     Content="{Binding StartStopLabel}"
                     MinWidth="100" HorizontalContentAlignment="Center"
                     Padding="16,8" />
 
-            <TextBlock Grid.Column="1" Text="{Binding StatusText, StringFormat='Status: {0}'}"
+            <!-- Which network interface(s) the GPS + module PGN go out on. Loopback drives a host
+                 on THIS machine; check a LAN NIC (→ its subnet broadcast on :9999) to drive a
+                 headless host on another box. Live — toggling retargets a running sim. -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="Send to:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ItemsControl ItemsSource="{Binding NetworkTargets}" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NetworkTargetOption">
+                            <CheckBox Content="{Binding Display}" IsChecked="{Binding IsSelected}"
+                                      Margin="0,0,12,0"
+                                      ToolTip.Tip="Send $PANDA + module PGN to this destination" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <TextBlock Grid.Column="2" Text="{Binding StatusText, StringFormat='Status: {0}'}"
                        VerticalAlignment="Center" Margin="16,0,0,0" />
         </Grid>
     </Grid>

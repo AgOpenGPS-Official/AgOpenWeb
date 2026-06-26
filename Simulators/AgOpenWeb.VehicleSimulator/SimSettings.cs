@@ -24,6 +24,10 @@ public sealed class SimSettings
     public double Longitude { get; set; } = -93.6319;
     public double Heading { get; set; }
 
+    /// <summary>Keys of the checked "Send to" network targets (see NetworkTargetOption).
+    /// Empty = first run → loopback defaults on.</summary>
+    public System.Collections.Generic.List<string> SelectedTargets { get; set; } = new();
+
     private static string FilePath
     {
         get

@@ -33,7 +33,7 @@ public enum GpsMessageType
 public class VirtualGpsReceiver : IDisposable
 {
     private readonly UdpClient _udp;
-    private readonly IPEndPoint _target;
+    private readonly UdpTargets _targets;
     private CancellationTokenSource? _cts;
     private Task? _sendTask;
 
@@ -73,11 +73,15 @@ public class VirtualGpsReceiver : IDisposable
     /// <summary>Fired with each outgoing NMEA sentence (for the sim's Sent pane).</summary>
     public Action<string>? OnSent;
 
-    public VirtualGpsReceiver(int targetPort = 9999, string targetIp = "127.0.0.1")
+    public VirtualGpsReceiver(UdpTargets targets)
     {
-        _udp = new UdpClient();
-        _target = new IPEndPoint(IPAddress.Parse(targetIp), targetPort);
+        _udp = new UdpClient { EnableBroadcast = true };
+        _targets = targets;
     }
+
+    /// <summary>Convenience ctor (tests): a single fixed destination.</summary>
+    public VirtualGpsReceiver(int targetPort = 9999, string targetIp = "127.0.0.1")
+        : this(new UdpTargets(new IPEndPoint(IPAddress.Parse(targetIp), targetPort))) { }
 
     public void Start()
     {
@@ -99,7 +103,10 @@ public class VirtualGpsReceiver : IDisposable
     {
         var sentence = BuildSentence();
         var bytes = Encoding.ASCII.GetBytes(sentence);
-        _udp.Send(bytes, bytes.Length, _target);
+        foreach (var ep in _targets.Endpoints)
+        {
+            try { _udp.Send(bytes, bytes.Length, ep); } catch { /* one bad dest must not stop the others */ }
+        }
         SentCount++;
         OnSent?.Invoke(sentence.TrimEnd('\r', '\n'));
     }
