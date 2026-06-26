@@ -1,0 +1,5 @@
+# Windows batch/cmd scripts must be CRLF or cmd.exe mis-parses them (multi-line
+# blocks break → "missing terminator" passed on to PowerShell). Force CRLF on
+# checkout regardless of platform/core.autocrlf.
+*.cmd text eol=crlf
+*.bat text eol=crlf

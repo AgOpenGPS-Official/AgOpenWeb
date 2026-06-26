@@ -63,6 +63,9 @@ cp "$SCRIPT_DIR/README.md" "$STAGE/" 2>/dev/null || true
 # Windows Service installer (the headless-daemon option, alongside the double-click launcher)
 # + a double-click .cmd wrapper that self-elevates and bypasses the PS execution policy.
 cp "$SCRIPT_DIR/install-service.ps1" "$SCRIPT_DIR/install-service.cmd" "$STAGE/" 2>/dev/null || true
+# cmd.exe mis-parses LF-only batch files ("missing terminator"); force CRLF in the bundle
+# regardless of how the working copy was checked out.
+[ -f "$STAGE/install-service.cmd" ] && perl -i -pe 's/\r?\n/\r\n/g' "$STAGE/install-service.cmd"
 
 # Strip debug symbols — not needed at runtime. SkiaSharp ships an ~84 MB native
 # libSkiaSharp.pdb that otherwise dominates the zip.
