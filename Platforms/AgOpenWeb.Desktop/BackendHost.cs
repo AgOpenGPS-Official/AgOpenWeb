@@ -59,6 +59,11 @@ internal sealed class BackendHost
             // ConsoleLifetime, and the Windows launcher just gets the default lifetime,
             // which it never waits on — it drives stop from a button).
             .UseSystemd()
+            // Windows counterpart: when launched by the Service Control Manager (the
+            // deploy/windows install-service.ps1 registers the exe with --headless),
+            // WindowsServiceLifetime handles SCM start/stop + logs to the Event Log.
+            // No-op when not run as a service (console daemon / launcher / macOS / Linux).
+            .UseWindowsService()
             .ConfigureServices(services =>
             {
                 services.AddAgOpenWebServices();

@@ -21,6 +21,25 @@ It's self-contained — no .NET install needed.
   from Microsoft (<https://developer.microsoft.com/microsoft-edge/webview2/>). The bundle already
   ships the native `WebView2Loader.dll`; only the Runtime itself must be present on the PC.
 
+## Run as a background service (headless)
+
+For a cab PC that should run the host on boot with **no window** — the UI served to
+browsers/tablets at `http://<host>:5174` — install it as a Windows Service instead (the
+counterpart to the Linux systemd daemon). From an **elevated** PowerShell, in the extracted
+folder:
+
+```powershell
+.\install-service.ps1                 # register + start; auto-starts on boot
+.\install-service.ps1 -Action status  # check it
+.\install-service.ps1 -Action uninstall
+```
+
+The service runs the same exe with `--headless` under the Service Control Manager. It
+auto-restarts on crash and (unless `-NoFirewall`) opens inbound TCP 5174 for LAN clients.
+It runs as LocalSystem, so its data lives under
+`C:\Windows\System32\config\systemprofile\Documents\AgOpenWeb`. This is the server/appliance
+mode; for a normal desktop, just double-click the exe (above) instead.
+
 ## Notes
 
 - **Closing the window stops the host** and saves your config + field state first.

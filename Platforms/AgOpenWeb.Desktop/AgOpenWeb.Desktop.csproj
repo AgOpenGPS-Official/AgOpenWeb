@@ -56,6 +56,9 @@
     <!-- Phase 10 headless daemon: Type=notify readiness + journald formatting +
          SystemdLifetime (SIGTERM) when run under systemd; no-op otherwise. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="9.0.0" />
+    <!-- Windows counterpart: WindowsServiceLifetime (SCM start/stop) + EventLog
+         logging when run as a Windows Service; no-op otherwise (incl. macOS/Linux). -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
