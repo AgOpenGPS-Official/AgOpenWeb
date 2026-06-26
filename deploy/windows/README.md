@@ -25,14 +25,19 @@ It's self-contained — no .NET install needed.
 
 For a cab PC that should run the host on boot with **no window** — the UI served to
 browsers/tablets at `http://<host>:5174` — install it as a Windows Service instead (the
-counterpart to the Linux systemd daemon). From an **elevated** PowerShell, in the extracted
-folder:
+counterpart to the Linux systemd daemon).
 
-```powershell
-.\install-service.ps1                 # register + start; auto-starts on boot
-.\install-service.ps1 -Action status  # check it
-.\install-service.ps1 -Action uninstall
+Easiest: **right-click `install-service.cmd` → Run as administrator**. It self-elevates (UAC)
+and installs + starts the service. To remove or check it, run from a console:
+
+```bat
+install-service.cmd -Action uninstall
+install-service.cmd -Action status
 ```
+
+(The `.cmd` just wraps `install-service.ps1`, handling the UAC elevation and PowerShell's
+script-execution policy for you. You can call the `.ps1` directly from an elevated PowerShell
+if you prefer — `.\install-service.ps1`, with `-ExecutionPolicy Bypass` if scripts are blocked.)
 
 The service runs the same exe with `--headless` under the Service Control Manager. It
 auto-restarts on crash and (unless `-NoFirewall`) opens inbound TCP 5174 for LAN clients.

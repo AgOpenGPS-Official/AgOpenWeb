@@ -60,8 +60,9 @@ dotnet publish "$CSPROJ" \
   -o "$STAGE"
 
 cp "$SCRIPT_DIR/README.md" "$STAGE/" 2>/dev/null || true
-# Windows Service installer (the headless-daemon option, alongside the double-click launcher).
-cp "$SCRIPT_DIR/install-service.ps1" "$STAGE/" 2>/dev/null || true
+# Windows Service installer (the headless-daemon option, alongside the double-click launcher)
+# + a double-click .cmd wrapper that self-elevates and bypasses the PS execution policy.
+cp "$SCRIPT_DIR/install-service.ps1" "$SCRIPT_DIR/install-service.cmd" "$STAGE/" 2>/dev/null || true
 
 # Strip debug symbols — not needed at runtime. SkiaSharp ships an ~84 MB native
 # libSkiaSharp.pdb that otherwise dominates the zip.
