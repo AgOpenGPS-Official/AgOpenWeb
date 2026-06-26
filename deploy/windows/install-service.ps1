@@ -55,13 +55,13 @@ function Install-Svc {
     }
     # Recreate cleanly so an upgrade picks up a new exe path / args.
     if (Get-Svc) {
-        Write-Host "==> Existing service found — stopping + removing for a clean (re)install…"
+        Write-Host "==> Existing service found - stopping + removing for a clean (re)install..."
         Stop-Svc
         & sc.exe delete $ServiceName | Out-Null
         Start-Sleep -Milliseconds 500
     }
 
-    Write-Host "==> Registering service '$ServiceName' → `"$Exe`" --headless"
+    Write-Host "==> Registering service '$ServiceName' -> `"$Exe`" --headless"
     # BinaryPathName carries the exe + args; SCM launches it with --headless so Program.cs
     # routes to the headless host and UseWindowsService() binds the SCM lifetime.
     New-Service -Name $ServiceName `
@@ -75,33 +75,33 @@ function Install-Svc {
 
     if (-not $NoFirewall) {
         if (-not (Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue)) {
-            Write-Host "==> Adding inbound firewall rule for TCP $Port (LAN clients)…"
+            Write-Host "==> Adding inbound firewall rule for TCP $Port (LAN clients)..."
             New-NetFirewallRule -DisplayName $FirewallRule -Direction Inbound -Action Allow `
                                 -Protocol TCP -LocalPort $Port -Profile Any | Out-Null
         }
     }
 
-    Write-Host "==> Starting service…"
+    Write-Host "==> Starting service..."
     Start-Service -Name $ServiceName
     Show-Status
     Write-Host ""
     Write-Host "AgOpenWeb is running as a service (auto-starts on boot)."
     Write-Host "  UI:    http://localhost:$Port  (or http://<this-pc-ip>:$Port from a tablet)"
-    Write-Host "  Data:  service runs as LocalSystem → data lives under"
+    Write-Host "  Data:  service runs as LocalSystem -> data lives under"
     Write-Host "         C:\Windows\System32\config\systemprofile\Documents\AgOpenWeb"
     Write-Host "  Stop/remove: .\install-service.ps1 -Action uninstall"
 }
 
 function Uninstall-Svc {
     if (Get-Svc) {
-        Write-Host "==> Stopping + removing service '$ServiceName'…"
+        Write-Host "==> Stopping + removing service '$ServiceName'..."
         Stop-Svc
         & sc.exe delete $ServiceName | Out-Null
     } else {
         Write-Host "==> Service '$ServiceName' not installed (nothing to remove)."
     }
     if (Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue) {
-        Write-Host "==> Removing firewall rule…"
+        Write-Host "==> Removing firewall rule..."
         Remove-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue
     }
     Write-Host "==> Done. (Field data under the systemprofile Documents folder was left untouched.)"
