@@ -121,6 +121,13 @@ public class MainWindowViewModel : INotifyPropertyChanged
         set { _longitude = value; OnPropertyChanged(); PersistPose(); }
     }
 
+    // The persisted START pose (read-only display). Latitude/Longitude/Heading above are the
+    // CURRENT pose — they drift live while driving; these stay put at the saved start so the
+    // operator can see how far they've driven and snap back via Reset.
+    public double SavedLatitude => _settings.Latitude;
+    public double SavedLongitude => _settings.Longitude;
+    public double SavedHeading => _settings.Heading;
+
     // Auto-save the starting pose when the operator edits it (stopped) — never while
     // running, so live driving drift doesn't clobber the saved start point. The
     // explicit Save Position button uses SavePose directly (saves the current pose
@@ -137,6 +144,31 @@ public class MainWindowViewModel : INotifyPropertyChanged
         _settings.Longitude = _longitude;
         _settings.Heading = _heading;
         _settings.Save();
+        OnPropertyChanged(nameof(SavedLatitude));
+        OnPropertyChanged(nameof(SavedLongitude));
+        OnPropertyChanged(nameof(SavedHeading));
+    }
+
+    /// <summary>Snap the tractor back to the saved start pose: set current = saved, push it to
+    /// the physics model + GPS, and (if running) send a packet immediately so the host jumps.</summary>
+    private void ResetToSaved()
+    {
+        Latitude = _settings.Latitude;   // setters update the display; PersistPose no-ops while running
+        Longitude = _settings.Longitude;
+        Heading = _settings.Heading;
+
+        _vehicle.Latitude = Latitude;
+        _vehicle.Longitude = Longitude;
+        _vehicle.HeadingDeg = Heading;
+
+        if (_hub != null)
+        {
+            _hub.Gps.Latitude = Latitude;
+            _hub.Gps.Longitude = Longitude;
+            _hub.Gps.HeadingDegrees = Heading;
+            if (_isRunning) _hub.Gps.SendOnce(); // snap the host now, don't wait for the next tick
+        }
+        StatusText = "Reset to saved start";
     }
 
     public double Wheelbase
@@ -464,6 +496,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     // Explicit "Save Position" — snapshots the CURRENT pose (works while running too,
     // so you can drive somewhere and save it as the new startup point).
     public ICommand SavePositionCommand { get; }
+    public ICommand ResetCommand { get; }
     // Freeze-frame the sent/received data panes (sim keeps running).
     public ICommand PlayPauseCommand { get; }
 
@@ -490,6 +523,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
         HeadingUpCommand = new RelayCommand(() => Heading += NudgeStep);
         HeadingDownCommand = new RelayCommand(() => Heading -= NudgeStep);
         SavePositionCommand = new RelayCommand(() => { SavePose(); StatusText = "Position saved"; });
+        ResetCommand = new RelayCommand(ResetToSaved);
         PlayPauseCommand = new RelayCommand(() => IsPaused = !IsPaused);
 
         // "Send to" interface checkboxes: loopback + every up IPv4 NIC. Each checked NIC

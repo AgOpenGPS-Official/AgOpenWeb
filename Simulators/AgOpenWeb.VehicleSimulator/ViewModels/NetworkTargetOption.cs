@@ -26,6 +26,9 @@ public sealed class NetworkTargetOption : INotifyPropertyChanged
     public string Display { get; }
     public IPEndPoint Endpoint { get; }
 
+    /// <summary>Tooltip — the actual UDP destination ($PANDA + PGN go here).</summary>
+    public string Tip => $"Sends $PANDA + module PGN to {Endpoint.Address}:{Endpoint.Port}";
+
     private bool _isSelected;
     public bool IsSelected
     {
@@ -78,7 +81,7 @@ public sealed class NetworkTargetOption : INotifyPropertyChanged
                 if (bcast == null) continue;
 
                 string key = nic.Name + "|" + ua.Address;
-                string display = $"{nic.Name} — {ua.Address} → {bcast}";
+                string display = $"{nic.Name} ({ua.Address})";
                 list.Add(new NetworkTargetOption(
                     key, display, new IPEndPoint(bcast, port), selectedKeys.Contains(key)));
             }

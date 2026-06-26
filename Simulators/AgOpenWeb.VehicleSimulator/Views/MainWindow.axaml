@@ -88,17 +88,30 @@
                     <TextBlock Text="{Binding GpsMessageLabel, StringFormat='Sending: {0}'}" FontSize="12"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
 
-                    <TextBlock Text="{Binding Latitude, StringFormat='Latitude: {0:F8}'}" />
+                    <!-- Current (live) position — drifts as the tractor drives. -->
+                    <TextBlock Text="{Binding Latitude, StringFormat='Current Lat: {0:F8}'}" />
                     <NumericUpDown Value="{Binding Latitude}" Increment="0.0001"
                                    FormatString="F8" Minimum="-90" Maximum="90" />
 
-                    <TextBlock Text="{Binding Longitude, StringFormat='Longitude: {0:F8}'}" />
+                    <TextBlock Text="{Binding Longitude, StringFormat='Current Lon: {0:F8}'}" />
                     <NumericUpDown Value="{Binding Longitude}" Increment="0.0001"
                                    FormatString="F8" Minimum="-180" Maximum="180" />
 
-                    <Button Content="Save Position" HorizontalAlignment="Stretch"
-                            Command="{Binding SavePositionCommand}"
-                            ToolTip.Tip="Save the current GPS position + heading as the startup pose" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Button Grid.Column="0" Content="Save as start" HorizontalAlignment="Stretch" Margin="0,0,4,0"
+                                Command="{Binding SavePositionCommand}"
+                                ToolTip.Tip="Save the current position + heading as the start pose" />
+                        <Button Grid.Column="1" Content="Reset"
+                                Command="{Binding ResetCommand}"
+                                ToolTip.Tip="Snap the tractor back to the saved start position (sends it now)" />
+                    </Grid>
+
+                    <!-- Saved start (read-only) — where Reset returns to. -->
+                    <TextBlock Text="Saved start" FontWeight="SemiBold" FontSize="12" Margin="0,4,0,0" />
+                    <TextBlock Text="{Binding SavedLatitude, StringFormat='{}{0:F8}'}" FontSize="12"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
+                    <TextBlock Text="{Binding SavedLongitude, StringFormat='{}{0:F8}'}" FontSize="12"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
 
                     <TextBlock Text="{Binding SatelliteCount, StringFormat='Satellites: {0}'}" />
                     <NumericUpDown Value="{Binding SatelliteCount}" Increment="1"
@@ -261,10 +274,20 @@
 
                     <Separator Margin="0,8" />
 
-                    <TextBlock Text="UDP Ports" FontWeight="SemiBold" />
-                    <TextBlock Text="GPS out: 127.0.0.1:9999" FontSize="12"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
-                    <TextBlock Text="Steer listen: 0.0.0.0:8888" FontSize="12"
+                    <!-- Network output: which interface(s) the GPS + module PGN go out on.
+                         Loopback drives a host on THIS machine; check a LAN NIC (→ its subnet
+                         broadcast on :9999) to drive a headless host on another box. Toggling
+                         retargets a running sim live; the selection persists. -->
+                    <TextBlock Text="Send to (GPS + PGN → :9999)" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding NetworkTargets}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:NetworkTargetOption">
+                                <CheckBox Content="{Binding Display}" IsChecked="{Binding IsSelected}"
+                                          ToolTip.Tip="{Binding Tip}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="Steer listen: 0.0.0.0:8888" FontSize="12" Margin="0,4,0,0"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
                     <TextBlock Text="Machine listen: 0.0.0.0:8889" FontSize="12"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" />
@@ -302,32 +325,13 @@
         </Grid>
 
         <!-- Bottom bar -->
-        <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto">
+        <Grid Grid.Row="3" ColumnDefinitions="Auto,*">
             <Button Grid.Column="0" Command="{Binding StartStopCommand}"
                     Content="{Binding StartStopLabel}"
                     MinWidth="100" HorizontalContentAlignment="Center"
                     Padding="16,8" />
 
-            <!-- Which network interface(s) the GPS + module PGN go out on. Loopback drives a host
-                 on THIS machine; check a LAN NIC (→ its subnet broadcast on :9999) to drive a
-                 headless host on another box. Live — toggling retargets a running sim. -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
-                <TextBlock Text="Send to:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,8,0" />
-                <ItemsControl ItemsSource="{Binding NetworkTargets}" VerticalAlignment="Center">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:NetworkTargetOption">
-                            <CheckBox Content="{Binding Display}" IsChecked="{Binding IsSelected}"
-                                      Margin="0,0,12,0"
-                                      ToolTip.Tip="Send $PANDA + module PGN to this destination" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-
-            <TextBlock Grid.Column="2" Text="{Binding StatusText, StringFormat='Status: {0}'}"
+            <TextBlock Grid.Column="1" Text="{Binding StatusText, StringFormat='Status: {0}'}"
                        VerticalAlignment="Center" Margin="16,0,0,0" />
         </Grid>
     </Grid>
