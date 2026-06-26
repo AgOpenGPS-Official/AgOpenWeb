@@ -281,56 +281,31 @@ jobs:
 
             ${{ steps.meta.outputs.banner }}
 
-            **One self-contained app per OS** (no .NET install on any target), and it runs **two
-            ways**:
-
-            - **Launcher (desktop):** run it and a window opens with the guidance UI; the host runs
-              inside it.
-            - **Headless (server / in-cab appliance):** no window — the host runs in the background
-              and you open the UI from any browser or cab tablet at `http://<host>:5174`. It can run
-              on boot via the Linux systemd daemon or the Windows Service, and the same exe takes
-              `--headless` directly on **any** desktop OS (Windows, macOS, Linux).
-
-            Either way the host binds `0.0.0.0:5174`, so other devices on the LAN connect in a browser.
-
             **Version:** ${{ steps.meta.outputs.version }}
 
-            ### Downloads
+            Self-contained — no .NET install needed. Pick the set that matches how you'll run it.
+            (In every mode the host also serves `http://<host>:5174` on the LAN, so other devices
+            connect in a browser.)
 
-            | Platform | Download |
-            |---|---|
-            | Windows x64 | `agopenweb-win-x64.zip` |
-            | macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` |
-            | Linux x64 / arm64 — desktop launcher | `agopenweb-launcher-linux-<arch>.tar.gz` |
-            | Linux x64 / arm64 — headless daemon | `agopenweb-linux-<arch>.tar.gz` |
-            | Android (tablet / phone) | `agopenweb-android.apk` |
+            ### 🖥️ Desktop — a window with the guidance UI (host runs in-process)
+            | OS | Download | Run |
+            |---|---|---|
+            | Windows x64 | `agopenweb-win-x64.zip` | run `AgOpenWeb.Desktop.exe` (needs the WebView2 Runtime, pre-installed on Windows 11) |
+            | macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` | drag **AgOpenWeb** to Applications, launch (first launch: right-click → **Open**) |
+            | Linux x64 / arm64 | `agopenweb-launcher-linux-<arch>.tar.gz` | extract, `./run.sh` (needs system WebKitGTK — see the bundle README) |
 
-            ### Run as a desktop launcher (window + UI)
-            - **Windows:** extract the zip, run `AgOpenWeb.Desktop.exe`. Needs the WebView2 Evergreen
-              Runtime (pre-installed on Windows 11).
-            - **macOS:** open the `.dmg`, drag **AgOpenWeb** to Applications, launch it. Ad-hoc signed
-              (not yet notarized) — first launch may need right-click → **Open** to pass Gatekeeper.
-            - **Linux:** `tar xzf agopenweb-launcher-linux-<arch>.tar.gz && cd … && ./run.sh` (or
-              `./install.sh` for an app-menu entry). Needs system WebKitGTK + libsoup — see the
-              bundle `README.md` for the apt line.
+            ### 🛰️ Headless — no window; UI in a browser/tablet at `http://<host>:5174` (in-cab mini-PC / SBC)
+            | OS | Download | Install (auto-starts on boot) |
+            |---|---|---|
+            | Linux x64 / arm64 | `agopenweb-linux-<arch>.tar.gz` | `sudo ./install.sh --from app` (systemd; installs ICU + libfontconfig/libGL) |
+            | Windows x64 | `agopenweb-win-x64.zip` | right-click `install-service.cmd` → **Run as administrator** (Windows Service) |
 
-            ### Run headless (no window — browse to `http://<host>:5174`)
-            Same app, no display needed — for a cab PC / mini-PC / SBC that serves browser & tablet
-            clients:
-            - **Linux (systemd):** `tar xzf agopenweb-linux-<arch>.tar.gz && cd … && sudo ./install.sh
-              --from app`. Installs to `/opt/agopenweb`, runs as the `agopenweb` user, data in
-              `/home/agopenweb`, auto-starts on boot; apt-installs ICU + libfontconfig/libGL.
-            - **Windows (Service):** in the win zip, right-click `install-service.cmd` → **Run as
-              administrator**. Auto-starts on boot, opens TCP 5174 for LAN clients.
-            - **macOS / any OS:** run the binary directly with `--headless` (e.g.
-              `AgOpenWeb.app/Contents/MacOS/AgOpenWeb.Desktop --headless`). No auto-start installer
-              on macOS yet.
+            ### 📱 Mobile — all-in-one (host + UI on the device)
+            | Device | Download | Install |
+            |---|---|---|
+            | Android | `agopenweb-android.apk` | sideload |
 
-            ### Android
-            Sideload `agopenweb-android.apk` — all-in-one (host + UI on the tablet); also serves the
-            LAN.
-
-            See each bundle's `README.md` for details.
+            See each download's bundled `README` for full prerequisites and details.
           draft: false
           files: |
             dist/**/*.tar.gz

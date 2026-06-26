@@ -4,24 +4,35 @@ Cross-platform agricultural GPS guidance — a rewrite of [AgOpenGPS](https://gi
 
 ## Download & run
 
-Grab the latest build from the [**Releases**](../../releases) page. Every download is **one
-self-contained app** (no .NET install needed) that runs **two ways**:
+Grab the latest build from the [**Releases**](../../releases) page. Everything is a
+self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
+every mode the host also serves `http://<host>:5174` on the LAN, so cab phones/tablets connect
+in a browser.
 
-- **Launcher** — open it and a window shows the guidance UI; the host runs inside it.
-- **Headless** — no window; the host runs in the background and you use the UI from any browser
-  or cab tablet at `http://<host>:5174` (ideal for an in-cab mini-PC / SBC).
+**🖥️ Desktop** — a window with the guidance UI (host runs in-process):
 
-| Platform | Download | Launcher | Headless on boot |
-|---|---|---|---|
-| Windows x64 | `agopenweb-win-x64.zip` | run `AgOpenWeb.Desktop.exe` | `install-service.cmd` → Windows Service |
-| macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` | drag to Applications, launch | `--headless` (manual) |
-| Linux x64 / arm64 | `agopenweb-launcher-linux-<arch>.tar.gz` | `./run.sh` | — |
-| Linux x64 / arm64 (appliance) | `agopenweb-linux-<arch>.tar.gz` | — | `sudo ./install.sh --from app` (systemd) |
-| Android | `agopenweb-android.apk` | sideload (host + UI on the tablet) | — |
+| OS | Download | Run |
+|---|---|---|
+| Windows x64 | `agopenweb-win-x64.zip` | run `AgOpenWeb.Desktop.exe` |
+| macOS (Apple silicon) | `agopenweb-macos-arm64.dmg` | drag to Applications, launch |
+| Linux x64 / arm64 | `agopenweb-launcher-linux-<arch>.tar.gz` | `./run.sh` |
 
-In **every** mode the host serves `http://<host>:5174` on the LAN, so phones/tablets in the cab
-connect in a browser. Each download's bundled `README` lists the prerequisites (e.g. the WebView2
-Runtime on Windows, WebKitGTK on Linux).
+**🛰️ Headless** (Linux + Windows) — no window; UI in a browser at `http://<host>:5174`, auto-starts
+on boot (for an in-cab mini-PC / SBC):
+
+| OS | Download | Install |
+|---|---|---|
+| Linux x64 / arm64 | `agopenweb-linux-<arch>.tar.gz` | `sudo ./install.sh --from app` (systemd) |
+| Windows x64 | `agopenweb-win-x64.zip` | `install-service.cmd` → Run as administrator (Windows Service) |
+
+**📱 Mobile** — all-in-one (host + UI on the device):
+
+| Device | Download | Install |
+|---|---|---|
+| Android | `agopenweb-android.apk` | sideload |
+
+Each download's bundled `README` lists the prerequisites (e.g. the WebView2 Runtime on Windows,
+WebKitGTK on Linux).
 
 ## Platforms
 
