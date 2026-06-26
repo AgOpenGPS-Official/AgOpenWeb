@@ -89,9 +89,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows is NOT built here — its sole artifact is the launcher bundle from
-        # build-deploy-bundles.yml (agopenweb-win-x64.zip). This workflow builds the
-        # macOS/Linux desktop app + Android + iOS only.
+        # Per-commit CI + nightly desktop apps (raw self-contained publish, zipped). Windows is
+        # cross-published from the ubuntu runner (same as linux-arm64). NOTE: the *release*
+        # Windows artifact is the richer launcher bundle (agopenweb-win-x64.zip with the service
+        # installer) from build-deploy-bundles.yml; this is just the nightly desktop zip.
         include:
           - os: macos-latest
             rid: osx-arm64
@@ -105,6 +106,9 @@ jobs:
           - os: ubuntu-latest
             rid: linux-arm64
             name: Linux-ARM64
+          - os: ubuntu-latest
+            rid: win-x64
+            name: Windows-x64
 
     runs-on: ${{ matrix.os }}
 
@@ -136,7 +140,8 @@ jobs:
             --self-contained true \
             -o publish/${{ matrix.name }}
 
-      - name: Build and Publish (Linux)
+      # Linux x64/arm64 AND Windows x64 are all cross-published from the ubuntu runner.
+      - name: Build and Publish (Linux / Windows cross)
         if: runner.os == 'Linux'
         run: |
           dotnet publish Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj \
@@ -362,16 +367,19 @@ jobs:
             | macOS x64 (Intel) | `AgOpenWeb-macOS-x64.zip` |
             | Linux x64 | `AgOpenWeb-Linux-x64.zip` |
             | Linux ARM64 | `AgOpenWeb-Linux-ARM64.zip` |
+            | Windows x64 | `AgOpenWeb-Windows-x64.zip` |
             | Android | `AgOpenWeb-Android-Signed.apk` |
             | iOS Simulator (ARM64) | `AgOpenWeb-iOS-Simulator.zip` |
 
-            > **Windows:** download `agopenweb-win-x64.zip` from a tagged
-            > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml) release.
+            > These are the raw desktop apps. For the polished **launcher bundles** + the Windows
+            > **service** installer + macOS `.dmg`, use a tagged release from
+            > [Build Deployment Bundles](../../actions/workflows/build-deploy-bundles.yml).
 
             ### Installation Notes
             All desktop builds are self-contained - no .NET runtime install needed.
             - **macOS**: Extract, right-click the app and select "Open" (first time only)
             - **Linux**: Extract, `chmod +x` the binary, then run
+            - **Windows**: Extract and run `AgOpenWeb.Desktop.exe` (needs the WebView2 Runtime)
             - **Android**: Enable "Install from unknown sources", then install the APK
             - **iOS Simulator**: Extract .app, install with `xcrun simctl install booted AgOpenWeb.iOS.app`
 
