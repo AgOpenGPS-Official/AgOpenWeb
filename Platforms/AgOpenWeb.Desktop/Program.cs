@@ -14,18 +14,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-﻿using Avalonia;
-using Avalonia.Skia;
-using HotAvalonia;
 using System;
 
 namespace AgOpenWeb.Desktop;
 
 sealed class Program
 {
-    // Initialization code. Don't use any Avalonia, third-party APIs or any
-    // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
-    // yet and stuff might break.
     [STAThread]
     public static void Main(string[] args)
     {
@@ -40,41 +34,19 @@ sealed class Program
             return;
         }
 
-        // Mode selection. The backend is identical in every mode; only how it's hosted differs:
-        //   --windowed (or AGOPENWEB_WINDOWED=1) → legacy full native UI (verify/compare).
-        //   --launcher                           → in-process launcher window (app-like, force).
-        //   --headless                           → display-less daemon (force; systemd / Windows Service).
-        //   no flag                              → Windows + macOS: the all-in-one WebView launcher
-        //                                          (a desktop app); Linux: headless daemon (the SBC/
-        //                                          mini-PC server case). Linux launcher bundles pass
-        //                                          --launcher; daemon bundles pass --headless.
-        // The browser/WebView at http://<host>:5174 is the UI in launcher + headless modes alike.
-        bool windowed = Array.IndexOf(args, "--windowed") >= 0
-            || Environment.GetEnvironmentVariable("AGOPENWEB_WINDOWED") == "1";
+        // Mode selection. The backend is identical in both modes; only how it's hosted differs.
+        // The UI is always the browser/WebView at http://<host>:5174 — there is no native UI.
+        //   --headless → display-less daemon (force; systemd / Windows Service).
+        //   --launcher → in-process WebView launcher window (force; app-like).
+        //   no flag    → Windows + macOS: the all-in-one WebView launcher (a desktop app);
+        //                Linux: headless daemon (the SBC / mini-PC server case). Linux
+        //                launcher bundles pass --launcher; daemon bundles pass --headless.
         bool forceHeadless = Array.IndexOf(args, "--headless") >= 0;
         bool forceLauncher = Array.IndexOf(args, "--launcher") >= 0;
 
-        if (windowed)
-            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-        else if (forceLauncher || ((OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()) && !forceHeadless))
+        if (forceLauncher || ((OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()) && !forceHeadless))
             Launcher.LauncherEntry.Run(args);
         else
             HeadlessHost.RunAsync(args).GetAwaiter().GetResult();
     }
-
-    // Avalonia configuration, don't remove; also used by visual designer.
-    public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
-            .UsePlatformDetect()
-            .WithInterFont()
-            .LogToTrace()
-            .UseHotReload()
-            // Matches Android/iOS: prevent the 50 MB coverage texture from being
-            // re-uploaded every frame when the default 28 MB Skia GPU cache is
-            // exceeded. 192 MB fits coverage + its mipmap chain + other
-            // textures comfortably.
-            .With(new SkiaOptions
-            {
-                MaxGpuResourceSizeBytes = 192L * 1024 * 1024
-            });
 }

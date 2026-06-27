@@ -92,13 +92,19 @@ public abstract class AudioServiceBase : IAudioService
 
             if (!File.Exists(destPath))
             {
-                var sourcePath = assetsDir != null
-                    ? Path.Combine(assetsDir, "Sounds", fileName)
-                    : null;
-
-                if (sourcePath != null && File.Exists(sourcePath))
+                // Primary source: the .wav embedded in this assembly (works on every
+                // head, including single-file / iOS-AOT where there's no loose Assets
+                // dir next to the executable). Disk fallback covers dev/test layouts.
+                if (!TryExtractEmbedded(fileName, destPath))
                 {
-                    File.Copy(sourcePath, destPath, true);
+                    var sourcePath = assetsDir != null
+                        ? Path.Combine(assetsDir, "Sounds", fileName)
+                        : null;
+
+                    if (sourcePath != null && File.Exists(sourcePath))
+                    {
+                        File.Copy(sourcePath, destPath, true);
+                    }
                 }
             }
 
@@ -109,6 +115,31 @@ public abstract class AudioServiceBase : IAudioService
         }
 
         System.Diagnostics.Debug.WriteLine($"[Audio] Loaded {_soundPaths.Count}/{mapping.Count} sound files from {tempDir}");
+    }
+
+    /// <summary>Copy a .wav out of this assembly's embedded resources to <paramref name="destPath"/>.
+    /// Resources are named "AgOpenWeb.Services.Audio.Sounds.&lt;file&gt;.wav"; match on the
+    /// trailing file name so a namespace/folder rename doesn't silently break playback.</summary>
+    private static bool TryExtractEmbedded(string fileName, string destPath)
+    {
+        try
+        {
+            var asm = typeof(AudioServiceBase).Assembly;
+            var resName = Array.Find(asm.GetManifestResourceNames(),
+                n => n.EndsWith("." + fileName, StringComparison.OrdinalIgnoreCase));
+            if (resName == null) return false;
+
+            using var src = asm.GetManifestResourceStream(resName);
+            if (src == null) return false;
+            using var dst = File.Create(destPath);
+            src.CopyTo(dst);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Audio] Embedded extract failed for {fileName}: {ex.Message}");
+            return false;
+        }
     }
 
     private static string? FindAssetsDirectory()

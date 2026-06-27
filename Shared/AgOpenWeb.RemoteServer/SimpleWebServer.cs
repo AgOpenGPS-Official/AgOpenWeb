@@ -24,8 +24,9 @@ public sealed class SimpleWebServer
         int Status, string ContentType, byte[] Body,
         IReadOnlyList<(string Name, string Value)>? Headers = null)
     {
-        public static Response Text(string body, string contentType) =>
-            new(200, contentType, Encoding.UTF8.GetBytes(body));
+        public static Response Text(string body, string contentType,
+            IReadOnlyList<(string, string)>? headers = null) =>
+            new(200, contentType, Encoding.UTF8.GetBytes(body), headers);
         public static Response Bytes(byte[] body, string contentType,
             IReadOnlyList<(string, string)>? headers = null) =>
             new(200, contentType, body, headers);

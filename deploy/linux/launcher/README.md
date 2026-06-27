@@ -56,4 +56,5 @@ A start failure (missing WebKit, port in use, …) is written to
   replacing the program folder on update.
 - The window hosts the backend **in-process**; there is no separate service. The same exe is
   the cross-platform app: `app/AgOpenWeb.Desktop --headless` runs it as a display-less daemon,
-  `--windowed` opens the legacy native UI.
+  `--launcher` forces the in-window WebView launcher. The UI is always the web app — there is
+  no native UI.

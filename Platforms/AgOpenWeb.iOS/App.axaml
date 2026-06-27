@@ -21,22 +21,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
              xmlns:local="using:AgOpenWeb.iOS"
              RequestedThemeVariant="Light">
 
-    <Application.Resources>
-        <!-- Include shared resources (converters) -->
-        <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceInclude Source="avares://AgOpenWeb.Views/Styles/SharedResources.axaml"/>
-            </ResourceDictionary.MergedDictionaries>
-        </ResourceDictionary>
-    </Application.Resources>
-
-    <Application.DataTemplates>
-        <local:ViewLocator/>
-    </Application.DataTemplates>
-
+    <!-- The UI is the web app shown in a full-screen NativeWebView (see App.axaml.cs).
+         Only a base theme is needed for the WebView host shell — no native Views styles. -->
     <Application.Styles>
         <FluentTheme />
-        <!-- Include shared styles -->
-        <StyleInclude Source="avares://AgOpenWeb.Views/Styles/SharedStyles.axaml"/>
     </Application.Styles>
 </Application>

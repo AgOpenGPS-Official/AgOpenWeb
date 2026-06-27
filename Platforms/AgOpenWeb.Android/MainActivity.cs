@@ -15,9 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
+using Android.Views.InputMethods;
 using Avalonia.Android;
 using Microsoft.Extensions.DependencyInjection;
 using AgOpenWeb.Services.Interfaces;
@@ -32,21 +34,45 @@ namespace AgOpenWeb.Android;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity
 {
+    /// <summary>The live activity, so the WebView's JS→native bridge can reach the IME.</summary>
+    public static MainActivity? Instance { get; private set; }
+
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        Instance = this;
 
-        // All-in-one launcher mode: start the foreground service that owns the in-process
-        // guidance host so it survives this Activity backgrounding. The WebView (built by
-        // App in launcher mode) waits on BackendService.HostReady before navigating.
-        if (AgOpenWeb.Models.Diagnostics.DiagFlags.WebViewLauncher)
-        {
-            RequestNotificationPermissionIfNeeded();
-            BackendService.Start(this);
-        }
+        // Start the foreground service that owns the in-process guidance host so it survives
+        // this Activity backgrounding. The WebView (built by App) waits on
+        // BackendService.HostReady before navigating. The web app is the only UI.
+        RequestNotificationPermissionIfNeeded();
+        BackendService.Start(this);
 
         // Enable immersive full-screen mode
         EnableImmersiveMode();
+    }
+
+    /// <summary>Lower the soft keyboard via the IME. A WebView input's JS blur() does NOT
+    /// dismiss the Android keyboard — only InputMethodManager can — so the web app posts a
+    /// "hideKeyboard" message (App wires WebMessageReceived) which lands here.</summary>
+    public static void HideSoftKeyboard()
+    {
+        var act = Instance;
+        if (act == null) return;
+        act.RunOnUiThread(() =>
+        {
+            try
+            {
+                var imm = (InputMethodManager?)act.GetSystemService(Context.InputMethodService);
+                var view = act.CurrentFocus ?? act.Window?.DecorView;
+                if (imm != null && view != null)
+                    imm.HideSoftInputFromWindow(view.WindowToken, HideSoftInputFlags.None);
+            }
+            catch (System.Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MainActivity] HideSoftKeyboard failed: {ex.Message}");
+            }
+        });
     }
 
     // Android 13+ (API 33) gates notification display behind a runtime permission; without it

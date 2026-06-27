@@ -82,45 +82,17 @@ internal sealed class BackendHost
             })
             .Build();
 
-        App.Services = host.Services;
         var sp = host.Services;
-        sp.WireUpServices();
 
-        // Load persisted settings → ConfigurationStore, then persistent app state.
-        var settingsService = sp.GetRequiredService<ISettingsService>();
-        settingsService.Load();
+        // Load state, build the VM, start + wire the embedded server — the shared,
+        // platform-agnostic sequence (identical on the daemon, the WebView launcher,
+        // and the mobile heads). hostLoop is registered as IUiDispatcher, so WebBackend
+        // posts the wiring onto it just like the old windowed Avalonia UI thread.
+        var backend = await AgOpenWeb.RemoteWiring.WebBackend.StartAsync(sp, new DesktopImageryCapture());
+        var remoteServer = backend.Server;
+
         var configService = sp.GetRequiredService<IConfigurationService>();
-        configService.LoadAppSettings();
         var persistentState = sp.GetRequiredService<IPersistentStateService>();
-        persistentState.Load();
-
-        // Construct the single MainViewModel from DI (starts the control loop + the
-        // render-pull / status timers, which fire on the host loop).
-        var vm = sp.GetRequiredService<AgOpenWeb.ViewModels.MainViewModel>();
-
-        // Start the embedded browser server, then wire its command handler + projectors.
-        var remoteServer = new AgOpenWeb.RemoteServer.RemoteServerHost();
-        await remoteServer.StartAsync(
-            sp.GetRequiredService<ApplicationState>(),
-            sp.GetRequiredService<ICoverageMapService>(),
-            sp.GetRequiredService<ISectionControlService>(),
-            sp.GetRequiredService<IToolPositionService>(),
-            sp.GetRequiredService<ConfigurationStore>(),
-            sp.GetRequiredService<IJobService>(),
-            sp.GetRequiredService<IConfigurationService>(),
-            sp.GetRequiredService<IAutoSteerService>(),
-            sp.GetRequiredService<ISmartWasCalibrationService>(),
-            sp.GetRequiredService<IUdpCommunicationService>(),
-            sp.GetRequiredService<INtripProfileService>(),
-            sp.GetRequiredService<AgOpenWeb.Services.IFieldService>(),
-            sp.GetRequiredService<ISettingsService>(),
-            sp.GetRequiredService<IVehicleProfileService>(),
-            sp.GetRequiredService<IPersistentStateService>());
-
-        // Wire on the host loop so the command handler runs serialized with the render-pull /
-        // status timers, exactly as the Avalonia UI thread does in the windowed build.
-        hostLoop.Post(() => AgOpenWeb.RemoteWiring.RemoteServerWiring.Wire(
-            remoteServer, vm, sp, configService, new DesktopImageryCapture()));
 
         // Persist config + state and stop the embedded server during ApplicationStopping,
         // which fires WHILE the provider is still alive (a save after the provider is

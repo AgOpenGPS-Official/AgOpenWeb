@@ -557,7 +557,33 @@ function openDialog(cardId) {
   for (const c of dialogHost.querySelectorAll('.dlg-card')) c.classList.toggle('open', c.id === cardId);
   dialogHost.classList.add('open');
 }
-function closeDialog() { dialogHost.classList.remove('open'); _confirmCb = null; }
+function closeDialog() {
+  hideKeyboard();
+  dialogHost.classList.remove('open'); _confirmCb = null;
+}
+// Lower the Android soft keyboard via the native bridge (window.agnative, wired by the Android
+// head to InputMethodManager). No-op on iOS/desktop, where blur() already dismisses.
+function nativeKeyboardHide() {
+  try { if (window.agnative && window.agnative.hideKeyboard) window.agnative.hideKeyboard(); } catch (_) {}
+}
+function hideKeyboard() {
+  const a = document.activeElement;
+  if (a && typeof a.blur === 'function') a.blur(); // iOS WKWebView + desktop dismiss on blur
+  nativeKeyboardHide();                            // Android: only InputMethodManager drops it
+}
+// Global safety net: on Android WebView a field's blur() never lowers the IME, and only the
+// GPS dialog routes through closeDialog()/hideKeyboard. So whenever focus leaves ANY text field
+// and doesn't land on another one — closing a config/tool dialog, tapping a button, tapping the
+// map — drop the keyboard. The next-tick activeElement check (rather than relatedTarget, which
+// Android sets unreliably) keeps the keyboard up during field-to-field navigation.
+document.addEventListener('focusout', e => {
+  if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) return;
+  setTimeout(() => {
+    const a = document.activeElement;
+    const stillEditing = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+    if (!stillEditing) nativeKeyboardHide();
+  }, 0);
+});
 // Shared confirm (unified nav model) — replaces browser confirm() + the native
 // ShowConfirmationDialog. Transparent light-dismiss scrim (backdrop tap / Cancel = no
 // action); Confirm runs the callback. Hosted in the dialog host (now a transparent leaf).
@@ -576,6 +602,57 @@ dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => {
 });
 dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
 const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
+// Uniform numeric input, everywhere. A tablet's decimal keypad (Android Samsung / iOS) has no
+// minus key, so signed values couldn't be typed. Every numeric field is instead a type=text
+// input with the FULL keyboard (which has "-"), and a filter keeps only digits, one decimal
+// point, and a single leading minus. This converts every input[type=number] (config dialogs,
+// tool dims, offsets, IP octets, …) and any added later — some config inputs are built
+// dynamically — so all fields behave identically. parseFloat/parseInt readers are unaffected.
+function filterNumericValue(s) {
+  s = s.replace(/[^0-9.\-]/g, '');                                 // digits, dot, minus only
+  s = s.replace(/(?!^)-/g, '');                                    // minus only at the start
+  const d = s.indexOf('.');
+  if (d !== -1) s = s.slice(0, d + 1) + s.slice(d + 1).replace(/\./g, ''); // one dot
+  return s;
+}
+function makeNumericField(el) {
+  if (el.dataset.numField) return;
+  el.dataset.numField = '1';
+  if (el.type === 'number') el.type = 'text';
+  el.removeAttribute('inputmode');                                 // full keyboard (no flash, has "-")
+  // It's a number field on a full (text) keyboard, so suppress the keyboard's auto-shift/caps,
+  // autocorrect, suggestions and spellcheck — otherwise the tablet opens these with caps-lock
+  // on (and inconsistently between fields), which is just noise for numeric entry.
+  el.setAttribute('autocapitalize', 'none');
+  el.setAttribute('autocorrect', 'off');
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('spellcheck', 'false');
+  el.classList.add('num-field');
+}
+function scanNumericFields(root) {
+  // Accept the document (nodeType 9) AND elements (nodeType 1); the feature checks below
+  // harmlessly skip text nodes the MutationObserver may pass. (An earlier nodeType===1 guard
+  // made the initial scanNumericFields(document) a no-op, so static fields like the hitch
+  // length kept the decimal keypad while only dynamically-added fields got converted.)
+  if (!root) return;
+  if (root.matches && root.matches('input[type="number"], .num-field')) makeNumericField(root);
+  if (root.querySelectorAll)
+    root.querySelectorAll('input[type="number"], .num-field').forEach(makeNumericField);
+}
+// Filter as the user types — delegated so dynamically-added fields are covered with no re-wiring.
+document.addEventListener('input', e => {
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement) || !el.dataset.numField) return;
+  const before = el.value, after = filterNumericValue(before);
+  if (after !== before) {
+    const pos = Math.max(0, el.selectionStart - (before.length - after.length));
+    el.value = after;
+    try { el.setSelectionRange(pos, pos); } catch (_) {}
+  }
+});
+scanNumericFields(document);
+new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) scanNumericFields(n); })
+  .observe(document.documentElement, { childList: true, subtree: true });
 function openSimCoords() {
   // Pre-fill with the current vehicle position (from the Status frame), matching
   // the native dialog's GetSimulatorPosition() seed.
@@ -587,6 +664,9 @@ function openSimCoords() {
 document.getElementById('dlg-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
+  // Commit any in-progress field edit before reading: type=text inputs can hold uncommitted
+  // text until blur, and preventDefault above keeps focus on the field.
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   const lat = parseFloat(dlgLat.value), lon = parseFloat(dlgLon.value);
   if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
     transport.send('sim.setCoords|' + lat + ',' + lon);

@@ -39,8 +39,8 @@ jobs:
       - name: Run Service Tests
         run: dotnet test Tests/AgOpenWeb.Services.Tests/ --verbosity normal
 
-      - name: Run UI Tests
-        run: dotnet test Tests/AgOpenWeb.UI.Tests/ --verbosity normal
+      - name: Run ViewModels Tests
+        run: dotnet test Tests/AgOpenWeb.ViewModels.Tests/ --verbosity normal
 
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj

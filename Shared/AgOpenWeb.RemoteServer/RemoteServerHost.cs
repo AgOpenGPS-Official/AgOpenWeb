@@ -177,9 +177,14 @@ public sealed class RemoteServerHost
         // SimpleWebServer, so StopAsync cancels connected browsers promptly.
         server.MapWebSocket("/ws", (socket, ct) => _ws.HandleAsync(socket, ct));
 
-        server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html"));
-        server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript"));
-        server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript"));
+        // The UI bundle (HTML + JS) ships inside the app and changes with every build, and
+        // the server is in-process on localhost — so there's no value in caching it, and a
+        // stale copy in the WebView's HTTP cache silently runs old code after an app update.
+        // Force a fresh fetch every load.
+        var noStore = new[] { ("Cache-Control", "no-store") };
+        server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html", noStore));
+        server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript", noStore));
+        server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript", noStore));
         // PWA manifest — lets "Add to home screen" launch fullscreen (no browser chrome).
         server.MapGet("/manifest.webmanifest", () => SimpleWebServer.Response.Text(ReadAsset("manifest.webmanifest"), "application/manifest+json"));
 

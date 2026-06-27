@@ -64,44 +64,13 @@ internal sealed class AndroidBackendHost
 
         var provider = services.BuildServiceProvider();
         App.Services = provider;
-        provider.WireUpServices();
 
-        // Load persisted settings → ConfigurationStore, then persistent app state.
-        var settingsService = provider.GetRequiredService<ISettingsService>();
-        settingsService.Load();
+        // Load state, build the VM, start + wire the embedded server — the shared,
+        // platform-agnostic sequence (identical on the daemon, the WebView launcher, and iOS).
+        var backend = await AgOpenWeb.RemoteWiring.WebBackend.StartAsync(provider, new AndroidImageryCapture());
+        var remoteServer = backend.Server;
         var configService = provider.GetRequiredService<IConfigurationService>();
-        configService.LoadAppSettings();
         var persistentState = provider.GetRequiredService<IPersistentStateService>();
-        persistentState.Load();
-
-        // Construct the single MainViewModel (starts the control loop + the render-pull/status
-        // timers, which fire on the host loop). Constructing off the host-loop thread is fine —
-        // the timers + dispatch are bound to the host loop regardless of where they were created.
-        var vm = provider.GetRequiredService<MainViewModel>();
-
-        // Start the embedded browser server, then wire its command handler + projectors.
-        var remoteServer = new AgOpenWeb.RemoteServer.RemoteServerHost();
-        await remoteServer.StartAsync(
-            provider.GetRequiredService<ApplicationState>(),
-            provider.GetRequiredService<ICoverageMapService>(),
-            provider.GetRequiredService<ISectionControlService>(),
-            provider.GetRequiredService<IToolPositionService>(),
-            provider.GetRequiredService<ConfigurationStore>(),
-            provider.GetRequiredService<IJobService>(),
-            provider.GetRequiredService<IConfigurationService>(),
-            provider.GetRequiredService<IAutoSteerService>(),
-            provider.GetRequiredService<ISmartWasCalibrationService>(),
-            provider.GetRequiredService<IUdpCommunicationService>(),
-            provider.GetRequiredService<INtripProfileService>(),
-            provider.GetRequiredService<AgOpenWeb.Services.IFieldService>(),
-            provider.GetRequiredService<ISettingsService>(),
-            provider.GetRequiredService<IVehicleProfileService>(),
-            provider.GetRequiredService<IPersistentStateService>());
-
-        // Wire on the host loop so the command handler runs serialized with the render-pull /
-        // status timers, exactly as the Avalonia UI thread does in the windowed build.
-        hostLoop.Post(() => AgOpenWeb.RemoteWiring.RemoteServerWiring.Wire(
-            remoteServer, vm, provider, configService, new AndroidImageryCapture()));
 
         _hostLoop = hostLoop;
         _provider = provider;

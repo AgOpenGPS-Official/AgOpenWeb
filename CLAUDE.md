@@ -41,23 +41,36 @@ AgOpenWeb3 is a cross-platform agricultural GPS guidance application built with 
 
 ## Architecture
 
+> **⚠️ Web UI is the only UI (as of v26.6.41).** The native Avalonia UI was removed:
+> `AgOpenWeb.Views` (SkiaMapControl, panels, dialogs), the platform `MainWindow`/`MainView`
+> shells, the `--windowed` Desktop mode, the `.use_webview_launcher` marker, and
+> `AgOpenWeb.UI.Tests` are all gone. The UI is now the **web client** (`AgOpenWeb.RemoteServer`
+> + its `wwwroot` CanvasKit PWA) on every platform. Each head boots the shared guidance backend
+> (`AgOpenWeb.RemoteWiring.WebBackend` — VM brain on a `HostLoopDispatcher`, embedded
+> `RemoteServerHost`) and shows a full-screen `NativeWebView` (or you browse to `:5174`).
+> `MainViewModel` is retained as the headless control brain the web client drives via
+> `RemoteServerWiring`. Sections of this doc below that describe native dialogs/panels/SkiaMapControl
+> are **historical** and pending a fuller rewrite.
+
 ```
 AgOpenWeb3/
-├── Shared/                              # ~92% - Platform-agnostic code
+├── Shared/                              # Platform-agnostic code
 │   ├── AgOpenWeb.Models/            # Data models, geometry, configuration, DTOs
-│   ├── AgOpenWeb.Services/          # Business logic, GPS, NTRIP, UDP
-│   ├── AgOpenWeb.ViewModels/        # MVVM ViewModels (ReactiveUI)
-│   └── AgOpenWeb.Views/             # Shared UI controls, panels, dialogs
+│   ├── AgOpenWeb.Services/          # Business logic, GPS, NTRIP, UDP, audio (.wav embedded)
+│   ├── AgOpenWeb.ViewModels/        # MVVM control brain (MainViewModel); no native UI
+│   ├── AgOpenWeb.RemoteServer/      # Embedded web server + wwwroot CanvasKit PWA (the UI)
+│   └── AgOpenWeb.RemoteWiring/      # WebBackend host core + RemoteServer↔VM command/projector wiring
 │
-├── Platforms/                           # ~8% - Platform-specific code
-│   ├── AgOpenWeb.Desktop/           # Windows/macOS/Linux
-│   ├── AgOpenWeb.iOS/              # iOS/iPadOS
-│   └── AgOpenWeb.Android/          # Android
+├── Platforms/                           # Thin WebView shells + platform services
+│   ├── AgOpenWeb.Desktop/           # Windows/macOS/Linux (launcher window / headless daemon)
+│   ├── AgOpenWeb.iOS/              # iOS/iPadOS (NativeWebView over WebBackend)
+│   └── AgOpenWeb.Android/          # Android (foreground BackendService + WebView)
 │
 ├── Tests/                              # NUnit test projects
-│   ├── AgOpenWeb.Models.Tests/     # Geometry, coordinate conversion (72 tests)
-│   ├── AgOpenWeb.Services.Tests/   # NMEA parsing, guidance (21 tests)
-│   └── AgOpenWeb.UI.Tests/         # Headless UI tests via Avalonia.Headless (18 tests)
+│   ├── AgOpenWeb.Models.Tests/     # Geometry, coordinate conversion
+│   ├── AgOpenWeb.Services.Tests/   # NMEA parsing, guidance
+│   ├── AgOpenWeb.ViewModels.Tests/ # ViewModel/control-brain logic
+│   └── AgOpenWeb.IntegrationTests/ # Test-support lib: virtual UDP modules (used by Services.Tests)
 │
 ├── TestRunner/                         # Legacy test harness for guidance algorithms
 └── AgOpenWeb.sln                    # Solution file
@@ -349,13 +362,10 @@ User-Agent: NTRIP AgOpenWeb
 ## Testing
 
 ```bash
-# Run all tests (111 total: 72 model + 21 service + 18 UI)
-dotnet test Tests/
-
 # Run specific test project
 dotnet test Tests/AgOpenWeb.Models.Tests/
 dotnet test Tests/AgOpenWeb.Services.Tests/
-dotnet test Tests/AgOpenWeb.UI.Tests/
+dotnet test Tests/AgOpenWeb.ViewModels.Tests/
 
 # Legacy guidance algorithm test harness
 dotnet run --project TestRunner/TestRunner.csproj
@@ -363,8 +373,9 @@ dotnet run --project TestRunner/TestRunner.csproj
 
 **Test projects:**
 - `AgOpenWeb.Models.Tests` - GeometryMath, GeoConversion, boundary/curve utilities
-- `AgOpenWeb.Services.Tests` - NMEA parsing, TrackGuidanceService
-- `AgOpenWeb.UI.Tests` - Headless Avalonia UI tests using `[AvaloniaTest]` attribute, `MainViewModelBuilder` for fully-mocked VM construction
+- `AgOpenWeb.Services.Tests` - NMEA parsing, TrackGuidanceService (uses the virtual UDP modules in `AgOpenWeb.IntegrationTests`)
+- `AgOpenWeb.ViewModels.Tests` - ViewModel / control-brain logic
+- `AgOpenWeb.IntegrationTests` - test-support library (virtual GPS/steer/machine UDP modules, fake settings); not a standalone test run
 
 ## U-Turn System
 

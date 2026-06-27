@@ -36,7 +36,7 @@ using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Android.Services;
 using AgOpenWeb.Services.Logging;
-using AgOpenWeb.Views.Infrastructure;
+using AgOpenWeb.Services.Threading;
 
 namespace AgOpenWeb.Android.DependencyInjection;
 
@@ -58,13 +58,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
         services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
 
-        // UI-thread dispatcher abstraction (replaces direct Dispatcher.UIThread
-        // in the VM layer — see Plans/CONFIG_STATE_AUDIT.md §11).
-        services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
-
-        // UI-thread timer abstraction (replaces direct DispatcherTimer in the
-        // VM layer — see Plans/CONFIG_STATE_AUDIT.md §11.3).
-        services.AddSingleton<IUiTimerFactory, AvaloniaUiTimerFactory>();
+        // UI-thread dispatcher + timer abstraction. With the native UI gone the VM/pipeline
+        // run on a single HostLoopDispatcher (owned by the foreground BackendService's
+        // AndroidBackendHost, which re-registers its own instance — last-wins), so guidance
+        // stays live while the WebView Activity is backgrounded. See Plans/CONFIG_STATE_AUDIT.md §11.
+        services.AddSingleton<HostLoopDispatcher>();
+        services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
+        services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());
 
         // Register ViewModels
         services.AddTransient<MainViewModel>();
@@ -186,8 +186,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
-        // Android-specific services
-        services.AddSingleton<IMapService, MapService>();
+        // No native map control in the web build — the browser/CanvasKit client renders the map.
+        services.AddSingleton<IMapService, NullMapService>();
 
         return services;
     }
