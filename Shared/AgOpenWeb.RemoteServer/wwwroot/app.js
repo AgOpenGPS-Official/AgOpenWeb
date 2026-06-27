@@ -561,17 +561,29 @@ function closeDialog() {
   hideKeyboard();
   dialogHost.classList.remove('open'); _confirmCb = null;
 }
-// Dismiss the tablet soft keyboard when a dialog closes. blur() handles iOS WKWebView and
-// desktop, but on Android WebView a programmatic blur does NOT lower the IME — only the native
-// InputMethodManager can. So we also post a message to the native host (Android wires
-// WebMessageReceived → InputMethodManager.hideSoftInputFromWindow). Harmless where unwired.
+// Lower the Android soft keyboard via the native bridge (window.agnative, wired by the Android
+// head to InputMethodManager). No-op on iOS/desktop, where blur() already dismisses.
+function nativeKeyboardHide() {
+  try { if (window.agnative && window.agnative.hideKeyboard) window.agnative.hideKeyboard(); } catch (_) {}
+}
 function hideKeyboard() {
   const a = document.activeElement;
   if (a && typeof a.blur === 'function') a.blur(); // iOS WKWebView + desktop dismiss on blur
-  // Android WebView: blur() does NOT lower the IME — only the native InputMethodManager can.
-  // The Android head injects a JS interface (window.agnative); route the dismiss through it.
-  try { if (window.agnative && window.agnative.hideKeyboard) window.agnative.hideKeyboard(); } catch (_) {}
+  nativeKeyboardHide();                            // Android: only InputMethodManager drops it
 }
+// Global safety net: on Android WebView a field's blur() never lowers the IME, and only the
+// GPS dialog routes through closeDialog()/hideKeyboard. So whenever focus leaves ANY text field
+// and doesn't land on another one — closing a config/tool dialog, tapping a button, tapping the
+// map — drop the keyboard. The next-tick activeElement check (rather than relatedTarget, which
+// Android sets unreliably) keeps the keyboard up during field-to-field navigation.
+document.addEventListener('focusout', e => {
+  if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) return;
+  setTimeout(() => {
+    const a = document.activeElement;
+    const stillEditing = a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+    if (!stillEditing) nativeKeyboardHide();
+  }, 0);
+});
 // Shared confirm (unified nav model) — replaces browser confirm() + the native
 // ShowConfirmationDialog. Transparent light-dismiss scrim (backdrop tap / Cancel = no
 // action); Confirm runs the callback. Hosted in the dialog host (now a transparent leaf).
@@ -608,10 +620,21 @@ function makeNumericField(el) {
   el.dataset.numField = '1';
   if (el.type === 'number') el.type = 'text';
   el.removeAttribute('inputmode');                                 // full keyboard (no flash, has "-")
+  // It's a number field on a full (text) keyboard, so suppress the keyboard's auto-shift/caps,
+  // autocorrect, suggestions and spellcheck — otherwise the tablet opens these with caps-lock
+  // on (and inconsistently between fields), which is just noise for numeric entry.
+  el.setAttribute('autocapitalize', 'none');
+  el.setAttribute('autocorrect', 'off');
+  el.setAttribute('autocomplete', 'off');
+  el.setAttribute('spellcheck', 'false');
   el.classList.add('num-field');
 }
 function scanNumericFields(root) {
-  if (!root || root.nodeType !== 1) return;
+  // Accept the document (nodeType 9) AND elements (nodeType 1); the feature checks below
+  // harmlessly skip text nodes the MutationObserver may pass. (An earlier nodeType===1 guard
+  // made the initial scanNumericFields(document) a no-op, so static fields like the hitch
+  // length kept the decimal keypad while only dynamically-added fields got converted.)
+  if (!root) return;
   if (root.matches && root.matches('input[type="number"], .num-field')) makeNumericField(root);
   if (root.querySelectorAll)
     root.querySelectorAll('input[type="number"], .num-field').forEach(makeNumericField);
