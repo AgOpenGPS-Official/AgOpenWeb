@@ -48,28 +48,6 @@ public class VehicleDimensionsStepViewModel : WizardStepViewModel
         set => SetProperty(ref _trackWidth, value);
     }
 
-    /// <summary>
-    /// Wheelbase diagram image path matching the current vehicle type.
-    /// </summary>
-    public string WheelbaseImageSource => _configService.Store.Vehicle.WheelbaseImageSource;
-
-    /// <summary>
-    /// Cropped wheelbase diagram focused on the wheel area.
-    /// </summary>
-    public string WheelbaseCropImageSource => _configService.Store.Vehicle.Type switch
-    {
-        Models.VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/WheelbaseHarvester.png",
-        Models.VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/WheelbaseArticulated.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/WheelbaseTractor.png"
-    };
-
-    public string TrackWidthImageSource => _configService.Store.Vehicle.Type switch
-    {
-        Models.VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/TrackWidthHarvester.png",
-        Models.VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/TrackWidthArticulated.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/TrackWidthTractor.png"
-    };
-
     public VehicleDimensionsStepViewModel(IConfigurationService configService)
     {
         _configService = configService;
@@ -80,7 +58,6 @@ public class VehicleDimensionsStepViewModel : WizardStepViewModel
         var vehicle = _configService.Store.Vehicle;
         Wheelbase = vehicle.Wheelbase;
         TrackWidth = vehicle.TrackWidth;
-        OnPropertyChanged(nameof(WheelbaseImageSource));
     }
 
     protected override void OnLeaving()

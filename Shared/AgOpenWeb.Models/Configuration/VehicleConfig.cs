@@ -45,14 +45,6 @@ public class VehicleConfig : ObservableObject
             if (oldValue != value)
             {
                 // Notify computed properties that depend on Type
-                OnPropertyChanged(nameof(WheelbaseImageSource));
-                OnPropertyChanged(nameof(WheelbaseCropImageSource));
-                OnPropertyChanged(nameof(HitchCropImageSource));
-                OnPropertyChanged(nameof(HasHitchImage));
-                OnPropertyChanged(nameof(TrackWidthImageSource));
-                OnPropertyChanged(nameof(AntennaImageSource));
-                OnPropertyChanged(nameof(AntennaSideImageSource));
-                OnPropertyChanged(nameof(AntennaOffsetImageSource));
                 OnPropertyChanged(nameof(VehicleTypeDisplayName));
             }
         }
@@ -151,83 +143,6 @@ public class VehicleConfig : ObservableObject
     // Computed properties
     public double MinTurningRadius => Wheelbase / Math.Tan(MaxSteerAngle * Math.PI / 180.0);
 
-    /// <summary>
-    /// Gets the image source for the wheelbase/track diagram based on vehicle type
-    /// </summary>
-    public string WheelbaseImageSource => Type switch
-    {
-        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/RadiusWheelBaseHarvester.png",
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/RadiusWheelBaseArticulated.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/RadiusWheelBase.png"
-    };
-
-    /// <summary>
-    /// Cropped wheelbase diagram (focused on the axle span) for the dimensions UI.
-    /// </summary>
-    public string WheelbaseCropImageSource => Type switch
-    {
-        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/WheelbaseHarvester.png",
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/WheelbaseArticulated.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/WheelbaseTractor.png"
-    };
-
-    /// <summary>
-    /// Track-width diagram (left-to-right wheel centers) for the dimensions UI.
-    /// </summary>
-    public string TrackWidthImageSource => Type switch
-    {
-        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/TrackWidthHarvester.png",
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/TrackWidthArticulated.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/TrackWidthTractor.png"
-    };
-
-    /// <summary>
-    /// Top-down hitch diagram (rear axle &#8594; hitch pin) for the dimensions UI card.
-    /// Tractor and articulated have their own top-down art; harvester has no hitch
-    /// diagram (matches AgOpen, which shows none for harvesters).
-    /// </summary>
-    public string HitchCropImageSource => Type switch
-    {
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/HitchArticulated.png",
-        VehicleType.Harvester => string.Empty,
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/Hitch.png"
-    };
-
-    /// <summary>
-    /// Whether a hitch diagram exists for the current vehicle type (false for harvester).
-    /// </summary>
-    public bool HasHitchImage => Type != VehicleType.Harvester;
-
-    /// <summary>
-    /// Gets the image source for the antenna position diagram based on vehicle type
-    /// </summary>
-    public string AntennaImageSource => Type switch
-    {
-        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/AntennaHarvester.png",
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/AntennaArticulated.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/AntennaTractor.png"
-    };
-
-    /// <summary>
-    /// Side-view antenna diagram (fore/aft pivot distance + antenna height) for the
-    /// dimensions UI card.
-    /// </summary>
-    public string AntennaSideImageSource => Type switch
-    {
-        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/AntennaHarvesterTop.png",
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/AntennaArticulatedTop.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/AntennaTractorTop.png"
-    };
-
-    /// <summary>
-    /// Top-down antenna diagram (left/right offset from centerline) for the dimensions UI card.
-    /// </summary>
-    public string AntennaOffsetImageSource => Type switch
-    {
-        VehicleType.Harvester => "avares://AgOpenWeb.Views/Assets/Icons/AntennaHarvesterOffset.png",
-        VehicleType.FourWD => "avares://AgOpenWeb.Views/Assets/Icons/AntennaArticulatedOffset.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/AntennaTractorOffset.png"
-    };
 
     /// <summary>
     /// Gets a user-friendly display name for the current vehicle type

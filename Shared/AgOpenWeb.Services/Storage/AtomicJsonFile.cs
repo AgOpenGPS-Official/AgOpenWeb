@@ -119,6 +119,16 @@ public static class AtomicJsonFile
             return;
         }
 
+        // Android SELinux (e.g. Samsung's policy) denies BOTH the hard link() that File.Replace
+        // uses and the FICLONE/reflink ioctl that File.Copy attempts — every save logged audit
+        // denials and only worked by accident via the catch below. Go straight to a rename-based
+        // promote with a manual stream-copy backup: rename() and plain read/write are allowed.
+        if (OperatingSystem.IsAndroid())
+        {
+            RotateAndMove(tmp, path, bak);
+            return;
+        }
+
         try
         {
             // File.Replace is atomic on Windows and POSIX and rolls the current
@@ -130,9 +140,28 @@ public static class AtomicJsonFile
             // Some filesystems (certain Android/exFAT mounts) reject Replace.
             // Fall back to a manual rotate: keep the current file as backup,
             // then move the scratch file into place.
-            try { File.Copy(path, bak, overwrite: true); } catch { /* best-effort backup */ }
-            File.Move(tmp, path, overwrite: true);
+            RotateAndMove(tmp, path, bak);
         }
+    }
+
+    /// <summary>Backup-then-rename promote using only allowed syscalls (no hard link, no
+    /// FICLONE ioctl): stream-copy the current primary to the backup, then rename the scratch
+    /// over the primary. A crash leaves either the old file (in place or as backup) or the new
+    /// one — never a partial primary.</summary>
+    private static void RotateAndMove(string tmp, string path, string bak)
+    {
+        try { CopyBytes(path, bak); } catch { /* best-effort backup */ }
+        File.Move(tmp, path, overwrite: true);
+    }
+
+    /// <summary>Plain stream copy — deliberately NOT File.Copy, whose reflink/FICLONE ioctl is
+    /// denied by some Android SELinux policies.</summary>
+    private static void CopyBytes(string src, string dest)
+    {
+        using var s = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.Read);
+        using var d = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None);
+        s.CopyTo(d);
+        d.Flush(flushToDisk: true);
     }
 
     /// <summary>
