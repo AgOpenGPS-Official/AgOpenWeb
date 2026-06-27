@@ -176,16 +176,17 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
 
-      # Use the committed release keystore (stable signing identity for over-the-top updates);
-      # fall back to the ephemeral debug key with a warning if the secret is absent.
+      # AgOpenWeb release keystore (supplied via the ANDROID_KEYSTORE_BASE64 secret) — a stable
+      # signing identity for over-the-top updates; falls back to the ephemeral debug key with a
+      # warning if the secret is absent.
       - name: Decode signing keystore
         id: keystore
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/agvalonia-release.keystore"
-            echo "path=$RUNNER_TEMP/agvalonia-release.keystore" >> "$GITHUB_OUTPUT"
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/agopenweb-release.keystore"
+            echo "path=$RUNNER_TEMP/agopenweb-release.keystore" >> "$GITHUB_OUTPUT"
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
@@ -201,7 +202,7 @@ jobs:
           if [ "${{ steps.keystore.outputs.present }}" = "true" ]; then
             ARGS+=(-p:AndroidKeyStore=true
                    "-p:AndroidSigningKeyStore=${{ steps.keystore.outputs.path }}"
-                   -p:AndroidSigningKeyAlias=agvalonia
+                   -p:AndroidSigningKeyAlias=agopenweb
                    -p:AndroidSigningStorePass=env:KS_PASS
                    -p:AndroidSigningKeyPass=env:KS_PASS)
           fi
