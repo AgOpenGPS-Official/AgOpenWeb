@@ -4020,14 +4020,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? IncreaseTramLineCommand { get; private set; }
     public ICommand? DecreaseTramLineCommand { get; private set; }
 
-    public string TramDisplayIcon => ConfigStore.Tram.DisplayMode switch
-    {
-        Models.Configuration.TramDisplayMode.All => "avares://AgOpenWeb.Views/Assets/Icons/TramAll.png",
-        Models.Configuration.TramDisplayMode.LinesOnly => "avares://AgOpenWeb.Views/Assets/Icons/TramLines.png",
-        Models.Configuration.TramDisplayMode.OuterOnly => "avares://AgOpenWeb.Views/Assets/Icons/TramOuter.png",
-        _ => "avares://AgOpenWeb.Views/Assets/Icons/TramOff.png"
-    };
-
     public string TramDisplayLabel => ConfigStore.Tram.DisplayMode switch
     {
         Models.Configuration.TramDisplayMode.All => "All",

@@ -994,7 +994,6 @@ public partial class MainViewModel
 
             ConfigStore.Guidance.TramDisplay = tram.DisplayMode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramDisplayIcon));
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = tram.DisplayMode switch
             {
@@ -1021,7 +1020,6 @@ public partial class MainViewModel
             ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.All;
             ConfigStore.Guidance.TramDisplay = true;
             UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramDisplayIcon));
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = ConfigStore.Tram.Systems.Count > 0
                 ? $"Tram lines built from {ConfigStore.Tram.Systems.Count} system(s)"
@@ -1067,7 +1065,6 @@ public partial class MainViewModel
             ConfigStore.Tram.DisplayMode = mode;
             ConfigStore.Guidance.TramDisplay = mode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramDisplayIcon));
             OnPropertyChanged(nameof(TramDisplayLabel));
         }
 
