@@ -606,6 +606,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _hub.Steer.OnReceived = AppendReceived;
             _hub.Machine.OnSent = AppendSent;
             _hub.Machine.OnReceived = AppendReceived;
+            _hub.Imu.OnSent = AppendSent;
+            _hub.Imu.OnReceived = AppendReceived;
 
             _hub.Start();
 

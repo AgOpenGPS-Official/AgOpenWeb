@@ -23,6 +23,7 @@ public class VirtualModuleHub : IDisposable
     public VirtualGpsReceiver Gps { get; }
     public VirtualSteerModule Steer { get; }
     public VirtualMachineModule Machine { get; }
+    public VirtualImuModule Imu { get; }
 
     /// <summary>Shared destination set for GPS + module PGN traffic — updated live from the
     /// UI's network-interface checkboxes. Defaults to localhost so the sim works out of the
@@ -46,12 +47,17 @@ public class VirtualModuleHub : IDisposable
         // Machine can't bind to the same port as Steer. In real hardware, one Teensy
         // handles both. Offset the machine to moduleListenPort + 1.
         Machine = new VirtualMachineModule(Targets, listenPort: moduleListenPort + 1);
+        // Same reason — the virtual IMU needs its own bind port. The $PANDA stream
+        // already carries the IMU data; this module just answers hello (PGN 121)
+        // so the host lists the IMU under Module Status. Offset to moduleListenPort + 2.
+        Imu = new VirtualImuModule(Targets, listenPort: moduleListenPort + 2);
     }
 
     public void Start()
     {
         Steer.Start();
         Machine.Start();
+        Imu.Start();
         // Don't start Gps.SendLoop. The host's SimulationTick at 10 Hz
         // advances Lat/Lon/Heading and explicitly calls Gps.SendOnce()
         // after each physics step. Starting the receiver's own 10 Hz
@@ -67,6 +73,7 @@ public class VirtualModuleHub : IDisposable
         Gps.Stop();
         Steer.Stop();
         Machine.Stop();
+        Imu.Stop();
     }
 
     /// <summary>
@@ -144,5 +151,6 @@ public class VirtualModuleHub : IDisposable
         Gps.Dispose();
         Steer.Dispose();
         Machine.Dispose();
+        Imu.Dispose();
     }
 }
