@@ -714,7 +714,8 @@ public sealed class SceneProjector
             d.ExtraGuidelines, d.ExtraGuidelinesCount, res,
             d.UTurnButtonVisible, d.LateralButtonVisible,
             d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
-            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm);
+            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm,
+            _persist.State.IsDayMode);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
@@ -789,6 +790,9 @@ public sealed class SceneProjector
             | (dp.KeyboardEnabled ? 32768 : 0) | (dp.StartFullscreen ? 65536 : 0) | (dp.ElevationLogEnabled ? 131072 : 0);
         h = h * 31 + db;
         h = h * 31 + dp.ExtraGuidelinesCount * 7 + dp.DisplayResolutionMultiplier.GetHashCode();
+        // Day/Night theme lives in PersistentAppState (not ConfigStore.Display), so fold it
+        // in here too — otherwise toggling the theme wouldn't re-send the config frame.
+        h = h * 31 + (_persist.State.IsDayMode ? 1 : 0);
         // AutoSteer config (so AutoSteer-panel edits re-send the frame).
         var asc = _config.AutoSteer;
         int ab = (asc.IsStanleyMode ? 1 : 0) | (asc.TurnSensorEnabled ? 2 : 0) | (asc.PressureSensorEnabled ? 4 : 0)

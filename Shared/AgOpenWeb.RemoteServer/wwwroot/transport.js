@@ -264,7 +264,7 @@ window.RemoteTransport = {
             uTurnButtonVisible: !!u8(), lateralButtonVisible: !!u8(),
             autoSteerSound: !!u8(), uTurnSound: !!u8(), hydraulicSound: !!u8(), sectionsSound: !!u8(),
             keyboardEnabled: !!u8(), startFullscreen: !!u8(), elevationLogEnabled: !!u8(),
-            resolutionMultiplier: f64(),
+            resolutionMultiplier: f64(), isDayMode: !!u8(),
           };
           // AutoSteer config — full 9-tab surface (positional, matches WireCodec).
           const autosteer = {

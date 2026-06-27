@@ -59,6 +59,8 @@ let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
 let configDirty = false; // a new config frame arrived → settings panels re-read it
+let mapIsDay = false;  // day/night theme (mirrors config.display.isDayMode) — drives the
+                       // CSS palette ([data-theme]) and the Skia map clear/grid colours
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
 let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable fields
@@ -90,13 +92,17 @@ let iHoldControl = false;
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
 
-// ---- ground texture: the tiled field backdrop (night variant — the web grid renders
-//      night-mode). Drawn as a repeating shader in world space, gated on
-//      Display.FieldTextureVisible. Loaded once; decoded to an SkImage on first use. ----
-const groundImg = new Image();
-let groundReady = false, skGround = null;
-groundImg.onload = () => { groundReady = true; };
-groundImg.src = '/icons/GroundTextureDark.png';
+// ---- ground texture: the tiled field backdrop. Two variants — a dark (night) and a
+//      light (day) version of the same texture — picked by mapIsDay so the field reads
+//      against the matching theme. Drawn as a repeating shader in world space, gated on
+//      Display.FieldTextureVisible. Each decoded to an SkImage on first use. ----
+const groundImgNight = new Image(), groundImgDay = new Image();
+let groundReadyNight = false, groundReadyDay = false;
+let skGroundNight = null, skGroundDay = null;
+groundImgNight.onload = () => { groundReadyNight = true; };
+groundImgDay.onload = () => { groundReadyDay = true; };
+groundImgNight.src = '/icons/GroundTextureDark.png';
+groundImgDay.src = '/icons/GroundTextureLight.png';
 
 // ---- tractor sprite (TractorAoG.png) — drawn world-sized on the ground, replacing the
 //      fallback triangle. Sized from the vehicle track-width/wheelbase like native. ----
@@ -257,7 +263,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
-  onConfig(c) { config = c; configDirty = true; },
+  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
@@ -317,6 +323,22 @@ function ckColor(s) {
   const m = s.match(/\(([^)]+)\)/)[1].split(',').map(Number);
   return CK.Color(m[0], m[1], m[2], m.length > 3 ? m[3] : 1);
 }
+// Day/Night theme. CSS chrome flips via [data-theme]; the Skia map (clear + grid) is
+// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field.
+const MAP_CLEAR = { night: '#0f1115', day: '#d7dee7' };
+const GRID_MINOR = { night: 'rgba(180,180,180,0.314)', day: 'rgba(80,92,110,0.33)' };
+const GRID_MAJOR = { night: 'rgba(200,200,200,0.47)', day: 'rgba(60,72,90,0.5)' };
+function applyMapTheme() {
+  if (!CK || !SKP) return; // paints not built yet — buildSkPaints() re-applies on init
+  const k = mapIsDay ? 'day' : 'night';
+  SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
+  SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
+}
+function applyTheme(isDay) {
+  mapIsDay = !!isDay;
+  document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
+  applyMapTheme();
+}
 function buildSkPaints() {
   const mk = (color, w, dash) => {
     const p = new CK.Paint();
@@ -373,6 +395,7 @@ function buildSkPaints() {
   SKP.lbFill.setAntiAlias(false);
   // Vehicle triangle in marker-local px (drawn under canvas translate+rotate).
   skTri = CK.Path.MakeFromSVGString('M 0 -14 L 9 11 L -9 11 Z');
+  applyMapTheme(); // sync grid colours if the theme arrived before paints were built
 }
 if (typeof CanvasKitInit === 'function') {
   CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(ck => {
@@ -4283,12 +4306,14 @@ function vehicleSk(canvas, p) {
 // rebuild; the tiles stay fixed in the world and scroll under the vehicle).
 function drawGroundTextureSk(canvas) {
   const disp = config && config.display;
-  if (!disp || !disp.fieldTextureVisible || !groundReady) return;
+  if (!disp || !disp.fieldTextureVisible) return;
+  if (mapIsDay ? !groundReadyDay : !groundReadyNight) return;
+  let skGround = mapIsDay ? skGroundDay : skGroundNight;
   if (!skGround) {
-    skGround = CK.MakeImageFromCanvasImageSource(groundImg);
+    skGround = CK.MakeImageFromCanvasImageSource(mapIsDay ? groundImgDay : groundImgNight);
     if (!skGround) return;
-    SKP.ground = new CK.Paint();
-    SKP.ground.setAntiAlias(false);
+    if (mapIsDay) skGroundDay = skGround; else skGroundNight = skGround;
+    if (!SKP.ground) { SKP.ground = new CK.Paint(); SKP.ground.setAntiAlias(false); }
   }
   const W = skGround.width(), H = skGround.height();
   // We render camera-relative, but the tiles must stay anchored to WORLD. The pattern
@@ -4594,7 +4619,7 @@ function lightbarSk(canvas) {
   }
 }
 function renderSkia(canvas, rp) {
-  canvas.clear(ckColor('#0f1115'));
+  canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));
   canvas.save();
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
   updateLineWidths(); // world-metre line weights × current zoom (matches native)
