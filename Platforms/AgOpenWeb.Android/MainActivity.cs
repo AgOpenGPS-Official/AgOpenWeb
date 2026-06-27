@@ -36,14 +36,11 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnCreate(savedInstanceState);
 
-        // All-in-one launcher mode: start the foreground service that owns the in-process
-        // guidance host so it survives this Activity backgrounding. The WebView (built by
-        // App in launcher mode) waits on BackendService.HostReady before navigating.
-        if (AgOpenWeb.Models.Diagnostics.DiagFlags.WebViewLauncher)
-        {
-            RequestNotificationPermissionIfNeeded();
-            BackendService.Start(this);
-        }
+        // Start the foreground service that owns the in-process guidance host so it survives
+        // this Activity backgrounding. The WebView (built by App) waits on
+        // BackendService.HostReady before navigating. The web app is the only UI.
+        RequestNotificationPermissionIfNeeded();
+        BackendService.Start(this);
 
         // Enable immersive full-screen mode
         EnableImmersiveMode();

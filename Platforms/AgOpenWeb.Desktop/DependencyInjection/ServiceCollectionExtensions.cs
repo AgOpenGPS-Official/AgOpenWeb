@@ -36,7 +36,7 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Desktop.Services;
-using AgOpenWeb.Views.Infrastructure;
+using AgOpenWeb.Services.Threading;
 
 namespace AgOpenWeb.Desktop.DependencyInjection;
 
@@ -58,13 +58,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
         services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
 
-        // UI-thread dispatcher abstraction (replaces direct Dispatcher.UIThread
-        // in the VM layer — see Plans/CONFIG_STATE_AUDIT.md §11).
-        services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
-
-        // UI-thread timer abstraction (replaces direct DispatcherTimer in the
-        // VM layer — see Plans/CONFIG_STATE_AUDIT.md §11.3).
-        services.AddSingleton<IUiTimerFactory, AvaloniaUiTimerFactory>();
+        // UI-thread dispatcher + timer abstraction. With the native UI gone, the sole
+        // consumer of this graph is BackendHost (daemon + WebView launcher), which runs
+        // the VM/pipeline on a single HostLoopDispatcher standing in for the old Avalonia
+        // UI thread. BackendHost re-registers its own instance (last-wins); these defaults
+        // keep the container resolvable on its own. See Plans/CONFIG_STATE_AUDIT.md §11.
+        services.AddSingleton<HostLoopDispatcher>();
+        services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
+        services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());
 
         // Register ViewModels
         services.AddTransient<MainViewModel>();
@@ -182,9 +183,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
-        // Platform-specific services (Desktop implementations)
-        services.AddSingleton<MapService>();
-        services.AddSingleton<IMapService>(sp => sp.GetRequiredService<MapService>());
+        // No native map control in the web build — the browser/CanvasKit client renders the
+        // map. IMapService is satisfied by the no-op NullMapService (BackendHost registers this
+        // too; kept here so the container resolves standalone).
+        services.AddSingleton<IMapService, NullMapService>();
 
         return services;
     }

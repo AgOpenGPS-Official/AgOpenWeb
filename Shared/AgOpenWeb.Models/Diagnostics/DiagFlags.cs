@@ -58,11 +58,6 @@ public static class DiagFlags
     // Test-harness flags
     public static readonly bool AutoResumeField;
 
-    // Deployment-mode flag (not a diagnostic): when set, a mobile head runs as the
-    // thin all-in-one LAUNCHER — host in-process + a full-screen WebView showing the
-    // local web app, instead of the native UI. Reuses the marker-file mechanism.
-    public static readonly bool WebViewLauncher;
-
     public static readonly bool AnySet;
 
     static DiagFlags()
@@ -87,7 +82,6 @@ public static class DiagFlags
         PerfAutoSteer              = MarkerPresent(".perf_autosteer");
         PerfApplyGpsCycle          = MarkerPresent(".perf_apply_gps_cycle");
         AutoResumeField            = MarkerPresent(".auto_resume_field");
-        WebViewLauncher            = MarkerPresent(".use_webview_launcher");
 
         AnySet = SkipCoverageDraw || SkipBoundaryDraw || SkipTracks
                || SkipGroundTexture || SkipGrid || SkipVehicle

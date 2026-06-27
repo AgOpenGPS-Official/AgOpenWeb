@@ -34,7 +34,6 @@ public class NoBypassWritesTests
         var scanDirs = new[]
         {
             Path.Combine(root, "Shared", "AgOpenWeb.ViewModels"),
-            Path.Combine(root, "Shared", "AgOpenWeb.Views"),
         };
 
         var violations = new List<string>();

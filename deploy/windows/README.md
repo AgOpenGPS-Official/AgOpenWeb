@@ -52,9 +52,9 @@ mode; for a normal desktop, just double-click the exe (above) instead.
   (`Documents\AgOpenWeb`), so they survive replacing the program folder on update.
 - The window hosts the backend **in-process**; there is no separate service. To run it
   display-less as a background daemon instead, start the exe with `--headless`.
-- This same exe is the cross-platform app. Other launch modes:
-  - `--console` — the legacy supervisor control panel (Start / Stop / Open in Browser / LAN URL).
-  - `--windowed` — the legacy native Avalonia UI.
+- This same exe is the cross-platform app. The UI is always the web app (browser/WebView) —
+  there is no native UI. Launch modes:
+  - `--console` — the supervisor control panel (Start / Stop / Open in Browser / LAN URL).
   - `--launcher` — force the all-in-one WebView launcher on any OS.
   - `--headless` — force the display-less daemon.
 - A start failure (e.g. missing WebView2 Runtime, port in use) is written to

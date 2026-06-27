@@ -20,6 +20,15 @@
     <ProjectReference Include="..\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
   </ItemGroup>
 
+  <!-- Alert sounds, embedded in this assembly so host-side audio (AudioServiceBase →
+       NetCoreAudio / platform players) works on every head — desktop daemon/launcher
+       and mobile WebView alike — with no Avalonia/Views asset dependency. Extracted to
+       a temp dir at runtime by AudioServiceBase. Manifest name:
+       AgOpenWeb.Services.Audio.Sounds.<file>.wav -->
+  <ItemGroup>
+    <EmbeddedResource Include="Audio\Sounds\*.wav" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="AgOpenWeb.Services.Tests" />
   </ItemGroup>

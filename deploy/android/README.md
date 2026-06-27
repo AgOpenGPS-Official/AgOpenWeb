@@ -1,31 +1,13 @@
 # AgOpenWeb — Android
 
-The Android APK ships two modes from one build:
-
-- **Native app** (default) — the full Avalonia guidance UI, as before.
-- **All-in-one launcher** — the in-process guidance host (the same one the desktop/iOS
-  launchers run) kept alive by a **foreground service**, with the UI shown in a full-screen
-  Android System WebView at `http://localhost:5174`. The host binds `0.0.0.0`, so cab
-  tablets/phones can connect over the LAN alongside the on-screen UI.
+The Android APK is an **all-in-one launcher**: the in-process guidance host (the same one the
+desktop/iOS launchers run) kept alive by a **foreground service**, with the UI shown in a
+full-screen Android System WebView at `http://localhost:5174`. The host binds `0.0.0.0`, so cab
+tablets/phones can connect over the LAN alongside the on-screen UI. There is no native UI — the
+web app is the only interface.
 
 The signed APK is built + released by `.github/workflows/build-deploy-bundles.yml` (the `android`
-job); there is no separate launcher artifact — the mode is a runtime marker.
-
-## Enabling launcher mode
-
-Launcher mode is gated by the same marker-file mechanism as iOS
-([`DiagFlags.WebViewLauncher`](../../Shared/AgOpenWeb.Models/Diagnostics/DiagFlags.cs)): the app
-runs as the all-in-one launcher when a file named `.use_webview_launcher` exists in the app's
-`Documents/AgOpenWeb/` directory. Push it with adb, then relaunch:
-
-```bash
-adb shell run-as com.agopenweb.android \
-  sh -c 'mkdir -p files/Documents/AgOpenWeb && touch files/Documents/AgOpenWeb/.use_webview_launcher'
-# remove it to go back to the native UI:
-adb shell run-as com.agopenweb.android rm files/Documents/AgOpenWeb/.use_webview_launcher
-```
-
-(Flags are read once at process start — force-stop and relaunch the app to pick up a change.)
+job).
 
 ## Foreground service behavior
 
