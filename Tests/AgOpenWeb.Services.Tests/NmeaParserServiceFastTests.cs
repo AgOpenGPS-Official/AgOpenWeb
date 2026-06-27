@@ -358,6 +358,28 @@ public class NmeaParserServiceFastTests
         Assert.That(state.ImuHeading, Is.EqualTo(0));
     }
 
+    // Upstream AgValoniaGPS issue #486: variable-width (no leading-zero) $PAOGI
+    // heading/roll fields like "3.7" / "-0.65" displayed as 0 — only 3-integer-digit
+    // values (>= 100) parsed. Our parser splits on commas (GetField) and uses
+    // Utf8Parser, so field width is irrelevant; this guards that small values in the
+    // reported failing ranges round-trip (heading 0–99.99°, roll -9.99–99.99°).
+    [TestCase(3.7, -0.65)]
+    [TestCase(1.5, 0.1)]
+    [TestCase(99.9, 99.99)]
+    [TestCase(9.5, -9.99)]
+    public void ParseIntoState_PAOGI_VariableWidthSmallHeadingRoll_ParsedNotZero(double heading, double roll)
+    {
+        byte[] sentence = BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: heading, roll: roll, pitch: 0, yawRate: 0);
+        var state = new VehicleState();
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        // F1 heading / F2 roll formatting in the builder, matched here.
+        Assert.That(state.Heading, Is.EqualTo(System.Math.Round(heading, 1)).Within(1e-6));
+        Assert.That(state.Roll, Is.EqualTo(System.Math.Round(roll, 2)).Within(1e-6));
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────
 
     private static byte[] BuildPandaBytes(
