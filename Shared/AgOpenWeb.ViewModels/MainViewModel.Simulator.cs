@@ -300,6 +300,13 @@ public partial class MainViewModel
         Latitude = latitude;
         Longitude = longitude;
 
+        // Push into the live vehicle state too — this is the single source the web UI's status
+        // strip and SceneProjector read. Without it the displayed position (and the SimCoords
+        // dialog's prefill, which seeds from the status frame) stays at the old/zero live position
+        // until the simulator next ticks, so a just-set coordinate reads back as 0.0000.
+        State.Vehicle.Latitude = latitude;
+        State.Vehicle.Longitude = longitude;
+
         StatusMessage = saved
             ? $"Simulator reset to {latitude:F8}, {longitude:F8}"
             : $"Reset to {latitude:F8}, {longitude:F8} (save failed: {_settingsService.GetSettingsFilePath()})";

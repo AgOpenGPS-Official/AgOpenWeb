@@ -115,18 +115,54 @@ public partial class App : Avalonia.Application
             if (e.IsSuccess) { loaded = true; splash.IsVisible = false; }
         };
 
-        _ = StartNavigationAsync(TryNavigate);
+        _ = StartNavigationAsync(web, TryNavigate);
         return new Grid { Children = { web, splash } };
+    }
+
+    // Attach our own JS→native bridge to the underlying android.webkit.WebView (Avalonia's
+    // NativeWebView injects none, and a WebView input's JS blur() can't lower the Android IME —
+    // only InputMethodManager can). addJavascriptInterface takes effect on the NEXT load, so we
+    // attach BEFORE the first Navigate. The native control realizes asynchronously after attach,
+    // so poll TryGetPlatformHandle until it's available. JS calls window.agnative.hideKeyboard().
+    private static async Task AttachKeyboardBridgeAsync(NativeWebView web)
+    {
+        for (int i = 0; i < 25; i++)
+        {
+            if (web.TryGetPlatformHandle() is Avalonia.Platform.IAndroidWebViewPlatformHandle ah
+                && ah.WebKitWebView != IntPtr.Zero)
+            {
+                try
+                {
+                    var native = Java.Lang.Object.GetObject<global::Android.Webkit.WebView>(
+                        ah.WebKitWebView, global::Android.Runtime.JniHandleOwnership.DoNotTransfer);
+                    if (native != null)
+                    {
+                        native.AddJavascriptInterface(new WebKeyboardBridge(), "agnative");
+                        Console.WriteLine("[App] keyboard bridge attached (window.agnative)");
+                        return;
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[App] keyboard bridge attach failed: {ex}"); return; }
+            }
+            await Task.Delay(150).ConfigureAwait(false);
+        }
+        Console.WriteLine("[App] keyboard bridge NOT attached (no Android platform handle)");
     }
 
     // Navigate as soon as the host signals ready, but wait no longer than a few seconds for that
     // signal — the retry-on-failure loop covers any remaining gap (and the case where HostReady is
     // a stale leftover from a previous run in the same process).
-    private static async Task StartNavigationAsync(Action tryNavigate)
+    private static async Task StartNavigationAsync(NativeWebView web, Action tryNavigate)
     {
         try { await Task.WhenAny(BackendService.HostReady.Task, Task.Delay(8000)).ConfigureAwait(false); }
         catch { /* host start may have faulted; try anyway — the server can still come up */ }
-        Dispatcher.UIThread.Post(tryNavigate);
+        // Attach the keyboard bridge BEFORE the first navigation (addJavascriptInterface applies
+        // to the next load), then navigate — all on the UI thread.
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            await AttachKeyboardBridgeAsync(web);
+            tryNavigate();
+        });
     }
 
     private static void DelayThenPost(int milliseconds, Action action) =>
