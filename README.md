@@ -1,6 +1,6 @@
 # AgOpenWeb
 
-Cross-platform agricultural GPS guidance — a rewrite of [AgOpenGPS](https://github.com/farmerbriantee/AgOpenGPS) using Avalonia, .NET 10, and C#.
+Cross-platform agricultural GPS guidance — a rewrite of [AgOpenGPS](https://github.com/farmerbriantee/AgOpenGPS) using HTML/JS, Avalonia, .NET 10, and C#. The UI is a web page served up by the backend host.
 
 ## Download & run
 
