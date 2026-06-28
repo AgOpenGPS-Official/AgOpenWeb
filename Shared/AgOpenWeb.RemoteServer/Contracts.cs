@@ -294,7 +294,10 @@ public record DisplayConfigDto(
     bool KeyboardEnabled, bool StartFullscreen, bool ElevationLogEnabled,
     // Numeric quality multiplier (1.0 Ultra … 6.0 Min). The web scales its imagery LOD by
     // this so the quality button degrades the background like native's Apple composite path.
-    double DisplayResolutionMultiplier);
+    double DisplayResolutionMultiplier,
+    // Day/Night theme (PersistentAppState.IsDayMode). The web client switches its full
+    // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
+    bool IsDayMode);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>

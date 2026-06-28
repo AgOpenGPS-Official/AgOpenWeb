@@ -59,6 +59,8 @@ let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
 let configDirty = false; // a new config frame arrived → settings panels re-read it
+let mapIsDay = false;  // day/night theme (mirrors config.display.isDayMode) — drives the
+                       // CSS palette ([data-theme]) and the Skia map clear/grid colours
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
 let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable fields
@@ -90,13 +92,17 @@ let iHoldControl = false;
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
 
-// ---- ground texture: the tiled field backdrop (night variant — the web grid renders
-//      night-mode). Drawn as a repeating shader in world space, gated on
-//      Display.FieldTextureVisible. Loaded once; decoded to an SkImage on first use. ----
-const groundImg = new Image();
-let groundReady = false, skGround = null;
-groundImg.onload = () => { groundReady = true; };
-groundImg.src = '/icons/GroundTextureDark.png';
+// ---- ground texture: the tiled field backdrop. Two variants — a dark (night) and a
+//      light (day) version of the same texture — picked by mapIsDay so the field reads
+//      against the matching theme. Drawn as a repeating shader in world space, gated on
+//      Display.FieldTextureVisible. Each decoded to an SkImage on first use. ----
+const groundImgNight = new Image(), groundImgDay = new Image();
+let groundReadyNight = false, groundReadyDay = false;
+let skGroundNight = null, skGroundDay = null;
+groundImgNight.onload = () => { groundReadyNight = true; };
+groundImgDay.onload = () => { groundReadyDay = true; };
+groundImgNight.src = '/icons/GroundTextureDark.png';
+groundImgDay.src = '/icons/GroundTextureLight.png';
 
 // ---- tractor sprite (TractorAoG.png) — drawn world-sized on the ground, replacing the
 //      fallback triangle. Sized from the vehicle track-width/wheelbase like native. ----
@@ -257,7 +263,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
-  onConfig(c) { config = c; configDirty = true; },
+  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
@@ -299,16 +305,21 @@ transport.start();
 function recreateSkSurface() {
   if (!CK) return;
   if (skSurface) { skSurface.delete(); skSurface = null; }
-  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent
-  // fills (section footprint, lightbar) in encoded sRGB space — matching the 2D
-  // canvas. The default MakeWebGLCanvasSurface attaches an sRGB color space and
-  // blends in LINEAR space, which lightens/washes out transparent colors. Build
-  // via the explicit GL path; fall back to the color-managed helper if needed.
-  const ctxHandle = CK.GetWebGLContext(ckcv);
-  if (ctxHandle) {
-    grCtx = CK.MakeWebGLContext(ctxHandle);
-    if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
+  // Reuse the GrDirectContext across resizes. Resizing the canvas does NOT lose its WebGL
+  // context, and rebuilding grCtx would orphan every GPU-resident SkImage created on the old
+  // context — the coverage render target (MakeRenderTarget(grCtx, …)) plus the ground/tractor/
+  // imagery sprites — so those layers vanish after a resize (coverage being the obvious one).
+  // Only the on-screen surface (render target sized to the canvas) needs rebuilding.
+  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent fills
+  // (section footprint, lightbar) in encoded sRGB space — matching the 2D canvas. The default
+  // MakeWebGLCanvasSurface attaches an sRGB color space and blends in LINEAR space, which
+  // lightens/washes out transparent colors. Build via the explicit GL path; fall back to the
+  // color-managed helper if needed.
+  if (!grCtx) {
+    const ctxHandle = CK.GetWebGLContext(ckcv);
+    if (ctxHandle) grCtx = CK.MakeWebGLContext(ctxHandle);
   }
+  if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
 }
 // Hex (#rrggbb) or rgb(a)(...) → CanvasKit color (CK.Color: r,g,b 0-255, a 0-1).
@@ -316,6 +327,22 @@ function ckColor(s) {
   if (s[0] === '#') return CK.Color(parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16), 1);
   const m = s.match(/\(([^)]+)\)/)[1].split(',').map(Number);
   return CK.Color(m[0], m[1], m[2], m.length > 3 ? m[3] : 1);
+}
+// Day/Night theme. CSS chrome flips via [data-theme]; the Skia map (clear + grid) is
+// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field.
+const MAP_CLEAR = { night: '#0f1115', day: '#d7dee7' };
+const GRID_MINOR = { night: 'rgba(180,180,180,0.314)', day: 'rgba(80,92,110,0.33)' };
+const GRID_MAJOR = { night: 'rgba(200,200,200,0.47)', day: 'rgba(60,72,90,0.5)' };
+function applyMapTheme() {
+  if (!CK || !SKP) return; // paints not built yet — buildSkPaints() re-applies on init
+  const k = mapIsDay ? 'day' : 'night';
+  SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
+  SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
+}
+function applyTheme(isDay) {
+  mapIsDay = !!isDay;
+  document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
+  applyMapTheme();
 }
 function buildSkPaints() {
   const mk = (color, w, dash) => {
@@ -373,6 +400,7 @@ function buildSkPaints() {
   SKP.lbFill.setAntiAlias(false);
   // Vehicle triangle in marker-local px (drawn under canvas translate+rotate).
   skTri = CK.Path.MakeFromSVGString('M 0 -14 L 9 11 L -9 11 Z');
+  applyMapTheme(); // sync grid colours if the theme arrived before paints were built
 }
 if (typeof CanvasKitInit === 'function') {
   CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(ck => {
@@ -725,6 +753,23 @@ bottomNav.addEventListener('pointerdown', e => {
   if (btn.hasAttribute('data-t2') && !iHoldControl) return; // gated; host re-checks
   transport.send(btn.dataset.cmd);
 });
+// ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
+// Bare glyph buttons mirroring native AgOpenGPS; shown per the Screen & Alerts
+// "On-Screen Buttons" toggles. U-turn → manual you-turn L/R, lateral → snap the track
+// one pass (1 tool width) L/R.
+const onScreenBtns = document.getElementById('onscreenbtns');
+onScreenBtns.addEventListener('pointerdown', e => {
+  const btn = e.target.closest('button[data-cmd]');
+  if (!btn) return;
+  e.stopPropagation(); // tap the glyph, don't pan the map
+  transport.send(btn.dataset.cmd);
+});
+function applyOnScreenButtons() {
+  const d = config && config.display;
+  const hasField = !!(scene && scene.hasField); // native gate: IsFieldOpen
+  document.getElementById('osb-uturn').hidden = !(hasField && d && d.uTurnButtonVisible);
+  document.getElementById('osb-lateral').hidden = !(hasField && d && d.lateralButtonVisible);
+}
 function bnToggleFly(fly, btn) {
   const open = !fly.classList.contains('open');
   bnFlags.classList.remove('open'); bnAb.classList.remove('open');
@@ -2856,9 +2901,6 @@ if (rnRoot) {
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
   wireRn('rn-youturn', 'youturn.toggle');
-  wireRn('rn-dir', 'youturn.direction');
-  wireRn('rn-uturn-l', 'youturn.manualLeft');
-  wireRn('rn-uturn-r', 'youturn.manualRight');
   wireRn('rn-steer', 'autosteer.toggle');
 }
 
@@ -3445,6 +3487,7 @@ function renderSectionBar() {
 function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }
 const TRAM_ICONS = ['TramOff.png', 'TramAll.png', 'TramLines.png', 'TramOuter.png'];
 function renderBottomNav() {
+  applyOnScreenButtons(); // U-Turn / Lateral glyphs follow field-open + display toggles
   const visible = !!(scene && scene.hasField); // native gate: IsFieldOpen
   bottomNav.classList.toggle('open', visible);
   if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); return; }
@@ -3470,8 +3513,6 @@ const RN = {
   root: document.getElementById('rightnav'),
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
-  dir: document.getElementById('rn-dir'), dirArrow: document.getElementById('rn-dir-arrow'),
-  dirDist: document.getElementById('rn-dir-dist'), manualTurn: document.getElementById('rn-manualturn'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
 // Swap an icon only when it actually changes (no per-frame churn).
@@ -3489,16 +3530,38 @@ function renderRightNav() {
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
-  // U-turn direction + distance-to-trigger — shown only when auto U-turn is on.
-  RN.dir.style.display = op.youturn ? '' : 'none';
-  RN.dirArrow.textContent = op.turnLeft ? '↰' : '↱';
-  RN.dirDist.textContent = op.distToTrigger > 0 ? op.distToTrigger.toFixed(0) + ' m' : '';
-  // Manual U-turn buttons — visible while steering on a non-closed track (native rule).
-  RN.manualTurn.style.display = (op.autoSteer && !op.trackClosed) ? 'flex' : 'none';
+  // U-turn direction + distance-to-trigger now render on-screen (see renderUTurnIndicator).
   // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
 }
 
+// Auto-U-turn approach indicator (upper-right): green direction arrow + distance to
+// trigger + turn-type glyph. Mirrors native's on-map readout; shown while auto U-turn is
+// armed with a pending turn. Turn type comes from config (Omega / Sagitta); distance honours
+// the metric/imperial unit like the headland HUD.
+const UTI = {
+  root: document.getElementById('uturn-indicator'),
+  arrow: document.getElementById('uti-arrow'),
+  dist: document.getElementById('uti-distval'),
+  typePath: document.getElementById('uti-typepath'),
+};
+const UTURN_GLYPH = {
+  0: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // Omega — squared inverted-U
+  1: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta — flatter rounded arch
+};
+function renderUTurnIndicator() {
+  if (!UTI.root) return;
+  const op = tick && tick.op;
+  const show = !!(scene && scene.hasField && op && op.youturn && op.distToTrigger > 0);
+  UTI.root.hidden = !show;
+  if (!show) return;
+  const metric = !statusBar || statusBar.isMetric;
+  UTI.dist.textContent = metric ? op.distToTrigger.toFixed(0) + ' m'
+                                : (op.distToTrigger * 3.28084).toFixed(0) + ' ft';
+  UTI.arrow.classList.toggle('left', !!op.turnLeft);
+  const style = (config && config.uturn && config.uturn.style) || 0;
+  UTI.typePath.setAttribute('d', UTURN_GLYPH[style] || UTURN_GLYPH[0]);
+}
 // ---- Lower-right cluster (Phase 4): roll gauge + camera/mode pad + clock ----
 const rollBar = document.getElementById('roll-bar');
 const rollDeg = document.getElementById('roll-deg');
@@ -4283,12 +4346,14 @@ function vehicleSk(canvas, p) {
 // rebuild; the tiles stay fixed in the world and scroll under the vehicle).
 function drawGroundTextureSk(canvas) {
   const disp = config && config.display;
-  if (!disp || !disp.fieldTextureVisible || !groundReady) return;
+  if (!disp || !disp.fieldTextureVisible) return;
+  if (mapIsDay ? !groundReadyDay : !groundReadyNight) return;
+  let skGround = mapIsDay ? skGroundDay : skGroundNight;
   if (!skGround) {
-    skGround = CK.MakeImageFromCanvasImageSource(groundImg);
+    skGround = CK.MakeImageFromCanvasImageSource(mapIsDay ? groundImgDay : groundImgNight);
     if (!skGround) return;
-    SKP.ground = new CK.Paint();
-    SKP.ground.setAntiAlias(false);
+    if (mapIsDay) skGroundDay = skGround; else skGroundNight = skGround;
+    if (!SKP.ground) { SKP.ground = new CK.Paint(); SKP.ground.setAntiAlias(false); }
   }
   const W = skGround.width(), H = skGround.height();
   // We render camera-relative, but the tiles must stay anchored to WORLD. The pattern
@@ -4594,7 +4659,7 @@ function lightbarSk(canvas) {
   }
 }
 function renderSkia(canvas, rp) {
-  canvas.clear(ckColor('#0f1115'));
+  canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));
   canvas.save();
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
   updateLineWidths(); // world-metre line weights × current zoom (matches native)
@@ -4659,6 +4724,7 @@ function skFrame() {
   renderBottomNav();
   renderSettings();
   renderRightNav();
+  renderUTurnIndicator();
   renderRoll();
   renderCampad();
   renderCharts();

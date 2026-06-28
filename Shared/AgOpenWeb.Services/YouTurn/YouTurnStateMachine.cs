@@ -39,9 +39,19 @@ namespace AgOpenWeb.Services.YouTurn;
 public sealed class YouTurnStateMachine
 {
     // Turn-creation window: only consider creating a turn when the tractor is this far
-    // from the headland. AgOpenGPS parity — matches the legacy numbers exactly.
+    // from the headland (raycast distance to the turn line).
+    //
+    // Min stays a "too late to start a smooth turn" guard. Max is large so the turn is
+    // plotted as soon as the upcoming turn-line crossing is ahead — i.e. right after the
+    // previous turn completes and the tractor settles onto the new pass — matching current
+    // AgOpenGPS (its distance-to-turn readout tracks a turn that is plotted across the whole
+    // pass, not one built only near the boundary). This is safe because the turn ENTRY is the
+    // track × turn-line crossing (fixed geometry; see YouTurnCreationService "find crossing"),
+    // so an early plot yields the identical path. The raycast returns double.MaxValue when no
+    // crossing lies ahead, so "no turn ahead" is still naturally excluded by this upper bound.
+    // 2000 m comfortably exceeds any real field pass while staying below that no-hit sentinel.
     private const double MinDistanceToCreate = 10.0;
-    private const double MaxDistanceToCreate = 60.0;
+    private const double MaxDistanceToCreate = 2000.0;
 
     // Alignment tolerance around the AB line direction (forward or reverse) for turn gating.
     // ~20 degrees. Wider tolerances risk creating turns while mid-turn when heading swings.

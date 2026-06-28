@@ -1,13 +1,15 @@
 name: CI
 
-# Per-commit CI: run the test suite and compile-check every platform head on push/PR to main.
-# It does NOT package or publish anything — all artifacts, tagged releases, and the nightly
-# prerelease are produced by the single packaging workflow, build-deploy-bundles.yml.
+# Per-commit CI: run the test suite and compile-check every platform head on push/PR to
+# main or develop. develop is the integration branch and its protection requires the `test`
+# check, so CI must trigger there too (otherwise PRs into develop block forever awaiting a
+# check that never starts). It does NOT package or publish anything — all artifacts, tagged
+# releases, and the nightly prerelease are produced by build-deploy-bundles.yml.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 concurrency:

@@ -288,6 +288,8 @@ public static class WireCodec
         DB(d.AutoSteerSound); DB(d.UTurnSound); DB(d.HydraulicSound); DB(d.SectionsSound);
         DB(d.KeyboardEnabled); DB(d.StartFullscreen); DB(d.ElevationLogEnabled);
         w.Write(d.DisplayResolutionMultiplier); // f64 — web imagery LOD (quality)
+        DB(d.IsDayMode); // day/night theme — web switches its full palette + map colours
+
         // AutoSteer config tab (full 9-tab surface). Append-only; field order mirrors
         // AutoSteerConfigDto exactly so transport.js decodes it positionally.
         var a = c.AutoSteer;
