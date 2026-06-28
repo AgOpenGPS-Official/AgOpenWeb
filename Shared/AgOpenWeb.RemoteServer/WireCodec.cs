@@ -18,7 +18,20 @@ public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
-        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17;
+        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
+        Sound = 18;
+
+    /// <summary>One-shot alert: tells the client to play sound effect
+    /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
+    /// event-driven, not part of the periodic tick.</summary>
+    public static byte[] EncodeSound(byte effectId)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Sound);
+        w.Write(effectId);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeBoundary(BoundaryDto b)
     {

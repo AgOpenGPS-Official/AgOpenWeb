@@ -279,8 +279,67 @@ const transport = RemoteTransport.create({
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
+  onSound(id) { Sounds.play(id); },
   onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
 });
+
+// ---- Alert sounds ----------------------------------------------------------
+// The host (which may be a headless box with no speaker) decides WHAT is audible
+// — it already applied each sound's config toggle — and pushes a SoundEffect id.
+// We just play the matching .wav here, on the operator's device. Effect ids match
+// the C# SoundEffect enum order. Browsers block audio until the page has had a user
+// gesture, so we prime the elements on the first pointer/key event; until then an
+// alert that fires before any interaction is silently dropped (unavoidable on web).
+const Sounds = (() => {
+  // index === (int)SoundEffect; Alarm10 covers BoundaryAlarm + UTurnTooClose.
+  const FILES = [
+    'Alarm10',    // 0 BoundaryAlarm
+    'Alarm10',    // 1 UTurnTooClose
+    'SteerOn',    // 2 AutoSteerOn
+    'SteerOff',   // 3 AutoSteerOff
+    'HydUp',      // 4 HydraulicLiftUp
+    'HydDown',    // 5 HydraulicLiftDown
+    'rtk_lost',   // 6 RtkLost
+    'rtk_back',   // 7 RtkRecovered
+    'SectionOn',  // 8 SectionOn
+    'SectionOff', // 9 SectionOff
+    'Headland',   // 10 Headland
+  ];
+  const cache = new Map();   // name -> HTMLAudioElement (preloaded)
+  let unlocked = false;
+
+  function el(name) {
+    let a = cache.get(name);
+    if (!a) { a = new Audio('/sounds/' + name + '.wav'); a.preload = 'auto'; cache.set(name, a); }
+    return a;
+  }
+  // Preload every distinct file so the first real alert isn't delayed by a fetch.
+  for (const n of new Set(FILES)) el(n);
+
+  function unlock() {
+    if (unlocked) return;
+    unlocked = true;
+    // Nudge each element into a "played once" state so later programmatic play()
+    // (not tied to a gesture) is allowed by the autoplay policy.
+    for (const a of cache.values()) {
+      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+    }
+    window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('keydown', unlock);
+  }
+  window.addEventListener('pointerdown', unlock, { passive: true });
+  window.addEventListener('keydown', unlock);
+
+  return {
+    play(id) {
+      const name = FILES[id];
+      if (!name) return;
+      // Clone the preloaded element so rapid repeats (e.g. section on/off bursts)
+      // overlap instead of cutting each other off; the clone shares the cached file.
+      try { el(name).cloneNode().play().catch(() => {}); } catch { /* not ready */ }
+    },
+  };
+})();
 
 // Mobile auto-quality. Phones/tablets get GPU-overloaded at Ultra resolution (large
 // coverage + imagery textures), so on connect a mobile client asks the host to CAP the
