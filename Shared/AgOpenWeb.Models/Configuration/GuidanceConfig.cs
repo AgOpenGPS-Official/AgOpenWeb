@@ -17,6 +17,8 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using AgOpenWeb.Models.YouTurn;
+
 namespace AgOpenWeb.Models.Configuration;
 
 /// <summary>
@@ -149,7 +151,12 @@ public class GuidanceConfig : ObservableObject
         set => SetProperty(ref _uTurnSkipWidth, Math.Max(1, value));
     }
 
-    private int _uTurnStyle;
+    // Sagitta (offset-semicircle) by default — matches Twol, which dropped Dubins
+    // for U-turns because the shortest-path solution loops ("np" shape) whenever the
+    // next row is closer than 2× the turn radius. SagittaStyle == 0, so profiles
+    // persisted under the old numbering (0 = Albin/Dubins) land on Sagitta with no
+    // migration. Dubins survives only as the internal >2R wide-turn fallback.
+    private int _uTurnStyle = (int)YouTurnType.SagittaStyle;
     public int UTurnStyle
     {
         get => _uTurnStyle;

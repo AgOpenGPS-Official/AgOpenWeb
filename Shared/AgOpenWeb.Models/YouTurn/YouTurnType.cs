@@ -22,26 +22,26 @@ namespace AgOpenWeb.Models.YouTurn
     public enum YouTurnType
     {
         /// <summary>
-        /// Omega or Wide turn (based on offset width).
-        /// Uses Dubins paths for omega, semicircles for wide.
+        /// Sagitta turn (Brian Tischler's AOG dev-fork "sagitta" U-turn) — the
+        /// default. A single offset arc with a short counter-arc lead-in so the
+        /// path meets the crop row tangentially, eliminating the straight-leg→arc
+        /// curvature step that makes Omega turns feel sharp. The sagitta (extra
+        /// arc depth) lets it connect rows closer than twice the turn radius
+        /// without looping. For rows wider than 2× the radius it adds straight
+        /// connectors via the internal Dubins omega fallback.
+        ///
+        /// Value 0 so that profiles persisted under the old numbering (where
+        /// 0 = Albin/Dubins, the looping shortest-path turn we removed) land on
+        /// Sagitta automatically — no migration needed. Twol dropped Dubins as a
+        /// selectable style for the same reason; it is no longer offered here.
         /// </summary>
-        AlbinStyle = 0,
+        SagittaStyle = 0,
 
         /// <summary>
-        /// K-style turn.
-        /// Creates a more squared-off turn pattern.
+        /// K-style turn. A more squared-off / tighter turn pattern (Twol's
+        /// alternate-sweep style).
         /// </summary>
-        KStyle = 1,
-
-        /// <summary>
-        /// Sagitta turn (Brian Tischler's AOG dev-fork "sagitta" U-turn).
-        /// A single offset arc with a short counter-arc lead-in so the path
-        /// meets the crop row tangentially, eliminating the straight-leg→arc
-        /// curvature step that makes Omega turns feel sharp. The sagitta
-        /// (extra arc depth) lets it connect rows closer than twice the turn
-        /// radius without falling back to a teardrop.
-        /// </summary>
-        SagittaStyle = 2
+        KStyle = 1
     }
 
     /// <summary>

@@ -261,7 +261,7 @@ public static class ProfileJsonServiceV1
         store.Guidance.UTurnExtension = dto.YouTurn?.ExtensionLength ?? 20.0;
         store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? 2.0;
         store.Guidance.UTurnSkipWidth = dto.YouTurn?.SkipWidth ?? 1;
-        store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? 0;
+        store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? (int)Models.YouTurn.YouTurnType.SagittaStyle;
         store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? 14;
 
         // Tool config
