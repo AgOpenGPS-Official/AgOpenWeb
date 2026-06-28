@@ -193,6 +193,29 @@ jobs:
             echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set — APK signed with the runner's ephemeral debug key (won't update over differently-signed installs)."
           fi
 
+      # Surface keystore problems with a clear message instead of the opaque
+      # "java exited with code 2" the SDK emits when apksigner fails. keytool -list
+      # validates the store password and prints alias names (no private-key material),
+      # so we can tell "wrong password / corrupt keystore" apart from "alias not found".
+      - name: Verify signing keystore
+        if: steps.keystore.outputs.present == 'true'
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          KS="${{ steps.keystore.outputs.path }}"
+          echo "Keystore size: $(wc -c < "$KS") bytes"
+          if ! keytool -list -keystore "$KS" -storepass "$KS_PASS" > ks.txt 2>&1; then
+            echo "::error::Cannot open keystore — wrong ANDROID_KEYSTORE_PASSWORD or corrupt ANDROID_KEYSTORE_BASE64."
+            cat ks.txt
+            exit 1
+          fi
+          grep -E "Your keystore contains|Alias name|Entry" ks.txt || cat ks.txt
+          if ! keytool -list -keystore "$KS" -storepass "$KS_PASS" -alias agopenweb >/dev/null 2>&1; then
+            echo "::error::Keystore has no alias 'agopenweb' (see alias list above). Regenerate the keystore with alias agopenweb, or change -p:AndroidSigningKeyAlias to the real alias."
+            exit 1
+          fi
+          echo "OK: store password valid and alias 'agopenweb' present."
+
       - name: Build Android APK
         env:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
