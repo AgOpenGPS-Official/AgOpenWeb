@@ -305,16 +305,21 @@ transport.start();
 function recreateSkSurface() {
   if (!CK) return;
   if (skSurface) { skSurface.delete(); skSurface = null; }
-  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent
-  // fills (section footprint, lightbar) in encoded sRGB space — matching the 2D
-  // canvas. The default MakeWebGLCanvasSurface attaches an sRGB color space and
-  // blends in LINEAR space, which lightens/washes out transparent colors. Build
-  // via the explicit GL path; fall back to the color-managed helper if needed.
-  const ctxHandle = CK.GetWebGLContext(ckcv);
-  if (ctxHandle) {
-    grCtx = CK.MakeWebGLContext(ctxHandle);
-    if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
+  // Reuse the GrDirectContext across resizes. Resizing the canvas does NOT lose its WebGL
+  // context, and rebuilding grCtx would orphan every GPU-resident SkImage created on the old
+  // context — the coverage render target (MakeRenderTarget(grCtx, …)) plus the ground/tractor/
+  // imagery sprites — so those layers vanish after a resize (coverage being the obvious one).
+  // Only the on-screen surface (render target sized to the canvas) needs rebuilding.
+  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent fills
+  // (section footprint, lightbar) in encoded sRGB space — matching the 2D canvas. The default
+  // MakeWebGLCanvasSurface attaches an sRGB color space and blends in LINEAR space, which
+  // lightens/washes out transparent colors. Build via the explicit GL path; fall back to the
+  // color-managed helper if needed.
+  if (!grCtx) {
+    const ctxHandle = CK.GetWebGLContext(ckcv);
+    if (ctxHandle) grCtx = CK.MakeWebGLContext(ctxHandle);
   }
+  if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
 }
 // Hex (#rrggbb) or rgb(a)(...) → CanvasKit color (CK.Color: r,g,b 0-255, a 0-1).
