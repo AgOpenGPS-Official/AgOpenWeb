@@ -15,6 +15,7 @@ window.RemoteTransport = {
    *           onStatusBar?:(status:object)=>void,
    *           onHello?:(clientId:string)=>void,
    *           onControlState?:(state:object)=>void,
+   *           onSound?:(effectId:number)=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -23,7 +24,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -328,6 +329,12 @@ window.RemoteTransport = {
           // view over `buffer` would throw on the alignment requirement).
           const cells = new Int32Array(buffer.slice(o, o + n * 4));
           handlers.onCoverageCells && handlers.onCoverageCells({ cells });
+          break;
+        }
+        case TYPE.SOUND: {
+          // One-shot alert: payload is a single SoundEffect id. The host already
+          // applied the per-sound config gating; the client just plays it.
+          handlers.onSound && handlers.onSound(u8());
           break;
         }
       }

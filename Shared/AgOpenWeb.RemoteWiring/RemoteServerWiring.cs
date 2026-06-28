@@ -39,6 +39,11 @@ public static partial class RemoteServerWiring
         // this dispatcher (set once; it's a process singleton).
         AgShareRemote.Ui = dispatcher;
 
+        // Alert sounds play on the CLIENT, not the host (a headless box has no speaker).
+        // The gating-aware WebClientAudioService raises an effect; forward it to clients.
+        if (services.GetService<IAudioService>() is AgOpenWeb.Services.Audio.WebClientAudioService audio)
+            audio.EffectTriggered += effect => server.PlaySound(effect);
+
         // Was the App instance field _remoteWizardActive; now a captured local
         // shared by the command-handler and wizard-projector closures below.
         bool wizardActive = false;
