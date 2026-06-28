@@ -164,6 +164,31 @@
     #draw-toolbar button:active { background: rgba(50,80,120,0.95); }
     #draw-finish, #draw-setpoint { border-color: rgba(110,220,150,0.7) !important; color: #b6f0cd !important; }
     #draw-cancel { border-color: rgba(230,120,110,0.7) !important; color: #f3c4bd !important; }
+    /* On-screen U-Turn / Lateral buttons — bare glyphs over the map (native look), docked
+       upper-left: 30px right of the left-nav bar (~66px wide) and 40px below the status
+       bar (top var(--sat) + 46px tall). Container is click-through; only the glyphs are
+       tappable so the map still pans. */
+    #onscreenbtns { position: fixed; top: calc(96px + var(--sat)); left: calc(126px + var(--sal));
+      display: flex; flex-direction: column; gap: 12px; z-index: 20; pointer-events: none; }
+    .osb-row { display: flex; gap: 56px; justify-content: flex-start; }
+    .osb-row[hidden] { display: none; }
+    .osb-btn { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0;
+      background: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); transition: transform 0.05s; }
+    .osb-btn:active { transform: scale(0.9); }
+    .osb-btn svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+    /* Auto-U-turn approach indicator — upper-right, symmetric to #onscreenbtns. Display
+       only (click-through). Direction arrow flips for a left turn; distance below it; the
+       turn-type glyph (Omega/Sagitta) to the right. */
+    #uturn-indicator { position: fixed; top: calc(96px + var(--sat)); right: calc(126px + var(--sar));
+      display: flex; align-items: center; gap: 14px; z-index: 20; pointer-events: none;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); }
+    #uturn-indicator[hidden] { display: none; }
+    .uti-distbox { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .uti-arrow { width: 60px; height: 24px; display: block; }
+    .uti-arrow.left { transform: scaleX(-1); }
+    #uti-distval { color: #EDF7E8; font: 700 16px ui-monospace, monospace; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+    .uti-type { width: 40px; height: 40px; display: block; }
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
@@ -844,8 +869,6 @@
     .rn-btn.steer-ready { background: #1c4a7a; border-color: #3a8bd6; color: #fff; } /* armed: saturated on both themes */
     .rn-btn.steer-on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
     .rn-btn.disabled { opacity: 0.4; }
-    #rn-manualturn { display: none; flex-direction: row; gap: 6px; }
-    .rn-sm { width: 25px; height: 56px; font-size: 18px; padding: 0; }
     #rn-readonly { color: #ff7a3d; font: 600 10px ui-monospace, monospace; text-align: center; min-height: 12px; }
     /* Dimmed when this client doesn't hold control — the buttons are inert. */
     #rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
@@ -1034,6 +1057,60 @@
     <button id="draw-undo">Undo</button>
     <button id="draw-finish">Finish</button>
     <button id="draw-cancel">Cancel</button>
+  </div>
+  <!-- On-screen U-Turn (yellow) + Lateral (cyan) buttons — bare glyphs over the map,
+       mirroring native AgOpenGPS. Gated on Display.UTurnButtonVisible / LateralButtonVisible
+       (Screen & Alerts → On-Screen Buttons). The container passes pointer events through to
+       the map; only the glyphs themselves are tappable. -->
+  <div id="onscreenbtns">
+    <div id="osb-uturn" class="osb-row" hidden>
+      <button class="osb-btn" data-cmd="youturn.manualLeft" title="Manual U-turn left" aria-label="U-turn left">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path d="M32 42 L32 22 A8 8 0 0 0 16 22 L16 29" fill="none" stroke="#EFC83C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16 34 L10.5 25.5 L21.5 25.5 Z" fill="#EFC83C"/>
+        </svg>
+      </button>
+      <button class="osb-btn" data-cmd="youturn.manualRight" title="Manual U-turn right" aria-label="U-turn right">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 42 L16 22 A8 8 0 0 1 32 22 L32 29" fill="none" stroke="#EFC83C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M32 34 L26.5 25.5 L37.5 25.5 Z" fill="#EFC83C"/>
+        </svg>
+      </button>
+    </div>
+    <div id="osb-lateral" class="osb-row" hidden>
+      <button class="osb-btn" data-cmd="track.snapLeft" title="Move track 1 tool width left" aria-label="Lateral left">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path d="M28 42 C28 35 23 34 19 34 L19 23" fill="none" stroke="#7FD3EC" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M19 16 L13 25 L25 25 Z" fill="#7FD3EC"/>
+        </svg>
+      </button>
+      <button class="osb-btn" data-cmd="track.snapRight" title="Move track 1 tool width right" aria-label="Lateral right">
+        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+          <path d="M20 42 C20 35 25 34 29 34 L29 23" fill="none" stroke="#7FD3EC" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M29 16 L23 25 L35 25 Z" fill="#7FD3EC"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+  <!-- Auto-U-turn approach indicator (native look) — green direction arrow + distance to
+       trigger + turn-type glyph (Omega / Sagitta). Upper-right, symmetric to the on-screen
+       U-turn/Lateral buttons. Display only; shown while an auto U-turn is armed. -->
+  <div id="uturn-indicator" hidden>
+    <div class="uti-distbox">
+      <svg id="uti-arrow" class="uti-arrow" viewBox="0 0 60 24" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#5FE85A" stroke-width="5" stroke-linecap="round">
+          <line x1="4" y1="12" x2="9" y2="12"/>
+          <line x1="16" y1="12" x2="23" y2="12"/>
+          <line x1="30" y1="12" x2="42" y2="12"/>
+        </g>
+        <path d="M42 3 L58 12 L42 21 Z" fill="#5FE85A"/>
+      </svg>
+      <span id="uti-distval">—</span>
+    </div>
+    <svg class="uti-type" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <path id="uti-typepath" d="M9 34 L9 22 A11 11 0 0 1 31 22 L31 34" fill="none"
+            stroke="#5FE85A" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
   </div>
   <!-- Transparent light-dismiss scrim for open chain panels (unified nav model). -->
   <div id="ln-scrim" class="ln-scrim"></div>
@@ -2258,11 +2335,6 @@
     <button id="rn-manual" class="rn-btn"><img id="rn-manual-i" class="rn-ic" alt="Manual"></button>
     <button id="rn-auto" class="rn-btn"><img id="rn-auto-i" class="rn-ic" alt="Sections"></button>
     <button id="rn-youturn" class="rn-btn"><img id="rn-youturn-i" class="rn-ic" alt="U-Turn"></button>
-    <button id="rn-dir" class="rn-btn"><span id="rn-dir-arrow">↰</span><span id="rn-dir-dist" class="rn-sub"></span></button>
-    <div id="rn-manualturn">
-      <button id="rn-uturn-l" class="rn-btn rn-sm">↰</button>
-      <button id="rn-uturn-r" class="rn-btn rn-sm">↱</button>
-    </div>
     <button id="rn-steer" class="rn-btn"><img id="rn-steer-i" class="rn-ic" alt="AutoSteer"></button>
     <div id="rn-readonly"></div>
   </div>

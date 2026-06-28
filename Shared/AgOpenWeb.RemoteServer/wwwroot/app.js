@@ -748,6 +748,23 @@ bottomNav.addEventListener('pointerdown', e => {
   if (btn.hasAttribute('data-t2') && !iHoldControl) return; // gated; host re-checks
   transport.send(btn.dataset.cmd);
 });
+// ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
+// Bare glyph buttons mirroring native AgOpenGPS; shown per the Screen & Alerts
+// "On-Screen Buttons" toggles. U-turn → manual you-turn L/R, lateral → snap the track
+// one pass (1 tool width) L/R.
+const onScreenBtns = document.getElementById('onscreenbtns');
+onScreenBtns.addEventListener('pointerdown', e => {
+  const btn = e.target.closest('button[data-cmd]');
+  if (!btn) return;
+  e.stopPropagation(); // tap the glyph, don't pan the map
+  transport.send(btn.dataset.cmd);
+});
+function applyOnScreenButtons() {
+  const d = config && config.display;
+  const hasField = !!(scene && scene.hasField); // native gate: IsFieldOpen
+  document.getElementById('osb-uturn').hidden = !(hasField && d && d.uTurnButtonVisible);
+  document.getElementById('osb-lateral').hidden = !(hasField && d && d.lateralButtonVisible);
+}
 function bnToggleFly(fly, btn) {
   const open = !fly.classList.contains('open');
   bnFlags.classList.remove('open'); bnAb.classList.remove('open');
@@ -2879,9 +2896,6 @@ if (rnRoot) {
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
   wireRn('rn-youturn', 'youturn.toggle');
-  wireRn('rn-dir', 'youturn.direction');
-  wireRn('rn-uturn-l', 'youturn.manualLeft');
-  wireRn('rn-uturn-r', 'youturn.manualRight');
   wireRn('rn-steer', 'autosteer.toggle');
 }
 
@@ -3468,6 +3482,7 @@ function renderSectionBar() {
 function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }
 const TRAM_ICONS = ['TramOff.png', 'TramAll.png', 'TramLines.png', 'TramOuter.png'];
 function renderBottomNav() {
+  applyOnScreenButtons(); // U-Turn / Lateral glyphs follow field-open + display toggles
   const visible = !!(scene && scene.hasField); // native gate: IsFieldOpen
   bottomNav.classList.toggle('open', visible);
   if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); return; }
@@ -3493,8 +3508,6 @@ const RN = {
   root: document.getElementById('rightnav'),
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
-  dir: document.getElementById('rn-dir'), dirArrow: document.getElementById('rn-dir-arrow'),
-  dirDist: document.getElementById('rn-dir-dist'), manualTurn: document.getElementById('rn-manualturn'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
 // Swap an icon only when it actually changes (no per-frame churn).
@@ -3512,16 +3525,38 @@ function renderRightNav() {
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
-  // U-turn direction + distance-to-trigger — shown only when auto U-turn is on.
-  RN.dir.style.display = op.youturn ? '' : 'none';
-  RN.dirArrow.textContent = op.turnLeft ? '↰' : '↱';
-  RN.dirDist.textContent = op.distToTrigger > 0 ? op.distToTrigger.toFixed(0) + ' m' : '';
-  // Manual U-turn buttons — visible while steering on a non-closed track (native rule).
-  RN.manualTurn.style.display = (op.autoSteer && !op.trackClosed) ? 'flex' : 'none';
+  // U-turn direction + distance-to-trigger now render on-screen (see renderUTurnIndicator).
   // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
 }
 
+// Auto-U-turn approach indicator (upper-right): green direction arrow + distance to
+// trigger + turn-type glyph. Mirrors native's on-map readout; shown while auto U-turn is
+// armed with a pending turn. Turn type comes from config (Omega / Sagitta); distance honours
+// the metric/imperial unit like the headland HUD.
+const UTI = {
+  root: document.getElementById('uturn-indicator'),
+  arrow: document.getElementById('uti-arrow'),
+  dist: document.getElementById('uti-distval'),
+  typePath: document.getElementById('uti-typepath'),
+};
+const UTURN_GLYPH = {
+  0: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // Omega — squared inverted-U
+  1: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta — flatter rounded arch
+};
+function renderUTurnIndicator() {
+  if (!UTI.root) return;
+  const op = tick && tick.op;
+  const show = !!(scene && scene.hasField && op && op.youturn && op.distToTrigger > 0);
+  UTI.root.hidden = !show;
+  if (!show) return;
+  const metric = !statusBar || statusBar.isMetric;
+  UTI.dist.textContent = metric ? op.distToTrigger.toFixed(0) + ' m'
+                                : (op.distToTrigger * 3.28084).toFixed(0) + ' ft';
+  UTI.arrow.classList.toggle('left', !!op.turnLeft);
+  const style = (config && config.uturn && config.uturn.style) || 0;
+  UTI.typePath.setAttribute('d', UTURN_GLYPH[style] || UTURN_GLYPH[0]);
+}
 // ---- Lower-right cluster (Phase 4): roll gauge + camera/mode pad + clock ----
 const rollBar = document.getElementById('roll-bar');
 const rollDeg = document.getElementById('roll-deg');
@@ -4684,6 +4719,7 @@ function skFrame() {
   renderBottomNav();
   renderSettings();
   renderRightNav();
+  renderUTurnIndicator();
   renderRoll();
   renderCampad();
   renderCharts();
