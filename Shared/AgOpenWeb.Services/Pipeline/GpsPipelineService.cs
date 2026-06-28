@@ -1452,7 +1452,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
             IsReverse = false,
-            UTurnStyle = 0
+            UTurnStyle = config.Guidance.UTurnStyle
         };
 
         var output = _youTurnGuidanceService.CalculateGuidance(input);

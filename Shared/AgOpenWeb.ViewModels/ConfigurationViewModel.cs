@@ -966,15 +966,16 @@ public partial class ConfigurationViewModel : ObservableObject
     public ICommand EditUTurnSkipWidthCommand { get; private set; } = null!;
     public ICommand EditUTurnSmoothingCommand { get; private set; } = null!;
 
-    // U-Turn style selector (0 = Omega/Albin, 2 = Sagitta)
-    public ICommand SetOmegaTurnStyleCommand { get; private set; } = null!;
+    // U-Turn style selector (0 = Sagitta [default], 1 = K-style). Dubins/Omega is
+    // no longer offered — it looped on close rows; Sagitta covers every case.
     public ICommand SetSagittaTurnStyleCommand { get; private set; } = null!;
+    public ICommand SetKTurnStyleCommand { get; private set; } = null!;
 
-    /// <summary>True when the active U-turn style is Omega (or any non-Sagitta style).</summary>
-    public bool IsOmegaTurnStyle => Guidance.UTurnStyle != (int)YouTurnType.SagittaStyle;
+    /// <summary>True when the active U-turn style is Sagitta (the default).</summary>
+    public bool IsSagittaTurnStyle => Guidance.UTurnStyle != (int)YouTurnType.KStyle;
 
-    /// <summary>True when the active U-turn style is Sagitta.</summary>
-    public bool IsSagittaTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.SagittaStyle;
+    /// <summary>True when the active U-turn style is K-style.</summary>
+    public bool IsKTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.KStyle;
 
     // GPS Tab Commands
     public ICommand SetSingleGpsCommand { get; private set; } = null!;
@@ -1403,8 +1404,8 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Guidance.UTurnSmoothing = (int)v,
                 "", integerOnly: true, allowNegative: false, min: 1, max: 50));
 
-        SetOmegaTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.AlbinStyle));
         SetSagittaTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.SagittaStyle));
+        SetKTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.KStyle));
     }
 
     /// <summary>
@@ -1415,8 +1416,8 @@ public partial class ConfigurationViewModel : ObservableObject
     {
         Guidance.UTurnStyle = style;
         Config.MarkChanged();
-        OnPropertyChanged(nameof(IsOmegaTurnStyle));
         OnPropertyChanged(nameof(IsSagittaTurnStyle));
+        OnPropertyChanged(nameof(IsKTurnStyle));
     }
 
     private void InitializeGpsEditCommands()

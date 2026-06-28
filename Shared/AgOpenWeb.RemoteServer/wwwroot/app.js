@@ -3546,8 +3546,8 @@ const UTI = {
   typePath: document.getElementById('uti-typepath'),
 };
 const UTURN_GLYPH = {
-  0: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // Omega — squared inverted-U
-  1: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta — flatter rounded arch
+  0: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta (default) — flatter rounded arch
+  1: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // K-turn — squared/tighter inverted-U
 };
 function renderUTurnIndicator() {
   if (!UTI.root) return;

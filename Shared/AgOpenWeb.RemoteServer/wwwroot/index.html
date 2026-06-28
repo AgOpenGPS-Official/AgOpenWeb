@@ -179,7 +179,7 @@
     .osb-btn svg { width: 100%; height: 100%; display: block; pointer-events: none; }
     /* Auto-U-turn approach indicator — upper-right, symmetric to #onscreenbtns. Display
        only (click-through). Direction arrow flips for a left turn; distance below it; the
-       turn-type glyph (Omega/Sagitta) to the right. */
+       turn-type glyph (Sagitta/K-turn) to the right. */
     #uturn-indicator { position: fixed; top: calc(96px + var(--sat)); right: calc(126px + var(--sar));
       display: flex; align-items: center; gap: 14px; z-index: 20; pointer-events: none;
       filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); }
@@ -1093,7 +1093,7 @@
     </div>
   </div>
   <!-- Auto-U-turn approach indicator (native look) — green direction arrow + distance to
-       trigger + turn-type glyph (Omega / Sagitta). Upper-right, symmetric to the on-screen
+       trigger + turn-type glyph (Sagitta / K-turn). Upper-right, symmetric to the on-screen
        U-turn/Lateral buttons. Display only; shown while an auto U-turn is armed. -->
   <div id="uturn-indicator" hidden>
     <div class="uti-distbox">
@@ -1436,8 +1436,8 @@
     <div id="tc-uturn" class="cfg-body" data-strip="tc-top" hidden>
       <div class="cfg-label">Turn style</div>
       <div class="ln-seg cfg-seg-full">
-        <button class="cfg-typebtn" data-key="uturn.style" data-val="0" data-active="0">Omega</button>
-        <button class="cfg-typebtn" data-key="uturn.style" data-val="1" data-active="1">Sagitta</button>
+        <button class="cfg-typebtn" data-key="uturn.style" data-val="0">Sagitta</button>
+        <button class="cfg-typebtn" data-key="uturn.style" data-val="1">K-turn</button>
       </div>
       <div class="cfg-diaggrid">
         <div class="vc-diagrow"><img src="/icons/ConU_UturnLength.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Extension (m)</label><input class="cfg-num" data-key="uturn.extension" type="number" step="0.1"></div></div>

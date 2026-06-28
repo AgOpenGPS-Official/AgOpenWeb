@@ -151,22 +151,18 @@ namespace AgOpenWeb.Services.YouTurn
 
         private bool CreateCurveTurn(YouTurnCreationInput input, double turnOffset)
         {
-            if (input.TurnType == YouTurnType.SagittaStyle)
-            {
-                return CreateCurveSagittaTurn(input, turnOffset);
-            }
-            else if (input.TurnType == YouTurnType.AlbinStyle)
-            {
-                // Always use the omega turn: it uses Dubins paths which handle any
-                // turnOffset, and it completes in a single call. The multi-phase wide
-                // turn can't finish under the single-call CreateTurn contract (same
-                // reason CreateABTurn always uses the omega path).
-                return CreateCurveOmegaTurn(input, turnOffset);
-            }
-            else // KStyle
+            if (input.TurnType == YouTurnType.KStyle)
             {
                 return CreateKStyleTurnCurve(input, turnOffset);
             }
+
+            // SagittaStyle (default, and the fallback for any retired/unknown style).
+            // The sagitta arc itself only spans rows up to 2× the turn radius; wider
+            // rows are handled inside CreateCurveSagittaTurn, which delegates to the
+            // Dubins omega (CreateCurveOmegaTurn) for the straight-connector case.
+            // Dubins is kept ONLY as that internal wide-turn fallback — it is no longer
+            // a selectable style, because its shortest-path solution loops on close rows.
+            return CreateCurveSagittaTurn(input, turnOffset);
         }
 
         private bool CreateCurveOmegaTurn(YouTurnCreationInput input, double turnOffset)
