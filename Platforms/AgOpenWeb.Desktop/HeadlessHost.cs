@@ -7,6 +7,7 @@
 // (at your option) any later version.
 
 using System;
+using System.Reflection;
 using System.Threading.Tasks;
 
 namespace AgOpenWeb.Desktop;
@@ -33,16 +34,30 @@ internal static class HeadlessHost
 {
     public static async Task RunAsync(string[] args)
     {
-        Console.WriteLine("[headless] AgOpenWeb host starting (no window; browser is the UI)…");
+        Console.WriteLine($"[headless] AgOpenWeb {AppVersion()} starting (no window; browser is the UI)…");
 
         var backend = new BackendHost();
         await backend.StartAsync(args);
 
-        Console.WriteLine("[headless] ready — browse to http://localhost:5174 (or the LAN IP).");
+        Console.WriteLine($"[headless] ready (v{AppVersion()}) — browse to http://localhost:5174 (or the LAN IP).");
 
         // Block until SIGINT (Ctrl-C) / SIGTERM (systemd stop) / SIGQUIT via the generic
         // host lifetime, then stop (fires the ApplicationStopping save before disposal).
         await backend.WaitForShutdownAsync();
         await backend.StopAsync();
+    }
+
+    /// <summary>
+    /// App version for the startup banner — the assembly's
+    /// AssemblyInformationalVersion, which is "&lt;Version&gt;+&lt;git-hash&gt;"
+    /// (IncludeSourceRevisionInInformationalVersion). The git hash is what lets you
+    /// tell, from the journal, exactly which build the daemon is actually running —
+    /// the bare version number alone won't if two builds share it.
+    /// </summary>
+    private static string AppVersion()
+    {
+        var asm = Assembly.GetEntryAssembly() ?? typeof(HeadlessHost).Assembly;
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        return string.IsNullOrWhiteSpace(info) ? "unknown" : info;
     }
 }
