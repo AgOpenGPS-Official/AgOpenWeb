@@ -3418,7 +3418,14 @@ if (fsBtn) {
     if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
   });
   fsBtn.addEventListener('pointerdown', e => e.stopPropagation()); // don't also pan the map
-  const sync = () => { fsBtn.textContent = fsEl() ? '🗗' : '⛶'; };
+  const sync = () => {
+    const fs = !!fsEl();
+    fsBtn.textContent = fs ? '🗗' : '⛶';
+    // In fullscreen the OS draws an exit "✕" pill at the top-left (e.g. iPad Safari's
+    // Fullscreen-API control) that sits over the RTK fix + rotating info fields. We can't
+    // hide OS chrome, so nudge that left stack clear of it — only while fullscreen.
+    document.body.classList.toggle('fs-on', fs);
+  };
   document.addEventListener('fullscreenchange', sync);
   document.addEventListener('webkitfullscreenchange', sync);
 }
