@@ -9,8 +9,10 @@
     </array>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-        <string>armv7</string>
+        <string>arm64</string>
     </array>
+    <key>XSAppIconAssets</key>
+    <string>Assets.xcassets/AppIcon.appiconset</string>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationLandscapeLeft</string>
@@ -29,11 +31,36 @@
     <false/>
     <key>UILaunchStoryboardName</key>
     <string>LaunchScreen</string>
+    <!-- Export compliance: app implements no encryption and uses only (exempt)
+         OS-provided HTTPS at most. Declaring this here auto-answers the App Store
+         Connect encryption prompt on every upload. -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <!-- Let the WKWebView (thin launcher mode) load the in-process http://localhost host. -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <!-- Privacy purpose strings. Avalonia and its media stack reference these
+         system frameworks, so Apple's static scanner (ITMS-90683) requires the
+         keys even though AgOpenWeb does not use the underlying features. GPS
+         comes from external hardware over UDP, not CoreLocation/CoreBluetooth. -->
+    <key>NSCalendarsUsageDescription</key>
+    <string>AgOpenWeb does not access your calendar.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>AgOpenWeb does not access your contacts.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>AgOpenWeb does not use the microphone; it only plays guidance alert sounds.</string>
+    <key>NSAppleMusicUsageDescription</key>
+    <string>AgOpenWeb does not access your media library; it only plays its own guidance alert sounds.</string>
+    <key>NSSiriUsageDescription</key>
+    <string>AgOpenWeb does not use Siri.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>AgOpenWeb receives position from external GPS hardware over the network and does not use device location services.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>AgOpenWeb receives position from external GPS hardware over the network and does not use device location services.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>AgOpenWeb does not use Bluetooth; it communicates with field hardware over the network.</string>
 </dict>
 </plist>

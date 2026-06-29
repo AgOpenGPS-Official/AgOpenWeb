@@ -11,17 +11,35 @@
     <MtouchLink>None</MtouchLink>
     <ApplicationId>com.agopenweb.ios</ApplicationId>
     <ApplicationTitle>AgOpenWeb</ApplicationTitle>
+    <!-- CFBundleShortVersionString (marketing) / CFBundleVersion (build). Bump
+         ApplicationVersion on every TestFlight upload; it must strictly increase. -->
+    <ApplicationDisplayVersion>26.6.56</ApplicationDisplayVersion>
+    <ApplicationVersion>2</ApplicationVersion>
   </PropertyGroup>
 
   <!-- iOS Device Signing Configuration -->
-  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('ios-'))">
+  <!-- Debug → on-device development (Apple Development cert). -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('ios-')) and '$(Configuration)' == 'Debug'">
     <CodesignKey>Apple Development</CodesignKey>
     <CodesignProvision>Automatic</CodesignProvision>
+    <DevTeam>7LRC55SQS3</DevTeam>
+  </PropertyGroup>
+  <!-- Release → App Store / TestFlight archive (Apple Distribution cert + App Store profile). -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('ios-')) and '$(Configuration)' == 'Release'">
+    <CodesignKey>Apple Distribution</CodesignKey>
+    <CodesignProvision>AgOpenWeb iOS App Store</CodesignProvision>
     <DevTeam>7LRC55SQS3</DevTeam>
   </PropertyGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <!-- App icon asset catalog (actool). XSAppIconAssets in Info.plist points the
+       build at the AppIcon set within it. -->
+  <ItemGroup>
+    <ImageAsset Include="Assets.xcassets\**\*.png" />
+    <ImageAsset Include="Assets.xcassets\**\*.json" />
   </ItemGroup>
 
   <ItemGroup>
