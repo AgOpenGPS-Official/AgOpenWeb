@@ -124,7 +124,6 @@ internal sealed class BackendService : Service
             : new Notification.Builder(this);
         builder.SetContentTitle("AgOpenWeb")
             .SetContentText("Guidance host running — open the app or browse to this device on :5174")
-            //.SetSmallIcon(ApplicationInfo?.Icon ?? global::Android.Resource.Drawable.IcDialogInfo)
             .SetSmallIcon(Resource.Drawable.ic_start_agopenweb)
             .SetCategory(Notification.CategoryService)
             .SetOngoing(true);
