@@ -853,8 +853,12 @@ onScreenBtns.addEventListener('pointerdown', e => {
 function applyOnScreenButtons() {
   const d = config && config.display;
   const hasField = !!(scene && scene.hasField); // native gate: IsFieldOpen
-  document.getElementById('osb-uturn').hidden = !(hasField && d && d.uTurnButtonVisible);
-  document.getElementById('osb-lateral').hidden = !(hasField && d && d.lateralButtonVisible);
+  // U-turn (manual you-turn) and Lateral (snap track) only act while AutoSteer is engaged,
+  // so hide them otherwise (issue #36). Runs every frame via renderBottomNav, so it tracks
+  // engage/disengage live.
+  const asActive = !!(tick && tick.op && tick.op.autoSteer);
+  document.getElementById('osb-uturn').hidden = !(hasField && asActive && d && d.uTurnButtonVisible);
+  document.getElementById('osb-lateral').hidden = !(hasField && asActive && d && d.lateralButtonVisible);
 }
 function bnToggleFly(fly, btn) {
   const open = !fly.classList.contains('open');
@@ -4107,6 +4111,22 @@ function strokePtsSk(canvas, pts, close, paint) {
   if (!pts || pts.length < 2) return;
   strokePtsSk3D(canvas, pts, close, paint);
 }
+// Extend a 2-point AB line far past both ends so the reference line spans the field instead of
+// being a short stub (issue #37). Curves (>2 points) pass through unchanged. The viewport clip
+// in strokePtsSk3D bounds the draw cost of the now-long line. AB_EXTEND covers any field.
+const AB_EXTEND = 3000; // metres added beyond each endpoint
+function extendAbLine(pts) {
+  if (!pts || pts.length !== 2) return pts;
+  const a = pts[0], b = pts[1];
+  let dx = b.e - a.e, dy = b.n - a.n;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return pts;
+  dx /= len; dy /= len;
+  return [
+    { e: a.e - dx * AB_EXTEND, n: a.n - dy * AB_EXTEND },
+    { e: b.e + dx * AB_EXTEND, n: b.n + dy * AB_EXTEND },
+  ];
+}
 // Perspective path for strokePtsSk: a vertex behind the tilted camera (w < EPS)
 // projects through w2s with a negative w → a mirrored ghost segment (the same bug
 // clipNear() fixes for single grid segments). So walk the polyline in WORLD space,
@@ -4424,7 +4444,10 @@ const SPR_REAR = 0.245, SPR_FRONT = 0.75, SPR_HALFX = 0.245; // bitmap norm anch
 // stroke in screen space, so set px = worldMetres × pxPerM each frame (min 1 px so lines
 // don't vanish when zoomed far out). Values = native SkiaMapControl widths × 3.
 function updateLineWidths() {
-  const z = pxPerM, w = (m) => Math.max(m * z, 1);
+  // World-metre widths scaled by zoom, but CAPPED at MAXW px so a line can't balloon when
+  // zoomed in and swallow the implement/vehicle (issue #38: a 3 m boundary line covered a
+  // 4 m tool). Min 1 px so it stays visible zoomed out.
+  const z = pxPerM, MAXW = 3.5, w = (m) => Math.min(Math.max(m * z, 1), MAXW);
   SKP.boundary.setStrokeWidth(w(3.0));   // boundaryOuter 1 × 3
   SKP.boundaryInner.setStrokeWidth(w(3.0)); // boundaryInner 1 × 3
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
@@ -4883,7 +4906,7 @@ function renderSkia(canvas, rp) {
     // active-only, so this is just the active reference; the offset magenta sits a pass
     // away from it once the tractor moves over.
     for (const tr of scene.tracks)
-      strokePtsSk(canvas, tr.points, false, SKP.reference);
+      strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     drawFlagsSk(canvas, scene.flags);
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
