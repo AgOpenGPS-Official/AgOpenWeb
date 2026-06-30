@@ -243,6 +243,10 @@ const transport = RemoteTransport.create({
     if (surface) {
       surface.getCanvas().clear(CK.TRANSPARENT);
       covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
+      // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1),
+      // and a cell is re-emitted with rising alpha as it fills — replace sets the exact value
+      // each time; SrcOver would blend re-draws and creep edges toward opaque.
+      covPaint.setBlendMode(CK.BlendMode.Src);
     } else {
       canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
     }
@@ -4502,7 +4506,7 @@ function drawImagerySk(canvas) {
 // (top row = high northing) is placed via a px→world affine, then perspM warps it
 // — Skia does perspective-correct sampling AND near-plane clipping on the GPU, so
 // it stays correct even when part of the rect falls behind the tilted camera.
-function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
+function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter, mipMode) {
   const w = img.width(), h = img.height();
   // Map image px → CAMERA-RELATIVE world (minE-camE …): the world−camera offset is done
   // here in f64 so only small coords reach the f32 matrix — no floating-origin jitter on
@@ -4510,9 +4514,11 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
   const imgToWorld = [(maxE - minE) / w, 0, minE - camE, 0, -(maxN - minN) / h, maxN - camN, 0, 0, 1];
   // Photo layers (imagery / satellite tiles, Linear filter) recede to the horizon
   // under perspective → heavy minification → shimmer/crawl under motion without a
-  // mip chain. Trilinear mipmaps fix it (matches native's mipmapped imagery). But
-  // Nearest callers (coverage cells = data) must stay crisp — no mipmaps for them.
-  const mip = (filter === CK.FilterMode.Linear) ? CK.MipmapMode.Linear : CK.MipmapMode.None;
+  // mip chain. Trilinear mipmaps fix it (matches native's mipmapped imagery). Callers
+  // may override the mip mode: coverage uses Linear sampling but mip-free, so its edges
+  // smooth (bilinear) without paying the per-update mip-regen on a multi-MP texture.
+  const mip = (mipMode !== undefined) ? mipMode
+    : ((filter === CK.FilterMode.Linear) ? CK.MipmapMode.Linear : CK.MipmapMode.None);
   canvas.save();
   canvas.concat(perspM);
   canvas.concat(imgToWorld);
@@ -4592,9 +4598,10 @@ function drawSatelliteSk(canvas) {
   }
 }
 // Coverage offscreen → SkImage, re-snapshotted only when the cell grid changed
-// (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
-// cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
-// cov object so a new coverage-init naturally starts with a fresh (null) image.
+// (cov.dirty). The world blit uses Linear (bilinear) sampling so the cell-grid edge
+// reads smooth instead of stair-stepped; see the blit call below for the mip-free
+// rationale. The snapshot lives on the cov object so a new coverage-init naturally
+// starts with a fresh (null) image.
 // Fallback-path throttle (2D canvas → full re-upload): cap the expensive whole-texture
 // rebuild at ~4 Hz. The GPU render-target path below has no such cost.
 const COV_REBUILD_MS = 250;
@@ -4614,8 +4621,8 @@ function drawCoverageSk(canvas) {
         if (batch.t > cutoff) break;
         const c = batch.cells;
         for (let i = 0; i + 2 < c.length; i += 3) {
-          const x = c[i], y = c[i + 1], rgb = c[i + 2] >>> 0 & 0xFFFFFF;
-          if (rgb !== lastRgb) { paint.setColor(CK.Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 1)); lastRgb = rgb; }
+          const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
+          if (v !== lastRgb) { paint.setColor(CK.Color((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, ((v >>> 24) & 0xFF) / 255)); lastRgb = v; }
           sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
           covCells++;
         }
@@ -4640,8 +4647,14 @@ function drawCoverageSk(canvas) {
         if (batch.t > cutoff) break;
         const c = batch.cells;
         for (let i = 0; i + 2 < c.length; i += 3) {
-          const x = c[i], y = c[i + 1], rgb = c[i + 2];
-          if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
+          const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
+          if (v !== lastRgb) {
+            cctx.fillStyle = 'rgba(' + ((v >> 16) & 0xFF) + ',' + ((v >> 8) & 0xFF) + ',' + (v & 0xFF) + ',' + (((v >>> 24) & 0xFF) / 255) + ')';
+            lastRgb = v;
+          }
+          // clear+fill = replace (the 2D analogue of BlendMode.Src) so re-emitted edge
+          // cells set their exact alpha instead of blending toward opaque.
+          cctx.clearRect(x, H - 1 - y, 1, 1);
           cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
           covCells++;
         }
@@ -4661,7 +4674,10 @@ function drawCoverageSk(canvas) {
   const cs = cov.cellSize;
   const minE = cov.originE, minN = cov.originN;
   const maxE = cov.originE + cov.width * cs, maxN = cov.originN + cov.height * cs;
-  drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Nearest);
+  // Bilinear (Linear), mip-free: smooths the cell-grid stair-step at the worked-area edge
+  // without the per-update mip-regen cost. The surface is cleared to premultiplied
+  // TRANSPARENT, so the boundary fades cleanly to transparent (no dark fringe).
+  drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Linear, CK.MipmapMode.None);
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().

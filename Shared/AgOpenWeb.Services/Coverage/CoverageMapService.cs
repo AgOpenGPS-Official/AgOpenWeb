@@ -687,6 +687,34 @@ public class CoverageMapService : ICoverageMapService
     }
 
     /// <summary>
+    /// Coverage fraction (0..255) of a display cell: the share of its underlying 0.1 m
+    /// detection cells that are covered. 255 = fully covered (interior, opaque); a partial
+    /// value is an edge cell the client draws with that alpha, so the boundary feathers
+    /// instead of stair-stepping. Reads detection bits lock-free (same as the emit scans);
+    /// a race only yields a slightly stale fraction, which is harmless.
+    /// </summary>
+    public int GetDisplayCellAlpha255(int displayX, int displayY)
+    {
+        if (_detectionBits == null || !_fieldBoundsSet) return 255;
+        int span = (int)Math.Round(_displayCellSize / BITMAP_CELL_SIZE);
+        if (span < 1) span = 1;
+        // Display cell's world origin → its first underlying detection cell.
+        int ce0 = (int)Math.Floor((_fieldMinE + displayX * _displayCellSize) / BITMAP_CELL_SIZE);
+        int cn0 = (int)Math.Floor((_fieldMinN + displayY * _displayCellSize) / BITMAP_CELL_SIZE);
+        int covered = 0, total = span * span;
+        for (int j = 0; j < span; j++)
+            for (int i = 0; i < span; i++)
+                if (IsCellCovered(ce0 + i, cn0 + j)) covered++;
+        // Near-full cells snap to opaque: the rasterizer center-samples, so interior cells
+        // occasionally miss a stray detection cell at quad seams. A literal fraction would
+        // let the (often dark) map fleck through those — the old binary "any → opaque" rule
+        // hid it. Only cells well below FULL (genuine worked-area edge) feather.
+        const double FULL = 0.75;
+        double frac = (double)covered / total;
+        return frac >= FULL ? 255 : (int)(frac / FULL * 255.0);
+    }
+
+    /// <summary>
     /// Mark a rectangular area as covered. Useful for tests that need pre-applied coverage
     /// without driving through the area.
     /// </summary>

@@ -169,6 +169,15 @@ public interface ICoverageMapService
     IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize);
 
     /// <summary>
+    /// Coverage fraction (0..255) of a DISPLAY cell — the share of its underlying 0.1 m
+    /// detection cells that are covered. 255 = fully covered (interior); a partial value
+    /// marks an edge cell, which the client renders as a soft alpha so the worked-area
+    /// boundary feathers instead of stair-stepping. Coords are display-cell coords (same
+    /// space as GetCoverageBitmapCells output).
+    /// </summary>
+    int GetDisplayCellAlpha255(int displayX, int displayY);
+
+    /// <summary>
     /// Get patches for a specific zone
     /// </summary>
     /// <param name="zoneIndex">Zone index (0-based)</param>
