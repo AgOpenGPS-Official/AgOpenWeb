@@ -503,6 +503,17 @@ for (const t of ['gesturestart', 'gesturechange', 'gestureend'])
 // 2+-finger move is a pinch — swallow it so the page can't zoom/pan. Single-finger
 // touches pass through to the map pan / panel scroll untouched.
 addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// iOS double-tap-to-zoom is NOT a gesture* event and slips past per-element touch-action when
+// rapid taps land between/across nav buttons → it magnifies the whole page (chrome off-screen)
+// and thrashes layout (render stutter / audio glitch / LINK spike are that main-thread jank).
+// Swallow the 2nd tap's default within 300 ms; the UI runs on pointerdown, so button presses
+// still register.
+let _lastTapEnd = 0;
+addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - _lastTapEnd <= 300) e.preventDefault();
+  _lastTapEnd = now;
+}, { passive: false });
 
 // Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one
 // that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
