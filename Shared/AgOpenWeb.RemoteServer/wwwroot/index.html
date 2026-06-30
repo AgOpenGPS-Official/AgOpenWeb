@@ -79,6 +79,15 @@
       color: var(--text-2); font: 600 15px system-ui, sans-serif;
       user-select: none; -webkit-user-select: none;
     }
+    #sb-diag {
+      position: fixed; top: calc(var(--sat) + 46px); left: 0; right: 0; height: 26px; display: none;
+      align-items: center; gap: 22px; padding: 0 14px 0 69px; box-sizing: border-box;
+      background: var(--float-bg); border-bottom: 1px solid var(--border-2);
+      color: var(--text-muted); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+      user-select: none; -webkit-user-select: none;
+    }
+    #sb-diag .sbd-k { color: var(--text-muted); margin-right: 6px; letter-spacing: 0.04em; }
+    #sb-diag .sbd-v { color: var(--text-2); font-variant-numeric: tabular-nums; }
     #statusbar button { background: transparent; border: 0; color: inherit; cursor: pointer;
       font: inherit; padding: 2px 6px; display: inline-flex; align-items: center; gap: 6px; }
     #statusbar button:hover { background: rgba(var(--ov),0.06); border-radius: 6px; }
@@ -1056,6 +1065,15 @@
       </div>
     </div>
     <button id="sb-fs" title="Fullscreen (hide browser bars)">⛶</button>
+  </div>
+  <!-- Dev diagnostics line (marker-gated by .show_dev_overlay): a second bar stacked under the
+       status bar. FPS = client render rate; LINK = true server↔client round-trip latency
+       (diag.ping/PONG); CTRL = backend→AiO control-loop latency (GPS→PGN). Kept as DOM text
+       (not a canvas overlay) so monitoring FPS doesn't itself cost FPS. -->
+  <div id="sb-diag">
+    <span class="sbd-item"><span class="sbd-k">FPS</span><span class="sbd-v" id="sbd-fps">—</span></span>
+    <span class="sbd-item"><span class="sbd-k">LINK</span><span class="sbd-v" id="sbd-link">—</span></span>
+    <span class="sbd-item"><span class="sbd-k">CTRL</span><span class="sbd-v" id="sbd-ctrl">—</span></span>
   </div>
   <div id="lb"></div>
   <div id="headland-hud"></div>

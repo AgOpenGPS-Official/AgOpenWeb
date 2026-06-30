@@ -243,7 +243,12 @@ public record StatusDto(
     // "coverage painted with no open job" prompt (DialogType.UnsavedCoverage). The web client
     // renders its own Save/Discard/Cancel prompt off this flag — without it the host opens a
     // dialog nothing renders and the close hangs. Message text is static (client owns it).
-    bool UnsavedCoveragePrompt);
+    bool UnsavedCoveragePrompt,
+    // Dev diagnostics row (marker-gated by .show_dev_overlay): DevOverlay reveals the status
+    // bar's taller diagnostics line; GpsToPgnLatencyMs is the host control-loop latency
+    // (GPS receive → PGN send, ms) shown there beside the client FPS + transport age.
+    bool DevOverlay,
+    double GpsToPgnLatencyMs);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and

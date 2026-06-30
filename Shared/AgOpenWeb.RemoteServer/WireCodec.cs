@@ -19,7 +19,7 @@ public static class WireCodec
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
-        Sound = 18;
+        Sound = 18, Pong = 19;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -578,6 +578,20 @@ public static class WireCodec
         w.Write((float)s.DriftNorthing);
         // Unsaved-coverage guard prompt (append-only).
         w.Write((byte)(s.UnsavedCoveragePrompt ? 1 : 0));
+        // Dev diagnostics row (append-only): overlay gate + host control-loop latency.
+        w.Write((byte)(s.DevOverlay ? 1 : 0));
+        w.Write((float)s.GpsToPgnLatencyMs);
+        return ms.ToArray();
+    }
+
+    // Round-trip link-latency reply. Echoes the client's token (its performance.now()
+    // timestamp) verbatim so the client computes RTT = now − token on its own clock.
+    public static byte[] EncodePong(string token)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Pong);
+        WriteStr(w, token);
         return ms.ToArray();
     }
 
