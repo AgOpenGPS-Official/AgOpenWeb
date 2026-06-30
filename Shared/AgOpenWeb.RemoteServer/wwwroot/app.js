@@ -4112,6 +4112,37 @@ function strokePtsSk(canvas, pts, close, paint) {
 // clipNear() fixes for single grid segments). So walk the polyline in WORLD space,
 // split it at every near-plane crossing, and stroke each continuous front-facing run
 // in screen space — only ever feeding w2s points that are in front of the camera.
+// Clip a screen-space polyline to the viewport (+margin) into connected sub-polylines. Under
+// tilt a line recedes to the horizon vanishing point, so its PROJECTED length — and a dashed
+// stroke's dash count — is effectively unbounded, which collapsed FPS. Clipping bounds the work
+// to on-screen length. Cohen–Sutherland per segment, re-joining contiguous pieces. [x,y] arrays.
+function clipScreenPolyline(pts, margin) {
+  const x0 = -margin, y0 = -margin, x1 = vw + margin, y1 = vh + margin;
+  const code = (x, y) => (x < x0 ? 1 : x > x1 ? 2 : 0) | (y < y0 ? 4 : y > y1 ? 8 : 0);
+  const out = [];
+  let cur = null;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    let ax = pts[i][0], ay = pts[i][1], bx = pts[i + 1][0], by = pts[i + 1][1];
+    let ca = code(ax, ay), cb = code(bx, by), accept = false;
+    for (let g = 0; g < 8; g++) {
+      if (!(ca | cb)) { accept = true; break; }   // both inside
+      if (ca & cb) break;                          // both outside the same edge → reject
+      const c = ca || cb; let nx, ny;
+      if (c & 8) { nx = ax + (bx - ax) * (y1 - ay) / (by - ay); ny = y1; }
+      else if (c & 4) { nx = ax + (bx - ax) * (y0 - ay) / (by - ay); ny = y0; }
+      else if (c & 2) { ny = ay + (by - ay) * (x1 - ax) / (bx - ax); nx = x1; }
+      else { ny = ay + (by - ay) * (x0 - ax) / (bx - ax); nx = x0; }
+      if (c === ca) { ax = nx; ay = ny; ca = code(ax, ay); }
+      else { bx = nx; by = ny; cb = code(bx, by); }
+    }
+    if (!accept) { if (cur) { out.push(cur); cur = null; } continue; }
+    if (cur && Math.abs(cur[cur.length - 1][0] - ax) < 0.5 && Math.abs(cur[cur.length - 1][1] - ay) < 0.5)
+      cur.push([bx, by]);
+    else { if (cur) out.push(cur); cur = [[ax, ay], [bx, by]]; }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 function strokePtsSk3D(canvas, pts, close, paint) {
   const EPS = 1.0;
   const n = pts.length;
@@ -4123,12 +4154,17 @@ function strokePtsSk3D(canvas, pts, close, paint) {
   };
   let run = [];
   const flush = () => {
+    // Clip the front-facing screen run to the viewport before stroking — bounds a dashed
+    // line's dash flattening (and stroke fill) to on-screen length, the tilt FPS fix.
     if (run.length >= 2) {
-      const cmds = [];
-      for (let i = 0; i < run.length; i++)
-        cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, run[i][0], run[i][1]);
-      const path = CK.Path.MakeFromCmds(cmds);
-      if (path) { canvas.drawPath(path, paint); path.delete(); }
+      for (const sub of clipScreenPolyline(run, 48)) {
+        if (sub.length < 2) continue;
+        const cmds = [];
+        for (let i = 0; i < sub.length; i++)
+          cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, sub[i][0], sub[i][1]);
+        const path = CK.Path.MakeFromCmds(cmds);
+        if (path) { canvas.drawPath(path, paint); path.delete(); }
+      }
     }
     run = [];
   };
