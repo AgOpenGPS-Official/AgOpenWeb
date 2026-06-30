@@ -28,6 +28,8 @@ public sealed class SceneProjector
     private readonly ISettingsService _settings;
     private readonly IVehicleProfileService _vehicleProfiles;
     private readonly IPersistentStateService _persist;
+    // Dev diagnostics overlay gate — read once from the .show_dev_overlay marker file.
+    private readonly bool _devOverlay = DevOverlayMarker.IsEnabled();
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list.
     /// The segments live on the VM (MainViewModel.HeadlandSegments) — there is no
@@ -367,7 +369,11 @@ public sealed class SceneProjector
             // Field Tools — Offset Fix drift offset (meters).
             _state.Field.DriftEasting,
             _state.Field.DriftNorthing,
-            _state.UI.IsUnsavedCoverageDialogVisible);
+            _state.UI.IsUnsavedCoverageDialogVisible,
+            // Dev diagnostics row: overlay gate (marker) + host control-loop latency (same
+            // VehicleStateSnapshot.TotalLatencyMs the VM's GpsToPgnLatencyMs mirrors).
+            _devOverlay,
+            _autoSteer.LatestSnapshot?.TotalLatencyMs ?? 0.0);
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved

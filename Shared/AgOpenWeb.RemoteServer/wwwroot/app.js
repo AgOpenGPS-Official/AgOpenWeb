@@ -81,6 +81,8 @@ let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
+let _diagT0 = 0;       // throttle (~4 Hz) for the marker-gated diag line's DOM writes
+let linkRttMs = null;  // EMA of server↔client round-trip (ms), from diag.ping/PONG
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
 // Hello frame), the latest broadcast control state, and whether we hold control.
 let myClientId = null;
@@ -280,6 +282,12 @@ const transport = RemoteTransport.create({
   onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
   onSound(id) { Sounds.play(id); },
+  // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
+  // RTT = now − token measures the pure server↔client link (one client clock, no skew).
+  onPong(token) {
+    const rtt = performance.now() - parseFloat(token);
+    if (rtt >= 0 && rtt < 60000) linkRttMs = (linkRttMs === null) ? rtt : linkRttMs + 0.3 * (rtt - linkRttMs);
+  },
   onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
 });
 
@@ -3328,6 +3336,10 @@ const SB = {
   gcHdop: document.getElementById('gc-hdop'), gcFix: document.getElementById('gc-fix'),
   gcAge: document.getElementById('gc-age'), gcHdg: document.getElementById('gc-hdg'),
   gcRoll: document.getElementById('gc-roll'), gcFps: document.getElementById('gc-fps'),
+  // Dev diagnostics line (marker-gated by .show_dev_overlay).
+  diagRow: document.getElementById('sb-diag'),
+  sbdFps: document.getElementById('sbd-fps'), sbdLink: document.getElementById('sbd-link'),
+  sbdCtrl: document.getElementById('sbd-ctrl'),
 };
 // GPS fix-quality → dot colour (matches the native FixQualityToColor intent).
 function fixColor(q) {
@@ -3456,7 +3468,7 @@ addEventListener('pointerdown', () => {
 
 function renderStatusBar() {
   const s = statusBar;
-  if (!s) { SB.bar.style.display = 'none'; return; }
+  if (!s) { SB.bar.style.display = 'none'; if (SB.diagRow) SB.diagRow.style.display = 'none'; return; }
   SB.bar.style.display = 'flex';
   SB.fixDot.style.background = fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
@@ -3489,6 +3501,24 @@ function renderStatusBar() {
     SB.gcHdg.textContent = hdgDeg != null ? (((hdgDeg % 360) + 360) % 360).toFixed(1) + '°' : '—';
     SB.gcRoll.textContent = (tick && typeof tick.roll === 'number') ? tick.roll.toFixed(1) + '°' : '—';
     SB.gcFps.textContent = fps.toFixed(0);
+  }
+  // Dev diagnostics line (marker-gated). DOM text only — no canvas overlay — so reading FPS
+  // doesn't perturb the frame loop (an overlay/dialog did, hence the status-line approach).
+  // Throttled to ~4 Hz; that tick also fires the link probe. FPS = client render rate; LINK =
+  // server↔client round-trip (ms, from diag.ping/PONG); CTRL = backend→AiO control-loop
+  // latency (GPS receive → PGN send, ms).
+  if (s.devOverlay) {
+    if (SB.diagRow.style.display !== 'flex') SB.diagRow.style.display = 'flex';
+    const nowMs = performance.now();
+    if (nowMs - _diagT0 >= 250) {
+      _diagT0 = nowMs;
+      transport.send('diag.ping|' + nowMs); // link probe; the PONG reply updates linkRttMs
+      SB.sbdFps.textContent = fps.toFixed(0);
+      SB.sbdLink.textContent = linkRttMs != null ? linkRttMs.toFixed(1) + ' ms' : '—';
+      SB.sbdCtrl.textContent = (s.gpsToPgnLatencyMs || 0).toFixed(1) + ' ms';
+    }
+  } else if (SB.diagRow.style.display !== 'none') {
+    SB.diagRow.style.display = 'none';
   }
 }
 // Heading in AgOpen 000.0° form (constant width). Input degrees, any sign.

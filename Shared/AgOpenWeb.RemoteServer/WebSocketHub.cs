@@ -106,6 +106,13 @@ public sealed class WebSocketHub
             case "control.acquire": _authority.Acquire(conn, arg); return;
             case "control.release": _authority.Release(conn); return;
             case "control.presence": _authority.Refresh(conn); return;
+            // Link-latency probe: reply immediately on this connection (here, on the
+            // receive-loop thread — no UI-thread hop) so the client's RTT measures the
+            // pure server↔client link, not host scheduling.
+            case "diag.ping":
+                if (_clients.TryGetValue(conn, out var pinger))
+                    _ = SendToAsync(pinger, WireCodec.EncodePong(arg), CancellationToken.None);
+                return;
         }
 
         if (IsRestrictedCommand is { } restricted && restricted(id) && !_authority.HoldsFresh(conn))
