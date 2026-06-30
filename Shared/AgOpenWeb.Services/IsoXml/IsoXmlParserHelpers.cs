@@ -117,7 +117,7 @@ namespace AgOpenWeb.Services.IsoXml
                                 double.TryParse(pnt.Attributes["D"]?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
                             {
                                 GeoCoord geo = localPlane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
-                                list.Add(new Vec3(geo.Northing, geo.Easting, 0));
+                                list.Add(new Vec3(geo.Easting, geo.Northing, 0));
                             }
                         }
 
@@ -162,7 +162,7 @@ namespace AgOpenWeb.Services.IsoXml
                     double.TryParse(pnt.Attributes["D"]?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
                 {
                     GeoCoord geo = localPlane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
-                    boundary.FenceLine.Add(new Vec3(geo.Northing, geo.Easting, 0));
+                    boundary.FenceLine.Add(new Vec3(geo.Easting, geo.Northing, 0));
                 }
             }
 
@@ -230,7 +230,7 @@ namespace AgOpenWeb.Services.IsoXml
             foreach (XmlNode pnt in points)
             {
                 var geo = ParseGeoCoord(pnt, localPlane);
-                desList.Add(new Vec3(geo.Northing, geo.Easting, 0));
+                desList.Add(new Vec3(geo.Easting, geo.Northing, 0));
             }
 
             // Keep originals for ptA/ptB
@@ -378,15 +378,15 @@ namespace AgOpenWeb.Services.IsoXml
             {
                 double heading = Math.Atan2(list[i + 1].Easting - list[i].Easting, list[i + 1].Northing - list[i].Northing);
                 if (heading < 0) heading += Math.PI * 2;
-                list[i] = new Vec3(list[i].Northing, list[i].Easting, heading);
+                list[i] = new Vec3(list[i].Easting, list[i].Northing, heading);
             }
 
             // Last point gets same heading as second-to-last
             if (list.Count >= 2)
             {
                 list[list.Count - 1] = new Vec3(
-                    list[list.Count - 1].Northing,
                     list[list.Count - 1].Easting,
+                    list[list.Count - 1].Northing,
                     list[list.Count - 2].Heading
                 );
             }

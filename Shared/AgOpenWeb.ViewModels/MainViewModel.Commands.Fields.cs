@@ -15,14 +15,21 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Xml;
 
 using Microsoft.Extensions.Logging;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.IsoXml;
 using AgOpenWeb.Models.State;
+using AgOpenWeb.Models.Track;
+using AgOpenWeb.Services;
+using AgOpenWeb.Services.IsoXml;
 using CommunityToolkit.Mvvm.Input;
 
 namespace AgOpenWeb.ViewModels;
@@ -677,20 +684,134 @@ public partial class MainViewModel
 
             try
             {
-                Directory.CreateDirectory(newFieldPath);
+                // Locate TASKDATA.XML inside the selected dataset folder (case-insensitive
+                // so real-world uppercase datasets work on Linux too).
+                var taskDataPath = Directory.Exists(SelectedIsoXmlFile.FullPath)
+                    ? Directory.EnumerateFiles(SelectedIsoXmlFile.FullPath)
+                        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), "TASKDATA.XML", StringComparison.OrdinalIgnoreCase))
+                    : null;
+                if (taskDataPath == null)
+                {
+                    StatusMessage = "TASKDATA.XML not found in the selected folder";
+                    return;
+                }
 
+                var doc = new XmlDocument();
+                doc.Load(taskDataPath);
+                var pfd = doc.SelectSingleNode("//PFD");
+                if (pfd == null)
+                {
+                    StatusMessage = "ISO-XML file contains no field (PFD)";
+                    return;
+                }
+                var fieldParts = pfd.ChildNodes;
+
+                // The local plane needs an origin. ISO-XML stores absolute WGS84, so use
+                // the centroid of the outer boundary (falling back to all points).
+                if (!TryComputeIsoXmlOrigin(pfd, out double originLat, out double originLon))
+                {
+                    StatusMessage = "ISO-XML file has no coordinates to import";
+                    return;
+                }
+                var localPlane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
+
+                var parsedBoundaries = IsoXmlParserHelpers.ParseBoundaries(fieldParts, localPlane);
+                if (parsedBoundaries.Count == 0 || parsedBoundaries[0].FenceLine.Count < 3)
+                {
+                    StatusMessage = "ISO-XML file has no usable boundary";
+                    return;
+                }
+                var parsedHeadland = IsoXmlParserHelpers.ParseHeadland(fieldParts, localPlane);
+                var parsedTracks = IsoXmlParserHelpers.ParseAllGuidanceLines(fieldParts, localPlane);
+
+                Directory.CreateDirectory(newFieldPath);
+                File.WriteAllText(Path.Combine(newFieldPath, "field.origin"),
+                    $"{originLat.ToString("F8", CultureInfo.InvariantCulture)},{originLon.ToString("F8", CultureInfo.InvariantCulture)}");
+
+                // Build the boundary (first = outer, rest = inner holes).
+                var boundary = new Boundary();
+                for (int i = 0; i < parsedBoundaries.Count; i++)
+                {
+                    var poly = new BoundaryPolygon { IsDriveThrough = parsedBoundaries[i].IsDriveThru };
+                    foreach (var v in parsedBoundaries[i].FenceLine)
+                        poly.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
+                    poly.UpdateBounds();
+                    if (i == 0)
+                        boundary.OuterBoundary = poly;
+                    else
+                        boundary.InnerBoundaries.Add(poly);
+                }
+                if (parsedHeadland.Count >= 3)
+                {
+                    var hp = new BoundaryPolygon();
+                    foreach (var v in parsedHeadland)
+                        hp.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
+                    hp.UpdateBounds();
+                    boundary.HeadlandPolygon = hp;
+                }
+
+                // Convert guidance lines into Tracks.
+                var tracks = new List<Track>();
+                foreach (var t in parsedTracks)
+                {
+                    var track = new Track { Name = t.Name, NudgeDistance = t.NudgeDistance, IsVisible = t.IsVisible };
+                    if (t.Mode == IsoXmlTrackMode.Curve && t.CurvePoints.Count >= 2)
+                    {
+                        track.Type = TrackType.Curve;
+                        track.Points = new List<Vec3>(t.CurvePoints);
+                    }
+                    else
+                    {
+                        track.Type = TrackType.ABLine;
+                        track.Points = new List<Vec3>
+                        {
+                            new Vec3(t.PtA.Easting, t.PtA.Northing, 0),
+                            new Vec3(t.PtB.Easting, t.PtB.Northing, 0),
+                        };
+                    }
+                    if (track.Points.Count >= 2) tracks.Add(track);
+                }
+
+                // Activate the field first so the headland save (which writes to
+                // ActiveField.DirectoryPath) targets the new field.
+                SetFieldOrigin(originLat, originLon);
                 FieldsRootDirectory = fieldsDir;
                 IsFieldOpen = true;
-                // Set the active field so State.Field is the SoT (CurrentFieldName reads
-                // ActiveField.Name). Previously this flow left ActiveField null.
                 _fieldService.SetActiveField(new Field { Name = newFieldName, DirectoryPath = newFieldPath });
+
+                // Persist to disk so the field re-opens with everything intact.
+                _boundaryFileService.SaveBoundary(boundary, newFieldPath);
+                if (boundary.HeadlandPolygon != null)
+                    SaveHeadlandToFile(boundary.HeadlandPolygon.Points
+                        .Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList());
+                if (tracks.Count > 0)
+                    TrackFilesService.Save(newFieldPath, tracks);
+
+                // Load into the live map + collections (mirrors the KML import path).
+                SetCurrentBoundary(boundary);
+                CenterMapOnBoundary(boundary);
+
+                var boundaryAreas = new List<double> { boundary.AreaHectares * 10000 };
+                _fieldStatistics.UpdateBoundaryAreas(boundaryAreas);
+                OnPropertyChanged(nameof(BoundaryAreaDisplay));
+
+                SavedTracks.Clear();
+                foreach (var tk in tracks) SavedTracks.Add(tk);
 
                 PersistentState.LastOpenedField = newFieldName;
                 _persistentStateService.Save();
 
+                RefreshBoundaryList();
+                SetSimulatorCoordinates(State.Field.OriginLatitude, State.Field.OriginLongitude);
+
                 State.UI.CloseDialog();
                 IsFieldOperationsPanelVisible = false;
-                StatusMessage = $"Imported ISO-XML: {newFieldName}";
+                var innerCount = parsedBoundaries.Count - 1;
+                var extras = new List<string>();
+                if (innerCount > 0) extras.Add($"{innerCount} inner");
+                if (tracks.Count > 0) extras.Add($"{tracks.Count} track{(tracks.Count == 1 ? "" : "s")}");
+                var extraMsg = extras.Count > 0 ? $" ({string.Join(", ", extras)})" : "";
+                StatusMessage = $"Imported ISO-XML: {newFieldName}{extraMsg}";
             }
             catch (Exception ex)
             {
@@ -899,6 +1020,52 @@ public partial class MainViewModel
             string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
         KmlImportFieldName = newName;
         ConfirmKmlImportDialogCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Computes a field origin (WGS84) for an ISO-XML import as the centroid of the outer
+    /// boundary ring (PLN type 1/9, LSG type 1). Falls back to the centroid of every point
+    /// in the partfield. Returns false if no coordinates are present.
+    /// </summary>
+    private static bool TryComputeIsoXmlOrigin(XmlNode pfd, out double lat, out double lon)
+    {
+        lat = 0;
+        lon = 0;
+
+        XmlNodeList points = null;
+        var plns = pfd.SelectNodes("PLN");
+        if (plns != null)
+        {
+            foreach (XmlNode pln in plns)
+            {
+                var type = pln.Attributes?["A"]?.Value;
+                if (type != "1" && type != "9") continue;
+                points = pln.SelectSingleNode("LSG[@A='1']")?.SelectNodes("PNT");
+                if (points != null && points.Count > 0) break;
+            }
+        }
+        if (points == null || points.Count == 0)
+            points = pfd.SelectNodes(".//PNT");
+        if (points == null || points.Count == 0)
+            return false;
+
+        double latSum = 0, lonSum = 0;
+        int n = 0;
+        foreach (XmlNode pnt in points)
+        {
+            if (double.TryParse(pnt.Attributes?["C"]?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double la) &&
+                double.TryParse(pnt.Attributes?["D"]?.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double lo))
+            {
+                latSum += la;
+                lonSum += lo;
+                n++;
+            }
+        }
+        if (n == 0) return false;
+
+        lat = latSum / n;
+        lon = lonSum / n;
+        return true;
     }
 
     public void RemoteCreateFromIsoXml(string fileName, string newName)
