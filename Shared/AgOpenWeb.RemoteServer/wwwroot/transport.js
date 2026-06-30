@@ -24,7 +24,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -338,6 +338,13 @@ window.RemoteTransport = {
           // One-shot alert: payload is a single SoundEffect id. The host already
           // applied the per-sound config gating; the client just plays it.
           handlers.onSound && handlers.onSound(u8());
+          break;
+        }
+        case TYPE.COVERAGE_EDGE: {
+          // Crisp worked-area edge: a set of perimeter polylines (field-local metres).
+          const pc = i32(); const polylines = new Array(pc);
+          for (let k = 0; k < pc; k++) polylines[k] = pts();
+          handlers.onCoverageEdge && handlers.onCoverageEdge(polylines);
           break;
         }
         case TYPE.PONG: {

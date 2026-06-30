@@ -93,6 +93,9 @@ let iHoldControl = false;
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
+let coverageEdges = null;   // crisp worked-area perimeter polylines (server-fed, field-local m)
+let covEdgeRgb = 0x98fb98;  // last coverage colour seen → the perimeter stroke matches the fill
+const EDGE_OFF = new URLSearchParams(location.search).has('noedge'); // ?noedge → A/B the edge off
 
 // ---- ground texture: the tiled field backdrop. Two variants — a dark (night) and a
 //      light (day) version of the same texture — picked by mapIsDay so the field reads
@@ -268,6 +271,7 @@ const transport = RemoteTransport.create({
     // playback exactly (same socket/latency), so the front now tracks the tool at any speed.
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
+  onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
   onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
@@ -4622,7 +4626,7 @@ function drawCoverageSk(canvas) {
         const c = batch.cells;
         for (let i = 0; i + 2 < c.length; i += 3) {
           const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
-          if (v !== lastRgb) { paint.setColor(CK.Color((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, ((v >>> 24) & 0xFF) / 255)); lastRgb = v; }
+          if (v !== lastRgb) { paint.setColor(CK.Color((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, ((v >>> 24) & 0xFF) / 255)); lastRgb = v; covEdgeRgb = v & 0xFFFFFF; }
           sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
           covCells++;
         }
@@ -4678,6 +4682,40 @@ function drawCoverageSk(canvas) {
   // without the per-update mip-regen cost. The surface is cleared to premultiplied
   // TRANSPARENT, so the boundary fades cleanly to transparent (no dark fringe).
   drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Linear, CK.MipmapMode.None);
+}
+// Crisp worked-area edge — the server-fed vector perimeter (only segments that don't adjoin
+// another pass), stroked in the coverage colour over the raster so the soft alpha-AA feather
+// is replaced by a sharp boundary. Bounded by perimeter length, so cost is ~flat regardless
+// of field size. Stroke width ≈ 0.6 m (covers the feather). Polylines are broken at the near
+// plane per vertex (see below). Reloaded fields have no perimeter (graceful fall back to feather).
+function drawCoverageEdgeSk(canvas) {
+  if (EDGE_OFF || !coverageEdges || !coverageEdges.length) return;
+  const p = SKP.covEdge || (SKP.covEdge = (() => {
+    const q = new CK.Paint(); q.setStyle(CK.PaintStyle.Stroke); q.setAntiAlias(true);
+    q.setStrokeCap(CK.StrokeCap.Round); q.setStrokeJoin(CK.StrokeJoin.Round); return q;
+  })());
+  const c = covEdgeRgb;
+  p.setColor(CK.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 1));
+  p.setStrokeWidth(Math.max(1, 0.6 * pxPerM));
+  // Per-vertex near-plane gate: a vertex at/behind the near plane (homogeneous w ≤ NEAR)
+  // projects through w2s to a huge/flipped coord, so a polyline crossing behind the camera
+  // would shoot a stroke to infinity (seen on zoom/tilt). Break the polyline at those
+  // vertices and draw each in-front run separately — no clipping math, no infinity lines.
+  const NEAR = 0.02;
+  const flush = (cmds) => {
+    if (cmds && cmds.length >= 6) { const path = CK.Path.MakeFromCmds(cmds); if (path) { canvas.drawPath(path, p); path.delete(); } }
+  };
+  for (const pl of coverageEdges) {
+    if (pl.length < 2) continue;
+    let cmds = null;
+    for (let i = 0; i < pl.length; i++) {
+      if (pw(pl[i].e, pl[i].n) < NEAR) { flush(cmds); cmds = null; continue; } // behind near plane → break
+      const xy = w2s(pl[i].e, pl[i].n);
+      if (!cmds) cmds = [CK.MOVE_VERB, xy[0], xy[1]];
+      else cmds.push(CK.LINE_VERB, xy[0], xy[1]);
+    }
+    flush(cmds);
+  }
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
@@ -4779,6 +4817,7 @@ function renderSkia(canvas, rp) {
   drawSatelliteSk(canvas); // Bing aerial underlay while drawing a boundary on map
   drawImagerySk(canvas); // imagery overlays the ground where present
   drawCoverageSk(canvas);
+  drawCoverageEdgeSk(canvas); // crisp vector perimeter over the raster (server-fed)
   drawGridSk(canvas);
   if (scene) {
     for (let bi = 0; bi < scene.boundaries.length; bi++)
