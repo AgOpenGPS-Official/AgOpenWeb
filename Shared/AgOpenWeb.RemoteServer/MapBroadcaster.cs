@@ -35,6 +35,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private Task? _loop;
 
     private int _statusTick;
+    private int _perimTick; // throttles the crisp-edge perimeter broadcast to ~2 Hz
     // Set by the host (App.axaml.cs) — projects the live SteerWizardViewModel to a
     // WizardDto, or null when the remote wizard isn't open. Sent every tick while open
     // (the calibration steps need live phase/angle updates).
@@ -243,6 +244,17 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     }
                 }
                 catch { /* tolerate transient coverage-layer races */ }
+
+                // Crisp worked-area edge: the vector perimeter (bounded by perimeter length,
+                // not area). ~2 Hz — it shifts slowly as passes are laid, and the client just
+                // replaces its set. Only once a field/coverage grid exists.
+                if (++_perimTick >= 5)
+                {
+                    _perimTick = 0;
+                    if (_coverageInitSent)
+                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageEdge(_coverage.GetCoveragePerimeter()), ct)
+                            .ConfigureAwait(false);
+                }
 
                 // Status bar changes slowly (fix/age/modules) — send at ~2 Hz, not
                 // every 10 Hz tick. Speed (which updates fast) rides the Tick.

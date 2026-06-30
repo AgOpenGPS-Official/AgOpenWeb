@@ -19,7 +19,7 @@ public static class WireCodec
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
-        Sound = 18, Pong = 19;
+        Sound = 18, Pong = 19, CoverageEdge = 20;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -581,6 +581,22 @@ public static class WireCodec
         // Dev diagnostics row (append-only): overlay gate + host control-loop latency.
         w.Write((byte)(s.DevOverlay ? 1 : 0));
         w.Write((float)s.GpsToPgnLatencyMs);
+        return ms.ToArray();
+    }
+
+    // Crisp worked-area edge: the vector perimeter as polylines (field-local metres). Bounded
+    // by perimeter length. [i32 polylineCount][ per polyline: i32 pointCount, f32 e, f32 n … ].
+    public static byte[] EncodeCoverageEdge(IReadOnlyList<IReadOnlyList<AgOpenWeb.Models.Base.Vec2>> polylines)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(CoverageEdge);
+        w.Write(polylines.Count);
+        foreach (var pl in polylines)
+        {
+            w.Write(pl.Count);
+            foreach (var p in pl) { w.Write((float)p.Easting); w.Write((float)p.Northing); }
+        }
         return ms.ToArray();
     }
 

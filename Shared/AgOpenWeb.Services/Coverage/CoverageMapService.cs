@@ -182,6 +182,29 @@ public class CoverageMapService : ICoverageMapService
         }
     }
 
+    // ---- Vector perimeter (server-fed crisp edge) ----
+    // The swept tool-edge ribbon per mapping run, as distance-gated (left,right) pairs.
+    // GetCoveragePerimeter() walks these and keeps only vertices whose OUTWARD side is
+    // unworked — the true worked-area boundary — which self-prunes as adjacent passes fill
+    // in, so it stays bounded by perimeter length, not worked area. Live-only: a reloaded
+    // field's coverage has no ribbons and falls back to the alpha-AA feather until re-driven.
+    // All of this is mutated/read under _coverageLock.
+    private sealed class EdgeRun { public readonly List<Vec2> Left = new(); public readonly List<Vec2> Right = new(); }
+    private readonly Dictionary<int, EdgeRun> _edgeRunByZone = new();
+    private readonly List<EdgeRun> _edgeRuns = new();
+    private readonly Dictionary<int, (double E, double N)> _edgeGateLast = new();
+    private int _edgePointCount;
+    private const double EDGE_GATE = 2.0;          // metres between committed edge vertex pairs
+    private const int EDGE_MAX_POINTS = 200_000;   // safety cap on total accumulated points
+
+    private void ClearEdges()
+    {
+        _edgeRunByZone.Clear();
+        _edgeRuns.Clear();
+        _edgeGateLast.Clear();
+        _edgePointCount = 0;
+    }
+
     public void StartMapping(int zoneIndex, Vec2 leftEdge, Vec2 rightEdge, CoverageColor? color = null)
     {
         lock (_coverageLock)
@@ -193,6 +216,18 @@ public class CoverageMapService : ICoverageMapService
             _lastEdgesPerSection[zoneIndex] = (
                 (leftEdge.Easting, leftEdge.Northing),
                 (rightEdge.Easting, rightEdge.Northing));
+
+            // Open a fresh edge ribbon for this run, seeded with the first pair.
+            if (_edgePointCount < EDGE_MAX_POINTS)
+            {
+                var run = new EdgeRun();
+                run.Left.Add(leftEdge); run.Right.Add(rightEdge);
+                _edgeRunByZone[zoneIndex] = run;
+                _edgeRuns.Add(run);
+                _edgeGateLast[zoneIndex] =
+                    ((leftEdge.Easting + rightEdge.Easting) * 0.5, (leftEdge.Northing + rightEdge.Northing) * 0.5);
+                _edgePointCount++;
+            }
         }
     }
 
@@ -205,6 +240,9 @@ public class CoverageMapService : ICoverageMapService
 
             _activeSections.Remove(zoneIndex);
             _lastEdgesPerSection.Remove(zoneIndex);
+            // Close the edge ribbon (it stays in _edgeRuns for the perimeter walk).
+            _edgeRunByZone.Remove(zoneIndex);
+            _edgeGateLast.Remove(zoneIndex);
         }
     }
 
@@ -286,6 +324,9 @@ public class CoverageMapService : ICoverageMapService
         // Rasterize the quad to the coverage bitmap for O(1) detection
         RasterizeQuadToBitmap(zoneIndex, leftEdge, rightEdge);
 
+        // Vector perimeter: append this swept edge pair if the tool moved past the gate.
+        AccumulateEdge(zoneIndex, leftEdge, rightEdge);
+
         // Calculate area of the quad (two triangles)
         double area = CalculateQuadArea(
             lastEdges.Left, lastEdges.Right,
@@ -301,6 +342,63 @@ public class CoverageMapService : ICoverageMapService
         _lastEdgesPerSection[zoneIndex] = (
             (leftEdge.Easting, leftEdge.Northing),
             (rightEdge.Easting, rightEdge.Northing));
+    }
+
+    // Append a swept edge pair to the zone's ribbon, distance-gated. Caller holds _coverageLock.
+    private void AccumulateEdge(int zoneIndex, Vec2 leftEdge, Vec2 rightEdge)
+    {
+        if (_edgePointCount >= EDGE_MAX_POINTS) return;
+        if (!_edgeRunByZone.TryGetValue(zoneIndex, out var run)) return;
+        double cx = (leftEdge.Easting + rightEdge.Easting) * 0.5;
+        double cy = (leftEdge.Northing + rightEdge.Northing) * 0.5;
+        if (_edgeGateLast.TryGetValue(zoneIndex, out var last))
+        {
+            double dx = cx - last.E, dy = cy - last.N;
+            if (dx * dx + dy * dy < EDGE_GATE * EDGE_GATE) return;
+        }
+        run.Left.Add(leftEdge); run.Right.Add(rightEdge);
+        _edgeGateLast[zoneIndex] = (cx, cy);
+        _edgePointCount++;
+    }
+
+    /// <summary>
+    /// Worked-area perimeter as polylines for the crisp vector edge. Walks the accumulated
+    /// swept tool-edge ribbons and keeps only vertices whose OUTWARD side is unworked (probed
+    /// against the detection grid), so interior pass-to-pass seams are dropped and only the
+    /// true boundary remains — bounded by perimeter length, not worked area. Live-only (a
+    /// reloaded field has no ribbons). Cheap O(1) probes; safe to call off the control thread.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Vec2>> GetCoveragePerimeter()
+    {
+        var result = new List<IReadOnlyList<Vec2>>();
+        lock (_coverageLock)
+        {
+            foreach (var run in _edgeRuns)
+            {
+                EmitPerimeterSide(run.Left, run.Right, result);
+                EmitPerimeterSide(run.Right, run.Left, result);
+            }
+        }
+        return result;
+    }
+
+    // Emit contiguous runs of `edge` vertices whose outward side (away from `other`) is
+    // unworked — those are on the worked-area boundary. 0.2 m probe ≈ 2 detection cells out.
+    private void EmitPerimeterSide(List<Vec2> edge, List<Vec2> other, List<IReadOnlyList<Vec2>> result)
+    {
+        List<Vec2>? cur = null;
+        int n = Math.Min(edge.Count, other.Count);
+        for (int i = 0; i < n; i++)
+        {
+            double ox = edge[i].Easting - other[i].Easting;
+            double oy = edge[i].Northing - other[i].Northing;
+            double len = Math.Sqrt(ox * ox + oy * oy);
+            bool perim = len > 1e-6 &&
+                !IsPointCovered(edge[i].Easting + ox / len * 0.2, edge[i].Northing + oy / len * 0.2);
+            if (perim) { (cur ??= new List<Vec2>()).Add(edge[i]); }
+            else if (cur != null) { if (cur.Count >= 2) result.Add(cur); cur = null; }
+        }
+        if (cur != null && cur.Count >= 2) result.Add(cur);
     }
 
     /// <summary>
@@ -1004,6 +1102,7 @@ public class CoverageMapService : ICoverageMapService
         // Clear tracking state
         _activeSections.Clear();
         _lastEdgesPerSection.Clear();
+        ClearEdges();
 
         // Reset totals
         _totalWorkedArea = 0;
@@ -1036,6 +1135,8 @@ public class CoverageMapService : ICoverageMapService
         SetFieldBounds(easting - halfSize, easting + halfSize, northing - halfSize, northing + halfSize);
         Console.WriteLine($"[Coverage] Auto-initialized bounds from position ({easting:F1}, {northing:F1}), {halfSize * 2}m x {halfSize * 2}m");
     }
+
+    private bool _inExpansion; // set by CheckAndExpandBounds so SetFieldBounds keeps the edge ribbons
 
     public void SetFieldBounds(double minE, double maxE, double minN, double maxN)
     {
@@ -1075,6 +1176,9 @@ public class CoverageMapService : ICoverageMapService
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
         else
             _detectionBits = new byte[totalBytes];
+        // New field → drop stale ribbons. Expansion keeps them: edges are absolute-coordinate
+        // and CheckAndExpandBounds copies the detection bits across, so the perimeter stays valid.
+        if (!_inExpansion) ClearEdges();
 
         // Compute display resolution + dimensions (pillared on
         // DisplayConfig.DisplayResolutionMultiplier and a 25M-pixel cap)
@@ -1225,8 +1329,10 @@ public class CoverageMapService : ICoverageMapService
         double oldMinE = _fieldMinE;
         double oldMinN = _fieldMinN;
 
-        // Reallocate with new bounds
-        SetFieldBounds(newMinE, newMaxE, newMinN, newMaxN);
+        // Reallocate with new bounds (keep the edge ribbons — detection is copied below)
+        _inExpansion = true;
+        try { SetFieldBounds(newMinE, newMaxE, newMinN, newMaxN); }
+        finally { _inExpansion = false; }
 
         // Copy old detection bits to new array
         if (oldBits != null && _detectionBits != null)
@@ -1315,6 +1421,7 @@ public class CoverageMapService : ICoverageMapService
         // 981-996). Nulling here silently defeats the reuse on every
         // close+reopen and forces a fresh ~73 MB LOH alloc.
         _dirtyValid = false;
+        ClearEdges();
         Console.WriteLine("[Coverage] Field bounds cleared");
     }
 
