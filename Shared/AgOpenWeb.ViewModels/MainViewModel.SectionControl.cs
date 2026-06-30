@@ -164,60 +164,11 @@ public partial class MainViewModel
 
     #region Section Event Handlers
 
-    // Tracks aggregate state at the last event so we can detect transitions.
-    // We track two notions:
-    //   - AnyOn:     any section's IsOn flag is true (driven by manual ON
-    //                or by the cycle when an auto section enters work area).
-    //   - AnyActive: any section is in a non-Off button state (Auto/On).
-    //                Captures the user's master-toggle-to-Auto intent even
-    //                though IsOn doesn't flip synchronously on that click.
-    // Playing on either transition (IsOn first, AnyActive as fallback) gives
-    // exactly one sound per master toggle, manual toggle, or auto headland
-    // transition.
-    private bool _lastAnyOn;
-    private bool _lastAnyActive;
-
     private void OnSectionStateChanged(object? sender, SectionStateChangedEventArgs e)
     {
-        bool currentAnyOn = _sectionControlService.IsAnySectionOn;
-        bool currentAnyActive = false;
-        var states = _sectionControlService.SectionStates;
-        for (int i = 0; i < states.Count; i++)
-        {
-            if (states[i].ButtonState != SectionButtonState.Off)
-            {
-                currentAnyActive = true;
-                break;
-            }
-        }
-
-        if (e.SectionIndex >= 0)
-        {
-            // Per-section toolbar toggle — sound matches the section's new state.
-            _audioService.Play(e.IsOn
-                ? Services.Interfaces.SoundEffect.SectionOn
-                : Services.Interfaces.SoundEffect.SectionOff);
-        }
-        else if (currentAnyOn != _lastAnyOn)
-        {
-            // Aggregate IsOn transition — manual ON/OFF master toggle, or
-            // auto sections turning on/off as the tool enters/exits the
-            // work area.
-            _audioService.Play(currentAnyOn
-                ? Services.Interfaces.SoundEffect.SectionOn
-                : Services.Interfaces.SoundEffect.SectionOff);
-        }
-        else if (currentAnyActive != _lastAnyActive)
-        {
-            // Master Auto toggle from Off → Auto doesn't flip IsOn
-            // synchronously (the cycle decides), so the IsOn check above
-            // misses it. Catch it on the ButtonState-active transition.
-            _audioService.Play(currentAnyActive
-                ? Services.Interfaces.SoundEffect.SectionOn
-                : Services.Interfaces.SoundEffect.SectionOff);
-        }
-        _lastAnyOn = currentAnyOn;
-        _lastAnyActive = currentAnyActive;
+        // Section on/off sounds play at the user button commands (the Toggle* handlers in
+        // MainViewModel.Commands.Track), NOT here: this event also fires every automatic
+        // coverage cycle as the tool enters/exits work, which spammed the sound (issue #48).
 
         // Marshal to UI thread
         if (_dispatcher.CheckAccess())

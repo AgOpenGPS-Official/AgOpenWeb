@@ -159,6 +159,24 @@ let perspMInv = null;   // cached 4×4 inverse of perspM (CSS px→world ray); n
 const DEFAULT_PITCH = Math.PI / 3;        // 60° — the one-key tilt
 const MAX_PITCH = 65 * Math.PI / 180;     // v1 cap: keeps the local field in front
 const PITCH_STEP = 5 * Math.PI / 180;
+// Persist the 3D tilt + zoom across reloads (issue #35: tilting to 3D was lost on restart).
+// View prefs are per-client, so localStorage (not host config) is the right home.
+const VIEW_PREFS_KEY = 'aow.view';
+try {
+  const v = JSON.parse(localStorage.getItem(VIEW_PREFS_KEY) || 'null');
+  if (v) {
+    if (typeof v.pitch === 'number') pitch = Math.max(0, Math.min(MAX_PITCH, v.pitch));
+    if (typeof v.zoom === 'number') pxPerM = Math.min(200, Math.max(0.2, v.zoom));
+  }
+} catch (e) { /* ignore corrupt/blocked storage */ }
+let _savedPitch = pitch, _savedZoom = pxPerM, _viewSaveT = 0;
+function maybeSaveView() {
+  if (pitch === _savedPitch && pxPerM === _savedZoom) return;
+  const now = performance.now();
+  if (now - _viewSaveT < 800) return;        // debounce: at most ~1.25 writes/s while adjusting
+  _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM;
+  try { localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ pitch, zoom: pxPerM })); } catch (e) {}
+}
 const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 
 // ---- transport wiring (the only coupling point) ----
@@ -4873,6 +4891,7 @@ function skFrame() {
   if (_fpsT0 === 0) _fpsT0 = _now;
   else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
+  maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
   if (skSurface) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }

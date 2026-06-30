@@ -832,6 +832,11 @@ public partial class MainViewModel
 
             var newState = IsManualSectionMode ? SectionButtonState.On : SectionButtonState.Off;
             _sectionControlService.SetAllSections(newState);
+            // Sound on the user button press only — NOT in OnSectionStateChanged, which also
+            // fires every auto coverage cycle and would spam it (issue #48).
+            _audioService.Play(IsManualSectionMode
+                ? Services.Interfaces.SoundEffect.SectionOn
+                : Services.Interfaces.SoundEffect.SectionOff);
 
             StatusMessage = IsManualSectionMode ? "All sections ON" : "All sections OFF";
         });
@@ -844,6 +849,9 @@ public partial class MainViewModel
 
             var newState = IsSectionMasterOn ? SectionButtonState.Auto : SectionButtonState.Off;
             _sectionControlService.SetAllSections(newState);
+            _audioService.Play(IsSectionMasterOn
+                ? Services.Interfaces.SoundEffect.SectionOn
+                : Services.Interfaces.SoundEffect.SectionOff);
 
             StatusMessage = IsSectionMasterOn ? "All sections AUTO" : "All sections OFF";
         });
@@ -873,6 +881,9 @@ public partial class MainViewModel
             };
 
             _sectionControlService.SetSectionState(sectionIndex, newState);
+            _audioService.Play(newState == SectionButtonState.Off
+                ? Services.Interfaces.SoundEffect.SectionOff
+                : Services.Interfaces.SoundEffect.SectionOn);
             StatusMessage = $"Section {sectionIndex + 1}: {newState}";
         });
 
