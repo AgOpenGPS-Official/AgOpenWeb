@@ -159,6 +159,24 @@ let perspMInv = null;   // cached 4×4 inverse of perspM (CSS px→world ray); n
 const DEFAULT_PITCH = Math.PI / 3;        // 60° — the one-key tilt
 const MAX_PITCH = 65 * Math.PI / 180;     // v1 cap: keeps the local field in front
 const PITCH_STEP = 5 * Math.PI / 180;
+// Persist the 3D tilt + zoom across reloads (issue #35: tilting to 3D was lost on
+// restart). The camera is client-owned live, but its last tilt+zoom are stored
+// HOST-side (appstate.json, via the view.save command) and replayed to every client
+// in the connection seed (onViewPrefs). This restores identically on any client —
+// browser or WebView — independent of browser localStorage behaviour.
+let _savedPitch = pitch, _savedZoom = pxPerM, _viewSaveT = 0;
+function applyViewPrefs(p, z) {
+  if (typeof p === 'number' && isFinite(p)) pitch = Math.max(0, Math.min(MAX_PITCH, p));
+  if (typeof z === 'number' && isFinite(z)) pxPerM = Math.min(200, Math.max(0.2, z));
+  _savedPitch = pitch; _savedZoom = pxPerM; // hydrated value == saved, so no echo-back save
+}
+function maybeSaveView() {
+  if (pitch === _savedPitch && pxPerM === _savedZoom) return;
+  const now = performance.now();
+  if (now - _viewSaveT < 800) return;        // debounce: at most ~1.25 writes/s while adjusting
+  _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM;
+  transport.send('view.save|' + pitch + '|' + pxPerM); // host writes it to appstate.json
+}
 const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 
 // ---- transport wiring (the only coupling point) ----
@@ -297,6 +315,8 @@ const transport = RemoteTransport.create({
     if (rtt >= 0 && rtt < 60000) linkRttMs = (linkRttMs === null) ? rtt : linkRttMs + 0.3 * (rtt - linkRttMs);
   },
   onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
+  // Persisted web-camera view (issue #35): restore last tilt+zoom from the host seed.
+  onViewPrefs(pitch, zoom) { applyViewPrefs(pitch, zoom); },
 });
 
 // ---- Alert sounds ----------------------------------------------------------
@@ -4932,6 +4952,7 @@ function skFrame() {
   if (_fpsT0 === 0) _fpsT0 = _now;
   else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
+  maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
   if (skSurface) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }

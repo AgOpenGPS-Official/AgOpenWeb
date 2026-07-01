@@ -24,7 +24,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -352,6 +352,13 @@ window.RemoteTransport = {
           // diag.ping. RTT = now − token, measured on the one client clock.
           const token = str();
           handlers.onPong && handlers.onPong(token);
+          break;
+        }
+        case TYPE.VIEW_PREFS: {
+          // Persisted web-camera view (issue #35): pitch radians + zoom px/m, sent
+          // once in the seed. The client restores its last tilt+zoom from this.
+          const pitch = f64(); const zoom = f64();
+          handlers.onViewPrefs && handlers.onViewPrefs(pitch, zoom);
           break;
         }
       }

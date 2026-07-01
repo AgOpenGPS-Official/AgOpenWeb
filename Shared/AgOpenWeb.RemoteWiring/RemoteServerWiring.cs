@@ -97,6 +97,20 @@ public static partial class RemoteServerWiring
                                     if (double.TryParse(arg, num, inv, out var capMult)) // (2.5 = Medium)
                                         vm.CapDisplayResolution(capMult); // only coarsens; idempotent
                                     return;
+                                case "view.save": // web camera tilt+zoom persisted host-side (issue #35).
+                                {                 // arg = "pitch|zoom" (pitch radians, zoom px/m). Tier-1.
+                                    var vparts = arg.Split('|');
+                                    if (vparts.Length == 2
+                                        && double.TryParse(vparts[0], num, inv, out var vpitch)
+                                        && double.TryParse(vparts[1], num, inv, out var vzoom))
+                                    {
+                                        var ps = services.GetRequiredService<IPersistentStateService>();
+                                        ps.State.WebCameraPitch = vpitch;
+                                        ps.State.WebCameraZoom = vzoom;
+                                        ps.Save();
+                                    }
+                                    return;
+                                }
                                 case "roll.zeroCalibrate": // Tools→Roll Correction "Zero Roll":
                                     // capture the current live roll as the new zero offset.
                                     // Mirrors RollCalibrationStepViewModel.ZeroRollCommand
@@ -704,6 +718,15 @@ public static partial class RemoteServerWiring
                             vm.IsDrawAtPivot,
                             vm.IsBoundarySectionControlOn,
                             bpts);
+                    };
+
+                    // Web-camera view seed: the last tilt+zoom the client sent
+                    // (view.save), persisted in appstate.json. Sent once per connection
+                    // so any client restores the same view (issue #35).
+                    server.ViewPrefsProvider = () =>
+                    {
+                        var st = services.GetRequiredService<IPersistentStateService>().State;
+                        return (st.WebCameraPitch, st.WebCameraZoom);
                     };
 
                     // Field Builder Headland-tab list: the segments live on the VM

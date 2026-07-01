@@ -139,6 +139,7 @@ public class PersistentStateServiceTests
             WindowWidth = 1, WindowHeight = 2, WindowX = 3, WindowY = 4, WindowMaximized = true,
             SimulatorPanelX = 5, SimulatorPanelY = 6, SimulatorPanelVisible = true,
             CameraZoom = 7, CameraPitch = -33, CameraMode = CameraMode.HeadingUp,
+            WebCameraZoom = 17, WebCameraPitch = 0.9,
             IsDayMode = false, Is2DMode = true, IsNorthUp = true,
             SimulatorLatitude = 12.5, SimulatorLongitude = 13.5, SimulatorSpeed = 9, SimulatorSteerAngle = 8,
             LastOpenedField = "X", BoundaryDrawRightSide = false, BoundaryDrawAtPivot = true, BoundaryOffset = 42,
