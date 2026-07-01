@@ -152,7 +152,12 @@ public record TickDto(
     // pose/tool on THIS timeline, not on frame-receipt time — so WiFi arrival jitter
     // (which warped the receipt-delta and made the heading/map wiggle) only shifts the
     // playback buffer, absorbed by RENDER_DELAY, instead of varying the interp rate.
-    double HostMs);
+    double HostMs,
+    // True while a u-turn arc is executing (mid-turn). The client blocks the on-screen
+    // U-turn/Lateral buttons with a hint during this window — snapping/turning mid-arc is
+    // ignored by the pipeline (would move the displayed track while the tractor stays
+    // committed to the current arc). Mirrors YouTurnState.IsExecuting (issue #50).
+    bool IsYouTurnExecuting);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

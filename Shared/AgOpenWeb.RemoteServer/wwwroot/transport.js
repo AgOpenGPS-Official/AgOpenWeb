@@ -106,6 +106,7 @@ window.RemoteTransport = {
           const hitchE = f64(), hitchN = f64();
           const vehicleSteerAngle = f32();
           const hostMs = f64(); // host monotonic build time — the interp timeline
+          op.executing = !!u8(); // #50 — u-turn arc executing (blocks on-screen U-turn/Lateral)
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,

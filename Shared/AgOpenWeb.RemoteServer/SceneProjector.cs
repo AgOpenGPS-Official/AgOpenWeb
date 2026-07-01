@@ -308,7 +308,9 @@ public sealed class SceneProjector
             // broadcast-now before the first render-pull (same Stopwatch basis, monotonic).
             v.RenderPoseMs > 0
                 ? v.RenderPoseMs
-                : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+                : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+            // Mid-turn gate (issue #50): true while the u-turn arc is executing.
+            _state.YouTurn.IsExecuting);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
