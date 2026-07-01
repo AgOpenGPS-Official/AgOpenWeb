@@ -565,6 +565,7 @@ addEventListener('pointerup', e => {
   gestureOnMap = false;
 });
 addEventListener('pointermove', e => {
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve')) updateAbCursorLabel(e.clientX, e.clientY); // #40 A/B/… on crosshair
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
     const w = s2w(e.clientX, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
@@ -599,6 +600,8 @@ function endMapTap() {
   mapTap = null;
   document.body.classList.remove('maptap');
   document.getElementById('maptap-hint').classList.remove('show');
+  if (abLabelEl) abLabelEl.classList.remove('show'); // #40 hide the A/B crosshair letter
+  if (abDotLabelsEl) for (const s of abDotLabelsEl.children) s.style.display = 'none'; // + the dot letters
 }
 // True when the user is typing into a field — global hotkeys (tilt, sim drive) must not
 // fire then (e.g. typing "300" into the boundary offset shouldn't toggle 3D tilt on "3").
@@ -1015,6 +1018,45 @@ function abHint() {
   return '';
 }
 function setAbHint() { hintEl.textContent = abHint(); }
+// #40: while drawing a straight AB line, ride an "A"/"B" letter on the crosshair so it's
+// clear which point the next tap places, and render the placed points as native-style dots
+// (orange A / blue B, matching FormABDraw's DrawABTouchPoints colours).
+const AB_A_COLOR = '#FFBF59', AB_B_COLOR = '#8080FF';
+const abLabelEl = document.getElementById('maptap-ab');
+const abDotLabelsEl = document.getElementById('ab-dot-labels');
+// Sequential point label: A, B, C … then 27, 28 … for very long curves.
+function abLetter(i) { return i < 26 ? String.fromCharCode(65 + i) : String(i + 1); }
+function abLabelColor(i) { return i === 0 ? AB_A_COLOR : i === 1 ? AB_B_COLOR : '#FFFFFF'; }
+// A/B (straight) or A,B,C… (curve) letter riding the crosshair — the letter the NEXT tap places.
+function updateAbCursorLabel(x, y) {
+  if (!abLabelEl) return;
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve')) {
+    const i = drawPts.length;
+    abLabelEl.textContent = abLetter(i);
+    abLabelEl.style.color = abLabelColor(i);
+    if (x != null) { abLabelEl.style.left = x + 'px'; abLabelEl.style.top = y + 'px'; }
+    abLabelEl.classList.add('show');
+  } else {
+    abLabelEl.classList.remove('show');
+  }
+}
+// Persistent letter beside each dropped point (straight A/B, curve A,B,C…). Positioned per
+// frame from drawPts (world→screen); cleared when the draw ends. DOM (CanvasKit has no text).
+function renderAbDotLabels() {
+  if (!abDotLabelsEl) return;
+  const n = (drawMode && drawPts.length) ? drawPts.length : 0;
+  while (abDotLabelsEl.children.length < n) abDotLabelsEl.appendChild(document.createElement('span'));
+  for (let i = 0; i < abDotLabelsEl.children.length; i++) {
+    const span = abDotLabelsEl.children[i];
+    if (i >= n || pw(drawPts[i].e, drawPts[i].n) < 1.0) { span.style.display = 'none'; continue; }
+    const xy = w2s(drawPts[i].e, drawPts[i].n);
+    span.textContent = abLetter(i);
+    span.style.color = abLabelColor(i);
+    span.style.left = xy[0] + 'px';
+    span.style.top = xy[1] + 'px';
+    span.style.display = 'block';
+  }
+}
 // Configure the bottom toolbar buttons for the active flow.
 function showAbBar(setPoint, undo, finish) {
   drawBar.querySelector('#draw-setpoint').style.display = setPoint ? '' : 'none';
@@ -4317,6 +4359,21 @@ function drawSatBoundarySk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
+// #40: preview the AB/curve points being drawn as native-style dots — orange A (first),
+// blue B (last), white interior — so the placed A point is visible before B is set. The
+// host holds the real point list; drawPts is the client's tap echo (preview only).
+function drawAbDrawPreviewSk(canvas) {
+  if (!drawMode || !drawPts.length) return;
+  const rad = Math.max(5, 0.6 * pxPerM);
+  for (let i = 0; i < drawPts.length; i++) {
+    const p = drawPts[i];
+    if (pw(p.e, p.n) < 1.0) continue; // behind the near plane
+    const xy = w2s(p.e, p.n);
+    SKP.flagFill.setColor(ckColor(abLabelColor(i))); // A orange, B blue, rest white — matches labels
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
 // Tram lines (wheel tracks) generated from the tram systems. Drawn when the tram display is
 // on (bottom-nav tram mode > 0) or while the Field Builder Tram tab is open (so you see the
 // effect of edits). Orange polylines; the host owns the geometry.
@@ -4936,6 +4993,7 @@ function renderSkia(canvas, rp) {
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
+  drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
@@ -4971,6 +5029,7 @@ function skFrame() {
   renderSettings();
   renderRightNav();
   renderUTurnIndicator();
+  renderAbDotLabels(); // #40 — letters beside the dropped AB/curve points
   renderRoll();
   renderCampad();
   renderCharts();

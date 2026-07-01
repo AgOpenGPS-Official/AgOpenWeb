@@ -162,6 +162,16 @@
     #maptap-hint.show { display: block; }
     #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; }
     body.maptap #ck { cursor: crosshair; }
+    /* A/B letter that rides the crosshair while drawing a straight AB line (#40): shows
+       which point the next tap places. Colour matches the placed dots (A orange, B blue). */
+    #maptap-ab { position: fixed; z-index: 41; display: none; pointer-events: none;
+      font: 900 24px system-ui, sans-serif; transform: translate(15px, -30px);
+      text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
+    #maptap-ab.show { display: block; }
+    /* Persistent letter next to each dropped AB/curve point (#40). Positioned per-frame. */
+    #ab-dot-labels span { position: fixed; z-index: 41; display: none; pointer-events: none;
+      font: 900 20px system-ui, sans-serif; transform: translate(11px, -26px);
+      text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
     /* Draw-track toolbar (Phase MT) — top-centre, directly under the instruction pill
        (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
        the screen from it. */
@@ -1078,6 +1088,8 @@
   <div id="lb"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
+  <div id="maptap-ab">A</div>
+  <div id="ab-dot-labels"></div>
   <!-- Phase MT — draw-track toolbar. Shown while drawing an AB/curve on the map.
        Undo/Finish appear only in curve mode; Cancel always. -->
   <div id="draw-toolbar">
