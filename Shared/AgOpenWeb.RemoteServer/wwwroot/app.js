@@ -868,6 +868,10 @@ onScreenBtns.addEventListener('pointerdown', e => {
   const btn = e.target.closest('button[data-cmd]');
   if (!btn) return;
   e.stopPropagation(); // tap the glyph, don't pan the map
+  // #50: mid-turn snaps/u-turns are ignored by the pipeline (they'd shift the
+  // displayed track while the tractor stays committed to the executing arc, then
+  // seek across after). Block them here with a hint instead of silently no-op'ing.
+  if (tick && tick.op && tick.op.executing) { flashHint('Finish the U-turn first'); return; }
   transport.send(btn.dataset.cmd);
 });
 function applyOnScreenButtons() {

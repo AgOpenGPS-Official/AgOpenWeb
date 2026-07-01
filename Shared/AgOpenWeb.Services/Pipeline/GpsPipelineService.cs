@@ -406,7 +406,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var intents = _intents.Drain();
         if (intents.ClearYouTurn)
             YouTurnStateMachine.ClearState(_youTurn);
-        if (intents.GuidanceSnap.HasValue)
+        // #50. A snap mid-turn is IGNORED entirely: applying it would shift the
+        // displayed track (HowManyPathsAway) while the tractor is committed to the
+        // executing arc's already-computed target — so it lands on the OLD pass and
+        // then laterally seeks across to the just-snapped one (operator-confirmed as
+        // the confusing behavior). The arc can't be safely re-planned mid-swing, so
+        // we drop the snap outright; the client also hints "finish the turn first".
+        // The armed-but-not-executing case still re-plans cleanly below (#408).
+        if (intents.GuidanceSnap.HasValue && !_youTurn.IsExecuting)
         {
             // Phase D D4. IsHeadingSameWay is the cycle's view of whether the
             // tractor is aligned with the track direction. Snap "left" from
@@ -425,8 +432,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // armed arc and lands on the *old* NextTrack (the original
             // exit pass) instead of replanning for the just-snapped pass.
             // Mirrors the direction-override re-arm in YouTurnStateMachine.
-            // Mid-arc snaps are unsafe and stay no-op.
-            if (_youTurn.TurnPath != null && !_youTurn.IsExecuting)
+            if (_youTurn.TurnPath != null)
             {
                 _youTurn.TurnPath = null;
                 _youTurn.NextTrack = null;
