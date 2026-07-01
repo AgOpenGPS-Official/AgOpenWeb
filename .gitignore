@@ -92,3 +92,7 @@ pat.local
 # Deployment bundles — build artifacts produced by deploy/*/package.sh.
 deploy/linux/*.tar.gz
 deploy/windows/*.zip
+
+# Apple App Store Connect API keys — never commit
+*.p8
+AuthKey_*.p8

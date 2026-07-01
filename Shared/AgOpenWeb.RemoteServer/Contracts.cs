@@ -152,7 +152,12 @@ public record TickDto(
     // pose/tool on THIS timeline, not on frame-receipt time — so WiFi arrival jitter
     // (which warped the receipt-delta and made the heading/map wiggle) only shifts the
     // playback buffer, absorbed by RENDER_DELAY, instead of varying the interp rate.
-    double HostMs);
+    double HostMs,
+    // True while a u-turn arc is executing (mid-turn). The client blocks the on-screen
+    // U-turn/Lateral buttons with a hint during this window — snapping/turning mid-arc is
+    // ignored by the pipeline (would move the displayed track while the tractor stays
+    // committed to the current arc). Mirrors YouTurnState.IsExecuting (issue #50).
+    bool IsYouTurnExecuting);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
@@ -243,7 +248,12 @@ public record StatusDto(
     // "coverage painted with no open job" prompt (DialogType.UnsavedCoverage). The web client
     // renders its own Save/Discard/Cancel prompt off this flag — without it the host opens a
     // dialog nothing renders and the close hangs. Message text is static (client owns it).
-    bool UnsavedCoveragePrompt);
+    bool UnsavedCoveragePrompt,
+    // Dev diagnostics row (marker-gated by .show_dev_overlay): DevOverlay reveals the status
+    // bar's taller diagnostics line; GpsToPgnLatencyMs is the host control-loop latency
+    // (GPS receive → PGN send, ms) shown there beside the client FPS + transport age.
+    bool DevOverlay,
+    double GpsToPgnLatencyMs);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
@@ -294,7 +304,10 @@ public record DisplayConfigDto(
     bool KeyboardEnabled, bool StartFullscreen, bool ElevationLogEnabled,
     // Numeric quality multiplier (1.0 Ultra … 6.0 Min). The web scales its imagery LOD by
     // this so the quality button degrades the background like native's Apple composite path.
-    double DisplayResolutionMultiplier);
+    double DisplayResolutionMultiplier,
+    // Day/Night theme (PersistentAppState.IsDayMode). The web client switches its full
+    // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
+    bool IsDayMode);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>

@@ -124,7 +124,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChartDataService, ChartDataService>();
 
         // Audio service (cross-platform sound effects)
-        services.AddSingleton<IAudioService, AgOpenWeb.Desktop.Services.AudioService>();
+        services.AddSingleton<IAudioService, AgOpenWeb.Services.Audio.WebClientAudioService>();
 
         // Battery service — per-platform reader (Windows P/Invoke, macOS pmset,
         // Linux /sys/class/power_supply). Reports Unavailable on machines with

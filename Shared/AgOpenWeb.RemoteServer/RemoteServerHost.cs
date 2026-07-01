@@ -31,6 +31,14 @@ public sealed class RemoteServerHost
     /// <summary>Number of connected browser clients — drives the launcher's live status.</summary>
     public int ClientCount => _ws?.ClientCount ?? 0;
 
+    /// <summary>
+    /// Broadcast a one-shot alert sound to every connected client. The host never
+    /// plays audio itself (it may be a headless box with no speaker); the operator's
+    /// device plays the .wav. No-op before the server has started or with no clients.
+    /// </summary>
+    public void PlaySound(AgOpenWeb.Services.Interfaces.SoundEffect effect)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeSound((byte)effect));
+
     // Satellite tile fetch (Phase MT — Draw boundary on map). Keyless Bing aerial
     // tiles via the Virtual Earth quadkey endpoint (same source as native's
     // BoundaryMapDialog). Proxied through the host so the browser draws them into the
@@ -80,6 +88,16 @@ public sealed class RemoteServerHost
         set { _boundaryProvider = value; if (_broadcaster is not null) _broadcaster.BoundaryProvider = value; }
     }
     private Func<BoundaryDto?>? _boundaryProvider;
+
+    /// <summary>Host-supplied persisted web-camera view (pitch radians, zoom px/m).
+    /// Read once per connection and sent in the seed so the client restores its last
+    /// tilt+zoom (issue #35). Set after <see cref="StartAsync"/>.</summary>
+    public Func<(double Pitch, double Zoom)?>? ViewPrefsProvider
+    {
+        get => _broadcaster?.ViewPrefsProvider;
+        set { _viewPrefsProvider = value; if (_broadcaster is not null) _broadcaster.ViewPrefsProvider = value; }
+    }
+    private Func<(double Pitch, double Zoom)?>? _viewPrefsProvider;
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list
     /// (VM-owned, rides the Scene frame). Set after <see cref="StartAsync"/>.</summary>
@@ -159,6 +177,7 @@ public sealed class RemoteServerHost
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
+        _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
@@ -201,6 +220,17 @@ public sealed class RemoteServerHost
                 return SimpleWebServer.Response.NotFound;
             var mime = file.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ? "image/gif" : "image/png";
             try { return SimpleWebServer.Response.Bytes(ReadAssetBytes("icons." + file), mime); }
+            catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
+        });
+
+        // Alert sounds (.wav), embedded from wwwroot/sounds. The client preloads and
+        // plays these on a SOUND message — host-side audio was removed (a headless
+        // box has no speaker). Filename-only (no path traversal); unknown names 404.
+        server.MapGetPrefix("/sounds/", file =>
+        {
+            if (file.Contains('/') || file.Contains('\\') || file.Contains(".."))
+                return SimpleWebServer.Response.NotFound;
+            try { return SimpleWebServer.Response.Bytes(ReadAssetBytes("sounds." + file), "audio/wav"); }
             catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
         });
 

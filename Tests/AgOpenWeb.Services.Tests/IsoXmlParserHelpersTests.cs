@@ -1,3 +1,4 @@
+using System;
 using System.Xml;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
@@ -66,5 +67,27 @@ public class IsoXmlParserHelpersTests
         Assert.That(boundaries, Has.Count.EqualTo(2));
         Assert.That(boundaries[1].FenceLine, Has.Count.EqualTo(3),
             "Inner boundary should reflect the A='1' shape (3 points), not A='2' (4 points)");
+    }
+
+    [Test]
+    public void ParseBoundaries_KeepsEastingAndNorthingOnTheRightAxes()
+    {
+        // Regression guard: the parser used to transpose Easting/Northing, so an
+        // imported field came out mirrored across the 45° line. With the origin at
+        // (0,0): point 1 is due EAST (lon +0.001, lat 0) and point 2 adds NORTH.
+        var xml = "<PLN A='1'><LSG A='1'>"
+                + "<PNT C='0.0' D='0.0'/>"      // origin
+                + "<PNT C='0.0' D='0.001'/>"    // due east
+                + "<PNT C='0.001' D='0.001'/>"  // east + north
+                + "</LSG></PLN>";
+
+        var fence = IsoXmlParserHelpers.ParseBoundaries(MakeFieldParts(xml), MakePlane())[0].FenceLine;
+
+        // Due-east point: large Easting, ~zero Northing (would be swapped if transposed).
+        Assert.That(fence[1].Easting, Is.GreaterThan(50), "due-east point should have a large Easting");
+        Assert.That(Math.Abs(fence[1].Northing), Is.LessThan(5), "due-east point should have ~zero Northing");
+
+        // Adding latitude must move Northing, not Easting.
+        Assert.That(fence[2].Northing, Is.GreaterThan(50), "adding north should increase Northing");
     }
 }

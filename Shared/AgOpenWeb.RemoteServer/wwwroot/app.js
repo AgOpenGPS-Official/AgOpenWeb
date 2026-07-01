@@ -59,6 +59,8 @@ let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
 let configDirty = false; // a new config frame arrived → settings panels re-read it
+let mapIsDay = false;  // day/night theme (mirrors config.display.isDayMode) — drives the
+                       // CSS palette ([data-theme]) and the Skia map clear/grid colours
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
 let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable fields
@@ -79,6 +81,8 @@ let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
+let _diagT0 = 0;       // throttle (~4 Hz) for the marker-gated diag line's DOM writes
+let linkRttMs = null;  // EMA of server↔client round-trip (ms), from diag.ping/PONG
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
 // Hello frame), the latest broadcast control state, and whether we hold control.
 let myClientId = null;
@@ -89,14 +93,21 @@ let iHoldControl = false;
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
+let coverageEdges = null;   // crisp worked-area perimeter polylines (server-fed, field-local m)
+let covEdgeRgb = 0x98fb98;  // last coverage colour seen → the perimeter stroke matches the fill
+const EDGE_OFF = new URLSearchParams(location.search).has('noedge'); // ?noedge → A/B the edge off
 
-// ---- ground texture: the tiled field backdrop (night variant — the web grid renders
-//      night-mode). Drawn as a repeating shader in world space, gated on
-//      Display.FieldTextureVisible. Loaded once; decoded to an SkImage on first use. ----
-const groundImg = new Image();
-let groundReady = false, skGround = null;
-groundImg.onload = () => { groundReady = true; };
-groundImg.src = '/icons/GroundTextureDark.png';
+// ---- ground texture: the tiled field backdrop. Two variants — a dark (night) and a
+//      light (day) version of the same texture — picked by mapIsDay so the field reads
+//      against the matching theme. Drawn as a repeating shader in world space, gated on
+//      Display.FieldTextureVisible. Each decoded to an SkImage on first use. ----
+const groundImgNight = new Image(), groundImgDay = new Image();
+let groundReadyNight = false, groundReadyDay = false;
+let skGroundNight = null, skGroundDay = null;
+groundImgNight.onload = () => { groundReadyNight = true; };
+groundImgDay.onload = () => { groundReadyDay = true; };
+groundImgNight.src = '/icons/GroundTextureDark.png';
+groundImgDay.src = '/icons/GroundTextureLight.png';
 
 // ---- tractor sprite (TractorAoG.png) — drawn world-sized on the ground, replacing the
 //      fallback triangle. Sized from the vehicle track-width/wheelbase like native. ----
@@ -148,6 +159,24 @@ let perspMInv = null;   // cached 4×4 inverse of perspM (CSS px→world ray); n
 const DEFAULT_PITCH = Math.PI / 3;        // 60° — the one-key tilt
 const MAX_PITCH = 65 * Math.PI / 180;     // v1 cap: keeps the local field in front
 const PITCH_STEP = 5 * Math.PI / 180;
+// Persist the 3D tilt + zoom across reloads (issue #35: tilting to 3D was lost on
+// restart). The camera is client-owned live, but its last tilt+zoom are stored
+// HOST-side (appstate.json, via the view.save command) and replayed to every client
+// in the connection seed (onViewPrefs). This restores identically on any client —
+// browser or WebView — independent of browser localStorage behaviour.
+let _savedPitch = pitch, _savedZoom = pxPerM, _viewSaveT = 0;
+function applyViewPrefs(p, z) {
+  if (typeof p === 'number' && isFinite(p)) pitch = Math.max(0, Math.min(MAX_PITCH, p));
+  if (typeof z === 'number' && isFinite(z)) pxPerM = Math.min(200, Math.max(0.2, z));
+  _savedPitch = pitch; _savedZoom = pxPerM; // hydrated value == saved, so no echo-back save
+}
+function maybeSaveView() {
+  if (pitch === _savedPitch && pxPerM === _savedZoom) return;
+  const now = performance.now();
+  if (now - _viewSaveT < 800) return;        // debounce: at most ~1.25 writes/s while adjusting
+  _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM;
+  transport.send('view.save|' + pitch + '|' + pxPerM); // host writes it to appstate.json
+}
 const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 
 // ---- transport wiring (the only coupling point) ----
@@ -235,6 +264,10 @@ const transport = RemoteTransport.create({
     if (surface) {
       surface.getCanvas().clear(CK.TRANSPARENT);
       covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
+      // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1),
+      // and a cell is re-emitted with rising alpha as it fills — replace sets the exact value
+      // each time; SrcOver would blend re-draws and creep edges toward opaque.
+      covPaint.setBlendMode(CK.BlendMode.Src);
     } else {
       canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
     }
@@ -256,8 +289,9 @@ const transport = RemoteTransport.create({
     // playback exactly (same socket/latency), so the front now tracks the tool at any speed.
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
+  onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
   onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
-  onConfig(c) { config = c; configDirty = true; },
+  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
@@ -273,8 +307,75 @@ const transport = RemoteTransport.create({
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
+  onSound(id) { Sounds.play(id); },
+  // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
+  // RTT = now − token measures the pure server↔client link (one client clock, no skew).
+  onPong(token) {
+    const rtt = performance.now() - parseFloat(token);
+    if (rtt >= 0 && rtt < 60000) linkRttMs = (linkRttMs === null) ? rtt : linkRttMs + 0.3 * (rtt - linkRttMs);
+  },
   onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
+  // Persisted web-camera view (issue #35): restore last tilt+zoom from the host seed.
+  onViewPrefs(pitch, zoom) { applyViewPrefs(pitch, zoom); },
 });
+
+// ---- Alert sounds ----------------------------------------------------------
+// The host (which may be a headless box with no speaker) decides WHAT is audible
+// — it already applied each sound's config toggle — and pushes a SoundEffect id.
+// We just play the matching .wav here, on the operator's device. Effect ids match
+// the C# SoundEffect enum order. Browsers block audio until the page has had a user
+// gesture, so we prime the elements on the first pointer/key event; until then an
+// alert that fires before any interaction is silently dropped (unavoidable on web).
+const Sounds = (() => {
+  // index === (int)SoundEffect; Alarm10 covers BoundaryAlarm + UTurnTooClose.
+  const FILES = [
+    'Alarm10',    // 0 BoundaryAlarm
+    'Alarm10',    // 1 UTurnTooClose
+    'SteerOn',    // 2 AutoSteerOn
+    'SteerOff',   // 3 AutoSteerOff
+    'HydUp',      // 4 HydraulicLiftUp
+    'HydDown',    // 5 HydraulicLiftDown
+    'rtk_lost',   // 6 RtkLost
+    'rtk_back',   // 7 RtkRecovered
+    'SectionOn',  // 8 SectionOn
+    'SectionOff', // 9 SectionOff
+    'Headland',   // 10 Headland
+  ];
+  const cache = new Map();   // name -> HTMLAudioElement (preloaded)
+  let unlocked = false;
+
+  function el(name) {
+    let a = cache.get(name);
+    if (!a) { a = new Audio('/sounds/' + name + '.wav'); a.preload = 'auto'; cache.set(name, a); }
+    return a;
+  }
+  // Preload every distinct file so the first real alert isn't delayed by a fetch.
+  for (const n of new Set(FILES)) el(n);
+
+  function unlock() {
+    if (unlocked) return;
+    unlocked = true;
+    // Nudge each element into a "played once" state so later programmatic play()
+    // (not tied to a gesture) is allowed by the autoplay policy.
+    for (const a of cache.values()) {
+      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+    }
+    window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('keydown', unlock);
+  }
+  window.addEventListener('pointerdown', unlock, { passive: true });
+  window.addEventListener('keydown', unlock);
+
+  return {
+    play(id) {
+      const name = FILES[id];
+      if (!name) return;
+      // Clone the preloaded element so rapid repeats (e.g. section on/off bursts)
+      // overlap instead of cutting each other off; the clone shares the cached file.
+      try { el(name).cloneNode().play().catch(() => {}); } catch { /* not ready */ }
+    },
+  };
+})();
 
 // Mobile auto-quality. Phones/tablets get GPU-overloaded at Ultra resolution (large
 // coverage + imagery textures), so on connect a mobile client asks the host to CAP the
@@ -299,16 +400,21 @@ transport.start();
 function recreateSkSurface() {
   if (!CK) return;
   if (skSurface) { skSurface.delete(); skSurface = null; }
-  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent
-  // fills (section footprint, lightbar) in encoded sRGB space — matching the 2D
-  // canvas. The default MakeWebGLCanvasSurface attaches an sRGB color space and
-  // blends in LINEAR space, which lightens/washes out transparent colors. Build
-  // via the explicit GL path; fall back to the color-managed helper if needed.
-  const ctxHandle = CK.GetWebGLContext(ckcv);
-  if (ctxHandle) {
-    grCtx = CK.MakeWebGLContext(ctxHandle);
-    if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
+  // Reuse the GrDirectContext across resizes. Resizing the canvas does NOT lose its WebGL
+  // context, and rebuilding grCtx would orphan every GPU-resident SkImage created on the old
+  // context — the coverage render target (MakeRenderTarget(grCtx, …)) plus the ground/tractor/
+  // imagery sprites — so those layers vanish after a resize (coverage being the obvious one).
+  // Only the on-screen surface (render target sized to the canvas) needs rebuilding.
+  // Non-color-managed surface (null colorSpace) so Skia blends semi-transparent fills
+  // (section footprint, lightbar) in encoded sRGB space — matching the 2D canvas. The default
+  // MakeWebGLCanvasSurface attaches an sRGB color space and blends in LINEAR space, which
+  // lightens/washes out transparent colors. Build via the explicit GL path; fall back to the
+  // color-managed helper if needed.
+  if (!grCtx) {
+    const ctxHandle = CK.GetWebGLContext(ckcv);
+    if (ctxHandle) grCtx = CK.MakeWebGLContext(ctxHandle);
   }
+  if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
 }
 // Hex (#rrggbb) or rgb(a)(...) → CanvasKit color (CK.Color: r,g,b 0-255, a 0-1).
@@ -316,6 +422,22 @@ function ckColor(s) {
   if (s[0] === '#') return CK.Color(parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16), 1);
   const m = s.match(/\(([^)]+)\)/)[1].split(',').map(Number);
   return CK.Color(m[0], m[1], m[2], m.length > 3 ? m[3] : 1);
+}
+// Day/Night theme. CSS chrome flips via [data-theme]; the Skia map (clear + grid) is
+// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field.
+const MAP_CLEAR = { night: '#0f1115', day: '#d7dee7' };
+const GRID_MINOR = { night: 'rgba(180,180,180,0.314)', day: 'rgba(80,92,110,0.33)' };
+const GRID_MAJOR = { night: 'rgba(200,200,200,0.47)', day: 'rgba(60,72,90,0.5)' };
+function applyMapTheme() {
+  if (!CK || !SKP) return; // paints not built yet — buildSkPaints() re-applies on init
+  const k = mapIsDay ? 'day' : 'night';
+  SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
+  SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
+}
+function applyTheme(isDay) {
+  mapIsDay = !!isDay;
+  document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
+  applyMapTheme();
 }
 function buildSkPaints() {
   const mk = (color, w, dash) => {
@@ -373,6 +495,7 @@ function buildSkPaints() {
   SKP.lbFill.setAntiAlias(false);
   // Vehicle triangle in marker-local px (drawn under canvas translate+rotate).
   skTri = CK.Path.MakeFromSVGString('M 0 -14 L 9 11 L -9 11 Z');
+  applyMapTheme(); // sync grid colours if the theme arrived before paints were built
 }
 if (typeof CanvasKitInit === 'function') {
   CanvasKitInit({ locateFile: f => '/vendor/' + f }).then(ck => {
@@ -404,6 +527,17 @@ for (const t of ['gesturestart', 'gesturechange', 'gestureend'])
 // 2+-finger move is a pinch — swallow it so the page can't zoom/pan. Single-finger
 // touches pass through to the map pan / panel scroll untouched.
 addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+// iOS double-tap-to-zoom is NOT a gesture* event and slips past per-element touch-action when
+// rapid taps land between/across nav buttons → it magnifies the whole page (chrome off-screen)
+// and thrashes layout (render stutter / audio glitch / LINK spike are that main-thread jank).
+// Swallow the 2nd tap's default within 300 ms; the UI runs on pointerdown, so button presses
+// still register.
+let _lastTapEnd = 0;
+addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - _lastTapEnd <= 300) e.preventDefault();
+  _lastTapEnd = now;
+}, { passive: false });
 
 // Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one
 // that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
@@ -431,6 +565,7 @@ addEventListener('pointerup', e => {
   gestureOnMap = false;
 });
 addEventListener('pointermove', e => {
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve')) updateAbCursorLabel(e.clientX, e.clientY); // #40 A/B/… on crosshair
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
     const w = s2w(e.clientX, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
@@ -465,6 +600,8 @@ function endMapTap() {
   mapTap = null;
   document.body.classList.remove('maptap');
   document.getElementById('maptap-hint').classList.remove('show');
+  if (abLabelEl) abLabelEl.classList.remove('show'); // #40 hide the A/B crosshair letter
+  if (abDotLabelsEl) for (const s of abDotLabelsEl.children) s.style.display = 'none'; // + the dot letters
 }
 // True when the user is typing into a field — global hotkeys (tilt, sim drive) must not
 // fire then (e.g. typing "300" into the boundary offset shouldn't toggle 3D tilt on "3").
@@ -725,6 +862,31 @@ bottomNav.addEventListener('pointerdown', e => {
   if (btn.hasAttribute('data-t2') && !iHoldControl) return; // gated; host re-checks
   transport.send(btn.dataset.cmd);
 });
+// ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
+// Bare glyph buttons mirroring native AgOpenGPS; shown per the Screen & Alerts
+// "On-Screen Buttons" toggles. U-turn → manual you-turn L/R, lateral → snap the track
+// one pass (1 tool width) L/R.
+const onScreenBtns = document.getElementById('onscreenbtns');
+onScreenBtns.addEventListener('pointerdown', e => {
+  const btn = e.target.closest('button[data-cmd]');
+  if (!btn) return;
+  e.stopPropagation(); // tap the glyph, don't pan the map
+  // #50: mid-turn snaps/u-turns are ignored by the pipeline (they'd shift the
+  // displayed track while the tractor stays committed to the executing arc, then
+  // seek across after). Block them here with a hint instead of silently no-op'ing.
+  if (tick && tick.op && tick.op.executing) { flashHint('Finish the U-turn first'); return; }
+  transport.send(btn.dataset.cmd);
+});
+function applyOnScreenButtons() {
+  const d = config && config.display;
+  const hasField = !!(scene && scene.hasField); // native gate: IsFieldOpen
+  // U-turn (manual you-turn) and Lateral (snap track) only act while AutoSteer is engaged,
+  // so hide them otherwise (issue #36). Runs every frame via renderBottomNav, so it tracks
+  // engage/disengage live.
+  const asActive = !!(tick && tick.op && tick.op.autoSteer);
+  document.getElementById('osb-uturn').hidden = !(hasField && asActive && d && d.uTurnButtonVisible);
+  document.getElementById('osb-lateral').hidden = !(hasField && asActive && d && d.lateralButtonVisible);
+}
 function bnToggleFly(fly, btn) {
   const open = !fly.classList.contains('open');
   bnFlags.classList.remove('open'); bnAb.classList.remove('open');
@@ -856,6 +1018,45 @@ function abHint() {
   return '';
 }
 function setAbHint() { hintEl.textContent = abHint(); }
+// #40: while drawing a straight AB line, ride an "A"/"B" letter on the crosshair so it's
+// clear which point the next tap places, and render the placed points as native-style dots
+// (orange A / blue B, matching FormABDraw's DrawABTouchPoints colours).
+const AB_A_COLOR = '#FFBF59', AB_B_COLOR = '#8080FF';
+const abLabelEl = document.getElementById('maptap-ab');
+const abDotLabelsEl = document.getElementById('ab-dot-labels');
+// Sequential point label: A, B, C … then 27, 28 … for very long curves.
+function abLetter(i) { return i < 26 ? String.fromCharCode(65 + i) : String(i + 1); }
+function abLabelColor(i) { return i === 0 ? AB_A_COLOR : i === 1 ? AB_B_COLOR : '#FFFFFF'; }
+// A/B (straight) or A,B,C… (curve) letter riding the crosshair — the letter the NEXT tap places.
+function updateAbCursorLabel(x, y) {
+  if (!abLabelEl) return;
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve')) {
+    const i = drawPts.length;
+    abLabelEl.textContent = abLetter(i);
+    abLabelEl.style.color = abLabelColor(i);
+    if (x != null) { abLabelEl.style.left = x + 'px'; abLabelEl.style.top = y + 'px'; }
+    abLabelEl.classList.add('show');
+  } else {
+    abLabelEl.classList.remove('show');
+  }
+}
+// Persistent letter beside each dropped point (straight A/B, curve A,B,C…). Positioned per
+// frame from drawPts (world→screen); cleared when the draw ends. DOM (CanvasKit has no text).
+function renderAbDotLabels() {
+  if (!abDotLabelsEl) return;
+  const n = (drawMode && drawPts.length) ? drawPts.length : 0;
+  while (abDotLabelsEl.children.length < n) abDotLabelsEl.appendChild(document.createElement('span'));
+  for (let i = 0; i < abDotLabelsEl.children.length; i++) {
+    const span = abDotLabelsEl.children[i];
+    if (i >= n || pw(drawPts[i].e, drawPts[i].n) < 1.0) { span.style.display = 'none'; continue; }
+    const xy = w2s(drawPts[i].e, drawPts[i].n);
+    span.textContent = abLetter(i);
+    span.style.color = abLabelColor(i);
+    span.style.left = xy[0] + 'px';
+    span.style.top = xy[1] + 'px';
+    span.style.display = 'block';
+  }
+}
 // Configure the bottom toolbar buttons for the active flow.
 function showAbBar(setPoint, undo, finish) {
   drawBar.querySelector('#draw-setpoint').style.display = setPoint ? '' : 'none';
@@ -1789,7 +1990,7 @@ function populateToolCfg(force) {
   const wsi = document.getElementById('tc-img-worksw');
   wsi.src = '/icons/' + (t.isWorkSwitchActiveLow ? 'SwitchActiveClosed' : 'SwitchActiveOpen') + '.png';
   // Dynamic lists — rebuild on count change, fill values (skip the focused control).
-  const nSec = Math.max(1, Math.min(16, t.numSections));
+  const nSec = Math.max(1, Math.min(64, t.numSections)); // ToolConfig.MaxSections — backend supports 64
   if (_tcBuilt.sw !== nSec) {
     const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
     for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); });
@@ -1803,10 +2004,10 @@ function populateToolCfg(force) {
     _tcBuilt.ze = nZone;
   }
   for (const inp of document.querySelectorAll('#tc-zoneends input')) if (force || document.activeElement !== inp) inp.value = t.zoneRanges[+inp.dataset.idx];
-  if (!_tcBuilt.sc) {
+  if (_tcBuilt.sc !== nSec) { // rebuild on count change; one swatch per section (was capped at 16)
     const g = document.getElementById('tc-sectioncolors'); g.innerHTML = '';
-    for (let i = 0; i < 16; i++) tcDynInput(g, i, 'S' + (i + 1), 'color', inp => cfgSend('tool.sectionColor', i + ',' + inp.value.slice(1)));
-    _tcBuilt.sc = true;
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'color', inp => cfgSend('tool.sectionColor', i + ',' + inp.value.slice(1)));
+    _tcBuilt.sc = nSec;
   }
   for (const inp of document.querySelectorAll('#tc-sectioncolors input')) if (document.activeElement !== inp) inp.value = hex6(t.sectionColors[+inp.dataset.idx]);
   if (document.activeElement !== tcSingleColor) tcSingleColor.value = hex6(t.singleCoverageColor);
@@ -2856,9 +3057,6 @@ if (rnRoot) {
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
   wireRn('rn-youturn', 'youturn.toggle');
-  wireRn('rn-dir', 'youturn.direction');
-  wireRn('rn-uturn-l', 'youturn.manualLeft');
-  wireRn('rn-uturn-r', 'youturn.manualRight');
   wireRn('rn-steer', 'autosteer.toggle');
 }
 
@@ -3227,6 +3425,10 @@ const SB = {
   gcHdop: document.getElementById('gc-hdop'), gcFix: document.getElementById('gc-fix'),
   gcAge: document.getElementById('gc-age'), gcHdg: document.getElementById('gc-hdg'),
   gcRoll: document.getElementById('gc-roll'), gcFps: document.getElementById('gc-fps'),
+  // Dev diagnostics line (marker-gated by .show_dev_overlay).
+  diagRow: document.getElementById('sb-diag'),
+  sbdFps: document.getElementById('sbd-fps'), sbdLink: document.getElementById('sbd-link'),
+  sbdCtrl: document.getElementById('sbd-ctrl'),
 };
 // GPS fix-quality → dot colour (matches the native FixQualityToColor intent).
 function fixColor(q) {
@@ -3317,7 +3519,14 @@ if (fsBtn) {
     if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
   });
   fsBtn.addEventListener('pointerdown', e => e.stopPropagation()); // don't also pan the map
-  const sync = () => { fsBtn.textContent = fsEl() ? '🗗' : '⛶'; };
+  const sync = () => {
+    const fs = !!fsEl();
+    fsBtn.textContent = fs ? '🗗' : '⛶';
+    // In fullscreen the OS draws an exit "✕" pill at the top-left (e.g. iPad Safari's
+    // Fullscreen-API control) that sits over the RTK fix + rotating info fields. We can't
+    // hide OS chrome, so nudge that left stack clear of it — only while fullscreen.
+    document.body.classList.toggle('fs-on', fs);
+  };
   document.addEventListener('fullscreenchange', sync);
   document.addEventListener('webkitfullscreenchange', sync);
 }
@@ -3348,7 +3557,7 @@ addEventListener('pointerdown', () => {
 
 function renderStatusBar() {
   const s = statusBar;
-  if (!s) { SB.bar.style.display = 'none'; return; }
+  if (!s) { SB.bar.style.display = 'none'; if (SB.diagRow) SB.diagRow.style.display = 'none'; return; }
   SB.bar.style.display = 'flex';
   SB.fixDot.style.background = fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
@@ -3381,6 +3590,24 @@ function renderStatusBar() {
     SB.gcHdg.textContent = hdgDeg != null ? (((hdgDeg % 360) + 360) % 360).toFixed(1) + '°' : '—';
     SB.gcRoll.textContent = (tick && typeof tick.roll === 'number') ? tick.roll.toFixed(1) + '°' : '—';
     SB.gcFps.textContent = fps.toFixed(0);
+  }
+  // Dev diagnostics line (marker-gated). DOM text only — no canvas overlay — so reading FPS
+  // doesn't perturb the frame loop (an overlay/dialog did, hence the status-line approach).
+  // Throttled to ~4 Hz; that tick also fires the link probe. FPS = client render rate; LINK =
+  // server↔client round-trip (ms, from diag.ping/PONG); CTRL = backend→AiO control-loop
+  // latency (GPS receive → PGN send, ms).
+  if (s.devOverlay) {
+    if (SB.diagRow.style.display !== 'flex') SB.diagRow.style.display = 'flex';
+    const nowMs = performance.now();
+    if (nowMs - _diagT0 >= 250) {
+      _diagT0 = nowMs;
+      transport.send('diag.ping|' + nowMs); // link probe; the PONG reply updates linkRttMs
+      SB.sbdFps.textContent = fps.toFixed(0);
+      SB.sbdLink.textContent = linkRttMs != null ? linkRttMs.toFixed(1) + ' ms' : '—';
+      SB.sbdCtrl.textContent = (s.gpsToPgnLatencyMs || 0).toFixed(1) + ' ms';
+    }
+  } else if (SB.diagRow.style.display !== 'none') {
+    SB.diagRow.style.display = 'none';
   }
 }
 // Heading in AgOpen 000.0° form (constant width). Input degrees, any sign.
@@ -3445,6 +3672,7 @@ function renderSectionBar() {
 function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }
 const TRAM_ICONS = ['TramOff.png', 'TramAll.png', 'TramLines.png', 'TramOuter.png'];
 function renderBottomNav() {
+  applyOnScreenButtons(); // U-Turn / Lateral glyphs follow field-open + display toggles
   const visible = !!(scene && scene.hasField); // native gate: IsFieldOpen
   bottomNav.classList.toggle('open', visible);
   if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); return; }
@@ -3470,8 +3698,6 @@ const RN = {
   root: document.getElementById('rightnav'),
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
-  dir: document.getElementById('rn-dir'), dirArrow: document.getElementById('rn-dir-arrow'),
-  dirDist: document.getElementById('rn-dir-dist'), manualTurn: document.getElementById('rn-manualturn'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
 // Swap an icon only when it actually changes (no per-frame churn).
@@ -3489,16 +3715,38 @@ function renderRightNav() {
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
-  // U-turn direction + distance-to-trigger — shown only when auto U-turn is on.
-  RN.dir.style.display = op.youturn ? '' : 'none';
-  RN.dirArrow.textContent = op.turnLeft ? '↰' : '↱';
-  RN.dirDist.textContent = op.distToTrigger > 0 ? op.distToTrigger.toFixed(0) + ' m' : '';
-  // Manual U-turn buttons — visible while steering on a non-closed track (native rule).
-  RN.manualTurn.style.display = (op.autoSteer && !op.trackClosed) ? 'flex' : 'none';
+  // U-turn direction + distance-to-trigger now render on-screen (see renderUTurnIndicator).
   // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
 }
 
+// Auto-U-turn approach indicator (upper-right): green direction arrow + distance to
+// trigger + turn-type glyph. Mirrors native's on-map readout; shown while auto U-turn is
+// armed with a pending turn. Turn type comes from config (Omega / Sagitta); distance honours
+// the metric/imperial unit like the headland HUD.
+const UTI = {
+  root: document.getElementById('uturn-indicator'),
+  arrow: document.getElementById('uti-arrow'),
+  dist: document.getElementById('uti-distval'),
+  typePath: document.getElementById('uti-typepath'),
+};
+const UTURN_GLYPH = {
+  0: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta (default) — flatter rounded arch
+  1: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // K-turn — squared/tighter inverted-U
+};
+function renderUTurnIndicator() {
+  if (!UTI.root) return;
+  const op = tick && tick.op;
+  const show = !!(scene && scene.hasField && op && op.youturn && op.distToTrigger > 0);
+  UTI.root.hidden = !show;
+  if (!show) return;
+  const metric = !statusBar || statusBar.isMetric;
+  UTI.dist.textContent = metric ? op.distToTrigger.toFixed(0) + ' m'
+                                : (op.distToTrigger * 3.28084).toFixed(0) + ' ft';
+  UTI.arrow.classList.toggle('left', !!op.turnLeft);
+  const style = (config && config.uturn && config.uturn.style) || 0;
+  UTI.typePath.setAttribute('d', UTURN_GLYPH[style] || UTURN_GLYPH[0]);
+}
 // ---- Lower-right cluster (Phase 4): roll gauge + camera/mode pad + clock ----
 const rollBar = document.getElementById('roll-bar');
 const rollDeg = document.getElementById('roll-deg');
@@ -3929,11 +4177,58 @@ function strokePtsSk(canvas, pts, close, paint) {
   if (!pts || pts.length < 2) return;
   strokePtsSk3D(canvas, pts, close, paint);
 }
+// Extend a 2-point AB line far past both ends so the reference line spans the field instead of
+// being a short stub (issue #37). Curves (>2 points) pass through unchanged. The viewport clip
+// in strokePtsSk3D bounds the draw cost of the now-long line. AB_EXTEND covers any field.
+const AB_EXTEND = 3000; // metres added beyond each endpoint
+function extendAbLine(pts) {
+  if (!pts || pts.length !== 2) return pts;
+  const a = pts[0], b = pts[1];
+  let dx = b.e - a.e, dy = b.n - a.n;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return pts;
+  dx /= len; dy /= len;
+  return [
+    { e: a.e - dx * AB_EXTEND, n: a.n - dy * AB_EXTEND },
+    { e: b.e + dx * AB_EXTEND, n: b.n + dy * AB_EXTEND },
+  ];
+}
 // Perspective path for strokePtsSk: a vertex behind the tilted camera (w < EPS)
 // projects through w2s with a negative w → a mirrored ghost segment (the same bug
 // clipNear() fixes for single grid segments). So walk the polyline in WORLD space,
 // split it at every near-plane crossing, and stroke each continuous front-facing run
 // in screen space — only ever feeding w2s points that are in front of the camera.
+// Clip a screen-space polyline to the viewport (+margin) into connected sub-polylines. Under
+// tilt a line recedes to the horizon vanishing point, so its PROJECTED length — and a dashed
+// stroke's dash count — is effectively unbounded, which collapsed FPS. Clipping bounds the work
+// to on-screen length. Cohen–Sutherland per segment, re-joining contiguous pieces. [x,y] arrays.
+function clipScreenPolyline(pts, margin) {
+  const x0 = -margin, y0 = -margin, x1 = vw + margin, y1 = vh + margin;
+  const code = (x, y) => (x < x0 ? 1 : x > x1 ? 2 : 0) | (y < y0 ? 4 : y > y1 ? 8 : 0);
+  const out = [];
+  let cur = null;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    let ax = pts[i][0], ay = pts[i][1], bx = pts[i + 1][0], by = pts[i + 1][1];
+    let ca = code(ax, ay), cb = code(bx, by), accept = false;
+    for (let g = 0; g < 8; g++) {
+      if (!(ca | cb)) { accept = true; break; }   // both inside
+      if (ca & cb) break;                          // both outside the same edge → reject
+      const c = ca || cb; let nx, ny;
+      if (c & 8) { nx = ax + (bx - ax) * (y1 - ay) / (by - ay); ny = y1; }
+      else if (c & 4) { nx = ax + (bx - ax) * (y0 - ay) / (by - ay); ny = y0; }
+      else if (c & 2) { ny = ay + (by - ay) * (x1 - ax) / (bx - ax); nx = x1; }
+      else { ny = ay + (by - ay) * (x0 - ax) / (bx - ax); nx = x0; }
+      if (c === ca) { ax = nx; ay = ny; ca = code(ax, ay); }
+      else { bx = nx; by = ny; cb = code(bx, by); }
+    }
+    if (!accept) { if (cur) { out.push(cur); cur = null; } continue; }
+    if (cur && Math.abs(cur[cur.length - 1][0] - ax) < 0.5 && Math.abs(cur[cur.length - 1][1] - ay) < 0.5)
+      cur.push([bx, by]);
+    else { if (cur) out.push(cur); cur = [[ax, ay], [bx, by]]; }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 function strokePtsSk3D(canvas, pts, close, paint) {
   const EPS = 1.0;
   const n = pts.length;
@@ -3945,12 +4240,17 @@ function strokePtsSk3D(canvas, pts, close, paint) {
   };
   let run = [];
   const flush = () => {
+    // Clip the front-facing screen run to the viewport before stroking — bounds a dashed
+    // line's dash flattening (and stroke fill) to on-screen length, the tilt FPS fix.
     if (run.length >= 2) {
-      const cmds = [];
-      for (let i = 0; i < run.length; i++)
-        cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, run[i][0], run[i][1]);
-      const path = CK.Path.MakeFromCmds(cmds);
-      if (path) { canvas.drawPath(path, paint); path.delete(); }
+      for (const sub of clipScreenPolyline(run, 48)) {
+        if (sub.length < 2) continue;
+        const cmds = [];
+        for (let i = 0; i < sub.length; i++)
+          cmds.push(i === 0 ? CK.MOVE_VERB : CK.LINE_VERB, sub[i][0], sub[i][1]);
+        const path = CK.Path.MakeFromCmds(cmds);
+        if (path) { canvas.drawPath(path, paint); path.delete(); }
+      }
     }
     run = [];
   };
@@ -4055,6 +4355,21 @@ function drawSatBoundarySk(canvas) {
   for (const p of satPts) {
     if ((pw(p.e, p.n)) < 1.0) continue;
     const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
+// #40: preview the AB/curve points being drawn as native-style dots — orange A (first),
+// blue B (last), white interior — so the placed A point is visible before B is set. The
+// host holds the real point list; drawPts is the client's tap echo (preview only).
+function drawAbDrawPreviewSk(canvas) {
+  if (!drawMode || !drawPts.length) return;
+  const rad = Math.max(5, 0.6 * pxPerM);
+  for (let i = 0; i < drawPts.length; i++) {
+    const p = drawPts[i];
+    if (pw(p.e, p.n) < 1.0) continue; // behind the near plane
+    const xy = w2s(p.e, p.n);
+    SKP.flagFill.setColor(ckColor(abLabelColor(i))); // A orange, B blue, rest white — matches labels
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
@@ -4210,7 +4525,10 @@ const SPR_REAR = 0.245, SPR_FRONT = 0.75, SPR_HALFX = 0.245; // bitmap norm anch
 // stroke in screen space, so set px = worldMetres × pxPerM each frame (min 1 px so lines
 // don't vanish when zoomed far out). Values = native SkiaMapControl widths × 3.
 function updateLineWidths() {
-  const z = pxPerM, w = (m) => Math.max(m * z, 1);
+  // World-metre widths scaled by zoom, but CAPPED at MAXW px so a line can't balloon when
+  // zoomed in and swallow the implement/vehicle (issue #38: a 3 m boundary line covered a
+  // 4 m tool). Min 1 px so it stays visible zoomed out.
+  const z = pxPerM, MAXW = 3.5, w = (m) => Math.min(Math.max(m * z, 1), MAXW);
   SKP.boundary.setStrokeWidth(w(3.0));   // boundaryOuter 1 × 3
   SKP.boundaryInner.setStrokeWidth(w(3.0)); // boundaryInner 1 × 3
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
@@ -4283,12 +4601,14 @@ function vehicleSk(canvas, p) {
 // rebuild; the tiles stay fixed in the world and scroll under the vehicle).
 function drawGroundTextureSk(canvas) {
   const disp = config && config.display;
-  if (!disp || !disp.fieldTextureVisible || !groundReady) return;
+  if (!disp || !disp.fieldTextureVisible) return;
+  if (mapIsDay ? !groundReadyDay : !groundReadyNight) return;
+  let skGround = mapIsDay ? skGroundDay : skGroundNight;
   if (!skGround) {
-    skGround = CK.MakeImageFromCanvasImageSource(groundImg);
+    skGround = CK.MakeImageFromCanvasImageSource(mapIsDay ? groundImgDay : groundImgNight);
     if (!skGround) return;
-    SKP.ground = new CK.Paint();
-    SKP.ground.setAntiAlias(false);
+    if (mapIsDay) skGroundDay = skGround; else skGroundNight = skGround;
+    if (!SKP.ground) { SKP.ground = new CK.Paint(); SKP.ground.setAntiAlias(false); }
   }
   const W = skGround.width(), H = skGround.height();
   // We render camera-relative, but the tiles must stay anchored to WORLD. The pattern
@@ -4341,7 +4661,7 @@ function drawImagerySk(canvas) {
 // (top row = high northing) is placed via a px→world affine, then perspM warps it
 // — Skia does perspective-correct sampling AND near-plane clipping on the GPU, so
 // it stays correct even when part of the rect falls behind the tilted camera.
-function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
+function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter, mipMode) {
   const w = img.width(), h = img.height();
   // Map image px → CAMERA-RELATIVE world (minE-camE …): the world−camera offset is done
   // here in f64 so only small coords reach the f32 matrix — no floating-origin jitter on
@@ -4349,9 +4669,11 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter) {
   const imgToWorld = [(maxE - minE) / w, 0, minE - camE, 0, -(maxN - minN) / h, maxN - camN, 0, 0, 1];
   // Photo layers (imagery / satellite tiles, Linear filter) recede to the horizon
   // under perspective → heavy minification → shimmer/crawl under motion without a
-  // mip chain. Trilinear mipmaps fix it (matches native's mipmapped imagery). But
-  // Nearest callers (coverage cells = data) must stay crisp — no mipmaps for them.
-  const mip = (filter === CK.FilterMode.Linear) ? CK.MipmapMode.Linear : CK.MipmapMode.None;
+  // mip chain. Trilinear mipmaps fix it (matches native's mipmapped imagery). Callers
+  // may override the mip mode: coverage uses Linear sampling but mip-free, so its edges
+  // smooth (bilinear) without paying the per-update mip-regen on a multi-MP texture.
+  const mip = (mipMode !== undefined) ? mipMode
+    : ((filter === CK.FilterMode.Linear) ? CK.MipmapMode.Linear : CK.MipmapMode.None);
   canvas.save();
   canvas.concat(perspM);
   canvas.concat(imgToWorld);
@@ -4431,9 +4753,10 @@ function drawSatelliteSk(canvas) {
   }
 }
 // Coverage offscreen → SkImage, re-snapshotted only when the cell grid changed
-// (cov.dirty). Nearest filtering = the 2D path's imageSmoothingEnabled=false, so
-// cells stay crisp instead of blurring when zoomed in. The snapshot lives on the
-// cov object so a new coverage-init naturally starts with a fresh (null) image.
+// (cov.dirty). The world blit uses Linear (bilinear) sampling so the cell-grid edge
+// reads smooth instead of stair-stepped; see the blit call below for the mip-free
+// rationale. The snapshot lives on the cov object so a new coverage-init naturally
+// starts with a fresh (null) image.
 // Fallback-path throttle (2D canvas → full re-upload): cap the expensive whole-texture
 // rebuild at ~4 Hz. The GPU render-target path below has no such cost.
 const COV_REBUILD_MS = 250;
@@ -4453,8 +4776,8 @@ function drawCoverageSk(canvas) {
         if (batch.t > cutoff) break;
         const c = batch.cells;
         for (let i = 0; i + 2 < c.length; i += 3) {
-          const x = c[i], y = c[i + 1], rgb = c[i + 2] >>> 0 & 0xFFFFFF;
-          if (rgb !== lastRgb) { paint.setColor(CK.Color((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 1)); lastRgb = rgb; }
+          const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
+          if (v !== lastRgb) { paint.setColor(CK.Color((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, ((v >>> 24) & 0xFF) / 255)); lastRgb = v; covEdgeRgb = v & 0xFFFFFF; }
           sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
           covCells++;
         }
@@ -4479,8 +4802,14 @@ function drawCoverageSk(canvas) {
         if (batch.t > cutoff) break;
         const c = batch.cells;
         for (let i = 0; i + 2 < c.length; i += 3) {
-          const x = c[i], y = c[i + 1], rgb = c[i + 2];
-          if (rgb !== lastRgb) { cctx.fillStyle = '#' + (rgb >>> 0 & 0xFFFFFF).toString(16).padStart(6, '0'); lastRgb = rgb; }
+          const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
+          if (v !== lastRgb) {
+            cctx.fillStyle = 'rgba(' + ((v >> 16) & 0xFF) + ',' + ((v >> 8) & 0xFF) + ',' + (v & 0xFF) + ',' + (((v >>> 24) & 0xFF) / 255) + ')';
+            lastRgb = v;
+          }
+          // clear+fill = replace (the 2D analogue of BlendMode.Src) so re-emitted edge
+          // cells set their exact alpha instead of blending toward opaque.
+          cctx.clearRect(x, H - 1 - y, 1, 1);
           cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
           covCells++;
         }
@@ -4500,7 +4829,44 @@ function drawCoverageSk(canvas) {
   const cs = cov.cellSize;
   const minE = cov.originE, minN = cov.originN;
   const maxE = cov.originE + cov.width * cs, maxN = cov.originN + cov.height * cs;
-  drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Nearest);
+  // Bilinear (Linear), mip-free: smooths the cell-grid stair-step at the worked-area edge
+  // without the per-update mip-regen cost. The surface is cleared to premultiplied
+  // TRANSPARENT, so the boundary fades cleanly to transparent (no dark fringe).
+  drawImageWorldSk(canvas, cov.skImg, minE, minN, maxE, maxN, CK.FilterMode.Linear, CK.MipmapMode.None);
+}
+// Crisp worked-area edge — the server-fed vector perimeter (only segments that don't adjoin
+// another pass), stroked in the coverage colour over the raster so the soft alpha-AA feather
+// is replaced by a sharp boundary. Bounded by perimeter length, so cost is ~flat regardless
+// of field size. Stroke width ≈ 0.6 m (covers the feather). Polylines are broken at the near
+// plane per vertex (see below). Reloaded fields have no perimeter (graceful fall back to feather).
+function drawCoverageEdgeSk(canvas) {
+  if (EDGE_OFF || !coverageEdges || !coverageEdges.length) return;
+  const p = SKP.covEdge || (SKP.covEdge = (() => {
+    const q = new CK.Paint(); q.setStyle(CK.PaintStyle.Stroke); q.setAntiAlias(true);
+    q.setStrokeCap(CK.StrokeCap.Round); q.setStrokeJoin(CK.StrokeJoin.Round); return q;
+  })());
+  const c = covEdgeRgb;
+  p.setColor(CK.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 1));
+  p.setStrokeWidth(Math.max(1, 0.6 * pxPerM));
+  // Per-vertex near-plane gate: a vertex at/behind the near plane (homogeneous w ≤ NEAR)
+  // projects through w2s to a huge/flipped coord, so a polyline crossing behind the camera
+  // would shoot a stroke to infinity (seen on zoom/tilt). Break the polyline at those
+  // vertices and draw each in-front run separately — no clipping math, no infinity lines.
+  const NEAR = 0.02;
+  const flush = (cmds) => {
+    if (cmds && cmds.length >= 6) { const path = CK.Path.MakeFromCmds(cmds); if (path) { canvas.drawPath(path, p); path.delete(); } }
+  };
+  for (const pl of coverageEdges) {
+    if (pl.length < 2) continue;
+    let cmds = null;
+    for (let i = 0; i < pl.length; i++) {
+      if (pw(pl[i].e, pl[i].n) < NEAR) { flush(cmds); cmds = null; continue; } // behind near plane → break
+      const xy = w2s(pl[i].e, pl[i].n);
+      if (!cmds) cmds = [CK.MOVE_VERB, xy[0], xy[1]];
+      else cmds.push(CK.LINE_VERB, xy[0], xy[1]);
+    }
+    flush(cmds);
+  }
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
@@ -4594,7 +4960,7 @@ function lightbarSk(canvas) {
   }
 }
 function renderSkia(canvas, rp) {
-  canvas.clear(ckColor('#0f1115'));
+  canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));
   canvas.save();
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
   updateLineWidths(); // world-metre line weights × current zoom (matches native)
@@ -4602,6 +4968,7 @@ function renderSkia(canvas, rp) {
   drawSatelliteSk(canvas); // Bing aerial underlay while drawing a boundary on map
   drawImagerySk(canvas); // imagery overlays the ground where present
   drawCoverageSk(canvas);
+  drawCoverageEdgeSk(canvas); // crisp vector perimeter over the raster (server-fed)
   drawGridSk(canvas);
   if (scene) {
     for (let bi = 0; bi < scene.boundaries.length; bi++)
@@ -4620,12 +4987,13 @@ function renderSkia(canvas, rp) {
     // active-only, so this is just the active reference; the offset magenta sits a pass
     // away from it once the tractor moves over.
     for (const tr of scene.tracks)
-      strokePtsSk(canvas, tr.points, false, SKP.reference);
+      strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     drawFlagsSk(canvas, scene.flags);
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
+  drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
@@ -4646,6 +5014,7 @@ function skFrame() {
   if (_fpsT0 === 0) _fpsT0 = _now;
   else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
+  maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
   if (skSurface) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }
@@ -4659,6 +5028,8 @@ function skFrame() {
   renderBottomNav();
   renderSettings();
   renderRightNav();
+  renderUTurnIndicator();
+  renderAbDotLabels(); // #40 — letters beside the dropped AB/curve points
   renderRoll();
   renderCampad();
   renderCharts();

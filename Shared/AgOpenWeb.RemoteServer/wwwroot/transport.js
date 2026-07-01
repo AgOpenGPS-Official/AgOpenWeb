@@ -15,6 +15,7 @@ window.RemoteTransport = {
    *           onStatusBar?:(status:object)=>void,
    *           onHello?:(clientId:string)=>void,
    *           onControlState?:(state:object)=>void,
+   *           onSound?:(effectId:number)=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -23,7 +24,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -105,6 +106,7 @@ window.RemoteTransport = {
           const hitchE = f64(), hitchN = f64();
           const vehicleSteerAngle = f32();
           const hostMs = f64(); // host monotonic build time — the interp timeline
+          op.executing = !!u8(); // #50 — u-turn arc executing (blocks on-screen U-turn/Lateral)
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
@@ -133,6 +135,8 @@ window.RemoteTransport = {
           const simPanelVisible = !!u8();
           const driftEasting = f32(), driftNorthing = f32();
           const unsavedCoveragePrompt = !!u8();
+          // Dev diagnostics row (append-only): overlay gate + host control-loop latency (ms).
+          const devOverlay = !!u8(), gpsToPgnLatencyMs = f32();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -143,6 +147,7 @@ window.RemoteTransport = {
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
+            devOverlay, gpsToPgnLatencyMs,
           });
           break;
         }
@@ -264,7 +269,7 @@ window.RemoteTransport = {
             uTurnButtonVisible: !!u8(), lateralButtonVisible: !!u8(),
             autoSteerSound: !!u8(), uTurnSound: !!u8(), hydraulicSound: !!u8(), sectionsSound: !!u8(),
             keyboardEnabled: !!u8(), startFullscreen: !!u8(), elevationLogEnabled: !!u8(),
-            resolutionMultiplier: f64(),
+            resolutionMultiplier: f64(), isDayMode: !!u8(),
           };
           // AutoSteer config — full 9-tab surface (positional, matches WireCodec).
           const autosteer = {
@@ -328,6 +333,33 @@ window.RemoteTransport = {
           // view over `buffer` would throw on the alignment requirement).
           const cells = new Int32Array(buffer.slice(o, o + n * 4));
           handlers.onCoverageCells && handlers.onCoverageCells({ cells });
+          break;
+        }
+        case TYPE.SOUND: {
+          // One-shot alert: payload is a single SoundEffect id. The host already
+          // applied the per-sound config gating; the client just plays it.
+          handlers.onSound && handlers.onSound(u8());
+          break;
+        }
+        case TYPE.COVERAGE_EDGE: {
+          // Crisp worked-area edge: a set of perimeter polylines (field-local metres).
+          const pc = i32(); const polylines = new Array(pc);
+          for (let k = 0; k < pc; k++) polylines[k] = pts();
+          handlers.onCoverageEdge && handlers.onCoverageEdge(polylines);
+          break;
+        }
+        case TYPE.PONG: {
+          // Link-latency probe reply: echoes the token (client perf.now()) we sent in
+          // diag.ping. RTT = now − token, measured on the one client clock.
+          const token = str();
+          handlers.onPong && handlers.onPong(token);
+          break;
+        }
+        case TYPE.VIEW_PREFS: {
+          // Persisted web-camera view (issue #35): pitch radians + zoom px/m, sent
+          // once in the seed. The client restores its last tilt+zoom from this.
+          const pitch = f64(); const zoom = f64();
+          handlers.onViewPrefs && handlers.onViewPrefs(pitch, zoom);
           break;
         }
       }

@@ -126,7 +126,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChartDataService, ChartDataService>();
 
         // Audio service (cross-platform sound effects)
-        services.AddSingleton<IAudioService, AgOpenWeb.Android.Services.AudioService>();
+        services.AddSingleton<IAudioService, AgOpenWeb.Services.Audio.WebClientAudioService>();
 
         // Battery service — subscribes to the sticky ACTION_BATTERY_CHANGED
         // broadcast via Application.Context (no polling needed).

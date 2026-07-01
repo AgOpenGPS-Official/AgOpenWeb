@@ -4797,11 +4797,14 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Search for directories containing TASKDATA.xml
+        // Search for directories containing a TASKDATA file. Match the name
+        // case-insensitively: the ISO 11783 convention and our own exporter write
+        // "TASKDATA.XML" (uppercase), which a case-sensitive FS (Linux) would otherwise miss.
         foreach (var dir in Directory.GetDirectories(importDir))
         {
-            var taskDataFile = Path.Combine(dir, "TASKDATA.xml");
-            if (File.Exists(taskDataFile))
+            var taskDataFile = Directory.EnumerateFiles(dir)
+                .FirstOrDefault(f => string.Equals(Path.GetFileName(f), "TASKDATA.XML", StringComparison.OrdinalIgnoreCase));
+            if (taskDataFile != null)
             {
                 var dirInfo = new DirectoryInfo(dir);
                 AvailableIsoXmlFiles.Add(new IsoXmlFileItem

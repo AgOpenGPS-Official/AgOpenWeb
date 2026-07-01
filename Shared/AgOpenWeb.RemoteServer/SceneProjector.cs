@@ -28,6 +28,8 @@ public sealed class SceneProjector
     private readonly ISettingsService _settings;
     private readonly IVehicleProfileService _vehicleProfiles;
     private readonly IPersistentStateService _persist;
+    // Dev diagnostics overlay gate — read once from the .show_dev_overlay marker file.
+    private readonly bool _devOverlay = DevOverlayMarker.IsEnabled();
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list.
     /// The segments live on the VM (MainViewModel.HeadlandSegments) — there is no
@@ -306,7 +308,9 @@ public sealed class SceneProjector
             // broadcast-now before the first render-pull (same Stopwatch basis, monotonic).
             v.RenderPoseMs > 0
                 ? v.RenderPoseMs
-                : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+                : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+            // Mid-turn gate (issue #50): true while the u-turn arc is executing.
+            _state.YouTurn.IsExecuting);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
@@ -367,7 +371,11 @@ public sealed class SceneProjector
             // Field Tools — Offset Fix drift offset (meters).
             _state.Field.DriftEasting,
             _state.Field.DriftNorthing,
-            _state.UI.IsUnsavedCoverageDialogVisible);
+            _state.UI.IsUnsavedCoverageDialogVisible,
+            // Dev diagnostics row: overlay gate (marker) + host control-loop latency (same
+            // VehicleStateSnapshot.TotalLatencyMs the VM's GpsToPgnLatencyMs mirrors).
+            _devOverlay,
+            _autoSteer.LatestSnapshot?.TotalLatencyMs ?? 0.0);
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved
@@ -656,8 +664,9 @@ public sealed class SceneProjector
         var g = _config.Guidance;
         var m = _config.Machine;
         int toolType = t.IsToolFrontFixed ? 0 : t.IsToolRearFixed ? 1 : t.IsToolTBT ? 2 : 3;
-        var widths = new double[16]; for (int i = 0; i < 16; i++) widths[i] = t.GetSectionWidth(i);
-        var colors = new int[16]; for (int i = 0; i < 16; i++) colors[i] = (int)t.GetSectionColor(i);
+        // Send all MaxSections widths/colours (not 16) so sections 17-64 get their data too (#41).
+        var widths = new double[ToolConfig.MaxSections]; for (int i = 0; i < widths.Length; i++) widths[i] = t.GetSectionWidth(i);
+        var colors = new int[ToolConfig.MaxSections]; for (int i = 0; i < colors.Length; i++) colors[i] = (int)t.GetSectionColor(i);
         var zones = new int[9]; for (int i = 0; i < 9; i++) zones[i] = t.GetZoneEndSection(i);
         var pins = new int[24]; for (int i = 0; i < 24; i++) pins[i] = (int)m.GetPinAssignment(i);
         return new ConfigDto(
@@ -714,7 +723,8 @@ public sealed class SceneProjector
             d.ExtraGuidelines, d.ExtraGuidelinesCount, res,
             d.UTurnButtonVisible, d.LateralButtonVisible,
             d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
-            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm);
+            d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm,
+            _persist.State.IsDayMode);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
@@ -789,6 +799,9 @@ public sealed class SceneProjector
             | (dp.KeyboardEnabled ? 32768 : 0) | (dp.StartFullscreen ? 65536 : 0) | (dp.ElevationLogEnabled ? 131072 : 0);
         h = h * 31 + db;
         h = h * 31 + dp.ExtraGuidelinesCount * 7 + dp.DisplayResolutionMultiplier.GetHashCode();
+        // Day/Night theme lives in PersistentAppState (not ConfigStore.Display), so fold it
+        // in here too — otherwise toggling the theme wouldn't re-send the config frame.
+        h = h * 31 + (_persist.State.IsDayMode ? 1 : 0);
         // AutoSteer config (so AutoSteer-panel edits re-send the frame).
         var asc = _config.AutoSteer;
         int ab = (asc.IsStanleyMode ? 1 : 0) | (asc.TurnSensorEnabled ? 2 : 0) | (asc.PressureSensorEnabled ? 4 : 0)

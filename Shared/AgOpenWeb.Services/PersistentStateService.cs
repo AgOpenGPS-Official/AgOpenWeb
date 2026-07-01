@@ -122,6 +122,8 @@ public class PersistentStateService : IPersistentStateService
         State.CameraZoom = s.CameraZoom;
         State.CameraPitch = s.CameraPitch;
         State.CameraMode = s.CameraMode;
+        State.WebCameraZoom = s.WebCameraZoom;
+        State.WebCameraPitch = s.WebCameraPitch;
         State.IsDayMode = s.IsDayMode;
         State.Is2DMode = s.Is2DMode;
         State.IsNorthUp = s.IsNorthUp;

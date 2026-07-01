@@ -87,6 +87,19 @@ public class PersistentAppState : ObservableObject
     private CameraMode _cameraMode = CameraMode.Map;
     public CameraMode CameraMode { get => _cameraMode; set => SetProperty(ref _cameraMode, value); }
 
+    // ---- Web client camera view (browser / CanvasKit PWA) ----
+    // Separate coordinate system from the native CameraZoom/Pitch above: the web
+    // camera is client-owned live, but its last tilt+zoom are persisted HERE so any
+    // client (browser or WebView) restores the same view on connect (issue #35 —
+    // localStorage was unreliable across browser contexts). Zoom is the client's
+    // pixels-per-metre (~0.2–200, default 4.0); pitch is tilt in RADIANS (0 =
+    // top-down .. ~1.13 = 65° horizon, default 0).
+    private double _webCameraZoom = 4.0;
+    public double WebCameraZoom { get => _webCameraZoom; set => SetProperty(ref _webCameraZoom, value); }
+
+    private double _webCameraPitch;
+    public double WebCameraPitch { get => _webCameraPitch; set => SetProperty(ref _webCameraPitch, value); }
+
     private bool _isDayMode = true;
     public bool IsDayMode { get => _isDayMode; set => SetProperty(ref _isDayMode, value); }
 

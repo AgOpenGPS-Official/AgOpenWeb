@@ -18,7 +18,20 @@ public static class WireCodec
 {
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
-        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17;
+        FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
+        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21;
+
+    /// <summary>One-shot alert: tells the client to play sound effect
+    /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
+    /// event-driven, not part of the periodic tick.</summary>
+    public static byte[] EncodeSound(byte effectId)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Sound);
+        w.Write(effectId);
+        return ms.ToArray();
+    }
 
     public static byte[] EncodeBoundary(BoundaryDto b)
     {
@@ -288,6 +301,8 @@ public static class WireCodec
         DB(d.AutoSteerSound); DB(d.UTurnSound); DB(d.HydraulicSound); DB(d.SectionsSound);
         DB(d.KeyboardEnabled); DB(d.StartFullscreen); DB(d.ElevationLogEnabled);
         w.Write(d.DisplayResolutionMultiplier); // f64 — web imagery LOD (quality)
+        DB(d.IsDayMode); // day/night theme — web switches its full palette + map colours
+
         // AutoSteer config tab (full 9-tab surface). Append-only; field order mirrors
         // AutoSteerConfigDto exactly so transport.js decodes it positionally.
         var a = c.AutoSteer;
@@ -498,6 +513,7 @@ public static class WireCodec
         w.Write(t.HitchN);           // f64
         w.Write((float)t.VehicleSteerAngle); // front-wheel sprite angle (deg)
         w.Write(t.HostMs);           // f64 — host monotonic build time (client interp timeline)
+        w.Write((byte)(t.IsYouTurnExecuting ? 1 : 0)); // #50 — mid-turn gate for on-screen buttons
         return ms.ToArray();
     }
 
@@ -563,6 +579,49 @@ public static class WireCodec
         w.Write((float)s.DriftNorthing);
         // Unsaved-coverage guard prompt (append-only).
         w.Write((byte)(s.UnsavedCoveragePrompt ? 1 : 0));
+        // Dev diagnostics row (append-only): overlay gate + host control-loop latency.
+        w.Write((byte)(s.DevOverlay ? 1 : 0));
+        w.Write((float)s.GpsToPgnLatencyMs);
+        return ms.ToArray();
+    }
+
+    // Crisp worked-area edge: the vector perimeter as polylines (field-local metres). Bounded
+    // by perimeter length. [i32 polylineCount][ per polyline: i32 pointCount, f32 e, f32 n … ].
+    public static byte[] EncodeCoverageEdge(IReadOnlyList<IReadOnlyList<AgOpenWeb.Models.Base.Vec2>> polylines)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(CoverageEdge);
+        w.Write(polylines.Count);
+        foreach (var pl in polylines)
+        {
+            w.Write(pl.Count);
+            foreach (var p in pl) { w.Write((float)p.Easting); w.Write((float)p.Northing); }
+        }
+        return ms.ToArray();
+    }
+
+    // Persisted web-camera view, sent once per connection in the seed so the client
+    // restores its last tilt+zoom (issue #35). Pitch is RADIANS, zoom is client
+    // pixels-per-metre — the client's own camera space, stored verbatim host-side.
+    public static byte[] EncodeViewPrefs(double pitch, double zoom)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(ViewPrefs);
+        w.Write(pitch); // f64
+        w.Write(zoom);  // f64
+        return ms.ToArray();
+    }
+
+    // Round-trip link-latency reply. Echoes the client's token (its performance.now()
+    // timestamp) verbatim so the client computes RTT = now − token on its own clock.
+    public static byte[] EncodePong(string token)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Pong);
+        WriteStr(w, token);
         return ms.ToArray();
     }
 
