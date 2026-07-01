@@ -664,8 +664,9 @@ public sealed class SceneProjector
         var g = _config.Guidance;
         var m = _config.Machine;
         int toolType = t.IsToolFrontFixed ? 0 : t.IsToolRearFixed ? 1 : t.IsToolTBT ? 2 : 3;
-        var widths = new double[16]; for (int i = 0; i < 16; i++) widths[i] = t.GetSectionWidth(i);
-        var colors = new int[16]; for (int i = 0; i < 16; i++) colors[i] = (int)t.GetSectionColor(i);
+        // Send all MaxSections widths/colours (not 16) so sections 17-64 get their data too (#41).
+        var widths = new double[ToolConfig.MaxSections]; for (int i = 0; i < widths.Length; i++) widths[i] = t.GetSectionWidth(i);
+        var colors = new int[ToolConfig.MaxSections]; for (int i = 0; i < colors.Length; i++) colors[i] = (int)t.GetSectionColor(i);
         var zones = new int[9]; for (int i = 0; i < 9; i++) zones[i] = t.GetZoneEndSection(i);
         var pins = new int[24]; for (int i = 0; i < 24; i++) pins[i] = (int)m.GetPinAssignment(i);
         return new ConfigDto(

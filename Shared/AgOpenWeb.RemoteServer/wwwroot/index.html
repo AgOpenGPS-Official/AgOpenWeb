@@ -307,7 +307,7 @@
       background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
       box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 31; }
     /* Lay tall tabs out across the width so they fit a 1200x700 tablet without scroll. */
-    .cfg-cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; align-items: start; }
+    .cfg-cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 22px; align-items: start; }
     /* Without min-width:0 a column's content (e.g. the dynamic section-widths grid)
        forces the track wider than 1fr, pushing the other column out of the dialog. */
     .cfg-cols2 > div { min-width: 0; }
@@ -336,7 +336,10 @@
     .sa-grid .cfg-num { height: 40px; }
     .sa-hint { color: var(--text-muted); font: 400 11px system-ui, sans-serif; }
     .ln-sub { color: var(--text-muted); font: 600 12px system-ui, sans-serif; margin-bottom: 12px; }
-    .ln-wide { width: 760px; }
+    /* #41: grow WIDER not taller so tall tabs fit a 1200x700 landscape tablet without
+       scrolling. Capped so it doesn't balloon on a big desktop monitor, and clamped to
+       the viewport (minus the left nav) on smaller screens. */
+    .ln-wide { width: min(980px, calc(100vw - 100px)); }
     .ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
       background: #1f6fb2; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; }
     .ln-savebtn:active { background: #195c95; }
@@ -351,10 +354,14 @@
     .cfg-typebtn { padding: 8px 10px; border: 0; background: transparent; color: var(--text-2);
       cursor: pointer; font: 600 12px system-ui, sans-serif; }
     .cfg-typebtn.active { background: #1f6fb2; color: #fff; }
-    .cfg-grid { display: grid; grid-template-columns: auto 130px; gap: 7px 12px; align-items: center; }
+    .cfg-grid { display: grid; grid-template-columns: auto max-content; gap: 7px 12px; align-items: center; }
     .cfg-grid label { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
-    .cfg-num { height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input);
-      color: var(--text); font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right; }
+    /* Right-sized to expected data (#41): ~5-6 digits (e.g. "12.34", "360.0", "-0.35").
+       Wider boxes just waste horizontal space. Spinners removed (useless on touch, eat width). */
+    .cfg-num { width: 68px; height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input);
+      color: var(--text); font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right;
+      appearance: textfield; -moz-appearance: textfield; }
+    .cfg-num::-webkit-outer-spin-button, .cfg-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .cfg-num:focus { outline: none; border-color: #4A90D9; }
     .cfg-sel, .cfg-isel { height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input);
       color: var(--text); font: 600 12px system-ui, sans-serif; padding: 0 6px; box-sizing: border-box; }
@@ -691,7 +698,7 @@
     .vc-typecard.active { border-color: #4A90D9; background: var(--sel); color: var(--text); }
     .vc-diagrow { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
     .vc-diag { width: 150px; height: 96px; object-fit: contain; background: #fff; border-radius: 6px; flex: none; }
-    .vc-fieldcol { flex: 1; min-width: 0; display: grid; grid-template-columns: auto 110px; gap: 6px 10px; align-items: center; }
+    .vc-fieldcol { flex: 1; min-width: 0; display: grid; grid-template-columns: auto max-content; gap: 6px 10px; align-items: center; }
     .vc-fieldcol label { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
     /* Segmented controls (3 buttons) don't fit the 110px value column — let them
        span the full field width on their own row instead of overflowing the dialog. */
@@ -700,7 +707,7 @@
     /* Two-column section layout (Antenna beside Hitch/Wheelbase/Track) to save height. */
     .vc-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     .vc-2col .vc-diag { width: 120px; height: 80px; }
-    .vc-2col .vc-fieldcol { grid-template-columns: auto 90px; }
+    .vc-2col .vc-fieldcol { grid-template-columns: auto max-content; }
     /* Tool config: sub-tabs, dynamic grids (section widths/zones/colours/pins), notes. */
     .cfg-subtabs { font-size: 12px; flex-wrap: wrap; }
     .cfg-subtabs .cfg-tab { padding: 5px 9px; }
@@ -711,6 +718,11 @@
     .tc-dyngrid input { width: 100%; min-width: 0; height: 30px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input);
       color: var(--text); font: 600 12px ui-monospace, monospace; padding: 0 4px; box-sizing: border-box; text-align: right; }
     .tc-dyngrid input[type=color] { padding: 1px; height: 30px; }
+    /* Section-width / zone-end boxes hold a ~4-digit cm value — size to that (#41). Fixed rows
+       of 8 so 16 sections = two even rows (no stragglers); only a non-multiple-of-8 count
+       leaves a short last row. */
+    #tc-sectionwidths, #tc-zoneends, #tc-sectioncolors { grid-template-columns: repeat(8, 58px); justify-content: start; }
+    #tc-sectionwidths input, #tc-zoneends input { width: 52px; }
     .cfg-color { width: 60px; height: 32px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-input); padding: 1px; }
     .tc-pingrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
     .tc-pingrid .tc-cell { display: flex; flex-direction: column; gap: 2px; }
@@ -1423,7 +1435,7 @@
               <button class="cfg-typebtn" data-key="tool.isSectionsNotZones" data-val="0" data-active="false">Zones</button>
             </div>
             <div class="cfg-grid">
-              <label>Number of sections</label><input class="cfg-num" data-key="tool.numSections" type="number" step="1" min="1" max="16">
+              <label>Number of sections</label><input class="cfg-num" data-key="tool.numSections" type="number" step="1" min="1" max="64">
               <label>Default width (cm)</label><input class="cfg-num" data-key="tool.defaultSectionWidth" type="number" step="1">
             </div>
             <div data-show="individual">

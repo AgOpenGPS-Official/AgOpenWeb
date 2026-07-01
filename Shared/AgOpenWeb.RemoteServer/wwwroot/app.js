@@ -1990,7 +1990,7 @@ function populateToolCfg(force) {
   const wsi = document.getElementById('tc-img-worksw');
   wsi.src = '/icons/' + (t.isWorkSwitchActiveLow ? 'SwitchActiveClosed' : 'SwitchActiveOpen') + '.png';
   // Dynamic lists — rebuild on count change, fill values (skip the focused control).
-  const nSec = Math.max(1, Math.min(16, t.numSections));
+  const nSec = Math.max(1, Math.min(64, t.numSections)); // ToolConfig.MaxSections — backend supports 64
   if (_tcBuilt.sw !== nSec) {
     const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
     for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); });
@@ -2004,10 +2004,10 @@ function populateToolCfg(force) {
     _tcBuilt.ze = nZone;
   }
   for (const inp of document.querySelectorAll('#tc-zoneends input')) if (force || document.activeElement !== inp) inp.value = t.zoneRanges[+inp.dataset.idx];
-  if (!_tcBuilt.sc) {
+  if (_tcBuilt.sc !== nSec) { // rebuild on count change; one swatch per section (was capped at 16)
     const g = document.getElementById('tc-sectioncolors'); g.innerHTML = '';
-    for (let i = 0; i < 16; i++) tcDynInput(g, i, 'S' + (i + 1), 'color', inp => cfgSend('tool.sectionColor', i + ',' + inp.value.slice(1)));
-    _tcBuilt.sc = true;
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'color', inp => cfgSend('tool.sectionColor', i + ',' + inp.value.slice(1)));
+    _tcBuilt.sc = nSec;
   }
   for (const inp of document.querySelectorAll('#tc-sectioncolors input')) if (document.activeElement !== inp) inp.value = hex6(t.sectionColors[+inp.dataset.idx]);
   if (document.activeElement !== tcSingleColor) tcSingleColor.value = hex6(t.singleCoverageColor);
