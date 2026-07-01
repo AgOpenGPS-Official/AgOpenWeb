@@ -19,7 +19,7 @@ public static class WireCodec
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
-        Sound = 18, Pong = 19, CoverageEdge = 20;
+        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -597,6 +597,19 @@ public static class WireCodec
             w.Write(pl.Count);
             foreach (var p in pl) { w.Write((float)p.Easting); w.Write((float)p.Northing); }
         }
+        return ms.ToArray();
+    }
+
+    // Persisted web-camera view, sent once per connection in the seed so the client
+    // restores its last tilt+zoom (issue #35). Pitch is RADIANS, zoom is client
+    // pixels-per-metre — the client's own camera space, stored verbatim host-side.
+    public static byte[] EncodeViewPrefs(double pitch, double zoom)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(ViewPrefs);
+        w.Write(pitch); // f64
+        w.Write(zoom);  // f64
         return ms.ToArray();
     }
 

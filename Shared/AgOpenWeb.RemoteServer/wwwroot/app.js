@@ -159,23 +159,23 @@ let perspMInv = null;   // cached 4×4 inverse of perspM (CSS px→world ray); n
 const DEFAULT_PITCH = Math.PI / 3;        // 60° — the one-key tilt
 const MAX_PITCH = 65 * Math.PI / 180;     // v1 cap: keeps the local field in front
 const PITCH_STEP = 5 * Math.PI / 180;
-// Persist the 3D tilt + zoom across reloads (issue #35: tilting to 3D was lost on restart).
-// View prefs are per-client, so localStorage (not host config) is the right home.
-const VIEW_PREFS_KEY = 'aow.view';
-try {
-  const v = JSON.parse(localStorage.getItem(VIEW_PREFS_KEY) || 'null');
-  if (v) {
-    if (typeof v.pitch === 'number') pitch = Math.max(0, Math.min(MAX_PITCH, v.pitch));
-    if (typeof v.zoom === 'number') pxPerM = Math.min(200, Math.max(0.2, v.zoom));
-  }
-} catch (e) { /* ignore corrupt/blocked storage */ }
+// Persist the 3D tilt + zoom across reloads (issue #35: tilting to 3D was lost on
+// restart). The camera is client-owned live, but its last tilt+zoom are stored
+// HOST-side (appstate.json, via the view.save command) and replayed to every client
+// in the connection seed (onViewPrefs). This restores identically on any client —
+// browser or WebView — independent of browser localStorage behaviour.
 let _savedPitch = pitch, _savedZoom = pxPerM, _viewSaveT = 0;
+function applyViewPrefs(p, z) {
+  if (typeof p === 'number' && isFinite(p)) pitch = Math.max(0, Math.min(MAX_PITCH, p));
+  if (typeof z === 'number' && isFinite(z)) pxPerM = Math.min(200, Math.max(0.2, z));
+  _savedPitch = pitch; _savedZoom = pxPerM; // hydrated value == saved, so no echo-back save
+}
 function maybeSaveView() {
   if (pitch === _savedPitch && pxPerM === _savedZoom) return;
   const now = performance.now();
   if (now - _viewSaveT < 800) return;        // debounce: at most ~1.25 writes/s while adjusting
   _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM;
-  try { localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({ pitch, zoom: pxPerM })); } catch (e) {}
+  transport.send('view.save|' + pitch + '|' + pxPerM); // host writes it to appstate.json
 }
 const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 
@@ -315,6 +315,8 @@ const transport = RemoteTransport.create({
     if (rtt >= 0 && rtt < 60000) linkRttMs = (linkRttMs === null) ? rtt : linkRttMs + 0.3 * (rtt - linkRttMs);
   },
   onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
+  // Persisted web-camera view (issue #35): restore last tilt+zoom from the host seed.
+  onViewPrefs(pitch, zoom) { applyViewPrefs(pitch, zoom); },
 });
 
 // ---- Alert sounds ----------------------------------------------------------
