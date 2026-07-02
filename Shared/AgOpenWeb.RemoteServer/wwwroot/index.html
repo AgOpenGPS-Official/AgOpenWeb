@@ -143,7 +143,9 @@
     }
     /* Headland-distance HUD — screen-space box at top-centre (below the light bar),
        mirroring the native SkiaMapControl HUD. Green when clear, red on warning.
-       Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0. */
+       Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0, AND hidden while a
+       map-tap creation flow is active (updateHeadlandHud) so it doesn't clutter the top-centre
+       instruction pill / draw toolbar. */
     #headland-hud {
       position: fixed; top: calc(102px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
       padding: 6px 18px; border-radius: 8px; border: 1px solid rgba(var(--ov),0.25);
@@ -186,7 +188,7 @@
       text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
     /* Draw-track toolbar (Phase MT) — top-centre, directly under the instruction pill
        (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
-       the screen from it. */
+       the screen from it. (The distance HUD is hidden during these flows — updateHeadlandHud.) */
     #draw-toolbar {
       position: fixed; top: calc(100px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
       gap: 10px; z-index: 41;
@@ -2476,8 +2478,8 @@
              (cycle/smooth/delete + nudges), shown only with an active track (.bn-abdep). -->
         <div class="bn-flyrow">
           <button class="bn-btn" id="bn-tracks" title="Tracks — manage AB lines"><img class="bn-ic" src="/icons/ABTracks.png" alt="Tracks"></button>
-          <button class="bn-btn" id="bn-autotrack" data-cmd="track.autoTrack" data-t2 title="Auto track select (closest track)">AT</button>
           <button class="bn-btn" id="bn-quickab" title="Quick AB line creator"><img class="bn-ic" src="/icons/ABTrackAPlus.png" alt="Quick AB"></button>
+          <button class="bn-btn" id="bn-autotrack" data-cmd="track.autoTrack" data-t2 title="Auto track select (closest track)">AT</button>
         </div>
         <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">

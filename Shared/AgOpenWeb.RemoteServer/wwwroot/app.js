@@ -3483,7 +3483,11 @@ const hlHud = document.getElementById('headland-hud');
 function updateHeadlandHud() {
   const on = config && config.display && config.display.headlandDistanceVisible;
   const d = tick ? tick.headlandDist : -1;
-  if (!on || d == null || d < 0) { hlHud.style.display = 'none'; return; }
+  // Hide the HUD while a map-tap creation flow is active (Quick AB / boundary curve / draw / …):
+  // the boundary distance isn't needed while placing points, and it would clutter the top-centre
+  // instruction pill + toolbar. body.maptap is set by startMapTap for the duration of the flow.
+  const creating = document.body.classList.contains('maptap');
+  if (!on || creating || d == null || d < 0) { hlHud.style.display = 'none'; return; }
   const metric = !statusBar || statusBar.isMetric;
   hlHud.textContent = metric ? d.toFixed(1) + ' m' : (d * 3.28084).toFixed(0) + ' ft';
   hlHud.classList.toggle('warn', !!(tick && tick.headlandWarn));
