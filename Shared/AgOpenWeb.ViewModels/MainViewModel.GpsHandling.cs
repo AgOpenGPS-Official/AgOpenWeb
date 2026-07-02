@@ -417,10 +417,13 @@ public partial class MainViewModel
         _gpsPipelineService.SetHeadlandLine(State.Field.HeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
-        // Stopgap: also skip auto-U-turns on a boundary-follow (NoPassOffset) curve — auto
-        // arming is headland-proximity based and mis-fires on a line that hugs the boundary
-        // (fires at the first corner, return path outside the fence). Manual U-turns still work.
-        // Proper end-of-pass auto-U-turns for boundary curves are a separate follow-up.
+        // Stopgap: auto-U-turns are OFF on a boundary-follow (NoPassOffset) curve. Root cause:
+        // the arc only creates when the tractor is in the cultivated area (inside the headland
+        // line — synthetic when none defined, inset several m from the fence), but a fence-
+        // hugging pass sits INSIDE that band → never "cultivated" → no arc, it drives off the
+        // end. Proper fix = arm off the outer boundary / end-of-pass when there's no real
+        // headland. See continuation memory [[project_boundary_curve_uturn_continuation]].
+        // Manual U-turns + laterals still work on the boundary curve.
         _gpsPipelineService.SetYouTurnEnabled(
             IsYouTurnEnabled && !IsActiveTrackClosed && !(SelectedTrack?.NoPassOffset == true));
         _gpsPipelineService.SetYouTurnConfig(
