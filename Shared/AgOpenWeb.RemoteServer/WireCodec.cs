@@ -514,6 +514,7 @@ public static class WireCodec
         w.Write((float)t.VehicleSteerAngle); // front-wheel sprite angle (deg)
         w.Write(t.HostMs);           // f64 — host monotonic build time (client interp timeline)
         w.Write((byte)(t.IsYouTurnExecuting ? 1 : 0)); // #50 — mid-turn gate for on-screen buttons
+        w.Write(t.PassNumber);       // i32 — guidance pass offset (0 = on reference)
         return ms.ToArray();
     }
 

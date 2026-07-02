@@ -254,6 +254,7 @@ public class GeoJsonFieldService
                 [FieldPropertyKeys.Name] = track.Name,
                 [FieldPropertyKeys.TrackType] = (int)track.Type,
                 [FieldPropertyKeys.IsClosed] = track.IsClosed,
+                [FieldPropertyKeys.NoPassOffset] = track.NoPassOffset,
                 [FieldPropertyKeys.NudgeDistance] = track.NudgeDistance,
                 [FieldPropertyKeys.IsVisible] = track.IsVisible,
             }
@@ -362,6 +363,7 @@ public class GeoJsonFieldService
             Points = points,
             Type = trackType,
             IsClosed = GetBoolProp(feature, FieldPropertyKeys.IsClosed),
+            NoPassOffset = GetBoolProp(feature, FieldPropertyKeys.NoPassOffset),
             NudgeDistance = GetDoubleProp(feature, FieldPropertyKeys.NudgeDistance),
             IsVisible = GetBoolPropDefault(feature, FieldPropertyKeys.IsVisible, true),
         };

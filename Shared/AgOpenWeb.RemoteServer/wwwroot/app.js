@@ -565,7 +565,11 @@ addEventListener('pointerup', e => {
   gestureOnMap = false;
 });
 addEventListener('pointermove', e => {
-  if (mapTap && (abFlow === 'straight' || abFlow === 'curve')) updateAbCursorLabel(e.clientX, e.clientY); // #40 A/B/… on crosshair
+  // #40: the crosshair letter is a MOUSE-hover affordance — only for a real pointer. On
+  // touch/pen there's no hover to ride, and a tap's micro-move would drop the "big A" under
+  // the finger/button and clash with the placed-dot label; touch relies on the dot letters
+  // + the "Tap Point A/B" banner instead.
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') updateAbCursorLabel(e.clientX, e.clientY);
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
     const w = s2w(e.clientX, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
@@ -595,11 +599,16 @@ function startMapTap(cfg) {
   document.body.classList.add('maptap'); // crosshair cursor (CSS)
   const h = document.getElementById('maptap-hint');
   h.textContent = cfg.hint || 'Tap the map'; h.classList.add('show');
+  // Touch cancel: only for bare flows (no draw toolbar) — flag placement. The AB/sat/headland
+  // flows show the toolbar whose own Cancel handles them, so don't double it up.
+  const tbUp = document.getElementById('draw-toolbar').classList.contains('show');
+  document.getElementById('maptap-cancel').classList.toggle('show', !tbUp);
 }
 function endMapTap() {
   mapTap = null;
   document.body.classList.remove('maptap');
   document.getElementById('maptap-hint').classList.remove('show');
+  document.getElementById('maptap-cancel').classList.remove('show'); // hide the touch-cancel pill
   if (abLabelEl) abLabelEl.classList.remove('show'); // #40 hide the A/B crosshair letter
   if (abDotLabelsEl) for (const s of abDotLabelsEl.children) s.style.display = 'none'; // + the dot letters
 }
@@ -1005,7 +1014,9 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.st
 let drawMode = null;     // 'straight' | 'curve' (map-tap modes only) — drives the preview
 let drawPts = [];        // [{e,n}] captured so far — preview only (host holds the real list)
 let abFlow = null;       // 'straight' | 'curve' | 'driveAB' | 'recordCurve' | null
-let driveStep = 0;       // Drive-AB: 0 → next press sets A, 1 → next sets B
+let driveStep = 0;       // Drive-AB / record-curve step: 0 → next press sets A/Start, 1 → sets B/End
+let curveMarks = [];     // client-side path dots dropped while driving a record-curve (Set Start→End)
+let _lastCurveMark = null;
 const drawBar = document.getElementById('draw-toolbar');
 const hintEl = document.getElementById('maptap-hint');
 function abHint() {
@@ -1013,7 +1024,7 @@ function abHint() {
     case 'straight': return drawPts.length === 0 ? 'Tap Point A' : 'Tap Point B';
     case 'curve': return `Tap points (${drawPts.length}) — Finish when done`;
     case 'driveAB': return driveStep === 0 ? 'Drive to A, then Set Point' : 'Drive to B, then Set Point';
-    case 'recordCurve': return 'Driving curve — Finish when done';
+    case 'recordCurve': return driveStep === 0 ? 'Drive to A, then Set Point A' : 'Drive the curve to B, then Set Point B';
   }
   return '';
 }
@@ -1044,7 +1055,7 @@ function updateAbCursorLabel(x, y) {
 // frame from drawPts (world→screen); cleared when the draw ends. DOM (CanvasKit has no text).
 function renderAbDotLabels() {
   if (!abDotLabelsEl) return;
-  const n = (drawMode && drawPts.length) ? drawPts.length : 0;
+  const n = drawPts.length || 0; // letters for map-tap AND Drive-AB markers (drawMode may be null)
   while (abDotLabelsEl.children.length < n) abDotLabelsEl.appendChild(document.createElement('span'));
   for (let i = 0; i < abDotLabelsEl.children.length; i++) {
     const span = abDotLabelsEl.children[i];
@@ -1071,16 +1082,43 @@ function startDrawTrack(mode) {           // map-tap straight/curve (ungated —
   startMapTap({ hint: abHint(), onTap: drawTap });
 }
 function startDriveAB() {                  // GPS: set A then B at the vehicle (ungated)
-  abFlow = 'driveAB'; driveStep = 0;
+  abFlow = 'driveAB'; driveStep = 0; drawPts = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
+  document.getElementById('draw-setpoint').textContent = 'Set Point A';
   hintEl.classList.add('show'); setAbHint();
 }
-function startRecordCurve() {              // GPS: record by driving (ungated)
-  abFlow = 'recordCurve';
-  transport.send('track.recordCurve');
-  showAbBar(false, false, true);
+function startRecordCurve() {              // GPS: record by driving — Set Start → Set End (ungated)
+  abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null;
+  // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
+  // can position at the curve's start first. The set-point button drives the two-step.
+  showAbBar(true, false, false);
+  document.getElementById('draw-setpoint').textContent = 'Set Point A';
   hintEl.classList.add('show'); setAbHint();
+}
+// "Bnd. Curve" — tap point A then point B on the boundary; the host walks the shorter arc
+// between them and builds a curve following the boundary. Points snap to the nearest boundary
+// vertex for display; the host re-snaps authoritatively.
+function nearestBoundaryPt(e, n) {
+  let best = null, bd = Infinity;
+  const bs = scene && scene.boundaries;
+  if (bs) for (const ring of bs) for (const p of ring) {
+    const dx = p.e - e, dy = p.n - n, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best ? { e: best.e, n: best.n } : { e, n };
+}
+function startBoundaryCurve() {
+  abFlow = 'boundaryCurve'; drawPts = [];
+  showAbBar(false, false, false);          // draw toolbar shows just Cancel
+  startMapTap({ hint: 'Tap point A on the boundary', onTap: boundaryCurveTap });
+}
+function boundaryCurveTap(e, n) {
+  drawPts.push(nearestBoundaryPt(e, n));   // snap A/B to the nearest boundary vertex (dot shown)
+  if (drawPts.length < 2) { hintEl.textContent = 'Tap point B on the boundary'; return; }
+  const a = drawPts[0], b = drawPts[1];
+  transport.send('track.boundaryCurveSeg|' + a.e.toFixed(3) + ',' + a.n.toFixed(3) + ',' + b.e.toFixed(3) + ',' + b.n.toFixed(3));
+  endAbFlow();
 }
 function drawTap(e, n) {                    // map-tap point captured (straight/curve)
   drawPts.push({ e, n });
@@ -1089,11 +1127,35 @@ function drawTap(e, n) {                    // map-tap point captured (straight/
   if (abFlow === 'straight' && drawPts.length >= 2) { endAbFlow(); return; }
   setAbHint();
 }
-function abSetPoint() {                     // Drive-AB "Set Point" press
-  if (abFlow !== 'driveAB') return;
-  transport.send('track.setABGps');        // SetABPoint uses live GPS in DriveAB mode
-  if (driveStep === 0) { driveStep = 1; setAbHint(); }
-  else endAbFlow();                        // B set → host created the line
+function abSetPoint() {                     // Set-point button — drives Drive-AB and record-curve
+  const btn = document.getElementById('draw-setpoint');
+  if (abFlow === 'driveAB') {
+    if (driveStep > 1) return;             // guard a double-B while B lingers
+    transport.send('track.setABGps');      // SetABPoint uses live GPS in DriveAB mode
+    // Drop an A/B marker at the vehicle so the operator sees where each point landed.
+    if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n });
+    if (driveStep === 0) { driveStep = 1; btn.textContent = 'Set Point B'; setAbHint(); }
+    else {                                  // B set → host created the line; show B a beat, then clear
+      driveStep = 2;
+      setTimeout(() => { if (abFlow === 'driveAB') endAbFlow(); }, 700);
+    }
+  } else if (abFlow === 'recordCurve') {
+    if (driveStep > 1) return;              // guard a double-B while B lingers
+    if (driveStep === 0) {                  // Set Point A → drop the A endpoint + begin recording
+      transport.send('track.recordCurve');
+      driveStep = 1; btn.textContent = 'Set Point B';
+      if (tick && tick.pose) {
+        drawPts.push({ e: tick.pose.e, n: tick.pose.n });   // labeled "A" endpoint dot (orange)
+        _lastCurveMark = { e: tick.pose.e, n: tick.pose.n }; // seed green-dot spacing; no dot at A itself
+      }
+      setAbHint();
+    } else {                                // Set Point B → drop the B endpoint + finish
+      driveStep = 2;
+      if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n }); // labeled "B" endpoint dot (blue)
+      transport.send('track.finishCurve');  // host builds the curve from its recorded points
+      setTimeout(() => { if (abFlow === 'recordCurve') endAbFlow(); }, 700);   // show B a beat, then clear
+    }
+  }
 }
 function abUndo() {
   if (abFlow !== 'curve' || !drawPts.length) return;
@@ -1114,9 +1176,30 @@ function abCancel() {
 }
 function endAbFlow() {
   abFlow = null; drawMode = null; drawPts = []; driveStep = 0;
+  curveMarks = []; _lastCurveMark = null; // clear record-curve path dots
   drawBar.classList.remove('show');
   endMapTap();
   hintEl.classList.remove('show');
+}
+// Drop a path dot every ~1.5 m while recording a drive-curve (between Set Point A and B), so
+// the operator sees the shape being captured. Visual only — the host records the real curve.
+function sampleCurveMark() {
+  if (abFlow !== 'recordCurve' || driveStep !== 1 || !tick || !tick.pose) return;
+  const p = tick.pose;
+  if (_lastCurveMark && Math.hypot(p.e - _lastCurveMark.e, p.n - _lastCurveMark.n) < 1.5) return;
+  _lastCurveMark = { e: p.e, n: p.n };
+  curveMarks.push(_lastCurveMark);
+}
+function drawCurveMarksSk(canvas) {
+  if (!curveMarks.length) return;
+  const rad = Math.max(3, 0.4 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#39FF6A')); // recording green
+  for (const p of curveMarks) {
+    if (pw(p.e, p.n) < 1.0) continue; // behind the near plane
+    const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
 }
 // ---- boundary draw-on-map (Phase MT) — native BoundaryMapDialog equivalent ----
 // Shows a Bing aerial underlay (satEnabled) and captures the boundary polygon by tapping
@@ -1264,31 +1347,35 @@ document.getElementById('draw-setpoint').addEventListener('pointerdown', e => { 
 document.getElementById('draw-undo').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); hlFlow ? hlUndo() : satBnd ? satUndo() : abUndo(); });
 document.getElementById('draw-finish').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); editSession ? saveEdit() : hlFlow ? endHeadlandDraw() : satBnd ? satFinish() : abFinish(); });
 document.getElementById('draw-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); editSession ? endEdit() : hlFlow ? endHeadlandDraw() : satBnd ? satCancel() : abCancel(); });
+// Touch cancel for bare map-tap flows (flag). stopPropagation so the pill isn't taken as a map tap.
+document.getElementById('maptap-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (mapTap && mapTap.onCancel) mapTap.onCancel(); else endMapTap(); });
 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
 document.getElementById('bn-tracks').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openTracksManager(); });
 document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openDialog('dlg-quickab'); });
-document.getElementById('bn-drawab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openDialog('dlg-drawab'); });
 // Quick-AB selector buttons.
+// Quick AB — the single creation hub: GPS-driven, from-boundary, and draw-on-map modes.
 document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation(); closeDialog();
   const m = b.dataset.qab;
-  if (m === 'aPlus') transport.send('track.aPlus');
+  if (m === 'aPlus') {
+    // A+ builds an AB line from the vehicle's current position + heading. It needs a GPS
+    // fix; the host bails silently without one, so give feedback here (StatusMessage isn't
+    // on the wire). flashHint after a tick so it isn't cleared by the dialog close.
+    const p = tick && tick.pose;
+    if (!p || (!p.e && !p.n)) setTimeout(() => flashHint('A+ needs a GPS position — start the simulator or GPS'), 0);
+    else transport.send('track.aPlus');
+  }
   else if (m === 'driveAB') startDriveAB();
   else if (m === 'recordCurve') startRecordCurve();
+  else if (m === 'boundaryEdge') transport.send('track.createFromBoundary');
+  else if (m === 'boundaryCurve') startBoundaryCurve();
+  else if (m === 'allEdges') transport.send('track.allEdges');
+  else if (m === 'drawStraight') startDrawTrack('straight');
+  else if (m === 'drawCurve') startDrawTrack('curve');
 }));
 document.getElementById('dlg-qab-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
-// Draw-AB selector buttons.
-document.getElementById('dlg-drawab').querySelectorAll('[data-draw]').forEach(b => b.addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation(); closeDialog();
-  const m = b.dataset.draw;
-  if (m === 'straight' || m === 'curve') startDrawTrack(m);
-  else if (m === 'boundaryEdge') transport.send('track.createFromBoundary');
-  else if (m === 'boundaryCurve') transport.send('track.boundaryCurve');
-  else if (m === 'allEdges') transport.send('track.allEdges');
-}));
-document.getElementById('dlg-drawab-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 
 // ---- Tracks manager (mirrors native TracksDialogPanel) ----
 // View-only without control (just reads scene.trackList); the actions are Tier-2.
@@ -3381,7 +3468,10 @@ function updateLightbarText() {
     const xte = tick.crossTrackError || 0;
     const onLine = Math.abs(xte) < 0.05;
     const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
-    lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   ${tick.lineLabel || ''}`;
+    // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
+    // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
+    const pass = (tick.op ? tick.op.passNumber : 0) | 0;
+    lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   Pass ${Math.abs(pass) + 1}`;
   }
   lbEl.style.display = 'block';
 }
@@ -4363,7 +4453,7 @@ function drawSatBoundarySk(canvas) {
 // blue B (last), white interior — so the placed A point is visible before B is set. The
 // host holds the real point list; drawPts is the client's tap echo (preview only).
 function drawAbDrawPreviewSk(canvas) {
-  if (!drawMode || !drawPts.length) return;
+  if (!drawPts.length) return; // renders for map-tap AND Drive-AB markers (drawMode may be null)
   const rad = Math.max(5, 0.6 * pxPerM);
   for (let i = 0; i < drawPts.length; i++) {
     const p = drawPts[i];
@@ -4981,19 +5071,23 @@ function renderSkia(canvas, rp) {
     drawExtraGuidelinesSk(canvas); // faint adjacent passes (under the bold lines)
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
-    if (scene.guidanceLine) strokePtsSk(canvas, scene.guidanceLine, false, SKP.guidance);
-    // Reference AB (the selected track, fixed at where it was drawn) — purple dashed,
-    // drawn AFTER the magenta DisplayLine so the dashes show on top. scene.tracks is
-    // active-only, so this is just the active reference; the offset magenta sits a pass
-    // away from it once the tractor moves over.
-    for (const tr of scene.tracks)
+    // Purple reference (extended across the field) — drawn ONLY when the tractor is offset from
+    // it (pass ≠ 0). On the reference pass it coincides with the magenta guidance, so we show
+    // just the one line. Matches the host's baseTrack = nearestPass!=0?track:null intent.
+    const _onRef = !tick || !tick.op || (tick.op.passNumber | 0) === 0;
+    if (!_onRef) for (const tr of scene.tracks)
       strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
+    // Magenta current pass, extended across the field. The host's DisplayLine is only ~track
+    // length (a 2-point offset AB); extendAbLine spans it full-field, so an offset pass isn't a
+    // short stub. Curves are >2 points and already host-extended, so they pass through unchanged.
+    if (scene.guidanceLine) strokePtsSk(canvas, extendAbLine(scene.guidanceLine), false, SKP.guidance);
     drawFlagsSk(canvas, scene.flags);
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
   drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
+  drawCurveMarksSk(canvas); // record-curve path dots (Set Point A → B)
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
@@ -5015,6 +5109,7 @@ function skFrame() {
   else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
   maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
+  sampleCurveMark();         // drop record-curve path dots as the vehicle drives
   if (skSurface) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }

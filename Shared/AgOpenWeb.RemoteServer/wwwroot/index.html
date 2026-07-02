@@ -160,7 +160,16 @@
       pointer-events: none; z-index: 40; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     }
     #maptap-hint.show { display: block; }
-    #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; }
+    /* "Esc to cancel" only on pointer devices with a keyboard; touch cancels via the red
+       Cancel button in the draw toolbar (no Esc key on a tablet). */
+    @media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
+    /* Touch cancel for bare map-tap flows (flag placement) that have no draw toolbar. Shown
+       by startMapTap only when the toolbar isn't up, so it never doubles the toolbar Cancel. */
+    #maptap-cancel { position: fixed; top: calc(102px + var(--sat)); left: 50%; transform: translateX(-50%);
+      display: none; z-index: 41; padding: 8px 22px; border-radius: 999px; cursor: pointer;
+      border: 1px solid rgba(230,120,110,0.7); background: rgba(52,22,20,0.94); color: #f3c4bd;
+      font: 700 14px system-ui, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+    #maptap-cancel.show { display: block; }
     body.maptap #ck { cursor: crosshair; }
     /* A/B letter that rides the crosshair while drawing a straight AB line (#40): shows
        which point the next tap places. Colour matches the placed dots (A orange, B blue). */
@@ -168,6 +177,9 @@
       font: 900 24px system-ui, sans-serif; transform: translate(15px, -30px);
       text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
     #maptap-ab.show { display: block; }
+    /* The crosshair letter is mouse-only (no hover to ride on touch); the dot letters +
+       banner cover touch. Belt-and-suspenders with the pointerType gate in JS. */
+    @media (pointer: coarse) { #maptap-ab { display: none !important; } }
     /* Persistent letter next to each dropped AB/curve point (#40). Positioned per-frame. */
     #ab-dot-labels span { position: fixed; z-index: 41; display: none; pointer-events: none;
       font: 900 20px system-ui, sans-serif; transform: translate(11px, -26px);
@@ -1100,6 +1112,7 @@
   <div id="lb"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
+  <button id="maptap-cancel">✕ Cancel</button>
   <div id="maptap-ab">A</div>
   <div id="ab-dot-labels"></div>
   <!-- Phase MT — draw-track toolbar. Shown while drawing an AB/curve on the map.
@@ -2458,17 +2471,13 @@
       </div>
       <div id="bn-flyout-ab" class="bn-flyout">
         <!-- Mirrors native BottomNavigationPanel AB flyout. Row 1: Tracks manager /
-             Auto-track / Quick-AB selector. Row 2: boundary-edge AB / Draw-on-map
-             selector. Then the active-track ops (cycle/smooth/delete + nudges), shown
-             only with an active track (.bn-abdep). Tracks/QuickAB/DrawAB open dialogs. -->
+             Auto-track / Quick-AB (the single creation hub — GPS-driven, from-boundary,
+             and draw-on-map all live in its dialog). Then the active-track ops
+             (cycle/smooth/delete + nudges), shown only with an active track (.bn-abdep). -->
         <div class="bn-flyrow">
           <button class="bn-btn" id="bn-tracks" title="Tracks — manage AB lines"><img class="bn-ic" src="/icons/ABTracks.png" alt="Tracks"></button>
           <button class="bn-btn" id="bn-autotrack" data-cmd="track.autoTrack" data-t2 title="Auto track select (closest track)">AT</button>
           <button class="bn-btn" id="bn-quickab" title="Quick AB line creator"><img class="bn-ic" src="/icons/ABTrackAPlus.png" alt="Quick AB"></button>
-        </div>
-        <div class="bn-flyrow">
-          <button class="bn-btn" data-cmd="track.createFromBoundary" title="Create AB line from boundary edge">BE</button>
-          <button class="bn-btn" id="bn-drawab" title="Draw AB line on map"><img class="bn-ic" src="/icons/ABDraw.png" alt="Draw AB"></button>
         </div>
         <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
@@ -2544,32 +2553,28 @@
         <button id="ucov-save" class="dlg-btn dlg-ok">Save to Job</button>
       </div>
     </div>
-    <!-- Quick AB Line creator (mirrors native QuickABSelectorPanel) — GPS-driven modes. -->
+    <!-- Quick AB Line — the single AB/track creation hub. Three sections: GPS-driven,
+         from-boundary, and draw-on-map (all methods live here; no separate Draw dialog). -->
     <div id="dlg-quickab" class="dlg-card">
       <div class="dlg-title">Quick AB Line</div>
-      <div class="dlg-msg">Select a creation mode</div>
+      <div class="dlg-sub">By Driving</div>
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="aPlus" title="AB line from current position &amp; heading"><img src="/icons/ABTrackAPlus.png" alt=""><span>A+</span></button>
         <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
         <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
       </div>
-      <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
-    </div>
-    <!-- Draw AB on map (mirrors native DrawABDialogPanel) — map-tap + boundary creation. -->
-    <div id="dlg-drawab" class="dlg-card">
-      <div class="dlg-title">Draw Track on Map</div>
-      <div class="dlg-msg">Tap on the map to place points</div>
-      <div class="dlg-modes">
-        <button class="dlg-mode" data-draw="straight" title="Tap 2 points for a straight AB line"><img src="/icons/ABTrackAB.png" alt=""><span>Straight</span></button>
-        <button class="dlg-mode" data-draw="curve" title="Tap points for a curve, then Finish"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
-      </div>
       <div class="dlg-sub">From Field Boundary</div>
       <div class="dlg-modes">
-        <button class="dlg-mode" data-draw="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>
-        <button class="dlg-mode" data-draw="boundaryCurve" title="Curve following the whole boundary"><img src="/icons/ABTrackCurve.png" alt=""><span>Bnd. Curve</span></button>
-        <button class="dlg-mode" data-draw="allEdges" title="AB line for every boundary edge"><span class="dlg-bigtxt">All</span><span>All Edges</span></button>
+        <button class="dlg-mode" data-qab="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>
+        <button class="dlg-mode" data-qab="boundaryCurve" title="Curve following the whole boundary"><img src="/icons/ABTrackCurve.png" alt=""><span>Bnd. Curve</span></button>
+        <button class="dlg-mode" data-qab="allEdges" title="AB line for every boundary edge"><span class="dlg-bigtxt">All</span><span>All Edges</span></button>
       </div>
-      <div class="dlg-buttons"><button id="dlg-drawab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
+      <div class="dlg-sub">Draw on Map</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-qab="drawStraight" title="Tap 2 points on the map for a straight AB line"><img src="/icons/ABTrackAB.png" alt=""><span>Straight</span></button>
+        <button class="dlg-mode" data-qab="drawCurve" title="Tap points on the map for a curve, then Finish"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+      </div>
+      <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
     </div>
     <!-- Tracks manager (mirrors native TracksDialogPanel) — list + toolbar. -->
     <div id="dlg-tracks" class="dlg-card dlg-wide">

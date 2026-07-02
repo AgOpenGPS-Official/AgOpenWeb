@@ -68,6 +68,78 @@ public partial class MainViewModel
         StatusMessage = "Applied area deleted";
     }
 
+    /// <summary>
+    /// Boundary curve from two tapped points (remote/web "Bnd. Curve"): snap A and B to the
+    /// nearest outer-boundary vertices, walk the shorter arc between them, and create an OPEN
+    /// curve following the boundary. Mirrors native FormABDraw's BtnMakeCurve segment logic.
+    /// </summary>
+    public void RemoteCreateBoundaryCurveSegment(double aE, double aN, double bE, double bN)
+    {
+        var boundary = State.Field.CurrentBoundary?.OuterBoundary;
+        if (boundary?.Points == null || boundary.Points.Count < 3)
+        {
+            StatusMessage = "Load a field with a boundary first";
+            return;
+        }
+        // Offset the boundary inward by half the tool width so the curve sits half-an-implement
+        // inside the fence (following it keeps the whole implement in the field — #422, same as
+        // the whole-boundary curve). Fall back to the raw boundary if the offset fails.
+        double halfTool = ConfigStore.ActualToolWidth / 2.0;
+        var rawVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(boundary.Points.Count);
+        foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
+        var offset = halfTool > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, halfTool) : null;
+        var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
+        int n = ring.Count;
+
+        int NearestIndex(double e, double north)
+        {
+            int best = 0; double bd = double.MaxValue;
+            for (int i = 0; i < n; i++)
+            {
+                double dx = ring[i].Easting - e, dy = ring[i].Northing - north;
+                double d = dx * dx + dy * dy;
+                if (d < bd) { bd = d; best = i; }
+            }
+            return best;
+        }
+
+        int ai = NearestIndex(aE, aN);
+        int bi = NearestIndex(bE, bN);
+        if (ai == bi) { StatusMessage = "Pick two different points on the boundary"; return; }
+
+        // Walk the SHORTER arc A→B around the closed ring (mirrors FormABDraw's wrap check).
+        int forward = (bi - ai + n) % n;
+        int step = forward <= n - forward ? 1 : -1;
+        var seg = new System.Collections.Generic.List<Models.Base.Vec3>();
+        for (int i = ai; ; i = (i + step + n) % n)
+        {
+            seg.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
+            if (i == bi) break;
+        }
+
+        if (seg.Count < 3) { StatusMessage = "Segment too short for a curve"; return; }
+
+        // Round the boundary's sharp corners so the tractor can actually drive it (Chaikin
+        // corner-cutting), then heading per point (guidance's forward test keys off it).
+        var smoothed = Models.Guidance.CurveProcessing.ChaikinsSmooth(seg, 3);
+        var curvePoints = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
+        var track = new Models.Track.Track
+        {
+            Name = "Boundary Curve",
+            Points = curvePoints,
+            Type = Models.Track.TrackType.Curve,
+            IsVisible = true,
+            IsClosed = false,
+            // Drive the boundary itself: this curve isn't worked in parallel passes, so the
+            // guidance follows it directly (pass 0) instead of free-drive snapping to an inner pass.
+            NoPassOffset = true
+        };
+        SavedTracks.Add(track);
+        SelectedTrack = track;
+        SaveTracksToFile();
+        StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
+    }
+
     private void InitializeTrackCommands()
     {
         // AB Line Guidance Commands - Bottom Bar
