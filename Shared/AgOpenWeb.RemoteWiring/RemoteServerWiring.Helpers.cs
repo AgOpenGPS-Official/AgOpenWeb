@@ -15,7 +15,7 @@ public static partial class RemoteServerWiring
         "track.drawStraight", "track.drawCurve", "track.drawPoint", "track.drawFinish",
         "track.drawUndo", "track.drawCancel", "track.aPlus", "track.driveAB",
         "track.recordCurve", "track.finishCurve", "track.setABGps",
-        "track.createFromBoundary", "track.boundaryCurve", "track.allEdges",
+        "track.createFromBoundary", "track.boundaryCurve", "track.boundaryCurveSeg", "track.allEdges",
         "track.setVisible", "track.toggleRecPaths", "track.editSave",
     };
 

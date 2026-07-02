@@ -519,6 +519,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _nextUTurnDirectionLeftOverride = null;
         }
 
+        // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
+        // (below) so it stays where you put it — it starts on the boundary (pass 0, seeded from
+        // NudgeDistance) instead of jumping to the pass nearest a parked tractor. Laterals,
+        // nudges and U-turns still change the pass normally; we don't pin it here.
+        bool noPassOffset = track != null && track.NoPassOffset;
+
         // No-headland workflow: substitute a synthetic headland line that
         // sits one (turn radius + UTurnDistanceFromBoundary) inset from the
         // outer boundary, so the auto-uturn arc's apex lands inside the
@@ -922,7 +928,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
             }
         }
-        if (!autoSteerEngaged && hasTrack)
+        if (!autoSteerEngaged && hasTrack && !noPassOffset)
         {
             // Display-only: auto-detect nearest pass and update visualization.
             // Phase D D3: write the detected pass directly into the cycle's

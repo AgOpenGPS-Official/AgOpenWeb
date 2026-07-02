@@ -417,7 +417,12 @@ public partial class MainViewModel
         _gpsPipelineService.SetHeadlandLine(State.Field.HeadlandLine);
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
-        _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);
+        // Stopgap: also skip auto-U-turns on a boundary-follow (NoPassOffset) curve — auto
+        // arming is headland-proximity based and mis-fires on a line that hugs the boundary
+        // (fires at the first corner, return path outside the fence). Manual U-turns still work.
+        // Proper end-of-pass auto-U-turns for boundary curves are a separate follow-up.
+        _gpsPipelineService.SetYouTurnEnabled(
+            IsYouTurnEnabled && !IsActiveTrackClosed && !(SelectedTrack?.NoPassOffset == true));
         _gpsPipelineService.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
     }

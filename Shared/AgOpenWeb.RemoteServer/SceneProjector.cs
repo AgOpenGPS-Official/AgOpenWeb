@@ -310,7 +310,8 @@ public sealed class SceneProjector
                 ? v.RenderPoseMs
                 : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
             // Mid-turn gate (issue #50): true while the u-turn arc is executing.
-            _state.YouTurn.IsExecuting);
+            _state.YouTurn.IsExecuting,
+            _state.Guidance.HowManyPathsAway); // pass offset (0 = on reference) — #reference/label
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
