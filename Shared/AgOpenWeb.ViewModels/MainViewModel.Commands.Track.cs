@@ -81,13 +81,16 @@ public partial class MainViewModel
             StatusMessage = "Load a field with a boundary first";
             return;
         }
-        // Offset the boundary inward by half the tool width so the curve sits half-an-implement
-        // inside the fence (following it keeps the whole implement in the field — #422, same as
-        // the whole-boundary curve). Fall back to the raw boundary if the offset fails.
-        double halfTool = ConfigStore.ActualToolWidth / 2.0;
+        // Offset the boundary inward by half the tool width PLUS half the U-turn clearance so the
+        // curve sits a half-implement inside the fence AND clears the turn line (which is
+        // UTurnDistanceFromBoundary inside) with margin — following it keeps the whole implement in
+        // the field (#422) while the pass stays inside the cultivated/turn zone. Fall back to the
+        // raw boundary if the offset fails.
+        double insetDistance = ConfigStore.ActualToolWidth / 2.0
+            + ConfigStore.Guidance.UTurnDistanceFromBoundary / 2.0;
         var rawVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(boundary.Points.Count);
         foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
-        var offset = halfTool > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, halfTool) : null;
+        var offset = insetDistance > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, insetDistance) : null;
         var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
         int n = ring.Count;
 
@@ -122,7 +125,12 @@ public partial class MainViewModel
         // Round the boundary's sharp corners so the tractor can actually drive it (Chaikin
         // corner-cutting), then heading per point (guidance's forward test keys off it).
         var smoothed = Models.Guidance.CurveProcessing.ChaikinsSmooth(seg, 3);
-        var curvePoints = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
+        var headed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
+        // Extend both ends past the field boundary along their tangents — exactly like the
+        // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
+        // stops inside the field and the U-turn generator has no boundary crossing to anchor the
+        // turn at each pass end; with it, the ends run past the fence and turns fire normally.
+        var curvePoints = ExtendCurvePastBoundary(headed);
         var track = new Models.Track.Track
         {
             Name = "Boundary Curve",
@@ -137,7 +145,7 @@ public partial class MainViewModel
         SavedTracks.Add(track);
         SelectedTrack = track;
         SaveTracksToFile();
-        StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
+        StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {insetDistance:F1} m inside fence)";
     }
 
     private void InitializeTrackCommands()
@@ -1624,14 +1632,42 @@ public partial class MainViewModel
             lastPoint.Northing + cosEnd2 * extendEnd,
             endHeading);
 
-        // Insert extended start at beginning, replace first point
-        result[0] = extendedStart;
-        // Append extended end, replace last point
-        result[^1] = extendedEnd;
+        // DENSIFY the extensions instead of replacing the endpoints with a single far point.
+        // A boundary curve's end can extend a very long way (e.g. its tangent runs along the
+        // fence, so the raycast lands on the OPPOSITE fence hundreds of metres away). Left as a
+        // lone 2-point segment, a tractor sitting on that long segment finds the far endpoint
+        // (index 0) as its nearest curve point — and FindCurveTurnPoint's walk (`j > 0`) can't
+        // advance from index 0, so it finds no crossing, the U-turn generator fails, and the
+        // straight-line fallback mis-plots the turn at whatever fence the travel-heading raycast
+        // hits (the "U-turn in the wrong corner" bug). Densified points keep the nearest index in
+        // the interior so the walk proceeds in either direction.
+        const double extSpacing = 2.0;
+        var densified = new List<Vec3>(result.Count + 64);
 
-        _logger.LogDebug($"[Curve] Extended start by {extendStart:F1}m, end by {extendEnd:F1}m");
+        int leadSteps = Math.Max(1, (int)(extendStart / extSpacing));
+        for (int i = 0; i < leadSteps; i++)
+        {
+            double f = (double)i / leadSteps; // 0 at extended tip → 1 at firstPoint (exclusive)
+            densified.Add(new Vec3(
+                extendedStart.Easting + (firstPoint.Easting - extendedStart.Easting) * f,
+                extendedStart.Northing + (firstPoint.Northing - extendedStart.Northing) * f,
+                startHeading));
+        }
+        densified.AddRange(result); // keeps the original first/last points and the curve body
 
-        return result;
+        int tailSteps = Math.Max(1, (int)(extendEnd / extSpacing));
+        for (int i = 1; i <= tailSteps; i++)
+        {
+            double f = (double)i / tailSteps; // firstPoint-after-last → extended tip
+            densified.Add(new Vec3(
+                lastPoint.Easting + (extendedEnd.Easting - lastPoint.Easting) * f,
+                lastPoint.Northing + (extendedEnd.Northing - lastPoint.Northing) * f,
+                endHeading));
+        }
+
+        _logger.LogDebug($"[Curve] Extended start by {extendStart:F1}m, end by {extendEnd:F1}m (densified)");
+
+        return densified;
     }
 
     /// <summary>
