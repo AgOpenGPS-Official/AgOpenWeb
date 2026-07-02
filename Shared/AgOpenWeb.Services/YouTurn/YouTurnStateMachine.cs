@@ -230,12 +230,18 @@ public sealed class YouTurnStateMachine
                 (currentPosition.Easting - turnStart.Easting) * (currentPosition.Easting - turnStart.Easting) +
                 (currentPosition.Northing - turnStart.Northing) * (currentPosition.Northing - turnStart.Northing));
 
-            // Publish current pivot→trigger distance for the UI countdown widget.
-            // Only meaningful while a precomputed turn-start exists and we haven't
-            // begun executing yet; once IsExecuting flips, the widget is expected
-            // to switch to a "turning" state and we revert to 0 (set above).
-            turn.DistanceToTrigger = distToTurnStart;
+            // Publish the pivot→trigger distance for the UI countdown widget as ARC LENGTH
+            // ALONG THE TRACK, not straight-line. On a curve that wraps a field end, the turn
+            // start can be far to the east while the tractor drives west around the wrap toward
+            // it — a Euclidean distance would COUNT UP as it drives away in a straight line, when
+            // the operator expects it to COUNT DOWN as the pass is worked. Falls back to the
+            // straight-line value for AB lines (2-point tracks) where the two are identical.
+            turn.DistanceToTrigger = track.Points.Count > 2
+                ? ArcLengthAlongTrack(track.Points, currentPosition, turnStart)
+                : distToTurnStart;
 
+            // Trigger on physical proximity (straight-line): the tractor must actually reach the
+            // turn start, regardless of how the arc-length display reads.
             if (distToTurnStart <= TriggerProximityMeters)
             {
                 turn.IsTriggered = true;
@@ -379,6 +385,43 @@ public sealed class YouTurnStateMachine
             remaining += Math.Sqrt(dx * dx + dy * dy);
         }
         return remaining;
+    }
+
+    /// <summary>
+    /// Arc length along <paramref name="track"/> between the point nearest
+    /// <paramref name="pivot"/> and the point nearest <paramref name="turnStart"/>. Gives a
+    /// "distance remaining as the pass is worked" that decreases as the tractor advances toward
+    /// the turn, even when the turn start is straight-line far away (a curve wrapping a field
+    /// end). Snaps both ends to the nearest track point, so the readout steps at roughly the
+    /// track point spacing (~2 m) — fine for a distance display.
+    /// </summary>
+    private static double ArcLengthAlongTrack(
+        IReadOnlyList<Vec3> track, Position pivot, Vec3 turnStart)
+    {
+        int NearestIdx(double e, double n)
+        {
+            int best = 0; double bestSq = double.MaxValue;
+            for (int i = 0; i < track.Count; i++)
+            {
+                double de = track[i].Easting - e, dn = track[i].Northing - n;
+                double d2 = de * de + dn * dn;
+                if (d2 < bestSq) { bestSq = d2; best = i; }
+            }
+            return best;
+        }
+
+        int pivotIdx = NearestIdx(pivot.Easting, pivot.Northing);
+        int turnIdx = NearestIdx(turnStart.Easting, turnStart.Northing);
+        int lo = Math.Min(pivotIdx, turnIdx), hi = Math.Max(pivotIdx, turnIdx);
+
+        double len = 0;
+        for (int i = lo; i < hi; i++)
+        {
+            double de = track[i + 1].Easting - track[i].Easting;
+            double dn = track[i + 1].Northing - track[i].Northing;
+            len += Math.Sqrt(de * de + dn * dn);
+        }
+        return len;
     }
 
     /// <summary>

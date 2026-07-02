@@ -525,12 +525,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // nudges and U-turns still change the pass normally; we don't pin it here.
         bool noPassOffset = track != null && track.NoPassOffset;
 
-        // No-headland workflow: substitute a synthetic headland line that
-        // sits one (turn radius + UTurnDistanceFromBoundary) inset from the
-        // outer boundary, so the auto-uturn arc's apex lands inside the
-        // outer boundary. headlandCalculatedWidth is set to the inset so
-        // downstream U-turn geometry (HeadlandWidth, leg lengths) is
-        // consistent with the synthesized line.
+        // No-headland workflow: substitute the outer-boundary TURN LINE for the
+        // missing headland line — the AgOpen model (CTurn.BuildTurnLines): the
+        // fence offset inward by just UTurnDistanceFromBoundary. This line is the
+        // "in-turn-bounds" polygon the state machine gates arming on and raycasts
+        // distance to; a fence-hugging boundary-follow pass (offset ~half a tool
+        // inside the fence) sits INSIDE it, so it arms via the normal cultivated-
+        // zone path. The turn's actual geometry is anchored on the turn boundary
+        // built inside BuildCreationInput (also offset by UTurnDistanceFromBoundary)
+        // and fitted by MoveTurnInsideTurnLine, so this line does not shape the arc.
         if (headlandLine == null && boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
         {
             var synth = GetOrComputeSyntheticHeadland(boundary);
@@ -1594,13 +1597,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private (List<Vec3>? Line, double Inset) GetOrComputeSyntheticHeadland(Boundary boundary)
     {
         var guidanceConfig = _configStore.Guidance;
-        double turnRadius = guidanceConfig.UTurnRadius;
-        double distFromBoundary = guidanceConfig.UTurnDistanceFromBoundary;
-        double inset = turnRadius + distFromBoundary;
-        // Pack the two doubles into a single key. UTurnRadius is small (<20m)
-        // so multiplying by 1000 and adding distance keeps both contributions
-        // distinguishable for cache invalidation purposes.
-        double configKey = turnRadius * 1000.0 + distFromBoundary;
+        // AgOpen CTurn.BuildTurnLines: turn line = fence inset by uturnDistanceFromBoundary
+        // ONLY (no turn-radius inset). A deeper inset would push a fence-hugging boundary
+        // pass outside the "in-turn-bounds" polygon and it would never arm; the turn radius
+        // is accounted for by MoveTurnInsideTurnLine fitting the arc, not by pre-insetting
+        // this line.
+        double inset = guidanceConfig.UTurnDistanceFromBoundary;
+        double configKey = inset;
 
         if (ReferenceEquals(boundary, _syntheticHeadlandSourceBoundary)
             && Math.Abs(configKey - _syntheticHeadlandConfigKey) < 1e-9)
@@ -1618,8 +1621,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _syntheticHeadlandSourceBoundary = boundary;
         _syntheticHeadlandConfigKey = configKey;
         _syntheticHeadlandInsetUsed = inset;
-        _logger.LogDebug("[YouTurn] Synthesized headland (no user headland): inset={I:F1}m (turnR={R:F1}+dist={D:F1}), pts={P}",
-            inset, turnRadius, distFromBoundary, _syntheticHeadlandLine?.Count ?? 0);
+        _logger.LogDebug("[YouTurn] Synthesized turn line (no user headland): inset={I:F1}m (uturnDistanceFromBoundary), pts={P}",
+            inset, _syntheticHeadlandLine?.Count ?? 0);
         return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
     }
 
