@@ -89,6 +89,7 @@ public static class FieldPropertyKeys
     public const string Name = "name";
     public const string TrackType = "trackType";
     public const string IsClosed = "isClosed";
+    public const string NoPassOffset = "noPassOffset";
     public const string NudgeDistance = "nudgeDistance";
     public const string IsVisible = "isVisible";
     public const string IsDriveThrough = "isDriveThrough";

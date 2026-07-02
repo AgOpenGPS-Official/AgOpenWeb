@@ -157,7 +157,11 @@ public record TickDto(
     // U-turn/Lateral buttons with a hint during this window — snapping/turning mid-arc is
     // ignored by the pipeline (would move the displayed track while the tractor stays
     // committed to the current arc). Mirrors YouTurnState.IsExecuting (issue #50).
-    bool IsYouTurnExecuting);
+    bool IsYouTurnExecuting,
+    // Current guidance pass offset from the reference (HowManyPathsAway; 0 = on the reference
+    // line). The client draws the purple reference only when this is non-zero (on pass 0 it
+    // would overlap the magenta), and shows a 1-based pass label.
+    int PassNumber);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

@@ -91,6 +91,13 @@ public class Track : INotifyPropertyChanged
     public bool IsClosed { get; set; }
 
     /// <summary>
+    /// Drive this track directly (pass 0) instead of free-drive snapping to the nearest
+    /// parallel pass. Set for boundary-follow curves — you drive the boundary itself, not
+    /// offset passes of it. The guidance keeps the reference line, no pass offsetting.
+    /// </summary>
+    public bool NoPassOffset { get; set; }
+
+    /// <summary>
     /// Whether this track is currently active for guidance.
     /// </summary>
     private bool _isActive;

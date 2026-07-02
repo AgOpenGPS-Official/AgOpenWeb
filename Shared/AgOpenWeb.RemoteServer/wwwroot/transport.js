@@ -107,6 +107,7 @@ window.RemoteTransport = {
           const vehicleSteerAngle = f32();
           const hostMs = f64(); // host monotonic build time — the interp timeline
           op.executing = !!u8(); // #50 — u-turn arc executing (blocks on-screen U-turn/Lateral)
+          op.passNumber = i32(); // guidance pass offset (0 = on reference) — reference gate + label
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,

@@ -194,6 +194,19 @@ public sealed class YouTurnPathingService
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         double nextDistAway = widthMinusOverlap * nextPathsAway;
 
+        // Curves: sample the ACTUAL offset curve, not the straight A→B chord. An irregular
+        // boundary curve's chord can sit well off the real line, so the chord test picks the
+        // wrong side (the outward one, outside the fence — the "return path outside boundary"
+        // bug). Offsetting the real curve points is accurate for either direction.
+        if (currentTrack.Points.Count > 2)
+        {
+            var offsetCurve = CurveProcessing.CreateOffsetCurve(currentTrack.Points, nextDistAway);
+            foreach (var p in offsetCurve)
+                if (IsPointInsideCultivatedArea(p.Easting, p.Northing, boundary, headlandLine))
+                    return true;
+            return false;
+        }
+
         var pointA = currentTrack.Points[0];
         var pointB = currentTrack.Points[currentTrack.Points.Count - 1];
         double perpAngle = abHeading + Math.PI / 2;

@@ -68,6 +68,86 @@ public partial class MainViewModel
         StatusMessage = "Applied area deleted";
     }
 
+    /// <summary>
+    /// Boundary curve from two tapped points (remote/web "Bnd. Curve"): snap A and B to the
+    /// nearest outer-boundary vertices, walk the shorter arc between them, and create an OPEN
+    /// curve following the boundary. Mirrors native FormABDraw's BtnMakeCurve segment logic.
+    /// </summary>
+    public void RemoteCreateBoundaryCurveSegment(double aE, double aN, double bE, double bN)
+    {
+        var boundary = State.Field.CurrentBoundary?.OuterBoundary;
+        if (boundary?.Points == null || boundary.Points.Count < 3)
+        {
+            StatusMessage = "Load a field with a boundary first";
+            return;
+        }
+        // Offset the boundary inward by half the tool width PLUS half the U-turn clearance so the
+        // curve sits a half-implement inside the fence AND clears the turn line (which is
+        // UTurnDistanceFromBoundary inside) with margin — following it keeps the whole implement in
+        // the field (#422) while the pass stays inside the cultivated/turn zone. Fall back to the
+        // raw boundary if the offset fails.
+        double insetDistance = ConfigStore.ActualToolWidth / 2.0
+            + ConfigStore.Guidance.UTurnDistanceFromBoundary / 2.0;
+        var rawVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(boundary.Points.Count);
+        foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
+        var offset = insetDistance > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, insetDistance) : null;
+        var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
+        int n = ring.Count;
+
+        int NearestIndex(double e, double north)
+        {
+            int best = 0; double bd = double.MaxValue;
+            for (int i = 0; i < n; i++)
+            {
+                double dx = ring[i].Easting - e, dy = ring[i].Northing - north;
+                double d = dx * dx + dy * dy;
+                if (d < bd) { bd = d; best = i; }
+            }
+            return best;
+        }
+
+        int ai = NearestIndex(aE, aN);
+        int bi = NearestIndex(bE, bN);
+        if (ai == bi) { StatusMessage = "Pick two different points on the boundary"; return; }
+
+        // Walk the SHORTER arc A→B around the closed ring (mirrors FormABDraw's wrap check).
+        int forward = (bi - ai + n) % n;
+        int step = forward <= n - forward ? 1 : -1;
+        var seg = new System.Collections.Generic.List<Models.Base.Vec3>();
+        for (int i = ai; ; i = (i + step + n) % n)
+        {
+            seg.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
+            if (i == bi) break;
+        }
+
+        if (seg.Count < 3) { StatusMessage = "Segment too short for a curve"; return; }
+
+        // Round the boundary's sharp corners so the tractor can actually drive it (Chaikin
+        // corner-cutting), then heading per point (guidance's forward test keys off it).
+        var smoothed = Models.Guidance.CurveProcessing.ChaikinsSmooth(seg, 3);
+        var headed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
+        // Extend both ends past the field boundary along their tangents — exactly like the
+        // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
+        // stops inside the field and the U-turn generator has no boundary crossing to anchor the
+        // turn at each pass end; with it, the ends run past the fence and turns fire normally.
+        var curvePoints = ExtendCurvePastBoundary(headed);
+        var track = new Models.Track.Track
+        {
+            Name = "Boundary Curve",
+            Points = curvePoints,
+            Type = Models.Track.TrackType.Curve,
+            IsVisible = true,
+            IsClosed = false,
+            // Drive the boundary itself: this curve isn't worked in parallel passes, so the
+            // guidance follows it directly (pass 0) instead of free-drive snapping to an inner pass.
+            NoPassOffset = true
+        };
+        SavedTracks.Add(track);
+        SelectedTrack = track;
+        SaveTracksToFile();
+        StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {insetDistance:F1} m inside fence)";
+    }
+
     private void InitializeTrackCommands()
     {
         // AB Line Guidance Commands - Bottom Bar
@@ -1319,38 +1399,57 @@ public partial class MainViewModel
             }
 
             var pts = boundary.Points;
-            int created = 0;
-            for (int i = 0; i < pts.Count; i++)
+            int n = pts.Count;
+
+            // Boundary points are densified along each straight edge, so one AB line PER POINT
+            // would make dozens on a 4-sided field. Find the CORNERS instead — vertices where the
+            // boundary direction turns sharply — and make one AB line per edge between corners.
+            const double CornerTurnThreshold = 0.35; // ~20°: real corners turn ~90°, edge noise <5°
+            var corners = new System.Collections.Generic.List<int>();
+            for (int i = 0; i < n; i++)
             {
-                int next = (i + 1) % pts.Count;
-                double dx = pts[next].Easting - pts[i].Easting;
-                double dy = pts[next].Northing - pts[i].Northing;
-                double dist = Math.Sqrt(dx * dx + dy * dy);
+                var prev = pts[(i - 1 + n) % n];
+                var cur = pts[i];
+                var nxt = pts[(i + 1) % n];
+                double hIn = Math.Atan2(cur.Easting - prev.Easting, cur.Northing - prev.Northing);
+                double hOut = Math.Atan2(nxt.Easting - cur.Easting, nxt.Northing - cur.Northing);
+                double turn = hOut - hIn;
+                while (turn > Math.PI) turn -= 2 * Math.PI;
+                while (turn < -Math.PI) turn += 2 * Math.PI;
+                if (Math.Abs(turn) > CornerTurnThreshold) corners.Add(i);
+            }
 
-                if (dist < 5.0) continue; // Skip tiny edges
-
-                double heading = Math.Atan2(dx, dy);
-                var a = new Models.Base.Vec3(
-                    pts[i].Easting - Math.Sin(heading) * 50,
-                    pts[i].Northing - Math.Cos(heading) * 50, heading);
-                var b = new Models.Base.Vec3(
-                    pts[next].Easting + Math.Sin(heading) * 50,
-                    pts[next].Northing + Math.Cos(heading) * 50, heading);
-
-                var track = new Models.Track.Track
+            int created = 0;
+            if (corners.Count >= 2)
+            {
+                // One AB line per edge: from each corner to the next, extended 50 m past both.
+                for (int k = 0; k < corners.Count; k++)
                 {
-                    Name = $"Edge {i + 1} ({dist:F0}m)",
-                    Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
-                    Type = Models.Track.TrackType.ABLine,
-                    IsVisible = true
-                };
-                SavedTracks.Add(track);
-                created++;
+                    var pa = pts[corners[k]];
+                    var pb = pts[corners[(k + 1) % corners.Count]];
+                    double dx = pb.Easting - pa.Easting, dy = pb.Northing - pa.Northing;
+                    double dist = Math.Sqrt(dx * dx + dy * dy);
+                    if (dist < 5.0) continue;
+
+                    double heading = Math.Atan2(dx, dy);
+                    var a = new Models.Base.Vec3(pa.Easting - Math.Sin(heading) * 50, pa.Northing - Math.Cos(heading) * 50, heading);
+                    var b = new Models.Base.Vec3(pb.Easting + Math.Sin(heading) * 50, pb.Northing + Math.Cos(heading) * 50, heading);
+                    SavedTracks.Add(new Models.Track.Track
+                    {
+                        Name = $"Edge {created + 1} ({dist:F0}m)",
+                        Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
+                        Type = Models.Track.TrackType.ABLine,
+                        IsVisible = true
+                    });
+                    created++;
+                }
             }
 
             if (created > 0)
                 SelectedTrack = SavedTracks[SavedTracks.Count - 1];
-            StatusMessage = $"Created {created} AB lines from boundary edges";
+            StatusMessage = created > 0
+                ? $"Created {created} AB lines from boundary edges"
+                : "Could not detect distinct boundary edges";
         });
 
         // Map zoom commands
@@ -1552,14 +1651,42 @@ public partial class MainViewModel
             lastPoint.Northing + cosEnd2 * extendEnd,
             endHeading);
 
-        // Insert extended start at beginning, replace first point
-        result[0] = extendedStart;
-        // Append extended end, replace last point
-        result[^1] = extendedEnd;
+        // DENSIFY the extensions instead of replacing the endpoints with a single far point.
+        // A boundary curve's end can extend a very long way (e.g. its tangent runs along the
+        // fence, so the raycast lands on the OPPOSITE fence hundreds of metres away). Left as a
+        // lone 2-point segment, a tractor sitting on that long segment finds the far endpoint
+        // (index 0) as its nearest curve point — and FindCurveTurnPoint's walk (`j > 0`) can't
+        // advance from index 0, so it finds no crossing, the U-turn generator fails, and the
+        // straight-line fallback mis-plots the turn at whatever fence the travel-heading raycast
+        // hits (the "U-turn in the wrong corner" bug). Densified points keep the nearest index in
+        // the interior so the walk proceeds in either direction.
+        const double extSpacing = 2.0;
+        var densified = new List<Vec3>(result.Count + 64);
 
-        _logger.LogDebug($"[Curve] Extended start by {extendStart:F1}m, end by {extendEnd:F1}m");
+        int leadSteps = Math.Max(1, (int)(extendStart / extSpacing));
+        for (int i = 0; i < leadSteps; i++)
+        {
+            double f = (double)i / leadSteps; // 0 at extended tip → 1 at firstPoint (exclusive)
+            densified.Add(new Vec3(
+                extendedStart.Easting + (firstPoint.Easting - extendedStart.Easting) * f,
+                extendedStart.Northing + (firstPoint.Northing - extendedStart.Northing) * f,
+                startHeading));
+        }
+        densified.AddRange(result); // keeps the original first/last points and the curve body
 
-        return result;
+        int tailSteps = Math.Max(1, (int)(extendEnd / extSpacing));
+        for (int i = 1; i <= tailSteps; i++)
+        {
+            double f = (double)i / tailSteps; // firstPoint-after-last → extended tip
+            densified.Add(new Vec3(
+                lastPoint.Easting + (extendedEnd.Easting - lastPoint.Easting) * f,
+                lastPoint.Northing + (extendedEnd.Northing - lastPoint.Northing) * f,
+                endHeading));
+        }
+
+        _logger.LogDebug($"[Curve] Extended start by {extendStart:F1}m, end by {extendEnd:F1}m (densified)");
+
+        return densified;
     }
 
     /// <summary>

@@ -426,6 +426,17 @@ namespace AgOpenWeb.Models.Guidance
                 }, skippedCount * 100.0 / refCount);
             }
 
+            // Collision removal at a tight inward bend (e.g. a boundary curve wrapping a field
+            // end) deletes the colliding inner-corner points, leaving a straight chord across
+            // the gap that renders as a SHARP corner — unlike the reference pass, which is
+            // rounded. Round that chord back out with one Chaikin pass so an offset pass and its
+            // cyan next-track match the reference's smoothness. Gated on removal so gentle curves
+            // (nothing skipped) are untouched; endpoints are preserved so the track→turn handoff
+            // and the boundary extension stay put. Both the displayed guidance line and the U-turn
+            // generator build from this same routine, so they stay byte-for-byte matched.
+            if (skippedCount > 0 && offsetPoints.Count > 2)
+                offsetPoints = ChaikinsSmooth(offsetPoints, 1);
+
             // Recalculate headings based on actual offset point positions
             CalculateHeadings(offsetPoints);
 
