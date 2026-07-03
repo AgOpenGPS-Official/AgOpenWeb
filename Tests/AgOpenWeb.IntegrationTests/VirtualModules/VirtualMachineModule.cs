@@ -52,7 +52,9 @@ public class VirtualMachineModule : IDisposable
 
     public VirtualMachineModule(int listenPort = 8888, int hostPort = 9999, string hostIp = "127.0.0.1")
     {
-        _udp = new UdpClient(new IPEndPoint(IPAddress.Any, listenPort));
+        // Bind to loopback (not IPAddress.Any) so Windows Defender Firewall does
+        // not prompt during test runs. All virtual-module traffic is 127.0.0.1.
+        _udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, listenPort));
         _hostEndpoint = new IPEndPoint(IPAddress.Parse(hostIp), hostPort);
     }
 
