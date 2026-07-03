@@ -3861,14 +3861,18 @@ function renderCampad() {
   const pad = document.getElementById('campad');
   if (!pad) return;
   pad.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-  document.getElementById('cp-tiltup').addEventListener('click', () => { pitch = Math.max(0, pitch - PITCH_STEP); });
-  document.getElementById('cp-tiltdown').addEventListener('click', () => {
+  // Bind on POINTERDOWN, not click: the NativeWebView launcher (touch) doesn't reliably fire
+  // `click`, so these camera buttons — notably the mode/heading cycle — did nothing when tapped
+  // on the launcher build (issue #56). pointerdown is the same event the rest of the touch UI
+  // uses; the pad's stopPropagation above already keeps it from panning the map.
+  document.getElementById('cp-tiltup').addEventListener('pointerdown', () => { pitch = Math.max(0, pitch - PITCH_STEP); });
+  document.getElementById('cp-tiltdown').addEventListener('pointerdown', () => {
     pitch = Math.min(MAX_PITCH, pitch + PITCH_STEP);
   });
-  document.getElementById('cp-zoomin').addEventListener('click', () => { pxPerM = Math.min(200, pxPerM * 1.2); });
-  document.getElementById('cp-zoomout').addEventListener('click', () => { pxPerM = Math.max(0.2, pxPerM * 0.83); });
+  document.getElementById('cp-zoomin').addEventListener('pointerdown', () => { pxPerM = Math.min(200, pxPerM * 1.2); });
+  document.getElementById('cp-zoomout').addEventListener('pointerdown', () => { pxPerM = Math.max(0.2, pxPerM * 0.83); });
   // Center: cycle the four native modes H → N → M → C → H; recenter on follow modes.
-  document.getElementById('cp-mode').addEventListener('click', () => {
+  document.getElementById('cp-mode').addEventListener('pointerdown', () => {
     cameraMode = cameraMode === 1 ? 0 : cameraMode === 0 ? 3 : cameraMode === 3 ? 2 : 1;
     if (cameraMode !== 2) { const rp = renderPose(); if (rp) { camE = rp.e; camN = rp.n; } }
   });
