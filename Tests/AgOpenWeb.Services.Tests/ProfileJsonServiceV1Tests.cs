@@ -274,16 +274,14 @@ public class ProfileJsonServiceV1Tests
 
         // Reparse, remove the new fields properly, write back. Mirrors what an
         // older app build's saved profile would look like.
-        using (var src = System.IO.File.OpenRead(path))
-        {
-            var node = System.Text.Json.Nodes.JsonNode.Parse(src)!;
-            var toolObj = node["tool"]!.AsObject();
-            foreach (var k in droppedToolKeys) toolObj.Remove(k);
-            var guidanceObj = node["guidance"]!.AsObject();
-            foreach (var k in droppedGuidanceKeys) guidanceObj.Remove(k);
-            System.IO.File.WriteAllText(path, node.ToJsonString(
-                new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        }
+        var node = System.Text.Json.Nodes.JsonNode.Parse(
+            System.IO.File.ReadAllText(path))!;
+        var toolObj = node["tool"]!.AsObject();
+        foreach (var k in droppedToolKeys) toolObj.Remove(k);
+        var guidanceObj = node["guidance"]!.AsObject();
+        foreach (var k in droppedGuidanceKeys) guidanceObj.Remove(k);
+        System.IO.File.WriteAllText(path, node.ToJsonString(
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
 
         var loadStore = new ConfigurationStore();
         ProfileJsonServiceV1.Load(_tempDir, "OldProfile", loadStore);
