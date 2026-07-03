@@ -356,9 +356,14 @@ const Sounds = (() => {
     if (unlocked) return;
     unlocked = true;
     // Nudge each element into a "played once" state so later programmatic play()
-    // (not tied to a gesture) is allowed by the autoplay policy.
+    // (not tied to a gesture) is allowed by the autoplay policy. Do it MUTED: the pause
+    // lands asynchronously in .then(), so an unmuted prime plays a burst of every alert
+    // audibly on the first UI click — notably the Hyd up/down 3-pt-hitch sounds. Muted
+    // playback still primes the element (and is always autoplay-allowed). Real plays clone
+    // the element, so they're unaffected by this temporary mute; restore it afterward anyway.
     for (const a of cache.values()) {
-      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+      a.muted = true;
+      a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
     }
     window.removeEventListener('pointerdown', unlock);
     window.removeEventListener('keydown', unlock);
