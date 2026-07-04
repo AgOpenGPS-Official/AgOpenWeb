@@ -47,6 +47,13 @@ const POSE_BUF_MAX = 12; // ~1.2 s @ 10 Hz — plenty of bracket for the delay +
 // drain the buffer are bridged by EXTRAPOLATION (sample(), below) rather than a freeze, so
 // we get smoothness without the lag. ~130 ms covers the pose interval + interpolation room.
 const RENDER_DELAY = 130; // ms
+// Max coverage cells rasterized per frame. A full-coverage snapshot (sent by the host on
+// grid bounds-expansion / reconnect / field reload) can be hundreds of thousands of cells;
+// draining it all in one frame is a multi-hundred-ms main-thread block that froze the map
+// then jumped the tractor forward (issue #34). We instead drain up to this many cells per
+// frame and resume the rest next frame (progress stored on batch.off), so a big snapshot
+// paints over a handful of frames with no visible hitch. ~40k rects ≈ 1-2 ms/frame.
+const COV_DRAIN_BUDGET = 40000;
 // Max time we'll extrapolate past the newest pose when the buffer underruns (WiFi spike /
 // dropped pose) before settling to a hold — bridges spikes without flying off on a real
 // dropout. At field speed 200 ms is well under a pose-pair's worth of travel.
@@ -248,34 +255,24 @@ const transport = RemoteTransport.create({
     pushChartData(t);
   },
   onCoverageInit(init) {
-    if (cov) { // tear down a prior coverage (field/resolution change)
+    const cs = init.cellSize;
+    // Grid GROWTH at the same cell size (host bounds-expansion, reset=false): the added ground is
+    // empty, so the host resends nothing. Keep the coverage we already have, re-anchor it into the
+    // larger grid, and carry on with incremental deltas — no rescan, no repaint, no flicker. A
+    // reset init (new field / reload / cell-size change) always falls through to a clean rebuild.
+    if (!init.reset && cov && Math.abs(cov.cellSize - cs) < 1e-9 &&
+        (init.width !== cov.width || init.height !== cov.height ||
+         Math.abs(init.originE - cov.originE) > 1e-9 || Math.abs(init.originN - cov.originN) > 1e-9)) {
+      reanchorCoverage(init);
+      return;
+    }
+    // Fresh field / resolution (cell-size) change: tear down and rebuild. A full snapshot follows.
+    if (cov) {
       if (cov.skImg) cov.skImg.delete();
       if (cov.surface) cov.surface.delete();
       if (cov.covPaint) cov.covPaint.delete();
     }
-    const w = init.width, h = init.height;
-    // Primary: a persistent GPU render target. New cells are drawn straight onto it each
-    // update (cheap, only the new cells) and snapshotted (texture copy-on-write) — NO
-    // whole-texture re-upload, which was the regular per-rebuild stutter. Fallback: the
-    // offscreen 2D canvas + full re-upload (throttled) if the render target can't be made.
-    let surface = null;
-    if (CK && grCtx) { try { surface = CK.MakeRenderTarget(grCtx, w, h); } catch (e) { surface = null; } }
-    let canvas = null, cctx = null, covPaint = null;
-    if (surface) {
-      surface.getCanvas().clear(CK.TRANSPARENT);
-      covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
-      // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1),
-      // and a cell is re-emitted with rising alpha as it fills — replace sets the exact value
-      // each time; SrcOver would blend re-draws and creep edges toward opaque.
-      covPaint.setBlendMode(CK.BlendMode.Src);
-    } else {
-      canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
-    }
-    cov = {
-      cellSize: init.cellSize, originE: init.originE, originN: init.originN,
-      width: w, height: h, surface, covPaint, pending: [],
-      canvas, cctx, dirty: true, skImg: null, lastBuild: 0,
-    };
+    cov = makeCovGrid(init);
     covCells = 0;
   },
   onCoverageCells(msg) {
@@ -356,9 +353,14 @@ const Sounds = (() => {
     if (unlocked) return;
     unlocked = true;
     // Nudge each element into a "played once" state so later programmatic play()
-    // (not tied to a gesture) is allowed by the autoplay policy.
+    // (not tied to a gesture) is allowed by the autoplay policy. Do it MUTED: the pause
+    // lands asynchronously in .then(), so an unmuted prime plays a burst of every alert
+    // audibly on the first UI click — notably the Hyd up/down 3-pt-hitch sounds. Muted
+    // playback still primes the element (and is always autoplay-allowed). Real plays clone
+    // the element, so they're unaffected by this temporary mute; restore it afterward anyway.
     for (const a of cache.values()) {
-      a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+      a.muted = true;
+      a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
     }
     window.removeEventListener('pointerdown', unlock);
     window.removeEventListener('keydown', unlock);
@@ -3861,14 +3863,18 @@ function renderCampad() {
   const pad = document.getElementById('campad');
   if (!pad) return;
   pad.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-  document.getElementById('cp-tiltup').addEventListener('click', () => { pitch = Math.max(0, pitch - PITCH_STEP); });
-  document.getElementById('cp-tiltdown').addEventListener('click', () => {
+  // Bind on POINTERDOWN, not click: the NativeWebView launcher (touch) doesn't reliably fire
+  // `click`, so these camera buttons — notably the mode/heading cycle — did nothing when tapped
+  // on the launcher build (issue #56). pointerdown is the same event the rest of the touch UI
+  // uses; the pad's stopPropagation above already keeps it from panning the map.
+  document.getElementById('cp-tiltup').addEventListener('pointerdown', () => { pitch = Math.max(0, pitch - PITCH_STEP); });
+  document.getElementById('cp-tiltdown').addEventListener('pointerdown', () => {
     pitch = Math.min(MAX_PITCH, pitch + PITCH_STEP);
   });
-  document.getElementById('cp-zoomin').addEventListener('click', () => { pxPerM = Math.min(200, pxPerM * 1.2); });
-  document.getElementById('cp-zoomout').addEventListener('click', () => { pxPerM = Math.max(0.2, pxPerM * 0.83); });
+  document.getElementById('cp-zoomin').addEventListener('pointerdown', () => { pxPerM = Math.min(200, pxPerM * 1.2); });
+  document.getElementById('cp-zoomout').addEventListener('pointerdown', () => { pxPerM = Math.max(0.2, pxPerM * 0.83); });
   // Center: cycle the four native modes H → N → M → C → H; recenter on follow modes.
-  document.getElementById('cp-mode').addEventListener('click', () => {
+  document.getElementById('cp-mode').addEventListener('pointerdown', () => {
     cameraMode = cameraMode === 1 ? 0 : cameraMode === 0 ? 3 : cameraMode === 3 ? 2 : 1;
     if (cameraMode !== 2) { const rp = renderPose(); if (rp) { camE = rp.e; camN = rp.n; } }
   });
@@ -4854,6 +4860,72 @@ function drawSatelliteSk(canvas) {
 // Fallback-path throttle (2D canvas → full re-upload): cap the expensive whole-texture
 // rebuild at ~4 Hz. The GPU render-target path below has no such cost.
 const COV_REBUILD_MS = 250;
+// Build a fresh coverage grid for a CoverageInit. Primary: a persistent GPU render target (new
+// cells drawn straight onto it, snapshotted via texture copy-on-write — no whole-texture
+// re-upload). Fallback: an offscreen 2D canvas + throttled re-upload if the target can't be made.
+function makeCovGrid(init) {
+  const w = init.width, h = init.height;
+  let surface = null;
+  if (CK && grCtx) { try { surface = CK.MakeRenderTarget(grCtx, w, h); } catch (e) { surface = null; } }
+  let canvas = null, cctx = null, covPaint = null;
+  if (surface) {
+    surface.getCanvas().clear(CK.TRANSPARENT);
+    covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
+    // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1), and a
+    // cell is re-emitted with rising alpha as it fills — replace sets the exact value each time;
+    // SrcOver would blend re-draws and creep edges toward opaque.
+    covPaint.setBlendMode(CK.BlendMode.Src);
+  } else {
+    canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
+  }
+  return {
+    cellSize: init.cellSize, originE: init.originE, originN: init.originN,
+    width: w, height: h, surface, covPaint, pending: [],
+    canvas, cctx, dirty: true, skImg: null, lastBuild: 0,
+  };
+}
+
+// Re-anchor existing coverage into a grown grid (bounds expansion, SAME cell size). The old
+// painted surface is copied into the new, larger surface at the integer cell offset between the
+// grids — exact, because the host shifts the grid by a whole number of cells — accounting for the
+// render y-flip (surface row 0 = highest northing). Not-yet-rasterized delta batches are shifted
+// into the new coords too. Nothing is re-sent by the host; the newly-added ground is empty.
+function reanchorCoverage(init) {
+  const cs = init.cellSize;
+  const oldCov = cov;
+  const offX = Math.round((oldCov.originE - init.originE) / cs);
+  const offY = Math.round((oldCov.originN - init.originN) / cs);
+  const nc = makeCovGrid(init);
+  const destX = offX;
+  const destY = (nc.height - oldCov.height) - offY; // y-flip: old image sits (maxN growth) below the top
+
+  if (oldCov.surface && nc.surface) {
+    oldCov.surface.flush();
+    const img = oldCov.surface.makeImageSnapshot();
+    // Nearest + integer offset = exact pixel copy (no resample).
+    nc.surface.getCanvas().drawImageOptions(img, destX, destY, CK.FilterMode.Nearest, CK.MipmapMode.None, null);
+    img.delete();
+    nc.surface.flush();
+  } else if (oldCov.canvas && nc.canvas) {
+    nc.cctx.drawImage(oldCov.canvas, destX, destY);
+  }
+  // else: render-target mode changed across the grow (rare) — old coverage isn't carried; deltas
+  // repaint going forward and the next full reload/reconnect reseeds. No crash, no misplacement.
+  nc.dirty = true;
+
+  // Carry queued (not-yet-drained) delta batches, shifted into the new grid coords.
+  for (const b of oldCov.pending) {
+    const c = b.cells;
+    for (let i = 0; i + 2 < c.length; i += 3) { c[i] += offX; c[i + 1] += offY; }
+    nc.pending.push(b);
+  }
+
+  if (oldCov.skImg) oldCov.skImg.delete();
+  if (oldCov.surface) oldCov.surface.delete();
+  if (oldCov.covPaint) oldCov.covPaint.delete();
+  cov = nc;
+}
+
 function drawCoverageSk(canvas) {
   if (!cov) return;
   // Only rasterize batches that have aged past RENDER_DELAY, so coverage lands on the same
@@ -4865,16 +4937,18 @@ function drawCoverageSk(canvas) {
     // texture COW — cheap). No whole-texture upload, so no regular per-rebuild stutter.
     if (cov.pending.length && cov.pending[0].t <= cutoff) {
       const sk = cov.surface.getCanvas(), paint = cov.covPaint, H = cov.height;
-      let lastRgb = -1, drained = 0;
+      let lastRgb = -1, drained = 0, budget = COV_DRAIN_BUDGET;
       for (const batch of cov.pending) {
         if (batch.t > cutoff) break;
         const c = batch.cells;
-        for (let i = 0; i + 2 < c.length; i += 3) {
+        let i = batch.off || 0; // resume a batch we ran out of budget on last frame
+        for (; i + 2 < c.length && budget > 0; i += 3) {
           const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
           if (v !== lastRgb) { paint.setColor(CK.Color((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, ((v >>> 24) & 0xFF) / 255)); lastRgb = v; covEdgeRgb = v & 0xFFFFFF; }
           sk.drawRect(CK.XYWHRect(x, H - 1 - y, 1, 1), paint); // flip: high northing at top
-          covCells++;
+          covCells++; budget--;
         }
+        if (i + 2 < c.length) { batch.off = i; break; } // budget hit mid-batch; finish next frame
         drained++;
       }
       cov.pending.splice(0, drained);
@@ -4891,11 +4965,12 @@ function drawCoverageSk(canvas) {
     // 2D fallback: drain aged batches into the offscreen canvas (same RENDER_DELAY gate).
     if (cov.pending.length && cov.pending[0].t <= cutoff) {
       const H = cov.height, cctx = cov.cctx;
-      let lastRgb = -1, drained = 0;
+      let lastRgb = -1, drained = 0, budget = COV_DRAIN_BUDGET;
       for (const batch of cov.pending) {
         if (batch.t > cutoff) break;
         const c = batch.cells;
-        for (let i = 0; i + 2 < c.length; i += 3) {
+        let i = batch.off || 0; // resume a batch we ran out of budget on last frame
+        for (; i + 2 < c.length && budget > 0; i += 3) {
           const x = c[i], y = c[i + 1], v = c[i + 2] >>> 0; // (a<<24)|(r<<16)|(g<<8)|b
           if (v !== lastRgb) {
             cctx.fillStyle = 'rgba(' + ((v >> 16) & 0xFF) + ',' + ((v >> 8) & 0xFF) + ',' + (v & 0xFF) + ',' + (((v >>> 24) & 0xFF) / 255) + ')';
@@ -4905,8 +4980,9 @@ function drawCoverageSk(canvas) {
           // cells set their exact alpha instead of blending toward opaque.
           cctx.clearRect(x, H - 1 - y, 1, 1);
           cctx.fillRect(x, H - 1 - y, 1, 1); // flip: high northing at offscreen top
-          covCells++;
+          covCells++; budget--;
         }
+        if (i + 2 < c.length) { batch.off = i; break; } // budget hit mid-batch; finish next frame
         drained++;
       }
       cov.pending.splice(0, drained);

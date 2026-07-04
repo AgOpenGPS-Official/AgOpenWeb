@@ -52,7 +52,15 @@ public sealed class MapBroadcaster : IAsyncDisposable
     public Func<(double Pitch, double Zoom)?>? ViewPrefsProvider { get; set; }
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
+    // Last coverage grid announced to clients (origin + dims). A change here with the SAME cell
+    // size is a bounds-EXPANSION: the added ground is empty, so we send a new init only and the
+    // client re-anchors its existing coverage — no rescan, no resend. A cell-size change or a
+    // full reload still forces a fresh snapshot.
+    private double _lastOriginE = double.NaN, _lastOriginN = double.NaN;
+    private int _lastWidth = -1, _lastHeight = -1;
     private volatile bool _coverageReload; // set by OnCoverageUpdated on a full reload
+    private volatile bool _snapshotInFlight; // a full coverage snapshot is building/broadcasting off-loop
+    private Task? _snapshotTask;
 
     public MapBroadcaster(WebSocketHub ws, SceneProjector projector,
         ICoverageMapService coverage, CoverageProjector coverageProjector,
@@ -91,7 +99,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             frames.Add(WireCodec.EncodeViewPrefs(vp.Pitch, vp.Zoom));
         if (_coverageProjector.BuildInit() is { } init)
         {
-            frames.Add(WireCodec.EncodeCoverageInit(init));
+            frames.Add(WireCodec.EncodeCoverageInit(init, reset: true)); // fresh client → rebuild from the seed snapshot
             if (_coverageProjector.Snapshot() is { } snap)
                 frames.Add(WireCodec.EncodeCoverageCells(snap));
         }
@@ -105,12 +113,11 @@ public sealed class MapBroadcaster : IAsyncDisposable
         _loop ??= Task.Run(() => RunAsync(_cts.Token));
     }
 
-    // Bounds growth / cell-size rescale changes the grid → clients must re-init.
-    private void OnBoundsExpanded(object? sender, BoundsExpandedEventArgs e)
-    {
-        _coverageInitSent = false;
-        _coverageProjector.ResetSent();
-    }
+    // Bounds growth / cell-size rescale changes the grid. We DON'T force a full re-init here:
+    // the broadcast loop notices the grid change by comparing BuildInit() to the last-announced
+    // grid, and picks re-anchor (grow, same cell size) vs. full snapshot (cell-size change)
+    // itself. Left as a no-op hook (kept subscribed for clarity / future use).
+    private void OnBoundsExpanded(object? sender, BoundsExpandedEventArgs e) { }
 
     private void OnCoverageUpdated(object? sender, CoverageUpdatedEventArgs e)
     {
@@ -224,25 +231,70 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     .ConfigureAwait(false);
 
                 // Coverage — diff + broadcast on THIS (broadcaster) thread, NEVER the 100 Hz
-                // control loop. (Re)init on first coverage / cell-size change / full reload
-                // sends a full snapshot; steady state drains the server-dedicated incremental
-                // stream (O(new cells)). This is the 10 Hz coverage cadence.
+                // control loop. Steady state drains the server-dedicated incremental stream
+                // (O(new cells)). This is the 10 Hz coverage cadence. Three cases (issue #34):
+                //
+                //  • Cold start / field reload / cell-size change → a full snapshot is needed
+                //    (the client has nothing usable). Snapshot now enumerates ONLY painted cells
+                //    (CoverageProjector.Snapshot → GetPaintedDisplayCells, O(worked area) — it no
+                //    longer walks the whole field), and it's built + broadcast on a BACKGROUND
+                //    task so the scan can't stall the 10 Hz pose/tick feed (which was the freeze:
+                //    the map stopped, then jumped when it resumed). Per-client send gates
+                //    (WebSocketHub) make the concurrent broadcast safe. Deltas are suspended while
+                //    that snapshot is in flight; we do NOT DiscardIncremental after it, so cells
+                //    laid mid-snapshot ride the resumed delta stream (harmless idempotent repaint,
+                //    client BlendMode.Src, newer alpha wins) rather than being dropped.
+                //
+                //  • Bounds EXPANSION at the same cell size → the added ground is empty, so the
+                //    host resends NOTHING. It announces the new grid (reset:false) and the client
+                //    re-anchors the coverage it already has; incremental deltas just continue.
+                //
+                //  • Otherwise → an incremental delta of newly-painted cells.
                 try
                 {
                     if (_coverageProjector.BuildInit() is { } cvInit)
                     {
-                        if (!_coverageInitSent || cvInit.CellSize != _lastCellSize || _coverageReload)
+                        bool coldOrReload = !_coverageInitSent || _coverageReload;
+                        bool cellSizeChanged = _coverageInitSent && cvInit.CellSize != _lastCellSize;
+                        bool gridGrew = _coverageInitSent && !cellSizeChanged &&
+                            (cvInit.OriginE != _lastOriginE || cvInit.OriginN != _lastOriginN ||
+                             cvInit.Width != _lastWidth || cvInit.Height != _lastHeight);
+
+                        if ((coldOrReload || cellSizeChanged) && !_snapshotInFlight)
                         {
+                            // Cold start / field reload / cell-size change: the client has nothing
+                            // usable, so send a fresh init + full snapshot (built off-loop). Snapshot
+                            // now enumerates only painted cells (O(worked area)), not the whole field.
                             _coverageReload = false;
                             _coverageInitSent = true;
                             _lastCellSize = cvInit.CellSize;
+                            RecordGrid(cvInit);
+                            _snapshotInFlight = true;
                             _coverageProjector.ResetSent();
-                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit), ct).ConfigureAwait(false);
-                            if (_coverageProjector.Snapshot() is { } full)
-                                await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full), ct).ConfigureAwait(false);
-                            _coverageProjector.DiscardIncremental(); // snapshot already covers everything so far
+                            _snapshotTask = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit, reset: true), ct).ConfigureAwait(false);
+                                    if (_coverageProjector.Snapshot() is { } full)
+                                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full), ct).ConfigureAwait(false);
+                                }
+                                catch { /* tolerate transient coverage-layer races / cancellation */ }
+                                finally { _snapshotInFlight = false; }
+                            }, ct);
                         }
-                        else if (_coverageProjector.IncrementalDelta() is { } delta)
+                        else if (gridGrew && !_snapshotInFlight)
+                        {
+                            // Bounds EXPANSION at the same cell size: the added ground is empty, so
+                            // nothing is rescanned or resent. Announce the new grid; the client
+                            // re-anchors the coverage it already has. Incremental deltas (already in
+                            // new-grid coords) continue immediately.
+                            RecordGrid(cvInit);
+                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit, reset: false), ct).ConfigureAwait(false);
+                            if (_coverageProjector.IncrementalDelta() is { } grow)
+                                await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(grow), ct).ConfigureAwait(false);
+                        }
+                        else if (!_snapshotInFlight && _coverageProjector.IncrementalDelta() is { } delta)
                         {
                             await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta), ct).ConfigureAwait(false);
                         }
@@ -282,6 +334,16 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 // mutated on the UI thread; an occasional dropped frame is fine.
             }
         }
+    }
+
+    // Remember the coverage grid we last announced, so the next tick can tell a bounds-expansion
+    // (same cell size → re-anchor) from a cell-size change (→ fresh snapshot).
+    private void RecordGrid(CoverageInitDto init)
+    {
+        _lastOriginE = init.OriginE;
+        _lastOriginN = init.OriginN;
+        _lastWidth = init.Width;
+        _lastHeight = init.Height;
     }
 
     private static readonly RecordedPathDto EmptyRecordedPath =
@@ -341,6 +403,10 @@ public sealed class MapBroadcaster : IAsyncDisposable
         if (_loop is not null)
         {
             try { await _loop.ConfigureAwait(false); } catch { /* ignore */ }
+        }
+        if (_snapshotTask is not null)
+        {
+            try { await _snapshotTask.ConfigureAwait(false); } catch { /* ignore */ }
         }
         _cts.Dispose();
     }

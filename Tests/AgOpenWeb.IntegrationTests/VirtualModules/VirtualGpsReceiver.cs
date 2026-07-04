@@ -55,6 +55,10 @@ public class VirtualGpsReceiver : IDisposable
 
     public VirtualGpsReceiver(int targetPort = 9999, string targetIp = "127.0.0.1")
     {
+        // Send-only socket; leave it unbound so it lazily grabs an ephemeral port
+        // on first send. Outbound UDP does not trigger the Windows firewall prompt
+        // (only the listening modules do), and eager binding here would race the
+        // machine module for an ephemeral port in VirtualModuleHub.
         _udp = new UdpClient();
         _target = new IPEndPoint(IPAddress.Parse(targetIp), targetPort);
     }
