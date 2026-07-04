@@ -323,7 +323,7 @@ window.RemoteTransport = {
         }
         case TYPE.COVERAGE_INIT: {
           handlers.onCoverageInit && handlers.onCoverageInit({
-            cellSize: f64(), originE: f64(), originN: f64(), width: i32(), height: i32(),
+            cellSize: f64(), originE: f64(), originN: f64(), width: i32(), height: i32(), reset: !!u8(),
           });
           break;
         }

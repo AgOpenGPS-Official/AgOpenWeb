@@ -648,7 +648,10 @@ public static class WireCodec
         return ms.ToArray();
     }
 
-    public static byte[] EncodeCoverageInit(CoverageInitDto c)
+    // reset=true → the client must drop any coverage it has and rebuild from the snapshot that
+    // follows (cold start / field reload / cell-size change). reset=false → the grid merely grew
+    // (bounds expansion); the client re-anchors its existing coverage and no snapshot follows.
+    public static byte[] EncodeCoverageInit(CoverageInitDto c, bool reset)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
@@ -658,6 +661,7 @@ public static class WireCodec
         w.Write(c.OriginN);          // f64
         w.Write(c.Width);            // i32
         w.Write(c.Height);           // i32
+        w.Write(reset);              // u8 (0/1)
         return ms.ToArray();
     }
 
