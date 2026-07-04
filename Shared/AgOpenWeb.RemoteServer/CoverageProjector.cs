@@ -29,15 +29,17 @@ public sealed class CoverageProjector
         return new CoverageInitDto(dim.CellSize, bnd.MinE, bnd.MinN, dim.Width, dim.Height);
     }
 
-    /// <summary>Full current coverage — for seeding a newly-connected client. Non-draining; ignores the sent bitset.</summary>
+    /// <summary>Full current coverage — for seeding a newly-connected client / server re-init.
+    /// Enumerates ONLY painted display cells (O(painted area), not an O(whole-field) scan) so a
+    /// large field with little worked ground rebuilds cheaply. Non-draining; ignores the sent bitset.</summary>
     public CoverageCellsDto? Snapshot()
     {
-        if (_cov.DisplayDimensions is not { } dim || _cov.DisplayBoundsWorld is not { } bnd)
-            return null;
-        var flat = new List<int>();
-        foreach (var (x, y, c) in _cov.GetCoverageBitmapCells(dim.CellSize, bnd.MinE, bnd.MaxE, bnd.MinN, bnd.MaxN))
-            Add(flat, x, y, c, _cov.GetDisplayCellAlpha255(x, y));
-        return flat.Count == 0 ? null : new CoverageCellsDto(flat.ToArray());
+        var cells = _cov.GetPaintedDisplayCells();
+        if (cells.Count == 0) return null;
+        var flat = new List<int>(cells.Count * 3);
+        foreach (var (x, y, c, a) in cells)
+            Add(flat, x, y, c, a);
+        return new CoverageCellsDto(flat.ToArray());
     }
 
     /// <summary>

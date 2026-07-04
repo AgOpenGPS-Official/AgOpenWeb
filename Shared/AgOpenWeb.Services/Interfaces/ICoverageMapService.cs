@@ -153,6 +153,15 @@ public interface ICoverageMapService
         double cellSize, double viewMinE, double viewMaxE, double viewMinN, double viewMaxN);
 
     /// <summary>
+    /// The full-coverage snapshot for a server re-init / new-client seed: ONLY the painted
+    /// display cells (display-cell coords) with their edge-feather alpha (0..255). Walks just the
+    /// tracked painted bounding box of the RGB565 display buffer, so cost is O(painted area) — it
+    /// never scans the empty field the way <see cref="GetCoverageBitmapCells"/> does. Materialized
+    /// under the coverage lock so it can't observe a mid-expansion (half-resampled) display buffer.
+    /// </summary>
+    IReadOnlyList<(int X, int Y, CoverageColor Color, int Alpha)> GetPaintedDisplayCells();
+
+    /// <summary>
     /// Get newly added coverage cells since last call (for incremental bitmap updates).
     /// Clears the pending list after returning.
     /// </summary>
