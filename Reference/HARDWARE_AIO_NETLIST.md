@@ -327,12 +327,12 @@ the LQFP64 pinmap; support networks (§3.1–3.6) are pin-name-referenced and fi
 - **STM firmware update:** SWD (primary/dev) + **software-triggered USB DFU** (app commands STM to
   jump to system-memory bootloader → DFU over the CM USB link). No hardware boot jumper needed.
 
-### 3.4 USB link to CM  (produces `USB_CM_D±`)
+### 3.4 USB link to CM  (produces `CM_USB2_P/N` — same labels as Page 2)
 
 | Net | Nodes | Notes |
 |---|---|---|
-| `USB_CM_D+` | U4.PA12 (USB_DP), R_USBP.1 → CM4 (Page 2) | FS D+, internal board trace |
-| `USB_CM_D-` | U4.PA11 (USB_DM), R_USBM.1 → CM4 (Page 2) | FS D− |
+| `CM_USB2_P` | U4.PA12 (USB_DP), R_USBP.1 → CM4 (Page 2) | FS D+, internal board trace. **Label must match Page 2 verbatim.** |
+| `CM_USB2_N` | U4.PA11 (USB_DM), R_USBM.1 → CM4 (Page 2) | FS D− |
 | `GND` | — | Common (shared ground, internal link) |
 
 - G473 FS USB has an **embedded DP pull-up** → no external 1.5 k. STM USB is **Full-Speed** (G4 has
