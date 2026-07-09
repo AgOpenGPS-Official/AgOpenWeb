@@ -65,6 +65,11 @@
     try { await eda.pcb_Net.setNetColor(net, col(NET_COLORS[net])); ok++; }
     catch (e) { miss++; }
   }
+  // No refresh() in the API — a view nudge repaints the canvas so colors show
+  // without a manual browser reload. zoomToBoardOutline re-renders (and zoom-fits;
+  // swap for save() or navigateToCoordinates if you'd rather keep your zoom).
+  try { await eda.pcb_Document.zoomToBoardOutline(); } catch (e) {}
+
   // toast type is a raw number in the Run Script runtime (2 = info), not an enum
   try {
     eda.sys_ToastMessage.showMessage(
