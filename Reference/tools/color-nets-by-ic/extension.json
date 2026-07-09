@@ -1,0 +1,12 @@
+{
+  "version": "1.0.0",
+  "uuid": "aow-color-nets-by-ic",
+  "name": "Color Nets by IC",
+  "description": "Colors each IC's local nets a distinct color so scattered support passives can be found by their ratsnest. AgOpenWeb AiO board.",
+  "author": "AgOpenWeb",
+  "entry": "src/index.ts",
+  "commands": [
+    { "id": "activate",    "title": "Color nets by IC" },
+    { "id": "clearColors", "title": "Clear net colors" }
+  ]
+}
