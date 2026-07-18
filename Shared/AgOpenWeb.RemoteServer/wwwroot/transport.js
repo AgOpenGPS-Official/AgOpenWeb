@@ -191,6 +191,8 @@ window.RemoteTransport = {
           const version = str(), gitHash = str(), currentLanguage = str();
           const lc = i32(); const languages = new Array(lc);
           for (let k = 0; k < lc; k++) languages[k] = { code: str(), name: str() };
+          const tc = i32(); const translations = new Array(tc);
+          for (let k = 0; k < tc; k++) translations[k] = { english: str(), localized: str() };
           const dc = i32(); const directories = new Array(dc);
           for (let k = 0; k < dc; k++) directories[k] = { name: str(), path: str(), exists: !!u8() };
           const hc = i32(); const hotkeys = new Array(hc);
@@ -198,7 +200,7 @@ window.RemoteTransport = {
           const gc = i32(); const logs = new Array(gc);
           for (let k = 0; k < gc; k++) logs[k] = { time: str(), level: i32(), message: str() };
           const bugReportStatus = str();
-          handlers.onAppInfo && handlers.onAppInfo({ version, gitHash, currentLanguage, languages, directories, hotkeys, logs, bugReportStatus });
+          handlers.onAppInfo && handlers.onAppInfo({ version, gitHash, currentLanguage, languages, translations, directories, hotkeys, logs, bugReportStatus });
           break;
         }
         case TYPE.FIELD_TOOLS: {

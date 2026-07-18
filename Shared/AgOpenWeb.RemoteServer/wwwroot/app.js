@@ -6,6 +6,141 @@
 
 const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole renderer (matches native)
 
+// ---- localization ---------------------------------------------------------
+// The host sends English -> localized pairs built from the active RESX files.
+// Keep the original English for every UI text node/attribute so switching back
+// to English is lossless. A MutationObserver covers labels created or refreshed
+// by the render functions after the initial page load.
+const I18n = (() => {
+  const textState = new WeakMap();
+  const attrState = new WeakMap();
+  const attrs = ['title', 'placeholder', 'aria-label'];
+  let language = 'en';
+  let dictionary = new Map();
+  let normalizedDictionary = new Map();
+
+  function normalized(value) {
+    return value.trim().toLocaleLowerCase('en').replace(/(?:\.{3}|…|:)$/, '');
+  }
+
+  function skipped(node) {
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !el || !!el.closest(
+      'script, style, textarea, [translate="no"], .notranslate, ' +
+      '.trk-name, .fb-tname, .fb-hlname, .nt-name, .fj-fname, .fj-jname, ' +
+      '.fj-jwt, .agu-name, .as-dirpath, .log-m'
+    );
+  }
+
+  function translated(value) {
+    if (language === 'en' || !value) return value;
+    const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(value);
+    const lead = match[1], core = match[2], tail = match[3];
+    if (!core) return value;
+
+    let hit = dictionary.get(core) || normalizedDictionary.get(normalized(core));
+    if (!hit) {
+      // Current settings labels commonly add a unit to a legacy source string,
+      // e.g. "Antenna height (m)". Translate the label and retain the unit.
+      const unit = /^(.+?)\s+(\([^)]*\))$/.exec(core);
+      if (unit) {
+        const baseHit = normalizedDictionary.get(normalized(unit[1]));
+        if (baseHit) hit = baseHit + ' ' + unit[2];
+      }
+    }
+    if (!hit && core.endsWith(':')) {
+      const base = core.slice(0, -1);
+      const baseHit = dictionary.get(base);
+      if (baseHit) hit = baseHit + ':';
+    }
+    if (!hit) {
+      const colon = core.indexOf(': ');
+      if (colon > 0) {
+        const prefix = core.slice(0, colon);
+        const prefixHit = dictionary.get(prefix);
+        if (prefixHit) hit = prefixHit + core.slice(colon);
+      }
+    }
+    return hit ? lead + hit + tail : value;
+  }
+
+  function applyText(node) {
+    if (skipped(node)) return;
+    const value = node.nodeValue || '';
+    let state = textState.get(node);
+    if (!state) {
+      state = { source: value, rendered: value };
+      textState.set(node, state);
+    } else if (value !== state.rendered) {
+      // Application code updated this node; the new value is the English source.
+      state.source = value;
+    }
+    const next = translated(state.source);
+    state.rendered = next;
+    if (value !== next) node.nodeValue = next;
+  }
+
+  function applyAttributes(el) {
+    if (skipped(el)) return;
+    let states = attrState.get(el);
+    if (!states) { states = new Map(); attrState.set(el, states); }
+    for (const name of attrs) {
+      if (!el.hasAttribute(name)) continue;
+      const value = el.getAttribute(name) || '';
+      let state = states.get(name);
+      if (!state) {
+        state = { source: value, rendered: value };
+        states.set(name, state);
+      } else if (value !== state.rendered) {
+        state.source = value;
+      }
+      const next = translated(state.source);
+      state.rendered = next;
+      if (value !== next) el.setAttribute(name, next);
+    }
+  }
+
+  function apply(root) {
+    if (!root) return;
+    if (root.nodeType === Node.TEXT_NODE) { applyText(root); return; }
+    if (root.nodeType !== Node.ELEMENT_NODE) return;
+    applyAttributes(root);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeType === Node.TEXT_NODE) applyText(node);
+      else applyAttributes(node);
+    }
+  }
+
+  const observer = new MutationObserver(records => {
+    for (const record of records) {
+      if (record.type === 'characterData') applyText(record.target);
+      else if (record.type === 'attributes') applyAttributes(record.target);
+      else for (const node of record.addedNodes) apply(node);
+    }
+  });
+
+  apply(document.body);
+  observer.observe(document.body, {
+    subtree: true, childList: true, characterData: true, attributes: true,
+    attributeFilter: attrs
+  });
+
+  return {
+    setLanguage(code, pairs) {
+      language = code === 'gu' ? 'gu' : 'en';
+      dictionary = new Map((pairs || []).map(pair => [pair.english, pair.localized]));
+      normalizedDictionary = new Map(
+        (pairs || []).map(pair => [normalized(pair.english), pair.localized])
+      );
+      document.documentElement.lang = language;
+      apply(document.body);
+    },
+    text: translated
+  };
+})();
+
 // Logical (CSS-pixel) canvas size. The backing store is scaled by the device
 // pixel ratio so vectors render at native resolution on hi-DPI screens (tablets,
 // retina) — otherwise thin strokes look faint and shimmer when panning. All draw
@@ -293,7 +428,11 @@ const transport = RemoteTransport.create({
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
   onAgShare(a) { agShare = a; agShareDirty = true; },
-  onAppInfo(a) { appInfo = a; appInfoDirty = true; },
+  onAppInfo(a) {
+    appInfo = a;
+    I18n.setLanguage(a.currentLanguage, a.translations);
+    appInfoDirty = true;
+  },
   onFieldTools(f) { fieldTools = f; fieldToolsDirty = true; if (document.getElementById('importtracks').classList.contains('open')) renderImportTracks(); },
   onRecordedPath(r) { recPath = r; if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); },
   onBoundary(b) {

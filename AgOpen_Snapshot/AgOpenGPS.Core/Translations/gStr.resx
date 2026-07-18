@@ -1245,4 +1245,1450 @@ USE AT OWN RISK.</value>
   <data name="v_AboutIntro" xml:space="preserve">
     <value>https://www.youtube.com/watch?v=iN2cZ8avHag</value>
   </data>
+  <data name="webOperator" xml:space="preserve">
+    <value>Operator</value>
+  </data>
+  <data name="webModules" xml:space="preserve">
+    <value>Modules</value>
+  </data>
+  <data name="webAppSettings" xml:space="preserve">
+    <value>App Settings</value>
+  </data>
+  <data name="webBack" xml:space="preserve">
+    <value>Back</value>
+  </data>
+  <data name="webConfirm" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
+  <data name="webApply" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="webEdit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="webDone" xml:space="preserve">
+    <value>Done</value>
+  </data>
+  <data name="webFinish" xml:space="preserve">
+    <value>Finish</value>
+  </data>
+  <data name="webSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="webNew" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="webAdd" xml:space="preserve">
+    <value>Add</value>
+  </data>
+  <data name="webRename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="webCopy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="webImport" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="webExport" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="webDownload" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="webUpload" xml:space="preserve">
+    <value>Upload</value>
+  </data>
+  <data name="webRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="webTestConnection" xml:space="preserve">
+    <value>Test Connection</value>
+  </data>
+  <data name="webHelpInfo" xml:space="preserve">
+    <value>Help &amp; Info</value>
+  </data>
+  <data name="webFieldOperations" xml:space="preserve">
+    <value>Field Operations</value>
+  </data>
+  <data name="webFieldTools" xml:space="preserve">
+    <value>Field Tools</value>
+  </data>
+  <data name="webNetworkIo" xml:space="preserve">
+    <value>Network IO</value>
+  </data>
+  <data name="webVehicleTool" xml:space="preserve">
+    <value>Vehicle &amp; Tool</value>
+  </data>
+  <data name="webSimulator" xml:space="preserve">
+    <value>Simulator</value>
+  </data>
+  <data name="webAppConfiguration" xml:space="preserve">
+    <value>App Configuration</value>
+  </data>
+  <data name="webControls" xml:space="preserve">
+    <value>Controls</value>
+  </data>
+  <data name="webHotkeys" xml:space="preserve">
+    <value>Hotkeys</value>
+  </data>
+  <data name="webLogViewer" xml:space="preserve">
+    <value>Log Viewer</value>
+  </data>
+  <data name="webBugReportDump" xml:space="preserve">
+    <value>Bug Report Dump</value>
+  </data>
+  <data name="webSettings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="webGeneral" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="webAdvanced" xml:space="preserve">
+    <value>Advanced</value>
+  </data>
+  <data name="webAlertsSounds" xml:space="preserve">
+    <value>Alerts &amp; Sounds</value>
+  </data>
+  <data name="webStatus" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="webName" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="webType" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="webDescription" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="webCurrent" xml:space="preserve">
+    <value>Current</value>
+  </data>
+  <data name="webDefault" xml:space="preserve">
+    <value>Default</value>
+  </data>
+  <data name="webEnabled" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="webDisabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
+  <data name="webActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="webFields" xml:space="preserve">
+    <value>Fields</value>
+  </data>
+  <data name="webJobs" xml:space="preserve">
+    <value>Jobs</value>
+  </data>
+  <data name="webJobName" xml:space="preserve">
+    <value>Job name</value>
+  </data>
+  <data name="webCreateField" xml:space="preserve">
+    <value>Create Field</value>
+  </data>
+  <data name="webNewField" xml:space="preserve">
+    <value>New Field</value>
+  </data>
+  <data name="webOpenFieldOnly" xml:space="preserve">
+    <value>Open Field Only</value>
+  </data>
+  <data name="webDeleteJob" xml:space="preserve">
+    <value>Delete Job</value>
+  </data>
+  <data name="webStartNewJob" xml:space="preserve">
+    <value>Start New Job</value>
+  </data>
+  <data name="webResumeJob" xml:space="preserve">
+    <value>Resume Job</value>
+  </data>
+  <data name="webVehicle" xml:space="preserve">
+    <value>Vehicle</value>
+  </data>
+  <data name="webTool" xml:space="preserve">
+    <value>Tool</value>
+  </data>
+  <data name="webVehicleConfiguration" xml:space="preserve">
+    <value>Vehicle Configuration</value>
+  </data>
+  <data name="webToolConfiguration" xml:space="preserve">
+    <value>Tool Configuration</value>
+  </data>
+  <data name="webVehicleToolConfiguration" xml:space="preserve">
+    <value>Vehicle &amp; Tool Configuration</value>
+  </data>
+  <data name="webVehicleName" xml:space="preserve">
+    <value>Vehicle name</value>
+  </data>
+  <data name="webToolName" xml:space="preserve">
+    <value>Tool name</value>
+  </data>
+  <data name="webGpsDetail" xml:space="preserve">
+    <value>GPS detail</value>
+  </data>
+  <data name="webNtripProfiles" xml:space="preserve">
+    <value>NTRIP Profiles</value>
+  </data>
+  <data name="webNotConnected" xml:space="preserve">
+    <value>Not Connected</value>
+  </data>
+  <data name="webHost" xml:space="preserve">
+    <value>Host</value>
+  </data>
+  <data name="webPort" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="webCaster" xml:space="preserve">
+    <value>Caster</value>
+  </data>
+  <data name="webMount" xml:space="preserve">
+    <value>Mount</value>
+  </data>
+  <data name="webProfileName" xml:space="preserve">
+    <value>Profile Name</value>
+  </data>
+  <data name="webAddNewProfile" xml:space="preserve">
+    <value>Add New Profile</value>
+  </data>
+  <data name="webFieldsJobs" xml:space="preserve">
+    <value>Fields and Jobs</value>
+  </data>
+  <data name="webFieldBuilder" xml:space="preserve">
+    <value>Field Builder</value>
+  </data>
+  <data name="webTracksManage" xml:space="preserve">
+    <value>Tracks — manage AB lines</value>
+  </data>
+  <data name="webImportTracks" xml:space="preserve">
+    <value>Import Tracks</value>
+  </data>
+  <data name="webPublic" xml:space="preserve">
+    <value>Public</value>
+  </data>
+  <data name="webApiKey" xml:space="preserve">
+    <value>API Key</value>
+  </data>
+  <data name="webServerUrl" xml:space="preserve">
+    <value>Server URL</value>
+  </data>
+  <data name="webUploadSelected" xml:space="preserve">
+    <value>Upload Selected</value>
+  </data>
+  <data name="webDownloadSelected" xml:space="preserve">
+    <value>Download Selected</value>
+  </data>
+  <data name="webDownloadAll" xml:space="preserve">
+    <value>Download All</value>
+  </data>
+  <data name="webSelectAll" xml:space="preserve">
+    <value>Select All</value>
+  </data>
+  <data name="webDeselectAll" xml:space="preserve">
+    <value>Deselect All</value>
+  </data>
+  <data name="webResetAllSettings" xml:space="preserve">
+    <value>Reset All Settings</value>
+  </data>
+  <data name="webResetDefaults" xml:space="preserve">
+    <value>Reset to Defaults</value>
+  </data>
+  <data name="webDayNightTheme" xml:space="preserve">
+    <value>Day/Night Theme</value>
+  </data>
+  <data name="webFullscreen" xml:space="preserve">
+    <value>Fullscreen (hide browser bars)</value>
+  </data>
+  <data name="webMetric" xml:space="preserve">
+    <value>Metric</value>
+  </data>
+  <data name="webImperial" xml:space="preserve">
+    <value>Imperial</value>
+  </data>
+  <data name="webOnScreenButtons" xml:space="preserve">
+    <value>On-Screen Buttons</value>
+  </data>
+  <data name="webOnScreenKeyboard" xml:space="preserve">
+    <value>On-screen Kbd</value>
+  </data>
+  <data name="webAutoDayNight" xml:space="preserve">
+    <value>Auto Day/Night</value>
+  </data>
+  <data name="webScreenAlerts" xml:space="preserve">
+    <value>Screen &amp; Alerts</value>
+  </data>
+  <data name="webAutoSteerConfiguration" xml:space="preserve">
+    <value>AutoSteer Configuration</value>
+  </data>
+  <data name="webFieldName" xml:space="preserve">
+    <value>Field name</value>
+  </data>
+  <data name="webSourceField" xml:space="preserve">
+    <value>Source field</value>
+  </data>
+  <data name="webImportTracksFromField" xml:space="preserve">
+    <value>Import Tracks From Field</value>
+  </data>
+  <data name="webLoadSelected" xml:space="preserve">
+    <value>Load Selected</value>
+  </data>
+  <data name="webDeleteSelectedProfile" xml:space="preserve">
+    <value>Delete Selected Profile</value>
+  </data>
+  <data name="webSaveProfile" xml:space="preserve">
+    <value>Save Profile</value>
+  </data>
+  <data name="webSetDefaultProfile" xml:space="preserve">
+    <value>Set as Default Profile</value>
+  </data>
+  <data name="webClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="webEnglish" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="webGujarati" xml:space="preserve">
+    <value>Gujarati</value>
+  </data>
+  <data name="webSats" xml:space="preserve">
+    <value># Sats:</value>
+  </data>
+  <data name="webAge" xml:space="preserve">
+    <value>Age:</value>
+  </data>
+  <data name="webFix" xml:space="preserve">
+    <value>Fix:</value>
+  </data>
+  <data name="webHeading" xml:space="preserve">
+    <value>Heading:</value>
+  </data>
+  <data name="webHdop" xml:space="preserve">
+    <value>HDOP:</value>
+  </data>
+  <data name="webImuRoll" xml:space="preserve">
+    <value>IMU Roll:</value>
+  </data>
+  <data name="webSpeed" xml:space="preserve">
+    <value>Speed:</value>
+  </data>
+  <data name="webArea" xml:space="preserve">
+    <value>Area:</value>
+  </data>
+  <data name="webElevation" xml:space="preserve">
+    <value>Elev:</value>
+  </data>
+  <data name="webQuality" xml:space="preserve">
+    <value>Quality:</value>
+  </data>
+  <data name="webGps" xml:space="preserve">
+    <value>GPS</value>
+  </data>
+  <data name="webModule" xml:space="preserve">
+    <value>Module</value>
+  </data>
+  <data name="webAntenna" xml:space="preserve">
+    <value>Antenna</value>
+  </data>
+  <data name="webAntennaHeightM" xml:space="preserve">
+    <value>Antenna height (m)</value>
+  </data>
+  <data name="webAntennaOffsetM" xml:space="preserve">
+    <value>Antenna offset (m)</value>
+  </data>
+  <data name="webAntennaPivotM" xml:space="preserve">
+    <value>Antenna pivot (m)</value>
+  </data>
+  <data name="webAutoSections" xml:space="preserve">
+    <value>Auto sections</value>
+  </data>
+  <data name="webAutoTrackSelect" xml:space="preserve">
+    <value>Auto track select (closest track)</value>
+  </data>
+  <data name="webAutoSteer" xml:space="preserve">
+    <value>AutoSteer</value>
+  </data>
+  <data name="webDualAntenna" xml:space="preserve">
+    <value>Dual antenna</value>
+  </data>
+  <data name="webDualGps" xml:space="preserve">
+    <value>Dual GPS</value>
+  </data>
+  <data name="webHeadingFusion" xml:space="preserve">
+    <value>Heading fusion</value>
+  </data>
+  <data name="webHeadingOffset" xml:space="preserve">
+    <value>Heading offset (°)</value>
+  </data>
+  <data name="webFixToFix" xml:space="preserve">
+    <value>Fix-to-fix dist (m)</value>
+  </data>
+  <data name="webMinGpsStep" xml:space="preserve">
+    <value>Min GPS step (m)</value>
+  </data>
+  <data name="webReverseDetection" xml:space="preserve">
+    <value>Reverse detection</value>
+  </data>
+  <data name="webReverseDistance" xml:space="preserve">
+    <value>Reverse dist (m)</value>
+  </data>
+  <data name="webRtkAlarm" xml:space="preserve">
+    <value>RTK lost alarm</value>
+  </data>
+  <data name="webVehicleType" xml:space="preserve">
+    <value>Vehicle type</value>
+  </data>
+  <data name="webWheelbase" xml:space="preserve">
+    <value>Wheelbase (m)</value>
+  </data>
+  <data name="webTrackWidth" xml:space="preserve">
+    <value>Track width (m)</value>
+  </data>
+  <data name="webHitch" xml:space="preserve">
+    <value>Hitch</value>
+  </data>
+  <data name="webCouplingType" xml:space="preserve">
+    <value>Coupling type</value>
+  </data>
+  <data name="webHitchLength" xml:space="preserve">
+    <value>Hitch length (m)</value>
+  </data>
+  <data name="webTrailingHitch" xml:space="preserve">
+    <value>Trailing hitch (m)</value>
+  </data>
+  <data name="webTankTrailingHitch" xml:space="preserve">
+    <value>Tank trailing hitch (m)</value>
+  </data>
+  <data name="webWorkingCenter" xml:space="preserve">
+    <value>Working center (m)</value>
+  </data>
+  <data name="webImplementLength" xml:space="preserve">
+    <value>Implement length (m)</value>
+  </data>
+  <data name="webToolOffset" xml:space="preserve">
+    <value>Tool offset (m)</value>
+  </data>
+  <data name="webOverlapGap" xml:space="preserve">
+    <value>Overlap / gap (m)</value>
+  </data>
+  <data name="webSections" xml:space="preserve">
+    <value>Sections</value>
+  </data>
+  <data name="webNumberSections" xml:space="preserve">
+    <value>Number of sections</value>
+  </data>
+  <data name="webNumberZones" xml:space="preserve">
+    <value>Number of zones</value>
+  </data>
+  <data name="webDefaultWidth" xml:space="preserve">
+    <value>Default width (cm)</value>
+  </data>
+  <data name="webSectionWidths" xml:space="preserve">
+    <value>Section widths (cm)</value>
+  </data>
+  <data name="webSectionColours" xml:space="preserve">
+    <value>Section colours</value>
+  </data>
+  <data name="webZoneEnds" xml:space="preserve">
+    <value>Zone end sections</value>
+  </data>
+  <data name="webPinAssignments" xml:space="preserve">
+    <value>Pin assignments</value>
+  </data>
+  <data name="webPinConfig" xml:space="preserve">
+    <value>Pin Config</value>
+  </data>
+  <data name="webInvertRelays" xml:space="preserve">
+    <value>Invert relays</value>
+  </data>
+  <data name="webSectionMode" xml:space="preserve">
+    <value>Section mode</value>
+  </data>
+  <data name="webManualSections" xml:space="preserve">
+    <value>Manual sections</value>
+  </data>
+  <data name="webMapping" xml:space="preserve">
+    <value>Mapping</value>
+  </data>
+  <data name="webSectionControl" xml:space="preserve">
+    <value>Section control</value>
+  </data>
+  <data name="webAlgorithm" xml:space="preserve">
+    <value>Algorithm</value>
+  </data>
+  <data name="webPurePursuitStanley" xml:space="preserve">
+    <value>Pure Pursuit / Stanley</value>
+  </data>
+  <data name="webAggressiveness" xml:space="preserve">
+    <value>Aggressiveness</value>
+  </data>
+  <data name="webLookAhead" xml:space="preserve">
+    <value>Look ahead</value>
+  </data>
+  <data name="webLookAheadSpeed" xml:space="preserve">
+    <value>Look-ahead Speed Factor</value>
+  </data>
+  <data name="webMaxSteerSpeed" xml:space="preserve">
+    <value>Max steer speed (km/h)</value>
+  </data>
+  <data name="webMinSteerSpeed" xml:space="preserve">
+    <value>Min steer speed (km/h)</value>
+  </data>
+  <data name="webSteerReverse" xml:space="preserve">
+    <value>Steer in reverse</value>
+  </data>
+  <data name="webGainPwm" xml:space="preserve">
+    <value>Gain / PWM</value>
+  </data>
+  <data name="webWasOffset" xml:space="preserve">
+    <value>WAS Offset</value>
+  </data>
+  <data name="webSteerChart" xml:space="preserve">
+    <value>Steer Chart</value>
+  </data>
+  <data name="webMotorDriver" xml:space="preserve">
+    <value>Motor driver</value>
+  </data>
+  <data name="webInvertMotor" xml:space="preserve">
+    <value>Invert motor</value>
+  </data>
+  <data name="webMinimumMove" xml:space="preserve">
+    <value>Minimum To Move (low PWM)</value>
+  </data>
+  <data name="webMaxLimit" xml:space="preserve">
+    <value>Max Limit (high PWM)</value>
+  </data>
+  <data name="webSteeringSensor" xml:space="preserve">
+    <value>Steering Sensor</value>
+  </data>
+  <data name="webEncoder" xml:space="preserve">
+    <value>Encoder</value>
+  </data>
+  <data name="webPressureTurn" xml:space="preserve">
+    <value>Pressure Turn</value>
+  </data>
+  <data name="webSwitches" xml:space="preserve">
+    <value>Switches</value>
+  </data>
+  <data name="webActiveHigh" xml:space="preserve">
+    <value>Active high (open)</value>
+  </data>
+  <data name="webActiveLow" xml:space="preserve">
+    <value>Active low (closed)</value>
+  </data>
+  <data name="webExternalEnable" xml:space="preserve">
+    <value>External enable</value>
+  </data>
+  <data name="webSteerSwitch" xml:space="preserve">
+    <value>Steer switch</value>
+  </data>
+  <data name="webWorkSwitch" xml:space="preserve">
+    <value>Work switch</value>
+  </data>
+  <data name="webHydraulicLift" xml:space="preserve">
+    <value>Hydraulic lift</value>
+  </data>
+  <data name="webRaiseTime" xml:space="preserve">
+    <value>Raise time</value>
+  </data>
+  <data name="webLowerTime" xml:space="preserve">
+    <value>Lower time</value>
+  </data>
+  <data name="webTracks" xml:space="preserve">
+    <value>Tracks</value>
+  </data>
+  <data name="webAddTrack" xml:space="preserve">
+    <value>Add Track</value>
+  </data>
+  <data name="webAddHeadland" xml:space="preserve">
+    <value>Add Headland</value>
+  </data>
+  <data name="webActivateTrack" xml:space="preserve">
+    <value>Activate selected track</value>
+  </data>
+  <data name="webDeleteTrack" xml:space="preserve">
+    <value>Delete selected track</value>
+  </data>
+  <data name="webEditMap" xml:space="preserve">
+    <value>Edit on map</value>
+  </data>
+  <data name="webDrawMap" xml:space="preserve">
+    <value>Draw on Map</value>
+  </data>
+  <data name="webClearPoints" xml:space="preserve">
+    <value>Clear all points</value>
+  </data>
+  <data name="webDeleteLastPoint" xml:space="preserve">
+    <value>Delete last point</value>
+  </data>
+  <data name="webSetPoint" xml:space="preserve">
+    <value>Set Point</value>
+  </data>
+  <data name="webPlaceHere" xml:space="preserve">
+    <value>Place Here</value>
+  </data>
+  <data name="webPlaceMap" xml:space="preserve">
+    <value>Place on Map</value>
+  </data>
+  <data name="webQuickAb" xml:space="preserve">
+    <value>Quick AB Line</value>
+  </data>
+  <data name="webDriveAb" xml:space="preserve">
+    <value>Drive AB</value>
+  </data>
+  <data name="webFreeDraw" xml:space="preserve">
+    <value>Free Draw</value>
+  </data>
+  <data name="webFromBoundary" xml:space="preserve">
+    <value>From Boundary</value>
+  </data>
+  <data name="webLongestEdge" xml:space="preserve">
+    <value>Longest Edge</value>
+  </data>
+  <data name="webAllEdges" xml:space="preserve">
+    <value>All Edges</value>
+  </data>
+  <data name="webWholeBoundary" xml:space="preserve">
+    <value>Whole Boundary</value>
+  </data>
+  <data name="webDirection" xml:space="preserve">
+    <value>Direction</value>
+  </data>
+  <data name="webOffset" xml:space="preserve">
+    <value>Offset</value>
+  </data>
+  <data name="webWidth" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="webLineWidth" xml:space="preserve">
+    <value>Line Width (px)</value>
+  </data>
+  <data name="webLeft" xml:space="preserve">
+    <value>LEFT</value>
+  </data>
+  <data name="webRight" xml:space="preserve">
+    <value>RIGHT</value>
+  </data>
+  <data name="webAhead" xml:space="preserve">
+    <value>Ahead</value>
+  </data>
+  <data name="webBehind" xml:space="preserve">
+    <value>Behind</value>
+  </data>
+  <data name="webStart" xml:space="preserve">
+    <value>Start</value>
+  </data>
+  <data name="webStop" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="webPauseResume" xml:space="preserve">
+    <value>Record / Pause</value>
+  </data>
+  <data name="webPlayback" xml:space="preserve">
+    <value>Playback</value>
+  </data>
+  <data name="webRecording" xml:space="preserve">
+    <value>RECORDING…</value>
+  </data>
+  <data name="webDeleteAll" xml:space="preserve">
+    <value>Delete All</value>
+  </data>
+  <data name="webResetPosition" xml:space="preserve">
+    <value>Reset position</value>
+  </data>
+  <data name="webZero" xml:space="preserve">
+    <value>Zero</value>
+  </data>
+  <data name="webZeroNow" xml:space="preserve">
+    <value>Zero Now</value>
+  </data>
+  <data name="webNext" xml:space="preserve">
+    <value>Next</value>
+  </data>
+  <data name="webUndo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="webAcceptClose" xml:space="preserve">
+    <value>Accept and close</value>
+  </data>
+  <data name="webDiscard" xml:space="preserve">
+    <value>Discard</value>
+  </data>
+  <data name="webRecommendation" xml:space="preserve">
+    <value>Recommendation</value>
+  </data>
+  <data name="webSamples" xml:space="preserve">
+    <value>Samples</value>
+  </data>
+  <data name="webConfidence" xml:space="preserve">
+    <value>Confidence</value>
+  </data>
+  <data name="webMean" xml:space="preserve">
+    <value>Mean</value>
+  </data>
+  <data name="webMedian" xml:space="preserve">
+    <value>Median</value>
+  </data>
+  <data name="webStdDev" xml:space="preserve">
+    <value>Std Dev</value>
+  </data>
+  <data name="webStatistics" xml:space="preserve">
+    <value>Statistics</value>
+  </data>
+  <data name="webTime" xml:space="preserve">
+    <value>Time</value>
+  </data>
+  <data name="webDate" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="webNotes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="webShortSummary" xml:space="preserve">
+    <value>Short summary</value>
+  </data>
+  <data name="webAssociatedFields" xml:space="preserve">
+    <value>Associated Fields</value>
+  </data>
+  <data name="webCurrentTurn" xml:space="preserve">
+    <value>Current Turn</value>
+  </data>
+  <data name="webTurnStyle" xml:space="preserve">
+    <value>Turn style</value>
+  </data>
+  <data name="webRadius" xml:space="preserve">
+    <value>Radius (m)</value>
+  </data>
+  <data name="webExtension" xml:space="preserve">
+    <value>Extension (m)</value>
+  </data>
+  <data name="webSmoothing" xml:space="preserve">
+    <value>Smoothing</value>
+  </data>
+  <data name="webManualTurns" xml:space="preserve">
+    <value>Manual turns</value>
+  </data>
+  <data name="webUturnLeft" xml:space="preserve">
+    <value>U-turn left</value>
+  </data>
+  <data name="webUturnRight" xml:space="preserve">
+    <value>U-turn right</value>
+  </data>
+  <data name="webReverse" xml:space="preserve">
+    <value>Reverse</value>
+  </data>
+  <data name="webStraight" xml:space="preserve">
+    <value>Straight</value>
+  </data>
+  <data name="webSkip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="webCameraMode" xml:space="preserve">
+    <value>Camera mode: Heading-Up / North-Up / Map / Center</value>
+  </data>
+  <data name="webZoomIn" xml:space="preserve">
+    <value>Zoom in</value>
+  </data>
+  <data name="webZoomOut" xml:space="preserve">
+    <value>Zoom out</value>
+  </data>
+  <data name="webDayNight" xml:space="preserve">
+    <value>Day/Night Theme</value>
+  </data>
+  <data name="webOn" xml:space="preserve">
+    <value>On</value>
+  </data>
+  <data name="webOff" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="webIndividual" xml:space="preserve">
+    <value>Individual</value>
+  </data>
+  <data name="webAll" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="webNotSet" xml:space="preserve">
+    <value>(not set)</value>
+  </data>
+  <data name="webOptional" xml:space="preserve">
+    <value>(optional)</value>
+  </data>
+  <data name="webOneCmClick" xml:space="preserve">
+    <value>1 cm per click</value>
+  </data>
+  <data name="webAbOptions" xml:space="preserve">
+    <value>AB line options</value>
+  </data>
+  <data name="webAbTracks" xml:space="preserve">
+    <value>AB Line Tracks</value>
+  </data>
+  <data name="webAbLongest" xml:space="preserve">
+    <value>AB line along the longest boundary edge</value>
+  </data>
+  <data name="webAbEveryEdge" xml:space="preserve">
+    <value>AB line for every boundary edge</value>
+  </data>
+  <data name="webAbCurrent" xml:space="preserve">
+    <value>AB line from current position &amp; heading</value>
+  </data>
+  <data name="webAcquireFactor" xml:space="preserve">
+    <value>Acquire Factor</value>
+  </data>
+  <data name="webActualSteer" xml:space="preserve">
+    <value>Actual Steer Angle</value>
+  </data>
+  <data name="webAddCurrentPoint" xml:space="preserve">
+    <value>Add point at current position</value>
+  </data>
+  <data name="webAppDirectories" xml:space="preserve">
+    <value>App Directories</value>
+  </data>
+  <data name="webArticulated" xml:space="preserve">
+    <value>Articulated</value>
+  </data>
+  <data name="webAutoDualFix" xml:space="preserve">
+    <value>Auto dual fix</value>
+  </data>
+  <data name="webAutoConnectField" xml:space="preserve">
+    <value>Auto-connect when associated field is loaded</value>
+  </data>
+  <data name="webSteerWizard" xml:space="preserve">
+    <value>AutoSteer Configuration Wizard</value>
+  </data>
+  <data name="webSteerModulePresent" xml:space="preserve">
+    <value>AutoSteer module should be present</value>
+  </data>
+  <data name="webBoth" xml:space="preserve">
+    <value>Both</value>
+  </data>
+  <data name="webBuildDrivenBoundary" xml:space="preserve">
+    <value>Build boundary from driven tracks</value>
+  </data>
+  <data name="webButton" xml:space="preserve">
+    <value>Button</value>
+  </data>
+  <data name="webByDriving" xml:space="preserve">
+    <value>By Driving</value>
+  </data>
+  <data name="webConfigureTool" xml:space="preserve">
+    <value>Configure Tool…</value>
+  </data>
+  <data name="webConfigureVehicle" xml:space="preserve">
+    <value>Configure Vehicle…</value>
+  </data>
+  <data name="webControlRole" xml:space="preserve">
+    <value>Control role</value>
+  </data>
+  <data name="webCoverageColour" xml:space="preserve">
+    <value>Coverage colour</value>
+  </data>
+  <data name="webCoverageMargin" xml:space="preserve">
+    <value>Coverage margin (cm)</value>
+  </data>
+  <data name="webCreateBugReport" xml:space="preserve">
+    <value>Create Bug Report</value>
+  </data>
+  <data name="webCreation" xml:space="preserve">
+    <value>Creation</value>
+  </data>
+  <data name="webCustom" xml:space="preserve">
+    <value>Custom</value>
+  </data>
+  <data name="webCycleAb" xml:space="preserve">
+    <value>Cycle AB lines</value>
+  </data>
+  <data name="webDeadzoneTiming" xml:space="preserve">
+    <value>Deadzone / Timing</value>
+  </data>
+  <data name="webDeadzoneHeading" xml:space="preserve">
+    <value>Deadzone Heading (°)</value>
+  </data>
+  <data name="webDefaults" xml:space="preserve">
+    <value>Defaults</value>
+  </data>
+  <data name="webDeleteContours" xml:space="preserve">
+    <value>Delete contours</value>
+  </data>
+  <data name="webDeleteBoundary" xml:space="preserve">
+    <value>Delete selected boundary</value>
+  </data>
+  <data name="webDiagnosticCharts" xml:space="preserve">
+    <value>Diagnostic Charts</value>
+  </data>
+  <data name="webDifferential" xml:space="preserve">
+    <value>Differential</value>
+  </data>
+  <data name="webDistanceKm" xml:space="preserve">
+    <value>Dist (km)</value>
+  </data>
+  <data name="webBoundaryDistance" xml:space="preserve">
+    <value>Distance from bndry (m)</value>
+  </data>
+  <data name="webDrawSatellite" xml:space="preserve">
+    <value>Draw boundary on satellite imagery</value>
+  </data>
+  <data name="webDrawEdgeHelp" xml:space="preserve">
+    <value>Draw on Map — one line per edge; where they cross encloses the headland</value>
+  </data>
+  <data name="webDriveFieldBoundary" xml:space="preserve">
+    <value>Drive around field to record boundary</value>
+  </data>
+  <data name="webDriveObstacle" xml:space="preserve">
+    <value>Drive around obstacle (inner boundary)</value>
+  </data>
+  <data name="webDriveCurve" xml:space="preserve">
+    <value>Drive to record a curve</value>
+  </data>
+  <data name="webDriveAtoB" xml:space="preserve">
+    <value>Drive from A to B</value>
+  </data>
+  <data name="webEdge" xml:space="preserve">
+    <value>Edge</value>
+  </data>
+  <data name="webEditEndpoints" xml:space="preserve">
+    <value>Edit endpoints on map</value>
+  </data>
+  <data name="webEditNtrip" xml:space="preserve">
+    <value>Edit NTRIP Profile</value>
+  </data>
+  <data name="webEditProfile" xml:space="preserve">
+    <value>Edit Selected Profile</value>
+  </data>
+  <data name="webEditSystem" xml:space="preserve">
+    <value>Edit System</value>
+  </data>
+  <data name="webEnterGps" xml:space="preserve">
+    <value>Enter GPS Coordinates</value>
+  </data>
+  <data name="webEnterGpsDisableSim" xml:space="preserve">
+    <value>Enter GPS coordinates (disable sim first)</value>
+  </data>
+  <data name="webError" xml:space="preserve">
+    <value>Err:</value>
+  </data>
+  <data name="webExtraGuideCount" xml:space="preserve">
+    <value>Extra guide count</value>
+  </data>
+  <data name="webExtraGuides" xml:space="preserve">
+    <value>Extra Guides</value>
+  </data>
+  <data name="webFileMenu" xml:space="preserve">
+    <value>File / Application Menu</value>
+  </data>
+  <data name="webFineNudgeLeft" xml:space="preserve">
+    <value>Fine nudge left (A−)</value>
+  </data>
+  <data name="webFineNudgeRight" xml:space="preserve">
+    <value>Fine nudge right (B−)</value>
+  </data>
+  <data name="webFlagList" xml:space="preserve">
+    <value>Flag List</value>
+  </data>
+  <data name="webForceOverwrite" xml:space="preserve">
+    <value>Force Overwrite</value>
+  </data>
+  <data name="webFreeDrive" xml:space="preserve">
+    <value>Free Drive</value>
+  </data>
+  <data name="webFromFieldBoundary" xml:space="preserve">
+    <value>From Field Boundary</value>
+  </data>
+  <data name="webFromIsoXml" xml:space="preserve">
+    <value>From ISO-XML</value>
+  </data>
+  <data name="webFrontFixed" xml:space="preserve">
+    <value>Front Fixed</value>
+  </data>
+  <data name="webGpsModulePresent" xml:space="preserve">
+    <value>GPS module should be present</value>
+  </data>
+  <data name="webGpsOffsetFix" xml:space="preserve">
+    <value>GPS Offset Fix</value>
+  </data>
+  <data name="webHardwareConfig" xml:space="preserve">
+    <value>Hardware Config</value>
+  </data>
+  <data name="webHarvester" xml:space="preserve">
+    <value>Harvester</value>
+  </data>
+  <data name="webHeadlandToggle" xml:space="preserve">
+    <value>Headland on/off</value>
+  </data>
+  <data name="webHitchWheelTrack" xml:space="preserve">
+    <value>Hitch / Wheelbase / Track</value>
+  </data>
+  <data name="webHostIps" xml:space="preserve">
+    <value>Host IPs</value>
+  </data>
+  <data name="webHydraulic" xml:space="preserve">
+    <value>Hydraulic</value>
+  </data>
+  <data name="webImportKml" xml:space="preserve">
+    <value>Import KML Boundary</value>
+  </data>
+  <data name="webImportKmlFile" xml:space="preserve">
+    <value>Import boundary from a KML/KMZ file</value>
+  </data>
+  <data name="webImportOtherField" xml:space="preserve">
+    <value>Import tracks from another field</value>
+  </data>
+  <data name="webImu" xml:space="preserve">
+    <value>IMU</value>
+  </data>
+  <data name="webImuAxis" xml:space="preserve">
+    <value>IMU axis</value>
+  </data>
+  <data name="webImuPresent" xml:space="preserve">
+    <value>IMU module should be present</value>
+  </data>
+  <data name="webInfo" xml:space="preserve">
+    <value>Info</value>
+  </data>
+  <data name="webInset" xml:space="preserve">
+    <value>Inset</value>
+  </data>
+  <data name="webLateralLeft" xml:space="preserve">
+    <value>Lateral left</value>
+  </data>
+  <data name="webLateralRight" xml:space="preserve">
+    <value>Lateral right</value>
+  </data>
+  <data name="webLightBar" xml:space="preserve">
+    <value>Light bar</value>
+  </data>
+  <data name="webLine" xml:space="preserve">
+    <value>Line</value>
+  </data>
+  <data name="webLines" xml:space="preserve">
+    <value>Lines</value>
+  </data>
+  <data name="webLookAheadOff" xml:space="preserve">
+    <value>Look ahead off (s)</value>
+  </data>
+  <data name="webLookAheadOn" xml:space="preserve">
+    <value>Look ahead on (s)</value>
+  </data>
+  <data name="webMachine" xml:space="preserve">
+    <value>Machine</value>
+  </data>
+  <data name="webMachinePresent" xml:space="preserve">
+    <value>Machine module should be present</value>
+  </data>
+  <data name="webManualTurnSpeed" xml:space="preserve">
+    <value>Manual turns speed (km/h)</value>
+  </data>
+  <data name="webManualTurnLeft" xml:space="preserve">
+    <value>Manual U-turn left</value>
+  </data>
+  <data name="webManualTurnRight" xml:space="preserve">
+    <value>Manual U-turn right</value>
+  </data>
+  <data name="webMinCoverage" xml:space="preserve">
+    <value>Min coverage (%)</value>
+  </data>
+  <data name="webMoveToolLeft" xml:space="preserve">
+    <value>Move track 1 tool width left</value>
+  </data>
+  <data name="webMoveToolRight" xml:space="preserve">
+    <value>Move track 1 tool width right</value>
+  </data>
+  <data name="webMultiColourSections" xml:space="preserve">
+    <value>Multi-coloured sections</value>
+  </data>
+  <data name="webNewFieldName" xml:space="preserve">
+    <value>New field name</value>
+  </data>
+  <data name="webNewJobWork" xml:space="preserve">
+    <value>New Job — Work Type</value>
+  </data>
+  <data name="webNextBoundary" xml:space="preserve">
+    <value>Next Boundary Dist</value>
+  </data>
+  <data name="webNoPath" xml:space="preserve">
+    <value>No path loaded</value>
+  </data>
+  <data name="webNtrip" xml:space="preserve">
+    <value>NTRIP</value>
+  </data>
+  <data name="webNudgeLeft" xml:space="preserve">
+    <value>Nudge left (A+)</value>
+  </data>
+  <data name="webNudgeRight" xml:space="preserve">
+    <value>Nudge right (B+)</value>
+  </data>
+  <data name="webNudgeHalfLeft" xml:space="preserve">
+    <value>Nudge left half tool width</value>
+  </data>
+  <data name="webNudgeHalfRight" xml:space="preserve">
+    <value>Nudge right half tool width</value>
+  </data>
+  <data name="webOffHeadland" xml:space="preserve">
+    <value>Off in headland</value>
+  </data>
+  <data name="webOffBoundary" xml:space="preserve">
+    <value>Off outside boundary</value>
+  </data>
+  <data name="webOpenSimulator" xml:space="preserve">
+    <value>Open simulator</value>
+  </data>
+  <data name="webOriginGps" xml:space="preserve">
+    <value>Origin (current GPS)</value>
+  </data>
+  <data name="webPass" xml:space="preserve">
+    <value>Pass</value>
+  </data>
+  <data name="webPathName" xml:space="preserve">
+    <value>path name</value>
+  </data>
+  <data name="webPickFieldJob" xml:space="preserve">
+    <value>Pick a field on the left to start or resume a job.</value>
+  </data>
+  <data name="webPlaceFlagHere" xml:space="preserve">
+    <value>Place Flag Here</value>
+  </data>
+  <data name="webPlaceFlagMap" xml:space="preserve">
+    <value>Place Flag on Map</value>
+  </data>
+  <data name="webPlay" xml:space="preserve">
+    <value>Play</value>
+  </data>
+  <data name="webReference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="webResetDefaultsQuestion" xml:space="preserve">
+    <value>Reset all to defaults?</value>
+  </data>
+  <data name="webResetNudge" xml:space="preserve">
+    <value>Reset nudge</value>
+  </data>
+  <data name="webResetPins" xml:space="preserve">
+    <value>Reset pins</value>
+  </data>
+  <data name="webResetSteering" xml:space="preserve">
+    <value>Reset steering to 0</value>
+  </data>
+  <data name="webResetToolHeading" xml:space="preserve">
+    <value>Reset tool heading</value>
+  </data>
+  <data name="webResumeLastJob" xml:space="preserve">
+    <value>Resume Last Job</value>
+  </data>
+  <data name="webReverseDirection" xml:space="preserve">
+    <value>Reverse direction (flip 180°)</value>
+  </data>
+  <data name="webRoll" xml:space="preserve">
+    <value>Roll</value>
+  </data>
+  <data name="webRollCorrection" xml:space="preserve">
+    <value>Roll Correction</value>
+  </data>
+  <data name="webRollZero" xml:space="preserve">
+    <value>Roll zero (°)</value>
+  </data>
+  <data name="webRollZeroOffset" xml:space="preserve">
+    <value>Roll Zero Offset</value>
+  </data>
+  <data name="webSavedPaths" xml:space="preserve">
+    <value>Saved Paths</value>
+  </data>
+  <data name="webSaveAs" xml:space="preserve">
+    <value>Save as</value>
+  </data>
+  <data name="webSaveToJob" xml:space="preserve">
+    <value>Save to Job</value>
+  </data>
+  <data name="webScanModules" xml:space="preserve">
+    <value>Scan for Modules</value>
+  </data>
+  <data name="webSectionHeadland" xml:space="preserve">
+    <value>Section control in headland</value>
+  </data>
+  <data name="webSectionRecording" xml:space="preserve">
+    <value>Section control while recording</value>
+  </data>
+  <data name="webSectionMapColour" xml:space="preserve">
+    <value>Section mapping colour</value>
+  </data>
+  <data name="webSendSubnet" xml:space="preserve">
+    <value>Send Subnet to Modules</value>
+  </data>
+  <data name="webSendSave" xml:space="preserve">
+    <value>Send+Save</value>
+  </data>
+  <data name="webSideHill" xml:space="preserve">
+    <value>Side-hill Compensation</value>
+  </data>
+  <data name="webSimulatorToggle" xml:space="preserve">
+    <value>Simulator on/off</value>
+  </data>
+  <data name="webSingle" xml:space="preserve">
+    <value>Single</value>
+  </data>
+  <data name="webSingleAntenna" xml:space="preserve">
+    <value>Single antenna</value>
+  </data>
+  <data name="webSlowCutoff" xml:space="preserve">
+    <value>Slow speed cutoff (km/h)</value>
+  </data>
+  <data name="webSmartWas" xml:space="preserve">
+    <value>Smart WAS</value>
+  </data>
+  <data name="webSmartWasCalibration" xml:space="preserve">
+    <value>Smart WAS Calibration</value>
+  </data>
+  <data name="webSnapLeft" xml:space="preserve">
+    <value>Snap to left track</value>
+  </data>
+  <data name="webSnapPivot" xml:space="preserve">
+    <value>Snap to pivot</value>
+  </data>
+  <data name="webSnapRight" xml:space="preserve">
+    <value>Snap to right track</value>
+  </data>
+  <data name="webSpeedLimits" xml:space="preserve">
+    <value>Speed Limits</value>
+  </data>
+  <data name="webStartDeleteBoundary" xml:space="preserve">
+    <value>Start or Delete Boundary</value>
+  </data>
+  <data name="webSteer" xml:space="preserve">
+    <value>Steer</value>
+  </data>
+  <data name="webSteerBar" xml:space="preserve">
+    <value>Steer bar</value>
+  </data>
+  <data name="webSteerLeftHalf" xml:space="preserve">
+    <value>Steer left 0.5°</value>
+  </data>
+  <data name="webSteerRightHalf" xml:space="preserve">
+    <value>Steer right 0.5°</value>
+  </data>
+  <data name="webSteeringAngle" xml:space="preserve">
+    <value>Steering angle (0.5° steps)</value>
+  </data>
+  <data name="webStopSave" xml:space="preserve">
+    <value>Stop and save</value>
+  </data>
+  <data name="webStopped" xml:space="preserve">
+    <value>Stopped</value>
+  </data>
+  <data name="webSubnet" xml:space="preserve">
+    <value>Subnet</value>
+  </data>
+  <data name="webSwapAb" xml:space="preserve">
+    <value>Swap A and B points</value>
+  </data>
+  <data name="webSwitch" xml:space="preserve">
+    <value>Switch</value>
+  </data>
+  <data name="webSwitchSpeed" xml:space="preserve">
+    <value>Switch speed</value>
+  </data>
+  <data name="webSystem" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="webTapAb" xml:space="preserve">
+    <value>Tap 2 points on the map for a straight AB line</value>
+  </data>
+  <data name="webTapCurve" xml:space="preserve">
+    <value>Tap points on the map for a curve, then Finish</value>
+  </data>
+  <data name="webTestMode" xml:space="preserve">
+    <value>Test Mode</value>
+  </data>
+  <data name="webTiming" xml:space="preserve">
+    <value>Timing</value>
+  </data>
+  <data name="webTitle" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="webToggleRecPath" xml:space="preserve">
+    <value>Toggle recorded-path display</value>
+  </data>
+  <data name="webTools" xml:space="preserve">
+    <value>Tools</value>
+  </data>
+  <data name="webTractor" xml:space="preserve">
+    <value>Tractor</value>
+  </data>
+  <data name="webTrailing" xml:space="preserve">
+    <value>Trailing</value>
+  </data>
+  <data name="webTram" xml:space="preserve">
+    <value>Tram</value>
+  </data>
+  <data name="webTramLine" xml:space="preserve">
+    <value>Tram line</value>
+  </data>
+  <data name="webTramDisplay" xml:space="preserve">
+    <value>Tram lines display mode</value>
+  </data>
+  <data name="webTurnSensors" xml:space="preserve">
+    <value>Turn Sensors</value>
+  </data>
+  <data name="webUnsavedCoverage" xml:space="preserve">
+    <value>Unsaved Coverage</value>
+  </data>
+  <data name="webUseLast" xml:space="preserve">
+    <value>Use Last</value>
+  </data>
+  <data name="webUser" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="webUserValues" xml:space="preserve">
+    <value>User values</value>
+  </data>
+  <data name="webUtilities" xml:space="preserve">
+    <value>Utilities</value>
+  </data>
+  <data name="webWarn" xml:space="preserve">
+    <value>Warn</value>
+  </data>
+  <data name="webWheelTrack" xml:space="preserve">
+    <value>Wheel Track</value>
+  </data>
+  <data name="webYoutube" xml:space="preserve">
+    <value>YouTube Tutorials</value>
+  </data>
+  <data name="webZeroWas" xml:space="preserve">
+    <value>Zero WAS</value>
+  </data>
+  <data name="webActiveState" xml:space="preserve">
+    <value>Active state</value>
+  </data>
+  <data name="webAgShareDownload" xml:space="preserve">
+    <value>AgShare Download</value>
+  </data>
+  <data name="webAgShareUpload" xml:space="preserve">
+    <value>AgShare Upload</value>
+  </data>
+  <data name="webBoardMessages" xml:space="preserve">
+    <value>AiO Board Msgs</value>
+  </data>
+  <data name="webCaptureBugHelp" xml:space="preserve">
+    <value>Captures a state snapshot (settings + state) to a zip in Documents/AgOpenWeb/BugReports.</value>
+  </data>
+  <data name="webChangeAllModules" xml:space="preserve">
+    <value>Changes ALL modules at once, then restarts them.</value>
+  </data>
+  <data name="webHotkeyHelp" xml:space="preserve">
+    <value>Click a key, then press the new key.</value>
+  </data>
+  <data name="webWholeBoundaryCurve" xml:space="preserve">
+    <value>Curve following the whole boundary</value>
+  </data>
+  <data name="webDebug" xml:space="preserve">
+    <value>Debug</value>
+  </data>
+  <data name="webForum" xml:space="preserve">
+    <value>Discussions / Forum</value>
+  </data>
+  <data name="webCalibrationDriveHelp" xml:space="preserve">
+    <value>Drive at &gt;2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.</value>
+  </data>
+  <data name="webFaster" xml:space="preserve">
+    <value>Faster (+0.5 kph)</value>
+  </data>
+  <data name="webDefaultProfileHelp" xml:space="preserve">
+    <value>Fields not selected will use the default profile (if set).</value>
+  </data>
+  <data name="webGithubRepo" xml:space="preserve">
+    <value>GitHub Repository</value>
+  </data>
+  <data name="webHard" xml:space="preserve">
+    <value>Hard</value>
+  </data>
+  <data name="webLongitude" xml:space="preserve">
+    <value>Longitude (−180 to 180)</value>
+  </data>
+  <data name="webNextGuidance" xml:space="preserve">
+    <value>Next guidance (s)</value>
+  </data>
+  <data name="webOk" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="webOnDelay" xml:space="preserve">
+    <value>On Delay (counts)</value>
+  </data>
+  <data name="webMapEditor" xml:space="preserve">
+    <value>On-map track / headland / tram editor</value>
+  </data>
+  <data name="webPauseFieldInfo" xml:space="preserve">
+    <value>Pause / resume rotating field info</value>
+  </data>
+  <data name="webPivotHelp" xml:space="preserve">
+    <value>Pivot settings apply only to Trailing and TBT tools.</value>
+  </data>
+  <data name="webRearFixed" xml:space="preserve">
+    <value>Rear Fixed</value>
+  </data>
+  <data name="webRecentJobs" xml:space="preserve">
+    <value>Recent jobs (all fields)</value>
+  </data>
+  <data name="webRecordAt" xml:space="preserve">
+    <value>Record at antenna / tool</value>
+  </data>
+  <data name="webRecordSide" xml:space="preserve">
+    <value>Record on left / right side</value>
+  </data>
+  <data name="webRecordingOffset" xml:space="preserve">
+    <value>Recording Offset</value>
+  </data>
+  <data name="webSelectImportField" xml:space="preserve">
+    <value>Select a field to import its tracks into the current field</value>
+  </data>
+  <data name="webSet" xml:space="preserve">
+    <value>Set:</value>
+  </data>
+  <data name="webSlower" xml:space="preserve">
+    <value>Slower (−0.5 kph)</value>
+  </data>
+  <data name="webSmartWasHelp" xml:space="preserve">
+    <value>Slowly increases steer angle to reduce cross track error</value>
+  </data>
+  <data name="webStep" xml:space="preserve">
+    <value>Step 1 of 15</value>
+  </data>
+  <data name="webTextureMoves" xml:space="preserve">
+    <value>Texture Moves</value>
+  </data>
+  <data name="webFieldCreatedHere" xml:space="preserve">
+    <value>The field is created at this position.</value>
+  </data>
+  <data name="webTiltHorizon" xml:space="preserve">
+    <value>Tilt toward horizon (3D)</value>
+  </data>
+  <data name="webTiltOverhead" xml:space="preserve">
+    <value>Tilt toward overhead (2D)</value>
+  </data>
+  <data name="webSkipRowsCycle" xml:space="preserve">
+    <value>U-Turn skip rows (tap to cycle 0–9)</value>
+  </data>
+  <data name="webSkipRowsToggle" xml:space="preserve">
+    <value>U-Turn skip rows on/off</value>
+  </data>
+  <data name="webUnsavedWarning" xml:space="preserve">
+    <value>You've worked this field without an open job, so the coverage won't be saved. Save it to a job, or it will be lost.</value>
+  </data>
+  <data name="webArrowBack" xml:space="preserve">
+    <value>← Back</value>
+  </data>
+  <data name="webFull" xml:space="preserve">
+    <value>▶ Full</value>
+  </data>
+  <data name="webLeftArrow" xml:space="preserve">
+    <value>◀ LEFT</value>
+  </data>
+  <data name="webRecordingDot" xml:space="preserve">
+    <value>● RECORDING…</value>
+  </data>
+  <data name="webEditIcon" xml:space="preserve">
+    <value>✎ Edit</value>
+  </data>
+  <data name="webCancelIcon" xml:space="preserve">
+    <value>✕ Cancel</value>
+  </data>
+  <data name="webAddIcon" xml:space="preserve">
+    <value>＋ Add</value>
+  </data>
 </root>
