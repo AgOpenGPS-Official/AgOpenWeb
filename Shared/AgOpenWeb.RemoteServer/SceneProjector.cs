@@ -4,10 +4,7 @@
 
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
-using System.Collections;
-using System.Globalization;
 using System.Reflection;
-using System.Resources;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
@@ -557,11 +554,11 @@ public sealed class SceneProjector
 
     // File / Application Menu read-frame. Version+git (assembly), languages, app directories,
     // hotkey bindings, recent in-memory logs, bug-report status.
-    private static readonly string[] _langCodes = { "en", "gu" };
-    private static readonly ResourceManager _translations =
-        new("AgOpenWeb.RemoteServer.Localization.gStr", typeof(SceneProjector).Assembly);
-    private static readonly Lazy<IReadOnlyList<AppTranslationDto>> _gujaratiTranslations =
-        new(LoadGujaratiTranslations);
+    private static readonly string[] _langCodes =
+    {
+        "en", "da", "de", "es", "et", "fi", "fr", "hu", "it", "ko",
+        "lt", "lv", "nl", "no", "pl", "pt", "ru", "sk", "sr", "tr", "uk", "zh-Hans"
+    };
 
     public AppInfoDto BuildAppInfo()
     {
@@ -579,12 +576,10 @@ public sealed class SceneProjector
         var langs = _langCodes.Select(code =>
         {
             string name = code;
-            try { name = new CultureInfo(code).NativeName + " (" + code + ")"; } catch { }
+            try { name = new System.Globalization.CultureInfo(code).NativeName + " (" + code + ")"; } catch { }
             return new AppLangDto(code, name);
         }).ToList();
-        var configured = _settings.Settings.Language;
-        var current = _langCodes.Contains(configured, StringComparer.OrdinalIgnoreCase) ? configured : "en";
-        var translations = BuildTranslations(current);
+        var current = string.IsNullOrEmpty(_settings.Settings.Language) ? "en" : _settings.Settings.Language;
 
         var dirs = new System.Collections.Generic.List<AppDirDto>
         {
@@ -606,50 +601,7 @@ public sealed class SceneProjector
                 (int)e.Level, e.Message))
             .ToList();
 
-        return new AppInfoDto(version, git, current, langs, translations, dirs, hotkeys, logs, _state.BugReportStatus ?? "");
-    }
-
-    private static IReadOnlyList<AppTranslationDto> BuildTranslations(string language)
-    {
-        if (!string.Equals(language, "gu", StringComparison.OrdinalIgnoreCase))
-            return Array.Empty<AppTranslationDto>();
-
-        return _gujaratiTranslations.Value;
-    }
-
-    private static IReadOnlyList<AppTranslationDto> LoadGujaratiTranslations()
-    {
-        try
-        {
-            var english = _translations.GetResourceSet(CultureInfo.InvariantCulture, true, true);
-            var localized = _translations.GetResourceSet(new CultureInfo("gu"), true, false);
-            if (english is null || localized is null)
-                return Array.Empty<AppTranslationDto>();
-
-            var result = new List<AppTranslationDto>();
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            foreach (DictionaryEntry item in english)
-            {
-                if (item.Key is not string key || item.Value is not string source ||
-                    string.IsNullOrWhiteSpace(source) || !seen.Add(source))
-                    continue;
-
-                var translated = localized.GetString(key);
-                if (!string.IsNullOrWhiteSpace(translated) &&
-                    !string.Equals(source, translated, StringComparison.Ordinal))
-                    result.Add(new AppTranslationDto(source, translated));
-            }
-
-            return result;
-        }
-        catch (MissingManifestResourceException)
-        {
-            return Array.Empty<AppTranslationDto>();
-        }
-        catch (CultureNotFoundException)
-        {
-            return Array.Empty<AppTranslationDto>();
-        }
+        return new AppInfoDto(version, git, current, langs, dirs, hotkeys, logs, _state.BugReportStatus ?? "");
     }
 
     private static AppDirDto DirInfo(string name, string path) =>

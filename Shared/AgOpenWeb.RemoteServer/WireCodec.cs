@@ -100,8 +100,6 @@ public static class WireCodec
         WriteStr(w, a.CurrentLanguage);
         w.Write(a.Languages.Count);
         foreach (var l in a.Languages) { WriteStr(w, l.Code); WriteStr(w, l.Name); }
-        w.Write(a.Translations.Count);
-        foreach (var t in a.Translations) { WriteStr(w, t.English); WriteStr(w, t.Localized); }
         w.Write(a.Directories.Count);
         foreach (var d in a.Directories) { WriteStr(w, d.Name); WriteStr(w, d.Path); w.Write((byte)(d.Exists ? 1 : 0)); }
         w.Write(a.Hotkeys.Count);

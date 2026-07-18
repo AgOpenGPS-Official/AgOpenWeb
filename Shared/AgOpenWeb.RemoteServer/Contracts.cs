@@ -462,7 +462,6 @@ public record AppInfoDto(
     string Version, string GitHash,
     string CurrentLanguage,
     IReadOnlyList<AppLangDto> Languages,
-    IReadOnlyList<AppTranslationDto> Translations,
     IReadOnlyList<AppDirDto> Directories,
     IReadOnlyList<AppHotkeyDto> Hotkeys,
     IReadOnlyList<AppLogDto> Logs,
@@ -516,7 +515,6 @@ public record BoundaryDto(
     IReadOnlyList<double> RecordingPoints);
 
 public record AppLangDto(string Code, string Name);
-public record AppTranslationDto(string English, string Localized);
 public record AppDirDto(string Name, string Path, bool Exists);
 public record AppHotkeyDto(string Action, string Key, string Label);
 /// <summary>One log line. Level: 0 Trace,1 Debug,2 Info,3 Warn,4 Error,5 Critical (Microsoft LogLevel).</summary>
