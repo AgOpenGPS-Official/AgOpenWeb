@@ -31,6 +31,18 @@
   <!-- Client assets shipped inside the assembly (no content-root/copy plumbing). -->
   <ItemGroup>
     <EmbeddedResource Include="wwwroot\**" />
+
+    <!--
+      Active UI translations. Keep the files in the frozen AgOpen snapshot as the
+      single source so existing Weblate/manual RESX updates flow into every web
+      platform build. Link gives ResourceManager the stable base name
+      AgOpenWeb.RemoteServer.Localization.gStr while the .gu file is emitted as a
+      Gujarati satellite resource assembly.
+    -->
+    <EmbeddedResource Include="..\..\AgOpen_Snapshot\AgOpenGPS.Core\Translations\gStr.resx"
+                      Link="Localization\gStr.resx" />
+    <EmbeddedResource Include="..\..\AgOpen_Snapshot\AgOpenGPS.Core\Translations\gStr.gu.resx"
+                      Link="Localization\gStr.gu.resx" />
   </ItemGroup>
 
 </Project>
