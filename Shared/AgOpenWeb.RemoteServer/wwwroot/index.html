@@ -1343,7 +1343,7 @@
             <label>Heading offset (°)</label><input class="cfg-num" data-key="gps.dualHeadingOffset" type="number" step="0.1" inputmode="decimal">
             <label>Reverse dist (m)</label><input class="cfg-num" data-key="gps.dualReverseDistance" type="number" step="0.1" inputmode="decimal">
             <label>Auto dual fix</label><button class="cfg-tgl" data-key="gps.autoDualFix">Off</button>
-            <label>Switch speed</label><input class="cfg-num" data-key="gps.dualSwitchSpeed" type="number" step="0.1" inputmode="decimal">
+            <label>Switch speed (km/h)</label><input class="cfg-num" data-key="gps.dualSwitchSpeed" type="number" step="0.1" inputmode="decimal">
           </div>
         </div>
         <div>
@@ -1454,7 +1454,7 @@
               <label>Default width (cm)</label><input class="cfg-num" data-key="tool.defaultSectionWidth" type="number" step="1">
             </div>
             <div data-show="individual">
-              <div class="cfg-label">Section widths (cm)</div>
+              <div id="tc-sectionwidth-label" class="cfg-label">Section widths (cm)</div>
               <div id="tc-sectionwidths" class="tc-dyngrid"></div>
             </div>
             <div data-show="zones">
@@ -1851,7 +1851,7 @@
     <div class="fj-cols">
       <div class="fj-col">
         <div class="cfg-label">Fields</div>
-        <div class="fj-fhead"><span>Name</span><span>Dist (km)</span><span>Area (ha)</span></div>
+        <div class="fj-fhead"><span>Name</span><span id="fj-dist-head">Dist (km)</span><span id="fj-area-head">Area (ha)</span></div>
         <div id="fj-fieldlist" class="fj-list"></div>
         <div class="fj-btnrow">
           <button class="cfg-act" id="fj-openonly">Open Field Only</button>
@@ -2102,7 +2102,7 @@
         <button id="fb-hl-deleteall" class="fb-act fb-del">Delete All</button>
       </div>
       <div id="fb-hl-offrow" class="fb-offrow" hidden>
-        <label>Offset</label><input id="fb-hl-off" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span>
+        <label>Offset</label><input id="fb-hl-off" class="cfg-num" type="number" step="0.5" min="0.5"><span data-unit="m">m</span>
       </div>
     </div>
     <!-- Add Headland sub-view (replaces the tab content) -->
@@ -2119,7 +2119,7 @@
           <option value="6">6 tool widths</option>
           <option value="0">Custom</option>
         </select>
-        <input id="fb-hl-newoff" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span>
+        <input id="fb-hl-newoff" class="cfg-num" type="number" step="0.5" min="0.5"><span data-unit="m">m</span>
       </div>
       <div class="fb-sublbl">Draw on Map — one line per edge; where they cross encloses the headland</div>
       <div class="fb-addrow">
@@ -2145,13 +2145,13 @@
       <div class="fb-subhdr"><button id="fb-tram-back" class="fb-act">← Back</button><span id="fb-tram-title">Edit System</span></div>
       <div class="fb-offrow"><label>Enabled</label><button id="fb-tram-en" class="cfg-tgl">On</button></div>
       <div class="fb-offrow"><label>Reference</label><select id="fb-tram-ref" class="cfg-isel"></select></div>
-      <div class="fb-offrow"><label>Tram width</label><input id="fb-tram-w" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span></div>
+      <div class="fb-offrow"><label>Tram width</label><input id="fb-tram-w" class="cfg-num" type="number" step="0.5" min="0.5"><span data-unit="m">m</span></div>
       <div class="fb-sublbl">Mode</div>
       <div class="fb-addrow">
         <button class="fb-addbtn" data-tmode="0"><img src="/icons/TramLines.png" alt=""><span>Wheel Track</span></button>
         <button class="fb-addbtn" data-tmode="1"><img src="/icons/TramOuter.png" alt=""><span>Edge</span></button>
       </div>
-      <div id="fb-tram-offrow" class="fb-offrow"><label>Offset</label><input id="fb-tram-off" class="cfg-num" type="number" step="0.5"><span>m</span></div>
+      <div id="fb-tram-offrow" class="fb-offrow"><label>Offset</label><input id="fb-tram-off" class="cfg-num" type="number" step="0.5"><span data-unit="m">m</span></div>
       <div id="fb-tram-dirlbl" class="fb-sublbl">Direction</div>
       <div id="fb-tram-dir" class="fb-addrow">
         <button class="fb-addbtn" data-tdir="1"><img src="/icons/SnapLeft.png" alt=""><span>Left</span></button>
@@ -2189,10 +2189,10 @@
       <button class="of-btn of-ns" id="of-s" data-cmd="offset.south">S</button>
     </div>
     <div class="of-manual">
-      <div class="of-fld"><label>N / S (m)</label><input id="of-ns-in" class="of-input" type="number" step="0.001"></div>
-      <div class="of-fld"><label>E / W (m)</label><input id="of-ew-in" class="of-input" type="number" step="0.001"></div>
+      <div class="of-fld"><label data-unit-label="m">N / S (m)</label><input id="of-ns-in" class="of-input" type="number" step="0.001"></div>
+      <div class="of-fld"><label data-unit-label="m">E / W (m)</label><input id="of-ew-in" class="of-input" type="number" step="0.001"></div>
     </div>
-    <div class="of-hint">1 cm per click</div>
+    <div id="of-hint" class="of-hint">1 cm per click</div>
   </div>
   <!-- Import Tracks: pick another field on disk to copy its tracks into the open field. -->
   <div id="importtracks" class="ln-panel fo-panel">
@@ -2252,7 +2252,7 @@
     <div class="ln-hdr"><button class="ln-x" id="bp-back" title="Back">←</button><span class="ln-hdr-title">Stop Record Pause Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="bp-offrow">
       <span class="bp-offlbl">Recording Offset</span>
-      <input id="bp-offset" class="bp-offin" type="number" step="1" value="100"><span class="bp-offunit">cm</span>
+      <input id="bp-offset" class="bp-offin" type="number" step="1" value="100"><span class="bp-offunit" data-unit="cm">cm</span>
     </div>
     <div class="bp-grid">
       <button id="bp-clear" class="bp-btn" title="Clear all points"><img src="/icons/Trash.png" alt=""></button>
