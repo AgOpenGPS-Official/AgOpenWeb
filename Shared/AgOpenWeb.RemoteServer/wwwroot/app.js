@@ -1098,8 +1098,8 @@ function renderFlagList() {
       const de = f.e - tick.pose.e, dn = f.n - tick.pose.n;
       const brg = (Math.atan2(de, dn) * 180 / Math.PI + 360) % 360;
       const metres = Math.hypot(de, dn);
-      dist = unitFromMetric(metres, { factor: M_TO_IN }).toFixed(0) + ' '
-        + unitName('m', 'in') + ' ' + COMPASS[Math.round(brg / 45) % 8];
+      dist = unitFromMetric(metres, { factor: M_TO_FT }).toFixed(0) + ' '
+        + unitName('m', 'ft') + ' ' + COMPASS[Math.round(brg / 45) % 8];
     }
     const row = document.createElement('div');
     row.className = 'flg-row';
@@ -1838,7 +1838,7 @@ function renderFbHeadland() {
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
     row.querySelector('.fb-hlmeta').textContent = s.type + ' · '
-      + unitFromMetric(+s.offset, { factor: M_TO_IN }).toFixed(1) + ' ' + unitName('m', 'in');
+      + unitFromMetric(+s.offset, { factor: M_TO_FT }).toFixed(1) + ' ' + unitName('m', 'ft');
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbHlSel = i; renderFbHeadland(); });
     list.appendChild(row);
   });
@@ -1847,14 +1847,14 @@ function renderFbHeadland() {
     offrow.hidden = false;
     const off = document.getElementById('fb-hl-off');
     if (document.activeElement !== off)
-      off.value = roundedUnitValue(unitFromMetric(+hs[fbHlSel].offset, { factor: M_TO_IN }));
+      off.value = roundedUnitValue(unitFromMetric(+hs[fbHlSel].offset, { factor: M_TO_FT }));
   } else offrow.hidden = true;
 }
 document.getElementById('fb-hl-off').addEventListener('change', e => {
   e.stopPropagation();
   const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
   const v = parseFloat(e.target.value);
-  const metres = unitToMetric(v, { factor: M_TO_IN });
+  const metres = unitToMetric(v, { factor: M_TO_FT });
   if (Number.isFinite(metres) && metres > 0) transport.send('headland.setOffset|' + hs[fbHlSel].index + ',' + metres);
 });
 // Inset = N tool widths (dropdown, mirrors AgOpen's cboxToolWidths) → fills the metre box;
@@ -1863,7 +1863,7 @@ const fbTwSel = document.getElementById('fb-hl-tw');
 const fbNewOff = document.getElementById('fb-hl-newoff');
 function fbApplyTw() {
   const n = parseInt(fbTwSel.value);
-  if (n > 0) fbNewOff.value = roundedUnitValue(unitFromMetric(n * toolWidthM(), { factor: M_TO_IN }));
+  if (n > 0) fbNewOff.value = roundedUnitValue(unitFromMetric(n * toolWidthM(), { factor: M_TO_FT }));
 }
 fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
 fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
@@ -1878,7 +1878,7 @@ for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
   b.addEventListener('pointerdown', e => {
     e.stopPropagation();
     const off = parseFloat(document.getElementById('fb-hl-newoff').value);
-    const metres = unitToMetric(off, { factor: M_TO_IN });
+    const metres = unitToMetric(off, { factor: M_TO_FT });
     const offset = (Number.isFinite(metres) && metres > 0) ? metres : fbDefaultOffset();
     const m = b.dataset.fbhl;
     showFbTab('headland');
@@ -1930,8 +1930,8 @@ function renderFbTram() {
     row.className = 'fb-hlrow' + (s.enabled ? '' : ' noeffect') + (i === fbTramSel ? ' sel' : '');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
-    row.querySelector('.fb-hlmeta').textContent = unitFromMetric(s.width, { factor: M_TO_IN }).toFixed(1)
-      + ' ' + unitName('m', 'in') + ' · ' + (s.passCount ? s.passCount + ' pass' : 'all');
+    row.querySelector('.fb-hlmeta').textContent = unitFromMetric(s.width, { factor: M_TO_FT }).toFixed(1)
+      + ' ' + unitName('m', 'ft') + ' · ' + (s.passCount ? s.passCount + ' pass' : 'all');
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbTramSel = i; renderFbTram(); });
     list.appendChild(row);
   });
@@ -1959,8 +1959,8 @@ function populateTramEdit() {
   for (const t of (scene.trackList || [])) if (t.type !== 'Path' && t.type !== 'Contour') opts.push(t.name);
   ref.innerHTML = opts.map(o => { const e = document.createElement('option'); e.textContent = o; return e.outerHTML; }).join('');
   ref.value = s.refLabel;
-  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) wEl.value = roundedUnitValue(unitFromMetric(s.width, { factor: M_TO_IN }));
-  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) offEl.value = roundedUnitValue(unitFromMetric(s.offset, { factor: M_TO_IN }));
+  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) wEl.value = roundedUnitValue(unitFromMetric(s.width, { factor: M_TO_FT }));
+  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) offEl.value = roundedUnitValue(unitFromMetric(s.offset, { factor: M_TO_FT }));
   const pEl = document.getElementById('fb-tram-passes'); if (document.activeElement !== pEl) pEl.value = s.passCount;
   for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
   for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
@@ -1970,8 +1970,8 @@ function populateTramEdit() {
 }
 document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.stopPropagation(); const s = curTram(); if (s) tramSet('enabled', s.enabled ? '0' : '1'); });
 document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
-document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = unitToMetric(parseFloat(e.target.value), { factor: M_TO_IN }); if (v > 0) tramSet('width', v); });
-document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = unitToMetric(parseFloat(e.target.value), { factor: M_TO_IN }); if (Number.isFinite(v)) tramSet('offset', v); });
+document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = unitToMetric(parseFloat(e.target.value), { factor: M_TO_FT }); if (v > 0) tramSet('width', v); });
+document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = unitToMetric(parseFloat(e.target.value), { factor: M_TO_FT }); if (Number.isFinite(v)) tramSet('offset', v); });
 document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSet('passes', Math.max(0, v)); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
@@ -2031,8 +2031,8 @@ for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // Manual Easting/Northing entry → absolute set (offset.set|E,N).
 function sendOffsetSet() {
-  const ns = unitToMetric(parseFloat(document.getElementById('of-ns-in').value), { factor: M_TO_IN });
-  const ew = unitToMetric(parseFloat(document.getElementById('of-ew-in').value), { factor: M_TO_IN });
+  const ns = unitToMetric(parseFloat(document.getElementById('of-ns-in').value), { factor: M_TO_FT });
+  const ew = unitToMetric(parseFloat(document.getElementById('of-ew-in').value), { factor: M_TO_FT });
   if (Number.isFinite(ns) && Number.isFinite(ew)) transport.send('offset.set|' + ew + ',' + ns);
 }
 for (const id of ['of-ns-in', 'of-ew-in'])
@@ -2079,9 +2079,9 @@ function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
 
 // Configuration values stay metric on the host. The web forms convert only at
 // their display/edit boundary so choosing Imperial never corrupts saved profiles.
-const M_TO_IN = 39.37007874015748;
+const M_TO_FT = 3.280839895013123;
 const CM_TO_IN = 0.3937007874015748;
-const KM_TO_MI = 0.621371192237334;
+const KPH_TO_MPH = 0.621371192237334;
 const UNIT_FIELDS = new Map();
 for (const key of [
   'vehicle.hitchLength', 'vehicle.wheelbase', 'vehicle.trackWidth',
@@ -2090,12 +2090,17 @@ for (const key of [
   'tool.hitchLength', 'tool.trailingHitchLength', 'tool.tankTrailingHitchLength',
   'tool.length', 'tool.offset', 'tool.overlap', 'tool.trailingToolToPivotLength',
   'uturn.extension', 'uturn.radius', 'uturn.distanceFromBoundary'
-]) UNIT_FIELDS.set(key, { factor: M_TO_IN, metric: 'm', imperial: 'in', imperialStep: '0.1' });
+]) UNIT_FIELDS.set(key, { factor: M_TO_FT, metric: 'm', imperial: 'ft', imperialStep: '0.01' });
 for (const key of [
   'tool.defaultSectionWidth', 'tool.coverageMargin'
 ]) UNIT_FIELDS.set(key, { factor: CM_TO_IN, metric: 'cm', imperial: 'in', imperialStep: '0.1' });
 for (const key of ['autosteer.nudgeDistance', 'autosteer.cmPerPixel'])
   UNIT_FIELDS.set(key, { factor: CM_TO_IN, metric: 'cm', imperial: 'in', imperialStep: '0.1', integer: true });
+for (const key of [
+  'gps.dualSwitchSpeed', 'tool.slowSpeedCutoff', 'autosteer.manualTurnsSpeed',
+  'autosteer.minSteerSpeed', 'autosteer.maxSteerSpeed'
+]) UNIT_FIELDS.set(key, { factor: KPH_TO_MPH, metric: 'km/h', imperial: 'mph', imperialStep: '0.1' });
+
 function metricUnits() { return !statusBar || statusBar.isMetric !== false; }
 function unitSpec(key) { return UNIT_FIELDS.get(key); }
 function unitFromMetric(value, specOrKey) {
@@ -2134,10 +2139,10 @@ function updateConfigUnitLabels(root) {
 }
 
 function updateStandaloneUnitLabels() {
-  for (const el of document.querySelectorAll('[data-unit="m"]')) el.textContent = unitName('m', 'in');
+  for (const el of document.querySelectorAll('[data-unit="m"]')) el.textContent = unitName('m', 'ft');
   for (const el of document.querySelectorAll('[data-unit="cm"]')) el.textContent = unitName('cm', 'in');
   for (const label of document.querySelectorAll('[data-unit-label="m"]')) {
-    label.textContent = label.textContent.replace(/\((?:m|in)\)$/, '(' + unitName('m', 'in') + ')');
+    label.textContent = label.textContent.replace(/\((?:m|ft)\)$/, '(' + unitName('m', 'ft') + ')');
   }
   for (const id of ['fb-hl-off', 'fb-hl-newoff', 'fb-tram-w', 'fb-tram-off']) {
     const inp = document.getElementById(id);
@@ -2152,7 +2157,7 @@ function updateStandaloneUnitLabels() {
   const swInfo = document.querySelector('#smartwas .sw-info');
   if (swInfo) swInfo.textContent = metricUnits()
     ? 'Drive at >2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.'
-    : 'Drive at >2 km/h with autosteer engaged. Keep the cross-track error within ±20 in. Click Apply once confidence reaches 40%+.';
+    : 'Drive at >1.2 mph with autosteer engaged. Keep the cross-track error within ±1.6 ft. Click Apply once confidence reaches 40%+.';
 }
 // Tabs.
 for (const t of vcPanel.querySelectorAll('.cfg-tab'))
@@ -2361,7 +2366,7 @@ function populateToolCfg(force) {
   for (const sel of document.querySelectorAll('#tc-pins select')) if (document.activeElement !== sel) sel.value = config.machine.pinAssignments[+sel.dataset.idx];
   document.getElementById('tc-sectionwidth-label').textContent = 'Section widths (' + unitName('cm', 'in') + ')';
   document.getElementById('tc-totalwidth').textContent = 'Total width: '
-    + unitFromMetric(t.totalWidth || 0, { factor: M_TO_IN }).toFixed(2) + ' ' + unitName('m', 'in');
+    + unitFromMetric(t.totalWidth || 0, { factor: M_TO_FT }).toFixed(2) + ' ' + unitName('m', 'ft');
 }
 
 // ---- AutoSteer config panel (Phase 9) — full native 9-tab surface + live Test Mode ----
@@ -2683,7 +2688,7 @@ function renderFieldsAndJobs() {
     row.innerHTML = '<span class="fj-fname"></span><span class="fj-fnum"></span><span class="fj-fnum"></span>';
     row.querySelector('.fj-fname').textContent = f.name;
     const nums = row.querySelectorAll('.fj-fnum');
-    nums[0].textContent = f.hasDistance ? (metricUnits() ? f.distanceKm : f.distanceKm * KM_TO_MI).toFixed(1) : '—';
+    nums[0].textContent = f.hasDistance ? (metricUnits() ? f.distanceKm : f.distanceKm * KPH_TO_MPH).toFixed(1) : '—';
     nums[1].textContent = (metricUnits() ? f.areaHa : f.areaHa * 2.4710538147).toFixed(1);
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fjSelField = f.name; fjSelJob = null; renderFieldsAndJobs(); });
     fl.appendChild(row);
@@ -3168,7 +3173,7 @@ function buildWizardContent(w) {
       return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
         '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'cpd':
-      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~5 km/h)</div></div>' +
+      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~' + (metricUnits() ? '5 km/h' : '3 mph') + ')</div></div>' +
         wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
         '<div class="wz-rows">' + wzNum('Counts Per Degree', null, 'autosteer.countsPerDegree', '1', '') + '</div>';
     case 'ackermann':
@@ -3202,8 +3207,8 @@ function renderWizard() {
   asSetText('wz-step', 'Step ' + (w.stepIndex + 1) + ' of ' + w.totalSteps);
   document.getElementById('wz-progressbar').style.width = (w.totalSteps ? (w.stepIndex + 1) / w.totalSteps * 100 : 0) + '%';
   asSetText('wz-was', (w.statusWas || 0).toFixed(1) + '°'); asSetText('wz-roll', (w.statusRoll || 0).toFixed(1) + '°');
-  const wizardSpeed = w.statusSpeed || 0;
-  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', wizardSpeed.toFixed(1) + ' km/h'); asSetText('wz-pwm', w.statusPwm | 0);
+  const wizardSpeed = metricUnits() ? (w.statusSpeed || 0) : (w.statusSpeed || 0) * KPH_TO_MPH;
+  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', wizardSpeed.toFixed(1) + ' ' + unitName('km/h', 'mph')); asSetText('wz-pwm', w.statusPwm | 0);
   const next = document.getElementById('wz-next');
   next.textContent = w.isLast ? 'Finish' : 'Next';
   next.classList.toggle('disabled', !(w.isLast || w.canNext));
@@ -3224,7 +3229,7 @@ function renderWizard() {
   const live = (k, v) => { for (const el of wzContent.querySelectorAll('[data-live="' + k + '"]')) el.textContent = v; };
   live('angle', (w.liveAngle || 0).toFixed(1) + '°'); live('roll', (w.liveRoll || 0).toFixed(2) + '°');
   live('error', (w.liveError || 0).toFixed(1)); live('phase', w.testPhase || ''); live('result', w.testResult || '');
-  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', wizardSpeed.toFixed(1) + ' km/h');
+  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', wizardSpeed.toFixed(1) + ' ' + unitName('km/h', 'mph'));
   live('rollzero', wzVal('roll.rollZero').toFixed(2)); live('wasoffset', wzVal('autosteer.wasOffset') | 0);
   // Roll gauge (roll-calibration step): rotate the bar by the live roll, like the map.
   const rb = document.getElementById('wz-roll-bar');
@@ -3740,7 +3745,7 @@ function renderPose() {
 // Cross-track error in the selected short distance unit (R = right of line, +xte).
 function xteText(xte) {
   if (xte == null) return '—';
-  const value = metricUnits() ? Math.abs(xte) * 100 : Math.abs(xte) * M_TO_IN;
+  const value = metricUnits() ? Math.abs(xte) * 100 : Math.abs(xte) * M_TO_FT * 12;
   const side = xte > 0.005 ? 'R' : xte < -0.005 ? 'L' : '·';
   return `${value.toFixed(0)} ${unitName('cm', 'in')} ${side}`;
 }
@@ -3766,7 +3771,7 @@ function updateLightbarText() {
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    const value = metricUnits() ? Math.abs(xte) * 100 : Math.abs(xte) * M_TO_IN;
+    const value = metricUnits() ? Math.abs(xte) * 100 : Math.abs(xte) * M_TO_FT * 12;
     lbEl.textContent = `${arrow} ${value.toFixed(0)} ${unitName('cm', 'in')}   Pass ${Math.abs(pass) + 1}`;
   }
   lbEl.style.display = 'block';
@@ -3785,7 +3790,7 @@ function updateHeadlandHud() {
   const creating = document.body.classList.contains('maptap');
   if (!on || creating || d == null || d < 0) { hlHud.style.display = 'none'; return; }
   const metric = !statusBar || statusBar.isMetric;
-  hlHud.textContent = metric ? d.toFixed(1) + ' m' : (d * M_TO_IN).toFixed(0) + ' in';
+  hlHud.textContent = metric ? d.toFixed(1) + ' m' : (d * 3.28084).toFixed(0) + ' ft';
   hlHud.classList.toggle('warn', !!(tick && tick.headlandWarn));
   hlHud.style.display = 'block';
 }
@@ -3953,10 +3958,10 @@ function renderStatusBar() {
   SB.fix.textContent = s.fixText || '—';
   SB.age.textContent = 'Age ' + (s.age != null ? s.age.toFixed(1) : '—');
   SB.rot.textContent = rotatingLineText();
-  // Speed from the live tick (m/s) always stays in km/h by user preference.
+  // Speed from the live tick (m/s), formatted per the host's unit preference.
   const mps = lastTick ? lastTick.speed : 0;
-  SB.speed.textContent = (mps * 3.6).toFixed(1);
-  SB.unit.textContent = 'km/h';
+  SB.speed.textContent = (mps * (s.isMetric ? 3.6 : 2.236936)).toFixed(1);
+  SB.unit.textContent = s.isMetric ? 'km/h' : 'mph';
   // Modules: aggregate dot + per-module popup rows.
   SB.modAgg.style.background = moduleAggColor(s);
   const dot = (el, ok) => { el.style.background = ok ? '#22c55e' : '#6b7280'; };
@@ -4019,7 +4024,7 @@ function renderSimBar() {
   }
   // Speed readout: apply 10× then format per units (mirrors SimulatorSpeedDisplay).
   const eff = (s.simSpeedKph || 0) * (s.sim10x ? 10 : 1);
-  SIM.speedVal.textContent = eff.toFixed(1) + ' km/h';
+  SIM.speedVal.textContent = s.isMetric ? eff.toFixed(1) + ' kph' : (eff * 0.621371).toFixed(1) + ' mph';
   // GPS (teleport) only while sim disabled — matches the native IsEnabled binding.
   SIM.gps.disabled = !!s.simEnabled;
   SIM.gps.style.opacity = s.simEnabled ? '0.4' : '1';
@@ -4132,7 +4137,7 @@ function renderUTurnIndicator() {
   if (!show) return;
   const metric = !statusBar || statusBar.isMetric;
   UTI.dist.textContent = metric ? op.distToTrigger.toFixed(0) + ' m'
-                                : (op.distToTrigger * M_TO_IN).toFixed(0) + ' in';
+                                : (op.distToTrigger * 3.28084).toFixed(0) + ' ft';
   UTI.arrow.classList.toggle('left', !!op.turnLeft);
   const style = (config && config.uturn && config.uturn.style) || 0;
   UTI.typePath.setAttribute('d', UTURN_GLYPH[style] || UTURN_GLYPH[0]);
@@ -4271,7 +4276,7 @@ function drawChart(cv, c) {
 
   // XTE is stored in metres; scale only while drawing so buffered samples can
   // switch units without mixing old and new values.
-  const valueScale = c === CHARTS.xte && !metricUnits() ? M_TO_IN : 1;
+  const valueScale = c === CHARTS.xte && !metricUnits() ? M_TO_FT : 1;
   // Y range (auto-scale mirrors native ComputeAutoScale: 10% pad + nice step).
   let minY = c.minY * valueScale, maxY = c.maxY * valueScale, step = c.step * valueScale;
   if (c.auto) {
@@ -4337,7 +4342,7 @@ function drawChart(cv, c) {
   // Title (top-left of chart area).
   ctx.fillStyle = '#aeb8c8'; ctx.textAlign = 'left';
   ctx.font = '11px system-ui,sans-serif';
-  ctx.fillText(c.title + (c === CHARTS.xte ? ' (' + unitName('m', 'in') + ')' : ''), cl + 4, ctop + 11);
+  ctx.fillText(c.title + (c === CHARTS.xte ? ' (' + unitName('m', 'ft') + ')' : ''), cl + 4, ctop + 11);
 
   // Legend (top-right, right-to-left).
   ctx.font = '9px system-ui,sans-serif';
@@ -4399,8 +4404,8 @@ function renderOffsetFix() {
   if (!document.getElementById('offsetfix').classList.contains('open')) return;
   if (!statusBar) return;
   const ns = document.getElementById('of-ns-in'), ew = document.getElementById('of-ew-in');
-  if (document.activeElement !== ns) ns.value = unitFromMetric(statusBar.driftNorthing || 0, { factor: M_TO_IN }).toFixed(metricUnits() ? 3 : 2);
-  if (document.activeElement !== ew) ew.value = unitFromMetric(statusBar.driftEasting || 0, { factor: M_TO_IN }).toFixed(metricUnits() ? 3 : 2);
+  if (document.activeElement !== ns) ns.value = unitFromMetric(statusBar.driftNorthing || 0, { factor: M_TO_FT }).toFixed(metricUnits() ? 3 : 2);
+  if (document.activeElement !== ew) ew.value = unitFromMetric(statusBar.driftEasting || 0, { factor: M_TO_FT }).toFixed(metricUnits() ? 3 : 2);
 }
 
 // Import Tracks: list the other fields that have saved tracks; tap one to copy its
