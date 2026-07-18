@@ -422,7 +422,15 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
-  onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
+  onStatusBar(s) {
+    statusBar = s;
+    if (typeof applySimBarVisible === 'function') applySimBarVisible();
+    // Keep an already-open App Settings panel synchronized with host changes.
+    // Previously it was rendered only when opened, so a successful unit change
+    // still left the old Metric/Imperial button highlighted.
+    if (document.getElementById('appsettings').classList.contains('open')) renderAppSettings();
+    syncUnsavedCov();
+  },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -2829,7 +2837,22 @@ function renderAppSettings() {
   }
 }
 for (const b of document.querySelectorAll('#appsettings .ln-segbtn[data-units]'))
-  b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    const metric = b.dataset.units === 'metric';
+
+    // Apply the preference locally at once so every unit-dependent renderer
+    // (speed, simulator speed, area/rate and distance HUDs) changes on the next
+    // animation frame. The periodic Status frame remains authoritative and will
+    // confirm the persisted value from the host.
+    if (statusBar) statusBar.isMetric = metric;
+    renderAppSettings();
+    renderStatusBar();
+    renderSimBar();
+
+    transport.send('config.set|units:' + b.dataset.units);
+  });
 for (const b of document.querySelectorAll('#appsettings .as-tgl'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
 
