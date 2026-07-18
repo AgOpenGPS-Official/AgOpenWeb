@@ -66,7 +66,6 @@ let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
 let configDirty = false; // a new config frame arrived → settings panels re-read it
-let unitsDirty = false;  // unit preference changed → rebuild unit labels + displayed values
 let mapIsDay = false;  // day/night theme (mirrors config.display.isDayMode) — drives the
                        // CSS palette ([data-theme]) and the Skia map clear/grid colours
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
@@ -289,9 +288,7 @@ const transport = RemoteTransport.create({
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
   onStatusBar(s) {
-    const unitsChanged = !statusBar || statusBar.isMetric !== s.isMetric;
     statusBar = s;
-    if (unitsChanged) unitsDirty = true;
     if (typeof applySimBarVisible === 'function') applySimBarVisible();
     // Keep an already-open App Settings panel synchronized with host changes.
     // Previously it was rendered only when opened, so a successful unit change
@@ -958,9 +955,7 @@ function renderFlagList() {
     if (tick && tick.pose) {
       const de = f.e - tick.pose.e, dn = f.n - tick.pose.n;
       const brg = (Math.atan2(de, dn) * 180 / Math.PI + 360) % 360;
-      const metres = Math.hypot(de, dn);
-      dist = unitFromMetric(metres, { factor: M_TO_FT }).toFixed(0) + ' '
-        + unitName('m', 'ft') + ' ' + COMPASS[Math.round(brg / 45) % 8];
+      dist = Math.hypot(de, dn).toFixed(0) + ' m ' + COMPASS[Math.round(brg / 45) % 8];
     }
     const row = document.createElement('div');
     row.className = 'flg-row';
@@ -1698,8 +1693,7 @@ function renderFbHeadland() {
     row.className = 'fb-hlrow' + (s.effective ? '' : ' noeffect') + (i === fbHlSel ? ' sel' : '');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
-    row.querySelector('.fb-hlmeta').textContent = s.type + ' · '
-      + unitFromMetric(+s.offset, { factor: M_TO_FT }).toFixed(1) + ' ' + unitName('m', 'ft');
+    row.querySelector('.fb-hlmeta').textContent = s.type + ' · ' + (+s.offset).toFixed(1) + ' m';
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbHlSel = i; renderFbHeadland(); });
     list.appendChild(row);
   });
@@ -1707,25 +1701,20 @@ function renderFbHeadland() {
   if (fbHlSel >= 0 && hs[fbHlSel]) {
     offrow.hidden = false;
     const off = document.getElementById('fb-hl-off');
-    if (document.activeElement !== off)
-      off.value = roundedUnitValue(unitFromMetric(+hs[fbHlSel].offset, { factor: M_TO_FT }));
+    if (document.activeElement !== off) off.value = (+hs[fbHlSel].offset).toFixed(1);
   } else offrow.hidden = true;
 }
 document.getElementById('fb-hl-off').addEventListener('change', e => {
   e.stopPropagation();
   const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
   const v = parseFloat(e.target.value);
-  const metres = unitToMetric(v, { factor: M_TO_FT });
-  if (Number.isFinite(metres) && metres > 0) transport.send('headland.setOffset|' + hs[fbHlSel].index + ',' + metres);
+  if (Number.isFinite(v) && v > 0) transport.send('headland.setOffset|' + hs[fbHlSel].index + ',' + v);
 });
 // Inset = N tool widths (dropdown, mirrors AgOpen's cboxToolWidths) → fills the metre box;
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
 const fbNewOff = document.getElementById('fb-hl-newoff');
-function fbApplyTw() {
-  const n = parseInt(fbTwSel.value);
-  if (n > 0) fbNewOff.value = roundedUnitValue(unitFromMetric(n * toolWidthM(), { factor: M_TO_FT }));
-}
+function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) fbNewOff.value = +(n * toolWidthM()).toFixed(1); }
 fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
 fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
 document.getElementById('fb-hl-add').addEventListener('pointerdown', e => {
@@ -1739,8 +1728,7 @@ for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
   b.addEventListener('pointerdown', e => {
     e.stopPropagation();
     const off = parseFloat(document.getElementById('fb-hl-newoff').value);
-    const metres = unitToMetric(off, { factor: M_TO_FT });
-    const offset = (Number.isFinite(metres) && metres > 0) ? metres : fbDefaultOffset();
+    const offset = (Number.isFinite(off) && off > 0) ? off : fbDefaultOffset();
     const m = b.dataset.fbhl;
     showFbTab('headland');
     if (m === 'whole') transport.send('headland.wholeBoundary|' + offset);
@@ -1791,8 +1779,7 @@ function renderFbTram() {
     row.className = 'fb-hlrow' + (s.enabled ? '' : ' noeffect') + (i === fbTramSel ? ' sel' : '');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
-    row.querySelector('.fb-hlmeta').textContent = unitFromMetric(s.width, { factor: M_TO_FT }).toFixed(1)
-      + ' ' + unitName('m', 'ft') + ' · ' + (s.passCount ? s.passCount + ' pass' : 'all');
+    row.querySelector('.fb-hlmeta').textContent = s.width.toFixed(1) + ' m · ' + (s.passCount ? s.passCount + ' pass' : 'all');
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbTramSel = i; renderFbTram(); });
     list.appendChild(row);
   });
@@ -1820,8 +1807,8 @@ function populateTramEdit() {
   for (const t of (scene.trackList || [])) if (t.type !== 'Path' && t.type !== 'Contour') opts.push(t.name);
   ref.innerHTML = opts.map(o => { const e = document.createElement('option'); e.textContent = o; return e.outerHTML; }).join('');
   ref.value = s.refLabel;
-  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) wEl.value = roundedUnitValue(unitFromMetric(s.width, { factor: M_TO_FT }));
-  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) offEl.value = roundedUnitValue(unitFromMetric(s.offset, { factor: M_TO_FT }));
+  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) wEl.value = s.width.toFixed(1);
+  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) offEl.value = s.offset.toFixed(1);
   const pEl = document.getElementById('fb-tram-passes'); if (document.activeElement !== pEl) pEl.value = s.passCount;
   for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
   for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
@@ -1831,8 +1818,8 @@ function populateTramEdit() {
 }
 document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.stopPropagation(); const s = curTram(); if (s) tramSet('enabled', s.enabled ? '0' : '1'); });
 document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
-document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = unitToMetric(parseFloat(e.target.value), { factor: M_TO_FT }); if (v > 0) tramSet('width', v); });
-document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = unitToMetric(parseFloat(e.target.value), { factor: M_TO_FT }); if (Number.isFinite(v)) tramSet('offset', v); });
+document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (v > 0) tramSet('width', v); });
+document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (Number.isFinite(v)) tramSet('offset', v); });
 document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSet('passes', Math.max(0, v)); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
@@ -1874,11 +1861,7 @@ document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
 document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.accept'); lnCloseAll(); });
 // Boundary player.
 document.getElementById('bp-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
-document.getElementById('bp-offset').addEventListener('change', e => {
-  e.stopPropagation();
-  const v = unitToMetric(parseFloat(e.target.value), { factor: CM_TO_IN });
-  if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v);
-});
+document.getElementById('bp-offset').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v); });
 document.getElementById('bp-clear').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.clear'); });
 document.getElementById('bp-section').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleSectionControl'); });
 document.getElementById('bp-undo').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.undo'); });
@@ -1892,8 +1875,8 @@ for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // Manual Easting/Northing entry → absolute set (offset.set|E,N).
 function sendOffsetSet() {
-  const ns = unitToMetric(parseFloat(document.getElementById('of-ns-in').value), { factor: M_TO_FT });
-  const ew = unitToMetric(parseFloat(document.getElementById('of-ew-in').value), { factor: M_TO_FT });
+  const ns = parseFloat(document.getElementById('of-ns-in').value);
+  const ew = parseFloat(document.getElementById('of-ew-in').value);
   if (Number.isFinite(ns) && Number.isFinite(ew)) transport.send('offset.set|' + ew + ',' + ns);
 }
 for (const id of ['of-ns-in', 'of-ew-in'])
@@ -1937,89 +1920,6 @@ HITCH_OPTS.forEach((label, i) => { const o = document.createElement('option'); o
 const vcFw = vcPanel.querySelector('.cfg-slider[data-key="gps.headingFusionWeight"]');
 function cfgGet(key) { if (!config) return undefined; const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]]; }
 function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
-
-// Configuration values stay metric on the host. The web forms convert only at
-// their display/edit boundary so choosing Imperial never corrupts saved profiles.
-const M_TO_FT = 3.280839895013123;
-const CM_TO_IN = 0.3937007874015748;
-const KPH_TO_MPH = 0.621371192237334;
-const UNIT_FIELDS = new Map();
-for (const key of [
-  'vehicle.hitchLength', 'vehicle.wheelbase', 'vehicle.trackWidth',
-  'vehicle.antennaPivot', 'vehicle.antennaHeight', 'vehicle.antennaOffset',
-  'gps.dualReverseDistance', 'gps.minGpsStep', 'gps.fixToFixDistance',
-  'tool.hitchLength', 'tool.trailingHitchLength', 'tool.tankTrailingHitchLength',
-  'tool.length', 'tool.offset', 'tool.overlap', 'tool.trailingToolToPivotLength',
-  'uturn.extension', 'uturn.radius', 'uturn.distanceFromBoundary'
-]) UNIT_FIELDS.set(key, { factor: M_TO_FT, metric: 'm', imperial: 'ft', imperialStep: '0.01' });
-for (const key of [
-  'tool.defaultSectionWidth', 'tool.coverageMargin'
-]) UNIT_FIELDS.set(key, { factor: CM_TO_IN, metric: 'cm', imperial: 'in', imperialStep: '0.1' });
-for (const key of ['autosteer.nudgeDistance', 'autosteer.cmPerPixel'])
-  UNIT_FIELDS.set(key, { factor: CM_TO_IN, metric: 'cm', imperial: 'in', imperialStep: '0.1', integer: true });
-for (const key of [
-  'gps.dualSwitchSpeed', 'tool.slowSpeedCutoff', 'autosteer.manualTurnsSpeed',
-  'autosteer.minSteerSpeed', 'autosteer.maxSteerSpeed'
-]) UNIT_FIELDS.set(key, { factor: KPH_TO_MPH, metric: 'km/h', imperial: 'mph', imperialStep: '0.1' });
-
-function metricUnits() { return !statusBar || statusBar.isMetric !== false; }
-function unitSpec(key) { return UNIT_FIELDS.get(key); }
-function unitFromMetric(value, specOrKey) {
-  const spec = typeof specOrKey === 'string' ? unitSpec(specOrKey) : specOrKey;
-  return !spec || metricUnits() ? value : value * spec.factor;
-}
-function unitToMetric(value, specOrKey) {
-  const spec = typeof specOrKey === 'string' ? unitSpec(specOrKey) : specOrKey;
-  const metricValue = !spec || metricUnits() ? value : value / spec.factor;
-  return spec && spec.integer ? Math.round(metricValue) : metricValue;
-}
-function roundedUnitValue(value) { return Math.round(value * 1000) / 1000; }
-function unitName(metricName, imperialName) { return metricUnits() ? metricName : imperialName; }
-
-function updateConfigUnitLabels(root) {
-  for (const inp of root.querySelectorAll('.cfg-num[data-key]')) {
-    const spec = unitSpec(inp.dataset.key);
-    if (!spec) continue;
-    const label = inp.previousElementSibling;
-    if (label && label.tagName === 'LABEL') {
-      const wanted = metricUnits() ? spec.metric : spec.imperial;
-      if (/^(?:cm|in) per pixel$/.test(label.textContent)) label.textContent = wanted + ' per pixel';
-      else {
-        for (const oldUnit of [spec.metric, spec.imperial]) {
-          const suffix = '(' + oldUnit + ')';
-          if (label.textContent.endsWith(suffix)) {
-            label.textContent = label.textContent.slice(0, -suffix.length) + '(' + wanted + ')';
-            break;
-          }
-        }
-      }
-    }
-    if (!inp.dataset.metricStep) inp.dataset.metricStep = inp.step || '';
-    inp.step = metricUnits() ? inp.dataset.metricStep : spec.imperialStep;
-  }
-}
-
-function updateStandaloneUnitLabels() {
-  for (const el of document.querySelectorAll('[data-unit="m"]')) el.textContent = unitName('m', 'ft');
-  for (const el of document.querySelectorAll('[data-unit="cm"]')) el.textContent = unitName('cm', 'in');
-  for (const label of document.querySelectorAll('[data-unit-label="m"]')) {
-    label.textContent = label.textContent.replace(/\((?:m|ft)\)$/, '(' + unitName('m', 'ft') + ')');
-  }
-  for (const id of ['fb-hl-off', 'fb-hl-newoff', 'fb-tram-w', 'fb-tram-off']) {
-    const inp = document.getElementById(id);
-    if (inp) inp.step = metricUnits() ? '0.5' : '0.1';
-  }
-  for (const id of ['of-ns-in', 'of-ew-in']) {
-    const inp = document.getElementById(id);
-    if (inp) inp.step = metricUnits() ? '0.001' : '0.01';
-  }
-  const hint = document.getElementById('of-hint');
-  if (hint) hint.textContent = metricUnits() ? '1 cm per click' : '0.4 in per click';
-  const swInfo = document.querySelector('#smartwas .sw-info');
-  if (swInfo) swInfo.textContent = metricUnits()
-    ? 'Drive at >2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.'
-    : 'Drive at >1.2 mph with autosteer engaged. Keep the cross-track error within ±1.6 ft. Click Apply once confidence reaches 40%+.';
-}
 // Tabs.
 for (const t of vcPanel.querySelectorAll('.cfg-tab'))
   t.addEventListener('pointerdown', e => {
@@ -2047,10 +1947,7 @@ function fmtRo(v, fmt) {
 }
 function wireCfgControls(panel) {
   for (const inp of panel.querySelectorAll('.cfg-num'))
-    inp.addEventListener('change', () => {
-      const v = parseFloat(inp.value);
-      if (Number.isFinite(v)) cfgSend(inp.dataset.key, unitToMetric(v, inp.dataset.key));
-    });
+    inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
   for (const b of panel.querySelectorAll('.cfg-tgl'))
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
   for (const b of panel.querySelectorAll('.cfg-typebtn'))
@@ -2071,11 +1968,10 @@ function wireCfgControls(panel) {
   }
 }
 function populateCfgControls(panel, force) {
-  updateConfigUnitLabels(panel);
   for (const inp of panel.querySelectorAll('.cfg-num')) {
     if (!force && document.activeElement === inp) continue;
     const val = cfgGet(inp.dataset.key);
-    if (typeof val === 'number') inp.value = roundedUnitValue(unitFromMetric(val, inp.dataset.key));
+    if (typeof val === 'number') inp.value = Math.round(val * 1000) / 1000;
   }
   for (const b of panel.querySelectorAll('.cfg-tgl')) {
     const on = !!cfgGet(b.dataset.key);
@@ -2194,17 +2090,10 @@ function populateToolCfg(force) {
   const nSec = Math.max(1, Math.min(64, t.numSections)); // ToolConfig.MaxSections — backend supports 64
   if (_tcBuilt.sw !== nSec) {
     const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
-    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => {
-      const v = parseFloat(inp.value);
-      if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + unitToMetric(v, { factor: CM_TO_IN }));
-    });
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); });
     _tcBuilt.sw = nSec;
   }
-  for (const inp of document.querySelectorAll('#tc-sectionwidths input')) {
-    inp.step = metricUnits() ? '1' : '0.1';
-    if (force || document.activeElement !== inp)
-      inp.value = roundedUnitValue(unitFromMetric(t.sectionWidths[+inp.dataset.idx], { factor: CM_TO_IN }));
-  }
+  for (const inp of document.querySelectorAll('#tc-sectionwidths input')) if (force || document.activeElement !== inp) inp.value = Math.round(t.sectionWidths[+inp.dataset.idx]);
   const nZone = Math.max(1, Math.min(8, t.zones));
   if (_tcBuilt.ze !== nZone) {
     const g = document.getElementById('tc-zoneends'); g.innerHTML = '';
@@ -2225,9 +2114,7 @@ function populateToolCfg(force) {
     _tcBuilt.pins = true;
   }
   for (const sel of document.querySelectorAll('#tc-pins select')) if (document.activeElement !== sel) sel.value = config.machine.pinAssignments[+sel.dataset.idx];
-  document.getElementById('tc-sectionwidth-label').textContent = 'Section widths (' + unitName('cm', 'in') + ')';
-  document.getElementById('tc-totalwidth').textContent = 'Total width: '
-    + unitFromMetric(t.totalWidth || 0, { factor: M_TO_FT }).toFixed(2) + ' ' + unitName('m', 'ft');
+  document.getElementById('tc-totalwidth').textContent = 'Total width: ' + (t.totalWidth || 0).toFixed(2) + ' m';
 }
 
 // ---- AutoSteer config panel (Phase 9) — full native 9-tab surface + live Test Mode ----
@@ -2540,8 +2427,6 @@ function openFieldsAndJobs() {
 document.getElementById('fj-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldops', 'ln-fieldops', renderFieldOps); });
 function fjJobsArr() { return fieldOps ? fieldOps.jobs.filter(j => j.fieldName === fjSelField) : []; }
 function renderFieldsAndJobs() {
-  document.getElementById('fj-dist-head').textContent = 'Dist (' + unitName('km', 'mi') + ')';
-  document.getElementById('fj-area-head').textContent = 'Area (' + unitName('ha', 'ac') + ')';
   const fl = document.getElementById('fj-fieldlist'); fl.innerHTML = '';
   for (const f of (fieldOps ? fieldOps.fields : [])) {
     const row = document.createElement('div');
@@ -2549,8 +2434,8 @@ function renderFieldsAndJobs() {
     row.innerHTML = '<span class="fj-fname"></span><span class="fj-fnum"></span><span class="fj-fnum"></span>';
     row.querySelector('.fj-fname').textContent = f.name;
     const nums = row.querySelectorAll('.fj-fnum');
-    nums[0].textContent = f.hasDistance ? (metricUnits() ? f.distanceKm : f.distanceKm * KPH_TO_MPH).toFixed(1) : '—';
-    nums[1].textContent = (metricUnits() ? f.areaHa : f.areaHa * 2.4710538147).toFixed(1);
+    nums[0].textContent = f.hasDistance ? f.distanceKm.toFixed(1) : '—';
+    nums[1].textContent = f.areaHa.toFixed(1);
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fjSelField = f.name; fjSelJob = null; renderFieldsAndJobs(); });
     fl.appendChild(row);
   }
@@ -2764,8 +2649,7 @@ function renderAgDownload() {
     const row = document.createElement('div'); row.className = 'fj-jrow' + (f.id === agdSel ? ' sel' : '');
     row.innerHTML = '<div class="fj-jtop"><span class="fj-jname"></span><span class="fj-jwt"></span></div>';
     row.querySelector('.fj-jname').textContent = f.name;
-    row.querySelector('.fj-jwt').textContent = (metricUnits() ? f.areaHa : f.areaHa * 2.4710538147).toFixed(2)
-      + ' ' + unitName('ha', 'ac');
+    row.querySelector('.fj-jwt').textContent = f.areaHa.toFixed(2) + ' ha';
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); agdSel = f.id; renderAgDownload(); });
     list.appendChild(row);
   }
@@ -2824,7 +2708,6 @@ for (const b of document.querySelectorAll('#appsettings .ln-segbtn[data-units]')
     // animation frame. The periodic Status frame remains authoritative and will
     // confirm the persisted value from the host.
     if (statusBar) statusBar.isMetric = metric;
-    unitsDirty = true;
     renderAppSettings();
     renderStatusBar();
     renderSimBar();
@@ -2957,20 +2840,15 @@ wzContent.addEventListener('pointerdown', e => {
 });
 wzContent.addEventListener('change', e => {
   const inp = e.target.closest('[data-cfgnum]'); if (!inp) return;
-  const v = parseFloat(inp.value);
-  if (Number.isFinite(v)) cfgSend(inp.dataset.cfgnum, unitToMetric(v, inp.dataset.cfgnum));
+  const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.cfgnum, v);
 });
 // Per-step content. Editable values read from the Config frame; live values get ids
 // (data-live) refreshed each frame. esc() guards interpolated strings.
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function wzVal(key, dflt) { const v = cfgGet(key); return typeof v === 'number' ? v : (dflt || 0); }
 function wzNum(label, sub, key, step, unit) {
-  const spec = unitSpec(key);
-  const shownValue = roundedUnitValue(unitFromMetric(wzVal(key), spec));
-  const shownStep = !metricUnits() && spec ? spec.imperialStep : (step || '0.01');
-  const shownUnit = spec ? unitName(spec.metric, spec.imperial) : (unit || '');
   return '<div class="wz-fld"><label>' + esc(label) + '</label><div class="sub">' + esc(sub || '') + '</div>' +
-    '<input class="wz-num" data-cfgnum="' + key + '" type="number" step="' + shownStep + '" value="' + shownValue + '"><span class="wz-unit">' + esc(shownUnit) + '</span></div>';
+    '<input class="wz-num" data-cfgnum="' + key + '" type="number" step="' + (step || '0.01') + '" value="' + wzVal(key) + '"><span class="wz-unit">' + esc(unit || '') + '</span></div>';
 }
 function wzSeg(label, sub, key, opts) { // opts: [[text,val],...]
   return '<div class="wz-row"><div class="lbl">' + esc(label) + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div><div class="wz-seg">' +
@@ -3034,7 +2912,7 @@ function buildWizardContent(w) {
       return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
         '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'cpd':
-      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~' + (metricUnits() ? '5 km/h' : '3 mph') + ')</div></div>' +
+      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~5 km/h)</div></div>' +
         wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
         '<div class="wz-rows">' + wzNum('Counts Per Degree', null, 'autosteer.countsPerDegree', '1', '') + '</div>';
     case 'ackermann':
@@ -3068,8 +2946,7 @@ function renderWizard() {
   asSetText('wz-step', 'Step ' + (w.stepIndex + 1) + ' of ' + w.totalSteps);
   document.getElementById('wz-progressbar').style.width = (w.totalSteps ? (w.stepIndex + 1) / w.totalSteps * 100 : 0) + '%';
   asSetText('wz-was', (w.statusWas || 0).toFixed(1) + '°'); asSetText('wz-roll', (w.statusRoll || 0).toFixed(1) + '°');
-  const wizardSpeed = metricUnits() ? (w.statusSpeed || 0) : (w.statusSpeed || 0) * KPH_TO_MPH;
-  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', wizardSpeed.toFixed(1) + ' ' + unitName('km/h', 'mph')); asSetText('wz-pwm', w.statusPwm | 0);
+  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', (w.statusSpeed || 0).toFixed(1) + ' km/h'); asSetText('wz-pwm', w.statusPwm | 0);
   const next = document.getElementById('wz-next');
   next.textContent = w.isLast ? 'Finish' : 'Next';
   next.classList.toggle('disabled', !(w.isLast || w.canNext));
@@ -3090,7 +2967,7 @@ function renderWizard() {
   const live = (k, v) => { for (const el of wzContent.querySelectorAll('[data-live="' + k + '"]')) el.textContent = v; };
   live('angle', (w.liveAngle || 0).toFixed(1) + '°'); live('roll', (w.liveRoll || 0).toFixed(2) + '°');
   live('error', (w.liveError || 0).toFixed(1)); live('phase', w.testPhase || ''); live('result', w.testResult || '');
-  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', wizardSpeed.toFixed(1) + ' ' + unitName('km/h', 'mph'));
+  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', (w.statusSpeed || 0).toFixed(1) + ' km/h');
   live('rollzero', wzVal('roll.rollZero').toFixed(2)); live('wasoffset', wzVal('autosteer.wasOffset') | 0);
   // Roll gauge (roll-calibration step): rotate the bar by the live roll, like the map.
   const rb = document.getElementById('wz-roll-bar');
@@ -3100,20 +2977,6 @@ function renderWizard() {
 }
 
 function renderSettings() {
-  if (unitsDirty) {
-    unitsDirty = false;
-    updateStandaloneUnitLabels();
-    if (vcPanel.classList.contains('open')) populateVehicleCfg(true);
-    if (tcPanel.classList.contains('open')) populateToolCfg(true);
-    if (asPanel.classList.contains('open')) populateAutoSteer(true);
-    if (document.getElementById('fieldbuilder').classList.contains('open')) renderFieldBuilder();
-    if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
-    if (document.getElementById('fieldsandjobs').classList.contains('open')) renderFieldsAndJobs();
-    if (document.getElementById('agdownload').classList.contains('open')) renderAgDownload();
-    if (document.getElementById('dlg-flags').classList.contains('open')) renderFlagList();
-    renderOffsetFix();
-    _wzKey = ''; // rebuild wizard fields and unit labels on the next render
-  }
   // Re-read the open config panel(s) when a fresh config frame arrives.
   if (configDirty) {
     configDirty = false;
@@ -3603,12 +3466,13 @@ function renderPose() {
     speed: s.b.speed,
   };
 }
-// Cross-track error in the selected short distance unit (R = right of line, +xte).
+// Cross-track error as "12 cm R" (R = right of line, +xte). Centimetres so the
+// magnitude reads at a glance; the lightbar carries the live feel.
 function xteText(xte) {
   if (xte == null) return '—';
-  const value = metricUnits() ? Math.abs(xte) * 100 : Math.abs(xte) * M_TO_FT * 12;
+  const cm = Math.abs(xte) * 100;
   const side = xte > 0.005 ? 'R' : xte < -0.005 ? 'L' : '·';
-  return `${value.toFixed(0)} ${unitName('cm', 'in')} ${side}`;
+  return `${cm.toFixed(0)} cm ${side}`;
 }
 
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
@@ -3632,8 +3496,7 @@ function updateLightbarText() {
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    const value = metricUnits() ? Math.abs(xte) * 100 : Math.abs(xte) * M_TO_FT * 12;
-    lbEl.textContent = `${arrow} ${value.toFixed(0)} ${unitName('cm', 'in')}   Pass ${Math.abs(pass) + 1}`;
+    lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   Pass ${Math.abs(pass) + 1}`;
   }
   lbEl.style.display = 'block';
 }
@@ -4135,18 +3998,11 @@ function drawChart(cv, c) {
   const cw = cr - cl, ch = cbot - ctop;
   if (cw <= 0 || ch <= 0) return;
 
-  // XTE is stored in metres; scale only while drawing so buffered samples can
-  // switch units without mixing old and new values.
-  const valueScale = c === CHARTS.xte && !metricUnits() ? M_TO_FT : 1;
   // Y range (auto-scale mirrors native ComputeAutoScale: 10% pad + nice step).
-  let minY = c.minY * valueScale, maxY = c.maxY * valueScale, step = c.step * valueScale;
+  let minY = c.minY, maxY = c.maxY, step = c.step;
   if (c.auto) {
     let dmin = Infinity, dmax = -Infinity;
-    for (const s of c.series) for (const p of s.pts) {
-      const v = p.v * valueScale;
-      if (v < dmin) dmin = v;
-      if (v > dmax) dmax = v;
-    }
+    for (const s of c.series) for (const p of s.pts) { if (p.v < dmin) dmin = p.v; if (p.v > dmax) dmax = p.v; }
     if (dmin !== Infinity) {
       let range = dmax - dmin; if (range < 1) range = 1;
       const pad = range * 0.1;
@@ -4189,7 +4045,7 @@ function drawChart(cv, c) {
     for (const p of s.pts) {
       if (p.t < timeStart) continue;
       const x = cl + ((p.t - timeStart) / CHART_WINDOW * cw);
-      const y = cbot - ((p.v * valueScale - minY) / yRange * ch);
+      const y = cbot - ((p.v - minY) / yRange * ch);
       if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
     }
     if (started) ctx.stroke();
@@ -4203,7 +4059,7 @@ function drawChart(cv, c) {
   // Title (top-left of chart area).
   ctx.fillStyle = '#aeb8c8'; ctx.textAlign = 'left';
   ctx.font = '11px system-ui,sans-serif';
-  ctx.fillText(c.title + (c === CHARTS.xte ? ' (' + unitName('m', 'ft') + ')' : ''), cl + 4, ctop + 11);
+  ctx.fillText(c.title, cl + 4, ctop + 11);
 
   // Legend (top-right, right-to-left).
   ctx.font = '9px system-ui,sans-serif';
@@ -4265,8 +4121,8 @@ function renderOffsetFix() {
   if (!document.getElementById('offsetfix').classList.contains('open')) return;
   if (!statusBar) return;
   const ns = document.getElementById('of-ns-in'), ew = document.getElementById('of-ew-in');
-  if (document.activeElement !== ns) ns.value = unitFromMetric(statusBar.driftNorthing || 0, { factor: M_TO_FT }).toFixed(metricUnits() ? 3 : 2);
-  if (document.activeElement !== ew) ew.value = unitFromMetric(statusBar.driftEasting || 0, { factor: M_TO_FT }).toFixed(metricUnits() ? 3 : 2);
+  if (document.activeElement !== ns) ns.value = (statusBar.driftNorthing || 0).toFixed(3);
+  if (document.activeElement !== ew) ew.value = (statusBar.driftEasting || 0).toFixed(3);
 }
 
 // Import Tracks: list the other fields that have saved tracks; tap one to copy its
@@ -4371,14 +4227,12 @@ function renderBoundaryMenu() {
 function renderBoundaryPlayer() {
   const b = boundary; if (!b) return;
   const off = document.getElementById('bp-offset');
-  if (document.activeElement !== off) off.value = unitFromMetric(b.offsetCm || 0, { factor: CM_TO_IN }).toFixed(metricUnits() ? 0 : 1);
-  off.step = metricUnits() ? '1' : '0.1';
+  if (document.activeElement !== off) off.value = (b.offsetCm || 0).toFixed(0);
   document.getElementById('bp-section').classList.toggle('on', b.sectionControlOn);
   document.getElementById('bp-lrimg').src = b.drawRightSide ? '/icons/BoundaryRight.png' : '/icons/BoundaryLeft.png';
   document.getElementById('bp-atimg').src = b.drawAtPivot ? '/icons/BoundaryRecordPivot.png' : '/icons/BoundaryRecordTool.png';
   document.getElementById('bp-points').textContent = b.pointCount;
-  document.getElementById('bp-area').textContent = (metricUnits() ? (b.areaHa || 0) : (b.areaHa || 0) * 2.4710538147).toFixed(2)
-    + ' ' + unitName('ha', 'ac');
+  document.getElementById('bp-area').textContent = (b.areaHa || 0).toFixed(2) + ' Ha';
   document.getElementById('bp-recimg').src = b.isRecording ? '/icons/boundaryPause.png' : '/icons/BoundaryRecord.png';
 }
 
