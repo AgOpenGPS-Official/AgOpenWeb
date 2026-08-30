@@ -60,9 +60,6 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private const int ModuleTimeoutSeconds = 5;
     private const int DiscoveryRefreshSeconds = 30;
 
-    // Hello packet: [0x80, 0x81, 0x7F, 200, 3, 56, 0, 0, CRC]
-    private readonly byte[] _helloPacket = { 0x80, 0x81, 0x7F, 200, 3, 56, 0, 0, 0x82 };
-
     // Module connection tracking - Hello responses (2 second timeout)
     private DateTime _lastHelloFromAutoSteer = DateTime.MinValue;
     private DateTime _lastHelloFromMachine = DateTime.MinValue;
@@ -233,7 +230,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     public void SendHelloPacket()
     {
-        SendToModules(_helloPacket);
+        SendToModules(PgnBuilder.BuildHelloPacket());
     }
 
     public bool IsModuleHelloOk(ModuleType moduleType)

@@ -374,6 +374,14 @@ public static class PgnBuilder
         => new byte[] { HEADER1, HEADER2, SOURCE, PgnNumbers.SCAN_REQUEST, 3, 202, 202, 5, 0x47 };
 
     /// <summary>
+    /// Build PGN 200 — the AgIO/AgOpenGPS "hello" packet modules watch for to
+    /// confirm the host is alive. Exact AgIO bytes:
+    /// { 0x80, 0x81, 0x7F, 200, 3, 56, 0, 0, 0x82 }.
+    /// </summary>
+    public static byte[] BuildHelloPacket()
+        => new byte[] { HEADER1, HEADER2, SOURCE, PgnNumbers.HELLO_FROM_AGIO, 3, 56, 0, 0, 0x82 };
+
+    /// <summary>
     /// Build PGN 201 — "set subnet" broadcast. Changes the first three IP octets
     /// (the /24) on ALL modules at once; the host octet is preserved by each
     /// module. There is no per-module selector — this is global, matching AgIO.
