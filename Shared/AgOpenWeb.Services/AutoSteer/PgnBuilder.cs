@@ -371,7 +371,7 @@ public static class PgnBuilder
     /// { 0x80, 0x81, 0x7F, 202, 3, 202, 202, 5, 0x47 }.
     /// </summary>
     public static byte[] BuildScanRequest()
-        => new byte[] { HEADER1, HEADER2, SOURCE, PgnNumbers.SCAN_REQUEST, 3, 202, 202, 5, 0x47 };
+        => new byte[] { HEADER1, HEADER2, SOURCE, PgnNumbers.SCAN_REQUEST, 3, 202, 202, 5, 0xE5 };
 
     /// <summary>
     /// Build PGN 200 — the AgIO/AgOpenGPS "hello" packet modules watch for to
