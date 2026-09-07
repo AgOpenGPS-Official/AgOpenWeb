@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Interfaces;
 using AgOpenWeb.Services.Profile;
@@ -68,39 +69,49 @@ public class ConfigurationService(
     {
         // Active profile already lives in the store — no disk read.
         if (string.Equals(name, Store.ActiveVehicleProfileName, StringComparison.OrdinalIgnoreCase))
-            return FormatVehicle(Store);
+            return FormatVehicle(Store, Store.IsMetric);
         // Non-active: read its file into a throwaway store (side-effect-free —
         // quarantineOnFailure:false so previewing a damaged profile doesn't move it).
+        // Units come from the device store, not `temp` — IsMetric is a device setting
+        // and the throwaway store carries only the profile's own values.
         var temp = new ConfigurationStore();
         bool ok = VehicleProfileJsonService.Load(ProfilesDirectory, name, temp, out _, out _, quarantineOnFailure: false)
                || ProfileJsonServiceV1.Load(ProfilesDirectory, name, temp);
-        return ok ? FormatVehicle(temp) : $"Vehicle profile '{name}'\n(file not found / unreadable)";
+        return ok ? FormatVehicle(temp, Store.IsMetric) : $"Vehicle profile '{name}'\n(file not found / unreadable)";
     }
 
     public string GetToolProfilePreview(string name)
     {
         if (string.Equals(name, Store.ActiveToolProfileName, StringComparison.OrdinalIgnoreCase))
-            return FormatTool(Store);
+            return FormatTool(Store, Store.IsMetric);
         var temp = new ConfigurationStore();
         bool ok = ToolProfileJsonService.Load(ToolsDirectory, name, temp, out _, out _, quarantineOnFailure: false)
                || ProfileJsonServiceV1.Load(ProfilesDirectory, name, temp);
-        return ok ? FormatTool(temp) : $"Tool profile '{name}'\n(file not found / unreadable)";
+        return ok ? FormatTool(temp, Store.IsMetric) : $"Tool profile '{name}'\n(file not found / unreadable)";
     }
 
-    private static string FormatVehicle(ConfigurationStore store)
+    /// <summary>
+    /// A stored length (metres) rendered for display: "2.50 m" or "8.20 ft". These
+    /// previews are the one place the host renders a measurement into a string the
+    /// client prints verbatim, so the unit conversion has to happen here.
+    /// </summary>
+    private static string Len(double meters, bool isMetric) =>
+        isMetric ? $"{meters:F2} m" : $"{UnitConversion.MetersToFeet(meters):F2} ft";
+
+    private static string FormatVehicle(ConfigurationStore store, bool isMetric)
     {
         var v = store.Vehicle;
         return
             $"Type: {v.Type}\n" +
-            $"Wheelbase: {v.Wheelbase:F2} m\n" +
-            $"Track width: {v.TrackWidth:F2} m\n" +
-            $"Antenna height: {v.AntennaHeight:F2} m\n" +
-            $"Antenna pivot: {v.AntennaPivot:F2} m\n" +
-            $"Antenna offset: {v.AntennaOffset:F2} m\n" +
+            $"Wheelbase: {Len(v.Wheelbase, isMetric)}\n" +
+            $"Track width: {Len(v.TrackWidth, isMetric)}\n" +
+            $"Antenna height: {Len(v.AntennaHeight, isMetric)}\n" +
+            $"Antenna pivot: {Len(v.AntennaPivot, isMetric)}\n" +
+            $"Antenna offset: {Len(v.AntennaOffset, isMetric)}\n" +
             $"Max steer angle: {v.MaxSteerAngle:F1}°";
     }
 
-    private static string FormatTool(ConfigurationStore store)
+    private static string FormatTool(ConfigurationStore store, bool isMetric)
     {
         var t = store.Tool;
         string attach = t.IsToolFrontFixed ? "Front fixed"
@@ -108,9 +119,9 @@ public class ConfigurationService(
                       : t.IsToolTrailing ? "Trailing"
                       : "—";
         return
-            $"Width: {t.Width:F2} m\n" +
-            $"Overlap: {t.Overlap:F2} m\n" +
-            $"Offset: {t.Offset:F2} m\n" +
+            $"Width: {Len(t.Width, isMetric)}\n" +
+            $"Overlap: {Len(t.Overlap, isMetric)}\n" +
+            $"Offset: {Len(t.Offset, isMetric)}\n" +
             $"Sections: {store.NumSections}\n" +
             $"Min coverage: {t.MinCoverage}%\n" +
             $"Attach: {attach}";

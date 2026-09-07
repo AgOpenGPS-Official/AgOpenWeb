@@ -43,7 +43,7 @@ public static class WireCodec
         {
             w.Write(it.Index);            // i32
             WriteStr(w, it.BoundaryType);
-            WriteStr(w, it.AreaDisplay);
+            w.Write(it.AreaHa);            // f64 (hectares; the client formats ha/ac)
             w.Write((byte)(it.DriveThru ? 1 : 0));
             w.Write((byte)(it.Hard ? 1 : 0));
         }

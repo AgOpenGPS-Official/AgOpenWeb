@@ -4223,7 +4223,7 @@ public partial class MainViewModel : ObservableObject
             {
                 Index = index++,
                 BoundaryType = "Outer",
-                AreaAcres = boundary.OuterBoundary.AreaAcres,
+                AreaHectares = boundary.OuterBoundary.AreaHectares,
                 IsDriveThrough = boundary.OuterBoundary.IsDriveThrough,
                 IsHard = boundary.OuterBoundary.IsHard
             });
@@ -4239,7 +4239,7 @@ public partial class MainViewModel : ObservableObject
                 {
                     Index = index++,
                     BoundaryType = $"Inner {i + 1}",
-                    AreaAcres = inner.AreaAcres,
+                    AreaHectares = inner.AreaHectares,
                     IsDriveThrough = inner.IsDriveThrough,
                     IsHard = inner.IsHard
                 });
@@ -6021,10 +6021,11 @@ public class BoundaryListItem
 {
     public int Index { get; set; }
     public string BoundaryType { get; set; } = string.Empty;
-    public double AreaAcres { get; set; }
+    /// <summary>Area in hectares — the storage unit. Formatting (ha vs ac) belongs to
+    /// the display boundary, so this stays a number all the way to the client.</summary>
+    public double AreaHectares { get; set; }
     public bool IsDriveThrough { get; set; }
     public bool IsHard { get; set; }
-    public string AreaDisplay => $"{AreaAcres:F2} Ac";
     public string DriveThruDisplay => IsDriveThrough ? "Yes" : "--";
     public string HardDisplay => IsHard ? "Hard" : "Soft";
 }

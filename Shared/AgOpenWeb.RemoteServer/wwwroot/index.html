@@ -1299,16 +1299,16 @@
             <img id="vc-img-hitch" class="vc-diag" alt="">
             <div class="vc-fieldcol">
               <label>Coupling type</label><select class="cfg-sel" data-key="vehicle.hitchType"></select>
-              <label>Hitch length (m)</label><input class="cfg-num" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
+              <label>Hitch length (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
             </div>
           </div>
           <div class="vc-diagrow">
             <img id="vc-img-wheelbase" class="vc-diag" alt="">
-            <div class="vc-fieldcol"><label>Wheelbase (m)</label><input class="cfg-num" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal"></div>
+            <div class="vc-fieldcol"><label>Wheelbase (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.wheelbase" type="number" step="0.01" inputmode="decimal"></div>
           </div>
           <div class="vc-diagrow">
             <img id="vc-img-track" class="vc-diag" alt="">
-            <div class="vc-fieldcol"><label>Track width (m)</label><input class="cfg-num" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal"></div>
+            <div class="vc-fieldcol"><label>Track width (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.trackWidth" type="number" step="0.01" inputmode="decimal"></div>
           </div>
         </div>
         <div>
@@ -1316,14 +1316,14 @@
           <div class="vc-diagrow">
             <img id="vc-img-antside" class="vc-diag" alt="">
             <div class="vc-fieldcol">
-              <label>Antenna pivot (m)</label><input class="cfg-num" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
-              <label>Antenna height (m)</label><input class="cfg-num" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
+              <label>Antenna pivot (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.antennaPivot" type="number" step="0.01" inputmode="decimal">
+              <label>Antenna height (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.antennaHeight" type="number" step="0.01" inputmode="decimal">
             </div>
           </div>
           <div class="vc-diagrow">
             <img id="vc-img-antoffset" class="vc-diag" alt="">
             <div class="vc-fieldcol">
-              <label>Antenna offset (m)</label><input class="cfg-num" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
+              <label>Antenna offset (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.antennaOffset" type="number" step="0.01" inputmode="decimal">
               <div class="ln-seg">
                 <button class="cfg-act" data-key="vehicle.antennaSide" data-val="left">Left</button>
                 <button class="cfg-act" data-key="vehicle.antennaSide" data-val="center">Center</button>
@@ -1341,16 +1341,16 @@
           <div class="cfg-grid">
             <label>Dual GPS</label><button class="cfg-tgl" data-key="gps.isDualGps">Off</button>
             <label>Heading offset (°)</label><input class="cfg-num" data-key="gps.dualHeadingOffset" type="number" step="0.1" inputmode="decimal">
-            <label>Reverse dist (m)</label><input class="cfg-num" data-key="gps.dualReverseDistance" type="number" step="0.1" inputmode="decimal">
+            <label>Reverse dist (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="gps.dualReverseDistance" type="number" step="0.1" inputmode="decimal">
             <label>Auto dual fix</label><button class="cfg-tgl" data-key="gps.autoDualFix">Off</button>
-            <label>Switch speed</label><input class="cfg-num" data-key="gps.dualSwitchSpeed" type="number" step="0.1" inputmode="decimal">
+            <label>Switch speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="gps.dualSwitchSpeed" type="number" step="0.1" inputmode="decimal">
           </div>
         </div>
         <div>
           <div class="cfg-label">Single antenna</div>
           <div class="cfg-grid">
-            <label>Min GPS step (m)</label><input class="cfg-num" data-key="gps.minGpsStep" type="number" step="0.01" inputmode="decimal">
-            <label>Fix-to-fix dist (m)</label><input class="cfg-num" data-key="gps.fixToFixDistance" type="number" step="0.01" inputmode="decimal">
+            <label>Min GPS step (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="gps.minGpsStep" type="number" step="0.01" inputmode="decimal">
+            <label>Fix-to-fix dist (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="gps.fixToFixDistance" type="number" step="0.01" inputmode="decimal">
             <label>Reverse detection</label><button class="cfg-tgl" data-key="gps.reverseDetection">Off</button>
           </div>
           <div class="cfg-grid" style="margin-top:6px"><label>Heading fusion <span id="vc-hfw">—</span></label><input class="cfg-slider" data-key="gps.headingFusionWeight" type="range" min="0" max="1" step="0.05"></div>
@@ -1410,10 +1410,10 @@
           <img id="tc-img-hitch" class="vc-diag" alt="">
           <div class="vc-fieldcol">
             <label>Coupling type</label><select class="cfg-sel" data-key="tool.hitchType"></select>
-            <label data-show="rigid">Working center (m)</label><input class="cfg-num" data-key="tool.hitchLength" data-show="rigid" type="number" step="0.01">
-            <label data-show="trailtbt">Trailing hitch (m)</label><input class="cfg-num" data-key="tool.trailingHitchLength" data-show="trailtbt" type="number" step="0.01">
-            <label data-show="tbt">Tank trailing hitch (m)</label><input class="cfg-num" data-key="tool.tankTrailingHitchLength" data-show="tbt" type="number" step="0.01">
-            <label>Implement length (m)</label><input class="cfg-num" data-key="tool.length" type="number" step="0.01">
+            <label data-show="rigid">Working center (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.hitchLength" data-show="rigid" type="number" step="0.01">
+            <label data-show="trailtbt">Trailing hitch (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.trailingHitchLength" data-show="trailtbt" type="number" step="0.01">
+            <label data-show="tbt">Tank trailing hitch (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.tankTrailingHitchLength" data-show="tbt" type="number" step="0.01">
+            <label>Implement length (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.length" type="number" step="0.01">
           </div>
         </div>
       </div>
@@ -1426,17 +1426,17 @@
       </div>
       <div id="tcs-offset" class="cfg-body" data-strip="tc-sub" hidden>
         <div class="vc-diagrow"><img src="/icons/ToolOffsetPositiveRight.png" class="vc-diag" alt=""><div class="vc-fieldcol">
-          <label>Tool offset (m)</label><input class="cfg-num" data-key="tool.offset" type="number" step="0.01">
+          <label>Tool offset (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.offset" type="number" step="0.01">
           <label>Direction</label><div class="ln-seg"><button class="cfg-act" data-key="tool.offsetSide" data-val="left">Left</button><button class="cfg-act" data-key="tool.offsetSide" data-val="center">Zero</button><button class="cfg-act" data-key="tool.offsetSide" data-val="right">Right</button></div>
         </div></div>
         <div class="vc-diagrow"><img src="/icons/ToolOverlap.png" class="vc-diag" alt=""><div class="vc-fieldcol">
-          <label>Overlap / gap (m)</label><input class="cfg-num" data-key="tool.overlap" type="number" step="0.01">
+          <label>Overlap / gap (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.overlap" type="number" step="0.01">
           <label>Mode</label><div class="ln-seg"><button class="cfg-act" data-key="tool.overlapSide" data-val="overlap">Overlap</button><button class="cfg-act" data-key="tool.overlapSide" data-val="zero">Zero</button><button class="cfg-act" data-key="tool.overlapSide" data-val="gap">Gap</button></div>
         </div></div>
       </div>
       <div id="tcs-pivot" class="cfg-body" data-strip="tc-sub" hidden>
         <div class="vc-diagrow"><img src="/icons/ToolHitchPivotOffsetPos.png" class="vc-diag" alt=""><div class="vc-fieldcol">
-          <label>Pivot distance (m)</label><input class="cfg-num" data-key="tool.trailingToolToPivotLength" type="number" step="0.01">
+          <label>Pivot distance (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.trailingToolToPivotLength" type="number" step="0.01">
           <label>Direction</label><div class="ln-seg"><button class="cfg-act" data-key="tool.pivotSide" data-val="behind">Behind</button><button class="cfg-act" data-key="tool.pivotSide" data-val="zero">Zero</button><button class="cfg-act" data-key="tool.pivotSide" data-val="ahead">Ahead</button></div>
         </div></div>
         <div class="cfg-note" data-show="notrailtbt">Pivot settings apply only to Trailing and TBT tools.</div>
@@ -1451,10 +1451,10 @@
             </div>
             <div class="cfg-grid">
               <label>Number of sections</label><input class="cfg-num" data-key="tool.numSections" type="number" step="1" min="1" max="64">
-              <label>Default width (cm)</label><input class="cfg-num" data-key="tool.defaultSectionWidth" type="number" step="1">
+              <label>Default width (<span class="u" data-unit="cm"></span>)</label><input class="cfg-num" data-unit="cm" data-key="tool.defaultSectionWidth" type="number" step="1">
             </div>
             <div data-show="individual">
-              <div class="cfg-label">Section widths (cm)</div>
+              <div class="cfg-label">Section widths (<span class="u" data-unit="cm"></span>)</div>
               <div id="tc-sectionwidths" class="tc-dyngrid"></div>
             </div>
             <div data-show="zones">
@@ -1475,8 +1475,8 @@
               <label>Off outside boundary</label><button class="cfg-tgl" data-key="tool.isSectionOffWhenOut">Off</button>
               <label>Off in headland</label><button class="cfg-tgl" data-key="tool.isHeadlandSectionControl">Off</button>
               <label>Min coverage (%)</label><input class="cfg-num" data-key="tool.minCoverage" type="number" step="1">
-              <label>Slow speed cutoff (km/h)</label><input class="cfg-num" data-key="tool.slowSpeedCutoff" type="number" step="0.1">
-              <label>Coverage margin (cm)</label><input class="cfg-num" data-key="tool.coverageMargin" type="number" step="1">
+              <label>Slow speed cutoff (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="tool.slowSpeedCutoff" type="number" step="0.1">
+              <label>Coverage margin (<span class="u" data-unit="cm"></span>)</label><input class="cfg-num" data-unit="cm" data-key="tool.coverageMargin" type="number" step="1">
             </div>
           </div>
         </div>
@@ -1507,10 +1507,10 @@
         <button class="cfg-typebtn" data-key="uturn.style" data-val="1">K-turn</button>
       </div>
       <div class="cfg-diaggrid">
-        <div class="vc-diagrow"><img src="/icons/ConU_UturnLength.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Extension (m)</label><input class="cfg-num" data-key="uturn.extension" type="number" step="0.1"></div></div>
+        <div class="vc-diagrow"><img src="/icons/ConU_UturnLength.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Extension (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.extension" type="number" step="0.1"></div></div>
         <div class="vc-diagrow"><img src="/icons/ConU_UturnSmooth.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Smoothing</label><input class="cfg-num" data-key="uturn.smoothing" type="number" step="1"></div></div>
-        <div class="vc-diagrow"><img src="/icons/ConU_UturnRadius.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Radius (m)</label><input class="cfg-num" data-key="uturn.radius" type="number" step="0.1"></div></div>
-        <div class="vc-diagrow"><img src="/icons/ConU_UturnDistance.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Distance from bndry (m)</label><input class="cfg-num" data-key="uturn.distanceFromBoundary" type="number" step="0.1"></div></div>
+        <div class="vc-diagrow"><img src="/icons/ConU_UturnRadius.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Radius (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.radius" type="number" step="0.1"></div></div>
+        <div class="vc-diagrow"><img src="/icons/ConU_UturnDistance.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Distance from bndry (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.distanceFromBoundary" type="number" step="0.1"></div></div>
       </div>
     </div>
     <!-- ===== MACHINE ===== -->
@@ -1698,9 +1698,9 @@
         <div id="as-speed" class="cfg-body" data-strip="as-right" hidden>
           <div class="as-card as-togcard"><img src="/icons/con_VehicleFunctionSpeedLimit.png" alt=""><label>Manual turns</label><button class="cfg-tgl" data-key="autosteer.manualTurnsEnabled">Off</button></div>
           <div class="as-card"><div class="cfg-grid">
-            <label>Manual turns speed (km/h)</label><input class="cfg-num" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1">
-            <label>Min steer speed (km/h)</label><input class="cfg-num" data-key="autosteer.minSteerSpeed" type="number" step="0.1">
-            <label>Max steer speed (km/h)</label><input class="cfg-num" data-key="autosteer.maxSteerSpeed" type="number" step="0.1">
+            <label>Manual turns speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1">
+            <label>Min steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.minSteerSpeed" type="number" step="0.1">
+            <label>Max steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.maxSteerSpeed" type="number" step="0.1">
           </div></div>
         </div>
 
@@ -1709,7 +1709,7 @@
           <div class="as-caphdr">Line Width (px)</div>
           <div class="as-valrow"><img class="as-dia" src="/icons/ConV_LineWith.png" alt=""><span class="as-valbox cfg-ro" data-for="autosteer.lineWidth" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.lineWidth" data-fmt="f0" type="range" min="1" max="8" step="1"></div>
           <div class="as-card"><div class="cfg-grid">
-            <label>Nudge distance (cm)</label><input class="cfg-num" data-key="autosteer.nudgeDistance" type="number" step="1">
+            <label>Nudge distance (<span class="u" data-unit="cm"></span>)</label><input class="cfg-num" data-unit="cm" data-key="autosteer.nudgeDistance" type="number" step="1">
             <label>Next guidance (s)</label><input class="cfg-num" data-key="autosteer.nextGuidanceTime" type="number" step="0.1">
             <label>cm per pixel</label><input class="cfg-num" data-key="autosteer.cmPerPixel" type="number" step="1">
           </div></div>
@@ -1851,7 +1851,7 @@
     <div class="fj-cols">
       <div class="fj-col">
         <div class="cfg-label">Fields</div>
-        <div class="fj-fhead"><span>Name</span><span>Dist (km)</span><span>Area (ha)</span></div>
+        <div class="fj-fhead"><span>Name</span><span>Dist (<span class="u" data-unit="km"></span>)</span><span>Area (<span class="u" data-unit="ha"></span>)</span></div>
         <div id="fj-fieldlist" class="fj-list"></div>
         <div class="fj-btnrow">
           <button class="cfg-act" id="fj-openonly">Open Field Only</button>
@@ -2102,7 +2102,7 @@
         <button id="fb-hl-deleteall" class="fb-act fb-del">Delete All</button>
       </div>
       <div id="fb-hl-offrow" class="fb-offrow" hidden>
-        <label>Offset</label><input id="fb-hl-off" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span>
+        <label>Offset</label><input id="fb-hl-off" class="cfg-num" data-unit="m" type="number" step="0.5" min="0.5"><span class="u" data-unit="m"></span>
       </div>
     </div>
     <!-- Add Headland sub-view (replaces the tab content) -->
@@ -2119,7 +2119,7 @@
           <option value="6">6 tool widths</option>
           <option value="0">Custom</option>
         </select>
-        <input id="fb-hl-newoff" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span>
+        <input id="fb-hl-newoff" class="cfg-num" data-unit="m" type="number" step="0.5" min="0.5"><span class="u" data-unit="m"></span>
       </div>
       <div class="fb-sublbl">Draw on Map — one line per edge; where they cross encloses the headland</div>
       <div class="fb-addrow">
@@ -2145,13 +2145,13 @@
       <div class="fb-subhdr"><button id="fb-tram-back" class="fb-act">← Back</button><span id="fb-tram-title">Edit System</span></div>
       <div class="fb-offrow"><label>Enabled</label><button id="fb-tram-en" class="cfg-tgl">On</button></div>
       <div class="fb-offrow"><label>Reference</label><select id="fb-tram-ref" class="cfg-isel"></select></div>
-      <div class="fb-offrow"><label>Tram width</label><input id="fb-tram-w" class="cfg-num" type="number" step="0.5" min="0.5"><span>m</span></div>
+      <div class="fb-offrow"><label>Tram width</label><input id="fb-tram-w" class="cfg-num" data-unit="m" type="number" step="0.5" min="0.5"><span class="u" data-unit="m"></span></div>
       <div class="fb-sublbl">Mode</div>
       <div class="fb-addrow">
         <button class="fb-addbtn" data-tmode="0"><img src="/icons/TramLines.png" alt=""><span>Wheel Track</span></button>
         <button class="fb-addbtn" data-tmode="1"><img src="/icons/TramOuter.png" alt=""><span>Edge</span></button>
       </div>
-      <div id="fb-tram-offrow" class="fb-offrow"><label>Offset</label><input id="fb-tram-off" class="cfg-num" type="number" step="0.5"><span>m</span></div>
+      <div id="fb-tram-offrow" class="fb-offrow"><label>Offset</label><input id="fb-tram-off" class="cfg-num" data-unit="m" type="number" step="0.5"><span class="u" data-unit="m"></span></div>
       <div id="fb-tram-dirlbl" class="fb-sublbl">Direction</div>
       <div id="fb-tram-dir" class="fb-addrow">
         <button class="fb-addbtn" data-tdir="1"><img src="/icons/SnapLeft.png" alt=""><span>Left</span></button>
@@ -2189,8 +2189,8 @@
       <button class="of-btn of-ns" id="of-s" data-cmd="offset.south">S</button>
     </div>
     <div class="of-manual">
-      <div class="of-fld"><label>N / S (m)</label><input id="of-ns-in" class="of-input" type="number" step="0.001"></div>
-      <div class="of-fld"><label>E / W (m)</label><input id="of-ew-in" class="of-input" type="number" step="0.001"></div>
+      <div class="of-fld"><label>N / S (<span class="u" data-unit="m"></span>)</label><input id="of-ns-in" class="of-input" data-unit="m" type="number" step="0.001"></div>
+      <div class="of-fld"><label>E / W (<span class="u" data-unit="m"></span>)</label><input id="of-ew-in" class="of-input" data-unit="m" type="number" step="0.001"></div>
     </div>
     <div class="of-hint">1 cm per click</div>
   </div>
@@ -2252,7 +2252,7 @@
     <div class="ln-hdr"><button class="ln-x" id="bp-back" title="Back">←</button><span class="ln-hdr-title">Stop Record Pause Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="bp-offrow">
       <span class="bp-offlbl">Recording Offset</span>
-      <input id="bp-offset" class="bp-offin" type="number" step="1" value="100"><span class="bp-offunit">cm</span>
+      <input id="bp-offset" class="bp-offin" data-unit="cm" type="number" step="1" value="100"><span class="bp-offunit u" data-unit="cm"></span>
     </div>
     <div class="bp-grid">
       <button id="bp-clear" class="bp-btn" title="Clear all points"><img src="/icons/Trash.png" alt=""></button>
