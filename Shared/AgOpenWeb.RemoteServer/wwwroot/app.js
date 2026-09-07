@@ -96,6 +96,107 @@ let myClientId = null;
 let lastControl = { held: false, holderId: '', holderName: '' };
 let iHoldControl = false;
 
+// ---- Units (issue #65) -------------------------------------------------------
+// Everything the host sends and accepts is METRIC — vehicle/tool geometry in m,
+// section widths / nudge / coverage margin in cm, speeds in km/h, areas in ha.
+// Imperial is a *display/input boundary* conversion only, mirroring the native
+// UnitConversion helper: convert when filling a control or formatting a readout,
+// convert back before sending. Never store or transmit imperial.
+//
+// Markup contract (index.html):
+//   <span class="u" data-unit="m"></span>   → unit label, text filled by applyUnits()
+//   <input data-unit="m" …>                 → value converted on populate + on send
+// The `step` attribute in the HTML is the METRIC step; imperial swaps in impStep
+// (captured once into data-mstep so a unit flip is reversible). impStep matches dec so
+// a written value always lands on the step grid — spinners are hidden by CSS, so step
+// only drives input validation here, and a mismatch would flag a valid entry.
+const UNIT_DEFS = {
+  m:   { metric: 'm',    imp: 'ft',  toImp: v => v * 3.280839895, fromImp: v => v / 3.280839895, dec: 2, impStep: 0.01 },
+  cm:  { metric: 'cm',   imp: 'in',  toImp: v => v / 2.54,        fromImp: v => v * 2.54,        dec: 1, impStep: 0.1 },
+  kmh: { metric: 'km/h', imp: 'mph', toImp: v => v * 0.621371192, fromImp: v => v / 0.621371192, dec: 1, impStep: 0.1 },
+  km:  { metric: 'km',   imp: 'mi',  toImp: v => v * 0.621371192, fromImp: v => v / 0.621371192, dec: 2, impStep: 0.01 },
+  ha:  { metric: 'ha',   imp: 'ac',  toImp: v => v * 2.471053815, fromImp: v => v / 2.471053815, dec: 2, impStep: 0.01 },
+};
+// The status frame is the single source of truth for the unit system; before the
+// first frame arrives we assume metric (matches the host default).
+function isMetric() { return !statusBar || statusBar.isMetric !== false; }
+function unitLabel(u) { const d = UNIT_DEFS[u]; return d ? (isMetric() ? d.metric : d.imp) : (u || ''); }
+function toDisplayUnit(v, u) { const d = UNIT_DEFS[u]; return (!d || isMetric()) ? v : d.toImp(v); }
+function fromDisplayUnit(v, u) { const d = UNIT_DEFS[u]; return (!d || isMetric()) ? v : d.fromImp(v); }
+// Round a display value to the precision that unit deserves (2 dp for m/ft, 1 for
+// cm/in, …). Metric keeps the old 3-dp behaviour so stored values aren't truncated.
+function roundDisplay(v, u) {
+  const d = UNIT_DEFS[u];
+  if (!d || isMetric()) return Math.round(v * 1000) / 1000;
+  const p = Math.pow(10, d.dec);
+  return Math.round(v * p) / p;
+}
+// "12.3 ft" — value (metric in) + unit suffix, formatted for the active system.
+function fmtUnit(v, u, dec) {
+  const d = UNIT_DEFS[u];
+  const n = toDisplayUnit(v, u);
+  return n.toFixed(dec != null ? dec : (d ? d.dec : 1)) + ' ' + unitLabel(u);
+}
+// Fill every `.u` label and re-step every `[data-unit]` input for the active system.
+// Cheap enough to run on any unit flip (a few dozen nodes).
+function applyUnits() {
+  for (const el of document.querySelectorAll('span.u[data-unit]')) el.textContent = unitLabel(el.dataset.unit);
+  for (const inp of document.querySelectorAll('input[data-unit]')) {
+    if (inp.dataset.mstep == null) inp.dataset.mstep = inp.getAttribute('step') || '';
+    const d = UNIT_DEFS[inp.dataset.unit];
+    if (!d) continue;
+    if (isMetric()) { if (inp.dataset.mstep) inp.step = inp.dataset.mstep; }
+    else inp.step = String(d.impStep);
+    // min/max are metric bounds; drop them in imperial rather than convert (the host
+    // clamps anyway) so a valid imperial entry isn't rejected by the browser.
+    if (inp.dataset.mmin == null) inp.dataset.mmin = inp.getAttribute('min') || '';
+    if (isMetric()) { if (inp.dataset.mmin) inp.setAttribute('min', inp.dataset.mmin); }
+    else if (inp.dataset.mmin) inp.removeAttribute('min');
+  }
+}
+// Read a number input as a METRIC value: parse what the user typed (a display value)
+// and convert back. Fields whose metric step is a whole unit are integer-backed
+// host-side (nudge distance, section widths in cm), so round after converting —
+// otherwise 8" → 20.32 cm would fail the host's int parse and silently do nothing.
+function readUnitInput(inp) {
+  const v = parseFloat(inp.value);
+  if (!Number.isFinite(v)) return NaN;
+  const u = inp.dataset.unit;
+  if (!u || isMetric()) return v;
+  const m = fromDisplayUnit(v, u);
+  return Number(inp.dataset.mstep || inp.getAttribute('step')) >= 1 ? Math.round(m) : Math.round(m * 1000) / 1000;
+}
+// Fill a number input from a stored METRIC value, converting for display. A whole-unit
+// metric step means an integer-backed field (cm counts), so metric shows no decimals.
+function writeUnitInput(inp, metricVal) {
+  const u = inp.dataset.unit;
+  if (!u) { inp.value = Math.round(metricVal * 1000) / 1000; return; }
+  if (isMetric() && Number(inp.dataset.mstep || inp.getAttribute('step')) >= 1) { inp.value = Math.round(metricVal); return; }
+  inp.value = roundDisplay(toDisplayUnit(metricVal, u), u);
+}
+// Unit flips arrive on the Status frame (the host persists the setting, then echoes
+// it). Relabel + force every open panel to re-read so values convert immediately.
+let _lastMetric = null;
+function syncUnits() {
+  const m = isMetric();
+  if (m === _lastMetric) return;
+  _lastMetric = m;
+  applyUnits();
+  onUnitsChanged();
+}
+// Everything unit-bearing that isn't redrawn every frame: mark the read-frames dirty so
+// the open panels re-populate through the (now converting) populate path, and drop the
+// wizard's step cache so its hand-built markup is rebuilt with the new labels.
+function onUnitsChanged() {
+  configDirty = true;
+  fieldOpsDirty = true;
+  _wzKey = '';
+  if (document.getElementById('fieldbuilder').classList.contains('open')) { renderFbHeadland(); renderFbTram(); }
+  if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
+}
+applyUnits();   // fill the static labels now (metric default) — the first Status frame corrects it
+
+
 // ---- coverage offscreen (Phase 2): cells painted into a cell-grid canvas,
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
@@ -287,7 +388,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
-  onStatusBar(s) { statusBar = s; if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
+  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -1685,7 +1786,7 @@ function renderFbHeadland() {
     row.className = 'fb-hlrow' + (s.effective ? '' : ' noeffect') + (i === fbHlSel ? ' sel' : '');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
-    row.querySelector('.fb-hlmeta').textContent = s.type + ' · ' + (+s.offset).toFixed(1) + ' m';
+    row.querySelector('.fb-hlmeta').textContent = s.type + ' · ' + fmtUnit(+s.offset, 'm', 1);
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbHlSel = i; renderFbHeadland(); });
     list.appendChild(row);
   });
@@ -1693,20 +1794,20 @@ function renderFbHeadland() {
   if (fbHlSel >= 0 && hs[fbHlSel]) {
     offrow.hidden = false;
     const off = document.getElementById('fb-hl-off');
-    if (document.activeElement !== off) off.value = (+hs[fbHlSel].offset).toFixed(1);
+    if (document.activeElement !== off) writeUnitInput(off, +hs[fbHlSel].offset);
   } else offrow.hidden = true;
 }
 document.getElementById('fb-hl-off').addEventListener('change', e => {
   e.stopPropagation();
   const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
-  const v = parseFloat(e.target.value);
+  const v = readUnitInput(e.target);   // display → metres before it reaches the host
   if (Number.isFinite(v) && v > 0) transport.send('headland.setOffset|' + hs[fbHlSel].index + ',' + v);
 });
 // Inset = N tool widths (dropdown, mirrors AgOpen's cboxToolWidths) → fills the metre box;
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
 const fbNewOff = document.getElementById('fb-hl-newoff');
-function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) fbNewOff.value = +(n * toolWidthM()).toFixed(1); }
+function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) writeUnitInput(fbNewOff, n * toolWidthM()); }
 fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
 fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
 document.getElementById('fb-hl-add').addEventListener('pointerdown', e => {
@@ -1719,7 +1820,7 @@ document.getElementById('fb-hl-addback').addEventListener('pointerdown', e => { 
 for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
   b.addEventListener('pointerdown', e => {
     e.stopPropagation();
-    const off = parseFloat(document.getElementById('fb-hl-newoff').value);
+    const off = readUnitInput(document.getElementById('fb-hl-newoff'));
     const offset = (Number.isFinite(off) && off > 0) ? off : fbDefaultOffset();
     const m = b.dataset.fbhl;
     showFbTab('headland');
@@ -1771,7 +1872,7 @@ function renderFbTram() {
     row.className = 'fb-hlrow' + (s.enabled ? '' : ' noeffect') + (i === fbTramSel ? ' sel' : '');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
-    row.querySelector('.fb-hlmeta').textContent = s.width.toFixed(1) + ' m · ' + (s.passCount ? s.passCount + ' pass' : 'all');
+    row.querySelector('.fb-hlmeta').textContent = fmtUnit(s.width, 'm', 1) + ' · ' + (s.passCount ? s.passCount + ' pass' : 'all');
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbTramSel = i; renderFbTram(); });
     list.appendChild(row);
   });
@@ -1799,8 +1900,8 @@ function populateTramEdit() {
   for (const t of (scene.trackList || [])) if (t.type !== 'Path' && t.type !== 'Contour') opts.push(t.name);
   ref.innerHTML = opts.map(o => { const e = document.createElement('option'); e.textContent = o; return e.outerHTML; }).join('');
   ref.value = s.refLabel;
-  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) wEl.value = s.width.toFixed(1);
-  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) offEl.value = s.offset.toFixed(1);
+  const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) writeUnitInput(wEl, s.width);
+  const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) writeUnitInput(offEl, s.offset);
   const pEl = document.getElementById('fb-tram-passes'); if (document.activeElement !== pEl) pEl.value = s.passCount;
   for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
   for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
@@ -1810,8 +1911,8 @@ function populateTramEdit() {
 }
 document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.stopPropagation(); const s = curTram(); if (s) tramSet('enabled', s.enabled ? '0' : '1'); });
 document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
-document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (v > 0) tramSet('width', v); });
-document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (Number.isFinite(v)) tramSet('offset', v); });
+document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (v > 0) tramSet('width', v); });
+document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) tramSet('offset', v); });
 document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSet('passes', Math.max(0, v)); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
@@ -1853,7 +1954,7 @@ document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
 document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.accept'); lnCloseAll(); });
 // Boundary player.
 document.getElementById('bp-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
-document.getElementById('bp-offset').addEventListener('change', e => { e.stopPropagation(); const v = parseFloat(e.target.value); if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v); });
+document.getElementById('bp-offset').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v); });
 document.getElementById('bp-clear').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.clear'); });
 document.getElementById('bp-section').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleSectionControl'); });
 document.getElementById('bp-undo').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.undo'); });
@@ -1867,8 +1968,8 @@ for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // Manual Easting/Northing entry → absolute set (offset.set|E,N).
 function sendOffsetSet() {
-  const ns = parseFloat(document.getElementById('of-ns-in').value);
-  const ew = parseFloat(document.getElementById('of-ew-in').value);
+  const ns = readUnitInput(document.getElementById('of-ns-in'));
+  const ew = readUnitInput(document.getElementById('of-ew-in'));
   if (Number.isFinite(ns) && Number.isFinite(ew)) transport.send('offset.set|' + ew + ',' + ns);
 }
 for (const id of ['of-ns-in', 'of-ew-in'])
@@ -1938,8 +2039,11 @@ function fmtRo(v, fmt) {
   }
 }
 function wireCfgControls(panel) {
+  // A data-unit input holds a DISPLAY value; readUnitInput converts it back to the
+  // stored metric unit (and rounds whole-unit fields). Without data-unit it is the
+  // old raw parseFloat, so untagged controls are unaffected.
   for (const inp of panel.querySelectorAll('.cfg-num'))
-    inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
+    inp.addEventListener('change', () => { const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend(inp.dataset.key, v); });
   for (const b of panel.querySelectorAll('.cfg-tgl'))
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
   for (const b of panel.querySelectorAll('.cfg-typebtn'))
@@ -1963,7 +2067,7 @@ function populateCfgControls(panel, force) {
   for (const inp of panel.querySelectorAll('.cfg-num')) {
     if (!force && document.activeElement === inp) continue;
     const val = cfgGet(inp.dataset.key);
-    if (typeof val === 'number') inp.value = Math.round(val * 1000) / 1000;
+    if (typeof val === 'number') writeUnitInput(inp, val);
   }
   for (const b of panel.querySelectorAll('.cfg-tgl')) {
     const on = !!cfgGet(b.dataset.key);
@@ -2049,12 +2153,13 @@ document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stop
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
 const _tcBuilt = { sw: -1, ze: -1, sc: false, pins: false };
-function tcDynInput(parent, idx, label, type, onChange) {
+function tcDynInput(parent, idx, label, type, onChange, unit) {
   const c = document.createElement('div'); c.className = 'tc-cell';
   const sp = document.createElement('span'); sp.textContent = label;
   const inp = document.createElement(type === 'pin' ? 'select' : 'input');
   if (type === 'pin') PIN_FUNCS.forEach((l, fi) => { const o = document.createElement('option'); o.value = fi; o.textContent = l; inp.appendChild(o); });
   else { inp.type = type; if (type === 'number') inp.step = '1'; }
+  if (unit) inp.dataset.unit = unit;   // stored-unit tag → applyUnits() re-steps it
   inp.dataset.idx = idx;
   inp.addEventListener('change', () => onChange(inp));
   c.appendChild(sp); c.appendChild(inp); parent.appendChild(c);
@@ -2082,10 +2187,11 @@ function populateToolCfg(force) {
   const nSec = Math.max(1, Math.min(64, t.numSections)); // ToolConfig.MaxSections — backend supports 64
   if (_tcBuilt.sw !== nSec) {
     const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
-    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); });
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); }, 'cm');
     _tcBuilt.sw = nSec;
+    applyUnits();   // freshly built boxes need the active unit's step
   }
-  for (const inp of document.querySelectorAll('#tc-sectionwidths input')) if (force || document.activeElement !== inp) inp.value = Math.round(t.sectionWidths[+inp.dataset.idx]);
+  for (const inp of document.querySelectorAll('#tc-sectionwidths input')) if (force || document.activeElement !== inp) writeUnitInput(inp, t.sectionWidths[+inp.dataset.idx]);
   const nZone = Math.max(1, Math.min(8, t.zones));
   if (_tcBuilt.ze !== nZone) {
     const g = document.getElementById('tc-zoneends'); g.innerHTML = '';
@@ -2106,7 +2212,7 @@ function populateToolCfg(force) {
     _tcBuilt.pins = true;
   }
   for (const sel of document.querySelectorAll('#tc-pins select')) if (document.activeElement !== sel) sel.value = config.machine.pinAssignments[+sel.dataset.idx];
-  document.getElementById('tc-totalwidth').textContent = 'Total width: ' + (t.totalWidth || 0).toFixed(2) + ' m';
+  document.getElementById('tc-totalwidth').textContent = 'Total width: ' + fmtUnit(t.totalWidth || 0, 'm');
 }
 
 // ---- AutoSteer config panel (Phase 9) — full native 9-tab surface + live Test Mode ----
@@ -2426,8 +2532,8 @@ function renderFieldsAndJobs() {
     row.innerHTML = '<span class="fj-fname"></span><span class="fj-fnum"></span><span class="fj-fnum"></span>';
     row.querySelector('.fj-fname').textContent = f.name;
     const nums = row.querySelectorAll('.fj-fnum');
-    nums[0].textContent = f.hasDistance ? f.distanceKm.toFixed(1) : '—';
-    nums[1].textContent = f.areaHa.toFixed(1);
+    nums[0].textContent = f.hasDistance ? toDisplayUnit(f.distanceKm, 'km').toFixed(1) : '—';
+    nums[1].textContent = toDisplayUnit(f.areaHa, 'ha').toFixed(1);
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fjSelField = f.name; fjSelJob = null; renderFieldsAndJobs(); });
     fl.appendChild(row);
   }
@@ -2641,7 +2747,7 @@ function renderAgDownload() {
     const row = document.createElement('div'); row.className = 'fj-jrow' + (f.id === agdSel ? ' sel' : '');
     row.innerHTML = '<div class="fj-jtop"><span class="fj-jname"></span><span class="fj-jwt"></span></div>';
     row.querySelector('.fj-jname').textContent = f.name;
-    row.querySelector('.fj-jwt').textContent = f.areaHa.toFixed(2) + ' ha';
+    row.querySelector('.fj-jwt').textContent = fmtUnit(f.areaHa, 'ha');
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); agdSel = f.id; renderAgDownload(); });
     list.appendChild(row);
   }
@@ -2675,7 +2781,7 @@ document.getElementById('fm-bugreport').addEventListener('pointerdown', e => { e
 
 // App Settings: units (status) + device toggles (config.display) + app directories (appInfo).
 function renderAppSettings() {
-  const metric = !!(statusBar && statusBar.isMetric);
+  const metric = isMetric();
   document.getElementById('as-metric').classList.toggle('active', metric);
   document.getElementById('as-imperial').classList.toggle('active', !metric);
   const d = config && config.display;
@@ -2793,7 +2899,9 @@ document.getElementById('br-submit').addEventListener('pointerdown', e => {
 // (wizard.action). Editable values display from the Config frame. ----
 const wzOverlay = document.getElementById('wizard-overlay');
 const wzContent = document.getElementById('wz-content');
-let _wzKey = ''; // stepKind|index of the currently-built content (rebuild on change)
+// stepKind|index of the currently-built content (rebuild on change — and on a unit
+// flip, which onUnitsChanged forces by clearing this).
+let _wzKey = '';
 function openSteerWizard() { _wzKey = ''; wizard = null; transport.send('wizard.open'); wzOverlay.classList.add('open'); }
 function wzClose(send) { if (send) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; }
 document.getElementById('wz-cancel').addEventListener('pointerdown', e => { e.stopPropagation(); wzClose(true); });
@@ -2817,15 +2925,22 @@ wzContent.addEventListener('pointerdown', e => {
 });
 wzContent.addEventListener('change', e => {
   const inp = e.target.closest('[data-cfgnum]'); if (!inp) return;
-  const v = parseFloat(inp.value); if (Number.isFinite(v)) cfgSend(inp.dataset.cfgnum, v);
+  const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend(inp.dataset.cfgnum, v);
 });
 // Per-step content. Editable values read from the Config frame; live values get ids
 // (data-live) refreshed each frame. esc() guards interpolated strings.
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function wzVal(key, dflt) { const v = cfgGet(key); return typeof v === 'number' ? v : (dflt || 0); }
+// `unit` is the STORED unit key ('m', 'kmh', …) or a plain suffix ('deg', '') that
+// carries no conversion. Unit-keyed fields render the display value and tag the input
+// so the change handler converts back; applyUnits() re-steps them on a unit flip.
 function wzNum(label, sub, key, step, unit) {
+  const known = UNIT_DEFS[unit];
+  const val = known ? roundDisplay(toDisplayUnit(wzVal(key), unit), unit) : wzVal(key);
+  const istep = known && !isMetric() ? known.impStep : (step || '0.01');
   return '<div class="wz-fld"><label>' + esc(label) + '</label><div class="sub">' + esc(sub || '') + '</div>' +
-    '<input class="wz-num" data-cfgnum="' + key + '" type="number" step="' + (step || '0.01') + '" value="' + wzVal(key) + '"><span class="wz-unit">' + esc(unit || '') + '</span></div>';
+    '<input class="wz-num" data-cfgnum="' + key + '"' + (known ? ' data-unit="' + unit + '" data-mstep="' + (step || '0.01') + '"' : '') +
+    ' type="number" step="' + istep + '" value="' + val + '"><span class="wz-unit">' + esc(known ? unitLabel(unit) : (unit || '')) + '</span></div>';
 }
 function wzSeg(label, sub, key, opts) { // opts: [[text,val],...]
   return '<div class="wz-row"><div class="lbl">' + esc(label) + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div><div class="wz-seg">' +
@@ -2904,8 +3019,8 @@ function buildWizardContent(w) {
         wzNum('Side Hill Compensation', 'Degrees per degree of roll (0-1.0)', 'autosteer.sideHillCompensation', '0.01', '') + '</div>';
     case 'speed':
       return head + '<div class="wz-rows">' +
-        wzNum('Min Steer Speed', 'Engage above this speed', 'autosteer.minSteerSpeed', '0.1', 'km/h') +
-        wzNum('Max Steer Speed', 'Safety cutoff speed', 'autosteer.maxSteerSpeed', '0.1', 'km/h') +
+        wzNum('Min Steer Speed', 'Engage above this speed', 'autosteer.minSteerSpeed', '0.1', 'kmh') +
+        wzNum('Max Steer Speed', 'Safety cutoff speed', 'autosteer.maxSteerSpeed', '0.1', 'kmh') +
         wzTgl('Turn Sensor', 'Steering wheel encoder', 'autosteer.turnSensorEnabled') +
         wzTgl('Pressure Sensor', 'Hydraulic stall detection', 'autosteer.pressureSensorEnabled') +
         wzTgl('Current Sensor', 'Motor current obstruction detection', 'autosteer.currentSensorEnabled') +
@@ -2923,7 +3038,7 @@ function renderWizard() {
   asSetText('wz-step', 'Step ' + (w.stepIndex + 1) + ' of ' + w.totalSteps);
   document.getElementById('wz-progressbar').style.width = (w.totalSteps ? (w.stepIndex + 1) / w.totalSteps * 100 : 0) + '%';
   asSetText('wz-was', (w.statusWas || 0).toFixed(1) + '°'); asSetText('wz-roll', (w.statusRoll || 0).toFixed(1) + '°');
-  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', (w.statusSpeed || 0).toFixed(1) + ' km/h'); asSetText('wz-pwm', w.statusPwm | 0);
+  asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', fmtUnit(w.statusSpeed || 0, 'kmh', 1)); asSetText('wz-pwm', w.statusPwm | 0);
   const next = document.getElementById('wz-next');
   next.textContent = w.isLast ? 'Finish' : 'Next';
   next.classList.toggle('disabled', !(w.isLast || w.canNext));
@@ -2944,7 +3059,7 @@ function renderWizard() {
   const live = (k, v) => { for (const el of wzContent.querySelectorAll('[data-live="' + k + '"]')) el.textContent = v; };
   live('angle', (w.liveAngle || 0).toFixed(1) + '°'); live('roll', (w.liveRoll || 0).toFixed(2) + '°');
   live('error', (w.liveError || 0).toFixed(1)); live('phase', w.testPhase || ''); live('result', w.testResult || '');
-  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', (w.statusSpeed || 0).toFixed(1) + ' km/h');
+  live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', fmtUnit(w.statusSpeed || 0, 'kmh', 1));
   live('rollzero', wzVal('roll.rollZero').toFixed(2)); live('wasoffset', wzVal('autosteer.wasOffset') | 0);
   // Roll gauge (roll-calibration step): rotate the bar by the live roll, like the map.
   const rb = document.getElementById('wz-roll-bar');
@@ -3443,13 +3558,13 @@ function renderPose() {
     speed: s.b.speed,
   };
 }
-// Cross-track error as "12 cm R" (R = right of line, +xte). Centimetres so the
-// magnitude reads at a glance; the lightbar carries the live feel.
+// Cross-track error as "12 cm R" / "5 in R" (R = right of line, +xte). Centimetres
+// (inches in imperial) so the magnitude reads at a glance; the lightbar carries the
+// live feel.
 function xteText(xte) {
   if (xte == null) return '—';
-  const cm = Math.abs(xte) * 100;
   const side = xte > 0.005 ? 'R' : xte < -0.005 ? 'L' : '·';
-  return `${cm.toFixed(0)} cm ${side}`;
+  return `${fmtUnit(Math.abs(xte) * 100, 'cm', 0)} ${side}`;
 }
 
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
@@ -3473,7 +3588,7 @@ function updateLightbarText() {
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    lbEl.textContent = `${arrow} ${(Math.abs(xte) * 100).toFixed(0)} cm   Pass ${Math.abs(pass) + 1}`;
+    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}   Pass ${Math.abs(pass) + 1}`;
   }
   lbEl.style.display = 'block';
 }
@@ -3490,8 +3605,7 @@ function updateHeadlandHud() {
   // instruction pill + toolbar. body.maptap is set by startMapTap for the duration of the flow.
   const creating = document.body.classList.contains('maptap');
   if (!on || creating || d == null || d < 0) { hlHud.style.display = 'none'; return; }
-  const metric = !statusBar || statusBar.isMetric;
-  hlHud.textContent = metric ? d.toFixed(1) + ' m' : (d * 3.28084).toFixed(0) + ' ft';
+  hlHud.textContent = isMetric() ? fmtUnit(d, 'm', 1) : fmtUnit(d, 'm', 0);
   hlHud.classList.toggle('warn', !!(tick && tick.headlandWarn));
   hlHud.style.display = 'block';
 }
@@ -3547,13 +3661,8 @@ function moduleAggColor(s) {
   return pres === conf ? '#22c55e' : '#f59e0b';
 }
 // Area/rate formatting — matches MainViewModel.FormatArea / WorkRateDisplay.
-function fmtArea(m2, metric) {
-  const ha = m2 * 0.0001;
-  return metric ? ha.toFixed(2) + ' ha' : (ha * 2.47105).toFixed(2) + ' ac';
-}
-function fmtRate(haPerHr, metric) {
-  return metric ? haPerHr.toFixed(1) + ' ha/hr' : (haPerHr * 2.47105).toFixed(1) + ' ac/hr';
-}
+function fmtArea(m2) { return fmtUnit(m2 * 0.0001, 'ha'); }
+function fmtRate(haPerHr) { return fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
 // Workable area (m²) from the Scene the client already has: headland polygon if
 // present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
 function shoelace(pts) {
@@ -3588,7 +3697,7 @@ function rotatingLineText() {
     const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
     const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
     const haPerHr = (lastTick ? lastTick.speed : 0) * 3600 * toolWidthM() / 10000;
-    return 'Done ' + fmtArea(worked, s.isMetric) + '  Left ' + leftPct.toFixed(0) + '%  Rate ' + fmtRate(haPerHr, s.isMetric);
+    return 'Done ' + fmtArea(worked) + '  Left ' + leftPct.toFixed(0) + '%  Rate ' + fmtRate(haPerHr);
   }
   const name = tick && tick.activeTrackName; // AB-line page
   if (!name) return 'No AB Line';
@@ -3661,8 +3770,8 @@ function renderStatusBar() {
   SB.rot.textContent = rotatingLineText();
   // Speed from the live tick (m/s), formatted per the host's unit preference.
   const mps = lastTick ? lastTick.speed : 0;
-  SB.speed.textContent = (mps * (s.isMetric ? 3.6 : 2.236936)).toFixed(1);
-  SB.unit.textContent = s.isMetric ? 'km/h' : 'mph';
+  SB.speed.textContent = toDisplayUnit(mps * 3.6, 'kmh').toFixed(1);
+  SB.unit.textContent = unitLabel('kmh');
   // Modules: aggregate dot + per-module popup rows.
   SB.modAgg.style.background = moduleAggColor(s);
   const dot = (el, ok) => { el.style.background = ok ? '#22c55e' : '#6b7280'; };
@@ -3725,7 +3834,7 @@ function renderSimBar() {
   }
   // Speed readout: apply 10× then format per units (mirrors SimulatorSpeedDisplay).
   const eff = (s.simSpeedKph || 0) * (s.sim10x ? 10 : 1);
-  SIM.speedVal.textContent = s.isMetric ? eff.toFixed(1) + ' kph' : (eff * 0.621371).toFixed(1) + ' mph';
+  SIM.speedVal.textContent = fmtUnit(eff, 'kmh', 1);
   // GPS (teleport) only while sim disabled — matches the native IsEnabled binding.
   SIM.gps.disabled = !!s.simEnabled;
   SIM.gps.style.opacity = s.simEnabled ? '0.4' : '1';
@@ -3836,9 +3945,7 @@ function renderUTurnIndicator() {
   const show = !!(scene && scene.hasField && op && op.youturn && op.distToTrigger > 0);
   UTI.root.hidden = !show;
   if (!show) return;
-  const metric = !statusBar || statusBar.isMetric;
-  UTI.dist.textContent = metric ? op.distToTrigger.toFixed(0) + ' m'
-                                : (op.distToTrigger * 3.28084).toFixed(0) + ' ft';
+  UTI.dist.textContent = fmtUnit(op.distToTrigger, 'm', 0);
   UTI.arrow.classList.toggle('left', !!op.turnLeft);
   const style = (config && config.uturn && config.uturn.style) || 0;
   UTI.typePath.setAttribute('d', UTURN_GLYPH[style] || UTURN_GLYPH[0]);
@@ -3918,7 +4025,7 @@ function pushChartData(t) {
     steer: [t.chartSetSteer, t.chartActualSteer, t.chartPwm],
     // HeadingError mirrors the native quirk (ComputeHeadingError == set steer angle).
     heading: [t.chartSetSteer, t.chartImuHeading, hdgDeg],
-    xte: [t.crossTrackError],
+    xte: [toDisplayUnit(t.crossTrackError, 'm')],   // plot in the active length unit
   };
   const trim = now - CHART_WINDOW - 2;
   for (const key in CHARTS) {
@@ -4098,8 +4205,8 @@ function renderOffsetFix() {
   if (!document.getElementById('offsetfix').classList.contains('open')) return;
   if (!statusBar) return;
   const ns = document.getElementById('of-ns-in'), ew = document.getElementById('of-ew-in');
-  if (document.activeElement !== ns) ns.value = (statusBar.driftNorthing || 0).toFixed(3);
-  if (document.activeElement !== ew) ew.value = (statusBar.driftEasting || 0).toFixed(3);
+  if (document.activeElement !== ns) writeUnitInput(ns, statusBar.driftNorthing || 0);
+  if (document.activeElement !== ew) writeUnitInput(ew, statusBar.driftEasting || 0);
 }
 
 // Import Tracks: list the other fields that have saved tracks; tap one to copy its
@@ -4204,12 +4311,12 @@ function renderBoundaryMenu() {
 function renderBoundaryPlayer() {
   const b = boundary; if (!b) return;
   const off = document.getElementById('bp-offset');
-  if (document.activeElement !== off) off.value = (b.offsetCm || 0).toFixed(0);
+  if (document.activeElement !== off) writeUnitInput(off, b.offsetCm || 0);
   document.getElementById('bp-section').classList.toggle('on', b.sectionControlOn);
   document.getElementById('bp-lrimg').src = b.drawRightSide ? '/icons/BoundaryRight.png' : '/icons/BoundaryLeft.png';
   document.getElementById('bp-atimg').src = b.drawAtPivot ? '/icons/BoundaryRecordPivot.png' : '/icons/BoundaryRecordTool.png';
   document.getElementById('bp-points').textContent = b.pointCount;
-  document.getElementById('bp-area').textContent = (b.areaHa || 0).toFixed(2) + ' Ha';
+  document.getElementById('bp-area').textContent = fmtUnit(b.areaHa || 0, 'ha');
   document.getElementById('bp-recimg').src = b.isRecording ? '/icons/boundaryPause.png' : '/icons/BoundaryRecord.png';
 }
 
