@@ -12,7 +12,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgOpenWeb.VehicleSimulator.Modules;
+namespace AgOpenWeb.VirtualModules;
 
 /// <summary>
 /// Orchestrates all virtual modules into a complete simulated hardware environment.
@@ -36,21 +36,31 @@ public class VirtualModuleHub : IDisposable
     /// <summary>Port where modules listen for commands from the app.</summary>
     public int ModuleListenPort { get; }
 
-    public VirtualModuleHub(int hostReceivePort = 9999, int moduleListenPort = 8888)
+    /// <summary>
+    /// Build the full set of virtual modules on consecutive ports.
+    /// </summary>
+    /// <param name="bindMode">
+    /// Defaults to <see cref="ModuleBindMode.LoopbackOnly"/> deliberately: a test
+    /// constructing a hub must not raise a Windows Firewall prompt. The simulator
+    /// app passes <see cref="ModuleBindMode.AllInterfaces"/> explicitly, because it
+    /// has to be reachable from a host on another machine.
+    /// </param>
+    public VirtualModuleHub(int hostReceivePort = 9999, int moduleListenPort = 8888,
+        ModuleBindMode bindMode = ModuleBindMode.LoopbackOnly)
     {
         HostReceivePort = hostReceivePort;
         ModuleListenPort = moduleListenPort;
         Targets = new UdpTargets(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, hostReceivePort));
 
         Gps = new VirtualGpsReceiver(Targets);
-        Steer = new VirtualSteerModule(Targets, listenPort: moduleListenPort);
+        Steer = new VirtualSteerModule(Targets, moduleListenPort, bindMode);
         // Machine can't bind to the same port as Steer. In real hardware, one Teensy
         // handles both. Offset the machine to moduleListenPort + 1.
-        Machine = new VirtualMachineModule(Targets, listenPort: moduleListenPort + 1);
+        Machine = new VirtualMachineModule(Targets, moduleListenPort + 1, bindMode);
         // Same reason — the virtual IMU needs its own bind port. The $PANDA stream
         // already carries the IMU data; this module just answers hello (PGN 121)
         // so the host lists the IMU under Module Status. Offset to moduleListenPort + 2.
-        Imu = new VirtualImuModule(Targets, listenPort: moduleListenPort + 2);
+        Imu = new VirtualImuModule(Targets, moduleListenPort + 2, bindMode);
     }
 
     public void Start()

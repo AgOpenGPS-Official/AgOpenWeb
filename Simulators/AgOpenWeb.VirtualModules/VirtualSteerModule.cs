@@ -13,7 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgOpenWeb.Models.Communication;
 
-namespace AgOpenWeb.IntegrationTests.VirtualModules;
+namespace AgOpenWeb.VirtualModules;
 
 /// <summary>
 /// Virtual steer module (Teensy). Listens for PGN 254 (AutoSteer) commands,
@@ -23,7 +23,7 @@ namespace AgOpenWeb.IntegrationTests.VirtualModules;
 public class VirtualSteerModule : IDisposable
 {
     private readonly UdpClient _udp;
-    private readonly IPEndPoint _hostEndpoint;
+    private readonly UdpTargets _targets;
     private CancellationTokenSource? _cts;
     private Task? _receiveTask;
     private Task? _helloTask;
@@ -82,10 +82,12 @@ public class VirtualSteerModule : IDisposable
     public double AngleDeadbandDeg { get; set; } = 0.05;
 
     /// <summary>
-    /// Physical limit of the simulated wheel angle. Clamps the
-    /// integrated WAS so the reported angle plateaus on the simulated
-    /// mechanical stops rather than drifting toward any commanded
-    /// setpoint indefinitely. Default ±35°.
+    /// Physical limit of the simulated wheel angle. The PID can command
+    /// any setpoint; the simulator clamps the integrated WAS so the
+    /// reported angle plateaus at this value (matching a real tractor's
+    /// hydraulic stops). Operator-adjustable in the simulator UI so the
+    /// wizard's max-steering-angle test sees a natural plateau. Default
+    /// ±35° approximates a typical agricultural front-axle range.
     /// </summary>
     public double MaxPhysicalWheelAngleDeg { get; set; } = 35.0;
 
@@ -127,13 +129,24 @@ public class VirtualSteerModule : IDisposable
     // simulator exposes it as a settable flag.
     public bool WorkSwitchEnabled { get; set; }
 
-    public VirtualSteerModule(int listenPort = 8888, int hostPort = 9999, string hostIp = "127.0.0.1")
+    /// <summary>
+    /// Full constructor: send to every endpoint in <paramref name="targets"/>.
+    /// See <see cref="ModuleBindMode"/> for why the bind address is a choice.
+    /// </summary>
+    public VirtualSteerModule(UdpTargets targets, int listenPort = 8888,
+        ModuleBindMode bindMode = ModuleBindMode.AllInterfaces)
     {
-        // Bind to loopback (not IPAddress.Any) so Windows Defender Firewall does
-        // not prompt during test runs. All virtual-module traffic is 127.0.0.1.
-        _udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, listenPort));
-        _hostEndpoint = new IPEndPoint(IPAddress.Parse(hostIp), hostPort);
+        _udp = ModuleSocket.NewListener(listenPort, bindMode);
+        _targets = targets;
     }
+
+    /// <summary>
+    /// Convenience ctor (tests): a single fixed host destination, bound to
+    /// loopback so a test run raises no firewall prompt.
+    /// </summary>
+    public VirtualSteerModule(int listenPort = 8888, int hostPort = 9999, string hostIp = "127.0.0.1")
+        : this(new UdpTargets(new IPEndPoint(IPAddress.Parse(hostIp), hostPort)), listenPort,
+               ModuleBindMode.LoopbackOnly) { }
 
     public void Start()
     {
@@ -209,7 +222,7 @@ public class VirtualSteerModule : IDisposable
         data[7] = PwmDisplay;
 
         var packet = PgnProtocol.BuildPacket(PgnProtocol.PGN_STEER_DATA, data);
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        Emit(packet);
         SentFeedbackCount++;
     }
 
@@ -221,7 +234,7 @@ public class VirtualSteerModule : IDisposable
         var data = new byte[8];
         data[0] = sensorValue;
         var packet = PgnProtocol.BuildPacket(PgnProtocol.PGN_SENSOR_DATA, data);
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        Emit(packet);
     }
 
     private async Task ReceiveLoop(CancellationToken ct)
@@ -238,8 +251,22 @@ public class VirtualSteerModule : IDisposable
         }
     }
 
+    /// <summary>Taps for the sim's data panes (outgoing / incoming raw frames).</summary>
+    public Action<string>? OnSent;
+    public Action<string>? OnReceived;
+
+    private void Emit(byte[] packet)
+    {
+        OnSent?.Invoke(PgnProtocol.Describe(packet, packet.Length));
+        foreach (var ep in _targets.Endpoints)
+        {
+            try { _udp.Send(packet, packet.Length, ep); } catch { /* one bad dest must not stop the others */ }
+        }
+    }
+
     private void ProcessPacket(byte[] data)
     {
+        OnReceived?.Invoke(PgnProtocol.Describe(data, data.Length));
         if (!PgnProtocol.IsValidPacket(data, data.Length))
             return;
 
@@ -326,7 +353,7 @@ public class VirtualSteerModule : IDisposable
     private void SendHello()
     {
         var packet = PgnProtocol.BuildHelloPacket(PgnProtocol.PGN_HELLO_AUTOSTEER);
-        _udp.Send(packet, packet.Length, _hostEndpoint);
+        Emit(packet);
         SentHelloCount++;
     }
 
@@ -411,6 +438,12 @@ public class VirtualSteerModule : IDisposable
             if (Math.Abs(dAngle) > Math.Abs(error)) dAngle = error;
             ActualSteerAngleDeg += dAngle;
 
+            // Clamp to the simulated mechanical stops. Without this the
+            // PID can drive the integrated WAS angle indefinitely if the
+            // setpoint is past the physical max — the wizard's max-angle
+            // test then never sees a plateau and can't capture a stable
+            // reading. Real steering systems plateau on hydraulic stops
+            // and this models that behaviour.
             if (ActualSteerAngleDeg > MaxPhysicalWheelAngleDeg)
                 ActualSteerAngleDeg = MaxPhysicalWheelAngleDeg;
             else if (ActualSteerAngleDeg < -MaxPhysicalWheelAngleDeg)

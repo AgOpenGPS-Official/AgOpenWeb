@@ -16,7 +16,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Avalonia.Threading;
 using AgOpenWeb.VehicleSimulator.Models;
-using AgOpenWeb.VehicleSimulator.Modules;
+using AgOpenWeb.VirtualModules;
 
 namespace AgOpenWeb.VehicleSimulator.ViewModels;
 
@@ -573,7 +573,11 @@ public class MainWindowViewModel : INotifyPropertyChanged
             _vehicle.SteerAngleDeg = WasAngle;
             _vehicle.Wheelbase = Wheelbase;
 
-            _hub = new VirtualModuleHub(hostReceivePort: HostReceivePort, moduleListenPort: 8888);
+            // AllInterfaces, not the LoopbackOnly default: the simulator has to be
+            // reachable from a host on another machine (a headless SBC, say), which
+            // is exactly what SelectedEndpoints() below is for.
+            _hub = new VirtualModuleHub(hostReceivePort: HostReceivePort, moduleListenPort: 8888,
+                bindMode: ModuleBindMode.AllInterfaces);
             _hub.Targets.Set(SelectedEndpoints()); // GPS/PGN go to the checked interfaces
             _hub.Gps.Latitude = Latitude;
             _hub.Gps.Longitude = Longitude;
