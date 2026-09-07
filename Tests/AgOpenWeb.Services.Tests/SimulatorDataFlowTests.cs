@@ -13,6 +13,7 @@ using System.Text;
 using System.Threading.Tasks;
 using AgOpenWeb.IntegrationTests.VirtualModules;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Communication;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
