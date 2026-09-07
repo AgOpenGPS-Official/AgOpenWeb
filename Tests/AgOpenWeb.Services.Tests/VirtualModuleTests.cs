@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgOpenWeb.IntegrationTests.VirtualModules;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Communication;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
 using NSubstitute;

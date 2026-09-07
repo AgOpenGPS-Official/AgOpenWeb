@@ -8,12 +8,26 @@
 
 using System;
 
-namespace AgOpenWeb.IntegrationTests.VirtualModules;
+namespace AgOpenWeb.Models.Communication;
 
 /// <summary>
-/// Shared PGN protocol constants and helpers for virtual modules.
-/// Matches AgOpenGPS/AgOpenWeb wire format.
+/// PGN protocol constants and helpers as seen from the *module* side of the
+/// wire. Matches the AgOpenGPS/AgOpenWeb format that <c>PgnBuilder</c> emits
+/// from the host side.
 /// </summary>
+/// <remarks>
+/// Consumed by both the standalone vehicle simulator
+/// (<c>AgOpenWeb.VehicleSimulator.Modules</c>) and the virtual UDP modules in
+/// <c>AgOpenWeb.IntegrationTests</c>. It lived as two hand-maintained copies —
+/// one per consumer — until they were consolidated here; they had not yet
+/// drifted, but nothing was stopping them.
+///
+/// The checksum rule here (sum of bytes [2 .. len-2]) must stay in lockstep
+/// with <c>PgnBuilder.WithCrc</c> and <c>PgnMessage.CalculateCRC</c>. Note that
+/// <see cref="IsValidPacket"/> is genuinely enforced: the virtual modules drop
+/// packets that fail it, so a host-side checksum bug shows up as silence from
+/// the simulator rather than as an error.
+/// </remarks>
 public static class PgnProtocol
 {
     public const byte HEADER1 = 0x80;
@@ -93,6 +107,20 @@ public static class PgnProtocol
     /// Extract PGN number from a valid packet.
     /// </summary>
     public static byte GetPgn(byte[] data) => data[3];
+
+    /// <summary>
+    /// Human-readable one-line description of a PGN frame for the sim's
+    /// sent/received data panes: "PGN nnn: 80 81 .. .." for valid headers,
+    /// raw hex otherwise.
+    /// </summary>
+    public static string Describe(byte[] data, int length)
+    {
+        if (length <= 0) return "(empty)";
+        string hex = BitConverter.ToString(data, 0, length).Replace('-', ' ');
+        if (length >= 4 && data[0] == 0x80 && data[1] == 0x81)
+            return $"PGN {data[3],3}: {hex}";
+        return hex;
+    }
 
     /// <summary>
     /// Extract data length from a valid packet.
