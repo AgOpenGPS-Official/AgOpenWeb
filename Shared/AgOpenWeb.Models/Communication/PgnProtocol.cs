@@ -16,11 +16,11 @@ namespace AgOpenWeb.Models.Communication;
 /// from the host side.
 /// </summary>
 /// <remarks>
-/// Consumed by both the standalone vehicle simulator
-/// (<c>AgOpenWeb.VehicleSimulator.Modules</c>) and the virtual UDP modules in
-/// <c>AgOpenWeb.IntegrationTests</c>. It lived as two hand-maintained copies —
-/// one per consumer — until they were consolidated here; they had not yet
-/// drifted, but nothing was stopping them.
+/// Consumed by the virtual hardware modules in <c>AgOpenWeb.VirtualModules</c>,
+/// which the vehicle simulator and the integration tests both build on. This
+/// file lived as two hand-maintained copies — one per consumer — until they
+/// were consolidated here; they had not yet drifted, but nothing was stopping
+/// them.
 ///
 /// The checksum rule here (sum of bytes [2 .. len-2]) must stay in lockstep
 /// with <c>PgnBuilder.WithCrc</c> and <c>PgnMessage.CalculateCRC</c>. Note that

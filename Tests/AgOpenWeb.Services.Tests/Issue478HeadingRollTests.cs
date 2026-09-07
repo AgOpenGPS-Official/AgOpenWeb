@@ -6,7 +6,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
-using AgOpenWeb.IntegrationTests.VirtualModules;
+using AgOpenWeb.VirtualModules;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;

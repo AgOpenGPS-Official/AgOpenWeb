@@ -12,6 +12,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using AgOpenWeb.Models.Communication;
+using AgOpenWeb.VirtualModules;
 using NUnit.Framework;
 
 namespace AgOpenWeb.IntegrationTests.VirtualModules;

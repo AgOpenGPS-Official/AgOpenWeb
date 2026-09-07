@@ -13,7 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgOpenWeb.Models.Communication;
 
-namespace AgOpenWeb.VehicleSimulator.Modules;
+namespace AgOpenWeb.VirtualModules;
 
 /// <summary>
 /// Virtual machine/implement module. Listens for PGN 239 (Machine Data) commands,
@@ -51,15 +51,24 @@ public class VirtualMachineModule : IDisposable
     public long SentHelloCount { get; private set; }
     public MachineCommand? LastCommand { get; private set; }
 
-    public VirtualMachineModule(UdpTargets targets, int listenPort = 8888)
+    /// <summary>
+    /// Full constructor: send to every endpoint in <paramref name="targets"/>.
+    /// See <see cref="ModuleBindMode"/> for why the bind address is a choice.
+    /// </summary>
+    public VirtualMachineModule(UdpTargets targets, int listenPort = 8888,
+        ModuleBindMode bindMode = ModuleBindMode.AllInterfaces)
     {
-        _udp = new UdpClient(new IPEndPoint(IPAddress.Any, listenPort)) { EnableBroadcast = true };
+        _udp = ModuleSocket.NewListener(listenPort, bindMode);
         _targets = targets;
     }
 
-    /// <summary>Convenience ctor (tests): a single fixed host destination.</summary>
+    /// <summary>
+    /// Convenience ctor (tests): a single fixed host destination, bound to
+    /// loopback so a test run raises no firewall prompt.
+    /// </summary>
     public VirtualMachineModule(int listenPort = 8888, int hostPort = 9999, string hostIp = "127.0.0.1")
-        : this(new UdpTargets(new IPEndPoint(IPAddress.Parse(hostIp), hostPort)), listenPort) { }
+        : this(new UdpTargets(new IPEndPoint(IPAddress.Parse(hostIp), hostPort)), listenPort,
+               ModuleBindMode.LoopbackOnly) { }
 
     public void Start()
     {

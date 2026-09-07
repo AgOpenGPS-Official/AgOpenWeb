@@ -10,7 +10,7 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
-using AgOpenWeb.IntegrationTests.VirtualModules;
+using AgOpenWeb.VirtualModules;
 using AgOpenWeb.Models.Communication;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.AutoSteer;
