@@ -192,6 +192,7 @@ function onUnitsChanged() {
   fieldOpsDirty = true;
   _wzKey = '';
   if (document.getElementById('fieldbuilder').classList.contains('open')) { renderFbHeadland(); renderFbTram(); }
+  if (document.getElementById('boundarymenu').classList.contains('open')) renderBoundaryMenu();
   if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
 }
 applyUnits();   // fill the static labels now (metric default) — the first Status frame corrects it
@@ -4293,7 +4294,7 @@ function renderBoundaryMenu() {
       + '<span class="bm-flag ' + (it.driveThru ? 'on' : 'off') + '" data-flag="driveThru"></span>'
       + '<span class="bm-flag ' + (it.hard ? 'on' : 'off') + '" data-flag="hard"></span>';
     row.querySelector('.bm-name').textContent = it.boundaryType;
-    row.querySelector('.bm-area').textContent = it.areaDisplay;
+    row.querySelector('.bm-area').textContent = fmtUnit(it.areaHa, 'ha');
     row.querySelector('[data-flag="driveThru"]').textContent = it.driveThru ? 'Yes' : '--';
     row.querySelector('[data-flag="hard"]').textContent = it.hard ? 'Hard' : 'Soft';
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('boundary.select|' + it.index); });

@@ -751,6 +751,9 @@ public sealed class SceneProjector
         foreach (var n in _configService.GetAvailableToolProfiles()) h = h * 31 + n.GetHashCode();
         h = h * 31 + _config.ActiveVehicleProfileName.GetHashCode();
         h = h * 31 + _config.ActiveToolProfileName.GetHashCode();
+        // The previews are host-rendered strings carrying units, so a metric/imperial
+        // flip changes this frame's content — fold it in or the picker stays stale.
+        h = h * 31 + (_config.IsMetric ? 1 : 2);
         return h * 31 + ConfigFingerprint();
     }
 
