@@ -17,14 +17,60 @@ namespace AgOpenWeb.Services.Tests;
 [TestFixture]
 public class ModuleNetworkPgnTests
 {
+    /// <summary>
+    /// Reference CRC: sum of bytes [2 .. len-2], mod 256 — the rule every
+    /// PgnBuilder send path uses. Computed here independently of the production
+    /// helper so the tests would catch a change to that helper.
+    /// </summary>
+    private static byte ExpectedCrc(params int[] packetWithoutCrc)
+    {
+        int sum = 0;
+        for (int i = 2; i < packetWithoutCrc.Length; i++) sum += packetWithoutCrc[i];
+        return (byte)(sum & 0xFF);
+    }
+
     // ===== PGN 202 — scan request =====
 
     [Test]
-    public void BuildScanRequest_MatchesAgIoBytesExactly()
+    public void BuildScanRequest_MatchesAgIoLayout_WithComputedCrc()
     {
-        // AgIO FormUDP.cs:137 — { 0x80, 0x81, 0x7F, 202, 3, 202, 202, 5, 0x47 }
-        var expected = new byte[] { 0x80, 0x81, 0x7F, 202, 3, 202, 202, 5, 0x47 };
+        // AgIO FormUDP.cs:137 uses this layout but ships a stale placeholder
+        // (0x47) in the CRC slot and never recomputes it. Modules ignore the
+        // byte, so we send the real checksum instead.
+        var expected = new byte[]
+        {
+            0x80, 0x81, 0x7F, 202, 3, 202, 202, 5,
+            ExpectedCrc(0x80, 0x81, 0x7F, 202, 3, 202, 202, 5)
+        };
         Assert.That(PgnBuilder.BuildScanRequest(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void BuildScanRequest_CrcIsNotTheAgIoPlaceholder()
+    {
+        // 0xE5, not 0x47 — guards against the hardcoded byte creeping back.
+        Assert.That(PgnBuilder.BuildScanRequest()[^1], Is.EqualTo(0xE5));
+    }
+
+    // ===== PGN 200 — hello from AgIO =====
+
+    [Test]
+    public void BuildHelloPacket_MatchesAgIoLayout_WithComputedCrc()
+    {
+        // AgIO UDP.designer.cs:76 layout; :82 rewrites byte[5] without
+        // recomputing the checksum, which is why its 0x47 is meaningless.
+        var expected = new byte[]
+        {
+            0x80, 0x81, 0x7F, 200, 3, 56, 0, 0,
+            ExpectedCrc(0x80, 0x81, 0x7F, 200, 3, 56, 0, 0)
+        };
+        Assert.That(PgnBuilder.BuildHelloPacket(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void BuildHelloPacket_CrcIsNotTheAgIoPlaceholder()
+    {
+        Assert.That(PgnBuilder.BuildHelloPacket()[^1], Is.EqualTo(0x82));
     }
 
     // ===== PGN 201 — set subnet =====
@@ -32,30 +78,58 @@ public class ModuleNetworkPgnTests
     [Test]
     public void BuildSubnetChange_MatchesAgIoLayout_WithGivenOctets()
     {
-        // AgIO FormUDP.cs:19 — { 0x80,0x81,0x7F,201,5,201,201, o1,o2,o3, 0x47 }
+        // AgIO FormUDP.cs:19 layout, computed CRC.
         var pgn = PgnBuilder.BuildSubnetChange(192, 168, 5);
-        var expected = new byte[] { 0x80, 0x81, 0x7F, 201, 5, 201, 201, 192, 168, 5, 0x47 };
+        var expected = new byte[]
+        {
+            0x80, 0x81, 0x7F, 201, 5, 201, 201, 192, 168, 5,
+            ExpectedCrc(0x80, 0x81, 0x7F, 201, 5, 201, 201, 192, 168, 5)
+        };
         Assert.That(pgn, Is.EqualTo(expected));
     }
 
     [Test]
-    public void BuildSubnetChange_OnlyOctets7To9Vary()
+    public void BuildSubnetChange_OnlyOctetsAndCrcVary()
     {
         var a = PgnBuilder.BuildSubnetChange(10, 0, 0);
         var b = PgnBuilder.BuildSubnetChange(172, 16, 9);
 
-        // Magic/header/crc bytes are identical; only [7..9] differ.
         Assert.That(a[7], Is.EqualTo(10));
         Assert.That(a[8], Is.EqualTo(0));
         Assert.That(a[9], Is.EqualTo(0));
         Assert.That(b[7], Is.EqualTo(172));
         Assert.That(b[8], Is.EqualTo(16));
         Assert.That(b[9], Is.EqualTo(9));
-        for (int i = 0; i < a.Length; i++)
+
+        // Header/magic bytes are constant; [7..9] carry the octets and the
+        // trailing CRC tracks them, so it varies too.
+        for (int i = 0; i < a.Length - 1; i++)
         {
             if (i is 7 or 8 or 9) continue;
             Assert.That(a[i], Is.EqualTo(b[i]), $"byte {i} should be constant");
         }
+        Assert.That(a[^1], Is.Not.EqualTo(b[^1]), "CRC must track the octets");
+    }
+
+    // ===== Send/validate round-trip =====
+
+    [Test]
+    public void ValidateChecksum_AcceptsEveryModuleNetworkPacketWeSend()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(PgnBuilder.ValidateChecksum(PgnBuilder.BuildScanRequest()), Is.True);
+            Assert.That(PgnBuilder.ValidateChecksum(PgnBuilder.BuildHelloPacket()), Is.True);
+            Assert.That(PgnBuilder.ValidateChecksum(PgnBuilder.BuildSubnetChange(192, 168, 5)), Is.True);
+        });
+    }
+
+    [Test]
+    public void ValidateChecksum_RejectsCorruptedPayload()
+    {
+        var pgn = PgnBuilder.BuildHelloPacket();
+        pgn[5]++;  // payload changed, CRC no longer matches
+        Assert.That(PgnBuilder.ValidateChecksum(pgn), Is.False);
     }
 
     // ===== PGN 203 — scan reply parse =====
