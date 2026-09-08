@@ -62,11 +62,46 @@ public partial class App : Avalonia.Application
     // The launcher view: a full-screen NativeWebView with a splash on top until the page loads.
     // The in-process host binds :5174 from the foreground BackendService, which may still be
     // starting (cold start) or restarting (the Activity can outlive a stopped host, leaving the
-    // static HostReady signal stale). So we navigate as soon as the host SIGNALS ready (bounded
-    // wait, so a stale/pending signal can't block us), then RETRY on any load failure until the
-    // page actually comes up — that bridges the startup gap instead of leaving a dead
-    // "Webpage not available" on the first miss.
+    // static HostReady signal stale). So we don't navigate on a timer and we don't trust the
+    // WebView to tell us the truth — we PROBE the port until it accepts a connection, and only
+    // then navigate. See BuildWebViewLauncherView for why (issue #73).
     private const int LauncherPort = 5174;
+
+    // How long to wait for the host to start accepting before giving up and showing an error.
+    // A freshly booted device with cold caches took ~21 s to bind in the #73 repro, so this is
+    // deliberately generous — waiting is always better than parking on a dead error page.
+    private const int HostWaitSeconds = 120;
+    private const int ProbeIntervalMs = 250;
+    private const int ProbeTimeoutMs = 1000;
+    // How long one navigation gets to finish before we give up on it and retry. Generous on
+    // purpose: a short fixed watchdog re-navigates on top of a load that is merely slow, which on
+    // a slow device thrashes (each retry restarts the load) instead of converging.
+    private const int NavTimeoutMs = 15000;
+    private const int RetryDelayMs = 1000;
+    private const int MaxAttempts = 10;
+
+    /// <summary>
+    /// Ground truth for "is the guidance host serving?": can we open a TCP connection to it.
+    /// Unlike <see cref="BackendService.HostReady"/> this can't be stale (that TCS is static and
+    /// survives a host restart within the same process) and unlike the WebView's own load result
+    /// it can't be faked by an error page.
+    /// </summary>
+    private static async Task<bool> IsHostAcceptingAsync()
+    {
+        try
+        {
+            using var client = new System.Net.Sockets.TcpClient();
+            using var cts = new System.Threading.CancellationTokenSource(ProbeTimeoutMs);
+            await client.ConnectAsync(System.Net.IPAddress.Loopback, LauncherPort, cts.Token)
+                .ConfigureAwait(false);
+            return client.Connected;
+        }
+        catch
+        {
+            // Connection refused (host not bound yet) / timeout / cancellation — all mean "not up".
+            return false;
+        }
+    }
 
     private static Control BuildWebViewLauncherView()
     {
@@ -90,33 +125,118 @@ public partial class App : Avalonia.Application
 
         var uri = new Uri($"http://localhost:{LauncherPort}/");
         var loaded = false;
-        int attempts = 0;
-        const int maxAttempts = 20;       // ~50 s total at the 2.5 s watchdog cadence
-        const int watchdogMs = 2500;
+        var hostUp = false;
+        var attempts = 0;
 
-        // Watchdog-driven retry (event-independent): re-navigate until a load is CONFIRMED.
-        // We can't rely on NavigationCompleted(IsSuccess=false) to fire — Android's WebView may
-        // surface a connection-refused (host not listening yet) as a silent failure with no
-        // completion event — so instead, after each attempt, if no success arrived within the
-        // window, navigate again. Stops the moment a successful load flips `loaded`.
-        void TryNavigate()
-        {
-            if (loaded) return;
-            attempts++;
-            Console.WriteLine($"[App] webview navigate attempt {attempts} → {uri}");
-            try { web.Navigate(uri); } catch (Exception ex) { Console.WriteLine($"[App] navigate threw: {ex.Message}"); }
-            if (attempts < maxAttempts)
-                DelayThenPost(watchdogMs, () => { if (!loaded) TryNavigate(); });
-        }
-
+        // A NavigationCompleted with IsSuccess=true is NOT proof our UI loaded: Android's WebView
+        // reports its own "webpage not available" page as a SUCCESSFUL navigation. That was
+        // issue #73 — on a cold start the host needed longer than the old 8 s wait, we navigated
+        // early, got ERR_CONNECTION_REFUSED, and the error page's "success" latched `loaded`,
+        // which permanently stopped the retry watchdog. The host came up seconds later and
+        // nothing ever navigated again, so the app sat on a dead error page (which users
+        // reasonably report as "crashes on startup").
+        //
+        // So a success only counts once the port probe has actually seen the host accepting.
+        //
+        // `pending` lets the drive loop await THIS navigation's outcome instead of guessing on a
+        // timer; it's swapped per attempt so a late completion from a superseded navigation can't
+        // satisfy the current one.
+        TaskCompletionSource<bool>? pending = null;
         web.NavigationCompleted += (_, e) =>
         {
-            Console.WriteLine($"[App] webview completed IsSuccess={e.IsSuccess} attempt={attempts}");
-            if (e.IsSuccess) { loaded = true; splash.IsVisible = false; }
+            Console.WriteLine($"[App] webview completed IsSuccess={e.IsSuccess} hostUp={hostUp} attempt={attempts}");
+            if (e.IsSuccess && hostUp)
+            {
+                loaded = true;
+                splash.IsVisible = false;
+            }
+            pending?.TrySetResult(e.IsSuccess);
         };
 
-        _ = StartNavigationAsync(web, TryNavigate);
+        async Task DriveAsync()
+        {
+            // 1. Wait for the host to actually accept connections. Probing the port sidesteps
+            //    the stale/pending HostReady problem entirely — it doesn't matter whether that
+            //    signal is left over from a previous run, still pending, or faulted.
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.Elapsed < TimeSpan.FromSeconds(HostWaitSeconds))
+            {
+                if (await IsHostAcceptingAsync().ConfigureAwait(false)) { hostUp = true; break; }
+                if (BackendService.HostReady.Task.IsFaulted) break;   // host start blew up; report it
+                await Task.Delay(ProbeIntervalMs).ConfigureAwait(false);
+            }
+
+            if (!hostUp)
+            {
+                var reason = BackendService.HostReady.Task.IsFaulted
+                    ? BackendService.HostReady.Task.Exception?.GetBaseException().Message
+                    : $"the guidance host did not start within {HostWaitSeconds} s";
+                Console.WriteLine($"[App] host never came up: {reason}");
+                await Dispatcher.UIThread.InvokeAsync(() => ShowSplashError(splash, reason));
+                return;
+            }
+
+            Console.WriteLine($"[App] host accepting on :{LauncherPort} after {sw.Elapsed.TotalSeconds:F1}s");
+
+            // 2. Navigate, retrying until a load is confirmed. The JS→native bridge must be
+            //    attached BEFORE the first load (addJavascriptInterface only applies to the NEXT
+            //    one), so the attach and the navigate share a single UI-thread lambda — splitting
+            //    them across two dispatcher hops would let the navigate race ahead of the attach.
+            //    Re-probe between attempts so a host that restarted under us flips `hostUp` back
+            //    off and we don't latch on a fresh error page.
+            var bridgeAttached = false;
+            while (!loaded && attempts < MaxAttempts)
+            {
+                attempts++;
+                pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                Console.WriteLine($"[App] webview navigate attempt {attempts} → {uri}");
+                await Dispatcher.UIThread.InvokeAsync(async () =>
+                {
+                    if (!bridgeAttached)
+                    {
+                        await AttachKeyboardBridgeAsync(web);
+                        bridgeAttached = true;
+                    }
+                    try { web.Navigate(uri); }
+                    catch (Exception ex) { Console.WriteLine($"[App] navigate threw: {ex.Message}"); }
+                });
+
+                // Wait for this navigation to actually finish (or to stall past the timeout).
+                await Task.WhenAny(pending.Task, Task.Delay(NavTimeoutMs)).ConfigureAwait(false);
+                if (loaded) return;
+
+                // Failed or stalled: re-probe (the host may have gone away or restarted) and retry.
+                hostUp = await IsHostAcceptingAsync().ConfigureAwait(false);
+                await Task.Delay(RetryDelayMs).ConfigureAwait(false);
+            }
+
+            if (!loaded)
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                    ShowSplashError(splash, $"the web UI did not load after {MaxAttempts} attempts"));
+        }
+
+        _ = DriveAsync();
         return new Grid { Children = { web, splash } };
+    }
+
+    // Replace the splash text with a real message. Without this a startup failure leaves either a
+    // frozen "Starting AgOpenWeb…" or the WebView's own error page, neither of which tells the
+    // user (or a bug report) anything actionable.
+    private static void ShowSplashError(Border splash, string? reason)
+    {
+        splash.IsVisible = true;
+        splash.Child = new TextBlock
+        {
+            Text = $"AgOpenWeb could not start.\n\n{reason}\n\nClose the app and open it again.",
+            Foreground = Brushes.White,
+            FontSize = 16,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Center,
+            Margin = new Thickness(24),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
     }
 
     // Attach our own JS→native bridge to the underlying android.webkit.WebView (Avalonia's
@@ -149,23 +269,4 @@ public partial class App : Avalonia.Application
         Console.WriteLine("[App] keyboard bridge NOT attached (no Android platform handle)");
     }
 
-    // Navigate as soon as the host signals ready, but wait no longer than a few seconds for that
-    // signal — the retry-on-failure loop covers any remaining gap (and the case where HostReady is
-    // a stale leftover from a previous run in the same process).
-    private static async Task StartNavigationAsync(NativeWebView web, Action tryNavigate)
-    {
-        try { await Task.WhenAny(BackendService.HostReady.Task, Task.Delay(8000)).ConfigureAwait(false); }
-        catch { /* host start may have faulted; try anyway — the server can still come up */ }
-        // Attach the keyboard bridge BEFORE the first navigation (addJavascriptInterface applies
-        // to the next load), then navigate — all on the UI thread.
-        await Dispatcher.UIThread.InvokeAsync(async () =>
-        {
-            await AttachKeyboardBridgeAsync(web);
-            tryNavigate();
-        });
-    }
-
-    private static void DelayThenPost(int milliseconds, Action action) =>
-        _ = Task.Delay(milliseconds).ContinueWith(
-            _ => Dispatcher.UIThread.Post(action), TaskScheduler.Default);
 }
