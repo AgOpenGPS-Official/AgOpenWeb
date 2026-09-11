@@ -40,7 +40,7 @@ internal static class AgShareRemote
         var key = c.AgShareApiKey ?? "";
         var root = settings.Settings.FieldsDirectory;
         if (string.IsNullOrWhiteSpace(root))
-            root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AgOpenWeb", "Fields");
+            root = Path.Combine(AppDataRoot.Documents, "Fields");
         switch (cmd)
         {
             case "agshare.test": _ = TestAsync(state, url, key); return;

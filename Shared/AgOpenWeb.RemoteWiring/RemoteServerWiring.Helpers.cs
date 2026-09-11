@@ -524,8 +524,7 @@ public static partial class RemoteServerWiring
                 try
                 {
                     var dir = System.IO.Path.Combine(
-                        System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments),
-                        "AgOpenWeb", "BugReports");
+                        AgOpenWeb.Services.AppDataRoot.Documents, "BugReports");
                     var slug = string.IsNullOrWhiteSpace(title) ? "untitled"
                         : new string(title.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
                     if (slug.Length > 60) slug = slug.Substring(0, 60);
