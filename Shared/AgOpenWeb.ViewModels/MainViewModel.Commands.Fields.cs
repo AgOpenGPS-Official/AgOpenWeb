@@ -107,8 +107,7 @@ public partial class MainViewModel
             if (string.IsNullOrWhiteSpace(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
             _fieldSelectionDirectory = fieldsDir;
             PopulateAvailableFields(fieldsDir);
@@ -218,8 +217,7 @@ public partial class MainViewModel
             if (string.IsNullOrWhiteSpace(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
 
             var fieldPath = Path.Combine(fieldsDir, NewFieldName);
@@ -299,8 +297,7 @@ public partial class MainViewModel
             if (string.IsNullOrWhiteSpace(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
             _fieldSelectionDirectory = fieldsDir;
             PopulateAvailableFields(fieldsDir);
@@ -346,8 +343,7 @@ public partial class MainViewModel
             if (string.IsNullOrWhiteSpace(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
 
             var sourcePath = Path.Combine(fieldsDir, FromExistingSelectedField.Name);
@@ -531,8 +527,7 @@ public partial class MainViewModel
             if (string.IsNullOrWhiteSpace(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
 
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
@@ -671,8 +666,7 @@ public partial class MainViewModel
             if (string.IsNullOrWhiteSpace(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
 
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
@@ -927,8 +921,7 @@ public partial class MainViewModel
             if (string.IsNullOrEmpty(fieldsDir))
             {
                 fieldsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "Fields");
+                    AppDataRoot.Documents, "Fields");
             }
 
             var fieldPath = Path.Combine(fieldsDir, lastField);
@@ -998,7 +991,7 @@ public partial class MainViewModel
     {
         var dir = _settingsService.Settings.FieldsDirectory;
         return string.IsNullOrWhiteSpace(dir)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "AgOpenWeb", "Fields")
+            ? Path.Combine(AppDataRoot.Documents, "Fields")
             : dir;
     }
 

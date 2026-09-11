@@ -4001,9 +4001,15 @@ public partial class MainViewModel : ObservableObject
     public int TramStartPass => ConfigStore.Tram.StartPass;
     public double TramWidth => ConfigStore.Tram.TramWidth;
     public System.Collections.ObjectModel.ObservableCollection<Models.Tram.TramSystem> TramSystems => ConfigStore.Tram.Systems;
-    public string TramToolWidthDisplay => $"{ConfigStore.ActualToolWidth:F2} m";
-    public string TramWidthDisplay => $"{ConfigStore.Tram.TramWidth:F2} m";
-    public string TramTrackWidthDisplay => $"{ConfigStore.Vehicle.TrackWidth:F2} m";
+    public string TramToolWidthDisplay => FormatLengthMeters(ConfigStore.ActualToolWidth);
+    public string TramWidthDisplay => FormatLengthMeters(ConfigStore.Tram.TramWidth);
+    public string TramTrackWidthDisplay => FormatLengthMeters(ConfigStore.Vehicle.TrackWidth);
+    // A host-rendered length string, honoring the authoritative unit choice
+    // (AppSettings.IsMetric — same source as the profile previews), not a hardcoded metre.
+    private string FormatLengthMeters(double meters) =>
+        _settingsService.Settings.IsMetric
+            ? $"{meters:F2} m"
+            : $"{UnitConversion.MetersToFeet(meters):F2} ft";
     public string TramLineCountDisplay => $"{_tramLineService.ParallelTramLines.Count}";
     public ICommand? IncreaseTramStartPassCommand { get; private set; }
     public ICommand? DecreaseTramStartPassCommand { get; private set; }
@@ -4849,8 +4855,7 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(fieldsDir))
         {
             fieldsDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "AgOpenWeb", "Fields");
+                AppDataRoot.Documents, "Fields");
         }
 
         var fieldPath = Path.Combine(fieldsDir, CurrentFieldName);
@@ -4921,8 +4926,7 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(fieldsDir))
         {
             fieldsDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "AgOpenWeb", "Fields");
+                AppDataRoot.Documents, "Fields");
         }
 
         var fieldPath = Path.Combine(fieldsDir, CurrentFieldName);
