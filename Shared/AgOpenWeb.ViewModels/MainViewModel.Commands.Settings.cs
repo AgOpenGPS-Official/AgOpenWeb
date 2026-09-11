@@ -31,6 +31,8 @@ using CommunityToolkit.Mvvm.Input;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
+using AgOpenWeb.Services;
+
 namespace AgOpenWeb.ViewModels;
 
 public partial class MainViewModel
@@ -265,8 +267,7 @@ public partial class MainViewModel
                 try
                 {
                     var bugReportsDir = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                        "AgOpenWeb", "BugReports");
+                        AppDataRoot.Documents, "BugReports");
 
                     var savedPath = Services.DebugDumpService.FinalizeBugReport(
                         sourceZipPath: _bugReportTempZipPath,
@@ -307,8 +308,7 @@ public partial class MainViewModel
                 await System.Threading.Tasks.Task.Delay(50);
 
                 var bugReportsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                    "AgOpenWeb", "BugReports");
+                    AppDataRoot.Documents, "BugReports");
 
                 // Build filename from title: sanitize, replace spaces with hyphens
                 var titleSlug = string.IsNullOrWhiteSpace(BugReportTitle)
@@ -631,7 +631,9 @@ public partial class MainViewModel
         global.Items.Add(new SettingsValueItem("Active Profile", store.ActiveVehicleProfileName));
         global.Items.Add(new SettingsValueItem("Is Metric", store.IsMetric.ToString()));
         global.Items.Add(new SettingsValueItem("Num Sections", store.NumSections.ToString()));
-        global.Items.Add(new SettingsValueItem("Actual Tool Width", $"{store.ActualToolWidth:F2} m"));
+        global.Items.Add(new SettingsValueItem("Actual Tool Width",
+            store.IsMetric ? $"{store.ActualToolWidth:F2} m"
+                           : $"{AgOpenWeb.Models.Base.UnitConversion.MetersToFeet(store.ActualToolWidth):F2} ft"));
         SettingsTree.Add(global);
     }
 
