@@ -1,86 +1,92 @@
 # AgOpenWeb AiO Board — Design Reference
 
-> Working design notes for a single-board AiO (all-in-one) that carries a Raspberry Pi
-> Compute Module (host brain), an STM32 (hard-RT + watchdog + protected I/O front-end),
-> a GPS slot, 3× CAN, and isolated RS-232/RS-485 for off-board peripherals.
+> Design notes for a single-board AiO (all-in-one) carrier for a Raspberry Pi **Compute Module 4**:
+> CM4 host, 3× CAN FD over SPI, 2× RS-232, a GPS module slot, wheel-angle/current/VIN sensing on an
+> external ADC, direct steering outputs, and a hardware watchdog.
 >
-> Status: **concept / part-selection**. Nothing laid out yet. JLC stock figures verified
-> **2026-07** — re-check at order time (NAND/DRAM and MCU stock are volatile this year).
+> **Status (2026-09-14): schematic captured in EasyEDA Standard, full-board netlist exported, not
+> laid out.** A review of that export found issues to fix before layout (§13). JLC stock figures
+> date from 2026-07; re-check at order time.
 >
-> **Companion docs (built bottom-up, power first):** `HARDWARE_AIO_NETLIST.md` (connection
-> intent, pre-capture) and `HARDWARE_AIO_BOM.md` (part lines + JLC stock). This doc is the *why*;
-> those two are the *what*. Ref designators are shared across all three.
+> **Companion docs:** `HARDWARE_AIO_NETLIST.md` (as-built wiring, every net),
+> `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
+> (routing). Ref designators are the real EasyEDA ones and match across all of them.
+
+---
+
+## 0. Revision history
+
+| Date | Tool | Architecture | Source |
+|---|---|---|---|
+| 2026-07-04 → 07-09 | EasyEDA Pro | CM4 + **STM32G473** (hard-RT loop, failsafe, clean shutdown), TCAN1042 ×3, isolated RS-485, OLED | `Full-board_2026-07-08.net`, git history of this file |
+| 2026-09-14 | **EasyEDA Standard** | **CM4 only.** STM32 removed; CAN via 3× MCP251863 on SPI; external ADC; STWD100 watchdog; SK6812 status LEDs | `Full-board_2026-09-14.net` |
+
+The Jul→Sep redesign (including the move from EasyEDA Pro to Standard) was never pushed, and its
+working notes were lost in a disk crash. **Where this doc explains *why* for September changes, the
+reasoning is inferred from the netlist** and marked *(inferred)*. Everything the July design settled
+that the new netlist still follows is kept as-is.
+
+### What changed Jul → Sep
+
+| Area | July (Pro) | September (Standard) |
+|---|---|---|
+| Real-time controller | STM32G473RCT6 + 8 MHz crystal, SWD | **removed**, CM4 runs everything |
+| CAN ×3 | STM FDCAN + 3× TCAN1042, split-term + CMC footprints | **3× MCP251863** (controller + transceiver) on CM4 SPI0, shared 40 MHz oscillator, **no termination/CMC** |
+| Analog (WAS, current, VIN) | STM32 ADC (3.3 V ref, divider) | **ADC128S102** on SPI0, VA = 5V_MAIN (0–5 V, ratiometric) |
+| CM4 power gate | eFuse EN driven by STM `PI_PWR_EN` | eFuse **always on** (EN pulled up) |
+| Watchdog / failsafe | STM32 independently de-energizes outputs | **STWD100** resets the CM4 via `RUN_PG` |
+| RS-485 (motor bus) | isolated CA-IS3092W on J1.21/22 | **removed**, J1.21/22 unused |
+| RS-232 | NMEA-out + ext port, driven by STM | 2 general ports on CM4 UART2/UART3 |
+| GPS slot | STM UART4 + UART5, PPS, dual-F9P, XBee | UM982 **or** ArduSimple on CM4 UART5, no PPS |
+| USB | CM4 host ↔ STM device via TS3USB221 mux + micro-USB rpiboot | 2×2 header H3 (USB D± + nRPIBOOT) for provisioning only |
+| HMI | STM-driven 1.3" OLED + page rocker + piezo | 4× SK6812 status LEDs, power LED, piezo, TH reset button |
+| Steering outputs | opto-isolated in first pass, then direct drive (Jul 7) | direct CM4 GPIO via 330 Ω |
+| J1 CAN pinout | H on even pins 14/16/18 | **L on even, H on odd** (§13 F7) |
 
 ---
 
 ## 1. Concept
 
-- **Host = Raspberry Pi Compute Module (CM4 footprint).** The backend runs at ~8–11 % of a
-  Pi Zero 2W (rendering is client-side), so compute is *not* the sizing driver — storage
-  reliability, I/O, and solder-down mounting are. CM4 form factor is now a de-facto standard
-  targeted by Pi and clones, giving supply optionality on one carrier.
-- **MCU = STM32 (STM32G473RCT6).** Owns the hard real-time loop, the independent failsafe
-  watchdog, power sequencing/clean-shutdown, and all protected off-board I/O.
-- **Split rationale.** The x86 "use the spare CPU" idea was dropped: the host load is trivial,
-  and x86 SMM/SMIs (hundreds of µs, unpreemptable) make x86 a poor hard-RT host anyway. The
-  MCU owns the µs loop (immune to host stalls); the CM does soft-RT guidance/planning. This is
-  the "MCU owns the hard loop, Linux is soft-RT" split.
+- **Host = Raspberry Pi Compute Module 4.** The backend runs at ~8–11 % of a Pi Zero 2W (rendering
+  is client-side), so compute isn't the sizing driver. Storage reliability, I/O and solder-down
+  mounting are. The CM4 form factor is a de-facto standard with clones, which gives supply options.
+- **No separate MCU (September).** *(inferred)* The CM4 now owns the guidance loop, all I/O and its
+  own supervision. CAN and analog move to SPI peripherals that buffer in hardware (MCP251863 FIFOs,
+  ADC conversions), so Linux scheduling jitter affects when data is read, not whether it's captured.
+  A hardware watchdog replaces the STM32's independent failsafe (§6).
+- **Trade-off accepted by that choice:** Linux is soft real-time. The July doc's argument for an MCU
+  ("MCU owns the µs loop, immune to host stalls") no longer applies. Steering safety now depends on
+  the watchdog + GPIO reset defaults (§6) rather than on a separate processor.
 
 ---
 
 ## 2. Block diagram
 
 ```
-                              ALUMINUM CASE (heatsink)
-  +==============================================================================+
-  |   machined boss --[gap pad 0.5-1mm]-- CM4 SoC heat-spreader                  |
-  |                                        |                                     |
-  |  +-------------------------------------+-----------------------------------+ |
-  |  |  AiO CARRIER BOARD                   v                                   | |
-  |  |   +----------------------------------------------+                       | |
-  |  |   |  CM4 (Pi or clone - DF40 x2 mezzanine)        |                       | |
-  |  |   |   1-2 GB RAM, 8 GB eMMC (low SKU)             |                       | |
-  |  |   |   carrier accepts ANY CM4 family variant      |                       | |
-  |  |   |   read-only overlay root                      |                       | |
-  |  |   +--+--------+-----------+-----------+-----------+                       | |
-  |  |      |USB2     |PCIe x1    | GPIO      | 5V PWR-IN                        | |
-  |  |      |(host)   |(optional) |(alt GPS)  | (switched)                      | |
-  |  |      |      [M.2 NVMe]     |       +---+----------+                       | |
-  |  |      |      populate-if-   |       | e-fuse /      |<-- PI_PWR_EN         | |
-  |  |      |      heavy-logging  |       | P-MOSFET      |                      | |
-  |  |      |                     |       +---+----------+                       | |
-  |  |  +---+ USB2 trace          |           | switched 5V                     | |
-  |  |  |   | (RawHID PGN)        |       +---+----------+                       | |
-  |  |  |   v (device)            |       | Buck 12/24->5V|<-- VBAT (load-dump   | |
-  |  |  | +------------------------------+ | + hold-up cap |    protected)       | |
-  |  |  | |  STM32G473RCT6 (LQFP64)       | +---+----------+                      | |
-  |  |  | |  RT loop . watchdog .         |<----- VIN_SENSE (12V divider)        | |
-  |  |  | |  clean-shutdown . I/O         |------ PI_PWR_EN -->                   | |
-  |  |  | |  FDCAN1 on PB8/PB9 (USB frees |                                      | |
-  |  |  | |  PA11/PA12)                   |                                      | |
-  |  |  | +-+----+----+------+-----+------+                                      | |
-  |  |  |   |TIM |ADC/| CANx3 | UARTx |                                          | |
-  |  |  |   |PWM |op  |       |       |                                          | |
-  |  |  |   v    v    v       v                                                  | |
-  |  |  | +-----------------------------------------------+                      | |
-  |  |  | |  PROTECTED I/O FRONT-END (TVS on every line)  |                      | |
-  |  |  | |                                               |                      | |
-  |  |  | |  motor driver . current sense                 |                      | |
-  |  |  | |  3x CAN-FD transceiver (TCAN/1051-class)       |--> CAN1/2/3         | |
-  |  |  | |  ISO RS-485 (CA-IS3092W, +iso pwr) ---------- |--> MOTOR-DRIVER BUS  | |
-  |  |  | |  ISO RS-232 (ADM3251E) ---------------------- |--> NMEA OUT (3rd pty)| |
-  |  |  | |  RS-232/TTL (SP3232EEN + TVS) --------------- |--> GPS IN / IMU      | |
-  |  |  | |  section/switch I/O                           |--> SECTIONS          | |
-  |  |  | +-----------------------------------------------+                      | |
-  |  |  |                                                                        | |
-  |  |  |  [GPS SLOT] --> STM32 UART (default; STM owns NMEA-OUT echo)           | |
-  |  |  |             \-> CM GPIO/USB (alt jumper: raw NMEA on host)             | |
-  |  |  |                                                                        | |
-  |  |  |  CM4 LITE + NVMe (128GB M.2) = boot/root/data. NO SD, NO eMMC.         | |
-  |  |  |  rpiboot provisioning: USB-OTG + nRPIBOOT jumper (also field recovery) | |
-  |  |  +------------------------------------------------------------------------+ |
-  |  +----------------------------------------------------------------------------+ |
-  +==============================================================================+
+                        ALUMINUM CASE (heatsink, gap pad on CM4 SoC)
+ +-------------------------------------------------------------------------------------+
+ |  J1 ATS-26                                                                          |
+ |  VIN ─► Q1 rev-pol ─► TV1 + C6/C7 hold-up ─► U1 buck ─► 5V_MAIN ─┬─► U2 eFuse ─► 5V_CM ─► CM4
+ |            │                                                    ├─► U3 LDO ─► +3V3     │
+ |            └─► VIN_SENSE divider ─────────────────┐             ├─► CAN VCC, LEDs, GPS, piezo, WAS 5V
+ |                                                   │             └─► U4 buck (EN from 5V_CM) ─► +3V3_NVME ─► M.2
+ |                                                   ▼                                        │
+ |  WAS ─► ESD+RC ─► ┌────────────┐                                                          │
+ |  ISENSE ─► ESD+RC►│ U21 ADC128 │◄─┐                                                        │
+ |                   └────────────┘  │ SPI0 (SCLK/MOSI/MISO + 4 CS)                           │
+ |  CAN1 ◄► ┌───────────────┐        │                                                        │
+ |  CAN2 ◄► │ U7/U8/U9       │◄──────┤                  ┌──────────────────────────────┐     │
+ |  CAN3 ◄► │ MCP251863 ×3   │ nINT ─┼────────────────► │  U19  CM4 Lite Wireless       │◄─PCIe─┘
+ |          └──────▲────────┘        └────────────────  │  28 GPIO all allocated        │◄─GbE──► L1 RJ45
+ |                 └── X1 40 MHz                        │  UART0 console ─► H1          │◄─USB──► H3 (+nRPIBOOT)
+ |  RS-232 ×2 ◄► U12 SP3232 ◄── UART2 / UART3 ──────────│                               │
+ |  GPS slot (U16 UM982 | P2 ArduSimple) ◄── UART5 ─────│                               │
+ |  SW work/engage/remote ─► TVS+RC+ESD ─► GPIO in ─────│                               │
+ |  STEER PWM/DIR/EN ◄── 330 Ω ◄── GPIO18/23/24 ────────│                               │
+ |                                                      │ RUN_PG ◄── U20 STWD100 WDO    │
+ |  SK6812 ×4 ◄── U22 AHCT125 ◄── GPIO2                 │         ◄── SW1 reset          │
+ |  Piezo ◄── Q2 ◄── GPIO6                              └──────────────────────────────┘
+ +-------------------------------------------------------------------------------------+
 ```
 
 ---
@@ -89,245 +95,246 @@
 
 | Decision | Choice | Rationale / hedge |
 |---|---|---|
-| Form factor | **CM4 Lite Wireless** (Pi or clone), DF40 ×2 mezzanine, no eMMC | De-facto standard footprint; Lite (no eMMC) offsets NVMe; **Wireless variant** for the WiFi module path |
-| Connectivity | **Ethernet (RJ45, on-module GbE PHY) + WiFi (on-module + external RP-SMA antenna)** | AgOpen module network (PGN-over-UDP) — ESP32 sections + peripherals join here; metal case ⇒ external antenna |
-| RAM | **1–2 GB**, low SKU | 8–11 %-of-Zero-2W load; lowest SKUs cheaper + more available in 2026 shortage |
-| Root FS | Read-only + overlayfs (or A/B) on NVMe | Power loss can't corrupt OS partition; tiny write footprint |
-| Boot / root / data | **NVMe (128 GB M.2), single medium** | More reliable than SD *and* eMMC; cheap; huge logging headroom |
-| SD slot | **None** | Redundant + unreliable once NVMe is present; drop it (real-estate + reliability win) |
-| Provisioning | **rpiboot/usbboot required** (USB-OTG + nRPIBOOT jumper) | Only path to image a bare Lite's NVMe + set BOOT_ORDER=6; also field re-image/recovery |
-| Carrier layout | Accept any CM4 variant | Lead-time hedge; eMMC+NVMe is the no-fuss fallback if Lite provisioning is painful |
+| Form factor | **CM4 Lite Wireless** (CM4101000 footprint), DF40 ×2 mezzanine, no eMMC | de-facto standard footprint; Lite offsets NVMe cost; wireless for the WiFi module path |
+| Connectivity | **Ethernet (RJ45, on-module GbE PHY) + WiFi (on-module + external antenna)** | AgOpen module network (PGN-over-UDP); metal case needs an external antenna |
+| RAM | 1–2 GB, low SKU | load is tiny; low SKUs cheaper and better stocked |
+| Root FS | read-only + overlayfs (or A/B) on NVMe | power loss can't corrupt the OS partition |
+| Boot / root / data | **NVMe (128 GB M.2), single medium** | more reliable than SD and eMMC |
+| SD slot | none | redundant once NVMe is present |
+| Provisioning | **rpiboot over H3** (USB D± + nRPIBOOT jumper) | only way to image a bare Lite's NVMe + set `BOOT_ORDER`; also field recovery |
+| GPIO bank | 3.3 V (`GPIO_VREF` pin 78 tied to `CM4_3V3` 84/86, C76) | datasheet: pin 78 must not float |
+| Carrier layout | accept any CM4 variant | lead-time hedge |
 
 ---
 
 ## 4. Storage
 
-- **Single medium: NVMe (128 GB M.2) on a CM4 Lite. No SD, no eMMC.** A **Lite CM4 boots directly
-  from NVMe** with no SD and no eMMC once the bootloader is configured. NVMe is more reliable than
-  SD *and* eMMC, 128 GB is cheap with huge logging headroom, and the Lite's lower price offsets
-  part of the NVMe. With read-only root + the STM32 clean-shutdown (§7), unclean-power-loss
-  corruption is largely designed out.
-- **Why NVMe — measured (NVMe vs SD, same rig):** the decisive gap is *writes*, which is the
-  logging workload. Seq read 515.7 vs 62.7 MB/s (8.2×), 4K rand read ~49.8 vs ~7.3 MB/s (6.9×),
-  **seq write 278.1 vs 15.0 MB/s (18.6×)**, **4K rand write ~81.3 vs ~2.3 MB/s (35.5×)**. Field
-  logging *is* 4K random writes (coverage cells, position/section records) → the 35× case is the
-  real one. SD also *stalls* (hundred-ms FTL hiccups) and wears out under sustained logging; NVMe
-  has real wear-leveling + spare area (mostly-free 128 GB helps). Keep the write path **off the
-  control-loop thread** regardless — NVMe makes that drain trivial but the decoupling is the rule.
-- **No SD bootstrap paradox — why.** The CM4 (**Lite included**) has a **dedicated on-module SPI
-  EEPROM** holding the bootloader + `BOOT_ORDER`, separate from eMMC/SD/NVMe. That's where "boot
-  NVMe" persists — no boot medium required to store it. (NOT the eMMC — earlier note corrected.)
-- **Provisioning (the one design consequence):** `rpiboot` writes that EEPROM at the **boot-ROM
-  level over USB — nothing boots first**: (1) assert **nRPIBOOT** jumper, power on → SoC mask ROM
-  enters USB-device mode (silicon, no medium needed); (2) host `rpiboot` flashes SPI EEPROM with
-  `BOOT_ORDER=…6…`; (3) same session, mass-storage-gadget exposes the NVMe → write the OS image;
-  (4) remove jumper, power-cycle → bootloader reads mode 6 → PCIe → boots NVMe. The SD's old
-  "boot once to run rpi-eeprom-config" job is fully replaced by rpiboot. So the carrier **must**
-  wire the CM4 **USB-OTG/slave + nRPIBOOT** (micro-USB + jumper — smaller than an SD slot); it
-  also *is* the **field re-image / recovery** path. M.2 socket = "pull SSD → image on laptop →
-  replug" fallback if rpiboot is fussy (setup is "a little involved" per Geerling).
-- **Production flow (the two steps are independent):**
-  1. **Set `BOOT_ORDER=6` once per CM4** at incoming inspection (rpiboot over USB, nRPIBOOT). The
-     SPI EEPROM then remembers NVMe forever — **no per-unit rpiboot at assembly.**
-  2. **Bulk-image NVMe drives externally** on a host PC via a USB-to-NVMe adapter (drives out of
-     the board).
-  3. **Final assembly = seat a pre-imaged drive.** No CM touch, no bootloader step.
-  rpiboot only returns for a bootloader update or field recovery. (For sealed units / no-pull
-  recovery, use rpiboot's mass-storage-gadget to image the NVMe in place instead of pulling it.)
-- **NVMe choice:** decent 128 GB 2230/2242; cheap drives vary on power-loss behavior (clean-
-  shutdown covers most); industrial/pSLC is the belt-and-suspenders option for continuous logging.
-- **Fallback (no-fuss):** if Lite provisioning proves painful at volume, use the **smallest 8 GB
-  eMMC module** (holds bootloader, boots instantly, root still on NVMe) — costs the eMMC saved.
-- **PCIe routing:** 3 length-matched 100 Ω diff pairs (TX/RX/REFCLK) + AC caps + PERST#/CLKREQ# +
-  a 3.3 V rail. Gen2 ×1 is the forgiving end of PCIe; copy the **open-source Raspberry Pi CM4IO
-  KiCad** layout. Verify any CM4 *clone* actually exposes PCIe.
+- **Single medium: NVMe (128 GB M.2) on a CM4 Lite. No SD, no eMMC.** The CM4 boots directly from
+  NVMe once `BOOT_ORDER` is set.
+- **Why NVMe — measured (NVMe vs SD, same rig):** seq read 515.7 vs 62.7 MB/s (8.2×), 4K rand read
+  ~49.8 vs ~7.3 MB/s (6.9×), **seq write 278.1 vs 15.0 MB/s (18.6×)**, **4K rand write ~81.3 vs
+  ~2.3 MB/s (35.5×)**. Field logging is 4K random writes, so the 35× case is the one that matters.
+  SD also stalls (hundred-ms FTL hiccups) and wears under sustained logging. Keep the write path off
+  the control-loop thread regardless.
+- **No SD bootstrap paradox.** The CM4 (Lite included) has an on-module SPI EEPROM holding the
+  bootloader + `BOOT_ORDER`, separate from any boot medium.
+- **Provisioning via H3:** (1) jumper H3.1 (`NRPIBOOT`) to H3.3 (GND), power on → SoC mask ROM
+  enters USB device mode; (2) connect a host PC to H3.2/H3.4 (USB D−/D+, plus GND) — **no VBUS on
+  the header**, the board powers itself; (3) `rpiboot` flashes the EEPROM with `BOOT_ORDER=…6…`, then
+  mass-storage-gadget exposes the NVMe for imaging; (4) remove jumper, power-cycle → boots NVMe.
+  `USB_OTG_ID` (pin 101) floats (device mode), which is what rpiboot needs.
+- **Production flow:** set `BOOT_ORDER=6` once per CM4 at incoming inspection; bulk-image NVMe drives
+  externally on a USB-NVMe adapter; final assembly seats a pre-imaged drive.
+- **NVMe choice:** decent 128 GB 2230/2242; industrial/pSLC for heavy continuous logging.
+- **PCIe routing:** 3 length-matched diff pairs (TX/RX/REFCLK) + PERST#/CLKREQ#; no AC caps on the
+  carrier (CM4 and SSD have them). See `HARDWARE_AIO_LAYOUT_GUIDE.md` §3.
 
 ---
 
 ## 5. Thermal
 
-- CM4 is ~5–7 W (CM5 ~10 W) vs 25 W+ for x86 → **fanless, conduct to the enclosure.**
-- CM SoC heat-spreader → **compressible thermal gap pad / putty (0.5–1 mm)** → machined boss on
-  the aluminum case lid. *Not* rigid metal-to-metal (tolerance stack-up + vibration).
-- STM32 needs no cooling.
+- CM4 is ~5–7 W → **fanless, conduct to the enclosure.**
+- CM SoC heat-spreader → compressible thermal gap pad (0.5–1 mm) → machined boss on the aluminum lid.
+  Not rigid metal-to-metal (tolerance stack-up + vibration).
+- U1 buck + D1 catch diode and L2 are the other heat sources; give them copper.
 
 ---
 
-## 6. MCU — STM32G473RCT6
+## 6. Supervision, failsafe & real-time
 
-**Driver of the choice: 3× CAN.** G431 has only 1× FDCAN. The 3×FDCAN lines are **G473/G474**
-(G491 has only 2). G473 chosen over G474 because the only G474 delta is HRTIM (unused for
-steering) and on JLC's assembly side the G473RCT6 is both cheaper and far better stocked.
+**Hardware watchdog — U20 STWD100 (open-drain WDO → `RUN_PG`).**
 
-| Part | Pkg | Flash | FDCAN | JLC stock (2026-07) | JLC price | Verdict |
-|---|---|---|---|---|---|---|
-| **STM32G473RCT6** (C529361) | LQFP64 | 256 KB | **3** | 2,243 | $3.67 (→$2.31 @1k) | **Pick** |
-| STM32G474RET6 (C521608) | LQFP64 | 512 KB | 3 + HRTIM | 410 | $8.50 | HRTIM unused, ⅕ stock |
-| STM32G431CBT6 (C529355) | LQFP48 | 128 KB | 1 | 3,556 | $3.37 | Only 1 CAN — rejected |
+1. Power-on / any reset: `WDT_EN` (GPIO3) is held high by R63 4.7 k + GPIO3's 1.8 k module pull-up
+   → watchdog **disabled** while Linux boots.
+2. Linux running: drive GPIO3 low (enable), toggle GPIO22 (`WDT_WDI`) within t<sub>WD</sub>.
+3. Linux hangs → WDI stops → WDO pulls `RUN_PG` low for ~210 ms → CM4 resets → back to step 1.
 
-**Longevity:** G4 is on ST's 10-year Longevity Commitment (read as runway from ~2019 intro),
-Active status. Confirm not NRND at order time.
+- **Timeout:** the fitted **STWD100NXWY3F is 102 ms** (71–142 ms). Kicking reliably inside 71 ms from
+  Linux means the kernel `gpio-wdt` driver (device tree `linux,wdt-gpio`, toggle mode), not a
+  userspace daemon. **STWD100NYWY3F (1.6 s)** is the same footprint and much more forgiving (§13 F4).
+- `RUN_PG` (pin 92) is the correct reset input. `nEXTRST` (pin 100) is a reset *output* and
+  `GLOBAL_EN` (pin 99) powers the module off.
+- The CM4's built-in BCM2711 watchdog still exists. The STWD100 is the one that works even if the SoC
+  watchdog or its driver is wedged.
 
-**Family footprint hedge:** lay out the **G473/G474 R-line LQFP64** footprint — it accepts a
-pin-compatible ladder: G473RCT6 (256 KB) → G473RET6 (512 KB) → G474RCT6/RET6 (adds unused
-HRTIM). Four+ populate options on one footprint.
+**Steering failsafe (inferred).** Without the STM32, "outputs off when the host is down" comes from
+reset defaults: during and after a CM4 reset the GPIOs return to inputs with their default pulls.
+`STEER_EN` (GPIO24) and `PWM_MOTA` (GPIO18) default to pull-**low**, so the motor driver sees EN/PWM
+low. The drivers' own input pulls must agree, and firmware must only assert `STEER_EN` once guidance
+is live. The watchdog reset path makes a hung kernel fall into that state within ~0.1–2 s.
 
-**Escape hatch:** STM32 pinout also roughly fits GD32/AT32 clones (re-validate firmware; treat
-as supply insurance, not a true second source).
-
-**Firmware portability = risk reduction:** Cube LL/CMSIS, standard peripherals only (TIM PWM,
-ADC/op-amp current sense, FDCAN, one USB device to CM, GPIO watchdog). No part-unique
-peripheral → density/clone swaps stay cheap.
-
-**Package:** LQFP (not QFN/BGA) for hand-rework and broad stock.
-
----
-
-## 7. Power & clean-shutdown
-
-Chain: `12V --> Buck 5V (always-on) --> [-> STM32 + LDO] + [e-fuse(PI_PWR_EN) -> CM4]`
-
-**Topology decided (Option A — single always-on buck).** One 5 V buck free-runs whenever VIN is
-present; the STM + 3V3 LDO hang directly off `5V_MAIN`; the CM leg is `5V_MAIN → eFuse → 5V_CM`
-with the eFuse as the gate. The two-stage "tiny always-on buck so the main buck can fully sleep"
-alternative was dropped: VIN is vehicle-switched, so "sit powered with the CM off" isn't a real
-scenario, and fewer parts wins.
-
-**Input-stage voltage decided (12 V system, 40 V operating).** 40 V is the 12 V-automotive point:
-survives a 24 V jump-start, and a **SMBJ24A** TVS clamps load-dump to ~39 V. The **buck is 60 V-
-rated** anyway (**TPS54560**-class) so that TVS clamp transient sits inside its rating — "40 V rail,
-60 V silicon" is deliberate, not a mismatch. A true **24 V-native** install load-dumps to ~58 V and
-needs the *populate variant*: raise the TVS (SMBJ33/48), keep the 60 V buck, re-ratio `VIN_SENSE`.
-Footprints stay variant-ready; default BOM is 12 V.
-
-1. **Boot** — 5V rail up → STM32 boots (always-on) → asserts `PI_PWR_EN` → e-fuse feeds CM4.
-2. **Run** — CM4 ↔ STM32 exchange PGN over the USB trace; STM32 watches `VIN_SENSE`.
-3. **Power loss** — `VIN_SENSE` drops → STM32 sends `SHUTDOWN` PGN → CM4 halts (read-only root =
-   almost nothing to flush) → **input-side hold-up cap** keeps the rail up through unmount →
-   STM32 de-asserts `PI_PWR_EN`.
-4. **Failsafe** — watchdog timeout (CM hung / kernel panic / rebooting) → STM32 **independently**
-   de-energizes steering + sections. The failsafe cannot live on the host — it guards *against*
-   the host.
-
-**Size at layout:** hold-up cap (spans CM halt time); e-fuse rating (CM4 inrush + steady).
+**Real-time.** CAN frames are buffered in each MCP251863's FIFOs and raise `nINT`, and ADC samples are
+taken on demand, so the latency-critical path is "Linux reads SPI within its loop period." A
+PREEMPT_RT kernel and `isolcpus` for the guidance thread are the usual mitigations; see
+`Plans/DEPLOYMENT_PATTERNS.md`.
 
 ---
 
-## 8. CAN (3× FDCAN)
+## 7. Power & shutdown
 
-- 3× FDCAN native on the G473. **FDCAN1 default pins PA11/PA12 collide with USB_DM/DP** — move
-  **FDCAN1 to PB8/PB9** and keep USB on PA11/PA12. LQFP64 has the pins to break out all three
-  + USB cleanly (a reason the package is LQFP64, not 48).
-- **3× CAN-FD transceivers** — **TCAN1042VDRQ1 (JLC C485806)**, 5 V VCC + VIO=3.3 V, FD 5 Mbps,
-  ±58 V bus-fault (VCC on the always-on `5V_MAIN` so CAN survives CM-down). Bus TVS = NUP2105L
-  (C284104) + optional split-term + DNP common-mode-choke footprint. *(Note: TJA1051/1042 are
-  classic CAN, only 1 Mbps-guaranteed — not FD-qualified; TCAN1042V is.)* Three CAN connectors +
-  transceivers eat board edge — place early. Full detail: `HARDWARE_AIO_NETLIST.md` §Page 4.
-- Motor drivers may live on CAN *or* the RS-485 bus (§9) depending on the driver — the board
-  supports both.
+Chain: `VIN → Q1 → VIN_PROT (TV1, 2×470 µF) → U1 buck → 5V_MAIN → { U2 eFuse → 5V_CM → CM4 ;
+U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
 
----
-
-## 9. Serial front-end (RS-232 / RS-485) — **isolated where available**
-
-The G473 has 5 USART/UART + LPUART1 (~6 channels) — ample. Isolate every link that crosses into
-a foreign ground domain.
-
-### GPS-out design (the important bit)
-
-Third-party tools vary — **some want raw GPS, some want fused; raw is the more popular format.**
-So the out-feed is a **configurable mode**, not a fixed behavior. The **always-on STM32 owns the
-NMEA-OUT UART**:
-- **Default = raw echo.** STM32 re-emits GPS NMEA out the RS-232 port — keeps flowing
-  **even if the CM is booting/wedged/off**; matches the common case; STM32 boots to this before
-  the CM is up.
-- **Fused mode** (config switch, pushed from the app over PGN): STM32 emits the CM's fused
-  sentences (position + heading + roll / PANDA), and **auto-falls back to raw if the CM drops**,
-  so the third party never goes dark.
-- **Firmware echo, not a hardware Y-split** — even in raw mode this lets the STM32
-  **re-clock to a different output baud** (tools often want 4800/9600 regardless of the GPS's
-  baud) and **filter to a sentence subset** (e.g. just GGA/VTG/RMC). A hardware passthrough
-  can't do either. "Raw" = raw content, independently clocked/filtered.
-- **Second RS-232 port comes free** — the NMEA-out SP3232 has a 2nd channel (§Page 5), usable as a
-  2nd NMEA-out consumer (raw + fused) *or* an external RS-232 IMU/GPS input, config-dependent. A
-  3rd concurrent port = a 2nd SP3232 (populate-optional). Isolation on any of these = the DNP
-  ADM3251E/discrete footprint (see isolation policy below).
-
-### Transceiver selection (JLC stock verified 2026-07)
-
-| Link | Part | JLC # | Stock | ~Price | Notes |
-|---|---|---|---|---|---|
-| **Motor-driver RS-485** | **CA-IS3092W** | C2890051 | 12,426 | $3.22 | **Isolated + integrated iso power**, half-duplex; use STM32 USART DE mode |
-| RS-485 (alt) | ADM2587EBRWZ | C12081 | 1,915 | $4.39 | Isolated + iso power backup |
-| RS-485 (avoid) | CA-IS3082W | C528766 | **0** | $1.06 | Cheaper but out of stock + no iso power |
-| **NMEA-OUT RS-232** | **ADM3251EARWZ** | C579198 | 444 | $8.53 | Isolated single-channel + iso power; SOIC-20. The one line that truly needs isolation (foreign ground). Modest stock — see hedge |
-| GPS-in / IMU RS-232 | SP3232EEN-L/TR | C9378 | 89,365 | $0.34 | Non-isolated, ±15 kV ESD, 2drv/2rcv. Board-powered modules share ground → TVS is enough |
-
-**Isolation policy (updated — see `HARDWARE_AIO_NETLIST.md` §Page 5):**
-- **Isolate the motor-driver RS-485** (CA-IS3092W) — always. It crosses to the drive's ground.
-- **NMEA-out = non-isolated by default (SP3232EEN + SMAJ12CA TVS).** Decision reversed from "always
-  isolate": every integrated iso-RS-232 part is thin/dead at JLC (ADM3251E 444, ISOW7841 0–34,
-  ADM3252E 11), and most third-party tools share the tractor chassis ground. **Isolated ADM3251E
-  (C579198) / discrete (SP3232+ISO7721 C366164 + iso-DCDC) kept as a DNP populate-option** for
-  installs that genuinely need galvanic isolation.
-- **One SP3232 (2 ch) serves NMEA-out + the external RS-232 port** (external IMU/GPS, shared ground).
-- **GPS = on-board TTL multi-module slot** (1× ArduSimple Arduino-Uno footprint / 2× F9P / 1× UM98x)
-  → STM UART direct, no RS-232 driver. **IMU** arrives via the GPS (UM981/2 INS) or external
-  RS-232/RS-485/CAN — no dedicated IMU part.
-
-### RS-485 bus housekeeping
-- Half-duplex 2-wire default; STM32 USART **Driver-Enable (DE) auto-direction**.
-- 120 Ω termination as **populate-optional** (only if board is at a bus end) + fail-safe bias.
+- **Single always-on 5 V buck (Option A, unchanged from July).** TPS54560 60 V / 5 A, 400 kHz,
+  6.8 µH, 3×47 µF out, comp 16.9 k / 4.7 nF / 47 pF (locked to that C<sub>OUT</sub>).
+- **12 V system, 40 V operating (unchanged).** SMBJ24A clamps load-dump to ~39 V inside the buck's
+  60 V rating. A 24 V-native install needs the populate variant: SMBJ33/48 TVS, re-ratio `VIN_SENSE`.
+- **CM eFuse U2 TPS259571** — ILIM 487 Ω (~4.17 A), dVdt 10 nF. **EN is now pulled permanently high
+  (R43 → +3V3)** and `PI_FLT` is pulled up but not read by anything.
+- **Power-loss handling (inferred).** `VIN_SENSE` (100 k / 8.2 k, 40 V → 3.03 V) now goes to ADC IN2.
+  Linux watches it and does a clean `poweroff` when VIN falls, while C6/C7 hold the rail up.
+  **Limitation:** once halted, the CM4 only restarts on a power cycle or a `GLOBAL_EN` pulse, neither
+  of which the board can produce. A brown-out that triggers shutdown but recovers before the caps
+  drain leaves the unit halted until the key is cycled (§13 F10).
 
 ---
 
-## 10. Protection (all off-board lines)
+## 8. CAN (3× CAN FD)
 
-- **TVS / ESD** on every off-board conductor — folded into the front-end block.
-- Load-dump / reverse-polarity protection on the **12 V** input ahead of the buck (24 V = variant).
-- Isolation (§9) handles ground-loop/transient coupling on the long motor + third-party runs.
+- **U7/U8/U9 = MCP251863T-E/SS** — MCP2518FD controller + ATA6563 transceiver in one SSOP-28. SPI to
+  the CM4, Linux driver `mcp251xfd` (SocketCAN `can0..2`). VDD/VIO = +3V3, transceiver VCC = 5V_MAIN.
+- Controller-to-transceiver links (TXCAN 15 → TXD 23, RXD 28 → RXCAN 16) are external traces. Keep
+  them short.
+- **Clock:** one X1 40 MHz oscillator star-fed through 33 Ω (R64–R66) to each OSC1. 40 MHz is the
+  MCP2518FD's recommended CAN FD clock.
+- **⚠ STBY (pin 5) is unconnected** → internal pull-up → transceiver standby → cannot transmit
+  (§13 F1).
+- Bus TVS NUP2105L per channel (D5/D6/D7). **No termination on board** (§13 F8).
+- CAN chip-selects: CAN1 = SPI0 CE0 (GPIO8), CAN2 = CE1 (GPIO7), CAN3 = GPIO25 (GPIO chip-select, R74
+  pull-up). Interrupts: GPIO16/17/27.
 
 ---
 
-## 11. BOM — full detail in companion docs
+## 9. Serial & GPS
 
-The complete per-page BOM + netlist (all parts, JLC #s, stock, hand-fit flags) live in
-**`HARDWARE_AIO_BOM.md`** and **`HARDWARE_AIO_NETLIST.md`** — 7 schematic pages, every active part
-stock-verified live 2026-07-04. Headline verified spine:
+- **U12 SP3232EEN**, non-isolated, 2 drivers + 2 receivers at 3.3 V, SMAJ12CA TVS on each line
+  (D9–D12). Port 1 = UART2 (GPIO0/1) → J1.23/24; port 2 = UART3 (GPIO4/5) → J1.25/26.
+- **GPIO0/1 are the ID EEPROM pins** — `config.txt` needs `force_eeprom_read=0` and `disable_poe_fan=1`.
+- The July "GPS-out" behavior (raw echo that keeps flowing while the host is down, fused mode,
+  re-clocked baud) was STM32 firmware. In this revision any NMEA-out is a Linux service, so **it stops
+  when the CM4 is down or rebooting.**
+- **GPS slot:** UM982EB (U16) *or* ArduSimple RTK2B (P2) on UART5 (GPIO12/13), 5 V supply. Populate
+  **one** — they share the UART (§13 F9). No PPS line. IMU comes from the UM982's INS or an external
+  unit over RS-232/CAN.
+- **Console:** UART0 (GPIO14/15) on H1. On a wireless CM4, UART0 is assigned to Bluetooth by default,
+  so use `dtoverlay=miniuart-bt` or `disable-bt` if the console needs the PL011.
+- **Motor RS-485 removed** — the motor driver is reached over CAN or the direct PWM/DIR/EN outputs.
+
+---
+
+## 10. Field I/O & protection
+
+- **J1 = Amphenol ATS13-26PA-BM01**, 26-pin right-angle, IP69K, hand-soldered, front panel. Full
+  pinout in `HARDWARE_AIO_NETLIST.md` §5.1.
+- **WAS** (J1.4): ESD9B5V (low leakage, doesn't distort a ratiometric reading) → 1 k / 100 nF (~1.6 kHz)
+  → ADC IN0. The ADC reference is 5V_MAIN, the same rail that powers the sensor (J1.3), so the reading
+  is ratiometric with no divider.
+- **Current sense** (J1.6): same front end → ADC IN1.
+- **Switch inputs** (J1.7–9): SMAJ16A at the line, 1 k series, 10 k pull-up to +3V3, 100 nF, SRV05-4 to
+  +3V3 at the pin. **Contact-to-ground inputs** (§13 F6).
+- **Steering outputs** (J1.10–12): CM4 GPIO → 330 Ω → connector, 3.3 V logic (MD13S / IBT-2 style).
+  GPIO18 is hardware PWM0_0.
+- **Input protection:** Q1 reverse-polarity P-FET + SMBJ24A TVS + in-line harness fuse (not on board).
+  **Q1 orientation and gate clamp need fixing** (§13 F2, F3).
+
+---
+
+## 11. HMI
+
+- **Status:** 4× SK6812SIDE-A addressable RGB LEDs, data from GPIO2 via SN74AHCT1G125 (3.3 → 5 V) and
+  330 Ω. Replaces the July OLED + page rocker. GPIO2 can't produce the timing in hardware (§13 F5).
+- **Power LED:** D23 on `PI_LED_nPWR` (pin 95) (§13 F11).
+- **Reset:** SW1 PTS645 through-hole tactile on `RUN_PG`. A hard reset with no clean shutdown, since
+  there's no longer an MCU to interpret button presses.
+- **Piezo:** 2N7002 low-side driver from GPIO6 (software PWM tones), 470 Ω damping.
+- **Antennas:** back panel, U.FL pigtails from the CM4 and GPS module to bulkheads. No board RF.
+
+---
+
+## 12. BOM spine
+
+Full detail in `HARDWARE_AIO_BOM.md`.
 
 | Function | Part | JLC # |
 |---|---|---|
-| Host | **CM4101000** (1 GB Lite Wireless) | hand-fit |
-| Storage | 128 GB M.2 NVMe (2230/2242) | — |
-| MCU + HSE | STM32G473RCT6 + 8 MHz XTAL | C529361 + C2682775 |
-| 5 V buck / catch diode | TPS54560DDAR + SS56C | C31966 + C123948 |
-| M.2 3V3 buck / CM eFuse / 3V3 LDO | TPS563201 / TPS259571 / RT9080-33 | C116592 / C471038 / C841192 |
-| Rev-pol / TVS / power conn | IRFR5305 / SMBJ24A / screw | C2624 / C87268 / C8465 |
-| DF40 ×2 / M.2 / USB mux / RJ45 | DF40C-100DS / 91302-55 / TS3USB221 / HR911130C | C597931 / C2922444 / C130085 / C50933 |
-| CAN-FD ×3 + bus TVS | TCAN1042VDRQ1 + NUP2105L | C485806 + C284104 |
-| Iso RS-485 / RS-232 ×2 | CA-IS3092W / SP3232EEN | C2890051 / C9378 |
-| Steering opto / WAS ESD / input array | 6N137S / ESD9B5V / SRV05-4 | C5123515 / C2905646 / C558418 |
-| HMI: OLED / reset / piezo+FET | SH1106 (hand-fit) / TS-1187A / PS1240+2N7002 | C318884 / C76871+C8545 |
+| Host | CM4101000 (Lite Wireless) on 2× DF40C-100DS-0.4V(51) | hand-fit / C597931 |
+| Storage | 128 GB M.2 NVMe in 91302-55-067R2M socket | — / C2922444 |
+| 5 V buck / catch diode / inductor | TPS54560DDAR / SS56C / 6.8 µH | C31966 / C123948 / verify |
+| CM eFuse / 3V3 LDO / NVMe buck | TPS259571DSGR / RT9080-33GJ5 / TPS563201DDCR | C471038 / C841192 / C116592 |
+| Rev-pol / TVS / gate zener | IRFR5305TRPBF / SMBJ24A / BZT52C12 | C2624 / C87268 / C124196 |
+| CAN FD ×3 + clock + bus TVS | MCP251863T-E/SS + 40 MHz osc + NUP2105L | TBD / TBD / C284104 |
+| ADC | ADC128S102CIMTX/NOPB | TBD |
+| Watchdog | STWD100NXWY3F (consider NYWY3F) | TBD |
+| RS-232 ×2 + TVS | SP3232EEN-L/TR + SMAJ12CA | C9378 / C134948 |
+| Field ESD/TVS | ESD9B5V / SMAJ16A / SRV05-4 | C2905646 / C283886 / C558418 |
+| LEDs | SK6812SIDE-A ×4 + SN74AHCT1G125DBVR | C5378721 / TBD |
+| Ethernet | HR911130C magjack | C50933 |
+| Connector | ATS13-26PA-BM01 | hand-fit |
 
 ---
 
-## 12. Decisions — RESOLVED (layout-time TBDs remain)
+## 13. Schematic review — `Full-board_2026-09-14.net`
 
-**All pre-layout architecture decisions are closed** (details in the netlist/BOM per-page notes):
-- **GPS-out** — configurable mode, raw default + fused fallback; **non-isolated SP3232 default**,
-  iso ADM3251E/discrete = DNP option. (§9, Page 5)
-- **GPS routing** — default GPS→STM32→PGN→CM. **GPS slot = on-board TTL multi-module** (ArduSimple /
-  2× F9P / UM98x); **IMU via GPS/RS-232/RS-485/CAN**, no dedicated part. (Page 5)
-- **Storage** — CM4 Lite + 128 GB NVMe, no SD/eMMC; rpiboot provisioning. (§4)
-- **Sections** — **none on-board**; external ESP32 over the module network. (Page 6)
-- **Module network** — Ethernet (RJ45, on-module PHY) + WiFi (CM4 wireless + ext antenna). (Page 2)
-- **Motor amp** — off-board; reachable via opto PWM/DIR/EN + isolated RS-485 + CAN. (Page 6)
-- **Power** — single always-on 60 V buck + eFuse gate; **12 V system / 40 V** (24 V = variant). (§7)
-- **CAN transceiver** — TCAN1042VDRQ1 (C485806). (Page 4)
-- **HMI** — STM-owned 1.3" OLED + recessed reset + in-case piezo. (Page 7)
-- **Connectors** — Deutsch DTM13 hand-soldered (IP67); antennas on back panel. (Page 7)
+Checked against the CM4 datasheet (Release 4), MCP251863 DS20006624B, ADC128S102 SNAS298G and STWD100
+DocID14134. Nets and pins are in `HARDWARE_AIO_NETLIST.md`.
 
-**Layout-time TBDs (not decisions — values/mechanical):** hold-up cap C_HU + F1 fuse + eFuse ILIM;
-all inductor/cap/feedback passive values; DS12712 pin-number final eyeball; connector pinouts +
-which controller-output modes to break out; panel mechanical (OLED window, probe-hole, bulkheads);
-copy CM4IO KiCad for DF40/PCIe/Ethernet routing; re-verify all JLC stock at order.
+### Must fix before layout
+
+| # | Issue | Evidence | Fix |
+|---|---|---|---|
+| **F1** | **CAN transceivers stuck in standby.** MCP251863 pin 5 (STBY) is unconnected on U7, U8 and U9. | Datasheet §8.2.2: STBY has an internal pull-up to VIO; normal mode needs STBY low. As wired, no CAN channel can transmit. | Tie pin 5 → GND on all three (simplest), or to pin 7 (nINT0/GPIO0/XSTBY) and enable `XSTBYEN` in firmware. |
+| **F2** | **Q1 reverse-polarity FET looks reversed.** Q1.3 (source) is on `VIN` and Q1.2 (drain, tab) on `VIN_PROT`. | A P-FET's body diode runs drain → source. With the battery reversed, VIN is negative and the diode conducts from VIN_PROT (held near 0 V by TV1's forward diode) into VIN, so nothing blocks it. Same wiring in the July netlist. | Confirm the EasyEDA symbol pin map (IRFR5305: 1 = G, 2 = D/tab, 3 = S). If it matches, swap: **drain → `VIN`, source → `VIN_PROT`**. |
+| **F3** | **Q1 gate isn't Vgs-clamped.** D2 (12 V zener) goes gate → GND; R40 100 k (VIN → gate) + R47 10 k (gate → GND). | Vgs ≈ −0.91 × VIN: −21.8 V at a 24 V jump start, −35 V at the 39 V TVS clamp. IRFR5305 V<sub>GS</sub> max is ±20 V. | Put the zener **source → gate** (cathode on source), across the source-side resistor. Keep the gate pull-down to GND. |
+
+### Should fix
+
+| # | Issue | Evidence | Suggested fix |
+|---|---|---|---|
+| **F4** | Watchdog timeout 102 ms (71–142 ms) is tight for Linux. | STWD100 order code: "X" = t<sub>WD</sub> 102 ms, "Y" = 1.6 s. | Fit **STWD100NYWY3F** (same footprint, open-drain), or commit to kernel-level kicking. |
+| **F5** | SK6812 data on GPIO2, which has no PWM, PCM or SPI function. | WS2812-class timing (800 kHz) from Linux normally uses PWM, PCM (GPIO21) or SPI0 MOSI (GPIO10); GPIO-toggling from userspace isn't reliable. GPIO18's PWM0 is already the steering output. | Swap `LED_DATA` ↔ `SW_REMOTE` (GPIO2 ↔ GPIO21) to use the PCM method. GPIO2's 1.8 k pull-up is harmless on a pulled-up switch input. |
+| **F6** | Switch inputs protect for contact closure only. | 12 V on J1.7–9 → 1 k → SRV05-4 clamp at ~+3V3 + V<sub>F</sub> ≈ 4 V, above the CM4 GPIO max of V<sub>GPIO_VREF</sub> + 0.5 V = 3.8 V, with ~8–10 mA pushed into +3V3. July's STM32 pins were 5 V tolerant. | If 12 V-level switch signals must be supported, add a divider (e.g. 10 k : 2.2 k → 14.4 V gives 2.6 V) or raise the series R. Otherwise document the inputs as contact-to-ground only. |
+| **F7** | J1 CAN pin order changed. | July: 14/16/18 = H, 15/17/19 = L. Now: 14/16/18 = L, 15/17/19 = H. | Confirm intentional; update the harness drawing to match. |
+| **F8** | No CAN termination footprints. | July split-termination R/C and CMC footprints were removed. | Add DNP 2×60 Ω + 4.7 nF split-termination per channel, or document that buses are terminated externally. |
+| **F9** | GPS modules share one UART. | U16.15/16 and P2.11/12 are both on `GPS_RX`/`GPS_TX`. | Populate one (document it on the silkscreen), or add 0 Ω DNP links to isolate each slot. |
+| **F10** | CM4 can't be power-cycled after a halt. | eFuse EN tied high (R43); `PI_FLT` not routed; `GLOBAL_EN` unconnected. | Route `PI_FLT` to a GPIO if one can be freed. For brown-out recovery, a small supervisor that pulses `GLOBAL_EN` low when VIN returns. |
+| **F11** | Power LED on an unbuffered pin. | CM4 datasheet: `PI_LED_nPWR` "needs to be buffered". D23 is driven directly (~1.3 mA via R79 1 k). | Add a 2N7002/BSS138 buffer, or drop the LED. |
+| **F12** | `RUN_PG` driven hard to GND. | CM4 datasheet: drive low "via a 220 Ω resistor". SW1 and WDO connect straight to pin 92. | Add a 220 Ω between CM4 pin 92 and the SW1/WDO node. |
+
+### Informational (no change needed)
+
+- `GLOBAL_EN` (99), `nEXTRST` (100), `WL_nDISABLE` (89), `BT_nDISABLE` (91) are single-pin nets. All
+  are fine floating per the datasheet; expect EasyEDA DRC warnings.
+- `USB_OTG_ID` (101) floats → device mode. Correct for rpiboot over H3 (the July grounding fix was for
+  the STM32 host link, which is gone).
+- Chip-select pull-ups (R74, R75) sit only on GPIO25/26, which default pull-low; CE0/CE1 (GPIO8/7)
+  default pull-high. Consistent.
+- ADC128S102 needs SCLK 8–16 MHz for rated accuracy; set its SPI device speed separately from the CAN
+  devices.
+- Piezo on GPIO6 has no hardware PWM, so tones are software PWM (fine for beeps).
+- All 28 GPIOs are allocated. Adding anything (PPS, `PI_FLT`, CAN STBY control) means freeing a pin.
+- The CM4 symbol U19 is one module footprint; the two DF40 connectors aren't separate netlist parts
+  and must be added to the JLC BOM by hand.
+
+---
+
+## 14. Linux bring-up checklist (starting point)
+
+Unverified on hardware. Confirm overlay names and parameters against the Raspberry Pi OS release used.
+
+```
+# /boot/firmware/config.txt
+force_eeprom_read=0          # GPIO0/1 used as UART2
+disable_poe_fan=1
+dtparam=i2c_arm=off          # GPIO2/3 used for LEDs / watchdog EN
+dtparam=spi=on
+dtoverlay=disable-bt         # PL011 UART0 to console on GPIO14/15 (or miniuart-bt)
+dtoverlay=uart2              # RS-232 #1 (GPIO0/1)
+dtoverlay=uart3              # RS-232 #2 (GPIO4/5)
+dtoverlay=uart5              # GPS (GPIO12/13)
+dtoverlay=pwm,pin=18,func=2  # steering PWM0_0
+dtoverlay=mcp251xfd,spi0-0,oscillator=40000000,interrupt=16   # CAN1 (CE0)
+dtoverlay=mcp251xfd,spi0-1,oscillator=40000000,interrupt=17   # CAN2 (CE1)
+# CAN3 (CS = GPIO25, INT = GPIO27) and the ADC (CS = GPIO26) need a custom overlay with cs-gpios.
+# External watchdog: custom overlay, compatible = "linux,wdt-gpio", gpios = <&gpio 22 0>,
+#   hw_algo = "toggle", hw_margin_ms below t_WD minimum; drive GPIO3 low to enable.
+```

@@ -1,4 +1,6 @@
 // ===== AgOpenWeb — Color nets by IC (paste into EasyEDA Pro "Run Script") =====
+// ⚠ SUPERSEDED (2026-09-14): board work moved to EasyEDA Standard (no Pro scripting), and these net
+// names are from the July CM4+STM32 netlist — most no longer exist. Kept for history.
 // Colors each IC's local nets a distinct color so scattered support passives
 // can be found by following their colored ratsnest. Run from the PCB editor.
 // Decoupling caps live on shared +3V3/GND (not colored) — cross-select those.

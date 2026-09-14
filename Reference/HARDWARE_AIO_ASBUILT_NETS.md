@@ -1,5 +1,7 @@
 # AgOpenWeb AiO — AS-BUILT netlist (real EasyEDA designators)
 
+> **⚠ SUPERSEDED (2026-09-14).** Historical snapshot from the July EasyEDA Pro design (CM4 + STM32G473). The board was redesigned as CM4-only in EasyEDA Standard, and several parts and designators here no longer exist. Current wiring: `HARDWARE_AIO_NETLIST.md` (from `Full-board_2026-09-14.net`); review findings: `HARDWARE_AIO_BOARD.md` §13. Kept for history only — don't wire from this file.
+
 > Wiring guide keyed to the **actual designators EasyEDA assigned** during capture (C1, R40, U1…),
 > built one sheet at a time from each sheet's exported component list. This is the doc you wire
 > **from** — every net lists `RefDes.pin`. Planning names (C_IN, R_RT…) are kept in the map tables

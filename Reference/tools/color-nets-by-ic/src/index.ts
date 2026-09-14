@@ -1,4 +1,8 @@
 // EasyEDA Pro extension — "Color nets by IC"
+//
+// ⚠ SUPERSEDED (2026-09-14): board work moved to EasyEDA Standard, which can't run Pro extensions,
+// and NET_COLORS below is keyed to the July CM4+STM32 netlist (Full-board_2026-07-08.net). Most of
+// those nets (STM32, TCAN1042, RS-485, OLED) no longer exist. Kept for history.
 // Colors each IC's LOCAL nets a distinct color so the scattered support
 // passives (pull-ups, feedback R, crystal caps, filters, split-term,
 // charge-pump) can be found by following their colored ratsnest.
