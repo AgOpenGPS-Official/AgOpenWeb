@@ -5,9 +5,10 @@
 > external ADC, direct steering outputs, and a hardware watchdog.
 >
 > **Status (2026-09-14): schematic captured in EasyEDA Standard, full-board netlist exported, PCB
-> layout partly done — power, Ethernet and NVMe are placed/routed; CAN, serial, ADC, field I/O and
-> HMI are not.** A review of the export found schematic issues (§13); the table there notes which
-> ones touch the areas already laid out. JLC stock figures date from 2026-07; re-check at order time.
+> layout started.** 184 × 119 mm, 4-layer. 35 of 151 parts placed (input protection + 5 V buck, J1,
+> RJ45, M.2, CM4, front LEDs/reset); VIN/VIN_PROT, the buck, Ethernet and PCIe are routed. CAN, serial,
+> ADC, field I/O, eFuse/LDO/NVMe buck are not placed. Schematic review: §13. Layout review: §13b.
+> PCB source + Gerbers: `PCB From EasyEDA/`.
 >
 > **Companion docs:** `HARDWARE_AIO_NETLIST.md` (as-built wiring, every net),
 > `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
@@ -260,15 +261,15 @@ Full detail in `HARDWARE_AIO_BOM.md`.
 |---|---|---|
 | Host | CM4101000 (Lite Wireless) on 2× DF40C-100DS-0.4V(51) | hand-fit / C597931 |
 | Storage | 128 GB M.2 NVMe in 91302-55-067R2M socket | — / C2922444 |
-| 5 V buck / catch diode / inductor | TPS54560DDAR / SS56C / 6.8 µH | C31966 / C123948 / verify |
+| 5 V buck / catch diode / inductor | TPS54560DDAR / SS56C / MWSA1004S-6R8MT | C31966 / C123948 / C408485 |
 | CM eFuse / 3V3 LDO / NVMe buck | TPS259571DSGR / RT9080-33GJ5 / TPS563201DDCR | C471038 / C841192 / C116592 |
 | Rev-pol / TVS / gate zener | IRFR5305TRPBF / SMBJ24A / BZT52C12 | C2624 / C87268 / C124196 |
-| CAN FD ×3 + clock + bus TVS | MCP251863T-E/SS + 40 MHz osc + NUP2105L | TBD / TBD / C284104 |
-| ADC | ADC128S102CIMTX/NOPB | TBD |
-| Watchdog | STWD100NXWY3F (consider NYWY3F) | TBD |
+| CAN FD ×3 + clock + bus TVS | MCP251863T-E/SS + 40 MHz osc + NUP2105L | C5226885 / C5203551 / C284104 |
+| ADC | ADC128S102CIMTX/NOPB | C179666 |
+| Watchdog | STWD100NXWY3F (consider NYWY3F) | C1852782 |
 | RS-232 ×2 + TVS | SP3232EEN-L/TR + SMAJ12CA | C9378 / C134948 |
 | Field ESD/TVS | ESD9B5V / SMAJ16A / SRV05-4 | C2905646 / C283886 / C558418 |
-| LEDs | SK6812SIDE-A ×4 + SN74AHCT1G125DBVR | C5378721 / TBD |
+| LEDs | SK6812SIDE-A ×4 + SN74AHCT1G125DBVR | C5378721 / C7484 |
 | Ethernet | HR911130C magjack | C50933 |
 | Connector | ATS13-26PA-BM01 | hand-fit |
 
@@ -292,8 +293,8 @@ DocID14134. Nets and pins are in `HARDWARE_AIO_NETLIST.md`.
 | # | Touches laid-out area? | Rework |
 |---|---|---|
 | F1 | no (CAN block) | tie pin 5 to GND before placing U7–U9 |
-| **F2** | **yes — power** | Swap the nets on Q1's pads: pad 2 (tab) → `VIN`, pad 3 → `VIN_PROT`. The tab's large copper pour becomes the input-side pour, so either rotate Q1 so the tab faces J1.1, or re-assign the pours around it. TV1, C1/C2, C6/C7, R2, R42 and U1 stay on `VIN_PROT` (now pad 3). |
-| **F3** | **yes — power** (small) | Flip D2 and re-connect it: cathode → Q1 source (`VIN_PROT` after F2), anode → `PGATE`. Move R40's top end from `VIN` to `VIN_PROT` as well, so both gate parts reference the source. R47 stays gate → GND. |
+| **F2** | **yes — power** | Confirmed on the PCB: Q1's tab (pad 2, 6.2×5.8 mm) is on `VIN_PROT` with a 2.5 mm trace toward C6/U1, and pad 3 is on `VIN` with a 2.0 mm trace to J1. The tab already faces J1, so **no rotation needed**: swap the nets, route J1.1 → tab, and route pad 3 → the existing `VIN_PROT` trace. |
+| **F3** | **yes — power** (small) | D2, R40 and R47 sit together just below Q1 pad 1. Flip D2: cathode → Q1 source (`VIN_PROT` after F2), anode → `PGATE`. Move R40's top end from `VIN` to `VIN_PROT`, which also removes the 30 mm, 0.25 mm `VIN` trace that currently runs from J1.1 around to R40. R47 stays gate → GND. |
 | F4 | no | same footprint, BOM swap only |
 | F5 | no | net swap at CM4 pins 58 ↔ 25, both unrouted |
 | F6–F10 | no | field I/O / GPS / CAN, not laid out |
@@ -330,6 +331,44 @@ Ethernet and NVMe routing aren't affected by any finding.
 - All 28 GPIOs are allocated. Adding anything (PPS, `PI_FLT`, CAN STBY control) means freeing a pin.
 - The CM4 symbol U19 is one module footprint; the two DF40 connectors aren't separate netlist parts
   and must be added to the JLC BOM by hand.
+
+---
+
+## 13b. Layout review — `PCB From EasyEDA/PCB_PCB_AOW-v2.0_2026-09-14.json`
+
+Parsed from the EasyEDA Standard PCB source. Coordinates are mm from the board's top-left corner
+(origin at the outline, x along the 184 mm edge, y down). The PCB pad nets match the 2026-09-14
+netlist exactly (0 differences).
+
+**Stackup as drawn:** L1 top = all routing (62 tracks) + GND pour, Inner1 = solid GND plane, Inner2 =
+empty, bottom = empty. **3 vias total.**
+
+### Findings
+
+| # | Issue | Measured | Fix |
+|---|---|---|---|
+| **L1** | **Input TVS on a thin trace.** TV1 pad 1 reaches `VIN_PROT` only through a 0.254 mm × 4.8 mm trace to C6. | SMBJ24A is rated 600 W peak (~15 A at clamp). The trace adds inductance that the clamp current has to drive through, and it's narrow enough to fuse on a load dump. | Put TV1 pad 1 straight onto the wide `VIN_PROT` copper (or a pour), right after Q1, with TV1 pad 2 on GND via several vias. |
+| **L2** | **U1 exposed pad has no thermal vias**, and the GND pour on top is only tied to the Inner1 plane by **3 vias** (all near D2/R47). | U1 pad 9 is 2.0 × 2.0 mm, GND, with no vias. Every SMD GND pad (CM4 DF40 GND pins, M.2, buck caps, D1) reaches Inner1 only through that pour. | Add a thermal-via array under U1 (TI land pattern). Stitch GND vias at the CM4 and M.2 GND pins beside the PCIe/Ethernet pairs, at each bypass cap, and along the pour edges. |
+| **L3** | **Buck switching loop is large.** For this non-synchronous buck the fast current loop is C1/C2 → U1 VIN → SW → D1 → back to C1/C2 GND. | C1/C2 GND pads at (4.9, 48–51); D1 anode (GND) at (9.4, 34.5), ≈ 15 mm apart through the pour. U1 VIN pin is ≈ 5.4 mm from C1/C2. | Rearrange so D1's anode and C1/C2's GND pads land next to each other and next to U1 pin 7/pad 9. Keep the SW node copper (U1.8–D1–L2) small. |
+| **L4** | **Ethernet pair impedance looks low.** ETH pairs use the `ETH` DRC rule width **0.377 mm** at **0.10 mm** gap (necking to 0.2/0.15 mm at the pins). | IPC-2141 edge-coupled microstrip estimate on JLC's 1.6 mm 4-layer 7628 stackup (L1–L2 prepreg ≈ 0.21 mm, εr ≈ 4.4): ≈ 48 Ω single-ended / **≈ 66 Ω differential vs 100 Ω target**. 0.377 mm looks like a 50 Ω single-ended width. PCIe (0.226 mm / 0.103 mm) comes out ≈ 89 Ω differential, close to its 85–90 Ω target. | Confirm with JLC's impedance calculator for the ordered stackup, then set the `ETH` rule to the 100 Ω differential width/gap and re-route (the pairs are all on L1 with no vias, so it's a width change). |
+| **L5** | **Ethernet intra-pair skew.** | P−N length: ETH0 0.27 mm, **ETH1 8.45 mm**, ETH2 1.34 mm, ETH3 2.11 mm (target ≤ 0.13 mm, §2 of the layout guide). ETH1's P and N magjack pins (P4, P7) are 4.6 mm apart, which accounts for most of it. PCIe is fine: TX 0.05, RX 0.00, REFCLK 0.08 mm. | Add length tuning on the short leg of each pair near the magjack (ETH1_P, ETH2_N, ETH3_N, ETH0_N). |
+| L6 | ETH1 pair gap below the design rule at the magjack escape. | 0.093 mm edge gap at (20.8, 8.7) vs the 0.10 mm DRC clearance. | Nudge the 0.15 mm escape segments apart; it will likely change anyway with L4. |
+| L7 | L2 inductor footprint doesn't match the part. | Footprint `MDA1054HT` (11 × 10 mm); attached part is Sunlord MWSA1004S-6R8MT (10 × 10 mm, C408485). | Check the pads against the MWSA1004S land pattern, or swap to that footprint. |
+| L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM lists U19 as CM4101000 C20754863. | Exclude U19 from JLC assembly and add 2× DF40C-100DS-0.4V(51) (C597931). Confirm the U19 pads are the DF40 *receptacle* land pattern. |
+
+### What's routed (connectivity check on placed parts)
+
+- **Complete:** `VIN`, `VIN_PROT`, `PGATE`, buck nets (`SW_BUCK1`, `BOOT1`, `FB1`, `COMP1`, `CCMID`,
+  `EN1`, `RT1`), all 8 Ethernet MDI nets, all 6 PCIe pair nets.
+- **Partial:** `5V_MAIN` — buck output (L2, C3–C5, C63, R7) done; J1.3 and the LEDs not yet.
+- **Not routed yet (parts placed):** CM4 `5V_CM` (U2 not placed), `+3V3_NVME` (U4 not placed),
+  `GPIO_VREF`/`CM4_3V3` strap (78–84–86), `CM4_1V8`, `PCIE_NRST`, `PCIE_CLKREQ`, `RUN_PG`,
+  `PI_LED_NPWR`, LED data chain, RJ45 LED `+3V3`.
+- Inner1 GND plane voids under the Ethernet pairs are only the magjack pin anti-pads where the
+  pairs terminate — no splits under routed high-speed nets.
+- Track widths: `VIN` 2.0 mm, `VIN_PROT` 2.5 mm main (0.6 mm branch to C7 → U1 VIN), `SW_BUCK1`
+  1.0 mm, `5V_MAIN` 1.0–2.0 mm. Fine for ~2 A input / 5 A output on 1 oz outer copper once L1–L3 are
+  addressed.
 
 ---
 

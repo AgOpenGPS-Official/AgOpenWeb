@@ -12,13 +12,16 @@
 The full list with evidence is in `HARDWARE_AIO_BOARD.md` §13. These change nets or footprints, so
 settle them before placement:
 
-**Layout progress (2026-09-14):** power, Ethernet and NVMe are placed and routed. Everything else is
-still to do.
+**Layout progress (2026-09-14):** 35 of 151 parts placed; VIN/VIN_PROT, the 5 V buck, Ethernet and
+PCIe routed. Source + Gerbers in `PCB From EasyEDA/`. **A review of that layout found L1–L8**
+(`HARDWARE_AIO_BOARD.md` §13b): TVS on a thin trace, no thermal/stitching vias (3 vias on the whole
+board), large buck switching loop, Ethernet pairs ≈ 66 Ω instead of 100 Ω, Ethernet skew up to 8.5 mm,
+and two footprint/BOM mismatches (L2 inductor, U19 CM4 vs DF40 receptacles).
 
 | # | Where | Fix | Status | Hits routed area? |
 |---|---|---|---|---|
 | **F1** | U7/U8/U9 pin 5 `STBY` floating | tie to GND (or to pin 7 XSTBY) | **must fix** | no |
-| **F2** | Q1 source/drain reversed | drain (tab) → `VIN`, source → `VIN_PROT` (confirm symbol pin map) | **must fix** | **yes — Q1 pours** |
+| **F2** | Q1 source/drain reversed | drain (tab) → `VIN`, source → `VIN_PROT` — confirmed on the PCB; tab already faces J1, just swap nets | **must fix** | **yes — re-route at Q1** |
 | **F3** | D2 gate zener to GND | zener source → gate; R40 to `VIN_PROT` | **must fix** | **yes — small** |
 | F4 | U20 102 ms timeout | STWD100NYWY3F (same footprint) | part swap only | no |
 | F5 | SK6812 data on GPIO2 | swap with SW_REMOTE (GPIO21) | net swap | no |
@@ -138,10 +141,12 @@ Antennas exit the **back** on U.FL pigtails, so there are no board-level RF trac
 - [ ] Decide F4/F5/F8/F11/F12 (they change parts or nets)
 - [ ] DF40 connector pads on the U19 footprint checked against the CM4 datasheet mechanical drawing
 - [ ] Impedance stackup ordered from JLC; 85/100/90 Ω geometries from their calculator
-- [x] CM4 + M.2 placed and PCIe pairs routed (done 2026-09) — re-check skew against §3
-- [x] Ethernet routed (done 2026-09) — re-check against §4
-- [ ] Solid L2 ground under every high-speed pair, no splits
-- [x] Power tree placed and routed (done 2026-09) — re-check buck loops/FB isolation after F2/F3
+- [x] CM4 + M.2 placed and PCIe pairs routed (done 2026-09) — skew OK (≤ 0.08 mm), ≈ 89 Ω estimate
+- [ ] Ethernet re-routed at 100 Ω width/gap and length-tuned (L4, L5, L6)
+- [x] Solid L2 ground under every high-speed pair, no splits (checked 2026-09-14)
+- [ ] GND stitching vias at CM4/M.2 GND pins and bypass caps; thermal vias under U1 (L2)
+- [ ] Power tree: TV1 onto wide VIN_PROT copper (L1), buck loop tightened (L3), F2/F3 rework
+- [ ] L2 inductor land pattern matches MWSA1004S (L7)
 - [ ] ADC VA tapped from a quiet point
 - [ ] 40 MHz clock traces short and star-fed from X1
 - [ ] M.2 card keep-out + standoff reserved; socket Z-height clears the lid
