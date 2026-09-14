@@ -7,10 +7,10 @@
 > **Status (2026-09-14): schematic captured in EasyEDA Standard, full-board netlist exported, PCB
 > layout started.** 184 × 119 mm, 4-layer. 35 of 151 parts placed (input protection + 5 V buck, J1,
 > RJ45, M.2, CM4, front LEDs/reset); VIN/VIN_PROT, the buck, Ethernet and PCIe are routed. CAN, serial,
-> ADC, field I/O, eFuse/LDO/NVMe buck are not placed. Schematic review: §13. Layout review: §13b.
+> ADC, field I/O, eFuse/LDO/NVMe buck are not placed. Open issues: `HARDWARE_AIO_ISSUES.md`.
 > PCB source + Gerbers: `PCB From EasyEDA/`.
 >
-> **Companion docs:** `HARDWARE_AIO_NETLIST.md` (as-built wiring, every net),
+> **Companion docs:** `HARDWARE_AIO_ISSUES.md` (open schematic + layout issues), `HARDWARE_AIO_NETLIST.md` (as-built wiring, every net),
 > `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
 > (routing). Ref designators are the real EasyEDA ones and match across all of them.
 
@@ -43,7 +43,7 @@ that the new netlist still follows is kept as-is.
 | USB | CM4 host ↔ STM device via TS3USB221 mux + micro-USB rpiboot | 2×2 header H3 (USB D± + nRPIBOOT) for provisioning only |
 | HMI | STM-driven 1.3" OLED + page rocker + piezo | 4× SK6812 status LEDs, power LED, piezo, TH reset button |
 | Steering outputs | opto-isolated in first pass, then direct drive (Jul 7) | direct CM4 GPIO via 330 Ω |
-| J1 CAN pinout | H on even pins 14/16/18 | **L on even, H on odd** (§13 F7) |
+| J1 CAN pinout | H on even pins 14/16/18 | **L on even, H on odd** (ISSUES S5) |
 
 ---
 
@@ -153,7 +153,7 @@ that the new netlist still follows is kept as-is.
 
 - **Timeout:** the fitted **STWD100NXWY3F is 102 ms** (71–142 ms). Kicking reliably inside 71 ms from
   Linux means the kernel `gpio-wdt` driver (device tree `linux,wdt-gpio`, toggle mode), not a
-  userspace daemon. **STWD100NYWY3F (1.6 s)** is the same footprint and much more forgiving (§13 F4).
+  userspace daemon. **STWD100NYWY3F (1.6 s)** is the same footprint and much more forgiving (ISSUES S3).
 - `RUN_PG` (pin 92) is the correct reset input. `nEXTRST` (pin 100) is a reset *output* and
   `GLOBAL_EN` (pin 99) powers the module off.
 - The CM4's built-in BCM2711 watchdog still exists. The STWD100 is the one that works even if the SoC
@@ -187,7 +187,7 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   Linux watches it and does a clean `poweroff` when VIN falls, while C6/C7 hold the rail up.
   **Limitation:** once halted, the CM4 only restarts on a power cycle or a `GLOBAL_EN` pulse, neither
   of which the board can produce. A brown-out that triggers shutdown but recovers before the caps
-  drain leaves the unit halted until the key is cycled (§13 F10).
+  drain leaves the unit halted until the key is cycled (ISSUES S8).
 
 ---
 
@@ -199,9 +199,9 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   them short.
 - **Clock:** one X1 40 MHz oscillator star-fed through 33 Ω (R64–R66) to each OSC1. 40 MHz is the
   MCP2518FD's recommended CAN FD clock.
-- **⚠ STBY (pin 5) is unconnected** → internal pull-up → transceiver standby → cannot transmit
-  (§13 F1).
-- Bus TVS NUP2105L per channel (D5/D6/D7). **No termination on board** (§13 F8).
+- **STBY (pin 5) is tied to GND** on all three → transceiver always in normal mode (the pin has an
+  internal pull-up to VIO, so it must not float).
+- Bus TVS NUP2105L per channel (D5/D6/D7). **No termination on board** (ISSUES S6).
 - CAN chip-selects: CAN1 = SPI0 CE0 (GPIO8), CAN2 = CE1 (GPIO7), CAN3 = GPIO25 (GPIO chip-select, R74
   pull-up). Interrupts: GPIO16/17/27.
 
@@ -216,7 +216,7 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   re-clocked baud) was STM32 firmware. In this revision any NMEA-out is a Linux service, so **it stops
   when the CM4 is down or rebooting.**
 - **GPS slot:** UM982EB (U16) *or* ArduSimple RTK2B (P2) on UART5 (GPIO12/13), 5 V supply. Populate
-  **one** — they share the UART (§13 F9). No PPS line. IMU comes from the UM982's INS or an external
+  **one** — they share the UART (ISSUES S7). No PPS line. IMU comes from the UM982's INS or an external
   unit over RS-232/CAN.
 - **Console:** UART0 (GPIO14/15) on H1. On a wireless CM4, UART0 is assigned to Bluetooth by default,
   so use `dtoverlay=miniuart-bt` or `disable-bt` if the console needs the PL011.
@@ -233,19 +233,19 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   is ratiometric with no divider.
 - **Current sense** (J1.6): same front end → ADC IN1.
 - **Switch inputs** (J1.7–9): SMAJ16A at the line, 1 k series, 10 k pull-up to +3V3, 100 nF, SRV05-4 to
-  +3V3 at the pin. **Contact-to-ground inputs** (§13 F6).
+  +3V3 at the pin. **Contact-to-ground inputs** (ISSUES S11).
 - **Steering outputs** (J1.10–12): CM4 GPIO → 330 Ω → connector, 3.3 V logic (MD13S / IBT-2 style).
   GPIO18 is hardware PWM0_0.
 - **Input protection:** Q1 reverse-polarity P-FET + SMBJ24A TVS + in-line harness fuse (not on board).
-  **Q1 orientation and gate clamp need fixing** (§13 F2, F3).
+  **Q1 orientation and gate clamp need fixing** (ISSUES S1, S2).
 
 ---
 
 ## 11. HMI
 
 - **Status:** 4× SK6812SIDE-A addressable RGB LEDs, data from GPIO2 via SN74AHCT1G125 (3.3 → 5 V) and
-  330 Ω. Replaces the July OLED + page rocker. GPIO2 can't produce the timing in hardware (§13 F5).
-- **Power LED:** D23 on `PI_LED_nPWR` (pin 95) (§13 F11).
+  330 Ω. Replaces the July OLED + page rocker. GPIO2 can't produce the timing in hardware (ISSUES S4).
+- **Power LED:** D23 on `PI_LED_nPWR` (pin 95) (ISSUES S9).
 - **Reset:** SW1 PTS645 through-hole tactile on `RUN_PG`. A hard reset with no clean shutdown, since
   there's no longer an MCU to interpret button presses.
 - **Piezo:** 2N7002 low-side driver from GPIO6 (software PWM tones), 470 Ω damping.
@@ -275,100 +275,12 @@ Full detail in `HARDWARE_AIO_BOM.md`.
 
 ---
 
-## 13. Schematic review — `Full-board_2026-09-14.net`
+## 13. Design review
 
-Checked against the CM4 datasheet (Release 4), MCP251863 DS20006624B, ADC128S102 SNAS298G and STWD100
-DocID14134. Nets and pins are in `HARDWARE_AIO_NETLIST.md`.
-
-### Must fix before layout
-
-| # | Issue | Evidence | Fix |
-|---|---|---|---|
-| **F1** | **CAN transceivers stuck in standby.** MCP251863 pin 5 (STBY) is unconnected on U7, U8 and U9. | Datasheet §8.2.2: STBY has an internal pull-up to VIO; normal mode needs STBY low. As wired, no CAN channel can transmit. | Tie pin 5 → GND on all three (simplest), or to pin 7 (nINT0/GPIO0/XSTBY) and enable `XSTBYEN` in firmware. |
-| **F2** | **Q1 reverse-polarity FET looks reversed.** Q1.3 (source) is on `VIN` and Q1.2 (drain, tab) on `VIN_PROT`. | A P-FET's body diode runs drain → source. With the battery reversed, VIN is negative and the diode conducts from VIN_PROT (held near 0 V by TV1's forward diode) into VIN, so nothing blocks it. Same wiring in the July netlist. | Confirm the EasyEDA symbol pin map (IRFR5305: 1 = G, 2 = D/tab, 3 = S). If it matches, swap: **drain → `VIN`, source → `VIN_PROT`**. |
-| **F3** | **Q1 gate isn't Vgs-clamped.** D2 (12 V zener) goes gate → GND; R40 100 k (VIN → gate) + R47 10 k (gate → GND). | Vgs ≈ −0.91 × VIN: −21.8 V at a 24 V jump start, −35 V at the 39 V TVS clamp. IRFR5305 V<sub>GS</sub> max is ±20 V. | Put the zener **source → gate** (cathode on source), across the source-side resistor. Keep the gate pull-down to GND. |
-
-### Impact on the existing layout (power, Ethernet, NVMe already routed)
-
-| # | Touches laid-out area? | Rework |
-|---|---|---|
-| F1 | no (CAN block) | tie pin 5 to GND before placing U7–U9 |
-| **F2** | **yes — power** | Confirmed on the PCB: Q1's tab (pad 2, 6.2×5.8 mm) is on `VIN_PROT` with a 2.5 mm trace toward C6/U1, and pad 3 is on `VIN` with a 2.0 mm trace to J1. The tab already faces J1, so **no rotation needed**: swap the nets, route J1.1 → tab, and route pad 3 → the existing `VIN_PROT` trace. |
-| **F3** | **yes — power** (small) | D2, R40 and R47 sit together just below Q1 pad 1. Flip D2: cathode → Q1 source (`VIN_PROT` after F2), anode → `PGATE`. Move R40's top end from `VIN` to `VIN_PROT`, which also removes the 30 mm, 0.25 mm `VIN` trace that currently runs from J1.1 around to R40. R47 stays gate → GND. |
-| F4 | no | same footprint, BOM swap only |
-| F5 | no | net swap at CM4 pins 58 ↔ 25, both unrouted |
-| F6–F10 | no | field I/O / GPS / CAN, not laid out |
-| F11 | no (HMI) | adds a SOT-23 near D23 |
-| F12 | near CM4 only | adds a 0402 between CM4 pin 92 and the SW1/WDO node |
-
-Ethernet and NVMe routing aren't affected by any finding.
-
-### Should fix
-
-| # | Issue | Evidence | Suggested fix |
-|---|---|---|---|
-| **F4** | Watchdog timeout 102 ms (71–142 ms) is tight for Linux. | STWD100 order code: "X" = t<sub>WD</sub> 102 ms, "Y" = 1.6 s. | Fit **STWD100NYWY3F** (same footprint, open-drain), or commit to kernel-level kicking. |
-| **F5** | SK6812 data on GPIO2, which has no PWM, PCM or SPI function. | WS2812-class timing (800 kHz) from Linux normally uses PWM, PCM (GPIO21) or SPI0 MOSI (GPIO10); GPIO-toggling from userspace isn't reliable. GPIO18's PWM0 is already the steering output. | Swap `LED_DATA` ↔ `SW_REMOTE` (GPIO2 ↔ GPIO21) to use the PCM method. GPIO2's 1.8 k pull-up is harmless on a pulled-up switch input. |
-| **F6** | Switch inputs protect for contact closure only. | 12 V on J1.7–9 → 1 k → SRV05-4 clamp at ~+3V3 + V<sub>F</sub> ≈ 4 V, above the CM4 GPIO max of V<sub>GPIO_VREF</sub> + 0.5 V = 3.8 V, with ~8–10 mA pushed into +3V3. July's STM32 pins were 5 V tolerant. | If 12 V-level switch signals must be supported, add a divider (e.g. 10 k : 2.2 k → 14.4 V gives 2.6 V) or raise the series R. Otherwise document the inputs as contact-to-ground only. |
-| **F7** | J1 CAN pin order changed. | July: 14/16/18 = H, 15/17/19 = L. Now: 14/16/18 = L, 15/17/19 = H. | Confirm intentional; update the harness drawing to match. |
-| **F8** | No CAN termination footprints. | July split-termination R/C and CMC footprints were removed. | Add DNP 2×60 Ω + 4.7 nF split-termination per channel, or document that buses are terminated externally. |
-| **F9** | GPS modules share one UART. | U16.15/16 and P2.11/12 are both on `GPS_RX`/`GPS_TX`. | Populate one (document it on the silkscreen), or add 0 Ω DNP links to isolate each slot. |
-| **F10** | CM4 can't be power-cycled after a halt. | eFuse EN tied high (R43); `PI_FLT` not routed; `GLOBAL_EN` unconnected. | Route `PI_FLT` to a GPIO if one can be freed. For brown-out recovery, a small supervisor that pulses `GLOBAL_EN` low when VIN returns. |
-| **F11** | Power LED on an unbuffered pin. | CM4 datasheet: `PI_LED_nPWR` "needs to be buffered". D23 is driven directly (~1.3 mA via R79 1 k). | Add a 2N7002/BSS138 buffer, or drop the LED. |
-| **F12** | `RUN_PG` driven hard to GND. | CM4 datasheet: drive low "via a 220 Ω resistor". SW1 and WDO connect straight to pin 92. | Add a 220 Ω between CM4 pin 92 and the SW1/WDO node. |
-
-### Informational (no change needed)
-
-- `GLOBAL_EN` (99), `nEXTRST` (100), `WL_nDISABLE` (89), `BT_nDISABLE` (91) are single-pin nets. All
-  are fine floating per the datasheet; expect EasyEDA DRC warnings.
-- `USB_OTG_ID` (101) floats → device mode. Correct for rpiboot over H3 (the July grounding fix was for
-  the STM32 host link, which is gone).
-- Chip-select pull-ups (R74, R75) sit only on GPIO25/26, which default pull-low; CE0/CE1 (GPIO8/7)
-  default pull-high. Consistent.
-- ADC128S102 needs SCLK 8–16 MHz for rated accuracy; set its SPI device speed separately from the CAN
-  devices.
-- Piezo on GPIO6 has no hardware PWM, so tones are software PWM (fine for beeps).
-- All 28 GPIOs are allocated. Adding anything (PPS, `PI_FLT`, CAN STBY control) means freeing a pin.
-- The CM4 symbol U19 is one module footprint; the two DF40 connectors aren't separate netlist parts
-  and must be added to the JLC BOM by hand.
-
----
-
-## 13b. Layout review — `PCB From EasyEDA/PCB_PCB_AOW-v2.0_2026-09-14.json`
-
-Parsed from the EasyEDA Standard PCB source. Coordinates are mm from the board's top-left corner
-(origin at the outline, x along the 184 mm edge, y down). The PCB pad nets match the 2026-09-14
-netlist exactly (0 differences).
-
-**Stackup as drawn:** L1 top = all routing (62 tracks) + GND pour, Inner1 = solid GND plane, Inner2 =
-empty, bottom = empty. **3 vias total.**
-
-### Findings
-
-| # | Issue | Measured | Fix |
-|---|---|---|---|
-| **L1** | **Input TVS on a thin trace.** TV1 pad 1 reaches `VIN_PROT` only through a 0.254 mm × 4.8 mm trace to C6. | SMBJ24A is rated 600 W peak (~15 A at clamp). The trace adds inductance that the clamp current has to drive through, and it's narrow enough to fuse on a load dump. | Put TV1 pad 1 straight onto the wide `VIN_PROT` copper (or a pour), right after Q1, with TV1 pad 2 on GND via several vias. |
-| **L2** | **U1 exposed pad has no thermal vias**, and the GND pour on top is only tied to the Inner1 plane by **3 vias** (all near D2/R47). | U1 pad 9 is 2.0 × 2.0 mm, GND, with no vias. Every SMD GND pad (CM4 DF40 GND pins, M.2, buck caps, D1) reaches Inner1 only through that pour. | Add a thermal-via array under U1 (TI land pattern). Stitch GND vias at the CM4 and M.2 GND pins beside the PCIe/Ethernet pairs, at each bypass cap, and along the pour edges. |
-| **L3** | **Buck switching loop is large.** For this non-synchronous buck the fast current loop is C1/C2 → U1 VIN → SW → D1 → back to C1/C2 GND. | C1/C2 GND pads at (4.9, 48–51); D1 anode (GND) at (9.4, 34.5), ≈ 15 mm apart through the pour. U1 VIN pin is ≈ 5.4 mm from C1/C2. | Rearrange so D1's anode and C1/C2's GND pads land next to each other and next to U1 pin 7/pad 9. Keep the SW node copper (U1.8–D1–L2) small. |
-| **L4** | **Ethernet pair impedance looks low.** ETH pairs use the `ETH` DRC rule width **0.377 mm** at **0.10 mm** gap (necking to 0.2/0.15 mm at the pins). | IPC-2141 edge-coupled microstrip estimate on JLC's 1.6 mm 4-layer 7628 stackup (L1–L2 prepreg ≈ 0.21 mm, εr ≈ 4.4): ≈ 48 Ω single-ended / **≈ 66 Ω differential vs 100 Ω target**. 0.377 mm looks like a 50 Ω single-ended width. PCIe (0.226 mm / 0.103 mm) comes out ≈ 89 Ω differential, close to its 85–90 Ω target. | Confirm with JLC's impedance calculator for the ordered stackup, then set the `ETH` rule to the 100 Ω differential width/gap and re-route (the pairs are all on L1 with no vias, so it's a width change). |
-| **L5** | **Ethernet intra-pair skew.** | P−N length: ETH0 0.27 mm, **ETH1 8.45 mm**, ETH2 1.34 mm, ETH3 2.11 mm (target ≤ 0.13 mm, §2 of the layout guide). ETH1's P and N magjack pins (P4, P7) are 4.6 mm apart, which accounts for most of it. PCIe is fine: TX 0.05, RX 0.00, REFCLK 0.08 mm. | Add length tuning on the short leg of each pair near the magjack (ETH1_P, ETH2_N, ETH3_N, ETH0_N). |
-| L6 | ETH1 pair gap below the design rule at the magjack escape. | 0.093 mm edge gap at (20.8, 8.7) vs the 0.10 mm DRC clearance. | Nudge the 0.15 mm escape segments apart; it will likely change anyway with L4. |
-| L7 | L2 inductor footprint doesn't match the part. | Footprint `MDA1054HT` (11 × 10 mm); attached part is Sunlord MWSA1004S-6R8MT (10 × 10 mm, C408485). | Check the pads against the MWSA1004S land pattern, or swap to that footprint. |
-| L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM lists U19 as CM4101000 C20754863. | Exclude U19 from JLC assembly and add 2× DF40C-100DS-0.4V(51) (C597931). Confirm the U19 pads are the DF40 *receptacle* land pattern. |
-
-### What's routed (connectivity check on placed parts)
-
-- **Complete:** `VIN`, `VIN_PROT`, `PGATE`, buck nets (`SW_BUCK1`, `BOOT1`, `FB1`, `COMP1`, `CCMID`,
-  `EN1`, `RT1`), all 8 Ethernet MDI nets, all 6 PCIe pair nets.
-- **Partial:** `5V_MAIN` — buck output (L2, C3–C5, C63, R7) done; J1.3 and the LEDs not yet.
-- **Not routed yet (parts placed):** CM4 `5V_CM` (U2 not placed), `+3V3_NVME` (U4 not placed),
-  `GPIO_VREF`/`CM4_3V3` strap (78–84–86), `CM4_1V8`, `PCIE_NRST`, `PCIE_CLKREQ`, `RUN_PG`,
-  `PI_LED_NPWR`, LED data chain, RJ45 LED `+3V3`.
-- Inner1 GND plane voids under the Ethernet pairs are only the magjack pin anti-pads where the
-  pairs terminate — no splits under routed high-speed nets.
-- Track widths: `VIN` 2.0 mm, `VIN_PROT` 2.5 mm main (0.6 mm branch to C7 → U1 VIN), `SW_BUCK1`
-  1.0 mm, `5V_MAIN` 1.0–2.0 mm. Fine for ~2 A input / 5 A output on 1 oz outer copper once L1–L3 are
-  addressed.
+Schematic and PCB layout issues from the 2026-09-14 reviews live in one place:
+**`HARDWARE_AIO_ISSUES.md`** (schematic `S1…`, layout `P1…`, with status). Earlier revisions of this
+section used F1–F12 / L1–L8; that file maps the old IDs. F1 (MCP251863 STBY floating) was retracted —
+the pin is grounded.
 
 ---
 

@@ -5,7 +5,7 @@
 > Nodes are `RefDes.pin` with the pin *function* in brackets. Pin functions for the CM4, MCP251863,
 > ADC128S102 and STWD100 were checked against their datasheets on 2026-09-14. The rest come from
 > standard pinouts and the net names, so confirm them against the symbols.
-> Companion docs: **`HARDWARE_AIO_BOARD.md`** (design *why* + review findings),
+> Companion docs: **`HARDWARE_AIO_BOARD.md`** (design *why*), **`HARDWARE_AIO_ISSUES.md`** (open issues),
 > **`HARDWARE_AIO_BOM.md`** (parts), **`HARDWARE_AIO_LAYOUT_GUIDE.md`** (routing rules).
 >
 > **This revision is the CM4-only design.** The STM32G473, the TCAN1042 transceivers, the isolated
@@ -16,9 +16,8 @@
 > open (this one came out as `Power_2026-09-14.net`) but contains **every sheet**. Rename to
 > `Full-board_<date>.net` when committing. Format = Protel/Altium (`[part]` / `(net)` blocks).
 
-⚠ **Open schematic issues** found while building this doc are listed in
-`HARDWARE_AIO_BOARD.md` §13. Two are must-fix before layout: **MCP251863 STBY floating**
-(§3.1 below) and **Q1 reverse-polarity FET orientation** (§1.1).
+⚠ **Open schematic issues** are listed in `HARDWARE_AIO_ISSUES.md`. The must-fix ones are both in the
+input protection (§1.1 below): **Q1 orientation (S1)** and **Q1 gate clamp (S2)**.
 
 ---
 
@@ -61,10 +60,10 @@
 | `PGATE` | Q1.1 [G], R40.1, R47.1, D2.1 [K] | gate: R40 100 k to VIN, R47 10 k to GND, D2 BZT52C12 to GND |
 | `VIN_PROT` | Q1.2 [D, tab], TV1.1 [K], C6.1, C7.1, C1.1, C2.1, U1.2 [VIN], R2.1, R42.1 | protected input bus |
 
-⚠ **Q1 orientation — verify (BOARD §13 F2).** With source on `VIN` and drain on `VIN_PROT`, the
+⚠ **Q1 orientation — ISSUES S1.** With source on `VIN` and drain on `VIN_PROT`, the
 P-FET body diode (drain→source) is forward-biased by a reversed battery, so reverse polarity is not
 blocked. The usual high-side P-FET arrangement is drain = battery, source = load. D2 also clamps
-gate-to-GND rather than gate-to-source, so Vgs isn't limited (BOARD §13 F3). Both carried over
+gate-to-GND rather than gate-to-source, so Vgs isn't limited (ISSUES S2). Both carried over
 unchanged from the July netlist.
 
 ### 1.2 Main buck `VIN_PROT → 5V_MAIN` (U1 TPS54560DDAR, 400 kHz, async)
@@ -208,7 +207,7 @@ CAN3 and ADC chip-selects are GPIO chip-selects (`cs-gpios` in the device tree).
 | 2 | NC | — |
 | 3 | CANL | `CANn_L` → Dn+4 NUP2105L.2 → J1 |
 | 4 | CANH | `CANn_H` → Dn+4 NUP2105L.1 → J1 |
-| **5** | **STBY** | **not connected** ⚠ |
+| 5 | STBY | `GND` (transceiver normal mode) |
 | 6 | nINT1/GPIO1 | — |
 | 7 | nINT0/GPIO0/XSTBY | — |
 | 9 / 10 / 11 / 13 | SCK / SDI / SDO / nCS | SPI0, `NCS_CANn` |
@@ -222,9 +221,8 @@ CAN3 and ADC chip-selects are GPIO chip-selects (`cs-gpios` in the device tree).
 | 22 / 24 | VSS / GND | `GND` |
 | 25 | VCC (transceiver) | `5V_MAIN` |
 
-⚠ **STBY floating = transceiver in standby (BOARD §13 F1).** The datasheet (DS20006624 §8.2.2)
-gives STBY an internal pull-up to VIO, and normal mode needs STBY low. As wired, none of the three
-channels can transmit. Tie pin 5 to GND, or to pin 7 (XSTBY) for firmware control.
+STBY has an internal pull-up to VIO (DS20006624 §8.2.2) and normal mode needs it low, so grounding
+pin 5 is what makes the transceivers usable. Pin 7 (XSTBY) is left free.
 
 | Interrupt | CM4 pin (GPIO) |
 |---|---|
@@ -334,7 +332,7 @@ Both modules share UART5, so fitting both would short their TX outputs together.
 | Remote | J1.9 `SW_REMOTE_IN`, D18 SMAJ16A, R70 1 k | `SW_REMOTE`: R69 10 k → +3V3, C83 100 nF, D15.4 | 25 (GPIO21) |
 
 D15 SRV05-4: pin 5 → `+3V3`, pin 2 → GND. The CM4 GPIOs are 3.3 V only, so these inputs suit
-switches to ground, not 12 V-level signals (BOARD §13 F6).
+switches to ground, not 12 V-level signals (ISSUES S11).
 
 ### 5.3 Steering outputs (direct GPIO, 3.3 V logic)
 
@@ -363,7 +361,7 @@ No optos: this matches the July "Option A" direct-drive decision for MD13S / IBT
 - EN high = off. R63 plus GPIO3's own 1.8 k pull-up keep the watchdog **off through boot and after
   every reset**, until Linux drives GPIO3 low.
 - **"NX" = t<sub>WD</sub> 102 ms (71–142 ms).** Linux has to toggle WDI at least every ~70 ms.
-  STWD100**NY**WY3F is the 1.6 s version (BOARD §13 F4).
+  STWD100**NY**WY3F is the 1.6 s version (ISSUES S3).
 - GPIO3 is also I²C1 SCL, so `dtparam=i2c_arm` must stay off.
 
 ### 6.2 Reset button — SW1 PTS645VH83-2LFS (through-hole)
@@ -382,12 +380,12 @@ clean shutdown).
 | `5V_MAIN` / `GND` | D19–D22 pin 2 / pin 4 | C86–C89 100 nF, C80 1 µF, C74 100 nF |
 
 GPIO2 has no PWM, PCM or SPI function, so the LED timing would have to be bit-banged from Linux
-(BOARD §13 F5).
+(ISSUES S4).
 
 ### 6.4 Power LED
 
 `PI_LED_NPWR` (CM4 95) → D23 XL-0603QYGC → `LED_PWR` → R79 1 k → `+3V3`. The CM4 datasheet says
-this pin must be buffered (BOARD §13 F11).
+this pin must be buffered (ISSUES S9).
 
 ### 6.5 Piezo
 

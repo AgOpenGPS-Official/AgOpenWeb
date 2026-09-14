@@ -2,15 +2,15 @@
 
 > Bill of materials generated from `Netlists From EasyEDA/Full-board_2026-09-14.net`: **151 netlist
 > parts**, plus the hand-fit items that aren't netlist parts. Companion docs: `HARDWARE_AIO_BOARD.md`
-> (why + review findings §13), `HARDWARE_AIO_NETLIST.md` (wiring). Designators are the real EasyEDA ones.
+> (why), `HARDWARE_AIO_ISSUES.md` (open issues), `HARDWARE_AIO_NETLIST.md` (wiring). Designators are the real EasyEDA ones.
 > JLC upload file: `HARDWARE_AIO_BOM_JLCPCB.csv`.
 >
 > **JLC part numbers** come from the EasyEDA BOM export (`PCB From EasyEDA/BOM_AOW-v2.0_2026-09-14.csv`),
 > i.e. the parts actually attached to the footprints. Stock counts are **not** listed — re-check at
 > order time.
 >
-> **Pending schematic changes that affect this BOM** (`HARDWARE_AIO_BOARD.md` §13): F4 may swap U20 to
-> STWD100NYWY3F; F8 may add DNP CAN termination; F11/F12 may add a buffer FET and a 220 Ω.
+> **Pending issues that affect this BOM** (`HARDWARE_AIO_ISSUES.md`): S3 may swap U20 to STWD100NYWY3F;
+> S6 may add DNP CAN termination; S9/S10 may add a buffer FET and a 220 Ω; S12 (U19 vs DF40); P8 (L2 footprint).
 
 ---
 
@@ -20,18 +20,18 @@
 |---|---|---|---|---|---|---|
 | U1 | 1 | TPS54560DDAR | SOIC-8 EP | C31966 | Power | 60 V / 5 A buck, 400 kHz |
 | D1 | 1 | SS56C | SMC | C123948 | Power | buck catch diode |
-| L2 | 1 | Sunlord MWSA1004S-6R8MT 6.8 µH | footprint named MDA1054HT 11×10 | C408485 | Power | **part is 10×10 on an 11×10 footprint — check the land pattern** (already placed) |
+| L2 | 1 | Sunlord MWSA1004S-6R8MT 6.8 µH | footprint named MDA1054HT 11×10 | C408485 | Power | **part is 10×10 on an 11×10 footprint — check the land pattern** (P8) |
 | U2 | 1 | TPS259571DSGR | WSON-8 2×2 | C471038 | Power | CM eFuse |
 | U3 | 1 | RT9080-33GJ5 | TSOT-23-5 | C841192 | Power | 3.3 V LDO |
 | U4 | 1 | TPS563201DDCR | SOT-23-6 | C116592 | Power | NVMe 3.3 V / 3 A buck |
 | L3 | 1 | Sunlord SWPA4030S3R3MT 3.3 µH | footprint named SMNR4012 4×4 | C15269 | Power | both 4×4 mm — confirm pads |
-| Q1 | 1 | IRFR5305TRPBF | TO-252 | C2624 | Power | reverse-polarity P-FET. **Orientation issue: §13 F2** |
+| Q1 | 1 | IRFR5305TRPBF | TO-252 | C2624 | Power | reverse-polarity P-FET. **Orientation issue: S1** |
 | TV1 | 1 | SMBJ24A | SMB | C87268 | Power | input TVS |
-| D2 | 1 | BZT52C12-7-F | SOD-123 | C124196 | Power | Q1 gate zener. **Placement issue: §13 F3** |
+| D2 | 1 | BZT52C12-7-F | SOD-123 | C124196 | Power | Q1 gate zener. **Placement issue: S2** |
 | D4 | 1 | B5819W | SOD-123 | C8598 | Power | VIN_SENSE clamp |
 | U5 | 1 | 91302-55-067R2M | M.2 M-key 5.5 mm | C2922444 | CM4 | NVMe socket |
 | L1 | 1 | HR911130C | RJ45 THT | C50933 | CM4 | GbE magjack |
-| U7, U8, U9 | 3 | MCP251863T-E/SS | SSOP-28 | C5226885 | CAN | CAN FD controller + transceiver. **STBY issue: §13 F1** |
+| U7, U8, U9 | 3 | MCP251863T-E/SS | SSOP-28 | C5226885 | CAN | CAN FD controller + transceiver |
 | X1 | 1 | YXC OT2EL4C4JI-111OLP-40M, 40 MHz 3.3 V | 3225 4-pin | C5203551 | CAN | CAN clock |
 | D5, D6, D7 | 3 | NUP2105L | SOT-23 | C284104 | CAN | bus TVS |
 | U21 | 1 | ADC128S102CIMTX/NOPB | TSSOP-16 | C179666 | Analog | 8-ch 12-bit SPI ADC |
@@ -40,7 +40,7 @@
 | D13, D16 | 2 | ESD9B5V | SOD-923 | C2905646 | Field I/O | WAS / current ESD (low leakage) |
 | D14, D17, D18 | 3 | SMAJ16A | SMA | C283886 | Field I/O | switch-input TVS. Thin stock in July — approve alternates (Littelfuse C74561) |
 | D15 | 1 | SRV05-4 | SOT-23-6 | C558418 | Field I/O | logic-side ESD array |
-| U20 | 1 | STWD100NXWY3F | SOT-23-5 | C1852782 | Supervision | watchdog, t<sub>WD</sub> 102 ms. **§13 F4: consider STWD100NYWY3F (1.6 s)** |
+| U20 | 1 | STWD100NXWY3F | SOT-23-5 | C1852782 | Supervision | watchdog, t<sub>WD</sub> 102 ms. **S3: consider STWD100NYWY3F (1.6 s)** |
 | U22 | 1 | SN74AHCT1G125DBVR | SOT-23-5 | C7484 | HMI | 3.3 → 5 V LED data buffer |
 | D19–D22 | 4 | SK6812SIDE-A | 4020 side-view | C5378721 | HMI | addressable RGB status LEDs |
 | D23 | 1 | KENTO KT-0603YG (symbol says XL-0603QYGC) | 0603 | C2289 | HMI | power LED |
@@ -94,7 +94,7 @@
 | CM4 mezzanine ×2 | **DF40C-100DS-0.4V(51)**, JLC C597931 | **not in the netlist or EasyEDA BOM.** U19's attached LCSC part is the CM4 module itself (C20754863), so a straight BOM upload would ask JLC to place a CM4 on the receptacle pads. Exclude U19 from assembly and add the two receptacles by hand (needs JLC's 0.4 mm fixture) |
 | NVMe SSD | 128 GB M.2 2230/2242 | pre-imaged |
 | M.2 standoff + M2 screw | plated hole + hand-fit standoff | JLC SMT standoffs unreliable |
-| GPS module (U16 **or** P2) | UM982EB module **or** ArduSimple simpleRTK2B | populate one (§13 F9) |
+| GPS module (U16 **or** P2) | UM982EB module **or** ArduSimple simpleRTK2B | populate one (S7) |
 | J1 connector | Amphenol ATS13-26PA-BM01 + mating ATS06-26SA plug and size-20 contacts | hand-soldered right-angle, front panel |
 | Input fuse | in-line blade holder in the harness | not on the board |
 | Antennas | U.FL pigtails → SMA (GPS) / RP-SMA (WiFi) bulkheads | back panel |
@@ -110,7 +110,7 @@ For traceability. None of these are in the 2026-09-14 netlist.
 |---|---|---|
 | STM32G473RCT6 + 8 MHz crystal, 15 pF load caps, ferrite, SWD header | C529361, C2682775, C1548, C1002 | MCU removed |
 | TCAN1042VDRQ1 ×3 | C485806 | replaced by MCP251863 |
-| CAN split-termination (60.4 Ω ×6, 4.7 nF ×3) + ACT45B CMC ×3 | C137954, C1538, C76584 | removed (§13 F8) |
+| CAN split-termination (60.4 Ω ×6, 4.7 nF ×3) + ACT45B CMC ×3 | C137954, C1538, C76584 | removed (S6) |
 | CA-IS3092W isolated RS-485 + 120 Ω term | C2890051, C25079 | RS-485 removed |
 | TS3USB221 USB mux + USBLC6-2SC6 + micro-USB | C130085, C7519 | STM USB link removed; H3 header instead |
 | 1.3" SH1106 OLED + I²C pull-ups + page rocker header | — | replaced by SK6812 LEDs |
