@@ -12,16 +12,21 @@
 The full list with evidence is in `HARDWARE_AIO_BOARD.md` §13. These change nets or footprints, so
 settle them before placement:
 
-| # | Where | Fix | Status |
-|---|---|---|---|
-| **F1** | U7/U8/U9 pin 5 `STBY` floating | tie to GND (or to pin 7 XSTBY) | **must fix** |
-| **F2** | Q1 source/drain reversed | drain → `VIN`, source → `VIN_PROT` (confirm symbol pin map) | **must fix** |
-| **F3** | D2 gate zener to GND | move zener to source → gate | **must fix** |
-| F4 | U20 102 ms timeout | STWD100NYWY3F (same footprint) | part swap only |
-| F5 | SK6812 data on GPIO2 | swap with SW_REMOTE (GPIO21) | net swap |
-| F8 | no CAN termination | add DNP split-term per channel | adds footprints |
-| F11 | power LED unbuffered | add N-FET buffer | adds a SOT-23 |
-| F12 | `RUN_PG` hard-driven | 220 Ω series at CM4 pin 92 | adds a 0402 |
+**Layout progress (2026-09-14):** power, Ethernet and NVMe are placed and routed. Everything else is
+still to do.
+
+| # | Where | Fix | Status | Hits routed area? |
+|---|---|---|---|---|
+| **F1** | U7/U8/U9 pin 5 `STBY` floating | tie to GND (or to pin 7 XSTBY) | **must fix** | no |
+| **F2** | Q1 source/drain reversed | drain (tab) → `VIN`, source → `VIN_PROT` (confirm symbol pin map) | **must fix** | **yes — Q1 pours** |
+| **F3** | D2 gate zener to GND | zener source → gate; R40 to `VIN_PROT` | **must fix** | **yes — small** |
+| F4 | U20 102 ms timeout | STWD100NYWY3F (same footprint) | part swap only | no |
+| F5 | SK6812 data on GPIO2 | swap with SW_REMOTE (GPIO21) | net swap | no |
+| F8 | no CAN termination | add DNP split-term per channel | adds footprints | no |
+| F11 | power LED unbuffered | add N-FET buffer | adds a SOT-23 | no |
+| F12 | `RUN_PG` hard-driven | 220 Ω series at CM4 pin 92 | adds a 0402 | near CM4 only |
+
+Rework steps for F2/F3 are in `HARDWARE_AIO_BOARD.md` §13 ("Impact on the existing layout").
 
 Already applied from the July review and still present: **`GPIO_VREF` (78) tied to `CM4_3V3`
 (84/86) with C76**. The July `USB_OTG_ID` → GND fix is intentionally **not** in this revision:
@@ -129,12 +134,14 @@ Antennas exit the **back** on U.FL pigtails, so there are no board-level RF trac
 
 ## 9. Pre-route checklist
 
-- [ ] F1–F3 schematic fixes applied (`HARDWARE_AIO_BOARD.md` §13)
+- [ ] F1–F3 schematic fixes applied (`HARDWARE_AIO_BOARD.md` §13); F2/F3 reworked in the routed power area
 - [ ] Decide F4/F5/F8/F11/F12 (they change parts or nets)
 - [ ] DF40 connector pads on the U19 footprint checked against the CM4 datasheet mechanical drawing
 - [ ] Impedance stackup ordered from JLC; 85/100/90 Ω geometries from their calculator
-- [ ] CM4 + M.2 placed and PCIe pairs routed/matched **before** anything else
+- [x] CM4 + M.2 placed and PCIe pairs routed (done 2026-09) — re-check skew against §3
+- [x] Ethernet routed (done 2026-09) — re-check against §4
 - [ ] Solid L2 ground under every high-speed pair, no splits
-- [ ] Buck loops minimized, FB isolated; ADC VA tapped from a quiet point
+- [x] Power tree placed and routed (done 2026-09) — re-check buck loops/FB isolation after F2/F3
+- [ ] ADC VA tapped from a quiet point
 - [ ] 40 MHz clock traces short and star-fed from X1
 - [ ] M.2 card keep-out + standoff reserved; socket Z-height clears the lid

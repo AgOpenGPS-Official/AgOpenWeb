@@ -4,9 +4,10 @@
 > CM4 host, 3× CAN FD over SPI, 2× RS-232, a GPS module slot, wheel-angle/current/VIN sensing on an
 > external ADC, direct steering outputs, and a hardware watchdog.
 >
-> **Status (2026-09-14): schematic captured in EasyEDA Standard, full-board netlist exported, not
-> laid out.** A review of that export found issues to fix before layout (§13). JLC stock figures
-> date from 2026-07; re-check at order time.
+> **Status (2026-09-14): schematic captured in EasyEDA Standard, full-board netlist exported, PCB
+> layout partly done — power, Ethernet and NVMe are placed/routed; CAN, serial, ADC, field I/O and
+> HMI are not.** A review of the export found schematic issues (§13); the table there notes which
+> ones touch the areas already laid out. JLC stock figures date from 2026-07; re-check at order time.
 >
 > **Companion docs:** `HARDWARE_AIO_NETLIST.md` (as-built wiring, every net),
 > `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
@@ -285,6 +286,21 @@ DocID14134. Nets and pins are in `HARDWARE_AIO_NETLIST.md`.
 | **F1** | **CAN transceivers stuck in standby.** MCP251863 pin 5 (STBY) is unconnected on U7, U8 and U9. | Datasheet §8.2.2: STBY has an internal pull-up to VIO; normal mode needs STBY low. As wired, no CAN channel can transmit. | Tie pin 5 → GND on all three (simplest), or to pin 7 (nINT0/GPIO0/XSTBY) and enable `XSTBYEN` in firmware. |
 | **F2** | **Q1 reverse-polarity FET looks reversed.** Q1.3 (source) is on `VIN` and Q1.2 (drain, tab) on `VIN_PROT`. | A P-FET's body diode runs drain → source. With the battery reversed, VIN is negative and the diode conducts from VIN_PROT (held near 0 V by TV1's forward diode) into VIN, so nothing blocks it. Same wiring in the July netlist. | Confirm the EasyEDA symbol pin map (IRFR5305: 1 = G, 2 = D/tab, 3 = S). If it matches, swap: **drain → `VIN`, source → `VIN_PROT`**. |
 | **F3** | **Q1 gate isn't Vgs-clamped.** D2 (12 V zener) goes gate → GND; R40 100 k (VIN → gate) + R47 10 k (gate → GND). | Vgs ≈ −0.91 × VIN: −21.8 V at a 24 V jump start, −35 V at the 39 V TVS clamp. IRFR5305 V<sub>GS</sub> max is ±20 V. | Put the zener **source → gate** (cathode on source), across the source-side resistor. Keep the gate pull-down to GND. |
+
+### Impact on the existing layout (power, Ethernet, NVMe already routed)
+
+| # | Touches laid-out area? | Rework |
+|---|---|---|
+| F1 | no (CAN block) | tie pin 5 to GND before placing U7–U9 |
+| **F2** | **yes — power** | Swap the nets on Q1's pads: pad 2 (tab) → `VIN`, pad 3 → `VIN_PROT`. The tab's large copper pour becomes the input-side pour, so either rotate Q1 so the tab faces J1.1, or re-assign the pours around it. TV1, C1/C2, C6/C7, R2, R42 and U1 stay on `VIN_PROT` (now pad 3). |
+| **F3** | **yes — power** (small) | Flip D2 and re-connect it: cathode → Q1 source (`VIN_PROT` after F2), anode → `PGATE`. Move R40's top end from `VIN` to `VIN_PROT` as well, so both gate parts reference the source. R47 stays gate → GND. |
+| F4 | no | same footprint, BOM swap only |
+| F5 | no | net swap at CM4 pins 58 ↔ 25, both unrouted |
+| F6–F10 | no | field I/O / GPS / CAN, not laid out |
+| F11 | no (HMI) | adds a SOT-23 near D23 |
+| F12 | near CM4 only | adds a 0402 between CM4 pin 92 and the SW1/WDO node |
+
+Ethernet and NVMe routing aren't affected by any finding.
 
 ### Should fix
 
