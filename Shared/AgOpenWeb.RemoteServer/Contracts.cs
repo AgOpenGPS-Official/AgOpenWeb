@@ -497,7 +497,7 @@ public record RecordedPathDto(
 /// recording menu (Outer / Inner N, area, drive-thru / hard flags). The Player.* fields
 /// mirror the live drive-around recording (State.BoundaryRec + the VM toggles). Re-sent on
 /// a fingerprint change. Draw-on-map point drawing is Phase MT and not here.</summary>
-public record BoundaryItemDto(int Index, string BoundaryType, string AreaDisplay, bool DriveThru, bool Hard);
+public record BoundaryItemDto(int Index, string BoundaryType, double AreaHa, bool DriveThru, bool Hard);
 
 public record BoundaryDto(
     IReadOnlyList<BoundaryItemDto> Items,

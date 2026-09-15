@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 
-namespace AgOpenWeb.VehicleSimulator.Modules;
+namespace AgOpenWeb.VirtualModules;
 
 /// <summary>
 /// The live set of UDP destinations every virtual module sends to. Populated from the

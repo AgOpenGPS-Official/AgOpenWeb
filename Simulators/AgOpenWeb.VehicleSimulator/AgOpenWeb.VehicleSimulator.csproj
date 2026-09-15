@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+    <ProjectReference Include="..\AgOpenWeb.VirtualModules\AgOpenWeb.VirtualModules.csproj" />
   </ItemGroup>
 
 </Project>

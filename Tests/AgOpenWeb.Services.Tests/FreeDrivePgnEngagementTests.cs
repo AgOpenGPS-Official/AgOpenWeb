@@ -19,7 +19,7 @@ namespace AgOpenWeb.Services.Tests;
 /// <see cref="VehicleState.IsInFreeDriveMode"/> was true. The
 /// receiver's engagement gate, however, checks bit <c>0x04</c>
 /// (IsAutoSteerEngaged) — see <c>PgnProtocol.ParseAutoSteerCommand</c>
-/// in the simulator's PgnProtocol.cs. The PID therefore stayed in
+/// in AgOpenWeb.Models/Communication. The PID therefore stayed in
 /// the "not engaged → pwm = 0" branch and the wheels never moved.
 /// </summary>
 [TestFixture]

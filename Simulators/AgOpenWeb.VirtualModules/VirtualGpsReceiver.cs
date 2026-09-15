@@ -14,7 +14,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace AgOpenWeb.VehicleSimulator.Modules;
+namespace AgOpenWeb.VirtualModules;
 
 /// <summary>
 /// GPS message flavour. PANDA = single antenna + IMU (heading/roll as int×10,

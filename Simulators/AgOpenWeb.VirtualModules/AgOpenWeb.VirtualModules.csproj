@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Simulated AiO hardware: the virtual GPS receiver, steer, machine and IMU
+       modules plus the hub that wires them together. Consumed by two callers with
+       no dependency on each other:
+
+         Simulators/AgOpenWeb.VehicleSimulator  - the interactive simulator app
+         Tests/AgOpenWeb.IntegrationTests       - the virtual-module test support lib
+
+       These lived as two hand-maintained copies, one per consumer, until they were
+       consolidated here. Deliberately NOT under Shared/: that tree is compiled into
+       every platform head, and none of this UDP/PID simulation belongs in a shipped
+       app. Plain library - no Avalonia, no NUnit - so either consumer can take it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>14</LangVersion>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
+  </ItemGroup>
+
+</Project>

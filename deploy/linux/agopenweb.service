@@ -75,7 +75,8 @@ ProtectKernelTunables=true
 RestrictSUIDSGID=true
 # The .NET layer talks to modules over UDP (AF_INET) and to NTRIP over TCP; AF_UNIX
 # is used internally; AF_CAN is listed so a future SocketCAN path is not blocked.
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN
+# AF_NETLINK is used by Linux and .NET to request for interfaces.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN AF_NETLINK
 
 [Install]
 WantedBy=multi-user.target

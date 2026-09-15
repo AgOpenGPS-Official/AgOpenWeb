@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgOpenWeb.RemoteWiring", "S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgOpenWeb.RemoteServer", "Shared\AgOpenWeb.RemoteServer\AgOpenWeb.RemoteServer.csproj", "{AB019E04-5DF3-4193-8136-17CF95A5E28D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgOpenWeb.VirtualModules", "Simulators\AgOpenWeb.VirtualModules\AgOpenWeb.VirtualModules.csproj", "{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -189,6 +191,18 @@ Global
 		{AB019E04-5DF3-4193-8136-17CF95A5E28D}.Release|x64.Build.0 = Release|Any CPU
 		{AB019E04-5DF3-4193-8136-17CF95A5E28D}.Release|x86.ActiveCfg = Release|Any CPU
 		{AB019E04-5DF3-4193-8136-17CF95A5E28D}.Release|x86.Build.0 = Release|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Debug|x64.Build.0 = Debug|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Debug|x86.Build.0 = Debug|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Release|x64.ActiveCfg = Release|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Release|x64.Build.0 = Release|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Release|x86.ActiveCfg = Release|Any CPU
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -201,5 +215,6 @@ Global
 		{6EFCAF65-34FF-4AA8-B9E5-8CCB3DC67B2A} = {F41F6DDB-AB3C-76ED-EA37-439EFA4D513D}
 		{C459D55A-697F-46FD-BE76-8B124A39D01B} = {4F52FD11-658E-A102-6CD3-7D7C16FFA15B}
 		{AB019E04-5DF3-4193-8136-17CF95A5E28D} = {4F52FD11-658E-A102-6CD3-7D7C16FFA15B}
+		{ACE668DB-9A58-47CA-8511-6B61DA6F64C9} = {F41F6DDB-AB3C-76ED-EA37-439EFA4D513D}
 	EndGlobalSection
 EndGlobal

@@ -96,3 +96,6 @@ deploy/windows/*.zip
 # Apple App Store Connect API keys — never commit
 *.p8
 AuthKey_*.p8
+
+# MSBuild SDK resolver scratch files (dropped next to platform csproj on restore)
+*.SdkResolver.*.proj.Backup.tmp

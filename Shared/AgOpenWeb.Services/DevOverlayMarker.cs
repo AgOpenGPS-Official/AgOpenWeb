@@ -44,16 +44,7 @@ public static class DevOverlayMarker
     {
         try
         {
-            var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            if (string.IsNullOrEmpty(documents))
-            {
-                documents = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-            }
-            if (string.IsNullOrEmpty(documents))
-            {
-                return false;
-            }
-            var path = Path.Combine(documents, "AgOpenWeb", MarkerFileName);
+            var path = Path.Combine(AppDataRoot.Documents, MarkerFileName);
             return File.Exists(path);
         }
         catch

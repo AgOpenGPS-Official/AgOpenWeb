@@ -43,13 +43,7 @@ public static class BatteryForceMarker
     {
         try
         {
-            var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            if (string.IsNullOrEmpty(documents))
-            {
-                documents = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-            }
-            if (string.IsNullOrEmpty(documents)) return false;
-            return File.Exists(Path.Combine(documents, "AgOpenWeb", MarkerFileName));
+            return File.Exists(Path.Combine(AppDataRoot.Documents, MarkerFileName));
         }
         catch
         {

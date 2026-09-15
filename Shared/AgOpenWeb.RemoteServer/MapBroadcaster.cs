@@ -373,7 +373,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
         {
             h = h * 31 + it.Index;
             h = h * 31 + (it.BoundaryType?.GetHashCode() ?? 0);
-            h = h * 31 + (it.AreaDisplay?.GetHashCode() ?? 0);
+            h = h * 31 + it.AreaHa.GetHashCode();
             h = h * 31 + (it.DriveThru ? 1 : 0);
             h = h * 31 + (it.Hard ? 1 : 0);
         }
