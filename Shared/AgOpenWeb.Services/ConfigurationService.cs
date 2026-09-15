@@ -69,26 +69,32 @@ public class ConfigurationService(
     {
         // Active profile already lives in the store — no disk read.
         if (string.Equals(name, Store.ActiveVehicleProfileName, StringComparison.OrdinalIgnoreCase))
-            return FormatVehicle(Store, Store.IsMetric);
+            return FormatVehicle(Store, PreviewIsMetric);
         // Non-active: read its file into a throwaway store (side-effect-free —
         // quarantineOnFailure:false so previewing a damaged profile doesn't move it).
-        // Units come from the device store, not `temp` — IsMetric is a device setting
-        // and the throwaway store carries only the profile's own values.
+        // Units are a display concern — take the authoritative AppSettings value, not
+        // `temp` (which carries only the profile's own values).
         var temp = new ConfigurationStore();
         bool ok = VehicleProfileJsonService.Load(ProfilesDirectory, name, temp, out _, out _, quarantineOnFailure: false)
                || ProfileJsonServiceV1.Load(ProfilesDirectory, name, temp);
-        return ok ? FormatVehicle(temp, Store.IsMetric) : $"Vehicle profile '{name}'\n(file not found / unreadable)";
+        return ok ? FormatVehicle(temp, PreviewIsMetric) : $"Vehicle profile '{name}'\n(file not found / unreadable)";
     }
 
     public string GetToolProfilePreview(string name)
     {
         if (string.Equals(name, Store.ActiveToolProfileName, StringComparison.OrdinalIgnoreCase))
-            return FormatTool(Store, Store.IsMetric);
+            return FormatTool(Store, PreviewIsMetric);
         var temp = new ConfigurationStore();
         bool ok = ToolProfileJsonService.Load(ToolsDirectory, name, temp, out _, out _, quarantineOnFailure: false)
                || ProfileJsonServiceV1.Load(ProfilesDirectory, name, temp);
-        return ok ? FormatTool(temp, Store.IsMetric) : $"Tool profile '{name}'\n(file not found / unreadable)";
+        return ok ? FormatTool(temp, PreviewIsMetric) : $"Tool profile '{name}'\n(file not found / unreadable)";
     }
+
+    // Units for the profile previews follow the authoritative user setting
+    // (AppSettings.IsMetric — the documented source of truth), NOT the device
+    // store's flag. Store.IsMetric only re-syncs on a profile load/save, so on a
+    // bare metric/imperial toggle it lags and the picker showed metres in imperial.
+    private bool PreviewIsMetric => settingsService.Settings.IsMetric;
 
     /// <summary>
     /// A stored length (metres) rendered for display: "2.50 m" or "8.20 ft". These
