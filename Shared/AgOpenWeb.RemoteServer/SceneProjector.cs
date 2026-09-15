@@ -453,7 +453,7 @@ public sealed class SceneProjector
         return new FieldOpsDto(fields, jobs, suggestions, iso, kml, _fields.ActiveField?.Name ?? "");
     }
 
-    // ISO-XML (subdirs with TASKDATA.xml) + KML/KMZ files under ~/Documents/AgOpenWeb/Import.
+    // ISO-XML (subdirs with TASKDATA.xml) + KML/KMZ files under <data root>/Import.
     // Mirrors MainViewModel.PopulateAvailableIsoXmlFiles / PopulateAvailableKmlFiles.
     private static (System.Collections.Generic.List<string> iso, System.Collections.Generic.List<string> kml) ScanImportFolder()
     {
@@ -461,9 +461,11 @@ public sealed class SceneProjector
         var kml = new System.Collections.Generic.List<string>();
         try
         {
-            var docs = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments);
-            if (string.IsNullOrEmpty(docs)) docs = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
-            var importDir = System.IO.Path.Combine(docs, "AgOpenWeb", "Import");
+            // Resolve the Import folder from the shared AgOpenWeb data root (honors
+            // AGOPENWEB_DATA), same as Fields/Tools/Vehicles/NtripProfiles. Using
+            // MyDocuments directly diverged from the data root on headless installs,
+            // so the scanned folder never matched where files actually live.
+            var importDir = System.IO.Path.Combine(AppDataRoot.Documents, "Import");
             if (!System.IO.Directory.Exists(importDir)) return (iso, kml);
             foreach (var dir in System.IO.Directory.GetDirectories(importDir))
                 if (System.IO.File.Exists(System.IO.Path.Combine(dir, "TASKDATA.xml")))

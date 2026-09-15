@@ -4513,13 +4513,11 @@ public partial class MainViewModel : ObservableObject
     {
         AvailableKmlFiles.Clear();
 
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        if (string.IsNullOrEmpty(documentsPath))
-        {
-            documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-        }
-
-        var importDir = Path.Combine(documentsPath, "AgOpenWeb", "Import");
+        // Import folder lives under the shared AgOpenWeb data root (honors
+        // AGOPENWEB_DATA on the headless appliance), same as Fields/Tools/Vehicles —
+        // NOT MyDocuments, which diverges from the data root on headless installs and
+        // left the KML/ISO import list empty even when files were present.
+        var importDir = Path.Combine(AppDataRoot.Documents, "Import");
 
         if (!Directory.Exists(importDir))
         {
@@ -4783,13 +4781,11 @@ public partial class MainViewModel : ObservableObject
     {
         AvailableIsoXmlFiles.Clear();
 
-        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        if (string.IsNullOrEmpty(documentsPath))
-        {
-            documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
-        }
-
-        var importDir = Path.Combine(documentsPath, "AgOpenWeb", "Import");
+        // Import folder lives under the shared AgOpenWeb data root (honors
+        // AGOPENWEB_DATA on the headless appliance), same as Fields/Tools/Vehicles —
+        // NOT MyDocuments, which diverges from the data root on headless installs and
+        // left the KML/ISO import list empty even when files were present.
+        var importDir = Path.Combine(AppDataRoot.Documents, "Import");
 
         if (!Directory.Exists(importDir))
         {
