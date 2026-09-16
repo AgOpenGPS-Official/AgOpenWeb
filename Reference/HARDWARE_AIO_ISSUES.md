@@ -33,7 +33,7 @@
 | **S5** | F7 | J1 CAN pin order changed from July. | July: 14/16/18 = H, 15/17/19 = L. Now: 14/16/18 = L, 15/17/19 = H. | Confirm intentional; update the harness drawing. | decide |
 | **S6** | F8 | No CAN termination footprints. | Each CAN net only touches its MCP251863, the NUP2105L and J1. July's split-termination and CMC footprints are gone. | Add DNP 2×60 Ω + 4.7 nF split termination per channel, or document external termination. | decide |
 | **S7** | F9 | GPS modules share one UART. | U16.15/16 and P2.11/12 both on `GPS_RX`/`GPS_TX` (CM4 UART5). | Populate one (silkscreen note), or 0 Ω DNP links per slot. | decide |
-| **S8** | F10 | CM4 can't be restarted after a halt. | eFuse EN tied high (R43 → +3V3); `PI_FLT` only has R51 (not routed to the CM4); `GLOBAL_EN` unconnected. A brown-out shutdown that recovers leaves the unit halted until the key is cycled. | Route `PI_FLT` to a GPIO if one is freed; pulse `GLOBAL_EN` low when VIN returns (small supervisor). | decide |
+| **S8** | F10 | CM4 can't be restarted after a halt. | eFuse EN tied high (R43 → +3V3); `PI_FLT` only has R51 (not routed to the CM4); `GLOBAL_EN` unconnected. A brown-out shutdown that recovers leaves the unit halted until the key is cycled. | **Neither part needs a GPIO** (all 28 are allocated): (a) fault flag → **ADC IN3** (U21 pin 7, one of 5 spare inputs currently grounded); `PI_FLT` idles at +3V3 through R51, so a software threshold is enough. (b) restart → drive `EFUSE_EN` from a comparator/RC delay on `VIN_PROT` instead of R43 to +3V3, so CM power drops a few seconds after VIN goes and returns with it. Tying watchdog EN low instead does **not** work — boot outlasts even the 1.6 s timeout, giving a reset loop. | decide |
 | **S9** | F11 | Power LED on an unbuffered CM4 pin. | CM4 datasheet: `PI_LED_nPWR` (pin 95) "needs to be buffered". D23 is driven directly (~1.3 mA via R79). | Add a 2N7002/BSS138 buffer, or drop the LED. Adds a SOT-23. | open |
 | **S10** | F12 | `RUN_PG` driven hard to GND. | CM4 datasheet: drive low "via a 220 Ω resistor". SW1 and U20 WDO connect straight to pin 92. | 220 Ω between CM4 pin 92 and the SW1/WDO node. Adds an 0402. | open |
 | **S11** | F6 | Switch inputs only handle switches to ground. | 12 V on J1.7–9 → 1 k → SRV05-4 clamp at ~+3V3 + V<sub>F</sub> ≈ 4 V, above the CM4 GPIO max of 3.8 V, pushing ~8–10 mA into +3V3. | If 12 V-level inputs are needed, add a divider (e.g. 10 k : 2.2 k). Otherwise document contact-to-ground only. | decide |
@@ -64,7 +64,11 @@
 - CS pull-ups (R74, R75) only on GPIO25/26, which default pull-low; CE0/CE1 (GPIO8/7) default high. Consistent.
 - ADC128S102 needs SCLK 8–16 MHz for rated accuracy; give it its own SPI speed.
 - Piezo on GPIO6 has no hardware PWM, so tones are software PWM.
-- All 28 CM4 GPIOs are allocated; S4/S8 or a PPS line means freeing one.
+- **All 28 CM4 GPIOs are allocated.** Spare capacity elsewhere: **ADC IN3–IN7** (U21 pins 7–11, tied
+  to GND today) and **J1 pins 21–22** (free since RS-485 was dropped). To free an actual GPIO:
+  console RX (GPIO15, keeps TX for boot messages) or the piezo (GPIO6) each free one; wire-ORing the
+  three CAN `nINT` lines onto one pull-up frees two (MCP251863 INTOD gives open-drain outputs), but
+  check first that the `mcp251xfd` driver handles a shared interrupt and sets INTOD.
 
 ---
 
