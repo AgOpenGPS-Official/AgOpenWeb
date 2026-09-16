@@ -183,11 +183,18 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   60 V rating. A 24 V-native install needs the populate variant: SMBJ33/48 TVS, re-ratio `VIN_SENSE`.
 - **CM eFuse U2 TPS259571** — ILIM 487 Ω (~4.17 A), dVdt 10 nF. **EN is now pulled permanently high
   (R43 → +3V3)** and `PI_FLT` is pulled up but not read by anything.
-- **Power-loss handling (inferred).** `VIN_SENSE` (100 k / 8.2 k, 40 V → 3.03 V) now goes to ADC IN2.
-  Linux watches it and does a clean `poweroff` when VIN falls, while C6/C7 hold the rail up.
-  **Limitation:** once halted, the CM4 only restarts on a power cycle or a `GLOBAL_EN` pulse, neither
-  of which the board can produce. A brown-out that triggers shutdown but recovers before the caps
-  drain leaves the unit halted until the key is cycled (ISSUES S8).
+- **Power-loss handling (inferred).** `VIN_SENSE` (100 k / 8.2 k, 40 V → 3.03 V) now goes to ADC IN2,
+  so Linux can see VIN fall.
+- **Hold-up is only milliseconds, so a clean shutdown isn't possible as built.** C6 + C7 = 940 µF on
+  `VIN_PROT` holds ≈ **13–19 ms** (12–13.8 V down to the buck's ~6 V cutoff at 3–5 W). A Linux
+  `poweroff` takes seconds, so VIN loss is an abrupt cut. The July claim that the hold-up caps carry
+  the CM through an unmount does not survive the arithmetic. **What protects the filesystem is the
+  read-only root + overlay**, not hold-up.
+- **So don't trigger `poweroff` from `VIN_SENSE`** — treat it as telemetry. The buck regulates down to
+  ~5.5–6 V in, so cranking dips ride through, and a real power loss just reboots when VIN returns.
+  Halting on a dip would instead leave the unit stuck: after any software halt the CM4 needs
+  `GLOBAL_EN` low > 1 ms or a 5 V cycle, and the eFuse is permanently enabled (ISSUES S8, which also
+  covers the supercap + auto-power-cycle option if a graceful shutdown is ever required).
 
 ---
 
