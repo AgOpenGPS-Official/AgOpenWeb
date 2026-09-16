@@ -190,7 +190,7 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   `poweroff` takes seconds, so VIN loss is an abrupt cut. The July claim that the hold-up caps carry
   the CM through an unmount does not survive the arithmetic. **What protects the filesystem is the
   read-only root + overlay**, not hold-up.
-- **So don't trigger `poweroff` from `VIN_SENSE`** — treat it as telemetry. The buck regulates down to
+- **Decision (2026-09-15): never trigger `poweroff` from `VIN_SENSE`** — dips are inevitable on a vehicle, so treat it as telemetry. The buck regulates down to
   ~5.5–6 V in, so cranking dips ride through, and a real power loss just reboots when VIN returns.
   Halting on a dip would instead leave the unit stuck: after any software halt the CM4 needs
   `GLOBAL_EN` low > 1 ms or a 5 V cycle, and the eFuse is permanently enabled (ISSUES S8, which also
@@ -306,6 +306,7 @@ dtoverlay=uart2              # RS-232 #1 (GPIO0/1)
 dtoverlay=uart3              # RS-232 #2 (GPIO4/5)
 dtoverlay=uart5              # GPS (GPIO12/13)
 dtoverlay=pwm,pin=18,func=2  # steering PWM0_0
+# NOTE: VIN_SENSE (ADC IN2) is telemetry only - no poweroff on VIN dips (ISSUES S8).
 dtoverlay=mcp251xfd,spi0-0,oscillator=40000000,interrupt=16   # CAN1 (CE0)
 dtoverlay=mcp251xfd,spi0-1,oscillator=40000000,interrupt=17   # CAN2 (CE1)
 # CAN3 (CS = GPIO25, INT = GPIO27) and the ADC (CS = GPIO26) need a custom overlay with cs-gpios.
