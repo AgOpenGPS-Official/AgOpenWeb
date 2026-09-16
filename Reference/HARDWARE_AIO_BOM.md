@@ -12,6 +12,11 @@
 > **Pending issues that affect this BOM** (`HARDWARE_AIO_ISSUES.md`): S3 may swap U20 to STWD100NYWY3F;
 > S6 may add DNP CAN termination; S9/S10 may add a buffer FET and a 220 Ω; S12 (U19 vs DF40); P8 (L2 footprint).
 
+> **⚠ The schematic has moved on since this export (2026-09-15).** Fixed in EasyEDA but not yet
+> re-exported: **S1** (Q1 orientation), **S2** (Q1 gate clamp), **S3** (watchdog part), **S4** (LED data
+> pin) and **S6** (120 Ω + solder-jumper CAN termination per channel). The tables below still describe
+> `Full-board_2026-09-14.net`. Re-export and regenerate to bring them current.
+
 ---
 
 ## 1. Active & special parts
