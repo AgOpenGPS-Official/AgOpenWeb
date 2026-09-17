@@ -44,9 +44,25 @@
 
 | ID | Was | Issue | Evidence | Fix | Status |
 |---|---|---|---|---|---|
-| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863); the DF40 receptacles are in neither netlist nor BOM. U19's footprint **is** the two DF40 land patterns: 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, pins **1–100** and **101–200** in groups 34.00 mm apart (the CM4's own J1/J2 numbering). It also carries **4× Ø3.0 mm mounting holes** (33 × 48 mm pattern) and the 40 × 55 mm module outline. | **Route B chosen (see §S12b): swap U19 for two DF40 components; DNP + hand-solder is the fallback if stock is out at order time.** **A (workaround):** keep U19, exclude it from assembly, hand-add `J_CM_A`/`J_CM_B` to the BOM+CPL — steps and coordinates in `HARDWARE_AIO_BOM.md` §3b. **B (proper swap, see §S12b):** replace U19 with two DF40C-100DS-0.4V(51) components and move the nets. | **decided** — route B |
+| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863); the DF40 receptacles are in neither netlist nor BOM. U19's footprint **is** the two DF40 land patterns: 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, pins **1–100** and **101–200** in groups 34.00 mm apart (the CM4's own J1/J2 numbering). It also carries **4× Ø3.0 mm mounting holes** (33 × 48 mm pattern) and the 40 × 55 mm module outline. | **Route B chosen (see §S12b): swap U19 for two DF40 components; DNP + hand-solder is the fallback if stock is out at order time.** **A (workaround):** keep U19, exclude it from assembly, hand-add `J_CM_A`/`J_CM_B` to the BOM+CPL — steps and coordinates in `HARDWARE_AIO_BOM.md` §3b. **B (proper swap, see §S12b):** replace U19 with two DF40C-100DS-0.4V(51) components and move the nets. | **DONE 2026-09-17** — verified below |
 
-### S12b — how to do the U19 → 2× DF40 swap (route B)
+### S12b — the U19 → 2× DF40 swap (route B) — **COMPLETE 2026-09-17**
+
+**Verified against `PCB From EasyEDA/PCB_PCB_AOW-v2.0_2026-09-17.json`:**
+
+- `U19` replaced by **`CN1`** (pads 1–100), **`CN2`** (pads 101–200) and **`CN3`** (mechanical: 4 holes at
+  56.91 / 89.91 × 6.27 / 54.27 mm).
+- **All 200 pads within 0.004 mm** of U19's original pad positions (rounding, not movement).
+- **Every pad carries the net its U19 pin had**, except pins 25 and 58 — the deliberate S4 swap
+  (`LED_DATA` ↔ `SW_REMOTE`).
+- **All 14 high-speed nets connected end to end** (6 PCIe, 8 Ethernet): each forms a single group from
+  the connector pad through to the M.2 socket or RJ45. No re-routing was needed.
+
+Parts used: `Reference/EasyEDA parts/` (symbols with CM4 pin names/numbers, footprints derived from
+U19's pads). Placement gotcha recorded there: EasyEDA's Y axis in this project reads **from the bottom
+edge** (Y_editor = 119.00 − Y_from_top).
+
+#### Original procedure
 
 **DECIDED 2026-09-17: do the swap, even for a one-off build.** C597931 is marked "Hot" at JLC and may
 restock by order time, and with real connector components the stock question becomes a one-click
