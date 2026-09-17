@@ -109,6 +109,43 @@
 
 ---
 
+## 3b. Ordering notes — getting JLC to fit the DF40s, not the CM4 (S12)
+
+JLC matches the BOM to the pick-and-place (CPL) file **by designator**; it never reads designators from
+the Gerbers. So the two receptacles can be added as rows even though they aren't components in the PCB.
+
+1. **Delete U19** from both the BOM and the CPL before uploading — a part in neither file is not sourced
+   and not placed. (The parts-selection screen also has a per-line "do not place" toggle, but deleting
+   the rows keeps the CM4 from ever being priced.)
+2. **Add two rows to each file:**
+
+   BOM:
+   ```
+   DF40C-100DS-0.4V(51),J_CM_A,DF40-100P-0.4mm,C597931
+   DF40C-100DS-0.4V(51),J_CM_B,DF40-100P-0.4mm,C597931
+   ```
+   CPL (same convention as the EasyEDA export — Y from the bottom edge):
+   ```
+   J_CM_A,56.41mm,86.23mm,T,<rotation>
+   J_CM_B,90.41mm,86.23mm,T,<rotation>
+   ```
+3. **Take the rotation from JLC's preview, not from U19.** It must match JLC's library orientation for
+   C597931, which often differs from the design footprint. The parts-selection step renders each
+   placement: confirm each connector sits over its pad array **and pin 1 is at the correct end** — a
+   180° error lands pin 1 where pin 100 belongs.
+4. **Silkscreen:** add `J_CM_A` / `J_CM_B` text and a pin-1 marker beside each pad group, so the BOM has
+   something on the board to match. No nets change.
+5. **Order remarks:** "U19 is the Raspberry Pi CM4 module outline — do not source or place. Fit two
+   DF40C-100DS-0.4V(51) (C597931) onto the U19 pad arrays: J_CM_A on pins 1–100, J_CM_B on pins 101–200."
+   Expect a CAM query anyway and answer with the same note.
+6. **Confirm C597931 is available for assembly**, not just for sale — 0.4 mm pitch needs their fine-pitch
+   process and was flagged as needing a fixture.
+
+*(Written from how the JLC flow generally works; their UI wording changes, so the preview check in step 3
+is the real verification.)*
+
+---
+
 ## 4. Removed since the July BOM
 
 For traceability. None of these are in the 2026-09-14 netlist.
