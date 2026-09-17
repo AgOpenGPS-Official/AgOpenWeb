@@ -21,6 +21,23 @@ Keeping CM4 numbering on connector B (101–200) is deliberate: the schematic th
 CM4 datasheet pinout, and `../PCB From EasyEDA/CM4_DF40_pin_map.csv` is the truth table (cm4_pin,
 cm4_pin_name, net, pad coordinates).
 
+## Placement coordinates
+
+Each footprint's **origin is its placement point**, and the pads are copied from U19 *as placed* — so the
+rotation is already baked in: **place at rotation 0, not 90.**
+
+| Footprint | Origin (canvas mm) | Board-relative mm | Verify after placing |
+|---|---|---|---|
+| `CM4_DF40_A` | 1077.486, 817.499 | 56.41, 32.77 | pad **1** at 54.87, 22.97 |
+| `CM4_DF40_B` | 1111.486, 817.499 | 90.41, 32.77 | pad **101** at 88.87, 22.97 |
+| `CM4_MECHANICAL` | 1094.490, 815.002 | 73.41, 30.27 | holes at 56.91 / 89.91 × 6.27 / 54.27 |
+
+"Board-relative" is measured from the board outline's top-left corner; the canvas column is the absolute
+coordinate in this PCB.
+
+**Easiest check: place them while U19 is still there.** The new pads should land exactly on U19's, and DRC
+will report overlapping pads — that is the confirmation. Then delete U19 and the errors clear.
+
 ## Import notes (verified 2026-09-17)
 
 - The files open in EasyEDA Standard's **Symbol / Footprint editor**, where shapes are loose by design —
