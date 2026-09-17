@@ -61,6 +61,23 @@ from the top"). The connector is *not* centred on the module, which makes the ch
   outer edge) and Pin 101 above Pin 102 on the bottom one (the *inner* row). The board matches: pin 1 is
   1.46 mm from the outer edge, pin 101 is on the inner row. ✅
 
+**Cross-checked against Raspberry Pi's own CM4IO KiCad** (`CM4IO.pretty/Raspberry-Pi-4-Compute-Module.kicad_mod`,
+which is likewise a single 200-pad module footprint):
+
+| Pad | CM4IO | This board |
+|---|---|---|
+| 1 | x −2.000, y −31.300 | x 54.87, y 22.97 |
+| 2 | x **+1.080** (3.08 mm right of pin 1) | x **57.95** (3.08 mm right of pin 1) |
+| 3 | 0.4 mm along, pin 1's column | 0.4 mm along, pin 1's column |
+| 101 / 102 | 31.920 / 35.000 (same pattern, 34 mm over) | 88.87 / 91.95 (same pattern, 34 mm over) |
+
+Identical handedness — **U19's footprint is correct**.
+
+**⚠ The EasyEDA library socket footprint for C597931 is MIRRORED** (pin 1 top-right, pin 2 top-left —
+the reverse of the official land pattern). Using it as drawn would scramble every signal across the
+connector, with nothing wrong-looking in the schematic. Treat library footprints for mezzanine
+connectors as suspect until checked against the mating part.
+
 **Handedness gotcha with library footprints:** a bare DF40 socket footprint may show pin 1 at the
 opposite corner. Work out which:
 - **Diagonally opposite** → it's 180° out; rotate it. The (51) variant has no boss/fitting nail, so the
