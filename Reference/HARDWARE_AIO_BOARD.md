@@ -240,7 +240,9 @@ U3 LDO → +3V3 ; U4 buck → +3V3_NVME (EN from 5V_CM) }`
   is ratiometric with no divider.
 - **Current sense** (J1.6): same front end → ADC IN1.
 - **Switch inputs** (J1.7–9): SMAJ16A at the line, 1 k series, 10 k pull-up to +3V3, 100 nF, SRV05-4 to
-  +3V3 at the pin. **Contact-to-ground inputs** (ISSUES S11).
+  +3V3 at the pin. **Decision (2026-09-16): dry contact-to-ground switches only** — 12 V-level inputs
+  are not supported (they would exceed the CM4 GPIO maximum); document that in the harness notes
+  (ISSUES S11).
 - **Steering outputs** (J1.10–12): CM4 GPIO → 330 Ω → connector, 3.3 V logic (MD13S / IBT-2 style).
   GPIO18 is hardware PWM0_0.
 - **Input protection:** Q1 reverse-polarity P-FET + SMBJ24A TVS + in-line harness fuse (not on board).
