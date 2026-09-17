@@ -42,14 +42,25 @@
 
 | ID | Was | Issue | Evidence | Fix | Status |
 |---|---|---|---|---|---|
-| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863); the DF40 receptacles are in neither netlist nor BOM. U19's footprint **is** the two DF40 land patterns: 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, pins **1–100** and **101–200** in groups 34.00 mm apart (the CM4's own J1/J2 numbering). It also carries **4× Ø3.0 mm mounting holes** (33 × 48 mm pattern) and the 40 × 55 mm module outline. | **Two routes — B recommended while only 14 traces land on these pads.** **A (workaround):** keep U19, exclude it from assembly, hand-add `J_CM_A`/`J_CM_B` to the BOM+CPL — steps and coordinates in `HARDWARE_AIO_BOM.md` §3b. **B (proper swap, see §S12b):** replace U19 with two DF40C-100DS-0.4V(51) components and move the nets. | **decide** — B recommended |
+| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863); the DF40 receptacles are in neither netlist nor BOM. U19's footprint **is** the two DF40 land patterns: 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, pins **1–100** and **101–200** in groups 34.00 mm apart (the CM4's own J1/J2 numbering). It also carries **4× Ø3.0 mm mounting holes** (33 × 48 mm pattern) and the 40 × 55 mm module outline. | **Route B chosen (see §S12b): swap U19 for two DF40 components; DNP + hand-solder is the fallback if stock is out at order time.** **A (workaround):** keep U19, exclude it from assembly, hand-add `J_CM_A`/`J_CM_B` to the BOM+CPL — steps and coordinates in `HARDWARE_AIO_BOM.md` §3b. **B (proper swap, see §S12b):** replace U19 with two DF40C-100DS-0.4V(51) components and move the nets. | **decided** — route B |
 
 ### S12b — how to do the U19 → 2× DF40 swap (route B)
 
-**First settle which connector** — C597931 is out of stock at LCSC and the substitutes' land patterns
-are unverified (`HARDWARE_AIO_BOM.md` §3a); a clone with different pads changes this work.
+**DECIDED 2026-09-17: do the swap, even for a one-off build.** C597931 is marked "Hot" at JLC and may
+restock by order time, and with real connector components the stock question becomes a one-click
+decision at ordering: in stock → JLC places them; out of stock → mark them **DNP** and hand-solder using
+`PCB From EasyEDA/Stencil_CM4_connectors/`. BOM and CPL come out correct either way, which was route A's
+only purpose. C52269441 (LXWCONN) stays a drop-in substitute at order time — identical land pattern.
 
-Otherwise worth doing **now**: only 14 traces (6 PCIe + 8 Ethernet) currently land on U19's pads, and
+**Two things to watch:**
+- **Don't let the library footprint change the pads.** If EasyEDA's C597931 footprint differs (pad sizes,
+  extra boss pads), edit it to match what is there now: 0.20 × 0.70 mm pads, 0.40 mm pitch, 3.08 mm row
+  centres, 19.60 mm array. Same geometry keeps the PCIe/Ethernet traces attached; different geometry
+  means re-routing them.
+- **Re-add the mechanical items U19 carried** (step 3) — easiest as a pad-less "CM4 mechanical" footprint,
+  which also keeps the module visible on the board.
+
+Worth doing **now**: only 14 traces (6 PCIe + 8 Ethernet) currently land on U19's pads, and
 the rest of the CM4 area is unrouted. After the swap the BOM, CPL and DRC are all correct with no manual editing,
 and no CAM queries.
 
