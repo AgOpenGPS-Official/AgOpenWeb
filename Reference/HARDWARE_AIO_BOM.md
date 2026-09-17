@@ -11,7 +11,7 @@
 >
 > **Pending issues that affect this BOM** (`HARDWARE_AIO_ISSUES.md`): S3 may swap U20 to STWD100NYWY3F;
 > S6 added 120 Ω + solder jumper per CAN channel; **S9 adds Q3 = BSS84/DMG2301L P-FET (SOT-23) + R80 100 kΩ**
-> (and moves R79 to GND); S10 may add a 220 Ω; S12 (U19 vs DF40); P8 (L2 footprint). JLC part for the
+> (and moves R79 to GND); S10 adds R81 330 Ω (C25104, existing value); S12 (U19 vs DF40); P8 (L2 footprint). JLC part for the
 > P-FET: look up at capture — BSS84 and DMG2301L are both common SOT-23 parts.
 
 > **⚠ The schematic has moved on since this export (2026-09-15).** Fixed in EasyEDA but not yet
