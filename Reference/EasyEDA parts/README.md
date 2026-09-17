@@ -21,6 +21,16 @@ Keeping CM4 numbering on connector B (101–200) is deliberate: the schematic th
 CM4 datasheet pinout, and `../PCB From EasyEDA/CM4_DF40_pin_map.csv` is the truth table (cm4_pin,
 cm4_pin_name, net, pad coordinates).
 
-> **Untested format.** The shapes and coordinates come from EasyEDA's own data, but the document wrapper
+## Import notes (verified 2026-09-17)
+
+- The files open in EasyEDA Standard's **Symbol / Footprint editor**, where shapes are loose by design —
+  the document *is* the component. **File → Save** with name (`CM4_DF40_A` / `_B`), prefix `CN` and the
+  matching package puts it in the personal library. Save the footprints first so the symbols can link them.
+- **⚠ On opening a symbol, EasyEDA defaults its footprint to LCSC's own Hirose footprint** (the supplier
+  fields carry C597931, which auto-links it). **Re-point the package to `CM4_DF40_A` / `CM4_DF40_B`.**
+  LCSC's footprint is mirrored *and* numbered 1–50/100–51, so leaving it linked would put every signal on
+  the wrong pad with no visible symptom in the schematic.
+
+> **Format note.** The shapes and coordinates come from EasyEDA's own data, but the document wrapper
 > (head fields, canvas string) is reconstructed. If EasyEDA rejects a file, the fallback is editing the
 > schematic export directly — pin positions stay put, so attached wires survive.
