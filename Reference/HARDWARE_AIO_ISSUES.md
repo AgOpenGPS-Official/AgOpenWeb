@@ -42,7 +42,7 @@
 
 | ID | Was | Issue | Evidence | Fix | Status |
 |---|---|---|---|---|---|
-| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863). The DF40 receptacles aren't in the netlist or BOM. | Exclude U19 from JLC assembly; add 2× DF40C-100DS-0.4V(51) (C597931). Pad check: P9. | open |
+| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863). The DF40 receptacles aren't in the netlist or BOM. | **DECIDED 2026-09-16: keep U19's footprint, exclude it from assembly, add the two receptacles as BOM/CPL lines.** Measured from the PCB source, U19's footprint **is** the two DF40 land patterns — 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, **pins 1–100** and **pins 101–200** in groups 34.00 mm apart (matching the CM4's own J1/J2 numbering). **No nets move**, and the routed PCIe/Ethernet stays put. Add: `J_CM_A` (pins 1–100) at **56.41, 32.77 mm** from the board's top-left and `J_CM_B` (pins 101–200) at **90.41, 32.77 mm**, both DF40C-100DS-0.4V(51) / C597931, same rotation as U19 (90°). In the pick-and-place export's convention (Y from the bottom edge) that is **56.41, 86.23** and **90.41, 86.23**. Note in the order remarks that the connectors go on the U19 pad arrays and the CM4 module is not fitted. Replacing U19 with two connector symbols would mean re-wiring 200 pins and risking the routed high-speed pairs — not worth it now. | **decided** — BOM/CPL only |
 
 ### Retracted
 
@@ -94,7 +94,7 @@ PCB pad nets match the netlist (0 differences).
 | **P4** | L3 | Buck switching loop is large. | Loop C1/C2 → U1 VIN → SW → D1 → back. C1/C2 GND pads at (4.9, 48–51), D1 anode at (9.4, 34.5): ≈ 15 mm apart through the pour. U1 VIN ≈ 5.4 mm from C1/C2. | Place D1's anode and C1/C2's GND pads together next to U1 pin 7 / pad 9; keep SW node copper small. | open |
 | **P5** | L5 | Ethernet intra-pair skew. | P−N: ETH0 0.27 mm, **ETH1 8.45 mm**, ETH2 1.34 mm, ETH3 2.11 mm (target ≤ 0.13 mm). ETH1's magjack pins (P4, P7) are 4.6 mm apart. PCIe OK: TX 0.05, RX 0.00, REFCLK 0.08 mm. | Length-tune the short leg near the magjack (ETH1_P, ETH2_N, ETH3_N, ETH0_N) — after P3. | open |
 | **P8** | L7 | L2 inductor footprint doesn't match the part. | Footprint `MDA1054HT` (11 × 10 mm); part Sunlord MWSA1004S-6R8MT (10 × 10 mm, C408485). | Check pads against the MWSA1004S land pattern or swap footprints. | open |
-| **P9** | — | DF40 receptacle pads on the U19 footprint unverified. | U19 footprint `COMM-SMD_L55.0-W40.0_CM4101000` (see S12). | Check pad positions against the CM4 datasheet mechanical drawing and DF40C-100DS land pattern. | open |
+| **P9** | — | DF40 receptacle pads on the U19 footprint unverified. | U19 footprint `COMM-SMD_L55.0-W40.0_CM4101000`: 200 pads, 0.20 × 0.70 mm, 0.40 mm pitch, columns 3.08 mm apart, groups (pins 1–100 / 101–200) 34.00 mm apart. Geometry is consistent with a DF40 land pattern, but the source drawing is unverified. | Check those numbers against the DF40C-100DS-0.4V(51) datasheet land pattern and the CM4 mechanical drawing (connector spacing), since S12 relies on them. | open |
 
 ### Minor
 

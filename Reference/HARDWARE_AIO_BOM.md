@@ -98,7 +98,7 @@
 | Item | Part | Notes |
 |---|---|---|
 | CM4 module (U19) | CM4101000 (1 GB Lite Wireless), or any CM4 Lite variant | RPi reseller; hand-seated |
-| CM4 mezzanine ×2 | **DF40C-100DS-0.4V(51)**, JLC C597931 | **not in the netlist or EasyEDA BOM.** U19's attached LCSC part is the CM4 module itself (C20754863), so a straight BOM upload would ask JLC to place a CM4 on the receptacle pads. Exclude U19 from assembly and add the two receptacles by hand (needs JLC's 0.4 mm fixture) |
+| CM4 mezzanine ×2 | **DF40C-100DS-0.4V(51)**, JLC C597931 | **not in the netlist or EasyEDA BOM** — U19's footprint carries both land patterns (pins 1–100 / 101–200) but its attached part is the CM4 module (C20754863). Exclude U19 from assembly; add `J_CM_A` at 56.41, 86.23 mm and `J_CM_B` at 90.41, 86.23 mm (pick-and-place coordinates), rotation as U19. Needs JLC's 0.4 mm fixture. See S12. |
 | NVMe SSD | 128 GB M.2 2230/2242 | pre-imaged |
 | M.2 standoff + M2 screw | plated hole + hand-fit standoff | JLC SMT standoffs unreliable |
 | GPS module (U16 **or** P2) | UM982EB module **or** ArduSimple simpleRTK2B | populate one (S7) |
