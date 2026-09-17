@@ -46,8 +46,11 @@
 
 ### S12b — how to do the U19 → 2× DF40 swap (route B)
 
-Worth doing **now**: only 14 traces (6 PCIe + 8 Ethernet) currently land on U19's pads, and the rest of
-the CM4 area is unrouted. After the swap the BOM, CPL and DRC are all correct with no manual editing,
+**First settle which connector** — C597931 is out of stock at LCSC and the substitutes' land patterns
+are unverified (`HARDWARE_AIO_BOM.md` §3a); a clone with different pads changes this work.
+
+Otherwise worth doing **now**: only 14 traces (6 PCIe + 8 Ethernet) currently land on U19's pads, and
+the rest of the CM4 area is unrouted. After the swap the BOM, CPL and DRC are all correct with no manual editing,
 and no CAM queries.
 
 **Why routing survives:** EasyEDA tracks carry their own net names, and the new footprints go at the

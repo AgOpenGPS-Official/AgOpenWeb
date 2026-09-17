@@ -109,6 +109,33 @@
 
 ---
 
+## 3a. CM4 mezzanine connector — sourcing (checked 2026-09-17)
+
+**C597931 (Hirose DF40C-100DS-0.4V(51)) is out of stock at LCSC** (notify-me; ref price $0.73–1.09, no
+discontinued flag). The (58) variant **C3642394 has 1 unit** — effectively unavailable, 1000/reel.
+The part is chronically short at Digi-Key/Mouser/Farnell too (Raspberry Pi forum thread t=325030).
+
+| Option | Part | Price | Status |
+|---|---|---|---|
+| LCSC substitute 1 | **GT-B0403FSV14-100B1101** (G-Switch) | ~$1.43 | **most promising** — a JLCPCB listing showed ~1387 in stock, i.e. in their assembly library (693 boards' worth) |
+| LCSC substitute 2 | **LBF15-G100S-B0R02** (LXWCONN) | ~$0.95 | LXW fine-pitch board-to-board; "LBF15" reads as their 1.5 mm family; stock not confirmed |
+| Consign | Hirose from Mouser / Digi-Key / Farnell | — | JLC accepts customer-supplied parts for a fee; only 2 per board |
+| Hand-solder | Hirose, any source | — | 0.4 mm pitch, hot air + flux + drag; 2 parts per board |
+| Last resort | DF40HC(3.0)/(4.0)-100DS variants | — | changes module height → standoffs, gap-pad thickness and enclosure all shift |
+
+**Verify before committing to a substitute** (not yet checked — no datasheet retrieved):
+
+1. **Land pattern vs the pads already on the board:** 0.20 × 0.70 mm pads, 0.40 mm pitch, 50 per column,
+   columns 3.08 mm apart, groups (pins 1–100 / 101–200) 34.00 mm apart.
+2. **1.5 mm mated height.**
+3. **Mates with the CM4's plug** (DF40C-100DP-0.4V(51)).
+4. Assembly availability at JLC, not just sale stock — 0.4 mm pitch needs their fine-pitch process.
+
+> **Settle the connector before doing the S12b swap.** A clone with a different land pattern changes
+> U19's pads as well, and both changes are better made together.
+
+---
+
 ## 3b. Ordering notes — getting JLC to fit the DF40s, not the CM4 (S12)
 
 JLC matches the BOM to the pick-and-place (CPL) file **by designator**; it never reads designators from
