@@ -119,21 +119,30 @@ and no CAM queries.
 **Why routing survives:** EasyEDA tracks carry their own net names, and the new footprints go at the
 *same coordinates* as the existing pads, so the 14 traces re-attach instead of needing a re-route.
 
-1. **Schematic** — delete the CM4 symbol; place two DF40C-100DS-0.4V(51) (C597931) symbols as `J_CM_A`
-   and `J_CM_B`. Net assignment is mechanical: **CM4 pin N → J_CM_A pin N** for 1–100, and
-   **CM4 pin N → J_CM_B pin N−100** for 101–200. Net *names* don't change, so the rest of the schematic
-   is untouched. Full table (all 200 pins, with nets and pad coordinates):
-   `PCB From EasyEDA/CM4_DF40_pin_map.csv` — 117 pins carry nets, the rest are unconnected.
-2. **PCB** — delete U19, place `J_CM_A` centred at **(56.41, 32.77) mm** and `J_CM_B` at
+1. **Footprints — derive them from U19, don't draw them** (decided 2026-09-17). Copy U19's footprint into
+   the personal library twice; in one copy delete pads 101–200 → **`J_CM_A`, pads numbered 1–100**; in the
+   other delete pads 1–100 → **`J_CM_B`, pads numbered 101–200**. Nothing is repositioned or renumbered,
+   so the verified pad geometry carries over intact.
+   **Keep CM4 numbering on connector B (101–200) rather than restarting at 1** — the schematic then reads
+   the same as the CM4 datasheet pinout ("pin 92 is RUN_PG" in both), and `CM4_DF40_pin_map.csv`'s
+   `cm4_pin` column *is* the pad number (`connector_pin` becomes irrelevant). EasyEDA accepts pad numbers
+   101–200; they need only be unique within the footprint, and JLC places by position regardless.
+   Also make a **third, pad-less "CM4 mechanical" footprint** — 40 × 55 mm outline, 4 × Ø3.0 mm holes,
+   keep-out for the 1.5 mm gap — centred at **(73.41, 30.27) mm** (step 3). Silkscreen pin 1 by `J_CM_A`
+   and pin 101 by `J_CM_B`.
+2. **Schematic** — delete the CM4 symbol; place the two symbols. Net names don't change, so the rest of
+   the schematic is untouched; arrange symbol pins by function (power, GND, PCIe, Ethernet, GPIO) rather
+   than pad order. Truth table: `PCB From EasyEDA/CM4_DF40_pin_map.csv` — 117 of 200 pins carry nets.
+3. **PCB** — delete U19, place `J_CM_A` centred at **(56.41, 32.77) mm** and `J_CM_B` at
    **(90.41, 32.77) mm** from the board's top-left corner. Check **pin 1 of J_CM_A lands at
    (54.87, 22.97) mm** and pin 1 of J_CM_B at **(88.87, 22.97) mm** — that is the single most important
    check; a 180° error swaps pin 1 for pin 100.
-3. **Re-add the mechanical items U19 carried:** 4× **Ø3.0 mm NPTH** at (56.91, 6.27), (89.91, 6.27),
+4. **Re-add the mechanical items U19 carried:** 4× **Ø3.0 mm NPTH** at (56.91, 6.27), (89.91, 6.27),
    (56.91, 54.27), (89.91, 54.27); the **40 × 55 mm module outline** on silk/assembly; and a keep-out so
    nothing tall sits under the module (mezzanine gap ≈ 1.5 mm).
-4. **Verify** — confirm every pad's net against the CSV, run DRC, and check the 14 high-speed traces are
+5. **Verify** — confirm every pad's net against the CSV, run DRC, and check the 14 high-speed traces are
    still attached (P3/P5 rework may re-route the Ethernet anyway).
-5. **Re-export** netlist + BOM + PCB source; the docs regenerate with `J_CM_A`/`J_CM_B` as real parts and
+6. **Re-export** netlist + BOM + PCB source; the docs regenerate with `J_CM_A`/`J_CM_B` as real parts and
    the CM4 module drops to a hand-fit line.
 
 ### Retracted
