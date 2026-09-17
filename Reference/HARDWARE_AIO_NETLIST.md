@@ -19,10 +19,9 @@
 ⚠ **Open schematic issues** are listed in `HARDWARE_AIO_ISSUES.md`. The must-fix ones are both in the
 input protection (§1.1 below): **Q1 orientation (S1)** and **Q1 gate clamp (S2)**.
 
-> **⚠ The schematic has moved on since this export (2026-09-15).** Fixed in EasyEDA but not yet
-> re-exported: **S1** (Q1 orientation), **S2** (Q1 gate clamp), **S3** (watchdog part), **S4** (LED data
-> pin) and **S6** (120 Ω + solder-jumper CAN termination per channel). The tables below still describe
-> `Full-board_2026-09-14.net`. Re-export and regenerate to bring them current.
+> **⚠ Newer export available.** These tables describe `Full-board_2026-09-14.net`. Since then S1–S4, S6,
+> S9, S10, S12, S2 and S13 have been fixed — see `Full-board_2026-09-17.net` and
+> `HARDWARE_AIO_ISSUES.md`. Regenerate from the 09-17 export when convenient.
 
 ---
 
