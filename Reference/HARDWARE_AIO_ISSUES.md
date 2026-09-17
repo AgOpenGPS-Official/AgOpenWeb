@@ -42,7 +42,33 @@
 
 | ID | Was | Issue | Evidence | Fix | Status |
 |---|---|---|---|---|---|
-| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863). The DF40 receptacles aren't in the netlist or BOM. | **DECIDED 2026-09-16: keep U19's footprint, exclude it from assembly, add the two receptacles as BOM/CPL lines.** Measured from the PCB source, U19's footprint **is** the two DF40 land patterns — 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, **pins 1–100** and **pins 101–200** in groups 34.00 mm apart (matching the CM4's own J1/J2 numbering). **No nets move**, and the routed PCIe/Ethernet stays put. Add: `J_CM_A` (pins 1–100) at **56.41, 32.77 mm** from the board's top-left and `J_CM_B` (pins 101–200) at **90.41, 32.77 mm**, both DF40C-100DS-0.4V(51) / C597931, same rotation as U19 (90°). In the pick-and-place export's convention (Y from the bottom edge) that is **56.41, 86.23** and **90.41, 86.23**. Note in the order remarks that the connectors go on the U19 pad arrays and the CM4 module is not fitted. Replacing U19 with two connector symbols would mean re-wiring 200 pins and risking the routed high-speed pairs — not worth it now. | **decided** — BOM/CPL only |
+| **S12** | L8 | U19's attached part is the CM4 module, not the receptacles. | EasyEDA BOM: U19 = CM4101000 (C20754863); the DF40 receptacles are in neither netlist nor BOM. U19's footprint **is** the two DF40 land patterns: 200 SMD pads, 0.20 × 0.70 mm, 0.40 mm pitch, 50 per column, columns 3.08 mm apart, pins **1–100** and **101–200** in groups 34.00 mm apart (the CM4's own J1/J2 numbering). It also carries **4× Ø3.0 mm mounting holes** (33 × 48 mm pattern) and the 40 × 55 mm module outline. | **Two routes — B recommended while only 14 traces land on these pads.** **A (workaround):** keep U19, exclude it from assembly, hand-add `J_CM_A`/`J_CM_B` to the BOM+CPL — steps and coordinates in `HARDWARE_AIO_BOM.md` §3b. **B (proper swap, see §S12b):** replace U19 with two DF40C-100DS-0.4V(51) components and move the nets. | **decide** — B recommended |
+
+### S12b — how to do the U19 → 2× DF40 swap (route B)
+
+Worth doing **now**: only 14 traces (6 PCIe + 8 Ethernet) currently land on U19's pads, and the rest of
+the CM4 area is unrouted. After the swap the BOM, CPL and DRC are all correct with no manual editing,
+and no CAM queries.
+
+**Why routing survives:** EasyEDA tracks carry their own net names, and the new footprints go at the
+*same coordinates* as the existing pads, so the 14 traces re-attach instead of needing a re-route.
+
+1. **Schematic** — delete the CM4 symbol; place two DF40C-100DS-0.4V(51) (C597931) symbols as `J_CM_A`
+   and `J_CM_B`. Net assignment is mechanical: **CM4 pin N → J_CM_A pin N** for 1–100, and
+   **CM4 pin N → J_CM_B pin N−100** for 101–200. Net *names* don't change, so the rest of the schematic
+   is untouched. Full table (all 200 pins, with nets and pad coordinates):
+   `PCB From EasyEDA/CM4_DF40_pin_map.csv` — 117 pins carry nets, the rest are unconnected.
+2. **PCB** — delete U19, place `J_CM_A` centred at **(56.41, 32.77) mm** and `J_CM_B` at
+   **(90.41, 32.77) mm** from the board's top-left corner. Check **pin 1 of J_CM_A lands at
+   (54.87, 22.97) mm** and pin 1 of J_CM_B at **(88.87, 22.97) mm** — that is the single most important
+   check; a 180° error swaps pin 1 for pin 100.
+3. **Re-add the mechanical items U19 carried:** 4× **Ø3.0 mm NPTH** at (56.91, 6.27), (89.91, 6.27),
+   (56.91, 54.27), (89.91, 54.27); the **40 × 55 mm module outline** on silk/assembly; and a keep-out so
+   nothing tall sits under the module (mezzanine gap ≈ 1.5 mm).
+4. **Verify** — confirm every pad's net against the CSV, run DRC, and check the 14 high-speed traces are
+   still attached (P3/P5 rework may re-route the Ethernet anyway).
+5. **Re-export** netlist + BOM + PCB source; the docs regenerate with `J_CM_A`/`J_CM_B` as real parts and
+   the CM4 module drops to a hand-fit line.
 
 ### Retracted
 
