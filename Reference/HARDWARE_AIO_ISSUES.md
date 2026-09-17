@@ -130,7 +130,15 @@ and no CAM queries.
    Also make a **third, pad-less "CM4 mechanical" footprint** — 40 × 55 mm outline, 4 × Ø3.0 mm holes,
    keep-out for the 1.5 mm gap — centred at **(73.41, 30.27) mm** (step 3). Silkscreen pin 1 by `J_CM_A`
    and pin 101 by `J_CM_B`.
-2. **Schematic** — delete the CM4 symbol; place the two symbols. Net names don't change, so the rest of
+2. **Schematic** — the library CM4 device (C20754863) is a **two-section symbol**: `CM4101000.1` /
+   `.2`, i.e. `U19.1` and `U19.2`, sharing one designator and one footprint (which is why the BOM shows a
+   single line and why simply changing U19's part number yields only *one* placement). The sections split
+   pins 1–100 / 101–200, so the substitution is section-for-connector: **U19.1 → `J_CM_A` (1–100)**,
+   **U19.2 → `J_CM_B` (101–200)**, with CM4 numbering preserved and no net regrouping. Check whether the
+   sections are wired by net labels (labels survive the deletion and the new symbols pick them up) or by
+   drawn wires (those will dangle). Deleting U19 removes both sections *and* the footprint's outline and
+   mounting holes at once — so make the mechanical footprint first.
+   Place the two symbols. Net names don't change, so the rest of
    the schematic is untouched; arrange symbol pins by function (power, GND, PCIe, Ethernet, GPIO) rather
    than pad order. Truth table: `PCB From EasyEDA/CM4_DF40_pin_map.csv` — 117 of 200 pins carry nets.
 3. **PCB** — delete U19, place `J_CM_A` centred at **(56.41, 32.77) mm** and `J_CM_B` at
