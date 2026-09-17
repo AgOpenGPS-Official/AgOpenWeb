@@ -52,6 +52,26 @@ decision at ordering: in stock → JLC places them; out of stock → mark them *
 `PCB From EasyEDA/Stencil_CM4_connectors/`. BOM and CPL come out correct either way, which was route A's
 only purpose. C52269441 (LXWCONN) stays a drop-in substitute at order time — identical land pattern.
 
+**U19's pad numbering is verified correct** (2026-09-17, against CM4 datasheet Figure 4, "CM4 viewed
+from the top"). The connector is *not* centred on the module, which makes the check unambiguous:
+
+- **Along the 55 mm length:** the body sits ≈14 mm from the Pin 99/100 end and ≈19 mm from the Pin 1 end
+  (scaled off Figure 4). The board's pads: 13.7 mm and 18.7 mm, pin 1 at the larger-offset end. ✅
+- **Row assignment:** Figure 4 shows Pin 1 above Pin 2 on the top connector (row nearer the module's
+  outer edge) and Pin 101 above Pin 102 on the bottom one (the *inner* row). The board matches: pin 1 is
+  1.46 mm from the outer edge, pin 101 is on the inner row. ✅
+
+**Handedness gotcha with library footprints:** a bare DF40 socket footprint may show pin 1 at the
+opposite corner. Work out which:
+- **Diagonally opposite** → it's 180° out; rotate it. The (51) variant has no boss/fitting nail, so the
+  socket is mechanically symmetric and only the pad numbering must match the module.
+- **Adjacent corner (a true mirror)** → the footprint doesn't suit a face-down module. EasyEDA won't
+  mirror on the top layer (the greyed-out option flips to the bottom). Copy U19's pad array into your own
+  footprint instead, keeping each pad's number, and attach C597931 to that.
+
+**Acceptance test either way:** pin 1 of `J_CM_A` at **(54.87, 22.97) mm**, pin 1 of `J_CM_B`
+(= CM4 pin 101) at **(88.87, 22.97) mm**, nets per `PCB From EasyEDA/CM4_DF40_pin_map.csv`.
+
 **Two things to watch:**
 - **Don't let the library footprint change the pads.** If EasyEDA's C597931 footprint differs (pad sizes,
   extra boss pads), edit it to match what is there now: 0.20 × 0.70 mm pads, 0.40 mm pitch, 3.08 mm row
