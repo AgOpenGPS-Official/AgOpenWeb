@@ -123,6 +123,27 @@ The part is chronically short at Digi-Key/Mouser/Farnell too (Raspberry Pi forum
 | Hand-solder | Hirose, any source | — | 0.4 mm pitch, hot air + flux + drag; 2 parts per board |
 | Last resort | DF40HC(3.0)/(4.0)-100DS variants | — | changes module height → standoffs, gap-pad thickness and enclosure all shift |
 
+### Sourcing strategy (2026-09-17)
+
+**Treat this as a multi-source part, not a single line item.** The pads are the standard DF40 land
+pattern, so Hirose (51)/(54)/(58), the LXWCONN LBF15 and (pending a pad check) the G-Switch part all
+fit the same footprint. **Approve them all as alternates** so the build uses whatever is in stock that
+week; the design is not tied to C52269441.
+
+Ordering from China takes long enough that stock can disappear mid-cycle, so:
+
+1. **Don't sequence sample → test → production order.** Buy the build quantity *with* the samples in one
+   order. 100 pcs ≈ $58 covers 50 boards plus spares — cheaper than a stock-out.
+2. **First prototypes: buy Hirose domestically** (DigiKey / Mouser / Arrow list it; days, not weeks).
+   Guaranteed mating with the CM4, so cross-mate risk stays off the bring-up critical path. 2 per board.
+   The clone then becomes the volume/cost fallback, testable at leisure.
+3. **Getting them fitted:** domestic parts can be consigned to JLC, or hand-soldered for the first boards.
+4. **JLC allocates parts when the order is placed**, not at upload — place an assembled order while stock
+   shows rather than uploading and deciding later.
+
+*(Distributor stock at DigiKey/Mouser/Arrow could not be verified here — those sites block automated
+fetches. Check before relying on step 2.)*
+
 **C52269441 (LXWCONN) vs the board — checked against the datasheet 2026-09-17:**
 
 | Dimension | LBF15-G100S-B0R02 | U19 pads as drawn | |
