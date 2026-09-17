@@ -5,7 +5,7 @@
 > external ADC, direct steering outputs, and a hardware watchdog.
 >
 > **Status (2026-09-14): schematic captured in EasyEDA Standard, full-board netlist exported, PCB
-> layout started.** 184 × 119 mm, 4-layer. 35 of 151 parts placed (input protection + 5 V buck, J1,
+> layout started.** One-off build (1–2 boards, not a product). 184 × 119 mm, 4-layer. 35 of 151 parts placed (input protection + 5 V buck, J1,
 > RJ45, M.2, CM4, front LEDs/reset); VIN/VIN_PROT, the buck, Ethernet and PCIe are routed. CAN, serial,
 > ADC, field I/O, eFuse/LDO/NVMe buck are not placed. Open issues: `HARDWARE_AIO_ISSUES.md`.
 > PCB source + Gerbers: `PCB From EasyEDA/`.
@@ -125,7 +125,7 @@ that the new netlist still follows is kept as-is.
   the header**, the board powers itself; (3) `rpiboot` flashes the EEPROM with `BOOT_ORDER=…6…`, then
   mass-storage-gadget exposes the NVMe for imaging; (4) remove jumper, power-cycle → boots NVMe.
   `USB_OTG_ID` (pin 101) floats (device mode), which is what rpiboot needs.
-- **Production flow:** set `BOOT_ORDER=6` once per CM4 at incoming inspection; bulk-image NVMe drives
+- **Production flow** (volume; for a one-off just rpiboot the single module once): set `BOOT_ORDER=6` per CM4 at incoming inspection; bulk-image NVMe drives
   externally on a USB-NVMe adapter; final assembly seats a pre-imaged drive.
 - **NVMe choice:** decent 128 GB 2230/2242; industrial/pSLC for heavy continuous logging.
 - **PCIe routing:** 3 length-matched diff pairs (TX/RX/REFCLK) + PERST#/CLKREQ#; no AC caps on the
