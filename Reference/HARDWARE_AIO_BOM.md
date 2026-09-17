@@ -9,6 +9,10 @@
 > i.e. the parts actually attached to the footprints. Stock counts are **not** listed — re-check at
 > order time.
 >
+> **Scale: this is a one-off — 1–2 boards for the designer's own use, not a product.** Where this doc
+> carries production-flavoured advice (multi-vendor approvals, buy-ahead quantities, per-unit
+> provisioning flow), read it as background, not as required process.
+>
 > **Pending issues that affect this BOM** (`HARDWARE_AIO_ISSUES.md`): S3 may swap U20 to STWD100NYWY3F;
 > S6 added 120 Ω + solder jumper per CAN channel; **S9 adds Q3 = BSS84/DMG2301L P-FET (SOT-23) + R80 100 kΩ**
 > (and moves R79 to GND); S10 adds R81 330 Ω (C25104, existing value); S12 (U19 vs DF40); P8 (L2 footprint). JLC part for the
@@ -124,6 +128,15 @@ The part is chronically short at Digi-Key/Mouser/Farnell too (Raspberry Pi forum
 | Last resort | DF40HC(3.0)/(4.0)-100DS variants | — | changes module height → standoffs, gap-pad thickness and enclosure all shift |
 
 ### Sourcing strategy (2026-09-17)
+
+**At 1–2 boards, the whole strategy is: buy 4 Hirose DF40C-100DS-0.4V(51) from DigiKey/Mouser** (2 per
+board + spares, days not weeks), **delete U19's row from the BOM and CPL**, and **hand-solder the two
+connectors** (order the stencil, ~$8 — paste + hot air, the part self-aligns) or consign them to JLC.
+No clone, no test-mate risk, no stock timing, and §3b's BOM/CPL additions aren't needed because JLC
+isn't placing them. Order ~5 bare boards rather than 2 — nearly the same price, and spares survive
+rework mistakes. Everything below is the volume picture, kept for reference.
+
+
 
 **Treat this as a multi-source part, not a single line item.** The pads are the standard DF40 land
 pattern, so Hirose (51)/(54)/(58), the LXWCONN LBF15 and (pending a pad check) the G-Switch part all
