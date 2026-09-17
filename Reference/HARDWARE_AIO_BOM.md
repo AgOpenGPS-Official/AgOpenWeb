@@ -117,19 +117,32 @@ The part is chronically short at Digi-Key/Mouser/Farnell too (Raspberry Pi forum
 
 | Option | Part | Price | Status |
 |---|---|---|---|
-| LCSC substitute 1 | **GT-B0403FSV14-100B1101** (G-Switch) | ~$1.43 | **most promising** — a JLCPCB listing showed ~1387 in stock, i.e. in their assembly library (693 boards' worth) |
-| LCSC substitute 2 | **LBF15-G100S-B0R02** (LXWCONN) | ~$0.95 | LXW fine-pitch board-to-board; "LBF15" reads as their 1.5 mm family; stock not confirmed |
+| **Leading candidate** | **LBF15-G100S-B0R02** (LXWCONN) — **C52269441** | $0.50–0.95 | **4,425 in stock** (~2,200 boards). **Land pattern verified identical** to the pads already on the board (below). Datasheet: `PCB From EasyEDA/LXWCONN_LBF15-G100S-B0R02_C52269441.pdf` |
+| LCSC substitute 2 | **GT-B0403FSV14-100B1101** (G-Switch) | ~$1.43 | ~1387 in JLC stock (693 boards); land pattern not checked |
 | Consign | Hirose from Mouser / Digi-Key / Farnell | — | JLC accepts customer-supplied parts for a fee; only 2 per board |
 | Hand-solder | Hirose, any source | — | 0.4 mm pitch, hot air + flux + drag; 2 parts per board |
 | Last resort | DF40HC(3.0)/(4.0)-100DS variants | — | changes module height → standoffs, gap-pad thickness and enclosure all shift |
 
-**Verify before committing to a substitute** (not yet checked — no datasheet retrieved):
+**C52269441 (LXWCONN) vs the board — checked against the datasheet 2026-09-17:**
 
-1. **Land pattern vs the pads already on the board:** 0.20 × 0.70 mm pads, 0.40 mm pitch, 50 per column,
-   columns 3.08 mm apart, groups (pins 1–100 / 101–200) 34.00 mm apart.
-2. **1.5 mm mated height.**
-3. **Mates with the CM4's plug** (DF40C-100DP-0.4V(51)).
-4. Assembly availability at JLC, not just sale stock — 0.4 mm pitch needs their fine-pitch process.
+| Dimension | LBF15-G100S-B0R02 | U19 pads as drawn | |
+|---|---|---|---|
+| Pad pitch | 0.40 ± 0.02 mm | 0.40 mm | ✅ |
+| Pad width | 0.20 ± 0.02 mm | 0.20 mm | ✅ |
+| Pad length | 0.70 mm (3.78 − 2.38, halved) | 0.70 mm | ✅ |
+| Row centre-to-centre | 3.08 mm (2.38 + 0.70) | 3.08 mm | ✅ |
+| Pad array length (DIM B, 100 pos) | 19.60 mm | 19.60 mm | ✅ |
+| Mated height | 1.50 ± 0.15 mm | 1.5 mm stack (CM4IO) | ✅ |
+| Rating | 30 V, 0.3 A, −35 to +85 °C, 30 cycles | — | same as the Hirose part |
+
+Body length (DIM A 22.60 mm) also matches the Hirose figures LCSC lists — it is built as a DF40 clone.
+**No pad changes needed, so the S12b swap plan is unaffected.**
+
+**⚠ Still unverified — the only real risk: the datasheet never claims DF40 compatibility.** It references
+only LXW's own header (LBF15-G**P-B0R01). The CM4 side can't be changed — it ships with Hirose
+DF40C-100DP plugs — so **buy two and test-mate with a CM4** before committing: full seating, correct
+1.5 mm standoff, neither tight nor sloppy. Also confirm JLC will *assemble* it (0.4 mm fine-pitch
+process), not just sell it.
 
 > **Settle the connector before doing the S12b swap.** A clone with a different land pattern changes
 > U19's pads as well, and both changes are better made together.
