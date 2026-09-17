@@ -73,7 +73,22 @@ which is likewise a single 200-pad module footprint):
 
 Identical handedness — **U19's footprint is correct**.
 
-**⚠ The EasyEDA library socket footprint for C597931 is MIRRORED** (pin 1 top-right, pin 2 top-left —
+**Pin numbering is CAD bookkeeping, not physics.** The Hirose DF40 catalogue's "Recommended PCB layout"
+carries **no pin numbers at all** — only dimensions (B, P = 0.4, pad 0.2, 2.38, 3.78) — and Note 4 states
+**"This connector is NOT polarized."** Each contact bridges the pad directly beneath it to the module
+contact directly above, 1:1 by position. Consequences:
+
+- **Only pad positions and their nets matter.** Any numbering scheme works provided the schematic wires
+  each net to the pad it belongs on (`PCB From EasyEDA/CM4_DF40_pin_map.csv` is the truth table).
+- **A 180° rotation of the part at assembly is electrically harmless** — the 2 × 50 grid maps onto itself,
+  so the contacts land on the same pads. The pin-1 question is about *footprint numbering in CAD*, not
+  about how the connector is placed. (The module's orientation is fixed by the two connectors + mounting
+  holes regardless.)
+- The EasyEDA library footprint observed in practice numbers pads **1–50 down one side and 100–51 back up
+  the other** — an arbitrary convention that is wrong *for this netlist*, since the nets are keyed to CM4
+  pin numbers. Wiring by those numbers would put every signal on the wrong pad.
+
+**⚠ The EasyEDA library socket footprint for C597931 is also MIRRORED** (pin 1 top-right, pin 2 top-left —
 the reverse of the official land pattern). Using it as drawn would scramble every signal across the
 connector, with nothing wrong-looking in the schematic. Treat library footprints for mezzanine
 connectors as suspect until checked against the mating part.
