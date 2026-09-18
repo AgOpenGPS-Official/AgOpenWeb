@@ -30,7 +30,7 @@
 |---|---|---|---|---|---|---|
 | U1 | 1 | TPS54560DDAR | SOIC-8 EP | C31966 | Power | 60 V / 5 A buck, 400 kHz |
 | D1 | 1 | SS56C | SMC | C123948 | Power | buck catch diode |
-| L2 | 1 | Sunlord MWSA1004S-6R8MT 6.8 µH | footprint named MDA1054HT 11×10 | C408485 | Power | **part is 10×10 on an 11×10 footprint — check the land pattern** (P8) |
+| L2 | 1 | Sunlord MWSA1004S-6R8MT 6.8 µH | MDA1054HT 11×10 | C408485 | Power | part is 10.0 × 11.0 × 3.8 mm — footprint size is correct (P8) |
 | U2 | 1 | TPS259571DSGR | WSON-8 2×2 | C471038 | Power | CM eFuse |
 | U3 | 1 | RT9080-33GJ5 | TSOT-23-5 | C841192 | Power | 3.3 V LDO |
 | U4 | 1 | TPS563201DDCR | SOT-23-6 | C116592 | Power | NVMe 3.3 V / 3 A buck |
