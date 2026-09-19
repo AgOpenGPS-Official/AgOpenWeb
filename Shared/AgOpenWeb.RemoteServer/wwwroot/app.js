@@ -156,7 +156,7 @@ function applyUnits() {
 }
 // Read a number input as a METRIC value: parse what the user typed (a display value)
 // and convert back. Fields whose metric step is a whole unit are integer-backed
-// host-side (nudge distance, section widths in cm), so round after converting —
+// host-side (nudge distance), so round after converting —
 // otherwise 8" → 20.32 cm would fail the host's int parse and silently do nothing.
 function readUnitInput(inp) {
   const v = parseFloat(inp.value);
@@ -613,7 +613,18 @@ if (typeof CanvasKitInit === 'function') {
 }
 
 // ---- camera controls ----
+// Issue #87: a wheel over a pop-up that can scroll (hotkey list, logs, wizards…)
+// scrolls that pop-up; everywhere else it zooms the map. ctrl+wheel (trackpad pinch
+// / browser page zoom) is always swallowed so the page itself never zooms.
+function wheelScrollsPanel(e) {
+  for (let el = e.target; el && el !== document.body && el.nodeType === 1; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return true;
+  }
+  return false;
+}
 addEventListener('wheel', e => {
+  if (!e.ctrlKey && wheelScrollsPanel(e)) return;
   e.preventDefault();
   pxPerM *= e.deltaY < 0 ? 1.1 : 0.9;
   pxPerM = Math.min(200, Math.max(0.2, pxPerM));
@@ -2154,12 +2165,12 @@ document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stop
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
 const _tcBuilt = { sw: -1, ze: -1, sc: false, pins: false };
-function tcDynInput(parent, idx, label, type, onChange, unit) {
+function tcDynInput(parent, idx, label, type, onChange, unit, step) {
   const c = document.createElement('div'); c.className = 'tc-cell';
   const sp = document.createElement('span'); sp.textContent = label;
   const inp = document.createElement(type === 'pin' ? 'select' : 'input');
   if (type === 'pin') PIN_FUNCS.forEach((l, fi) => { const o = document.createElement('option'); o.value = fi; o.textContent = l; inp.appendChild(o); });
-  else { inp.type = type; if (type === 'number') inp.step = '1'; }
+  else { inp.type = type; if (type === 'number') inp.step = step || '1'; }
   if (unit) inp.dataset.unit = unit;   // stored-unit tag → applyUnits() re-steps it
   inp.dataset.idx = idx;
   inp.addEventListener('change', () => onChange(inp));
@@ -2188,7 +2199,7 @@ function populateToolCfg(force) {
   const nSec = Math.max(1, Math.min(64, t.numSections)); // ToolConfig.MaxSections — backend supports 64
   if (_tcBuilt.sw !== nSec) {
     const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
-    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); }, 'cm');
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); }, 'cm', '0.1');  // 0.1 cm: 30" = 76.2 cm (issue #89)
     _tcBuilt.sw = nSec;
     applyUnits();   // freshly built boxes need the active unit's step
   }
