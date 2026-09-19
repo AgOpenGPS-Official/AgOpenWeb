@@ -13,7 +13,7 @@
     <ApplicationTitle>AgOpenWeb</ApplicationTitle>
     <!-- CFBundleShortVersionString (marketing) / CFBundleVersion (build). Bump
          ApplicationVersion on every TestFlight upload; it must strictly increase. -->
-    <ApplicationDisplayVersion>26.6.75</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>26.6.76</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
   </PropertyGroup>
 
