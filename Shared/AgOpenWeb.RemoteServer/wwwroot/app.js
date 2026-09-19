@@ -230,6 +230,18 @@ const frontWheelImg = new Image();
 let frontWheelReady = false, skFrontWheel = null;
 frontWheelImg.onload = () => { frontWheelReady = true; };
 frontWheelImg.src = '/icons/FrontWheels.png';
+// Harvester + articulated body sprites (issue #88) — AgOpenGPS's AoG brand textures,
+// drawn with CVehicle's per-type layout in vehicleSk. Lazily turned into SkImages.
+function loadSprite(src) {
+  const s = { img: new Image(), ready: false, sk: null };
+  s.img.onload = () => { s.ready = true; };
+  s.img.src = src;
+  return s;
+}
+function skSprite(s) { return s.ready ? (s.sk || (s.sk = CK.MakeImageFromCanvasImageSource(s.img))) : null; }
+const harvesterSpr = loadSprite('/icons/HarvesterAoG.png');
+const artFrontSpr = loadSprite('/icons/ArticulatedFrontAoG.png');
+const artRearSpr = loadSprite('/icons/ArticulatedRearAoG.png');
 
 // ---- background imagery: extent from the Scene, PNG fetched over HTTP. ----
 let imageryRect = null;  // { minE, minN, maxE, maxN, version }
@@ -4759,18 +4771,66 @@ function updateLineWidths() {
   SKP.extraGuide.setStrokeWidth(w(0.9)); // extra guide 0.3 × 3
   SKP.extraGuideShadow.setStrokeWidth(w(1.2));
 }
+// Draw a sprite in the vehicle frame (+Y forward) centred on (cx, cy) with half-extents
+// (hx, hy), bitmap top row toward +Y — AgOpenGPS Texture2D.DrawCentered with its V flip.
+function drawVehSprite(canvas, sk, cx, cy, hx, hy, rotDeg, paint) {
+  canvas.save();
+  canvas.translate(cx, cy);
+  if (rotDeg) canvas.rotate(rotDeg, 0, 0);
+  canvas.scale(1, -1);
+  canvas.drawImageRectOptions(sk, CK.LTRBRect(0, 0, sk.width(), sk.height()),
+    CK.LTRBRect(-hx, -hy, hx, hy), CK.FilterMode.Linear, CK.MipmapMode.None, paint || null);
+  canvas.restore();
+}
+// Harvester / articulated bodies (issue #88), laid out as AgOpenGPS CVehicle.DrawVehicle:
+//  harvester  — body 2·tw × 3·wb centred on the pivot; steerable wheels at the REAR axle
+//               (−wb), turned the opposite way to a tractor, tinted HarvesterWheelColor.
+//  articulated — front/rear halves 2·tw × 1.3·wb centred ±wb/2 about the hinge, each
+//               turned by half the steer angle in opposite directions.
+// Returns false until the sprites are loaded so the caller falls back to the triangle.
+function vehicleBodySk(canvas, p, veh, type) {
+  const tw = veh.trackWidth, wb = veh.wheelbase;
+  const steer = tick ? tick.vehicleSteerAngle : 0; // degrees, +right
+  if (type === 1) {
+    const body = skSprite(harvesterSpr);
+    if (!body) return false;
+    beginVehicleFrame(canvas, p);
+    const wheel = frontWheelReady && (skFrontWheel || (skFrontWheel = CK.MakeImageFromCanvasImageSource(frontWheelImg)));
+    if (wheel) {
+      if (!SKP.harvesterWheel) {
+        SKP.harvesterWheel = new CK.Paint();
+        SKP.harvesterWheel.setColorFilter(CK.ColorFilter.MakeBlend(CK.Color(20, 20, 20, 1), CK.BlendMode.Modulate));
+      }
+      for (const sx of [1, -1]) drawVehSprite(canvas, wheel, sx * tw / 2, -wb, 0.25 * tw, 0.5 * wb, steer, SKP.harvesterWheel);
+    }
+    drawVehSprite(canvas, body, 0, 0, tw, 1.5 * wb, 0);
+  } else {
+    const front = skSprite(artFrontSpr), rear = skSprite(artRearSpr);
+    if (!front || !rear) return false;
+    beginVehicleFrame(canvas, p);
+    drawVehSprite(canvas, rear, 0, -wb / 2, tw, 0.65 * wb, steer / 2);
+    drawVehSprite(canvas, front, 0, wb / 2, tw, 0.65 * wb, -steer / 2);
+  }
+  canvas.restore();
+  return true;
+}
+function beginVehicleFrame(canvas, p) {
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
+  canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+}
 function vehicleSk(canvas, p) {
   const veh = config && config.vehicle;
-  if (tractorReady && veh && veh.trackWidth > 0.01 && veh.wheelbase > 0.01) {
+  const type = veh ? Math.max(0, Math.min(2, veh.type | 0)) : 0; // 0 Tractor / 1 Harvester / 2 Articulated
+  if (type !== 0 && veh.trackWidth > 0.01 && veh.wheelbase > 0.01 && vehicleBodySk(canvas, p, veh, type)) return;
+  if (type === 0 && tractorReady && veh && veh.trackWidth > 0.01 && veh.wheelbase > 0.01) {
     if (!skTractor) skTractor = CK.MakeImageFromCanvasImageSource(tractorImg);
     if (skTractor) {
       const bW = veh.trackWidth / (2 * SPR_HALFX);
       const bH = veh.wheelbase / (SPR_FRONT - SPR_REAR);
       const half = bW / 2, top = (1 - SPR_REAR) * bH, bot = -SPR_REAR * bH;
-      canvas.save();
-      canvas.concat(perspM);
-      canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
-      canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+      beginVehicleFrame(canvas, p);
       // Body sprite (scale 1,-1 = bitmap rows top-down → world N up).
       canvas.save();
       canvas.scale(1, -1);
