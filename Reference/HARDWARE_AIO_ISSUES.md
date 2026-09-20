@@ -35,12 +35,16 @@
 | **S5** | F7 | J1 CAN pin order changed from July. | July: 14/16/18 = H, 15/17/19 = L. Now: 14/16/18 = L, 15/17/19 = H. | **Closed 2026-09-15: no harness built yet**, so there's nothing to reconcile. The J1 pinout in `HARDWARE_AIO_NETLIST.md` §5.1 (L on even 14/16/18, H on odd 15/17/19) is the reference for the harness when it is made. | closed |
 | **S6** | F8 | No CAN termination footprints. | Each CAN net only touches its MCP251863, the NUP2105L and J1. July's split-termination and CMC footprints are gone. | **Fixed 2026-09-15:** a single 120 Ω across CANH/CANL per channel with a solder jumper, matching the other AiO boards. (Split termination + common-mode choke were the July design; the simpler jumper is the established AgOpenGPS approach.) | **fixed 2026-09-17** — verified: 120 Ω (R9/R10/R11) in series with a solder jumper across each CANH/CANL |
 | **S7** | F9 | GPS modules share one UART. | U16.15/16 and P2.11/12 both on `GPS_RX`/`GPS_TX` (CM4 UART5). | **Closed 2026-09-15: only one GPS module physically fits**, so the shared UART can never be contended. No change needed. | closed |
-| **S8** | F10 | **Brown-out halt: the board can't restart itself, and the hold-up caps can't cover a shutdown anyway.** | (a) C6+C7 = 940 µF on `VIN_PROT` gives only **13–19 ms** from 12–13.8 V to the buck's ~6 V cutoff at 3–5 W — a `poweroff` takes seconds, so VIN loss is an abrupt cut, not a graceful halt. (The July note claiming the hold-up covers the halt was wrong.) (b) After any software halt, the CM4 datasheet needs `GLOBAL_EN` (pin 99, unconnected) pulled low >1 ms or 5 V removed; the eFuse is tied permanently on (R43), so neither happens. | **DECIDED 2026-09-15: don't halt on VIN dips** (they're inevitable in a vehicle). Use `VIN_SENSE` for telemetry/warnings only, never `poweroff`; keep root read-only + overlay. The buck regulates down to ~5.5–6 V in, so cranking dips ride through, and an outright power loss simply reboots when VIN returns — no extra parts, and (b) becomes moot. **Only if a graceful shutdown is really wanted:** add supercap hold-up on `VIN_PROT` (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s at 4 W, 12 → 6 V — 100–250× the present 940 µF, plus a blocking diode and inrush limiting) **and** an auto power-cycle one-shot: watch `RUN_PG` (high while running) and pulse `GLOBAL_EN` low via an open-drain FET after it has been low ~2 s with VIN present (555 + Schmitt, or an ATtiny10 which can also hold off while the rpiboot jumper is fitted). The watchdog covers a *hung* kernel; this covers a *halted* one. Fault flag (`PI_FLT`) → **ADC IN3** (U21 pin 7, one of 5 spare grounded inputs) — no GPIO needed, and all 28 are allocated. | **decided** — no board change; **revisited 2026-09-20, see §S8b** (battery hold-up proposal) |
+| **S8** | F10 | **Brown-out halt: the board can't restart itself, and the hold-up caps can't cover a shutdown anyway.** | (a) C6+C7 = 940 µF on `VIN_PROT` gives only **13–19 ms** from 12–13.8 V to the buck's ~6 V cutoff at 3–5 W — a `poweroff` takes seconds, so VIN loss is an abrupt cut, not a graceful halt. (The July note claiming the hold-up covers the halt was wrong.) (b) After any software halt, the CM4 datasheet needs `GLOBAL_EN` (pin 99, unconnected) pulled low >1 ms or 5 V removed; the eFuse is tied permanently on (R43), so neither happens. | **DECIDED 2026-09-15: don't halt on VIN dips** (they're inevitable in a vehicle). Use `VIN_SENSE` for telemetry/warnings only, never `poweroff`; keep root read-only + overlay. The buck regulates down to ~5.5–6 V in, so cranking dips ride through, and an outright power loss simply reboots when VIN returns — no extra parts, and (b) becomes moot. **Only if a graceful shutdown is really wanted:** add supercap hold-up on `VIN_PROT` (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s at 4 W, 12 → 6 V — 100–250× the present 940 µF, plus a blocking diode and inrush limiting) **and** an auto power-cycle one-shot: watch `RUN_PG` (high while running) and pulse `GLOBAL_EN` low via an open-drain FET after it has been low ~2 s with VIN present (555 + Schmitt, or an ATtiny10 which can also hold off while the rpiboot jumper is fitted). The watchdog covers a *hung* kernel; this covers a *halted* one. Fault flag (`PI_FLT`) → **ADC IN3** (U21 pin 7, one of 5 spare grounded inputs) — no GPIO needed, and all 28 are allocated. | **decided** — no board change; **revisited 2026-09-20: §S8c** (always-on + keyed 12 V, preferred) and **§S8b** (battery hold-up, fallback) |
 | **S9** | F11 | Power LED on an unbuffered CM4 pin. | CM4 datasheet: `PI_LED_nPWR` (pin 95) "needs to be buffered". D23 is driven directly (~1.3 mA via R79). | **DECIDED 2026-09-16: single P-channel high-side buffer.** Q3 = BSS84 / DMG2301L (SOT-23, pin 1 = G, 2 = S, 3 = D — same numbering as the 2N7002; a 2N7002 can't be used alone because the pin is active-low and an N-FET needs a high gate). **Q3.1 (G) → `PI_LED_NPWR`** (CM4 pin 95); **Q3.2 (S) → `+3V3`**; **R80 100 kΩ gate → source** (holds it off while pin 95 is high-Z); **Q3.3 (D) → D23.2 (anode)**, new net `LED_PWR_A`; **D23.1 (cathode) → R79**, and **R79's other end moves from `+3V3` to `GND`**. So D23 reverses orientation and the CM4 pin only drives a gate. Current at 3.3 V with a ~2 V Vf: 1 kΩ → 1.3 mA; use 470 Ω (C25117, already on the board for R32) for ~2.7 mA. | **fixed 2026-09-17** — verified: Q3 BSS84 (C114481) G/S/D correct, R80 100 k gate–source, D23 reversed, R79 470 Ω → GND |
 | **S10** | F12 | `RUN_PG` driven hard to GND. | CM4 datasheet: drive low "via a 220 Ω resistor". SW1 and U20 WDO connect straight to pin 92. | **DECIDED 2026-09-16: 330 Ω (C25104, already on the board for R27–R29/R71) — no 220 Ω line added.** New R81 between **CM4 pin 92** and the **SW1 / U20.1 (WDO) node**: pin 92 keeps its own net, the switch and watchdog share the far side. With the CM4's 10 kΩ internal pull-up, pulling through 330 Ω gives 3.3 × 330/10330 ≈ **0.11 V** (well under V<sub>IL</sub>) and caps the current at ~10 mA. **Not in SW1's ground leg** — that would leave U20's WDO still pulling pin 92 hard to GND on every watchdog reset; one resistor in the pin-92 net covers both pull-downs (two resistors, one per leg, is equivalent if SW1 and U20 end up far apart). | **fixed 2026-09-17** — verified: R81 330 Ω between CM4 pin 92 and the SW1 / U20 WDO node (`RUN_PG_G`) |
 | **S11** | F6 | Switch inputs only handle switches to ground. | 12 V on J1.7–9 → 1 k → SRV05-4 clamp at ~+3V3 + V<sub>F</sub> ≈ 4 V, above the CM4 GPIO max of 3.8 V, pushing ~8–10 mA into +3V3. | **DECIDED 2026-09-16: contact-to-ground only — no change to the circuit.** The 10 k pull-ups to +3V3 (R59/R61/R69) and the 1 k series resistors already suit dry contacts; SMAJ16A + SRV05-4 stay as field protection. **Do not apply 12 V-level signals to J1.7/8/9** — say so in the harness documentation and, if there's room, on the silkscreen. | **decided** — no board change |
 
-### S8b — key-off shutdown: LiFePO4 hold-up + self-cut — **PROPOSAL 2026-09-20**
+### S8b — key-off shutdown: LiFePO4 hold-up + self-cut — **ALTERNATIVE 2026-09-20**
+
+> **Superseded as first choice by §S8c** (always-on + keyed 12 V) on the same day. Kept as the
+> fallback for an install where a second wire to constant 12 V can't be run, and because it is the
+> only option that also survives the battery isolator being thrown right after key-off.
 
 > Revisits S8's "no graceful shutdown" decision. S8 costed hold-up in **supercaps** and found it
 > expensive (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s). A **single LiFePO4 cell** changes the arithmetic
@@ -130,6 +134,84 @@ discrete timer logic.
 7. **Does the value justify the parts?** Boost + ORing + charger + NTC + one-shot + cell + holder,
    against a read-only root that already protects the OS. The gain is the *data* partition and a
    defined shutdown; decide before layout, since this is a one-off build.
+
+---
+
+### S8c — key-off shutdown: always-on + keyed 12 V — **PROPOSAL 2026-09-20, preferred over §S8b**
+
+> The automotive head-unit pattern: the board is powered from **constant 12 V** and reads a
+> **keyed/ignition 12 V** line purely as a signal. Key-off is then an explicit "shut down now"
+> message rather than something inferred from a collapsing rail, and the board has as long as it
+> needs, because it is still powered. Proposed after §S8b; **nothing decided, no board change
+> authorised.**
+
+#### S8c.1 — Why it is preferred over the battery (§S8b)
+
+| | §S8b cell | **§S8c keyed sense** |
+|---|---|---|
+| Wear-out parts | 18650 (~5–8 yr in cab heat) + charger + NTC + fuse | **none** |
+| Shutdown time budget | ~35 s of cell, so the measurement gates the design | **unlimited** — still on vehicle power |
+| Key-off detection | threshold + dwell on `VIN_SENSE`; dip vs loss is a judgement | **boolean**, debounce the crank drop-out only |
+| Extra conversion | boost + ORing into `VIN_PROT` or `5V_MAIN` | **none** |
+| Install | one wire | **two wires** (constant + keyed), both fused |
+| Battery isolator thrown after key-off | rides it out | **truncated shutdown** — see S8c.5 |
+
+The restart mechanism is identical in both, so it is not a differentiator: after the halt the board
+must remove its own 5 V (S8b.4 step 5).
+
+#### S8c.2 — Signal path
+
+- **Keyed 12 V → a `VIN_SENSE`-style divider (100 k / 8.2 k, 40 V → 3.03 V) → a spare ADC input.**
+  `ADC IN4` onward are free (`IN3` is earmarked for `PI_FLT` in S8); **no GPIO is needed**, which
+  matters because all 28 are allocated.
+- **Do not use J1.7–9.** Per **S11** those inputs are contact-to-ground only: 12 V on them clamps at
+  ~4 V through the SRV05-4 and pushes 8–10 mA into +3V3.
+- Protection: same front end as the other field inputs (series 1 k, TVS), since a keyed feed carries
+  the usual automotive transients.
+- Constant 12 V feeds the existing `VIN_PROT` chain unchanged (Q1 reverse-polarity, SMBJ24A, U1).
+
+#### S8c.3 — Sequence
+
+1. **Key on** → keyed line high. U1 is already up (constant 12 V), the CM4 boots as now.
+2. **Crank** → the keyed line may drop momentarily on some machines. **Debounce ~2–3 s** before
+   believing a key-off; this is the cheap equivalent of S8b's ride-through.
+3. **Key off, sustained** → Linux reads the keyed input on the ADC and runs `poweroff`. It is still
+   on vehicle power, so there is no deadline.
+4. **Halt** → the one-shot sees `RUN_PG` low ~2 s and pulls **U1's `EN`** low. 5 V is removed, which
+   is what the CM4 datasheet requires, and the board drops to quiescent draw.
+5. **Key on again** → the one-shot releases `EN`, U1 starts, the CM4 boots. Hold off while the
+   rpiboot jumper is fitted, as in S8.
+6. **Backstop** → if `RUN_PG` never goes low, cut at T_max (~3 min) anyway.
+
+Note this keeps S8's 2026-09-15 rule intact: `VIN_SENSE` stays telemetry, and `poweroff` is
+triggered by the **keyed input**, never by a sagging supply.
+
+#### S8c.4 — Parasitic draw (the thing to measure)
+
+Between key-off and the latch opening, the board draws its normal load; afterwards only the sense
+dividers and the one-shot remain. Budget ~100 µA for a 100 k / 8.2 k divider (≈ 2.6 mAh/day) plus a
+nanopower LDO and an ATtiny10 in standby — negligible against a tractor battery, **but measure it,
+don't assume it**, and raise the divider values if it lands higher.
+
+**Add a low-voltage cut-off (~11.5 V)** in the one-shot so a latch that fails to open, or a machine
+parked for a season, cannot flatten the vehicle battery.
+
+#### S8c.5 — Known gap: the battery isolator
+
+If the operator keys off and immediately throws the master disconnect, power vanishes mid-shutdown.
+The read-only root + overlay still protects the OS (S8); the **data partition is exposed for those
+few seconds**. This is the one case §S8b's cell covers and this design does not. Judged acceptable
+because the isolator is usually thrown well after key-off — revisit if field reports say otherwise.
+
+#### S8c.6 — Open questions
+
+1. **Miswire detection.** If both inputs land on switched 12 V the design silently degrades to
+   today's abrupt cut. Have the CM4 compare the two at boot and warn; note it on the silkscreen and
+   in the harness doc.
+2. **Which ADC input**, and confirm the divider ratio against the keyed line's real idle voltage.
+3. **Measure the parked draw** on the built board (S8c.4).
+4. **Harness:** both feeds fused at the source; document wire colours and the fuse ratings.
+5. Does the install base accept a second wire? If not, fall back to **§S8b**.
 
 ---
 
