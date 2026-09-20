@@ -35,10 +35,103 @@
 | **S5** | F7 | J1 CAN pin order changed from July. | July: 14/16/18 = H, 15/17/19 = L. Now: 14/16/18 = L, 15/17/19 = H. | **Closed 2026-09-15: no harness built yet**, so there's nothing to reconcile. The J1 pinout in `HARDWARE_AIO_NETLIST.md` §5.1 (L on even 14/16/18, H on odd 15/17/19) is the reference for the harness when it is made. | closed |
 | **S6** | F8 | No CAN termination footprints. | Each CAN net only touches its MCP251863, the NUP2105L and J1. July's split-termination and CMC footprints are gone. | **Fixed 2026-09-15:** a single 120 Ω across CANH/CANL per channel with a solder jumper, matching the other AiO boards. (Split termination + common-mode choke were the July design; the simpler jumper is the established AgOpenGPS approach.) | **fixed 2026-09-17** — verified: 120 Ω (R9/R10/R11) in series with a solder jumper across each CANH/CANL |
 | **S7** | F9 | GPS modules share one UART. | U16.15/16 and P2.11/12 both on `GPS_RX`/`GPS_TX` (CM4 UART5). | **Closed 2026-09-15: only one GPS module physically fits**, so the shared UART can never be contended. No change needed. | closed |
-| **S8** | F10 | **Brown-out halt: the board can't restart itself, and the hold-up caps can't cover a shutdown anyway.** | (a) C6+C7 = 940 µF on `VIN_PROT` gives only **13–19 ms** from 12–13.8 V to the buck's ~6 V cutoff at 3–5 W — a `poweroff` takes seconds, so VIN loss is an abrupt cut, not a graceful halt. (The July note claiming the hold-up covers the halt was wrong.) (b) After any software halt, the CM4 datasheet needs `GLOBAL_EN` (pin 99, unconnected) pulled low >1 ms or 5 V removed; the eFuse is tied permanently on (R43), so neither happens. | **DECIDED 2026-09-15: don't halt on VIN dips** (they're inevitable in a vehicle). Use `VIN_SENSE` for telemetry/warnings only, never `poweroff`; keep root read-only + overlay. The buck regulates down to ~5.5–6 V in, so cranking dips ride through, and an outright power loss simply reboots when VIN returns — no extra parts, and (b) becomes moot. **Only if a graceful shutdown is really wanted:** add supercap hold-up on `VIN_PROT` (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s at 4 W, 12 → 6 V — 100–250× the present 940 µF, plus a blocking diode and inrush limiting) **and** an auto power-cycle one-shot: watch `RUN_PG` (high while running) and pulse `GLOBAL_EN` low via an open-drain FET after it has been low ~2 s with VIN present (555 + Schmitt, or an ATtiny10 which can also hold off while the rpiboot jumper is fitted). The watchdog covers a *hung* kernel; this covers a *halted* one. Fault flag (`PI_FLT`) → **ADC IN3** (U21 pin 7, one of 5 spare grounded inputs) — no GPIO needed, and all 28 are allocated. | **decided** — no board change |
+| **S8** | F10 | **Brown-out halt: the board can't restart itself, and the hold-up caps can't cover a shutdown anyway.** | (a) C6+C7 = 940 µF on `VIN_PROT` gives only **13–19 ms** from 12–13.8 V to the buck's ~6 V cutoff at 3–5 W — a `poweroff` takes seconds, so VIN loss is an abrupt cut, not a graceful halt. (The July note claiming the hold-up covers the halt was wrong.) (b) After any software halt, the CM4 datasheet needs `GLOBAL_EN` (pin 99, unconnected) pulled low >1 ms or 5 V removed; the eFuse is tied permanently on (R43), so neither happens. | **DECIDED 2026-09-15: don't halt on VIN dips** (they're inevitable in a vehicle). Use `VIN_SENSE` for telemetry/warnings only, never `poweroff`; keep root read-only + overlay. The buck regulates down to ~5.5–6 V in, so cranking dips ride through, and an outright power loss simply reboots when VIN returns — no extra parts, and (b) becomes moot. **Only if a graceful shutdown is really wanted:** add supercap hold-up on `VIN_PROT` (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s at 4 W, 12 → 6 V — 100–250× the present 940 µF, plus a blocking diode and inrush limiting) **and** an auto power-cycle one-shot: watch `RUN_PG` (high while running) and pulse `GLOBAL_EN` low via an open-drain FET after it has been low ~2 s with VIN present (555 + Schmitt, or an ATtiny10 which can also hold off while the rpiboot jumper is fitted). The watchdog covers a *hung* kernel; this covers a *halted* one. Fault flag (`PI_FLT`) → **ADC IN3** (U21 pin 7, one of 5 spare grounded inputs) — no GPIO needed, and all 28 are allocated. | **decided** — no board change; **revisited 2026-09-20, see §S8b** (battery hold-up proposal) |
 | **S9** | F11 | Power LED on an unbuffered CM4 pin. | CM4 datasheet: `PI_LED_nPWR` (pin 95) "needs to be buffered". D23 is driven directly (~1.3 mA via R79). | **DECIDED 2026-09-16: single P-channel high-side buffer.** Q3 = BSS84 / DMG2301L (SOT-23, pin 1 = G, 2 = S, 3 = D — same numbering as the 2N7002; a 2N7002 can't be used alone because the pin is active-low and an N-FET needs a high gate). **Q3.1 (G) → `PI_LED_NPWR`** (CM4 pin 95); **Q3.2 (S) → `+3V3`**; **R80 100 kΩ gate → source** (holds it off while pin 95 is high-Z); **Q3.3 (D) → D23.2 (anode)**, new net `LED_PWR_A`; **D23.1 (cathode) → R79**, and **R79's other end moves from `+3V3` to `GND`**. So D23 reverses orientation and the CM4 pin only drives a gate. Current at 3.3 V with a ~2 V Vf: 1 kΩ → 1.3 mA; use 470 Ω (C25117, already on the board for R32) for ~2.7 mA. | **fixed 2026-09-17** — verified: Q3 BSS84 (C114481) G/S/D correct, R80 100 k gate–source, D23 reversed, R79 470 Ω → GND |
 | **S10** | F12 | `RUN_PG` driven hard to GND. | CM4 datasheet: drive low "via a 220 Ω resistor". SW1 and U20 WDO connect straight to pin 92. | **DECIDED 2026-09-16: 330 Ω (C25104, already on the board for R27–R29/R71) — no 220 Ω line added.** New R81 between **CM4 pin 92** and the **SW1 / U20.1 (WDO) node**: pin 92 keeps its own net, the switch and watchdog share the far side. With the CM4's 10 kΩ internal pull-up, pulling through 330 Ω gives 3.3 × 330/10330 ≈ **0.11 V** (well under V<sub>IL</sub>) and caps the current at ~10 mA. **Not in SW1's ground leg** — that would leave U20's WDO still pulling pin 92 hard to GND on every watchdog reset; one resistor in the pin-92 net covers both pull-downs (two resistors, one per leg, is equivalent if SW1 and U20 end up far apart). | **fixed 2026-09-17** — verified: R81 330 Ω between CM4 pin 92 and the SW1 / U20 WDO node (`RUN_PG_G`) |
 | **S11** | F6 | Switch inputs only handle switches to ground. | 12 V on J1.7–9 → 1 k → SRV05-4 clamp at ~+3V3 + V<sub>F</sub> ≈ 4 V, above the CM4 GPIO max of 3.8 V, pushing ~8–10 mA into +3V3. | **DECIDED 2026-09-16: contact-to-ground only — no change to the circuit.** The 10 k pull-ups to +3V3 (R59/R61/R69) and the 1 k series resistors already suit dry contacts; SMAJ16A + SRV05-4 stay as field protection. **Do not apply 12 V-level signals to J1.7/8/9** — say so in the harness documentation and, if there's room, on the silkscreen. | **decided** — no board change |
+
+### S8b — key-off shutdown: LiFePO4 hold-up + self-cut — **PROPOSAL 2026-09-20**
+
+> Revisits S8's "no graceful shutdown" decision. S8 costed hold-up in **supercaps** and found it
+> expensive (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s). A **single LiFePO4 cell** changes the arithmetic
+> enough to be worth a second look: minutes of hold-up for one cell plus a charger, which buys a
+> behaviour supercaps can't — *ride-through*, where a brief key-off is not a shutdown at all.
+> **Nothing here is decided and no board change is authorised yet.** Open questions in §S8b.5.
+
+#### S8b.1 — The problem it solves
+
+Operators key off without warning. As built, that is an abrupt power cut: the root FS survives
+(read-only + overlay, S8) but the current job's in-flight writes to the data partition don't, and
+every key-off is an unclean shutdown.
+
+#### S8b.2 — Energy budget
+
+| Quantity | Value | Source |
+|---|---|---|
+| Load (CM4 + board) | 3–5 W; **5 W** assumed | `HARDWARE_AIO_BOARD.md` §7 (CM4 ~5–7 W) |
+| Shutdown time | **TBD — measure** (§S8b.5); assume 15 s | `systemctl poweroff` on the real image |
+| Ride-through before committing | 10–20 s | proposed here |
+| Energy for 20 s + 15 s = 35 s | ~175 J ≈ 0.05 Wh | 5 W × 35 s |
+| Cell: 18650 LiFePO4, 1500 mAh, 3.2 V | **4.8 Wh** | ~100× the requirement |
+| Cell current at 5 W, 81% end-to-end | **~1.9 A = 1.3C** | see §S8b.3 for the conversion path |
+| Charge returned per event | ~8 mAh (**0.5% of capacity**) | cell ages by calendar, not cycles |
+
+**Capacity is not the constraint — discharge rate is.** The cell is sized so 1.9 A is a relaxed ~1.3C
+with cold margin, not for runtime. That rules out the small sizes the energy sums would allow: a
+14430 (~400 mAh) needs 4.3C and typical cells of that size are rated ~1C; a 100 mAh cell would need
+17C. A 14500 (~600 mAh, 2.8C) is possible *only* with a cell explicitly rated for it.
+
+#### S8b.3 — Where the cell injects
+
+Two options; **(a) is the recommendation**.
+
+**(a) Boost into `VIN_PROT` (upstream of U1).** A boost converter, cell → ~11 V, diode-ORed onto
+`VIN_PROT`. It idles while the vehicle holds 12–13.8 V and takes over on its own as VIN falls past
+11 V — no switchover logic, no contention with U1, and every board rail keeps its existing
+regulation. Costs a second conversion (boost ~90% × buck ~90% ≈ 81%), which the energy budget
+absorbs. Boost must supply ~0.6 A at 11 V from ~1.9 A in.
+
+**(b) Boost into `5V_MAIN` (downstream of U1), ORed by an ideal-diode FET.** One conversion (~90%,
+cell ~1.7 A), but the boost output must sit *below* U1's 5.0 V (≈ 4.85–4.9 V) so it only sources
+once the buck collapses, and `5V_MAIN` then runs at ~4.9 V during hold-up — inside the CM4's
+4.75–5.25 V, but with less margin across the eFuse drop. A plain Schottky instead of an ideal diode
+costs ~0.6 W at 1.7 A.
+
+#### S8b.4 — Sequence, and how the board restarts itself
+
+`VIN_SENSE` → ADC IN2 already lets Linux see VIN fall (S8), so **no new signal to the CM4 is needed**
+and no GPIO is required — all 28 are allocated.
+
+1. **VIN present.** Charger floats the cell; boost idle.
+2. **VIN lost.** Boost takes over within the existing 940 µF / 13–19 ms hold-up. The CM4 keeps
+   running: nothing has happened yet.
+3. **VIN returns before T_ride (10–20 s).** Nothing happened, by design — a restart to move a wagon
+   never becomes a shutdown. Cranking dips are covered twice over (U1 regulates to ~5.5–6 V in).
+4. **VIN still absent at T_ride.** Linux, watching ADC IN2, runs `poweroff`. This is the one place
+   S8's 2026-09-15 rule ("never `poweroff` from `VIN_SENSE`") is deliberately relaxed — a *sustained*
+   loss, not a dip, and only with the cell fitted. **Without the cell the rule stands unchanged.**
+5. **Halt detected.** The one-shot watches `RUN_PG` (high while running); ~2 s low → **disable the
+   boost**. Power is fully removed, which is exactly what the CM4 datasheet asks for. **This is why
+   the battery path must cut itself: held up but halted, the unit would never restart** — the eFuse
+   is permanently enabled (R43) and `GLOBAL_EN` (pin 99) is unconnected. Cutting the boost is
+   simpler than the `GLOBAL_EN` pulse S8 sketched and needs no new CM4 connection.
+6. **Backstop.** If `RUN_PG` never goes low (shutdown didn't happen), cut anyway at T_max (~3 min),
+   plus the boost's own ~2.5 V UVLO, so a software failure can't flatten the cell.
+7. **Next key-on.** U1 powers the board normally; the one-shot re-arms. As in S8, the one-shot should
+   hold off while the rpiboot jumper is fitted.
+
+The one-shot is the same ATtiny10 S8 already proposed (it must run from the cell at µA standby), or
+discrete timer logic.
+
+#### S8b.5 — Open questions before this can be decided
+
+1. **Measure the real shutdown time** on the production image, NVMe and services running — the whole
+   case for hold-up rests on it. A hung service stop could make it 30 s.
+2. **Where does the cell physically live?** An 18650 is 18 × 65 mm. Off-board on a fused 2-pin lead
+   is likely better than board area next to U1's heat — cell life is dominated by sitting
+   temperature, not cycles, and it is the only wear-out part on the board (~5–8 years in cab heat).
+3. **Confirm U1 tolerates back-fed `VIN_PROT`** at ~11 V in option (a), and pick the ORing device.
+4. **Vibration:** tabbed cell, soldered or spot-welded — **not** a spring clip holder, which frets
+   and produces random power cuts that read as software faults.
+5. **Charging:** ~100–200 mA is ample (8 mAh per event). CN3058E (stocked at JLC) or TP5000 in
+   LiFePO4 mode. **Inhibit charge above ~50 °C** via an NTC at the cell — a sealed cab-roof box gets
+   there, and hot charging is what kills the cell.
+6. **Fuse the cell** (PTC or fuse): a 1500 mAh LiFePO4 sources tens of amps into a fault.
+7. **Does the value justify the parts?** Boost + ORing + charger + NTC + one-shot + cell + holder,
+   against a read-only root that already protects the OS. The gain is the *data* partition and a
+   defined shutdown; decide before layout, since this is a one-off build.
+
+---
 
 ### Parts / BOM data
 
