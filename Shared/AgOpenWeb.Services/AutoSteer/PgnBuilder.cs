@@ -543,10 +543,12 @@ public static class PgnBuilder
         // Set0 byte (use helper from config)
         buf[5] = config.GetSetting0Byte();
 
-        // Pulse count (not currently used, set to 0)
-        buf[6] = 0;
+        // Sensor kickout threshold (#105). The firmware (AiO v4 Autosteer.ino: PulseCountMax)
+        // disengages when encoder pulses >= this, or when the pressure / current reading
+        // (0-255) >= this. Hard-coding 0 made every enabled sensor kick out on every loop.
+        buf[6] = SensorTripByte(config);
 
-        // Min steer speed * 10
+        // Min steer speed * 10 (AgOpenGPS sends it; standard firmware ignores this byte)
         buf[7] = (byte)Math.Clamp((int)(config.MinSteerSpeed * 10), 0, 255);
 
         // Set1 byte (use helper from config)
@@ -556,6 +558,21 @@ public static class PgnBuilder
         buf[9] = 0;
 
         return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// PGN 251 byte 6, as AgOpenGPS FormSteer fills it: with a pressure or current sensor, that
+    /// sensor's trip point (the panel's %, stored raw 0-255 — AgOpenGPS shows raw × 0.392 as %);
+    /// otherwise the turn-sensor encoder count. A 0 % trip point means "off" (as the host-side
+    /// kickout in AutoSteerService treats it, and it's the default) — sent as 255 so the
+    /// firmware's <c>reading &gt;= threshold</c> doesn't trip on every loop.
+    /// </summary>
+    public static byte SensorTripByte(AutoSteerConfig config)
+    {
+        static byte Pct(int pct) => pct <= 0 ? (byte)255 : (byte)Math.Clamp((int)Math.Round(pct * 255.0 / 100.0), 1, 255);
+        if (config.PressureSensorEnabled) return Pct(config.PressureTripPoint);
+        if (config.CurrentSensorEnabled) return Pct(config.CurrentTripPoint);
+        return (byte)Math.Clamp(config.TurnSensorCounts, 0, 255);
     }
 
     #region PGN 253 Parser (Steer Data FROM Module)
