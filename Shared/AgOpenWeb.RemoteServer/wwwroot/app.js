@@ -342,7 +342,7 @@ const transport = RemoteTransport.create({
     if (t.pose) {
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
-        tool: t.tool, t: performance.now(), hostT: t.hostMs,
+        tool: t.tool, goal: t.goal, t: performance.now(), hostT: t.hostMs,
       };
       // Keep the buffer strictly increasing in host time. The 30 Hz render-pull vs 10 Hz
       // broadcast can occasionally resend the same pose (equal hostT) — a duplicate/
@@ -3529,6 +3529,16 @@ function renderTool() {
     heading: lerpAngle(pt.heading, qt.heading, f),
   };
 }
+// Pure Pursuit goal point (#95), interpolated on the same playback timeline as the pose so
+// it slides with the vehicle instead of stepping at the Tick rate. Hidden as soon as the
+// newest Tick has no goal (track deselected / contour).
+function renderGoal() {
+  if (!tick || !tick.goal) return null;
+  const s = sample();
+  if (!s || !s.b.goal) return tick.goal;
+  const a = s.a.goal || s.b.goal, b = s.b.goal, f = s.f;
+  return { e: a.e + (b.e - a.e) * f, n: a.n + (b.n - a.n) * f };
+}
 // Shortest-path angular lerp (radians).
 function lerpAngle(a, b, f) {
   let d = b - a; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
@@ -4750,6 +4760,29 @@ function drawHitchSk(canvas) {
   strokePtsSk(canvas, [{ e: baseE - ps * spread, n: baseN - pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
   strokePtsSk(canvas, [{ e: baseE + ps * spread, n: baseN + pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
 }
+// Pure Pursuit goal marker (#95): where the steering aims — the engaged target, or before
+// engaging the point it would chase — as AgOpenGPS's yellow goal square. A lazy (long)
+// look-ahead shows as the marker sitting further out. Fixed screen size, drawn over the
+// vehicle so a short hold look-ahead under the sprite is still visible.
+function drawGoalSk(canvas) {
+  const g = renderGoal();
+  if (!g || pw(g.e, g.n) < 1.0) return; // none / behind the near plane
+  if (!SKP.goalFill) {
+    SKP.goalFill = new CK.Paint();
+    SKP.goalFill.setStyle(CK.PaintStyle.Fill);
+    SKP.goalFill.setColor(ckColor('#FFD400'));
+    SKP.goalFill.setAntiAlias(true);
+    SKP.goalOutline = new CK.Paint();
+    SKP.goalOutline.setStyle(CK.PaintStyle.Stroke);
+    SKP.goalOutline.setColor(ckColor('#000000'));
+    SKP.goalOutline.setStrokeWidth(2);
+    SKP.goalOutline.setAntiAlias(true);
+  }
+  const xy = w2s(g.e, g.n), h = 6;
+  const r = CK.LTRBRect(xy[0] - h, xy[1] - h, xy[0] + h, xy[1] + h);
+  canvas.drawRect(r, SKP.goalFill);
+  canvas.drawRect(r, SKP.goalOutline);
+}
 // Vehicle: the TractorAoG sprite drawn world-sized on the ground (scales with zoom,
 // foreshortens under tilt), sized from track-width/wheelbase via the same normalized
 // sprite proportions as native (BitmapTractorSize). Falls back to the screen-space
@@ -5360,6 +5393,7 @@ function renderSkia(canvas, rp) {
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
   if (rp) vehicleSk(canvas, rp);
+  drawGoalSk(canvas); // #95 — Pure Pursuit target (over the vehicle)
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale
   canvas.restore();
 }

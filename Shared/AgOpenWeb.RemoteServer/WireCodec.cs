@@ -516,6 +516,9 @@ public static class WireCodec
         w.Write((byte)(t.IsYouTurnExecuting ? 1 : 0)); // #50 — mid-turn gate for on-screen buttons
         w.Write(t.PassNumber);       // i32 — guidance pass offset (0 = on reference)
         w.Write((float)t.NudgeOffset); // f32 — driver-relative nudge (m, +right) — #93 readout
+        w.Write((byte)(t.HasGoal ? 1 : 0)); // #95 — PP goal marker
+        w.Write(t.GoalE);            // f64
+        w.Write(t.GoalN);            // f64
         return ms.ToArray();
     }
 

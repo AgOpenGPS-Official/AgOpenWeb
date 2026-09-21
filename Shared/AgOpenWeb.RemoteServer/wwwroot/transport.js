@@ -109,12 +109,14 @@ window.RemoteTransport = {
           op.executing = !!u8(); // #50 — u-turn arc executing (blocks on-screen U-turn/Lateral)
           op.passNumber = i32(); // guidance pass offset (0 = on reference) — reference gate + label
           op.nudgeOffset = f32(); // driver-relative line nudge (m, +right) — AB flyout readout (#93)
+          const hasGoal = !!u8(); const goalE = f64(), goalN = f64();
+          const goal = hasGoal ? { e: goalE, n: goalN } : null; // Pure Pursuit target (#95)
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
             headlandDist, headlandWarn, steerAngleError,
             chartSetSteer, chartActualSteer, chartPwm, chartImuHeading,
-            hitchE, hitchN, vehicleSteerAngle, hostMs,
+            hitchE, hitchN, vehicleSteerAngle, hostMs, goal,
           });
           break;
         }

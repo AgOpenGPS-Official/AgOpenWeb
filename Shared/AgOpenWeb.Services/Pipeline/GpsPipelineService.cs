@@ -829,6 +829,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double crossTrackError = 0;
         double goalE = 0, goalN = 0;
         bool hasGuidance = false;
+        bool hasGoal = false;
         bool youTurnCompleted = false;
         string? statusMessage = null;
         Models.Track.Track? displayTrack = null;
@@ -930,6 +931,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 Volatile.Write(ref _simulatorSteerAngle, steerAngle);
                 _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
             }
+            hasGoal = hasGuidance;
         }
         if (!autoSteerEngaged && hasTrack && !noPassOffset)
         {
@@ -962,6 +964,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // was non-zero) stays pointing at the reference track, and the UI
                 // renders baseTrack + displayTrack at the same position (overlap).
                 baseTrack = nearestPass != 0 ? track : null;
+
+                // #95: show where Pure Pursuit would aim if engaged now, so the operator
+                // can see the target (field vs. ditch) before engaging.
+                var displayGoal = CalculateDisplayGoalPoint(
+                    pos, nearestDisplayTrack, driftedEasting, driftedNorthing, headingRad);
+                if (displayGoal is { } dg)
+                {
+                    goalE = dg.Easting;
+                    goalN = dg.Northing;
+                    hasGoal = true;
+                }
             }
             _guidanceWorking.HowManyPathsAway = nearestPass;
             passNumber = nearestPass;
@@ -974,6 +987,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _guidanceWorking.SteerAngle = steerAngle;
         _guidanceWorking.CrossTrackError = crossTrackError;
         _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
+        _guidanceWorking.HasGoalPoint = hasGoal;
 
         // ── (7) Section control + coverage painting ─────────────────────
         // SectionControlService.Update is now driven by the host control
@@ -1187,6 +1201,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         PpPivotDistanceErrorLast = src.PpPivotDistanceErrorLast,
         PpCounter = src.PpCounter,
         GoalPoint = src.GoalPoint,
+        HasGoalPoint = src.HasGoalPoint,
         RadiusPoint = src.RadiusPoint,
         PurePursuitRadius = src.PurePursuitRadius,
         IsHeadingSameWay = src.IsHeadingSameWay,
@@ -1219,15 +1234,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         var config = _configStore;
 
-        // Calculate dynamic look-ahead
         double speedKmh = currentPosition.Speed * 3.6;
-        double lookAhead = config.Guidance.GoalPointLookAheadHold;
-        if (speedKmh > 1)
-        {
-            lookAhead = Math.Max(
-                config.Guidance.MinLookAheadDistance,
-                config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
-        }
+        double lookAhead = GoalLookAhead(speedKmh);
 
         // Steer axle position
         double steerE = driftedEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase;
@@ -1349,6 +1357,53 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing,
                 statusMessage);
+    }
+
+    /// <summary>Dynamic Pure Pursuit look-ahead distance (m) for the given speed.</summary>
+    private double GoalLookAhead(double speedKmh)
+    {
+        var g = _configStore.Guidance;
+        if (speedKmh <= 1) return g.GoalPointLookAheadHold;
+        return Math.Max(
+            g.MinLookAheadDistance,
+            g.GoalPointLookAheadHold + (speedKmh * g.GoalPointLookAheadMult * 0.1));
+    }
+
+    /// <summary>
+    /// Display-only Pure Pursuit goal point for free-drive (#95): the target the steering
+    /// would chase if engaged right now, on the pass the display line shows. Stateless —
+    /// no PreviousState and a fresh global nearest search — so the PP integral and the
+    /// nearest-segment memory the engaged path keeps in _trackGuidanceState are untouched.
+    /// Returns null when the track is degenerate.
+    /// </summary>
+    private Vec2? CalculateDisplayGoalPoint(
+        Position pos, Models.Track.Track displayTrack,
+        double pivotEasting, double pivotNorthing, double headingRad)
+    {
+        var config = _configStore;
+        double speedKmh = pos.Speed * 3.6;
+        var output = _trackGuidanceService.CalculateGuidance(new Models.Track.TrackGuidanceInput
+        {
+            Track = displayTrack,
+            PivotPosition = new Vec3(pivotEasting, pivotNorthing, headingRad),
+            SteerPosition = new Vec3(
+                pivotEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
+                pivotNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
+                headingRad),
+            UseStanley = false,
+            Wheelbase = config.Vehicle.Wheelbase,
+            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
+            GoalPointDistance = GoalLookAhead(speedKmh),
+            FixHeading = headingRad,
+            AvgSpeed = speedKmh,
+            IsAutoSteerOn = false,
+            ImuRoll = 88888,
+            PreviousState = null,
+            FindGlobalNearest = true,
+        });
+        // CalculateGuidance flags an unusable track/segment with a 32000 m distance.
+        if (output.DistanceFromLinePivot >= 32000) return null;
+        return output.GoalPoint;
     }
 
     /// <summary>

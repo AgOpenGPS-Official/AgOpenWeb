@@ -314,7 +314,12 @@ public sealed class SceneProjector
             _state.Guidance.HowManyPathsAway, // pass offset (0 = on reference) — #reference/label
             // Driver-relative nudge (#93): the pipeline stores it in track frame and flips the
             // intent's sign when heading against the track, so flip it back the same way.
-            g.IsHeadingSameWay ? g.NudgeOffset : -g.NudgeOffset);
+            g.IsHeadingSameWay ? g.NudgeOffset : -g.NudgeOffset,
+            // Pure Pursuit goal (#95) — only with an active track (the flag can lag a
+            // track deselect by one cycle).
+            g.HasGoalPoint && _state.Field.ActiveTrack != null,
+            g.GoalPoint.Easting,
+            g.GoalPoint.Northing);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

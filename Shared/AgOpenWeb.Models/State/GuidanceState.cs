@@ -129,6 +129,14 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _goalPoint, value);
     }
 
+    // GoalPoint is valid (engaged target, or free-drive display target — #95).
+    private bool _hasGoalPoint;
+    public bool HasGoalPoint
+    {
+        get => _hasGoalPoint;
+        set => SetProperty(ref _hasGoalPoint, value);
+    }
+
     private Vec2 _radiusPoint;
     public Vec2 RadiusPoint
     {
@@ -199,6 +207,7 @@ public class GuidanceState : ObservableObject
         PpIntegral = PpPivotDistanceError = PpPivotDistanceErrorLast = 0;
         PpCounter = 0;
         GoalPoint = new Vec2();
+        HasGoalPoint = false;
         RadiusPoint = new Vec2();
         PurePursuitRadius = 0;
         IsHeadingSameWay = true;
