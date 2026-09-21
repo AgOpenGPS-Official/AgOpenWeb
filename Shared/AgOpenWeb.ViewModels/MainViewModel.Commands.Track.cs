@@ -248,11 +248,31 @@ public partial class MainViewModel
 
         SwapABPointsCommand = new RelayCommand(() =>
         {
-            if (SelectedTrack != null && SelectedTrack.Points.Count >= 2)
+            var track = SelectedTrack;
+            if (track == null || track.Points.Count < 2) return;
+
+            // Reverse the direction: points in reverse order AND each heading turned 180°.
+            // Guidance reads the travel direction from ptA.Heading but the cross-track sign
+            // and goal-point direction from the ptA→ptB geometry, so reversing only the
+            // points left them disagreeing (#104).
+            var reversed = new List<Vec3>(track.Points.Count);
+            for (int i = track.Points.Count - 1; i >= 0; i--)
             {
-                SelectedTrack.Points.Reverse();
-                StatusMessage = $"Swapped A/B points for {SelectedTrack.Name}";
+                var p = track.Points[i];
+                reversed.Add(new Vec3(p.Easting, p.Northing, (p.Heading + Math.PI) % (2 * Math.PI)));
             }
+            track.Points = reversed;
+
+            // "Right of the line" flips with the direction, so negate the pass number and
+            // nudge to keep the guidance line where it physically is (an engaged tractor on
+            // pass 3 right must not jump to pass 3 left). Written to the cycle's mirror too
+            // so the save below persists the swapped NudgeDistance.
+            State.Guidance.HowManyPathsAway = -State.Guidance.HowManyPathsAway;
+            State.Guidance.NudgeOffset = -State.Guidance.NudgeOffset;
+            track.NudgeDistance = -track.NudgeDistance;
+
+            OnSelectedTrackGeometryChanged();
+            StatusMessage = $"Swapped A/B points for {track.Name}";
         });
 
         SelectTrackAsActiveCommand = new RelayCommand(() =>
@@ -718,11 +738,7 @@ public partial class MainViewModel
             var smoothed = Models.Guidance.CurveProcessing.SmoothWithCatmullRom(SelectedTrack.Points, 4);
             smoothed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
             SelectedTrack.Points = smoothed;
-
-            // Invalidate guidance state so it recalculates from the new curve
-            _trackGuidanceState = null;
-            _mapService.SetActiveTrack(SelectedTrack);
-            SaveTracksToFile();
+            OnSelectedTrackGeometryChanged();
 
             StatusMessage = $"Smoothed '{SelectedTrack.Name}': {beforeCount} -> {smoothed.Count} points";
         });
@@ -1699,6 +1715,19 @@ public partial class MainViewModel
     private const double TrackEndStepMeters = 5.0;
 
     /// <summary>
+    /// The selected track's points were replaced (smooth, extend/shrink, swap A/B). Re-push
+    /// it to the pipeline — SetActiveTrack drops the cycle's guidance state, whose
+    /// nearest-segment index and PP integral refer to the old point list — then refresh
+    /// the map and persist.
+    /// </summary>
+    private void OnSelectedTrackGeometryChanged()
+    {
+        SyncGuidanceStateToPipeline();
+        _mapService.SetActiveTrack(SelectedTrack);
+        SaveTracksToFile();
+    }
+
+    /// <summary>
     /// Extend (+) or trim (−) the selected track at its A (first point) or B (last point)
     /// end, then persist. Closed loops, contours and recorded paths have no free ends.
     /// </summary>
@@ -1723,11 +1752,7 @@ public partial class MainViewModel
             return;
         }
         track.Points = moved;
-
-        // Same refresh as Smooth: guidance recalculates from the new geometry.
-        _trackGuidanceState = null;
-        _mapService.SetActiveTrack(track);
-        SaveTracksToFile();
+        OnSelectedTrackGeometryChanged();
 
         StatusMessage = $"{(meters > 0 ? "Extended" : "Shortened")} '{track.Name}' at {(atStart ? "A" : "B")} by {Math.Abs(meters):F0} m";
     }
