@@ -386,11 +386,14 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     {
         ZeroWasCommand = new RelayCommand(() =>
         {
-            // Calculate new WAS offset to make current angle read zero.
-            // Module formula: angle = (rawCounts - wasOffset) / countsPerDegree
-            // To zero: newOffset = currentOffset + (currentAngle * countsPerDegree)
-            var angleCorrection = (int)Math.Round(_smoothedActualAngle * AutoSteer.CountsPerDegree);
-            AutoSteer.WasOffset += angleCorrection;
+            // New offset that makes the live WAS angle read zero (firmware-derived, independent
+            // of Invert WAS — #103, see WasCalibration). Read the angle straight from the
+            // service: _smoothedActualAngle only updates while the (native) panel is visible,
+            // which the web never sets, so from the web it was always 0.
+            double angle = _autoSteerService?.LastSteerData.ActualSteerAngle ?? _smoothedActualAngle;
+            if (!WasCalibration.TryZero(AutoSteer.WasOffset, angle, AutoSteer.CountsPerDegree, out int zeroed))
+                return; // "Excessive steer angle — cannot zero" (AgOpenGPS)
+            AutoSteer.WasOffset = zeroed;
             Config.MarkChanged();
 
             // Send updated settings to module immediately

@@ -136,7 +136,7 @@ public class VirtualSteerModuleTests
     {
         // Real WAS is off-centre by 20 counts; host hasn't run Zero WAS yet
         // (applied offset = 0). At 5° wheel angle: rawCounts = 5*100 + 20 = 520,
-        // host's inverse: (520 - 0) / 100 = 5.2° — apparent bias the operator
+        // host's inverse: (520 + 0) / 100 = 5.2° — apparent bias the operator
         // is supposed to dial out with the wizard's Zero WAS step.
         using var steer = new VirtualSteerModule(listenPort: ModulePort + 13, hostPort: HostPort + 13, hostIp: LoopbackIp);
         steer.ApplySteerSettings(DefaultSettings(cpd: 100, wasOffset: 0));
@@ -152,13 +152,13 @@ public class VirtualSteerModuleTests
     public void AppliesWasOffsetToReportedAngle()
     {
         // Slider at 1.0° with CountsPerDegree=100 → 100 raw WAS counts.
-        // After offset of 20: (100 − 20) / 100 = 0.8°.
+        // Firmware adds the offset (#103): (100 + 20) / 100 = 1.2°.
         using var steer = new VirtualSteerModule(listenPort: ModulePort + 1, hostPort: HostPort + 1, hostIp: LoopbackIp);
         steer.ApplySteerSettings(DefaultSettings(cpd: 100, wasOffset: 20));
         steer.ApplySteerConfig(DefaultConfig());
         steer.ActualSteerAngleDeg = 1.0;
 
-        Assert.That(steer.ReportedSteerAngleDeg, Is.EqualTo(0.8).Within(1e-9));
+        Assert.That(steer.ReportedSteerAngleDeg, Is.EqualTo(1.2).Within(1e-9));
     }
 
     [Test]
@@ -170,6 +170,27 @@ public class VirtualSteerModuleTests
         steer.ActualSteerAngleDeg = 5.0;
 
         Assert.That(steer.ReportedSteerAngleDeg, Is.EqualTo(-5.0).Within(1e-9));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ZeroWas_OnTheEmulator_ReadsZero(bool invert)
+    {
+        // #103 end-to-end: a sensor that's off-centre by 37 counts, wheels straight. Zeroing
+        // with the host formula must make the emulated module report 0 in both invert states.
+        using var steer = new VirtualSteerModule(listenPort: ModulePort + 20 + (invert ? 1 : 0),
+            hostPort: HostPort + 20 + (invert ? 1 : 0), hostIp: LoopbackIp);
+        steer.ApplySteerSettings(DefaultSettings(cpd: 100, wasOffset: 0));
+        steer.ApplySteerConfig(DefaultConfig(invertWas: invert));
+        steer.VirtualCountsPerDegree = 100.0;
+        steer.VirtualWasOffset = 37;
+        steer.ActualSteerAngleDeg = 0;
+        Assert.That(Math.Abs(steer.ReportedSteerAngleDeg), Is.GreaterThan(0.1), "precondition: sensor off-centre");
+
+        int zeroed = AgOpenWeb.Models.Configuration.WasCalibration.ZeroedOffset(0, steer.ReportedSteerAngleDeg, 100);
+        steer.ApplySteerSettings(DefaultSettings(cpd: 100, wasOffset: (short)zeroed));
+
+        Assert.That(steer.ReportedSteerAngleDeg, Is.EqualTo(0).Within(0.01));
     }
 
     private static AutoSteerCommand SteerCommand(double angleDeg, bool engaged)
