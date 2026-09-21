@@ -500,9 +500,15 @@ public static partial class RemoteServerWiring
         switch (cmd)
         {
             case "app.resetSettings":
-                services.GetRequiredService<ISettingsService>().ResetToDefaults();
+            {
+                // Save between reset and reload (as the native command does) — LoadAppSettings
+                // re-reads the file, so without it the old settings came straight back (#107).
+                var settings = services.GetRequiredService<ISettingsService>();
+                settings.ResetToDefaults();
+                settings.Save();
                 configService.LoadAppSettings();
                 return;
+            }
             case "app.setHotkey": // arg = Action:Key
             {
                 var ci = arg.IndexOf(':');

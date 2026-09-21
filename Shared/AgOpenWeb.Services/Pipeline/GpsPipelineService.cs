@@ -496,6 +496,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             autoSteerEngaged = _autoSteerEngaged;
             track = _activeTrack;
+            // Stamp which track this cycle's pass number / nudge belong to, so the VM can
+            // tell a mirror of the current track's values from a stale one right after a
+            // track switch (SaveTracksToFile, #107).
+            _guidanceWorking.ActiveTrack = track;
             // Phase D D3: pass number / nudge offset live on _guidanceWorking as
             // the single source of truth. Still read under lock here because
             // SetActiveTrack (UI-thread) writes them under the same lock.

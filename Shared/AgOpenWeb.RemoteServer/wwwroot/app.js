@@ -1043,6 +1043,13 @@ bottomNav.addEventListener('pointerdown', e => {
   if (btn.hasAttribute('data-t2') && !iHoldControl) return; // gated; host re-checks
   transport.send(btn.dataset.cmd);
 });
+// Delete contour paths — confirm first (#107); not a data-cmd so the generic handler skips it.
+document.getElementById('bn-delcontours').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!iHoldControl) return;
+  showConfirm('Delete Contour Paths', 'Delete all recorded contour paths in this field? Coverage and AB lines are kept.',
+    () => transport.send('track.deleteContours'));
+});
 // ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
 // Bare glyph buttons mirroring native AgOpenGPS; shown per the Screen & Alerts
 // "On-Screen Buttons" toggles. U-turn → manual you-turn L/R, lateral → snap the track
@@ -1585,7 +1592,13 @@ function renderTracksList() {
     list.appendChild(row);
   }
 }
-document.getElementById('trk-delete').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.delete'); });
+document.getElementById('trk-delete').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || []).find(x => x.active);
+  showConfirm('Delete Track', 'Delete ' + (t ? "'" + t.name + "'" : 'the selected track') + '? This cannot be undone.',
+    () => transport.send('track.delete')); // #107: no confirmation before
+});
 document.getElementById('trk-swap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.swapAB'); });
 document.getElementById('trk-activate').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.activate'); });
 document.getElementById('trk-recpaths').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('track.toggleRecPaths'); });

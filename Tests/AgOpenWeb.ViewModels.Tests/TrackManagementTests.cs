@@ -95,6 +95,68 @@ public class TrackManagementTests
         Assert.That(track2.IsActive, Is.True);
     }
 
+    private static Track AB(string name, double e = 0) => new()
+    {
+        Name = name,
+        Points = new List<Vec3> { new(e, 0, 0), new(e, 100, 0) },
+    };
+
+    [Test]
+    public void DeleteContours_RemovesOnlyContourTracks_AndKeepsCoverage()
+    {
+        // #107: this used to wipe ALL coverage and every nudge, with no confirmation.
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        var ab = AB("AB1");
+        var contour = Track.FromContour("Contour 1", new List<Vec3> { new(0, 0, 0), new(5, 5, 0), new(10, 5, 0) });
+        vm.SavedTracks.Add(ab);
+        vm.SavedTracks.Add(contour);
+        vm.SelectedTrack = contour;
+
+        vm.DeleteContoursCommand!.Execute(null);
+
+        Assert.That(vm.SavedTracks, Is.EquivalentTo(new[] { ab }));
+        Assert.That(vm.SelectedTrack, Is.Null, "the deleted contour can't stay selected");
+        builder.CoverageMapService.DidNotReceive().ClearAll();
+    }
+
+    [Test]
+    public void SaveTracks_RightAfterSelectingANewTrack_DoesNotStampThePreviousTracksNudge()
+    {
+        // #107: State.Guidance is the cycle's mirror; right after a switch it still holds the
+        // previous track's pass/nudge, which SaveTracksToFile used to write onto the new track.
+        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "aow-save-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(dir);
+        try
+        {
+            var builder = new MainViewModelBuilder();
+            builder.FieldService.ActiveField.Returns(new AgOpenWeb.Models.Field { Name = "F", DirectoryPath = dir });
+            var vm = builder.Build();
+            var oldTrack = AB("Old");
+            var newTrack = AB("New", 50);
+            vm.SavedTracks.Add(oldTrack);
+            vm.SavedTracks.Add(newTrack);
+            vm.SelectedTrack = oldTrack;
+            // Mirror of the cycle for the OLD track: pass 3 + 0.2 m nudge.
+            vm.State.Guidance.ActiveTrack = oldTrack;
+            vm.State.Guidance.HowManyPathsAway = 3;
+            vm.State.Guidance.NudgeOffset = 0.2;
+
+            vm.SelectedTrack = newTrack;
+            vm.SaveTracksToFile();
+
+            Assert.That(newTrack.NudgeDistance, Is.EqualTo(0), "new track keeps its own (zero) offset");
+
+            // Once the cycle mirrors values FOR the new track, they are persisted.
+            vm.State.Guidance.ActiveTrack = newTrack;
+            vm.State.Guidance.HowManyPathsAway = 0;
+            vm.State.Guidance.NudgeOffset = 0.1;
+            vm.SaveTracksToFile();
+            Assert.That(newTrack.NudgeDistance, Is.EqualTo(0.1).Within(1e-9));
+        }
+        finally { try { System.IO.Directory.Delete(dir, true); } catch { } }
+    }
+
     [Test]
     public void SwapAB_ReversesPointsAndHeadings_AndKeepsTheLineInPlace()
     {

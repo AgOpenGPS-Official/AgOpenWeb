@@ -29,6 +29,7 @@ public class MainViewModelBuilder
     public ISectionControlService SectionControlService { get; } = Substitute.For<ISectionControlService>();
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
+    public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
 
     public MainViewModelBuilder()
@@ -49,7 +50,7 @@ public class MainViewModelBuilder
         return new MainViewModel(
             udpService: Substitute.For<IUdpCommunicationService>(),
             gpsService: GpsService,
-            fieldService: Substitute.For<IFieldService>(),
+            fieldService: FieldService,
             ntripService: Substitute.For<INtripClientService>(),
             displaySettings: Substitute.For<IDisplaySettingsService>(),
             fieldStatistics: Substitute.For<IFieldStatisticsService>(),

@@ -158,4 +158,16 @@ public class DisplayGoalPointTests
         Assert.That(fld!.GetValue(_pipeline), Is.Null,
             "Display-only goal must leave the engaged steering state untouched");
     }
+
+    [Test]
+    public void Snapshot_CarriesTheActiveTrack()
+    {
+        // #107: lets the VM tell a mirror of the current track's pass/nudge from a stale one.
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+
+        _gpsService.UpdateGpsData(FixAtOrigin());
+
+        Assert.That(Last.Guidance!.ActiveTrack, Is.SameAs(track));
+    }
 }
