@@ -50,14 +50,9 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     // Properties that trigger immediate slider debounce (left-side compact mode)
     private static readonly HashSet<string> LeftSideSliderProperties = new()
     {
-        nameof(AutoSteerConfig.SteerResponseHold),
-        nameof(AutoSteerConfig.IntegralGain),
-        nameof(AutoSteerConfig.StanleyAggressiveness),
-        nameof(AutoSteerConfig.StanleyOvershootReduction),
         nameof(AutoSteerConfig.CountsPerDegree),
         nameof(AutoSteerConfig.Ackermann),
         nameof(AutoSteerConfig.MaxSteerAngle),
-        nameof(AutoSteerConfig.SpeedFactor),
         nameof(AutoSteerConfig.AcquireFactor),
         nameof(AutoSteerConfig.ProportionalGain),
         nameof(AutoSteerConfig.MaxPwm),
@@ -86,7 +81,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         AutoSteer.PropertyChanged += OnAutoSteerPropertyChanged;
 
         InitializeNumericInputCommands();
-        InitializeTab1Commands();
         InitializeTab2Commands();
         InitializeTab3Commands();
         InitializeTab4Commands();
@@ -380,55 +374,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #endregion
 
-    #region Tab 1: Pure Pursuit / Stanley
-
-    // Pure Pursuit commands
-    public ICommand EditSteerResponseCommand { get; private set; } = null!;
-    public ICommand EditIntegralGainCommand { get; private set; } = null!;
-    public ICommand ToggleStanleyModeCommand { get; private set; } = null!;
-
-    // Stanley commands
-    public ICommand EditStanleyAggressivenessCommand { get; private set; } = null!;
-    public ICommand EditStanleyOvershootCommand { get; private set; } = null!;
-    public ICommand EditStanleyIntegralCommand { get; private set; } = null!;
-
-    private void InitializeTab1Commands()
-    {
-        // Pure Pursuit commands
-        EditSteerResponseCommand = new RelayCommand(() =>
-            ShowNumericInput("Steer Response (Hold)", AutoSteer.SteerResponseHold,
-                v => AutoSteer.SteerResponseHold = v,
-                "m", integerOnly: false, allowNegative: false, min: 1.0, max: 10.0));
-
-        EditIntegralGainCommand = new RelayCommand(() =>
-            ShowNumericInput("Integral Gain", AutoSteer.IntegralGain * 100,
-                v => AutoSteer.IntegralGain = v / 100.0,
-                "%", integerOnly: true, allowNegative: false, min: 0, max: 100));
-
-        ToggleStanleyModeCommand = new RelayCommand(() =>
-        {
-            AutoSteer.IsStanleyMode = !AutoSteer.IsStanleyMode;
-            Config.MarkChanged();
-        });
-
-        // Stanley commands
-        EditStanleyAggressivenessCommand = new RelayCommand(() =>
-            ShowNumericInput("Aggressiveness", AutoSteer.StanleyAggressiveness,
-                v => AutoSteer.StanleyAggressiveness = v,
-                "", integerOnly: false, allowNegative: false, min: 0.0, max: 10.0));
-
-        EditStanleyOvershootCommand = new RelayCommand(() =>
-            ShowNumericInput("Overshoot Reduction", AutoSteer.StanleyOvershootReduction,
-                v => AutoSteer.StanleyOvershootReduction = v,
-                "", integerOnly: false, allowNegative: false, min: 0.0, max: 10.0));
-
-        EditStanleyIntegralCommand = new RelayCommand(() =>
-            ShowNumericInput("Integral", AutoSteer.IntegralGain * 100,
-                v => AutoSteer.IntegralGain = v / 100.0,
-                "", integerOnly: true, allowNegative: false, min: 0, max: 100));
-    }
-
-    #endregion
 
     #region Tab 2: Steering Sensor
 
@@ -474,7 +419,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     public ICommand EditDeadzoneHeadingCommand { get; private set; } = null!;
     public ICommand EditDeadzoneDelayCommand { get; private set; } = null!;
-    public ICommand EditSpeedFactorCommand { get; private set; } = null!;
     public ICommand EditAcquireFactorCommand { get; private set; } = null!;
 
     private void InitializeTab3Commands()
@@ -488,11 +432,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             ShowNumericInput("On-Delay", AutoSteer.DeadzoneDelay,
                 v => AutoSteer.DeadzoneDelay = (int)v,
                 "", integerOnly: true, allowNegative: false, min: 0, max: 50));
-
-        EditSpeedFactorCommand = new RelayCommand(() =>
-            ShowNumericInput("Speed Factor", AutoSteer.SpeedFactor,
-                v => AutoSteer.SpeedFactor = v,
-                "", integerOnly: false, allowNegative: false, min: 0.5, max: 3.0));
 
         EditAcquireFactorCommand = new RelayCommand(() =>
             ShowNumericInput("Acquire Factor", AutoSteer.AcquireFactor,
@@ -623,17 +562,11 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #region Tab 7: Algorithm Settings
 
-    public ICommand EditUTurnCompensationCommand { get; private set; } = null!;
     public ICommand EditSideHillCompensationCommand { get; private set; } = null!;
     public ICommand ToggleSteerInReverseCommand { get; private set; } = null!;
 
     private void InitializeTab7Commands()
     {
-        EditUTurnCompensationCommand = new RelayCommand(() =>
-            ShowNumericInput("U-Turn Compensation", AutoSteer.UTurnCompensation,
-                v => AutoSteer.UTurnCompensation = v,
-                "", integerOnly: true, allowNegative: true, min: -100, max: 100));
-
         EditSideHillCompensationCommand = new RelayCommand(() =>
             ShowNumericInput("Side Hill Compensation", AutoSteer.SideHillCompensation,
                 v => AutoSteer.SideHillCompensation = v,
@@ -963,6 +896,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         {
             // Reset all settings to defaults
             AutoSteer.ResetToDefaults();
+            Config.Guidance.ResetSteeringTuning(); // the panel's algorithm/look-ahead tab (#99)
             Config.MarkChanged();
 
             // Send updated settings to module

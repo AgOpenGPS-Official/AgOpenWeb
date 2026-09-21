@@ -289,7 +289,9 @@ public class VehicleProfileService : IVehicleProfileService
         store.Vehicle.MaxAngularVelocity = GetDouble(settings, "setVehicle_maxAngularVelocity", 35.0);
 
         // Guidance config
-        store.Guidance.IsPurePursuit = GetBool(settings, "setMenu_isPureOn", true);
+        // setVehicle_isStanleyUsed is AgOpenGPS's algorithm choice. (setMenu_isPureOn, read
+        // here before #99, is its "show the Pure Pursuit point" display toggle.)
+        store.Guidance.IsPurePursuit = !GetBool(settings, "setVehicle_isStanleyUsed", false);
         store.Guidance.GoalPointLookAheadHold = GetDouble(settings, "setVehicle_goalPointLookAheadHold", 4.0);
         store.Guidance.GoalPointLookAheadMult = GetDouble(settings, "setVehicle_goalPointLookAheadMult", 1.4);
         store.Guidance.GoalPointAcquireFactor = GetDouble(settings, "setVehicle_goalPointAcquireFactor", 1.5);

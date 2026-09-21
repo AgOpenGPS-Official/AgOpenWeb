@@ -182,12 +182,14 @@ public static partial class RemoteServerWiring
             // SoT the VM binds to); MarkChanged re-fingerprints so the Config frame
             // re-sends and the value persists on a profile.save / Send&Save. Hardware
             // push is the separate (gated) autosteer.* actions, not these edits. ---
-            // Tab 1 — Pure Pursuit / Stanley
-            case "autosteer.steerResponseHold": if (D(out var a1)) { ast.SteerResponseHold = a1; store.MarkChanged(); } return;
-            case "autosteer.integralGain": if (D(out var a2)) { ast.IntegralGain = a2; store.MarkChanged(); } return;
-            case "autosteer.isStanleyMode": ast.IsStanleyMode = B(); store.MarkChanged(); return;
-            case "autosteer.stanleyAggressiveness": if (D(out var a3)) { ast.StanleyAggressiveness = a3; store.MarkChanged(); } return;
-            case "autosteer.stanleyOvershootReduction": if (D(out var a4)) { ast.StanleyOvershootReduction = a4; store.MarkChanged(); } return;
+            // Tab 1 — Pure Pursuit / Stanley. These (and speedFactor / uTurnCompensation
+            // below) write GuidanceConfig — what the pipeline steers with (#99). They keep
+            // their autosteer.* ids because they sit on the AutoSteer panel.
+            case "autosteer.steerResponseHold": if (D(out var a1)) { gd.GoalPointLookAheadHold = a1; store.MarkChanged(); } return;
+            case "autosteer.integralGain": if (D(out var a2)) { gd.PurePursuitIntegralGain = a2; store.MarkChanged(); } return;
+            case "autosteer.isStanleyMode": gd.IsPurePursuit = !B(); store.MarkChanged(); return;
+            case "autosteer.stanleyAggressiveness": if (D(out var a3)) { gd.StanleyDistanceErrorGain = a3; store.MarkChanged(); } return;
+            case "autosteer.stanleyOvershootReduction": if (D(out var a4)) { gd.StanleyHeadingErrorGain = a4; store.MarkChanged(); } return;
             // Tab 2 — Steering Sensor
             case "autosteer.wasOffset": if (I(out var a5)) { ast.WasOffset = a5; store.MarkChanged(); } return;
             case "autosteer.countsPerDegree": if (D(out var a6)) { ast.CountsPerDegree = a6; store.MarkChanged(); } return;
@@ -196,7 +198,7 @@ public static partial class RemoteServerWiring
             // Tab 3 — Deadzone / Timing
             case "autosteer.deadzoneHeading": if (D(out var a9)) { ast.DeadzoneHeading = a9; store.MarkChanged(); } return;
             case "autosteer.deadzoneDelay": if (I(out var a10)) { ast.DeadzoneDelay = a10; store.MarkChanged(); } return;
-            case "autosteer.speedFactor": if (D(out var a11)) { ast.SpeedFactor = a11; store.MarkChanged(); } return;
+            case "autosteer.speedFactor": if (D(out var a11)) { gd.GoalPointLookAheadMult = a11; store.MarkChanged(); } return;
             case "autosteer.acquireFactor": if (D(out var a12)) { ast.AcquireFactor = a12; store.MarkChanged(); } return;
             // Tab 4 — Gain / PWM
             case "autosteer.proportionalGain": if (I(out var a13)) { ast.ProportionalGain = a13; store.MarkChanged(); } return;
@@ -219,7 +221,8 @@ public static partial class RemoteServerWiring
             case "autosteer.imuAxisSwap": if (I(out var a21)) { ast.ImuAxisSwap = a21; store.MarkChanged(); } return;
             case "autosteer.externalEnable": if (I(out var a22)) { ast.ExternalEnable = a22; store.MarkChanged(); } return;
             // Tab 7 — Algorithm
-            case "autosteer.uTurnCompensation": if (D(out var a23)) { ast.UTurnCompensation = a23; store.MarkChanged(); } return;
+            case "autosteer.uTurnCompensation": // panel shows % change from the 1.0 multiplier
+                if (D(out var a23)) { gd.UTurnCompensation = AgOpenWeb.Models.Configuration.GuidanceConfig.UTurnCompensationFromPercent(a23); store.MarkChanged(); } return;
             case "autosteer.sideHillCompensation": if (D(out var a24)) { ast.SideHillCompensation = a24; store.MarkChanged(); } return;
             case "autosteer.steerInReverse": ast.SteerInReverse = B(); store.MarkChanged(); return;
             // Tab 8 — Speed Limits

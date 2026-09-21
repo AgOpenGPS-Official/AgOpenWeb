@@ -41,6 +41,30 @@ public class GuidanceConfig : ObservableObject
 
     public bool IsStanley => !IsPurePursuit;
 
+    /// <summary>
+    /// Reset the steering-tuning values the AutoSteer panel edits (algorithm, look-ahead,
+    /// integral, Stanley gains, U-turn compensation) to the new-profile defaults
+    /// (VehicleProfileService). The AutoSteer panel's "Reset to defaults" calls this
+    /// alongside AutoSteerConfig.ResetToDefaults (#99).
+    /// </summary>
+    public void ResetSteeringTuning()
+    {
+        IsPurePursuit = true;
+        GoalPointLookAheadHold = 4.0;
+        GoalPointLookAheadMult = 1.4;
+        PurePursuitIntegralGain = 0.0;
+        StanleyDistanceErrorGain = 0.8;
+        StanleyHeadingErrorGain = 1.0;
+        UTurnCompensation = 1.0;
+    }
+
+    /// <summary>
+    /// U-turn compensation as the AutoSteer panel shows it: percent change from 1.0
+    /// (AgOpenGPS FormSteer shows the same multiplier as ×10 − 10).
+    /// </summary>
+    public static double UTurnCompensationToPercent(double multiplier) => (multiplier - 1.0) * 100.0;
+    public static double UTurnCompensationFromPercent(double percent) => 1.0 + percent / 100.0;
+
     // Look-ahead parameters (both algorithms)
     private double _goalPointLookAheadHold = 4.0;
     public double GoalPointLookAheadHold

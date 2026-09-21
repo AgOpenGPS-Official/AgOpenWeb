@@ -702,21 +702,24 @@ public sealed class SceneProjector
             BuildDisplay(), BuildAutoSteer());
     }
 
-    // AutoSteer config tab — projects the full 9-tab ConfigStore.AutoSteer surface.
+    // AutoSteer config tab — projects the full 9-tab AutoSteer panel. The algorithm /
+    // look-ahead / integral / Stanley / U-turn values come from GuidanceConfig, which is
+    // what the pipeline steers with (#99); the rest is ConfigStore.AutoSteer.
     private AutoSteerConfigDto BuildAutoSteer()
     {
         var a = _config.AutoSteer;
+        var g = _config.Guidance;
         return new AutoSteerConfigDto(
-            a.SteerResponseHold, a.IntegralGain, a.IsStanleyMode,
-            a.StanleyAggressiveness, a.StanleyOvershootReduction,
+            g.GoalPointLookAheadHold, g.PurePursuitIntegralGain, g.IsStanley,
+            g.StanleyDistanceErrorGain, g.StanleyHeadingErrorGain,
             a.WasOffset, a.CountsPerDegree, a.Ackermann, a.MaxSteerAngle,
-            a.DeadzoneHeading, a.DeadzoneDelay, a.SpeedFactor, a.AcquireFactor,
+            a.DeadzoneHeading, a.DeadzoneDelay, g.GoalPointLookAheadMult, a.AcquireFactor,
             a.ProportionalGain, a.MaxPwm, a.MinPwm,
             a.TurnSensorEnabled, a.PressureSensorEnabled, a.CurrentSensorEnabled,
             a.TurnSensorCounts, a.PressureTripPoint, a.CurrentTripPoint,
             a.DanfossEnabled, a.InvertWas, a.InvertMotor, a.InvertRelays,
             a.MotorDriver, a.AdConverter, a.ImuAxisSwap, a.ExternalEnable,
-            a.UTurnCompensation, a.SideHillCompensation, a.SteerInReverse,
+            GuidanceConfig.UTurnCompensationToPercent(g.UTurnCompensation), a.SideHillCompensation, a.SteerInReverse,
             a.ManualTurnsEnabled, a.ManualTurnsSpeed, a.MinSteerSpeed, a.MaxSteerSpeed,
             a.LineWidth, a.NudgeDistance, a.NextGuidanceTime, a.CmPerPixel,
             a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn);
@@ -818,7 +821,8 @@ public sealed class SceneProjector
         h = h * 31 + (_persist.State.IsDayMode ? 1 : 0);
         // AutoSteer config (so AutoSteer-panel edits re-send the frame).
         var asc = _config.AutoSteer;
-        int ab = (asc.IsStanleyMode ? 1 : 0) | (asc.TurnSensorEnabled ? 2 : 0) | (asc.PressureSensorEnabled ? 4 : 0)
+        var gdc = _config.Guidance;
+        int ab = (gdc.IsStanley ? 1 : 0) | (asc.TurnSensorEnabled ? 2 : 0) | (asc.PressureSensorEnabled ? 4 : 0)
             | (asc.CurrentSensorEnabled ? 8 : 0) | (asc.DanfossEnabled ? 16 : 0) | (asc.InvertWas ? 32 : 0)
             | (asc.InvertMotor ? 64 : 0) | (asc.InvertRelays ? 128 : 0) | (asc.SteerInReverse ? 256 : 0)
             | (asc.ManualTurnsEnabled ? 512 : 0) | (asc.LightbarEnabled ? 1024 : 0) | (asc.SteerBarEnabled ? 2048 : 0)
@@ -828,9 +832,9 @@ public sealed class SceneProjector
               + asc.ProportionalGain * 13 + asc.MaxPwm * 17 + asc.MinPwm * 19 + asc.TurnSensorCounts * 23
               + asc.PressureTripPoint * 29 + asc.CurrentTripPoint * 31 + asc.MotorDriver * 37 + asc.AdConverter * 41
               + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61;
-        foreach (var d in new[] { asc.SteerResponseHold, asc.IntegralGain, asc.StanleyAggressiveness,
-                                  asc.StanleyOvershootReduction, asc.CountsPerDegree, asc.DeadzoneHeading,
-                                  asc.SpeedFactor, asc.AcquireFactor, asc.UTurnCompensation, asc.SideHillCompensation,
+        foreach (var d in new[] { gdc.GoalPointLookAheadHold, gdc.PurePursuitIntegralGain, gdc.StanleyDistanceErrorGain,
+                                  gdc.StanleyHeadingErrorGain, asc.CountsPerDegree, asc.DeadzoneHeading,
+                                  gdc.GoalPointLookAheadMult, asc.AcquireFactor, gdc.UTurnCompensation, asc.SideHillCompensation,
                                   asc.ManualTurnsSpeed, asc.MinSteerSpeed, asc.MaxSteerSpeed, asc.NextGuidanceTime })
             h = h * 31 + d.GetHashCode();
         return h;
