@@ -320,7 +320,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         if (_autoSteerService != null)
             _autoSteerService.StateUpdated -= OnStateUpdated;
 
-        _configService.Store.AutoSteer.CountsPerDegree = CountsPerDegree;
+        if (Touched(nameof(CountsPerDegree))) _configService.Store.AutoSteer.CountsPerDegree = CountsPerDegree;
     }
 
     private void OnStateUpdated(object? sender, VehicleStateSnapshot snapshot)
