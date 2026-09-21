@@ -751,7 +751,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && hlFlow) { endHeadlandDraw(); return; } // cancel headland draw
   if (e.key === 'Escape' && editSession) { endEdit(); return; }    // cancel on-map edit
   if (e.key === 'Escape' && mapTap) { endMapTap(); return; }  // cancel on-map capture
-  if (isTyping()) return;
+  if (isTyping() || boundHotkey(e)) return; // a configured hotkey owns this key (#98)
   if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
   // 3D tilt: 3 toggles between top-down and 60°, [ / ] nudge the pitch.
   else if (e.key === '3') pitch = pitch > 0.001 ? 0 : DEFAULT_PITCH;
@@ -767,9 +767,54 @@ const KEY_CMD = {
   ArrowUp: 'sim.speedUp', ArrowDown: 'sim.speedDown', ' ': 'sim.stop',
 };
 addEventListener('keydown', e => {
-  if (isTyping()) return;
+  if (isTyping() || boundHotkey(e)) return; // a configured hotkey owns this key (#98)
   const cmd = KEY_CMD[e.key];
   if (cmd) { e.preventDefault(); transport.send(cmd); }
+});
+// ---- configured hotkeys (#98) ----
+// Bindings live on the host (File → Hotkeys, ConfigStore.Hotkeys) and arrive on the AppInfo
+// frame. The client resolves key → action and sends the SAME command id as the matching
+// button, so Tier-2 gating and the host allowlist apply unchanged. Screen actions open the
+// web panel here — the host's HandleHotkey would open a native dialog the web never renders.
+// A bound key takes priority over the built-in map/sim keys above (F, 3, [, ], arrows, space).
+const HOTKEY_CMD = {
+  AutoSteer: 'autosteer.toggle', CycleLines: 'track.cycle', SnapPivot: 'track.snapPivot',
+  NudgeLeft: 'track.nudgeLeft', NudgeRight: 'track.nudgeRight',
+  ManualSection: 'section.manual', AutoSection: 'section.master',
+};
+const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers — not control-gated (like the button)
+const HOTKEY_UI = {
+  FieldMenu: () => document.getElementById('ln-fieldops').dispatchEvent(new PointerEvent('pointerdown')),
+  VehicleSettings: () => document.getElementById('ln-vehicle').dispatchEvent(new PointerEvent('pointerdown')),
+  SteerWizard: () => openSteerWizard(),
+};
+function normHotkey(k) { return k.length === 1 ? k.toUpperCase() : k; } // same as capture
+// The action bound to this key event, or null. Modifier combos stay with the browser/OS.
+function boundHotkey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || !appInfo) return null;
+  const key = normHotkey(e.key);
+  const hk = appInfo.hotkeys.find(h => h.key && normHotkey(h.key) === key);
+  return hk ? hk.action : null;
+}
+// Hotkeys are off while typing, capturing a binding, or behind a modal (native blocked
+// them while any dialog was open).
+function hotkeysBlocked() {
+  return isTyping()
+    || document.getElementById('hotkeys').classList.contains('open')
+    || !!document.querySelector('#dialoghost.open, .sw-backdrop.open, .wz-overlay.open');
+}
+addEventListener('keydown', e => {
+  const action = boundHotkey(e);
+  if (!action || hotkeysBlocked()) return;
+  e.preventDefault();
+  if (e.repeat) return; // holding a key must not re-toggle autosteer / sections
+  if (HOTKEY_UI[action]) { HOTKEY_UI[action](); return; }
+  if (HOTKEY_TIER1[action]) { transport.send(HOTKEY_TIER1[action]); return; }
+  const sec = /^Section([1-8])$/.exec(action);
+  const cmd = sec ? 'section.toggle|' + (sec[1] - 1) : HOTKEY_CMD[action];
+  if (!cmd) return;
+  if (!iHoldControl) { flashHint('Observing — take control to use hotkeys'); return; }
+  transport.send(cmd);
 });
 // ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
 // Sim is Tier-1 (hardware-safe), so the bar's commands aren't gated by control
