@@ -118,14 +118,14 @@ public class SpeedAndSensorsStepViewModel : WizardStepViewModel
     protected override void OnLeaving()
     {
         var autoSteer = _configService.Store.AutoSteer;
-        autoSteer.MinSteerSpeed = MinSteerSpeed;
-        autoSteer.MaxSteerSpeed = MaxSteerSpeed;
-        autoSteer.TurnSensorEnabled = TurnSensorEnabled;
-        autoSteer.PressureSensorEnabled = PressureSensorEnabled;
-        autoSteer.CurrentSensorEnabled = CurrentSensorEnabled;
-        autoSteer.SteerInReverse = SteerInReverse;
-        autoSteer.DeadzoneHeading = DeadzoneHeading;
-        autoSteer.ManualTurnsEnabled = ManualTurnsEnabled;
+        if (Touched(nameof(MinSteerSpeed))) autoSteer.MinSteerSpeed = MinSteerSpeed;
+        if (Touched(nameof(MaxSteerSpeed))) autoSteer.MaxSteerSpeed = MaxSteerSpeed;
+        if (Touched(nameof(TurnSensorEnabled))) autoSteer.TurnSensorEnabled = TurnSensorEnabled;
+        if (Touched(nameof(PressureSensorEnabled))) autoSteer.PressureSensorEnabled = PressureSensorEnabled;
+        if (Touched(nameof(CurrentSensorEnabled))) autoSteer.CurrentSensorEnabled = CurrentSensorEnabled;
+        if (Touched(nameof(SteerInReverse))) autoSteer.SteerInReverse = SteerInReverse;
+        if (Touched(nameof(DeadzoneHeading))) autoSteer.DeadzoneHeading = DeadzoneHeading;
+        if (Touched(nameof(ManualTurnsEnabled))) autoSteer.ManualTurnsEnabled = ManualTurnsEnabled;
     }
 
     public override Task<bool> ValidateAsync()

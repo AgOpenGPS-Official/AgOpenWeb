@@ -121,8 +121,8 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
             _autoSteerService.StateUpdated -= OnStateUpdated;
 
         var ahrs = _configService.Store.Ahrs;
-        ahrs.IsRollInvert = IsRollInvert;
-        ahrs.RollZero = RollZero;
+        if (Touched(nameof(IsRollInvert))) ahrs.IsRollInvert = IsRollInvert;
+        if (Touched(nameof(RollZero))) ahrs.RollZero = RollZero;
     }
 
     private void OnStateUpdated(object? sender, VehicleStateSnapshot snapshot)

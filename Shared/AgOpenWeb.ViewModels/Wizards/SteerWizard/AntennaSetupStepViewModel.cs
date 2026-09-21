@@ -88,9 +88,9 @@ public class AntennaSetupStepViewModel : WizardStepViewModel
     protected override void OnLeaving()
     {
         var vehicle = _configService.Store.Vehicle;
-        vehicle.AntennaPivot = AntennaPivot;
-        vehicle.AntennaHeight = AntennaHeight;
-        vehicle.AntennaOffset = AntennaOffset;
+        if (Touched(nameof(AntennaPivot))) vehicle.AntennaPivot = AntennaPivot;
+        if (Touched(nameof(AntennaHeight))) vehicle.AntennaHeight = AntennaHeight;
+        if (Touched(nameof(AntennaOffset))) vehicle.AntennaOffset = AntennaOffset;
     }
 
     public override Task<bool> ValidateAsync()

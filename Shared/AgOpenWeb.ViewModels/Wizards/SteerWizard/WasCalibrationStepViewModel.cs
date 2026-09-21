@@ -138,8 +138,8 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
             _autoSteerService.StateUpdated -= OnAutoSteerStateUpdated;
 
         var autoSteer = _configService.Store.AutoSteer;
-        autoSteer.InvertWas = InvertWas;
-        autoSteer.WasOffset = WasOffset;
+        if (Touched(nameof(InvertWas))) autoSteer.InvertWas = InvertWas;
+        if (Touched(nameof(WasOffset))) autoSteer.WasOffset = WasOffset;
     }
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot snapshot)
