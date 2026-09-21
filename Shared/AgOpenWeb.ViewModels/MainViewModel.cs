@@ -1288,18 +1288,24 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Work switch / steer switch (#106): feed PGN 253's switch bits to the module
-    /// communication service and let it request section-button toggles, as AgOpenGPS does
-    /// each frame (CModuleComm.CheckWorkAndSteerSwitch). Its settings were read by nothing —
-    /// the check was never called. "Auto steer auto" (the steer switch engaging autosteer) is
-    /// left off, AgOpenGPS's default: it isn't exposed in the web UI.
+    /// Module switches (#106): feed PGN 253's switch bits to the module communication service
+    /// each GPS cycle, as AgOpenGPS does each frame (CModuleComm.CheckWorkAndSteerSwitch).
+    /// <list type="bullet">
+    /// <item>Work / steer switch → section buttons (Tool config switches).</item>
+    /// <item>Steer switch / button engages and disengages AutoSteer when AutoSteer config →
+    /// External enable is Switch or Button (default None). The module reports its steering
+    /// state in the steer-switch bit — set on tablet engage, cleared by the physical switch,
+    /// the button, or a sensor kickout — so the UI follows it both ways.</item>
+    /// </list>
+    /// Nothing called this before, so all of it was inert.
     /// </summary>
     private void UpdateModuleSwitches()
     {
         var tool = ConfigStore.Tool;
         var mc = _moduleCommunicationService;
         mc.IsRemoteWorkSystemOn = tool.IsWorkSwitchEnabled || tool.IsSteerSwitchEnabled;
-        if (!mc.IsRemoteWorkSystemOn) return;
+        bool moduleEngage = ConfigStore.AutoSteer.ExternalEnable != 0;
+        if (!mc.IsRemoteWorkSystemOn && !moduleEngage) return;
 
         var sd = _autoSteerService.LastSteerData;
         // Raw PGN 253 byte 11, as AgOpenGPS reads it: bit 0 work switch, bit 1 steer switch.
@@ -1309,7 +1315,7 @@ public partial class MainViewModel : ObservableObject
         mc.CheckSwitches(new ModuleSwitchState
         {
             IsAutoSteerOn = IsAutoSteerEngaged,
-            IsAutoSteerAuto = false,
+            IsAutoSteerAuto = moduleEngage,
             AutoButtonState = IsSectionMasterOn ? ButtonStates.Auto : ButtonStates.Off,
             ManualButtonState = IsManualSectionMode ? ButtonStates.On : ButtonStates.Off,
         });
