@@ -1708,7 +1708,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         var input = new Models.Headland.HeadlandDetectionInput
         {
-            IsHeadlandOn = true,
+            // The headland distance HUD follows the headland toggle (AgOpenGPS, #106).
+            IsHeadlandOn = _appState.FieldTools.IsHeadlandOn,
             VehiclePosition = toolPivot,
             Boundaries = new List<Models.Headland.BoundaryData>
             {
@@ -1736,6 +1737,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         var machine = _configStore.Machine;
         if (!machine.HydraulicLiftEnabled) return 0;
+        // AgOpenGPS turns the hydraulic lift off with the headland (#106).
+        if (!_appState.FieldTools.IsHeadlandOn) return 0;
 
         // Don't operate at very low speed or in reverse
         if (speed < 0.2 || speed < -0.1) return 0;
