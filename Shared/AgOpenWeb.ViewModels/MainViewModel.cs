@@ -1278,10 +1278,40 @@ public partial class MainViewModel : ObservableObject
     {
         _dispatcher.Post(() =>
         {
-            // Toggle section master when requested by module communication service
-            // This replaces the direct PerformClick() calls from the WinForms implementation
-            // TODO: When separate Auto/Manual section buttons are implemented, handle them individually
-            ToggleSectionMasterCommand?.Execute(null);
+            // Toggle the section button the module communication service asked for
+            // (replaces WinForms PerformClick on btnSectionMasterAuto / Manual).
+            if (e.Button == SectionMasterToggleEventArgs.SectionMasterButton.Manual)
+                ToggleManualModeCommand?.Execute(null);
+            else
+                ToggleSectionMasterCommand?.Execute(null);
+        });
+    }
+
+    /// <summary>
+    /// Work switch / steer switch (#106): feed PGN 253's switch bits to the module
+    /// communication service and let it request section-button toggles, as AgOpenGPS does
+    /// each frame (CModuleComm.CheckWorkAndSteerSwitch). Its settings were read by nothing —
+    /// the check was never called. "Auto steer auto" (the steer switch engaging autosteer) is
+    /// left off, AgOpenGPS's default: it isn't exposed in the web UI.
+    /// </summary>
+    private void UpdateModuleSwitches()
+    {
+        var tool = ConfigStore.Tool;
+        var mc = _moduleCommunicationService;
+        mc.IsRemoteWorkSystemOn = tool.IsWorkSwitchEnabled || tool.IsSteerSwitchEnabled;
+        if (!mc.IsRemoteWorkSystemOn) return;
+
+        var sd = _autoSteerService.LastSteerData;
+        // Raw PGN 253 byte 11, as AgOpenGPS reads it: bit 0 work switch, bit 1 steer switch.
+        // (The parser stores bit 0 inverted as WorkSwitchActive.)
+        mc.WorkSwitchHigh = !sd.WorkSwitchActive;
+        mc.SteerSwitchHigh = sd.SteerSwitchActive;
+        mc.CheckSwitches(new ModuleSwitchState
+        {
+            IsAutoSteerOn = IsAutoSteerEngaged,
+            IsAutoSteerAuto = false,
+            AutoButtonState = IsSectionMasterOn ? ButtonStates.Auto : ButtonStates.Off,
+            ManualButtonState = IsManualSectionMode ? ButtonStates.On : ButtonStates.Off,
         });
     }
 

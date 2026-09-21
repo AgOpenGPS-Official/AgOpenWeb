@@ -39,6 +39,9 @@ public partial class MainViewModel
         // Record for debug dump (ring buffer, last 60 seconds at 10Hz)
         AgOpenWeb.Services.Logging.GpsDataRecorder.Instance.Record(result);
 
+        // Work / steer switch → section buttons (#106)
+        UpdateModuleSwitches();
+
         // Mark GPS as received (updates timeout tracking for connection status)
         if (result.GpsValid)
             _gpsService.MarkGpsReceived();
