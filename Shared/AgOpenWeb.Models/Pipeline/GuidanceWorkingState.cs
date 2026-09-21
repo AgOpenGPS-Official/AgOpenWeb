@@ -50,6 +50,9 @@ public class GuidanceWorkingState
 
     // Visualization points
     public Vec2 GoalPoint { get; set; }
+    // True when GoalPoint is meaningful this cycle: the engaged steering target, or in
+    // free-drive the display-only target the steering would chase if engaged now (#95).
+    public bool HasGoalPoint { get; set; }
     public Vec2 RadiusPoint { get; set; }
     public double PurePursuitRadius { get; set; }
 
@@ -79,6 +82,7 @@ public class GuidanceWorkingState
         PpIntegral = PpPivotDistanceError = PpPivotDistanceErrorLast = 0;
         PpCounter = 0;
         GoalPoint = new Vec2();
+        HasGoalPoint = false;
         RadiusPoint = new Vec2();
         PurePursuitRadius = 0;
         IsHeadingSameWay = true;

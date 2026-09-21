@@ -165,7 +165,12 @@ public record TickDto(
     // Accumulated nudge of the guidance line (m), driver-relative: +right / −left from the
     // driver's seat (GuidanceState.NudgeOffset sign-flipped when heading against the track,
     // matching how the nudge intent applies it). Shown on the AB flyout's nudge readout (#93).
-    double NudgeOffset);
+    double NudgeOffset,
+    // Pure Pursuit goal point (field-local m) — the steering target while engaged, or in
+    // free-drive the target it would chase if engaged now. HasGoal gates the map marker (#95).
+    bool HasGoal,
+    double GoalE,
+    double GoalN);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

@@ -170,6 +170,7 @@ public partial class MainViewModel
             sg.PpPivotDistanceErrorLast = g.PpPivotDistanceErrorLast;
             sg.PpCounter = g.PpCounter;
             sg.GoalPoint = g.GoalPoint;
+            sg.HasGoalPoint = g.HasGoalPoint;
             sg.RadiusPoint = g.RadiusPoint;
             sg.PurePursuitRadius = g.PurePursuitRadius;
             sg.IsHeadingSameWay = g.IsHeadingSameWay;
