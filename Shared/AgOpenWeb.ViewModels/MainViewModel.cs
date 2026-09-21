@@ -1704,6 +1704,9 @@ public partial class MainViewModel : ObservableObject
             // Load recorded path from RecPath.txt
             LoadRecPathFromField(fieldPath);
 
+            // Load flags from Flags.txt (#107 — they used to carry over from the previous field)
+            LoadFlagsFromField(fieldPath);
+
             // Establish (or resume) the active job before any coverage paint
             // is allowed. Coverage now lives under <field>/jobs/<task>/.
             //
@@ -1979,6 +1982,10 @@ public partial class MainViewModel : ObservableObject
 
         // Clear U-turn state
         ClearYouTurnState();
+
+        // Clear flags (without saving — IsFieldOpen is already false) so they don't carry
+        // over into the next field (#107)
+        LoadFlagsFromField(null);
 
         // Clear coverage
         _coverageMapService.ClearAll();
@@ -2457,6 +2464,54 @@ public partial class MainViewModel : ObservableObject
         State.Field.Flags = Flags
             .Select(f => new Models.State.FlagMarker(f.Easting, f.Northing, Flag.ColorToHex(f.FlagColor), f.Name))
             .ToList();
+        SaveFlagsToField();
+    }
+
+    // Set while flags are being (re)loaded or cleared with the field, so UpdateFlagsOnMap
+    // doesn't write a half-loaded list — or an empty one over the file on close.
+    private bool _suppressFlagSave;
+
+    /// <summary>
+    /// Persist the open field's flags to Flags.txt (#107: flags were never saved, so they
+    /// vanished on restart). Every flag change goes through UpdateFlagsOnMap, which calls this.
+    /// </summary>
+    private void SaveFlagsToField()
+    {
+        if (_suppressFlagSave || !IsFieldOpen) return;
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (string.IsNullOrEmpty(dir)) return;
+        try
+        {
+            Services.FlagFilesService.Save(dir, Flags, State.Field.OriginLatitude, State.Field.OriginLongitude);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Flags] Failed to save Flags.txt");
+        }
+    }
+
+    /// <summary>Replace the flags with the field's Flags.txt (empty when <paramref name="fieldPath"/> is null).</summary>
+    private void LoadFlagsFromField(string? fieldPath)
+    {
+        _suppressFlagSave = true;
+        try
+        {
+            Flags.Clear();
+            if (!string.IsNullOrEmpty(fieldPath))
+            {
+                try
+                {
+                    foreach (var f in Services.FlagFilesService.Load(fieldPath)) Flags.Add(f);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Flags] Failed to load Flags.txt");
+                }
+            }
+            _nextFlagId = Flags.Count == 0 ? 1 : Flags.Max(f => f.UniqueNumber) + 1;
+            UpdateFlagsOnMap();
+        }
+        finally { _suppressFlagSave = false; }
     }
 
     // ---- Remote/web flag-list operations (index into Flags, matching the projected list) ----
