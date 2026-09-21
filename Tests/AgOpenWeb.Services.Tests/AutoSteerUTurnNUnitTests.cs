@@ -73,6 +73,9 @@ public class AutoSteerUTurnNUnitTests
         config.Vehicle.AntennaPivot = 0;
         config.Vehicle.AntennaOffset = 0;
         config.Vehicle.MaxSteerAngle = 35;
+        // These drive whole fields at working speed to test U-turn geometry; the steering
+        // speed limits (#106) have their own tests (SteerSpeedLimitTests).
+        config.AutoSteer.MaxSteerSpeed = 0;
         config.Tool.Width = TOOL_WIDTH; // 6m
         config.Tool.HitchLength = 3.0;
         config.Tool.TrailingHitchLength = 3.0;

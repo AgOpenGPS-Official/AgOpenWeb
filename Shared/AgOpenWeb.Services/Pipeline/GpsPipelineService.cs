@@ -809,6 +809,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
             lock (_stateLock) _autoSteerEngaged = false;
         }
 
+        // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
+        if (autoSteerEngaged && !_appState.Simulator.IsEnabled)
+        {
+            var speedReason = CheckSteerSpeedLimits(pos.Speed * 3.6);
+            if (speedReason != null)
+            {
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = speedReason;
+                lock (_stateLock) _autoSteerEngaged = false;
+            }
+        }
+        else
+        {
+            _belowMinSteerSpeedSinceMs = null;
+        }
+
         // U-turn lifecycle is bound to autosteer: when autosteer is not
         // engaged (user toggled off, boundary kickout, far-from-field guard,
         // or any other disengage path), the rendered turn path must clear so
@@ -1753,6 +1770,43 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         return inCultivatedArea ? (byte)1 : (byte)2;
     }
+
+    // Monotonic ms clock; tests substitute it to step past the below-min-speed grace period.
+    internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;
+    private long? _belowMinSteerSpeedSinceMs;
+    private const long BelowMinSteerSpeedGraceMs = 8000; // AgOpenGPS: 80 frames at 10 Hz
+
+    /// <summary>
+    /// AgOpenGPS steering speed limits: above Max steer speed disengages at once; below Min
+    /// steer speed for ~8 s disengages (so you can engage from a standstill and pull away).
+    /// A limit of 0 is off. Returns the disengage reason, or null. The panel settings used to
+    /// be read by nothing (#106).
+    /// </summary>
+    private string? CheckSteerSpeedLimits(double speedKmh)
+    {
+        var a = _configStore.AutoSteer;
+        if (a.MaxSteerSpeed > 0 && speedKmh > a.MaxSteerSpeed)
+        {
+            _belowMinSteerSpeedSinceMs = null;
+            return $"AutoSteer disengaged - above maximum steering speed ({FormatSpeed(a.MaxSteerSpeed)})";
+        }
+        if (a.MinSteerSpeed > 0 && speedKmh < a.MinSteerSpeed)
+        {
+            long now = NowMs();
+            _belowMinSteerSpeedSinceMs ??= now;
+            if (now - _belowMinSteerSpeedSinceMs.Value >= BelowMinSteerSpeedGraceMs)
+            {
+                _belowMinSteerSpeedSinceMs = null;
+                return $"AutoSteer disengaged - below minimum steering speed ({FormatSpeed(a.MinSteerSpeed)})";
+            }
+            return null;
+        }
+        _belowMinSteerSpeedSinceMs = null;
+        return null;
+    }
+
+    private string FormatSpeed(double kmh) =>
+        _configStore.IsMetric ? $"{kmh:0.#} km/h" : $"{kmh * 0.621371:0.#} mph";
 
     private void CheckRtkQualityChange(int fixQuality)
     {

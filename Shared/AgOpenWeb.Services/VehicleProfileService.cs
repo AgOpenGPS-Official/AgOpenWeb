@@ -300,6 +300,9 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.StanleyIntegralGainAB = GetDouble(settings, "stanleyIntegralGainAB", 0.0);
         store.Guidance.PurePursuitIntegralGain = GetDouble(settings, "purePursuitIntegralGainAB", 0.0);
         store.Guidance.UTurnCompensation = GetDouble(settings, "setAS_uTurnCompensation", 1.0);
+        // Steering speed limits (enforced by the pipeline since #106).
+        store.AutoSteer.MinSteerSpeed = GetDouble(settings, "setAS_minSteerSpeed", 0.0);
+        store.AutoSteer.MaxSteerSpeed = GetDouble(settings, "setAS_maxSteerSpeed", 15.0);
 
         // U-Turn settings
         store.Guidance.UTurnRadius = GetDouble(settings, "set_youTurnRadius", 8.0);
