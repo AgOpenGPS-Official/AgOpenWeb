@@ -918,8 +918,9 @@ public class SectionControlService : ISectionControlService
     {
         var tool = _configStore.Tool;
 
-        // Check if headland section control is enabled
-        if (!tool.IsHeadlandSectionControl)
+        // Check if headland section control is enabled — and the headland itself is on
+        // (AgOpenGPS: isHeadlandOn && isSectionControlledByHeadland, #106)
+        if (!tool.IsHeadlandSectionControl || !_state.FieldTools.IsHeadlandOn)
             return false; // Headland control disabled
 
         var headlandLine = _state.Field.HeadlandLine;

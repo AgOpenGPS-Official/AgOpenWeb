@@ -147,11 +147,11 @@ public class HardwareConfigStepViewModel : WizardStepViewModel
     protected override void OnLeaving()
     {
         var autoSteer = _configService.Store.AutoSteer;
-        autoSteer.ExternalEnable = ExternalEnable;
-        autoSteer.MotorDriver = MotorDriver;
-        autoSteer.AdConverter = AdConverter;
-        autoSteer.InvertRelays = InvertRelays;
-        autoSteer.DanfossEnabled = DanfossEnabled;
+        if (Touched(nameof(ExternalEnable))) autoSteer.ExternalEnable = ExternalEnable;
+        if (Touched(nameof(MotorDriver))) autoSteer.MotorDriver = MotorDriver;
+        if (Touched(nameof(AdConverter))) autoSteer.AdConverter = AdConverter;
+        if (Touched(nameof(InvertRelays))) autoSteer.InvertRelays = InvertRelays;
+        if (Touched(nameof(DanfossEnabled))) autoSteer.DanfossEnabled = DanfossEnabled;
     }
 
     public override Task<bool> ValidateAsync()

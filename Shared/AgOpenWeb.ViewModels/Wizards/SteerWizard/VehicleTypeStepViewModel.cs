@@ -78,7 +78,7 @@ public class VehicleTypeStepViewModel : WizardStepViewModel
 
     protected override void OnLeaving()
     {
-        _configService.Store.Vehicle.Type = VehicleType;
+        if (Touched(nameof(VehicleType))) _configService.Store.Vehicle.Type = VehicleType;
     }
 
     public void SelectTractor() => VehicleType = VehicleType.Tractor;

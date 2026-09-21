@@ -133,12 +133,12 @@ public class SteeringGainsStepViewModel : WizardStepViewModel
 
         var autoSteer = _configService.Store.AutoSteer;
         var guidance = _configService.Store.Guidance;
-        guidance.IsPurePursuit = !IsStanleyMode;
-        guidance.GoalPointLookAheadHold = SteerResponseHold;
-        guidance.StanleyDistanceErrorGain = StanleyAggressiveness;
-        autoSteer.ProportionalGain = ProportionalGain;
-        guidance.PurePursuitIntegralGain = IntegralGain;
-        autoSteer.SideHillCompensation = SideHillCompensation;
+        if (Touched(nameof(IsStanleyMode))) guidance.IsPurePursuit = !IsStanleyMode;
+        if (Touched(nameof(SteerResponseHold))) guidance.GoalPointLookAheadHold = SteerResponseHold;
+        if (Touched(nameof(StanleyAggressiveness))) guidance.StanleyDistanceErrorGain = StanleyAggressiveness;
+        if (Touched(nameof(ProportionalGain))) autoSteer.ProportionalGain = ProportionalGain;
+        if (Touched(nameof(IntegralGain))) guidance.PurePursuitIntegralGain = IntegralGain;
+        if (Touched(nameof(SideHillCompensation))) autoSteer.SideHillCompensation = SideHillCompensation;
     }
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot snapshot)

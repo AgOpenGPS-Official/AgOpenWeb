@@ -712,7 +712,7 @@ public sealed class SceneProjector
         return new AutoSteerConfigDto(
             g.GoalPointLookAheadHold, g.PurePursuitIntegralGain, g.IsStanley,
             g.StanleyDistanceErrorGain, g.StanleyHeadingErrorGain,
-            a.WasOffset, a.CountsPerDegree, a.Ackermann, a.MaxSteerAngle,
+            a.WasOffset, a.CountsPerDegree, a.Ackermann, (int)System.Math.Round(_config.Vehicle.MaxSteerAngle),
             a.DeadzoneHeading, a.DeadzoneDelay, g.GoalPointLookAheadMult, a.AcquireFactor,
             a.ProportionalGain, a.MaxPwm, a.MinPwm,
             a.TurnSensorEnabled, a.PressureSensorEnabled, a.CurrentSensorEnabled,
@@ -828,7 +828,7 @@ public sealed class SceneProjector
             | (asc.ManualTurnsEnabled ? 512 : 0) | (asc.LightbarEnabled ? 1024 : 0) | (asc.SteerBarEnabled ? 2048 : 0)
             | (asc.GuidanceBarOn ? 4096 : 0);
         h = h * 31 + ab;
-        h = h * 31 + asc.WasOffset * 3 + asc.Ackermann * 5 + asc.MaxSteerAngle * 7 + asc.DeadzoneDelay * 11
+        h = h * 31 + asc.WasOffset * 3 + asc.Ackermann * 5 + (int)System.Math.Round(_config.Vehicle.MaxSteerAngle) * 7 + asc.DeadzoneDelay * 11
               + asc.ProportionalGain * 13 + asc.MaxPwm * 17 + asc.MinPwm * 19 + asc.TurnSensorCounts * 23
               + asc.PressureTripPoint * 29 + asc.CurrentTripPoint * 31 + asc.MotorDriver * 37 + asc.AdConverter * 41
               + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61;
