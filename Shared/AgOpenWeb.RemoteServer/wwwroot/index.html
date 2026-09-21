@@ -74,6 +74,7 @@
        (with per-module popup), and big Speed on the right. */
     #statusbar {
       position: fixed; top: var(--sat); left: 0; right: 0; height: 46px; display: none;
+      z-index: 33; /* above #leftnav (32) so the Modules / GPS popups aren't clipped under it (#94) */
       align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
       background: var(--float-bg); border-bottom: 1px solid var(--border-2);
       color: var(--text-2); font: 600 15px system-ui, sans-serif;
@@ -105,7 +106,7 @@
     .sb-rot { color: #3498DB; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sb-spacer { flex: 1; }
     .sb-mods-wrap { position: relative; }
-    #sb-modpop { display: none; position: absolute; top: 36px; right: 0; min-width: 230px;
+    #sb-modpop { display: none; position: absolute; top: 36px; left: 0; min-width: 230px;
       background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px;
       box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; }
     .sb-modrow { display: grid; grid-template-columns: 16px 84px 1fr; align-items: center;
@@ -288,6 +289,7 @@
     #bottomnav .bn-menu.menuopen { background: var(--sel); }
     #bottomnav .bn-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
     #bn-skipnum { font-size: 22px; font-weight: 700; }
+    #bn-nudgeval { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
     #bottomnav.locked .bn-btn[data-t2] { opacity: 0.45; } /* dim Tier-2 when we lack control */
     .bn-flyout { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
       margin-bottom: 6px; display: none; flex-direction: column; gap: 5px; padding: 8px;
@@ -2475,7 +2477,8 @@
         <!-- Mirrors native BottomNavigationPanel AB flyout. Row 1: Tracks manager /
              Auto-track / Quick-AB (the single creation hub — GPS-driven, from-boundary,
              and draw-on-map all live in its dialog). Then the active-track ops
-             (cycle/smooth/delete + nudges), shown only with an active track (.bn-abdep). -->
+             (cycle/smooth/delete, A/B end length, nudge), shown only with an active track
+             (.bn-abdep). Length and nudge are unrelated, so a divider separates them (#93). -->
         <div class="bn-flyrow">
           <button class="bn-btn" id="bn-tracks" title="Tracks — manage AB lines"><img class="bn-ic" src="/icons/ABTracks.png" alt="Tracks"></button>
           <button class="bn-btn" id="bn-quickab" title="Quick AB line creator"><img class="bn-ic" src="/icons/ABTrackAPlus.png" alt="Quick AB"></button>
@@ -2489,17 +2492,18 @@
         </div>
         <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge left (A+)"><img class="bn-ic" src="/icons/APlusPlusA.png" alt="Nudge L"></button>
-          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge right (B+)"><img class="bn-ic" src="/icons/APlusPlusB.png" alt="Nudge R"></button>
+          <button class="bn-btn" data-cmd="track.extendA" data-t2 title="Extend line at A (+5 m)"><img class="bn-ic" src="/icons/APlusPlusA.png" alt="Extend A"></button>
+          <button class="bn-btn" data-cmd="track.extendB" data-t2 title="Extend line at B (+5 m)"><img class="bn-ic" src="/icons/APlusPlusB.png" alt="Extend B"></button>
         </div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.fineNudgeLeft" data-t2 title="Fine nudge left (A−)"><img class="bn-ic" src="/icons/APlusMinusA.png" alt="Fine L"></button>
-          <button class="bn-btn" data-cmd="track.fineNudgeRight" data-t2 title="Fine nudge right (B−)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Fine R"></button>
+          <button class="bn-btn" data-cmd="track.shrinkA" data-t2 title="Shorten line at A (−5 m)"><img class="bn-ic" src="/icons/APlusMinusA.png" alt="Shorten A"></button>
+          <button class="bn-btn" data-cmd="track.shrinkB" data-t2 title="Shorten line at B (−5 m)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Shorten B"></button>
         </div>
+        <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.halfNudgeLeft" data-t2 title="Nudge left half tool width">&lt;&lt;</button>
-          <button class="bn-btn" data-cmd="track.resetNudge" data-t2 title="Reset nudge">0</button>
-          <button class="bn-btn" data-cmd="track.halfNudgeRight" data-t2 title="Nudge right half tool width">&gt;&gt;</button>
+          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge line left">&lt;&lt;</button>
+          <button class="bn-btn" id="bn-nudge" data-cmd="track.resetNudge" data-t2 title="Current nudge — tap to reset to 0"><span id="bn-nudgeval">0</span></button>
+          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge line right">&gt;&gt;</button>
         </div>
       </div>
       <div class="bn-bar">

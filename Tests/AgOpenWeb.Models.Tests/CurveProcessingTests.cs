@@ -245,4 +245,83 @@ public class CurveProcessingTests
 
         Assert.That(result.Count, Is.EqualTo(8));
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // MoveTrackEnd (AB flyout A+/B+/A−/B−, #93)
+    // ──────────────────────────────────────────────────────────────────
+
+    private static List<Vec3> NorthLine() => new() { new Vec3(0, 0, 0), new Vec3(0, 100, 0) };
+
+    private static List<Vec3> NorthCurve()
+    {
+        var pts = new List<Vec3>();
+        for (int i = 0; i <= 10; i++) pts.Add(new Vec3(0, i * 10, 0));
+        return pts;
+    }
+
+    [Test]
+    public void MoveTrackEnd_ABLine_ExtendA_MovesFirstPointBackAlongLine()
+    {
+        var result = CurveProcessing.MoveTrackEnd(NorthLine(), atStart: true, 5)!;
+
+        Assert.That(result.Count, Is.EqualTo(2));
+        Assert.That(result[0].Easting, Is.EqualTo(0).Within(1e-9));
+        Assert.That(result[0].Northing, Is.EqualTo(-5).Within(1e-9));
+        Assert.That(result[1].Northing, Is.EqualTo(100).Within(1e-9));
+        Assert.That(result[0].Heading, Is.EqualTo(0).Within(1e-9));
+    }
+
+    [Test]
+    public void MoveTrackEnd_ABLine_ShrinkB_MovesLastPointInward()
+    {
+        var result = CurveProcessing.MoveTrackEnd(NorthLine(), atStart: false, -5)!;
+
+        Assert.That(result.Count, Is.EqualTo(2));
+        Assert.That(result[0].Northing, Is.EqualTo(0).Within(1e-9));
+        Assert.That(result[1].Northing, Is.EqualTo(95).Within(1e-9));
+    }
+
+    [Test]
+    public void MoveTrackEnd_ShrinkBelowMinimum_ReturnsNull()
+    {
+        var shortLine = new List<Vec3> { new Vec3(0, 0, 0), new Vec3(0, 4, 0) };
+
+        Assert.That(CurveProcessing.MoveTrackEnd(shortLine, atStart: true, -5), Is.Null);
+    }
+
+    [Test]
+    public void MoveTrackEnd_Curve_ExtendB_AppendsDensifiedPointsAlongTangent()
+    {
+        var result = CurveProcessing.MoveTrackEnd(NorthCurve(), atStart: false, 5)!;
+
+        Assert.That(result.Count, Is.EqualTo(11 + 3)); // ceil(5 / 2 m) = 3 points
+        Assert.That(result[^1].Northing, Is.EqualTo(105).Within(1e-9));
+        Assert.That(result[^1].Easting, Is.EqualTo(0).Within(1e-9));
+        Assert.That(result[0].Northing, Is.EqualTo(0).Within(1e-9)); // A end untouched
+    }
+
+    [Test]
+    public void MoveTrackEnd_Curve_ShrinkA_TrimsAcrossPointsAndInterpolates()
+    {
+        // Trim 15 m from A: drops the point at 0 and lands halfway between 10 and 20.
+        var result = CurveProcessing.MoveTrackEnd(NorthCurve(), atStart: true, -15)!;
+
+        Assert.That(result.Count, Is.EqualTo(10));
+        Assert.That(result[0].Northing, Is.EqualTo(15).Within(1e-9));
+        Assert.That(result[1].Northing, Is.EqualTo(20).Within(1e-9));
+        Assert.That(result[^1].Northing, Is.EqualTo(100).Within(1e-9)); // B end untouched
+    }
+
+    [Test]
+    public void MoveTrackEnd_ExtendA_KeepsTrackDirectionHeading()
+    {
+        // Heading for an eastbound line is π/2 at every point, including the moved A end.
+        var east = new List<Vec3> { new Vec3(0, 0, 0), new Vec3(50, 0, 0), new Vec3(100, 0, 0) };
+
+        var result = CurveProcessing.MoveTrackEnd(east, atStart: true, 5)!;
+
+        Assert.That(result[0].Easting, Is.EqualTo(-5).Within(1e-9));
+        foreach (var p in result.GetRange(0, 5))
+            Assert.That(p.Heading, Is.EqualTo(Math.PI / 2).Within(1e-9));
+    }
 }

@@ -3920,6 +3920,10 @@ public partial class MainViewModel : ObservableObject
     public ICommand? HalfToolNudgeLeftCommand { get; private set; }
     public ICommand? HalfToolNudgeRightCommand { get; private set; }
     public ICommand? ResetNudgeCommand { get; private set; }
+    public ICommand? ExtendTrackACommand { get; private set; }
+    public ICommand? ExtendTrackBCommand { get; private set; }
+    public ICommand? ShrinkTrackACommand { get; private set; }
+    public ICommand? ShrinkTrackBCommand { get; private set; }
     public ICommand? StartDrawABModeCommand { get; private set; }
     public ICommand? StartDrawCurveModeCommand { get; private set; }
     public ICommand? FinishDrawCurveCommand { get; private set; }
