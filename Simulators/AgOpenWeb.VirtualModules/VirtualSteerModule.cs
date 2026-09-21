@@ -177,9 +177,15 @@ public class VirtualSteerModule : IDisposable
     {
         get
         {
+            // Same as the AgOpenGPS firmware (Boards: AiO v4 Autosteer.ino, centre 6805 → 0):
+            //   normal:   (raw + wasOffset) /  cpd
+            //   inverted: (raw - wasOffset) / -cpd
+            // (#103: this used (raw - offset) / cpd, the opposite sign, so the host's Zero WAS
+            // was tuned against the emulator instead of real modules.)
             double appliedCpd = CountsPerDegree > 0 ? CountsPerDegree : 1.0;
-            double calibrated = (TruthRawCounts - WasOffset) / appliedCpd;
-            return InvertWas ? -calibrated : calibrated;
+            return InvertWas
+                ? (TruthRawCounts - WasOffset) / -appliedCpd
+                : (TruthRawCounts + WasOffset) / appliedCpd;
         }
     }
 

@@ -18,6 +18,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
+using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Interfaces;
 
 using CommunityToolkit.Mvvm.Input;
@@ -110,27 +111,13 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         if (_autoSteerService == null)
             return;
 
-        // ActualSteerAngle from PGN 253 is the wheel angle the module
-        // has already post-processed: rawCounts -> subtract WasOffset ->
-        // divide by CountsPerDegree -> apply InvertWas sign. To drive
-        // that reported angle back to zero we need a new offset that
-        // accounts for the prior calibration, not one that replaces it.
-        //
-        // Forward direction (InvertWas = false):
-        //     reported = (raw - offset) / cpd
-        //     desired:  0 = (raw - offset') / cpd
-        //          =>   offset' = raw = offset + reported * cpd
-        //
-        // Inverted direction (InvertWas = true):
-        //     reported = -(raw - offset) / cpd
-        //          =>   raw = offset - reported * cpd
-        //          =>   offset' = offset - reported * cpd
-        //
-        // Unifying with a sign factor: offset' = offset + sign * reported * cpd
+        // ActualSteerAngle from PGN 253 is the module's post-calibration angle, so accumulate
+        // against the prior offset. The formula follows the real firmware and does NOT depend
+        // on Invert WAS (#103; see WasCalibration). Out-of-range zeros are refused like AgOpenGPS.
         double actualAngle = _autoSteerService.LastSteerData.ActualSteerAngle;
         var autoSteer = _configService.Store.AutoSteer;
-        int sign = autoSteer.InvertWas ? -1 : +1;
-        WasOffset = autoSteer.WasOffset + sign * (int)(actualAngle * autoSteer.CountsPerDegree);
+        if (WasCalibration.TryZero(autoSteer.WasOffset, actualAngle, autoSteer.CountsPerDegree, out int zeroed))
+            WasOffset = zeroed;
     }
 
     protected override void OnEntering()
