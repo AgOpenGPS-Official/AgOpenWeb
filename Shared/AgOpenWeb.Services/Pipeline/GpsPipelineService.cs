@@ -1041,7 +1041,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
 
         // ── (11) RTK quality sounds ─────────────────────────────────────
-        CheckRtkQualityChange(data.FixQuality);
+        if (CheckRtkQualityChange(data.FixQuality) && autoSteerEngaged)
+        {
+            // "Alarm stops AutoSteer" (#106) — same path as the boundary kickout.
+            autoSteerEngaged = false;
+            autoSteerDisengaged = true;
+            disengageReason = "AutoSteer disengaged - RTK fix lost";
+            lock (_stateLock) _autoSteerEngaged = false;
+        }
 
         // ── (12) Build section state arrays for result ──────────────────
         bool[]? secStatesArr = null;
@@ -1754,18 +1761,31 @@ public sealed class GpsPipelineService : IGpsPipelineService
         return inCultivatedArea ? (byte)1 : (byte)2;
     }
 
-    private void CheckRtkQualityChange(int fixQuality)
+    /// <summary>
+    /// RTK fix alarm, as AgOpenGPS (isRTK_AlarmOn / isRTK_KillAutosteer): only when the
+    /// "RTK lost alarm" setting is on; "lost" means leaving RTK fixed (quality 4) — float
+    /// counts as lost. Returns true on the lost edge when "Alarm stops AutoSteer" is set, so
+    /// the caller disengages. Both settings used to be ignored (#106): the sound played
+    /// regardless and autosteer never stopped.
+    /// </summary>
+    private bool CheckRtkQualityChange(int fixQuality)
     {
-        if (fixQuality != _previousFixQuality)
+        if (fixQuality == _previousFixQuality) return false;
+        bool wasRtk = _previousFixQuality == 4;
+        bool isRtk = fixQuality == 4;
+        _previousFixQuality = fixQuality;
+
+        var con = _configStore.Connections;
+        if (!con.RtkLostAlarm) return false;
+
+        if (wasRtk && !isRtk)
         {
-            bool wasRtk = _previousFixQuality >= 4;
-            bool isRtk = fixQuality >= 4;
-            if (wasRtk && !isRtk)
-                _audioService.Play(SoundEffect.RtkLost);
-            else if (!wasRtk && isRtk)
-                _audioService.Play(SoundEffect.RtkRecovered);
-            _previousFixQuality = fixQuality;
+            _audioService.Play(SoundEffect.RtkLost);
+            return con.RtkLostAction != 0; // web toggle "Alarm stops AutoSteer" (1 = pause AutoSteer)
         }
+        if (!wasRtk && isRtk)
+            _audioService.Play(SoundEffect.RtkRecovered);
+        return false;
     }
 
 }
