@@ -408,6 +408,16 @@ public record RollConfigDto(
     double RollFilter,
     bool IsRollInvert);
 
+/// <summary>The host's pending confirmation or error dialog (#109), so the web can show
+/// and answer it. Kind 0 = nothing pending, 1 = confirm (yes/no, optional checkbox),
+/// 2 = error (OK only). Seq identifies the prompt; the answer echoes it back. Empty
+/// labels mean the client's default captions.</summary>
+public record PromptDto(int Seq, int Kind, string Title, string Message,
+    string ConfirmLabel, string CancelLabel, string CheckboxLabel, bool CheckboxChecked)
+{
+    public static readonly PromptDto None = new(0, 0, "", "", "", "", "", false);
+}
+
 /// <summary>Remote-actuation authority state (Phase 2). Broadcast on change; the
 /// client compares HolderId to its own id (sent once in the Hello frame) to know
 /// whether it is the holder. Held=false means no client has control.</summary>

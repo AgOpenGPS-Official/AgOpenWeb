@@ -24,7 +24,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -357,6 +357,18 @@ window.RemoteTransport = {
           // diag.ping. RTT = now − token, measured on the one client clock.
           const token = str();
           handlers.onPong && handlers.onPong(token);
+          break;
+        }
+        case TYPE.PROMPT: {
+          // Host's pending confirm/error dialog (#109). kind 0 = none, 1 = confirm, 2 = error.
+          const seq = i32(), kind = u8(), title = str(), message = str();
+          const confirmLabel = str(), cancelLabel = str(), checkboxLabel = str(), checkboxChecked = !!u8();
+          handlers.onPrompt && handlers.onPrompt({ seq, kind, title, message, confirmLabel, cancelLabel, checkboxLabel, checkboxChecked });
+          break;
+        }
+        case TYPE.TOAST: {
+          // One-shot refusal/failure notification (#109).
+          handlers.onToast && handlers.onToast(str());
           break;
         }
         case TYPE.VIEW_PREFS: {

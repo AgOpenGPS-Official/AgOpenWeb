@@ -208,7 +208,7 @@ public partial class MainViewModel
     {
         if (State.YouTurn.IsExecuting)
         {
-            StatusMessage = "Cannot flip U-turn direction while executing";
+            ReportFailure("Cannot flip U-turn direction while executing");
             return;
         }
 

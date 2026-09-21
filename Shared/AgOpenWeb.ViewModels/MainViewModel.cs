@@ -940,7 +940,7 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             NetworkStatus = $"UDP Error: {ex.Message}";
-            StatusMessage = "Network error";
+            ReportFailure("Network error");
         }
     }
 
@@ -999,7 +999,7 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "HelloTimer error");
-            StatusMessage = "Module check error";
+            ReportFailure("Module check error");
         }
     }
 
@@ -1874,7 +1874,7 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, $"[Field] Error opening field: {fieldName}");
-            StatusMessage = $"Failed to open field: {ex.Message}";
+            ReportFailure($"Failed to open field: {ex.Message}");
         }
         finally
         {
@@ -2480,7 +2480,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (Easting == 0 && Northing == 0)
         {
-            StatusMessage = "No GPS position - cannot place flag";
+            ReportFailure("No GPS position - cannot place flag");
             return;
         }
 
@@ -2581,6 +2581,25 @@ public partial class MainViewModel : ObservableObject
         _nextFlagId = 1;
         UpdateFlagsOnMap();
         StatusMessage = $"Deleted {count} flags";
+    }
+
+    /// <summary>Delete every saved track without asking (the web client has already
+    /// confirmed). Also used as the native confirm's action.</summary>
+    public void DeleteAllTracksConfirmed()
+    {
+        if (SavedTracks.Count == 0)
+        {
+            ReportFailure("No tracks to delete");
+            return;
+        }
+        SavedTracks.Clear();
+        SelectedTrack = null;
+        RebuildRecordedPathsAndContours(); // clear rec-path/contour display
+        SaveTracksToFile();
+        // Also remove RecPath.txt, else the recorded path reloads on next open.
+        if (_fieldService.ActiveField is { } f)
+            Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+        StatusMessage = "All tracks deleted";
     }
 
     /// <summary>Rename a saved track by index (remote/web Field Builder). Persists.</summary>
@@ -3045,6 +3064,7 @@ public partial class MainViewModel : ObservableObject
         _confirmationDialogCallback = onConfirm;
         _confirmationDialogCheckboxCallback = null;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -3071,6 +3091,7 @@ public partial class MainViewModel : ObservableObject
         _confirmationDialogCallback = onConfirm;
         _confirmationDialogCheckboxCallback = null;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -3095,6 +3116,7 @@ public partial class MainViewModel : ObservableObject
         _confirmationDialogCallback = null;
         _confirmationDialogCheckboxCallback = onConfirm;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -3122,6 +3144,7 @@ public partial class MainViewModel : ObservableObject
     {
         ErrorDialogTitle = title;
         ErrorDialogMessage = message;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Error);
     }
 
@@ -4355,13 +4378,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (SelectedBoundaryIndex < 0)
         {
-            StatusMessage = "Select a boundary to delete";
+            ReportFailure("Select a boundary to delete");
             return;
         }
 
         if (string.IsNullOrEmpty(CurrentFieldName))
         {
-            StatusMessage = "No field open";
+            ReportFailure("No field open");
             return;
         }
 
@@ -4752,7 +4775,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error parsing KML: {ex.Message}";
+            ReportFailure($"Error parsing KML: {ex.Message}");
         }
     }
 
@@ -4817,7 +4840,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(CurrentFieldName) || _kmlParsedPolygons.Count == 0)
         {
-            StatusMessage = "No field open or no KML polygons parsed";
+            ReportFailure("No field open or no KML polygons parsed");
             return;
         }
 
@@ -4870,7 +4893,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error importing KML boundary: {ex.Message}";
+            ReportFailure($"Error importing KML boundary: {ex.Message}");
         }
     }
 
@@ -4923,7 +4946,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (!HasHeadland)
         {
-            StatusMessage = "No headland to adjust - build one first";
+            ReportFailure("No headland to adjust - build one first");
             return;
         }
 
@@ -4938,7 +4961,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
         {
-            StatusMessage = "No field open";
+            ReportFailure("No field open");
             return;
         }
 
@@ -4954,7 +4977,7 @@ public partial class MainViewModel : ObservableObject
 
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
-            StatusMessage = "No valid boundary to create headland from";
+            ReportFailure("No valid boundary to create headland from");
             return;
         }
 
@@ -5271,13 +5294,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
-            StatusMessage = "No valid boundary";
+            ReportFailure("No valid boundary");
             return;
         }
 
         if (_headlandPoint1Position == null || _headlandPoint2Position == null)
         {
-            StatusMessage = "Invalid point selection";
+            ReportFailure("Invalid point selection");
             return;
         }
 
@@ -5306,7 +5329,7 @@ public partial class MainViewModel : ObservableObject
 
         if (segmentPoints.Count < 2)
         {
-            StatusMessage = "Not enough points in segment";
+            ReportFailure("Not enough points in segment");
             return;
         }
 
@@ -5604,7 +5627,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (_headlandPoint1Position == null || _headlandPoint2Position == null)
         {
-            StatusMessage = "No clip line defined";
+            ReportFailure("No clip line defined");
             return;
         }
 

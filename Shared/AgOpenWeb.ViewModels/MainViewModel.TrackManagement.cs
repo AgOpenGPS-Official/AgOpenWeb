@@ -77,7 +77,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen)
             {
-                StatusMessage = "Open a field first";
+                ReportFailure("Open a field first");
                 return;
             }
             _recPathRecordingPoints.Clear();
@@ -140,7 +140,7 @@ public partial class MainViewModel
             var activeField = _fieldService.ActiveField;
             if (activeField == null || string.IsNullOrEmpty(activeField.DirectoryPath))
             {
-                StatusMessage = "Open a field first before importing tracks";
+                ReportFailure("Open a field first before importing tracks");
                 return;
             }
 
@@ -149,7 +149,7 @@ public partial class MainViewModel
             var fieldsDir = FieldsRootDirectory;
             if (string.IsNullOrEmpty(fieldsDir) || !Directory.Exists(fieldsDir))
             {
-                StatusMessage = "No fields directory found";
+                ReportFailure("No fields directory found");
                 return;
             }
 
@@ -166,7 +166,7 @@ public partial class MainViewModel
 
             if (ImportFieldsList.Count == 0)
             {
-                StatusMessage = "No other fields with tracks found";
+                ReportFailure("No other fields with tracks found");
                 return;
             }
 
@@ -186,7 +186,7 @@ public partial class MainViewModel
                 var importedTracks = Services.TrackFilesService.Load(sourceDir);
                 if (importedTracks.Count == 0)
                 {
-                    StatusMessage = "No tracks found in selected field";
+                    ReportFailure("No tracks found in selected field");
                     return;
                 }
 
@@ -219,7 +219,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Import failed: {ex.Message}";
+                ReportFailure($"Import failed: {ex.Message}");
                 _logger.LogWarning(ex, "[TrackImport] Failed to import tracks from {Field}", fieldName);
             }
         });
@@ -233,7 +233,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
 
@@ -285,7 +285,7 @@ public partial class MainViewModel
 
             if (_contourRecordingPoints.Count < 3)
             {
-                StatusMessage = $"Need at least 3 points for contour (have {_contourRecordingPoints.Count})";
+                ReportFailure($"Need at least 3 points for contour (have {_contourRecordingPoints.Count})");
                 _contourRecordingPoints.Clear();
                 _lastContourPoint = null;
                 return;

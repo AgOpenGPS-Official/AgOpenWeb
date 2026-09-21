@@ -333,6 +333,16 @@ public static partial class RemoteServerWiring
                                 case "flag.delete":
                                     if (int.TryParse(arg, out var fdi)) vm.DeleteFlagAt(fdi);
                                     return;
+                                case "track.deleteAll": // Field Builder; browser already confirmed (#109)
+                                    vm.DeleteAllTracksConfirmed();
+                                    return;
+                                case "prompt.answer": // arg = "seq,yes(1|0),checkbox(1|0)" — answers the
+                                {                     // host's pending confirm/error (#109). Gated.
+                                    var pa = arg.Split(',');
+                                    if (pa.Length == 3 && int.TryParse(pa[0], out var pseq))
+                                        vm.AnswerPrompt(pseq, pa[1] == "1", pa[2] == "1");
+                                    return;
+                                }
                                 case "flag.deleteAll":
                                     vm.DeleteAllFlagsRemote();
                                     return;
@@ -581,7 +591,7 @@ public static partial class RemoteServerWiring
                                 "track.aPlus" => vm.StartAPlusLineCommand,
                                 "track.boundaryCurve" => vm.CreateCurveFromBoundaryCommand,
                                 "track.allEdges" => vm.CreateTracksFromAllEdgesCommand,
-                                "track.deleteAll" => vm.DeleteAllTracksCommand, // Field Builder
+
                                 // Quick-AB selector (GPS-driven): drive A→B, record a curve
                                 // by driving, and set-point-at-vehicle (param ignored in
                                 // DriveAB/Curve modes → uses live GPS).
@@ -640,6 +650,7 @@ public static partial class RemoteServerWiring
                         || (id.StartsWith("headland.") && !UngatedHeadlandIds.Contains(id))
                         || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
                         || id == "net.subnet" // restarts every module → gate it
+                        || id == "prompt.answer" // a confirm can delete data or restart modules
                         || id == "recpath.play"; // drives the vehicle along the path → actuation
 
                     // One operator, via the browser. When the control session ends —
@@ -679,6 +690,26 @@ public static partial class RemoteServerWiring
                     server.WizardProvider = () =>
                         wizardActive && vm.SteerWizardViewModel is { } w
                             ? BuildWizardDto(w) : null;
+
+                    // Pending confirm/error projector (#109): the host's ShowConfirmationDialog /
+                    // ShowErrorDialog used to open a native overlay the web never saw, so the
+                    // action waited forever (or the error was invisible). The browser holding
+                    // control answers via prompt.answer. Read-only on the broadcaster thread.
+                    server.PromptProvider = () =>
+                    {
+                        if (!vm.IsPromptPending) return AgOpenWeb.RemoteServer.PromptDto.None;
+                        bool isError = vm.State.UI.ActiveDialog == AgOpenWeb.Models.State.DialogType.Error;
+                        return isError
+                            ? new AgOpenWeb.RemoteServer.PromptDto(vm.PromptSeq, 2,
+                                vm.ErrorDialogTitle ?? "", vm.ErrorDialogMessage ?? "", "", "", "", false)
+                            : new AgOpenWeb.RemoteServer.PromptDto(vm.PromptSeq, 1,
+                                vm.ConfirmationDialogTitle ?? "", vm.ConfirmationDialogMessage ?? "",
+                                vm.ConfirmationDialogConfirmLabel ?? "", vm.ConfirmationDialogCancelLabel ?? "",
+                                vm.ConfirmationDialogCheckboxLabel ?? "", vm.ConfirmationDialogCheckboxChecked);
+                    };
+
+                    // Refusals and failures (#109): shown as a short notification on the web.
+                    vm.FailureReported += msg => server.ShowToast(msg);
 
                     // Recorded Path projector: the panel's UI state (IsRecordingPath,
                     // HasUnsaved, info/label) is VM-owned, so project it from the live VM

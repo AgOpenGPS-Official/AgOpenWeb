@@ -419,6 +419,8 @@ const transport = RemoteTransport.create({
   onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
   onSound(id) { Sounds.play(id); },
+  onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
+  onToast(msg) { showToast(msg); },
   // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
   // RTT = now − token measures the pure server↔client link (one client clock, no skew).
   onPong(token) {
@@ -429,6 +431,59 @@ const transport = RemoteTransport.create({
   // Persisted web-camera view (issue #35): restore last tilt+zoom from the host seed.
   onViewPrefs(pitch, zoom) { applyViewPrefs(pitch, zoom); },
 });
+
+// ---- Host prompt + failure notifications (#109) ----------------------------
+// The host's ShowConfirmationDialog / ShowErrorDialog (e.g. "GPS far from field",
+// settings recovery, "No boundary") arrive as a Prompt frame. It stays up until the
+// host clears it (kind 0), so a reconnecting browser still sees it. Only the browser
+// holding control can answer (prompt.answer is gated); the seq stops a stale tap
+// answering a newer prompt.
+let hostPrompt = null;
+const HP = {
+  root: document.getElementById('hostprompt'), title: document.getElementById('hp-title'),
+  msg: document.getElementById('hp-msg'), check: document.getElementById('hp-check'),
+  checkbox: document.getElementById('hp-checkbox'), checkLabel: document.getElementById('hp-checklabel'),
+  ok: document.getElementById('hp-ok'), cancel: document.getElementById('hp-cancel'),
+  wait: document.getElementById('hp-wait'),
+};
+let hpShownSeq = -1;
+function renderHostPrompt() {
+  const p = hostPrompt;
+  if (!p || !p.kind) { HP.root.classList.remove('open'); hpShownSeq = -1; return; }
+  const isError = p.kind === 2;
+  HP.title.textContent = p.title || (isError ? 'Error' : 'Confirm');
+  HP.msg.textContent = p.message || '';
+  HP.check.hidden = isError || !p.checkboxLabel;
+  HP.checkLabel.textContent = p.checkboxLabel || '';
+  if (hpShownSeq !== p.seq) HP.checkbox.checked = !!p.checkboxChecked; // keep the operator's tick on re-render
+  HP.cancel.hidden = isError;
+  HP.ok.textContent = p.confirmLabel || (isError ? 'OK' : 'Yes');
+  HP.cancel.textContent = p.cancelLabel || 'No';
+  HP.ok.disabled = HP.cancel.disabled = !iHoldControl;
+  HP.wait.hidden = iHoldControl;
+  HP.wait.textContent = lastControl.held
+    ? 'Waiting for ' + (lastControl.holderName || 'the operator') + ' to answer'
+    : 'Take control to answer';
+  hpShownSeq = p.seq;
+  HP.root.classList.add('open');
+}
+function answerHostPrompt(yes) {
+  const p = hostPrompt;
+  if (!p || !p.kind || !iHoldControl) return;
+  transport.send('prompt.answer|' + p.seq + ',' + (yes ? 1 : 0) + ',' + (HP.checkbox.checked ? 1 : 0));
+  hostPrompt = null; renderHostPrompt(); // the host's cleared frame follows
+}
+HP.root.addEventListener('pointerdown', e => e.stopPropagation()); // no dismiss, no map pan
+HP.ok.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerHostPrompt(true); });
+HP.cancel.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerHostPrompt(false); });
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+}
 
 // ---- Alert sounds ----------------------------------------------------------
 // The host (which may be a headless box with no speaker) decides WHAT is audible
@@ -3305,6 +3360,7 @@ function renderRole() {
 }
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
   renderRole();

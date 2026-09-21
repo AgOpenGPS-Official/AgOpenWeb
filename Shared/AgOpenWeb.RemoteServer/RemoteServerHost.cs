@@ -39,6 +39,20 @@ public sealed class RemoteServerHost
     public void PlaySound(AgOpenWeb.Services.Interfaces.SoundEffect effect)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeSound((byte)effect));
 
+    /// <summary>Broadcast a one-shot notification (a refusal or failure, #109) to every
+    /// connected client.</summary>
+    public void ShowToast(string message)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeToast(message));
+
+    /// <summary>Host-supplied projector for the pending confirm/error dialog (#109).
+    /// Read every broadcast tick. Set after <see cref="StartAsync"/>.</summary>
+    public Func<PromptDto?>? PromptProvider
+    {
+        get => _broadcaster?.PromptProvider;
+        set { _promptProvider = value; if (_broadcaster is not null) _broadcaster.PromptProvider = value; }
+    }
+    private Func<PromptDto?>? _promptProvider;
+
     // Satellite tile fetch (Phase MT — Draw boundary on map). Keyless Bing aerial
     // tiles via the Virtual Earth quadkey endpoint (same source as native's
     // BoundaryMapDialog). Proxied through the host so the browser draws them into the
@@ -175,6 +189,7 @@ public sealed class RemoteServerHost
         _ws.CommandHandler = _commandHandler;
         _ws.IsRestrictedCommand = _isRestricted;
         _broadcaster.WizardProvider = _wizardProvider;
+        _broadcaster.PromptProvider = _promptProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;

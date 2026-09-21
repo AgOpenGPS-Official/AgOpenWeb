@@ -802,6 +802,26 @@
       font: 700 14px system-ui, sans-serif; }
     .dlg-cancel { background: rgba(var(--ov),0.10); color: var(--text-2); }
     .dlg-ok { background: #1f6fb2; color: #fff; }
+    /* Host prompt (#109): the host's own confirm/error, which must be answered — dimmed
+       backdrop with no tap-outside dismiss, above every other dialog. */
+    #hostprompt { position: fixed; inset: 0; display: none; align-items: flex-start;
+      justify-content: center; z-index: 60; background: rgba(0,0,0,0.45); }
+    #hostprompt.open { display: flex; }
+    #hostprompt .dlg-card { display: flex; }
+    #hp-msg { white-space: pre-line; }
+    #hp-check { display: flex; align-items: center; gap: 8px; margin-top: 12px;
+      color: var(--text-2); font: 500 14px system-ui, sans-serif; }
+    #hp-check[hidden] { display: none; }
+    #hp-check input { width: 20px; height: 20px; }
+    #hp-wait { color: var(--text-muted); font: 500 13px system-ui, sans-serif; text-align: center; margin-top: 10px; }
+    .dlg-btn:disabled { opacity: 0.4; cursor: default; }
+    /* Failure notification (#109): a refused/failed action says why. */
+    #toast { position: fixed; bottom: calc(90px + var(--sab, 0px)); left: 50%; transform: translateX(-50%);
+      max-width: min(560px, calc(100vw - 32px)); display: none; padding: 10px 20px; border-radius: 10px;
+      border: 1px solid rgba(255,190,90,0.7); background: rgba(58,38,8,0.94); color: #ffe2b0;
+      font: 600 15px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+    #toast.show { display: block; }
     /* AB creation selectors (Quick AB / Draw AB) — mode-button grid. */
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
@@ -2525,6 +2545,21 @@
   <!-- Dialog host (Phase 6): the web mirror of DialogOverlayHost — one modal at a
        time over a dimming backdrop. SimCoords is the first dialog; later phases add
        more cards into this same host. -->
+  <!-- Host prompt (#109): the host's pending confirm/error dialog (Prompt frame). Only the
+       browser holding control can answer; others see who can. -->
+  <div id="hostprompt">
+    <div class="dlg-card">
+      <div class="dlg-title" id="hp-title"></div>
+      <div class="dlg-msg" id="hp-msg"></div>
+      <label id="hp-check" hidden><input type="checkbox" id="hp-checkbox"><span id="hp-checklabel"></span></label>
+      <div class="dlg-buttons">
+        <button id="hp-cancel" class="dlg-btn dlg-cancel">No</button>
+        <button id="hp-ok" class="dlg-btn dlg-ok">Yes</button>
+      </div>
+      <div id="hp-wait" hidden></div>
+    </div>
+  </div>
+  <div id="toast"></div>
   <div id="dialoghost">
     <div class="dlg-backdrop"></div>
     <div id="dlg-simcoords" class="dlg-card">

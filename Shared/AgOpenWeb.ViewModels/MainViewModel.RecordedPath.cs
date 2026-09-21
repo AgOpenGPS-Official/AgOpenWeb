@@ -192,7 +192,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Save failed: {ex.Message}";
+                ReportFailure($"Save failed: {ex.Message}");
             }
         });
 
@@ -207,7 +207,7 @@ public partial class MainViewModel
 
             if (!StartDrivingRecordedPath())
             {
-                StatusMessage = "Cannot start playback (need at least 5 points)";
+                ReportFailure("Cannot start playback (need at least 5 points)");
             }
         });
 
@@ -262,7 +262,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Failed to load: {ex.Message}";
+                ReportFailure($"Failed to load: {ex.Message}");
             }
         });
 
