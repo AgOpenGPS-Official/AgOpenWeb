@@ -563,7 +563,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         var autoSteer = _configService.Store.AutoSteer;
         DetectedMinPwm = autoSteer.MinPwm;
         DetectedInvertMotor = autoSteer.InvertMotor;
-        MaxSteerAngle = autoSteer.MaxSteerAngle;
+        MaxSteerAngle = (int)Math.Round(_configService.Store.Vehicle.MaxSteerAngle);
 
         SubscribeToSwitchGate();
         if (_autoSteerService != null)
@@ -594,7 +594,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
             var autoSteer = _configService.Store.AutoSteer;
             autoSteer.InvertMotor = DetectedInvertMotor;
             autoSteer.MinPwm = DetectedMinPwm;
-            autoSteer.MaxSteerAngle = MaxSteerAngle;
+            // Vehicle max steer angle is what guidance clamps with (#106).
+            _configService.Store.Vehicle.MaxSteerAngle = MaxSteerAngle;
         }
     }
 

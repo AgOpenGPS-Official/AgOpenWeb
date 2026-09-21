@@ -302,8 +302,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         PhaseResult = "";
         CalibrationCompleted = false;
 
-        var autoSteer = ConfigService.Store.AutoSteer;
-        MaxSteerAngle = autoSteer.MaxSteerAngle;
+        MaxSteerAngle = (int)Math.Round(ConfigService.Store.Vehicle.MaxSteerAngle);
 
         if (AutoSteerService != null)
             AutoSteerService.StateUpdated += OnStateUpdated;
@@ -329,7 +328,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         UnsubscribeFromSwitchGate();
 
         if (CalibrationCompleted)
-            ConfigService.Store.AutoSteer.MaxSteerAngle = MaxSteerAngle;
+            ConfigService.Store.Vehicle.MaxSteerAngle = MaxSteerAngle; // what guidance clamps with (#106)
     }
 
     private void OnStateUpdated(object? sender, VehicleStateSnapshot snapshot)

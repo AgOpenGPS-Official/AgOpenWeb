@@ -52,7 +52,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     {
         nameof(AutoSteerConfig.CountsPerDegree),
         nameof(AutoSteerConfig.Ackermann),
-        nameof(AutoSteerConfig.MaxSteerAngle),
         nameof(AutoSteerConfig.AcquireFactor),
         nameof(AutoSteerConfig.ProportionalGain),
         nameof(AutoSteerConfig.MaxPwm),
@@ -411,8 +410,8 @@ public partial class AutoSteerConfigViewModel : ObservableObject
                 "", integerOnly: true, allowNegative: false, min: 0, max: 200));
 
         EditMaxSteerAngleCommand = new RelayCommand(() =>
-            ShowNumericInput("Max Steer Angle", AutoSteer.MaxSteerAngle,
-                v => AutoSteer.MaxSteerAngle = (int)v,
+            ShowNumericInput("Max Steer Angle", Config.Vehicle.MaxSteerAngle,
+                v => Config.Vehicle.MaxSteerAngle = v,
                 "°", integerOnly: true, allowNegative: false, min: 10, max: 90));
     }
 
@@ -691,11 +690,14 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         set => SetProperty(ref _isFreeDriveMode, value);
     }
 
+    // Free-drive steering is limited to the vehicle's max steer angle (was a fixed ±40°, #112).
+    private double FreeDriveLimit => Math.Max(1, Config.Vehicle.MaxSteerAngle);
+
     private double _freeDriveSteerAngle;
     public double FreeDriveSteerAngle
     {
         get => _freeDriveSteerAngle;
-        set => SetProperty(ref _freeDriveSteerAngle, Math.Clamp(value, -40, 40));
+        set => SetProperty(ref _freeDriveSteerAngle, Math.Clamp(value, -FreeDriveLimit, FreeDriveLimit));
     }
 
     private int _pwmDisplay;
@@ -806,7 +808,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         {
             if (IsFreeDriveMode)
             {
-                FreeDriveSteerAngle = Math.Max(FreeDriveSteerAngle - 2, -40);
+                FreeDriveSteerAngle = Math.Max(FreeDriveSteerAngle - 2, -FreeDriveLimit);
                 _autoSteerService?.SetFreeDriveAngle(FreeDriveSteerAngle);
                 SetSteerAngle = FreeDriveSteerAngle; // Update status bar
             }
@@ -816,7 +818,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         {
             if (IsFreeDriveMode)
             {
-                FreeDriveSteerAngle = Math.Min(FreeDriveSteerAngle + 2, 40);
+                FreeDriveSteerAngle = Math.Min(FreeDriveSteerAngle + 2, FreeDriveLimit);
                 _autoSteerService?.SetFreeDriveAngle(FreeDriveSteerAngle);
                 SetSteerAngle = FreeDriveSteerAngle; // Update status bar
             }
