@@ -770,6 +770,13 @@ public partial class MainViewModel
             StatusMessage = "Nudge reset to zero";
         });
 
+        // Lengthen / shorten the active line at its A or B end (AB flyout A+/B+/A−/B−, #93;
+        // AgOpenGPS FormABDraw btnALength/btnAShrink).
+        ExtendTrackACommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: true, TrackEndStepMeters));
+        ExtendTrackBCommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: false, TrackEndStepMeters));
+        ShrinkTrackACommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: true, -TrackEndStepMeters));
+        ShrinkTrackBCommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: false, -TrackEndStepMeters));
+
         // Bottom Strip Commands - cycle through preset coverage colors
         ChangeMappingColorCommand = new RelayCommand(() =>
         {
@@ -1687,6 +1694,42 @@ public partial class MainViewModel
         _logger.LogDebug($"[Curve] Extended start by {extendStart:F1}m, end by {extendEnd:F1}m (densified)");
 
         return densified;
+    }
+
+    private const double TrackEndStepMeters = 5.0;
+
+    /// <summary>
+    /// Extend (+) or trim (−) the selected track at its A (first point) or B (last point)
+    /// end, then persist. Closed loops, contours and recorded paths have no free ends.
+    /// </summary>
+    private void MoveSelectedTrackEnd(bool atStart, double meters)
+    {
+        var track = SelectedTrack;
+        if (track == null)
+        {
+            StatusMessage = "No track selected";
+            return;
+        }
+        if (track.IsClosed || track.IsContour || track.IsRecordedPath)
+        {
+            StatusMessage = "This track has no ends to adjust";
+            return;
+        }
+
+        var moved = Models.Guidance.CurveProcessing.MoveTrackEnd(track.Points, atStart, meters);
+        if (moved == null)
+        {
+            StatusMessage = "Track is too short to shorten further";
+            return;
+        }
+        track.Points = moved;
+
+        // Same refresh as Smooth: guidance recalculates from the new geometry.
+        _trackGuidanceState = null;
+        _mapService.SetActiveTrack(track);
+        SaveTracksToFile();
+
+        StatusMessage = $"{(meters > 0 ? "Extended" : "Shortened")} '{track.Name}' at {(atStart ? "A" : "B")} by {Math.Abs(meters):F0} m";
     }
 
     /// <summary>

@@ -311,7 +311,10 @@ public sealed class SceneProjector
                 : System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
             // Mid-turn gate (issue #50): true while the u-turn arc is executing.
             _state.YouTurn.IsExecuting,
-            _state.Guidance.HowManyPathsAway); // pass offset (0 = on reference) — #reference/label
+            _state.Guidance.HowManyPathsAway, // pass offset (0 = on reference) — #reference/label
+            // Driver-relative nudge (#93): the pipeline stores it in track frame and flips the
+            // intent's sign when heading against the track, so flip it back the same way.
+            g.IsHeadingSameWay ? g.NudgeOffset : -g.NudgeOffset);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

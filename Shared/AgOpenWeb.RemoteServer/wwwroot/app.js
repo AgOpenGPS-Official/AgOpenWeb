@@ -3910,6 +3910,11 @@ function renderBottomNav() {
   for (const el of bottomNav.querySelectorAll('.bn-abdep')) el.classList.toggle('hide', !hasTrack);
   const t = (tick && tick.tools) || {};
   document.getElementById('bn-skipnum').textContent = t.skipRows || 0;
+  // Nudge readout (#93): driver-relative offset, cm (metric) / in (imperial), L/R side.
+  const nudgeM = (tick && tick.op && tick.op.nudgeOffset) || 0;
+  const nudgeAmt = Math.round(Math.abs(nudgeM) * (isMetric() ? 100 : 39.3701));
+  document.getElementById('bn-nudgeval').textContent =
+    nudgeAmt === 0 ? '0' : nudgeAmt + (nudgeM < 0 ? ' L' : ' R');
   bnIcon(document.getElementById('bn-skip-ic'), t.skipRowsOn ? 'YouSkipOn.png' : 'YouSkipOff.png');
   // Icon shows the PAINTING state, not the raw flag: sectionInHeadland (=Tool.
   // IsHeadlandSectionControl) true means sections AUTO-OFF in the headland (NOT

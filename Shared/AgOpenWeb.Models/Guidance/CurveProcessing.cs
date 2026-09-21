@@ -715,5 +715,96 @@ namespace AgOpenWeb.Models.Guidance
 
             return current;
         }
+
+        /// <summary>
+        /// Lengthens or shortens one end of an open track (the AB flyout's A+/A−/B+/B−, #93).
+        /// A positive <paramref name="meters"/> extends past the end along its end tangent; a
+        /// negative value trims back along the path. A 2-point AB line just moves its endpoint;
+        /// a curve gets the extension densified at <paramref name="spacing"/> so the nearest-point
+        /// search never lands on one long lone segment (see ExtendCurvePastBoundary). Headings of
+        /// the touched points are recomputed from the geometry.
+        /// </summary>
+        /// <param name="points">Input track (A = first point, B = last point).</param>
+        /// <param name="atStart">True to move the A end, false for the B end.</param>
+        /// <param name="meters">+ extends, − trims.</param>
+        /// <param name="minRemaining">A trim that would leave less than this length is refused.</param>
+        /// <param name="spacing">Point spacing for a curve extension (m).</param>
+        /// <returns>The new point list, or null when the edit is refused (too short / degenerate).</returns>
+        public static List<Vec3>? MoveTrackEnd(IReadOnlyList<Vec3> points, bool atStart, double meters,
+            double minRemaining = 1.0, double spacing = 2.0)
+        {
+            if (points == null || points.Count < 2 || meters == 0)
+                return null;
+
+            // Work on the B end; the A end is the same edit on the reversed list.
+            var pts = new List<Vec3>(points);
+            if (atStart) pts.Reverse();
+
+            if (meters > 0)
+            {
+                var end = pts[pts.Count - 1];
+                var prev = pts[pts.Count - 2];
+                double len = GeometryMath.Distance(prev, end);
+                if (len < 1e-6) return null;
+                double ux = (end.Easting - prev.Easting) / len;
+                double uy = (end.Northing - prev.Northing) / len;
+
+                if (pts.Count == 2)
+                {
+                    pts[1] = new Vec3(end.Easting + ux * meters, end.Northing + uy * meters, 0);
+                }
+                else
+                {
+                    int steps = Math.Max(1, (int)Math.Ceiling(meters / spacing));
+                    for (int i = 1; i <= steps; i++)
+                    {
+                        double d = meters * i / steps;
+                        pts.Add(new Vec3(end.Easting + ux * d, end.Northing + uy * d, 0));
+                    }
+                }
+            }
+            else
+            {
+                double trim = -meters;
+                double total = 0;
+                for (int i = 0; i < pts.Count - 1; i++)
+                    total += GeometryMath.Distance(pts[i], pts[i + 1]);
+                if (total - trim < minRemaining) return null;
+
+                double remaining = trim;
+                while (remaining > 0)
+                {
+                    var end = pts[pts.Count - 1];
+                    var prev = pts[pts.Count - 2];
+                    double seg = GeometryMath.Distance(prev, end);
+                    if (seg > remaining)
+                    {
+                        double f = (seg - remaining) / seg;
+                        pts[pts.Count - 1] = new Vec3(
+                            prev.Easting + (end.Easting - prev.Easting) * f,
+                            prev.Northing + (end.Northing - prev.Northing) * f, 0);
+                        break;
+                    }
+                    remaining -= seg;
+                    pts.RemoveAt(pts.Count - 1);
+                }
+            }
+
+            if (atStart) pts.Reverse();
+
+            // Recompute headings for the edited end (+ its neighbour); leave the body untouched.
+            int touched = Math.Min(pts.Count, Math.Abs(pts.Count - points.Count) + 2);
+            int from = atStart ? 0 : pts.Count - touched;
+            int to = atStart ? touched : pts.Count;
+            for (int i = from; i < to; i++)
+            {
+                int a = Math.Min(i, pts.Count - 2);
+                double h = Math.Atan2(pts[a + 1].Easting - pts[a].Easting, pts[a + 1].Northing - pts[a].Northing);
+                if (h < 0) h += GeometryMath.twoPI;
+                pts[i] = new Vec3(pts[i].Easting, pts[i].Northing, h);
+            }
+
+            return pts;
+        }
     }
 }

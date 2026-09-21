@@ -161,7 +161,11 @@ public record TickDto(
     // Current guidance pass offset from the reference (HowManyPathsAway; 0 = on the reference
     // line). The client draws the purple reference only when this is non-zero (on pass 0 it
     // would overlap the magenta), and shows a 1-based pass label.
-    int PassNumber);
+    int PassNumber,
+    // Accumulated nudge of the guidance line (m), driver-relative: +right / −left from the
+    // driver's seat (GuidanceState.NudgeOffset sign-flipped when heading against the track,
+    // matching how the nudge intent applies it). Shown on the AB flyout's nudge readout (#93).
+    double NudgeOffset);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
