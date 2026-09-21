@@ -5800,8 +5800,11 @@ public partial class MainViewModel : ObservableObject
             return; // No active field to save to
         }
 
-        // Update selected track's NudgeDistance from current pass number + nudge offset before saving
-        if (SelectedTrack != null)
+        // Update selected track's NudgeDistance from current pass number + nudge offset before
+        // saving — but only when State.Guidance is the cycle's mirror FOR this track. Right after
+        // selecting a new track (e.g. just created), the mirror still holds the previous track's
+        // pass/nudge until the next cycle, and writing it here stamped them onto the new track (#107).
+        if (SelectedTrack != null && ReferenceEquals(State.Guidance.ActiveTrack, SelectedTrack))
         {
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
             SelectedTrack.NudgeDistance = State.Guidance.HowManyPathsAway * widthMinusOverlap + State.Guidance.NudgeOffset;

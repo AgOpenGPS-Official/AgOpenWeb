@@ -346,6 +346,8 @@ public partial class MainViewModel
 
             var track = Track.FromABLine($"A+ {DateTime.Now:HH:mm}", pointA, pointB);
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             _mapService.SetActiveTrack(track);
 
@@ -1036,25 +1038,25 @@ public partial class MainViewModel
             StatusMessage = IsContourModeOn ? "Contour mode ON" : "Contour mode OFF";
         });
 
+        // Delete the recorded contour paths — and nothing else, like AgOpenGPS
+        // deleteContourPaths (ct.stripList.Clear()). This used to clear ALL coverage plus
+        // every track's nudge and worked-path history, with no confirmation (#107); that's
+        // Delete Applied Area's job, which asks first. The web asks before sending this.
         DeleteContoursCommand = new RelayCommand(() =>
         {
-            _coverageMapService.ClearAll();
-            // Reset track guidance state to force global search for nearest segment
-            _trackGuidanceState = null;
-            // Phase D D6: seed pending zeros and sync — the cycle becomes the
-            // writer of HowManyPathsAway / NudgeOffset (via SetActiveTrack in
-            // SyncGuidanceStateToPipeline). State.Guidance gets zeroed on the
-            // next snapshot mirror.
-            _pendingInitialPathsAway = 0;
-            _pendingInitialNudgeOffset = 0;
-            SyncGuidanceStateToPipeline();
-            foreach (var track in SavedTracks)
+            var contours = SavedTracks.Where(t => t.Type == TrackType.Contour).ToList();
+            if (contours.Count == 0)
             {
-                track.NudgeDistance = 0;
-                track.ClearWorkedPaths();
+                StatusMessage = "No contour paths to delete";
+                return;
             }
+            if (SelectedTrack != null && contours.Contains(SelectedTrack))
+                SelectedTrack = null;
+            foreach (var c in contours)
+                SavedTracks.Remove(c); // mirrors into State.Field.Tracks
+            RebuildRecordedPathsAndContours();
             SaveTracksToFile();
-            StatusMessage = "Coverage/contours cleared";
+            StatusMessage = $"Deleted {contours.Count} contour path(s)";
         });
 
         DeleteAppliedAreaCommand = new RelayCommand(() =>
@@ -1285,6 +1287,8 @@ public partial class MainViewModel
             };
 
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created AB line from longest boundary edge ({maxDist:F0}m)";
         });
@@ -1315,6 +1319,8 @@ public partial class MainViewModel
             };
 
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created A+ line at {State.Vehicle.Heading:F0}\u00B0";
         });
@@ -1392,6 +1398,8 @@ public partial class MainViewModel
             };
 
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
         });
@@ -1453,7 +1461,10 @@ public partial class MainViewModel
             }
 
             if (created > 0)
+            {
+                SaveTracksToFile(); // persist now (#107), before selecting — see A+ above
                 SelectedTrack = SavedTracks[SavedTracks.Count - 1];
+            }
             StatusMessage = created > 0
                 ? $"Created {created} AB lines from boundary edges"
                 : "Could not detect distinct boundary edges";
