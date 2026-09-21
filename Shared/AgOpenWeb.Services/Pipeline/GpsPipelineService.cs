@@ -931,7 +931,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 Volatile.Write(ref _simulatorSteerAngle, steerAngle);
                 _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
             }
-            hasGoal = hasGuidance;
+            // Stanley has no look-ahead target, so no goal marker (#99).
+            hasGoal = hasGuidance && !_configStore.Guidance.IsStanley;
         }
         if (!autoSteerEngaged && hasTrack && !noPassOffset)
         {
@@ -1325,7 +1326,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Track = currentTrack,
             PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
             SteerPosition = new Vec3(steerE, steerN, headingRad),
-            UseStanley = false,
+            UseStanley = config.Guidance.IsStanley,
+            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
+            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyIntegralGain = config.Guidance.StanleyIntegralGainAB,
             IsHeadingSameWay = isHeadingSameWay,
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
@@ -1381,6 +1385,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double pivotEasting, double pivotNorthing, double headingRad)
     {
         var config = _configStore;
+        if (config.Guidance.IsStanley) return null; // Stanley has no look-ahead target (#99)
         double speedKmh = pos.Speed * 3.6;
         var output = _trackGuidanceService.CalculateGuidance(new Models.Track.TrackGuidanceInput
         {
@@ -1513,10 +1518,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             TurnPath = turnPath,
             PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRad),
-            SteerPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRad),
+            // Front (steer) axle — Stanley measures its error there; Pure Pursuit ignores it.
+            SteerPosition = new Vec3(
+                currentPosition.Easting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
+                currentPosition.Northing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
+                headingRad),
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            UseStanley = false,
+            UseStanley = config.Guidance.IsStanley,
+            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
+            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
             GoalPointDistance = lookAhead,
             UTurnCompensation = config.Guidance.UTurnCompensation,
             FixHeading = headingRad,

@@ -111,12 +111,15 @@ public class SteeringGainsStepViewModel : WizardStepViewModel
 
     protected override void OnEntering()
     {
+        // Algorithm / look-ahead / integral / Stanley gain are the guidance values the
+        // pipeline steers with (GuidanceConfig, #99); P gain + side-hill are module settings.
         var autoSteer = _configService.Store.AutoSteer;
-        IsStanleyMode = autoSteer.IsStanleyMode;
-        SteerResponseHold = autoSteer.SteerResponseHold;
-        StanleyAggressiveness = autoSteer.StanleyAggressiveness;
+        var guidance = _configService.Store.Guidance;
+        IsStanleyMode = guidance.IsStanley;
+        SteerResponseHold = guidance.GoalPointLookAheadHold;
+        StanleyAggressiveness = guidance.StanleyDistanceErrorGain;
         ProportionalGain = autoSteer.ProportionalGain;
-        IntegralGain = autoSteer.IntegralGain;
+        IntegralGain = guidance.PurePursuitIntegralGain;
         SideHillCompensation = autoSteer.SideHillCompensation;
 
         if (_autoSteerService != null)
@@ -129,11 +132,12 @@ public class SteeringGainsStepViewModel : WizardStepViewModel
             _autoSteerService.StateUpdated -= OnAutoSteerStateUpdated;
 
         var autoSteer = _configService.Store.AutoSteer;
-        autoSteer.IsStanleyMode = IsStanleyMode;
-        autoSteer.SteerResponseHold = SteerResponseHold;
-        autoSteer.StanleyAggressiveness = StanleyAggressiveness;
+        var guidance = _configService.Store.Guidance;
+        guidance.IsPurePursuit = !IsStanleyMode;
+        guidance.GoalPointLookAheadHold = SteerResponseHold;
+        guidance.StanleyDistanceErrorGain = StanleyAggressiveness;
         autoSteer.ProportionalGain = ProportionalGain;
-        autoSteer.IntegralGain = IntegralGain;
+        guidance.PurePursuitIntegralGain = IntegralGain;
         autoSteer.SideHillCompensation = SideHillCompensation;
     }
 
