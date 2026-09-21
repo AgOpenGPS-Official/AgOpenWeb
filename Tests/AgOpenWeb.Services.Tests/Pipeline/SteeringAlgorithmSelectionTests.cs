@@ -176,4 +176,28 @@ public class SteeringAlgorithmSelectionTests
 
         Assert.That(Last.Guidance!.HasGoalPoint, Is.False);
     }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SteerCommand_IsClampedToTheVehicleMaxSteerAngle(bool stanley)
+    {
+        // #106: the AutoSteer panel / wizard max angle now IS Vehicle.MaxSteerAngle, which
+        // guidance clamps with. Far off the line so the raw command would exceed it.
+        ConfigurationStore.Instance.Vehicle.MaxSteerAngle = 12;
+        var g = ConfigurationStore.Instance.Guidance;
+        g.IsPurePursuit = !stanley;
+        g.StanleyDistanceErrorGain = 5;
+        _pipeline.SetActiveTrack(
+            Models.Track.Track.FromABLine("AB", new Vec3(8, -100, 0), new Vec3(8, 100, 0)),
+            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetAutoSteerEngaged(true);
+        _gpsService.UpdateGpsData(new GpsData
+        {
+            CurrentPosition = new Position { Latitude = 43.7128, Longitude = -74.006, Heading = 0, Speed = 3 },
+            FixQuality = 4,
+            IsValid = true,
+        });
+
+        Assert.That(Math.Abs(Last.Guidance!.SteerAngle), Is.EqualTo(12).Within(1e-6));
+    }
 }

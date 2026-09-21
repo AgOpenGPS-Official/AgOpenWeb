@@ -66,16 +66,7 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _ackermann, value);
     }
 
-    private int _maxSteerAngle = 45;
-    /// <summary>
-    /// Maximum physical steering angle (degrees).
-    /// Range: 10 - 90
-    /// </summary>
-    public int MaxSteerAngle
-    {
-        get => _maxSteerAngle;
-        set => SetProperty(ref _maxSteerAngle, value);
-    }
+    // Max steer angle lives on VehicleConfig — the value guidance clamps with (#106).
 
     // ============================================
     // Tab 3: Deadzone / Timing
@@ -527,7 +518,6 @@ public class AutoSteerConfig : ObservableObject
             WasOffset = WasOffset,
             CountsPerDegree = CountsPerDegree,
             Ackermann = Ackermann,
-            MaxSteerAngle = MaxSteerAngle,
             DeadzoneHeading = DeadzoneHeading,
             DeadzoneDelay = DeadzoneDelay,
             AcquireFactor = AcquireFactor,
@@ -572,7 +562,6 @@ public class AutoSteerConfig : ObservableObject
         WasOffset = dto.WasOffset;
         CountsPerDegree = dto.CountsPerDegree;
         Ackermann = dto.Ackermann;
-        MaxSteerAngle = dto.MaxSteerAngle;
         DeadzoneHeading = dto.DeadzoneHeading;
         DeadzoneDelay = dto.DeadzoneDelay;
         AcquireFactor = dto.AcquireFactor;
@@ -621,7 +610,6 @@ public class AutoSteerConfig : ObservableObject
         WasOffset = 0;
         CountsPerDegree = 100;
         Ackermann = 100;
-        MaxSteerAngle = 45;
 
         // Tab 3: Deadzone / Timing
         DeadzoneHeading = 0.1;
@@ -681,7 +669,6 @@ public record AutoSteerConfigDto
     public int WasOffset { get; init; } = 0;
     public double CountsPerDegree { get; init; } = 100;
     public int Ackermann { get; init; } = 100;
-    public int MaxSteerAngle { get; init; } = 45;
 
     // Tab 3: Deadzone / Timing
     public double DeadzoneHeading { get; init; } = 0.1;

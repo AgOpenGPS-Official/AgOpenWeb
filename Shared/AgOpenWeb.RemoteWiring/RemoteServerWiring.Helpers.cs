@@ -194,7 +194,8 @@ public static partial class RemoteServerWiring
             case "autosteer.wasOffset": if (I(out var a5)) { ast.WasOffset = a5; store.MarkChanged(); } return;
             case "autosteer.countsPerDegree": if (D(out var a6)) { ast.CountsPerDegree = a6; store.MarkChanged(); } return;
             case "autosteer.ackermann": if (I(out var a7)) { ast.Ackermann = a7; store.MarkChanged(); } return;
-            case "autosteer.maxSteerAngle": if (I(out var a8)) { ast.MaxSteerAngle = a8; store.MarkChanged(); } return;
+            // Max steer angle: the vehicle's, which guidance / U-turn / free drive clamp with (#106).
+            case "autosteer.maxSteerAngle": if (D(out var a8)) { veh.MaxSteerAngle = a8; store.MarkChanged(); } return;
             // Tab 3 — Deadzone / Timing
             case "autosteer.deadzoneHeading": if (D(out var a9)) { ast.DeadzoneHeading = a9; store.MarkChanged(); } return;
             case "autosteer.deadzoneDelay": if (I(out var a10)) { ast.DeadzoneDelay = a10; store.MarkChanged(); } return;
