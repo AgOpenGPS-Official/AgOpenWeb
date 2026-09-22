@@ -205,4 +205,28 @@ public class AutoSteerConfigEmitTests
         Assert.That(_service.IsInDeadZone, Is.False);
         Assert.That(SentAngle(), Is.EqualTo(40));
     }
+
+    // ── #110: machine config (PGN 238) and pin config (PGN 236) ────────
+
+    [Test]
+    public void Start_AlsoEmitsMachineConfigAndPins()
+    {
+        _service.Start();
+
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xEE));
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xEC));
+    }
+
+    [Test]
+    public void MachinePropertyChange_ReemitsMachineConfig_WithTheNewValue()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        ConfigurationStore.Instance.Machine.RaiseTime = 7;
+        Thread.Sleep(200);
+
+        // PGN 238 byte 5 = raise time (AgOpenGPS CPGN_EE.raiseTime).
+        _udp.Received().SendToModules(Arg.Is<byte[]>(b => b.Length > 5 && b[3] == 0xEE && b[5] == 7));
+    }
 }
