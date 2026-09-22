@@ -43,6 +43,13 @@ public partial class MainViewModel
     /// (The earlier version reset _trackGuidanceState + zeroed pathsAway/NudgeDistance,
     /// which forced exactly that — disable/re-enable-autosteer recovery dance.)
     /// </summary>
+    private void DeleteContourFile()
+    {
+        if (State.Field.ActiveField == null) return;
+        try { System.IO.File.Delete(System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, Services.Contour.ContourFilesService.FileName)); }
+        catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting Contour.txt: {ex.Message}"); }
+    }
+
     public void DeleteAppliedAreaConfirmed()
     {
         _coverageMapService.ClearAll();
@@ -50,11 +57,7 @@ public partial class MainViewModel
         // AgOpenGPS "delete all contours and sections": the contour strips go too, and
         // Contour.txt is emptied (FileCreateContour) (#110).
         _gpsPipelineService.ResetContours();
-        if (State.Field.ActiveField != null)
-        {
-            try { System.IO.File.Delete(System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, Services.Contour.ContourFilesService.FileName)); }
-            catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting Contour.txt: {ex.Message}"); }
-        }
+        DeleteContourFile();
 
         if (State.Field.ActiveField != null)
         {
@@ -1060,9 +1063,10 @@ public partial class MainViewModel
         // Delete Applied Area's job, which asks first. The web asks before sending this.
         DeleteContoursCommand = new RelayCommand(() =>
         {
-            // The recorded strips (#110). Like AgOpenGPS this clears them from memory;
-            // Contour.txt keeps them (Delete Applied Area empties it).
+            // The recorded strips (#110), and Contour.txt with them. AgOpenGPS only clears
+            // them from memory, so they came back when the field reopened.
             _gpsPipelineService.ResetContours();
+            DeleteContourFile();
             var contours = SavedTracks.Where(t => t.Type == TrackType.Contour).ToList();
             if (contours.Count == 0)
             {
