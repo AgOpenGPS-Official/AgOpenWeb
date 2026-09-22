@@ -325,6 +325,7 @@ public sealed class SceneProjector
             g.GoalPoint.Easting,
             g.GoalPoint.Northing,
             g.IsReverse,
+            _state.Connections.IsModuleNotSteering,
             hchart.Gps);
     }
 

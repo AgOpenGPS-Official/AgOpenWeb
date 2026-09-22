@@ -173,6 +173,8 @@ public record TickDto(
     double GoalN,
     // Vehicle detected reversing (#125) — reverse indicator.
     bool IsReverse,
+    // Engaged, but the steer module reports it isn't steering (#126).
+    bool ModuleNotSteering,
     // Heading chart: GPS fix-to-fix heading, degrees (#111).
     double ChartGpsHeading);
 
