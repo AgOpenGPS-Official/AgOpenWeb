@@ -74,12 +74,7 @@ public class AhrsConfig : ObservableObject
         set => SetProperty(ref _isAutoSteerAuto, value);
     }
 
-    private bool _isReverseOn;
-    public bool IsReverseOn
-    {
-        get => _isReverseOn;
-        set => SetProperty(ref _isReverseOn, value);
-    }
+    // IsReverseOn duplicated Connections.ReverseDetection, never read (#125).
 
     private bool _isDualAsIMU;
     public bool IsDualAsIMU

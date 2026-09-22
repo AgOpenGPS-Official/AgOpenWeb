@@ -319,7 +319,8 @@ public sealed class SceneProjector
             // track deselect by one cycle).
             g.HasGoalPoint && _state.Field.ActiveTrack != null,
             g.GoalPoint.Easting,
-            g.GoalPoint.Northing);
+            g.GoalPoint.Northing,
+            g.IsReverse);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

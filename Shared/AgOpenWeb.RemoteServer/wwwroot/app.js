@@ -29,7 +29,8 @@ addEventListener('resize', resize); resize();
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
 let tick = null;       // TickDto (latest — for sections/HUD)
-let lastTick = null;   // newest authoritative pose (HUD readouts + guards)
+let lastTick = null;
+const reverseBadge = document.getElementById('reverse-badge');   // newest authoritative pose (HUD readouts + guards)
 // Ring of recent authoritative poses (oldest→newest). The render INTERPOLATES between
 // the two that bracket the playback head. A MULTI-pose buffer (not just prev+last) is
 // what lets RENDER_DELAY exceed the ~100 ms pose interval without the playhead falling
@@ -339,6 +340,7 @@ const transport = RemoteTransport.create({
   },
   onTick(t) {
     tick = t;
+    reverseBadge.classList.toggle('show', !!(t.op && t.op.reverse)); // #125
     if (t.pose) {
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,

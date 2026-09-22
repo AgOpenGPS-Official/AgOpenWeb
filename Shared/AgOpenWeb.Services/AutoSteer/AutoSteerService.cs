@@ -355,6 +355,8 @@ public class AutoSteerService : IAutoSteerService
         _state.IsAutoSteerEngaged = false;
     }
 
+    public void SetSteerPaused(bool paused) => _state.IsSteerPaused = paused;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Free Drive Mode
     // ═══════════════════════════════════════════════════════════════════════

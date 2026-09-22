@@ -85,11 +85,7 @@ public static class PgnBuilder
     ///
     /// When IsInFreeDriveMode is true, overrides speed/status/angle for testing:
     /// - Speed set to 8.0 km/h (fake speed to allow motor operation)
-    /// - Status set to SteerSwitchActive (0x01) + AutoSteerEngaged (0x04)
-    ///   so the firmware/simulator PID actually drives toward the
-    ///   commanded angle. The previous value (0x01 alone) left
-    ///   IsEngaged=false on the receiver, so the wizard's motor ramp
-    ///   commands were silently dropped.
+    /// - Status set to 1 so the firmware drives toward the commanded angle
     /// - SteerAngle from FreeDriveSteerAngle instead of guidance
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,11 +111,8 @@ public static class PgnBuilder
             buf[5] = (byte)(freeSpeed & 0xFF);        // low byte
             buf[6] = (byte)(freeSpeed >> 8);          // high byte
 
-            // Status: SteerSwitchActive (0x01) + AutoSteerEngaged (0x04).
-            // The receiver's PID gates on bit 0x04; the lone bit 0x01
-            // alone (former value) was insufficient and left free-drive
-            // commands as no-ops on the simulator.
-            buf[7] = 0x01 | 0x04;
+            // Status 1 = steer (AgOpenGPS: "turn on status to operate").
+            buf[7] = 1;
 
             // Use free drive steer angle instead of guidance angle
             // Little-endian: low byte first
@@ -144,14 +137,12 @@ public static class PgnBuilder
             buf[5] = (byte)(speedInt & 0xFF);         // low byte
             buf[6] = (byte)(speedInt >> 8);           // high byte
 
-            // Status byte
-            byte status = 0;
-            if (state.SteerSwitchActive) status |= 0x01;
-            if (state.WorkSwitchActive) status |= 0x02;
-            if (state.IsAutoSteerEngaged) status |= 0x04;
-            if (state.GpsValid) status |= 0x08;
-            if (state.GuidanceValid) status |= 0x10;
-            buf[7] = status;
+            // Status: 1 = steer, 0 = don't, exactly as AgOpenGPS sends it
+            // (Position.designer.cs). The firmware steers on bit 0 (AiO v26
+            // AutosteerProcessor: status & 0x01; AIO v4: guidanceStatus == 1).
+            // This used to put the module's own echoed steer state in bit 0 and
+            // AgOpenWeb's engage in bit 2, which no firmware reads (#125).
+            buf[7] = (byte)(state.IsAutoSteerEngaged && !state.IsSteerPaused ? 1 : 0);
 
             // Steer angle * 100 (signed, 2 bytes)
             short angleInt = (short)(state.SteerAngle * 100);

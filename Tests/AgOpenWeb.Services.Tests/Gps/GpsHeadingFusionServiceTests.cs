@@ -30,6 +30,8 @@ public class GpsHeadingFusionServiceTests
         c.MinGpsStep = 0.05;       // m
         c.FixToFixDistance = 0.5;  // m
         c.HeadingFusionWeight = 0.3;
+        c.ReverseDetection = true;
+        c.DualReverseDistance = 0.25;
     }
 
     // Drive north from (0,0) one step at a time; returns the last heading.
@@ -156,5 +158,57 @@ public class GpsHeadingFusionServiceTests
         // A fix in a new frame far away must not yield a heading toward it.
         double h = _service.FuseHeading(0, 0, false, Fast, 500, -300);
         Assert.That(h, Is.EqualTo(0).Within(1e-6));
+    }
+
+    // ── Reverse (#125) ───────────────────────────────────────────────────
+
+    [Test]
+    public void Imu_BackingUp_IsReverse_AndHeadingKeepsFacingForward()
+    {
+        DriveNorth(6, imu: 0, imuValid: true);          // facing and driving north
+        Assert.That(_service.IsReverse, Is.False);
+
+        // Back up: fixes move south while the IMU still says north.
+        double h = 0;
+        for (int i = 1; i <= 6; i++) h = _service.FuseHeading(0, 0, true, Fast, 0, 1.5 - i * 0.3);
+        Assert.That(_service.IsReverse, Is.True);
+        Assert.That(h, Is.EqualTo(0).Within(0.5), "heading still points the way the vehicle faces");
+    }
+
+    [Test]
+    public void NoImu_BackingUp_HoldsWhileUnsure_ThenIsReverse()
+    {
+        DriveNorth(6);
+        bool sawChanging = false;
+        double h = 0;
+        for (int i = 1; i <= 20; i++)
+        {
+            h = _service.FuseHeading(0, 0, false, Fast, 0, 1.5 - i * 0.3);
+            sawChanging |= _service.IsChangingDirection;
+        }
+        Assert.That(sawChanging, Is.True, "a direction change is held until the filter settles");
+        Assert.That(_service.IsReverse, Is.True);
+        Assert.That(_service.IsChangingDirection, Is.False);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6), "heading still points the way the vehicle faces");
+    }
+
+    [Test]
+    public void ReverseDetectionOff_NeverReverse()
+    {
+        ConfigurationStore.Instance.Connections.ReverseDetection = false;
+        DriveNorth(6, imu: 0, imuValid: true);
+        for (int i = 1; i <= 6; i++) _service.FuseHeading(0, 0, true, Fast, 0, 1.5 - i * 0.3);
+        Assert.That(_service.IsReverse, Is.False);
+    }
+
+    [Test]
+    public void Dual_BackingUp_IsReverse()
+    {
+        ConfigurationStore.Instance.Connections.IsDualGps = true;
+        for (int i = 0; i < 5; i++) _service.FuseHeading(0, 0, false, Fast, 0, i * 0.3);
+        Assert.That(_service.IsReverse, Is.False);
+
+        for (int i = 1; i <= 5; i++) _service.FuseHeading(0, 0, false, Fast, 0, 1.2 - i * 0.3);
+        Assert.That(_service.IsReverse, Is.True);
     }
 }

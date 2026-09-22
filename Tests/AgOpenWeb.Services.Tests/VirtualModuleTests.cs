@@ -84,8 +84,8 @@ public class VirtualModuleTests
         // Speed: 15.0 km/h = 150 raw
         data[0] = 150 & 0xFF;
         data[1] = (150 >> 8) & 0xFF;
-        // Status: engaged + GPS valid
-        data[2] = 0x0C;
+        // Status: 1 = steer (#125)
+        data[2] = 1;
         // Steer angle: -12.5 degrees = -1250 raw
         short angle = -1250;
         data[3] = (byte)(angle & 0xFF);
@@ -96,7 +96,6 @@ public class VirtualModuleTests
         Assert.That(cmd.SpeedKmh, Is.EqualTo(15.0).Within(0.1));
         Assert.That(cmd.SteerAngleDeg, Is.EqualTo(-12.5).Within(0.1));
         Assert.That(cmd.IsEngaged, Is.True);
-        Assert.That(cmd.IsGpsValid, Is.True);
     }
 
     #endregion
@@ -251,7 +250,7 @@ public class VirtualModuleTests
         short speed = 100; // 10 km/h
         data[0] = (byte)(speed & 0xFF);
         data[1] = (byte)((speed >> 8) & 0xFF);
-        data[2] = 0x0C; // engaged + GPS valid
+        data[2] = 1; // status 1 = steer (#125)
         short angle = 1500; // 15.0 degrees
         data[3] = (byte)(angle & 0xFF);
         data[4] = (byte)((angle >> 8) & 0xFF);

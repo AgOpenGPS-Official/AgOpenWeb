@@ -170,7 +170,9 @@ public record TickDto(
     // free-drive the target it would chase if engaged now. HasGoal gates the map marker (#95).
     bool HasGoal,
     double GoalE,
-    double GoalN);
+    double GoalN,
+    // Vehicle detected reversing (#125) — reverse indicator.
+    bool IsReverse);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
