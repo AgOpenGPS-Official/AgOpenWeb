@@ -1085,6 +1085,8 @@ document.getElementById('ucov-cancel').addEventListener('pointerdown', e => { e.
 const sectionBar = document.getElementById('sectionbar');
 sectionBar.addEventListener('pointerdown', e => {
   e.stopPropagation(); // don't pan the map
+  const zb = e.target.closest('button[data-zone]');
+  if (zb) { if (iHoldControl) transport.send('section.toggleZone|' + zb.dataset.zone); return; }
   const btn = e.target.closest('button[data-idx]');
   if (btn && iHoldControl) transport.send('section.toggle|' + btn.dataset.idx);
 });
@@ -2338,6 +2340,10 @@ function tcDynInput(parent, idx, label, type, onChange, unit, step) {
 function tcShow(name, on) { for (const el of tcPanel.querySelectorAll('[data-show="' + name + '"]')) el.hidden = !on; }
 function hex6(v) { return '#' + ((v >>> 0) & 0xFFFFFF).toString(16).padStart(6, '0'); }
 function populateToolCfg(force) {
+  // Harvester: front-mounted tool only, like AgOpenGPS ConfigTool (#111).
+  const harvester = (cfgGet('vehicle.type') | 0) === 1;
+  for (const b of document.querySelectorAll('.cfg-typebtn[data-key="tool.type"]'))
+    b.hidden = harvester && b.dataset.val !== 'front';
   if (!config || !config.tool) return;
   const t = config.tool;
   tcName.textContent = 'Tool: ' + (profiles ? profiles.activeTool : '—');
@@ -4087,6 +4093,29 @@ function buildSectionRows(n) {
     sectionBar.appendChild(row);
   }
 }
+// Zone mode (Tool config → Zones): one button per zone instead of per section, like
+// AgOpenGPS's zone buttons (#111). Zone z = sections zoneRanges[z-1]..zoneRanges[z]-1.
+function zoneLayout() {
+  const t = config && config.tool;
+  if (!t || t.isSectionsNotZones !== false || !t.zoneRanges) return null;
+  const n = Math.max(1, Math.min(8, t.zones | 0));
+  const zones = [];
+  for (let z = 1; z <= n; z++) zones.push({ z, start: z === 1 ? 0 : t.zoneRanges[z - 1], end: t.zoneRanges[z] });
+  return zones;
+}
+function buildZoneRow(zones) {
+  sectionBar.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'sec-row';
+  for (const zn of zones) {
+    const b = document.createElement('button');
+    b.className = 'sec-btn';
+    b.dataset.zone = zn.z; b.dataset.last = Math.max(0, zn.end - 1);
+    b.textContent = 'Z' + zn.z;
+    row.appendChild(b);
+  }
+  sectionBar.appendChild(row);
+}
 function renderSectionBar() {
   // Native gate: field open AND a master (auto or manual) engaged.
   const secs = tick && tick.sections;
@@ -4094,9 +4123,13 @@ function renderSectionBar() {
     && (tick.op.sectionManual || tick.op.sectionAuto) && secs && secs.length);
   sectionBar.classList.toggle('open', visible);
   if (!visible) { _secCount = -1; return; } // force a rebuild when it reappears
-  if (secs.length !== _secCount) { buildSectionRows(secs.length); _secCount = secs.length; }
+  const zones = zoneLayout();
+  const key = zones ? 'z' + JSON.stringify(zones) : secs.length;
+  if (key !== _secCount) { if (zones) buildZoneRow(zones); else buildSectionRows(secs.length); _secCount = key; }
   for (const b of sectionBar.querySelectorAll('button[data-idx]'))
     b.style.background = SECTION_COLORS[secs[+b.dataset.idx]] || SECTION_COLORS[0];
+  for (const b of sectionBar.querySelectorAll('button[data-zone]')) // zone colour = its last section
+    b.style.background = SECTION_COLORS[secs[+b.dataset.last]] || SECTION_COLORS[0];
   sectionBar.classList.toggle('locked', !iHoldControl); // dim when we can't actuate
 }
 // Bottom nav (Phase 8). Swap icons only on change; reflect Tick toggle state.

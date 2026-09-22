@@ -1804,4 +1804,33 @@ public partial class MainViewModel
         _intents.RequestGuidanceNudge(distanceMeters);
         StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm";
     }
+
+    /// <summary>
+    /// Zone button (#111), as AgOpenGPS btnZoneX_Click: cycle the zone's last section
+    /// Off → Auto → On and give every section in the zone that state. Zone z covers
+    /// sections ZoneRanges[z-1]..ZoneRanges[z]-1 (zone 1 starts at 0).
+    /// </summary>
+    public void ToggleZone(int zone)
+    {
+        var tool = ConfigStore.Tool;
+        int zones = Math.Clamp(tool.Zones, 1, 8);
+        if (zone < 1 || zone > zones) return;
+        var ranges = tool.ZoneRanges;
+        int start = zone == 1 ? 0 : ranges[zone - 1];
+        int end = Math.Min(ranges[zone], _sectionControlService.NumSections);
+        if (end <= start) return;
+
+        var next = _sectionControlService.SectionStates[end - 1].ButtonState switch
+        {
+            SectionButtonState.Off => SectionButtonState.Auto,
+            SectionButtonState.Auto => SectionButtonState.On,
+            _ => SectionButtonState.Off,
+        };
+        for (int i = start; i < end; i++)
+            _sectionControlService.SetSectionState(i, next);
+        _audioService.Play(next == SectionButtonState.Off
+            ? Services.Interfaces.SoundEffect.SectionOff
+            : Services.Interfaces.SoundEffect.SectionOn);
+        StatusMessage = $"Zone {zone}: {next}";
+    }
 }
