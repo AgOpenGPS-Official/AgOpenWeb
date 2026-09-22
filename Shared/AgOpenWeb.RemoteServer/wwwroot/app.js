@@ -996,6 +996,89 @@ dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => {
 });
 dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
 const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
+// On-screen keyboard (App Settings › On-screen Kbd; AgOpenGPS FormKeyboard for text,
+// FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
+// on, focusing a text field opens a QWERTY panel, a numeric field a number pad, and the OS
+// keyboard is suppressed (inputmode=none). Keys edit the field in place and fire 'input', so
+// every existing handler sees them; OK sends Enter and closes.
+const OSK = (() => {
+  const root = document.getElementById('osk');
+  let target = null, shift = false;
+  const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  const NUM = ['789', '456', '123', '-0.'];
+  const on = () => !!(config && config.display && config.display.keyboardEnabled);
+  const isField = el => el instanceof HTMLTextAreaElement
+    || (el instanceof HTMLInputElement && ['text', 'password', 'search', 'email', 'url', ''].includes(el.type) && !el.readOnly && !el.disabled);
+  function render() {
+    const num = !!(target && target.dataset.numField);
+    root.classList.toggle('num', num);
+    const rows = (num ? NUM : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
+    if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+    else {
+      rows[3].unshift({ k: 'SH', t: shift ? '⇧' : '⇪', c: 'wide' });
+      rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
+      rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+    }
+    root.innerHTML = '';
+    for (const r of rows) {
+      const row = document.createElement('div'); row.className = 'osk-row';
+      for (const b of r) {
+        const btn = document.createElement('button'); btn.type = 'button';
+        btn.textContent = b.t; btn.dataset.k = b.k; if (b.c) btn.className = b.c;
+        row.appendChild(btn);
+      }
+      root.appendChild(row);
+    }
+  }
+  function insert(s) {
+    const el = target; if (!el) return;
+    const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+    try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function key(k) {
+    const el = target; if (!el) return;
+    if (k === 'SH') { shift = !shift; render(); return; }
+    if (k === 'OK') {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      close(); el.blur(); return;
+    }
+    if (k === 'CLR') { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (k === 'BS') {
+      const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+      if (a !== b) insert('');
+      else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } el.dispatchEvent(new Event('input', { bubbles: true })); }
+      return;
+    }
+    insert(shift ? k.toUpperCase() : k);
+    if (shift) { shift = false; render(); }
+  }
+  function open(el) {
+    target = el; shift = false;
+    if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
+    el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
+    render(); root.hidden = false;
+  }
+  function close() {
+    if (target && target.dataset.oskIm !== undefined) {
+      if (target.dataset.oskIm) target.setAttribute('inputmode', target.dataset.oskIm); else target.removeAttribute('inputmode');
+      delete target.dataset.oskIm;
+    }
+    target = null; root.hidden = true;
+  }
+  // Keep focus in the field while tapping keys (pointerdown would blur it), and don't pan the map.
+  root.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const b = e.target.closest('button'); if (b) key(b.dataset.k);
+  });
+  document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
+  document.addEventListener('focusout', e => {
+    if (e.target !== target) return;
+    setTimeout(() => { if (document.activeElement !== target) close(); }, 0);
+  });
+  return { close };
+})();
 // Uniform numeric input, everywhere. A tablet's decimal keypad (Android Samsung / iOS) has no
 // minus key, so signed values couldn't be typed. Every numeric field is instead a type=text
 // input with the FULL keyboard (which has "-"), and a filter keeps only digits, one decimal

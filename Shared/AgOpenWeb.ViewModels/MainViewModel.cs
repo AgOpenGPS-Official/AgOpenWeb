@@ -2047,6 +2047,7 @@ public partial class MainViewModel : ObservableObject
         // Contour (#110): save finished strips, then forget them and turn contour off
         // (AgOpenGPS FileSaveContour, ResetContour, isContourBtnOn = false).
         SaveContoursToField();
+        ExportFieldIsoXml(); // AgOpenGPS ExportFieldAs_ISOXMLv4 on close (#110)
         LoadContoursFromField(null);
         IsContourModeOn = false;
 
@@ -2574,6 +2575,69 @@ public partial class MainViewModel : ObservableObject
         {
             _logger.LogWarning(ex, "[Flags] Failed to save Flags.txt");
         }
+    }
+
+    /// <summary>
+    /// Export the open field as ISOXML v4 to &lt;field&gt;/zISOXML/v4, like AgOpenGPS does on field
+    /// close (ExportFieldAs_ISOXMLv4): boundary + holes, headland, AB/curve tracks, plus a
+    /// device description for the vehicle and tool with their coupling (connector) types (#110).
+    /// The data is captured here; the file is written in the background.
+    /// </summary>
+    private void ExportFieldIsoXml()
+    {
+        var field = _fieldService.ActiveField;
+        var plane = State.Field.LocalPlane;
+        if (!IsFieldOpen || field == null || string.IsNullOrEmpty(field.DirectoryPath) || plane == null) return;
+
+        var bnd = State.Field.CurrentBoundary;
+        var boundaries = new List<Models.IsoXml.IsoXmlBoundary>();
+        var headlands = new List<List<Vec3>>();
+        if (bnd?.OuterBoundary is { IsValid: true } outer)
+        {
+            boundaries.Add(new Models.IsoXml.IsoXmlBoundary { FenceLine = outer.Points.Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList() });
+            headlands.Add(State.Field.HeadlandLine?.ToList() ?? new List<Vec3>());
+            foreach (var hole in bnd.InnerBoundaries.Where(h => h.IsValid))
+                boundaries.Add(new Models.IsoXml.IsoXmlBoundary { FenceLine = hole.Points.Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList() });
+        }
+
+        var tracks = new List<Models.IsoXml.IsoXmlTrack>();
+        foreach (var t in SavedTracks.ToList())
+        {
+            if (t.Points.Count < 2) continue;
+            if (t.Type == TrackType.ABLine && t.Points.Count == 2)
+                tracks.Add(new Models.IsoXml.IsoXmlTrack
+                {
+                    Name = t.Name, Mode = Models.IsoXml.IsoXmlTrackMode.AB,
+                    PtA = new Vec2(t.Points[0].Easting, t.Points[0].Northing),
+                    PtB = new Vec2(t.Points[1].Easting, t.Points[1].Northing),
+                    Heading = Math.Atan2(t.Points[1].Easting - t.Points[0].Easting, t.Points[1].Northing - t.Points[0].Northing),
+                });
+            else if (t.Type == TrackType.Curve)
+                tracks.Add(new Models.IsoXml.IsoXmlTrack { Name = t.Name, Mode = Models.IsoXml.IsoXmlTrackMode.Curve, CurvePoints = t.Points.ToList() });
+        }
+
+        var devices = new List<Models.IsoXml.IsoXmlDevice>
+        {
+            new() { Designator = ConfigStore.Vehicle.Name, ConnectorType = ConfigStore.Vehicle.HitchType },
+            new() { Designator = ConfigStore.ActiveToolProfileName, ConnectorType = ConfigStore.Tool.HitchType },
+        };
+        string dir = System.IO.Path.Combine(field.DirectoryPath, "zISOXML", "v4");
+        string name = field.Name ?? System.IO.Path.GetFileName(field.DirectoryPath);
+        int area = (int)(bnd?.OuterBoundary?.AreaSquareMeters ?? 0);
+        string version = typeof(MainViewModel).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "AgOpenWeb";
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(dir);
+                Services.IsoXml.IsoXmlExporter.Export(dir, name, area, boundaries, headlands, tracks, plane,
+                    Services.IsoXml.IsoXmlExporter.IsoXmlVersion.V4, version, devices);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[IsoXml] Field export failed"); }
+        });
     }
 
     /// <summary>Replace the contour strips with the field's Contour.txt (none when null) (#110).</summary>

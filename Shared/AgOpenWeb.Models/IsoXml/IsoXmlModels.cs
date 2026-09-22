@@ -53,6 +53,17 @@ namespace AgOpenWeb.Models.IsoXml
     /// <summary>
     /// Parsed track/guidance line data from ISO XML file
     /// </summary>
+    /// <summary>
+    /// A vehicle or tool for the ISOXML device description (#110): its name and ISO 11783
+    /// connector (coupling) type, ISOBUS DDI 157 (0 = unknown, 1–10 = the ISO couplings,
+    /// -1 = not available → no connector written).
+    /// </summary>
+    public class IsoXmlDevice
+    {
+        public string Designator { get; set; } = "";
+        public int ConnectorType { get; set; } = -1;
+    }
+
     public class IsoXmlTrack
     {
         /// <summary>

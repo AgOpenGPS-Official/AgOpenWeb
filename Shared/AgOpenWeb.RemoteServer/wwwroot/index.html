@@ -842,6 +842,18 @@
       color: #000; font: 700 16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
     #hwmsg.show { display: block; }
+    /* On-screen keyboard (App Settings › On-screen Kbd, AgOpenGPS FormKeyboard/FormNumeric) (#110). */
+    #osk { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; padding: 8px 8px calc(8px + var(--sab, 0px));
+      background: rgba(14,18,28,0.97); border-top: 1px solid var(--border, #334); box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; gap: 6px; align-items: center; touch-action: manipulation; user-select: none; }
+    #osk[hidden] { display: none; }
+    #osk .osk-row { display: flex; gap: 6px; justify-content: center; width: 100%; max-width: 900px; }
+    #osk button { flex: 1 1 0; min-width: 0; height: 52px; border-radius: 8px; border: 1px solid #3a4560;
+      background: #222b3d; color: #eef; font: 600 20px system-ui, sans-serif; }
+    #osk button:active { background: #34405a; }
+    #osk button.wide { flex-grow: 2; } #osk button.xwide { flex-grow: 5; }
+    #osk button.ok { background: #1f6f3a; border-color: #2e9a53; }
+    #osk.num .osk-row { max-width: 360px; }
     /* AB creation selectors (Quick AB / Draw AB) — mode-button grid. */
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
@@ -2586,6 +2598,7 @@
   </div>
   <div id="toast"></div>
   <div id="hwmsg"></div>
+  <div id="osk" hidden></div>
   <div id="dialoghost">
     <div class="dlg-backdrop"></div>
     <div id="dlg-simcoords" class="dlg-card">
