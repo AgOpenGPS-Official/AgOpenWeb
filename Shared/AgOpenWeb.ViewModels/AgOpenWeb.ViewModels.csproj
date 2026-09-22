@@ -17,6 +17,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="AgOpenWeb.Services.Tests" />
     <InternalsVisibleTo Include="AgOpenWeb.UI.Tests" />
+    <InternalsVisibleTo Include="AgOpenWeb.ViewModels.Tests" />
   </ItemGroup>
 
   <ItemGroup>
