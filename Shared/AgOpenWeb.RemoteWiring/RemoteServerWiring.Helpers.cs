@@ -374,8 +374,8 @@ public static partial class RemoteServerWiring
                 if (a.Length == 3 && a[0] == "vehicle") cfg.RenameVehicleProfile(a[1], a[2]);
                 else if (a.Length == 3 && a[0] == "tool") cfg.RenameToolProfile(a[1], a[2]);
                 return;
-            case "profile.reset": // <kind> — CreateProfile("Default") (matches Reset-to-Default)
-                cfg.CreateProfile("Default");
+            case "profile.reset": // <kind> — reset only that column's Default profile (#111)
+                cfg.CreateProfile("Default", vehicle: a[0] != "tool", tool: a[0] != "vehicle");
                 return;
             case "profile.configureVehicle": // <name> — make it active before the dialog opens
                 if (!string.Equals(arg, store.ActiveVehicleProfileName, System.StringComparison.OrdinalIgnoreCase))
@@ -402,7 +402,7 @@ public static partial class RemoteServerWiring
     private static void ApplyNtripCommand(
         AgOpenWeb.Services.Interfaces.INtripProfileService svc,
         AgOpenWeb.Models.State.ApplicationState state, IUiDispatcher dispatcher,
-        string cmd, string arg)
+        string cmd, string arg, AgOpenWeb.ViewModels.MainViewModel? vm = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         switch (cmd)
@@ -447,7 +447,18 @@ public static partial class RemoteServerWiring
                     AssociatedFields = assoc,
                 };
                 if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; }
+                // Copy the old caster settings before saving (the save may update the stored
+                // profile in place), to tell whether the connected one changed.
+                var before = existing == null ? null : new AgOpenWeb.Models.Ntrip.NtripProfile
+                {
+                    Name = existing.Name, CasterHost = existing.CasterHost, CasterPort = existing.CasterPort,
+                    MountPoint = existing.MountPoint, Username = existing.Username, Password = existing.Password,
+                };
                 _ = svc.SaveProfileAsync(profile);
+                // Editing the profile we're connected with: reconnect with the new settings
+                // now, not at the next field load / restart (#111).
+                if (before != null && vm != null)
+                    _ = vm.ReconnectNtripIfConnectedAsync(before, profile);
                 return;
             }
         }

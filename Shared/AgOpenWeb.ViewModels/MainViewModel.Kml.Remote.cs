@@ -50,5 +50,6 @@ public partial class MainViewModel
         }
 
         ImportKmlToExistingField();
+        _kmlImportToExistingField = false; // one-shot (#111)
     }
 }

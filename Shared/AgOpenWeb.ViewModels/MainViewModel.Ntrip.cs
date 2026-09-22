@@ -179,6 +179,38 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// After an NTRIP profile is edited: if we're connected with its old caster settings and
+    /// the connection settings changed, reconnect with the new ones (#111).
+    /// </summary>
+    public async Task ReconnectNtripIfConnectedAsync(Models.Ntrip.NtripProfile before, Models.Ntrip.NtripProfile after)
+    {
+        try
+        {
+            if (!_ntripService.IsConnected) return;
+            bool wasThisOne = before.CasterHost == NtripCasterAddress
+                && before.CasterPort == NtripCasterPort && before.MountPoint == NtripMountPoint;
+            if (!wasThisOne) return;
+            bool changed = before.CasterHost != after.CasterHost || before.CasterPort != after.CasterPort
+                || before.MountPoint != after.MountPoint || before.Username != after.Username
+                || before.Password != after.Password;
+            if (!changed) return;
+
+            await _ntripService.DisconnectAsync();
+            NtripCasterAddress = after.CasterHost;
+            NtripCasterPort = after.CasterPort;
+            NtripMountPoint = after.MountPoint;
+            NtripUsername = after.Username;
+            NtripPassword = after.Password;
+            _logger.LogInformation("NTRIP profile '{ProfileName}' changed while connected; reconnecting", after.Name);
+            await ConnectToNtripAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reconnecting NTRIP after a profile change");
+        }
+    }
+
+    /// <summary>
     /// Handles NTRIP profile connection when a field is loaded.
     /// Checks for field-specific profile or falls back to default profile.
     /// </summary>

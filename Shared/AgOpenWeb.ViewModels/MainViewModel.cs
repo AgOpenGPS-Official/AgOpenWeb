@@ -4700,6 +4700,23 @@ public partial class MainViewModel : ObservableObject
     /// Results stored in both _kmlBoundaryPoints (first polygon, for field-creation flow)
     /// and _kmlParsedPolygons (all polygons, for import-to-existing flow).
     /// </summary>
+    /// <summary>Text of a KML file, or of the KML inside a KMZ (a zip — usually doc.kml).
+    /// KMZ files were listed but read as raw zip bytes, so nothing parsed (#111).</summary>
+    internal static TextReader OpenKmlText(string filePath)
+    {
+        if (!filePath.EndsWith(".kmz", StringComparison.OrdinalIgnoreCase))
+            return new StreamReader(filePath);
+
+        var zip = System.IO.Compression.ZipFile.OpenRead(filePath);
+        var entry = zip.Entries.FirstOrDefault(e => string.Equals(e.Name, "doc.kml", StringComparison.OrdinalIgnoreCase))
+                    ?? zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".kml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null) { zip.Dispose(); return new StringReader(string.Empty); }
+        // Read it all so the zip can close now.
+        using (zip)
+        using (var r = new StreamReader(entry.Open()))
+            return new StringReader(r.ReadToEnd());
+    }
+
     private void ParseKmlFile(string filePath)
     {
         _kmlBoundaryPoints.Clear();
@@ -4710,14 +4727,13 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            using var reader = new StreamReader(filePath);
+            using var reader = OpenKmlText(filePath);
             double sumLat = 0, sumLon = 0;
             int totalValidPoints = 0;
 
-            while (!reader.EndOfStream)
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                string? line = reader.ReadLine();
-                if (line == null) continue;
 
                 int startIndex = line.IndexOf("<coordinates>");
 

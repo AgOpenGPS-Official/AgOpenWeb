@@ -235,10 +235,12 @@ public class ConfigurationService(
         ProfileSaved?.Invoke(this, vehicleName);
     }
 
-    public void CreateProfile(string name)
+    public void CreateProfile(string name) => CreateProfile(name, vehicle: true, tool: true);
+
+    public void CreateProfile(string name, bool vehicle, bool tool)
     {
-        profileService.CreateDefaultProfile(name, Store);
-        toolProfileService.CreateDefaultProfile(name, Store);
+        if (vehicle) profileService.CreateDefaultProfile(name, Store);
+        if (tool) toolProfileService.CreateDefaultProfile(name, Store);
         Store.HasUnsavedChanges = false;
     }
 

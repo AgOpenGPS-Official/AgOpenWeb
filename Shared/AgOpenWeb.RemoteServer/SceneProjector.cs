@@ -483,7 +483,10 @@ public sealed class SceneProjector
             var importDir = System.IO.Path.Combine(AppDataRoot.Documents, "Import");
             if (!System.IO.Directory.Exists(importDir)) return (iso, kml);
             foreach (var dir in System.IO.Directory.GetDirectories(importDir))
-                if (System.IO.File.Exists(System.IO.Path.Combine(dir, "TASKDATA.xml")))
+                // Case-insensitive: ISOBUS writes TASKDATA.XML, which File.Exists misses on
+                // Linux (a case-sensitive file system) — the importer already matches it (#111).
+                if (System.IO.Directory.EnumerateFiles(dir).Any(f => string.Equals(
+                        System.IO.Path.GetFileName(f), "TASKDATA.XML", System.StringComparison.OrdinalIgnoreCase)))
                     iso.Add(new System.IO.DirectoryInfo(dir).Name);
             foreach (var fp in System.IO.Directory.GetFiles(importDir, "*.kml", System.IO.SearchOption.AllDirectories)
                 .Concat(System.IO.Directory.GetFiles(importDir, "*.kmz", System.IO.SearchOption.AllDirectories)))

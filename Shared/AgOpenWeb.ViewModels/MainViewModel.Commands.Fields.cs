@@ -908,6 +908,10 @@ public partial class MainViewModel
 
     public void RemoteCreateFromKml(string fileName, string newName)
     {
+        // From KML always creates a field. A boundary import (RemoteImportKmlBoundary) sets
+        // this flag and only the native dialog cleared it, so the next From KML imported
+        // into the open field instead (#111).
+        _kmlImportToExistingField = false;
         PopulateAvailableKmlFiles();
         SelectedKmlFile = AvailableKmlFiles.FirstOrDefault(f =>
             string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
