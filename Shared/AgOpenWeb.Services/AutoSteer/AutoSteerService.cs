@@ -422,9 +422,35 @@ public class AutoSteerService : IAutoSteerService
 
     public void UpdateGuidanceResults(double steerAngle, double crossTrackError)
     {
-        _state.SteerAngle = steerAngle;
         _state.CrossTrackError = crossTrackError;
+
+        // Deadzone (AgOpenGPS Position.designer.cs): while steering forward and the wheel
+        // is within Deadzone heading of the set angle for longer than Deadzone delay (s),
+        // stop updating the steer angle sent in PGN 254, so the motor holds instead of
+        // hunting. Off when not engaged, paused or reversing (#110).
+        var a = _configStore.AutoSteer;
+        bool steering = _state.IsAutoSteerEngaged && !_state.IsSteerPaused && !_isReverse;
+        if (steering && a.DeadzoneHeading > 0
+            && Math.Abs(steerAngle - _state.ActualSteerAngle) < a.DeadzoneHeading)
+        {
+            _deadZoneSince ??= Stopwatch.GetTimestamp();
+            IsInDeadZone = Stopwatch.GetElapsedTime(_deadZoneSince.Value).TotalSeconds > a.DeadzoneDelay;
+        }
+        else
+        {
+            _deadZoneSince = null;
+            IsInDeadZone = false;
+        }
+        if (!IsInDeadZone) _state.SteerAngle = steerAngle;
     }
+
+    private long? _deadZoneSince;
+    private bool _isReverse;
+
+    /// <summary>True while the deadzone is holding the sent steer angle (#110).</summary>
+    public bool IsInDeadZone { get; private set; }
+
+    public void SetReverse(bool isReverse) => _isReverse = isReverse;
 
     /// <summary>
     /// Process incoming GPS buffer — entry point for the zero-copy pipeline.
