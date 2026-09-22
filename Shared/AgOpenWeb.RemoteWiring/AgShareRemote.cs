@@ -133,7 +133,10 @@ internal static class AgShareRemote
                 if (lines[i].Contains("StartFix"))
                 {
                     var coords = lines[i + 1].Split(',');
-                    if (coords.Length >= 2 && double.TryParse(coords[0], out var lat) && double.TryParse(coords[1], out var lon))
+                    var inv = System.Globalization.CultureInfo.InvariantCulture; // Field.txt is always '.'-decimal (#112)
+                    if (coords.Length >= 2
+                        && double.TryParse(coords[0], System.Globalization.NumberStyles.Float, inv, out var lat)
+                        && double.TryParse(coords[1], System.Globalization.NumberStyles.Float, inv, out var lon))
                         origin = new Wgs84(lat, lon);
                     break;
                 }
