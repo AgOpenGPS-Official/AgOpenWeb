@@ -501,6 +501,10 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
     /// operator can still stop guidance from here.</summary>
     public void ActivateTrackAt(int index)
     {
+        // Auto Track would switch away from this choice within a second, so picking a
+        // track by hand turns it off (AgOpenGPS btnTrack / btnCycleLines).
+        IsAutoTrackEnabled = false;
+
         Track? t = index >= 0 && index < SavedTracks.Count && SavedTracks[index].IsVisible
             ? SavedTracks[index]
             : SavedTracks.FirstOrDefault(x => x.IsVisible);

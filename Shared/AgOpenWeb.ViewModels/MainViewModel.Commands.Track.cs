@@ -692,6 +692,7 @@ public partial class MainViewModel
                 return;
             }
 
+            IsAutoTrackEnabled = false; // a track picked by hand wins (AgOpenGPS btnCycleLines)
             int currentIndex = SelectedTrack != null ? SavedTracks.IndexOf(SelectedTrack) : -1;
             int nextIndex = (currentIndex + 1) % SavedTracks.Count;
             SelectedTrack = SavedTracks[nextIndex];
