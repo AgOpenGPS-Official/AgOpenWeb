@@ -482,11 +482,14 @@ public static partial class RemoteServerWiring
             }
             case "field.deleteField":
                 if (sw.DeleteFieldCommand.CanExecute(null)) sw.DeleteFieldCommand.Execute(null);
+                else if (sw.SelectedField != null) vm.ReportFailure("Close the field before deleting it");
                 return;
             case "field.deleteJob": // field \t taskName
             {
                 var job = sw.JobsForSelectedField.FirstOrDefault(j => j.TaskName == a.ElementAtOrDefault(1));
-                if (job != null && sw.DeleteJobCommand.CanExecute(job)) sw.DeleteJobCommand.Execute(job);
+                if (job == null) return;
+                if (sw.DeleteJobCommand.CanExecute(job)) sw.DeleteJobCommand.Execute(job);
+                else vm.ReportFailure("Close the job before deleting it");
                 return;
             }
         }

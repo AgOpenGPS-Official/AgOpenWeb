@@ -78,7 +78,7 @@ public partial class MainViewModel
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3)
         {
-            StatusMessage = "Load a field with a boundary first";
+            ReportFailure("Load a field with a boundary first");
             return;
         }
         // Offset the boundary inward by half the tool width PLUS half the U-turn clearance so the
@@ -155,7 +155,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             _intents.RequestGuidanceSnap(left: true);
@@ -166,7 +166,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             _intents.RequestGuidanceSnap(left: false);
@@ -182,7 +182,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected for U-turn";
+                ReportFailure("No track selected for U-turn");
                 return;
             }
 
@@ -227,23 +227,13 @@ public partial class MainViewModel
         {
             if (SavedTracks.Count == 0)
             {
-                StatusMessage = "No tracks to delete";
+                ReportFailure("No tracks to delete");
                 return;
             }
             ShowConfirmationDialog(
                 "Delete All Tracks",
                 $"Delete all {SavedTracks.Count} tracks? This cannot be undone.",
-                () =>
-                {
-                    SavedTracks.Clear();
-                    SelectedTrack = null;
-                    RebuildRecordedPathsAndContours(); // clear rec-path/contour display
-                    SaveTracksToFile();
-                    // Also remove RecPath.txt, else the recorded path reloads on next open.
-                    if (_fieldService.ActiveField is { } f)
-                        Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
-                    StatusMessage = "All tracks deleted";
-                });
+                DeleteAllTracksConfirmed);
         });
 
         SwapABPointsCommand = new RelayCommand(() =>
@@ -352,7 +342,7 @@ public partial class MainViewModel
 
             if (Easting == 0 && Northing == 0)
             {
-                StatusMessage = "No GPS position - cannot create A+ line";
+                ReportFailure("No GPS position - cannot create A+ line");
                 return;
             }
 
@@ -420,7 +410,7 @@ public partial class MainViewModel
             // Need at least 3 points for a valid curve
             if (_recordedCurvePoints.Count < 3)
             {
-                StatusMessage = $"Need at least 3 points for a curve (have {_recordedCurvePoints.Count})";
+                ReportFailure($"Need at least 3 points for a curve (have {_recordedCurvePoints.Count})");
                 return;
             }
 
@@ -488,7 +478,7 @@ public partial class MainViewModel
             // Need at least 2 points for a valid track
             if (_drawnCurvePoints.Count < 2)
             {
-                StatusMessage = $"Need at least 2 points (have {_drawnCurvePoints.Count})";
+                ReportFailure($"Need at least 2 points (have {_drawnCurvePoints.Count})");
                 return;
             }
 
@@ -708,7 +698,7 @@ public partial class MainViewModel
         {
             if (SavedTracks.Count == 0)
             {
-                StatusMessage = "No tracks to cycle";
+                ReportFailure("No tracks to cycle");
                 return;
             }
 
@@ -722,17 +712,17 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             if (SelectedTrack.IsABLine)
             {
-                StatusMessage = "Cannot smooth AB lines (only 2 points)";
+                ReportFailure("Cannot smooth AB lines (only 2 points)");
                 return;
             }
             if (SelectedTrack.Points.Count < 5)
             {
-                StatusMessage = "Too few points to smooth (need at least 5)";
+                ReportFailure("Too few points to smooth (need at least 5)");
                 return;
             }
 
@@ -830,7 +820,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             // Snap by nudging the track by the current cross-track error (XTE)
@@ -881,7 +871,7 @@ public partial class MainViewModel
         {
             if (Flags.Count == 0)
             {
-                StatusMessage = "No flags to delete";
+                ReportFailure("No flags to delete");
                 return;
             }
             ShowConfirmationDialog(
@@ -1018,7 +1008,7 @@ public partial class MainViewModel
             // is the only path with preconditions.
             if (!IsAutoSteerEngaged && !IsAutoSteerAvailable)
             {
-                StatusMessage = "AutoSteer not available - no active track";
+                ReportFailure("AutoSteer not available - no active track");
                 return;
             }
 
@@ -1063,7 +1053,7 @@ public partial class MainViewModel
             var contours = SavedTracks.Where(t => t.Type == TrackType.Contour).ToList();
             if (contours.Count == 0)
             {
-                StatusMessage = "No contour paths to delete";
+                ReportFailure("No contour paths to delete");
                 return;
             }
             if (SelectedTrack != null && contours.Contains(SelectedTrack))
@@ -1747,12 +1737,12 @@ public partial class MainViewModel
         var track = SelectedTrack;
         if (track == null)
         {
-            StatusMessage = "No track selected";
+            ReportFailure("No track selected");
             return;
         }
         if (track.IsClosed || track.IsContour || track.IsRecordedPath)
         {
-            StatusMessage = "This track has no ends to adjust";
+            ReportFailure("This track has no ends to adjust");
             return;
         }
 
@@ -1779,7 +1769,7 @@ public partial class MainViewModel
     {
         if (SelectedTrack == null)
         {
-            StatusMessage = "No track selected";
+            ReportFailure("No track selected");
             return;
         }
 

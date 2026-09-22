@@ -31,7 +31,7 @@ public partial class MainViewModel
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3)
         {
-            StatusMessage = "No boundary available";
+            ReportFailure("No boundary available");
             return;
         }
 
@@ -99,7 +99,7 @@ public partial class MainViewModel
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3)
         {
-            StatusMessage = "No boundary available";
+            ReportFailure("No boundary available");
             return;
         }
 

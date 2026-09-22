@@ -173,7 +173,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error deleting field: {ex.Message}";
+                ReportFailure($"Error deleting field: {ex.Message}");
             }
         });
 
@@ -242,7 +242,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error creating field: {ex.Message}";
+                ReportFailure($"Error creating field: {ex.Message}");
             }
         });
 
@@ -323,7 +323,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error creating field: {ex.Message}";
+                ReportFailure($"Error creating field: {ex.Message}");
             }
         });
 
@@ -474,7 +474,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error importing KML: {ex.Message}";
+                ReportFailure($"Error importing KML: {ex.Message}");
             }
         });
 
@@ -568,7 +568,7 @@ public partial class MainViewModel
                 var pfd = doc.SelectSingleNode("//PFD");
                 if (pfd == null)
                 {
-                    StatusMessage = "ISO-XML file contains no field (PFD)";
+                    ReportFailure("ISO-XML file contains no field (PFD)");
                     return;
                 }
                 var fieldParts = pfd.ChildNodes;
@@ -577,7 +577,7 @@ public partial class MainViewModel
                 // the centroid of the outer boundary (falling back to all points).
                 if (!TryComputeIsoXmlOrigin(pfd, out double originLat, out double originLon))
                 {
-                    StatusMessage = "ISO-XML file has no coordinates to import";
+                    ReportFailure("ISO-XML file has no coordinates to import");
                     return;
                 }
                 var localPlane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
@@ -585,7 +585,7 @@ public partial class MainViewModel
                 var parsedBoundaries = IsoXmlParserHelpers.ParseBoundaries(fieldParts, localPlane);
                 if (parsedBoundaries.Count == 0 || parsedBoundaries[0].FenceLine.Count < 3)
                 {
-                    StatusMessage = "ISO-XML file has no usable boundary";
+                    ReportFailure("ISO-XML file has no usable boundary");
                     return;
                 }
                 var parsedHeadland = IsoXmlParserHelpers.ParseHeadland(fieldParts, localPlane);
@@ -663,7 +663,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Error importing ISO-XML: {ex.Message}";
+                ReportFailure($"Error importing ISO-XML: {ex.Message}");
             }
         });
 
@@ -720,7 +720,7 @@ public partial class MainViewModel
         {
             if (Latitude == 0 && Longitude == 0)
             {
-                StatusMessage = "No GPS fix — Drive In needs current position";
+                ReportFailure("No GPS fix — Drive In needs current position");
                 return;
             }
 
@@ -729,7 +729,7 @@ public partial class MainViewModel
 
             if (nearby.Count == 0)
             {
-                StatusMessage = "No fields within 0.5 km";
+                ReportFailure("No fields within 0.5 km");
                 return;
             }
 
@@ -766,7 +766,7 @@ public partial class MainViewModel
             var lastField = PersistentState.LastOpenedField;
             if (string.IsNullOrEmpty(lastField))
             {
-                StatusMessage = "No previous field to resume";
+                ReportFailure("No previous field to resume");
                 return;
             }
 
@@ -834,6 +834,7 @@ public partial class MainViewModel
                 _ = OpenFieldResumingJobAsync(path, name, taskName),
             confirm: (_, action) => action(),
             confirmWithOption: (_, _, _, _, action) => action(true));
+        StartWorkSessionDialogVm.FailureReported += ReportFailure;
         StartWorkSessionDialogVm.Refresh();
         return StartWorkSessionDialogVm;
     }

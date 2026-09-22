@@ -19,7 +19,7 @@ public static class WireCodec
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
-        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21;
+        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21, Prompt = 22, Toast = 23;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -30,6 +30,35 @@ public static class WireCodec
         using var w = new BinaryWriter(ms);
         w.Write(Sound);
         w.Write(effectId);
+        return ms.ToArray();
+    }
+
+    /// <summary>The host's pending confirm/error dialog (#109). Re-sent whenever it
+    /// changes and in every client's seed; Kind 0 clears it.</summary>
+    public static byte[] EncodePrompt(PromptDto p)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Prompt);
+        w.Write(p.Seq);                   // i32
+        w.Write((byte)p.Kind);
+        WriteStr(w, p.Title);
+        WriteStr(w, p.Message);
+        WriteStr(w, p.ConfirmLabel);
+        WriteStr(w, p.CancelLabel);
+        WriteStr(w, p.CheckboxLabel);
+        w.Write((byte)(p.CheckboxChecked ? 1 : 0));
+        return ms.ToArray();
+    }
+
+    /// <summary>One-shot notification text (a refusal or failure, #109). Pushed
+    /// event-driven, like <see cref="EncodeSound"/>; not part of the seed.</summary>
+    public static byte[] EncodeToast(string message)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Toast);
+        WriteStr(w, message);
         return ms.ToArray();
     }
 

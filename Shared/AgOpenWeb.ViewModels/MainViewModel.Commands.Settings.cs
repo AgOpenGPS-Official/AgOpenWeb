@@ -218,7 +218,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Debug dump failed: {ex.Message}";
+                ReportFailure($"Debug dump failed: {ex.Message}");
                 _logger.LogError(ex, "Debug dump failed");
             }
         });
@@ -248,7 +248,7 @@ public partial class MainViewModel
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Bug report state-snapshot capture failed");
-                StatusMessage = $"Bug report capture failed: {ex.Message}";
+                ReportFailure($"Bug report capture failed: {ex.Message}");
             }
 
             OpenChainDialog(Models.State.DialogType.BugReport);
@@ -276,7 +276,7 @@ public partial class MainViewModel
                         notes: null,
                         userAttachments: null);
 
-                    StatusMessage = $"Bug report saved (no details): {savedPath}";
+                    ReportFailure($"Bug report saved (no details): {savedPath}");
                     _logger.LogInformation("Bug report saved on cancel: {ZipPath}", savedPath);
                 }
                 catch (Exception ex)
@@ -366,7 +366,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Bug report failed: {ex.Message}";
+                ReportFailure($"Bug report failed: {ex.Message}");
                 _logger.LogError(ex, "Bug report creation failed");
             }
             finally

@@ -23,7 +23,7 @@ public partial class MainViewModel
     {
         if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
         {
-            StatusMessage = "Open a field first before importing a boundary";
+            ReportFailure("Open a field first before importing a boundary");
             return;
         }
 
@@ -45,7 +45,7 @@ public partial class MainViewModel
         SelectedKmlFile = item;
         if (_kmlParsedPolygons.Count == 0)
         {
-            StatusMessage = "No boundary polygons found in KML";
+            ReportFailure("No boundary polygons found in KML");
             return;
         }
 
