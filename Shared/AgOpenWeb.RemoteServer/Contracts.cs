@@ -350,7 +350,7 @@ public record ToolConfigDto(
 public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
 
 /// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
-public record TramConfigDto(int Passes, bool Display, int Line);
+public record TramConfigDto(int Passes, bool Display, int Line, double Width);
 
 /// <summary>Machine Control tab (ConfigStore.Machine). PinAssignments: 24 PinFunction ints.</summary>
 public record MachineConfigDto(

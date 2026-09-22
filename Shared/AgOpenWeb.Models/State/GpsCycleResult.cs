@@ -42,6 +42,8 @@ public record GpsCycleResult
     // Autosteer
     public bool IsAutoSteerEngaged { get; init; }
     public bool AutoSteerDisengagedThisCycle { get; init; }
+    /// <summary>PGN 239 hydraulic lift: 0 off, 1 down (working), 2 up (headland).</summary>
+    public byte HydLiftState { get; init; }
     public string? DisengageReason { get; init; }
 
     // Per-cycle snapshots emitted by the cycle worker. Consumed on the UI

@@ -171,6 +171,7 @@ public static partial class RemoteServerWiring
             case "tram.passes": if (I(out var tp)) gd.TramPasses = tp; return;
             case "tram.display": gd.TramDisplay = B(); return;
             case "tram.line": if (I(out var tl)) gd.TramLine = tl; return;
+            case "tram.width": if (D(out var tw) && tw > 0) store.Tram.TramWidth = tw; return; // m (#110)
             // --- Machine Control (ConfigStore.Machine) ---
             case "machine.hydraulicLiftEnabled": mch.HydraulicLiftEnabled = B(); return;
             case "machine.raiseTime": if (I(out var m1)) mch.RaiseTime = m1; return;

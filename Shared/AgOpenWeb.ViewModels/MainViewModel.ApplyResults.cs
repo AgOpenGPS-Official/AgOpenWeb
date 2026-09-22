@@ -89,6 +89,15 @@ public partial class MainViewModel
         // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
         // deletes them, but this method no longer reads them.
 
+        // Hydraulic lift sounds on each up/down change (AgOpenGPS CHead.SetHydPosition;
+        // gated by the Hydraulic sound setting in the audio service, #110).
+        if (result.HydLiftState != _lastHydLiftState)
+        {
+            if (result.HydLiftState == 2) _audioService.Play(Services.Interfaces.SoundEffect.HydraulicLiftUp);
+            else if (result.HydLiftState == 1 && _lastHydLiftState == 2) _audioService.Play(Services.Interfaces.SoundEffect.HydraulicLiftDown);
+            _lastHydLiftState = result.HydLiftState;
+        }
+
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
         {
@@ -353,4 +362,6 @@ public partial class MainViewModel
         for (int i = 0; i < count; i++)
             _sectionButtons[i].ColorCode = colorCodes[i];
     }
+
+    private byte _lastHydLiftState; // for the lift sounds (#110)
 }

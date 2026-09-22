@@ -325,6 +325,7 @@ public static class WireCodec
         w.Write(tr.Passes);            // i32
         w.Write((byte)(tr.Display ? 1 : 0));
         w.Write(tr.Line);              // i32
+        w.Write(tr.Width);             // f64 — tram width, m (#110)
         // Machine Control tab.
         var m = c.Machine;
         w.Write((byte)(m.HydraulicLiftEnabled ? 1 : 0));
