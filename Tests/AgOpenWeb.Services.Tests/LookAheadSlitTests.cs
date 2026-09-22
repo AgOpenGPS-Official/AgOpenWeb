@@ -771,9 +771,8 @@ public class LookAheadSlitTests
     }
 
     /// <summary>
-    /// Verify timing with different turn-off delays. The look-ahead projection
-    /// should compensate for the configured turn-off delay so transitions land
-    /// at the same position regardless of delay.
+    /// Verify timing with different turn-off delays: the section runs on past the
+    /// slit start by speed × delay, as AgOpenGPS's turn-off delay does (#110).
     /// </summary>
     [TestCase(0.0, TestName = "Timing_TurnOffDelay_0s")]
     [TestCase(0.2, TestName = "Timing_TurnOffDelay_0.2s")]
@@ -807,9 +806,12 @@ public class LookAheadSlitTests
         TestContext.Out.WriteLine($"  OFF at N={offN:F2} ({offN - slitSouth:+0.00;-0.00}m vs slit start)");
         TestContext.Out.WriteLine($"  ON  at N={onN:F2} ({onN - slitNorth:+0.00;-0.00}m vs slit end)");
 
-        // OFF should land near slit start regardless of configured turn-off delay
-        Assert.That(Math.Abs(offN - slitSouth), Is.LessThan(0.5),
-            $"OFF transition should be near slit start with TurnOffDelay={turnOffDelaySec}s, got offset={offN - slitSouth}m");
+        // Turn-off delay (AgOpenGPS tool.turnOffDelay, #110): with no look-ahead off, the
+        // section runs on for the delay — OFF lands about speed × delay past the slit start
+        // (less the 0.3 m minimum look-ahead). It used to have no effect at all.
+        double expectedOverrun = 15.0 / 3.6 * turnOffDelaySec;
+        Assert.That(offN - slitSouth, Is.EqualTo(expectedOverrun).Within(0.8),
+            $"OFF should run on ~{expectedOverrun:F2}m with TurnOffDelay={turnOffDelaySec}s, got offset={offN - slitSouth}m");
     }
 
     #endregion

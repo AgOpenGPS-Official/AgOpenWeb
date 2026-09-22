@@ -125,10 +125,10 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
         if (Math.Abs(_appState.Guidance.CrossTrackError) > MAX_DIST_OFF_M) return;
         if (Math.Abs(steerAngleDegrees) > MAX_ANGLE_DEG) return;
 
-        // WAS inversion: flip the sample sign so the recommended offset
-        // direction matches the module's expected counts polarity.
-        if (_configStore.AutoSteer.InvertWas)
-            steerAngleDegrees = -steerAngleDegrees;
+        // No Invert WAS flip here: the module has already applied the inversion to the
+        // reported angle, and the zeroing formula (offset -= angle * cpd) is the same either
+        // way (#103, see WasCalibration). Flipping made Smart WAS push the offset the wrong
+        // way on inverted sensors.
 
         SmartWasSnapshot snap;
         lock (_dataLock)

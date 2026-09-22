@@ -24,6 +24,10 @@ namespace AgOpenWeb.Services.Tests;
 ///   the prior calibration.
 /// - G: it ignored <c>InvertWas</c> entirely, so a second press in
 ///   inverted mode drove the offset the wrong direction.
+///
+/// #103: the sign is <c>offset -= angle * cpd</c> for BOTH invert states — the real firmware
+/// formula (see WasCalibration / WasCalibrationTests). These expectations previously
+/// matched the emulator's wrong sign in the non-inverted case.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore singleton.
@@ -72,8 +76,8 @@ public class WasCalibrationStepViewModelTests
         var step = new WasCalibrationStepViewModel(_configService, _autoSteer);
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
-        // Press 1: offset = 0 + 1 * 5 * 100 = 500.
-        Assert.That(step.WasOffset, Is.EqualTo(500),
+        // Press 1: offset = 0 - 5 * 100 = -500.
+        Assert.That(step.WasOffset, Is.EqualTo(-500),
             "First Zero-WAS press should drive offset to raw-counts equivalent of the live angle");
 
         // Simulate the host pushing the new offset to the module and the
@@ -84,8 +88,8 @@ public class WasCalibrationStepViewModelTests
 
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
-        // Press 2: offset = 500 + 1 * 5 * 100 = 1000.
-        Assert.That(step.WasOffset, Is.EqualTo(1000),
+        // Press 2: offset = -500 - 5 * 100 = -1000.
+        Assert.That(step.WasOffset, Is.EqualTo(-1000),
             "Second Zero-WAS press must accumulate against the prior offset, not replace it");
     }
 
@@ -103,7 +107,7 @@ public class WasCalibrationStepViewModelTests
         var step = new WasCalibrationStepViewModel(_configService, _autoSteer);
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
-        // Press 1: offset = 0 + (-1) * (-5 * 100) = 500.
+        // Press 1: offset = 0 - (-5 * 100) = 500.
         Assert.That(step.WasOffset, Is.EqualTo(500));
 
         // Module now reports -5° again (wheel moved 5° further in the
@@ -113,7 +117,7 @@ public class WasCalibrationStepViewModelTests
 
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
-        // Press 2: offset = 500 + (-1) * (-5 * 100) = 1000.
+        // Press 2: offset = 500 - (-5 * 100) = 1000.
         Assert.That(step.WasOffset, Is.EqualTo(1000),
             "Inverted accumulator must move the offset in the same monotonic " +
             "direction so the live reading lands at zero after each press");

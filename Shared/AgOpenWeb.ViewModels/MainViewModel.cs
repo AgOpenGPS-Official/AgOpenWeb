@@ -265,6 +265,13 @@ public partial class MainViewModel : ObservableObject
                 ConfigStore.Tram.Passes = ConfigStore.Guidance.TramPasses;
                 UpdateTramLines(SelectedTrack);
             }
+            else if (e.PropertyName == nameof(Models.Configuration.GuidanceConfig.TramLine))
+            {
+                // "First tram pass" (1-based) = AgOpenGPS start pass (0-based); the tram
+                // generator already honours Tram.StartPass (#110).
+                ConfigStore.Tram.StartPass = ConfigStore.Guidance.TramLine - 1;
+                UpdateTramLines(SelectedTrack);
+            }
         };
 
         // The Screen & Alerts "On-Screen Buttons" toggles gate the on-map U-Turn
@@ -940,7 +947,7 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             NetworkStatus = $"UDP Error: {ex.Message}";
-            StatusMessage = "Network error";
+            ReportFailure("Network error");
         }
     }
 
@@ -999,7 +1006,7 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, "HelloTimer error");
-            StatusMessage = "Module check error";
+            ReportFailure("Module check error");
         }
     }
 
@@ -1081,7 +1088,12 @@ public partial class MainViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isContourModeOn, value))
+            {
                 State.Operation.IsContourOn = value; // mirror for web-UI projection
+                _gpsPipelineService.SetContourMode(value); // #110
+                // AutoSteer can engage on a contour line with no track (AgOpenGPS).
+                IsAutoSteerAvailable = SelectedTrack != null || value;
+            }
         }
     }
 
@@ -1092,6 +1104,7 @@ public partial class MainViewModel : ObservableObject
         set
         {
             SetProperty(ref _showRecordedPaths, value);
+            State.FieldTools.ShowRecordedPaths = value; // web map (#110)
             UpdateRecordedPathsOnMap();
         }
     }
@@ -1278,11 +1291,75 @@ public partial class MainViewModel : ObservableObject
     {
         _dispatcher.Post(() =>
         {
-            // Toggle section master when requested by module communication service
-            // This replaces the direct PerformClick() calls from the WinForms implementation
-            // TODO: When separate Auto/Manual section buttons are implemented, handle them individually
-            ToggleSectionMasterCommand?.Execute(null);
+            // Toggle the section button the module communication service asked for
+            // (replaces WinForms PerformClick on btnSectionMasterAuto / Manual).
+            if (e.Button == SectionMasterToggleEventArgs.SectionMasterButton.Manual)
+                ToggleManualModeCommand?.Execute(null);
+            else
+                ToggleSectionMasterCommand?.Execute(null);
         });
+    }
+
+    /// <summary>
+    /// Module switches (#106): feed PGN 253's switch bits to the module communication service
+    /// each GPS cycle, as AgOpenGPS does each frame (CModuleComm.CheckWorkAndSteerSwitch).
+    /// <list type="bullet">
+    /// <item>Work / steer switch → section buttons (Tool config switches).</item>
+    /// <item>Steer switch / button engages and disengages AutoSteer when AutoSteer config →
+    /// External enable is Switch or Button (default None). The module reports its steering
+    /// state in the steer-switch bit — set on tablet engage, cleared by the physical switch,
+    /// the button, or a sensor kickout — so the UI follows it both ways.</item>
+    /// </list>
+    /// Nothing called this before, so all of it was inert.
+    /// </summary>
+    private void UpdateModuleSwitches()
+    {
+        UpdateModuleSteeringState();
+        var tool = ConfigStore.Tool;
+        var mc = _moduleCommunicationService;
+        mc.IsRemoteWorkSystemOn = tool.IsWorkSwitchEnabled || tool.IsSteerSwitchEnabled;
+        bool moduleEngage = ConfigStore.AutoSteer.ExternalEnable != 0;
+        if (!mc.IsRemoteWorkSystemOn && !moduleEngage) return;
+
+        var sd = _autoSteerService.LastSteerData;
+        // Raw PGN 253 byte 11, as AgOpenGPS reads it: bit 0 work switch, bit 1 steer switch.
+        // (The parser stores bit 0 inverted as WorkSwitchActive.)
+        mc.WorkSwitchHigh = !sd.WorkSwitchActive;
+        mc.SteerSwitchHigh = sd.SteerSwitchActive;
+        mc.CheckSwitches(new ModuleSwitchState
+        {
+            IsAutoSteerOn = IsAutoSteerEngaged,
+            IsAutoSteerAuto = moduleEngage,
+            AutoButtonState = IsSectionMasterOn ? ButtonStates.Auto : ButtonStates.Off,
+            ManualButtonState = IsManualSectionMode ? ButtonStates.On : ButtonStates.Off,
+        });
+    }
+
+    // True once the module has reported steering since this engage, so the alert is for
+    // a real stop (kickout, switch, button), not the moment between engage and arming.
+    private bool _moduleSteeredSinceEngage;
+
+    /// <summary>
+    /// Module steering state for the web (#126). The steer module reports in PGN 253
+    /// byte 11 bit 1 whether it is steering; AgOpenGPS paints the steer circle red when
+    /// it isn't, whatever the switch type. Here: engaged + module connected + bit high =
+    /// "module not steering". With a Switch/Button configured the bit also disengages
+    /// (UpdateModuleSwitches, #124); with None it only shows, as in AgOpenGPS.
+    /// </summary>
+    internal void UpdateModuleSteeringState()
+    {
+        bool connected = State.Connections.IsAutoSteerDataOk;
+        bool notSteering = IsAutoSteerEngaged && connected && _autoSteerService.LastSteerData.SteerSwitchActive;
+        State.Connections.IsModuleNotSteering = notSteering;
+
+        if (!IsAutoSteerEngaged || !connected) { _moduleSteeredSinceEngage = false; return; }
+        if (!notSteering) { _moduleSteeredSinceEngage = true; return; }
+        if (_moduleSteeredSinceEngage)
+        {
+            _moduleSteeredSinceEngage = false;
+            _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            ReportFailure("Steer module stopped steering (kickout, switch or button)");
+        }
     }
 
     private void OnModuleConnectionChanged(object? sender, ModuleConnectionEventArgs e)
@@ -1704,6 +1781,12 @@ public partial class MainViewModel : ObservableObject
             // Load recorded path from RecPath.txt
             LoadRecPathFromField(fieldPath);
 
+            // Load flags from Flags.txt (#107 — they used to carry over from the previous field)
+            LoadFlagsFromField(fieldPath);
+
+            // Contour strips from Contour.txt (#110)
+            LoadContoursFromField(fieldPath);
+
             // Establish (or resume) the active job before any coverage paint
             // is allowed. Coverage now lives under <field>/jobs/<task>/.
             //
@@ -1835,7 +1918,7 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.LogError(ex, $"[Field] Error opening field: {fieldName}");
-            StatusMessage = $"Failed to open field: {ex.Message}";
+            ReportFailure($"Failed to open field: {ex.Message}");
         }
         finally
         {
@@ -1961,6 +2044,13 @@ public partial class MainViewModel : ObservableObject
 
         // CurrentFieldName clears via the pass-through when SetActiveField(null)
         // runs below (State.Field.ActiveField → null).
+        // Contour (#110): save finished strips, then forget them and turn contour off
+        // (AgOpenGPS FileSaveContour, ResetContour, isContourBtnOn = false).
+        SaveContoursToField();
+        ExportFieldIsoXml(); // AgOpenGPS ExportFieldAs_ISOXMLv4 on close (#110)
+        LoadContoursFromField(null);
+        IsContourModeOn = false;
+
         IsFieldOpen = false;
         _gpsPipelineService.SetHasActiveField(false);
 
@@ -1976,9 +2066,14 @@ public partial class MainViewModel : ObservableObject
         // Clear tracks (State.Field.Tracks mirrors SavedTracks via the ctor subscription)
         SavedTracks.Clear();
         SelectedTrack = null;
+        IsAutoTrackEnabled = false; // AgOpenGPS turns Auto Track off with the job
 
         // Clear U-turn state
         ClearYouTurnState();
+
+        // Clear flags (without saving — IsFieldOpen is already false) so they don't carry
+        // over into the next field (#107)
+        LoadFlagsFromField(null);
 
         // Clear coverage
         _coverageMapService.ClearAll();
@@ -2310,7 +2405,8 @@ public partial class MainViewModel : ObservableObject
 
                 // Update guidance availability
                 HasActiveTrack = value != null;
-                IsAutoSteerAvailable = value != null;
+                IsAutoSteerAvailable = value != null || IsContourModeOn;
+                SaveLastUsedTrack(); // reopen the field on the same track (#148)
 
                 // No U-turns on a closed/polygon track — turn the toggle off and
                 // refresh the dependent UI (button visibility) (#421).
@@ -2437,7 +2533,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (Easting == 0 && Northing == 0)
         {
-            StatusMessage = "No GPS position - cannot place flag";
+            ReportFailure("No GPS position - cannot place flag");
             return;
         }
 
@@ -2457,6 +2553,191 @@ public partial class MainViewModel : ObservableObject
         State.Field.Flags = Flags
             .Select(f => new Models.State.FlagMarker(f.Easting, f.Northing, Flag.ColorToHex(f.FlagColor), f.Name))
             .ToList();
+        SaveFlagsToField();
+    }
+
+    // Set while flags are being (re)loaded or cleared with the field, so UpdateFlagsOnMap
+    // doesn't write a half-loaded list — or an empty one over the file on close.
+    private bool _suppressFlagSave;
+
+    /// <summary>
+    /// Persist the open field's flags to Flags.txt (#107: flags were never saved, so they
+    /// vanished on restart). Every flag change goes through UpdateFlagsOnMap, which calls this.
+    /// </summary>
+    private void SaveFlagsToField()
+    {
+        if (_suppressFlagSave || !IsFieldOpen) return;
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (string.IsNullOrEmpty(dir)) return;
+        try
+        {
+            Services.FlagFilesService.Save(dir, Flags, State.Field.OriginLatitude, State.Field.OriginLongitude);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "[Flags] Failed to save Flags.txt");
+        }
+    }
+
+    /// <summary>
+    /// Export the open field as ISOXML v4 to &lt;field&gt;/zISOXML/v4, like AgOpenGPS does on field
+    /// close (ExportFieldAs_ISOXMLv4): boundary + holes, headland, AB/curve tracks, plus a
+    /// device description for the vehicle and tool with their coupling (connector) types (#110).
+    /// The data is captured here; the file is written in the background.
+    /// </summary>
+    private void ExportFieldIsoXml()
+    {
+        var field = _fieldService.ActiveField;
+        var plane = State.Field.LocalPlane;
+        if (!IsFieldOpen || field == null || string.IsNullOrEmpty(field.DirectoryPath) || plane == null) return;
+
+        var bnd = State.Field.CurrentBoundary;
+        var boundaries = new List<Models.IsoXml.IsoXmlBoundary>();
+        var headlands = new List<List<Vec3>>();
+        if (bnd?.OuterBoundary is { IsValid: true } outer)
+        {
+            boundaries.Add(new Models.IsoXml.IsoXmlBoundary { FenceLine = outer.Points.Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList() });
+            headlands.Add(State.Field.HeadlandLine?.ToList() ?? new List<Vec3>());
+            foreach (var hole in bnd.InnerBoundaries.Where(h => h.IsValid))
+                boundaries.Add(new Models.IsoXml.IsoXmlBoundary { FenceLine = hole.Points.Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList() });
+        }
+
+        var tracks = new List<Models.IsoXml.IsoXmlTrack>();
+        foreach (var t in SavedTracks.ToList())
+        {
+            if (t.Points.Count < 2) continue;
+            if (t.Type == TrackType.ABLine && t.Points.Count == 2)
+                tracks.Add(new Models.IsoXml.IsoXmlTrack
+                {
+                    Name = t.Name, Mode = Models.IsoXml.IsoXmlTrackMode.AB,
+                    PtA = new Vec2(t.Points[0].Easting, t.Points[0].Northing),
+                    PtB = new Vec2(t.Points[1].Easting, t.Points[1].Northing),
+                    Heading = Math.Atan2(t.Points[1].Easting - t.Points[0].Easting, t.Points[1].Northing - t.Points[0].Northing),
+                });
+            else if (t.Type == TrackType.Curve)
+                tracks.Add(new Models.IsoXml.IsoXmlTrack { Name = t.Name, Mode = Models.IsoXml.IsoXmlTrackMode.Curve, CurvePoints = t.Points.ToList() });
+        }
+
+        var devices = new List<Models.IsoXml.IsoXmlDevice>
+        {
+            new() { Designator = ConfigStore.Vehicle.Name, ConnectorType = ConfigStore.Vehicle.HitchType },
+            new() { Designator = ConfigStore.ActiveToolProfileName, ConnectorType = ConfigStore.Tool.HitchType },
+        };
+        string dir = System.IO.Path.Combine(field.DirectoryPath, "zISOXML", "v4");
+        string name = field.Name ?? System.IO.Path.GetFileName(field.DirectoryPath);
+        int area = (int)(bnd?.OuterBoundary?.AreaSquareMeters ?? 0);
+        string version = typeof(MainViewModel).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "AgOpenWeb";
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(dir);
+                Services.IsoXml.IsoXmlExporter.Export(dir, name, area, boundaries, headlands, tracks, plane,
+                    Services.IsoXml.IsoXmlExporter.IsoXmlVersion.V4, version, devices);
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "[IsoXml] Field export failed"); }
+        });
+    }
+
+    // The field remembers which track was last used, so reopening it comes back to that
+    // track instead of no guidance (#148). One line, in the field's folder.
+    private const string LastTrackFileName = "ActiveTrack.txt";
+    private bool _restoringTrack;
+
+    private void RestoreLastUsedTrack(string fieldPath)
+    {
+        try
+        {
+            var file = System.IO.Path.Combine(fieldPath, LastTrackFileName);
+            if (!System.IO.File.Exists(file)) return;
+            var name = System.IO.File.ReadAllText(file).Trim();
+            if (name.Length == 0) return;
+            var track = SavedTracks.FirstOrDefault(t => t.IsVisible && t.Name == name);
+            if (track == null) return;
+            _restoringTrack = true;
+            try { SelectedTrack = track; }
+            finally { _restoringTrack = false; }
+            _logger.LogDebug("[TrackFiles] Restored last used track '{Name}'", name);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[TrackFiles] Failed to restore the last used track"); }
+    }
+
+    /// <summary>Remember (or forget) the field's active track for the next time it opens (#148).</summary>
+    private void SaveLastUsedTrack()
+    {
+        if (_restoringTrack || !IsFieldOpen) return;
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return;
+        try
+        {
+            var file = System.IO.Path.Combine(dir, LastTrackFileName);
+            if (SelectedTrack != null) System.IO.File.WriteAllText(file, SelectedTrack.Name);
+            else if (System.IO.File.Exists(file)) System.IO.File.Delete(file);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[TrackFiles] Failed to save the last used track"); }
+    }
+
+    /// <summary>
+    /// Tracks manager / Field Builder: the operator tapped a track row. It becomes the
+    /// active track (#148) and Auto Track goes off so the choice sticks (#146).
+    /// </summary>
+    public void SelectTrackAt(int index)
+    {
+        if (index < 0 || index >= SavedTracks.Count) return;
+        var track = SavedTracks[index];
+        if (!track.IsVisible) return; // a hidden track can't be the active one (AgOpenGPS)
+        IsAutoTrackEnabled = false;
+        SelectedTrack = track;
+        StatusMessage = $"Active track: {track.Name}";
+    }
+
+    /// <summary>Replace the contour strips with the field's Contour.txt (none when null) (#110).</summary>
+    private void LoadContoursFromField(string? fieldPath)
+    {
+        var strips = new List<List<Vec3>>();
+        if (!string.IsNullOrEmpty(fieldPath))
+        {
+            try { strips = Services.Contour.ContourFilesService.Load(fieldPath); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to load Contour.txt"); }
+        }
+        _gpsPipelineService.LoadContours(strips);
+    }
+
+    /// <summary>Append contour strips finished since the last save to Contour.txt (#110).</summary>
+    private void SaveContoursToField()
+    {
+        var strips = _gpsPipelineService.TakeContoursToSave();
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (strips is not { Count: > 0 } || !IsFieldOpen || string.IsNullOrEmpty(dir)) return;
+        try { Services.Contour.ContourFilesService.Append(dir, strips); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save Contour.txt"); }
+    }
+
+    /// <summary>Replace the flags with the field's Flags.txt (empty when <paramref name="fieldPath"/> is null).</summary>
+    private void LoadFlagsFromField(string? fieldPath)
+    {
+        _suppressFlagSave = true;
+        try
+        {
+            Flags.Clear();
+            if (!string.IsNullOrEmpty(fieldPath))
+            {
+                try
+                {
+                    foreach (var f in Services.FlagFilesService.Load(fieldPath)) Flags.Add(f);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Flags] Failed to load Flags.txt");
+                }
+            }
+            _nextFlagId = Flags.Count == 0 ? 1 : Flags.Max(f => f.UniqueNumber) + 1;
+            UpdateFlagsOnMap();
+        }
+        finally { _suppressFlagSave = false; }
     }
 
     // ---- Remote/web flag-list operations (index into Flags, matching the projected list) ----
@@ -2492,12 +2773,33 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Deleted {count} flags";
     }
 
+    /// <summary>Delete every saved track without asking (the web client has already
+    /// confirmed). Also used as the native confirm's action.</summary>
+    public void DeleteAllTracksConfirmed()
+    {
+        if (SavedTracks.Count == 0)
+        {
+            ReportFailure("No tracks to delete");
+            return;
+        }
+        SavedTracks.Clear();
+        SelectedTrack = null;
+        RebuildRecordedPathsAndContours(); // clear rec-path/contour display
+        SaveTracksToFile();
+        // Also remove RecPath.txt, else the recorded path reloads on next open.
+        if (_fieldService.ActiveField is { } f)
+            Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+        StatusMessage = "All tracks deleted";
+    }
+
     /// <summary>Rename a saved track by index (remote/web Field Builder). Persists.</summary>
     public void RenameTrackAt(int index, string name)
     {
         if (index < 0 || index >= SavedTracks.Count || string.IsNullOrWhiteSpace(name)) return;
+        bool wasActive = ReferenceEquals(SavedTracks[index], SelectedTrack);
         SavedTracks[index].Name = name.Trim();
         SaveTracksToFile();
+        if (wasActive) SaveLastUsedTrack(); // the remembered name follows the rename (#148)
     }
 
     // Track management commands
@@ -2954,6 +3256,7 @@ public partial class MainViewModel : ObservableObject
         _confirmationDialogCallback = onConfirm;
         _confirmationDialogCheckboxCallback = null;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -2980,6 +3283,7 @@ public partial class MainViewModel : ObservableObject
         _confirmationDialogCallback = onConfirm;
         _confirmationDialogCheckboxCallback = null;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -3004,6 +3308,7 @@ public partial class MainViewModel : ObservableObject
         _confirmationDialogCallback = null;
         _confirmationDialogCheckboxCallback = onConfirm;
         _previousDialogBeforeConfirmation = State.UI.ActiveDialog;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Confirmation);
     }
 
@@ -3031,6 +3336,7 @@ public partial class MainViewModel : ObservableObject
     {
         ErrorDialogTitle = title;
         ErrorDialogMessage = message;
+        PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Error);
     }
 
@@ -3920,6 +4226,10 @@ public partial class MainViewModel : ObservableObject
     public ICommand? HalfToolNudgeLeftCommand { get; private set; }
     public ICommand? HalfToolNudgeRightCommand { get; private set; }
     public ICommand? ResetNudgeCommand { get; private set; }
+    public ICommand? ExtendTrackACommand { get; private set; }
+    public ICommand? ExtendTrackBCommand { get; private set; }
+    public ICommand? ShrinkTrackACommand { get; private set; }
+    public ICommand? ShrinkTrackBCommand { get; private set; }
     public ICommand? StartDrawABModeCommand { get; private set; }
     public ICommand? StartDrawCurveModeCommand { get; private set; }
     public ICommand? FinishDrawCurveCommand { get; private set; }
@@ -4054,6 +4364,7 @@ public partial class MainViewModel : ObservableObject
         return _tramSystemLineRanges.TryGetValue(systemName, out var range) ? range : (-1, 0, false);
     }
     public ICommand? ToggleRecordedPathsCommand { get; private set; }
+    public ICommand? ToggleContourLockCommand { get; private set; }
     public ICommand? StartRecordedPathCommand { get; private set; }
     public ICommand? StopRecordedPathCommand { get; private set; }
     public ICommand? StartContourRecordingCommand { get; private set; }
@@ -4260,13 +4571,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (SelectedBoundaryIndex < 0)
         {
-            StatusMessage = "Select a boundary to delete";
+            ReportFailure("Select a boundary to delete");
             return;
         }
 
         if (string.IsNullOrEmpty(CurrentFieldName))
         {
-            StatusMessage = "No field open";
+            ReportFailure("No field open");
             return;
         }
 
@@ -4554,6 +4865,23 @@ public partial class MainViewModel : ObservableObject
     /// Results stored in both _kmlBoundaryPoints (first polygon, for field-creation flow)
     /// and _kmlParsedPolygons (all polygons, for import-to-existing flow).
     /// </summary>
+    /// <summary>Text of a KML file, or of the KML inside a KMZ (a zip — usually doc.kml).
+    /// KMZ files were listed but read as raw zip bytes, so nothing parsed (#111).</summary>
+    internal static TextReader OpenKmlText(string filePath)
+    {
+        if (!filePath.EndsWith(".kmz", StringComparison.OrdinalIgnoreCase))
+            return new StreamReader(filePath);
+
+        var zip = System.IO.Compression.ZipFile.OpenRead(filePath);
+        var entry = zip.Entries.FirstOrDefault(e => string.Equals(e.Name, "doc.kml", StringComparison.OrdinalIgnoreCase))
+                    ?? zip.Entries.FirstOrDefault(e => e.Name.EndsWith(".kml", StringComparison.OrdinalIgnoreCase));
+        if (entry == null) { zip.Dispose(); return new StringReader(string.Empty); }
+        // Read it all so the zip can close now.
+        using (zip)
+        using (var r = new StreamReader(entry.Open()))
+            return new StringReader(r.ReadToEnd());
+    }
+
     private void ParseKmlFile(string filePath)
     {
         _kmlBoundaryPoints.Clear();
@@ -4564,14 +4892,13 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            using var reader = new StreamReader(filePath);
+            using var reader = OpenKmlText(filePath);
             double sumLat = 0, sumLon = 0;
             int totalValidPoints = 0;
 
-            while (!reader.EndOfStream)
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                string? line = reader.ReadLine();
-                if (line == null) continue;
 
                 int startIndex = line.IndexOf("<coordinates>");
 
@@ -4657,7 +4984,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error parsing KML: {ex.Message}";
+            ReportFailure($"Error parsing KML: {ex.Message}");
         }
     }
 
@@ -4722,7 +5049,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (string.IsNullOrEmpty(CurrentFieldName) || _kmlParsedPolygons.Count == 0)
         {
-            StatusMessage = "No field open or no KML polygons parsed";
+            ReportFailure("No field open or no KML polygons parsed");
             return;
         }
 
@@ -4775,7 +5102,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error importing KML boundary: {ex.Message}";
+            ReportFailure($"Error importing KML boundary: {ex.Message}");
         }
     }
 
@@ -4828,7 +5155,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (!HasHeadland)
         {
-            StatusMessage = "No headland to adjust - build one first";
+            ReportFailure("No headland to adjust - build one first");
             return;
         }
 
@@ -4843,7 +5170,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
         {
-            StatusMessage = "No field open";
+            ReportFailure("No field open");
             return;
         }
 
@@ -4859,7 +5186,7 @@ public partial class MainViewModel : ObservableObject
 
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
-            StatusMessage = "No valid boundary to create headland from";
+            ReportFailure("No valid boundary to create headland from");
             return;
         }
 
@@ -5176,13 +5503,13 @@ public partial class MainViewModel : ObservableObject
     {
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
-            StatusMessage = "No valid boundary";
+            ReportFailure("No valid boundary");
             return;
         }
 
         if (_headlandPoint1Position == null || _headlandPoint2Position == null)
         {
-            StatusMessage = "Invalid point selection";
+            ReportFailure("Invalid point selection");
             return;
         }
 
@@ -5211,7 +5538,7 @@ public partial class MainViewModel : ObservableObject
 
         if (segmentPoints.Count < 2)
         {
-            StatusMessage = "Not enough points in segment";
+            ReportFailure("Not enough points in segment");
             return;
         }
 
@@ -5509,7 +5836,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (_headlandPoint1Position == null || _headlandPoint2Position == null)
         {
-            StatusMessage = "No clip line defined";
+            ReportFailure("No clip line defined");
             return;
         }
 
@@ -5796,8 +6123,11 @@ public partial class MainViewModel : ObservableObject
             return; // No active field to save to
         }
 
-        // Update selected track's NudgeDistance from current pass number + nudge offset before saving
-        if (SelectedTrack != null)
+        // Update selected track's NudgeDistance from current pass number + nudge offset before
+        // saving — but only when State.Guidance is the cycle's mirror FOR this track. Right after
+        // selecting a new track (e.g. just created), the mirror still holds the previous track's
+        // pass/nudge until the next cycle, and writing it here stamped them onto the new track (#107).
+        if (SelectedTrack != null && ReferenceEquals(State.Guidance.ActiveTrack, SelectedTrack))
         {
             double widthMinusOverlap = ConfigStore.ActualToolWidth - Tool.Overlap;
             SelectedTrack.NudgeDistance = State.Guidance.HowManyPathsAway * widthMinusOverlap + State.Guidance.NudgeOffset;
@@ -5920,8 +6250,8 @@ public partial class MainViewModel : ObservableObject
                 // Rebuild recorded paths and contour strips from loaded tracks
                 RebuildRecordedPathsAndContours();
 
-                // Don't auto-activate any track - user must explicitly select one
-                // HasActiveTrack and IsAutoSteerAvailable stay false until user selects
+                // Re-activate the track this field was last worked with (#148).
+                RestoreLastUsedTrack(field.DirectoryPath);
                 return;
             }
 

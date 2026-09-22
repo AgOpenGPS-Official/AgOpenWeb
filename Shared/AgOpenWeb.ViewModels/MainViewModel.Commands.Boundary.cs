@@ -146,7 +146,7 @@ public partial class MainViewModel
                 }
                 catch (Exception ex)
                 {
-                    StatusMessage = $"Error creating boundary: {ex.Message}";
+                    ReportFailure($"Error creating boundary: {ex.Message}");
                 }
             }
 
@@ -211,7 +211,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen)
             {
-                StatusMessage = "Open a field first";
+                ReportFailure("Open a field first");
                 return;
             }
             OpenChainDialog(DialogType.FieldBuilder);
@@ -222,7 +222,7 @@ public partial class MainViewModel
         {
             if (!HasHeadland)
             {
-                StatusMessage = "No headland defined";
+                ReportFailure("No headland defined");
                 return;
             }
             IsHeadlandOn = !IsHeadlandOn;
@@ -361,14 +361,14 @@ public partial class MainViewModel
         {
             if (!HeadlandPointsSelected)
             {
-                StatusMessage = "Select 2 points on the boundary first";
+                ReportFailure("Select 2 points on the boundary first");
                 return;
             }
 
             var headlandToClip = CurrentHeadlandLine ?? ConvertPreviewToVec3(HeadlandPreviewLine);
             if (headlandToClip == null || headlandToClip.Count < 3)
             {
-                StatusMessage = "No headland to clip - use Build first";
+                ReportFailure("No headland to clip - use Build first");
                 return;
             }
 
@@ -379,7 +379,7 @@ public partial class MainViewModel
         {
             if (_previousHeadlandLine == null && !_previousHasHeadland)
             {
-                StatusMessage = "Nothing to undo";
+                ReportFailure("Nothing to undo");
                 return;
             }
 
@@ -471,12 +471,12 @@ public partial class MainViewModel
                 }
                 else
                 {
-                    StatusMessage = "Cannot save boundary - no field is open";
+                    ReportFailure("Cannot save boundary - no field is open");
                 }
             }
             else
             {
-                StatusMessage = "Boundary not saved - need at least 3 points";
+                ReportFailure("Boundary not saved - need at least 3 points");
             }
 
             IsBoundaryPlayerPanelVisible = false;
@@ -601,7 +601,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first before importing a boundary";
+                ReportFailure("Open a field first before importing a boundary");
                 return;
             }
 
@@ -627,7 +627,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first to add boundary";
+                ReportFailure("Open a field first to add boundary");
                 return;
             }
             ShowBoundaryMapDialogCommand?.Execute(null);
@@ -637,14 +637,14 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first";
+                ReportFailure("Open a field first");
                 return;
             }
 
             var tracks = SavedTracks.Where(t => t.Points.Count >= 2).ToList();
             if (tracks.Count < 2)
             {
-                StatusMessage = "Need at least 2 tracks to build a boundary";
+                ReportFailure("Need at least 2 tracks to build a boundary");
                 return;
             }
 
@@ -676,7 +676,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first before recording a boundary";
+                ReportFailure("Open a field first before recording a boundary");
                 return;
             }
 
@@ -693,7 +693,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first before recording a boundary";
+                ReportFailure("Open a field first before recording a boundary");
                 return;
             }
 
@@ -705,7 +705,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first before recording a boundary";
+                ReportFailure("Open a field first before recording a boundary");
                 return;
             }
 
@@ -722,7 +722,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
             {
-                StatusMessage = "Open a field first to add boundary";
+                ReportFailure("Open a field first to add boundary");
                 return;
             }
             PendingBoundaryType = BoundaryType.Inner;
@@ -733,7 +733,7 @@ public partial class MainViewModel
         {
             if (SelectedBoundaryIndex < 0)
             {
-                StatusMessage = "Select a boundary first";
+                ReportFailure("Select a boundary first");
                 return;
             }
 
@@ -782,7 +782,7 @@ public partial class MainViewModel
         {
             if (SelectedBoundaryIndex < 0)
             {
-                StatusMessage = "Select a boundary first";
+                ReportFailure("Select a boundary first");
                 return;
             }
 
@@ -856,7 +856,7 @@ public partial class MainViewModel
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Error creating boundary: {ex.Message}";
+            ReportFailure($"Error creating boundary: {ex.Message}");
         }
     }
 

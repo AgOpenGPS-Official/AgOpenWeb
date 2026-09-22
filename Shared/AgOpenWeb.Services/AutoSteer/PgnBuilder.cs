@@ -85,11 +85,7 @@ public static class PgnBuilder
     ///
     /// When IsInFreeDriveMode is true, overrides speed/status/angle for testing:
     /// - Speed set to 8.0 km/h (fake speed to allow motor operation)
-    /// - Status set to SteerSwitchActive (0x01) + AutoSteerEngaged (0x04)
-    ///   so the firmware/simulator PID actually drives toward the
-    ///   commanded angle. The previous value (0x01 alone) left
-    ///   IsEngaged=false on the receiver, so the wizard's motor ramp
-    ///   commands were silently dropped.
+    /// - Status set to 1 so the firmware drives toward the commanded angle
     /// - SteerAngle from FreeDriveSteerAngle instead of guidance
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,11 +111,8 @@ public static class PgnBuilder
             buf[5] = (byte)(freeSpeed & 0xFF);        // low byte
             buf[6] = (byte)(freeSpeed >> 8);          // high byte
 
-            // Status: SteerSwitchActive (0x01) + AutoSteerEngaged (0x04).
-            // The receiver's PID gates on bit 0x04; the lone bit 0x01
-            // alone (former value) was insufficient and left free-drive
-            // commands as no-ops on the simulator.
-            buf[7] = 0x01 | 0x04;
+            // Status 1 = steer (AgOpenGPS: "turn on status to operate").
+            buf[7] = 1;
 
             // Use free drive steer angle instead of guidance angle
             // Little-endian: low byte first
@@ -144,14 +137,12 @@ public static class PgnBuilder
             buf[5] = (byte)(speedInt & 0xFF);         // low byte
             buf[6] = (byte)(speedInt >> 8);           // high byte
 
-            // Status byte
-            byte status = 0;
-            if (state.SteerSwitchActive) status |= 0x01;
-            if (state.WorkSwitchActive) status |= 0x02;
-            if (state.IsAutoSteerEngaged) status |= 0x04;
-            if (state.GpsValid) status |= 0x08;
-            if (state.GuidanceValid) status |= 0x10;
-            buf[7] = status;
+            // Status: 1 = steer, 0 = don't, exactly as AgOpenGPS sends it
+            // (Position.designer.cs). The firmware steers on bit 0 (AiO v26
+            // AutosteerProcessor: status & 0x01; AIO v4: guidanceStatus == 1).
+            // This used to put the module's own echoed steer state in bit 0 and
+            // AgOpenWeb's engage in bit 2, which no firmware reads (#125).
+            buf[7] = (byte)(state.IsAutoSteerEngaged && !state.IsSteerPaused ? 1 : 0);
 
             // Steer angle * 100 (signed, 2 bytes)
             short angleInt = (short)(state.SteerAngle * 100);
@@ -492,7 +483,8 @@ public static class PgnBuilder
         buf[8] = (byte)Math.Clamp(config.MinPwm, 1, 50);
 
         // Counts per degree (1-255, sent as-is)
-        buf[9] = (byte)Math.Clamp((int)config.CountsPerDegree, 1, 255);
+        // Round, not truncate: the CPD test can give 110.9, which must go out as 111 (#112).
+        buf[9] = (byte)Math.Clamp((int)Math.Round(config.CountsPerDegree, MidpointRounding.AwayFromZero), 1, 255);
 
         // WAS offset (signed 16-bit, little-endian: low byte first)
         short wasOffset = (short)Math.Clamp(config.WasOffset, -32768, 32767);
@@ -543,10 +535,12 @@ public static class PgnBuilder
         // Set0 byte (use helper from config)
         buf[5] = config.GetSetting0Byte();
 
-        // Pulse count (not currently used, set to 0)
-        buf[6] = 0;
+        // Sensor kickout threshold (#105). The firmware (AiO v4 Autosteer.ino: PulseCountMax)
+        // disengages when encoder pulses >= this, or when the pressure / current reading
+        // (0-255) >= this. Hard-coding 0 made every enabled sensor kick out on every loop.
+        buf[6] = SensorTripByte(config);
 
-        // Min steer speed * 10
+        // Min steer speed * 10 (AgOpenGPS sends it; standard firmware ignores this byte)
         buf[7] = (byte)Math.Clamp((int)(config.MinSteerSpeed * 10), 0, 255);
 
         // Set1 byte (use helper from config)
@@ -556,6 +550,21 @@ public static class PgnBuilder
         buf[9] = 0;
 
         return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// PGN 251 byte 6, as AgOpenGPS FormSteer fills it: with a pressure or current sensor, that
+    /// sensor's trip point (the panel's %, stored raw 0-255 — AgOpenGPS shows raw × 0.392 as %);
+    /// otherwise the turn-sensor encoder count. A 0 % trip point means "off" (as the host-side
+    /// kickout in AutoSteerService treats it, and it's the default) — sent as 255 so the
+    /// firmware's <c>reading &gt;= threshold</c> doesn't trip on every loop.
+    /// </summary>
+    public static byte SensorTripByte(AutoSteerConfig config)
+    {
+        static byte Pct(int pct) => pct <= 0 ? (byte)255 : (byte)Math.Clamp((int)Math.Round(pct * 255.0 / 100.0), 1, 255);
+        if (config.PressureSensorEnabled) return Pct(config.PressureTripPoint);
+        if (config.CurrentSensorEnabled) return Pct(config.CurrentTripPoint);
+        return (byte)Math.Clamp(config.TurnSensorCounts, 0, 255);
     }
 
     #region PGN 253 Parser (Steer Data FROM Module)

@@ -85,9 +85,6 @@ namespace AgOpenWeb.Services
         public int User3Value => Machine.User3Value;
         public int User4Value => Machine.User4Value;
 
-        // AHRS config accessor
-        private AhrsConfig Ahrs => _configStore.Ahrs;
-        public bool AlarmStopsAutoSteer => Ahrs.AlarmStopsAutoSteer;
 
         // Switch states (runtime, from hardware)
         public bool WorkSwitchHigh { get; set; }

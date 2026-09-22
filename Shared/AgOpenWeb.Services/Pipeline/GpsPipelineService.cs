@@ -17,6 +17,7 @@ using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Models.YouTurn;
+using AgOpenWeb.Services.Contour;
 using AgOpenWeb.Services.Geometry;
 using AgOpenWeb.Services.Gps;
 using AgOpenWeb.Services.Headland;
@@ -35,7 +36,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
 {
     // Lookahead time (seconds) used for auto-track-select in free-drive mode.
     // Matches AgOpen's setAS_guidanceLookAheadTime default. See #261.
-    private const double GuidanceLookAheadSeconds = 2.0;
 
     // Re-anchor the temporary first-fix LocalPlane when the live GPS jumps
     // farther than this from the existing origin (no field loaded). The
@@ -60,6 +60,21 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
     private readonly IGpsHeadingFusionService _headingFusion;
+    private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
+    private bool _isReverse;           // this cycle's reverse detection (#125)
+    private double _roll;              // filtered roll, degrees (#110)
+    private double _lastCrossTrackError; // last cycle's XTE, for the look-ahead (#110)
+    // Contour (#110): owned by the cycle, guarded by _contourLock (the UI thread
+    // toggles/locks/loads/resets).
+    private readonly ContourGuidance _contour = new();
+    private readonly object _contourLock = new();
+    private bool _contourOn;
+    private Vec2? _lastContourPos; // AgOpenGPS prevContourPos
+    private int _contourLineVersion = -1;           // display track cache
+    private Models.Track.Track? _contourDisplayTrack;
+    private (int strip, int count) _contourRefKey = (-1, 0);
+    private IReadOnlyList<Vec3>? _contourRefShown;
+    private bool _contourLockedShown, _contourHasPending;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
@@ -117,6 +132,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private bool? _nextUTurnDirectionLeftOverride;
     private int _uTurnSkipRows;
     private bool _isSkipWorkedMode;
+    private bool _isAlternateSkipMode; // AgOpenGPS SkipMode.Alternative (#111)
     private double _headlandCalculatedWidth;
     private double _headlandDistanceConfig;
     private List<Vec3>? _headlandLine;
@@ -260,6 +276,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _isTrackOnBoundary = isOnBoundary;
             // Reset guidance state when track changes so we do a global search
             _trackGuidanceState = null;
+            _lastCrossTrackError = 0; // a new line has no previous XTE for the look-ahead (#110)
         }
     }
 
@@ -286,12 +303,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// YouTurn tick can build its own TickContext without reaching into
     /// the MVM.
     /// </summary>
-    public void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance)
+    public void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance,
+        bool isAlternateSkipMode = false)
     {
         lock (_stateLock)
         {
             _uTurnSkipRows = uTurnSkipRows;
             _isSkipWorkedMode = isSkipWorkedMode;
+            _isAlternateSkipMode = isAlternateSkipMode;
             _headlandCalculatedWidth = headlandCalculatedWidth;
             _headlandDistanceConfig = headlandDistance;
         }
@@ -314,6 +333,40 @@ public sealed class GpsPipelineService : IGpsPipelineService
     public void SetDriftCompensation(double driftE, double driftN)
     {
         lock (_stateLock) { _driftE = driftE; _driftN = driftN; }
+    }
+
+    public void SetContourMode(bool on)
+    {
+        lock (_contourLock)
+        {
+            _contourOn = on;
+            _contour.ClearLine(); // also unlocks
+        }
+    }
+
+    public bool ToggleContourLock()
+    {
+        lock (_contourLock) return _contourOn && _contour.SetLockToLine();
+    }
+
+    public void LoadContours(IEnumerable<List<Vec3>> strips)
+    {
+        lock (_contourLock) { _contour.Load(strips); _lastContourPos = null; }
+    }
+
+    public void ResetContours()
+    {
+        lock (_contourLock) { _contour.Reset(); _lastContourPos = null; }
+    }
+
+    public List<List<Vec3>> TakeContoursToSave()
+    {
+        lock (_contourLock)
+        {
+            var list = new List<List<Vec3>>(_contour.PendingSave);
+            _contour.PendingSave.Clear();
+            return list;
+        }
     }
 
     public void SetHasActiveField(bool hasActiveField)
@@ -484,6 +537,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool youTurnEnabled;
         int uTurnSkipRows;
         bool isSkipWorkedMode;
+        bool isAlternateSkipMode;
         double headlandCalculatedWidth;
         double headlandDistanceConfig;
         List<Vec3>? headlandLine;
@@ -496,6 +550,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             autoSteerEngaged = _autoSteerEngaged;
             track = _activeTrack;
+            // Stamp which track this cycle's pass number / nudge belong to, so the VM can
+            // tell a mirror of the current track's values from a stale one right after a
+            // track switch (SaveTracksToFile, #107).
+            _guidanceWorking.ActiveTrack = track;
             // Phase D D3: pass number / nudge offset live on _guidanceWorking as
             // the single source of truth. Still read under lock here because
             // SetActiveTrack (UI-thread) writes them under the same lock.
@@ -505,6 +563,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             youTurnEnabled = _youTurnEnabled;
             uTurnSkipRows = _uTurnSkipRows;
             isSkipWorkedMode = _isSkipWorkedMode;
+            isAlternateSkipMode = _isAlternateSkipMode;
             headlandCalculatedWidth = _headlandCalculatedWidth;
             headlandDistanceConfig = _headlandDistanceConfig;
             headlandLine = _headlandLine;
@@ -564,6 +623,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool isYouTurnTriggered = _youTurn.IsTriggered;
         bool isInYouTurn = _youTurn.IsExecuting;
         List<Vec3>? youTurnPath = _youTurn.TurnPath;
+        bool contourOn;
+        lock (_contourLock) contourOn = _contourOn;
+        _guidanceWorking.IsContourMode = contourOn;
 
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
@@ -639,6 +701,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
+        // Stored fixes are in local-plane metres: when the plane changes (field
+        // opened/closed, re-anchor) the old ones are in another frame (#112).
+        var headingPlane = replacementLocalPlane ?? committedLocalPlane ?? _cycleLocalPlane;
+        if (!ReferenceEquals(headingPlane, _headingPlane))
+        {
+            _headingFusion.Reset();
+            _headingPlane = headingPlane;
+        }
+
         // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
         // with the dual-antenna-aware / fix-to-fix / IMU-blended value.
         // Receives real local easting/northing — see TMP-009 in the parking lot.
@@ -646,6 +717,21 @@ public sealed class GpsPipelineService : IGpsPipelineService
             pos.Heading, data.ImuHeading, data.ImuValid,
             pos.Speed, posEasting, posNorthing);
         pos = pos with { Heading = fusedHeading };
+        // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
+        // heading above already faces the way the vehicle points.
+        _isReverse = _headingFusion.IsReverse;
+        _guidanceWorking.IsReverse = _isReverse;
+        _autoSteerService.SetReverse(_isReverse); // deadzone is off in reverse (#110)
+
+        // Roll filter (AgOpenGPS ahrs.rollFilter: roll = roll × f + new × (1 − f)). AgOpenGPS
+        // smooths the steer module's IMU roll; AgOpenWeb's roll comes with the GPS
+        // sentence, so it's filtered here (#110). 0 = no filtering (the default).
+        double rollFilter = Math.Clamp(_configStore.Ahrs.RollFilter, 0, 0.99);
+        _roll = _roll * rollFilter + data.ImuRoll * (1 - rollFilter);
+
+        // Antenna in local metres (AgOpenGPS pn.fix): contour Pure Pursuit measures its
+        // distance from the line here (#110).
+        double antennaE = posEasting + driftE, antennaN = posNorthing + driftN;
 
         // ── (1b) Antenna-to-pivot transform in local coordinates ────────
         // Single source of truth for the antenna-to-pivot transform. Runs
@@ -656,7 +742,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             ref posNorthing,
             pos.Heading * Math.PI / 180.0,
             _configStore.Vehicle,
-            data.ImuRoll);
+            _roll);
 
         // ── (2) Apply drift compensation ────────────────────────────────
         double driftedEasting = posEasting + driftE;
@@ -673,7 +759,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 ? data.ImuYawRate * Math.PI / 180.0
                 : 0.0;
             double rollRad = data.ImuValid
-                ? data.ImuRoll * Math.PI / 180.0
+                ? _roll * Math.PI / 180.0
                 : 0.0;
             long ts = Clock.Current.GetTimestamp();
             _positionEstimator.UpdateFromGps(new PoseSnapshot(
@@ -700,7 +786,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // via ApplyGpsCycleResult on the UI thread.
         YouTurnEffects? youTurnTickEffects = null;
         bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
-        bool hasTickableTrack = track != null && track.Points.Count >= 2;
+        // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
+        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
         var tickCtx = new YouTurnStateMachine.TickContext(
@@ -711,7 +798,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             uTurnSkipRows,
             isSkipWorkedMode,
             headlandCalculatedWidth,
-            headlandDistanceConfig);
+            headlandDistanceConfig,
+            isAlternateSkipMode);
 
         // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
         // toggle off). TriggerManual enforces its own preconditions (autosteer +
@@ -736,6 +824,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // state-machine branches make the auto tick a no-op mid-turn anyway.
             youTurnTickEffects ??= autoEffects;
         }
+
+        // U-turn sounds (#110); the audio service gates them on the U-turn sound setting.
+        if (youTurnTickEffects?.TurnCreationFailedSound == true) _audioService.Play(SoundEffect.UTurnTooClose);
+        if (youTurnTickEffects?.ApproachAlarmSound == true) _audioService.Play(SoundEffect.YouTurnApproach);
 
         // Refresh the locals the downstream guidance branch reads — the tick
         // (or a drained intent above) may have updated them. CompleteTurn
@@ -805,6 +897,31 @@ public sealed class GpsPipelineService : IGpsPipelineService
             lock (_stateLock) _autoSteerEngaged = false;
         }
 
+        // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
+        if (autoSteerEngaged && !_appState.Simulator.IsEnabled)
+        {
+            var speedReason = CheckSteerSpeedLimits(pos.Speed * 3.6);
+            if (speedReason != null)
+            {
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = speedReason;
+                lock (_stateLock) _autoSteerEngaged = false;
+            }
+        }
+        else
+        {
+            _belowMinSteerSpeedSinceMs = null;
+        }
+
+        // (5c) Reverse (#125), like AgOpenGPS: with Steer in reverse off, steering
+        // stops while reversing but AutoSteer stays engaged; it also stops while a
+        // single antenna with no IMU can't yet tell a direction change. PGN 254
+        // status goes to 0 for those cycles.
+        bool steerPaused = autoSteerEngaged
+            && ((_isReverse && !_configStore.AutoSteer.SteerInReverse) || _headingFusion.IsChangingDirection);
+        _autoSteerService.SetSteerPaused(steerPaused);
+
         // U-turn lifecycle is bound to autosteer: when autosteer is not
         // engaged (user toggled off, boundary kickout, far-from-field guard,
         // or any other disengage path), the rendered turn path must clear so
@@ -824,11 +941,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
             youTurnPath = null;
         }
 
+        // ── (5d) Contour (#110, AgOpenGPS AddContourPoints + DistanceFromContourLine) ─
+        ContourSteer? contourSteer = null;
+        Models.Track.Track? contourDisplay = null;
+        if (hasActiveField || contourOn)
+            contourSteer = ProcessContour(contourOn, hasActiveField, driftedEasting, driftedNorthing,
+                headingRad, antennaE, antennaN, pos.Speed * 3.6, autoSteerEngaged, out contourDisplay);
+
         // ── (6) Guidance calculation ────────────────────────────────────
         double steerAngle = 0;
         double crossTrackError = 0;
         double goalE = 0, goalN = 0;
         bool hasGuidance = false;
+        bool hasGoal = false;
         bool youTurnCompleted = false;
         string? statusMessage = null;
         Models.Track.Track? displayTrack = null;
@@ -886,7 +1011,27 @@ public sealed class GpsPipelineService : IGpsPipelineService
         int diagTurnPathCount = 0;
         bool diagAntiTangentGuardFired = false;
 
-        if (autoSteerEngaged && hasTrack)
+        if (contourOn)
+        {
+            // Contour replaces the track: its line is the one shown and followed.
+            displayTrack = contourDisplay;
+            baseTrack = null;
+            if (contourSteer is { } cs)
+            {
+                crossTrackError = cs.CrossTrackError;
+                goalE = cs.GoalPoint.Easting;
+                goalN = cs.GoalPoint.Northing;
+                hasGoal = !_configStore.Guidance.IsStanley;
+                if (autoSteerEngaged)
+                {
+                    steerAngle = cs.SteerAngle;
+                    hasGuidance = true;
+                    Volatile.Write(ref _simulatorSteerAngle, steerAngle);
+                    _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+                }
+            }
+        }
+        else if (autoSteerEngaged && hasTrack)
         {
             if (isYouTurnTriggered && youTurnPath != null && youTurnPath.Count > 0)
             {
@@ -929,9 +1074,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
             {
                 Volatile.Write(ref _simulatorSteerAngle, steerAngle);
                 _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+                _lastCrossTrackError = crossTrackError;
             }
+            // Stanley has no look-ahead target, so no goal marker (#99).
+            hasGoal = hasGuidance && !_configStore.Guidance.IsStanley;
         }
-        if (!autoSteerEngaged && hasTrack && !noPassOffset)
+        if (!contourOn && !autoSteerEngaged && hasTrack && !noPassOffset)
         {
             // Display-only: auto-detect nearest pass and update visualization.
             // Phase D D3: write the detected pass directly into the cycle's
@@ -946,7 +1094,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // ahead of the tractor" behavior operators expect in free-drive.
             double lookDist = Math.Max(
                 _configStore.ActualToolWidth * 0.5,
-                pos.Speed * GuidanceLookAheadSeconds);
+                pos.Speed * _configStore.AutoSteer.NextGuidanceTime); // AgOpenGPS guidanceLookAheadTime (#110)
             double hRad = pos.Heading * Math.PI / 180.0;
             double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
             double lookN = driftedNorthing + Math.Cos(hRad) * lookDist;
@@ -962,6 +1110,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // was non-zero) stays pointing at the reference track, and the UI
                 // renders baseTrack + displayTrack at the same position (overlap).
                 baseTrack = nearestPass != 0 ? track : null;
+
+                // #95: show where Pure Pursuit would aim if engaged now, so the operator
+                // can see the target (field vs. ditch) before engaging.
+                var displayGoal = CalculateDisplayGoalPoint(
+                    pos, nearestDisplayTrack, driftedEasting, driftedNorthing, headingRad);
+                if (displayGoal is { } dg)
+                {
+                    goalE = dg.Easting;
+                    goalN = dg.Northing;
+                    hasGoal = true;
+                }
             }
             _guidanceWorking.HowManyPathsAway = nearestPass;
             passNumber = nearestPass;
@@ -974,6 +1133,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _guidanceWorking.SteerAngle = steerAngle;
         _guidanceWorking.CrossTrackError = crossTrackError;
         _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
+        _guidanceWorking.HasGoalPoint = hasGoal;
 
         // ── (7) Section control + coverage painting ─────────────────────
         // SectionControlService.Update is now driven by the host control
@@ -989,7 +1149,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // SetMachineState's three fields (section bits, U-turn state,
         // hyd-lift state) are all written by the cycle, before the PGN
         // build in (9) reads them.
-        byte hydLiftState = ComputeHydLiftState(toolPos, pos.Speed, headlandLine);
+        byte hydLiftState = ComputeHydLiftState(toolPos, toolHeading, pos.Speed, headlandLine);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
@@ -1022,7 +1182,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
 
         // ── (11) RTK quality sounds ─────────────────────────────────────
-        CheckRtkQualityChange(data.FixQuality);
+        if (CheckRtkQualityChange(data.FixQuality) && autoSteerEngaged)
+        {
+            // "Alarm stops AutoSteer" (#106) — same path as the boundary kickout.
+            autoSteerEngaged = false;
+            autoSteerDisengaged = true;
+            disengageReason = "AutoSteer disengaged - RTK fix lost";
+            lock (_stateLock) _autoSteerEngaged = false;
+        }
 
         // ── (12) Build section state arrays for result ──────────────────
         bool[]? secStatesArr = null;
@@ -1049,7 +1216,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Northing = driftedNorthing,
             Heading = pos.Heading,
             Speed = pos.Speed,
-            RollDegrees = data.ImuRoll,
+            RollDegrees = _roll,
             SatelliteCount = data.SatellitesInUse,
             Hdop = data.Hdop,
             DifferentialAge = data.DifferentialAge,
@@ -1068,6 +1235,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Autosteer
             IsAutoSteerEngaged = autoSteerEngaged,
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
+            HydLiftState = hydLiftState,
+            ContourRef = _contourRefShown,
+            IsContourLocked = _contourLockedShown,
+            HasContoursToSave = _contourHasPending,
             DisengageReason = disengageReason,
 
             // Per-cycle snapshots for UI-thread mirror via ApplyGpsCycleResult.
@@ -1158,6 +1329,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         ReturnPassTargetPath = src.ReturnPassTargetPath,
         SnakeSequence = src.SnakeSequence,
         SnakeIndex = src.SnakeIndex,
+        AltSign = src.AltSign,
+        AltBaseWidth = src.AltBaseWidth,
+        AltWidth = src.AltWidth,
+        AltTurnSkips = src.AltTurnSkips,
+        AltPrevBig = src.AltPrevBig,
         CurrentZone = src.CurrentZone,
         NextUTurnDirectionLeftOverride = src.NextUTurnDirectionLeftOverride,
         JustCompleted = justCompleted,
@@ -1187,6 +1363,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         PpPivotDistanceErrorLast = src.PpPivotDistanceErrorLast,
         PpCounter = src.PpCounter,
         GoalPoint = src.GoalPoint,
+        HasGoalPoint = src.HasGoalPoint,
         RadiusPoint = src.RadiusPoint,
         PurePursuitRadius = src.PurePursuitRadius,
         IsHeadingSameWay = src.IsHeadingSameWay,
@@ -1219,15 +1396,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         var config = _configStore;
 
-        // Calculate dynamic look-ahead
         double speedKmh = currentPosition.Speed * 3.6;
-        double lookAhead = config.Guidance.GoalPointLookAheadHold;
-        if (speedKmh > 1)
-        {
-            lookAhead = Math.Max(
-                config.Guidance.MinLookAheadDistance,
-                config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
-        }
+        double lookAhead = GoalLookAhead(speedKmh);
 
         // Steer axle position
         double steerE = driftedEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase;
@@ -1317,19 +1487,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Track = currentTrack,
             PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
             SteerPosition = new Vec3(steerE, steerN, headingRad),
-            UseStanley = false,
+            UseStanley = config.Guidance.IsStanley,
+            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
+            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyIntegralGain = config.Guidance.StanleyIntegralGainAB,
             IsHeadingSameWay = isHeadingSameWay,
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             GoalPointDistance = lookAhead,
-            SideHillCompFactor = 0,
+            // Side-hill compensation (AgOpenGPS gyd.sideHillCompFactor): steer += roll × −factor.
+            SideHillCompFactor = config.AutoSteer.SideHillCompensation,
             PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
-            IsReverse = false,
+            IsReverse = _isReverse,
             IsAutoSteerOn = true,
             IsYouTurnTriggered = isYouTurnTriggered,
-            ImuRoll = 88888,
+            ImuRoll = _roll, // 0 with no roll source → no side-hill term (#110)
             PreviousState = _trackGuidanceState,
             // Re-acquire the nearest segment globally on engage AND whenever the
             // travel direction along the track flips — otherwise a stranded local
@@ -1349,6 +1523,147 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing,
                 statusMessage);
+    }
+
+    /// <summary>
+    /// Contour for one cycle (#110), like AgOpenGPS: record the pivot (+ tool offset) as a
+    /// strip while any section paints, each time it has moved a third of a width (or 1 m);
+    /// with the contour button on, rebuild the guidance line and compute steering against
+    /// it (also when not engaged, for the XTE display). Returns null with no usable line.
+    /// </summary>
+    private ContourSteer? ProcessContour(bool contourOn, bool hasActiveField,
+        double pivotE, double pivotN, double headingRad, double antennaE, double antennaN,
+        double speedKmh, bool autoSteerEngaged, out Models.Track.Track? displayTrack)
+    {
+        var config = _configStore;
+        var pivot = new Vec3(pivotE, pivotN, headingRad);
+        ContourSteer? steer = null;
+        lock (_contourLock)
+        {
+            if (hasActiveField)
+            {
+                double contourWidth = (config.ActualToolWidth - config.Tool.Overlap) / 3.0;
+                double moved = _lastContourPos is { } lp
+                    ? Math.Sqrt((pivotE - lp.Easting) * (pivotE - lp.Easting) + (pivotN - lp.Northing) * (pivotN - lp.Northing))
+                    : double.MaxValue;
+                if (moved > Math.Min(contourWidth, 1.0))
+                {
+                    bool painting = false;
+                    var states = _sectionControlService.SectionStates;
+                    for (int i = 0; i < states.Count && !painting; i++) painting = states[i].IsMappingOn;
+                    _contour.Record(painting, pivot, config.Tool.Offset);
+
+                    var p = ContourParamsFor(speedKmh);
+                    if (contourOn)
+                        _contour.BuildContourGuidanceLine(pivot, headingRad, p,
+                            Clock.Current.GetTimestamp() / (double)Clock.Current.Frequency);
+                    _lastContourPos = new Vec2(pivotE, pivotN);
+                }
+            }
+
+            if (contourOn)
+            {
+                var p = ContourParamsFor(speedKmh);
+                double wb = config.Vehicle.Wheelbase;
+                var steerPos = new Vec3(pivotE + Math.Sin(headingRad) * wb, pivotN + Math.Cos(headingRad) * wb, headingRad);
+                steer = _contour.DistanceFromContourLine(pivot, steerPos, new Vec2(antennaE, antennaN), headingRad,
+                    p, speedKmh, _isReverse, autoSteerEngaged, _roll);
+            }
+
+            // Display: the line as a track (rebuilt only when it changes) and the reference strip.
+            if (_contour.LineVersion != _contourLineVersion)
+            {
+                _contourLineVersion = _contour.LineVersion;
+                _contourDisplayTrack = _contour.Line.Count >= 2
+                    ? new Models.Track.Track
+                    {
+                        Name = "Contour", Points = new List<Vec3>(_contour.Line),
+                        Type = Models.Track.TrackType.Contour, IsVisible = true, IsActive = true,
+                    }
+                    : null;
+            }
+            displayTrack = contourOn ? _contourDisplayTrack : null;
+
+            int sn = contourOn && _contour.Line.Count >= 2 ? _contour.StripNum : -1;
+            var key = (sn, sn >= 0 ? _contour.Strips[sn].Count : 0);
+            if (key != _contourRefKey)
+            {
+                _contourRefKey = key;
+                _contourRefShown = sn >= 0 ? new List<Vec3>(_contour.Strips[sn]) : null;
+            }
+            _contourLockedShown = contourOn && _contour.IsLocked;
+            _contourHasPending = _contour.PendingSave.Count > 0;
+        }
+        return steer;
+    }
+
+    private ContourParams ContourParamsFor(double speedKmh)
+    {
+        var c = _configStore;
+        return new ContourParams(
+            c.ActualToolWidth, c.Tool.Overlap, c.Tool.Offset,
+            c.Guidance.IsStanley, c.Guidance.StanleyHeadingErrorGain, c.Guidance.StanleyDistanceErrorGain,
+            c.Vehicle.Wheelbase, c.Vehicle.MaxSteerAngle, c.Guidance.PurePursuitIntegralGain,
+            c.AutoSteer.SideHillCompensation, GoalLookAheadFor(speedKmh, _contour.LastCrossTrackError));
+    }
+
+    /// <summary>
+    /// Pure Pursuit look-ahead distance (m), AgOpenGPS CVehicle.UpdateGoalPointDistance:
+    /// speed × 0.05 × mult × H + H, where H is the hold look-ahead on the line
+    /// (|XTE| ≤ 0.1 m), hold × acquire factor off it (≥ 0.4 m), blended in between;
+    /// at least the min look-ahead (AgOpenGPS 2 m). XTE is last cycle's (#110).
+    /// </summary>
+    private double GoalLookAhead(double speedKmh) => GoalLookAheadFor(speedKmh, _lastCrossTrackError);
+
+    private double GoalLookAheadFor(double speedKmh, double lastXte)
+    {
+        var g = _configStore.Guidance;
+        double hold = g.GoalPointLookAheadHold;
+        double acquire = hold * g.GoalPointAcquireFactor;
+        double xte = Math.Abs(lastXte);
+        double h = xte <= 0.1 ? hold
+                 : xte >= 0.4 ? acquire
+                 : acquire + (1 - (xte - 0.1) / 0.3) * (hold - acquire);
+        double d = Math.Abs(speedKmh) * 0.05 * g.GoalPointLookAheadMult * h + h;
+        return Math.Max(g.MinLookAheadDistance, d);
+    }
+
+    /// <summary>
+    /// Display-only Pure Pursuit goal point for free-drive (#95): the target the steering
+    /// would chase if engaged right now, on the pass the display line shows. Stateless —
+    /// no PreviousState and a fresh global nearest search — so the PP integral and the
+    /// nearest-segment memory the engaged path keeps in _trackGuidanceState are untouched.
+    /// Returns null when the track is degenerate.
+    /// </summary>
+    private Vec2? CalculateDisplayGoalPoint(
+        Position pos, Models.Track.Track displayTrack,
+        double pivotEasting, double pivotNorthing, double headingRad)
+    {
+        var config = _configStore;
+        if (config.Guidance.IsStanley) return null; // Stanley has no look-ahead target (#99)
+        double speedKmh = pos.Speed * 3.6;
+        var output = _trackGuidanceService.CalculateGuidance(new Models.Track.TrackGuidanceInput
+        {
+            Track = displayTrack,
+            PivotPosition = new Vec3(pivotEasting, pivotNorthing, headingRad),
+            SteerPosition = new Vec3(
+                pivotEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
+                pivotNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
+                headingRad),
+            UseStanley = false,
+            Wheelbase = config.Vehicle.Wheelbase,
+            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
+            GoalPointDistance = GoalLookAhead(speedKmh),
+            FixHeading = headingRad,
+            AvgSpeed = speedKmh,
+            IsAutoSteerOn = false,
+            ImuRoll = 88888,
+            PreviousState = null,
+            FindGlobalNearest = true,
+        });
+        // CalculateGuidance flags an unusable track/segment with a 32000 m distance.
+        if (output.DistanceFromLinePivot >= 32000) return null;
+        return output.GoalPoint;
     }
 
     /// <summary>
@@ -1446,27 +1761,27 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // while moving, so the goal point jumped CLOSER at the track→turn handoff — a sudden
         // sharper steer that made the tractor hunt for ~½ s on entry (exit was gentler
         // because the goal jumped farther). Matching them makes the handoff seamless.
-        double lookAhead = config.Guidance.GoalPointLookAheadHold;
-        if (speedKmh > 1)
-        {
-            lookAhead = Math.Max(
-                config.Guidance.MinLookAheadDistance,
-                config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
-        }
+        double lookAhead = GoalLookAhead(speedKmh); // same as track guidance (AgOpenGPS UpdateGoalPointDistance)
 
         var input = new YouTurnGuidanceInput
         {
             TurnPath = turnPath,
             PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRad),
-            SteerPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRad),
+            // Front (steer) axle — Stanley measures its error there; Pure Pursuit ignores it.
+            SteerPosition = new Vec3(
+                currentPosition.Easting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
+                currentPosition.Northing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
+                headingRad),
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            UseStanley = false,
+            UseStanley = config.Guidance.IsStanley,
+            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
+            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
             GoalPointDistance = lookAhead,
             UTurnCompensation = config.Guidance.UTurnCompensation,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
-            IsReverse = false,
+            IsReverse = _isReverse,
             UTurnStyle = config.Guidance.UTurnStyle
         };
 
@@ -1638,7 +1953,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         var input = new Models.Headland.HeadlandDetectionInput
         {
-            IsHeadlandOn = true,
+            // The headland distance HUD follows the headland toggle (AgOpenGPS, #106).
+            IsHeadlandOn = _appState.FieldTools.IsHeadlandOn,
             VehiclePosition = toolPivot,
             Boundaries = new List<Models.Headland.BoundaryData>
             {
@@ -1662,13 +1978,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
     ///
     /// Returns: 0 = off, 1 = lower (in cultivated area), 2 = raise (in headland zone).
     /// </summary>
-    private byte ComputeHydLiftState(Vec3 toolPosition, double speed, List<Vec3>? headlandLine)
+    private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine)
     {
         var machine = _configStore.Machine;
         if (!machine.HydraulicLiftEnabled) return 0;
+        // AgOpenGPS turns the hydraulic lift off with the headland (#106).
+        if (!_appState.FieldTools.IsHeadlandOn) return 0;
 
-        // Don't operate at very low speed or in reverse
-        if (speed < 0.2 || speed < -0.1) return 0;
+        // Don't operate at very low speed or in reverse (AgOpenGPS CHead: !isReverse, #125)
+        if (speed < 0.2 || _isReverse) return 0;
 
         if (headlandLine == null || headlandLine.Count < 3) return 0;
 
@@ -1678,24 +1996,79 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool inBoundary = boundary.IsPointInside(toolPosition.Easting, toolPosition.Northing);
         if (!inBoundary) return 0;
 
-        bool inCultivatedArea = Models.Base.GeometryMath.IsPointInPolygon(
-            headlandLine, new Vec2(toolPosition.Easting, toolPosition.Northing));
+        // Look ahead by speed × Machine look-ahead time (AgOpenGPS hydLiftLookAheadTime,
+        // capped at 20 m), so the lift moves before the tool reaches the headland line and
+        // the hydraulics' delay is absorbed (#110).
+        double ahead = Math.Min(Math.Abs(speed) * Math.Max(0, _configStore.Machine.LookAhead), 20.0);
+        var probe = new Vec2(toolPosition.Easting + Math.Sin(toolHeading) * ahead,
+                             toolPosition.Northing + Math.Cos(toolHeading) * ahead);
+        bool inCultivatedArea = Models.Base.GeometryMath.IsPointInPolygon(headlandLine, probe);
 
         return inCultivatedArea ? (byte)1 : (byte)2;
     }
 
-    private void CheckRtkQualityChange(int fixQuality)
+    // Monotonic ms clock; tests substitute it to step past the below-min-speed grace period.
+    internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;
+    private long? _belowMinSteerSpeedSinceMs;
+    private const long BelowMinSteerSpeedGraceMs = 8000; // AgOpenGPS: 80 frames at 10 Hz
+
+    /// <summary>
+    /// AgOpenGPS steering speed limits: above Max steer speed disengages at once; below Min
+    /// steer speed for ~8 s disengages (so you can engage from a standstill and pull away).
+    /// A limit of 0 is off. Returns the disengage reason, or null. The panel settings used to
+    /// be read by nothing (#106).
+    /// </summary>
+    private string? CheckSteerSpeedLimits(double speedKmh)
     {
-        if (fixQuality != _previousFixQuality)
+        var a = _configStore.AutoSteer;
+        if (a.MaxSteerSpeed > 0 && speedKmh > a.MaxSteerSpeed)
         {
-            bool wasRtk = _previousFixQuality >= 4;
-            bool isRtk = fixQuality >= 4;
-            if (wasRtk && !isRtk)
-                _audioService.Play(SoundEffect.RtkLost);
-            else if (!wasRtk && isRtk)
-                _audioService.Play(SoundEffect.RtkRecovered);
-            _previousFixQuality = fixQuality;
+            _belowMinSteerSpeedSinceMs = null;
+            return $"AutoSteer disengaged - above maximum steering speed ({FormatSpeed(a.MaxSteerSpeed)})";
         }
+        if (a.MinSteerSpeed > 0 && speedKmh < a.MinSteerSpeed)
+        {
+            long now = NowMs();
+            _belowMinSteerSpeedSinceMs ??= now;
+            if (now - _belowMinSteerSpeedSinceMs.Value >= BelowMinSteerSpeedGraceMs)
+            {
+                _belowMinSteerSpeedSinceMs = null;
+                return $"AutoSteer disengaged - below minimum steering speed ({FormatSpeed(a.MinSteerSpeed)})";
+            }
+            return null;
+        }
+        _belowMinSteerSpeedSinceMs = null;
+        return null;
+    }
+
+    private string FormatSpeed(double kmh) =>
+        _configStore.IsMetric ? $"{kmh:0.#} km/h" : $"{kmh * 0.621371:0.#} mph";
+
+    /// <summary>
+    /// RTK fix alarm, as AgOpenGPS (isRTK_AlarmOn / isRTK_KillAutosteer): only when the
+    /// "RTK lost alarm" setting is on; "lost" means leaving RTK fixed (quality 4) — float
+    /// counts as lost. Returns true on the lost edge when "Alarm stops AutoSteer" is set, so
+    /// the caller disengages. Both settings used to be ignored (#106): the sound played
+    /// regardless and autosteer never stopped.
+    /// </summary>
+    private bool CheckRtkQualityChange(int fixQuality)
+    {
+        if (fixQuality == _previousFixQuality) return false;
+        bool wasRtk = _previousFixQuality == 4;
+        bool isRtk = fixQuality == 4;
+        _previousFixQuality = fixQuality;
+
+        var con = _configStore.Connections;
+        if (!con.RtkLostAlarm) return false;
+
+        if (wasRtk && !isRtk)
+        {
+            _audioService.Play(SoundEffect.RtkLost);
+            return con.RtkLostAction != 0; // web toggle "Alarm stops AutoSteer" (1 = pause AutoSteer)
+        }
+        if (!wasRtk && isRtk)
+            _audioService.Play(SoundEffect.RtkRecovered);
+        return false;
     }
 
 }

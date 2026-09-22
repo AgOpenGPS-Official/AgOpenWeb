@@ -75,11 +75,29 @@ public interface IGpsPipelineService
     /// </summary>
     void SetDriftCompensation(double driftE, double driftN);
 
+    // ── Contour (#110, AgOpenGPS CContour) ───────────────────────────────
+
+    /// <summary>Contour button: guide along recorded contour strips instead of the track.</summary>
+    void SetContourMode(bool on);
+
+    /// <summary>Contour lock button. Returns whether the line is now locked.</summary>
+    bool ToggleContourLock();
+
+    /// <summary>Replace the contour strips (field opened: Contour.txt; field closed: none).</summary>
+    void LoadContours(IEnumerable<List<Vec3>> strips);
+
+    /// <summary>Delete contour paths: forget every strip, like AgOpenGPS.</summary>
+    void ResetContours();
+
+    /// <summary>Finished strips to append to Contour.txt; each is returned once.</summary>
+    List<List<Vec3>> TakeContoursToSave();
+
     /// <summary>
     /// Push YouTurn configuration (skip-rows, skip-worked mode, headland
     /// geometry) so the cycle worker can build its own TickContext.
     /// </summary>
-    void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance);
+    void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance,
+        bool isAlternateSkipMode = false);
 
     /// <summary>
     /// Tell the pipeline whether a real field is currently loaded. Used by the

@@ -17,6 +17,7 @@ public static partial class RemoteServerWiring
         "track.recordCurve", "track.finishCurve", "track.setABGps",
         "track.createFromBoundary", "track.boundaryCurve", "track.boundaryCurveSeg", "track.allEdges",
         "track.setVisible", "track.toggleRecPaths", "track.editSave",
+        "track.rename", // field data, like editSave / headland.rename; was silently dropped for observers (#111)
     };
 
     // Field Builder headland *building* is field-data editing (done while reviewing the
@@ -30,6 +31,19 @@ public static partial class RemoteServerWiring
         "headland.delete", "headland.deleteAll", "headland.rename", "headland.editSave",
     };
 
+    /// <summary>Parse a whole-number setting, rounding a decimal ("12.5" → 13) rather than
+    /// rejecting it (#112).</summary>
+    internal static bool TryParseRoundedInt(string val, out int i)
+    {
+        i = 0;
+        if (!double.TryParse(val, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var d)
+            || double.IsNaN(d) || d > int.MaxValue || d < int.MinValue)
+            return false;
+        i = (int)Math.Round(d, MidpointRounding.AwayFromZero);
+        return true;
+    }
+
     // Config bridge (Phase 9a+): apply one "key:value" config write from the web client.
     // Device settings (e.g. units) persist immediately via SaveAppSettings; profile
     // settings (vehicle dims) take live effect only — the client persists them with a
@@ -40,7 +54,9 @@ public static partial class RemoteServerWiring
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         bool D(out double d) => double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out d);
-        bool I(out int i) => int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out i);
+        // Whole-number settings accept a decimal and round it: metric input like "12.5" was
+        // silently dropped by a strict int parse (imperial input was already rounded, #112).
+        bool I(out int i) => TryParseRoundedInt(val, out i);
         bool B() => val == "1";
         bool IDX(out int i, out string rest) // "i,rest" — indexed array writes
         {
@@ -65,7 +81,15 @@ public static partial class RemoteServerWiring
             case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
             case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
             // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
-            case "vehicle.type": if (I(out var ty)) veh.Type = (AgOpenWeb.Models.VehicleType)ty; return;
+            case "vehicle.type":
+                if (I(out var ty))
+                {
+                    veh.Type = (AgOpenWeb.Models.VehicleType)ty;
+                    // A harvester's header is front-mounted: AgOpenGPS ConfigTool forces
+                    // the tool to Front Fixed and hides the other types (#111).
+                    if (veh.Type == AgOpenWeb.Models.VehicleType.Harvester) tool.SetToolType("front");
+                }
+                return;
             case "vehicle.hitchType": if (I(out var ht)) veh.HitchType = ht; return;
             case "vehicle.hitchLength": if (D(out var d1)) veh.HitchLength = d1; return;
             case "vehicle.wheelbase": if (D(out var d2)) veh.Wheelbase = d2; return;
@@ -96,7 +120,8 @@ public static partial class RemoteServerWiring
             case "roll.isRollInvert": ahrs.IsRollInvert = B(); return;
             case "roll.setZero": ahrs.RollZero = 0; return; // mirror SetRollZeroCommand
             // --- Tool / Implement (ConfigStore.Tool + NumSections) ---
-            case "tool.type": tool.SetToolType(val); return; // front/rear/tbt/trailing
+            case "tool.type": // front/rear/tbt/trailing; a harvester only takes front (#111)
+                tool.SetToolType(veh.Type == AgOpenWeb.Models.VehicleType.Harvester ? "front" : val); return;
             case "tool.hitchType": if (I(out var th)) tool.HitchType = th; return;
             case "tool.hitchLength": if (D(out var t1)) tool.HitchLength = t1; return;
             case "tool.trailingHitchLength": if (D(out var t2)) tool.TrailingHitchLength = t2; return;
@@ -146,6 +171,7 @@ public static partial class RemoteServerWiring
             case "tram.passes": if (I(out var tp)) gd.TramPasses = tp; return;
             case "tram.display": gd.TramDisplay = B(); return;
             case "tram.line": if (I(out var tl)) gd.TramLine = tl; return;
+            case "tram.width": if (D(out var tw) && tw > 0) store.Tram.TramWidth = tw; return; // m (#110)
             // --- Machine Control (ConfigStore.Machine) ---
             case "machine.hydraulicLiftEnabled": mch.HydraulicLiftEnabled = B(); return;
             case "machine.raiseTime": if (I(out var m1)) mch.RaiseTime = m1; return;
@@ -182,22 +208,26 @@ public static partial class RemoteServerWiring
             // SoT the VM binds to); MarkChanged re-fingerprints so the Config frame
             // re-sends and the value persists on a profile.save / Send&Save. Hardware
             // push is the separate (gated) autosteer.* actions, not these edits. ---
-            // Tab 1 — Pure Pursuit / Stanley
-            case "autosteer.steerResponseHold": if (D(out var a1)) { ast.SteerResponseHold = a1; store.MarkChanged(); } return;
-            case "autosteer.integralGain": if (D(out var a2)) { ast.IntegralGain = a2; store.MarkChanged(); } return;
-            case "autosteer.isStanleyMode": ast.IsStanleyMode = B(); store.MarkChanged(); return;
-            case "autosteer.stanleyAggressiveness": if (D(out var a3)) { ast.StanleyAggressiveness = a3; store.MarkChanged(); } return;
-            case "autosteer.stanleyOvershootReduction": if (D(out var a4)) { ast.StanleyOvershootReduction = a4; store.MarkChanged(); } return;
+            // Tab 1 — Pure Pursuit / Stanley. These (and speedFactor / uTurnCompensation
+            // below) write GuidanceConfig — what the pipeline steers with (#99). They keep
+            // their autosteer.* ids because they sit on the AutoSteer panel.
+            case "autosteer.steerResponseHold": if (D(out var a1)) { gd.GoalPointLookAheadHold = a1; store.MarkChanged(); } return;
+            case "autosteer.integralGain": if (D(out var a2)) { gd.PurePursuitIntegralGain = a2; store.MarkChanged(); } return;
+            case "autosteer.isStanleyMode": gd.IsPurePursuit = !B(); store.MarkChanged(); return;
+            case "autosteer.stanleyAggressiveness": if (D(out var a3)) { gd.StanleyDistanceErrorGain = a3; store.MarkChanged(); } return;
+            case "autosteer.stanleyOvershootReduction": if (D(out var a4)) { gd.StanleyHeadingErrorGain = a4; store.MarkChanged(); } return;
             // Tab 2 — Steering Sensor
             case "autosteer.wasOffset": if (I(out var a5)) { ast.WasOffset = a5; store.MarkChanged(); } return;
             case "autosteer.countsPerDegree": if (D(out var a6)) { ast.CountsPerDegree = a6; store.MarkChanged(); } return;
             case "autosteer.ackermann": if (I(out var a7)) { ast.Ackermann = a7; store.MarkChanged(); } return;
-            case "autosteer.maxSteerAngle": if (I(out var a8)) { ast.MaxSteerAngle = a8; store.MarkChanged(); } return;
+            // Max steer angle: the vehicle's, which guidance / U-turn / free drive clamp with (#106).
+            case "autosteer.maxSteerAngle": if (D(out var a8)) { veh.MaxSteerAngle = a8; store.MarkChanged(); } return;
             // Tab 3 — Deadzone / Timing
             case "autosteer.deadzoneHeading": if (D(out var a9)) { ast.DeadzoneHeading = a9; store.MarkChanged(); } return;
             case "autosteer.deadzoneDelay": if (I(out var a10)) { ast.DeadzoneDelay = a10; store.MarkChanged(); } return;
-            case "autosteer.speedFactor": if (D(out var a11)) { ast.SpeedFactor = a11; store.MarkChanged(); } return;
-            case "autosteer.acquireFactor": if (D(out var a12)) { ast.AcquireFactor = a12; store.MarkChanged(); } return;
+            case "autosteer.speedFactor": if (D(out var a11)) { gd.GoalPointLookAheadMult = a11; store.MarkChanged(); } return;
+            // Acquire factor lives with the other Pure Pursuit tuning (#99, #110).
+            case "autosteer.acquireFactor": if (D(out var a12)) { gd.GoalPointAcquireFactor = Math.Clamp(a12, 0.2, 3.0); store.MarkChanged(); } return;
             // Tab 4 — Gain / PWM
             case "autosteer.proportionalGain": if (I(out var a13)) { ast.ProportionalGain = a13; store.MarkChanged(); } return;
             case "autosteer.maxPwm": if (I(out var a14)) { ast.MaxPwm = a14; store.MarkChanged(); } return;
@@ -219,14 +249,15 @@ public static partial class RemoteServerWiring
             case "autosteer.imuAxisSwap": if (I(out var a21)) { ast.ImuAxisSwap = a21; store.MarkChanged(); } return;
             case "autosteer.externalEnable": if (I(out var a22)) { ast.ExternalEnable = a22; store.MarkChanged(); } return;
             // Tab 7 — Algorithm
-            case "autosteer.uTurnCompensation": if (D(out var a23)) { ast.UTurnCompensation = a23; store.MarkChanged(); } return;
+            case "autosteer.uTurnCompensation": // panel shows % change from the 1.0 multiplier
+                if (D(out var a23)) { gd.UTurnCompensation = AgOpenWeb.Models.Configuration.GuidanceConfig.UTurnCompensationFromPercent(a23); store.MarkChanged(); } return;
             case "autosteer.sideHillCompensation": if (D(out var a24)) { ast.SideHillCompensation = a24; store.MarkChanged(); } return;
             case "autosteer.steerInReverse": ast.SteerInReverse = B(); store.MarkChanged(); return;
             // Tab 8 — Speed Limits
             case "autosteer.manualTurnsEnabled": ast.ManualTurnsEnabled = B(); store.MarkChanged(); return;
-            case "autosteer.manualTurnsSpeed": if (D(out var a25)) { ast.ManualTurnsSpeed = a25; store.MarkChanged(); } return;
-            case "autosteer.minSteerSpeed": if (D(out var a26)) { ast.MinSteerSpeed = a26; store.MarkChanged(); } return;
-            case "autosteer.maxSteerSpeed": if (D(out var a27)) { ast.MaxSteerSpeed = a27; store.MarkChanged(); } return;
+            case "autosteer.manualTurnsSpeed": if (D(out var a25)) { ast.ManualTurnsSpeed = Math.Clamp(a25, 0, 20); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
+            case "autosteer.minSteerSpeed": if (D(out var a26)) { ast.MinSteerSpeed = Math.Clamp(a26, 0, 10); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
+            case "autosteer.maxSteerSpeed": if (D(out var a27)) { ast.MaxSteerSpeed = Math.Clamp(a27, 0, 50); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
             // Tab 9 — Display
             case "autosteer.lineWidth": if (I(out var a28)) { ast.LineWidth = a28; store.MarkChanged(); } return;
             case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; store.MarkChanged(); } return;
@@ -262,7 +293,7 @@ public static partial class RemoteServerWiring
         try
         {
             if (t == typeof(double)) { if (double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out var d)) conv = d; }
-            else if (t == typeof(int)) { if (int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out var i)) conv = i; }
+            else if (t == typeof(int)) { if (TryParseRoundedInt(val, out var i)) conv = i; } // e.g. Ackermann, Kp (#112)
             else if (t == typeof(bool)) conv = val == "1" || val == "true";
             else if (t.IsEnum) { if (int.TryParse(val, out var e)) conv = System.Enum.ToObject(t, e); }
             else if (t == typeof(string)) conv = val;
@@ -354,8 +385,8 @@ public static partial class RemoteServerWiring
                 if (a.Length == 3 && a[0] == "vehicle") cfg.RenameVehicleProfile(a[1], a[2]);
                 else if (a.Length == 3 && a[0] == "tool") cfg.RenameToolProfile(a[1], a[2]);
                 return;
-            case "profile.reset": // <kind> — CreateProfile("Default") (matches Reset-to-Default)
-                cfg.CreateProfile("Default");
+            case "profile.reset": // <kind> — reset only that column's Default profile (#111)
+                cfg.CreateProfile("Default", vehicle: a[0] != "tool", tool: a[0] != "vehicle");
                 return;
             case "profile.configureVehicle": // <name> — make it active before the dialog opens
                 if (!string.Equals(arg, store.ActiveVehicleProfileName, System.StringComparison.OrdinalIgnoreCase))
@@ -382,7 +413,7 @@ public static partial class RemoteServerWiring
     private static void ApplyNtripCommand(
         AgOpenWeb.Services.Interfaces.INtripProfileService svc,
         AgOpenWeb.Models.State.ApplicationState state, IUiDispatcher dispatcher,
-        string cmd, string arg)
+        string cmd, string arg, AgOpenWeb.ViewModels.MainViewModel? vm = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         switch (cmd)
@@ -427,7 +458,18 @@ public static partial class RemoteServerWiring
                     AssociatedFields = assoc,
                 };
                 if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; }
+                // Copy the old caster settings before saving (the save may update the stored
+                // profile in place), to tell whether the connected one changed.
+                var before = existing == null ? null : new AgOpenWeb.Models.Ntrip.NtripProfile
+                {
+                    Name = existing.Name, CasterHost = existing.CasterHost, CasterPort = existing.CasterPort,
+                    MountPoint = existing.MountPoint, Username = existing.Username, Password = existing.Password,
+                };
                 _ = svc.SaveProfileAsync(profile);
+                // Editing the profile we're connected with: reconnect with the new settings
+                // now, not at the next field load / restart (#111).
+                if (before != null && vm != null)
+                    _ = vm.ReconnectNtripIfConnectedAsync(before, profile);
                 return;
             }
         }
@@ -478,11 +520,14 @@ public static partial class RemoteServerWiring
             }
             case "field.deleteField":
                 if (sw.DeleteFieldCommand.CanExecute(null)) sw.DeleteFieldCommand.Execute(null);
+                else if (sw.SelectedField != null) vm.ReportFailure("Close the field before deleting it");
                 return;
             case "field.deleteJob": // field \t taskName
             {
                 var job = sw.JobsForSelectedField.FirstOrDefault(j => j.TaskName == a.ElementAtOrDefault(1));
-                if (job != null && sw.DeleteJobCommand.CanExecute(job)) sw.DeleteJobCommand.Execute(job);
+                if (job == null) return;
+                if (sw.DeleteJobCommand.CanExecute(job)) sw.DeleteJobCommand.Execute(job);
+                else vm.ReportFailure("Close the job before deleting it");
                 return;
             }
         }
@@ -497,9 +542,15 @@ public static partial class RemoteServerWiring
         switch (cmd)
         {
             case "app.resetSettings":
-                services.GetRequiredService<ISettingsService>().ResetToDefaults();
+            {
+                // Save between reset and reload (as the native command does) — LoadAppSettings
+                // re-reads the file, so without it the old settings came straight back (#107).
+                var settings = services.GetRequiredService<ISettingsService>();
+                settings.ResetToDefaults();
+                settings.Save();
                 configService.LoadAppSettings();
                 return;
+            }
             case "app.setHotkey": // arg = Action:Key
             {
                 var ci = arg.IndexOf(':');

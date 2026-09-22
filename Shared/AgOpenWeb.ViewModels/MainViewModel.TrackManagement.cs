@@ -77,7 +77,7 @@ public partial class MainViewModel
         {
             if (!IsFieldOpen)
             {
-                StatusMessage = "Open a field first";
+                ReportFailure("Open a field first");
                 return;
             }
             _recPathRecordingPoints.Clear();
@@ -140,7 +140,7 @@ public partial class MainViewModel
             var activeField = _fieldService.ActiveField;
             if (activeField == null || string.IsNullOrEmpty(activeField.DirectoryPath))
             {
-                StatusMessage = "Open a field first before importing tracks";
+                ReportFailure("Open a field first before importing tracks");
                 return;
             }
 
@@ -149,7 +149,7 @@ public partial class MainViewModel
             var fieldsDir = FieldsRootDirectory;
             if (string.IsNullOrEmpty(fieldsDir) || !Directory.Exists(fieldsDir))
             {
-                StatusMessage = "No fields directory found";
+                ReportFailure("No fields directory found");
                 return;
             }
 
@@ -166,7 +166,7 @@ public partial class MainViewModel
 
             if (ImportFieldsList.Count == 0)
             {
-                StatusMessage = "No other fields with tracks found";
+                ReportFailure("No other fields with tracks found");
                 return;
             }
 
@@ -186,7 +186,7 @@ public partial class MainViewModel
                 var importedTracks = Services.TrackFilesService.Load(sourceDir);
                 if (importedTracks.Count == 0)
                 {
-                    StatusMessage = "No tracks found in selected field";
+                    ReportFailure("No tracks found in selected field");
                     return;
                 }
 
@@ -219,7 +219,7 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
-                StatusMessage = $"Import failed: {ex.Message}";
+                ReportFailure($"Import failed: {ex.Message}");
                 _logger.LogWarning(ex, "[TrackImport] Failed to import tracks from {Field}", fieldName);
             }
         });
@@ -233,23 +233,10 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
-
-            var trackName = SelectedTrack.Name;
-            var trackToRemove = SelectedTrack;
-            bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
-            SelectedTrack = null;
-            SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
-            RebuildRecordedPathsAndContours();
-            SaveTracksToFile();
-            // A recorded path is re-loaded from RecPath.txt on every field open
-            // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
-            // the file must go too, else it reappears after restart.
-            if (wasRecPath && _fieldService.ActiveField is { } f)
-                RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
-            StatusMessage = $"Deleted track '{trackName}'";
+            DeleteTrack(SelectedTrack);
         });
 
         StartContourRecordingCommand = new RelayCommand(() =>
@@ -285,7 +272,7 @@ public partial class MainViewModel
 
             if (_contourRecordingPoints.Count < 3)
             {
-                StatusMessage = $"Need at least 3 points for contour (have {_contourRecordingPoints.Count})";
+                ReportFailure($"Need at least 3 points for contour (have {_contourRecordingPoints.Count})");
                 _contourRecordingPoints.Clear();
                 _lastContourPoint = null;
                 return;
@@ -477,4 +464,62 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
 }
 
     #endregion
+
+    /// <summary>Delete one saved track. Deactivates it first if it's the active one;
+    /// any other active track stays active.</summary>
+    private void DeleteTrack(Track trackToRemove)
+    {
+        var trackName = trackToRemove.Name;
+        bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
+        if (SelectedTrack == trackToRemove) SelectedTrack = null;
+        SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
+        RebuildRecordedPathsAndContours();
+        SaveTracksToFile();
+        // A recorded path is re-loaded from RecPath.txt on every field open
+        // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
+        // the file must go too, else it reappears after restart.
+        if (wasRecPath && _fieldService.ActiveField is { } f)
+            RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+        StatusMessage = $"Deleted track '{trackName}'";
+    }
+
+    /// <summary>Tracks manager / Field Builder Delete (web, #109): delete the track the
+    /// operator highlighted, by index, rather than whatever happens to be active.</summary>
+    public void DeleteTrackAt(int index)
+    {
+        if (index < 0 || index >= SavedTracks.Count)
+        {
+            ReportFailure("No track selected");
+            return;
+        }
+        DeleteTrack(SavedTracks[index]);
+    }
+
+    /// <summary>Tracks manager Activate (web, #109), like AgOpenGPS's Use: activate the
+    /// highlighted track, or the first visible one when nothing (or a hidden track) is
+    /// highlighted. Activating the track that's already active turns it off, so the
+    /// operator can still stop guidance from here.</summary>
+    public void ActivateTrackAt(int index)
+    {
+        // Auto Track would switch away from this choice within a second, so picking a
+        // track by hand turns it off (AgOpenGPS btnTrack / btnCycleLines).
+        IsAutoTrackEnabled = false;
+
+        Track? t = index >= 0 && index < SavedTracks.Count && SavedTracks[index].IsVisible
+            ? SavedTracks[index]
+            : SavedTracks.FirstOrDefault(x => x.IsVisible);
+        if (t == null)
+        {
+            ReportFailure("No visible tracks");
+            return;
+        }
+        if (t == SelectedTrack)
+        {
+            SelectedTrack = null;
+            StatusMessage = "Track deactivated";
+            return;
+        }
+        SelectedTrack = t;
+        StatusMessage = $"Activated track: {t.Name}";
+    }
 }

@@ -151,12 +151,10 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _fieldTextureVisible, value);
     }
 
-    private bool _fieldTextureMoveable;
+    private bool _fieldTextureMoveable = true;
     /// <summary>
-    /// When true, the ground texture is rendered as world-tiled bitmaps
-    /// so it visibly scrolls under the tractor as the camera pans. When
-    /// false (default), the texture is rendered as a single stretched
-    /// bitmap centered on the camera — FPS-stable but visually static.
+    /// When true (default, like AgOpenGPS), the ground texture is anchored to the world
+    /// so it scrolls under the tractor. When false it stays fixed to the camera (#110).
     /// </summary>
     public bool FieldTextureMoveable
     {
@@ -171,9 +169,11 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _extraGuidelines, value);
     }
 
-    // Auto-select the nearest track when none is manually chosen (#143). Persisted so the
-    // operator's choice survives restarts.
-    private bool _autoTrack = true;
+    // Auto Track: keep switching to the nearest track while AutoSteer is off. Off by
+    // default, like AgOpenGPS (CTrack.isAutoTrack) — on, it overrides the track the
+    // operator picked a second later. Persisted, unlike AgOpenGPS, so the choice survives
+    // restarts; picking a track by hand turns it off.
+    private bool _autoTrack;
     public bool AutoTrack
     {
         get => _autoTrack;

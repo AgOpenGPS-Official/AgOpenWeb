@@ -63,8 +63,8 @@ public class VehicleDimensionsStepViewModel : WizardStepViewModel
     protected override void OnLeaving()
     {
         var vehicle = _configService.Store.Vehicle;
-        vehicle.Wheelbase = Wheelbase;
-        vehicle.TrackWidth = TrackWidth;
+        if (Touched(nameof(Wheelbase))) vehicle.Wheelbase = Wheelbase;
+        if (Touched(nameof(TrackWidth))) vehicle.TrackWidth = TrackWidth;
     }
 
     public override Task<bool> ValidateAsync()

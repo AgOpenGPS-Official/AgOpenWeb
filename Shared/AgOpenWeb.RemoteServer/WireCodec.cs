@@ -19,7 +19,7 @@ public static class WireCodec
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
-        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21;
+        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21, Prompt = 22, Toast = 23, DrivePick = 24, HardwareMessage = 25;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -30,6 +30,64 @@ public static class WireCodec
         using var w = new BinaryWriter(ms);
         w.Write(Sound);
         w.Write(effectId);
+        return ms.ToArray();
+    }
+
+    /// <summary>The host's pending confirm/error dialog (#109). Re-sent whenever it
+    /// changes and in every client's seed; Kind 0 clears it.</summary>
+    public static byte[] EncodePrompt(PromptDto p)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Prompt);
+        w.Write(p.Seq);                   // i32
+        w.Write((byte)p.Kind);
+        WriteStr(w, p.Title);
+        WriteStr(w, p.Message);
+        WriteStr(w, p.ConfirmLabel);
+        WriteStr(w, p.CancelLabel);
+        WriteStr(w, p.CheckboxLabel);
+        w.Write((byte)(p.CheckboxChecked ? 1 : 0));
+        return ms.ToArray();
+    }
+
+    /// <summary>One-shot notification text (a refusal or failure, #109). Pushed
+    /// event-driven, like <see cref="EncodeSound"/>; not part of the seed.</summary>
+    /// <summary>Module hardware message (PGN 221, #110): text, seconds, warning.</summary>
+    public static byte[] EncodeHardwareMessage(string text, int seconds, bool warning)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(HardwareMessage);
+        WriteStr(w, text);
+        w.Write(seconds);
+        w.Write((byte)(warning ? 1 : 0));
+        return ms.ToArray();
+    }
+
+    public static byte[] EncodeToast(string message)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(Toast);
+        WriteStr(w, message);
+        return ms.ToArray();
+    }
+
+    /// <summary>One-shot Drive In pick list (#109): the fields within 0.5 km when Drive
+    /// In found more than one (AgOpenGPS FormDrivePicker). Not part of the seed.</summary>
+    public static byte[] EncodeDrivePick(IReadOnlyList<FieldEntryDto> fields)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(DrivePick);
+        w.Write(fields.Count);
+        foreach (var f in fields)
+        {
+            WriteStr(w, f.Name);
+            w.Write(f.DistanceKm);        // f64
+            w.Write(f.AreaHa);            // f64
+        }
         return ms.ToArray();
     }
 
@@ -279,6 +337,7 @@ public static class WireCodec
         w.Write(tr.Passes);            // i32
         w.Write((byte)(tr.Display ? 1 : 0));
         w.Write(tr.Line);              // i32
+        w.Write(tr.Width);             // f64 — tram width, m (#110)
         // Machine Control tab.
         var m = c.Machine;
         w.Write((byte)(m.HydraulicLiftEnabled ? 1 : 0));
@@ -455,6 +514,12 @@ public static class WireCodec
         }
         w.Write(s.TramLines.Count);
         foreach (var line in s.TramLines) WritePts(w, line);
+        w.Write(s.RecordedPaths.Count);                           // #110
+        foreach (var line in s.RecordedPaths) WritePts(w, line);
+        w.Write(s.ContourStrips.Count);
+        foreach (var line in s.ContourStrips) WritePts(w, line);
+        WriteOptPts(w, s.ContourRef);
+        w.Write((byte)(s.ContourLocked ? 1 : 0));
 
         return ms.ToArray();
     }
@@ -496,7 +561,7 @@ public static class WireCodec
         w.Write((byte)(t.SectionInHeadland ? 1 : 0));
         w.Write((byte)(t.AutoTrack ? 1 : 0));
         w.Write((byte)t.SkipRows);
-        w.Write((byte)(t.SkipRowsOn ? 1 : 0));
+        w.Write((byte)t.SkipMode); // #111 — skip mode 0/1/2
         w.Write((byte)t.TramMode);
         // Headland-distance HUD.
         w.Write((float)t.HeadlandProximityDistance);
@@ -515,6 +580,13 @@ public static class WireCodec
         w.Write(t.HostMs);           // f64 — host monotonic build time (client interp timeline)
         w.Write((byte)(t.IsYouTurnExecuting ? 1 : 0)); // #50 — mid-turn gate for on-screen buttons
         w.Write(t.PassNumber);       // i32 — guidance pass offset (0 = on reference)
+        w.Write((float)t.NudgeOffset); // f32 — driver-relative nudge (m, +right) — #93 readout
+        w.Write((byte)(t.HasGoal ? 1 : 0)); // #95 — PP goal marker
+        w.Write(t.GoalE);            // f64
+        w.Write(t.GoalN);            // f64
+        w.Write((byte)(t.IsReverse ? 1 : 0)); // #125 — reversing
+        w.Write((byte)(t.ModuleNotSteering ? 1 : 0)); // #126 — engaged but module not steering
+        w.Write((float)t.ChartGpsHeading); // f32 — heading chart GPS fix-to-fix (#111)
         return ms.ToArray();
     }
 

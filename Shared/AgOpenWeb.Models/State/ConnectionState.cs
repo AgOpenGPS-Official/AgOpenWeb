@@ -121,6 +121,16 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _isAutoSteerDataOk, value);
     }
 
+    /// <summary>AutoSteer is engaged but the steer module reports it isn't steering
+    /// (PGN 253 steer bit high: sensor kickout, switch off, button). AgOpenGPS turns
+    /// the steer circle red for this (#126).</summary>
+    private bool _isModuleNotSteering;
+    public bool IsModuleNotSteering
+    {
+        get => _isModuleNotSteering;
+        set => SetProperty(ref _isModuleNotSteering, value);
+    }
+
     private bool _isAutoSteerEngaged;
     public bool IsAutoSteerEngaged
     {

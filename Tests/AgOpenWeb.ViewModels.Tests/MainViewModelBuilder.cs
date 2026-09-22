@@ -21,14 +21,18 @@ public class MainViewModelBuilder
     public ISettingsService SettingsService { get; } = Substitute.For<ISettingsService>();
     public IVehicleProfileService VehicleProfileService { get; } = Substitute.For<IVehicleProfileService>();
     public INtripProfileService NtripProfileService { get; } = Substitute.For<INtripProfileService>();
+    public INtripClientService NtripService { get; } = Substitute.For<INtripClientService>();
     public IGpsService GpsService { get; } = Substitute.For<IGpsService>();
     public ITrackGuidanceService TrackGuidanceService { get; } = Substitute.For<ITrackGuidanceService>();
     public IAutoSteerService AutoSteerService { get; } = Substitute.For<IAutoSteerService>();
     public IMapService MapService { get; } = Substitute.For<IMapService>();
     public ICoverageMapService CoverageMapService { get; } = Substitute.For<ICoverageMapService>();
     public ISectionControlService SectionControlService { get; } = Substitute.For<ISectionControlService>();
+    public IToolPositionService ToolPositionService { get; } = Substitute.For<IToolPositionService>();
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
+    public IModuleCommunicationService ModuleCommunicationService { get; set; } = Substitute.For<IModuleCommunicationService>();
+    public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
 
     public MainViewModelBuilder()
@@ -49,8 +53,8 @@ public class MainViewModelBuilder
         return new MainViewModel(
             udpService: Substitute.For<IUdpCommunicationService>(),
             gpsService: GpsService,
-            fieldService: Substitute.For<IFieldService>(),
-            ntripService: Substitute.For<INtripClientService>(),
+            fieldService: FieldService,
+            ntripService: NtripService,
             displaySettings: Substitute.For<IDisplaySettingsService>(),
             fieldStatistics: Substitute.For<IFieldStatisticsService>(),
             simulatorService: SimulatorService,
@@ -74,8 +78,8 @@ public class MainViewModelBuilder
             autoSteerService: AutoSteerService,
             smartWasService: Substitute.For<ISmartWasCalibrationService>(),
             trackCopierService: Substitute.For<ITrackCopierService>(),
-            moduleCommunicationService: Substitute.For<IModuleCommunicationService>(),
-            toolPositionService: Substitute.For<IToolPositionService>(),
+            moduleCommunicationService: ModuleCommunicationService,
+            toolPositionService: ToolPositionService,
             coverageMapService: CoverageMapService,
             sectionControlService: SectionControlService,
             ntripProfileService: NtripProfileService,

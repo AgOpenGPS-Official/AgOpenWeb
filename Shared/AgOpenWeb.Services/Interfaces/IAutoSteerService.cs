@@ -32,6 +32,10 @@ public interface IAutoSteerService
     /// </summary>
     event EventHandler<VehicleStateSnapshot>? StateUpdated;
 
+    /// <summary>A module sent a text message (PGN 221, e.g. AiO board): text, seconds to
+    /// show it, and whether it's a warning (AgOpenGPS: byte 6 == 0 → salmon) (#110).</summary>
+    event Action<string, int, bool>? HardwareMessageReceived;
+
     /// <summary>
     /// Whether auto-steer is enabled and processing GPS data.
     /// </summary>
@@ -92,6 +96,16 @@ public interface IAutoSteerService
     /// Disengage auto-steer (stop sending steering commands).
     /// </summary>
     void Disengage();
+
+    /// <summary>Stop steering this cycle without disengaging: PGN 254 status 0 while
+    /// reversing with Steer in reverse off, or while a direction change is unclear (#125).</summary>
+    void SetSteerPaused(bool paused);
+
+    /// <summary>Reverse state for the deadzone, which is off in reverse (#110).</summary>
+    void SetReverse(bool isReverse);
+
+    /// <summary>True while the deadzone is holding the sent steer angle (#110).</summary>
+    bool IsInDeadZone { get; }
 
     /// <summary>
     /// Get current latency metrics (for diagnostics display).

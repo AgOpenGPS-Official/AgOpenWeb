@@ -43,9 +43,21 @@ public partial class MainViewModel
     /// (The earlier version reset _trackGuidanceState + zeroed pathsAway/NudgeDistance,
     /// which forced exactly that — disable/re-enable-autosteer recovery dance.)
     /// </summary>
+    private void DeleteContourFile()
+    {
+        if (State.Field.ActiveField == null) return;
+        try { System.IO.File.Delete(System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, Services.Contour.ContourFilesService.FileName)); }
+        catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting Contour.txt: {ex.Message}"); }
+    }
+
     public void DeleteAppliedAreaConfirmed()
     {
         _coverageMapService.ClearAll();
+
+        // AgOpenGPS "delete all contours and sections": the contour strips go too, and
+        // Contour.txt is emptied (FileCreateContour) (#110).
+        _gpsPipelineService.ResetContours();
+        DeleteContourFile();
 
         if (State.Field.ActiveField != null)
         {
@@ -78,7 +90,7 @@ public partial class MainViewModel
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3)
         {
-            StatusMessage = "Load a field with a boundary first";
+            ReportFailure("Load a field with a boundary first");
             return;
         }
         // Offset the boundary inward by half the tool width PLUS half the U-turn clearance so the
@@ -153,9 +165,10 @@ public partial class MainViewModel
         // AB Line Guidance Commands - Bottom Bar
         SnapLeftCommand = new RelayCommand(() =>
         {
+            if (ManualTurnTooFast()) return; // lateral move, AgOpenGPS functionSpeedLimit (#110)
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             _intents.RequestGuidanceSnap(left: true);
@@ -164,9 +177,10 @@ public partial class MainViewModel
 
         SnapRightCommand = new RelayCommand(() =>
         {
+            if (ManualTurnTooFast()) return; // lateral move, AgOpenGPS functionSpeedLimit (#110)
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             _intents.RequestGuidanceSnap(left: false);
@@ -182,7 +196,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected for U-turn";
+                ReportFailure("No track selected for U-turn");
                 return;
             }
 
@@ -227,32 +241,18 @@ public partial class MainViewModel
         {
             if (SavedTracks.Count == 0)
             {
-                StatusMessage = "No tracks to delete";
+                ReportFailure("No tracks to delete");
                 return;
             }
             ShowConfirmationDialog(
                 "Delete All Tracks",
                 $"Delete all {SavedTracks.Count} tracks? This cannot be undone.",
-                () =>
-                {
-                    SavedTracks.Clear();
-                    SelectedTrack = null;
-                    RebuildRecordedPathsAndContours(); // clear rec-path/contour display
-                    SaveTracksToFile();
-                    // Also remove RecPath.txt, else the recorded path reloads on next open.
-                    if (_fieldService.ActiveField is { } f)
-                        Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
-                    StatusMessage = "All tracks deleted";
-                });
+                DeleteAllTracksConfirmed);
         });
 
         SwapABPointsCommand = new RelayCommand(() =>
         {
-            if (SelectedTrack != null && SelectedTrack.Points.Count >= 2)
-            {
-                SelectedTrack.Points.Reverse();
-                StatusMessage = $"Swapped A/B points for {SelectedTrack.Name}";
-            }
+            if (SelectedTrack != null) SwapTrackAB(SelectedTrack);
         });
 
         SelectTrackAsActiveCommand = new RelayCommand(() =>
@@ -332,7 +332,7 @@ public partial class MainViewModel
 
             if (Easting == 0 && Northing == 0)
             {
-                StatusMessage = "No GPS position - cannot create A+ line";
+                ReportFailure("No GPS position - cannot create A+ line");
                 return;
             }
 
@@ -346,6 +346,8 @@ public partial class MainViewModel
 
             var track = Track.FromABLine($"A+ {DateTime.Now:HH:mm}", pointA, pointB);
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             _mapService.SetActiveTrack(track);
 
@@ -398,7 +400,7 @@ public partial class MainViewModel
             // Need at least 3 points for a valid curve
             if (_recordedCurvePoints.Count < 3)
             {
-                StatusMessage = $"Need at least 3 points for a curve (have {_recordedCurvePoints.Count})";
+                ReportFailure($"Need at least 3 points for a curve (have {_recordedCurvePoints.Count})");
                 return;
             }
 
@@ -466,7 +468,7 @@ public partial class MainViewModel
             // Need at least 2 points for a valid track
             if (_drawnCurvePoints.Count < 2)
             {
-                StatusMessage = $"Need at least 2 points (have {_drawnCurvePoints.Count})";
+                ReportFailure($"Need at least 2 points (have {_drawnCurvePoints.Count})");
                 return;
             }
 
@@ -686,10 +688,11 @@ public partial class MainViewModel
         {
             if (SavedTracks.Count == 0)
             {
-                StatusMessage = "No tracks to cycle";
+                ReportFailure("No tracks to cycle");
                 return;
             }
 
+            IsAutoTrackEnabled = false; // a track picked by hand wins (AgOpenGPS btnCycleLines)
             int currentIndex = SelectedTrack != null ? SavedTracks.IndexOf(SelectedTrack) : -1;
             int nextIndex = (currentIndex + 1) % SavedTracks.Count;
             SelectedTrack = SavedTracks[nextIndex];
@@ -700,17 +703,17 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             if (SelectedTrack.IsABLine)
             {
-                StatusMessage = "Cannot smooth AB lines (only 2 points)";
+                ReportFailure("Cannot smooth AB lines (only 2 points)");
                 return;
             }
             if (SelectedTrack.Points.Count < 5)
             {
-                StatusMessage = "Too few points to smooth (need at least 5)";
+                ReportFailure("Too few points to smooth (need at least 5)");
                 return;
             }
 
@@ -718,11 +721,7 @@ public partial class MainViewModel
             var smoothed = Models.Guidance.CurveProcessing.SmoothWithCatmullRom(SelectedTrack.Points, 4);
             smoothed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
             SelectedTrack.Points = smoothed;
-
-            // Invalidate guidance state so it recalculates from the new curve
-            _trackGuidanceState = null;
-            _mapService.SetActiveTrack(SelectedTrack);
-            SaveTracksToFile();
+            OnSelectedTrackGeometryChanged();
 
             StatusMessage = $"Smoothed '{SelectedTrack.Name}': {beforeCount} -> {smoothed.Count} points";
         });
@@ -770,6 +769,13 @@ public partial class MainViewModel
             StatusMessage = "Nudge reset to zero";
         });
 
+        // Lengthen / shorten the active line at its A or B end (AB flyout A+/B+/A−/B−, #93;
+        // AgOpenGPS FormABDraw btnALength/btnAShrink).
+        ExtendTrackACommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: true, TrackEndStepMeters));
+        ExtendTrackBCommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: false, TrackEndStepMeters));
+        ShrinkTrackACommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: true, -TrackEndStepMeters));
+        ShrinkTrackBCommand = new RelayCommand(() => MoveSelectedTrackEnd(atStart: false, -TrackEndStepMeters));
+
         // Bottom Strip Commands - cycle through preset coverage colors
         ChangeMappingColorCommand = new RelayCommand(() =>
         {
@@ -805,7 +811,7 @@ public partial class MainViewModel
         {
             if (SelectedTrack == null)
             {
-                StatusMessage = "No track selected";
+                ReportFailure("No track selected");
                 return;
             }
             // Snap by nudging the track by the current cross-track error (XTE)
@@ -827,16 +833,21 @@ public partial class MainViewModel
                 : "Skip worked tracks: OFF — fixed skip pattern";
         });
 
+        // Cycle Normal → Alternative → Ignore worked tracks, like AgOpenGPS's skip button;
+        // the two skip modes skip at least 1 row (#111).
         ToggleUTurnSkipRowsCommand = new RelayCommand(() =>
         {
-            IsUTurnSkipRowsEnabled = !IsUTurnSkipRowsEnabled;
-            IsSkipWorkedMode = IsUTurnSkipRowsEnabled;
+            UTurnSkipMode = (UTurnSkipMode + 1) % 3;
+            if (UTurnSkipMode != 0 && UTurnSkipRows < 1) UTurnSkipRows = 1;
             // Reset snake sequence so it rebuilds on next turn
             State.YouTurn.SnakeSequence = null;
             State.YouTurn.SnakeIndex = -1;
-            StatusMessage = IsUTurnSkipRowsEnabled
-                ? $"U-Turn skip rows: ON ({UTurnSkipRows} rows, snake pattern)"
-                : "U-Turn skip rows: OFF";
+            StatusMessage = UTurnSkipMode switch
+            {
+                1 => $"U-Turn skip: alternative ({UTurnSkipRows} rows)",
+                2 => $"U-Turn skip: ignore worked tracks ({UTurnSkipRows} rows)",
+                _ => $"U-Turn skip: normal ({UTurnSkipRows} rows)",
+            };
         });
 
         CycleUTurnSkipRowsCommand = new RelayCommand(() =>
@@ -856,7 +867,7 @@ public partial class MainViewModel
         {
             if (Flags.Count == 0)
             {
-                StatusMessage = "No flags to delete";
+                ReportFailure("No flags to delete");
                 return;
             }
             ShowConfirmationDialog(
@@ -993,7 +1004,7 @@ public partial class MainViewModel
             // is the only path with preconditions.
             if (!IsAutoSteerEngaged && !IsAutoSteerAvailable)
             {
-                StatusMessage = "AutoSteer not available - no active track";
+                ReportFailure("AutoSteer not available - no active track");
                 return;
             }
 
@@ -1023,31 +1034,53 @@ public partial class MainViewModel
         });
 
         // Contour commands
+        // Like AgOpenGPS btnContour_Click (#110): Auto Track off; turning contour off
+        // while steering stops AutoSteer (no line to follow any more).
         ToggleContourModeCommand = new RelayCommand(() =>
         {
+            IsAutoTrackEnabled = false;
             IsContourModeOn = !IsContourModeOn;
+            if (!IsContourModeOn && IsAutoSteerEngaged)
+            {
+                ToggleAutoSteerCommand?.Execute(null);
+                ReportFailure("Guidance stopped - contour off");
+                return;
+            }
             StatusMessage = IsContourModeOn ? "Contour mode ON" : "Contour mode OFF";
         });
 
+        // Contour lock (AgOpenGPS btnContourLock): keep following the current strip.
+        ToggleContourLockCommand = new RelayCommand(() =>
+        {
+            if (!IsContourModeOn) return;
+            bool locked = _gpsPipelineService.ToggleContourLock();
+            State.Operation.IsContourLocked = locked;
+            StatusMessage = locked ? "Contour locked" : "Contour unlocked";
+        });
+
+        // Delete the recorded contour paths — and nothing else, like AgOpenGPS
+        // deleteContourPaths (ct.stripList.Clear()). This used to clear ALL coverage plus
+        // every track's nudge and worked-path history, with no confirmation (#107); that's
+        // Delete Applied Area's job, which asks first. The web asks before sending this.
         DeleteContoursCommand = new RelayCommand(() =>
         {
-            _coverageMapService.ClearAll();
-            // Reset track guidance state to force global search for nearest segment
-            _trackGuidanceState = null;
-            // Phase D D6: seed pending zeros and sync — the cycle becomes the
-            // writer of HowManyPathsAway / NudgeOffset (via SetActiveTrack in
-            // SyncGuidanceStateToPipeline). State.Guidance gets zeroed on the
-            // next snapshot mirror.
-            _pendingInitialPathsAway = 0;
-            _pendingInitialNudgeOffset = 0;
-            SyncGuidanceStateToPipeline();
-            foreach (var track in SavedTracks)
+            // The recorded strips (#110), and Contour.txt with them. AgOpenGPS only clears
+            // them from memory, so they came back when the field reopened.
+            _gpsPipelineService.ResetContours();
+            DeleteContourFile();
+            var contours = SavedTracks.Where(t => t.Type == TrackType.Contour).ToList();
+            if (contours.Count == 0)
             {
-                track.NudgeDistance = 0;
-                track.ClearWorkedPaths();
+                StatusMessage = "Contour paths deleted";
+                return;
             }
+            if (SelectedTrack != null && contours.Contains(SelectedTrack))
+                SelectedTrack = null;
+            foreach (var c in contours)
+                SavedTracks.Remove(c); // mirrors into State.Field.Tracks
+            RebuildRecordedPathsAndContours();
             SaveTracksToFile();
-            StatusMessage = "Coverage/contours cleared";
+            StatusMessage = $"Deleted {contours.Count} contour path(s)";
         });
 
         DeleteAppliedAreaCommand = new RelayCommand(() =>
@@ -1278,6 +1311,8 @@ public partial class MainViewModel
             };
 
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created AB line from longest boundary edge ({maxDist:F0}m)";
         });
@@ -1308,6 +1343,8 @@ public partial class MainViewModel
             };
 
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created A+ line at {State.Vehicle.Heading:F0}\u00B0";
         });
@@ -1385,6 +1422,8 @@ public partial class MainViewModel
             };
 
             SavedTracks.Add(track);
+            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                                // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
         });
@@ -1446,7 +1485,10 @@ public partial class MainViewModel
             }
 
             if (created > 0)
+            {
+                SaveTracksToFile(); // persist now (#107), before selecting — see A+ above
                 SelectedTrack = SavedTracks[SavedTracks.Count - 1];
+            }
             StatusMessage = created > 0
                 ? $"Created {created} AB lines from boundary edges"
                 : "Could not detect distinct boundary edges";
@@ -1689,6 +1731,98 @@ public partial class MainViewModel
         return densified;
     }
 
+    private const double TrackEndStepMeters = 5.0;
+
+    /// <summary>
+    /// The selected track's points were replaced (smooth, extend/shrink, swap A/B). Re-push
+    /// it to the pipeline — SetActiveTrack drops the cycle's guidance state, whose
+    /// nearest-segment index and PP integral refer to the old point list — then refresh
+    /// the map and persist.
+    /// </summary>
+    /// <summary>Reverse a track's direction (Swap A/B). For the active track the pass
+    /// number and nudge flip too so the guidance line stays where it physically is.</summary>
+    private void SwapTrackAB(Track track)
+    {
+        if (track.Points.Count < 2) return;
+
+        // Reverse the direction: points in reverse order AND each heading turned 180°.
+        // Guidance reads the travel direction from ptA.Heading but the cross-track sign
+        // and goal-point direction from the ptA→ptB geometry, so reversing only the
+        // points left them disagreeing (#104).
+        var reversed = new List<Vec3>(track.Points.Count);
+        for (int i = track.Points.Count - 1; i >= 0; i--)
+        {
+            var p = track.Points[i];
+            reversed.Add(new Vec3(p.Easting, p.Northing, (p.Heading + Math.PI) % (2 * Math.PI)));
+        }
+        track.Points = reversed;
+
+        // "Right of the line" flips with the direction, so negate the pass number and
+        // nudge to keep the guidance line where it physically is (an engaged tractor on
+        // pass 3 right must not jump to pass 3 left). Written to the cycle's mirror too
+        // so the save below persists the swapped NudgeDistance.
+        bool isActive = track == SelectedTrack;
+        if (isActive)
+        {
+            State.Guidance.HowManyPathsAway = -State.Guidance.HowManyPathsAway;
+            State.Guidance.NudgeOffset = -State.Guidance.NudgeOffset;
+        }
+        track.NudgeDistance = -track.NudgeDistance;
+
+        if (isActive) OnSelectedTrackGeometryChanged();
+        else SaveTracksToFile(); // not guiding on it → nothing live to keep in place
+        StatusMessage = $"Swapped A/B points for {track.Name}";
+    }
+
+    /// <summary>Tracks manager Swap A/B (web, #109): acts on the highlighted track, like
+    /// AgOpenGPS, not necessarily the active one.</summary>
+    public void SwapTrackABAt(int index)
+    {
+        if (index < 0 || index >= SavedTracks.Count)
+        {
+            ReportFailure("No track selected");
+            return;
+        }
+        SwapTrackAB(SavedTracks[index]);
+    }
+
+    private void OnSelectedTrackGeometryChanged()
+    {
+        SyncGuidanceStateToPipeline();
+        _mapService.SetActiveTrack(SelectedTrack);
+        SaveTracksToFile();
+    }
+
+    /// <summary>
+    /// Extend (+) or trim (−) the selected track at its A (first point) or B (last point)
+    /// end, then persist. Closed loops, contours and recorded paths have no free ends.
+    /// </summary>
+    private void MoveSelectedTrackEnd(bool atStart, double meters)
+    {
+        var track = SelectedTrack;
+        if (track == null)
+        {
+            ReportFailure("No track selected");
+            return;
+        }
+        if (track.IsClosed || track.IsContour || track.IsRecordedPath)
+        {
+            ReportFailure("This track has no ends to adjust");
+            return;
+        }
+
+        var moved = Models.Guidance.CurveProcessing.MoveTrackEnd(track.Points, atStart, meters);
+        if (moved == null)
+        {
+            StatusMessage = "Track is too short to shorten further";
+            return;
+        }
+        track.Points = moved;
+        OnSelectedTrackGeometryChanged();
+
+        StatusMessage = $"{(meters > 0 ? "Extended" : "Shortened")} '{track.Name}' at {(atStart ? "A" : "B")} by {Math.Abs(meters):F0} m";
+    }
+
     /// <summary>
     /// Nudge the current guidance line by a distance in meters.
     /// Positive = right, Negative = left (unadjusted — the cycle applies
@@ -1700,11 +1834,40 @@ public partial class MainViewModel
     {
         if (SelectedTrack == null)
         {
-            StatusMessage = "No track selected";
+            ReportFailure("No track selected");
             return;
         }
 
         _intents.RequestGuidanceNudge(distanceMeters);
         StatusMessage = $"Nudged {(distanceMeters > 0 ? "right" : "left")} {Math.Abs(distanceMeters * 100):F1}cm";
+    }
+
+    /// <summary>
+    /// Zone button (#111), as AgOpenGPS btnZoneX_Click: cycle the zone's last section
+    /// Off → Auto → On and give every section in the zone that state. Zone z covers
+    /// sections ZoneRanges[z-1]..ZoneRanges[z]-1 (zone 1 starts at 0).
+    /// </summary>
+    public void ToggleZone(int zone)
+    {
+        var tool = ConfigStore.Tool;
+        int zones = Math.Clamp(tool.Zones, 1, 8);
+        if (zone < 1 || zone > zones) return;
+        var ranges = tool.ZoneRanges;
+        int start = zone == 1 ? 0 : ranges[zone - 1];
+        int end = Math.Min(ranges[zone], _sectionControlService.NumSections);
+        if (end <= start) return;
+
+        var next = _sectionControlService.SectionStates[end - 1].ButtonState switch
+        {
+            SectionButtonState.Off => SectionButtonState.Auto,
+            SectionButtonState.Auto => SectionButtonState.On,
+            _ => SectionButtonState.Off,
+        };
+        for (int i = start; i < end; i++)
+            _sectionControlService.SetSectionState(i, next);
+        _audioService.Play(next == SectionButtonState.Off
+            ? Services.Interfaces.SoundEffect.SectionOff
+            : Services.Interfaces.SoundEffect.SectionOn);
+        StatusMessage = $"Zone {zone}: {next}";
     }
 }

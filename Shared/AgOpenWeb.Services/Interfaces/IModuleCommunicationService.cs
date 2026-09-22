@@ -60,9 +60,6 @@ namespace AgOpenWeb.Services.Interfaces
         int User3Value { get; }
         int User4Value { get; }
 
-        // AHRS config (read from ConfigurationStore.Ahrs)
-        bool AlarmStopsAutoSteer { get; }
-
         // Switch states (runtime, from hardware)
         bool WorkSwitchHigh { get; set; }
         bool SteerSwitchHigh { get; set; }

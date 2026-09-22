@@ -8,171 +8,207 @@ using AgOpenWeb.Services.Gps;
 
 namespace AgOpenWeb.Services.Tests.Gps;
 
+/// <summary>#112: heading follows AgOpenGPS's "Fix" and "Dual" heading sources
+/// (Position.designer.cs).</summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton
 public class GpsHeadingFusionServiceTests
 {
     private GpsHeadingFusionService _service = null!;
+    private const double Fast = 3.0; // m/s = 10.8 km/h, above the 1.5 km/h start speed
 
     [SetUp]
     public void SetUp()
     {
         _service = new GpsHeadingFusionService(ConfigurationStore.Instance);
 
-        // Reset config to a known default state.
         var c = ConfigurationStore.Instance.Connections;
         c.IsDualGps = false;
+        c.AutoDualFix = false;
         c.DualHeadingOffset = 0;
-        c.DualSwitchSpeed = 2.0;
-        c.MinGpsStep = 0.05;
-        c.FixToFixDistance = 0.2;
-        c.HeadingFusionWeight = 1.0; // all GPS, no IMU
+        c.DualSwitchSpeed = 2.0;   // km/h
+        c.MinGpsStep = 0.05;       // m
+        c.FixToFixDistance = 0.5;  // m
+        c.HeadingFusionWeight = 0.3;
+        c.ReverseDetection = true;
+        c.DualReverseDistance = 0.25;
+    }
+
+    // Drive north from (0,0) one step at a time; returns the last heading.
+    private double DriveNorth(int steps, double stepM = 0.3, double speedMs = Fast,
+        double imu = 0, bool imuValid = false, double startN = 0, double gpsHeading = 0)
+    {
+        double h = double.NaN;
+        for (int i = 0; i < steps; i++)
+            h = _service.FuseHeading(gpsHeading, imu, imuValid, speedMs, 0, startN + i * stepM);
+        return h;
     }
 
     [Test]
-    public void Single_antenna_below_MinGpsStep_returns_raw_heading()
+    public void BeforeAFirstHeading_TheSentenceHeadingPassesThrough()
+    {
+        double h = _service.FuseHeading(45, 0, false, 0.1, 0, 0);
+        Assert.That(h, Is.EqualTo(45).Within(1e-9));
+    }
+
+    [Test]
+    public void NoFirstHeadingBelow1Point5Kmh()
+    {
+        // 0.3 m/s = 1.08 km/h: fixes are moving north but too slowly to set a heading.
+        double h = DriveNorth(6, speedMs: 0.3, gpsHeading: 45);
+        Assert.That(h, Is.EqualTo(45).Within(1e-9));
+    }
+
+    [Test]
+    public void SingleAntenna_HeadingFromFixToFix()
+    {
+        double h = DriveNorth(6);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
+
+        // Turn east.
+        for (int i = 1; i <= 5; i++) h = _service.FuseHeading(0, 0, false, Fast, i * 0.3, 1.5);
+        Assert.That(h, Is.EqualTo(90).Within(1e-6));
+    }
+
+    [Test]
+    public void MovesShorterThanMinGpsStep_KeepTheHeading()
     {
         ConfigurationStore.Instance.Connections.MinGpsStep = 1.0;
-
-        double result = _service.FuseHeading(
-            gpsHeading: 45.0, imuHeading: 0, imuValid: false,
-            speedMs: 0.1, easting: 0, northing: 0);
-
-        Assert.That(result, Is.EqualTo(45.0).Within(1e-9));
+        double h = DriveNorth(4, stepM: 1.2);         // heading north set
+        // Tiny sideways jitter under the min step must not swing it.
+        h = _service.FuseHeading(0, 0, false, Fast, 0.5, 3.6 + 0.1);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
     }
 
     [Test]
-    public void Single_antenna_above_MinGpsStep_uses_fix_to_fix_after_first_call()
+    public void FusionWeight_IsTheGpsShareTimesPoint2_LikeAgOpenGPS()
     {
-        ConfigurationStore.Instance.Connections.MinGpsStep = 0.05;
-        ConfigurationStore.Instance.Connections.FixToFixDistance = 0.2;
-
-        // First call primes the fix-to-fix state; no previous position yet so returns raw.
-        double first = _service.FuseHeading(
-            gpsHeading: 0.0, imuHeading: 0, imuValid: false,
-            speedMs: 10.0, easting: 0, northing: 0);
-
-        Assert.That(first, Is.EqualTo(0.0).Within(1e-9),
-            "first call has no previous position, returns raw heading");
-
-        // Second call: moved 10m east — fix-to-fix heading = atan2(10, 0) = 90°.
-        double second = _service.FuseHeading(
-            gpsHeading: 0.0, imuHeading: 0, imuValid: false,
-            speedMs: 10.0, easting: 10, northing: 0);
-
-        Assert.That(second, Is.EqualTo(90.0).Within(1e-9),
-            "fix-to-fix replaces raw heading when travelling faster than MinGpsStep");
+        Assert.That(GpsHeadingFusionService.FusionShareToWeight, Is.EqualTo(0.2));
+        Assert.That(new ConnectionConfig().HeadingFusionWeight, Is.EqualTo(0.3),
+            "default 30% GPS = AgOpenGPS fusionWeight 0.06");
     }
 
     [Test]
-    public void Dual_GPS_mode_applies_offset_and_normalizes()
+    public void Imu_IsSnappedToGpsAtStart_ThenSlowlyPulledOntoGps()
+    {
+        // IMU says 10°, travel is due north (0°). At start the offset snaps to -10°.
+        double h = DriveNorth(3, imu: 10, imuValid: true);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
+
+        // IMU now drifts to 20° while travel stays north: output = IMU + offset, and
+        // each GPS heading pulls the offset back by 6% (0.3 share × 0.2) of the error.
+        h = DriveNorth(1, imu: 20, imuValid: true, startN: 0.9);
+        // offset: -10° + (0 - (20-10)) × 0.06 = -10.6° → 20 - 10.6 = 9.4°
+        Assert.That(h, Is.EqualTo(9.4).Within(1e-6));
+    }
+
+    [Test]
+    public void WithImu_HeadingFollowsImuWhileStopped()
+    {
+        DriveNorth(3, imu: 10, imuValid: true);            // offset -10°
+        double h = _service.FuseHeading(0, 40, true, 0, 0, 0.6); // stopped, IMU turned to 40°
+        Assert.That(h, Is.EqualTo(30).Within(1e-6));
+    }
+
+    [Test]
+    public void Dual_AppliesOffsetAndNormalizes()
+    {
+        var c = ConfigurationStore.Instance.Connections;
+        c.IsDualGps = true;
+        c.DualHeadingOffset = 10.0;
+
+        double h = _service.FuseHeading(355, 0, false, Fast, 0, 0);
+        Assert.That(h, Is.EqualTo(5).Within(1e-9));
+    }
+
+    [Test]
+    public void Dual_StaysOnDualWhenAutoDualFixIsOff_EvenFast()
     {
         ConfigurationStore.Instance.Connections.IsDualGps = true;
-        ConfigurationStore.Instance.Connections.DualHeadingOffset = 10.0;
-
-        double result = _service.FuseHeading(
-            gpsHeading: 355.0, imuHeading: 0, imuValid: false,
-            speedMs: 10.0, easting: 0, northing: 0);
-
-        // 355 + 10 = 365 → normalize to 5.
-        Assert.That(result, Is.EqualTo(5.0).Within(1e-9));
+        double h = DriveNorth(6, gpsHeading: 30);   // travel north, dual says 30°
+        Assert.That(h, Is.EqualTo(30).Within(1e-9));
     }
 
     [Test]
-    public void Dual_GPS_below_switch_speed_uses_fix_to_fix_when_available()
+    public void Dual_SwitchesToFixAboveTheSwitchSpeed_InKmh()
     {
-        ConfigurationStore.Instance.Connections.IsDualGps = true;
-        ConfigurationStore.Instance.Connections.DualHeadingOffset = 0;
-        ConfigurationStore.Instance.Connections.DualSwitchSpeed = 2.0;
-        ConfigurationStore.Instance.Connections.FixToFixDistance = 0.2;
+        var c = ConfigurationStore.Instance.Connections;
+        c.IsDualGps = true;
+        c.AutoDualFix = true;
+        c.DualSwitchSpeed = 5.0; // km/h
+        c.HeadingFusionWeight = 1.0; // 100% GPS → offset moves 20% per fix
 
-        // Prime fix-to-fix state at speed.
-        _service.FuseHeading(gpsHeading: 90, imuHeading: 0, imuValid: false,
-            speedMs: 5.0, easting: 0, northing: 0);
+        // 1.2 m/s = 4.32 km/h: below the switch speed → dual heading (30°).
+        double slow = DriveNorth(6, speedMs: 1.2, gpsHeading: 30);
+        Assert.That(slow, Is.EqualTo(30).Within(1e-9),
+            "below the switch speed the dual heading is used (the old code did the opposite, and in m/s)");
 
-        // Now slow down — DualSwitchSpeed kicks in, fix-to-fix should override.
-        double result = _service.FuseHeading(
-            gpsHeading: 90, imuHeading: 0, imuValid: false,
-            speedMs: 1.0, easting: 0, northing: 10);
-
-        // Moved 10m north from origin → heading = atan2(0, 10) = 0°.
-        Assert.That(result, Is.EqualTo(0.0).Within(1e-9));
+        // 1.7 m/s = 6.12 km/h: above → Fix, with dual as the IMU pulled toward travel (0°).
+        double fast = DriveNorth(10, speedMs: 1.7, gpsHeading: 30, startN: 1.8);
+        Assert.That(fast, Is.LessThan(30).And.GreaterThan(0),
+            "above the switch speed the fix heading pulls the dual-as-IMU heading toward travel");
     }
 
     [Test]
-    public void Fix_to_fix_ignored_when_distance_below_threshold()
+    public void Reset_KeepsTheHeading_ButForgetsStoredFixes()
     {
-        ConfigurationStore.Instance.Connections.MinGpsStep = 0.05;
-        ConfigurationStore.Instance.Connections.FixToFixDistance = 1.0;
-
-        // Prime
-        _service.FuseHeading(gpsHeading: 45, imuHeading: 0, imuValid: false,
-            speedMs: 10.0, easting: 0, northing: 0);
-
-        // Second call: moved only 0.5m (< FixToFixDistance) — fix-to-fix rejected,
-        // raw heading stands.
-        double result = _service.FuseHeading(
-            gpsHeading: 45, imuHeading: 0, imuValid: false,
-            speedMs: 10.0, easting: 0.5, northing: 0);
-
-        Assert.That(result, Is.EqualTo(45.0).Within(1e-9));
-    }
-
-    [Test]
-    public void IMU_fusion_blends_when_weight_is_partial_and_IMU_valid()
-    {
-        ConfigurationStore.Instance.Connections.HeadingFusionWeight = 0.5; // 50/50
-
-        double result = _service.FuseHeading(
-            gpsHeading: 80.0, imuHeading: 100.0, imuValid: true,
-            speedMs: 0.01, easting: 0, northing: 0);
-
-        // diff = imu - final = 100 - 80 = 20; final = 80 + 20 * 0.5 = 90.
-        Assert.That(result, Is.EqualTo(90.0).Within(1e-9));
-    }
-
-    [Test]
-    public void IMU_fusion_skipped_when_weight_is_1()
-    {
-        ConfigurationStore.Instance.Connections.HeadingFusionWeight = 1.0;
-
-        double result = _service.FuseHeading(
-            gpsHeading: 45.0, imuHeading: 180.0, imuValid: true,
-            speedMs: 0.01, easting: 0, northing: 0);
-
-        Assert.That(result, Is.EqualTo(45.0).Within(1e-9));
-    }
-
-    [Test]
-    public void IMU_fusion_skipped_when_imu_invalid()
-    {
-        // Slider at 50% would normally blend, but the 65535 sentinel means
-        // ImuValid=false — IMU branch must skip and return GPS heading as-is.
-        ConfigurationStore.Instance.Connections.HeadingFusionWeight = 0.5;
-
-        double result = _service.FuseHeading(
-            gpsHeading: 80.0, imuHeading: 0, imuValid: false,
-            speedMs: 0.01, easting: 0, northing: 0);
-
-        Assert.That(result, Is.EqualTo(80.0).Within(1e-9));
-    }
-
-    [Test]
-    public void Reset_clears_fix_to_fix_history()
-    {
-        ConfigurationStore.Instance.Connections.MinGpsStep = 0.05;
-
-        // Prime: establishes previous position.
-        _service.FuseHeading(gpsHeading: 0, imuHeading: 0, imuValid: false,
-            speedMs: 10, easting: 0, northing: 0);
+        DriveNorth(6);                          // heading north
         _service.Reset();
 
-        // After reset, the next call should behave like the very first — no fix-to-fix,
-        // even though easting moved.
-        double result = _service.FuseHeading(
-            gpsHeading: 0, imuHeading: 0, imuValid: false,
-            speedMs: 10, easting: 10, northing: 0);
+        // A fix in a new frame far away must not yield a heading toward it.
+        double h = _service.FuseHeading(0, 0, false, Fast, 500, -300);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
+    }
 
-        Assert.That(result, Is.EqualTo(0.0).Within(1e-9));
+    // ── Reverse (#125) ───────────────────────────────────────────────────
+
+    [Test]
+    public void Imu_BackingUp_IsReverse_AndHeadingKeepsFacingForward()
+    {
+        DriveNorth(6, imu: 0, imuValid: true);          // facing and driving north
+        Assert.That(_service.IsReverse, Is.False);
+
+        // Back up: fixes move south while the IMU still says north.
+        double h = 0;
+        for (int i = 1; i <= 6; i++) h = _service.FuseHeading(0, 0, true, Fast, 0, 1.5 - i * 0.3);
+        Assert.That(_service.IsReverse, Is.True);
+        Assert.That(h, Is.EqualTo(0).Within(0.5), "heading still points the way the vehicle faces");
+    }
+
+    [Test]
+    public void NoImu_BackingUp_HoldsWhileUnsure_ThenIsReverse()
+    {
+        DriveNorth(6);
+        bool sawChanging = false;
+        double h = 0;
+        for (int i = 1; i <= 20; i++)
+        {
+            h = _service.FuseHeading(0, 0, false, Fast, 0, 1.5 - i * 0.3);
+            sawChanging |= _service.IsChangingDirection;
+        }
+        Assert.That(sawChanging, Is.True, "a direction change is held until the filter settles");
+        Assert.That(_service.IsReverse, Is.True);
+        Assert.That(_service.IsChangingDirection, Is.False);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6), "heading still points the way the vehicle faces");
+    }
+
+    [Test]
+    public void ReverseDetectionOff_NeverReverse()
+    {
+        ConfigurationStore.Instance.Connections.ReverseDetection = false;
+        DriveNorth(6, imu: 0, imuValid: true);
+        for (int i = 1; i <= 6; i++) _service.FuseHeading(0, 0, true, Fast, 0, 1.5 - i * 0.3);
+        Assert.That(_service.IsReverse, Is.False);
+    }
+
+    [Test]
+    public void Dual_BackingUp_IsReverse()
+    {
+        ConfigurationStore.Instance.Connections.IsDualGps = true;
+        for (int i = 0; i < 5; i++) _service.FuseHeading(0, 0, false, Fast, 0, i * 0.3);
+        Assert.That(_service.IsReverse, Is.False);
+
+        for (int i = 1; i <= 5; i++) _service.FuseHeading(0, 0, false, Fast, 0, 1.2 - i * 0.3);
+        Assert.That(_service.IsReverse, Is.True);
     }
 }

@@ -48,6 +48,7 @@ public record GuidanceSnapshot
 
     // Visualization points
     public Vec2 GoalPoint { get; init; }
+    public bool HasGoalPoint { get; init; }
     public Vec2 RadiusPoint { get; init; }
     public double PurePursuitRadius { get; init; }
 

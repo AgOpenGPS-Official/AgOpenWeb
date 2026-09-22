@@ -274,7 +274,7 @@ public partial class MainViewModel
         var bnd = State.Field.CurrentBoundary?.OuterBoundary;
         if (bnd?.Points == null || bnd.Points.Count < 3)
         {
-            StatusMessage = "No boundary for headland";
+            ReportFailure("No boundary for headland");
             return;
         }
 

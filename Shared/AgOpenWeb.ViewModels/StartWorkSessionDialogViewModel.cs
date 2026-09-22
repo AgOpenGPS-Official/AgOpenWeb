@@ -295,7 +295,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            Fail(ex.Message);
         }
     }
 
@@ -331,7 +331,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
-                    StatusMessage = ex.Message;
+                    Fail(ex.Message);
                 }
             });
     }
@@ -382,6 +382,15 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
             });
     }
 
+    /// <summary>Raised when an action fails; MainViewModel forwards it to the web (#109).</summary>
+    public event Action<string>? FailureReported;
+
+    private void Fail(string message)
+    {
+        StatusMessage = message;
+        FailureReported?.Invoke(message);
+    }
+
     private void DoDeleteField(NearbyField field)
     {
         try
@@ -392,7 +401,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            Fail(ex.Message);
         }
     }
 
@@ -411,7 +420,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            Fail(ex.Message);
         }
     }
 

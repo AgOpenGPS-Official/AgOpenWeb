@@ -18,9 +18,15 @@ public sealed class FieldToolsState
     /// <summary>Auto track-select (snap to the closest track) is enabled.</summary>
     public bool IsAutoTrackEnabled { get; set; }
 
+    /// <summary>Tracks manager "Rec paths": draw saved recorded paths on the map (#110).</summary>
+    public bool ShowRecordedPaths { get; set; }
+
     /// <summary>Rows to skip on each U-turn (0–9).</summary>
     public int UTurnSkipRows { get; set; }
 
     /// <summary>U-turn skip-rows is enabled.</summary>
     public bool IsUTurnSkipRowsEnabled { get; set; }
+
+    /// <summary>0 Normal, 1 Alternative, 2 Ignore worked tracks (AgOpenGPS SkipMode, #111).</summary>
+    public int UTurnSkipMode { get; set; }
 }

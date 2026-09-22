@@ -120,6 +120,11 @@ internal sealed class WebViewLauncherWindow : Window
             return;
         }
 
+        // App Settings › Start Fullscreen (AgOpenGPS isStartFullScreen): the settings are
+        // loaded now, so go fullscreen instead of the default maximized window (#110).
+        if (AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Display.StartFullscreen)
+            WindowState = WindowState.FullScreen;
+
         var port = _backend.Server?.Port ?? 5174;
         _web.Source = new Uri($"http://localhost:{port}/");
     }

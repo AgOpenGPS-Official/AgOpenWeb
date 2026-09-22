@@ -33,6 +33,20 @@ public interface IGpsHeadingFusionService
     double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
                        double speedMs, double easting, double northing);
 
+    /// <summary>Last fix-to-fix GPS heading, degrees (heading chart).</summary>
+    double GpsHeadingDeg { get; }
+
+    /// <summary>IMU heading plus the fusion offset, degrees; NaN with no IMU (heading chart).</summary>
+    double ImuCorrectedDeg { get; }
+
+    /// <summary>True while the vehicle is detected as reversing (#125). The returned
+    /// heading is flipped so it still points the way the vehicle faces.</summary>
+    bool IsReverse { get; }
+
+    /// <summary>True while a single antenna with no IMU can't yet tell whether the
+    /// vehicle changed direction (AgOpenGPS isChangingDirection).</summary>
+    bool IsChangingDirection { get; }
+
     /// <summary>
     /// Discard fix-to-fix history. Call on field close or GPS reconnect.
     /// </summary>

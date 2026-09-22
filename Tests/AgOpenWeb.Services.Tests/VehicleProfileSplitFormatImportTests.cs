@@ -52,6 +52,22 @@ public class VehicleProfileSplitFormatImportTests
         return sb.ToString();
     }
 
+    [TestCase("True", false)]
+    [TestCase("False", true)]
+    public void Load_AlgorithmComesFromIsStanleyUsed_NotThePureDisplayToggle(string isStanleyUsed, bool expectPurePursuit)
+    {
+        // #99: setMenu_isPureOn is AgOpenGPS's "show the Pure Pursuit point" display
+        // toggle; the steering algorithm is setVehicle_isStanleyUsed.
+        File.WriteAllText(Path.Combine(_tempDir, "Algo.XML"),
+            SettingFile(
+                ("setVehicle_isStanleyUsed", isStanleyUsed),
+                ("setMenu_isPureOn", "True")));
+
+        var store = new ConfigurationStore();
+        Assert.That(_service.Load("Algo", store), Is.True);
+        Assert.That(store.Guidance.IsPurePursuit, Is.EqualTo(expectPurePursuit));
+    }
+
     [Test]
     public void Load_LegacyCombinedXml_ParsesSingleFile()
     {

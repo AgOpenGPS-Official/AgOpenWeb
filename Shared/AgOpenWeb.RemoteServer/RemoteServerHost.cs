@@ -39,6 +39,29 @@ public sealed class RemoteServerHost
     public void PlaySound(AgOpenWeb.Services.Interfaces.SoundEffect effect)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeSound((byte)effect));
 
+    /// <summary>Broadcast a one-shot notification (a refusal or failure, #109) to every
+    /// connected client.</summary>
+    public void ShowToast(string message)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeToast(message));
+
+    /// <summary>Broadcast a module hardware message (PGN 221, #110).</summary>
+    public void ShowHardwareMessage(string text, int seconds, bool warning)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeHardwareMessage(text, seconds, warning));
+
+    /// <summary>Broadcast the Drive In pick list (#109). The browser that pressed Drive In
+    /// shows it.</summary>
+    public void ShowDrivePick(IReadOnlyList<FieldEntryDto> fields)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeDrivePick(fields));
+
+    /// <summary>Host-supplied projector for the pending confirm/error dialog (#109).
+    /// Read every broadcast tick. Set after <see cref="StartAsync"/>.</summary>
+    public Func<PromptDto?>? PromptProvider
+    {
+        get => _broadcaster?.PromptProvider;
+        set { _promptProvider = value; if (_broadcaster is not null) _broadcaster.PromptProvider = value; }
+    }
+    private Func<PromptDto?>? _promptProvider;
+
     // Satellite tile fetch (Phase MT — Draw boundary on map). Keyless Bing aerial
     // tiles via the Virtual Earth quadkey endpoint (same source as native's
     // BoundaryMapDialog). Proxied through the host so the browser draws them into the
@@ -101,6 +124,14 @@ public sealed class RemoteServerHost
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list
     /// (VM-owned, rides the Scene frame). Set after <see cref="StartAsync"/>.</summary>
+    /// <summary>Heading chart source: GPS fix-to-fix and IMU-corrected heading (#111).</summary>
+    public Func<(double Gps, double Imu)>? HeadingChartProvider
+    {
+        get => _broadcaster?.Projector.HeadingChartProvider;
+        set { _headingChartProvider = value; if (_broadcaster is not null) _broadcaster.Projector.HeadingChartProvider = value; }
+    }
+    private Func<(double Gps, double Imu)>? _headingChartProvider;
+
     public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
     {
         get => _broadcaster?.Projector.HeadlandSegsProvider;
@@ -175,10 +206,12 @@ public sealed class RemoteServerHost
         _ws.CommandHandler = _commandHandler;
         _ws.IsRestrictedCommand = _isRestricted;
         _broadcaster.WizardProvider = _wizardProvider;
+        _broadcaster.PromptProvider = _promptProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
+        _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;

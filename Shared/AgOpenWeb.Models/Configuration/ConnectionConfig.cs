@@ -112,7 +112,7 @@ public class ConnectionConfig : ObservableObject
     }
 
     // Dual Antenna Settings
-    private double _dualHeadingOffset = 90.0;
+    private double _dualHeadingOffset = 0.0; // AgOpenGPS setGPS_dualHeadingOffset (#112)
     public double DualHeadingOffset
     {
         get => _dualHeadingOffset;
@@ -155,7 +155,9 @@ public class ConnectionConfig : ObservableObject
         set => SetProperty(ref _fixToFixDistance, value);
     }
 
-    private double _headingFusionWeight = 0.7;
+    // GPS share of the IMU/GPS heading fusion, 0–1 (the web slider). AgOpenGPS default
+    // 30% GPS = fusionWeight 0.06; see GpsHeadingFusionService.FusionShareToWeight (#112).
+    private double _headingFusionWeight = 0.3;
     public double HeadingFusionWeight
     {
         get => _headingFusionWeight;

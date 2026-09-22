@@ -142,7 +142,7 @@ public class PersistentAppState : ObservableObject
     private bool _boundaryDrawRightSide = true;
     public bool BoundaryDrawRightSide { get => _boundaryDrawRightSide; set => SetProperty(ref _boundaryDrawRightSide, value); }
 
-    private bool _boundaryDrawAtPivot;
+    private bool _boundaryDrawAtPivot = true; // AgOpenGPS setBnd_isDrawPivot (#110)
     public bool BoundaryDrawAtPivot { get => _boundaryDrawAtPivot; set => SetProperty(ref _boundaryDrawAtPivot, value); }
 
     private double _boundaryOffset = 100.0; // cm

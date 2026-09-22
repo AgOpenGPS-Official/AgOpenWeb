@@ -39,6 +39,9 @@ public partial class MainViewModel
         // Record for debug dump (ring buffer, last 60 seconds at 10Hz)
         AgOpenWeb.Services.Logging.GpsDataRecorder.Instance.Record(result);
 
+        // Work / steer switch → section buttons (#106)
+        UpdateModuleSwitches();
+
         // Mark GPS as received (updates timeout tracking for connection status)
         if (result.GpsValid)
             _gpsService.MarkGpsReceived();
@@ -86,6 +89,20 @@ public partial class MainViewModel
         // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
         // deletes them, but this method no longer reads them.
 
+        // Contour (#110): lock image, the reference strip, and newly finished strips → Contour.txt.
+        State.Operation.IsContourLocked = result.IsContourLocked;
+        State.Operation.ContourRef = result.ContourRef;
+        if (result.HasContoursToSave) SaveContoursToField();
+
+        // Hydraulic lift sounds on each up/down change (AgOpenGPS CHead.SetHydPosition;
+        // gated by the Hydraulic sound setting in the audio service, #110).
+        if (result.HydLiftState != _lastHydLiftState)
+        {
+            if (result.HydLiftState == 2) _audioService.Play(Services.Interfaces.SoundEffect.HydraulicLiftUp);
+            else if (result.HydLiftState == 1 && _lastHydLiftState == 2) _audioService.Play(Services.Interfaces.SoundEffect.HydraulicLiftDown);
+            _lastHydLiftState = result.HydLiftState;
+        }
+
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
         {
@@ -124,6 +141,11 @@ public partial class MainViewModel
             sy.ReturnPassTargetPath = yt.ReturnPassTargetPath;
             sy.SnakeSequence = yt.SnakeSequence is List<int> ss ? ss : yt.SnakeSequence?.ToList();
             sy.SnakeIndex = yt.SnakeIndex;
+            sy.AltSign = yt.AltSign;
+            sy.AltBaseWidth = yt.AltBaseWidth;
+            sy.AltWidth = yt.AltWidth;
+            sy.AltTurnSkips = yt.AltTurnSkips;
+            sy.AltPrevBig = yt.AltPrevBig;
             sy.CurrentZone = yt.CurrentZone;
 
             _mapService.SetYouTurnPath(yt.TurnPath?.Select(p => (p.Easting, p.Northing)).ToList());
@@ -170,6 +192,7 @@ public partial class MainViewModel
             sg.PpPivotDistanceErrorLast = g.PpPivotDistanceErrorLast;
             sg.PpCounter = g.PpCounter;
             sg.GoalPoint = g.GoalPoint;
+            sg.HasGoalPoint = g.HasGoalPoint;
             sg.RadiusPoint = g.RadiusPoint;
             sg.PurePursuitRadius = g.PurePursuitRadius;
             sg.IsHeadingSameWay = g.IsHeadingSameWay;
@@ -344,4 +367,6 @@ public partial class MainViewModel
         for (int i = 0; i < count; i++)
             _sectionButtons[i].ColorCode = colorCodes[i];
     }
+
+    private byte _lastHydLiftState; // for the lift sounds (#110)
 }

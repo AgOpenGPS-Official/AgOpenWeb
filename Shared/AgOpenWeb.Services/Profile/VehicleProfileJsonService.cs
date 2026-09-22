@@ -147,6 +147,20 @@ public static class VehicleProfileJsonService
             Style = store.Guidance.UTurnStyle,
             Smoothing = store.Guidance.UTurnSmoothing,
         },
+        Gps = new GpsDto
+        {
+            IsDualGps = store.Connections.IsDualGps,
+            DualHeadingOffset = store.Connections.DualHeadingOffset,
+            DualReverseDistance = store.Connections.DualReverseDistance,
+            AutoDualFix = store.Connections.AutoDualFix,
+            DualSwitchSpeed = store.Connections.DualSwitchSpeed,
+            MinGpsStep = store.Connections.MinGpsStep,
+            FixToFixDistance = store.Connections.FixToFixDistance,
+            HeadingFusionWeight = store.Connections.HeadingFusionWeight,
+            ReverseDetection = store.Connections.ReverseDetection,
+            RtkLostAlarm = store.Connections.RtkLostAlarm,
+            RtkLostAction = store.Connections.RtkLostAction,
+        },
         General = new GeneralDto
         {
             // IsMetric intentionally omitted: device-/user-scoped, lives
@@ -184,7 +198,7 @@ public static class VehicleProfileJsonService
         store.Guidance.IsPurePursuit = dto.Guidance?.IsPurePursuit ?? true;
         store.Guidance.GoalPointLookAheadHold = dto.Guidance?.GoalPointLookAheadHold ?? 4.0;
         store.Guidance.GoalPointLookAheadMult = dto.Guidance?.GoalPointLookAheadMult ?? 1.4;
-        store.Guidance.GoalPointAcquireFactor = dto.Guidance?.GoalPointAcquireFactor ?? 1.5;
+        store.Guidance.GoalPointAcquireFactor = dto.Guidance?.GoalPointAcquireFactor ?? 0.9;
         store.Guidance.StanleyDistanceErrorGain = dto.Guidance?.StanleyDistanceErrorGain ?? 0.8;
         store.Guidance.StanleyHeadingErrorGain = dto.Guidance?.StanleyHeadingErrorGain ?? 1.0;
         store.Guidance.StanleyIntegralGainAB = dto.Guidance?.StanleyIntegralGainAB ?? 0.0;
@@ -208,6 +222,22 @@ public static class VehicleProfileJsonService
         store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? (int)Models.YouTurn.YouTurnType.SagittaStyle;
         store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? 14;
 
+        // GPS / heading (AgOpenGPS keeps these per vehicle). Missing in profiles saved
+        // before #112, when they weren't saved at all → defaults.
+        var gps = dto.Gps;
+        var dc = new ConnectionConfig();
+        store.Connections.IsDualGps = gps?.IsDualGps ?? dc.IsDualGps;
+        store.Connections.DualHeadingOffset = gps?.DualHeadingOffset ?? dc.DualHeadingOffset;
+        store.Connections.DualReverseDistance = gps?.DualReverseDistance ?? dc.DualReverseDistance;
+        store.Connections.AutoDualFix = gps?.AutoDualFix ?? dc.AutoDualFix;
+        store.Connections.DualSwitchSpeed = gps?.DualSwitchSpeed ?? dc.DualSwitchSpeed;
+        store.Connections.MinGpsStep = gps?.MinGpsStep ?? dc.MinGpsStep;
+        store.Connections.FixToFixDistance = gps?.FixToFixDistance ?? dc.FixToFixDistance;
+        store.Connections.HeadingFusionWeight = gps?.HeadingFusionWeight ?? dc.HeadingFusionWeight;
+        store.Connections.ReverseDetection = gps?.ReverseDetection ?? dc.ReverseDetection;
+        store.Connections.RtkLostAlarm = gps?.RtkLostAlarm ?? dc.RtkLostAlarm;
+        store.Connections.RtkLostAction = gps?.RtkLostAction ?? dc.RtkLostAction;
+
         // General — IsMetric used to live here; it now lives in AppSettings.
         // Apply only if the legacy field is present in the file;
         // ReconcileIsMetricAfterProfileLoad post-load decides whether the
@@ -229,6 +259,7 @@ public static class VehicleProfileJsonService
         public VehicleDto? Vehicle { get; set; }
         public GuidanceDto? Guidance { get; set; }
         public YouTurnDto? YouTurn { get; set; }
+        public GpsDto? Gps { get; set; }
         public GeneralDto? General { get; set; }
     }
 
@@ -278,6 +309,21 @@ public static class VehicleProfileJsonService
         public int SkipWidth { get; set; }
         public int Style { get; set; }
         public int Smoothing { get; set; }
+    }
+
+    internal class GpsDto
+    {
+        public bool? IsDualGps { get; set; }
+        public double? DualHeadingOffset { get; set; }
+        public double? DualReverseDistance { get; set; }
+        public bool? AutoDualFix { get; set; }
+        public double? DualSwitchSpeed { get; set; }   // km/h
+        public double? MinGpsStep { get; set; }        // m
+        public double? FixToFixDistance { get; set; }  // m
+        public double? HeadingFusionWeight { get; set; } // GPS share 0–1
+        public bool? ReverseDetection { get; set; }
+        public bool? RtkLostAlarm { get; set; }
+        public int? RtkLostAction { get; set; }
     }
 
     internal class GeneralDto

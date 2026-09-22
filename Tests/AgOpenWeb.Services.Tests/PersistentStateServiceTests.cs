@@ -142,7 +142,7 @@ public class PersistentStateServiceTests
             WebCameraZoom = 17, WebCameraPitch = 0.9,
             IsDayMode = false, Is2DMode = true, IsNorthUp = true,
             SimulatorLatitude = 12.5, SimulatorLongitude = 13.5, SimulatorSpeed = 9, SimulatorSteerAngle = 8,
-            LastOpenedField = "X", BoundaryDrawRightSide = false, BoundaryDrawAtPivot = true, BoundaryOffset = 42,
+            LastOpenedField = "X", BoundaryDrawRightSide = false, BoundaryDrawAtPivot = false, BoundaryOffset = 42,
         };
         NewService(save).Save();
 

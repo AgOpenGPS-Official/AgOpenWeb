@@ -74,12 +74,7 @@ public class AhrsConfig : ObservableObject
         set => SetProperty(ref _isAutoSteerAuto, value);
     }
 
-    private bool _isReverseOn;
-    public bool IsReverseOn
-    {
-        get => _isReverseOn;
-        set => SetProperty(ref _isReverseOn, value);
-    }
+    // IsReverseOn duplicated Connections.ReverseDetection, never read (#125).
 
     private bool _isDualAsIMU;
     public bool IsDualAsIMU
@@ -88,27 +83,6 @@ public class AhrsConfig : ObservableObject
         set => SetProperty(ref _isDualAsIMU, value);
     }
 
-    private bool _autoSwitchDualFixOn;
-    public bool AutoSwitchDualFixOn
-    {
-        get => _autoSwitchDualFixOn;
-        set => SetProperty(ref _autoSwitchDualFixOn, value);
-    }
-
-    private double _autoSwitchDualFixSpeed;
-    public double AutoSwitchDualFixSpeed
-    {
-        get => _autoSwitchDualFixSpeed;
-        set => SetProperty(ref _autoSwitchDualFixSpeed, value);
-    }
-
-    /// <summary>
-    /// Whether alarms (like RTK lost) should automatically disengage AutoSteer.
-    /// </summary>
-    private bool _alarmStopsAutoSteer = true;
-    public bool AlarmStopsAutoSteer
-    {
-        get => _alarmStopsAutoSteer;
-        set => SetProperty(ref _alarmStopsAutoSteer, value);
-    }
+    // AutoSwitchDualFixOn / AutoSwitchDualFixSpeed / AlarmStopsAutoSteer were duplicates
+    // of Connections.AutoDualFix / DualSwitchSpeed / RtkLostAction, never read (#112).
 }

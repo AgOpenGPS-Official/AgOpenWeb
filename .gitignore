@@ -99,3 +99,5 @@ AuthKey_*.p8
 
 # MSBuild SDK resolver scratch files (dropped next to platform csproj on restore)
 *.SdkResolver.*.proj.Backup.tmp
+.vscode/settings.json
+.vscode/tasks.json

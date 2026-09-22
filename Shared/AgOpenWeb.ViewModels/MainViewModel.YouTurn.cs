@@ -66,6 +66,25 @@ public partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// U-turn skip mode, cycled by the skip button like AgOpenGPS's btnYouSkipEnable:
+    /// 0 Normal (move by the skip count), 1 Alternative (alternate the skips so the field
+    /// is covered out-and-back), 2 Ignore worked tracks (snake / skip-and-fill) (#111).
+    /// </summary>
+    public int UTurnSkipMode
+    {
+        get => _uTurnSkipMode;
+        set
+        {
+            value = Math.Clamp(value, 0, 2);
+            if (!SetProperty(ref _uTurnSkipMode, value)) return;
+            State.FieldTools.UTurnSkipMode = value;
+            IsUTurnSkipRowsEnabled = value != 0;
+            IsSkipWorkedMode = value == 2;
+        }
+    }
+    private int _uTurnSkipMode;
+
     private bool _isUTurnSkipRowsEnabled;
     public bool IsUTurnSkipRowsEnabled
     {
@@ -173,15 +192,32 @@ public partial class MainViewModel
     /// <summary>Clear all U-turn state — called on field close or track deselect.</summary>
     public void ClearYouTurnState() => _intents.RequestClearYouTurn();
 
+    /// <summary>
+    /// Manual turns speed limit (AgOpenGPS vehicle.functionSpeedLimit): with "Manual turns"
+    /// on, manual U-turns and lateral moves are refused above the manual turns speed, with
+    /// AgOpenGPS's "too fast" message (#110).
+    /// </summary>
+    internal bool ManualTurnTooFast()
+    {
+        var a = ConfigStore.AutoSteer;
+        if (!a.ManualTurnsEnabled || SpeedKmh < a.ManualTurnsSpeed) return false;
+        ReportFailure(ConfigStore.IsMetric
+            ? $"Too fast: slow down below {a.ManualTurnsSpeed:F0} km/h"
+            : $"Too fast: slow down below {a.ManualTurnsSpeed * 0.621371:F1} mph");
+        return true;
+    }
+
     public void TriggerManualYouTurnLeft()
     {
         if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: true);
     }
 
     public void TriggerManualYouTurnRight()
     {
         if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: false);
     }
 
@@ -208,7 +244,7 @@ public partial class MainViewModel
     {
         if (State.YouTurn.IsExecuting)
         {
-            StatusMessage = "Cannot flip U-turn direction while executing";
+            ReportFailure("Cannot flip U-turn direction while executing");
             return;
         }
 

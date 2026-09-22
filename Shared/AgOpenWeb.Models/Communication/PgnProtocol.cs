@@ -140,8 +140,7 @@ public static class PgnProtocol
             CrossTrackErrorCm = (sbyte)data[10],
             SectionBits1to8 = data[11],
             SectionBits9to16 = data[12],
-            IsEngaged = (data[7] & 0x04) != 0,
-            IsGpsValid = (data[7] & 0x08) != 0
+            IsEngaged = (data[7] & 0x01) != 0, // firmware steers on bit 0 (#125)
         };
     }
 

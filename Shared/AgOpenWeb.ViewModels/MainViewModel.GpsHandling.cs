@@ -189,11 +189,10 @@ public partial class MainViewModel
         // ── User-action-driven recording (stays in ViewModel) ───────────
 
         // Add boundary point if recording is active
-        if (_boundaryRecordingService.IsRecording)
+        if (_boundaryRecordingService.IsRecording && BoundaryRecordingSectionsAllow())
         {
-            var (offsetEasting, offsetNorthing) = CalculateOffsetPosition(
-                posEasting, posNorthing, headingRad);
-            _boundaryRecordingService.AddPoint(offsetEasting, offsetNorthing, headingRad);
+            var (bndE, bndN) = BoundaryRecordPoint(posEasting, posNorthing, headingRad);
+            _boundaryRecordingService.AddPoint(bndE, bndN, headingRad);
         }
 
         // Add curve point if curve recording is active
@@ -258,27 +257,27 @@ public partial class MainViewModel
     }
 
     private DateTime _lastAutoTrackTime = DateTime.MinValue;
-    private const double AUTO_TRACK_INTERVAL_SECONDS = 3.0;
+    private const double AUTO_TRACK_INTERVAL_SECONDS = 1.0; // AgOpenGPS autoTrack3SecTimer (1 s loop)
 
     /// <summary>
-    /// Auto-select closest track when autosteer is not engaged.
-    /// Only runs when no track is manually selected (SelectedTrack == null).
-    /// Matches legacy: 3-second debounce, heading alignment, visibility filter.
+    /// Auto Track, as AgOpenGPS (Position.designer.cs + CTrack.FindClosestRefTrack):
+    /// while AutoSteer is off and a track is active, every second switch to the closest
+    /// visible, heading-aligned track. With no active track it does nothing, so turning
+    /// a track off sticks. It used to pick a track only when none was active and then
+    /// never switch (#111).
     /// </summary>
-    private void UpdateAutoTrackSelection(AgOpenWeb.Models.Position position)
+    internal void UpdateAutoTrackSelection(AgOpenWeb.Models.Position position)
     {
         if (!IsAutoTrackEnabled || IsAutoSteerEngaged)
             return;
 
-        // Don't override a manually selected track
-        if (SelectedTrack != null)
+        if (SelectedTrack == null)
             return;
 
         var tracks = State.Field.Tracks;
-        if (tracks.Count == 0)
+        if (tracks.Count < 2)
             return;
 
-        // 3-second debounce
         var now = DateTime.UtcNow;
         if ((now - _lastAutoTrackTime).TotalSeconds < AUTO_TRACK_INTERVAL_SECONDS)
             return;
@@ -290,7 +289,7 @@ public partial class MainViewModel
         var closest = Services.Track.AutoTrackSelectionService.FindClosestTrack(
             tracks, vehiclePos, headingRadians);
 
-        if (closest != null)
+        if (closest != null && !ReferenceEquals(closest, SelectedTrack))
         {
             SelectedTrack = closest;
         }
@@ -419,7 +418,8 @@ public partial class MainViewModel
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);
         _gpsPipelineService.SetYouTurnConfig(
-            UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance);
+            UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance,
+            isAlternateSkipMode: UTurnSkipMode == 1);
     }
 
     #endregion
@@ -469,4 +469,31 @@ public partial class MainViewModel
     }
 
     #endregion
+
+    // Boundary player "Section control" (AgOpenGPS bnd.isRecBoundaryWhenSectionOn): with it on,
+    // points are only recorded while sections are working (Manual on or Auto) (#110).
+    internal bool BoundaryRecordingSectionsAllow() =>
+        !IsBoundarySectionControlOn || IsManualSectionMode || IsSectionMasterOn;
+
+    /// <summary>
+    /// Where a boundary point is recorded (AgOpenGPS Position.designer.cs): at the antenna/
+    /// pivot plus the side offset, or — "Tool" — at the tool's outer edge on the chosen side
+    /// (last section's right point / first section's left point) (#110).
+    /// </summary>
+    internal (double e, double n) BoundaryRecordPoint(double posEasting, double posNorthing, double headingRad)
+    {
+        if (IsDrawAtPivot || _sectionControlService.NumSections < 1)
+            return CalculateOffsetPosition(posEasting, posNorthing, headingRad);
+
+        var tool = _toolPositionService.ToolPosition;
+        double toolHeading = _toolPositionService.ToolHeading;
+        if (IsDrawRightSide)
+        {
+            var (_, right) = _sectionControlService.GetSectionWorldPosition(
+                _sectionControlService.NumSections - 1, tool, toolHeading);
+            return (right.Easting, right.Northing);
+        }
+        var (left, _) = _sectionControlService.GetSectionWorldPosition(0, tool, toolHeading);
+        return (left.Easting, left.Northing);
+    }
 }

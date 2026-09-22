@@ -8,7 +8,7 @@
     <LangVersion>14</LangVersion>
     <ApplicationId>com.agopenweb.android</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>26.6.75</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>26.7.0</ApplicationDisplayVersion>
     <ApplicationTitle>AgOpenWeb</ApplicationTitle>
     <OutputType>Exe</OutputType>
     <AndroidPackageFormat>apk</AndroidPackageFormat>

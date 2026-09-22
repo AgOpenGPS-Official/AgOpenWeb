@@ -74,6 +74,7 @@
        (with per-module popup), and big Speed on the right. */
     #statusbar {
       position: fixed; top: var(--sat); left: 0; right: 0; height: 46px; display: none;
+      z-index: 33; /* above #leftnav (32) so the Modules / GPS popups aren't clipped under it (#94) */
       align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
       background: var(--float-bg); border-bottom: 1px solid var(--border-2);
       color: var(--text-2); font: 600 15px system-ui, sans-serif;
@@ -105,7 +106,7 @@
     .sb-rot { color: #3498DB; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sb-spacer { flex: 1; }
     .sb-mods-wrap { position: relative; }
-    #sb-modpop { display: none; position: absolute; top: 36px; right: 0; min-width: 230px;
+    #sb-modpop { display: none; position: absolute; top: 36px; left: 0; min-width: 230px;
       background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px;
       box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; }
     .sb-modrow { display: grid; grid-template-columns: 16px 84px 1fr; align-items: center;
@@ -162,6 +163,15 @@
       pointer-events: none; z-index: 40; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
     }
     #maptap-hint.show { display: block; }
+    /* AutoSteer engaged but the module isn't steering (#126): red, like AgOpenGPS. */
+    #rn-steer.not-steering { background: rgba(220,30,30,0.85); box-shadow: 0 0 0 3px #ff4040; animation: rn-ns 1s ease-in-out infinite alternate; }
+    @keyframes rn-ns { from { box-shadow: 0 0 0 3px #ff4040; } to { box-shadow: 0 0 0 6px rgba(255,64,64,0.35); } }
+    /* Reverse indicator (#125, AgOpenGPS DrawReverse). */
+    #reverse-badge { position: fixed; top: calc(104px + var(--sat)); left: 50%; transform: translateX(-50%);
+      display: none; padding: 6px 18px; border-radius: 999px; border: 1px solid rgba(255,90,90,0.8);
+      background: rgba(70,10,10,0.9); color: #ffd0d0; font: 700 15px system-ui, sans-serif;
+      letter-spacing: 0.05em; pointer-events: none; z-index: 40; }
+    #reverse-badge.show { display: block; }
     /* "Esc to cancel" only on pointer devices with a keyboard; touch cancels via the red
        Cancel button in the draw toolbar (no Esc key on a tablet). */
     @media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
@@ -288,6 +298,7 @@
     #bottomnav .bn-menu.menuopen { background: var(--sel); }
     #bottomnav .bn-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
     #bn-skipnum { font-size: 22px; font-weight: 700; }
+    #bn-nudgeval { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
     #bottomnav.locked .bn-btn[data-t2] { opacity: 0.45; } /* dim Tier-2 when we lack control */
     .bn-flyout { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
       margin-bottom: 6px; display: none; flex-direction: column; gap: 5px; padding: 8px;
@@ -800,6 +811,49 @@
       font: 700 14px system-ui, sans-serif; }
     .dlg-cancel { background: rgba(var(--ov),0.10); color: var(--text-2); }
     .dlg-ok { background: #1f6fb2; color: #fff; }
+    #dp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 50vh; overflow-y: auto; }
+    .dp-row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; min-height: 44px;
+      padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+    .dp-row:active { background: rgba(74,144,217,0.25); }
+    .dp-name { color: var(--text); font: 600 15px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dp-num { color: var(--text-muted); font: 500 13px system-ui, sans-serif; text-align: right; }
+    /* Host prompt (#109): the host's own confirm/error, which must be answered — dimmed
+       backdrop with no tap-outside dismiss, above every other dialog. */
+    #hostprompt { position: fixed; inset: 0; display: none; align-items: flex-start;
+      justify-content: center; z-index: 60; background: rgba(0,0,0,0.45); }
+    #hostprompt.open { display: flex; }
+    #hostprompt .dlg-card { display: flex; }
+    #hp-msg { white-space: pre-line; }
+    #hp-check { display: flex; align-items: center; gap: 8px; margin-top: 12px;
+      color: var(--text-2); font: 500 14px system-ui, sans-serif; }
+    #hp-check[hidden] { display: none; }
+    #hp-check input { width: 20px; height: 20px; }
+    #hp-wait { color: var(--text-muted); font: 500 13px system-ui, sans-serif; text-align: center; margin-top: 10px; }
+    .dlg-btn:disabled { opacity: 0.4; cursor: default; }
+    /* Failure notification (#109): a refused/failed action says why. */
+    #toast { position: fixed; bottom: calc(90px + var(--sab, 0px)); left: 50%; transform: translateX(-50%);
+      max-width: min(560px, calc(100vw - 32px)); display: none; padding: 10px 20px; border-radius: 10px;
+      border: 1px solid rgba(255,190,90,0.7); background: rgba(58,38,8,0.94); color: #ffe2b0;
+      font: 600 15px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+    #toast.show { display: block; }
+    #hwmsg { position: fixed; top: calc(96px + var(--sat, 0px)); left: 50%; transform: translateX(-50%);
+      max-width: min(560px, calc(100vw - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
+      color: #000; font: 700 16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+    #hwmsg.show { display: block; }
+    /* On-screen keyboard (App Settings › On-screen Kbd, AgOpenGPS FormKeyboard/FormNumeric) (#110). */
+    #osk { position: fixed; left: 0; right: 0; bottom: 0; z-index: 90; padding: 8px 8px calc(8px + var(--sab, 0px));
+      background: rgba(14,18,28,0.97); border-top: 1px solid var(--border, #334); box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; gap: 6px; align-items: center; touch-action: manipulation; user-select: none; }
+    #osk[hidden] { display: none; }
+    #osk .osk-row { display: flex; gap: 6px; justify-content: center; width: 100%; max-width: 900px; }
+    #osk button { flex: 1 1 0; min-width: 0; height: 52px; border-radius: 8px; border: 1px solid #3a4560;
+      background: #222b3d; color: #eef; font: 600 20px system-ui, sans-serif; }
+    #osk button:active { background: #34405a; }
+    #osk button.wide { flex-grow: 2; } #osk button.xwide { flex-grow: 5; }
+    #osk button.ok { background: #1f6f3a; border-color: #2e9a53; }
+    #osk.num .osk-row { max-width: 360px; }
     /* AB creation selectors (Quick AB / Draw AB) — mode-button grid. */
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
@@ -829,6 +883,7 @@
       padding: 9px 10px; border-bottom: 1px solid rgba(var(--ov),0.05); cursor: pointer; }
     .trk-row:hover { background: rgba(var(--ov),0.05); }
     .trk-row.active { background: rgba(39,174,96,0.18); }
+    .trk-row.sel { box-shadow: inset 0 0 0 2px #4A90D9; }
     .trk-row .trk-name { color: var(--text); font: 500 14px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .trk-row .trk-type { text-align: center; color: var(--text-muted); font: 500 13px system-ui, sans-serif; }
     .trk-row .trk-dot { justify-self: center; width: 14px; height: 14px; border-radius: 50%; background: var(--dot-off); }
@@ -1114,6 +1169,7 @@
   <div id="lb"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
+  <div id="reverse-badge" title="Reversing">&#9664; REVERSE</div>
   <button id="maptap-cancel">✕ Cancel</button>
   <div id="maptap-ab">A</div>
   <div id="ab-dot-labels"></div>
@@ -1219,7 +1275,7 @@
       <button class="sa-tgl" data-key="display.hardwareMessagesEnabled">AiO Board Msgs</button>
       <button class="sa-act" data-cmd="display.toggleTheme">Day/Night Theme</button>
       <button class="sa-tgl" data-key="display.extraGuidelines"><img class="sa-ic" src="/icons/ConD_ExtraGuides.png" alt="">Extra Guides</button>
-      <input id="sa-extracount" class="cfg-num" type="number" step="1" min="0" title="Extra guide count">
+      <input id="sa-extracount" class="cfg-num" type="number" step="1" min="1" max="50" title="Extra guide count">
       <button class="sa-act" data-cmd="display.cycleResolution">Quality: <span id="sa-quality">—</span></button>
     </div>
     <div class="cfg-label">On-Screen Buttons</div>
@@ -1353,7 +1409,7 @@
             <label>Fix-to-fix dist (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="gps.fixToFixDistance" type="number" step="0.01" inputmode="decimal">
             <label>Reverse detection</label><button class="cfg-tgl" data-key="gps.reverseDetection">Off</button>
           </div>
-          <div class="cfg-grid" style="margin-top:6px"><label>Heading fusion <span id="vc-hfw">—</span></label><input class="cfg-slider" data-key="gps.headingFusionWeight" type="range" min="0" max="1" step="0.05"></div>
+          <div class="cfg-grid" style="margin-top:6px"><label>Heading fusion <span id="vc-hfw">—</span></label><input class="cfg-slider" data-key="gps.headingFusionWeight" type="range" min="0" max="1" step="0.01" title="How fast GPS corrects the IMU heading"></div>
           <div class="cfg-label" style="margin-top:8px">RTK</div>
           <div class="cfg-grid">
             <label>RTK lost alarm</label><button class="cfg-tgl" data-key="gps.rtkLostAlarm">Off</button>
@@ -1366,7 +1422,8 @@
       <img src="/icons/ConD_RollHelper.png" class="vc-diag-wide" alt="Roll calibration">
       <div class="cfg-grid">
         <label>Roll zero (°)</label><input class="cfg-num" data-key="roll.rollZero" type="number" step="0.01" inputmode="decimal">
-        <label></label><button class="cfg-act cfg-actwide" data-key="roll.setZero" data-val="1">Zero Now</button>
+        <label></label><button id="vc-rollzero" class="cfg-act cfg-actwide" title="Take the current roll as zero (AgOpenGPS Zero Roll)">Zero Now</button>
+        <label></label><button class="cfg-act cfg-actwide" data-key="roll.setZero" data-val="1" title="Set the roll offset back to 0">Remove Offset</button>
         <label>Roll filter</label><input class="cfg-num" data-key="roll.rollFilter" type="number" step="0.01" inputmode="decimal">
         <label>Invert roll</label><button class="cfg-tgl" data-key="roll.isRollInvert">Off</button>
       </div>
@@ -1451,7 +1508,7 @@
             </div>
             <div class="cfg-grid">
               <label>Number of sections</label><input class="cfg-num" data-key="tool.numSections" type="number" step="1" min="1" max="64">
-              <label>Default width (<span class="u" data-unit="cm"></span>)</label><input class="cfg-num" data-unit="cm" data-key="tool.defaultSectionWidth" type="number" step="1">
+              <label>Default width (<span class="u" data-unit="cm"></span>)</label><input class="cfg-num" data-unit="cm" data-key="tool.defaultSectionWidth" type="number" step="0.1">
             </div>
             <div data-show="individual">
               <div class="cfg-label">Section widths (<span class="u" data-unit="cm"></span>)</div>
@@ -1552,7 +1609,8 @@
     <div id="tc-tram" class="cfg-body" data-strip="tc-top" hidden>
       <div class="vc-diagrow"><img src="/icons/ConT_TramOverride.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Passes</label><input class="cfg-num" data-key="tram.passes" type="number" step="1"></div></div>
       <div class="cfg-grid"><label>Display</label><button class="cfg-tgl" data-key="tram.display">Off</button></div>
-      <div class="vc-diagrow"><img src="/icons/ConT_TramSpacing.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Tram line</label><input class="cfg-num" data-key="tram.line" type="number" step="1"></div></div>
+      <div class="vc-diagrow"><img src="/icons/ConT_TramSpacing.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Tram width (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tram.width" type="number" step="0.1" min="1"></div></div>
+      <div class="cfg-grid"><label>First tram pass</label><input class="cfg-num" data-key="tram.line" type="number" step="1" min="1" title="Pass the tram lines start on (AgOpenGPS start pass + 1)"></div>
     </div>
     <button id="tc-save" class="ln-savebtn">Save Profile</button>
   </div>
@@ -1615,7 +1673,7 @@
           <div class="as-caphdr">Look-ahead Speed Factor</div>
           <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.speedFactor" data-fmt="f1">—</span><input class="cfg-slider" data-key="autosteer.speedFactor" data-fmt="f1" type="range" min="0.5" max="3" step="0.1"></div>
           <div class="as-caphdr">Acquire Factor</div>
-          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.acquireFactor" data-fmt="f2">—</span><input class="cfg-slider" data-key="autosteer.acquireFactor" data-fmt="f2" type="range" min="0.5" max="1" step="0.01"></div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.acquireFactor" data-fmt="f2">—</span><input class="cfg-slider" data-key="autosteer.acquireFactor" data-fmt="f2" type="range" min="0.2" max="3" step="0.01"></div>
         </div>
 
         <!-- Tab 4: Gain / PWM -->
@@ -1680,7 +1738,7 @@
             <label>Motor driver</label><select class="cfg-isel" data-key="autosteer.motorDriver"><option value="0">IBT2</option><option value="1">Cytron</option></select>
             <label>A/D converter</label><select class="cfg-isel" data-key="autosteer.adConverter"><option value="0">Differential</option><option value="1">Single</option></select>
             <label>IMU axis</label><select class="cfg-isel" data-key="autosteer.imuAxisSwap"><option value="0">X</option><option value="1">Y</option></select>
-            <label>External enable</label><select class="cfg-isel" data-key="autosteer.externalEnable"><option value="0">None</option><option value="1">Switch</option><option value="2">Button</option></select>
+            <label title="A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).">Steer switch / button (engages AutoSteer)</label><select class="cfg-isel" data-key="autosteer.externalEnable"><option value="0">None</option><option value="1">Switch</option><option value="2">Button</option></select>
           </div></div>
         </div>
 
@@ -1688,7 +1746,7 @@
         <div id="as-algo" class="cfg-body" data-strip="as-right" hidden>
           <div class="as-card as-togcard"><label>Algorithm</label><button id="as-modeswitch" class="as-modesw">Pure Pursuit</button></div>
           <div class="as-caphdr">U-Turn Compensation <span class="as-hint">(− out / + in)</span></div>
-          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.uTurnCompensation" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.uTurnCompensation" data-fmt="f0" type="range" min="-100" max="100" step="1"></div>
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.uTurnCompensation" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.uTurnCompensation" data-fmt="f0" type="range" min="-80" max="100" step="1"></div>
           <div class="as-caphdr">Side-hill Compensation</div>
           <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.sideHillCompensation" data-fmt="f2">—</span><input class="cfg-slider" data-key="autosteer.sideHillCompensation" data-fmt="f2" type="range" min="0" max="1" step="0.01"></div>
           <div class="as-card as-togcard"><img src="/icons/ConSt_InvertDirection.png" alt=""><label>Steer in reverse</label><button class="cfg-tgl" data-key="autosteer.steerInReverse">Off</button></div>
@@ -1698,9 +1756,9 @@
         <div id="as-speed" class="cfg-body" data-strip="as-right" hidden>
           <div class="as-card as-togcard"><img src="/icons/con_VehicleFunctionSpeedLimit.png" alt=""><label>Manual turns</label><button class="cfg-tgl" data-key="autosteer.manualTurnsEnabled">Off</button></div>
           <div class="as-card"><div class="cfg-grid">
-            <label>Manual turns speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1">
-            <label>Min steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.minSteerSpeed" type="number" step="0.1">
-            <label>Max steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.maxSteerSpeed" type="number" step="0.1">
+            <label>Manual turns speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1" min="0" max="20">
+            <label>Min steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.minSteerSpeed" type="number" step="0.1" min="0" max="10">
+            <label>Max steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.maxSteerSpeed" type="number" step="0.1" min="0" max="50">
           </div></div>
         </div>
 
@@ -2158,7 +2216,7 @@
         <button class="fb-addbtn" data-tdir="0"><img src="/icons/TramMulti.png" alt=""><span>Both</span></button>
         <button class="fb-addbtn" data-tdir="2"><img src="/icons/SnapRight.png" alt=""><span>Right</span></button>
       </div>
-      <div class="fb-offrow"><label>Passes (0 = all)</label><input id="fb-tram-passes" class="cfg-num" type="number" step="1" min="0"></div>
+      <div class="fb-offrow"><label id="fb-tram-passes-lbl">Passes (0 = all)</label><input id="fb-tram-passes" class="cfg-num" type="number" step="1" min="0"></div>
       <button id="fb-tram-done" class="fb-act" style="margin-top:6px">Done</button>
     </div>
     <!-- Add Track sub-view (replaces the tab content) -->
@@ -2313,7 +2371,7 @@
   <!-- Hotkeys. -->
   <div id="hotkeys" class="ln-panel fm-panel">
     <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Hotkeys</span><button class="ln-x ln-closex" title="Close">✕</button></div>
-    <div class="sa-hint">Click a key, then press the new key.</div>
+    <div class="sa-hint">Click a key, then press the new key. A bound key replaces the map key it shares (F follow, 3 tilt, arrows/space simulator).</div>
     <div id="hk-list" class="hk-list"></div>
     <button class="cfg-act cfg-actwide" id="hk-reset" style="margin-top:10px">Reset to Defaults</button>
   </div>
@@ -2399,6 +2457,7 @@
   </div>
   <div id="rightnav">
     <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>
+    <button id="rn-contourlock" class="rn-btn" style="display:none"><img id="rn-contourlock-i" class="rn-ic" alt="Contour lock"></button>
     <button id="rn-manual" class="rn-btn"><img id="rn-manual-i" class="rn-ic" alt="Manual"></button>
     <button id="rn-auto" class="rn-btn"><img id="rn-auto-i" class="rn-ic" alt="Sections"></button>
     <button id="rn-youturn" class="rn-btn"><img id="rn-youturn-i" class="rn-ic" alt="U-Turn"></button>
@@ -2475,7 +2534,8 @@
         <!-- Mirrors native BottomNavigationPanel AB flyout. Row 1: Tracks manager /
              Auto-track / Quick-AB (the single creation hub — GPS-driven, from-boundary,
              and draw-on-map all live in its dialog). Then the active-track ops
-             (cycle/smooth/delete + nudges), shown only with an active track (.bn-abdep). -->
+             (cycle/smooth/delete, A/B end length, nudge), shown only with an active track
+             (.bn-abdep). Length and nudge are unrelated, so a divider separates them (#93). -->
         <div class="bn-flyrow">
           <button class="bn-btn" id="bn-tracks" title="Tracks — manage AB lines"><img class="bn-ic" src="/icons/ABTracks.png" alt="Tracks"></button>
           <button class="bn-btn" id="bn-quickab" title="Quick AB line creator"><img class="bn-ic" src="/icons/ABTrackAPlus.png" alt="Quick AB"></button>
@@ -2485,26 +2545,27 @@
         <div class="bn-flyrow bn-abdep">
           <button class="bn-btn" data-cmd="track.cycle" data-t2 title="Cycle AB lines"><img class="bn-ic" src="/icons/ABLineCycle.png" alt="Cycle"></button>
           <button class="bn-btn" data-cmd="track.smooth" data-t2 title="Smooth AB curve"><img class="bn-ic" src="/icons/ABSmooth.png" alt="Smooth"></button>
-          <button class="bn-btn" data-cmd="track.deleteContours" data-t2 title="Delete contours"><img class="bn-ic" src="/icons/TrashContourRef.png" alt="Delete contours"></button>
+          <button class="bn-btn" id="bn-delcontours" data-t2 title="Delete contour paths"><img class="bn-ic" src="/icons/TrashContourRef.png" alt="Delete contours"></button>
         </div>
         <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge left (A+)"><img class="bn-ic" src="/icons/APlusPlusA.png" alt="Nudge L"></button>
-          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge right (B+)"><img class="bn-ic" src="/icons/APlusPlusB.png" alt="Nudge R"></button>
+          <button class="bn-btn" data-cmd="track.extendA" data-t2 title="Extend line at A (+5 m)"><img class="bn-ic" src="/icons/APlusPlusA.png" alt="Extend A"></button>
+          <button class="bn-btn" data-cmd="track.extendB" data-t2 title="Extend line at B (+5 m)"><img class="bn-ic" src="/icons/APlusPlusB.png" alt="Extend B"></button>
         </div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.fineNudgeLeft" data-t2 title="Fine nudge left (A−)"><img class="bn-ic" src="/icons/APlusMinusA.png" alt="Fine L"></button>
-          <button class="bn-btn" data-cmd="track.fineNudgeRight" data-t2 title="Fine nudge right (B−)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Fine R"></button>
+          <button class="bn-btn" data-cmd="track.shrinkA" data-t2 title="Shorten line at A (−5 m)"><img class="bn-ic" src="/icons/APlusMinusA.png" alt="Shorten A"></button>
+          <button class="bn-btn" data-cmd="track.shrinkB" data-t2 title="Shorten line at B (−5 m)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Shorten B"></button>
         </div>
+        <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.halfNudgeLeft" data-t2 title="Nudge left half tool width">&lt;&lt;</button>
-          <button class="bn-btn" data-cmd="track.resetNudge" data-t2 title="Reset nudge">0</button>
-          <button class="bn-btn" data-cmd="track.halfNudgeRight" data-t2 title="Nudge right half tool width">&gt;&gt;</button>
+          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge line left">&lt;&lt;</button>
+          <button class="bn-btn" id="bn-nudge" data-cmd="track.resetNudge" data-t2 title="Current nudge — tap to reset to 0"><span id="bn-nudgeval">0</span></button>
+          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge line right">&gt;&gt;</button>
         </div>
       </div>
       <div class="bn-bar">
         <button class="bn-btn bn-abdep" id="bn-skipcycle" data-cmd="youturn.skipCycle" data-t2 title="U-Turn skip rows (tap to cycle 0–9)"><span id="bn-skipnum">0</span></button>
-        <button class="bn-btn bn-abdep" id="bn-skiptoggle" data-cmd="youturn.skipToggle" data-t2 title="U-Turn skip rows on/off"><img class="bn-ic" id="bn-skip-ic" alt="Skip"></button>
+        <button class="bn-btn bn-abdep" id="bn-skiptoggle" data-cmd="youturn.skipToggle" data-t2 title="U-Turn skip mode: normal / alternative / skip worked tracks"><img class="bn-ic" id="bn-skip-ic" alt="Skip"></button>
         <button class="bn-btn" data-cmd="map.cycleColor" title="Section mapping colour"><img class="bn-ic" src="/icons/SectionMapping.png" alt="Mapping colour"></button>
         <button class="bn-btn" data-cmd="tool.resetHeading" title="Reset tool heading"><img class="bn-ic" src="/icons/ResetTool.png" alt="Reset tool"></button>
         <button class="bn-btn" id="bn-secheadland" data-cmd="headland.sectionToggle" data-t2 title="Section control in headland"><img class="bn-ic" id="bn-secheadland-ic" alt="Section in headland"></button>
@@ -2521,6 +2582,23 @@
   <!-- Dialog host (Phase 6): the web mirror of DialogOverlayHost — one modal at a
        time over a dimming backdrop. SimCoords is the first dialog; later phases add
        more cards into this same host. -->
+  <!-- Host prompt (#109): the host's pending confirm/error dialog (Prompt frame). Only the
+       browser holding control can answer; others see who can. -->
+  <div id="hostprompt">
+    <div class="dlg-card">
+      <div class="dlg-title" id="hp-title"></div>
+      <div class="dlg-msg" id="hp-msg"></div>
+      <label id="hp-check" hidden><input type="checkbox" id="hp-checkbox"><span id="hp-checklabel"></span></label>
+      <div class="dlg-buttons">
+        <button id="hp-cancel" class="dlg-btn dlg-cancel">No</button>
+        <button id="hp-ok" class="dlg-btn dlg-ok">Yes</button>
+      </div>
+      <div id="hp-wait" hidden></div>
+    </div>
+  </div>
+  <div id="toast"></div>
+  <div id="hwmsg"></div>
+  <div id="osk" hidden></div>
   <div id="dialoghost">
     <div class="dlg-backdrop"></div>
     <div id="dlg-simcoords" class="dlg-card">
@@ -2532,6 +2610,15 @@
       <div class="dlg-buttons">
         <button id="dlg-cancel" class="dlg-btn dlg-cancel">Cancel</button>
         <button id="dlg-ok" class="dlg-btn dlg-ok">OK</button>
+      </div>
+    </div>
+    <!-- Drive In pick list (#109, AgOpenGPS FormDrivePicker): 2+ fields within 0.5 km. -->
+    <div id="dlg-drivepick" class="dlg-card">
+      <div class="dlg-title">Fields Nearby</div>
+      <div class="dlg-msg">More than one field is within 0.5 km. Pick the one you're in.</div>
+      <div id="dp-list"></div>
+      <div class="dlg-buttons">
+        <button id="dp-cancel" class="dlg-btn dlg-cancel">Cancel</button>
       </div>
     </div>
     <!-- Shared confirm (replaces browser confirm() + native ShowConfirmationDialog).

@@ -44,6 +44,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
     // host projects it (like the wizard). Read every tick, re-sent on a fingerprint change.
     public Func<RecordedPathDto?>? RecordedPathProvider { get; set; }
     private long _lastRecPathFp = long.MinValue;
+    // Host-driven pending confirm/error dialog (#109). Read every tick, re-sent on change.
+    public Func<PromptDto?>? PromptProvider { get; set; }
+    private PromptDto _lastPrompt = PromptDto.None;
     // Host-driven Boundary read-frame (menu list + live drive-around recording state).
     public Func<BoundaryDto?>? BoundaryProvider { get; set; }
     private long _lastBoundaryFp = long.MinValue;
@@ -94,6 +97,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeRecordedPath(RecordedPathProvider?.Invoke() ?? EmptyRecordedPath),
             WireCodec.EncodeBoundary(BoundaryProvider?.Invoke() ?? EmptyBoundary),
             WireCodec.EncodeControlState(_authority.Snapshot()),
+            WireCodec.EncodePrompt(PromptProvider?.Invoke() ?? PromptDto.None),
         };
         if (ViewPrefsProvider?.Invoke() is { } vp)
             frames.Add(WireCodec.EncodeViewPrefs(vp.Pitch, vp.Zoom));
@@ -225,6 +229,14 @@ public sealed class MapBroadcaster : IAsyncDisposable
                         _lastBoundaryFp = bfp;
                         await _ws.BroadcastAsync(WireCodec.EncodeBoundary(bDto), ct).ConfigureAwait(false);
                     }
+                }
+
+                // Pending confirm/error prompt (host-driven, #109). Records compare by value.
+                var prompt = PromptProvider?.Invoke() ?? PromptDto.None;
+                if (prompt != _lastPrompt)
+                {
+                    _lastPrompt = prompt;
+                    await _ws.BroadcastAsync(WireCodec.EncodePrompt(prompt), ct).ConfigureAwait(false);
                 }
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)

@@ -180,16 +180,18 @@ public class SmartWasCalibrationServiceTests
         Assert.That(_service.GetSnapshot().SampleCount, Is.EqualTo(0));
     }
 
-    // 10. InvertWas flips sample sign
+    // 10. InvertWas does NOT flip samples (#103): the module already applied the
+    // inversion, and the zeroing formula is the same either way.
     [Test]
-    public void InvertWas_FlipsSampleSign()
+    public void InvertWas_DoesNotFlipSampleSign()
     {
         ConfigurationStore.Instance.AutoSteer.InvertWas = true;
         FeedSamples(MIN_SAMPLES, _ => 1.0);
 
         var snap = _service.GetSnapshot();
-        Assert.That(snap.Mean, Is.EqualTo(-1.0).Within(1e-9),
-            "With InvertWas=true, +1° input should land in the buffer as -1°");
+        Assert.That(snap.Mean, Is.EqualTo(1.0).Within(1e-9));
+        Assert.That(snap.RecommendedOffset, Is.EqualTo(-1.0).Within(1e-9),
+            "Reported +1° → offset -= 1° × cpd, same as without Invert WAS");
     }
 
     // 11. ApplyOffsetCorrection shifts buffer

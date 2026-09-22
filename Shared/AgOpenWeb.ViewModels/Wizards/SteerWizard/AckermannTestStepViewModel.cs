@@ -262,7 +262,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         if (_autoSteerService != null)
             _autoSteerService.StateUpdated -= OnStateUpdated;
 
-        _configService.Store.AutoSteer.Ackermann = Ackermann;
+        if (Touched(nameof(Ackermann))) _configService.Store.AutoSteer.Ackermann = Ackermann;
     }
 
     private void OnStateUpdated(object? sender, VehicleStateSnapshot snapshot)

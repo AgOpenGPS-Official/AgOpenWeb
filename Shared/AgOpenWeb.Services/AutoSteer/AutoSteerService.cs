@@ -83,6 +83,7 @@ public class AutoSteerService : IAutoSteerService
     private bool _configSubscribed;
     private AutoSteerConfig? _subscribedAutoSteer;
     private ToolConfig? _subscribedTool;
+    private MachineConfig? _subscribedMachine;
 
     /// <summary>
     /// Test seam: lets tests shorten the debounce so they don't have
@@ -95,6 +96,7 @@ public class AutoSteerService : IAutoSteerService
     }
 
     public event EventHandler<VehicleStateSnapshot>? StateUpdated;
+    public event Action<string, int, bool>? HardwareMessageReceived;
 
     public bool IsEnabled => _isEnabled;
     public bool IsEngaged => _isEngaged;
@@ -179,6 +181,10 @@ public class AutoSteerService : IAutoSteerService
         _subscribedTool = _configStore.Tool;
         _subscribedAutoSteer.PropertyChanged += OnConfigPropertyChanged;
         _subscribedTool.PropertyChanged += OnConfigPropertyChanged;
+        // Machine config (PGN 238 raise/lower/invert/user values, PGN 236 pins): sent the
+        // same way, so edits and profile loads reach the machine module (#110).
+        _subscribedMachine = _configStore.Machine;
+        _subscribedMachine.PropertyChanged += OnConfigPropertyChanged;
         _configSubscribed = true;
     }
 
@@ -189,6 +195,8 @@ public class AutoSteerService : IAutoSteerService
             _subscribedAutoSteer.PropertyChanged -= OnConfigPropertyChanged;
         if (_subscribedTool != null)
             _subscribedTool.PropertyChanged -= OnConfigPropertyChanged;
+        if (_subscribedMachine != null)
+            _subscribedMachine.PropertyChanged -= OnConfigPropertyChanged;
         _configSubscribed = false;
     }
 
@@ -213,6 +221,10 @@ public class AutoSteerService : IAutoSteerService
             var cfg = _configStore.AutoSteer;
             _udpService.SendToModules(PgnBuilder.BuildSteerConfigPgn(cfg));
             _udpService.SendToModules(PgnBuilder.BuildSteerSettingsPgn(cfg));
+            // AgOpenGPS SendSettings / SendRelaySettingsToMachineModule send PGN 238 and 236
+            // with 251/252 on start and profile load; these were built but never sent (#110).
+            SendMachineConfig();
+            SendMachinePinConfig();
         }
         catch (Exception ex)
         {
@@ -257,7 +269,28 @@ public class AutoSteerService : IAutoSteerService
             case PgnNumbers.SENSOR_DATA: // 250 - Sensor Data from module
                 ProcessSensorData(e.Data);
                 break;
+
+            case PgnNumbers.HARDWARE_MESSAGE: // 221 - text to show on screen
+                if (TryParseHardwareMessage(e.Data, out var text, out int seconds, out bool warning))
+                    HardwareMessageReceived?.Invoke(text, seconds, warning);
+                break;
         }
+    }
+
+    /// <summary>
+    /// PGN 221, as AgOpenGPS reads it: { 0x80, 0x81, 0x7F, 221, length, seconds to show,
+    /// colour (0 = warning), text…, CRC }, text = UTF-8 of (length − 2) bytes from byte 7.
+    /// </summary>
+    public static bool TryParseHardwareMessage(byte[] data, out string text, out int seconds, out bool warning)
+    {
+        text = ""; seconds = 0; warning = false;
+        if (data.Length < 9) return false;
+        int n = Math.Min(data[4] - 2, data.Length - 8); // stop before the CRC
+        if (n <= 0) return false;
+        text = System.Text.Encoding.UTF8.GetString(data, 7, n).TrimEnd('\0');
+        seconds = data[5];
+        warning = data[6] == 0;
+        return text.Length > 0;
     }
 
     /// <summary>
@@ -355,6 +388,8 @@ public class AutoSteerService : IAutoSteerService
         _state.IsAutoSteerEngaged = false;
     }
 
+    public void SetSteerPaused(bool paused) => _state.IsSteerPaused = paused;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Free Drive Mode
     // ═══════════════════════════════════════════════════════════════════════
@@ -420,9 +455,35 @@ public class AutoSteerService : IAutoSteerService
 
     public void UpdateGuidanceResults(double steerAngle, double crossTrackError)
     {
-        _state.SteerAngle = steerAngle;
         _state.CrossTrackError = crossTrackError;
+
+        // Deadzone (AgOpenGPS Position.designer.cs): while steering forward and the wheel
+        // is within Deadzone heading of the set angle for longer than Deadzone delay (s),
+        // stop updating the steer angle sent in PGN 254, so the motor holds instead of
+        // hunting. Off when not engaged, paused or reversing (#110).
+        var a = _configStore.AutoSteer;
+        bool steering = _state.IsAutoSteerEngaged && !_state.IsSteerPaused && !_isReverse;
+        if (steering && a.DeadzoneHeading > 0
+            && Math.Abs(steerAngle - _state.ActualSteerAngle) < a.DeadzoneHeading)
+        {
+            _deadZoneSince ??= Stopwatch.GetTimestamp();
+            IsInDeadZone = Stopwatch.GetElapsedTime(_deadZoneSince.Value).TotalSeconds > a.DeadzoneDelay;
+        }
+        else
+        {
+            _deadZoneSince = null;
+            IsInDeadZone = false;
+        }
+        if (!IsInDeadZone) _state.SteerAngle = steerAngle;
     }
+
+    private long? _deadZoneSince;
+    private bool _isReverse;
+
+    /// <summary>True while the deadzone is holding the sent steer angle (#110).</summary>
+    public bool IsInDeadZone { get; private set; }
+
+    public void SetReverse(bool isReverse) => _isReverse = isReverse;
 
     /// <summary>
     /// Process incoming GPS buffer — entry point for the zero-copy pipeline.

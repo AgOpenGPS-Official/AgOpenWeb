@@ -52,6 +52,7 @@ public sealed class WebClientAudioService : IAudioService
                 if (!display.AutoSteerSound) return;
                 break;
             case SoundEffect.UTurnTooClose:
+            case SoundEffect.YouTurnApproach:
                 if (!display.UTurnSound) return;
                 break;
             case SoundEffect.HydraulicLiftUp:

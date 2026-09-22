@@ -126,6 +126,12 @@ public class PgnMessage
 public static class PgnNumbers
 {
     /// <summary>
+    /// Hardware message from a module (0xDD = 221): text shown on screen for N seconds
+    /// (AgOpenGPS UDPComm case 221) (#110).
+    /// </summary>
+    public const byte HARDWARE_MESSAGE = 221;
+
+    /// <summary>
     /// Hello/ping from AutoSteer module (0x7E = 126)
     /// </summary>
     public const byte HELLO_FROM_AUTOSTEER = 126;

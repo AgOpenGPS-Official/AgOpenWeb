@@ -29,7 +29,8 @@ addEventListener('resize', resize); resize();
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
 let tick = null;       // TickDto (latest — for sections/HUD)
-let lastTick = null;   // newest authoritative pose (HUD readouts + guards)
+let lastTick = null;
+const reverseBadge = document.getElementById('reverse-badge');   // newest authoritative pose (HUD readouts + guards)
 // Ring of recent authoritative poses (oldest→newest). The render INTERPOLATES between
 // the two that bracket the playback head. A MULTI-pose buffer (not just prev+last) is
 // what lets RENDER_DELAY exceed the ~100 ms pose interval without the playhead falling
@@ -156,7 +157,7 @@ function applyUnits() {
 }
 // Read a number input as a METRIC value: parse what the user typed (a display value)
 // and convert back. Fields whose metric step is a whole unit are integer-backed
-// host-side (nudge distance, section widths in cm), so round after converting —
+// host-side (nudge distance), so round after converting —
 // otherwise 8" → 20.32 cm would fail the host's int parse and silently do nothing.
 function readUnitInput(inp) {
   const v = parseFloat(inp.value);
@@ -230,6 +231,18 @@ const frontWheelImg = new Image();
 let frontWheelReady = false, skFrontWheel = null;
 frontWheelImg.onload = () => { frontWheelReady = true; };
 frontWheelImg.src = '/icons/FrontWheels.png';
+// Harvester + articulated body sprites (issue #88) — AgOpenGPS's AoG brand textures,
+// drawn with CVehicle's per-type layout in vehicleSk. Lazily turned into SkImages.
+function loadSprite(src) {
+  const s = { img: new Image(), ready: false, sk: null };
+  s.img.onload = () => { s.ready = true; };
+  s.img.src = src;
+  return s;
+}
+function skSprite(s) { return s.ready ? (s.sk || (s.sk = CK.MakeImageFromCanvasImageSource(s.img))) : null; }
+const harvesterSpr = loadSprite('/icons/HarvesterAoG.png');
+const artFrontSpr = loadSprite('/icons/ArticulatedFrontAoG.png');
+const artRearSpr = loadSprite('/icons/ArticulatedRearAoG.png');
 
 // ---- background imagery: extent from the Scene, PNG fetched over HTTP. ----
 let imageryRect = null;  // { minE, minN, maxE, maxN, version }
@@ -327,10 +340,11 @@ const transport = RemoteTransport.create({
   },
   onTick(t) {
     tick = t;
+    reverseBadge.classList.toggle('show', !!(t.op && t.op.reverse)); // #125
     if (t.pose) {
       lastTick = {
         e: t.pose.e, n: t.pose.n, heading: t.pose.heading, speed: t.pose.speed,
-        tool: t.tool, t: performance.now(), hostT: t.hostMs,
+        tool: t.tool, goal: t.goal, t: performance.now(), hostT: t.hostMs,
       };
       // Keep the buffer strictly increasing in host time. The 30 Hz render-pull vs 10 Hz
       // broadcast can occasionally resend the same pose (equal hostT) — a duplicate/
@@ -407,6 +421,10 @@ const transport = RemoteTransport.create({
   onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
   onSound(id) { Sounds.play(id); },
+  onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
+  onToast(msg) { showToast(msg); },
+  onHardwareMessage(text, seconds, warning) { showHardwareMessage(text, seconds, warning); },
+  onDrivePick(fields) { showDrivePick(fields); },
   // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
   // RTT = now − token measures the pure server↔client link (one client clock, no skew).
   onPong(token) {
@@ -418,6 +436,70 @@ const transport = RemoteTransport.create({
   onViewPrefs(pitch, zoom) { applyViewPrefs(pitch, zoom); },
 });
 
+// ---- Host prompt + failure notifications (#109) ----------------------------
+// The host's ShowConfirmationDialog / ShowErrorDialog (e.g. "GPS far from field",
+// settings recovery, "No boundary") arrive as a Prompt frame. It stays up until the
+// host clears it (kind 0), so a reconnecting browser still sees it. Only the browser
+// holding control can answer (prompt.answer is gated); the seq stops a stale tap
+// answering a newer prompt.
+let hostPrompt = null;
+const HP = {
+  root: document.getElementById('hostprompt'), title: document.getElementById('hp-title'),
+  msg: document.getElementById('hp-msg'), check: document.getElementById('hp-check'),
+  checkbox: document.getElementById('hp-checkbox'), checkLabel: document.getElementById('hp-checklabel'),
+  ok: document.getElementById('hp-ok'), cancel: document.getElementById('hp-cancel'),
+  wait: document.getElementById('hp-wait'),
+};
+let hpShownSeq = -1;
+function renderHostPrompt() {
+  const p = hostPrompt;
+  if (!p || !p.kind) { HP.root.classList.remove('open'); hpShownSeq = -1; return; }
+  const isError = p.kind === 2;
+  HP.title.textContent = p.title || (isError ? 'Error' : 'Confirm');
+  HP.msg.textContent = p.message || '';
+  HP.check.hidden = isError || !p.checkboxLabel;
+  HP.checkLabel.textContent = p.checkboxLabel || '';
+  if (hpShownSeq !== p.seq) HP.checkbox.checked = !!p.checkboxChecked; // keep the operator's tick on re-render
+  HP.cancel.hidden = isError;
+  HP.ok.textContent = p.confirmLabel || (isError ? 'OK' : 'Yes');
+  HP.cancel.textContent = p.cancelLabel || 'No';
+  HP.ok.disabled = HP.cancel.disabled = !iHoldControl;
+  HP.wait.hidden = iHoldControl;
+  HP.wait.textContent = lastControl.held
+    ? 'Waiting for ' + (lastControl.holderName || 'the operator') + ' to answer'
+    : 'Take control to answer';
+  hpShownSeq = p.seq;
+  HP.root.classList.add('open');
+}
+function answerHostPrompt(yes) {
+  const p = hostPrompt;
+  if (!p || !p.kind || !iHoldControl) return;
+  transport.send('prompt.answer|' + p.seq + ',' + (yes ? 1 : 0) + ',' + (HP.checkbox.checked ? 1 : 0));
+  hostPrompt = null; renderHostPrompt(); // the host's cleared frame follows
+}
+HP.root.addEventListener('pointerdown', e => e.stopPropagation()); // no dismiss, no map pan
+HP.ok.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerHostPrompt(true); });
+HP.cancel.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerHostPrompt(false); });
+
+let toastTimer = null;
+// AiO board message (PGN 221): AgOpenGPS's lblHardwareMessage — black text on salmon
+// (warning) or bisque, shown for the seconds the module asks (#110).
+let hwMsgTimer = 0;
+function showHardwareMessage(text, seconds, warning) {
+  const el = document.getElementById('hwmsg');
+  el.textContent = text;
+  el.style.background = warning ? 'salmon' : 'bisque';
+  el.classList.add('show');
+  clearTimeout(hwMsgTimer);
+  if (seconds > 0) hwMsgTimer = setTimeout(() => el.classList.remove('show'), seconds * 1000);
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
 // ---- Alert sounds ----------------------------------------------------------
 // The host (which may be a headless box with no speaker) decides WHAT is audible
 // — it already applied each sound's config toggle — and pushes a SoundEffect id.
@@ -426,10 +508,11 @@ const transport = RemoteTransport.create({
 // gesture, so we prime the elements on the first pointer/key event; until then an
 // alert that fires before any interaction is silently dropped (unavoidable on web).
 const Sounds = (() => {
-  // index === (int)SoundEffect; Alarm10 covers BoundaryAlarm + UTurnTooClose.
+  // index === (int)SoundEffect. Files as AgOpenGPS CSound: TF012 = U-turn failed,
+  // Alarm10 = boundary alarm and the U-turn approach alarm (#110).
   const FILES = [
     'Alarm10',    // 0 BoundaryAlarm
-    'Alarm10',    // 1 UTurnTooClose
+    'TF012',      // 1 UTurnTooClose
     'SteerOn',    // 2 AutoSteerOn
     'SteerOff',   // 3 AutoSteerOff
     'HydUp',      // 4 HydraulicLiftUp
@@ -439,9 +522,34 @@ const Sounds = (() => {
     'SectionOn',  // 8 SectionOn
     'SectionOff', // 9 SectionOff
     'Headland',   // 10 Headland
+    'Alarm10',    // 11 YouTurnApproach
   ];
-  const cache = new Map();   // name -> HTMLAudioElement (preloaded)
+  const cache = new Map();   // name -> HTMLAudioElement (fallback path)
   let unlocked = false;
+
+  // Web Audio: each .wav is fetched and DECODED ONCE into an AudioBuffer, and a play is
+  // then just a buffer source — no work on the main thread. The old path cloned a
+  // preloaded <audio> element per play, and a clone carries no decoded data, so every
+  // alert re-decoded its file inline: a visible frame hitch on the bigger ones (Alarm10
+  // is 335 KB) right as the sound started (#150). The element path stays as a fallback
+  // for engines where decodeAudioData isn't available or fails.
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const buffers = new Map();  // name -> AudioBuffer
+  let actx = null;
+  function ensureCtx() {
+    if (!actx && AC) { try { actx = new AC(); } catch (_) { actx = null; } }
+    return actx;
+  }
+  function decodeInto(name) {
+    const ctx = ensureCtx();
+    if (!ctx || buffers.has(name)) return;
+    buffers.set(name, null); // in flight — don't fetch twice
+    fetch('/sounds/' + name + '.wav')
+      .then(r => r.arrayBuffer())
+      .then(b => new Promise((res, rej) => { const p = ctx.decodeAudioData(b, res, rej); if (p && p.then) p.then(res, rej); }))
+      .then(buf => buffers.set(name, buf))
+      .catch(() => buffers.delete(name)); // fall back to the element path
+  }
 
   function el(name) {
     let a = cache.get(name);
@@ -449,11 +557,15 @@ const Sounds = (() => {
     return a;
   }
   // Preload every distinct file so the first real alert isn't delayed by a fetch.
-  for (const n of new Set(FILES)) el(n);
+  for (const n of new Set(FILES)) { el(n); decodeInto(n); }
 
   function unlock() {
     if (unlocked) return;
     unlocked = true;
+    // A context created before any gesture starts suspended; resume it on the first one.
+    const ctx = ensureCtx();
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    for (const n of new Set(FILES)) decodeInto(n);
     // Nudge each element into a "played once" state so later programmatic play()
     // (not tied to a gesture) is allowed by the autoplay policy. Do it MUTED: the pause
     // lands asynchronously in .then(), so an unmuted prime plays a burst of every alert
@@ -474,8 +586,19 @@ const Sounds = (() => {
     play(id) {
       const name = FILES[id];
       if (!name) return;
-      // Clone the preloaded element so rapid repeats (e.g. section on/off bursts)
-      // overlap instead of cutting each other off; the clone shares the cached file.
+      // Decoded buffer → a source node costs nothing to start, and repeats overlap.
+      const buf = buffers.get(name);
+      if (actx && buf) {
+        try {
+          if (actx.state === 'suspended') actx.resume().catch(() => {});
+          const src = actx.createBufferSource();
+          src.buffer = buf;
+          src.connect(actx.destination);
+          src.start();
+          return;
+        } catch (_) { /* fall through to the element path */ }
+      }
+      // Fallback: clone the preloaded element so rapid repeats overlap.
       try { el(name).cloneNode().play().catch(() => {}); } catch { /* not ready */ }
     },
   };
@@ -575,6 +698,8 @@ function buildSkPaints() {
     hlEdit: mk('rgba(245,235,90,0.95)', 3), hlEditOff: mk('rgba(232,86,74,0.95)', 3),
     // Tram lines (wheel tracks) — orange, set per frame in drawTramLinesSk.
     tram: mk('rgba(255,140,60,0.9)', 2),
+    // Saved recorded paths / contour strips — AgOpenGPS's pale-yellow lines (#110).
+    recPath: mk('rgb(250,235,117)', 2), contourStrip: mk('rgb(250,235,107)', 2),
   };
   // Section footprint bars: one stroke paint per ColorCode (butt cap so adjacent
   // sections abut without rounded overhang), matching the 2D SECTION_COLORS.
@@ -613,7 +738,18 @@ if (typeof CanvasKitInit === 'function') {
 }
 
 // ---- camera controls ----
+// Issue #87: a wheel over a pop-up that can scroll (hotkey list, logs, wizards…)
+// scrolls that pop-up; everywhere else it zooms the map. ctrl+wheel (trackpad pinch
+// / browser page zoom) is always swallowed so the page itself never zooms.
+function wheelScrollsPanel(e) {
+  for (let el = e.target; el && el !== document.body && el.nodeType === 1; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return true;
+  }
+  return false;
+}
 addEventListener('wheel', e => {
+  if (!e.ctrlKey && wheelScrollsPanel(e)) return;
   e.preventDefault();
   pxPerM *= e.deltaY < 0 ? 1.1 : 0.9;
   pxPerM = Math.min(200, Math.max(0.2, pxPerM));
@@ -728,7 +864,7 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && hlFlow) { endHeadlandDraw(); return; } // cancel headland draw
   if (e.key === 'Escape' && editSession) { endEdit(); return; }    // cancel on-map edit
   if (e.key === 'Escape' && mapTap) { endMapTap(); return; }  // cancel on-map capture
-  if (isTyping()) return;
+  if (isTyping() || boundHotkey(e)) return; // a configured hotkey owns this key (#98)
   if (e.key === 'f' || e.key === 'F') cameraMode = 3; // resume map-follow
   // 3D tilt: 3 toggles between top-down and 60°, [ / ] nudge the pitch.
   else if (e.key === '3') pitch = pitch > 0.001 ? 0 : DEFAULT_PITCH;
@@ -744,9 +880,56 @@ const KEY_CMD = {
   ArrowUp: 'sim.speedUp', ArrowDown: 'sim.speedDown', ' ': 'sim.stop',
 };
 addEventListener('keydown', e => {
-  if (isTyping()) return;
+  if (isTyping() || boundHotkey(e)) return; // a configured hotkey owns this key (#98)
   const cmd = KEY_CMD[e.key];
   if (cmd) { e.preventDefault(); transport.send(cmd); }
+});
+// ---- configured hotkeys (#98) ----
+// Bindings live on the host (File → Hotkeys, ConfigStore.Hotkeys) and arrive on the AppInfo
+// frame. The client resolves key → action and sends the SAME command id as the matching
+// button, so Tier-2 gating and the host allowlist apply unchanged. Screen actions open the
+// web panel here — the host's HandleHotkey would open a native dialog the web never renders.
+// A bound key takes priority over the built-in map/sim keys above (F, 3, [, ], arrows, space).
+const HOTKEY_CMD = {
+  AutoSteer: 'autosteer.toggle', CycleLines: 'track.cycle', SnapPivot: 'track.snapPivot',
+  NudgeLeft: 'track.nudgeLeft', NudgeRight: 'track.nudgeRight',
+  ManualSection: 'section.manual', AutoSection: 'section.master',
+};
+const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers — not control-gated (like the button)
+const HOTKEY_UI = {
+  FieldMenu: () => document.getElementById('ln-fieldops').dispatchEvent(new PointerEvent('pointerdown')),
+  VehicleSettings: () => document.getElementById('ln-vehicle').dispatchEvent(new PointerEvent('pointerdown')),
+  SteerWizard: () => openSteerWizard(),
+};
+// Case-insensitive, so named keys match however they were saved: older builds stored
+// "ARROWUP" for ArrowUp, which never matched and the hotkey never fired (#111, #98).
+function normHotkey(k) { return k.toUpperCase(); }
+// The action bound to this key event, or null. Modifier combos stay with the browser/OS.
+function boundHotkey(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || !appInfo) return null;
+  const key = normHotkey(e.key);
+  const hk = appInfo.hotkeys.find(h => h.key && normHotkey(h.key) === key);
+  return hk ? hk.action : null;
+}
+// Hotkeys are off while typing, capturing a binding, or behind a modal (native blocked
+// them while any dialog was open).
+function hotkeysBlocked() {
+  return isTyping()
+    || document.getElementById('hotkeys').classList.contains('open')
+    || !!document.querySelector('#dialoghost.open, .sw-backdrop.open, .wz-overlay.open');
+}
+addEventListener('keydown', e => {
+  const action = boundHotkey(e);
+  if (!action || hotkeysBlocked()) return;
+  e.preventDefault();
+  if (e.repeat) return; // holding a key must not re-toggle autosteer / sections
+  if (HOTKEY_UI[action]) { HOTKEY_UI[action](); return; }
+  if (HOTKEY_TIER1[action]) { transport.send(HOTKEY_TIER1[action]); return; }
+  const sec = /^Section([1-8])$/.exec(action);
+  const cmd = sec ? 'section.toggle|' + (sec[1] - 1) : HOTKEY_CMD[action];
+  if (!cmd) return;
+  if (!iHoldControl) { flashHint('Observing — take control to use hotkeys'); return; }
+  transport.send(cmd);
 });
 // ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
 // Sim is Tier-1 (hardware-safe), so the bar's commands aren't gated by control
@@ -852,6 +1035,89 @@ dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => {
 });
 dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
 const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
+// On-screen keyboard (App Settings › On-screen Kbd; AgOpenGPS FormKeyboard for text,
+// FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
+// on, focusing a text field opens a QWERTY panel, a numeric field a number pad, and the OS
+// keyboard is suppressed (inputmode=none). Keys edit the field in place and fire 'input', so
+// every existing handler sees them; OK sends Enter and closes.
+const OSK = (() => {
+  const root = document.getElementById('osk');
+  let target = null, shift = false;
+  const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  const NUM = ['789', '456', '123', '-0.'];
+  const on = () => !!(config && config.display && config.display.keyboardEnabled);
+  const isField = el => el instanceof HTMLTextAreaElement
+    || (el instanceof HTMLInputElement && ['text', 'password', 'search', 'email', 'url', ''].includes(el.type) && !el.readOnly && !el.disabled);
+  function render() {
+    const num = !!(target && target.dataset.numField);
+    root.classList.toggle('num', num);
+    const rows = (num ? NUM : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
+    if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+    else {
+      rows[3].unshift({ k: 'SH', t: shift ? '⇧' : '⇪', c: 'wide' });
+      rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
+      rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+    }
+    root.innerHTML = '';
+    for (const r of rows) {
+      const row = document.createElement('div'); row.className = 'osk-row';
+      for (const b of r) {
+        const btn = document.createElement('button'); btn.type = 'button';
+        btn.textContent = b.t; btn.dataset.k = b.k; if (b.c) btn.className = b.c;
+        row.appendChild(btn);
+      }
+      root.appendChild(row);
+    }
+  }
+  function insert(s) {
+    const el = target; if (!el) return;
+    const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+    try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function key(k) {
+    const el = target; if (!el) return;
+    if (k === 'SH') { shift = !shift; render(); return; }
+    if (k === 'OK') {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      close(); el.blur(); return;
+    }
+    if (k === 'CLR') { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (k === 'BS') {
+      const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+      if (a !== b) insert('');
+      else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } el.dispatchEvent(new Event('input', { bubbles: true })); }
+      return;
+    }
+    insert(shift ? k.toUpperCase() : k);
+    if (shift) { shift = false; render(); }
+  }
+  function open(el) {
+    target = el; shift = false;
+    if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
+    el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
+    render(); root.hidden = false;
+  }
+  function close() {
+    if (target && target.dataset.oskIm !== undefined) {
+      if (target.dataset.oskIm) target.setAttribute('inputmode', target.dataset.oskIm); else target.removeAttribute('inputmode');
+      delete target.dataset.oskIm;
+    }
+    target = null; root.hidden = true;
+  }
+  // Keep focus in the field while tapping keys (pointerdown would blur it), and don't pan the map.
+  root.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const b = e.target.closest('button'); if (b) key(b.dataset.k);
+  });
+  document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
+  document.addEventListener('focusout', e => {
+    if (e.target !== target) return;
+    setTimeout(() => { if (document.activeElement !== target) close(); }, 0);
+  });
+  return { close };
+})();
 // Uniform numeric input, everywhere. A tablet's decimal keypad (Android Samsung / iOS) has no
 // minus key, so signed values couldn't be typed. Every numeric field is instead a type=text
 // input with the FULL keyboard (which has "-"), and a filter keeps only digits, one decimal
@@ -957,6 +1223,8 @@ document.getElementById('ucov-cancel').addEventListener('pointerdown', e => { e.
 const sectionBar = document.getElementById('sectionbar');
 sectionBar.addEventListener('pointerdown', e => {
   e.stopPropagation(); // don't pan the map
+  const zb = e.target.closest('button[data-zone]');
+  if (zb) { if (iHoldControl) transport.send('section.toggleZone|' + zb.dataset.zone); return; }
   const btn = e.target.closest('button[data-idx]');
   if (btn && iHoldControl) transport.send('section.toggle|' + btn.dataset.idx);
 });
@@ -974,6 +1242,13 @@ bottomNav.addEventListener('pointerdown', e => {
   if (!btn) return;
   if (btn.hasAttribute('data-t2') && !iHoldControl) return; // gated; host re-checks
   transport.send(btn.dataset.cmd);
+});
+// Delete contour paths — confirm first (#107); not a data-cmd so the generic handler skips it.
+document.getElementById('bn-delcontours').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!iHoldControl) return;
+  showConfirm('Delete Contour Paths', 'Delete all recorded contour paths in this field? Coverage and AB lines are kept.',
+    () => transport.send('track.deleteContours'));
 });
 // ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
 // Bare glyph buttons mirroring native AgOpenGPS; shown per the Screen & Alerts
@@ -996,7 +1271,8 @@ function applyOnScreenButtons() {
   // U-turn (manual you-turn) and Lateral (snap track) only act while AutoSteer is engaged,
   // so hide them otherwise (issue #36). Runs every frame via renderBottomNav, so it tracks
   // engage/disengage live.
-  const asActive = !!(tick && tick.op && tick.op.autoSteer);
+  // Neither in contour mode (AgOpenGPS skips DrawManUTurnBtn then) (#110).
+  const asActive = !!(tick && tick.op && tick.op.autoSteer && !tick.op.contour);
   document.getElementById('osb-uturn').hidden = !(hasField && asActive && d && d.uTurnButtonVisible);
   document.getElementById('osb-lateral').hidden = !(hasField && asActive && d && d.lateralButtonVisible);
 }
@@ -1483,7 +1759,10 @@ document.getElementById('dlg-qab-cancel').addEventListener('pointerdown', e => {
 
 // ---- Tracks manager (mirrors native TracksDialogPanel) ----
 // View-only without control (just reads scene.trackList); the actions are Tier-2.
-function openTracksManager() { renderTracksList(); openDialog('dlg-tracks'); }
+// Like AgOpenGPS's track list: tapping a row only highlights it (trkSel); guidance
+// changes when Activate is pressed. Delete / Swap act on the highlighted row (#109).
+let trkSel = -1; // index into scene.trackList, or -1
+function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
   // Dim the guidance-affecting actions when we're not the operator. Delete/swap/activate
   // change the active line; import, visibility and rec-path display are data → ungated.
@@ -1491,11 +1770,12 @@ function renderTracksList() {
     document.getElementById(id).classList.toggle('disabled', !iHoldControl);
   const list = document.getElementById('trk-list');
   const tl = (scene && scene.trackList) || [];
+  if (trkSel >= tl.length) trkSel = -1;
   if (!tl.length) { list.innerHTML = '<div class="trk-empty">No tracks in this field</div>'; return; }
   list.innerHTML = '';
-  for (const t of tl) {
+  tl.forEach((t, i) => {
     const row = document.createElement('div');
-    row.className = 'trk-row' + (t.active ? ' active' : '');
+    row.className = 'trk-row' + (t.active ? ' active' : '') + (i === trkSel ? ' sel' : '');
     row.innerHTML =
       '<input type="checkbox" class="trk-vis"' + (t.visible ? ' checked' : '') + '>' +
       '<span class="trk-name"></span>' +
@@ -1503,11 +1783,15 @@ function renderTracksList() {
       '<span class="trk-dot"></span>';
     row.querySelector('.trk-name').textContent = t.name;
     row.querySelector('.trk-type').textContent = t.type || '—';
-    // Tap row (not the checkbox) → toggle active. Checkbox → toggle visibility.
+    // Tap row (not the checkbox) → that track becomes the active one, and stays
+    // highlighted for Delete/Swap. A hidden track can't be activated (AgOpenGPS) (#148).
+    // Checkbox → toggle visibility.
     row.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('trk-vis')) return; // let the checkbox handle it
       e.stopPropagation();
-      if (iHoldControl) transport.send('track.select|' + t.index);
+      trkSel = t.visible ? i : -1;
+      if (t.visible && iHoldControl) transport.send('track.select|' + t.index);
+      renderTracksList();
     });
     const cb = row.querySelector('.trk-vis');
     cb.addEventListener('change', e => {
@@ -1515,11 +1799,32 @@ function renderTracksList() {
       transport.send('track.setVisible|' + t.index + ',' + (cb.checked ? 1 : 0));
     });
     list.appendChild(row);
-  }
+  });
 }
-document.getElementById('trk-delete').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.delete'); });
-document.getElementById('trk-swap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.swapAB'); });
-document.getElementById('trk-activate').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.activate'); });
+document.getElementById('trk-delete').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || [])[trkSel];
+  if (!t) { showToast('Select a track first'); return; }
+  showConfirm('Delete Track', "Delete '" + t.name + "'? This cannot be undone.",
+    () => { transport.send('track.delete|' + t.index); trkSel = -1; });
+});
+document.getElementById('trk-swap').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || [])[trkSel];
+  if (!t) { showToast('Select a track first'); return; }
+  transport.send('track.swapAB|' + t.index);
+});
+// Activate = AgOpenGPS "Use": the highlighted track (or the first visible one) becomes
+// active and the dialog closes. On the already-active track it turns guidance off.
+document.getElementById('trk-activate').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || [])[trkSel];
+  transport.send('track.activate|' + (t ? t.index : -1));
+  closeDialog();
+});
 document.getElementById('trk-recpaths').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('track.toggleRecPaths'); });
 document.getElementById('trk-import').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); lnOpen('importtracks'); });
 document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
@@ -1744,8 +2049,7 @@ document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => { e.
 document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel] || !iHoldControl) return;
-  transport.send('track.select|' + tl[fbSel].index);
-  transport.send('track.delete'); fbSel = -1;
+  transport.send('track.delete|' + tl[fbSel].index); fbSel = -1;
 });
 document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -1903,7 +2207,11 @@ function populateTramEdit() {
   ref.value = s.refLabel;
   const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) writeUnitInput(wEl, s.width);
   const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) writeUnitInput(offEl, s.offset);
-  const pEl = document.getElementById('fb-tram-passes'); if (document.activeElement !== pEl) pEl.value = s.passCount;
+  // A boundary system is rings around the boundary: there's no "all", 0 means 1 (#112).
+  const pEl = document.getElementById('fb-tram-passes');
+  pEl.min = s.isBoundary ? 1 : 0;
+  document.getElementById('fb-tram-passes-lbl').textContent = s.isBoundary ? 'Passes' : 'Passes (0 = all)';
+  if (document.activeElement !== pEl) pEl.value = s.isBoundary ? Math.max(1, s.passCount) : s.passCount;
   for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
   for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
   document.getElementById('fb-tram-offrow').hidden = s.isBoundary;   // offset/direction don't apply
@@ -1914,7 +2222,7 @@ document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.s
 document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
 document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (v > 0) tramSet('width', v); });
 document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) tramSet('offset', v); });
-document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSet('passes', Math.max(0, v)); });
+document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); const s = curTram(); if (Number.isFinite(v)) tramSet('passes', Math.max(s && s.isBoundary ? 1 : 0, v)); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
 document.getElementById('bm-delete').addEventListener('pointerdown', e => {
@@ -1952,7 +2260,7 @@ document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
 document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.driveAroundInner'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
 });
-document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.accept'); lnCloseAll(); });
+document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); }); // edits are already saved
 // Boundary player.
 document.getElementById('bp-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
 document.getElementById('bp-offset').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v); });
@@ -2051,7 +2359,7 @@ function wireCfgControls(panel) {
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
   // .cfg-act = config.set action buttons; .rn-gated ones carry data-cmd (a gated
   // command, not a config key) and are wired separately, so exclude them here.
-  for (const b of panel.querySelectorAll('.cfg-act:not(.rn-gated)'))
+  for (const b of panel.querySelectorAll('.cfg-act[data-key]:not(.rn-gated)')) // keyless = wired by hand
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
   for (const sel of panel.querySelectorAll('.cfg-isel'))
     sel.addEventListener('change', () => cfgSend(sel.dataset.key, sel.value));
@@ -2104,8 +2412,13 @@ function wireTabStrip(panel, stripId) {
 }
 wireCfgControls(vcPanel);
 vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitchSel.value));
-vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = Math.round(vcFw.value * 100) + '%'; cfgSend('gps.headingFusionWeight', vcFw.value); });
+// Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
+const fusionLabel = w => 'GPS ' + Math.round(w * 100) + '% · IMU ' + (100 - Math.round(w * 100)) + '%';
+vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+// Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
+// Tools › Roll Correction; it used to clear the offset (that's Remove Offset, #111).
+document.getElementById('vc-rollzero').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('roll.zeroCalibrate'); });
 // Populate every control from the config frame. force (on open) fills all; otherwise
 // skip the focused number input so we don't clobber what the user is typing.
 function populateVehicleCfg(force) {
@@ -2128,7 +2441,7 @@ function populateVehicleCfg(force) {
   setImg('vc-img-antoffset', ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset']);
   vcHitchSel.value = cfgGet('vehicle.hitchType');
   const w = cfgGet('gps.headingFusionWeight') || 0;
-  vcFw.value = w; document.getElementById('vc-hfw').textContent = Math.round(w * 100) + '%';
+  vcFw.value = w; document.getElementById('vc-hfw').textContent = fusionLabel(w);
   // Dual-only fields are live only in Dual GPS mode; reverse detection only in single
   // (mirrors the native enable/disable gating).
   const dual = !!cfgGet('gps.isDualGps');
@@ -2154,12 +2467,12 @@ document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stop
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
 const _tcBuilt = { sw: -1, ze: -1, sc: false, pins: false };
-function tcDynInput(parent, idx, label, type, onChange, unit) {
+function tcDynInput(parent, idx, label, type, onChange, unit, step) {
   const c = document.createElement('div'); c.className = 'tc-cell';
   const sp = document.createElement('span'); sp.textContent = label;
   const inp = document.createElement(type === 'pin' ? 'select' : 'input');
   if (type === 'pin') PIN_FUNCS.forEach((l, fi) => { const o = document.createElement('option'); o.value = fi; o.textContent = l; inp.appendChild(o); });
-  else { inp.type = type; if (type === 'number') inp.step = '1'; }
+  else { inp.type = type; if (type === 'number') inp.step = step || '1'; }
   if (unit) inp.dataset.unit = unit;   // stored-unit tag → applyUnits() re-steps it
   inp.dataset.idx = idx;
   inp.addEventListener('change', () => onChange(inp));
@@ -2168,6 +2481,10 @@ function tcDynInput(parent, idx, label, type, onChange, unit) {
 function tcShow(name, on) { for (const el of tcPanel.querySelectorAll('[data-show="' + name + '"]')) el.hidden = !on; }
 function hex6(v) { return '#' + ((v >>> 0) & 0xFFFFFF).toString(16).padStart(6, '0'); }
 function populateToolCfg(force) {
+  // Harvester: front-mounted tool only, like AgOpenGPS ConfigTool (#111).
+  const harvester = (cfgGet('vehicle.type') | 0) === 1;
+  for (const b of document.querySelectorAll('.cfg-typebtn[data-key="tool.type"]'))
+    b.hidden = harvester && b.dataset.val !== 'front';
   if (!config || !config.tool) return;
   const t = config.tool;
   tcName.textContent = 'Tool: ' + (profiles ? profiles.activeTool : '—');
@@ -2188,7 +2505,7 @@ function populateToolCfg(force) {
   const nSec = Math.max(1, Math.min(64, t.numSections)); // ToolConfig.MaxSections — backend supports 64
   if (_tcBuilt.sw !== nSec) {
     const g = document.getElementById('tc-sectionwidths'); g.innerHTML = '';
-    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); }, 'cm');
+    for (let i = 0; i < nSec; i++) tcDynInput(g, i, 'S' + (i + 1), 'number', inp => { const v = readUnitInput(inp); if (Number.isFinite(v)) cfgSend('tool.sectionWidth', i + ',' + v); }, 'cm', '0.1');  // 0.1 cm: 30" = 76.2 cm (issue #89)
     _tcBuilt.sw = nSec;
     applyUnits();   // freshly built boxes need the active unit's step
   }
@@ -2514,7 +2831,34 @@ function renderFieldOps() {
 document.getElementById('fo-fields').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
 document.getElementById('fo-resumelast').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.resumeLast'); lnCloseAll(); });
 document.getElementById('fo-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); openResumeJob(); });
-document.getElementById('fo-drivein').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.driveIn'); lnCloseAll(); });
+// Drive In (AgOpenGPS FormJob "In Field"): one field within 0.5 km opens directly;
+// 2+ come back as a Drive Pick frame (#109). The host broadcasts it, so only the
+// browser that just pressed Drive In shows the list.
+let driveInPressedAt = -1e9;
+document.getElementById('fo-drivein').addEventListener('pointerdown', e => {
+  e.stopPropagation(); driveInPressedAt = performance.now(); transport.send('field.driveIn'); lnCloseAll();
+});
+function showDrivePick(fields) {
+  if (performance.now() - driveInPressedAt > 5000) return; // someone else's Drive In
+  driveInPressedAt = -1e9;
+  const list = document.getElementById('dp-list'); list.innerHTML = '';
+  for (const f of fields) {
+    const row = document.createElement('div');
+    row.className = 'dp-row';
+    row.innerHTML = '<span class="dp-name"></span><span class="dp-num"></span><span class="dp-num"></span>';
+    row.querySelector('.dp-name').textContent = f.name;
+    const nums = row.querySelectorAll('.dp-num');
+    nums[0].textContent = fmtUnit(f.distanceKm * 1000, 'm', 0);
+    nums[1].textContent = fmtUnit(f.areaHa, 'ha', 1);
+    row.addEventListener('pointerdown', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      transport.send('field.driveInOpen|' + f.name); closeDialog();
+    });
+    list.appendChild(row);
+  }
+  openDialog('dlg-drivepick');
+}
+document.getElementById('dp-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 document.getElementById('fo-close').addEventListener('pointerdown', e => { e.stopPropagation(); if (scene && scene.hasField) { transport.send('field.close'); lnCloseAll(); } });
 
 // Fields-and-Jobs chain panel (mirrors StartWorkSessionDialogPanel).
@@ -2821,13 +3165,24 @@ function renderViewSettings() {
     const obj = groups[name]; if (!obj) continue;
     const sec = document.createElement('div'); sec.className = 'vs-section';
     const h = document.createElement('div'); h.className = 'vs-group'; h.textContent = name; sec.appendChild(h);
-    for (const k in obj) {
-      const v = obj[k]; if (v !== null && typeof v === 'object') continue;
+    // Nested objects and arrays (sections, pins, …) are flattened into path keys
+    // ("sections[0].width"); a list of plain values stays on one row (#112).
+    const addRow = (k, v) => {
       const r = document.createElement('div'); r.className = 'vs-row';
       r.innerHTML = '<span class="vs-k"></span><span class="vs-v"></span>';
       r.querySelector('.vs-k').textContent = k; r.querySelector('.vs-v').textContent = String(v);
       sec.appendChild(r);
-    }
+    };
+    const walk = (prefix, v) => {
+      if (v === null || typeof v !== 'object') { addRow(prefix, v); return; }
+      if (Array.isArray(v)) {
+        if (v.every(x => x === null || typeof x !== 'object')) { addRow(prefix, v.join(', ')); return; }
+        v.forEach((x, i) => walk(prefix + '[' + i + ']', x));
+        return;
+      }
+      for (const k in v) walk(prefix ? prefix + '.' + k : k, v[k]);
+    };
+    walk('', obj);
     box.appendChild(sec);
   }
 }
@@ -2869,6 +3224,7 @@ function renderHotkeys() {
 window.addEventListener('keydown', e => {
   if (!hkCapture || !document.getElementById('hotkeys').classList.contains('open')) return;
   e.preventDefault();
+  if (e.key === 'Escape') { hkCapture = null; renderHotkeys(); return; } // cancel, don't bind Escape (#111)
   const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
   transport.send('app.setHotkey|' + hkCapture + ':' + key);
   hkCapture = null;
@@ -3224,6 +3580,7 @@ function renderRole() {
 }
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
   renderRole();
@@ -3257,8 +3614,11 @@ function rnSend(cmd) { if (iHoldControl) transport.send(cmd); }
 const rnRoot = document.getElementById('rightnav');
 if (rnRoot) {
   rnRoot.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-  const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => rnSend(cmd)); };
+  // pointerdown, like the rest of the touch UI: the NativeWebView launcher doesn't
+  // reliably fire 'click' (#56, #111).
+  const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('pointerdown', e => { e.preventDefault(); rnSend(cmd); }); };
   wireRn('rn-contour', 'contour.toggle');
+  wireRn('rn-contourlock', 'contour.lock'); // #110
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
   wireRn('rn-youturn', 'youturn.toggle');
@@ -3506,6 +3866,16 @@ function renderTool() {
     heading: lerpAngle(pt.heading, qt.heading, f),
   };
 }
+// Pure Pursuit goal point (#95), interpolated on the same playback timeline as the pose so
+// it slides with the vehicle instead of stepping at the Tick rate. Hidden as soon as the
+// newest Tick has no goal (track deselected / contour).
+function renderGoal() {
+  if (!tick || !tick.goal) return null;
+  const s = sample();
+  if (!s || !s.b.goal) return tick.goal;
+  const a = s.a.goal || s.b.goal, b = s.b.goal, f = s.f;
+  return { e: a.e + (b.e - a.e) * f, n: a.n + (b.n - a.n) * f };
+}
 // Shortest-path angular lerp (radians).
 function lerpAngle(a, b, f) {
   let d = b - a; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI));
@@ -3574,6 +3944,9 @@ const lbEl = document.getElementById('lb');
 function updateLightbarText() {
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) { lbEl.style.display = 'none'; return; }
+  // AgOpenGPS: "Light bar" is on/off, "Steer bar" picks the style. In light-bar style the
+  // distance text shows even with the bar off; in steer-bar style it all goes (#111).
+  if (cfg.steerBarEnabled && !cfg.lightbarEnabled) { lbEl.style.display = 'none'; return; }
   if (cfg.steerBarEnabled) {
     // Steer bar: steer-angle error (deg) with dead-zone.
     let err = tick.steerAngleError || 0;
@@ -3589,7 +3962,8 @@ function updateLightbarText() {
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}   Pass ${Math.abs(pass) + 1}`;
+    const passTxt = tick.op && tick.op.contour ? '' : `   Pass ${Math.abs(pass) + 1}`; // no passes on a contour (#110)
+    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}${passTxt}`;
   }
   lbEl.style.display = 'block';
 }
@@ -3713,6 +4087,16 @@ SB.pause.addEventListener('click', () => { sbPaused = !sbPaused; SB.pause.textCo
 SB.bar.addEventListener('pointerdown', e => e.stopPropagation());
 // Fullscreen toggle — hides the browser tabs/URL bar on tablets. Works on a user
 // gesture over plain HTTP (no PWA install needed). Prefixed fallback for older Android.
+// Start Fullscreen (#110): browsers only allow fullscreen from a user gesture, so in a
+// plain browser go fullscreen on the first tap after the page loads. The desktop
+// launcher window opens fullscreen itself.
+document.addEventListener('click', function startFs() {
+  document.removeEventListener('click', startFs, true);
+  if (!(config && config.display && config.display.startFullscreen)) return;
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+}, true);
 const fsBtn = document.getElementById('sb-fs');
 if (fsBtn) {
   const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
@@ -3788,7 +4172,7 @@ function renderStatusBar() {
   if (SB.gpsCard.style.display === 'block') {
     SB.gcLat.textContent = s.lat != null ? s.lat.toFixed(7) : '—';
     SB.gcLon.textContent = s.lon != null ? s.lon.toFixed(7) : '—';
-    SB.gcElev.textContent = s.altitude != null ? s.altitude.toFixed(1) : '—';
+    SB.gcElev.textContent = s.altitude != null ? fmtUnit(s.altitude, 'm', 1) : '—'; // m / ft (#112)
     SB.gcSats.textContent = s.sats != null ? s.sats : '—';
     SB.gcHdop.textContent = s.hdop != null ? s.hdop.toFixed(2) : '—';
     SB.gcFix.textContent = s.fixText || '—';
@@ -3862,6 +4246,29 @@ function buildSectionRows(n) {
     sectionBar.appendChild(row);
   }
 }
+// Zone mode (Tool config → Zones): one button per zone instead of per section, like
+// AgOpenGPS's zone buttons (#111). Zone z = sections zoneRanges[z-1]..zoneRanges[z]-1.
+function zoneLayout() {
+  const t = config && config.tool;
+  if (!t || t.isSectionsNotZones !== false || !t.zoneRanges) return null;
+  const n = Math.max(1, Math.min(8, t.zones | 0));
+  const zones = [];
+  for (let z = 1; z <= n; z++) zones.push({ z, start: z === 1 ? 0 : t.zoneRanges[z - 1], end: t.zoneRanges[z] });
+  return zones;
+}
+function buildZoneRow(zones) {
+  sectionBar.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'sec-row';
+  for (const zn of zones) {
+    const b = document.createElement('button');
+    b.className = 'sec-btn';
+    b.dataset.zone = zn.z; b.dataset.last = Math.max(0, zn.end - 1);
+    b.textContent = 'Z' + zn.z;
+    row.appendChild(b);
+  }
+  sectionBar.appendChild(row);
+}
 function renderSectionBar() {
   // Native gate: field open AND a master (auto or manual) engaged.
   const secs = tick && tick.sections;
@@ -3869,9 +4276,13 @@ function renderSectionBar() {
     && (tick.op.sectionManual || tick.op.sectionAuto) && secs && secs.length);
   sectionBar.classList.toggle('open', visible);
   if (!visible) { _secCount = -1; return; } // force a rebuild when it reappears
-  if (secs.length !== _secCount) { buildSectionRows(secs.length); _secCount = secs.length; }
+  const zones = zoneLayout();
+  const key = zones ? 'z' + JSON.stringify(zones) : secs.length;
+  if (key !== _secCount) { if (zones) buildZoneRow(zones); else buildSectionRows(secs.length); _secCount = key; }
   for (const b of sectionBar.querySelectorAll('button[data-idx]'))
     b.style.background = SECTION_COLORS[secs[+b.dataset.idx]] || SECTION_COLORS[0];
+  for (const b of sectionBar.querySelectorAll('button[data-zone]')) // zone colour = its last section
+    b.style.background = SECTION_COLORS[secs[+b.dataset.last]] || SECTION_COLORS[0];
   sectionBar.classList.toggle('locked', !iHoldControl); // dim when we can't actuate
 }
 // Bottom nav (Phase 8). Swap icons only on change; reflect Tick toggle state.
@@ -3887,7 +4298,13 @@ function renderBottomNav() {
   for (const el of bottomNav.querySelectorAll('.bn-abdep')) el.classList.toggle('hide', !hasTrack);
   const t = (tick && tick.tools) || {};
   document.getElementById('bn-skipnum').textContent = t.skipRows || 0;
-  bnIcon(document.getElementById('bn-skip-ic'), t.skipRowsOn ? 'YouSkipOn.png' : 'YouSkipOff.png');
+  // Nudge readout (#93): driver-relative offset, cm (metric) / in (imperial), L/R side.
+  const nudgeM = (tick && tick.op && tick.op.nudgeOffset) || 0;
+  const nudgeAmt = Math.round(Math.abs(nudgeM) * (isMetric() ? 100 : 39.3701));
+  document.getElementById('bn-nudgeval').textContent =
+    nudgeAmt === 0 ? '0' : nudgeAmt + (nudgeM < 0 ? ' L' : ' R');
+  // AgOpenGPS skip-button icons: normal / alternative / ignore worked tracks (#111).
+  bnIcon(document.getElementById('bn-skip-ic'), ['YouSkipOff.png', 'YouSkipOn.png', 'YouSkipWorkedTracks.png'][t.skipMode | 0] || 'YouSkipOff.png');
   // Icon shows the PAINTING state, not the raw flag: sectionInHeadland (=Tool.
   // IsHeadlandSectionControl) true means sections AUTO-OFF in the headland (NOT
   // painted) → the "Off" icon; false means sections paint the headland → "On".
@@ -3903,6 +4320,7 @@ function renderBottomNav() {
 const RN = {
   root: document.getElementById('rightnav'),
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
+  contourLock: document.getElementById('rn-contourlock'), contourLockI: document.getElementById('rn-contourlock-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
@@ -3918,12 +4336,19 @@ function renderRightNav() {
   if (RN.readonly) RN.readonly.textContent = iHoldControl ? '' : 'observing';
   // State carried by the icon image (native uses the same On/Off/Gray PNGs).
   rnIcon(RN.contourI, op.contour ? 'ContourOn.png' : 'ContourOff.png');
+  // Contour lock shows only in contour mode, and U-turn hides then (AgOpenGPS) (#110).
+  RN.contourLock.style.display = op.contour ? '' : 'none';
+  rnIcon(RN.contourLockI, scene.contourLocked ? 'ColorLocked.png' : 'ColorUnlocked.png');
+  RN.youturnI.parentElement.style.display = op.contour ? 'none' : '';
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
   // U-turn direction + distance-to-trigger now render on-screen (see renderUTurnIndicator).
   // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
+  // Engaged but the module isn't steering (kickout / switch / button): red, like
+  // AgOpenGPS's steer circle (#126).
+  RN.steerI.parentElement.classList.toggle('not-steering', !!(op.autoSteer && op.moduleNotSteering));
 }
 
 // Auto-U-turn approach indicator (upper-right): green direction arrow + distance to
@@ -3997,17 +4422,18 @@ const CHARTS = {
   steer: {
     title: 'Steer', yLabel: 'deg', minY: -40, maxY: 40, step: 10, auto: false,
     series: [
+      // AgOpenGPS FormGraphSteer: set vs actual angle. PWM (0–255) doesn't belong on a
+      // ±40° scale (#111).
       { name: 'Set Angle', color: '#E05020', pts: [] },
       { name: 'Actual Angle', color: '#2080E0', pts: [] },
-      { name: 'PWM', color: '#00A080', pts: [] },
     ],
   },
   heading: {
     title: 'Heading', yLabel: 'deg', minY: 0, maxY: 360, step: 45, auto: true,
     series: [
-      { name: 'Heading Error', color: '#DD3333', pts: [] },
-      { name: 'IMU Heading', color: '#D07020', pts: [] },
+      // AgOpenGPS FormGraphHeading: GPS fix-to-fix vs IMU-corrected heading (#111).
       { name: 'GPS Heading', color: '#0088AA', pts: [] },
+      { name: 'IMU Heading', color: '#D07020', pts: [] },
     ],
   },
   xte: {
@@ -4021,11 +4447,9 @@ const chartOpen = { steer: false, heading: false, xte: false };
 // so opening mid-session shows recent history — matches ChartDataService.Start()).
 function pushChartData(t) {
   const now = performance.now() / 1000;
-  const hdgDeg = (((t.pose ? t.pose.heading : 0) * 180 / Math.PI) % 360 + 360) % 360;
   const vals = {
-    steer: [t.chartSetSteer, t.chartActualSteer, t.chartPwm],
-    // HeadingError mirrors the native quirk (ComputeHeadingError == set steer angle).
-    heading: [t.chartSetSteer, t.chartImuHeading, hdgDeg],
+    steer: [t.chartSetSteer, t.chartActualSteer],
+    heading: [t.chartGpsHeading, t.chartImuHeading],
     xte: [toDisplayUnit(t.crossTrackError, 'm')],   // plot in the active length unit
   };
   const trim = now - CHART_WINDOW - 2;
@@ -4034,7 +4458,7 @@ function pushChartData(t) {
     const series = CHARTS[key].series;
     for (let i = 0; i < series.length; i++) {
       const pts = series[i].pts;
-      pts.push({ t: now, v: arr[i] });
+      if (Number.isFinite(arr[i])) pts.push({ t: now, v: arr[i] }); // no IMU → no IMU line
       let cut = 0; while (cut < pts.length && pts[cut].t < trim) cut++;
       if (cut) pts.splice(0, cut);
     }
@@ -4504,6 +4928,19 @@ function drawRecordingMarkersSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
 }
+// Contour mode: the strip being followed, as points — green, yellow when locked
+// (AgOpenGPS CContour.DrawContourLine) (#110).
+function drawContourRefSk(canvas) {
+  const pts = scene && scene.contourRef;
+  if (!pts || !pts.length) return;
+  SKP.flagFill.setColor(ckColor(scene.contourLocked ? 'rgb(251,235,107)' : 'rgb(77,250,0)'));
+  const rad = scene.contourLocked ? 2.5 : 2;
+  for (const p of pts) {
+    if (pw(p.e, p.n) < 1.0) continue; // behind camera
+    const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+  }
+}
 // Live drive-around boundary (Boundary → Drive Around): the points captured so far,
 // streamed on the Boundary frame. Draw a connecting line + dots so it's visible as it's
 // driven, like native's growing recording.
@@ -4722,6 +5159,29 @@ function drawHitchSk(canvas) {
   strokePtsSk(canvas, [{ e: baseE - ps * spread, n: baseN - pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
   strokePtsSk(canvas, [{ e: baseE + ps * spread, n: baseN + pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
 }
+// Pure Pursuit goal marker (#95): where the steering aims — the engaged target, or before
+// engaging the point it would chase — as AgOpenGPS's yellow goal square. A lazy (long)
+// look-ahead shows as the marker sitting further out. Fixed screen size, drawn over the
+// vehicle so a short hold look-ahead under the sprite is still visible.
+function drawGoalSk(canvas) {
+  const g = renderGoal();
+  if (!g || pw(g.e, g.n) < 1.0) return; // none / behind the near plane
+  if (!SKP.goalFill) {
+    SKP.goalFill = new CK.Paint();
+    SKP.goalFill.setStyle(CK.PaintStyle.Fill);
+    SKP.goalFill.setColor(ckColor('#FFD400'));
+    SKP.goalFill.setAntiAlias(true);
+    SKP.goalOutline = new CK.Paint();
+    SKP.goalOutline.setStyle(CK.PaintStyle.Stroke);
+    SKP.goalOutline.setColor(ckColor('#000000'));
+    SKP.goalOutline.setStrokeWidth(2);
+    SKP.goalOutline.setAntiAlias(true);
+  }
+  const xy = w2s(g.e, g.n), h = 6;
+  const r = CK.LTRBRect(xy[0] - h, xy[1] - h, xy[0] + h, xy[1] + h);
+  canvas.drawRect(r, SKP.goalFill);
+  canvas.drawRect(r, SKP.goalOutline);
+}
 // Vehicle: the TractorAoG sprite drawn world-sized on the ground (scales with zoom,
 // foreshortens under tilt), sized from track-width/wheelbase via the same normalized
 // sprite proportions as native (BitmapTractorSize). Falls back to the screen-space
@@ -4736,9 +5196,15 @@ function updateLineWidths() {
   // World-metre widths scaled by zoom, but CAPPED at MAXW px so a line can't balloon when
   // zoomed in and swallow the implement/vehicle (issue #38: a 3 m boundary line covered a
   // 4 m tool). Min 1 px so it stays visible zoomed out.
-  const z = pxPerM, MAXW = 3.5, w = (m) => Math.min(Math.max(m * z, 1), MAXW);
-  SKP.boundary.setStrokeWidth(w(3.0));   // boundaryOuter 1 × 3
-  SKP.boundaryInner.setStrokeWidth(w(3.0)); // boundaryInner 1 × 3
+  // AutoSteer › Line width (AgOpenGPS ABLine.lineWidth, px, default 2) scales the guidance
+  // lines, headland/U-turn and saved tracks (#110).
+  const k = Math.max(1, (config && config.autosteer && config.autosteer.lineWidth) || 2) / 2;
+  const z = pxPerM, MAXW = 3.5 * k, w = (m) => Math.min(Math.max(m * z * k, k), MAXW);
+  applyLineSmoothing();
+  // Boundaries keep a fixed width, as in AgOpenGPS CFence (not scaled by Line width).
+  const wb = (m) => Math.min(Math.max(m * z, 1), 3.5);
+  SKP.boundary.setStrokeWidth(wb(3.0));   // boundaryOuter 1 × 3
+  SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
   SKP.reference.setStrokeWidth(w(0.9));  // trackBaseDash 0.3 × 3
@@ -4747,19 +5213,101 @@ function updateLineWidths() {
   SKP.track.setStrokeWidth(w(1.5));      // saved tracks ~ active weight
   SKP.extraGuide.setStrokeWidth(w(0.9)); // extra guide 0.3 × 3
   SKP.extraGuideShadow.setStrokeWidth(w(1.2));
+  SKP.recPath.setStrokeWidth(2 * k); SKP.contourStrip.setStrokeWidth(2 * k);
+}
+// Screen & Alerts › Smoothing (AgOpenGPS isLineSmooth → GL LineSmooth): anti-aliased
+// map lines, or crisp ones when off (#110).
+let lineSmoothApplied = null;
+function applyLineSmoothing() {
+  const on = !(config && config.display && config.display.lineSmoothEnabled === false);
+  if (on === lineSmoothApplied || !SKP) return;
+  lineSmoothApplied = on;
+  for (const key of Object.keys(SKP)) {
+    const p = SKP[key];
+    if (p && typeof p.setAntiAlias === 'function' && key !== 'lbFill' && key !== 'ground') p.setAntiAlias(on);
+  }
+}
+// Draw a sprite in the vehicle frame (+Y forward) centred on (cx, cy) with half-extents
+// (hx, hy), bitmap top row toward +Y — AgOpenGPS Texture2D.DrawCentered with its V flip.
+function drawVehSprite(canvas, sk, cx, cy, hx, hy, rotDeg, paint) {
+  canvas.save();
+  canvas.translate(cx, cy);
+  if (rotDeg) canvas.rotate(rotDeg, 0, 0);
+  canvas.scale(1, -1);
+  canvas.drawImageRectOptions(sk, CK.LTRBRect(0, 0, sk.width(), sk.height()),
+    CK.LTRBRect(-hx, -hy, hx, hy), CK.FilterMode.Linear, CK.MipmapMode.None, paint || null);
+  canvas.restore();
+}
+// Harvester / articulated bodies (issue #88), laid out as AgOpenGPS CVehicle.DrawVehicle:
+//  harvester  — body 2·tw × 3·wb centred on the pivot; steerable wheels at the REAR axle
+//               (−wb), turned the opposite way to a tractor, tinted HarvesterWheelColor.
+//  articulated — front/rear halves 2·tw × 1.3·wb centred ±wb/2 about the hinge, each
+//               turned by half the steer angle in opposite directions.
+// Returns false until the sprites are loaded so the caller falls back to the triangle.
+function vehicleBodySk(canvas, p, veh, type) {
+  const tw = veh.trackWidth, wb = veh.wheelbase;
+  const steer = tick ? tick.vehicleSteerAngle : 0; // degrees, +right
+  if (type === 1) {
+    const body = skSprite(harvesterSpr);
+    if (!body) return false;
+    beginVehicleFrame(canvas, p);
+    const wheel = frontWheelReady && (skFrontWheel || (skFrontWheel = CK.MakeImageFromCanvasImageSource(frontWheelImg)));
+    if (wheel) {
+      if (!SKP.harvesterWheel) {
+        SKP.harvesterWheel = new CK.Paint();
+        SKP.harvesterWheel.setColorFilter(CK.ColorFilter.MakeBlend(CK.Color(20, 20, 20, 1), CK.BlendMode.Modulate));
+      }
+      for (const sx of [1, -1]) drawVehSprite(canvas, wheel, sx * tw / 2, -wb, 0.25 * tw, 0.5 * wb, steer, SKP.harvesterWheel);
+    }
+    drawVehSprite(canvas, body, 0, 0, tw, 1.5 * wb, 0);
+  } else {
+    const front = skSprite(artFrontSpr), rear = skSprite(artRearSpr);
+    if (!front || !rear) return false;
+    beginVehicleFrame(canvas, p);
+    drawVehSprite(canvas, rear, 0, -wb / 2, tw, 0.65 * wb, steer / 2);
+    drawVehSprite(canvas, front, 0, wb / 2, tw, 0.65 * wb, -steer / 2);
+  }
+  canvas.restore();
+  return true;
+}
+function beginVehicleFrame(canvas, p) {
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
+  canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+}
+// Svenn arrow (AgOpenGPS CVehicle): a yellow chevron ahead of the front axle that keeps
+// its size on screen, so the heading reads at any zoom (#110).
+function svennArrowSk(canvas, p) {
+  const veh = config && config.vehicle, disp = config && config.display;
+  if (!veh || !disp || !disp.svennArrowVisible) return;
+  const camDist = vh / pxPerM;                // ~ AgOpenGPS camSetDistance (m)
+  const dist = camDist * 0.07, width = dist * 0.22, wb = veh.wheelbase || 3;
+  if (!SKP.svenn) { SKP.svenn = new CK.Paint(); SKP.svenn.setStyle(CK.PaintStyle.Stroke); SKP.svenn.setColor(ckColor('rgb(242,242,26)')); SKP.svenn.setStrokeJoin(CK.StrokeJoin.Round); SKP.svenn.setStrokeCap(CK.StrokeCap.Round); lineSmoothApplied = null; }
+  const lw = Math.max(1, (config.autosteer && config.autosteer.lineWidth) || 2);
+  SKP.svenn.setStrokeWidth(lw / pxPerM);      // px → metres (drawn in the vehicle frame)
+  const path = CK.Path.MakeFromCmds([
+    CK.MOVE_VERB, width, wb + dist,
+    CK.LINE_VERB, 0, wb + width + 0.5 + dist,
+    CK.LINE_VERB, -width, wb + dist,
+  ]);
+  if (!path) return;
+  beginVehicleFrame(canvas, p);
+  canvas.drawPath(path, SKP.svenn);
+  canvas.restore();
+  path.delete();
 }
 function vehicleSk(canvas, p) {
   const veh = config && config.vehicle;
-  if (tractorReady && veh && veh.trackWidth > 0.01 && veh.wheelbase > 0.01) {
+  const type = veh ? Math.max(0, Math.min(2, veh.type | 0)) : 0; // 0 Tractor / 1 Harvester / 2 Articulated
+  if (type !== 0 && veh.trackWidth > 0.01 && veh.wheelbase > 0.01 && vehicleBodySk(canvas, p, veh, type)) return;
+  if (type === 0 && tractorReady && veh && veh.trackWidth > 0.01 && veh.wheelbase > 0.01) {
     if (!skTractor) skTractor = CK.MakeImageFromCanvasImageSource(tractorImg);
     if (skTractor) {
       const bW = veh.trackWidth / (2 * SPR_HALFX);
       const bH = veh.wheelbase / (SPR_FRONT - SPR_REAR);
       const half = bW / 2, top = (1 - SPR_REAR) * bH, bot = -SPR_REAR * bH;
-      canvas.save();
-      canvas.concat(perspM);
-      canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
-      canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+      beginVehicleFrame(canvas, p);
       // Body sprite (scale 1,-1 = bitmap rows top-down → world N up).
       canvas.save();
       canvas.scale(1, -1);
@@ -4823,8 +5371,10 @@ function drawGroundTextureSk(canvas) {
   // repeats every 50 m, so only camE,camN MOD 50 affects alignment — using the remainder
   // keeps the shader's local-matrix translation small (f32-safe → no shimmer). texel =
   // (W/50)(P + off) ⇒ texel→local matrix is scale(50/W) then translate(-off).
-  const offE = camE - Math.floor(camE / 50) * 50;
-  const offN = camN - Math.floor(camN / 50) * 50;
+  // Texture Moves off: the tiles stay fixed to the camera instead of the world (#110).
+  const moves = disp.fieldTextureMoveable !== false;
+  const offE = moves ? camE - Math.floor(camE / 50) * 50 : 0;
+  const offN = moves ? camN - Math.floor(camN / 50) * 50 : 0;
   const lm = [50 / W, 0, -offE, 0, 50 / H, -offN, 0, 0, 1];
   if (SKP.groundShader) SKP.groundShader.delete(); // free last frame's shader (already flushed)
   SKP.groundShader = skGround.makeShaderOptions(
@@ -5193,6 +5743,7 @@ function lightbarSk(canvas) {
   // cross-track). Mirrors the native LightBarPanel.
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) return;
+  if (!cfg.lightbarEnabled) return; // the Light bar toggle (AgOpenGPS isLightbarOn, #111)
   const SEG = 15, W = 18, H = 16, GAP = 4;
   const mid = (SEG - 1) / 2;
   const steerMode = !!cfg.steerBarEnabled;
@@ -5203,7 +5754,9 @@ function lightbarSk(canvas) {
     if (Math.abs(val) < dz) val = 0;
     PER = 12 / mid; onThresh = dz;                            // ±12° full deflection
   } else {
-    val = tick.crossTrackError || 0; PER = 0.05; onThresh = 0.05; // + = right of line
+    // AutoSteer › cm per pixel (AgOpenGPS lightbarCmPerPixel): cm of XTE per lit cell (#110).
+    const cpp = Math.max(1, (cfg.cmPerPixel | 0) || 5);
+    val = tick.crossTrackError || 0; PER = cpp / 100; onThresh = 0.05; // + = right of line
   }
   const totalW = SEG * (W + GAP) - GAP;
   const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
@@ -5257,6 +5810,9 @@ function renderSkia(canvas, rp) {
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
       strokePtsSk(canvas, scene.headland, true, SKP.headland);
     drawExtraGuidelinesSk(canvas); // faint adjacent passes (under the bold lines)
+    for (const l of scene.recordedPaths || []) strokePtsSk(canvas, l, false, SKP.recPath);   // #110
+    for (const l of scene.contourStrips || []) strokePtsSk(canvas, l, false, SKP.contourStrip);
+    drawContourRefSk(canvas);
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
     // Purple reference (extended across the field) — drawn ONLY when the tractor is offset from
@@ -5283,7 +5839,8 @@ function renderSkia(canvas, rp) {
   drawEditHandlesSk(canvas); // stage-4 on-map edit handles (drag points to reshape)
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
-  if (rp) vehicleSk(canvas, rp);
+  if (rp) { vehicleSk(canvas, rp); svennArrowSk(canvas, rp); }
+  drawGoalSk(canvas); // #95 — Pure Pursuit target (over the vehicle)
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale
   canvas.restore();
 }

@@ -160,4 +160,73 @@ public class AutoSteerConfigEmitTests
         // the timer never fires.
         Thread.Sleep(200);
     }
+
+    // ── #110: deadzone holds the steer angle sent in PGN 254 ────────────
+
+    private short SentAngle()
+    {
+        _udp.ClearReceivedCalls();
+        _service.SendPgnsForControlTick();
+        foreach (var call in _udp.ReceivedCalls())
+            if (call.GetArguments()[0] is byte[] b && b.Length > 9 && b[3] == 0xFE)
+                return (short)(b[8] | (b[9] << 8));
+        return short.MinValue;
+    }
+
+    [Test]
+    public void Deadzone_HoldsTheAngle_WhileInsideIt_ThenFollowsAgain()
+    {
+        var a = ConfigurationStore.Instance.AutoSteer;
+        a.DeadzoneHeading = 0.5; a.DeadzoneDelay = 0; // no delay: holds on the next update
+        _service.Start();
+        _service.Engage();
+
+        _service.UpdateGuidanceResults(0.3, 0);   // within 0.5° of the wheel (0°) → starts the timer
+        _service.UpdateGuidanceResults(0.4, 0);   // still inside, past the delay → held
+        Assert.That(_service.IsInDeadZone, Is.True);
+        Assert.That(SentAngle(), Is.Not.EqualTo(40), "the 0.4° update is held back");
+
+        _service.UpdateGuidanceResults(5.0, 0);   // outside → follows again
+        Assert.That(_service.IsInDeadZone, Is.False);
+        Assert.That(SentAngle(), Is.EqualTo(500));
+    }
+
+    [Test]
+    public void Deadzone_OffInReverse()
+    {
+        var a = ConfigurationStore.Instance.AutoSteer;
+        a.DeadzoneHeading = 0.5; a.DeadzoneDelay = 0;
+        _service.Start();
+        _service.Engage();
+        _service.SetReverse(true);
+
+        _service.UpdateGuidanceResults(0.3, 0);
+        _service.UpdateGuidanceResults(0.4, 0);
+        Assert.That(_service.IsInDeadZone, Is.False);
+        Assert.That(SentAngle(), Is.EqualTo(40));
+    }
+
+    // ── #110: machine config (PGN 238) and pin config (PGN 236) ────────
+
+    [Test]
+    public void Start_AlsoEmitsMachineConfigAndPins()
+    {
+        _service.Start();
+
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xEE));
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xEC));
+    }
+
+    [Test]
+    public void MachinePropertyChange_ReemitsMachineConfig_WithTheNewValue()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        ConfigurationStore.Instance.Machine.RaiseTime = 7;
+        Thread.Sleep(200);
+
+        // PGN 238 byte 5 = raise time (AgOpenGPS CPGN_EE.raiseTime).
+        _udp.Received().SendToModules(Arg.Is<byte[]>(b => b.Length > 5 && b[3] == 0xEE && b[5] == 7));
+    }
 }

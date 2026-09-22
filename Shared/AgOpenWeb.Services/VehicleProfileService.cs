@@ -220,7 +220,7 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.IsPurePursuit = true;
         store.Guidance.GoalPointLookAheadHold = 4.0;
         store.Guidance.GoalPointLookAheadMult = 1.4;
-        store.Guidance.GoalPointAcquireFactor = 1.5;
+        store.Guidance.GoalPointAcquireFactor = 0.9;
         store.Guidance.MinLookAheadDistance = 2.0;
         store.Guidance.StanleyDistanceErrorGain = 0.8;
         store.Guidance.StanleyHeadingErrorGain = 1.0;
@@ -289,15 +289,20 @@ public class VehicleProfileService : IVehicleProfileService
         store.Vehicle.MaxAngularVelocity = GetDouble(settings, "setVehicle_maxAngularVelocity", 35.0);
 
         // Guidance config
-        store.Guidance.IsPurePursuit = GetBool(settings, "setMenu_isPureOn", true);
+        // setVehicle_isStanleyUsed is AgOpenGPS's algorithm choice. (setMenu_isPureOn, read
+        // here before #99, is its "show the Pure Pursuit point" display toggle.)
+        store.Guidance.IsPurePursuit = !GetBool(settings, "setVehicle_isStanleyUsed", false);
         store.Guidance.GoalPointLookAheadHold = GetDouble(settings, "setVehicle_goalPointLookAheadHold", 4.0);
         store.Guidance.GoalPointLookAheadMult = GetDouble(settings, "setVehicle_goalPointLookAheadMult", 1.4);
-        store.Guidance.GoalPointAcquireFactor = GetDouble(settings, "setVehicle_goalPointAcquireFactor", 1.5);
+        store.Guidance.GoalPointAcquireFactor = GetDouble(settings, "setVehicle_goalPointAcquireFactor", 0.9);
         store.Guidance.StanleyDistanceErrorGain = GetDouble(settings, "stanleyDistanceErrorGain", 0.8);
         store.Guidance.StanleyHeadingErrorGain = GetDouble(settings, "stanleyHeadingErrorGain", 1.0);
         store.Guidance.StanleyIntegralGainAB = GetDouble(settings, "stanleyIntegralGainAB", 0.0);
         store.Guidance.PurePursuitIntegralGain = GetDouble(settings, "purePursuitIntegralGainAB", 0.0);
         store.Guidance.UTurnCompensation = GetDouble(settings, "setAS_uTurnCompensation", 1.0);
+        // Steering speed limits (enforced by the pipeline since #106).
+        store.AutoSteer.MinSteerSpeed = GetDouble(settings, "setAS_minSteerSpeed", 0.0);
+        store.AutoSteer.MaxSteerSpeed = GetDouble(settings, "setAS_maxSteerSpeed", 15.0);
 
         // U-Turn settings
         store.Guidance.UTurnRadius = GetDouble(settings, "set_youTurnRadius", 8.0);

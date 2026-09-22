@@ -33,9 +33,13 @@ namespace AgOpenWeb.Models
         public bool HeadlandDistanceVisible { get; set; } = true;
         public bool ExtraGuidelines { get; set; } = false;
         public int ExtraGuidelinesCount { get; set; } = 10;
-        public bool AutoTrack { get; set; } = true;
+        public bool AutoTrack { get; set; } = false; // AgOpenGPS default (see DisplayConfig)
         public bool FieldTextureVisible { get; set; } = true;
-        public bool FieldTextureMoveable { get; set; } = false;
+        public bool FieldTextureMoveable { get; set; } = true;
+        /// <summary>One-shot latch (#110): Texture Moves used to do nothing while the saved
+        /// value defaulted to false; it now does something, so saved values are reset to
+        /// true (the texture keeps scrolling, as before) once.</summary>
+        public bool HasMigratedTextureMoveable { get; set; } = false;
 
         /// <summary>
         /// Device-/user-scoped metric vs imperial preference. The source of
