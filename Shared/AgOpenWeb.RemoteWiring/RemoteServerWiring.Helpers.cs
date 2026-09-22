@@ -30,6 +30,19 @@ public static partial class RemoteServerWiring
         "headland.delete", "headland.deleteAll", "headland.rename", "headland.editSave",
     };
 
+    /// <summary>Parse a whole-number setting, rounding a decimal ("12.5" → 13) rather than
+    /// rejecting it (#112).</summary>
+    internal static bool TryParseRoundedInt(string val, out int i)
+    {
+        i = 0;
+        if (!double.TryParse(val, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var d)
+            || double.IsNaN(d) || d > int.MaxValue || d < int.MinValue)
+            return false;
+        i = (int)Math.Round(d, MidpointRounding.AwayFromZero);
+        return true;
+    }
+
     // Config bridge (Phase 9a+): apply one "key:value" config write from the web client.
     // Device settings (e.g. units) persist immediately via SaveAppSettings; profile
     // settings (vehicle dims) take live effect only — the client persists them with a
@@ -40,7 +53,9 @@ public static partial class RemoteServerWiring
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         bool D(out double d) => double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out d);
-        bool I(out int i) => int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out i);
+        // Whole-number settings accept a decimal and round it: metric input like "12.5" was
+        // silently dropped by a strict int parse (imperial input was already rounded, #112).
+        bool I(out int i) => TryParseRoundedInt(val, out i);
         bool B() => val == "1";
         bool IDX(out int i, out string rest) // "i,rest" — indexed array writes
         {
@@ -228,9 +243,9 @@ public static partial class RemoteServerWiring
             case "autosteer.steerInReverse": ast.SteerInReverse = B(); store.MarkChanged(); return;
             // Tab 8 — Speed Limits
             case "autosteer.manualTurnsEnabled": ast.ManualTurnsEnabled = B(); store.MarkChanged(); return;
-            case "autosteer.manualTurnsSpeed": if (D(out var a25)) { ast.ManualTurnsSpeed = a25; store.MarkChanged(); } return;
-            case "autosteer.minSteerSpeed": if (D(out var a26)) { ast.MinSteerSpeed = a26; store.MarkChanged(); } return;
-            case "autosteer.maxSteerSpeed": if (D(out var a27)) { ast.MaxSteerSpeed = a27; store.MarkChanged(); } return;
+            case "autosteer.manualTurnsSpeed": if (D(out var a25)) { ast.ManualTurnsSpeed = Math.Clamp(a25, 0, 20); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
+            case "autosteer.minSteerSpeed": if (D(out var a26)) { ast.MinSteerSpeed = Math.Clamp(a26, 0, 10); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
+            case "autosteer.maxSteerSpeed": if (D(out var a27)) { ast.MaxSteerSpeed = Math.Clamp(a27, 0, 50); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
             // Tab 9 — Display
             case "autosteer.lineWidth": if (I(out var a28)) { ast.LineWidth = a28; store.MarkChanged(); } return;
             case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; store.MarkChanged(); } return;
@@ -266,7 +281,7 @@ public static partial class RemoteServerWiring
         try
         {
             if (t == typeof(double)) { if (double.TryParse(val, System.Globalization.NumberStyles.Float, inv, out var d)) conv = d; }
-            else if (t == typeof(int)) { if (int.TryParse(val, System.Globalization.NumberStyles.Integer, inv, out var i)) conv = i; }
+            else if (t == typeof(int)) { if (TryParseRoundedInt(val, out var i)) conv = i; } // e.g. Ackermann, Kp (#112)
             else if (t == typeof(bool)) conv = val == "1" || val == "true";
             else if (t.IsEnum) { if (int.TryParse(val, out var e)) conv = System.Enum.ToObject(t, e); }
             else if (t == typeof(string)) conv = val;

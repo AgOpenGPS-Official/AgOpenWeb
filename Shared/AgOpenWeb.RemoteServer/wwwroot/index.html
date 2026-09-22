@@ -1248,7 +1248,7 @@
       <button class="sa-tgl" data-key="display.hardwareMessagesEnabled">AiO Board Msgs</button>
       <button class="sa-act" data-cmd="display.toggleTheme">Day/Night Theme</button>
       <button class="sa-tgl" data-key="display.extraGuidelines"><img class="sa-ic" src="/icons/ConD_ExtraGuides.png" alt="">Extra Guides</button>
-      <input id="sa-extracount" class="cfg-num" type="number" step="1" min="0" title="Extra guide count">
+      <input id="sa-extracount" class="cfg-num" type="number" step="1" min="1" max="50" title="Extra guide count">
       <button class="sa-act" data-cmd="display.cycleResolution">Quality: <span id="sa-quality">—</span></button>
     </div>
     <div class="cfg-label">On-Screen Buttons</div>
@@ -1727,9 +1727,9 @@
         <div id="as-speed" class="cfg-body" data-strip="as-right" hidden>
           <div class="as-card as-togcard"><img src="/icons/con_VehicleFunctionSpeedLimit.png" alt=""><label>Manual turns</label><button class="cfg-tgl" data-key="autosteer.manualTurnsEnabled">Off</button></div>
           <div class="as-card"><div class="cfg-grid">
-            <label>Manual turns speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1">
-            <label>Min steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.minSteerSpeed" type="number" step="0.1">
-            <label>Max steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.maxSteerSpeed" type="number" step="0.1">
+            <label>Manual turns speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.manualTurnsSpeed" type="number" step="0.1" min="0" max="20">
+            <label>Min steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.minSteerSpeed" type="number" step="0.1" min="0" max="10">
+            <label>Max steer speed (<span class="u" data-unit="kmh"></span>)</label><input class="cfg-num" data-unit="kmh" data-key="autosteer.maxSteerSpeed" type="number" step="0.1" min="0" max="50">
           </div></div>
         </div>
 
@@ -2187,7 +2187,7 @@
         <button class="fb-addbtn" data-tdir="0"><img src="/icons/TramMulti.png" alt=""><span>Both</span></button>
         <button class="fb-addbtn" data-tdir="2"><img src="/icons/SnapRight.png" alt=""><span>Right</span></button>
       </div>
-      <div class="fb-offrow"><label>Passes (0 = all)</label><input id="fb-tram-passes" class="cfg-num" type="number" step="1" min="0"></div>
+      <div class="fb-offrow"><label id="fb-tram-passes-lbl">Passes (0 = all)</label><input id="fb-tram-passes" class="cfg-num" type="number" step="1" min="0"></div>
       <button id="fb-tram-done" class="fb-act" style="margin-top:6px">Done</button>
     </div>
     <!-- Add Track sub-view (replaces the tab content) -->

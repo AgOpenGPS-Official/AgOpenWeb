@@ -2060,7 +2060,11 @@ function populateTramEdit() {
   ref.value = s.refLabel;
   const wEl = document.getElementById('fb-tram-w'); if (document.activeElement !== wEl) writeUnitInput(wEl, s.width);
   const offEl = document.getElementById('fb-tram-off'); if (document.activeElement !== offEl) writeUnitInput(offEl, s.offset);
-  const pEl = document.getElementById('fb-tram-passes'); if (document.activeElement !== pEl) pEl.value = s.passCount;
+  // A boundary system is rings around the boundary: there's no "all", 0 means 1 (#112).
+  const pEl = document.getElementById('fb-tram-passes');
+  pEl.min = s.isBoundary ? 1 : 0;
+  document.getElementById('fb-tram-passes-lbl').textContent = s.isBoundary ? 'Passes' : 'Passes (0 = all)';
+  if (document.activeElement !== pEl) pEl.value = s.isBoundary ? Math.max(1, s.passCount) : s.passCount;
   for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
   for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
   document.getElementById('fb-tram-offrow').hidden = s.isBoundary;   // offset/direction don't apply
@@ -2071,7 +2075,7 @@ document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.s
 document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
 document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (v > 0) tramSet('width', v); });
 document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) tramSet('offset', v); });
-document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSet('passes', Math.max(0, v)); });
+document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); const s = curTram(); if (Number.isFinite(v)) tramSet('passes', Math.max(s && s.isBoundary ? 1 : 0, v)); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
 document.getElementById('bm-delete').addEventListener('pointerdown', e => {

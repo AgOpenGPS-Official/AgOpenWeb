@@ -492,7 +492,8 @@ public static class PgnBuilder
         buf[8] = (byte)Math.Clamp(config.MinPwm, 1, 50);
 
         // Counts per degree (1-255, sent as-is)
-        buf[9] = (byte)Math.Clamp((int)config.CountsPerDegree, 1, 255);
+        // Round, not truncate: the CPD test can give 110.9, which must go out as 111 (#112).
+        buf[9] = (byte)Math.Clamp((int)Math.Round(config.CountsPerDegree, MidpointRounding.AwayFromZero), 1, 255);
 
         // WAS offset (signed 16-bit, little-endian: low byte first)
         short wasOffset = (short)Math.Clamp(config.WasOffset, -32768, 32767);
