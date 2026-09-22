@@ -151,12 +151,10 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _fieldTextureVisible, value);
     }
 
-    private bool _fieldTextureMoveable;
+    private bool _fieldTextureMoveable = true;
     /// <summary>
-    /// When true, the ground texture is rendered as world-tiled bitmaps
-    /// so it visibly scrolls under the tractor as the camera pans. When
-    /// false (default), the texture is rendered as a single stretched
-    /// bitmap centered on the camera — FPS-stable but visually static.
+    /// When true (default, like AgOpenGPS), the ground texture is anchored to the world
+    /// so it scrolls under the tractor. When false it stays fixed to the camera (#110).
     /// </summary>
     public bool FieldTextureMoveable
     {

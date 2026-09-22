@@ -96,6 +96,7 @@ public class AutoSteerService : IAutoSteerService
     }
 
     public event EventHandler<VehicleStateSnapshot>? StateUpdated;
+    public event Action<string, int, bool>? HardwareMessageReceived;
 
     public bool IsEnabled => _isEnabled;
     public bool IsEngaged => _isEngaged;
@@ -268,7 +269,28 @@ public class AutoSteerService : IAutoSteerService
             case PgnNumbers.SENSOR_DATA: // 250 - Sensor Data from module
                 ProcessSensorData(e.Data);
                 break;
+
+            case PgnNumbers.HARDWARE_MESSAGE: // 221 - text to show on screen
+                if (TryParseHardwareMessage(e.Data, out var text, out int seconds, out bool warning))
+                    HardwareMessageReceived?.Invoke(text, seconds, warning);
+                break;
         }
+    }
+
+    /// <summary>
+    /// PGN 221, as AgOpenGPS reads it: { 0x80, 0x81, 0x7F, 221, length, seconds to show,
+    /// colour (0 = warning), text…, CRC }, text = UTF-8 of (length − 2) bytes from byte 7.
+    /// </summary>
+    public static bool TryParseHardwareMessage(byte[] data, out string text, out int seconds, out bool warning)
+    {
+        text = ""; seconds = 0; warning = false;
+        if (data.Length < 9) return false;
+        int n = Math.Min(data[4] - 2, data.Length - 8); // stop before the CRC
+        if (n <= 0) return false;
+        text = System.Text.Encoding.UTF8.GetString(data, 7, n).TrimEnd('\0');
+        seconds = data[5];
+        warning = data[6] == 0;
+        return text.Length > 0;
     }
 
     /// <summary>

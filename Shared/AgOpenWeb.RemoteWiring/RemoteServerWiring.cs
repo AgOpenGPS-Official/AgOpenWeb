@@ -725,6 +725,16 @@ public static partial class RemoteServerWiring
                     // Refusals and failures (#109): shown as a short notification on the web.
                     vm.FailureReported += msg => server.ShowToast(msg);
 
+                    // AiO board messages (PGN 221), when "AiO Board Msgs" is on (#110).
+                    if (services.GetService<IAutoSteerService>() is { } hwSteer)
+                    {
+                        var hwStore = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
+                        hwSteer.HardwareMessageReceived += (text, secs, warn) =>
+                        {
+                            if (hwStore.Display.HardwareMessagesEnabled) server.ShowHardwareMessage(text, secs, warn);
+                        };
+                    }
+
                     // Drive In found 2+ nearby fields (#109): offer them as a pick list.
                     vm.DriveInPickRequested += nearby => server.ShowDrivePick(nearby
                         .Select(f => new AgOpenWeb.RemoteServer.FieldEntryDto(

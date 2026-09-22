@@ -486,6 +486,11 @@ public class ConfigurationService(
         store.Display.ExtraGuidelinesCount = settings.ExtraGuidelinesCount;
         store.Display.AutoTrack = settings.AutoTrack;
         store.Display.FieldTextureVisible = settings.FieldTextureVisible;
+        if (!settings.HasMigratedTextureMoveable)
+        {
+            settings.FieldTextureMoveable = true;
+            settings.HasMigratedTextureMoveable = true;
+        }
         store.Display.FieldTextureMoveable = settings.FieldTextureMoveable;
         store.IsMetric = settings.IsMetric;
         store.Display.AutoSteerSound = settings.AutoSteerSound;

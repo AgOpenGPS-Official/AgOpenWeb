@@ -68,6 +68,8 @@ public sealed class YouTurnStateMachine
     private const double CompletionMinTraveledMeters = 5.0;
 
     private readonly YouTurnCreationService _creation;
+    // U-turn sound latches (AgOpenGPS turnTooCloseTrigger / isBoundAlarming) (#110).
+    private bool _creationFailSounded, _approachAlarmed;
     private readonly YouTurnPathingService _pathing;
     private readonly ILogger<YouTurnStateMachine> _logger;
     private readonly ConfigurationStore _configStore;
@@ -244,6 +246,13 @@ public sealed class YouTurnStateMachine
             turn.DistanceToTrigger = track.Points.Count > 2
                 ? ArcLengthAlongTrack(track.Points, currentPosition, turnStart)
                 : distToTurnStart;
+
+            // AgOpenGPS: alarm once as the tractor comes within 18–20 m of the turn.
+            if (distToTurnStart <= 20.0 && distToTurnStart >= 18.0 && !_approachAlarmed)
+            {
+                _approachAlarmed = true;
+                effects.ApproachAlarmSound = true;
+            }
 
             // Trigger on physical proximity (straight-line): the tractor must actually reach the
             // turn start, regardless of how the arc-length display reads.
@@ -763,7 +772,13 @@ public sealed class YouTurnStateMachine
         if (result.ClearanceBlocked && effects.StatusMessage == null)
             effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
 
-        if (result.Path == null) return;
+        if (result.Path == null)
+        {
+            if (!_creationFailSounded) { _creationFailSounded = true; effects.TurnCreationFailedSound = true; }
+            return;
+        }
+        _creationFailSounded = false;
+        _approachAlarmed = false;
 
         turn.TurnPath = result.Path;
         turn.YouTurnCounter = 0;
@@ -939,4 +954,11 @@ public sealed class YouTurnEffects
     /// the newly-offset track from the start.
     /// </summary>
     public bool TurnCompleted { get; set; }
+
+    /// <summary>U-turn sound (AgOpenGPS isTurnSoundOn, #110): the turn couldn't be created
+    /// (sndUTurnTooClose), once per failure run.</summary>
+    public bool TurnCreationFailedSound { get; set; }
+
+    /// <summary>U-turn sound: 18–20 m before the turn starts (AgOpenGPS sndBoundaryAlarm).</summary>
+    public bool ApproachAlarmSound { get; set; }
 }
