@@ -247,8 +247,10 @@ public sealed class YouTurnStateMachine
                 ? ArcLengthAlongTrack(track.Points, currentPosition, turnStart)
                 : distToTurnStart;
 
-            // AgOpenGPS: alarm once as the tractor comes within 18–20 m of the turn.
-            if (distToTurnStart <= 20.0 && distToTurnStart >= 18.0 && !_approachAlarmed)
+            // Alarm once as the tractor comes within 20 m of the turn. AgOpenGPS tests a
+            // 18–20 m band, which a fast approach steps straight over between fixes — the
+            // alarm then sounded on roughly every other turn (#150).
+            if (distToTurnStart <= 20.0 && !_approachAlarmed)
             {
                 _approachAlarmed = true;
                 effects.ApproachAlarmSound = true;

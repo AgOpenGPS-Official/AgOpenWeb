@@ -524,8 +524,32 @@ const Sounds = (() => {
     'Headland',   // 10 Headland
     'Alarm10',    // 11 YouTurnApproach
   ];
-  const cache = new Map();   // name -> HTMLAudioElement (preloaded)
+  const cache = new Map();   // name -> HTMLAudioElement (fallback path)
   let unlocked = false;
+
+  // Web Audio: each .wav is fetched and DECODED ONCE into an AudioBuffer, and a play is
+  // then just a buffer source — no work on the main thread. The old path cloned a
+  // preloaded <audio> element per play, and a clone carries no decoded data, so every
+  // alert re-decoded its file inline: a visible frame hitch on the bigger ones (Alarm10
+  // is 335 KB) right as the sound started (#150). The element path stays as a fallback
+  // for engines where decodeAudioData isn't available or fails.
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const buffers = new Map();  // name -> AudioBuffer
+  let actx = null;
+  function ensureCtx() {
+    if (!actx && AC) { try { actx = new AC(); } catch (_) { actx = null; } }
+    return actx;
+  }
+  function decodeInto(name) {
+    const ctx = ensureCtx();
+    if (!ctx || buffers.has(name)) return;
+    buffers.set(name, null); // in flight — don't fetch twice
+    fetch('/sounds/' + name + '.wav')
+      .then(r => r.arrayBuffer())
+      .then(b => new Promise((res, rej) => { const p = ctx.decodeAudioData(b, res, rej); if (p && p.then) p.then(res, rej); }))
+      .then(buf => buffers.set(name, buf))
+      .catch(() => buffers.delete(name)); // fall back to the element path
+  }
 
   function el(name) {
     let a = cache.get(name);
@@ -533,11 +557,15 @@ const Sounds = (() => {
     return a;
   }
   // Preload every distinct file so the first real alert isn't delayed by a fetch.
-  for (const n of new Set(FILES)) el(n);
+  for (const n of new Set(FILES)) { el(n); decodeInto(n); }
 
   function unlock() {
     if (unlocked) return;
     unlocked = true;
+    // A context created before any gesture starts suspended; resume it on the first one.
+    const ctx = ensureCtx();
+    if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+    for (const n of new Set(FILES)) decodeInto(n);
     // Nudge each element into a "played once" state so later programmatic play()
     // (not tied to a gesture) is allowed by the autoplay policy. Do it MUTED: the pause
     // lands asynchronously in .then(), so an unmuted prime plays a burst of every alert
@@ -558,8 +586,19 @@ const Sounds = (() => {
     play(id) {
       const name = FILES[id];
       if (!name) return;
-      // Clone the preloaded element so rapid repeats (e.g. section on/off bursts)
-      // overlap instead of cutting each other off; the clone shares the cached file.
+      // Decoded buffer → a source node costs nothing to start, and repeats overlap.
+      const buf = buffers.get(name);
+      if (actx && buf) {
+        try {
+          if (actx.state === 'suspended') actx.resume().catch(() => {});
+          const src = actx.createBufferSource();
+          src.buffer = buf;
+          src.connect(actx.destination);
+          src.start();
+          return;
+        } catch (_) { /* fall through to the element path */ }
+      }
+      // Fallback: clone the preloaded element so rapid repeats overlap.
       try { el(name).cloneNode().play().catch(() => {}); } catch { /* not ready */ }
     },
   };
