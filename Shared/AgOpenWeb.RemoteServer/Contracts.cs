@@ -51,7 +51,9 @@ public record SceneDto(
     IReadOnlyList<TrackInfoDto> TrackList, // ALL tracks (incl. hidden) for the Tracks manager
     IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs, // Field Builder Headland-tab segment list
     IReadOnlyList<TramSystemDto> TramSystems, // Field Builder Tram-tab system list
-    IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines); // generated tram lines, for the map
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines, // generated tram lines, for the map
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110)
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips); // saved contour strips (#110)
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);

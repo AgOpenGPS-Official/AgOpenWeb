@@ -189,11 +189,10 @@ public partial class MainViewModel
         // ── User-action-driven recording (stays in ViewModel) ───────────
 
         // Add boundary point if recording is active
-        if (_boundaryRecordingService.IsRecording)
+        if (_boundaryRecordingService.IsRecording && BoundaryRecordingSectionsAllow())
         {
-            var (offsetEasting, offsetNorthing) = CalculateOffsetPosition(
-                posEasting, posNorthing, headingRad);
-            _boundaryRecordingService.AddPoint(offsetEasting, offsetNorthing, headingRad);
+            var (bndE, bndN) = BoundaryRecordPoint(posEasting, posNorthing, headingRad);
+            _boundaryRecordingService.AddPoint(bndE, bndN, headingRad);
         }
 
         // Add curve point if curve recording is active
@@ -470,4 +469,31 @@ public partial class MainViewModel
     }
 
     #endregion
+
+    // Boundary player "Section control" (AgOpenGPS bnd.isRecBoundaryWhenSectionOn): with it on,
+    // points are only recorded while sections are working (Manual on or Auto) (#110).
+    internal bool BoundaryRecordingSectionsAllow() =>
+        !IsBoundarySectionControlOn || IsManualSectionMode || IsSectionMasterOn;
+
+    /// <summary>
+    /// Where a boundary point is recorded (AgOpenGPS Position.designer.cs): at the antenna/
+    /// pivot plus the side offset, or — "Tool" — at the tool's outer edge on the chosen side
+    /// (last section's right point / first section's left point) (#110).
+    /// </summary>
+    internal (double e, double n) BoundaryRecordPoint(double posEasting, double posNorthing, double headingRad)
+    {
+        if (IsDrawAtPivot || _sectionControlService.NumSections < 1)
+            return CalculateOffsetPosition(posEasting, posNorthing, headingRad);
+
+        var tool = _toolPositionService.ToolPosition;
+        double toolHeading = _toolPositionService.ToolHeading;
+        if (IsDrawRightSide)
+        {
+            var (_, right) = _sectionControlService.GetSectionWorldPosition(
+                _sectionControlService.NumSections - 1, tool, toolHeading);
+            return (right.Easting, right.Northing);
+        }
+        var (left, _) = _sectionControlService.GetSectionWorldPosition(0, tool, toolHeading);
+        return (left.Easting, left.Northing);
+    }
 }

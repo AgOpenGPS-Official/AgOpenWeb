@@ -501,6 +501,10 @@ public static class WireCodec
         }
         w.Write(s.TramLines.Count);
         foreach (var line in s.TramLines) WritePts(w, line);
+        w.Write(s.RecordedPaths.Count);                           // #110
+        foreach (var line in s.RecordedPaths) WritePts(w, line);
+        w.Write(s.ContourStrips.Count);
+        foreach (var line in s.ContourStrips) WritePts(w, line);
 
         return ms.ToArray();
     }

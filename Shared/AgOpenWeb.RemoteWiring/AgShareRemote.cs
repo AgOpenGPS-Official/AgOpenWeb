@@ -41,6 +41,13 @@ internal static class AgShareRemote
         var root = settings.Settings.FieldsDirectory;
         if (string.IsNullOrWhiteSpace(root))
             root = Path.Combine(AppDataRoot.Documents, "Fields");
+        // AgShare Enabled (AgOpenGPS Settings.AgShareEnabled gates the AgShare actions): with it
+        // off, only the connection test works so the settings can still be checked (#110).
+        if (!c.AgShareEnabled && cmd != "agshare.test")
+        {
+            Set(state, "AgShare is turned off. Turn it on in AgShare settings", false);
+            return;
+        }
         switch (cmd)
         {
             case "agshare.test": _ = TestAsync(state, url, key); return;

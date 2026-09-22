@@ -28,6 +28,7 @@ public class MainViewModelBuilder
     public IMapService MapService { get; } = Substitute.For<IMapService>();
     public ICoverageMapService CoverageMapService { get; } = Substitute.For<ICoverageMapService>();
     public ISectionControlService SectionControlService { get; } = Substitute.For<ISectionControlService>();
+    public IToolPositionService ToolPositionService { get; } = Substitute.For<IToolPositionService>();
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
     public IModuleCommunicationService ModuleCommunicationService { get; set; } = Substitute.For<IModuleCommunicationService>();
@@ -78,7 +79,7 @@ public class MainViewModelBuilder
             smartWasService: Substitute.For<ISmartWasCalibrationService>(),
             trackCopierService: Substitute.For<ITrackCopierService>(),
             moduleCommunicationService: ModuleCommunicationService,
-            toolPositionService: Substitute.For<IToolPositionService>(),
+            toolPositionService: ToolPositionService,
             coverageMapService: CoverageMapService,
             sectionControlService: SectionControlService,
             ntripProfileService: NtripProfileService,
