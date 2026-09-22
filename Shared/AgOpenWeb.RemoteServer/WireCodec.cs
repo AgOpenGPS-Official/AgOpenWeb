@@ -19,7 +19,7 @@ public static class WireCodec
     public const byte Scene = 1, Tick = 2, CoverageInit = 3, CoverageCells = 4, Status = 5,
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
-        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21, Prompt = 22, Toast = 23;
+        Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21, Prompt = 22, Toast = 23, DrivePick = 24;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -59,6 +59,23 @@ public static class WireCodec
         using var w = new BinaryWriter(ms);
         w.Write(Toast);
         WriteStr(w, message);
+        return ms.ToArray();
+    }
+
+    /// <summary>One-shot Drive In pick list (#109): the fields within 0.5 km when Drive
+    /// In found more than one (AgOpenGPS FormDrivePicker). Not part of the seed.</summary>
+    public static byte[] EncodeDrivePick(IReadOnlyList<FieldEntryDto> fields)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(DrivePick);
+        w.Write(fields.Count);
+        foreach (var f in fields)
+        {
+            WriteStr(w, f.Name);
+            w.Write(f.DistanceKm);        // f64
+            w.Write(f.AreaHa);            // f64
+        }
         return ms.ToArray();
     }
 

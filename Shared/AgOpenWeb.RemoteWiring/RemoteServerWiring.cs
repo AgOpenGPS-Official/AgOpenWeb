@@ -503,6 +503,7 @@ public static partial class RemoteServerWiring
                                     return;
                                 case "field.resumeLast": ExecCmd(vm.ResumeLastJobCommand); return;
                                 case "field.driveIn": ExecCmd(vm.DriveInCommand); return;
+                                case "field.driveInOpen": vm.DriveInOpen(arg); return; // pick-list choice (#109)
                                 case "field.close": ExecCmd(vm.CloseFieldCommand); return;
                                 // Unsaved-coverage guard resolution (the web prompt mirrors the
                                 // host's DialogType.UnsavedCoverage). Save creates a job then
@@ -712,6 +713,12 @@ public static partial class RemoteServerWiring
 
                     // Refusals and failures (#109): shown as a short notification on the web.
                     vm.FailureReported += msg => server.ShowToast(msg);
+
+                    // Drive In found 2+ nearby fields (#109): offer them as a pick list.
+                    vm.DriveInPickRequested += nearby => server.ShowDrivePick(nearby
+                        .Select(f => new AgOpenWeb.RemoteServer.FieldEntryDto(
+                            f.Name, true, f.DistanceKm, f.BoundaryAreaHectares))
+                        .ToList());
 
                     // Recorded Path projector: the panel's UI state (IsRecordingPath,
                     // HasUnsaved, info/label) is VM-owned, so project it from the live VM

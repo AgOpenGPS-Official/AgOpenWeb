@@ -802,6 +802,12 @@
       font: 700 14px system-ui, sans-serif; }
     .dlg-cancel { background: rgba(var(--ov),0.10); color: var(--text-2); }
     .dlg-ok { background: #1f6fb2; color: #fff; }
+    #dp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 50vh; overflow-y: auto; }
+    .dp-row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; min-height: 44px;
+      padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+    .dp-row:active { background: rgba(74,144,217,0.25); }
+    .dp-name { color: var(--text); font: 600 15px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dp-num { color: var(--text-muted); font: 500 13px system-ui, sans-serif; text-align: right; }
     /* Host prompt (#109): the host's own confirm/error, which must be answered — dimmed
        backdrop with no tap-outside dismiss, above every other dialog. */
     #hostprompt { position: fixed; inset: 0; display: none; align-items: flex-start;
@@ -2572,6 +2578,15 @@
       <div class="dlg-buttons">
         <button id="dlg-cancel" class="dlg-btn dlg-cancel">Cancel</button>
         <button id="dlg-ok" class="dlg-btn dlg-ok">OK</button>
+      </div>
+    </div>
+    <!-- Drive In pick list (#109, AgOpenGPS FormDrivePicker): 2+ fields within 0.5 km. -->
+    <div id="dlg-drivepick" class="dlg-card">
+      <div class="dlg-title">Fields Nearby</div>
+      <div class="dlg-msg">More than one field is within 0.5 km. Pick the one you're in.</div>
+      <div id="dp-list"></div>
+      <div class="dlg-buttons">
+        <button id="dp-cancel" class="dlg-btn dlg-cancel">Cancel</button>
       </div>
     </div>
     <!-- Shared confirm (replaces browser confirm() + native ShowConfirmationDialog).
