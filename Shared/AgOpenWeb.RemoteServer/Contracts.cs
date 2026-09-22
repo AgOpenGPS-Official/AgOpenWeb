@@ -172,7 +172,9 @@ public record TickDto(
     double GoalE,
     double GoalN,
     // Vehicle detected reversing (#125) — reverse indicator.
-    bool IsReverse);
+    bool IsReverse,
+    // Heading chart: GPS fix-to-fix heading, degrees (#111).
+    double ChartGpsHeading);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

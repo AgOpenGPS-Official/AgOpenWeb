@@ -152,7 +152,7 @@ public static partial class RemoteServerWiring
                                 case "boundary.toggleSectionControl": // ToggleButton has no command (Tier-1)
                                     vm.IsBoundarySectionControlOn = !vm.IsBoundarySectionControlOn;
                                     return;
-                                case "track.rename": // Field Builder. arg = "index,new name". Tier-2.
+                                case "track.rename": // Field Builder. arg = "index,new name". Ungated (field data, #111).
                                 {
                                     var ri = arg.IndexOf(',');
                                     if (ri > 0 && int.TryParse(arg[..ri], out var rti))
@@ -788,6 +788,11 @@ public static partial class RemoteServerWiring
                     // (MainViewModel.HeadlandSegments — no ApplicationState SoT), so project
                     // them from the live VM each tick. Read-only on the broadcaster thread,
                     // same transient-race tolerance as the other VM-coupled projectors.
+                    // Heading chart (#111): like AgOpenGPS FormGraphHeading, GPS fix-to-fix vs
+                    // IMU-corrected heading, straight from the heading stage.
+                    var headingFusion = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>();
+                    server.HeadingChartProvider = () => (headingFusion.GpsHeadingDeg, headingFusion.ImuCorrectedDeg);
+
                     server.HeadlandSegsProvider = () =>
                     {
                         var segs = vm.HeadlandSegments;

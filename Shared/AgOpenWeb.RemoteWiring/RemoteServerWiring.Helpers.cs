@@ -17,6 +17,7 @@ public static partial class RemoteServerWiring
         "track.recordCurve", "track.finishCurve", "track.setABGps",
         "track.createFromBoundary", "track.boundaryCurve", "track.boundaryCurveSeg", "track.allEdges",
         "track.setVisible", "track.toggleRecPaths", "track.editSave",
+        "track.rename", // field data, like editSave / headland.rename; was silently dropped for observers (#111)
     };
 
     // Field Builder headland *building* is field-data editing (done while reviewing the

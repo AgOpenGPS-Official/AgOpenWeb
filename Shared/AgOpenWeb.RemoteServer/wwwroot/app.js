@@ -846,7 +846,9 @@ const HOTKEY_UI = {
   VehicleSettings: () => document.getElementById('ln-vehicle').dispatchEvent(new PointerEvent('pointerdown')),
   SteerWizard: () => openSteerWizard(),
 };
-function normHotkey(k) { return k.length === 1 ? k.toUpperCase() : k; } // same as capture
+// Case-insensitive, so named keys match however they were saved: older builds stored
+// "ARROWUP" for ArrowUp, which never matched and the hotkey never fired (#111, #98).
+function normHotkey(k) { return k.toUpperCase(); }
 // The action bound to this key event, or null. Modifier combos stay with the browser/OS.
 function boundHotkey(e) {
   if (e.ctrlKey || e.metaKey || e.altKey || !appInfo) return null;
@@ -3072,6 +3074,7 @@ function renderHotkeys() {
 window.addEventListener('keydown', e => {
   if (!hkCapture || !document.getElementById('hotkeys').classList.contains('open')) return;
   e.preventDefault();
+  if (e.key === 'Escape') { hkCapture = null; renderHotkeys(); return; } // cancel, don't bind Escape (#111)
   const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
   transport.send('app.setHotkey|' + hkCapture + ':' + key);
   hkCapture = null;
@@ -3461,7 +3464,9 @@ function rnSend(cmd) { if (iHoldControl) transport.send(cmd); }
 const rnRoot = document.getElementById('rightnav');
 if (rnRoot) {
   rnRoot.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-  const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('click', () => rnSend(cmd)); };
+  // pointerdown, like the rest of the touch UI: the NativeWebView launcher doesn't
+  // reliably fire 'click' (#56, #111).
+  const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('pointerdown', e => { e.preventDefault(); rnSend(cmd); }); };
   wireRn('rn-contour', 'contour.toggle');
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
@@ -4216,17 +4221,18 @@ const CHARTS = {
   steer: {
     title: 'Steer', yLabel: 'deg', minY: -40, maxY: 40, step: 10, auto: false,
     series: [
+      // AgOpenGPS FormGraphSteer: set vs actual angle. PWM (0–255) doesn't belong on a
+      // ±40° scale (#111).
       { name: 'Set Angle', color: '#E05020', pts: [] },
       { name: 'Actual Angle', color: '#2080E0', pts: [] },
-      { name: 'PWM', color: '#00A080', pts: [] },
     ],
   },
   heading: {
     title: 'Heading', yLabel: 'deg', minY: 0, maxY: 360, step: 45, auto: true,
     series: [
-      { name: 'Heading Error', color: '#DD3333', pts: [] },
-      { name: 'IMU Heading', color: '#D07020', pts: [] },
+      // AgOpenGPS FormGraphHeading: GPS fix-to-fix vs IMU-corrected heading (#111).
       { name: 'GPS Heading', color: '#0088AA', pts: [] },
+      { name: 'IMU Heading', color: '#D07020', pts: [] },
     ],
   },
   xte: {
@@ -4240,11 +4246,9 @@ const chartOpen = { steer: false, heading: false, xte: false };
 // so opening mid-session shows recent history — matches ChartDataService.Start()).
 function pushChartData(t) {
   const now = performance.now() / 1000;
-  const hdgDeg = (((t.pose ? t.pose.heading : 0) * 180 / Math.PI) % 360 + 360) % 360;
   const vals = {
-    steer: [t.chartSetSteer, t.chartActualSteer, t.chartPwm],
-    // HeadingError mirrors the native quirk (ComputeHeadingError == set steer angle).
-    heading: [t.chartSetSteer, t.chartImuHeading, hdgDeg],
+    steer: [t.chartSetSteer, t.chartActualSteer],
+    heading: [t.chartGpsHeading, t.chartImuHeading],
     xte: [toDisplayUnit(t.crossTrackError, 'm')],   // plot in the active length unit
   };
   const trim = now - CHART_WINDOW - 2;
@@ -4253,7 +4257,7 @@ function pushChartData(t) {
     const series = CHARTS[key].series;
     for (let i = 0; i < series.length; i++) {
       const pts = series[i].pts;
-      pts.push({ t: now, v: arr[i] });
+      if (Number.isFinite(arr[i])) pts.push({ t: now, v: arr[i] }); // no IMU → no IMU line
       let cut = 0; while (cut < pts.length && pts[cut].t < trim) cut++;
       if (cut) pts.splice(0, cut);
     }
