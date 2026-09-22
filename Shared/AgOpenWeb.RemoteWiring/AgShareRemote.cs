@@ -119,6 +119,28 @@ internal static class AgShareRemote
         Set(s, $"Uploaded {ok} field(s)" + (fail > 0 ? $", {fail} failed" : ""), false);
     }
 
+    // The field's AB lines and curves, as AgOpenGPS's uploader sends its whole track list
+    // (AgShareUploader.cs). This used to send an empty list, so tracks never reached AgShare
+    // (#111). The uploader converts AB and Curve; other kinds are skipped there.
+    private static List<TrackLineInput> LoadTracksForUpload(string dir)
+    {
+        var result = new List<TrackLineInput>();
+        foreach (var t in TrackFilesService.Load(dir))
+        {
+            if (t.Points.Count < 2) continue;
+            bool ab = t.Points.Count == 2;
+            result.Add(new TrackLineInput
+            {
+                Name = t.Name,
+                Mode = ab ? Models.TrackMode.AB : Models.TrackMode.Curve,
+                PtA = t.Points[0],
+                PtB = t.Points[^1],
+                CurvePoints = ab ? new List<Vec3>() : t.Points.ToList(),
+            });
+        }
+        return result;
+    }
+
     // Mirrors AgShareUploadDialogPanel.UploadSingleFieldAsync: origin from Field.txt StartFix,
     // boundary via BoundaryFileService, existing cloud id from agshare.txt.
     private static async Task<(bool, string)> UploadOne(AgShareClient client, AgShareUploaderService uploader,
@@ -157,7 +179,7 @@ internal static class AgShareRemote
         var input = new FieldSnapshotInput
         {
             FieldId = existing, FieldName = name, Origin = origin, Boundaries = boundaries,
-            Tracks = new List<TrackLineInput>(), IsPublic = isPublic, Convergence = 0,
+            Tracks = LoadTracksForUpload(dir), IsPublic = isPublic, Convergence = 0,
         };
         var (resOk, msg, _) = await uploader.UploadFieldAsync(input, client, dir);
         return (resOk, msg);

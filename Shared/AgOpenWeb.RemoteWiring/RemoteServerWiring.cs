@@ -490,7 +490,7 @@ public static partial class RemoteServerWiring
                                     ApplyNtripCommand(
                                         services.GetRequiredService<INtripProfileService>(),
                                         services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(),
-                                        dispatcher, cmd, arg);
+                                        dispatcher, cmd, arg, vm);
                                     return;
                                 // --- Field Operations (Phase 9). Lifecycle routes through the real
                                 // StartWorkSessionDialogViewModel (host-driven) so field/job open/

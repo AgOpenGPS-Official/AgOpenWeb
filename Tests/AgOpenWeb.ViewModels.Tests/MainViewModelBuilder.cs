@@ -21,6 +21,7 @@ public class MainViewModelBuilder
     public ISettingsService SettingsService { get; } = Substitute.For<ISettingsService>();
     public IVehicleProfileService VehicleProfileService { get; } = Substitute.For<IVehicleProfileService>();
     public INtripProfileService NtripProfileService { get; } = Substitute.For<INtripProfileService>();
+    public INtripClientService NtripService { get; } = Substitute.For<INtripClientService>();
     public IGpsService GpsService { get; } = Substitute.For<IGpsService>();
     public ITrackGuidanceService TrackGuidanceService { get; } = Substitute.For<ITrackGuidanceService>();
     public IAutoSteerService AutoSteerService { get; } = Substitute.For<IAutoSteerService>();
@@ -52,7 +53,7 @@ public class MainViewModelBuilder
             udpService: Substitute.For<IUdpCommunicationService>(),
             gpsService: GpsService,
             fieldService: FieldService,
-            ntripService: Substitute.For<INtripClientService>(),
+            ntripService: NtripService,
             displaySettings: Substitute.For<IDisplaySettingsService>(),
             fieldStatistics: Substitute.For<IFieldStatisticsService>(),
             simulatorService: SimulatorService,

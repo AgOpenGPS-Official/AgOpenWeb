@@ -98,6 +98,9 @@ public interface IConfigurationService
     /// <param name="name">Profile name</param>
     void CreateProfile(string name);
 
+    /// <summary>Create (or reset) only the vehicle or only the tool profile (#111).</summary>
+    void CreateProfile(string name, bool vehicle, bool tool);
+
     /// <summary>
     /// Deletes a profile (vehicle JSON, paired tool JSON if any, legacy XML, AutoSteer sidecar).
     /// </summary>

@@ -104,7 +104,10 @@ public partial class MainViewModel
         get => _selectedRecFile;
         set
         {
-            if (SetProperty(ref _selectedRecFile, value) && value != null)
+            // Reload even when the same file is picked again: that's how to undo a Reverse
+            // or discard changes to the loaded path (#111).
+            SetProperty(ref _selectedRecFile, value);
+            if (value != null)
                 OnRecFileSelected(value);
         }
     }
@@ -257,7 +260,7 @@ public partial class MainViewModel
             {
                 File.Copy(srcPath, dstPath, true);
                 LoadRecPathForPlayback();
-                SelectedRecFile = fileName;
+                SetProperty(ref _selectedRecFile, fileName, nameof(SelectedRecFile)); // already loaded
                 RecordedPathInfo = $"Selected: {fileName} ({State.RecordedPath.RecordedPoints.Count} points)";
             }
             catch (Exception ex)
