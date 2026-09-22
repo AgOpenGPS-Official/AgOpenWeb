@@ -2066,6 +2066,7 @@ public partial class MainViewModel : ObservableObject
         // Clear tracks (State.Field.Tracks mirrors SavedTracks via the ctor subscription)
         SavedTracks.Clear();
         SelectedTrack = null;
+        IsAutoTrackEnabled = false; // AgOpenGPS turns Auto Track off with the job
 
         // Clear U-turn state
         ClearYouTurnState();
