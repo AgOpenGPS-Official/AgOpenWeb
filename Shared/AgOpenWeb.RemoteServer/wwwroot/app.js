@@ -421,6 +421,7 @@ const transport = RemoteTransport.create({
   onSound(id) { Sounds.play(id); },
   onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
   onToast(msg) { showToast(msg); },
+  onDrivePick(fields) { showDrivePick(fields); },
   // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
   // RTT = now − token measures the pure server↔client link (one client clock, no skew).
   onPong(token) {
@@ -2670,7 +2671,34 @@ function renderFieldOps() {
 document.getElementById('fo-fields').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
 document.getElementById('fo-resumelast').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.resumeLast'); lnCloseAll(); });
 document.getElementById('fo-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); openResumeJob(); });
-document.getElementById('fo-drivein').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('field.driveIn'); lnCloseAll(); });
+// Drive In (AgOpenGPS FormJob "In Field"): one field within 0.5 km opens directly;
+// 2+ come back as a Drive Pick frame (#109). The host broadcasts it, so only the
+// browser that just pressed Drive In shows the list.
+let driveInPressedAt = -1e9;
+document.getElementById('fo-drivein').addEventListener('pointerdown', e => {
+  e.stopPropagation(); driveInPressedAt = performance.now(); transport.send('field.driveIn'); lnCloseAll();
+});
+function showDrivePick(fields) {
+  if (performance.now() - driveInPressedAt > 5000) return; // someone else's Drive In
+  driveInPressedAt = -1e9;
+  const list = document.getElementById('dp-list'); list.innerHTML = '';
+  for (const f of fields) {
+    const row = document.createElement('div');
+    row.className = 'dp-row';
+    row.innerHTML = '<span class="dp-name"></span><span class="dp-num"></span><span class="dp-num"></span>';
+    row.querySelector('.dp-name').textContent = f.name;
+    const nums = row.querySelectorAll('.dp-num');
+    nums[0].textContent = fmtUnit(f.distanceKm * 1000, 'm', 0);
+    nums[1].textContent = fmtUnit(f.areaHa, 'ha', 1);
+    row.addEventListener('pointerdown', ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      transport.send('field.driveInOpen|' + f.name); closeDialog();
+    });
+    list.appendChild(row);
+  }
+  openDialog('dlg-drivepick');
+}
+document.getElementById('dp-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 document.getElementById('fo-close').addEventListener('pointerdown', e => { e.stopPropagation(); if (scene && scene.hasField) { transport.send('field.close'); lnCloseAll(); } });
 
 // Fields-and-Jobs chain panel (mirrors StartWorkSessionDialogPanel).

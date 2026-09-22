@@ -44,6 +44,11 @@ public sealed class RemoteServerHost
     public void ShowToast(string message)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeToast(message));
 
+    /// <summary>Broadcast the Drive In pick list (#109). The browser that pressed Drive In
+    /// shows it.</summary>
+    public void ShowDrivePick(IReadOnlyList<FieldEntryDto> fields)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeDrivePick(fields));
+
     /// <summary>Host-supplied projector for the pending confirm/error dialog (#109).
     /// Read every broadcast tick. Set after <see cref="StartAsync"/>.</summary>
     public Func<PromptDto?>? PromptProvider

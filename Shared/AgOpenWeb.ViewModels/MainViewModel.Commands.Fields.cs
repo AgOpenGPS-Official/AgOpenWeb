@@ -714,8 +714,8 @@ public partial class MainViewModel
         // "Drive In" — AgOpen-style nearby-field shortcut. Looks for fields
         // whose origin is within 0.5 km of the operator's current GPS fix
         // (matches AgOpenGPS FormJob.btnInField_Click). One match opens
-        // directly; multiple matches go through StartWorkSessionDialog
-        // pre-filtered to nearby. Zero matches surface a status message.
+        // directly; multiple matches are offered as a pick list (#109).
+        // Zero matches surface a failure message.
         DriveInCommand = new RelayCommand(() =>
         {
             if (Latitude == 0 && Longitude == 0)
@@ -741,24 +741,10 @@ public partial class MainViewModel
                 return;
             }
 
-            // 2+ — open the picker with the list pre-filtered to nearby.
-            StartWorkSessionDialogVm = new StartWorkSessionDialogViewModel(
-                _fieldService,
-                _jobService,
-                _settingsService,
-                _appState,
-                close: () => State.UI.CloseDialog(),
-                openField: (path, name) => _ = OpenFieldOnlyAsync(path, name),
-                openFieldStartingNewJob: (path, name, workType, notes, taskName) =>
-                    _ = OpenFieldStartingNewJobAsync(path, name, workType, notes, taskName),
-                openFieldResumingJob: (path, name, taskName) =>
-                    _ = OpenFieldResumingJobAsync(path, name, taskName),
-                confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action),
-                confirmWithOption: (title, msg, checkboxLabel, defaultChecked, action) =>
-                    ShowConfirmationDialog(title, msg, checkboxLabel, defaultChecked, action),
-                nearbyMaxKm: 0.5);
-            StartWorkSessionDialogVm.Refresh();
-            OpenChainDialog(DialogType.StartWorkSession);
+            // 2+ — let the operator pick one (AgOpenGPS FormDrivePicker). The web shows
+            // the list; DriveInOpen opens the choice the same way as a single match.
+            _driveInCandidates = nearby.ToList();
+            DriveInPickRequested?.Invoke(_driveInCandidates);
         });
 
         ResumeFieldCommand = new AsyncRelayCommand(async () =>
@@ -819,6 +805,29 @@ public partial class MainViewModel
     /// confirm before sending a delete). The web sets SelectedField / the new-job form
     /// then executes the VM's commands; we Refresh() so the lists are current.
     /// </summary>
+    // Drive In pick list (#109): the fields the last Drive In found within 0.5 km.
+    private List<NearbyField> _driveInCandidates = new();
+
+    /// <summary>Raised when Drive In finds 2+ fields within 0.5 km; the web shows them as
+    /// a pick list (AgOpenGPS FormDrivePicker) and answers with <see cref="DriveInOpen"/>.</summary>
+    public event Action<IReadOnlyList<NearbyField>>? DriveInPickRequested;
+
+    /// <summary>Open the field picked from the Drive In list, the same way Drive In opens
+    /// a single match. Only a name from the last Drive In list is accepted.</summary>
+    public void DriveInOpen(string name)
+    {
+        var f = _driveInCandidates.FirstOrDefault(c =>
+            string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (f == null)
+        {
+            ReportFailure("Press Drive In again");
+            return;
+        }
+        _driveInCandidates = new();
+        _ = OpenFieldAsync(f.DirectoryPath, f.Name);
+        IsFieldOperationsPanelVisible = false;
+    }
+
     public StartWorkSessionDialogViewModel EnsureRemoteStartWorkSession()
     {
         StartWorkSessionDialogVm = new StartWorkSessionDialogViewModel(
