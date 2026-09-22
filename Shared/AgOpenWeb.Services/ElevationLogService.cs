@@ -23,6 +23,9 @@ public class ElevationLogService : IElevationLogService
     private readonly StringBuilder _buffer = new();
     private double _lastEasting = double.NaN;
     private double _lastNorthing = double.NaN;
+    // First position logged since the last flush — the header's StartLat/StartLon when
+    // the file doesn't exist yet (logging turned on for an existing field, #112).
+    private double _firstLat = double.NaN, _firstLon = double.NaN;
 
     public bool IsEnabled { get; set; }
 
@@ -54,6 +57,7 @@ public class ElevationLogService : IElevationLogService
 
         _lastEasting = easting;
         _lastNorthing = northing;
+        if (double.IsNaN(_firstLat)) { _firstLat = latitude; _firstLon = longitude; }
 
         double elevation = altitude - antennaHeight;
 
@@ -69,14 +73,20 @@ public class ElevationLogService : IElevationLogService
 
         var path = Path.Combine(fieldDirectory, "Elevation.txt");
 
-        // Append to existing file (create if needed)
+        // The header is only written when a field is created with the log on; if the log
+        // was switched on later there's no file yet, so start it with a header (#112).
+        if (!File.Exists(path))
+            CreateHeader(fieldDirectory, _firstLat, _firstLon);
+
         File.AppendAllText(path, _buffer.ToString(), Encoding.UTF8);
         _buffer.Clear();
+        _firstLat = _firstLon = double.NaN;
     }
 
     public void Clear()
     {
         _buffer.Clear();
+        _firstLat = _firstLon = double.NaN;
         _lastEasting = double.NaN;
         _lastNorthing = double.NaN;
     }

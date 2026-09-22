@@ -3005,13 +3005,24 @@ function renderViewSettings() {
     const obj = groups[name]; if (!obj) continue;
     const sec = document.createElement('div'); sec.className = 'vs-section';
     const h = document.createElement('div'); h.className = 'vs-group'; h.textContent = name; sec.appendChild(h);
-    for (const k in obj) {
-      const v = obj[k]; if (v !== null && typeof v === 'object') continue;
+    // Nested objects and arrays (sections, pins, …) are flattened into path keys
+    // ("sections[0].width"); a list of plain values stays on one row (#112).
+    const addRow = (k, v) => {
       const r = document.createElement('div'); r.className = 'vs-row';
       r.innerHTML = '<span class="vs-k"></span><span class="vs-v"></span>';
       r.querySelector('.vs-k').textContent = k; r.querySelector('.vs-v').textContent = String(v);
       sec.appendChild(r);
-    }
+    };
+    const walk = (prefix, v) => {
+      if (v === null || typeof v !== 'object') { addRow(prefix, v); return; }
+      if (Array.isArray(v)) {
+        if (v.every(x => x === null || typeof x !== 'object')) { addRow(prefix, v.join(', ')); return; }
+        v.forEach((x, i) => walk(prefix + '[' + i + ']', x));
+        return;
+      }
+      for (const k in v) walk(prefix ? prefix + '.' + k : k, v[k]);
+    };
+    walk('', obj);
     box.appendChild(sec);
   }
 }
@@ -3983,7 +3994,7 @@ function renderStatusBar() {
   if (SB.gpsCard.style.display === 'block') {
     SB.gcLat.textContent = s.lat != null ? s.lat.toFixed(7) : '—';
     SB.gcLon.textContent = s.lon != null ? s.lon.toFixed(7) : '—';
-    SB.gcElev.textContent = s.altitude != null ? s.altitude.toFixed(1) : '—';
+    SB.gcElev.textContent = s.altitude != null ? fmtUnit(s.altitude, 'm', 1) : '—'; // m / ft (#112)
     SB.gcSats.textContent = s.sats != null ? s.sats : '—';
     SB.gcHdop.textContent = s.hdop != null ? s.hdop.toFixed(2) : '—';
     SB.gcFix.textContent = s.fixText || '—';

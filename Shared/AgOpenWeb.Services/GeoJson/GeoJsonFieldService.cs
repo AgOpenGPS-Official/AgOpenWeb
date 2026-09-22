@@ -477,7 +477,8 @@ public class GeoJsonFieldService
                 return je.GetDouble();
             if (val is double d)
                 return d;
-            if (double.TryParse(val?.ToString(), out double parsed))
+            if (double.TryParse(val?.ToString(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double parsed)) // #112
                 return parsed;
         }
         return 0;
