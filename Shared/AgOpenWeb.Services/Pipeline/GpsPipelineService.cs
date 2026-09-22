@@ -61,6 +61,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IPipelineIntents _intents;
     private readonly IGpsHeadingFusionService _headingFusion;
     private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
+    private bool _isReverse;           // this cycle's reverse detection (#125)
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
@@ -660,6 +661,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             pos.Heading, data.ImuHeading, data.ImuValid,
             pos.Speed, posEasting, posNorthing);
         pos = pos with { Heading = fusedHeading };
+        // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
+        // heading above already faces the way the vehicle points.
+        _isReverse = _headingFusion.IsReverse;
+        _guidanceWorking.IsReverse = _isReverse;
 
         // ── (1b) Antenna-to-pivot transform in local coordinates ────────
         // Single source of truth for the antenna-to-pivot transform. Runs
@@ -835,6 +840,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             _belowMinSteerSpeedSinceMs = null;
         }
+
+        // (5c) Reverse (#125), like AgOpenGPS: with Steer in reverse off, steering
+        // stops while reversing but AutoSteer stays engaged; it also stops while a
+        // single antenna with no IMU can't yet tell a direction change. PGN 254
+        // status goes to 0 for those cycles.
+        bool steerPaused = autoSteerEngaged
+            && ((_isReverse && !_configStore.AutoSteer.SteerInReverse) || _headingFusion.IsChangingDirection);
+        _autoSteerService.SetSteerPaused(steerPaused);
 
         // U-turn lifecycle is bound to autosteer: when autosteer is not
         // engaged (user toggled off, boundary kickout, far-from-field guard,
@@ -1376,7 +1389,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
-            IsReverse = false,
+            IsReverse = _isReverse,
             IsAutoSteerOn = true,
             IsYouTurnTriggered = isYouTurnTriggered,
             ImuRoll = 88888,
@@ -1570,7 +1583,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             UTurnCompensation = config.Guidance.UTurnCompensation,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
-            IsReverse = false,
+            IsReverse = _isReverse,
             UTurnStyle = config.Guidance.UTurnStyle
         };
 
@@ -1774,8 +1787,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // AgOpenGPS turns the hydraulic lift off with the headland (#106).
         if (!_appState.FieldTools.IsHeadlandOn) return 0;
 
-        // Don't operate at very low speed or in reverse
-        if (speed < 0.2 || speed < -0.1) return 0;
+        // Don't operate at very low speed or in reverse (AgOpenGPS CHead: !isReverse, #125)
+        if (speed < 0.2 || _isReverse) return 0;
 
         if (headlandLine == null || headlandLine.Count < 3) return 0;
 

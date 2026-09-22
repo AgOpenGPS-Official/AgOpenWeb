@@ -93,6 +93,10 @@ public interface IAutoSteerService
     /// </summary>
     void Disengage();
 
+    /// <summary>Stop steering this cycle without disengaging: PGN 254 status 0 while
+    /// reversing with Steer in reverse off, or while a direction change is unclear (#125).</summary>
+    void SetSteerPaused(bool paused);
+
     /// <summary>
     /// Get current latency metrics (for diagnostics display).
     /// </summary>

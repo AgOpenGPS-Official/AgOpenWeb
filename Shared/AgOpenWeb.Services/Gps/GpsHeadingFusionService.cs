@@ -28,15 +28,23 @@ namespace AgOpenWeb.Services.Gps;
 /// with the dual heading standing in for the IMU.</item>
 /// </list>
 ///
-/// Not ported here (tracked in #125): reverse detection and the forward/reverse
-/// steer-angle heading compensation. AgOpenGPS also corrects the fix for antenna
-/// offset and roll before taking the fix-to-fix heading; AgOpenWeb applies that
-/// transform after this stage, on the raw antenna fixes.
+/// Reverse detection (#125), when <see cref="ConnectionConfig.ReverseDetection"/> is
+/// on: with an IMU, a fix-to-fix heading more than 90° off the IMU heading means
+/// reversing; without one, a filtered fix-to-fix change of more than 90° does (and
+/// while that filter is still settling, <see cref="IsChangingDirection"/> holds the
+/// heading). In Dual the travel over <see cref="ConnectionConfig.DualReverseDistance"/>
+/// is compared with the antenna heading. While reversing the heading is flipped so it
+/// still points the way the vehicle faces.
+///
+/// Not ported: the forward/reverse steer-angle heading compensation. AgOpenGPS
+/// also corrects the fix for antenna offset and roll before taking the fix-to-fix
+/// heading; AgOpenWeb applies that transform after this stage, on the raw fixes.
 /// </summary>
 public class GpsHeadingFusionService : IGpsHeadingFusionService
 {
     private const int TotalFixSteps = 10;           // AgOpenGPS totalFixSteps
     private const double StartSpeedKmh = 1.5;       // no first heading below this (AgOpenGPS)
+    private const double HalfPi = Math.PI / 2;      // AgOpenGPS uses 1.57
     /// <summary>The web slider stores the GPS share, 0–1. AgOpenGPS's slider is GPS %
     /// 0–100 with weight = % × 0.002, so weight = share × 0.2 (default 0.3 → 0.06).</summary>
     public const double FusionShareToWeight = 0.2;
@@ -57,6 +65,17 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private double _gpsHeading;      // radians, last fix-to-fix heading
     private double _fixHeading;      // radians, the output
     private double _imuGpsOffset;    // radians, IMU → GPS alignment
+    private double _filteredDelta;   // radians, no-IMU reverse filter
+    private bool _isReverseWithImu;
+    private bool _hasReverseFix;
+    private double _reverseFixE, _reverseFixN;
+
+    /// <summary>True while the vehicle is detected as reversing (#125).</summary>
+    public bool IsReverse { get; private set; }
+
+    /// <summary>True while a single antenna with no IMU can't yet tell whether the
+    /// vehicle changed direction; AgOpenGPS stops steering meanwhile.</summary>
+    public bool IsChangingDirection { get; private set; }
 
     public double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
                               double speedMs, double easting, double northing)
@@ -80,6 +99,8 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
             {
                 // Dual: the antenna heading is the heading. Keep the step history
                 // current so a switch to Fix picks up smoothly (AgOpenGPS does too).
+                IsChangingDirection = false;
+                DetectDualReverse(dual, easting, northing, con.DualReverseDistance);
                 _isFirstHeadingSet = true;
                 _fixHeading = _gpsHeading = dual;
                 PushStep(easting, northing);
@@ -117,21 +138,70 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
             return ByPass(gpsHeading, imu);   // not stored, like AgOpenGPS
 
         double newHeading = Wrap(Math.Atan2(easting - _steps[stepIdx].E, northing - _steps[stepIdx].N));
-        _gpsHeading = newHeading;
 
         if (imu is double imuRad)
         {
-            // Nudge the IMU offset toward GPS by the fusion weight.
-            _imuGpsOffset = Wrap(_imuGpsOffset + AngleDelta(imuRad + _imuGpsOffset, _gpsHeading) * FusionWeight);
+            // Reverse: travel more than 90° off where the IMU says we face.
+            IsChangingDirection = false;
+            if (con.ReverseDetection
+                && Math.Abs(AngleDelta(Wrap(imuRad + _imuGpsOffset), newHeading)) > HalfPi)
+            {
+                IsReverse = _isReverseWithImu = true;
+                newHeading = Wrap(newHeading + Math.PI);
+            }
+            else
+            {
+                IsReverse = _isReverseWithImu = false;
+            }
+            _gpsHeading = newHeading;
+
+            // Nudge the IMU offset toward GPS by the fusion weight (a slow 0.02
+            // while reversing, as AgOpenGPS does).
+            double w = _isReverseWithImu ? 0.02 : FusionWeight;
+            _imuGpsOffset = Wrap(_imuGpsOffset + AngleDelta(imuRad + _imuGpsOffset, _gpsHeading) * w);
             _fixHeading = Wrap(imuRad + _imuGpsOffset);
         }
         else
         {
-            _fixHeading = _gpsHeading;
+            if (con.ReverseDetection)
+            {
+                // Reverse without an IMU: the fix-to-fix heading turns ~180° against
+                // the last one. Filter it; while the filter hasn't caught up with
+                // the latest change we can't tell yet, so hold the heading.
+                double delta = Math.Abs(AngleDelta(_gpsHeading, newHeading));
+                _filteredDelta = delta * 0.2 + _filteredDelta * 0.8;
+                IsChangingDirection = Math.Abs(_filteredDelta - delta) > 0.5;
+                if (IsChangingDirection)
+                    return ByPass(gpsHeading, imu);   // not stored, like AgOpenGPS
+
+                IsReverse = _filteredDelta > HalfPi;
+                if (IsReverse) newHeading = Wrap(newHeading + Math.PI);
+            }
+            else
+            {
+                IsReverse = IsChangingDirection = false;
+            }
+            _fixHeading = _gpsHeading = newHeading;
         }
 
         PushStep(easting, northing);
         return Output(_fixHeading);
+    }
+
+    // Dual reverse (AgOpenGPS): every DualReverseDistance of travel, compare the
+    // direction moved with the antenna heading; more than ~115° apart = reversing.
+    private void DetectDualReverse(double dualHeading, double easting, double northing, double distance)
+    {
+        if (!_hasReverseFix)
+        {
+            _reverseFixE = easting; _reverseFixN = northing; _hasReverseFix = true;
+            return;
+        }
+        if (Dist2(new StepFix { E = _reverseFixE, N = _reverseFixN }, easting, northing) <= Sq(distance))
+            return;
+        double moved = Wrap(Math.Atan2(easting - _reverseFixE, northing - _reverseFixN));
+        IsReverse = Math.Abs(AngleDelta(dualHeading, moved)) > 2.0;
+        _reverseFixE = easting; _reverseFixN = northing;
     }
 
     /// <summary>Fusion weight per GPS heading update (AgOpenGPS fusionWeight).</summary>
@@ -145,6 +215,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     public void Reset()
     {
         for (int i = 0; i < TotalFixSteps; i++) _steps[i] = default;
+        _hasReverseFix = false;
     }
 
     // First heading: three stored fixes, heading from the oldest to the newest; the

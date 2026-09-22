@@ -565,6 +565,7 @@ public static class WireCodec
         w.Write((byte)(t.HasGoal ? 1 : 0)); // #95 — PP goal marker
         w.Write(t.GoalE);            // f64
         w.Write(t.GoalN);            // f64
+        w.Write((byte)(t.IsReverse ? 1 : 0)); // #125 — reversing
         return ms.ToArray();
     }
 

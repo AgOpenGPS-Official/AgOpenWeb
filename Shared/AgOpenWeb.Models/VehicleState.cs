@@ -121,6 +121,11 @@ public struct VehicleState
     /// <summary>Whether auto-steer is currently engaged</summary>
     public bool IsAutoSteerEngaged;
 
+    /// <summary>Engaged, but steering is paused this cycle: reversing with Steer in
+    /// reverse off, or a direction change being worked out. PGN 254 status goes to 0
+    /// while AutoSteer stays engaged (AgOpenGPS, #125).</summary>
+    public bool IsSteerPaused;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Section Control (updated by section control logic)
     // ═══════════════════════════════════════════════════════════════════════

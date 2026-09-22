@@ -5,47 +5,39 @@ using NUnit.Framework;
 namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
-/// Fences PGN 254 status byte bit 2 (AutoSteerEngaged) so the wire-level
-/// engage signal can never silently regress again. The companion VM-level
-/// wiring tests (UI.Tests) ensure VehicleState.IsAutoSteerEngaged actually
-/// gets set when the user toggles autosteer; this test ensures that, once
-/// set, the bit ends up on the outbound packet.
+/// PGN 254 status byte: exactly 1 = steer, 0 = don't, as AgOpenGPS sends it
+/// (Position.designer.cs). The firmware steers on bit 0 (AiO v26
+/// AutosteerProcessor: status &amp; 0x01; AIO v4: guidanceStatus == 1). It used to
+/// carry the module's own echoed steer state in bit 0 and the engage in bit 2,
+/// which no firmware reads (#125).
 /// </summary>
 [TestFixture]
 public class PgnBuilderEngageBitTests
 {
     private const int STATUS_BYTE_INDEX = 7;
-    private const byte ENGAGED_BIT = 0x04;
 
-    [Test]
-    public void BuildAutoSteerPgn_WhenEngaged_SetsStatusBit2()
+    private static byte Status(bool engaged, bool paused = false, bool steerSwitch = false)
     {
         var state = new VehicleState
         {
-            IsAutoSteerEngaged = true,
+            IsAutoSteerEngaged = engaged,
+            IsSteerPaused = paused,
             GpsValid = true,
-            SteerSwitchActive = true
+            WorkSwitchActive = true,
+            SteerSwitchActive = steerSwitch,
         };
-
-        var packet = PgnBuilder.BuildAutoSteerPgn(ref state);
-
-        Assert.That(packet[STATUS_BYTE_INDEX] & ENGAGED_BIT, Is.EqualTo(ENGAGED_BIT),
-            "Status bit 2 (engaged) must be set when state.IsAutoSteerEngaged is true.");
+        return PgnBuilder.BuildAutoSteerPgn(ref state)[STATUS_BYTE_INDEX];
     }
 
     [Test]
-    public void BuildAutoSteerPgn_WhenNotEngaged_ClearsStatusBit2()
-    {
-        var state = new VehicleState
-        {
-            IsAutoSteerEngaged = false,
-            GpsValid = true,
-            SteerSwitchActive = true
-        };
+    public void Engaged_SendsExactly1() => Assert.That(Status(engaged: true), Is.EqualTo(1));
 
-        var packet = PgnBuilder.BuildAutoSteerPgn(ref state);
+    [Test]
+    public void NotEngaged_Sends0_WhateverTheModuleReports()
+        => Assert.That(Status(engaged: false, steerSwitch: true), Is.EqualTo(0),
+            "the module's echoed steer state must not turn steering on");
 
-        Assert.That(packet[STATUS_BYTE_INDEX] & ENGAGED_BIT, Is.EqualTo(0),
-            "Status bit 2 (engaged) must be clear when state.IsAutoSteerEngaged is false.");
-    }
+    [Test]
+    public void EngagedButPaused_Sends0() // reversing with Steer in reverse off
+        => Assert.That(Status(engaged: true, paused: true), Is.EqualTo(0));
 }
