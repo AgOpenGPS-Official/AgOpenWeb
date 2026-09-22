@@ -2406,6 +2406,7 @@ public partial class MainViewModel : ObservableObject
                 // Update guidance availability
                 HasActiveTrack = value != null;
                 IsAutoSteerAvailable = value != null || IsContourModeOn;
+                SaveLastUsedTrack(); // reopen the field on the same track (#148)
 
                 // No U-turns on a closed/polygon track — turn the toggle off and
                 // refresh the dependent UI (button visibility) (#421).
@@ -2641,6 +2642,58 @@ public partial class MainViewModel : ObservableObject
         });
     }
 
+    // The field remembers which track was last used, so reopening it comes back to that
+    // track instead of no guidance (#148). One line, in the field's folder.
+    private const string LastTrackFileName = "ActiveTrack.txt";
+    private bool _restoringTrack;
+
+    private void RestoreLastUsedTrack(string fieldPath)
+    {
+        try
+        {
+            var file = System.IO.Path.Combine(fieldPath, LastTrackFileName);
+            if (!System.IO.File.Exists(file)) return;
+            var name = System.IO.File.ReadAllText(file).Trim();
+            if (name.Length == 0) return;
+            var track = SavedTracks.FirstOrDefault(t => t.IsVisible && t.Name == name);
+            if (track == null) return;
+            _restoringTrack = true;
+            try { SelectedTrack = track; }
+            finally { _restoringTrack = false; }
+            _logger.LogDebug("[TrackFiles] Restored last used track '{Name}'", name);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[TrackFiles] Failed to restore the last used track"); }
+    }
+
+    /// <summary>Remember (or forget) the field's active track for the next time it opens (#148).</summary>
+    private void SaveLastUsedTrack()
+    {
+        if (_restoringTrack || !IsFieldOpen) return;
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (string.IsNullOrEmpty(dir) || !System.IO.Directory.Exists(dir)) return;
+        try
+        {
+            var file = System.IO.Path.Combine(dir, LastTrackFileName);
+            if (SelectedTrack != null) System.IO.File.WriteAllText(file, SelectedTrack.Name);
+            else if (System.IO.File.Exists(file)) System.IO.File.Delete(file);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[TrackFiles] Failed to save the last used track"); }
+    }
+
+    /// <summary>
+    /// Tracks manager / Field Builder: the operator tapped a track row. It becomes the
+    /// active track (#148) and Auto Track goes off so the choice sticks (#146).
+    /// </summary>
+    public void SelectTrackAt(int index)
+    {
+        if (index < 0 || index >= SavedTracks.Count) return;
+        var track = SavedTracks[index];
+        if (!track.IsVisible) return; // a hidden track can't be the active one (AgOpenGPS)
+        IsAutoTrackEnabled = false;
+        SelectedTrack = track;
+        StatusMessage = $"Active track: {track.Name}";
+    }
+
     /// <summary>Replace the contour strips with the field's Contour.txt (none when null) (#110).</summary>
     private void LoadContoursFromField(string? fieldPath)
     {
@@ -2743,8 +2796,10 @@ public partial class MainViewModel : ObservableObject
     public void RenameTrackAt(int index, string name)
     {
         if (index < 0 || index >= SavedTracks.Count || string.IsNullOrWhiteSpace(name)) return;
+        bool wasActive = ReferenceEquals(SavedTracks[index], SelectedTrack);
         SavedTracks[index].Name = name.Trim();
         SaveTracksToFile();
+        if (wasActive) SaveLastUsedTrack(); // the remembered name follows the rename (#148)
     }
 
     // Track management commands
@@ -6195,8 +6250,8 @@ public partial class MainViewModel : ObservableObject
                 // Rebuild recorded paths and contour strips from loaded tracks
                 RebuildRecordedPathsAndContours();
 
-                // Don't auto-activate any track - user must explicitly select one
-                // HasActiveTrack and IsAutoSteerAvailable stay false until user selects
+                // Re-activate the track this field was last worked with (#148).
+                RestoreLastUsedTrack(field.DirectoryPath);
                 return;
             }
 

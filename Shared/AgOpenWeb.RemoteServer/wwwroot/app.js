@@ -1744,12 +1744,14 @@ function renderTracksList() {
       '<span class="trk-dot"></span>';
     row.querySelector('.trk-name').textContent = t.name;
     row.querySelector('.trk-type').textContent = t.type || '—';
-    // Tap row (not the checkbox) → highlight it; a hidden track can't be highlighted
-    // (AgOpenGPS). Checkbox → toggle visibility.
+    // Tap row (not the checkbox) → that track becomes the active one, and stays
+    // highlighted for Delete/Swap. A hidden track can't be activated (AgOpenGPS) (#148).
+    // Checkbox → toggle visibility.
     row.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('trk-vis')) return; // let the checkbox handle it
       e.stopPropagation();
       trkSel = t.visible ? i : -1;
+      if (t.visible && iHoldControl) transport.send('track.select|' + t.index);
       renderTracksList();
     });
     const cb = row.querySelector('.trk-vis');

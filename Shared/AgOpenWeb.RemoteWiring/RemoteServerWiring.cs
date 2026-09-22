@@ -169,11 +169,9 @@ public static partial class RemoteServerWiring
                                         vm.RenameTrackAt(rti, arg[(ri + 1)..]);
                                     return;
                                 }
-                                case "track.select": // Field Builder — tap a row. arg = index. Sets,
-                                {                    // never toggles: a second tap must not deactivate (#109).
-                                    if (int.TryParse(arg, out var tsi)
-                                        && tsi >= 0 && tsi < vm.SavedTracks.Count)
-                                        vm.SelectedTrack = vm.SavedTracks[tsi];
+                                case "track.select": // Tracks manager / Field Builder — tap a row:
+                                {                    // that track becomes active (#148). arg = index.
+                                    if (int.TryParse(arg, out var tsi)) vm.SelectTrackAt(tsi);
                                     return;
                                 }
                                 case "track.delete": // Tracks manager / Field Builder. arg = highlighted index (#109).
