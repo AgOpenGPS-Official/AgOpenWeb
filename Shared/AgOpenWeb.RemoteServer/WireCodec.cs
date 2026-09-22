@@ -506,6 +506,8 @@ public static class WireCodec
         foreach (var line in s.RecordedPaths) WritePts(w, line);
         w.Write(s.ContourStrips.Count);
         foreach (var line in s.ContourStrips) WritePts(w, line);
+        WriteOptPts(w, s.ContourRef);
+        w.Write((byte)(s.ContourLocked ? 1 : 0));
 
         return ms.ToArray();
     }

@@ -18,6 +18,9 @@ public sealed class OperationState
     /// <summary>Contour/track mode toggle is on (the UI button — NOT the pipeline's
     /// GuidanceState.IsContourMode "currently driving a contour" flag).</summary>
     public bool IsContourOn { get; set; }
+    public bool IsContourLocked { get; set; } // contour lock button (#110)
+    /// <summary>The contour strip being followed (drawn as points), or null (#110).</summary>
+    public System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.Base.Vec3>? ContourRef { get; set; }
 
     /// <summary>Auto U-turn (YouTurn) arming is enabled.</summary>
     public bool IsYouTurnEnabled { get; set; }

@@ -53,6 +53,12 @@ public static partial class RemoteServerWiring
                         {
                             var inv = System.Globalization.CultureInfo.InvariantCulture;
                             var num = System.Globalization.NumberStyles.Float;
+                            // Starting a line or path turns contour off first, like AgOpenGPS's
+                            // track / AB+ / draw / record / path Go buttons (#110).
+                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.drawStraight"
+                                    or "track.drawCurve" or "track.recordCurve" or "track.driveAB" or "recpath.play")
+                                vm.ToggleContourModeCommand?.Execute(null);
+
                             // Sim ids that set a property or carry an arg (all Tier-1,
                             // hardware-safe) are handled directly; the rest map to a VM
                             // command below.
@@ -550,6 +556,7 @@ public static partial class RemoteServerWiring
                                 "sim.reverseDir" => vm.SimulatorReverseDirectionCommand,
                                 // Right-nav operational toolbar (Tier-2).
                                 "contour.toggle" => vm.ToggleContourModeCommand,
+                                "contour.lock" => vm.ToggleContourLockCommand, // #110
                                 "section.master" => vm.ToggleSectionMasterCommand,
                                 "section.manual" => vm.ToggleManualModeCommand,
                                 "youturn.toggle" => vm.ToggleYouTurnCommand,

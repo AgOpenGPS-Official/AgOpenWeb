@@ -17,6 +17,7 @@ using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Models.YouTurn;
+using AgOpenWeb.Services.Contour;
 using AgOpenWeb.Services.Geometry;
 using AgOpenWeb.Services.Gps;
 using AgOpenWeb.Services.Headland;
@@ -64,6 +65,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private bool _isReverse;           // this cycle's reverse detection (#125)
     private double _roll;              // filtered roll, degrees (#110)
     private double _lastCrossTrackError; // last cycle's XTE, for the look-ahead (#110)
+    // Contour (#110): owned by the cycle, guarded by _contourLock (the UI thread
+    // toggles/locks/loads/resets).
+    private readonly ContourGuidance _contour = new();
+    private readonly object _contourLock = new();
+    private bool _contourOn;
+    private Vec2? _lastContourPos; // AgOpenGPS prevContourPos
+    private int _contourLineVersion = -1;           // display track cache
+    private Models.Track.Track? _contourDisplayTrack;
+    private (int strip, int count) _contourRefKey = (-1, 0);
+    private IReadOnlyList<Vec3>? _contourRefShown;
+    private bool _contourLockedShown, _contourHasPending;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
@@ -324,6 +336,40 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock) { _driftE = driftE; _driftN = driftN; }
     }
 
+    public void SetContourMode(bool on)
+    {
+        lock (_contourLock)
+        {
+            _contourOn = on;
+            _contour.ClearLine(); // also unlocks
+        }
+    }
+
+    public bool ToggleContourLock()
+    {
+        lock (_contourLock) return _contourOn && _contour.SetLockToLine();
+    }
+
+    public void LoadContours(IEnumerable<List<Vec3>> strips)
+    {
+        lock (_contourLock) { _contour.Load(strips); _lastContourPos = null; }
+    }
+
+    public void ResetContours()
+    {
+        lock (_contourLock) { _contour.Reset(); _lastContourPos = null; }
+    }
+
+    public List<List<Vec3>> TakeContoursToSave()
+    {
+        lock (_contourLock)
+        {
+            var list = new List<List<Vec3>>(_contour.PendingSave);
+            _contour.PendingSave.Clear();
+            return list;
+        }
+    }
+
     public void SetHasActiveField(bool hasActiveField)
     {
         lock (_stateLock)
@@ -578,6 +624,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool isYouTurnTriggered = _youTurn.IsTriggered;
         bool isInYouTurn = _youTurn.IsExecuting;
         List<Vec3>? youTurnPath = _youTurn.TurnPath;
+        bool contourOn;
+        lock (_contourLock) contourOn = _contourOn;
+        _guidanceWorking.IsContourMode = contourOn;
 
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
@@ -681,6 +730,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double rollFilter = Math.Clamp(_configStore.Ahrs.RollFilter, 0, 0.99);
         _roll = _roll * rollFilter + data.ImuRoll * (1 - rollFilter);
 
+        // Antenna in local metres (AgOpenGPS pn.fix): contour Pure Pursuit measures its
+        // distance from the line here (#110).
+        double antennaE = posEasting + driftE, antennaN = posNorthing + driftN;
+
         // ── (1b) Antenna-to-pivot transform in local coordinates ────────
         // Single source of truth for the antenna-to-pivot transform. Runs
         // here on local-plane (E, N) so the math is consistent regardless
@@ -734,7 +787,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // via ApplyGpsCycleResult on the UI thread.
         YouTurnEffects? youTurnTickEffects = null;
         bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
-        bool hasTickableTrack = track != null && track.Points.Count >= 2;
+        // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
+        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
         var tickCtx = new YouTurnStateMachine.TickContext(
@@ -884,6 +938,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
             youTurnPath = null;
         }
 
+        // ── (5d) Contour (#110, AgOpenGPS AddContourPoints + DistanceFromContourLine) ─
+        ContourSteer? contourSteer = null;
+        Models.Track.Track? contourDisplay = null;
+        if (hasActiveField || contourOn)
+            contourSteer = ProcessContour(contourOn, hasActiveField, driftedEasting, driftedNorthing,
+                headingRad, antennaE, antennaN, pos.Speed * 3.6, autoSteerEngaged, out contourDisplay);
+
         // ── (6) Guidance calculation ────────────────────────────────────
         double steerAngle = 0;
         double crossTrackError = 0;
@@ -947,7 +1008,27 @@ public sealed class GpsPipelineService : IGpsPipelineService
         int diagTurnPathCount = 0;
         bool diagAntiTangentGuardFired = false;
 
-        if (autoSteerEngaged && hasTrack)
+        if (contourOn)
+        {
+            // Contour replaces the track: its line is the one shown and followed.
+            displayTrack = contourDisplay;
+            baseTrack = null;
+            if (contourSteer is { } cs)
+            {
+                crossTrackError = cs.CrossTrackError;
+                goalE = cs.GoalPoint.Easting;
+                goalN = cs.GoalPoint.Northing;
+                hasGoal = !_configStore.Guidance.IsStanley;
+                if (autoSteerEngaged)
+                {
+                    steerAngle = cs.SteerAngle;
+                    hasGuidance = true;
+                    Volatile.Write(ref _simulatorSteerAngle, steerAngle);
+                    _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+                }
+            }
+        }
+        else if (autoSteerEngaged && hasTrack)
         {
             if (isYouTurnTriggered && youTurnPath != null && youTurnPath.Count > 0)
             {
@@ -995,7 +1076,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Stanley has no look-ahead target, so no goal marker (#99).
             hasGoal = hasGuidance && !_configStore.Guidance.IsStanley;
         }
-        if (!autoSteerEngaged && hasTrack && !noPassOffset)
+        if (!contourOn && !autoSteerEngaged && hasTrack && !noPassOffset)
         {
             // Display-only: auto-detect nearest pass and update visualization.
             // Phase D D3: write the detected pass directly into the cycle's
@@ -1152,6 +1233,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             IsAutoSteerEngaged = autoSteerEngaged,
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
             HydLiftState = hydLiftState,
+            ContourRef = _contourRefShown,
+            IsContourLocked = _contourLockedShown,
+            HasContoursToSave = _contourHasPending,
             DisengageReason = disengageReason,
 
             // Per-cycle snapshots for UI-thread mirror via ApplyGpsCycleResult.
@@ -1439,17 +1523,101 @@ public sealed class GpsPipelineService : IGpsPipelineService
     }
 
     /// <summary>
+    /// Contour for one cycle (#110), like AgOpenGPS: record the pivot (+ tool offset) as a
+    /// strip while any section paints, each time it has moved a third of a width (or 1 m);
+    /// with the contour button on, rebuild the guidance line and compute steering against
+    /// it (also when not engaged, for the XTE display). Returns null with no usable line.
+    /// </summary>
+    private ContourSteer? ProcessContour(bool contourOn, bool hasActiveField,
+        double pivotE, double pivotN, double headingRad, double antennaE, double antennaN,
+        double speedKmh, bool autoSteerEngaged, out Models.Track.Track? displayTrack)
+    {
+        var config = _configStore;
+        var pivot = new Vec3(pivotE, pivotN, headingRad);
+        ContourSteer? steer = null;
+        lock (_contourLock)
+        {
+            if (hasActiveField)
+            {
+                double contourWidth = (config.ActualToolWidth - config.Tool.Overlap) / 3.0;
+                double moved = _lastContourPos is { } lp
+                    ? Math.Sqrt((pivotE - lp.Easting) * (pivotE - lp.Easting) + (pivotN - lp.Northing) * (pivotN - lp.Northing))
+                    : double.MaxValue;
+                if (moved > Math.Min(contourWidth, 1.0))
+                {
+                    bool painting = false;
+                    var states = _sectionControlService.SectionStates;
+                    for (int i = 0; i < states.Count && !painting; i++) painting = states[i].IsMappingOn;
+                    _contour.Record(painting, pivot, config.Tool.Offset);
+
+                    var p = ContourParamsFor(speedKmh);
+                    if (contourOn)
+                        _contour.BuildContourGuidanceLine(pivot, headingRad, p,
+                            Clock.Current.GetTimestamp() / (double)Clock.Current.Frequency);
+                    _lastContourPos = new Vec2(pivotE, pivotN);
+                }
+            }
+
+            if (contourOn)
+            {
+                var p = ContourParamsFor(speedKmh);
+                double wb = config.Vehicle.Wheelbase;
+                var steerPos = new Vec3(pivotE + Math.Sin(headingRad) * wb, pivotN + Math.Cos(headingRad) * wb, headingRad);
+                steer = _contour.DistanceFromContourLine(pivot, steerPos, new Vec2(antennaE, antennaN), headingRad,
+                    p, speedKmh, _isReverse, autoSteerEngaged, _roll);
+            }
+
+            // Display: the line as a track (rebuilt only when it changes) and the reference strip.
+            if (_contour.LineVersion != _contourLineVersion)
+            {
+                _contourLineVersion = _contour.LineVersion;
+                _contourDisplayTrack = _contour.Line.Count >= 2
+                    ? new Models.Track.Track
+                    {
+                        Name = "Contour", Points = new List<Vec3>(_contour.Line),
+                        Type = Models.Track.TrackType.Contour, IsVisible = true, IsActive = true,
+                    }
+                    : null;
+            }
+            displayTrack = contourOn ? _contourDisplayTrack : null;
+
+            int sn = contourOn && _contour.Line.Count >= 2 ? _contour.StripNum : -1;
+            var key = (sn, sn >= 0 ? _contour.Strips[sn].Count : 0);
+            if (key != _contourRefKey)
+            {
+                _contourRefKey = key;
+                _contourRefShown = sn >= 0 ? new List<Vec3>(_contour.Strips[sn]) : null;
+            }
+            _contourLockedShown = contourOn && _contour.IsLocked;
+            _contourHasPending = _contour.PendingSave.Count > 0;
+        }
+        return steer;
+    }
+
+    private ContourParams ContourParamsFor(double speedKmh)
+    {
+        var c = _configStore;
+        return new ContourParams(
+            c.ActualToolWidth, c.Tool.Overlap, c.Tool.Offset,
+            c.Guidance.IsStanley, c.Guidance.StanleyHeadingErrorGain, c.Guidance.StanleyDistanceErrorGain,
+            c.Vehicle.Wheelbase, c.Vehicle.MaxSteerAngle, c.Guidance.PurePursuitIntegralGain,
+            c.AutoSteer.SideHillCompensation, GoalLookAheadFor(speedKmh, _contour.LastCrossTrackError));
+    }
+
+    /// <summary>
     /// Pure Pursuit look-ahead distance (m), AgOpenGPS CVehicle.UpdateGoalPointDistance:
     /// speed × 0.05 × mult × H + H, where H is the hold look-ahead on the line
     /// (|XTE| ≤ 0.1 m), hold × acquire factor off it (≥ 0.4 m), blended in between;
     /// at least the min look-ahead (AgOpenGPS 2 m). XTE is last cycle's (#110).
     /// </summary>
-    private double GoalLookAhead(double speedKmh)
+    private double GoalLookAhead(double speedKmh) => GoalLookAheadFor(speedKmh, _lastCrossTrackError);
+
+    private double GoalLookAheadFor(double speedKmh, double lastXte)
     {
         var g = _configStore.Guidance;
         double hold = g.GoalPointLookAheadHold;
         double acquire = hold * g.GoalPointAcquireFactor;
-        double xte = Math.Abs(_lastCrossTrackError);
+        double xte = Math.Abs(lastXte);
         double h = xte <= 0.1 ? hold
                  : xte >= 0.4 ? acquire
                  : acquire + (1 - (xte - 0.1) / 0.3) * (hold - acquire);

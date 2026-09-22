@@ -182,6 +182,8 @@ public sealed class SceneProjector
         var recordedPaths = _state.FieldTools.ShowRecordedPaths
             ? Lines(Models.Track.TrackType.RecordedPath) : new List<IReadOnlyList<Vec2Dto>>();
         var contourStrips = Lines(Models.Track.TrackType.Contour);
+        var cref = _state.Operation.IsContourOn ? _state.Operation.ContourRef : null;
+        IReadOnlyList<Vec2Dto>? contourRef = cref?.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
         return new SceneDto(
             version,
@@ -204,7 +206,9 @@ public sealed class SceneProjector
             tramSystems,
             tramLines,
             recordedPaths,
-            contourStrips);
+            contourStrips,
+            contourRef,
+            _state.Operation.IsContourOn && _state.Operation.IsContourLocked);
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -879,6 +883,9 @@ public sealed class SceneProjector
             foreach (var inner in bnd.InnerBoundaries.ToArray()) h = h * 31 + inner.Points.Count;
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + (_state.FieldTools.ShowRecordedPaths ? 1 : 0); // #110
+        // Contour reference strip (a new list per change) + lock.
+        h = h * 31 + (_state.Operation.IsContourOn && _state.Operation.ContourRef is { } cr ? System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(cr) : 0);
+        h = h * 31 + (_state.Operation.IsContourOn && _state.Operation.IsContourLocked ? 1 : 0);
         h = h * 31 + f.Tracks.Count;
         // Point count + name + active/visible so the Tracks manager refreshes on
         // activate/hide/rename (none of which change point counts).

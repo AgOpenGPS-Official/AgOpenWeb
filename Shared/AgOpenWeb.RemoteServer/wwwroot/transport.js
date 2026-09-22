@@ -75,10 +75,11 @@ window.RemoteTransport = {
           for (let k = 0; k < rpc; k++) recordedPaths[k] = pts();
           const csc = i32(); const contourStrips = new Array(csc);
           for (let k = 0; k < csc; k++) contourStrips[k] = pts();
+          const contourRef = optPts(), contourLocked = !!u8();
           handlers.onScene && handlers.onScene({
             version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
             headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery, trackList,
-            headlandSegs, tramSystems, tramLines, recordedPaths, contourStrips,
+            headlandSegs, tramSystems, tramLines, recordedPaths, contourStrips, contourRef, contourLocked,
           });
           break;
         }

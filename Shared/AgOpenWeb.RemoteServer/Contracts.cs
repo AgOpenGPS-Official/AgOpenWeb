@@ -53,7 +53,9 @@ public record SceneDto(
     IReadOnlyList<TramSystemDto> TramSystems, // Field Builder Tram-tab system list
     IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines, // generated tram lines, for the map
     IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110)
-    IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips); // saved contour strips (#110)
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips, // saved contour strips (#110)
+    IReadOnlyList<Vec2Dto>? ContourRef, // contour mode: the strip being followed (points) (#110)
+    bool ContourLocked); // contour lock on
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);
