@@ -192,15 +192,32 @@ public partial class MainViewModel
     /// <summary>Clear all U-turn state — called on field close or track deselect.</summary>
     public void ClearYouTurnState() => _intents.RequestClearYouTurn();
 
+    /// <summary>
+    /// Manual turns speed limit (AgOpenGPS vehicle.functionSpeedLimit): with "Manual turns"
+    /// on, manual U-turns and lateral moves are refused above the manual turns speed, with
+    /// AgOpenGPS's "too fast" message (#110).
+    /// </summary>
+    internal bool ManualTurnTooFast()
+    {
+        var a = ConfigStore.AutoSteer;
+        if (!a.ManualTurnsEnabled || SpeedKmh < a.ManualTurnsSpeed) return false;
+        ReportFailure(ConfigStore.IsMetric
+            ? $"Too fast: slow down below {a.ManualTurnsSpeed:F0} km/h"
+            : $"Too fast: slow down below {a.ManualTurnsSpeed * 0.621371:F1} mph");
+        return true;
+    }
+
     public void TriggerManualYouTurnLeft()
     {
         if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: true);
     }
 
     public void TriggerManualYouTurnRight()
     {
         if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: false);
     }
 

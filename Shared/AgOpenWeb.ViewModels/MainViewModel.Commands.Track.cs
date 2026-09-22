@@ -153,6 +153,7 @@ public partial class MainViewModel
         // AB Line Guidance Commands - Bottom Bar
         SnapLeftCommand = new RelayCommand(() =>
         {
+            if (ManualTurnTooFast()) return; // lateral move, AgOpenGPS functionSpeedLimit (#110)
             if (SelectedTrack == null)
             {
                 ReportFailure("No track selected");
@@ -164,6 +165,7 @@ public partial class MainViewModel
 
         SnapRightCommand = new RelayCommand(() =>
         {
+            if (ManualTurnTooFast()) return; // lateral move, AgOpenGPS functionSpeedLimit (#110)
             if (SelectedTrack == null)
             {
                 ReportFailure("No track selected");

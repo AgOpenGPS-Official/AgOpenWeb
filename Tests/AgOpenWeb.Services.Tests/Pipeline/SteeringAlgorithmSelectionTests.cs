@@ -200,4 +200,35 @@ public class SteeringAlgorithmSelectionTests
 
         Assert.That(Math.Abs(Last.Guidance!.SteerAngle), Is.EqualTo(12).Within(1e-6));
     }
+
+    // ── #110: AgOpenGPS look-ahead with the acquire factor ─────────────
+
+    private double LookAhead(double speedKmh, double lastXte)
+    {
+        var f = typeof(GpsPipelineService).GetField("_lastCrossTrackError",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        f.SetValue(_pipeline, lastXte);
+        var m = typeof(GpsPipelineService).GetMethod("GoalLookAhead",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        return (double)m.Invoke(_pipeline, new object[] { speedKmh })!;
+    }
+
+    [Test]
+    public void LookAhead_IsAgOpenGPSUpdateGoalPointDistance()
+    {
+        var g = ConfigurationStore.Instance.Guidance;
+        g.GoalPointLookAheadHold = 3; g.GoalPointLookAheadMult = 1.5; g.GoalPointAcquireFactor = 0.9;
+        g.MinLookAheadDistance = 2;
+
+        // On the line: 10 × 0.05 × 1.5 × 3 + 3 = 5.25
+        Assert.That(LookAhead(10, 0.05), Is.EqualTo(5.25).Within(1e-9));
+        // Off the line: H = 3 × 0.9 = 2.7 → 10 × 0.05 × 1.5 × 2.7 + 2.7 = 4.725
+        Assert.That(LookAhead(10, 0.5), Is.EqualTo(4.725).Within(1e-9));
+        // Halfway (0.25 m): H blends to 2.85 → 10 × 0.05 × 1.5 × 2.85 + 2.85 = 4.9875
+        Assert.That(LookAhead(10, 0.25), Is.EqualTo(4.9875).Within(1e-9));
+        // Never below the minimum
+        Assert.That(LookAhead(0, 0), Is.EqualTo(3).Within(1e-9));
+        g.GoalPointLookAheadHold = 1;
+        Assert.That(LookAhead(0, 0), Is.EqualTo(2).Within(1e-9));
+    }
 }

@@ -97,6 +97,12 @@ public interface IAutoSteerService
     /// reversing with Steer in reverse off, or while a direction change is unclear (#125).</summary>
     void SetSteerPaused(bool paused);
 
+    /// <summary>Reverse state for the deadzone, which is off in reverse (#110).</summary>
+    void SetReverse(bool isReverse);
+
+    /// <summary>True while the deadzone is holding the sent steer angle (#110).</summary>
+    bool IsInDeadZone { get; }
+
     /// <summary>
     /// Get current latency metrics (for diagnostics display).
     /// </summary>
