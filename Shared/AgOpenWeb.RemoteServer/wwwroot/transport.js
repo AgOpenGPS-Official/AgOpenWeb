@@ -97,7 +97,7 @@ window.RemoteTransport = {
           // Bottom-nav field-tools (Phase 8).
           const tools = {
             headlandOn: !!u8(), sectionInHeadland: !!u8(), autoTrack: !!u8(),
-            skipRows: u8(), skipRowsOn: !!u8(), tramMode: u8(),
+            skipRows: u8(), skipMode: u8(), tramMode: u8(),
           };
           const headlandDist = f32(), headlandWarn = !!u8();
           const steerAngleError = f32();

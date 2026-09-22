@@ -117,7 +117,7 @@ public record TickDto(
     bool SectionInHeadland,
     bool AutoTrack,
     int SkipRows,
-    bool SkipRowsOn,
+    int SkipMode, // 0 normal, 1 alternative, 2 ignore worked tracks (#111)
     int TramMode,
     // Headland-distance HUD: live distance to the headland (m; -1 = no headland / not
     // driving → HUD hidden) + the proximity warning flag (near → red box). Gated

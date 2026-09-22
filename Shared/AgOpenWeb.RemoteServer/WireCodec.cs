@@ -542,7 +542,7 @@ public static class WireCodec
         w.Write((byte)(t.SectionInHeadland ? 1 : 0));
         w.Write((byte)(t.AutoTrack ? 1 : 0));
         w.Write((byte)t.SkipRows);
-        w.Write((byte)(t.SkipRowsOn ? 1 : 0));
+        w.Write((byte)t.SkipMode); // #111 — skip mode 0/1/2
         w.Write((byte)t.TramMode);
         // Headland-distance HUD.
         w.Write((float)t.HeadlandProximityDistance);

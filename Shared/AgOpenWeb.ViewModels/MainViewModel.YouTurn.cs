@@ -66,6 +66,25 @@ public partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// U-turn skip mode, cycled by the skip button like AgOpenGPS's btnYouSkipEnable:
+    /// 0 Normal (move by the skip count), 1 Alternative (alternate the skips so the field
+    /// is covered out-and-back), 2 Ignore worked tracks (snake / skip-and-fill) (#111).
+    /// </summary>
+    public int UTurnSkipMode
+    {
+        get => _uTurnSkipMode;
+        set
+        {
+            value = Math.Clamp(value, 0, 2);
+            if (!SetProperty(ref _uTurnSkipMode, value)) return;
+            State.FieldTools.UTurnSkipMode = value;
+            IsUTurnSkipRowsEnabled = value != 0;
+            IsSkipWorkedMode = value == 2;
+        }
+    }
+    private int _uTurnSkipMode;
+
     private bool _isUTurnSkipRowsEnabled;
     public bool IsUTurnSkipRowsEnabled
     {

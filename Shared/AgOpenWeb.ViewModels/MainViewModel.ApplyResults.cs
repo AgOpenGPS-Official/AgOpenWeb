@@ -127,6 +127,11 @@ public partial class MainViewModel
             sy.ReturnPassTargetPath = yt.ReturnPassTargetPath;
             sy.SnakeSequence = yt.SnakeSequence is List<int> ss ? ss : yt.SnakeSequence?.ToList();
             sy.SnakeIndex = yt.SnakeIndex;
+            sy.AltSign = yt.AltSign;
+            sy.AltBaseWidth = yt.AltBaseWidth;
+            sy.AltWidth = yt.AltWidth;
+            sy.AltTurnSkips = yt.AltTurnSkips;
+            sy.AltPrevBig = yt.AltPrevBig;
             sy.CurrentZone = yt.CurrentZone;
 
             _mapService.SetYouTurnPath(yt.TurnPath?.Select(p => (p.Easting, p.Northing)).ToList());

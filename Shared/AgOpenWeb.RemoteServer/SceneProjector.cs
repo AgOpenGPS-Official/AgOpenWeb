@@ -290,7 +290,7 @@ public sealed class SceneProjector
             _config.Tool.IsHeadlandSectionControl, // single source (read live from config)
             _state.FieldTools.IsAutoTrackEnabled,
             _state.FieldTools.UTurnSkipRows,
-            _state.FieldTools.IsUTurnSkipRowsEnabled,
+            _state.FieldTools.UTurnSkipMode, // 0 normal / 1 alternative / 2 ignore worked (#111)
             (int)_config.Tram.DisplayMode,
             // Headland-distance HUD (-1 = no headland / not driving → hidden client-side).
             _state.Field.HeadlandProximityDistance ?? -1.0,
@@ -904,6 +904,7 @@ public sealed class SceneProjector
             h = h * 31 + (s.ReferenceTrackName?.GetHashCode() ?? s.ReferenceBoundaryIndex);
         }
         h = h * 31 + (TramLinesProvider?.Invoke()?.Count ?? 0);
+        h = h * 31 + (int)_config.Tram.DisplayMode; // mode filters the tram lines (#111)
 
         // Flags: re-send the Scene on place/delete. Count + last position (rounded to
         // 0.1 m) catches add/remove/move without per-tick churn.

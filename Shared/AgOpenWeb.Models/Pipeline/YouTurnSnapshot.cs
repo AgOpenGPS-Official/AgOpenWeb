@@ -67,6 +67,13 @@ public record YouTurnSnapshot
     public IReadOnlyList<int>? SnakeSequence { get; init; }
     public int SnakeIndex { get; init; }
 
+    // Alternative skip pattern (#111).
+    public int AltSign { get; init; }
+    public int AltBaseWidth { get; init; }
+    public int AltWidth { get; init; }
+    public int AltTurnSkips { get; init; }
+    public bool AltPrevBig { get; init; }
+
     public TractorZone CurrentZone { get; init; }
 
     /// <summary>

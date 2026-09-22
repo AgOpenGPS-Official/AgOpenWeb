@@ -79,7 +79,8 @@ public interface IGpsPipelineService
     /// Push YouTurn configuration (skip-rows, skip-worked mode, headland
     /// geometry) so the cycle worker can build its own TickContext.
     /// </summary>
-    void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance);
+    void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance,
+        bool isAlternateSkipMode = false);
 
     /// <summary>
     /// Tell the pipeline whether a real field is currently loaded. Used by the

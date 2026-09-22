@@ -818,16 +818,21 @@ public partial class MainViewModel
                 : "Skip worked tracks: OFF — fixed skip pattern";
         });
 
+        // Cycle Normal → Alternative → Ignore worked tracks, like AgOpenGPS's skip button;
+        // the two skip modes skip at least 1 row (#111).
         ToggleUTurnSkipRowsCommand = new RelayCommand(() =>
         {
-            IsUTurnSkipRowsEnabled = !IsUTurnSkipRowsEnabled;
-            IsSkipWorkedMode = IsUTurnSkipRowsEnabled;
+            UTurnSkipMode = (UTurnSkipMode + 1) % 3;
+            if (UTurnSkipMode != 0 && UTurnSkipRows < 1) UTurnSkipRows = 1;
             // Reset snake sequence so it rebuilds on next turn
             State.YouTurn.SnakeSequence = null;
             State.YouTurn.SnakeIndex = -1;
-            StatusMessage = IsUTurnSkipRowsEnabled
-                ? $"U-Turn skip rows: ON ({UTurnSkipRows} rows, snake pattern)"
-                : "U-Turn skip rows: OFF";
+            StatusMessage = UTurnSkipMode switch
+            {
+                1 => $"U-Turn skip: alternative ({UTurnSkipRows} rows)",
+                2 => $"U-Turn skip: ignore worked tracks ({UTurnSkipRows} rows)",
+                _ => $"U-Turn skip: normal ({UTurnSkipRows} rows)",
+            };
         });
 
         CycleUTurnSkipRowsCommand = new RelayCommand(() =>

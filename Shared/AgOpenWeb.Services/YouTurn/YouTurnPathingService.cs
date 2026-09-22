@@ -185,6 +185,16 @@ public sealed class YouTurnPathingService
         return (false, false);
     }
 
+    /// <summary>Would pass <paramref name="pathsAway"/> lie inside the cultivated area?
+    /// True when there's no usable boundary (nothing to check against).</summary>
+    public bool IsPathInsideCultivated(Models.Track.Track track, double abHeading, int pathsAway,
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine)
+    {
+        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid) return true;
+        if (track.Points.Count < 2) return true;
+        return CheckOffsetLineInsideCultivated(track, abHeading, pathsAway, boundary, headlandLine, _configStore);
+    }
+
     private bool CheckOffsetLineInsideCultivated(
         Models.Track.Track currentTrack, double abHeading, int nextPathsAway,
         Boundary? boundary, IReadOnlyList<Vec3>? headlandLine,

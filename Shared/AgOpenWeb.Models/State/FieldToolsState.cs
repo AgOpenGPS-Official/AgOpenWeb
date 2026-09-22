@@ -23,4 +23,7 @@ public sealed class FieldToolsState
 
     /// <summary>U-turn skip-rows is enabled.</summary>
     public bool IsUTurnSkipRowsEnabled { get; set; }
+
+    /// <summary>0 Normal, 1 Alternative, 2 Ignore worked tracks (AgOpenGPS SkipMode, #111).</summary>
+    public int UTurnSkipMode { get; set; }
 }

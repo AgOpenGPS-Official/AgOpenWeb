@@ -2216,7 +2216,7 @@ function wireCfgControls(panel) {
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
   // .cfg-act = config.set action buttons; .rn-gated ones carry data-cmd (a gated
   // command, not a config key) and are wired separately, so exclude them here.
-  for (const b of panel.querySelectorAll('.cfg-act:not(.rn-gated)'))
+  for (const b of panel.querySelectorAll('.cfg-act[data-key]:not(.rn-gated)')) // keyless = wired by hand
     b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
   for (const sel of panel.querySelectorAll('.cfg-isel'))
     sel.addEventListener('change', () => cfgSend(sel.dataset.key, sel.value));
@@ -2273,6 +2273,9 @@ vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitch
 const fusionLabel = w => 'GPS ' + Math.round(w * 100) + '% · IMU ' + (100 - Math.round(w * 100)) + '%';
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+// Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
+// Tools › Roll Correction; it used to clear the offset (that's Remove Offset, #111).
+document.getElementById('vc-rollzero').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('roll.zeroCalibrate'); });
 // Populate every control from the config frame. force (on open) fills all; otherwise
 // skip the focused number input so we don't clobber what the user is typing.
 function populateVehicleCfg(force) {
@@ -3793,6 +3796,9 @@ const lbEl = document.getElementById('lb');
 function updateLightbarText() {
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) { lbEl.style.display = 'none'; return; }
+  // AgOpenGPS: "Light bar" is on/off, "Steer bar" picks the style. In light-bar style the
+  // distance text shows even with the bar off; in steer-bar style it all goes (#111).
+  if (cfg.steerBarEnabled && !cfg.lightbarEnabled) { lbEl.style.display = 'none'; return; }
   if (cfg.steerBarEnabled) {
     // Steer bar: steer-angle error (deg) with dead-zone.
     let err = tick.steerAngleError || 0;
@@ -4111,7 +4117,8 @@ function renderBottomNav() {
   const nudgeAmt = Math.round(Math.abs(nudgeM) * (isMetric() ? 100 : 39.3701));
   document.getElementById('bn-nudgeval').textContent =
     nudgeAmt === 0 ? '0' : nudgeAmt + (nudgeM < 0 ? ' L' : ' R');
-  bnIcon(document.getElementById('bn-skip-ic'), t.skipRowsOn ? 'YouSkipOn.png' : 'YouSkipOff.png');
+  // AgOpenGPS skip-button icons: normal / alternative / ignore worked tracks (#111).
+  bnIcon(document.getElementById('bn-skip-ic'), ['YouSkipOff.png', 'YouSkipOn.png', 'YouSkipWorkedTracks.png'][t.skipMode | 0] || 'YouSkipOff.png');
   // Icon shows the PAINTING state, not the raw flag: sectionInHeadland (=Tool.
   // IsHeadlandSectionControl) true means sections AUTO-OFF in the headland (NOT
   // painted) → the "Off" icon; false means sections paint the headland → "On".
@@ -5490,6 +5497,7 @@ function lightbarSk(canvas) {
   // cross-track). Mirrors the native LightBarPanel.
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) return;
+  if (!cfg.lightbarEnabled) return; // the Light bar toggle (AgOpenGPS isLightbarOn, #111)
   const SEG = 15, W = 18, H = 16, GAP = 4;
   const mid = (SEG - 1) / 2;
   const steerMode = !!cfg.steerBarEnabled;

@@ -827,10 +827,18 @@ public static partial class RemoteServerWiring
                             foreach (var p in line) pl.Add(new AgOpenWeb.RemoteServer.Vec2Dto(p.Easting, p.Northing));
                             outLines.Add(pl);
                         }
-                        Add(tramSvc.OuterBoundaryTrack);
-                        Add(tramSvc.InnerBoundaryTrack);
-                        foreach (var line in tramSvc.ParallelTramLines) Add(line);
-                        foreach (var line in tramSvc.BoundaryExtraLines) Add(line);
+                        // Display mode (#111): All, Lines only (parallel) or Outer only
+                        // (boundary tracks) — AgOpenGPS tram.displayMode. Off is gated client-side.
+                        var mode = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>().Tram.DisplayMode;
+                        bool bnd = mode != AgOpenWeb.Models.Configuration.TramDisplayMode.LinesOnly;
+                        bool par = mode != AgOpenWeb.Models.Configuration.TramDisplayMode.OuterOnly;
+                        if (bnd)
+                        {
+                            Add(tramSvc.OuterBoundaryTrack);
+                            Add(tramSvc.InnerBoundaryTrack);
+                            foreach (var line in tramSvc.BoundaryExtraLines) Add(line);
+                        }
+                        if (par) foreach (var line in tramSvc.ParallelTramLines) Add(line);
                         return outLines;
                     };
     }
