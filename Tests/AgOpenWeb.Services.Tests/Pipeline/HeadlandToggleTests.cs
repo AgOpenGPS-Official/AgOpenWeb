@@ -143,7 +143,24 @@ public class HeadlandToggleTests
         var m = typeof(GpsPipelineService).GetMethod("ComputeHydLiftState",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.That(m, Is.Not.Null, "Reflection target ComputeHydLiftState missing");
-        var state = (byte)m!.Invoke(_pipeline, new object?[] { new Vec3(0, 120, 0), 3.0, Square(100) })!;
+        var state = (byte)m!.Invoke(_pipeline, new object?[] { new Vec3(0, 120, 0), 0.0, 3.0, Square(100) })!;
+
+        Assert.That(state, Is.EqualTo(expected));
+    }
+
+    [TestCase(0.0, 1)]  // no look-ahead: tool still in the worked area → down
+    [TestCase(2.0, 2)]  // 3 m/s × 2 s = 6 m ahead crosses the headland line → up early
+    public void HydraulicLift_LooksAheadByMachineLookAhead(double lookAheadSec, int expected)
+    {
+        ConfigurationStore.Instance.Machine.HydraulicLiftEnabled = true;
+        ConfigurationStore.Instance.Machine.LookAhead = lookAheadSec;
+        _appState.FieldTools.IsHeadlandOn = true;
+        _appState.Field.CurrentBoundary = Boundary(200);
+
+        var m = typeof(GpsPipelineService).GetMethod("ComputeHydLiftState",
+            BindingFlags.NonPublic | BindingFlags.Instance)!;
+        // Tool 4 m short of the headland line (cultivated area = ±100), heading north at 3 m/s.
+        var state = (byte)m.Invoke(_pipeline, new object?[] { new Vec3(0, 96, 0), 0.0, 3.0, Square(100) })!;
 
         Assert.That(state, Is.EqualTo(expected));
     }

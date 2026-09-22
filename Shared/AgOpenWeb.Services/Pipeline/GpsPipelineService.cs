@@ -1054,7 +1054,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // SetMachineState's three fields (section bits, U-turn state,
         // hyd-lift state) are all written by the cycle, before the PGN
         // build in (9) reads them.
-        byte hydLiftState = ComputeHydLiftState(toolPos, pos.Speed, headlandLine);
+        byte hydLiftState = ComputeHydLiftState(toolPos, toolHeading, pos.Speed, headlandLine);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
@@ -1140,6 +1140,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Autosteer
             IsAutoSteerEngaged = autoSteerEngaged,
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
+            HydLiftState = hydLiftState,
             DisengageReason = disengageReason,
 
             // Per-cycle snapshots for UI-thread mirror via ApplyGpsCycleResult.
@@ -1791,7 +1792,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     ///
     /// Returns: 0 = off, 1 = lower (in cultivated area), 2 = raise (in headland zone).
     /// </summary>
-    private byte ComputeHydLiftState(Vec3 toolPosition, double speed, List<Vec3>? headlandLine)
+    private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine)
     {
         var machine = _configStore.Machine;
         if (!machine.HydraulicLiftEnabled) return 0;
@@ -1809,8 +1810,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool inBoundary = boundary.IsPointInside(toolPosition.Easting, toolPosition.Northing);
         if (!inBoundary) return 0;
 
-        bool inCultivatedArea = Models.Base.GeometryMath.IsPointInPolygon(
-            headlandLine, new Vec2(toolPosition.Easting, toolPosition.Northing));
+        // Look ahead by speed × Machine look-ahead time (AgOpenGPS hydLiftLookAheadTime,
+        // capped at 20 m), so the lift moves before the tool reaches the headland line and
+        // the hydraulics' delay is absorbed (#110).
+        double ahead = Math.Min(Math.Abs(speed) * Math.Max(0, _configStore.Machine.LookAhead), 20.0);
+        var probe = new Vec2(toolPosition.Easting + Math.Sin(toolHeading) * ahead,
+                             toolPosition.Northing + Math.Cos(toolHeading) * ahead);
+        bool inCultivatedArea = Models.Base.GeometryMath.IsPointInPolygon(headlandLine, probe);
 
         return inCultivatedArea ? (byte)1 : (byte)2;
     }
