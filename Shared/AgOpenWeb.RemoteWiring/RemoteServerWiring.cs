@@ -81,6 +81,10 @@ public static partial class RemoteServerWiring
                                         && double.TryParse(parts[1], num, inv, out var lon))
                                         vm.SetSimulatorCoordinates(lat, lon);
                                     return;
+                                case "section.toggleZone": // Tier-2 (gated); arg = zone 1..8 (#111)
+                                    if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var zi))
+                                        vm.ToggleZone(zi);
+                                    return;
                                 case "section.toggle": // Tier-2 (gated); cycle one section
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)
                                         && vm.ToggleSectionCommand?.CanExecute(si) == true)

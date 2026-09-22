@@ -80,7 +80,15 @@ public static partial class RemoteServerWiring
             case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
             case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
             // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
-            case "vehicle.type": if (I(out var ty)) veh.Type = (AgOpenWeb.Models.VehicleType)ty; return;
+            case "vehicle.type":
+                if (I(out var ty))
+                {
+                    veh.Type = (AgOpenWeb.Models.VehicleType)ty;
+                    // A harvester's header is front-mounted: AgOpenGPS ConfigTool forces
+                    // the tool to Front Fixed and hides the other types (#111).
+                    if (veh.Type == AgOpenWeb.Models.VehicleType.Harvester) tool.SetToolType("front");
+                }
+                return;
             case "vehicle.hitchType": if (I(out var ht)) veh.HitchType = ht; return;
             case "vehicle.hitchLength": if (D(out var d1)) veh.HitchLength = d1; return;
             case "vehicle.wheelbase": if (D(out var d2)) veh.Wheelbase = d2; return;
@@ -111,7 +119,8 @@ public static partial class RemoteServerWiring
             case "roll.isRollInvert": ahrs.IsRollInvert = B(); return;
             case "roll.setZero": ahrs.RollZero = 0; return; // mirror SetRollZeroCommand
             // --- Tool / Implement (ConfigStore.Tool + NumSections) ---
-            case "tool.type": tool.SetToolType(val); return; // front/rear/tbt/trailing
+            case "tool.type": // front/rear/tbt/trailing; a harvester only takes front (#111)
+                tool.SetToolType(veh.Type == AgOpenWeb.Models.VehicleType.Harvester ? "front" : val); return;
             case "tool.hitchType": if (I(out var th)) tool.HitchType = th; return;
             case "tool.hitchLength": if (D(out var t1)) tool.HitchLength = t1; return;
             case "tool.trailingHitchLength": if (D(out var t2)) tool.TrailingHitchLength = t2; return;
