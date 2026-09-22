@@ -172,7 +172,9 @@ public record TickDto(
     double GoalE,
     double GoalN,
     // Vehicle detected reversing (#125) — reverse indicator.
-    bool IsReverse);
+    bool IsReverse,
+    // Engaged, but the steer module reports it isn't steering (#126).
+    bool ModuleNotSteering);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

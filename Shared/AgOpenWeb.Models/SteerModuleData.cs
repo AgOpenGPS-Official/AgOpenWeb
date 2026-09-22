@@ -24,7 +24,9 @@ namespace AgOpenWeb.Models;
 /// <param name="ImuHeading">Heading from IMU in degrees (0-360) - deprecated, GNSS supplies this now</param>
 /// <param name="ImuRoll">Roll angle from IMU in degrees - deprecated, GNSS supplies this now</param>
 /// <param name="WorkSwitchActive">Work switch is engaged (ON)</param>
-/// <param name="SteerSwitchActive">Steer switch is engaged (steering enabled)</param>
+/// <param name="SteerSwitchActive">Raw PGN 253 byte 11 bit 1, AgOpenGPS <c>steerSwitchHigh</c>:
+/// set when the module is NOT steering (switch off, button, sensor kickout, not armed).
+/// Despite the name it does not mean "steering enabled" (#126).</param>
 /// <param name="RemoteButtonPressed">Remote steer button is pressed</param>
 /// <param name="VwasFusionActive">Virtual WAS fusion is active</param>
 /// <param name="PwmDisplay">Current PWM output magnitude (0-255)</param>

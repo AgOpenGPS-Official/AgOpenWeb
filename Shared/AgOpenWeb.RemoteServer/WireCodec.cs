@@ -566,6 +566,7 @@ public static class WireCodec
         w.Write(t.GoalE);            // f64
         w.Write(t.GoalN);            // f64
         w.Write((byte)(t.IsReverse ? 1 : 0)); // #125 — reversing
+        w.Write((byte)(t.ModuleNotSteering ? 1 : 0)); // #126 — engaged but module not steering
         return ms.ToArray();
     }
 

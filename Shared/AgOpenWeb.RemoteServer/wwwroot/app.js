@@ -4143,6 +4143,9 @@ function renderRightNav() {
   // U-turn direction + distance-to-trigger now render on-screen (see renderUTurnIndicator).
   // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');
+  // Engaged but the module isn't steering (kickout / switch / button): red, like
+  // AgOpenGPS's steer circle (#126).
+  RN.steerI.parentElement.classList.toggle('not-steering', !!(op.autoSteer && op.moduleNotSteering));
 }
 
 // Auto-U-turn approach indicator (upper-right): green direction arrow + distance to

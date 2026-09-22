@@ -1301,6 +1301,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void UpdateModuleSwitches()
     {
+        UpdateModuleSteeringState();
         var tool = ConfigStore.Tool;
         var mc = _moduleCommunicationService;
         mc.IsRemoteWorkSystemOn = tool.IsWorkSwitchEnabled || tool.IsSteerSwitchEnabled;
@@ -1319,6 +1320,33 @@ public partial class MainViewModel : ObservableObject
             AutoButtonState = IsSectionMasterOn ? ButtonStates.Auto : ButtonStates.Off,
             ManualButtonState = IsManualSectionMode ? ButtonStates.On : ButtonStates.Off,
         });
+    }
+
+    // True once the module has reported steering since this engage, so the alert is for
+    // a real stop (kickout, switch, button), not the moment between engage and arming.
+    private bool _moduleSteeredSinceEngage;
+
+    /// <summary>
+    /// Module steering state for the web (#126). The steer module reports in PGN 253
+    /// byte 11 bit 1 whether it is steering; AgOpenGPS paints the steer circle red when
+    /// it isn't, whatever the switch type. Here: engaged + module connected + bit high =
+    /// "module not steering". With a Switch/Button configured the bit also disengages
+    /// (UpdateModuleSwitches, #124); with None it only shows, as in AgOpenGPS.
+    /// </summary>
+    internal void UpdateModuleSteeringState()
+    {
+        bool connected = State.Connections.IsAutoSteerDataOk;
+        bool notSteering = IsAutoSteerEngaged && connected && _autoSteerService.LastSteerData.SteerSwitchActive;
+        State.Connections.IsModuleNotSteering = notSteering;
+
+        if (!IsAutoSteerEngaged || !connected) { _moduleSteeredSinceEngage = false; return; }
+        if (!notSteering) { _moduleSteeredSinceEngage = true; return; }
+        if (_moduleSteeredSinceEngage)
+        {
+            _moduleSteeredSinceEngage = false;
+            _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            ReportFailure("Steer module stopped steering (kickout, switch or button)");
+        }
     }
 
     private void OnModuleConnectionChanged(object? sender, ModuleConnectionEventArgs e)
