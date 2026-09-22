@@ -72,6 +72,16 @@ public class YouTurnWorkingState
 
     public int SnakeIndex { get; set; } = -1;
 
+    // Alternative skip mode (AgOpenGPS SkipMode.Alternative, #111). AltBaseWidth = passes
+    // per skip (skip rows + 1); moves alternate AltBaseWidth-1 / AltBaseWidth and the side
+    // flips each turn except every (2W-1)th, so the field is covered out-and-back.
+    // AltSign 0 = pattern not started.
+    public int AltSign { get; set; }
+    public int AltBaseWidth { get; set; }
+    public int AltWidth { get; set; }
+    public int AltTurnSkips { get; set; }
+    public bool AltPrevBig { get; set; }
+
     // Zone the tractor is in — source of truth for turn creation gating.
     public TractorZone CurrentZone { get; set; } = TractorZone.OutsideBoundary;
 
@@ -108,6 +118,7 @@ public class YouTurnWorkingState
         ReturnPassTargetPath = null;
         SnakeSequence = null;
         SnakeIndex = -1;
+        AltSign = 0;
         CurrentZone = TractorZone.OutsideBoundary;
         NextUTurnDirectionLeftOverride = null;
     }

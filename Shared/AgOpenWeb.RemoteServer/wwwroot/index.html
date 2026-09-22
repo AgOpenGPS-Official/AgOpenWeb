@@ -1402,7 +1402,8 @@
       <img src="/icons/ConD_RollHelper.png" class="vc-diag-wide" alt="Roll calibration">
       <div class="cfg-grid">
         <label>Roll zero (°)</label><input class="cfg-num" data-key="roll.rollZero" type="number" step="0.01" inputmode="decimal">
-        <label></label><button class="cfg-act cfg-actwide" data-key="roll.setZero" data-val="1">Zero Now</button>
+        <label></label><button id="vc-rollzero" class="cfg-act cfg-actwide" title="Take the current roll as zero (AgOpenGPS Zero Roll)">Zero Now</button>
+        <label></label><button class="cfg-act cfg-actwide" data-key="roll.setZero" data-val="1" title="Set the roll offset back to 0">Remove Offset</button>
         <label>Roll filter</label><input class="cfg-num" data-key="roll.rollFilter" type="number" step="0.01" inputmode="decimal">
         <label>Invert roll</label><button class="cfg-tgl" data-key="roll.isRollInvert">Off</button>
       </div>
@@ -2542,7 +2543,7 @@
       </div>
       <div class="bn-bar">
         <button class="bn-btn bn-abdep" id="bn-skipcycle" data-cmd="youturn.skipCycle" data-t2 title="U-Turn skip rows (tap to cycle 0–9)"><span id="bn-skipnum">0</span></button>
-        <button class="bn-btn bn-abdep" id="bn-skiptoggle" data-cmd="youturn.skipToggle" data-t2 title="U-Turn skip rows on/off"><img class="bn-ic" id="bn-skip-ic" alt="Skip"></button>
+        <button class="bn-btn bn-abdep" id="bn-skiptoggle" data-cmd="youturn.skipToggle" data-t2 title="U-Turn skip mode: normal / alternative / skip worked tracks"><img class="bn-ic" id="bn-skip-ic" alt="Skip"></button>
         <button class="bn-btn" data-cmd="map.cycleColor" title="Section mapping colour"><img class="bn-ic" src="/icons/SectionMapping.png" alt="Mapping colour"></button>
         <button class="bn-btn" data-cmd="tool.resetHeading" title="Reset tool heading"><img class="bn-ic" src="/icons/ResetTool.png" alt="Reset tool"></button>
         <button class="bn-btn" id="bn-secheadland" data-cmd="headland.sectionToggle" data-t2 title="Section control in headland"><img class="bn-ic" id="bn-secheadland-ic" alt="Section in headland"></button>

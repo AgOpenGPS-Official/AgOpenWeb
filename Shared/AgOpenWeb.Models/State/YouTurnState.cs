@@ -165,6 +165,42 @@ public class YouTurnState : ObservableObject
         set => SetProperty(ref _snakeIndex, value);
     }
 
+    // Alternative skip pattern (#111) — mirrors YouTurnWorkingState.
+    private int _altSign;
+    public int AltSign
+    {
+        get => _altSign;
+        set => SetProperty(ref _altSign, value);
+    }
+
+    private int _altBaseWidth;
+    public int AltBaseWidth
+    {
+        get => _altBaseWidth;
+        set => SetProperty(ref _altBaseWidth, value);
+    }
+
+    private int _altWidth;
+    public int AltWidth
+    {
+        get => _altWidth;
+        set => SetProperty(ref _altWidth, value);
+    }
+
+    private int _altTurnSkips;
+    public int AltTurnSkips
+    {
+        get => _altTurnSkips;
+        set => SetProperty(ref _altTurnSkips, value);
+    }
+
+    private bool _altPrevBig;
+    public bool AltPrevBig
+    {
+        get => _altPrevBig;
+        set => SetProperty(ref _altPrevBig, value);
+    }
+
     // Zone the tractor is in — source of truth for turn creation gating.
     private TractorZone _currentZone = TractorZone.OutsideBoundary;
     public TractorZone CurrentZone
@@ -200,6 +236,7 @@ public class YouTurnState : ObservableObject
         ReturnPassTargetPath = null;
         SnakeSequence = null;
         SnakeIndex = -1;
+        AltSign = 0;
         CurrentZone = TractorZone.OutsideBoundary;
         NextUTurnDirectionLeftOverride = null;
     }

@@ -119,6 +119,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private bool? _nextUTurnDirectionLeftOverride;
     private int _uTurnSkipRows;
     private bool _isSkipWorkedMode;
+    private bool _isAlternateSkipMode; // AgOpenGPS SkipMode.Alternative (#111)
     private double _headlandCalculatedWidth;
     private double _headlandDistanceConfig;
     private List<Vec3>? _headlandLine;
@@ -288,12 +289,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// YouTurn tick can build its own TickContext without reaching into
     /// the MVM.
     /// </summary>
-    public void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance)
+    public void SetYouTurnConfig(int uTurnSkipRows, bool isSkipWorkedMode, double headlandCalculatedWidth, double headlandDistance,
+        bool isAlternateSkipMode = false)
     {
         lock (_stateLock)
         {
             _uTurnSkipRows = uTurnSkipRows;
             _isSkipWorkedMode = isSkipWorkedMode;
+            _isAlternateSkipMode = isAlternateSkipMode;
             _headlandCalculatedWidth = headlandCalculatedWidth;
             _headlandDistanceConfig = headlandDistance;
         }
@@ -486,6 +489,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool youTurnEnabled;
         int uTurnSkipRows;
         bool isSkipWorkedMode;
+        bool isAlternateSkipMode;
         double headlandCalculatedWidth;
         double headlandDistanceConfig;
         List<Vec3>? headlandLine;
@@ -511,6 +515,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             youTurnEnabled = _youTurnEnabled;
             uTurnSkipRows = _uTurnSkipRows;
             isSkipWorkedMode = _isSkipWorkedMode;
+            isAlternateSkipMode = _isAlternateSkipMode;
             headlandCalculatedWidth = _headlandCalculatedWidth;
             headlandDistanceConfig = _headlandDistanceConfig;
             headlandLine = _headlandLine;
@@ -730,7 +735,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             uTurnSkipRows,
             isSkipWorkedMode,
             headlandCalculatedWidth,
-            headlandDistanceConfig);
+            headlandDistanceConfig,
+            isAlternateSkipMode);
 
         // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
         // toggle off). TriggerManual enforces its own preconditions (autosteer +
@@ -1224,6 +1230,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         ReturnPassTargetPath = src.ReturnPassTargetPath,
         SnakeSequence = src.SnakeSequence,
         SnakeIndex = src.SnakeIndex,
+        AltSign = src.AltSign,
+        AltBaseWidth = src.AltBaseWidth,
+        AltWidth = src.AltWidth,
+        AltTurnSkips = src.AltTurnSkips,
+        AltPrevBig = src.AltPrevBig,
         CurrentZone = src.CurrentZone,
         NextUTurnDirectionLeftOverride = src.NextUTurnDirectionLeftOverride,
         JustCompleted = justCompleted,

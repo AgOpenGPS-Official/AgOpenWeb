@@ -96,7 +96,8 @@ public sealed class YouTurnStateMachine
         int UTurnSkipRows,
         bool IsSkipWorkedMode,
         double HeadlandCalculatedWidth,
-        double HeadlandDistance);
+        double HeadlandDistance,
+        bool IsAlternateSkipMode = false); // AgOpenGPS SkipMode.Alternative (#111)
 
     /// <summary>
     /// Run one cycle of the state machine. Precondition: autosteer engaged, track active,
@@ -215,10 +216,14 @@ public sealed class YouTurnStateMachine
             effects.SyncNextTrackToMap = true;
         }
 
+        if (!ctx.IsAlternateSkipMode) turn.AltSign = 0; // pattern restarts when re-entered
+
         if (turn.TurnPath == null && !turn.IsExecuting && canCreateTurn && isAlignedWithABLine)
         {
             if (ctx.IsSkipWorkedMode)
                 HandleSnakeCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
+            else if (ctx.IsAlternateSkipMode)
+                HandleAlternateCreation(in ctx, track, abHeading, headingRadians, guidance, turn, effects);
             else
                 HandleNormalCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
         }
@@ -574,13 +579,30 @@ public sealed class YouTurnStateMachine
             return;
         }
 
+        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, nextPath.Value, "Snake");
+    }
+
+    /// <summary>
+    /// Turn onto a planned pass (snake sequence or alternative skip): the target path sets
+    /// the turn side and width, and CompleteTurn jumps straight to it.
+    /// </summary>
+    private void CreateTurnToPath(
+        in TickContext ctx,
+        Models.Track.Track track,
+        double abHeading,
+        double headingRadians,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
+        YouTurnEffects effects,
+        int nextPath,
+        string mode)
+    {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double nextDistAway = widthMinusOverlap * nextPath.Value;
-        int pathDiff = nextPath.Value - guidance.HowManyPathsAway;
+        double nextDistAway = widthMinusOverlap * nextPath;
+        int pathDiff = nextPath - guidance.HowManyPathsAway;
 
-        // Snake mode directly sets the turn geometry without going through the regular
-        // skip logic — the sequence dictates pathDiff.
+        // The planned path dictates pathDiff (snake / alternative), not the regular skip logic.
         bool positiveOffset = pathDiff > 0;
         turn.IsTurnLeft = positiveOffset ^ guidance.IsHeadingSameWay;
         // Apply the UI's one-shot direction override before the snake geometry is
@@ -602,7 +624,7 @@ public sealed class YouTurnStateMachine
             double offsetE = Math.Sin(perpAngle) * nextDistAway;
             double offsetN = Math.Cos(perpAngle) * nextDistAway;
             turn.NextTrack = Models.Track.Track.FromABLine(
-                $"Path {nextPath.Value}",
+                $"Path {nextPath}",
                 new Vec3(refA.Easting + offsetE, refA.Northing + offsetN, abHeading),
                 new Vec3(refB.Easting + offsetE, refB.Northing + offsetN, abHeading));
         }
@@ -613,20 +635,68 @@ public sealed class YouTurnStateMachine
             // Mirrors YouTurnPathingService.ComputeNextTrack; no-op on closed loops.
             var offsetPoints = CurveProcessing.ExtendCurveEnds(
                 CurveProcessing.CreateOffsetCurve(track.Points, nextDistAway));
-            turn.NextTrack = Models.Track.Track.FromCurve($"Path {nextPath.Value}", offsetPoints, track.IsClosed);
+            turn.NextTrack = Models.Track.Track.FromCurve($"Path {nextPath}", offsetPoints, track.IsClosed);
         }
         turn.NextTrack.IsActive = false;
 
         // CompleteTurn will jump directly to this path number instead of computing a skip.
-        turn.ReturnPassTargetPath = nextPath.Value;
+        turn.ReturnPassTargetPath = nextPath;
 
-        _logger.LogDebug("[YouTurn] Snake: path {Cur} -> {Next} (diff={Diff}, offset={Off:F1}m, turnLeft={Left})",
-            guidance.HowManyPathsAway, nextPath.Value, pathDiff, nextDistAway, turn.IsTurnLeft);
+        _logger.LogDebug("[YouTurn] {Mode}: path {Cur} -> {Next} (diff={Diff}, offset={Off:F1}m, turnLeft={Left})",
+            mode, guidance.HowManyPathsAway, nextPath, pathDiff, nextDistAway, turn.IsTurnLeft);
 
         effects.SyncNextTrackToMap = true;
         effects.IsInYouTurnMapFlag = true;
 
         CreatePathAndSync(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+    }
+
+    /// <summary>
+    /// Alternative skip (AgOpenGPS SkipMode.Alternative, CYouTurn.YouTurnTrigger): plan the
+    /// next pass from the pattern; it advances when the turn completes (#111).
+    /// </summary>
+    private void HandleAlternateCreation(
+        in TickContext ctx,
+        Models.Track.Track track,
+        double abHeading,
+        double headingRadians,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
+        YouTurnEffects effects)
+    {
+        int baseWidth = Math.Max(2, ctx.UTurnSkipRows + 1); // AgOpenGPS "at least 1" row skipped
+        if (turn.AltSign == 0 || turn.AltBaseWidth != baseWidth)
+        {
+            var (_, positive) = _pathing.WouldNextLineBeInsideBoundary(
+                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, baseWidth - 1);
+            turn.AltSign = positive ? 1 : -1;
+            turn.AltBaseWidth = turn.AltWidth = baseWidth;
+            turn.AltTurnSkips = baseWidth * 2 - 1;
+            turn.AltPrevBig = false;
+        }
+
+        int nextPath = guidance.HowManyPathsAway + turn.AltSign * turn.AltWidth;
+        if (!_pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine))
+        {
+            effects.StatusMessage = "End of field reached";
+            return;
+        }
+        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, nextPath, "Alternative");
+    }
+
+    // After an alternative-skip turn: flip side and alternate the width, except every
+    // (2W-1)th turn, which keeps the side (AgOpenGPS YouTurnTrigger).
+    internal static void AdvanceAlternate(YouTurnWorkingState turn)
+    {
+        if (turn.AltSign == 0) return;
+        if (--turn.AltTurnSkips == 0)
+        {
+            turn.AltTurnSkips = turn.AltBaseWidth * 2 - 1;
+            return;
+        }
+        turn.AltSign = -turn.AltSign;
+        turn.AltPrevBig = !turn.AltPrevBig;
+        turn.AltWidth = turn.AltPrevBig ? turn.AltBaseWidth - 1 : turn.AltBaseWidth;
     }
 
     private void HandleNormalCreation(
@@ -724,7 +794,8 @@ public sealed class YouTurnStateMachine
                 turn.ReturnPassTargetPath.Value, guidance.HowManyPathsAway);
             guidance.HowManyPathsAway = turn.ReturnPassTargetPath.Value;
             turn.ReturnPassTargetPath = null;
-            _pathing.AdvanceSnakeSequence(turn);
+            if (ctx.IsAlternateSkipMode) AdvanceAlternate(turn);
+            else _pathing.AdvanceSnakeSequence(turn);
         }
         else
         {
