@@ -837,6 +837,11 @@
       font: 600 15px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
     #toast.show { display: block; }
+    #hwmsg { position: fixed; top: calc(96px + var(--sat, 0px)); left: 50%; transform: translateX(-50%);
+      max-width: min(560px, calc(100vw - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
+      color: #000; font: 700 16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+    #hwmsg.show { display: block; }
     /* AB creation selectors (Quick AB / Draw AB) — mode-button grid. */
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
@@ -2580,6 +2585,7 @@
     </div>
   </div>
   <div id="toast"></div>
+  <div id="hwmsg"></div>
   <div id="dialoghost">
     <div class="dlg-backdrop"></div>
     <div id="dlg-simcoords" class="dlg-card">

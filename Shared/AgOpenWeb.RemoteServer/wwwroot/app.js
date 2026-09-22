@@ -423,6 +423,7 @@ const transport = RemoteTransport.create({
   onSound(id) { Sounds.play(id); },
   onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
   onToast(msg) { showToast(msg); },
+  onHardwareMessage(text, seconds, warning) { showHardwareMessage(text, seconds, warning); },
   onDrivePick(fields) { showDrivePick(fields); },
   // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
   // RTT = now − token measures the pure server↔client link (one client clock, no skew).
@@ -481,6 +482,17 @@ HP.ok.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagati
 HP.cancel.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); answerHostPrompt(false); });
 
 let toastTimer = null;
+// AiO board message (PGN 221): AgOpenGPS's lblHardwareMessage — black text on salmon
+// (warning) or bisque, shown for the seconds the module asks (#110).
+let hwMsgTimer = 0;
+function showHardwareMessage(text, seconds, warning) {
+  const el = document.getElementById('hwmsg');
+  el.textContent = text;
+  el.style.background = warning ? 'salmon' : 'bisque';
+  el.classList.add('show');
+  clearTimeout(hwMsgTimer);
+  if (seconds > 0) hwMsgTimer = setTimeout(() => el.classList.remove('show'), seconds * 1000);
+}
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -496,10 +508,11 @@ function showToast(msg) {
 // gesture, so we prime the elements on the first pointer/key event; until then an
 // alert that fires before any interaction is silently dropped (unavoidable on web).
 const Sounds = (() => {
-  // index === (int)SoundEffect; Alarm10 covers BoundaryAlarm + UTurnTooClose.
+  // index === (int)SoundEffect. Files as AgOpenGPS CSound: TF012 = U-turn failed,
+  // Alarm10 = boundary alarm and the U-turn approach alarm (#110).
   const FILES = [
     'Alarm10',    // 0 BoundaryAlarm
-    'Alarm10',    // 1 UTurnTooClose
+    'TF012',      // 1 UTurnTooClose
     'SteerOn',    // 2 AutoSteerOn
     'SteerOff',   // 3 AutoSteerOff
     'HydUp',      // 4 HydraulicLiftUp
@@ -509,6 +522,7 @@ const Sounds = (() => {
     'SectionOn',  // 8 SectionOn
     'SectionOff', // 9 SectionOff
     'Headland',   // 10 Headland
+    'Alarm10',    // 11 YouTurnApproach
   ];
   const cache = new Map();   // name -> HTMLAudioElement (preloaded)
   let unlocked = false;
@@ -3949,6 +3963,16 @@ SB.pause.addEventListener('click', () => { sbPaused = !sbPaused; SB.pause.textCo
 SB.bar.addEventListener('pointerdown', e => e.stopPropagation());
 // Fullscreen toggle — hides the browser tabs/URL bar on tablets. Works on a user
 // gesture over plain HTTP (no PWA install needed). Prefixed fallback for older Android.
+// Start Fullscreen (#110): browsers only allow fullscreen from a user gesture, so in a
+// plain browser go fullscreen on the first tap after the page loads. The desktop
+// launcher window opens fullscreen itself.
+document.addEventListener('click', function startFs() {
+  document.removeEventListener('click', startFs, true);
+  if (!(config && config.display && config.display.startFullscreen)) return;
+  if (document.fullscreenElement || document.webkitFullscreenElement) return;
+  const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
+}, true);
 const fsBtn = document.getElementById('sb-fs');
 if (fsBtn) {
   const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
@@ -5048,9 +5072,15 @@ function updateLineWidths() {
   // World-metre widths scaled by zoom, but CAPPED at MAXW px so a line can't balloon when
   // zoomed in and swallow the implement/vehicle (issue #38: a 3 m boundary line covered a
   // 4 m tool). Min 1 px so it stays visible zoomed out.
-  const z = pxPerM, MAXW = 3.5, w = (m) => Math.min(Math.max(m * z, 1), MAXW);
-  SKP.boundary.setStrokeWidth(w(3.0));   // boundaryOuter 1 × 3
-  SKP.boundaryInner.setStrokeWidth(w(3.0)); // boundaryInner 1 × 3
+  // AutoSteer › Line width (AgOpenGPS ABLine.lineWidth, px, default 2) scales the guidance
+  // lines, headland/U-turn and saved tracks (#110).
+  const k = Math.max(1, (config && config.autosteer && config.autosteer.lineWidth) || 2) / 2;
+  const z = pxPerM, MAXW = 3.5 * k, w = (m) => Math.min(Math.max(m * z * k, k), MAXW);
+  applyLineSmoothing();
+  // Boundaries keep a fixed width, as in AgOpenGPS CFence (not scaled by Line width).
+  const wb = (m) => Math.min(Math.max(m * z, 1), 3.5);
+  SKP.boundary.setStrokeWidth(wb(3.0));   // boundaryOuter 1 × 3
+  SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
   SKP.reference.setStrokeWidth(w(0.9));  // trackBaseDash 0.3 × 3
@@ -5059,6 +5089,19 @@ function updateLineWidths() {
   SKP.track.setStrokeWidth(w(1.5));      // saved tracks ~ active weight
   SKP.extraGuide.setStrokeWidth(w(0.9)); // extra guide 0.3 × 3
   SKP.extraGuideShadow.setStrokeWidth(w(1.2));
+  SKP.recPath.setStrokeWidth(2 * k); SKP.contourStrip.setStrokeWidth(2 * k);
+}
+// Screen & Alerts › Smoothing (AgOpenGPS isLineSmooth → GL LineSmooth): anti-aliased
+// map lines, or crisp ones when off (#110).
+let lineSmoothApplied = null;
+function applyLineSmoothing() {
+  const on = !(config && config.display && config.display.lineSmoothEnabled === false);
+  if (on === lineSmoothApplied || !SKP) return;
+  lineSmoothApplied = on;
+  for (const key of Object.keys(SKP)) {
+    const p = SKP[key];
+    if (p && typeof p.setAntiAlias === 'function' && key !== 'lbFill' && key !== 'ground') p.setAntiAlias(on);
+  }
 }
 // Draw a sprite in the vehicle frame (+Y forward) centred on (cx, cy) with half-extents
 // (hx, hy), bitmap top row toward +Y — AgOpenGPS Texture2D.DrawCentered with its V flip.
@@ -5108,6 +5151,27 @@ function beginVehicleFrame(canvas, p) {
   canvas.concat(perspM);
   canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
   canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+}
+// Svenn arrow (AgOpenGPS CVehicle): a yellow chevron ahead of the front axle that keeps
+// its size on screen, so the heading reads at any zoom (#110).
+function svennArrowSk(canvas, p) {
+  const veh = config && config.vehicle, disp = config && config.display;
+  if (!veh || !disp || !disp.svennArrowVisible) return;
+  const camDist = vh / pxPerM;                // ~ AgOpenGPS camSetDistance (m)
+  const dist = camDist * 0.07, width = dist * 0.22, wb = veh.wheelbase || 3;
+  if (!SKP.svenn) { SKP.svenn = new CK.Paint(); SKP.svenn.setStyle(CK.PaintStyle.Stroke); SKP.svenn.setColor(ckColor('rgb(242,242,26)')); SKP.svenn.setStrokeJoin(CK.StrokeJoin.Round); SKP.svenn.setStrokeCap(CK.StrokeCap.Round); lineSmoothApplied = null; }
+  const lw = Math.max(1, (config.autosteer && config.autosteer.lineWidth) || 2);
+  SKP.svenn.setStrokeWidth(lw / pxPerM);      // px → metres (drawn in the vehicle frame)
+  const path = CK.Path.MakeFromCmds([
+    CK.MOVE_VERB, width, wb + dist,
+    CK.LINE_VERB, 0, wb + width + 0.5 + dist,
+    CK.LINE_VERB, -width, wb + dist,
+  ]);
+  if (!path) return;
+  beginVehicleFrame(canvas, p);
+  canvas.drawPath(path, SKP.svenn);
+  canvas.restore();
+  path.delete();
 }
 function vehicleSk(canvas, p) {
   const veh = config && config.vehicle;
@@ -5183,8 +5247,10 @@ function drawGroundTextureSk(canvas) {
   // repeats every 50 m, so only camE,camN MOD 50 affects alignment — using the remainder
   // keeps the shader's local-matrix translation small (f32-safe → no shimmer). texel =
   // (W/50)(P + off) ⇒ texel→local matrix is scale(50/W) then translate(-off).
-  const offE = camE - Math.floor(camE / 50) * 50;
-  const offN = camN - Math.floor(camN / 50) * 50;
+  // Texture Moves off: the tiles stay fixed to the camera instead of the world (#110).
+  const moves = disp.fieldTextureMoveable !== false;
+  const offE = moves ? camE - Math.floor(camE / 50) * 50 : 0;
+  const offN = moves ? camN - Math.floor(camN / 50) * 50 : 0;
   const lm = [50 / W, 0, -offE, 0, 50 / H, -offN, 0, 0, 1];
   if (SKP.groundShader) SKP.groundShader.delete(); // free last frame's shader (already flushed)
   SKP.groundShader = skGround.makeShaderOptions(
@@ -5564,7 +5630,9 @@ function lightbarSk(canvas) {
     if (Math.abs(val) < dz) val = 0;
     PER = 12 / mid; onThresh = dz;                            // ±12° full deflection
   } else {
-    val = tick.crossTrackError || 0; PER = 0.05; onThresh = 0.05; // + = right of line
+    // AutoSteer › cm per pixel (AgOpenGPS lightbarCmPerPixel): cm of XTE per lit cell (#110).
+    const cpp = Math.max(1, (cfg.cmPerPixel | 0) || 5);
+    val = tick.crossTrackError || 0; PER = cpp / 100; onThresh = 0.05; // + = right of line
   }
   const totalW = SEG * (W + GAP) - GAP;
   const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
@@ -5647,7 +5715,7 @@ function renderSkia(canvas, rp) {
   drawEditHandlesSk(canvas); // stage-4 on-map edit handles (drag points to reshape)
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
   toolFootprintSk(canvas);
-  if (rp) vehicleSk(canvas, rp);
+  if (rp) { vehicleSk(canvas, rp); svennArrowSk(canvas, rp); }
   drawGoalSk(canvas); // #95 — Pure Pursuit target (over the vehicle)
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale
   canvas.restore();

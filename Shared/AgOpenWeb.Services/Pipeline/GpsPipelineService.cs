@@ -36,7 +36,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
 {
     // Lookahead time (seconds) used for auto-track-select in free-drive mode.
     // Matches AgOpen's setAS_guidanceLookAheadTime default. See #261.
-    private const double GuidanceLookAheadSeconds = 2.0;
 
     // Re-anchor the temporary first-fix LocalPlane when the live GPS jumps
     // farther than this from the existing origin (no field loaded). The
@@ -826,6 +825,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             youTurnTickEffects ??= autoEffects;
         }
 
+        // U-turn sounds (#110); the audio service gates them on the U-turn sound setting.
+        if (youTurnTickEffects?.TurnCreationFailedSound == true) _audioService.Play(SoundEffect.UTurnTooClose);
+        if (youTurnTickEffects?.ApproachAlarmSound == true) _audioService.Play(SoundEffect.YouTurnApproach);
+
         // Refresh the locals the downstream guidance branch reads — the tick
         // (or a drained intent above) may have updated them. CompleteTurn
         // advances HowManyPathsAway to the next pass on the same tick that
@@ -1091,7 +1094,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // ahead of the tractor" behavior operators expect in free-drive.
             double lookDist = Math.Max(
                 _configStore.ActualToolWidth * 0.5,
-                pos.Speed * GuidanceLookAheadSeconds);
+                pos.Speed * _configStore.AutoSteer.NextGuidanceTime); // AgOpenGPS guidanceLookAheadTime (#110)
             double hRad = pos.Heading * Math.PI / 180.0;
             double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
             double lookN = driftedNorthing + Math.Cos(hRad) * lookDist;

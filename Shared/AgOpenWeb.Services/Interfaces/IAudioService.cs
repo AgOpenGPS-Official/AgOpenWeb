@@ -20,7 +20,10 @@ public enum SoundEffect
     RtkRecovered,
     SectionOn,
     SectionOff,
-    Headland
+    Headland,
+    /// <summary>Approaching a U-turn, 18–20 m out (AgOpenGPS sndBoundaryAlarm, gated on
+    /// the U-turn sound setting) (#110).</summary>
+    YouTurnApproach
 }
 
 /// <summary>

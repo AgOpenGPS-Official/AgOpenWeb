@@ -32,6 +32,10 @@ public interface IAutoSteerService
     /// </summary>
     event EventHandler<VehicleStateSnapshot>? StateUpdated;
 
+    /// <summary>A module sent a text message (PGN 221, e.g. AiO board): text, seconds to
+    /// show it, and whether it's a warning (AgOpenGPS: byte 6 == 0 → salmon) (#110).</summary>
+    event Action<string, int, bool>? HardwareMessageReceived;
+
     /// <summary>
     /// Whether auto-steer is enabled and processing GPS data.
     /// </summary>

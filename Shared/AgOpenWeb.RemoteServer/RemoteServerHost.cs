@@ -44,6 +44,10 @@ public sealed class RemoteServerHost
     public void ShowToast(string message)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeToast(message));
 
+    /// <summary>Broadcast a module hardware message (PGN 221, #110).</summary>
+    public void ShowHardwareMessage(string text, int seconds, bool warning)
+        => _ = _ws?.BroadcastAsync(WireCodec.EncodeHardwareMessage(text, seconds, warning));
+
     /// <summary>Broadcast the Drive In pick list (#109). The browser that pressed Drive In
     /// shows it.</summary>
     public void ShowDrivePick(IReadOnlyList<FieldEntryDto> fields)
