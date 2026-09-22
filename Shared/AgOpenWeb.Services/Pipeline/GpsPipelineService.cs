@@ -62,6 +62,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IGpsHeadingFusionService _headingFusion;
     private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
     private bool _isReverse;           // this cycle's reverse detection (#125)
+    private double _roll;              // filtered roll, degrees (#110)
+    private double _lastCrossTrackError; // last cycle's XTE, for the look-ahead (#110)
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
@@ -263,6 +265,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _isTrackOnBoundary = isOnBoundary;
             // Reset guidance state when track changes so we do a global search
             _trackGuidanceState = null;
+            _lastCrossTrackError = 0; // a new line has no previous XTE for the look-ahead (#110)
         }
     }
 
@@ -670,6 +673,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // heading above already faces the way the vehicle points.
         _isReverse = _headingFusion.IsReverse;
         _guidanceWorking.IsReverse = _isReverse;
+        _autoSteerService.SetReverse(_isReverse); // deadzone is off in reverse (#110)
+
+        // Roll filter (AgOpenGPS ahrs.rollFilter: roll = roll × f + new × (1 − f)). AgOpenGPS
+        // smooths the steer module's IMU roll; AgOpenWeb's roll comes with the GPS
+        // sentence, so it's filtered here (#110). 0 = no filtering (the default).
+        double rollFilter = Math.Clamp(_configStore.Ahrs.RollFilter, 0, 0.99);
+        _roll = _roll * rollFilter + data.ImuRoll * (1 - rollFilter);
 
         // ── (1b) Antenna-to-pivot transform in local coordinates ────────
         // Single source of truth for the antenna-to-pivot transform. Runs
@@ -680,7 +690,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             ref posNorthing,
             pos.Heading * Math.PI / 180.0,
             _configStore.Vehicle,
-            data.ImuRoll);
+            _roll);
 
         // ── (2) Apply drift compensation ────────────────────────────────
         double driftedEasting = posEasting + driftE;
@@ -697,7 +707,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 ? data.ImuYawRate * Math.PI / 180.0
                 : 0.0;
             double rollRad = data.ImuValid
-                ? data.ImuRoll * Math.PI / 180.0
+                ? _roll * Math.PI / 180.0
                 : 0.0;
             long ts = Clock.Current.GetTimestamp();
             _positionEstimator.UpdateFromGps(new PoseSnapshot(
@@ -980,6 +990,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             {
                 Volatile.Write(ref _simulatorSteerAngle, steerAngle);
                 _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+                _lastCrossTrackError = crossTrackError;
             }
             // Stanley has no look-ahead target, so no goal marker (#99).
             hasGoal = hasGuidance && !_configStore.Guidance.IsStanley;
@@ -1121,7 +1132,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Northing = driftedNorthing,
             Heading = pos.Heading,
             Speed = pos.Speed,
-            RollDegrees = data.ImuRoll,
+            RollDegrees = _roll,
             SatelliteCount = data.SatellitesInUse,
             Hdop = data.Hdop,
             DifferentialAge = data.DifferentialAge,
@@ -1397,14 +1408,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             GoalPointDistance = lookAhead,
-            SideHillCompFactor = 0,
+            // Side-hill compensation (AgOpenGPS gyd.sideHillCompFactor): steer += roll × −factor.
+            SideHillCompFactor = config.AutoSteer.SideHillCompensation,
             PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
             IsReverse = _isReverse,
             IsAutoSteerOn = true,
             IsYouTurnTriggered = isYouTurnTriggered,
-            ImuRoll = 88888,
+            ImuRoll = _roll, // 0 with no roll source → no side-hill term (#110)
             PreviousState = _trackGuidanceState,
             // Re-acquire the nearest segment globally on engage AND whenever the
             // travel direction along the track flips — otherwise a stranded local
@@ -1426,14 +1438,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 statusMessage);
     }
 
-    /// <summary>Dynamic Pure Pursuit look-ahead distance (m) for the given speed.</summary>
+    /// <summary>
+    /// Pure Pursuit look-ahead distance (m), AgOpenGPS CVehicle.UpdateGoalPointDistance:
+    /// speed × 0.05 × mult × H + H, where H is the hold look-ahead on the line
+    /// (|XTE| ≤ 0.1 m), hold × acquire factor off it (≥ 0.4 m), blended in between;
+    /// at least the min look-ahead (AgOpenGPS 2 m). XTE is last cycle's (#110).
+    /// </summary>
     private double GoalLookAhead(double speedKmh)
     {
         var g = _configStore.Guidance;
-        if (speedKmh <= 1) return g.GoalPointLookAheadHold;
-        return Math.Max(
-            g.MinLookAheadDistance,
-            g.GoalPointLookAheadHold + (speedKmh * g.GoalPointLookAheadMult * 0.1));
+        double hold = g.GoalPointLookAheadHold;
+        double acquire = hold * g.GoalPointAcquireFactor;
+        double xte = Math.Abs(_lastCrossTrackError);
+        double h = xte <= 0.1 ? hold
+                 : xte >= 0.4 ? acquire
+                 : acquire + (1 - (xte - 0.1) / 0.3) * (hold - acquire);
+        double d = Math.Abs(speedKmh) * 0.05 * g.GoalPointLookAheadMult * h + h;
+        return Math.Max(g.MinLookAheadDistance, d);
     }
 
     /// <summary>
@@ -1569,13 +1590,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // while moving, so the goal point jumped CLOSER at the track→turn handoff — a sudden
         // sharper steer that made the tractor hunt for ~½ s on entry (exit was gentler
         // because the goal jumped farther). Matching them makes the handoff seamless.
-        double lookAhead = config.Guidance.GoalPointLookAheadHold;
-        if (speedKmh > 1)
-        {
-            lookAhead = Math.Max(
-                config.Guidance.MinLookAheadDistance,
-                config.Guidance.GoalPointLookAheadHold + (speedKmh * config.Guidance.GoalPointLookAheadMult * 0.1));
-        }
+        double lookAhead = GoalLookAhead(speedKmh); // same as track guidance (AgOpenGPS UpdateGoalPointDistance)
 
         var input = new YouTurnGuidanceInput
         {

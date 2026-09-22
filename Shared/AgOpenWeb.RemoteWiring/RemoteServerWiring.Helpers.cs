@@ -226,7 +226,8 @@ public static partial class RemoteServerWiring
             case "autosteer.deadzoneHeading": if (D(out var a9)) { ast.DeadzoneHeading = a9; store.MarkChanged(); } return;
             case "autosteer.deadzoneDelay": if (I(out var a10)) { ast.DeadzoneDelay = a10; store.MarkChanged(); } return;
             case "autosteer.speedFactor": if (D(out var a11)) { gd.GoalPointLookAheadMult = a11; store.MarkChanged(); } return;
-            case "autosteer.acquireFactor": if (D(out var a12)) { ast.AcquireFactor = a12; store.MarkChanged(); } return;
+            // Acquire factor lives with the other Pure Pursuit tuning (#99, #110).
+            case "autosteer.acquireFactor": if (D(out var a12)) { gd.GoalPointAcquireFactor = Math.Clamp(a12, 0.2, 3.0); store.MarkChanged(); } return;
             // Tab 4 — Gain / PWM
             case "autosteer.proportionalGain": if (I(out var a13)) { ast.ProportionalGain = a13; store.MarkChanged(); } return;
             case "autosteer.maxPwm": if (I(out var a14)) { ast.MaxPwm = a14; store.MarkChanged(); } return;

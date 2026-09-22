@@ -220,7 +220,7 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.IsPurePursuit = true;
         store.Guidance.GoalPointLookAheadHold = 4.0;
         store.Guidance.GoalPointLookAheadMult = 1.4;
-        store.Guidance.GoalPointAcquireFactor = 1.5;
+        store.Guidance.GoalPointAcquireFactor = 0.9;
         store.Guidance.MinLookAheadDistance = 2.0;
         store.Guidance.StanleyDistanceErrorGain = 0.8;
         store.Guidance.StanleyHeadingErrorGain = 1.0;
@@ -294,7 +294,7 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.IsPurePursuit = !GetBool(settings, "setVehicle_isStanleyUsed", false);
         store.Guidance.GoalPointLookAheadHold = GetDouble(settings, "setVehicle_goalPointLookAheadHold", 4.0);
         store.Guidance.GoalPointLookAheadMult = GetDouble(settings, "setVehicle_goalPointLookAheadMult", 1.4);
-        store.Guidance.GoalPointAcquireFactor = GetDouble(settings, "setVehicle_goalPointAcquireFactor", 1.5);
+        store.Guidance.GoalPointAcquireFactor = GetDouble(settings, "setVehicle_goalPointAcquireFactor", 0.9);
         store.Guidance.StanleyDistanceErrorGain = GetDouble(settings, "stanleyDistanceErrorGain", 0.8);
         store.Guidance.StanleyHeadingErrorGain = GetDouble(settings, "stanleyHeadingErrorGain", 1.0);
         store.Guidance.StanleyIntegralGainAB = GetDouble(settings, "stanleyIntegralGainAB", 0.0);

@@ -80,7 +80,7 @@ public class GuidanceConfig : ObservableObject
         set => SetProperty(ref _goalPointLookAheadMult, value);
     }
 
-    private double _goalPointAcquireFactor = 1.5;
+    private double _goalPointAcquireFactor = 0.9; // AgOpenGPS setVehicle_goalPointAcquireFactor (#110)
     public double GoalPointAcquireFactor
     {
         get => _goalPointAcquireFactor;

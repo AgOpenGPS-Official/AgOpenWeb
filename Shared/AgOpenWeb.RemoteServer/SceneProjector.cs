@@ -724,7 +724,7 @@ public sealed class SceneProjector
             g.GoalPointLookAheadHold, g.PurePursuitIntegralGain, g.IsStanley,
             g.StanleyDistanceErrorGain, g.StanleyHeadingErrorGain,
             a.WasOffset, a.CountsPerDegree, a.Ackermann, (int)System.Math.Round(_config.Vehicle.MaxSteerAngle),
-            a.DeadzoneHeading, a.DeadzoneDelay, g.GoalPointLookAheadMult, a.AcquireFactor,
+            a.DeadzoneHeading, a.DeadzoneDelay, g.GoalPointLookAheadMult, g.GoalPointAcquireFactor,
             a.ProportionalGain, a.MaxPwm, a.MinPwm,
             a.TurnSensorEnabled, a.PressureSensorEnabled, a.CurrentSensorEnabled,
             a.TurnSensorCounts, a.PressureTripPoint, a.CurrentTripPoint,
@@ -846,7 +846,7 @@ public sealed class SceneProjector
               + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61;
         foreach (var d in new[] { gdc.GoalPointLookAheadHold, gdc.PurePursuitIntegralGain, gdc.StanleyDistanceErrorGain,
                                   gdc.StanleyHeadingErrorGain, asc.CountsPerDegree, asc.DeadzoneHeading,
-                                  gdc.GoalPointLookAheadMult, asc.AcquireFactor, gdc.UTurnCompensation, asc.SideHillCompensation,
+                                  gdc.GoalPointLookAheadMult, gdc.GoalPointAcquireFactor, gdc.UTurnCompensation, asc.SideHillCompensation,
                                   asc.ManualTurnsSpeed, asc.MinSteerSpeed, asc.MaxSteerSpeed, asc.NextGuidanceTime })
             h = h * 31 + d.GetHashCode();
         return h;
