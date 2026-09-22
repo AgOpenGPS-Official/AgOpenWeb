@@ -60,6 +60,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
     private readonly IGpsHeadingFusionService _headingFusion;
+    private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
@@ -641,6 +642,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     distFromOrigin, pos.Latitude, pos.Longitude);
                 _farFromFieldWarned = true;
             }
+        }
+
+        // Stored fixes are in local-plane metres: when the plane changes (field
+        // opened/closed, re-anchor) the old ones are in another frame (#112).
+        var headingPlane = replacementLocalPlane ?? committedLocalPlane ?? _cycleLocalPlane;
+        if (!ReferenceEquals(headingPlane, _headingPlane))
+        {
+            _headingFusion.Reset();
+            _headingPlane = headingPlane;
         }
 
         // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
