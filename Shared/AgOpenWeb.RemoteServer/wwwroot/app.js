@@ -1613,7 +1613,10 @@ document.getElementById('dlg-qab-cancel').addEventListener('pointerdown', e => {
 
 // ---- Tracks manager (mirrors native TracksDialogPanel) ----
 // View-only without control (just reads scene.trackList); the actions are Tier-2.
-function openTracksManager() { renderTracksList(); openDialog('dlg-tracks'); }
+// Like AgOpenGPS's track list: tapping a row only highlights it (trkSel); guidance
+// changes when Activate is pressed. Delete / Swap act on the highlighted row (#109).
+let trkSel = -1; // index into scene.trackList, or -1
+function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
   // Dim the guidance-affecting actions when we're not the operator. Delete/swap/activate
   // change the active line; import, visibility and rec-path display are data → ungated.
@@ -1621,11 +1624,12 @@ function renderTracksList() {
     document.getElementById(id).classList.toggle('disabled', !iHoldControl);
   const list = document.getElementById('trk-list');
   const tl = (scene && scene.trackList) || [];
+  if (trkSel >= tl.length) trkSel = -1;
   if (!tl.length) { list.innerHTML = '<div class="trk-empty">No tracks in this field</div>'; return; }
   list.innerHTML = '';
-  for (const t of tl) {
+  tl.forEach((t, i) => {
     const row = document.createElement('div');
-    row.className = 'trk-row' + (t.active ? ' active' : '');
+    row.className = 'trk-row' + (t.active ? ' active' : '') + (i === trkSel ? ' sel' : '');
     row.innerHTML =
       '<input type="checkbox" class="trk-vis"' + (t.visible ? ' checked' : '') + '>' +
       '<span class="trk-name"></span>' +
@@ -1633,11 +1637,13 @@ function renderTracksList() {
       '<span class="trk-dot"></span>';
     row.querySelector('.trk-name').textContent = t.name;
     row.querySelector('.trk-type').textContent = t.type || '—';
-    // Tap row (not the checkbox) → toggle active. Checkbox → toggle visibility.
+    // Tap row (not the checkbox) → highlight it; a hidden track can't be highlighted
+    // (AgOpenGPS). Checkbox → toggle visibility.
     row.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('trk-vis')) return; // let the checkbox handle it
       e.stopPropagation();
-      if (iHoldControl) transport.send('track.select|' + t.index);
+      trkSel = t.visible ? i : -1;
+      renderTracksList();
     });
     const cb = row.querySelector('.trk-vis');
     cb.addEventListener('change', e => {
@@ -1645,17 +1651,32 @@ function renderTracksList() {
       transport.send('track.setVisible|' + t.index + ',' + (cb.checked ? 1 : 0));
     });
     list.appendChild(row);
-  }
+  });
 }
 document.getElementById('trk-delete').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
   if (!iHoldControl) return;
-  const t = (scene && scene.trackList || []).find(x => x.active);
-  showConfirm('Delete Track', 'Delete ' + (t ? "'" + t.name + "'" : 'the selected track') + '? This cannot be undone.',
-    () => transport.send('track.delete')); // #107: no confirmation before
+  const t = (scene && scene.trackList || [])[trkSel];
+  if (!t) { showToast('Select a track first'); return; }
+  showConfirm('Delete Track', "Delete '" + t.name + "'? This cannot be undone.",
+    () => { transport.send('track.delete|' + t.index); trkSel = -1; });
 });
-document.getElementById('trk-swap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.swapAB'); });
-document.getElementById('trk-activate').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (iHoldControl) transport.send('track.activate'); });
+document.getElementById('trk-swap').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || [])[trkSel];
+  if (!t) { showToast('Select a track first'); return; }
+  transport.send('track.swapAB|' + t.index);
+});
+// Activate = AgOpenGPS "Use": the highlighted track (or the first visible one) becomes
+// active and the dialog closes. On the already-active track it turns guidance off.
+document.getElementById('trk-activate').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || [])[trkSel];
+  transport.send('track.activate|' + (t ? t.index : -1));
+  closeDialog();
+});
 document.getElementById('trk-recpaths').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('track.toggleRecPaths'); });
 document.getElementById('trk-import').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); lnOpen('importtracks'); });
 document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
@@ -1880,8 +1901,7 @@ document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => { e.
 document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel] || !iHoldControl) return;
-  transport.send('track.select|' + tl[fbSel].index);
-  transport.send('track.delete'); fbSel = -1;
+  transport.send('track.delete|' + tl[fbSel].index); fbSel = -1;
 });
 document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -2088,7 +2108,7 @@ document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
 document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.driveAroundInner'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
 });
-document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.accept'); lnCloseAll(); });
+document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); }); // edits are already saved
 // Boundary player.
 document.getElementById('bp-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
 document.getElementById('bp-offset').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) transport.send('boundary.setOffset|' + v); });

@@ -236,20 +236,7 @@ public partial class MainViewModel
                 ReportFailure("No track selected");
                 return;
             }
-
-            var trackName = SelectedTrack.Name;
-            var trackToRemove = SelectedTrack;
-            bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
-            SelectedTrack = null;
-            SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
-            RebuildRecordedPathsAndContours();
-            SaveTracksToFile();
-            // A recorded path is re-loaded from RecPath.txt on every field open
-            // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
-            // the file must go too, else it reappears after restart.
-            if (wasRecPath && _fieldService.ActiveField is { } f)
-                RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
-            StatusMessage = $"Deleted track '{trackName}'";
+            DeleteTrack(SelectedTrack);
         });
 
         StartContourRecordingCommand = new RelayCommand(() =>
@@ -477,4 +464,58 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
 }
 
     #endregion
+
+    /// <summary>Delete one saved track. Deactivates it first if it's the active one;
+    /// any other active track stays active.</summary>
+    private void DeleteTrack(Track trackToRemove)
+    {
+        var trackName = trackToRemove.Name;
+        bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
+        if (SelectedTrack == trackToRemove) SelectedTrack = null;
+        SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
+        RebuildRecordedPathsAndContours();
+        SaveTracksToFile();
+        // A recorded path is re-loaded from RecPath.txt on every field open
+        // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
+        // the file must go too, else it reappears after restart.
+        if (wasRecPath && _fieldService.ActiveField is { } f)
+            RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+        StatusMessage = $"Deleted track '{trackName}'";
+    }
+
+    /// <summary>Tracks manager / Field Builder Delete (web, #109): delete the track the
+    /// operator highlighted, by index, rather than whatever happens to be active.</summary>
+    public void DeleteTrackAt(int index)
+    {
+        if (index < 0 || index >= SavedTracks.Count)
+        {
+            ReportFailure("No track selected");
+            return;
+        }
+        DeleteTrack(SavedTracks[index]);
+    }
+
+    /// <summary>Tracks manager Activate (web, #109), like AgOpenGPS's Use: activate the
+    /// highlighted track, or the first visible one when nothing (or a hidden track) is
+    /// highlighted. Activating the track that's already active turns it off, so the
+    /// operator can still stop guidance from here.</summary>
+    public void ActivateTrackAt(int index)
+    {
+        Track? t = index >= 0 && index < SavedTracks.Count && SavedTracks[index].IsVisible
+            ? SavedTracks[index]
+            : SavedTracks.FirstOrDefault(x => x.IsVisible);
+        if (t == null)
+        {
+            ReportFailure("No visible tracks");
+            return;
+        }
+        if (t == SelectedTrack)
+        {
+            SelectedTrack = null;
+            StatusMessage = "Track deactivated";
+            return;
+        }
+        SelectedTrack = t;
+        StatusMessage = $"Activated track: {t.Name}";
+    }
 }

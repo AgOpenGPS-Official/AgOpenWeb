@@ -238,31 +238,7 @@ public partial class MainViewModel
 
         SwapABPointsCommand = new RelayCommand(() =>
         {
-            var track = SelectedTrack;
-            if (track == null || track.Points.Count < 2) return;
-
-            // Reverse the direction: points in reverse order AND each heading turned 180°.
-            // Guidance reads the travel direction from ptA.Heading but the cross-track sign
-            // and goal-point direction from the ptA→ptB geometry, so reversing only the
-            // points left them disagreeing (#104).
-            var reversed = new List<Vec3>(track.Points.Count);
-            for (int i = track.Points.Count - 1; i >= 0; i--)
-            {
-                var p = track.Points[i];
-                reversed.Add(new Vec3(p.Easting, p.Northing, (p.Heading + Math.PI) % (2 * Math.PI)));
-            }
-            track.Points = reversed;
-
-            // "Right of the line" flips with the direction, so negate the pass number and
-            // nudge to keep the guidance line where it physically is (an engaged tractor on
-            // pass 3 right must not jump to pass 3 left). Written to the cycle's mirror too
-            // so the save below persists the swapped NudgeDistance.
-            State.Guidance.HowManyPathsAway = -State.Guidance.HowManyPathsAway;
-            State.Guidance.NudgeOffset = -State.Guidance.NudgeOffset;
-            track.NudgeDistance = -track.NudgeDistance;
-
-            OnSelectedTrackGeometryChanged();
-            StatusMessage = $"Swapped A/B points for {track.Name}";
+            if (SelectedTrack != null) SwapTrackAB(SelectedTrack);
         });
 
         SelectTrackAsActiveCommand = new RelayCommand(() =>
@@ -1721,6 +1697,53 @@ public partial class MainViewModel
     /// nearest-segment index and PP integral refer to the old point list — then refresh
     /// the map and persist.
     /// </summary>
+    /// <summary>Reverse a track's direction (Swap A/B). For the active track the pass
+    /// number and nudge flip too so the guidance line stays where it physically is.</summary>
+    private void SwapTrackAB(Track track)
+    {
+        if (track.Points.Count < 2) return;
+
+        // Reverse the direction: points in reverse order AND each heading turned 180°.
+        // Guidance reads the travel direction from ptA.Heading but the cross-track sign
+        // and goal-point direction from the ptA→ptB geometry, so reversing only the
+        // points left them disagreeing (#104).
+        var reversed = new List<Vec3>(track.Points.Count);
+        for (int i = track.Points.Count - 1; i >= 0; i--)
+        {
+            var p = track.Points[i];
+            reversed.Add(new Vec3(p.Easting, p.Northing, (p.Heading + Math.PI) % (2 * Math.PI)));
+        }
+        track.Points = reversed;
+
+        // "Right of the line" flips with the direction, so negate the pass number and
+        // nudge to keep the guidance line where it physically is (an engaged tractor on
+        // pass 3 right must not jump to pass 3 left). Written to the cycle's mirror too
+        // so the save below persists the swapped NudgeDistance.
+        bool isActive = track == SelectedTrack;
+        if (isActive)
+        {
+            State.Guidance.HowManyPathsAway = -State.Guidance.HowManyPathsAway;
+            State.Guidance.NudgeOffset = -State.Guidance.NudgeOffset;
+        }
+        track.NudgeDistance = -track.NudgeDistance;
+
+        if (isActive) OnSelectedTrackGeometryChanged();
+        else SaveTracksToFile(); // not guiding on it → nothing live to keep in place
+        StatusMessage = $"Swapped A/B points for {track.Name}";
+    }
+
+    /// <summary>Tracks manager Swap A/B (web, #109): acts on the highlighted track, like
+    /// AgOpenGPS, not necessarily the active one.</summary>
+    public void SwapTrackABAt(int index)
+    {
+        if (index < 0 || index >= SavedTracks.Count)
+        {
+            ReportFailure("No track selected");
+            return;
+        }
+        SwapTrackAB(SavedTracks[index]);
+    }
+
     private void OnSelectedTrackGeometryChanged()
     {
         SyncGuidanceStateToPipeline();

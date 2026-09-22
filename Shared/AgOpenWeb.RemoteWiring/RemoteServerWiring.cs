@@ -159,16 +159,22 @@ public static partial class RemoteServerWiring
                                         vm.RenameTrackAt(rti, arg[(ri + 1)..]);
                                     return;
                                 }
-                                case "track.select": // Tracks manager — tap a row. arg = index.
-                                {                    // Mirrors native: tapping the active track
-                                    if (int.TryParse(arg, out var tsi) // deactivates; else activates.
+                                case "track.select": // Field Builder — tap a row. arg = index. Sets,
+                                {                    // never toggles: a second tap must not deactivate (#109).
+                                    if (int.TryParse(arg, out var tsi)
                                         && tsi >= 0 && tsi < vm.SavedTracks.Count)
-                                    {
-                                        var t = vm.SavedTracks[tsi];
-                                        vm.SelectedTrack = vm.SelectedTrack == t ? null : t;
-                                    }
+                                        vm.SelectedTrack = vm.SavedTracks[tsi];
                                     return;
                                 }
+                                case "track.delete": // Tracks manager / Field Builder. arg = highlighted index (#109).
+                                    vm.DeleteTrackAt(int.TryParse(arg, out var tdel) ? tdel : -1);
+                                    return;
+                                case "track.swapAB": // Tracks manager. arg = highlighted index (#109).
+                                    vm.SwapTrackABAt(int.TryParse(arg, out var tswi) ? tswi : -1);
+                                    return;
+                                case "track.activate": // Tracks manager Activate (AgOpenGPS "Use"). arg = highlighted
+                                    vm.ActivateTrackAt(int.TryParse(arg, out var tai) ? tai : -1); // index, or -1 (#109).
+                                    return;
                                 case "track.setVisible": // arg = "index,0|1" — show/hide on map.
                                 {
                                     var vp = arg.Split(',');
@@ -600,9 +606,6 @@ public static partial class RemoteServerWiring
                                 "track.finishCurve" => vm.FinishCurveRecordingCommand,
                                 "track.setABGps" => vm.SetABPointCommand,
                                 // Tracks manager toolbar (act on the active/selected track).
-                                "track.delete" => vm.DeleteContourTrackCommand,
-                                "track.swapAB" => vm.SwapABPointsCommand,
-                                "track.activate" => vm.SelectTrackAsActiveCommand,
                                 "track.toggleRecPaths" => vm.ToggleRecordedPathsCommand,
                                 // Field Tools — Recorded Path. Record/save/select are Tier-1
                                 // (data); recpath.play drives the vehicle → Tier-2 (gated below).
@@ -621,7 +624,6 @@ public static partial class RemoteServerWiring
                                 "boundary.buildFromTracks" => vm.BuildFromTracksCommand,
                                 "boundary.driveAround" => vm.DriveAroundFieldCommand,
                                 "boundary.driveAroundInner" => vm.DriveAroundInnerBoundaryCommand,
-                                "boundary.accept" => vm.ToggleBoundaryPanelCommand,
                                 // Player (drive-around recording):
                                 "boundary.clear" => vm.ClearBoundaryCommand,
                                 "boundary.undo" => vm.UndoBoundaryPointCommand,
