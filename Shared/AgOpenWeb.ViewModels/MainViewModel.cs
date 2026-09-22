@@ -265,6 +265,13 @@ public partial class MainViewModel : ObservableObject
                 ConfigStore.Tram.Passes = ConfigStore.Guidance.TramPasses;
                 UpdateTramLines(SelectedTrack);
             }
+            else if (e.PropertyName == nameof(Models.Configuration.GuidanceConfig.TramLine))
+            {
+                // "First tram pass" (1-based) = AgOpenGPS start pass (0-based); the tram
+                // generator already honours Tram.StartPass (#110).
+                ConfigStore.Tram.StartPass = ConfigStore.Guidance.TramLine - 1;
+                UpdateTramLines(SelectedTrack);
+            }
         };
 
         // The Screen & Alerts "On-Screen Buttons" toggles gate the on-map U-Turn

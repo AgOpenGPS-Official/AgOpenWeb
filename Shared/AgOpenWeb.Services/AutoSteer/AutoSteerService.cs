@@ -83,6 +83,7 @@ public class AutoSteerService : IAutoSteerService
     private bool _configSubscribed;
     private AutoSteerConfig? _subscribedAutoSteer;
     private ToolConfig? _subscribedTool;
+    private MachineConfig? _subscribedMachine;
 
     /// <summary>
     /// Test seam: lets tests shorten the debounce so they don't have
@@ -179,6 +180,10 @@ public class AutoSteerService : IAutoSteerService
         _subscribedTool = _configStore.Tool;
         _subscribedAutoSteer.PropertyChanged += OnConfigPropertyChanged;
         _subscribedTool.PropertyChanged += OnConfigPropertyChanged;
+        // Machine config (PGN 238 raise/lower/invert/user values, PGN 236 pins): sent the
+        // same way, so edits and profile loads reach the machine module (#110).
+        _subscribedMachine = _configStore.Machine;
+        _subscribedMachine.PropertyChanged += OnConfigPropertyChanged;
         _configSubscribed = true;
     }
 
@@ -189,6 +194,8 @@ public class AutoSteerService : IAutoSteerService
             _subscribedAutoSteer.PropertyChanged -= OnConfigPropertyChanged;
         if (_subscribedTool != null)
             _subscribedTool.PropertyChanged -= OnConfigPropertyChanged;
+        if (_subscribedMachine != null)
+            _subscribedMachine.PropertyChanged -= OnConfigPropertyChanged;
         _configSubscribed = false;
     }
 
@@ -213,6 +220,10 @@ public class AutoSteerService : IAutoSteerService
             var cfg = _configStore.AutoSteer;
             _udpService.SendToModules(PgnBuilder.BuildSteerConfigPgn(cfg));
             _udpService.SendToModules(PgnBuilder.BuildSteerSettingsPgn(cfg));
+            // AgOpenGPS SendSettings / SendRelaySettingsToMachineModule send PGN 238 and 236
+            // with 251/252 on start and profile load; these were built but never sent (#110).
+            SendMachineConfig();
+            SendMachinePinConfig();
         }
         catch (Exception ex)
         {

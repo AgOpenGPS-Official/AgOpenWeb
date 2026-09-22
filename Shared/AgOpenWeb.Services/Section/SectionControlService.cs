@@ -373,7 +373,12 @@ public class SectionControlService : ISectionControlService
         // This prevents spraying outside boundary when implement swings during turns
         const double BOUNDARY_THRESHOLD_STRICT = 0.95; // 95% inside required to be "in boundary"
         const double BOUNDARY_THRESHOLD_LOOKAHEAD = 0.50; // 50% for look-ahead anticipation
-        bool isInBoundary = currentBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_STRICT;
+        // "Off outside boundary" (AgOpenGPS tool.isSectionOffWhenOut): on = a section is out
+        // as soon as it isn't (all but) fully inside; off = it counts as in while any part
+        // is inside, i.e. either edge in (#110). It used to be always on.
+        bool isInBoundary = tool.IsSectionOffWhenOut
+            ? currentBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_STRICT
+            : currentBoundaryResult.InsidePercent > 0;
         bool lookOnInBoundary = lookOnBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
         bool lookOffInBoundary = lookOffBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
 
@@ -451,7 +456,9 @@ public class SectionControlService : ISectionControlService
         // ADDITIONAL CHECK: Verify both expanded edge points are inside boundary.
         // The segment-based check can sometimes pass when edges are outside,
         // especially when tool heading is perpendicular to boundary.
-        if (coverageMargin > 0)
+        // Only with "Off outside boundary" on — off, a section straddling the edge stays
+        // on (AgOpenGPS isSectionOffWhenOut, #110).
+        if (coverageMargin > 0 && tool.IsSectionOffWhenOut)
         {
             double perpHeading = toolHeading + Math.PI / 2.0;
             var expandedLeftEdge = new Vec2(
@@ -526,7 +533,11 @@ public class SectionControlService : ISectionControlService
 
             // Same as ON: derive ticks from turnOffPhaseSec and use >= so the
             // OFF flip lands at the intended position instead of one tick past.
-            int turnOffPhaseTicks = Math.Max(1, (int)Math.Round(turnOffPhaseSec * TickHz));
+            // Turn-off delay (AgOpenGPS tool.turnOffDelay): with no look-ahead off, the
+            // section stays on this many seconds after it's asked to go off — a plain
+            // overrun, no anticipation. AgOpenGPS ignores it once look-ahead off is set (#110).
+            double offWaitSec = turnOffPhaseSec > 0 ? turnOffPhaseSec : Math.Max(0, tool.TurnOffDelay);
+            int turnOffPhaseTicks = Math.Max(1, (int)Math.Round(offWaitSec * TickHz));
 
             if (section.SectionOffTimer >= turnOffPhaseTicks)
             {
