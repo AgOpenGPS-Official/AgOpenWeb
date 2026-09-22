@@ -2261,7 +2261,9 @@ function wireTabStrip(panel, stripId) {
 }
 wireCfgControls(vcPanel);
 vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitchSel.value));
-vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = Math.round(vcFw.value * 100) + '%'; cfgSend('gps.headingFusionWeight', vcFw.value); });
+// Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
+const fusionLabel = w => 'GPS ' + Math.round(w * 100) + '% · IMU ' + (100 - Math.round(w * 100)) + '%';
+vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
 // Populate every control from the config frame. force (on open) fills all; otherwise
 // skip the focused number input so we don't clobber what the user is typing.
@@ -2285,7 +2287,7 @@ function populateVehicleCfg(force) {
   setImg('vc-img-antoffset', ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset']);
   vcHitchSel.value = cfgGet('vehicle.hitchType');
   const w = cfgGet('gps.headingFusionWeight') || 0;
-  vcFw.value = w; document.getElementById('vc-hfw').textContent = Math.round(w * 100) + '%';
+  vcFw.value = w; document.getElementById('vc-hfw').textContent = fusionLabel(w);
   // Dual-only fields are live only in Dual GPS mode; reverse detection only in single
   // (mirrors the native enable/disable gating).
   const dual = !!cfgGet('gps.isDualGps');
