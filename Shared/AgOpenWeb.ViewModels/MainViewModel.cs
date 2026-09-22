@@ -1099,6 +1099,7 @@ public partial class MainViewModel : ObservableObject
         set
         {
             SetProperty(ref _showRecordedPaths, value);
+            State.FieldTools.ShowRecordedPaths = value; // web map (#110)
             UpdateRecordedPathsOnMap();
         }
     }

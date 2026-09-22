@@ -18,6 +18,9 @@ public sealed class FieldToolsState
     /// <summary>Auto track-select (snap to the closest track) is enabled.</summary>
     public bool IsAutoTrackEnabled { get; set; }
 
+    /// <summary>Tracks manager "Rec paths": draw saved recorded paths on the map (#110).</summary>
+    public bool ShowRecordedPaths { get; set; }
+
     /// <summary>Rows to skip on each U-turn (0–9).</summary>
     public int UTurnSkipRows { get; set; }
 

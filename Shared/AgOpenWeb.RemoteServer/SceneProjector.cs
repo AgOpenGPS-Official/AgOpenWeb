@@ -173,6 +173,16 @@ public sealed class SceneProjector
         var tramLines = TramLinesProvider?.Invoke()
             ?? (IReadOnlyList<IReadOnlyList<Vec2Dto>>)System.Array.Empty<IReadOnlyList<Vec2Dto>>();
 
+        // Recorded paths (Tracks manager "Rec paths") and contour strips — visible saved
+        // tracks of those kinds, drawn as their own layer (#110).
+        List<IReadOnlyList<Vec2Dto>> Lines(Models.Track.TrackType type) => f.Tracks.ToArray()
+            .Where(t => t.Type == type && t.IsVisible && t.Points.Count >= 2)
+            .Select(t => (IReadOnlyList<Vec2Dto>)t.Points.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList())
+            .ToList();
+        var recordedPaths = _state.FieldTools.ShowRecordedPaths
+            ? Lines(Models.Track.TrackType.RecordedPath) : new List<IReadOnlyList<Vec2Dto>>();
+        var contourStrips = Lines(Models.Track.TrackType.Contour);
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -192,7 +202,9 @@ public sealed class SceneProjector
             trackList,
             headlandSegs,
             tramSystems,
-            tramLines);
+            tramLines,
+            recordedPaths,
+            contourStrips);
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -866,6 +878,7 @@ public sealed class SceneProjector
         if (bnd?.InnerBoundaries != null)
             foreach (var inner in bnd.InnerBoundaries.ToArray()) h = h * 31 + inner.Points.Count;
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
+        h = h * 31 + (_state.FieldTools.ShowRecordedPaths ? 1 : 0); // #110
         h = h * 31 + f.Tracks.Count;
         // Point count + name + active/visible so the Tracks manager refreshes on
         // activate/hide/rename (none of which change point counts).

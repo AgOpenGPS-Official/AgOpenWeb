@@ -71,10 +71,14 @@ window.RemoteTransport = {
             tramSystems[k] = { index: i32(), name: str(), refLabel: str(), width: f64(), mode: i32(), offset: f64(), direction: i32(), passCount: i32(), enabled: !!u8(), isBoundary: !!u8() };
           const tlc2 = i32(); const tramLines = new Array(tlc2);
           for (let k = 0; k < tlc2; k++) tramLines[k] = pts();
+          const rpc = i32(); const recordedPaths = new Array(rpc); // #110
+          for (let k = 0; k < rpc; k++) recordedPaths[k] = pts();
+          const csc = i32(); const contourStrips = new Array(csc);
+          for (let k = 0; k < csc; k++) contourStrips[k] = pts();
           handlers.onScene && handlers.onScene({
             version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
             headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery, trackList,
-            headlandSegs, tramSystems, tramLines,
+            headlandSegs, tramSystems, tramLines, recordedPaths, contourStrips,
           });
           break;
         }
