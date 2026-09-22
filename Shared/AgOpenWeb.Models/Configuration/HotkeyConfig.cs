@@ -102,7 +102,9 @@ public class HotkeyConfig : ObservableObject
             _bindings[existing.Key] = "";
         }
 
-        _bindings[action] = key.ToUpperInvariant();
+        // Letters are stored upper-case; named keys keep their name ("ArrowUp", "F1") so
+        // they read properly. Lookups are case-insensitive either way (#111).
+        _bindings[action] = key.Length == 1 ? key.ToUpperInvariant() : key;
         _reverseMap = null;
         OnPropertyChanged(nameof(Bindings));
     }

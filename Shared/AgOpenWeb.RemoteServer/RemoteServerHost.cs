@@ -120,6 +120,14 @@ public sealed class RemoteServerHost
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list
     /// (VM-owned, rides the Scene frame). Set after <see cref="StartAsync"/>.</summary>
+    /// <summary>Heading chart source: GPS fix-to-fix and IMU-corrected heading (#111).</summary>
+    public Func<(double Gps, double Imu)>? HeadingChartProvider
+    {
+        get => _broadcaster?.Projector.HeadingChartProvider;
+        set { _headingChartProvider = value; if (_broadcaster is not null) _broadcaster.Projector.HeadingChartProvider = value; }
+    }
+    private Func<(double Gps, double Imu)>? _headingChartProvider;
+
     public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
     {
         get => _broadcaster?.Projector.HeadlandSegsProvider;
@@ -199,6 +207,7 @@ public sealed class RemoteServerHost
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
+        _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;

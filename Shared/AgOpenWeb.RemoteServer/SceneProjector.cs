@@ -37,6 +37,9 @@ public sealed class SceneProjector
     /// each broadcast tick (same VM-coupled provider pattern as Boundary/RecordedPath).
     /// Read off the broadcaster thread; tolerates transient races like the others.</summary>
     public System.Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider { get; set; }
+    // Heading chart (AgOpenGPS FormGraphHeading): GPS fix-to-fix and IMU-corrected
+    // heading, degrees (IMU NaN when there's none). Host-supplied (#111).
+    public System.Func<(double Gps, double Imu)>? HeadingChartProvider { get; set; }
 
     /// <summary>Host-supplied projector for the generated tram lines (ITramLineService's
     /// ParallelTramLines — pipeline state, but the service isn't injected here). Set by the
@@ -236,6 +239,7 @@ public sealed class SceneProjector
             sections[i] = (byte)secStates[i].ColorCode;
 
         var g = _state.Guidance;
+        var hchart = HeadingChartProvider?.Invoke() ?? (double.NaN, double.NaN);
 
         return new TickDto(
             sceneVersion,
@@ -297,7 +301,7 @@ public sealed class SceneProjector
             _state.Guidance.SteerAngle,                  // ChartSetSteer (commanded)
             _autoSteer.LastSteerData.ActualSteerAngle,   // ChartActualSteer (WAS)
             _autoSteer.LastSteerData.PwmDisplay,         // ChartPwm
-            _autoSteer.LastSteerData.ImuHeading,         // ChartImuHeading
+            hchart.Imu,                                  // ChartImuHeading (IMU + offset, #111)
             // Hitch pivot (implement hitch line: hitch → tool) — render-pull dead-reckoned.
             v.RenderHitchEasting,
             v.RenderHitchNorthing,
@@ -321,7 +325,8 @@ public sealed class SceneProjector
             g.GoalPoint.Easting,
             g.GoalPoint.Northing,
             g.IsReverse,
-            _state.Connections.IsModuleNotSteering);
+            _state.Connections.IsModuleNotSteering,
+            hchart.Gps);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

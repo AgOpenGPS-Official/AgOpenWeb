@@ -46,9 +46,10 @@ public partial class MainViewModel
         }
 
         track.Points = newPts;
-        SaveTracksToFile();
-        // Re-select to refresh nudge/guidance state for the (possibly active) edited track.
-        SelectedTrack = track;
+        // Refresh guidance only if this is the active track; editing another track must
+        // not make it the active one (#111).
+        if (track == SelectedTrack) OnSelectedTrackGeometryChanged();
+        else SaveTracksToFile();
         OnTrackVisibilityChanged();
     }
 

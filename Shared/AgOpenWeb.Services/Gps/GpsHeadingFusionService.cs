@@ -70,6 +70,12 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private bool _hasReverseFix;
     private double _reverseFixE, _reverseFixN;
 
+    /// <summary>Last fix-to-fix GPS heading, degrees (AgOpenGPS gpsHeading) — heading chart.</summary>
+    public double GpsHeadingDeg => _gpsHeading * 180.0 / Math.PI;
+
+    /// <summary>IMU heading + offset, degrees, or NaN with no IMU (AgOpenGPS imuCorrected).</summary>
+    public double ImuCorrectedDeg { get; private set; } = double.NaN;
+
     /// <summary>True while the vehicle is detected as reversing (#125).</summary>
     public bool IsReverse { get; private set; }
 
@@ -85,6 +91,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
 
         // The IMU heading this fix, if any (radians).
         double? imu = imuValid ? ToRad(imuHeading) : null;
+        ImuCorrectedDeg = imu is double ir ? Wrap(ir + _imuGpsOffset) * 180.0 / Math.PI : double.NaN;
 
         bool useFix = true;
         if (con.IsDualGps)
