@@ -47,6 +47,15 @@ public partial class MainViewModel
     {
         _coverageMapService.ClearAll();
 
+        // AgOpenGPS "delete all contours and sections": the contour strips go too, and
+        // Contour.txt is emptied (FileCreateContour) (#110).
+        _gpsPipelineService.ResetContours();
+        if (State.Field.ActiveField != null)
+        {
+            try { System.IO.File.Delete(System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, Services.Contour.ContourFilesService.FileName)); }
+            catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting Contour.txt: {ex.Message}"); }
+        }
+
         if (State.Field.ActiveField != null)
         {
             var sectionsFile = System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, "Sections.txt");
@@ -1021,10 +1030,28 @@ public partial class MainViewModel
         });
 
         // Contour commands
+        // Like AgOpenGPS btnContour_Click (#110): Auto Track off; turning contour off
+        // while steering stops AutoSteer (no line to follow any more).
         ToggleContourModeCommand = new RelayCommand(() =>
         {
+            IsAutoTrackEnabled = false;
             IsContourModeOn = !IsContourModeOn;
+            if (!IsContourModeOn && IsAutoSteerEngaged)
+            {
+                ToggleAutoSteerCommand?.Execute(null);
+                ReportFailure("Guidance stopped - contour off");
+                return;
+            }
             StatusMessage = IsContourModeOn ? "Contour mode ON" : "Contour mode OFF";
+        });
+
+        // Contour lock (AgOpenGPS btnContourLock): keep following the current strip.
+        ToggleContourLockCommand = new RelayCommand(() =>
+        {
+            if (!IsContourModeOn) return;
+            bool locked = _gpsPipelineService.ToggleContourLock();
+            State.Operation.IsContourLocked = locked;
+            StatusMessage = locked ? "Contour locked" : "Contour unlocked";
         });
 
         // Delete the recorded contour paths — and nothing else, like AgOpenGPS
@@ -1033,10 +1060,13 @@ public partial class MainViewModel
         // Delete Applied Area's job, which asks first. The web asks before sending this.
         DeleteContoursCommand = new RelayCommand(() =>
         {
+            // The recorded strips (#110). Like AgOpenGPS this clears them from memory;
+            // Contour.txt keeps them (Delete Applied Area empties it).
+            _gpsPipelineService.ResetContours();
             var contours = SavedTracks.Where(t => t.Type == TrackType.Contour).ToList();
             if (contours.Count == 0)
             {
-                ReportFailure("No contour paths to delete");
+                StatusMessage = "Contour paths deleted";
                 return;
             }
             if (SelectedTrack != null && contours.Contains(SelectedTrack))

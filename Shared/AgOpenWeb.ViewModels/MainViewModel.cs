@@ -1088,7 +1088,12 @@ public partial class MainViewModel : ObservableObject
         set
         {
             if (SetProperty(ref _isContourModeOn, value))
+            {
                 State.Operation.IsContourOn = value; // mirror for web-UI projection
+                _gpsPipelineService.SetContourMode(value); // #110
+                // AutoSteer can engage on a contour line with no track (AgOpenGPS).
+                IsAutoSteerAvailable = SelectedTrack != null || value;
+            }
         }
     }
 
@@ -1779,6 +1784,9 @@ public partial class MainViewModel : ObservableObject
             // Load flags from Flags.txt (#107 — they used to carry over from the previous field)
             LoadFlagsFromField(fieldPath);
 
+            // Contour strips from Contour.txt (#110)
+            LoadContoursFromField(fieldPath);
+
             // Establish (or resume) the active job before any coverage paint
             // is allowed. Coverage now lives under <field>/jobs/<task>/.
             //
@@ -2036,6 +2044,12 @@ public partial class MainViewModel : ObservableObject
 
         // CurrentFieldName clears via the pass-through when SetActiveField(null)
         // runs below (State.Field.ActiveField → null).
+        // Contour (#110): save finished strips, then forget them and turn contour off
+        // (AgOpenGPS FileSaveContour, ResetContour, isContourBtnOn = false).
+        SaveContoursToField();
+        LoadContoursFromField(null);
+        IsContourModeOn = false;
+
         IsFieldOpen = false;
         _gpsPipelineService.SetHasActiveField(false);
 
@@ -2389,7 +2403,7 @@ public partial class MainViewModel : ObservableObject
 
                 // Update guidance availability
                 HasActiveTrack = value != null;
-                IsAutoSteerAvailable = value != null;
+                IsAutoSteerAvailable = value != null || IsContourModeOn;
 
                 // No U-turns on a closed/polygon track — turn the toggle off and
                 // refresh the dependent UI (button visibility) (#421).
@@ -2560,6 +2574,28 @@ public partial class MainViewModel : ObservableObject
         {
             _logger.LogWarning(ex, "[Flags] Failed to save Flags.txt");
         }
+    }
+
+    /// <summary>Replace the contour strips with the field's Contour.txt (none when null) (#110).</summary>
+    private void LoadContoursFromField(string? fieldPath)
+    {
+        var strips = new List<List<Vec3>>();
+        if (!string.IsNullOrEmpty(fieldPath))
+        {
+            try { strips = Services.Contour.ContourFilesService.Load(fieldPath); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to load Contour.txt"); }
+        }
+        _gpsPipelineService.LoadContours(strips);
+    }
+
+    /// <summary>Append contour strips finished since the last save to Contour.txt (#110).</summary>
+    private void SaveContoursToField()
+    {
+        var strips = _gpsPipelineService.TakeContoursToSave();
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (strips is not { Count: > 0 } || !IsFieldOpen || string.IsNullOrEmpty(dir)) return;
+        try { Services.Contour.ContourFilesService.Append(dir, strips); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save Contour.txt"); }
     }
 
     /// <summary>Replace the flags with the field's Flags.txt (empty when <paramref name="fieldPath"/> is null).</summary>
@@ -4208,6 +4244,7 @@ public partial class MainViewModel : ObservableObject
         return _tramSystemLineRanges.TryGetValue(systemName, out var range) ? range : (-1, 0, false);
     }
     public ICommand? ToggleRecordedPathsCommand { get; private set; }
+    public ICommand? ToggleContourLockCommand { get; private set; }
     public ICommand? StartRecordedPathCommand { get; private set; }
     public ICommand? StopRecordedPathCommand { get; private set; }
     public ICommand? StartContourRecordingCommand { get; private set; }

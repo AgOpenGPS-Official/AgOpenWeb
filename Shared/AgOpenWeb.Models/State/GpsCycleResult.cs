@@ -44,6 +44,14 @@ public record GpsCycleResult
     public bool AutoSteerDisengagedThisCycle { get; init; }
     /// <summary>PGN 239 hydraulic lift: 0 off, 1 down (working), 2 up (headland).</summary>
     public byte HydLiftState { get; init; }
+
+    /// <summary>Contour (#110): the reference strip being followed (AgOpenGPS draws its
+    /// points), null when none. Same instance while unchanged.</summary>
+    public IReadOnlyList<Models.Base.Vec3>? ContourRef { get; init; }
+    /// <summary>Contour lock state (lock button image).</summary>
+    public bool IsContourLocked { get; init; }
+    /// <summary>A contour strip finished this cycle: the VM appends it to Contour.txt.</summary>
+    public bool HasContoursToSave { get; init; }
     public string? DisengageReason { get; init; }
 
     // Per-cycle snapshots emitted by the cycle worker. Consumed on the UI

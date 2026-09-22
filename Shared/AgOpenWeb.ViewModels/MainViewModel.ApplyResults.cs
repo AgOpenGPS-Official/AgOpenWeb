@@ -89,6 +89,11 @@ public partial class MainViewModel
         // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
         // deletes them, but this method no longer reads them.
 
+        // Contour (#110): lock image, the reference strip, and newly finished strips → Contour.txt.
+        State.Operation.IsContourLocked = result.IsContourLocked;
+        State.Operation.ContourRef = result.ContourRef;
+        if (result.HasContoursToSave) SaveContoursToField();
+
         // Hydraulic lift sounds on each up/down change (AgOpenGPS CHead.SetHydPosition;
         // gated by the Hydraulic sound setting in the audio service, #110).
         if (result.HydLiftState != _lastHydLiftState)

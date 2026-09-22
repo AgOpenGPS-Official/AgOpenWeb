@@ -1135,7 +1135,8 @@ function applyOnScreenButtons() {
   // U-turn (manual you-turn) and Lateral (snap track) only act while AutoSteer is engaged,
   // so hide them otherwise (issue #36). Runs every frame via renderBottomNav, so it tracks
   // engage/disengage live.
-  const asActive = !!(tick && tick.op && tick.op.autoSteer);
+  // Neither in contour mode (AgOpenGPS skips DrawManUTurnBtn then) (#110).
+  const asActive = !!(tick && tick.op && tick.op.autoSteer && !tick.op.contour);
   document.getElementById('osb-uturn').hidden = !(hasField && asActive && d && d.uTurnButtonVisible);
   document.getElementById('osb-lateral').hidden = !(hasField && asActive && d && d.lateralButtonVisible);
 }
@@ -3479,6 +3480,7 @@ if (rnRoot) {
   // reliably fire 'click' (#56, #111).
   const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('pointerdown', e => { e.preventDefault(); rnSend(cmd); }); };
   wireRn('rn-contour', 'contour.toggle');
+  wireRn('rn-contourlock', 'contour.lock'); // #110
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
   wireRn('rn-youturn', 'youturn.toggle');
@@ -3822,7 +3824,8 @@ function updateLightbarText() {
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}   Pass ${Math.abs(pass) + 1}`;
+    const passTxt = tick.op && tick.op.contour ? '' : `   Pass ${Math.abs(pass) + 1}`; // no passes on a contour (#110)
+    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}${passTxt}`;
   }
   lbEl.style.display = 'block';
 }
@@ -4169,6 +4172,7 @@ function renderBottomNav() {
 const RN = {
   root: document.getElementById('rightnav'),
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
+  contourLock: document.getElementById('rn-contourlock'), contourLockI: document.getElementById('rn-contourlock-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
@@ -4184,6 +4188,10 @@ function renderRightNav() {
   if (RN.readonly) RN.readonly.textContent = iHoldControl ? '' : 'observing';
   // State carried by the icon image (native uses the same On/Off/Gray PNGs).
   rnIcon(RN.contourI, op.contour ? 'ContourOn.png' : 'ContourOff.png');
+  // Contour lock shows only in contour mode, and U-turn hides then (AgOpenGPS) (#110).
+  RN.contourLock.style.display = op.contour ? '' : 'none';
+  rnIcon(RN.contourLockI, scene.contourLocked ? 'ColorLocked.png' : 'ColorUnlocked.png');
+  RN.youturnI.parentElement.style.display = op.contour ? 'none' : '';
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
@@ -4769,6 +4777,19 @@ function drawRecordingMarkersSk(canvas) {
     const e = pts[i], n = pts[i + 1];
     if (pw(e, n) < 1.0) continue; // behind camera
     const xy = w2s(e, n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+  }
+}
+// Contour mode: the strip being followed, as points — green, yellow when locked
+// (AgOpenGPS CContour.DrawContourLine) (#110).
+function drawContourRefSk(canvas) {
+  const pts = scene && scene.contourRef;
+  if (!pts || !pts.length) return;
+  SKP.flagFill.setColor(ckColor(scene.contourLocked ? 'rgb(251,235,107)' : 'rgb(77,250,0)'));
+  const rad = scene.contourLocked ? 2.5 : 2;
+  for (const p of pts) {
+    if (pw(p.e, p.n) < 1.0) continue; // behind camera
+    const xy = w2s(p.e, p.n);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
 }
@@ -5599,6 +5620,7 @@ function renderSkia(canvas, rp) {
     drawExtraGuidelinesSk(canvas); // faint adjacent passes (under the bold lines)
     for (const l of scene.recordedPaths || []) strokePtsSk(canvas, l, false, SKP.recPath);   // #110
     for (const l of scene.contourStrips || []) strokePtsSk(canvas, l, false, SKP.contourStrip);
+    drawContourRefSk(canvas);
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
     // Purple reference (extended across the field) — drawn ONLY when the tractor is offset from
