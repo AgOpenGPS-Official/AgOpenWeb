@@ -378,6 +378,10 @@ level.
 
 - **Bootloader EEPROM:** `POWER_OFF_ON_HALT=1` **and** `WAKE_ON_GPIO=0`. The first only takes effect
   with the second, and GPIO3 is `WDT_EN` here anyway, so it must not be a wake source.
+  **Write it with `rpiboot` at assembly**, as part of flashing. `rpi-eeprom-config` from Linux is off
+  by default on the CM4; enabling it needs a `[cm4]` block in `config.txt` (`dtparam=spi=on`,
+  `audremap`, `spi-gpio40-45`). On the 2026-09-23 bench run, doing that lost the saved Wi-Fi profile,
+  and the block has to come out again afterwards. Don't ship it.
 - **Key monitor** (a small systemd service, separate from the app, so an app crash can't block it):
   read U21 IN4. `KEY_SENSE` = 0.0758 × V<sub>key</sub>: **on above ~8 V (0.61 V), off below ~4 V
   (0.30 V)**. Key off for 3 s → `systemctl poweroff`. This also covers booting with the key already
@@ -403,10 +407,24 @@ level.
 Rig this up on the CM4 IO board or a breadboard with the real image first. Checks 1 and 3 are what
 the whole design rests on.
 
+> **2026-09-23, CM4 IO board, Raspberry Pi OS, bootloader 2023-01-11 (`8ba17717`):
+> checks 1–3 PASS.** The core of the latch and the restart path are confirmed. Checks 4–8 need the
+> built board.
+
 1. **`CM4_3V3` falls at halt** with `POWER_OFF_ON_HALT=1`, `WAKE_ON_GPIO=0`. If it doesn't, the latch
    never opens. Fallback: find another signal that drops at halt (`RUN_PG`, CM4 1.8 V out).
+   **PASS 2026-09-23:** 40-pin header pin 1 (`CM4_3V3` on the IO board) drops to 0 V at halt. The
+   stock setting (`POWER_OFF_ON_HALT=0`) leaves it up. The IO board schematic also notes `RUN_PG` sits
+   at 0 V while halted, so that is a working fallback signal.
 2. **`CM4_3V3` across `reboot` and a U20 reset:** it stays up, or dips for less than 1.5 s.
+   **PASS 2026-09-23:** no dip on `sudo reboot`, or on a ~0.2 s tap of `RUN_PG` to GND (IO board J1
+   pad 3 → pad 2), which simulates U20's ~210 ms WDO pulse. The C96/R88 hold time is margin, not a
+   requirement.
 3. **A `GLOBAL_EN` pulse of ~80 ms restarts a halted CM4** while 5 V stays on.
+   **PASS 2026-09-23:** a short tap, and a hold of a few seconds (boots on release), both restart it.
+   Done via IO board J2 pins 13–14, the board's wake button, which pulls `GLOBAL_EN` to `RUN_PG`
+   (0 V while halted). Raspberry Pi's own IO board uses this restart method, so block E is on
+   supported ground.
 4. **U1 fully off with Q4 on:** `5V_MAIN` at 0 V, not idling at some leakage-fed level.
 5. **Standby draw** on the built board, compared with ≈ 180 µA.
 6. **LV trip** at 11.5 V ± 0.2 V, and the key-off delay of 6–13 s.
