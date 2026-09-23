@@ -14,8 +14,9 @@
 > `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
 > (routing). Ref designators are the real EasyEDA ones and match across all of them.
 >
-> **Alternative under consideration (2026-09-23):** `HARDWARE_HAT_OPTION.md` — official CM4 IO Board as
-> the host, with the AOW circuits on a 40-pin HAT.
+> **⚠ PARKED 2026-09-23.** The prototype will be a **CM4 IO Board + AOW HAT** instead —
+> `HARDWARE_HAT_OPTION.md`. This board stays the candidate for a later single-board version; its
+> schematic, issue list and the S8c.7 latch design carry over to the HAT.
 
 ---
 

@@ -1,9 +1,10 @@
 # AgOpenWeb HAT Option — CM4 IO Board + AOW HAT
 
-> **Status: idea, 2026-09-23. Nothing decided; the AiO board (`HARDWARE_AIO_BOARD.md`) is still the
-> plan of record.** This records an alternative that came up during the S8c bench tests: keep the
-> official Raspberry Pi **CM4 IO Board** as the host and move the AOW-specific circuits onto a
-> **40-pin HAT**.
+> **Status: DECIDED 2026-09-23 — the HAT is the plan of record for the prototype.** It is the simpler
+> board to lay out and build, and sealing doesn't separate it from the AiO board (§1). The AiO board
+> (`HARDWARE_AIO_BOARD.md`) is **parked**, not abandoned: it stays the candidate for a later
+> single-board version, and the HAT proves its peripheral circuits first. The official Raspberry Pi
+> **CM4 IO Board** is the host; the AOW-specific circuits go on a **40-pin HAT**.
 >
 > Sources: CM4 IO Board datasheet (`cm4io-datasheet.pdf`, §2.2, §2.12, §2.14 and the PSU/GPIO
 > schematic sheets), a photo of the author's IO board, and the AiO netlist/issue docs. Anything taken
@@ -25,11 +26,27 @@ Every hard, high-speed part of the AiO board is already done — and tested — 
 Everything else on the AiO board is low-speed — SPI, UARTs, GPIO, analog — and fits a HAT that can
 be 2-layer, cheap, and easy to rework. It also suits AgOpenGPS users who already own a CM4 + IO board.
 
-**What the HAT doesn't win:** a sealed tractor enclosure. IO board + HAT is a 160 × 90 mm stack with
-connectors on every edge, against the AiO board's single front-panel ATS13. If AOW is to be a sealed
-unit, the AiO board stays the better end product. The HAT could also serve as a **stepping stone**:
-its peripheral circuits are the AiO board's, so a HAT build proves CAN, the ADC, RS-232 and the key
-latch before committing to the DF40 board.
+**Sealing is not a differentiator (2026-09-23).** The IO board + HAT stack goes inside the enclosure,
+and the HAT carries a board-mount header; a **ribbon cable runs from it to the panel-mount Deutsch
+connector** (ATS13 or similar). The enclosure is sealed at the panel connector either way, so the
+IO board's edge connectors don't matter. What remains in the AiO board's favour is size (one
+184 × 119 mm board against a 160 × 90 mm board plus a HAT stack) and a single part to build. The HAT
+is also a **stepping stone**: its peripheral circuits are the AiO board's, so a HAT build proves CAN,
+the ADC, RS-232 and the key latch before committing to the DF40 board.
+
+**Ribbon to the panel connector — design points:**
+
+- **Power through the ribbon:** ~0.4 A at 12 V running, more on a cold start. IDC ribbon is ~1 A per
+  28 AWG conductor: give constant 12 V, keyed 12 V (tiny) and GND **two or more conductors each**, and
+  keep the vehicle fuses in the harness, not on the ribbon.
+- **CAN:** each CANH/CANL pair on adjacent conductors, with a GND conductor between pairs (or
+  twisted-pair ribbon). Keep the run short.
+- **Protection stays on the HAT**, at the header where the ribbon lands (TVS, series resistors,
+  SRV05-4), exactly as it sits behind J1 on the AiO board.
+- **Vibration:** latched/keyed IDC headers (box headers with ejectors or a locking ramp) and strain
+  relief at both ends.
+- **Pinout:** reuse the AiO J1 pin assignment (`HARDWARE_AIO_NETLIST.md` §5.1) plus the keyed 12 V
+  on pin 21 (S8c.7), so the harness is the same for either board.
 
 ## 2. Hosts
 
@@ -179,13 +196,13 @@ Same allocation as the AiO board (`HARDWARE_AIO_NETLIST.md` §7), **with the S4 
 | U21 ADC (VA = header 5 V, still ratiometric with the WAS supply) | input protection: ≤ 28 V to J20 (§4.3) | U2 eFuse |
 | U12 SP3232 + RS-232 TVS | block E / U20: via a J1 socket (§5) | U4 NVMe buck, U5 M.2 |
 | GPS slot (U16 or P2) | power LED: no `PI_LED_nPWR` on the header — drop or drive from 5 V | L1 magjack, CN1–CN3 |
-| switch inputs, steering outputs, SK6812 chain, piezo | J1 field connector: likely a board-mount header + harness | H3 USB/rpiboot header (IO board has micro-USB) |
+| switch inputs, steering outputs, SK6812 chain, piezo | J1 field connector → board-mount IDC header + ribbon to a panel Deutsch (§1) | H3 USB/rpiboot header (IO board has micro-USB) |
 | U3 3.3 V LDO, U20 watchdog, SW1 reset | | |
 
 ## 8. Open questions
 
-1. **Product or platform?** A sealed tractor unit favours the AiO board; a community build on
-   off-the-shelf hardware, or a low-risk first build, favours the HAT.
+1. ~~**HAT or AiO as the plan of record?**~~ **Decided 2026-09-23: the HAT, for the prototype.** The
+   AiO board is parked as a possible later single-board version.
 2. **Measure** the HAT hole positions and the heights of the parts under it (§3).
 3. **Does the GPS module fit** on 65 × 56.5 mm alongside everything else, or does the board grow
    left (§3.3)?
