@@ -7,8 +7,8 @@
 > **CM4 IO Board** is the host; the AOW-specific circuits go on a **40-pin HAT**.
 >
 > Sources: CM4 IO Board datasheet (`cm4io-datasheet.pdf`, §2.2, §2.12, §2.14 and the PSU/GPIO
-> schematic sheets), a photo of the author's IO board, and the AiO netlist/issue docs. Anything taken
-> from the photo rather than a measurement is marked **(photo — measure)**.
+> schematic sheets), the IO board KiCad design (`CM4IOv5.kicad_pcb`, for all coordinates) and the
+> AiO netlist/issue docs.
 
 ---
 
@@ -61,35 +61,72 @@ Pi 4 variant stays possible later.
 
 ## 3. Mechanical
 
-### 3.1 Outline and holes
+> **Source: Raspberry Pi's CM4 IO Board KiCad design** (`CM4IO-KiCAD.zip` → `CM4IOv5.kicad_pcb`, from
+> datasheets.raspberrypi.com), pulled 2026-09-23. Supersedes the earlier photo-based notes.
+> **Coordinates are in the HAT frame:** origin at the HAT's top-left corner = IO board KiCad
+> (79.0, 104.0); x to the right, y **down**, seen from above. The HAT's left edge sits on the IO
+> board's left edge (x 79.0), and its bottom edge is 0.5 mm past the IO board's bottom edge
+> (y 160.0), so the HAT covers a corner of the IO board. EasyEDA with the origin at the bottom-left:
+> y_editor = 56.5 − y.
 
-- **Standard HAT: 65 × 56.5 mm, 4 × M2.5 holes on a 58 × 49 mm pattern, 3.5 mm from the edges**, the
-  40-pin header along one long edge. The IO board provides these holes "so that standard HATs may
-  be used" (datasheet §2.12).
-- The four HAT holes on the IO board **(photo — measure)**: one at each end of the 40-pin header, plus
-  the top-left corner hole and the left-hand hole level with the bottom of the header (next to the
-  Ethernet jack). The hole just inside the top-left corner, and the one near CAM1, look like the IO
-  board's own mounting holes. **Check:** the header-end pair 58 mm apart; each 49 mm from its
-  partner across the board.
-- Standard stacking: 11 mm M2.5 standoffs with a 2 × 20 female header on the HAT.
+### 3.1 Outline, holes and connectors
 
-### 3.2 What sits under the HAT **(photo — measure heights)**
+| Feature | HAT x, y (mm) | IO board KiCad x, y | Notes |
+|---|---|---|---|
+| Outline | 0–65 × 0–56.5 | 79.0–144.0 × 104.0–160.5 | standard HAT |
+| Hole H3 | 3.5, 3.5 | 82.5, 107.5 | M2.5 (2.7 mm), header end |
+| Hole H5 | 61.5, 3.5 | 140.5, 107.5 | header end, beside PoE J9 |
+| Hole H2 | 3.5, 52.5 | 82.5, 156.5 | |
+| Hole H4 | 61.5, 52.5 | 140.5, 156.5 | beside the RJ45 |
+| **J8 pin 1** (3.3 V) | **8.37, 4.82** | 87.37, 108.82 | odd pins on the inner row, y 4.82 |
+| J8 pin 2 (5 V) | 8.37, 2.28 | 87.37, 106.28 | even pins on the edge row, y 2.28 |
+| J8 pin 39 / 40 | 56.63, 4.82 / 56.63, 2.28 | 135.63, 108.82 / 106.28 | pitch 2.54 along x |
+| **J1 pin 1 `GLOBAL_EN`** | **18.04, 32.00** | 97.04, 136.00 | 1 × 3, runs in **−x** from pin 1 |
+| J1 pin 2 GND | 15.50, 32.00 | 94.50, 136.00 | |
+| J1 pin 3 `RUN_PG` | 12.96, 32.00 | 91.96, 136.00 | |
 
-| Item | Where | Constraint |
+- The four HAT holes were confirmed: the two at the header ends are 58.0 mm apart, and each pair is
+  49.0 mm apart across the board.
+- **J1 is not on J8's 2.54 mm grid** (pin 1 is 9.67 mm, 27.18 mm from J8 pin 1). Place the HAT's
+  1 × 3 socket **by coordinate**, not by snapping to the header.
+- The HAT sockets go on the **bottom layer**: EasyEDA mirrors a bottom footprint, so check pin 1
+  against the top-view coordinates above after placing. The J1 socket must be the **same height** as
+  the 2 × 20 socket so both seat together.
+- Standard stacking: 11 mm M2.5 standoffs, 2 × 20 female socket on the HAT, and a 3-pin male header
+  soldered into the IO board's J1.
+
+### 3.2 IO board parts under the HAT
+
+The only parts on the HAT's underside are the two sockets (and the pins of any through-hole parts
+on top — keep those, trimmed, away from J9).
+
+| IO board part | HAT x, y extent (mm) | Clearance to the HAT (11 mm standoffs) |
 |---|---|---|
-| CR2032 holder | directly under | ~5 mm; clears 11 mm standoffs — keep tall HAT bottom-side parts off it |
-| HDMI0 / HDMI1 | under the left edge | receptacles clear; **plug overmoulds may hit the HAT** — acceptable, AOW runs headless |
-| PoE 2 × 2 header | under the corner at the bottom of the 40-pin header | as tall as the 40-pin header: bottom-side keepout or a notch |
-| **J1 pads — `GLOBAL_EN` / GND / `RUN_PG`** | under the HAT, beside the battery holder | an opportunity, not a problem: §5 |
+| BT1 CR2032 holder (Keystone 3034) | 3.4–18.6 × 6.6–30.4 | low (≈ 5 mm): clears |
+| J1 pads (+ fitted 3-pin header) | 11.7–19.3 × 30.7–33.3 | mates with the HAT socket |
+| J22 HDMI0, J10 HDMI1 | centred at x 23.0 and 48.0, along the bottom edge (y ≈ 42–56, estimated — footprint has no courtyard) | receptacles clear; HDMI plugs may not — AOW runs headless |
+| J9 PoE 2 × 2 header | 60.2–62.8 × 8.4–10.9 (pins) | pin tips ≈ 2.5 mm below the HAT: no bottom parts or pin ends there |
+| J6 CSI/DSI I²C jumpers | 41.4–43.9 × −3.3…−0.8 (pins) | just outside the top edge |
+| U3 RJ45 magjack | from x 64.8, y 35.7 down | **right against the HAT's right edge** (courtyard at x 64.8) and taller than 11 mm: don't grow right below y ≈ 35 |
 
-### 3.3 Growing past 65 × 56.5 mm
+### 3.3 Room to grow past 65 × 56.5 mm
 
-- **Left, over the HDMI connectors to the board edge:** fine with 11 mm standoffs. The likely
-  direction if the GPS module doesn't fit.
-- **Down, over the CM4:** only if it clears the heatsink — and it would trap the CM4's heat. Avoid.
-- **Right, past the header:** blocked by the J6 jumpers and J2's sideways pins.
+| Direction | Room | Notes |
+|---|---|---|
+| Left (−x), down (+y) | none | IO board edges |
+| **Up (−y)** | **≈ 20 mm** (to IO y ≈ 84) | over the J6 jumpers and J4 camera FFC (unused by AOW). **IO board hole H7 at HAT (11.0, −21.0)** could be a fifth standoff. The CSI/DSI FFC row at IO y ≈ 75 limits it. → **65 × ~76 mm**. **Best direction if the GPS module doesn't fit.** |
+| **Right (+x)** | **up to ≈ 25 mm (measured on the board), with a notch for the Ethernet / USB** | extension x 65–90 at most, **y 0–35 only**. **A ceiling, not a target:** take only what the layout needs (likely 10–15 mm) and leave the rest as air around the CM4 heatsink. The notch clears U3 (the RJ45 courtyard starts at HAT y 35.7, and it is taller than the 11 mm spacing) and the USB stack beside it. The extension covers the edge of the CM4 module (low, ≈ 5–6 mm: clears) and stops **≈ 10 mm short of the CPU heatsink**. Under it: U1/U2 (USON) and Y1 (HC-49 SMD), all low. |
 
-A wider board gives up Pi 4 compatibility (overhang meets the Pi's USB/Ethernet end).
+- **Combined:** up and right together give an L-shaped board of about 90 × 76 mm, minus the notch. The
+  upward extension is **x 0–65 only**: to the right of that is the CM4 module.
+- **The right extension is a 25 mm cantilever** with no hole under it: IO board H5 (61.5, 3.5) and
+  H4 (61.5, 52.5) are the nearest supports. Keep the ribbon header, anything a cable pulls on and
+  heavy parts near the holes, and put light, low parts (latch, passives) at the tip.
+- **Heat:** the extension sits beside the CM4 heatsink with a 10 mm gap. Don't put the HAT's warm
+  parts (P-FET, surge limiter, GPS module) on that end.
+- **Servicing:** the CM4 can no longer be lifted out without first removing the HAT.
+
+Growing in any direction gives up Pi 4 compatibility (§2).
 
 ## 4. Power path
 
@@ -203,9 +240,17 @@ Same allocation as the AiO board (`HARDWARE_AIO_NETLIST.md` §7), **with the S4 
 
 1. ~~**HAT or AiO as the plan of record?**~~ **Decided 2026-09-23: the HAT, for the prototype.** The
    AiO board is parked as a possible later single-board version.
-2. **Measure** the HAT hole positions and the heights of the parts under it (§3).
-3. **Does the GPS module fit** on 65 × 56.5 mm alongside everything else, or does the board grow
-   left (§3.3)?
+2. ~~Measure the HAT hole positions~~ — **done 2026-09-23 from the KiCad design** (§3).
+3. **GPS module placement.** The candidates are all **43 × 43 mm** carrier boards: UM98x (UM980/UM982)
+   boards and the ArduSimple simpleRTK2B Micro (F9P) share the size. **Same size doesn't mean the
+   same pinout:** check each header pinout before designing one footprint for all of them. Two ways
+   to fit it:
+   - **flat on the HAT:** 1,849 mm², about half a standard HAT, which pushes the board up or right
+     (§3.3);
+   - **stacked** on headers above the HAT's low parts (latch, passives, SOIC/TSSOP ICs): only the
+     header footprints cost area, at the price of enclosure height (HAT 11 mm + headers + module).
+   Either way: antenna lead (u.FL/SMA) to the panel, keep it at the end away from the CM4 heatsink,
+   and it runs from header 5 V (S7: one UART, UART5, so only one module).
 4. **Surge limiting to ≤ 28 V** — pick the part (§4.3).
 5. **J20 pinout and cable** — verify pins; choose the HAT-side connector.
 6. **5 V budget** on the IO board's 3 A converter (§4.3).
