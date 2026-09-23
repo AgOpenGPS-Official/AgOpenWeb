@@ -13,6 +13,9 @@
 > **Companion docs:** `HARDWARE_AIO_ISSUES.md` (open schematic + layout issues), `HARDWARE_AIO_NETLIST.md` (as-built wiring, every net),
 > `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
 > (routing). Ref designators are the real EasyEDA ones and match across all of them.
+>
+> **Alternative under consideration (2026-09-23):** `HARDWARE_HAT_OPTION.md` — official CM4 IO Board as
+> the host, with the AOW circuits on a 40-pin HAT.
 
 ---
 
