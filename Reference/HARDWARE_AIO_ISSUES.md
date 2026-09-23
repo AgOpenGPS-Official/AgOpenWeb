@@ -35,7 +35,7 @@
 | **S5** | F7 | J1 CAN pin order changed from July. | July: 14/16/18 = H, 15/17/19 = L. Now: 14/16/18 = L, 15/17/19 = H. | **Closed 2026-09-15: no harness built yet**, so there's nothing to reconcile. The J1 pinout in `HARDWARE_AIO_NETLIST.md` §5.1 (L on even 14/16/18, H on odd 15/17/19) is the reference for the harness when it is made. | closed |
 | **S6** | F8 | No CAN termination footprints. | Each CAN net only touches its MCP251863, the NUP2105L and J1. July's split-termination and CMC footprints are gone. | **Fixed 2026-09-15:** a single 120 Ω across CANH/CANL per channel with a solder jumper, matching the other AiO boards. (Split termination + common-mode choke were the July design; the simpler jumper is the established AgOpenGPS approach.) | **fixed 2026-09-17** — verified: 120 Ω (R9/R10/R11) in series with a solder jumper across each CANH/CANL |
 | **S7** | F9 | GPS modules share one UART. | U16.15/16 and P2.11/12 both on `GPS_RX`/`GPS_TX` (CM4 UART5). | **Closed 2026-09-15: only one GPS module physically fits**, so the shared UART can never be contended. No change needed. | closed |
-| **S8** | F10 | **Brown-out halt: the board can't restart itself, and the hold-up caps can't cover a shutdown anyway.** | (a) C6+C7 = 940 µF on `VIN_PROT` gives only **13–19 ms** from 12–13.8 V to the buck's ~6 V cutoff at 3–5 W — a `poweroff` takes seconds, so VIN loss is an abrupt cut, not a graceful halt. (The July note claiming the hold-up covers the halt was wrong.) (b) After any software halt, the CM4 datasheet needs `GLOBAL_EN` (pin 99, unconnected) pulled low >1 ms or 5 V removed; the eFuse is tied permanently on (R43), so neither happens. | **DECIDED 2026-09-15: don't halt on VIN dips** (they're inevitable in a vehicle). Use `VIN_SENSE` for telemetry/warnings only, never `poweroff`; keep root read-only + overlay. The buck regulates down to ~5.5–6 V in, so cranking dips ride through, and an outright power loss simply reboots when VIN returns — no extra parts, and (b) becomes moot. **Only if a graceful shutdown is really wanted:** add supercap hold-up on `VIN_PROT` (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s at 4 W, 12 → 6 V — 100–250× the present 940 µF, plus a blocking diode and inrush limiting) **and** an auto power-cycle one-shot: watch `RUN_PG` (high while running) and pulse `GLOBAL_EN` low via an open-drain FET after it has been low ~2 s with VIN present (555 + Schmitt, or an ATtiny10 which can also hold off while the rpiboot jumper is fitted). The watchdog covers a *hung* kernel; this covers a *halted* one. Fault flag (`PI_FLT`) → **ADC IN3** (U21 pin 7, one of 5 spare grounded inputs) — no GPIO needed, and all 28 are allocated. | **decided** — no board change; **revisited 2026-09-20: §S8c** (always-on + keyed 12 V, preferred) and **§S8b** (battery hold-up, fallback) |
+| **S8** | F10 | **Brown-out halt: the board can't restart itself, and the hold-up caps can't cover a shutdown anyway.** | (a) C6+C7 = 940 µF on `VIN_PROT` gives only **13–19 ms** from 12–13.8 V to the buck's ~6 V cutoff at 3–5 W — a `poweroff` takes seconds, so VIN loss is an abrupt cut, not a graceful halt. (The July note claiming the hold-up covers the halt was wrong.) (b) After any software halt, the CM4 datasheet needs `GLOBAL_EN` (pin 99, unconnected) pulled low >1 ms or 5 V removed; the eFuse is tied permanently on (R43), so neither happens. | **DECIDED 2026-09-15: don't halt on VIN dips** (they're inevitable in a vehicle). Use `VIN_SENSE` for telemetry/warnings only, never `poweroff`; keep root read-only + overlay. The buck regulates down to ~5.5–6 V in, so cranking dips ride through, and an outright power loss simply reboots when VIN returns — no extra parts, and (b) becomes moot. **Only if a graceful shutdown is really wanted:** add supercap hold-up on `VIN_PROT` (≈ 0.07 F for 1 s, ≈ 0.22 F for 3 s at 4 W, 12 → 6 V — 100–250× the present 940 µF, plus a blocking diode and inrush limiting) **and** an auto power-cycle one-shot: watch `RUN_PG` (high while running) and pulse `GLOBAL_EN` low via an open-drain FET after it has been low ~2 s with VIN present (555 + Schmitt, or an ATtiny10 which can also hold off while the rpiboot jumper is fitted). The watchdog covers a *hung* kernel; this covers a *halted* one. Fault flag (`PI_FLT`) → **ADC IN3** (U21 pin 7, one of 5 spare grounded inputs) — no GPIO needed, and all 28 are allocated. | **decided** — no board change; **superseded 2026-09-23 by §S8c** (always-on + keyed 12 V, discrete — §S8c.7); **§S8b** (battery hold-up) kept as the fallback |
 | **S9** | F11 | Power LED on an unbuffered CM4 pin. | CM4 datasheet: `PI_LED_nPWR` (pin 95) "needs to be buffered". D23 is driven directly (~1.3 mA via R79). | **DECIDED 2026-09-16: single P-channel high-side buffer.** Q3 = BSS84 / DMG2301L (SOT-23, pin 1 = G, 2 = S, 3 = D — same numbering as the 2N7002; a 2N7002 can't be used alone because the pin is active-low and an N-FET needs a high gate). **Q3.1 (G) → `PI_LED_NPWR`** (CM4 pin 95); **Q3.2 (S) → `+3V3`**; **R80 100 kΩ gate → source** (holds it off while pin 95 is high-Z); **Q3.3 (D) → D23.2 (anode)**, new net `LED_PWR_A`; **D23.1 (cathode) → R79**, and **R79's other end moves from `+3V3` to `GND`**. So D23 reverses orientation and the CM4 pin only drives a gate. Current at 3.3 V with a ~2 V Vf: 1 kΩ → 1.3 mA; use 470 Ω (C25117, already on the board for R32) for ~2.7 mA. | **fixed 2026-09-17** — verified: Q3 BSS84 (C114481) G/S/D correct, R80 100 k gate–source, D23 reversed, R79 470 Ω → GND |
 | **S10** | F12 | `RUN_PG` driven hard to GND. | CM4 datasheet: drive low "via a 220 Ω resistor". SW1 and U20 WDO connect straight to pin 92. | **DECIDED 2026-09-16: 330 Ω (C25104, already on the board for R27–R29/R71) — no 220 Ω line added.** New R81 between **CM4 pin 92** and the **SW1 / U20.1 (WDO) node**: pin 92 keeps its own net, the switch and watchdog share the far side. With the CM4's 10 kΩ internal pull-up, pulling through 330 Ω gives 3.3 × 330/10330 ≈ **0.11 V** (well under V<sub>IL</sub>) and caps the current at ~10 mA. **Not in SW1's ground leg** — that would leave U20's WDO still pulling pin 92 hard to GND on every watchdog reset; one resistor in the pin-92 net covers both pull-downs (two resistors, one per leg, is equivalent if SW1 and U20 end up far apart). | **fixed 2026-09-17** — verified: R81 330 Ω between CM4 pin 92 and the SW1 / U20 WDO node (`RUN_PG_G`) |
 | **S11** | F6 | Switch inputs only handle switches to ground. | 12 V on J1.7–9 → 1 k → SRV05-4 clamp at ~+3V3 + V<sub>F</sub> ≈ 4 V, above the CM4 GPIO max of 3.8 V, pushing ~8–10 mA into +3V3. | **DECIDED 2026-09-16: contact-to-ground only — no change to the circuit.** The 10 k pull-ups to +3V3 (R59/R61/R69) and the 1 k series resistors already suit dry contacts; SMAJ16A + SRV05-4 stay as field protection. **Do not apply 12 V-level signals to J1.7/8/9** — say so in the harness documentation and, if there's room, on the silkscreen. | **decided** — no board change |
@@ -137,13 +137,13 @@ discrete timer logic.
 
 ---
 
-### S8c — key-off shutdown: always-on + keyed 12 V — **PROPOSAL 2026-09-20, preferred over §S8b**
+### S8c — key-off shutdown: always-on + keyed 12 V — **DECIDED 2026-09-23: discrete, see §S8c.7**
 
 > The automotive head-unit pattern: the board is powered from **constant 12 V** and reads a
 > **keyed/ignition 12 V** line purely as a signal. Key-off is then an explicit "shut down now"
 > message rather than something inferred from a collapsing rail, and the board has as long as it
-> needs, because it is still powered. Proposed after §S8b; **nothing decided, no board change
-> authorised.**
+> needs, because it is still powered. Proposed after §S8b; **decided 2026-09-23 as an all-discrete
+> circuit (§S8c.7)**, with the key as the only on/off control.
 
 #### S8c.1 — Why it is preferred over the battery (§S8b)
 
@@ -171,6 +171,9 @@ must remove its own 5 V (S8b.4 step 5).
 - Constant 12 V feeds the existing `VIN_PROT` chain unchanged (Q1 reverse-polarity, SMBJ24A, U1).
 
 #### S8c.3 — Sequence
+
+> Steps 4–6 describe the original one-shot idea. The mechanism actually chosen (no `RUN_PG`, no
+> one-shot, no fixed backstop, no rpiboot hold-off) is in **§S8c.7**.
 
 1. **Key on** → keyed line high. U1 is already up (constant 12 V), the CM4 boots as now.
 2. **Crank** → the keyed line may drop momentarily on some machines. **Debounce ~2–3 s** before
@@ -208,10 +211,208 @@ because the isolator is usually thrown well after key-off — revisit if field r
 1. **Miswire detection.** If both inputs land on switched 12 V the design silently degrades to
    today's abrupt cut. Have the CM4 compare the two at boot and warn; note it on the silkscreen and
    in the harness doc.
-2. **Which ADC input**, and confirm the divider ratio against the keyed line's real idle voltage.
+2. **Which ADC input** — *answered in §S8c.7: IN4 (U21.8)*; still confirm the divider ratio against the keyed line's real idle voltage.
 3. **Measure the parked draw** on the built board (S8c.4).
 4. **Harness:** both feeds fused at the source; document wire colours and the fuse ratings.
 5. Does the install base accept a second wire? If not, fall back to **§S8b**.
+
+#### S8c.7 — Discrete implementation — **DECIDED 2026-09-23**
+
+> **Decisions (2026-09-23):** all-discrete, no MCU and no firmware on the board. **The key is the only
+> on/off control:** a shutdown started from the UI with the key on restarts ~2 s after the halt. U20
+> (STWD100) stays as the watchdog. The fixed 3-minute backstop in S8c.3 step 6 is **dropped**: a hung
+> shutdown is caught by U20 (the unit reboots, sees the key off and shuts down again) and a
+> running-but-ignoring-the-key Linux is caught by the low-voltage cut-off (block D).
+>
+> **This section supersedes the mechanism in S8c.2–S8c.3** (`RUN_PG` watching, "one-shot", rpiboot
+> hold-off). The rpiboot hold-off isn't needed: when flashing on the bench the key is on, so power is
+> never cut. Values are calculated here, not yet built — see S8c.8 for the bench checks.
+
+##### How it works
+
+```
+             ┌──────────── A: key front end ─────────────┐
+J1.21 KEY_IN ┼─ TV2 ─┬─ R82/R83 ─ KEY_SENSE ─ U21 IN4     │  Linux reads the key
+             │       └─ R84/R85 ─ KEY_DIV ─┬─ Q5 gate      │  hardware wake
+             └─────────────────────────────┼─ Q8 gate ─────┘  (restart AND)
+                                           └─ Q9 gate         (LV gating)
+
+ B: enable OR        EN1 (U1.3) ── Q4 ── GND        U1 runs = KEY  OR  HOLD
+                     OFF_G: R86 1M → 3V3_AON, pulled low by Q5 (KEY) or Q6 (HOLD_G)
+
+ C: CM4 alive        CM4_3V3 ── R87 ── D25 ──► HOLD_G ── C96 ∥ R88 (≈2 s release) ── Q6 gate
+
+ E: restart          HOLD_G ─ U24 Schmitt ─ DEAD ─ C98 ─ GEN_G (R89) ─ Q7 ┐ in series pull
+                     KEY_DIV ────────────────────────────────────── Q8 ┘ GLOBAL_EN low ~100 ms
+
+ D: LV cut-off       VIN_PROT ─ R90/R91 (C100) ─ U25 ─ LV ─ Q10 ┐ in series pull
+ (optional)          KEY_DIV ─ Q9 ─ NKEY (R93 ∥ C101, 6–13 s) ─ Q11 ┘ HOLD_G low
+
+ Supply              VIN_PROT ─ U23 (40 V, low-Iq LDO) ─ 3V3_AON
+```
+
+The whole thing is one self-latch: the key turns U1 on, the running CM4 holds it on through
+`CM4_3V3`, and the halt releases it.
+
+| State | What happens |
+|---|---|
+| **Key on** | `KEY_DIV` ≈ 3 V → Q5 pulls `OFF_G` low → Q4 off → `EN1` released → U1 starts (its UVLO divider R2/R3 is unchanged). The CM4 boots; `CM4_3V3` charges `HOLD_G` → Q6 on. |
+| **Crank** | If the keyed line drops, Q6 (HOLD) keeps U1 on. U1 rides the dip down to its ~5 V UVLO, as today. |
+| **Key off** | Q5 off, Q6 still on → the board stays up. Linux sees `KEY_SENSE` low (debounced 3 s) and runs `poweroff`. |
+| **Halt** | With `POWER_OFF_ON_HALT=1` the CM4's PMIC turns `CM4_3V3` off. `HOLD_G` decays through R88 (1.5–2.9 s) → Q6 off → `OFF_G` rises → Q4 pulls `EN1` low → **U1 off**, and 5 V is removed as the CM4 datasheet requires. |
+| **Key back on during shutdown** (or UI shutdown with key on) | U1 stays on through Q5, but the CM4 is halted. When `HOLD_G` has decayed, U24 drives `DEAD` high; the edge through C98 turns Q7 on for ~100 ms, and Q8 (key on) completes the path → **`GLOBAL_EN` low → the CM4 restarts.** |
+| **Key off, board off** | Only standby current flows (S8c.4, re-budgeted below). |
+| **Key off > 6–13 s and VIN < 11.5 V** (block D) | Q10 + Q11 pull `HOLD_G` low → U1 off. This latches naturally: `CM4_3V3` has gone, so HOLD can't come back when the battery recovers. |
+| **Watchdog reset / `reboot`** | `CM4_3V3` dips are bridged by the ~2 s `HOLD_G` hold (bench check 2). If the key is off, the rebooted Linux sees it and shuts down again. |
+
+##### Blocks and values
+
+**Supply — `3V3_AON` (always on, from constant 12 V)**
+
+| Ref | Part | Connection | Notes |
+|---|---|---|---|
+| U23 | TPS7B6933-Q1 (SOT-23-5), alt. LM2936-3.3 | IN `VIN_PROT`, OUT `3V3_AON` | **must take 40 V**: TV1 clamps at ~39 V, so 30 V parts (HT7533, TPS709) are out. ~15 µA Iq. |
+| C92 | 1 µF, 50 V, 0805 | `VIN_PROT` → GND at U23 IN | |
+| C93 | 2.2 µF, 0603 | `3V3_AON` → GND | check the LDO's minimum output capacitance |
+
+**A — key front end**
+
+| Ref | Part | Connection | Notes |
+|---|---|---|---|
+| — | J1.21 | `KEY_IN` | was unused (RS485_A). J1.22 stays unused. |
+| TV2 | SMBJ24A (C87268, as TV1) | K `KEY_IN`, A GND | same transient environment as `VIN` |
+| R82 | 100 kΩ (C25741) | `KEY_IN` → `KEY_SENSE` | mirrors `VIN_SENSE` (R42/R6) |
+| R83 | 8.2 kΩ (C25924) | `KEY_SENSE` → GND | 14.4 V → 1.09 V; 40 V → 3.03 V |
+| C94 | 10 nF | `KEY_SENSE` → GND | |
+| D24 | B5819W (C8598, as D4) | A `KEY_SENSE`, K `+3V3` | clamp |
+| U21.8 | ADC IN4 | `KEY_SENSE` | **remove U21.8 from the GND net** |
+| R84 | 100 kΩ | `KEY_IN` → `KEY_DIV` | |
+| R85 | 33 kΩ | `KEY_DIV` → GND | 12 V → 2.98 V; 40 V → 9.9 V (FET gates only, V<sub>GS</sub> max ±20 V); key seen from ~6 V worst case |
+| C95 | 100 nF | `KEY_DIV` → GND | ~2.5 ms filter |
+
+`KEY_SENSE` and `KEY_DIV` are **separate dividers on purpose**: U21 runs from `5V_MAIN`, so when the
+board is off its input ESD diode drags `KEY_SENSE` to ~0.5 V. `KEY_DIV` has to work while the board is
+off, because that is what wakes it.
+
+**B — enable OR** (all N-FETs: **BSS138**, SOT-23, 1 = G, 2 = S, 3 = D — same pinout as the 2N7002.
+V<sub>th</sub> ≤ 1.5 V matters here because the gates see ~3 V; a 2N7002 goes up to 2.5 V.)
+
+| Ref | G | D | S | Notes |
+|---|---|---|---|---|
+| Q4 | `OFF_G` | `EN1` | GND | holds U1 off; sinks R2's ~30 µA |
+| Q5 | `KEY_DIV` | `OFF_G` | GND | key → on |
+| Q6 | `HOLD_G` | `OFF_G` | GND | CM4 alive → on |
+| R86 | 1 MΩ | `OFF_G` → `3V3_AON` | | 3.3 µA only while Q5 or Q6 is on |
+
+**C — CM4 alive / hold**
+
+| Ref | Part | Connection | Notes |
+|---|---|---|---|
+| R87 | 1 kΩ | `CM4_3V3` → `ALIVE_R` | limits the charge current into C96 |
+| D25 | BAT54 or 1N4148W | A `ALIVE_R`, K `HOLD_G` | stops `HOLD_G` back-feeding the CM4 |
+| C96 | 1 µF, X7R | `HOLD_G` → GND | |
+| R88 | 2.2 MΩ | `HOLD_G` → GND | τ = 2.2 s; Q6 off after **1.5–2.9 s** (V<sub>th</sub> 1.5–0.8 V from ~3.0 V) |
+
+**E — restart a halted CM4 while the key is on**
+
+| Ref | Part | Connection | Notes |
+|---|---|---|---|
+| U24 | 74LVC1G14 (SOT-23-5: 2 A, 3 GND, 4 Y, 5 VCC) | A `HOLD_G`, Y `DEAD`, VCC `3V3_AON` | Schmitt, because `HOLD_G` decays slowly and a plain FET inverter would give a slow edge the differentiator can't use |
+| C97 | 100 nF | U24 VCC → GND | |
+| C98 | 100 nF | `DEAD` → `GEN_G` | edge → pulse |
+| R89 | 1 MΩ | `GEN_G` → GND | τ = 100 ms; Q7 on for ~80 ms (≫ the datasheet's 1 ms minimum) |
+| Q7 | BSS138 | G `GEN_G`, D `GLOBAL_EN`, S `GEN_MID` | |
+| Q8 | BSS138 | G `KEY_DIV`, D `GEN_MID`, S GND | only with the key on |
+
+`GLOBAL_EN` gets its pull-up inside the CM4 (100 k to +5 V), so it needs no resistor here. It is only
+ever pulled low, never driven, so nothing back-feeds the CM4 while it is off.
+
+**D — low-voltage cut-off (fit by default; DNP U25, Q10 and Q11 to drop it)**
+
+| Ref | Part | Connection | Notes |
+|---|---|---|---|
+| U25 | TLV3011 (SOT-23-6, open-drain, internal 1.242 V ref) | IN+ ← REF, IN− ← `VLV`, OUT `LV`, V+ `3V3_AON` | output released (`LV` high) when VIN is **below** threshold. **Check the pinout against the datasheet** before placing. |
+| C99 | 100 nF | U25 V+ → GND | |
+| R90 | 1 MΩ, 1% | `VIN_PROT` → `VLV` | |
+| R91 | 121 kΩ, 1% | `VLV` → GND | trip 1.242 × 1121/121 = **11.5 V** |
+| C100 | 10 µF | `VLV` → GND | τ ≈ 1.1 s |
+| R92 | 1 MΩ | `LV` → `3V3_AON` | |
+| Q9 | BSS138 | G `KEY_DIV`, D `NKEY`, S GND | discharges C101 at once at key-on |
+| R93 | 10 MΩ | `NKEY` → `3V3_AON` | |
+| C101 | 2.2 µF | `NKEY` → GND | τ = 22 s; Q11 on **6–13 s after key-off** |
+| Q10 | BSS138 | G `LV`, D `HOLD_G`, S `LV_MID` | |
+| Q11 | BSS138 | G `NKEY`, D `LV_MID`, S GND | |
+
+The key-off delay (`NKEY`) is what keeps a crank from tripping it: with the keyed line dropped and VIN
+at 8–9 V, nothing happens unless the key stays off for longer than 6 s. **Wire the keyed feed to
+IGN/RUN, not ACC**: ACC circuits drop out for the whole crank on most machines. No hysteresis is needed
+because the trip latches, as described above.
+
+**Parts added:** 3 ICs (U23–U25), 8 BSS138 (Q4–Q11; 4× dual BSS138DW in SOT-363 is an option),
+12 resistors (R82–R93), 10 capacitors (C92–C101), 2 diodes (D24, D25), 1 TVS (TV2). **None removed.**
+LCSC numbers for the new part types (TPS7B6933, TLV3011, 74LVC1G14, BSS138, BAT54, 1 M/2.2 M/10 M/
+121 k/33 k/1 k resistors) are **still to look up** — prefer JLC basic parts where they exist.
+
+**Nets touched on the existing schematic:** `EN1` (+Q4.D), `CM4_3V3` (+R87), `GLOBAL_EN` (+Q7.D, was
+pin 99 only), `VIN_PROT` (+U23, C92, R90), `+3V3` (+D24.K), U21.8 (off `GND`, onto `KEY_SENSE`), J1.21
+(new `KEY_IN`). Update `HARDWARE_AIO_NETLIST.md` §1, §3.3, §5.1 and `HARDWARE_AIO_BOM.md` from the next
+export, as usual.
+
+##### Standby draw (key off, board off) — replaces the S8c.4 estimate
+
+| Path | Current at 12.6 V |
+|---|---|
+| `VIN_SENSE` R42 + R6 (existing) | 116 µA |
+| U1 `EN1` via R2 → Q4 | 28 µA |
+| U23 LDO | ~15 µA |
+| LV divider R90 + R91 | 11 µA |
+| U25 + R92 (`LV` low while VIN is healthy) | ~6 µA |
+| U24, TPS54560 shutdown, FET leakage | ~3 µA |
+| **Total** | **≈ 180 µA ≈ 4.3 mAh/day ≈ 1.6 Ah/year** |
+
+`VIN_SENSE` is two-thirds of that. Raising it to 1 M / 82 k would save ~105 µA, but the ADC then sees
+a 76 kΩ source (only the 10 nF C30 would hold it up during the sample); it isn't worth it at this
+level.
+
+##### Linux side
+
+- **Bootloader EEPROM:** `POWER_OFF_ON_HALT=1` **and** `WAKE_ON_GPIO=0`. The first only takes effect
+  with the second, and GPIO3 is `WDT_EN` here anyway, so it must not be a wake source.
+- **Key monitor** (a small systemd service, separate from the app, so an app crash can't block it):
+  read U21 IN4. `KEY_SENSE` = 0.0758 × V<sub>key</sub>: **on above ~8 V (0.61 V), off below ~4 V
+  (0.30 V)**. Key off for 3 s → `systemctl poweroff`. This also covers booting with the key already
+  off (e.g. after a watchdog reset), which just shuts down again.
+- **UI:** "Shut down" with the key on restarts the unit (block E), so label it **Restart**, or hide it
+  and say the key is the off switch.
+- **Single-feed detection:** if `VIN_SENSE` collapses together with `KEY_SENSE`, both wires are on
+  switched 12 V (S8c.6 #1). Log it and warn at the next boot. This can't be told apart at boot, only
+  at the key-off.
+
+##### Install
+
+- **Two-wire (normal):** J1.1 → constant 12 V, fused at the battery; J1.21 → IGN/RUN, fused (1 A is
+  plenty: the load is ~0.2 mA).
+- **Single-wire fallback:** link **J1.21 to J1.1 in the harness plug**. The board then powers with the
+  key and cuts abruptly at key-off, which is today's behaviour. **With J1.21 left open the board never
+  turns on.** Put that on the silkscreen next to J1 and in the harness doc. (A solder jumper on the
+  board was considered and rejected: left closed on a two-wire install, it would hold the board on
+  permanently.)
+
+#### S8c.8 — Bench checks before layout is frozen
+
+Rig this up on the CM4 IO board or a breadboard with the real image first. Checks 1 and 3 are what
+the whole design rests on.
+
+1. **`CM4_3V3` falls at halt** with `POWER_OFF_ON_HALT=1`, `WAKE_ON_GPIO=0`. If it doesn't, the latch
+   never opens. Fallback: find another signal that drops at halt (`RUN_PG`, CM4 1.8 V out).
+2. **`CM4_3V3` across `reboot` and a U20 reset:** it stays up, or dips for less than 1.5 s.
+3. **A `GLOBAL_EN` pulse of ~80 ms restarts a halted CM4** while 5 V stays on.
+4. **U1 fully off with Q4 on:** `5V_MAIN` at 0 V, not idling at some leakage-fed level.
+5. **Standby draw** on the built board, compared with ≈ 180 µA.
+6. **LV trip** at 11.5 V ± 0.2 V, and the key-off delay of 6–13 s.
+7. **Crank test** on a real machine with the keyed feed on IGN: no dropouts, no false trips.
+8. **Measure the real shutdown time** (S8b.5 #1) — no longer a design constraint, but the key monitor
+   and UI messages should know it.
 
 ---
 
