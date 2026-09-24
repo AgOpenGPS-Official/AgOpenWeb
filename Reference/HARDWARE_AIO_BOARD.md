@@ -14,9 +14,9 @@
 > `HARDWARE_AIO_BOM.md` + `HARDWARE_AIO_BOM_JLCPCB.csv` (parts), `HARDWARE_AIO_LAYOUT_GUIDE.md`
 > (routing). Ref designators are the real EasyEDA ones and match across all of them.
 >
-> **⚠ PARKED 2026-09-23.** The prototype will be a **CM4 IO Board + AOW HAT** instead —
-> `HARDWARE_HAT_OPTION.md`. This board stays the candidate for a later single-board version; its
-> schematic, issue list and the S8c.7 latch design carry over to the HAT.
+> **⚠ PARKED 2026-09-23.** The prototype is a separate design, a HAT for the CM4 IO Board, with its
+> own complete document set (`HARDWARE_HAT_*.md`). This AiO document set is kept as it stood, as the
+> candidate for a later single-board version.
 
 ---
 

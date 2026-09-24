@@ -1,8 +1,8 @@
 # AgOpenWeb AiO Board — Issue lists
 
-> **⚠ The AiO board is PARKED (2026-09-23)** in favour of a CM4 IO Board + HAT prototype
-> (`HARDWARE_HAT_OPTION.md`). The schematic issues and S8c.7 still apply to the circuits the HAT
-> inherits; the layout issues (`P#`) are on hold.
+> **⚠ The AiO board is PARKED (2026-09-23).** The prototype is a separate CM4 IO Board + HAT design
+> with its own document set (`HARDWARE_HAT_*.md`). This file is kept as it stood; nothing here is
+> being worked.
 >
 > **The single place for open design issues**, one list for the schematic and one for the PCB layout.
 > Other docs refer to these IDs (`S#`, `P#`) instead of repeating the details.

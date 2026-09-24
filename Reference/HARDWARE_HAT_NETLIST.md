@@ -1,311 +1,304 @@
-# AgOpenWeb HAT — Schematic Checklist
+# AgOpenWeb HAT — Netlist
 
-> **What this is:** a step-by-step list of every part and net to draw for the HAT in **EasyEDA
-> Standard**, in drawing order. Tick each box as you go. When a netlist is exported, it gets checked
-> against this list.
->
-> **Sources:** `HARDWARE_HAT_OPTION.md` (the HAT design and its decisions),
-> `HARDWARE_AIO_NETLIST.md` (the AiO circuits being reused), and `HARDWARE_AIO_ISSUES.md` (the S#
-> fixes, **all already applied below**, so don't copy an AiO sheet without them).
->
-> **Status:** written 2026-09-23, before drawing starts. Values are from the docs, not yet exported
-> or built.
+Each section lists its parts (designator + LCSC part number), then every net and the pins it
+connects. Placement and the reasons behind the design are in `HARDWARE_HAT_DESIGN.md`.
 
-## 0. Conventions
-
-- **Keep the AiO net names.** In EasyEDA, net labels connect by name, so a sheet copied from the AiO
-  project hooks up on its own as long as these names exist:
-
-  | Net | On the HAT it is… |
-  |---|---|
-  | `VIN` | vehicle constant 12 V, after the harness fuse |
-  | `VIN_PROT` | after Q1 (reverse polarity) and TV1 |
-  | `12V_SW` | **new:** after the latch's P-FET, out to the IO board's J20 |
-  | `5V_MAIN` | **header pins 2 and 4**: the IO board's 5 V. No converter on the HAT. |
-  | `+3V3` | U3's output (from `5V_MAIN`) |
-  | `3V3_AON` | U23's output (from `VIN_PROT`): the always-on latch supply |
-
-- **Ref designators:** AiO parts keep their AiO refs (U7, R59…), and the S8c.7 latch keeps its refs
-  (Q4–Q11, R82–R93…). New HAT-only parts are numbered from **Q12 / R94 / C102 / D26**, with named
-  connectors. Renumbering at the end is fine: the checklist only needs to be matched once.
-- **Parts:** LCSC numbers for the new parts are in `HARDWARE_HAT_OPTION.md` §7a. AiO parts keep their
-  AiO BOM numbers (`HARDWARE_AIO_BOM.md`).
-- **`[ ]`** = to draw, **`[x]`** = drawn.
+**Pin notation:**
+- `R3.1` = R3 pin 1 (resistors and capacitors: either end)
+- diodes: `.K` / `.A` (cathode / anode)
+- MOSFETs: `.G` `.D` `.S`
+- ICs and connectors: pin numbers
 
 ---
 
-## Step 1 — Start the project and the board outline
+## 1. Host connectors
 
-A Pi 3 HAT footprint from the EasyEDA user library is a good starting point (the HAT mechanical spec
-hasn't changed since the Pi B+), but **check it against the IO board numbers** (HAT doc §3.1) before
-trusting it:
+| Ref | Part # |
+|---|---|
+| J1 | C22373925 |
+| J2 | C22373889 |
+| J8 | C146690 (optional) |
 
-- [ ] Holes: 4 × M2.5 (2.7 mm) at **(3.5, 3.5), (61.5, 3.5), (3.5, 52.5), (61.5, 52.5)**, measured from
-      the HAT's top-left corner.
-- [ ] Header pin 1 at **(8.37, 4.82)**, pin 2 at (8.37, 2.28), pin 40 at (56.63, 2.28). Templates put it
-      at y 4.77 / 2.23: 0.05 mm off, fine either way.
-- [ ] **The header must be a female socket on the BOTTOM layer.** Templates usually have a male header
-      on top. Swap the part, put it on the bottom, then re-check pin 1 in top view (EasyEDA mirrors
-      bottom footprints).
-- [ ] **Delete the camera/display cable slots** if the template has them.
-- [ ] **Extend the outline upward by ~16 mm** for the GPS (HAT doc §3.4.0): the top edge moves from
-      y 0 to y ≈ −16. Keep 3 mm corner radii.
-- [ ] Right-hand extension: **not needed** unless the layout runs short (up to 25 mm, y 0–35 only,
-      with the Ethernet/USB notch; HAT doc §3.3).
+J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). The socket bodies are fitted on the underside.
 
-## Step 2 — Power in and the key/hold latch (sheet: Power)
-
-### 2.1 Connectors
-
-- [ ] **Recommendation, confirm before drawing: bring vehicle power in on its own connector, not the
-      ribbon.**
-  - The ribbon's pin 1 was the AiO's `VIN`, but one 28 AWG ribbon conductor is ~1 A, and the HAT
-    passes **~2 A peak** (HAT doc §4.3).
-  - **`J_PWR`**, JST-VH 2-pin (C160315): pin 1 `VIN`, pin 2 `GND`. Discrete wires run from the panel
-    Deutsch connector.
-  - The ribbon's pin 1 is then left unconnected (step 6).
-- [ ] **`J_12V`**, JST-VH 2-pin (C160315): pin 1 `12V_SW`, pin 2 `GND`. This is the lead to the IO board's
-      J20 (pin 1 = +12 V, pins 2 + 3 = GND; **not** the floppy colour convention).
-
-### 2.2 Input protection (copy AiO §1.1 **with S1, S2 and S13 fixed**)
-
-- [ ] **Q1** IRFR5305 (C2624): **drain (tab, pad 2) → `VIN`, source (pad 3) → `VIN_PROT`**, gate → `PGATE`.
-- [ ] **R40** 100 k: `VIN_PROT` → `PGATE`.
-- [ ] **R47** 10 k: `PGATE` → GND.
-- [ ] **D2** BZT52C12: cathode → `VIN_PROT` (Q1 source), anode → `PGATE`.
-- [ ] **TV1** SMBJ24A: cathode → `VIN_PROT`, **anode → GND** (S13: not `PGATE`).
-- [ ] **C1, C2** 10 µF 50 V 1206 on `VIN_PROT`. C6/C7 (470 µF) **are not needed**: they were U1's
-      hold-up, and the IO board has its own input bulk.
-
-### 2.3 Always-on supply
-
-- [ ] **U23** TPS7B6933QDBVR: pin 1 IN → `VIN_PROT`, pins 3 + 4 → GND, pin 5 OUT → `3V3_AON`, pin 2 NC.
-- [ ] **C92** 1 µF 50 V 0805 on the input. **C93 10 µF** 0603 on the output (needs ≥ 2.2 µF *effective*).
-
-### 2.4 Key front end (S8c.7 block A)
-
-- [ ] **TV2** SMBJ24A: `KEY_IN` → GND.
-- [ ] **R82** 100 k `KEY_IN` → `KEY_SENSE`; **R83** 8.2 k `KEY_SENSE` → GND; **C94** 10 nF `KEY_SENSE` → GND.
-- [ ] **D24** B5819W: anode `KEY_SENSE`, cathode `+3V3`.
-- [ ] **R84** 100 k `KEY_IN` → `KEY_DIV`; **R85** 33 k `KEY_DIV` → GND; **C95** 100 nF `KEY_DIV` → GND.
-- [ ] `KEY_SENSE` goes to ADC IN4 (step 4); `KEY_IN` comes from the ribbon, pin 21 (step 6).
-
-### 2.5 Enable OR → P-FET switch (S8c.7 block B, **HAT version**: HAT doc §4.2)
-
-On the HAT the latch switches **12 V to the IO board**. It no longer drives U1's `EN`, so
-**Q4, R86 and `OFF_G` are not drawn.**
-
-- [ ] **Q12** DMP6023LE (C154901): **source → `VIN_PROT`, drain → `12V_SW`**, gate → `PFET_G`.
-- [ ] **R94** 100 k: `PFET_G` → `VIN_PROT` (holds it off).
-- [ ] **R95** 47 k: `PFET_G` → `ON_N`. At 12 V this gives V<sub>GS</sub> ≈ −8 V.
-- [ ] **D26** BZT52C12: cathode → `VIN_PROT`, anode → `PFET_G`. Clamps V<sub>GS</sub> at −12 V during jump starts.
-- [ ] **C102** 10 nF 50 V: `PFET_G` → `12V_SW`. Soft start, so it doesn't slam the IO board's input caps.
-- [ ] **Q5** BSS138P: gate `KEY_DIV`, drain `ON_N`, source GND. The key turns it on.
-- [ ] **Q6** BSS138P: gate `HOLD_G`, drain `ON_N`, source GND. A running CM4 holds it on.
-
-### 2.6 CM4-alive hold (block C)
-
-- [ ] **R87** 1 k: `CM4_3V3` → `ALIVE_R`. `CM4_3V3` = **header pins 1 and 17** (step 3).
-- [ ] **D25** 1N4148W: anode `ALIVE_R`, cathode `HOLD_G`.
-- [ ] **C96** 1 µF X7R: `HOLD_G` → GND. **R88** 2.2 M: `HOLD_G` → GND. Hold ≈ 1.2–2.6 s.
-
-### 2.7 Restart pulse (block E)
-
-- [ ] **U24** SN74LVC1G14DBVR: pin 2 A ← `HOLD_G`, pin 4 Y → `DEAD`, pin 5 VCC → `3V3_AON`, pin 3 GND,
-      pin 1 NC.
-- [ ] **C97** 100 nF on U24's VCC.
-- [ ] **C98** 100 nF: `DEAD` → `GEN_G`. **R89** 1 M: `GEN_G` → GND.
-- [ ] **Q7** BSS138P: gate `GEN_G`, drain **`GLOBAL_EN`**, source `GEN_MID`.
-- [ ] **Q8** BSS138P: gate `KEY_DIV`, drain `GEN_MID`, source GND.
-- [ ] `GLOBAL_EN` goes to J1 socket pin 1 (step 3).
-
-### 2.8 Low-voltage cut-off (block D)
-
-- [ ] **U25** TLV3011AIDBVR: 1 OUT → `LV`, 2 V− → GND, 3 IN+ ← REF (pin 5), 4 IN− ← `VLV`,
-      6 V+ → `3V3_AON`. **C99** 100 nF on V+.
-- [ ] **R90** 1 M 1% `VIN_PROT` → `VLV`; **R91** 121 k 1% `VLV` → GND; **C100** 10 µF `VLV` → GND.
-      Trip point 11.5 V.
-- [ ] **R92** 1 M: `LV` → `3V3_AON`.
-- [ ] **Q9** BSS138P: gate `KEY_DIV`, drain `NKEY`, source GND.
-- [ ] **R93** 10 M: `NKEY` → `3V3_AON`; **C101** 2.2 µF: `NKEY` → GND. Delay of 6–13 s after key-off.
-- [ ] **Q10** BSS138P: gate `LV`, drain `HOLD_G`, source `LV_MID`.
-- [ ] **Q11** BSS138P: gate `NKEY`, drain `LV_MID`, source GND.
-
-### 2.9 Voltage sense (AiO §1.6)
-
-- [ ] **R42** 100 k `VIN_PROT` → `VIN_SENSE`; **R6** 8.2 k `VIN_SENSE` → GND; **C30** 10 nF.
-- [ ] **D4** B5819W: anode `VIN_SENSE`, cathode `+3V3`. `VIN_SENSE` goes to ADC IN2 (step 4).
-
-### 2.10 Logic 3.3 V (AiO §1.4)
-
-- [ ] **U3** RT9080-33GJ5: VIN + EN → `5V_MAIN`, VOUT → `+3V3`. **C54, C63** 1 µF in; **C55, C62**
-      1 µF + **C67** 10 µF out.
-
-## Step 3 — Pi header and J1 socket (sheet: Host)
-
-### 3.1 `J_HDR`: 2 × 20 female, 8.5 mm (C22373925), bottom layer
+**J1**
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
 | 1 | `CM4_3V3` | | 2 | `5V_MAIN` |
-| 3 | `SW_REMOTE` (GPIO2) | | 4 | `5V_MAIN` |
-| 5 | `WDT_EN` (GPIO3) | | 6 | GND |
-| 7 | `RS232_2_TX` (GPIO4) | | 8 | `CON_TX` (GPIO14) |
-| 9 | GND | | 10 | `CON_RX` (GPIO15) |
-| 11 | `CAN2_INT` (GPIO17) | | 12 | `PWM_MOTA` (GPIO18) |
-| 13 | `CAN3_INT` (GPIO27) | | 14 | GND |
-| 15 | `WDT_WDI` (GPIO22) | | 16 | `MOT_DIR` (GPIO23) |
-| 17 | `CM4_3V3` | | 18 | `STEER_EN` (GPIO24) |
-| 19 | `SPI0_MOSI` (GPIO10) | | 20 | GND |
-| 21 | `SPI0_MISO` (GPIO9) | | 22 | `NCS_CAN3` (GPIO25) |
-| 23 | `SPI0_SCLK` (GPIO11) | | 24 | `NCS_CAN1` (GPIO8) |
-| 25 | GND | | 26 | `NCS_CAN2` (GPIO7) |
-| 27 | `RS232_1_TX` (GPIO0) | | 28 | `RS232_1_RX` (GPIO1) |
-| 29 | `RS232_2_RX` (GPIO5) | | 30 | GND |
-| 31 | `PIEZO_PWM` (GPIO6) | | 32 | `GPS_TX` (GPIO12) |
-| 33 | `GPS_RX` (GPIO13) | | 34 | GND |
-| 35 | `SW_WORK` (GPIO19) | | 36 | `CAN1_INT` (GPIO16) |
-| 37 | `NCS_ADC` (GPIO26) | | 38 | `SW_ENGAGE` (GPIO20) |
-| 39 | GND | | 40 | `LED_DATA` (GPIO21) |
+| 3 | `SW_REMOTE` | | 4 | `5V_MAIN` |
+| 5 | `WDT_EN` | | 6 | GND |
+| 7 | `RS232_2_TX` | | 8 | `CON_TX` |
+| 9 | GND | | 10 | `CON_RX` |
+| 11 | `CAN2_INT` | | 12 | `PWM_MOTA` |
+| 13 | `CAN3_INT` | | 14 | GND |
+| 15 | `WDT_WDI` | | 16 | `MOT_DIR` |
+| 17 | `CM4_3V3` | | 18 | `STEER_EN` |
+| 19 | `SPI0_MOSI` | | 20 | GND |
+| 21 | `SPI0_MISO` | | 22 | `NCS_CAN3` |
+| 23 | `SPI0_SCLK` | | 24 | `NCS_CAN1` |
+| 25 | GND | | 26 | `NCS_CAN2` |
+| 27 | `RS232_1_TX` | | 28 | `RS232_1_RX` |
+| 29 | `RS232_2_RX` | | 30 | GND |
+| 31 | `PIEZO_PWM` | | 32 | `GPS_TX` |
+| 33 | `GPS_RX` | | 34 | GND |
+| 35 | `SW_WORK` | | 36 | `CAN1_INT` |
+| 37 | `NCS_ADC` | | 38 | `SW_ENGAGE` |
+| 39 | GND | | 40 | `LED_DATA` |
 
-- [ ] All 40 pins drawn as above. This includes the **S4 swap**: `LED_DATA` on GPIO21 (pin 40) and
-      `SW_REMOTE` on GPIO2 (pin 3).
-- [ ] **Pins 1/17 are `CM4_3V3`, not `+3V3`.** They feed only the hold circuit (R87). Don't tie them to
-      U3's rail.
-- [ ] **Pins 2/4 are `5V_MAIN`.** Everything that ran from the AiO's `5V_MAIN` now runs from here.
+**J2:** 1 `GLOBAL_EN`, 2 GND, 3 `RUN_PG`
 
-### 3.2 `J_J1`: 1 × 3 female, 8.5 mm (C22373889), bottom layer, at HAT (18.04, 32.00) — **off-grid**
+**J8:** 1 GND, 2 `CON_TX`, 3 `CON_RX`
 
-- [ ] Pin 1 → `GLOBAL_EN` (Q7 drain), pin 2 → GND, pin 3 → `RUN_PG` (R81, step 7).
+---
 
-### 3.3 Console
+## 2. Power and latch
 
-- [ ] **H1** 1 × 3 (optional): 1 GND, 2 `CON_TX`, 3 `CON_RX`. The IO board has USB and HDMI for
-      bring-up, so this can be left out.
+| Ref | Part # |
+|---|---|
+| J4, J5 | C160315 |
+| Q1 | C2624 |
+| Q2 | C154901 |
+| Q3–Q9 | C75547 |
+| U1 | C781801 |
+| U2 | C7835 |
+| U3 | C2870632 |
+| U4 | C841192 |
+| TV1, TV2 | C908801 |
+| D1, D3 | C19077410 |
+| D2, D5 | C8598 |
+| D4 | C81598 |
+| R1, R11, R12, R14 | C26083 |
+| R2, R3, R5, R7, R16 | C25741 |
+| R4, R17 | C25924 |
+| R6 | C25779 |
+| R8 | C25792 |
+| R9 | C11702 |
+| R10 | C2998080 |
+| R13 | C11693 |
+| R15 | C2933065 |
+| C1, C2 | C13585 |
+| C3 | C28323 |
+| C4, C12 | C96446 |
+| C5, C7, C14 | C15195 |
+| C6, C9, C10, C11 | C1525 |
+| C8 | C59782 |
+| C13 | C23630 |
+| C15, C16, C17, C18 | C15849 |
+| C19 | C15850 |
 
-## Step 4 — SPI peripherals (sheet: SPI) — copy AiO §3 **with S6**
+| Net | Pins |
+|---|---|
+| `VIN` | J4.1, Q1.D |
+| `VIN_PROT` | Q1.S, R1.1, D1.K, TV1.K, C1.1, C2.1, C3.1, U1.1, Q2.S, R7.1, D3.K, R12.1, R16.1 |
+| `PGATE` | Q1.G, R1.2, R2.1, D1.A |
+| `3V3_AON` | U1.5, C4.1, U2.5, C9.1, U3.6, C11.1, R14.1, R15.1 |
+| `KEY_IN` | J3.21, TV2.K, R3.1, R5.1 |
+| `KEY_SENSE` | R3.2, R4.1, C5.1, D2.A, U8.8 |
+| `KEY_DIV` | R5.2, R6.1, C6.1, Q3.G, Q6.G, Q7.G |
+| `PFET_G` | Q2.G, R7.2, R8.1, D3.A, C7.1 |
+| `ON_N` | R8.2, Q3.D, Q4.D |
+| `12V_SW` | Q2.D, C7.2, J5.1 |
+| `CM4_3V3` | J1.1, J1.17, R9.1 |
+| `ALIVE_R` | R9.2, D4.A |
+| `HOLD_G` | D4.K, C8.1, R10.1, Q4.G, U2.2, Q8.D |
+| `DEAD` | U2.4, C10.1 |
+| `GEN_G` | C10.2, R11.1, Q5.G |
+| `GLOBAL_EN` | Q5.D, J2.1 |
+| `GEN_MID` | Q5.S, Q6.D |
+| `VLV` | R12.2, R13.1, C12.1, U3.4 |
+| `U3_REF` | U3.5, U3.3 |
+| `LV` | U3.1, R14.2, Q8.G |
+| `NKEY` | Q7.D, R15.2, C13.1, Q9.G |
+| `LV_MID` | Q8.S, Q9.D |
+| `VIN_SENSE` | R16.2, R17.1, C14.1, D5.A, U8.6 |
+| `5V_MAIN` | U4.1, U4.3, C15.1, C16.1 |
+| `+3V3` | U4.5, C17.1, C18.1, C19.1, D2.K, D5.K |
+| GND | J4.2, J5.2, R2.2, TV1.A, TV2.A, C1.2, C2.2, C3.2, U1.3, U1.4, C4.2, R4.2, C5.2, R6.2, C6.2, Q3.S, Q4.S, C8.2, R10.2, U2.3, C9.2, R11.2, Q6.S, U3.2, C11.2, R13.2, C12.2, Q7.S, C13.2, Q9.S, R17.2, C14.2, U4.2, C15.2, C16.2, C17.2, C18.2, C19.2 |
+| no connect | U1.2, U2.1, U4.4 |
 
-- [ ] Shared bus: `SPI0_SCLK` / `SPI0_MOSI` / `SPI0_MISO` → U7/U8/U9 pins 9/10/11 and U21 pins 16/14/15.
-- [ ] **R74** 10 k `NCS_CAN3` → `+3V3`; **R75** 10 k `NCS_ADC` → `+3V3` (GPIO25/26 default to pull-low).
-- [ ] **U7/U8/U9** MCP251863T-E/SS, n = 1/2/3, each wired as:
-  - VIO (1) + VDD (14) → `+3V3`; VCC (25) → `5V_MAIN`
-  - **STBY (5) → GND**
-  - CANL (3) → `CANn_L`; CANH (4) → `CANn_H`
-  - nCS (13) → `NCS_CANn`; nINT (19) → `CANn_INT`
-  - **link TXCAN (15) → TXD (23) and RXD (28) → RXCAN (16) with wires on the schematic** (nets `Un_15` / `Un_16`, as on the AiO). The package doesn't connect them internally.
-  - OSC1 (21) ← `CAN_CLKn`; VSS (22) / GND (24) → GND
-  - decoupling: 2 × 100 nF on `+3V3`, 1 × 100 nF on `5V_MAIN`
-- [ ] **X1** 40 MHz oscillator: EN (1) + VDD (4) → `+3V3`, OUT (3) → `CAN_CLK`. **R64/R65/R66** 33 Ω
-      from `CAN_CLK` to `CAN_CLK1/2/3`.
-- [ ] **D5/D6/D7** NUP2105L: pins 1/2 on `CANn_H` / `CANn_L`, pin 3 → GND.
-- [ ] **S6 termination:** **R9/R10/R11** 120 Ω in series with **SJ_CAN1/2/3_TERM** (solder jumper)
-      across each `CANn_H` / `CANn_L`.
-- [ ] **U21** ADC128S102:
-  - CS (1) ← `NCS_ADC`; VA (2) → `5V_MAIN`; VD (13) → `+3V3`; AGND/DGND (3/12) → GND
-  - IN0 (4) ← `WAS_IN_AA` (R72 1 k + C90 100 nF from `WAS_IN`)
-  - IN1 (5) ← `ISENSE_IN_AA` (R73 1 k + C91 100 nF from `ISENSE_IN`)
-  - IN2 (6) ← `VIN_SENSE`
-  - **IN4 (8) ← `KEY_SENSE`**
-  - **IN3 (7), IN5–IN7 (9–11) → GND.** IN3 was earmarked for the AiO eFuse's `PI_FLT`; the HAT has no eFuse.
+---
 
-## Step 5 — Serial and GPS (sheet: Serial) — copy AiO §4.1; GPS is new
+## 3. CAN and ADC
 
-- [ ] **U12** SP3232EEN, exactly as AiO §4.1:
-  - T1IN ← `RS232_1_TX`, R1OUT → `RS232_1_RX`
-  - T2IN ← `RS232_2_TX`, R2OUT → `RS232_2_RX`
-  - line side `RS232_n_TXD` / `RS232_n_RXD` with **D9–D12** SMAJ12CA
-  - C44–C47 100 nF; VCC → `+3V3`, C64/C66 100 nF
-- [ ] **`H981`** 1 × 8 female 2.54 (C27438), the EMAX UM981:
-  - 1 GND, 2 `5V_MAIN`, **7 → `GPS_RX`** (module TX1), **8 ← `GPS_TX`** (module RX1)
-  - 3 (EV), 4/5 (TX2/RX2), 6 (PPS): no connection
-- [ ] **`H14`** 2 × 14 female 2.0 (C22436146), the UM982EB:
-  - **6 → `5V_MAIN`**; 14, 17, 20, 22 → GND
-  - **15 → `GPS_RX`** (module TX1), **16 ← `GPS_TX`** (module RX1)
-  - all others: no connection
-- [ ] Only one GPS board is fitted at a time. Both drive `GPS_RX`, so **never fit both**: say so on
-      the silkscreen.
-- [ ] Standoff holes: M3 at the HAT doc §3.4.0 positions (holes A–F; A is shared).
+| Ref | Part # |
+|---|---|
+| U5, U6, U7 | C5226885 |
+| U8 | C179666 |
+| X1 | C5203551 |
+| D6, D7, D8 | C284104 |
+| R18, R19 | C25744 |
+| R20, R21, R22 | C2906868 |
+| R23, R24, R25 | C2909315 |
+| R26, R27 | C11702 |
+| C20–C33 | C1525 |
+| SJ1, SJ2, SJ3 | solder jumper (open) |
 
-## Step 6 — Field I/O (sheet: Field) — copy AiO §5 **with S11**
+| Net | Pins |
+|---|---|
+| `SPI0_SCLK` | J1.23, U5.9, U6.9, U7.9, U8.16 |
+| `SPI0_MOSI` | J1.19, U5.10, U6.10, U7.10, U8.14 |
+| `SPI0_MISO` | J1.21, U5.11, U6.11, U7.11, U8.15 |
+| `NCS_CAN1` | J1.24, U5.13 |
+| `NCS_CAN2` | J1.26, U6.13 |
+| `NCS_CAN3` | J1.22, U7.13, R18.1 |
+| `NCS_ADC` | J1.37, U8.1, R19.1 |
+| `CAN1_INT` | J1.36, U5.19 |
+| `CAN2_INT` | J1.11, U6.19 |
+| `CAN3_INT` | J1.13, U7.19 |
+| `U5_TX` | U5.15, U5.23 |
+| `U5_RX` | U5.16, U5.28 |
+| `U6_TX` | U6.15, U6.23 |
+| `U6_RX` | U6.16, U6.28 |
+| `U7_TX` | U7.15, U7.23 |
+| `U7_RX` | U7.16, U7.28 |
+| `CAN_CLK` | X1.3, R20.1, R21.1, R22.1 |
+| `CAN_CLK1` | R20.2, U5.21 |
+| `CAN_CLK2` | R21.2, U6.21 |
+| `CAN_CLK3` | R22.2, U7.21 |
+| `CAN1_H` | U5.4, D6.1, R23.1, J3.15 |
+| `CAN1_L` | U5.3, D6.2, SJ1.2, J3.14 |
+| `CAN1_TERM` | R23.2, SJ1.1 |
+| `CAN2_H` | U6.4, D7.1, R24.1, J3.17 |
+| `CAN2_L` | U6.3, D7.2, SJ2.2, J3.16 |
+| `CAN2_TERM` | R24.2, SJ2.1 |
+| `CAN3_H` | U7.4, D8.1, R25.1, J3.19 |
+| `CAN3_L` | U7.3, D8.2, SJ3.2, J3.18 |
+| `CAN3_TERM` | R25.2, SJ3.1 |
+| `WAS_IN_AA` | R26.2, C32.1, U8.4 |
+| `ISENSE_IN_AA` | R27.2, C33.1, U8.5 |
+| `+3V3` | U5.1, U5.14, U6.1, U6.14, U7.1, U7.14, X1.1, X1.4, U8.13, R18.2, R19.2, C20.1, C21.1, C23.1, C24.1, C26.1, C27.1, C29.1, C31.1 |
+| `5V_MAIN` | U5.25, U6.25, U7.25, U8.2, C22.1, C25.1, C28.1, C30.1 |
+| GND | U5.5, U5.22, U5.24, U6.5, U6.22, U6.24, U7.5, U7.22, U7.24, X1.2, D6.3, D7.3, D8.3, U8.3, U8.7, U8.9, U8.10, U8.11, U8.12, C20.2–C33.2 |
+| no connect | U5, U6, U7 pins 2, 6, 7, 8, 12, 17, 18, 20, 26, 27 |
 
-### 6.1 `J_FIELD`: 2 × 13 latched IDC header (C7431126)
+`R26.1` and `R27.1` are in section 5 (`WAS_IN`, `ISENSE_IN`). `U8.6` (`VIN_SENSE`) and `U8.8`
+(`KEY_SENSE`) are in section 2.
 
-Same pin numbers as the AiO's J1, so one harness serves both boards. Only pins 1 and 21 change.
+---
+
+## 4. Serial and GNSS
+
+| Ref | Part # |
+|---|---|
+| U9 | C9378 |
+| C34–C39 | C1525 |
+| D9–D12 | C134948 |
+| J6 | C27438 |
+| J7 | C22436146 |
+
+| Net | Pins |
+|---|---|
+| `RS232_1_TX` | J1.27, U9.11 |
+| `RS232_1_RX` | J1.28, U9.12 |
+| `RS232_2_TX` | J1.7, U9.10 |
+| `RS232_2_RX` | J1.29, U9.9 |
+| `RS232_1_TXD` | U9.14, D9.1, J3.23 |
+| `RS232_1_RXD` | U9.13, D10.1, J3.24 |
+| `RS232_2_TXD` | U9.7, D11.1, J3.25 |
+| `RS232_2_RXD` | U9.8, D12.1, J3.26 |
+| `SP_C1P` | U9.1, C34.1 |
+| `SP_C1N` | U9.3, C34.2 |
+| `SP_C2P` | U9.4, C35.1 |
+| `SP_C2N` | U9.5, C35.2 |
+| `SP_VP` | U9.2, C36.1 |
+| `SP_VN` | U9.6, C37.1 |
+| `GPS_TX` | J1.32, J6.8, J7.16 |
+| `GPS_RX` | J1.33, J6.7, J7.15 |
+| `+3V3` | U9.16, C38.1, C39.1 |
+| `5V_MAIN` | J6.2, J7.6 |
+| GND | U9.15, C36.2, C37.2, C38.2, C39.2, D9.2, D10.2, D11.2, D12.2, J6.1, J7.14, J7.17, J7.20, J7.22 |
+| no connect | J6.3, J6.4, J6.5, J6.6; J7.1–5, J7.7–13, J7.18, J7.19, J7.21, J7.23–28 |
+
+---
+
+## 5. Field I/O
+
+| Ref | Part # |
+|---|---|
+| J3 | C7431126 |
+| D13, D14 | C2905646 |
+| D15, D16, D17 | C283886 |
+| D18 | C558418 |
+| R28, R29, R30 | C11702 |
+| R31, R32, R33 | C25744 |
+| R34, R35, R36 | C25104 |
+| C40, C41, C42 | C1525 |
+
+**J3**
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
-| 1 | **NC** (was `VIN`; power is on `J_PWR`) | | 14 | `CAN1_L` |
+| 1 | no connect | | 14 | `CAN1_L` |
 | 2 | GND | | 15 | `CAN1_H` |
-| 3 | `5V_MAIN` (WAS supply) | | 16 | `CAN2_L` |
+| 3 | `5V_MAIN` | | 16 | `CAN2_L` |
 | 4 | `WAS_IN` | | 17 | `CAN2_H` |
 | 5 | GND | | 18 | `CAN3_L` |
 | 6 | `ISENSE_IN` | | 19 | `CAN3_H` |
 | 7 | `SW_WORK_IN` | | 20 | GND |
-| 8 | `SW_ENGAGE_IN` | | **21** | **`KEY_IN`** (S8c.7) |
-| 9 | `SW_REMOTE_IN` | | 22 | NC |
+| 8 | `SW_ENGAGE_IN` | | 21 | `KEY_IN` |
+| 9 | `SW_REMOTE_IN` | | 22 | no connect |
 | 10 | `STEER_PWM` | | 23 | `RS232_1_TXD` |
 | 11 | `STEER_DIR` | | 24 | `RS232_1_RXD` |
 | 12 | `STEER_EN_OUT` | | 25 | `RS232_2_TXD` |
 | 13 | GND | | 26 | `RS232_2_RXD` |
 
-- [ ] Drawn as above. IDC pin n = ribbon conductor n, so each CAN H/L pair is on neighbouring
-      conductors.
-- [ ] **WAS / current inputs:** **D13** ESD9B5V on `WAS_IN`, **D16** ESD9B5V on `ISENSE_IN`, then
-      R72/R73 as in step 4.
-- [ ] **Switch inputs** (contact-to-ground only, S11), each wired as:
-  - line side: SMAJ16A to GND, then 1 k in series
-  - logic side: 10 k to `+3V3`, 100 nF to GND, and one SRV05-4 channel
-  
-  | Input | Line net | TVS | Series R | Logic net | Pull-up | Cap | SRV05-4 |
-  |---|---|---|---|---|---|---|---|
-  | Work | `SW_WORK_IN` | D14 | R58 | `SW_WORK` | R59 | C72 | D15.1 |
-  | Engage | `SW_ENGAGE_IN` | D17 | R60 | `SW_ENGAGE` | R61 | C73 | D15.3 |
-  | Remote | `SW_REMOTE_IN` | D18 | R70 | `SW_REMOTE` | R69 | C83 | D15.4 |
-  
-  D15: pin 5 → `+3V3`, pin 2 → GND.
-- [ ] **Steering outputs:** R27 330 Ω `PWM_MOTA` → `STEER_PWM`; R28 330 Ω `MOT_DIR` → `STEER_DIR`;
-      R29 330 Ω `STEER_EN` → `STEER_EN_OUT`.
+| Net | Pins |
+|---|---|
+| `WAS_IN` | J3.4, D13.1, R26.1 |
+| `ISENSE_IN` | J3.6, D14.1, R27.1 |
+| `SW_WORK_IN` | J3.7, D15.K, R28.1 |
+| `SW_WORK` | R28.2, R31.1, C40.1, D18.1, J1.35 |
+| `SW_ENGAGE_IN` | J3.8, D16.K, R29.1 |
+| `SW_ENGAGE` | R29.2, R32.1, C41.1, D18.3, J1.38 |
+| `SW_REMOTE_IN` | J3.9, D17.K, R30.1 |
+| `SW_REMOTE` | R30.2, R33.1, C42.1, D18.4, J1.3 |
+| `PWM_MOTA` | J1.12, R34.1 |
+| `STEER_PWM` | R34.2, J3.10 |
+| `MOT_DIR` | J1.16, R35.1 |
+| `STEER_DIR` | R35.2, J3.11 |
+| `STEER_EN` | J1.18, R36.1 |
+| `STEER_EN_OUT` | R36.2, J3.12 |
+| `+3V3` | R31.2, R32.2, R33.2, D18.5 |
+| GND | J3.2, J3.5, J3.13, J3.20, D13.2, D14.2, D15.A, D16.A, D17.A, C40.2, C41.2, C42.2, D18.2 |
+| no connect | J3.1, J3.22, D18.6 |
 
-## Step 7 — Supervision and HMI (sheet: HMI) — copy AiO §6 **with S3, S9, S10**
+---
 
-- [ ] **U20** STWD100**NY**WY3F (1.6 s, S3):
-  - 1 WDO → `RUN_PG_G`; 2 GND
-  - 3 EN ← `WDT_EN`, with **R63** 4.7 k → `+3V3`
-  - 4 WDI ← `WDT_WDI`; 5 VCC → `+3V3`, with C84 1 µF + C85 100 nF
-- [ ] **R81** 330 Ω: `RUN_PG_G` → **`RUN_PG`** (S10). `RUN_PG` = J1 socket pin 3.
-- [ ] **SW1** reset button: `RUN_PG_G` → GND. It sits on the far side of R81, as S10 requires. Optional,
-      since the HAT covers the IO board anyway.
-- [ ] **LEDs:**
-  - **U22** SN74AHCT1G125: A ← `LED_DATA`, OE̅ → GND, VCC → `5V_MAIN`, Y → `LED_DATA_OUT`
-  - **R71** 330 Ω → `LED_DATA_IN` → D19 DIN; chain D19 → D20 → D21 → D22 (SK6812SIDE-A), each on `5V_MAIN`
-  - C86–C89 100 nF, C80 1 µF, C74 100 nF
-- [ ] **Piezo:**
-  - **R33** 100 Ω `PIEZO_PWM` → `PZ_GATE`; **R62** 10 k `PZ_GATE` → GND
-  - **Q2** 2N7002: G `PZ_GATE`, D `PZ_DRAIN`
-  - **BUZZER1** between `5V_MAIN` and `PZ_DRAIN`, with **R32** 470 Ω across it
-- [ ] **Power LED (S9): not drawn.** `PI_LED_nPWR` isn't on the 40-pin header, and the IO board has
-      its own power LED. Q3, R79, R80 and D23 are dropped.
+## 6. Watchdog, LEDs, piezo
 
-## Step 8 — Not carried over from the AiO board (don't copy these)
+| Ref | Part # |
+|---|---|
+| U10 | C46043 |
+| U11 | C7484 |
+| D19–D22 | C5378721 |
+| Q10 | C8545 |
+| SW1 | C221889 (optional) |
+| BZ1 | C76871 |
+| R37 | C2906869 |
+| R38, R39 | C25104 |
+| R40 | C25076 |
+| R41 | C25744 |
+| R42 | C25117 |
+| C43, C50 | C15849 |
+| C44–C49 | C1525 |
 
-U1 buck, L2, D1, C6/C7, C32, R1–R5, R7, R48 · U2 eFuse, R4, R43, R51, C29 · U4 NVMe buck, L3 and
-its caps · U5 M.2 · L1 magjack · CN1–CN3 CM4 connectors · H3 USB/rpiboot · J1 ATS13 (replaced by
-`J_FIELD`) · P2 ArduSimple RTK2B · Q3/R79/R80/D23 power LED.
-
-## Step 9 — Before exporting
-
-- [ ] ERC clean, apart from the deliberate no-connects on H981 / H14 / J_FIELD 1 and 22.
-- [ ] Each of these nets has the expected number of pins. Export the netlist and send it for checking.
-
-  | Net | Pins |
-  |---|---|
-  | `GPS_RX` | 3: header 33, H981.7, H14.15 |
-  | `GPS_TX` | 3: header 32, H981.8, H14.16 |
-  | `GLOBAL_EN` | 2: J_J1.1, Q7.D |
-  | `RUN_PG` | 2: J_J1.3, R81 |
-  | `CM4_3V3` | 3: header 1, header 17, R87 |
-  | `KEY_DIV` | 6: R84, R85, C95, Q5.G, Q8.G, Q9.G |
-  | `HOLD_G` | 6: D25.K, C96, R88, Q6.G, U24.A, Q10.D |
-- [ ] **Bench test before trusting the latch in a tractor:** the IO board's rated minimum input is
-      **7.5 V**, higher than the AiO's U1 (~5–6 V). Try a crank-dip profile on a bench supply, so
-      you know whether the IO board rides it out.
+| Net | Pins |
+|---|---|
+| `WDT_EN` | J1.5, U10.3, R37.1 |
+| `WDT_WDI` | J1.15, U10.4 |
+| `RUN_PG_G` | U10.1, R38.1, SW1.1, SW1.2 |
+| `RUN_PG` | R38.2, J2.3 |
+| `LED_DATA` | J1.40, U11.2 |
+| `LED_DATA_OUT` | U11.4, R39.1 |
+| `LED_DATA_IN` | R39.2, D19.1 |
+| `LED1_DOUT` | D19.3, D20.1 |
+| `LED2_DOUT` | D20.3, D21.1 |
+| `LED3_DOUT` | D21.3, D22.1 |
+| `PIEZO_PWM` | J1.31, R40.1 |
+| `PZ_GATE` | R40.2, R41.1, Q10.G |
+| `PZ_DRAIN` | Q10.D, BZ1.2, R42.2 |
+| `+3V3` | U10.5, R37.2, C43.1, C44.1 |
+| `5V_MAIN` | U11.5, C45.1, D19.2, D20.2, D21.2, D22.2, C46.1, C47.1, C48.1, C49.1, C50.1, BZ1.1, R42.1 |
+| GND | U10.2, C43.2, C44.2, U11.1, U11.3, C45.2, D19.4, D20.4, D21.4, D22.4, C46.2, C47.2, C48.2, C49.2, C50.2, R41.2, Q10.S, SW1.3, SW1.4 |
+| no connect | D22.3 |
