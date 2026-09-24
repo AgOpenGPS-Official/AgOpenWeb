@@ -278,8 +278,17 @@ header pins 2/4 (IO board 5 V) ─► HAT peripherals (CAN, ADC VA, GPS, LEDs, W
 - **The HAT has no main converter**: U1 (TPS54560), U2 (eFuse) and U4 (NVMe buck) drop out. The HAT
   keeps U3 (its own 3.3 V LDO, from header 5 V) — the CM4's 3.3 V output has too little spare
   current to share.
-- **J20 pinout:** standard floppy Berg is 1 = +5 V, 2/3 = GND, 4 = +12 V. **Verify against the IO
-  board schematic before wiring.**
+- **J20 pinout (from the IO board KiCad design, `CM4IOv5.kicad_pcb`): pin 1 = +12 V, pins 2 and 3 =
+  GND, pin 4 = +5 V.** ⚠ **This is the reverse of the usual floppy-cable convention** (red +5 V on
+  pin 1, yellow +12 V on pin 4). **Don't use a stock floppy/Molex adapter by colour**: it would put
+  12 V on the IO board's 5 V pin. Make the lead to the IO board's labels, and **check it with a meter
+  first:** power the IO board from its barrel jack, and the pin reading 12 V is the one the HAT feeds.
+- **J20 lead:** HAT side a **2-pin locking connector** (+12 V, GND; the HAT takes its 5 V from the
+  header, so J20's +5 V pin stays unconnected). IO board side a Berg housing (TE 171822-4) using
+  pin 1 (+12 V) and **both** GND pins 2 and 3. Size it for **≥ 2 A peak**: see the 12 V current below.
+- **Don't power the IO board's barrel jack while the HAT is connected.** J19 and J20 share the +12 V
+  bus, so a bench supply on the barrel would back-feed the HAT's vehicle side through the P-FET's
+  body diode.
 
 ### 4.2 Adapting the S8c.7 latch
 
@@ -307,24 +316,55 @@ The logic is unchanged — **on = KEY OR HOLD** — but it drives a high-side P-
   *Considered and set aside:* an LT4363-2 surge stopper (LCSC C118131, output clamped at ~26 V, its
   SHDN pin driven by Q4 in place of the P-FET switch, ~$4–6). Revisit only if field units show
   input-related failures.
-- **5 V budget: 3 A** from the IO board's converter for the CM4 (Raspberry Pi budget 9 W) **plus**
-  the HAT: 3 × CAN (MCP251863), the GPS module, 4 × SK6812, the WAS sensor supply, U3's 3.3 V loads,
-  and anything on the IO board's USB ports. Probably fine; add it up before committing.
+- **5 V budget — checked 2026-09-23: it fits, if the LEDs are capped and nothing hungry is plugged
+  into USB.** The IO board's 5 V converter is rated 3 A. The NVMe is **not** on it: the PCIe slot
+  has its own 3.3 V / 3.3 A converter fed from 12 V.
+
+  | 5 V load | Worst case | Typical | Source |
+  |---|---|---|---|
+  | CM4 | 1,800 mA | ~1,100 mA | Raspberry Pi's 9 W budget (IO board datasheet §2.2); typical is headless and busy |
+  | GPS: UM982EB | 275 mA (start-up) | 200 mA | measured by the author; the EMAX UM981 is lower |
+  | 3 × MCP251863 transceivers | ~210 mA (all dominant) | ~75 mA | ~70 mA each dominant — **check DS20006624B** |
+  | U3 → 3.3 V loads (3 × CAN controller + X1, SP3232, U20, LED, pull-ups) | ~90 mA | ~70 mA | a linear LDO, so the 5 V current equals the 3.3 V current |
+  | 4 × SK6812 | 240 mA (full white) | ~20 mA | ~60 mA each at full white |
+  | WAS sensor (J1.3) + piezo + ADC | ~50 mA | ~25 mA | |
+  | IO board's own (USB hub, LEDs) | ~100 mA | ~100 mA | estimate |
+  | **Total** | **≈ 2,765 mA (92%)** | **≈ 1,590 mA (53%)** | of 3 A |
+
+  - **Cap the SK6812 brightness in software (≤ 25%).** That takes ~180 mA off the worst case: they're
+    status lights, not lamps.
+  - **No power-hungry USB devices** on the IO board's ports. Their switch allows ~1.2 A, which on its
+    own would overrun the budget. A keyboard or a flash drive for service is fine.
+  - The HAT's share (~0.9 A worst) comes through header pins 2 and 4, well within a 2.54 mm socket's
+    rating.
+- **12 V current through J20** (≈ 88% converter efficiency assumed): 5 V side worst ≈ 1.3 A, plus NVMe
+  up to ~0.75 A (≈ 8 W on the PCIe 3.3 V converter) ⇒ **≈ 2 A peak, ≈ 0.8 A typical**. This sizes the
+  P-FET switch, the J20 lead and the ribbon's power conductors (§1: two or more per rail, three for
+  12 V is safer at 2 A). Harness fuse at the battery: **5 A**.
 - **Standby draw** (S8c.7 budget ≈ 180 µA) no longer includes U1's `EN` divider.
 
-## 5. Restart and watchdog signals
+## 5. Restart and watchdog signals — **DECIDED 2026-09-23: J1 socket**
 
 The AiO board uses two CM4 signals the 40-pin header doesn't carry: `GLOBAL_EN` (block E's restart
-pulse) and `RUN_PG` (U20's reset output). Two ways to reach them:
+pulse) and `RUN_PG` (U20's reset output). The HAT reaches them through the IO board's **J1**: three
+unpopulated pads, 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG` (datasheet table 3), which sit under the HAT.
 
-1. **J1 socket (preferred).** The IO board's **J1** — three pads, unpopulated: 1 = `GLOBAL_EN`,
-   2 = GND, 3 = `RUN_PG` (datasheet table 3) — sits under the HAT. Solder a 3-pin header into J1 and
-   give the HAT a matching socket. **Block E and U20 then stay exactly as on the AiO board**, and both
-   were bench-tested through these very pads (S8c.8 checks 2 and 3).
-2. **Power-cycle instead.** Use the latch to cut the 12 V for ~1 s: covers both the halted-with-key-on
-   restart and a watchdog reset, with no connection beyond the header. Costs extra gating (the key
-   path must be overridable for the cut) and a harder reset than `RUN_PG`. Needed for a Pi 4 host
-   unless its own `RUN`/`GLOBAL_EN` pads are used — **check where those are on the Pi 4B**.
+- **IO board:** solder a 1 × 3 male 2.54 mm header into J1. This is the one modification the IO board
+  needs.
+- **HAT:** a 1 × 3 female socket on the bottom side at the §3.1 coordinates (J1 pin 1 at HAT
+  (18.04, 32.00), **off the J8 grid**), the same 8.5 mm height as the 2 × 20 (C22373889, §7a).
+- **Nets on the HAT, exactly as on the AiO board:**
+  - socket pin 1 → `GLOBAL_EN` → Q7 drain (S8c.7 block E restart pulse)
+  - socket pin 3 → `RUN_PG` → R81 330 Ω → the U20 WDO / SW1 node (`RUN_PG_G`)
+  - socket pin 2 → GND
+- **Bench evidence:**
+  - S8c.8 check 2 pulled `RUN_PG` low through this J1 (pad 3).
+  - Check 3 restarted the CM4 through `GLOBAL_EN` via the IO board's J2 wake pins, which drive the
+    same net.
+- **Consequence:** the HAT needs the CM4 IO board (or a host with the same pads). A Pi 4 variant
+  would have to find its `RUN`/`GLOBAL_EN` pads or switch to power-cycling. Not pursued (§2).
+- *Set aside:* power-cycling through the latch (cut the 12 V for ~1 s). It needs no extra connection,
+  but costs extra gating and gives a harder reset.
 
 ## 6. Signals on the 40-pin header
 
@@ -370,6 +410,40 @@ Same allocation as the AiO board (`HARDWARE_AIO_NETLIST.md` §7), **with the S4 
 | switch inputs, steering outputs, SK6812 chain, piezo | J1 field connector → board-mount IDC header + ribbon to a panel Deutsch (§1) | H3 USB/rpiboot header (IO board has micro-USB) |
 | U3 3.3 V LDO, U20 watchdog, SW1 reset | | |
 
+## 7a. New parts — LCSC numbers (checked 2026-09-23)
+
+From JLCPCB's parts search, 2026-09-23; **stock is a snapshot**. Every C-number was checked against its
+MPN. JLC's Basic library no longer covers most of these, so most are **Extended**. "Pref-Ext" (preferred
+extended) parts may avoid the extended loading fee on Economic assembly: check on the order page.
+Ref designators follow S8c.7 and get renumbered in the HAT project.
+
+| Function | Ref (S8c.7) | Part | LCSC | Type | Notes |
+|---|---|---|---|---|---|
+| Always-on 3.3 V LDO, 40 V in | U23 | TPS7B6933QDBVRQ1, SOT-23-5 | **C781801** | Ext | 15 µA Iq. Pins: 1 IN, 2 NC, 3/4 GND, 5 OUT. Needs **≥ 2.2 µF *effective*** on the output. Only ~1 V above the TVS clamp. |
+| LDO input cap | C92 | 1 µF 50 V X7R 0805 | C28323 | Basic | |
+| LDO output cap | C93 | **10 µF** 25 V X5R 0603 | C96446 | Basic | 10 µF, not 2.2 µF: a 2.2 µF 0603 derates below the LDO's 2.2 µF effective minimum |
+| LV comparator | U25 | TLV3011AIDBVR, SOT-23-6 | **C2870632** | Ext | open-drain, 1.242 V ref. Pins: 1 OUT, 2 V−, 3 IN+, 4 IN−, 5 REF, 6 V+ (matches S8c.7) |
+| Schmitt inverter | U24 | SN74LVC1G14DBVR, SOT-23-5 | **C7835** | Ext | Pins: 1 NC, 2 A, 3 GND, 4 Y, 5 VCC |
+| Small N-FETs | Q4–Q11 | Nexperia BSS138P, SOT-23 | **C75547** | Ext | V<sub>th</sub> ≤ 1.5 V (checked). Dual option: BSS138DW-7-F, C154900. **Avoid C7420339** (V<sub>th</sub> up to 1.6 V). |
+| Hold diode | D25 | 1N4148W, SOD-123 | **C81598** | Basic | Used instead of a BAT54, which has no Basic part. The higher V<sub>F</sub> leaves `HOLD_G` at ~2.6 V, so the hold becomes **1.2–2.6 s**: still well above the no-dip result (S8c.8 check 2). |
+| 12 V high-side switch | (§4.2) | DMP6023LE-13, SOT-223, −60 V | **C154901** | Ext | 35 mΩ at 4.5 V; ±20 V gate. Alternative: IRFR5305 (C2624, DPAK), as on the AiO board. 40 V parts rejected: ~1 V margin over the clamp. |
+| Gate zener 12 V | (§4.2) | BZT52C12, SOD-123 | C19077410 | Pref-Ext | |
+| Input TVS | TV1/TV2 | SMBJ24A | C908801 | Ext | better stocked than the AiO's C87268 |
+| 1 MΩ / 33 kΩ / 1 kΩ / 47 kΩ / 100 kΩ 0402 | | UNI-ROYAL | C26083 / C25779 / C11702 / C25792 / C25741 | Basic | |
+| 2.2 MΩ / 10 MΩ 0402 | R88 / R93 | FOJAN | C2998080 / C2933065 | Ext | no Basic exists (10 MΩ Basic only in 0603: C7250) |
+| 121 kΩ 1% / 8.2 kΩ 0402 | R91 / R83 | UNI-ROYAL | C11693 / C25924 | Ext / Pref-Ext | |
+| 1 µF X7R (hold) | C96 | CL10B105KO8NNNC 0603 | C59782 | Ext | |
+| 2.2 µF (key-off delay) | C101 | CL10A225KO8NNNC 0603 | C23630 | Basic | |
+| 10 µF (LV filter) | C100 | CL10A106MA8NRNC 0603 | C96446 | Basic | |
+| 100 nF / 10 nF 0402 | | Samsung | C1525 / C15195 | Basic | |
+| **Connectors** (through-hole) | | | | | |
+| 2 × 20 female, 2.54, 8.5 mm | J8 socket | Hong Cheng HC-PM254-8.5H-2x20PZ | C22373925 | Ext | **pair with the 1 × 3 below**: same series and height |
+| 1 × 3 female, 2.54, 8.5 mm | J1 socket | Hong Cheng HC-PM254-8.5H-1x3PZ-02A | C22373889 | Ext | |
+| 1 × 8 female, 2.54 | EMAX (H981) | BOOMELE 2.54-1*8P | C27438 | Ext | 8.5 mm body |
+| 2 × 14 female, **2.0** | UM982EB (H14) | Hong Cheng HC-PM200-4.3H-2x14PZ | C22436146 | Ext | **4.3 mm body, and the only one JLC stocks (~1.1k)**, so the UM982EB sits lower than the EMAX: pick the standoff lengths per board |
+| 2 × 13 IDC box header, latched | ribbon to panel | CONNFLY DS1011-26SBSiB7-B | C7431126 | Ext | plain shrouded alternative: C75755 |
+| 2-pin 12 V lead to J20 | | JST B2P-VH | **C160315** | Ext | 10 A: plenty for the ~2 A peak. JST-XH (C158012, 3 A) would be tighter. |
+
 ## 8. Open questions
 
 1. ~~**HAT or AiO as the plan of record?**~~ **Decided 2026-09-23: the HAT, for the prototype.** The
@@ -380,6 +454,6 @@ Same allocation as the AiO board (`HARDWARE_AIO_NETLIST.md` §7), **with the S4 
    outline and hole pattern (the two EasyEDA parts differ by 0.2–0.6 mm), and both boards' UART
    logic level.
 4. ~~Surge limiting to ≤ 28 V~~ — **decided 2026-09-23: AiO front end reused, no surge stopper** (§4.3).
-5. **J20 pinout and cable** — verify pins; choose the HAT-side connector.
-6. **5 V budget** on the IO board's 3 A converter (§4.3).
-7. **J1 socket vs power-cycle** for restart and watchdog (§5).
+5. ~~J20 pinout and cable~~ — **done 2026-09-23** (§4.1): pin 1 +12 V, 4 +5 V (reverse of the floppy convention); 2-pin locking lead, ≥ 2 A.
+6. ~~5 V budget~~ — **done 2026-09-23** (§4.3): ~92% worst case, ~53% typical; cap the LEDs and keep USB loads light. Check the MCP251863 transceiver current against its datasheet.
+7. ~~J1 socket vs power-cycle~~ — **decided 2026-09-23: J1 socket** (§5).
