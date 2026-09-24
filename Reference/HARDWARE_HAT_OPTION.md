@@ -6,6 +6,8 @@
 > single-board version, and the HAT proves its peripheral circuits first. The official Raspberry Pi
 > **CM4 IO Board** is the host; the AOW-specific circuits go on a **40-pin HAT**.
 >
+> **Schematic checklist:** `HARDWARE_HAT_NETLIST.md`: every part and net, step by step, with the AiO S# fixes applied.
+>
 > Sources: CM4 IO Board datasheet (`cm4io-datasheet.pdf`, §2.2, §2.12, §2.14 and the PSU/GPIO
 > schematic sheets), the IO board KiCad design (`CM4IOv5.kicad_pcb`, for all coordinates) and the
 > AiO netlist/issue docs.
