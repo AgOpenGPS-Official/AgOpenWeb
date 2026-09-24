@@ -123,10 +123,140 @@ on top — keep those, trimmed, away from J9).
   H4 (61.5, 52.5) are the nearest supports. Keep the ribbon header, anything a cable pulls on and
   heavy parts near the holes, and put light, low parts (latch, passives) at the tip.
 - **Heat:** the extension sits beside the CM4 heatsink with a 10 mm gap. Don't put the HAT's warm
-  parts (P-FET, surge limiter, GPS module) on that end.
+  parts (P-FET, GPS module) on that end.
 - **Servicing:** the CM4 can no longer be lifted out without first removing the HAT.
 
 Growing in any direction gives up Pi 4 compatibility (§2).
+
+### 3.4 GPS boards — EMAX UM981 and Unicore UM982EB
+
+**DECIDED 2026-09-23: the HAT takes the EMAX UM981 or the Unicore UM982EB, and nothing else.**
+These are the boards the author owns. Anyone wanting another receiver can remix the board. Only one
+is fitted at a time. Both stack above the HAT on standoffs, both use UART5 (`GPS_TX` GPIO12 → module
+RX, `GPS_RX` GPIO13 ← module TX), and both run from header 5 V.
+
+#### 3.4.0 Combined footprint — copied from AgOpenGPS AiO v5.0i
+
+AgOpenGPS AiO v5.0i (`PCB_v5.0i-LOCKED`, EasyEDA export 2026-09-23) already overlays both boards in
+one area: header H981 (EMAX) and H14 (UM982EB), sharing one mounting hole and one UART net pair.
+The coordinates below come from that export. **Frame:** origin at the shared hole, x along the
+UM982EB's long axis toward its header, y across it, both as laid out on v5.0.
+
+| Feature | x, y (mm) | Board | Notes |
+|---|---|---|---|
+| **Hole A** | **0.00, 0.00** | both | Ø 3.3, shared |
+| Hole B | 0.00, 34.30 | UM982EB | Ø 3.3 |
+| Hole C | 64.60, 0.00 | UM982EB | Ø 3.2 |
+| Hole D | 64.60, 34.30 | UM982EB | **not on v5.0**, which has other parts there. Add it on the HAT: it clears H14 pad 28 by ~1.6 mm. |
+| Hole E | 36.00, 0.00 | EMAX | Ø 3.6 on v5.0 (a board hole) |
+| Hole F | 35.50, 36.00 | EMAX | Ø 3.6. This is the EMAX's odd hole (§3.4.1). |
+| — | (0.00, 36.00) | EMAX | **no hole**: it would overlap hole B (1.7 mm apart), so the EMAX sits on 3 standoffs, as on v5.0 |
+| **H981** 1 × 8, 2.54 mm | x −1.20; pin 1 at y 9.12, pin 8 at y 26.90 | EMAX | pad 1.6 / drill 0.9. Pin 1 GND, 2 5V, 7 TX1, 8 RX1 |
+| **H14** 2 × 14, 2.0 mm | odd pins x 65.80, even x 63.80; pins 1/2 at y 4.30, 27/28 at y 30.30 | UM982EB | pad 1.5 / drill 0.89. Pin 6 VIN, 14/17/20/22 GND, 15 TX1, 16 RX1 |
+
+- **Nets, as on v5.0:** H981.7 and H14.15 → `GPS_RX` (module TX); H981.8 and H14.16 → `GPS_TX`
+  (module RX); H981.2 and H14.6 → 5 V; H981.1 and H14.14/17/20/22 → GND. v5.0 puts the supply on a
+  3.3 V / 5 V selector (`SJ_BYNAV-UM`) for other receivers. The HAT drops it: 5 V only.
+- **Size:** pads and holes cover about **69 × 40 mm**. The UM982EB above them is 46 × 71 mm (board
+  edges at x −3.2…67.8, y −6.0…40.0 in this frame).
+
+**Where it fits on the HAT.** Lying along the HAT's 65 mm width it doesn't fit: it's 69 mm long, and
+the right extension (§3.3) is only 35 mm tall. **Turned so its long axis runs down the HAT (+y), it
+fits** with the upward extension. HAT position = (22 + y, −12 + x):
+
+| Frame point | HAT x, y |
+|---|---|
+| Hole A | 22.0, −12.0 |
+| Hole B | 56.3, −12.0 |
+| Hole C / D | 22.0, 52.6 / 56.3, 52.6 |
+| Holes E / F | 22.0, 24.0 / 58.0, 23.5 |
+| H981 pins 1–8 | x 31.1–48.9, y −13.2 |
+| H14 pins | x 26.3–52.3, y 51.8 / 53.8 |
+| UM982EB board | x 16.0–62.0, y −15.2…55.8 |
+
+- **This clears the HAT's own through-holes:** no GPS pad or hole lands in the 2 × 20 socket band
+  (y 1.4–5.7), the J1 socket is at x < 19, and hole D is 5.2 mm from HAT hole (61.5, 52.5).
+- **It needs about 16 mm of the upward extension** (HAT y down to −16, §3.3). The right extension
+  isn't needed for the GPS.
+- The UM982EB antennas come out at the top (the y −15 edge). The EMAX antenna points down the HAT
+  from its y ≈ 27–37 edge, hanging over the HAT, not the CM4.
+- Parts on the HAT under the GPS board have ~9 mm of headroom (the socket height), which clears all
+  the SMD parts.
+
+#### 3.4.1 EMAX UM981 — 42 × 42 mm, single antenna
+
+Source: the EasyEDA user part **"UM981 EMAX"** (contributor `mtz8302`, from the AgOpenGPS community),
+exported 2026-09-23. It also comes as a "NO HOLES NO PADS" variant, which is only the outline.
+Coordinates are in the GPS board's own frame: origin at its top-left corner, y down, seen from above.
+
+| Feature | x, y (mm) | Notes |
+|---|---|---|
+| Outline | 0–42.0 × 0–42.0 | |
+| Mounting holes | (3.0, 3.0), (3.0, 39.0), (39.0, 39.0), **(39.0, 3.5)** | Ø 3.1 mm (M3). **One hole is at y 3.5, not 3.0**: check it on a real board before relying on it. |
+| Header | 1 × 8, 2.54 mm pitch, pin 1 at **(12.12, 40.20)**, pins in +x, pin 8 at (29.90, 40.20) | pad Ø 1.52 mm, drill 0.91 mm, 1.8 mm in from the bottom edge |
+| Antenna connector | x 17.75–24.25, sticks out **10 mm above the top edge** | single antenna (UM981 is single-antenna, with a built-in IMU) |
+| Second connector (probably USB) | x −3.0…3.5, y 26.5–35.5, sticks out **3 mm past the left edge** | outline only; identify it on the board |
+
+| Pin | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| Signal | GND | **5V** | EV (event in) | TX2 | RX2 | PPS | **TX1** | **RX1** |
+
+- **It takes 5 V**, so it runs from header 5 V and needs no 3.3 V regulator on the HAT.
+- **Only four pins connect:** GND, 5V, TX1 → `GPS_RX` (GPIO13) and RX1 ← `GPS_TX` (GPIO12), on
+  UART5 as on the AiO board. EV, TX2/RX2 and PPS go to unconnected pads, because all 28 GPIOs are
+  allocated. **Check the UART logic level:** the UM981 is 3.3 V, but confirm the board doesn't shift
+  it to 5 V.
+- **Mounting: stacked, not flat.** A 2.54 mm female header on the HAT for the 8 pins, plus **4 × M3
+  standoffs** to the HAT at the hole positions. The board then sits above the HAT's low parts, and
+  only the header and the four standoffs cost HAT area. The M3 holes take the vibration, not the
+  pins. The stack is roughly IO board + 11 mm + HAT + ~11 mm + GPS board.
+- **Orientation:** put the antenna edge at a HAT edge, away from the CM4 heatsink, with a pigtail to
+  the enclosure panel. Keep the left-edge connector reachable if it's the USB used for configuration.
+
+#### 3.4.2 Unicore UM982EB — 46 × 71 mm, dual antenna (heading)
+
+Source: the EasyEDA user part **"UM982-NO-PADS"** (contributor `wildbuckwheat`, "UM982 Evaluation
+Board"), exported 2026-09-23. Its pin labels were checked against the AiO board's **U16** footprint
+(`UM982EB MODULE`, contributor `viluchinsk`, in `PCB_PCB_AOW-v2.0_2026-09-18.json`). All the pins the
+AiO board uses agree: 6 VIN, 14/17/20/22 GND, 15 TX1, 16 RX1. Same frame as above: origin top-left,
+y down, seen from above.
+
+| Feature | x, y (mm) | Notes |
+|---|---|---|
+| Outline | 0–46.0 × 0–71.0 | U16's outline is 45.4 × 71.0. **Measure a real board.** |
+| Mounting holes | (6.0, 3.2), (40.3, 3.2), (6.0, 67.8), (40.3, 67.8) | Ø 3.2 mm; pattern 34.3 × 64.6 (U16: 34.0 × 64.75, Ø 3.4). **Measure.** |
+| Header | **2 × 14, 2.0 mm pitch** along the bottom edge, x 10.0–36.0; outer row y 69.0 (odd pins), inner row y 67.0 (even pins) | **pin 1 at (36.0, 69.0)**, pin 2 at (36.0, 67.0), pin 27 at (10.0, 69.0), pin 28 at (10.0, 67.0) |
+| Antenna connectors | two, at about (15.5, 4.4) and (32.5, 4.4) | the part marks ~15 mm of "RF conn clearance" past the top edge |
+
+| Pin | Signal | | Pin | Signal |
+|---|---|---|---|---|
+| 1 | MOSI | | 2 | CSN |
+| 3 | CLK | | 4 | SDRY |
+| 5 | LNA_PWR | | **6** | **VIN (5 V)** |
+| 7 | MISO | | 8 | RX3 |
+| 9 | RSTN | | 10 | RSV |
+| 11 | EVENT | | 12 | RSV |
+| 13 | TX3 | | **14** | **GND** |
+| **15** | **TX1** → `GPS_RX` | | **16** | **RX1** ← `GPS_TX` |
+| **17** | **GND** | | 18 | TX2 |
+| 19 | RX2 | | **20** | **GND** |
+| 21 | PVT_STAT | | **22** | **GND** |
+| 23 | PPS | | 24 | RSV |
+| 25 | RTK_STAT | | 26 | ERR |
+| 27 | SDA | | 28 | SCL |
+
+- **Connect the same four signals** as the EMAX board: VIN (6), GND (14/17/20/22), TX1 (15), RX1 (16).
+  The rest go to unconnected pads.
+- **Mounting:** a 2 × 14 2.0 mm female header plus 4 × M3 standoffs. At 46 × 71 mm it's bigger than a
+  standard HAT (65 × 56.5), so it overhangs as a stacked board. Let it overhang into the room from
+  §3.3, not over the CM4 heatsink. Two antenna leads to the panel.
+
+#### 3.4.3 Not supported (remix territory)
+
+v5.0 also takes the ArduSimple **Micro** (XBee size, 2 × 10 at 2.0 mm, 3.3 V, no holes) and the
+ArduSimple **Arduino-format** simpleRTK2B, in the same area. Adding them would grow the GPS area to
+about 80 × 52 mm and the HAT with it, and the author doesn't own either board. Left out; the v5.0
+export has their positions if someone remixes the HAT.
 
 ## 4. Power path
 
@@ -137,7 +267,7 @@ the CM4; the 12 V bus goes straight to the PCIe slot and fan connector.
 ### 4.1 Chosen direction: the HAT switches protected 12 V into J20
 
 ```
-vehicle constant 12 V ─ reverse-polarity + surge limit ─ P-FET high-side switch ─ cable ─ IO board J20 +12 V
+vehicle constant 12 V ─ Q1 reverse-polarity + SMBJ24A ─ P-FET high-side switch ─ cable ─ IO board J20 +12 V
 vehicle keyed 12 V ── key front end (S8c.7 block A) ──┐          ▲
 header pin 1 (CM4 3.3 V) ── hold (block C) ───────────┴── latch ─┘
 header pins 2/4 (IO board 5 V) ─► HAT peripherals (CAN, ADC VA, GPS, LEDs, WAS supply) + U3 3.3 V LDO
@@ -168,15 +298,19 @@ The logic is unchanged — **on = KEY OR HOLD** — but it drives a high-side P-
 
 ### 4.3 Limits to design for
 
-- **Input voltage: the IO board is rated 7.5–28 V** with PCIe and fan unused (datasheet §2.2). The
-  AiO front end's SMBJ24A clamps at ~39 V — **too high**. The HAT needs a tighter limit in front of
-  J20: a surge stopper (LTC4380-class) or a lower TVS plus a series FET. **This is the main new
-  design item.**
+- **Input voltage — DECIDED 2026-09-23: reuse the AiO front end, no surge stopper.** The IO board is
+  rated 7.5–28 V with PCIe and fan unused (datasheet §2.2), and the SMBJ24A clamps short spikes at up
+  to ~39 V, so brief transients can exceed the rating. That is accepted: the AgOpenGPS AiO boards
+  run on less input protection than this with no field problems, a 24 V jump start stays under 28 V,
+  and tractor alternators have load-dump suppression. The front end is therefore Q1 (reverse-polarity
+  P-FET) + SMBJ24A + the fuse in the harness, then the latch's P-FET switch (§4.2).
+  *Considered and set aside:* an LT4363-2 surge stopper (LCSC C118131, output clamped at ~26 V, its
+  SHDN pin driven by Q4 in place of the P-FET switch, ~$4–6). Revisit only if field units show
+  input-related failures.
 - **5 V budget: 3 A** from the IO board's converter for the CM4 (Raspberry Pi budget 9 W) **plus**
   the HAT: 3 × CAN (MCP251863), the GPS module, 4 × SK6812, the WAS sensor supply, U3's 3.3 V loads,
   and anything on the IO board's USB ports. Probably fine; add it up before committing.
-- **Standby draw** (S8c.7 budget ≈ 180 µA) no longer includes U1's `EN` divider, but the surge
-  limiter's quiescent current joins it.
+- **Standby draw** (S8c.7 budget ≈ 180 µA) no longer includes U1's `EN` divider.
 
 ## 5. Restart and watchdog signals
 
@@ -241,17 +375,11 @@ Same allocation as the AiO board (`HARDWARE_AIO_NETLIST.md` §7), **with the S4 
 1. ~~**HAT or AiO as the plan of record?**~~ **Decided 2026-09-23: the HAT, for the prototype.** The
    AiO board is parked as a possible later single-board version.
 2. ~~Measure the HAT hole positions~~ — **done 2026-09-23 from the KiCad design** (§3).
-3. **GPS module placement.** The candidates are all **43 × 43 mm** carrier boards: UM98x (UM980/UM982)
-   boards and the ArduSimple simpleRTK2B Micro (F9P) share the size. **Same size doesn't mean the
-   same pinout:** check each header pinout before designing one footprint for all of them. Two ways
-   to fit it:
-   - **flat on the HAT:** 1,849 mm², about half a standard HAT, which pushes the board up or right
-     (§3.3);
-   - **stacked** on headers above the HAT's low parts (latch, passives, SOIC/TSSOP ICs): only the
-     header footprints cost area, at the price of enclosure height (HAT 11 mm + headers + module).
-   Either way: antenna lead (u.FL/SMA) to the panel, keep it at the end away from the CM4 heatsink,
-   and it runs from header 5 V (S7: one UART, UART5, so only one module).
-4. **Surge limiting to ≤ 28 V** — pick the part (§4.3).
+3. ~~GPS module placement~~ — **decided 2026-09-23: EMAX UM981 or Unicore UM982EB only, using
+   v5.0's combined footprint, turned along the HAT's y axis with ~16 mm of upward extension** (§3.4.0). Still to check on real boards: the EMAX fourth hole and left-edge connector, the UM982EB
+   outline and hole pattern (the two EasyEDA parts differ by 0.2–0.6 mm), and both boards' UART
+   logic level.
+4. ~~Surge limiting to ≤ 28 V~~ — **decided 2026-09-23: AiO front end reused, no surge stopper** (§4.3).
 5. **J20 pinout and cable** — verify pins; choose the HAT-side connector.
 6. **5 V budget** on the IO board's 3 A converter (§4.3).
 7. **J1 socket vs power-cycle** for restart and watchdog (§5).
