@@ -10,7 +10,7 @@
 > - a hardware watchdog and status LEDs
 > - an **always-on + keyed 12 V power latch** that lets Linux shut down cleanly at key-off
 >
-> **Status (2026-09-24): design complete on paper, schematic not yet drawn.** This is the prototype
+> **Status (2026-09-25): schematic drawn and verified against `HARDWARE_HAT_NETLIST.md`** (150 parts, every pin; J8 console optional and not fitted). PCB outline, holes and J1/J2/J6/J7 placed and verified; layout next. This is the prototype
 > plan of record. Designed in **EasyEDA Standard**.
 >
 > **The HAT document set.** These four files are complete on their own; you don't need any other doc:
@@ -475,21 +475,21 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
-| 1 | NC (vehicle power is on J4) | | 14 | `CAN1_L` |
-| 2 | GND | | 15 | `CAN1_H` |
-| 3 | `5V_MAIN` (WAS supply) | | 16 | `CAN2_L` |
-| 4 | `WAS_IN` | | 17 | `CAN2_H` |
-| 5 | GND | | 18 | `CAN3_L` |
-| 6 | `ISENSE_IN` | | 19 | `CAN3_H` |
-| 7 | `SW_WORK_IN` | | 20 | GND |
-| 8 | `SW_ENGAGE_IN` | | 21 | `KEY_IN` (keyed 12 V) |
-| 9 | `SW_REMOTE_IN` | | 22 | NC |
-| 10 | `STEER_PWM` | | 23 | `RS232_1_TXD` |
-| 11 | `STEER_DIR` | | 24 | `RS232_1_RXD` |
-| 12 | `STEER_EN_OUT` | | 25 | `RS232_2_TXD` |
-| 13 | GND | | 26 | `RS232_2_RXD` |
+| 1 | NC (vehicle power is on J4) | | 2 | GND |
+| 3 | `5V_MAIN` (WAS supply) | | 4 | `WAS_IN` |
+| 5 | GND | | 6 | `ISENSE_IN` |
+| 7 | `SW_WORK_IN` | | 8 | `SW_ENGAGE_IN` |
+| 9 | `SW_REMOTE_IN` | | 10 | `STEER_PWM` |
+| 11 | `STEER_DIR` | | 12 | `STEER_EN_OUT` |
+| 13 | GND | | 14 | `CAN1_L` |
+| 15 | `CAN1_H` | | 16 | `CAN2_L` |
+| 17 | `CAN2_H` | | 18 | `CAN3_L` |
+| 19 | `CAN3_H` | | 20 | GND |
+| 21 | `KEY_IN` (keyed 12 V) | | 22 | NC |
+| 23 | `RS232_1_TXD` | | 24 | `RS232_1_RXD` |
+| 25 | `RS232_2_TXD` | | 26 | `RS232_2_RXD` |
 
-- IDC pin n = ribbon conductor n, so each CAN H/L pair sits on neighbouring conductors. Keep the
+- Odd pins on one row, even on the other, like any 2 × 13 header. IDC pin n = ribbon conductor n, so each CAN H/L pair (14/15, 16/17, 18/19) sits on neighbouring conductors. Keep the
   ribbon short.
 - All protection sits on the HAT where the ribbon lands.
 - Use a latched header and strain relief at both ends against vibration.

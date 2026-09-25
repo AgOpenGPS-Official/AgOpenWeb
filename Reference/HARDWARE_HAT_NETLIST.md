@@ -229,19 +229,19 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
-| 1 | no connect | | 14 | `CAN1_L` |
-| 2 | GND | | 15 | `CAN1_H` |
-| 3 | `5V_MAIN` | | 16 | `CAN2_L` |
-| 4 | `WAS_IN` | | 17 | `CAN2_H` |
-| 5 | GND | | 18 | `CAN3_L` |
-| 6 | `ISENSE_IN` | | 19 | `CAN3_H` |
-| 7 | `SW_WORK_IN` | | 20 | GND |
-| 8 | `SW_ENGAGE_IN` | | 21 | `KEY_IN` |
-| 9 | `SW_REMOTE_IN` | | 22 | no connect |
-| 10 | `STEER_PWM` | | 23 | `RS232_1_TXD` |
-| 11 | `STEER_DIR` | | 24 | `RS232_1_RXD` |
-| 12 | `STEER_EN_OUT` | | 25 | `RS232_2_TXD` |
-| 13 | GND | | 26 | `RS232_2_RXD` |
+| 1 | no connect | | 2 | GND |
+| 3 | `5V_MAIN` | | 4 | `WAS_IN` |
+| 5 | GND | | 6 | `ISENSE_IN` |
+| 7 | `SW_WORK_IN` | | 8 | `SW_ENGAGE_IN` |
+| 9 | `SW_REMOTE_IN` | | 10 | `STEER_PWM` |
+| 11 | `STEER_DIR` | | 12 | `STEER_EN_OUT` |
+| 13 | GND | | 14 | `CAN1_L` |
+| 15 | `CAN1_H` | | 16 | `CAN2_L` |
+| 17 | `CAN2_H` | | 18 | `CAN3_L` |
+| 19 | `CAN3_H` | | 20 | GND |
+| 21 | `KEY_IN` | | 22 | no connect |
+| 23 | `RS232_1_TXD` | | 24 | `RS232_1_RXD` |
+| 25 | `RS232_2_TXD` | | 26 | `RS232_2_RXD` |
 
 | Net | Pins |
 |---|---|
