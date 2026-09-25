@@ -18,12 +18,10 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.OS;
-using Android.Provider;
 using Android.Views;
 using Android.Views.InputMethods;
 using Avalonia.Android;
 using Microsoft.Extensions.DependencyInjection;
-using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Android;
@@ -36,8 +34,6 @@ namespace AgOpenWeb.Android;
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity
 {
-    private const int ManageStorageRequestCode = 2001;
-
     /// <summary>The live activity, so the WebView's JS→native bridge can reach the IME.</summary>
     public static MainActivity? Instance { get; private set; }
 
@@ -45,10 +41,6 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnCreate(savedInstanceState);
         Instance = this;
-
-        // Must run before BackendService.Start, which is what actually reads
-        // AppDataRoot.Documents to load fields/vehicles/config.
-        SetupDataRoot();
 
         // Start the foreground service that owns the in-process guidance host so it survives
         // this Activity backgrounding. The WebView (built by App) waits on
@@ -58,76 +50,6 @@ public class MainActivity : AvaloniaMainActivity
 
         // Enable immersive full-screen mode
         EnableImmersiveMode();
-    }
-
-    /// <summary>
-    /// Points AGOPENWEB_DATA at the public Documents folder so config lives at
-    /// /storage/emulated/0/Documents/AgOpenWeb — visible to any file manager or PC over USB,
-    /// no root needed, and it mirrors the Documents\AgOpenWeb layout used on desktop.
-    /// Requires "All files access" (MANAGE_EXTERNAL_STORAGE); until granted, falls back to
-    /// the app's own external files dir, which needs no permission and is adb-accessible
-    /// without root.
-    /// </summary>
-    private void SetupDataRoot()
-    {
-        try
-        {
-            string? root;
-
-            if (OperatingSystem.IsAndroidVersionAtLeast(30) && global::Android.OS.Environment.IsExternalStorageManager)
-            {
-                // Granted: use the public Documents folder.
-                var storageRoot = global::Android.OS.Environment.ExternalStorageDirectory?.AbsolutePath;
-                root = storageRoot != null ? System.IO.Path.Combine(storageRoot, "Documents") : null;
-            }
-            else
-            {
-                // Not granted yet (or pre-Android 11 without the runtime check): fall back to
-                // the app's own external files dir. No permission dialog required, and it's
-                // reachable via `adb push` even without root.
-                root = ApplicationContext?.GetExternalFilesDir(null)?.AbsolutePath;
-
-                RequestManageStoragePermission();
-            }
-
-            if (!string.IsNullOrEmpty(root))
-            {
-                System.IO.Directory.CreateDirectory(root); // ensure it exists before AppDataRoot appends "AgOpenWeb"
-                System.Environment.SetEnvironmentVariable(AppDataRoot.EnvVar, root);
-            }
-        }
-        catch (System.Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[MainActivity] SetupDataRoot failed: {ex.Message}");
-        }
-    }
-
-    private void RequestManageStoragePermission()
-    {
-        if (!OperatingSystem.IsAndroidVersionAtLeast(30)) return;
-        try
-        {
-            var intent = new Intent(Settings.ActionManageAppAllFilesAccessPermission);
-            intent.SetData(global::Android.Net.Uri.Parse($"package:{PackageName}"));
-            StartActivityForResult(intent, ManageStorageRequestCode);
-        }
-        catch (System.Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[MainActivity] permission request failed: {ex.Message}");
-        }
-    }
-
-    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
-    {
-        base.OnActivityResult(requestCode, resultCode, data);
-
-        // User came back from the "All files access" settings screen. Re-resolve the data
-        // root now that permission may have changed. Note: if BackendService already started
-        // against the external-files-dir fallback, this does NOT migrate any data written
-        // there — the app should be restarted once after granting permission so
-        // BackendService.Start sees the Documents path from the beginning.
-        if (requestCode == ManageStorageRequestCode)
-            SetupDataRoot();
     }
 
     /// <summary>Lower the soft keyboard via the IME. A WebView input's JS blur() does NOT
