@@ -96,7 +96,7 @@
 |---|---|---|---|---|---|
 | J1 | 1 | 2 × 20 female 2.54 mm, 8.5 mm (Hong Cheng HC-PM254-8.5H-2x20PZ) | C22373925 | Ext | footprint on top, body fitted underneath; same series as J2 |
 | J2 | 1 | 1 × 3 female 2.54 mm, 8.5 mm (Hong Cheng HC-PM254-8.5H-1x3PZ-02A) | C22373889 | Ext | footprint on top, body fitted underneath; off-grid |
-| J3 | 1 | 2 × 13 IDC box header, latched (CONNFLY DS1011-26SBSiB7-B) | C7431126 | Ext | plain shrouded alternative: C75755 |
+| J3 | 1 | 2 × 13 IDC box header, straight, latched (CONNFLY DS1011-26SBSiA7-B, grey) | C7430350 | Ext | has an EasyEDA footprint (IDC-TH_DS1011-26SBSIA7-B). The black C7431126 has none. |
 | J4, J5 | 2 | JST B2P-VH(LF)(SN), 2-pin | C160315 | Ext | power in and 12 V out; 10 A rated |
 | J6 | 1 | 1 × 8 female 2.54 mm (BOOMELE) | C27438 | Ext | EMAX UM981, 8.5 mm body |
 | J7 | 1 | 2 × 14 female **2.0 mm** (Hong Cheng HC-PM200-4.3H-2x14PZ) | C22436146 | Ext | UM982EB, **4.3 mm body**, low stock (~1.1k) |

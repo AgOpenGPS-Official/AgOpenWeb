@@ -17,7 +17,7 @@
 
 | ID | Item | Proposal | Status |
 |---|---|---|---|
-| **H1** | Vehicle power on its own connector | **J4**, a JST-VH 2-pin for constant 12 V + GND, separate from the ribbon. One 28 AWG ribbon conductor is ~1 A and the HAT passes ~2 A peak. J3 pin 1 stays unconnected. | **open: needs the author's OK** |
+| **H1** | Vehicle power on its own connector | **J4**, a JST-VH 2-pin for constant 12 V + GND, separate from the ribbon. One 28 AWG ribbon conductor is ~1 A and the HAT passes ~2 A peak. J3 pin 1 stays unconnected. | **decided 2026-09-24:** separate J4 |
 | **H2** | CAN transceiver current | The 5 V budget assumes ~70 mA per MCP251863 transceiver when dominant (design §4.7). Check the datasheet figure. | open |
 | **H3** | GNSS board dimensions | Measure on real boards: the EMAX's square hole pattern (36.0 × 36.0 on H5/H9/H10; its odd fourth hole is unused) and its left-edge connector; the UM982EB hole pattern (34.3 × 64.6 in the part, matching v5.0; another footprint says 34.0 × 64.75). With Ø 3.3 holes and M3 screws there's only ~±0.15 mm of play. | open |
 | **H4** | GNSS UART logic level | Confirm both boards' TX1/RX1 are 3.3 V, not shifted to 5 V. | open |

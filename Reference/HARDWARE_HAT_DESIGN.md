@@ -494,7 +494,7 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
 - All protection sits on the HAT where the ribbon lands.
 - Use a latched header and strain relief at both ends against vibration.
 
-### 8.2 J4: vehicle power (proposed; see the issues list)
+### 8.2 J4: vehicle power (decided 2026-09-24)
 
 A JST-VH 2-pin: pin 1 `VIN` (constant 12 V), pin 2 GND. It's separate from the ribbon because one
 28 AWG ribbon conductor is ~1 A and the HAT passes ~2 A peak. Discrete wires run from the panel

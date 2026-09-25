@@ -216,7 +216,7 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 
 | Ref | Part # |
 |---|---|
-| J3 | C7431126 |
+| J3 | C7430350 |
 | D13, D14 | C2905646 |
 | D15, D16, D17 | C283886 |
 | D18 | C558418 |
