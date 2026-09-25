@@ -25,8 +25,8 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
-| 1 | `CM4_3V3` | | 2 | `5V_MAIN` |
-| 3 | `SW_REMOTE` | | 4 | `5V_MAIN` |
+| 1 | `CM4_3V3` | | 2 | `5V_IO` |
+| 3 | `SW_REMOTE` | | 4 | `5V_IO` |
 | 5 | `WDT_EN` | | 6 | GND |
 | 7 | `RS232_2_TX` | | 8 | `CON_TX` |
 | 9 | GND | | 10 | `CON_RX` |
@@ -54,30 +54,29 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 
 ## 2. Power and latch
 
+Vehicle 12 V goes **straight to the IO board's J20**, not through the HAT. The HAT switches only its own
+5 V loads and holds the CM4 off through `GLOBAL_EN`.
+
 | Ref | Part # |
 |---|---|
-| J4, J5 | C160315 |
-| Q1 | C2624 |
-| Q2 | C154901 |
-| Q3–Q9 | C75547 |
+| Q1, Q3–Q9 | C75547 |
+| Q2 | C15127 |
 | U1 | C781801 |
 | U2 | C7835 |
 | U3 | C2870632 |
 | U4 | C841192 |
 | TV1, TV2 | C908801 |
-| D1, D3 | C19077410 |
 | D2, D5 | C8598 |
 | D4 | C81598 |
-| R1, R11, R12, R14 | C26083 |
-| R2, R3, R5, R7, R16 | C25741 |
+| R11, R12, R14 | C26083 |
+| R3, R5, R7, R16 | C25741 |
 | R4, R17 | C25924 |
 | R6 | C25779 |
-| R8 | C25792 |
+| R8 | C25744 |
 | R9 | C11702 |
 | R10 | C2998080 |
 | R13 | C11693 |
 | R15 | C2933065 |
-| C1, C2 | C13585 |
 | C3 | C28323 |
 | C4, C12 | C96446 |
 | C5, C7, C14 | C15195 |
@@ -89,22 +88,21 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 
 | Net | Pins |
 |---|---|
-| `VIN` | J4.1, Q1.D |
-| `VIN_PROT` | Q1.S, R1.1, D1.K, TV1.K, C1.1, C2.1, C3.1, U1.1, Q2.S, R7.1, D3.K, R12.1, R16.1 |
-| `PGATE` | Q1.G, R1.2, R2.1, D1.A |
+| `5V_IO` | J1.2, J1.4, Q2.S, R7.1, U1.1, C3.1 |
+| `PFET_G` | Q2.G, R7.2, R8.1, C7.1 |
+| `ON_N` | R8.2, Q3.D, Q4.D, Q1.G |
+| `5V_MAIN` | Q2.D, C7.2, U4.1, U4.3, C15.1, C16.1 |
+| `VIN` | J3.1, TV1.K, R12.1, R16.1 |
 | `3V3_AON` | U1.5, C4.1, U2.5, C9.1, U3.6, C11.1, R14.1, R15.1 |
 | `KEY_IN` | J3.21, TV2.K, R3.1, R5.1 |
 | `KEY_SENSE` | R3.2, R4.1, C5.1, D2.A, U8.8 |
 | `KEY_DIV` | R5.2, R6.1, C6.1, Q3.G, Q6.G, Q7.G |
-| `PFET_G` | Q2.G, R7.2, R8.1, D3.A, C7.1 |
-| `ON_N` | R8.2, Q3.D, Q4.D |
-| `12V_SW` | Q2.D, C7.2, J5.1 |
 | `CM4_3V3` | J1.1, J1.17, R9.1 |
 | `ALIVE_R` | R9.2, D4.A |
 | `HOLD_G` | D4.K, C8.1, R10.1, Q4.G, U2.2, Q8.D |
 | `DEAD` | U2.4, C10.1 |
 | `GEN_G` | C10.2, R11.1, Q5.G |
-| `GLOBAL_EN` | Q5.D, J2.1 |
+| `GLOBAL_EN` | Q1.D, Q5.D, J2.1 |
 | `GEN_MID` | Q5.S, Q6.D |
 | `VLV` | R12.2, R13.1, C12.1, U3.4 |
 | `U3_REF` | U3.5, U3.3 |
@@ -112,9 +110,8 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 | `NKEY` | Q7.D, R15.2, C13.1, Q9.G |
 | `LV_MID` | Q8.S, Q9.D |
 | `VIN_SENSE` | R16.2, R17.1, C14.1, D5.A, U8.6 |
-| `5V_MAIN` | U4.1, U4.3, C15.1, C16.1 |
 | `+3V3` | U4.5, C17.1, C18.1, C19.1, D2.K, D5.K |
-| GND | J4.2, J5.2, R2.2, TV1.A, TV2.A, C1.2, C2.2, C3.2, U1.3, U1.4, C4.2, R4.2, C5.2, R6.2, C6.2, Q3.S, Q4.S, C8.2, R10.2, U2.3, C9.2, R11.2, Q6.S, U3.2, C11.2, R13.2, C12.2, Q7.S, C13.2, Q9.S, R17.2, C14.2, U4.2, C15.2, C16.2, C17.2, C18.2, C19.2 |
+| GND | TV1.A, TV2.A, C3.2, U1.3, U1.4, C4.2, R4.2, C5.2, R6.2, C6.2, Q1.S, Q3.S, Q4.S, C8.2, R10.2, U2.3, C9.2, R11.2, Q6.S, U3.2, C11.2, R13.2, C12.2, Q7.S, C13.2, Q9.S, R17.2, C14.2, U4.2, C15.2, C16.2, C17.2, C18.2, C19.2 |
 | no connect | U1.2, U2.1, U4.4 |
 
 ---
@@ -229,7 +226,7 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
-| 1 | no connect | | 2 | GND |
+| 1 | `VIN` (12 V sense) | | 2 | GND |
 | 3 | `5V_MAIN` | | 4 | `WAS_IN` |
 | 5 | GND | | 6 | `ISENSE_IN` |
 | 7 | `SW_WORK_IN` | | 8 | `SW_ENGAGE_IN` |
@@ -261,7 +258,7 @@ J1 and J2: footprints on the **top** layer (don't flip; that mirrors the pins). 
 | `STEER_EN_OUT` | R36.2, J3.12 |
 | `+3V3` | R31.2, R32.2, R33.2, D18.5 |
 | GND | J3.2, J3.5, J3.13, J3.20, D13.2, D14.2, D15.A, D16.A, D17.A, C40.2, C41.2, C42.2, D18.2 |
-| no connect | J3.1, J3.22, D18.6 |
+| no connect | J3.22, D18.6 |
 
 ---
 

@@ -10,7 +10,7 @@
 > - a hardware watchdog and status LEDs
 > - an **always-on + keyed 12 V power latch** that lets Linux shut down cleanly at key-off
 >
-> **Status (2026-09-25): schematic drawn and verified against `HARDWARE_HAT_NETLIST.md`** (150 parts, every pin; J8 console optional and not fitted). PCB outline, holes and J1/J2/J6/J7 placed and verified; layout next. This is the prototype
+> **Status (2026-09-25): schematic drawn and verified against `HARDWARE_HAT_NETLIST.md`** (150 parts, every pin; J8 console optional and not fitted). PCB outline, holes and J1/J2/J6/J7 placed and verified. **2026-09-25: power section reworked for direct power** (design §4); Power sheet updated and verified (142 parts, pin for pin); layout next. This is the prototype
 > plan of record. Designed in **EasyEDA Standard**.
 >
 > **The HAT document set.** These four files are complete on their own; you don't need any other doc:
@@ -36,12 +36,12 @@
 ## 1. Overview
 
 ```
-                      ┌──────────────────── AOW HAT ────────────────────┐
-vehicle constant 12 V ─► J4 ─ reverse-polarity + TVS ─ Q2 high-side switch ─► J5 ─► IO board J20 (+12 V)
-vehicle keyed 12 V ────► J3.21 ─ key sense ─┐                  ▲
-                                            ├── key/hold latch ┘
-IO board header pin 1 (CM4 3.3 V) ─ hold ───┘
-IO board header pins 2/4 (5 V) ─► CAN, ADC, GNSS, LEDs, WAS supply, U4 → +3V3
+vehicle constant 12 V ─ 5 A fuse ─────────────────────────────► IO board J20 (+12 V)   (not via the HAT)
+                                           ┌──────────── AOW HAT ─────────────────────────────┐
+12 V sense wire ─────► J3.1 ─ VIN sense / low-voltage cut-off ─┐
+vehicle keyed 12 V ──► J3.21 ─ key sense ──────────────────────┼─ key/hold latch ─┬─► Q2: 5 V_IO → 5V_MAIN
+IO board header pin 1 (CM4 3.3 V) ─ hold ──────────────────────┘                  └─► Q1: holds GLOBAL_EN low (CM4 off)
+IO board header pins 2/4 (5V_IO, always on) ─► U1 (latch supply); via Q2 → CAN, ADC, GNSS, LEDs, WAS supply, U4 → +3V3
 IO board header GPIO ─► SPI (3 × CAN + ADC), 4 UARTs, switches, steering, watchdog, LEDs, piezo
 IO board J1 pads ◄── J2 socket: GLOBAL_EN (restart), RUN_PG (watchdog reset)
 field harness ◄──► J3 (26-pin shrouded IDC) ─ ribbon ─ panel Deutsch connector
@@ -61,8 +61,8 @@ that's easy to rework.
 panel-mount Deutsch connector, and the enclosure is sealed there, so the IO board's own edge
 connectors don't matter.
 
-**Host.** The CM4 IO Board only. The HAT uses the IO board's J1 pads (§5) and J20 power input
-(§4), so it doesn't fit a Pi 4/5 as it stands. It keeps the standard HAT hole pattern, so a Pi 4
+**Host.** The CM4 IO Board only. The HAT uses the IO board's J1 pads (§5) to hold the CM4 off and
+restart it, so it doesn't fit a Pi 4/5 as it stands. It keeps the standard HAT hole pattern, so a Pi 4
 variant stays possible (same BCM2711, same GPIO allocation).
 
 ---
@@ -247,85 +247,87 @@ The UM981 draws less.
 
 ## 4. Power
 
+**Direct power (decided 2026-09-25).** Vehicle constant 12 V goes **straight to the IO board's J20**,
+not through the HAT. The HAT draws only a few hundred mA of 5 V, so running the IO board's 2 A
+through it added parts for no benefit. Instead of cutting the IO board's power, the latch:
+- **holds the CM4 off** through `GLOBAL_EN`, and
+- **switches off the HAT's own 5 V loads.**
+
+This works because the IO board draws only **~150 µA at 12 V with the CM4 off** (measured, §4.5).
+
 ### 4.1 Supplies
 
 | Net | Source | When it's on | Feeds |
 |---|---|---|---|
-| `VIN` | J4 pin 1: vehicle **constant** 12 V, fused at the battery (5 A) | always | Q1 |
-| `VIN_PROT` | Q1 (reverse polarity) + TV1 | always | U1, Q2, the latch dividers, `VIN_SENSE` |
-| `3V3_AON` | U1 TPS7B6933, 40 V-rated LDO | always | the latch logic (U2, U3, pull-ups) |
-| `12V_SW` | Q2, the latch's high-side P-FET | key on, or CM4 running | J5 → IO board J20 +12 V |
-| `5V_MAIN` | **IO board**, via header pins 2 and 4 | while the IO board is powered | CAN transceivers, ADC reference, GNSS, LEDs, piezo, WAS supply, U4 |
+| — (12 V to the IO board) | vehicle **constant** 12 V → 5 A fuse → IO board J20 pin 1 | always | the IO board: its 5 V converter, and the PCIe 3.3 V converter |
+| `5V_IO` | IO board 5 V, **header pins 2 and 4** | always, while the battery is connected | U1 and Q2 only |
+| `3V3_AON` | U1 TPS7B6933 from `5V_IO` | always | the latch logic (U2, U3, pull-ups) |
+| `5V_MAIN` | **Q2**, the HAT's 5 V load switch | key on, or CM4 running | CAN transceivers, ADC reference, GNSS, LEDs, piezo, WAS supply, U4 |
 | `+3V3` | U4 RT9080-33 from `5V_MAIN` | with `5V_MAIN` | CAN controllers, X1, SP3232, watchdog, pull-ups |
+| `VIN` | the **12 V sense wire**, J3 pin 1 (constant 12 V, ~0.1 mA) | always | `VIN_SENSE` and the low-voltage cut-off dividers only |
 | `CM4_3V3` | the CM4's own 3.3 V output, header pins 1 and 17 | **CM4 running only**: drops to 0 V at halt | the hold circuit only (§4.4) |
-
-The HAT has **no 5 V converter**: the IO board's 3 A converter powers the CM4, and the HAT borrows
-its 5 V through the header. The IO board's PCIe slot has its own 3.3 V converter fed from 12 V, so
-an NVMe drive loads the 12 V side, not the 5 V.
 
 ### 4.2 Input protection
 
-- **Q1** IRFR5305 P-FET in the ground-referenced reverse-polarity arrangement: drain (tab) on `VIN`,
-  source on `VIN_PROT`. Its body diode points the right way, so with the battery reversed nothing
-  conducts.
-- **Q1 gate:** R1 from `VIN_PROT` to the gate and R2 from the gate to GND, with **D1** (12 V zener,
-  cathode on `VIN_PROT`) clamping V<sub>GS</sub>. **R1 = 1 MΩ, R2 = 100 kΩ**: the ratio gives
-  V<sub>GS</sub> ≈ −0.91 × VIN (clamped at −12 V), and the high values keep the always-on divider to
-  ~11 µA.
-- **TV1** SMBJ24A from `VIN_PROT` to GND, with C1/C2 (10 µF 50 V) bulk.
-- **No surge stopper.** The IO board is rated 7.5–28 V, and TV1 clamps short spikes at up to ~39 V,
-  so brief transients can exceed the rating. That's accepted: AgOpenGPS AiO boards have run on less
-  input protection with no field problems, a 24 V jump start stays under 28 V, and tractor
-  alternators have load-dump suppression. *Set aside:* an LT4363-2 surge stopper (C118131, ~$4–6).
-  Revisit only if field units show input failures.
+- **The IO board's 12 V input** has its own reverse-polarity protection (an ideal-diode P-FET) but
+  **no surge clamp**, and it's rated 7.5–28 V. AgOpenGPS boards run with little input protection
+  and no field problems, and tractor alternators have load-dump suppression. *Optional:* an inline TVS
+  (SMBJ24A-class) across +12 V/GND at the J20 end of the lead.
+- **On the HAT:**
+  - TV1 (SMBJ24A) on the 12 V sense wire (J3.1).
+  - TV2 (SMBJ24A) on the keyed input (J3.21).
+  - Both feed only 100 kΩ dividers, so a reversed or over-voltage wire can't push real current anywhere.
+- *Set aside:* an LT4363-2 surge stopper (C118131, ~$4–6).
 
 ### 4.3 Why a key/hold latch
 
-The board runs from **constant 12 V** and reads the **keyed 12 V** purely as a signal, the same way
-an automotive head unit does. Key-off then becomes an explicit "shut down now" message, and Linux
-has as long as it needs, because the board is still powered.
+The IO board runs from **constant 12 V**, and the HAT reads the **keyed 12 V** purely as a signal,
+the same way an automotive head unit does. Key-off then becomes an explicit "shut down now"
+message, and Linux has as long as it needs, because everything is still powered.
 
 **The key is the only on/off control.** A shutdown started from the UI with the key on restarts the
 unit about 2 s after the halt. So the UI should offer **Restart**, not "Shut down".
 
 ### 4.4 The latch circuit
 
-Five blocks, all discrete, no firmware. **Q2 is on when the key is on OR the CM4 is running.**
+Five blocks, all discrete, no firmware. **"On" = the key is on OR the CM4 is running.** On means Q2
+supplies `5V_MAIN` and Q1 releases `GLOBAL_EN`. Off means `5V_MAIN` is dead and `GLOBAL_EN` is held
+low (the CM4 stays off).
 
 | Block | Parts | What it does |
 |---|---|---|
-| **A: key sense** | TV2; R3/R4/C5/D2 → `KEY_SENSE`; R5/R6/C6 → `KEY_DIV` | `KEY_SENSE` (100 k / 8.2 k, clamped to `+3V3` by D2) goes to ADC IN4, so Linux can read the key. `KEY_DIV` (100 k / 33 k: 12 V → 2.98 V) drives the FET gates: Q3, Q6 and Q7. The two dividers are separate because the ADC is unpowered while the board is off and would drag a shared node down. |
-| **B: switch** | Q2 DMP6023LE (−60 V); R7, R8, D3, C7; Q3, Q4 | Q3 (key) **or** Q4 (hold) pulls `ON_N` low. R7 (100 k, gate→source) / R8 (47 k, gate→`ON_N`) then give V<sub>GS</sub> ≈ −8 V at 12 V. D3 clamps V<sub>GS</sub> at −12 V for jump starts. C7 (10 nF gate→drain) soft-starts, so the IO board's input capacitors don't slam. |
+| **A: key sense** | TV2; R3/R4/C5/D2 → `KEY_SENSE`; R5/R6/C6 → `KEY_DIV` | `KEY_SENSE` (100 k / 8.2 k, clamped to `+3V3` by D2) goes to ADC IN4, so Linux can read the key. `KEY_DIV` (100 k / 33 k: 12 V → 2.98 V) drives the FET gates: Q3, Q6 and Q7. The two dividers are separate because the ADC is unpowered while the HAT is off and would drag a shared node down. |
+| **B: switch and hold-off** | Q2 AO3401A, R7, R8, C7; Q3, Q4; Q1 | Q3 (key) **or** Q4 (hold) pulls `ON_N` low. That turns Q2 on through R8 (10 k): R7 (100 k, gate→`5V_IO`) and R8 give V<sub>GS</sub> ≈ −4.5 V, and C7 (10 nF gate→drain) slows the turn-on so the GNSS and CAN capacitors don't pull the IO board's 5 V down. **Q1** (gate on `ON_N`) holds `GLOBAL_EN` low whenever `ON_N` is high (off), and releases it when `ON_N` goes low: the CM4 boots. |
 | **C: hold** | R9 1 k, D4 1N4148W, C8 1 µF, R10 2.2 M → `HOLD_G` | `CM4_3V3` charges `HOLD_G` to ~2.6 V, which turns Q4 on. At halt `CM4_3V3` drops, and `HOLD_G` decays for **1.2–2.6 s** before Q4 lets go. That bridges reboot and watchdog dips. |
 | **E: restart** | U2 74LVC1G14; C10 100 nF, R11 1 M; Q5, Q6 | Once `HOLD_G` has decayed, U2 drives `DEAD` high. The edge through C10 turns Q5 on for ~80 ms. **If the key is on** (Q6), that pulls `GLOBAL_EN` low, and **a halted CM4 restarts**. It covers a UI shutdown and a key-off → key-on during shutdown. |
-| **D: low-voltage cut-off** | U3 TLV3011; R12/R13/C12 → `VLV`; R14; Q7, R15, C13 → `NKEY`; Q8, Q9 | If the key has been off for 6–13 s (`NKEY`, R15 10 M × C13 2.2 µF) **and** VIN is below **11.5 V** (R12 1 M / R13 121 k against the 1.242 V reference, filtered ~1.1 s by C12), Q8 + Q9 pull `HOLD_G` low and the board switches off. This is what protects the battery if Linux ignores the key. It latches without extra parts: `CM4_3V3` has gone, so the hold can't come back. The 6 s minimum stops a crank that drops the keyed feed from tripping it. |
+| **D: low-voltage cut-off** | U3 TLV3011; R12/R13/C12 → `VLV`; R14; Q7, R15, C13 → `NKEY`; Q8, Q9 | If the key has been off for 6–13 s (`NKEY`, R15 10 M × C13 2.2 µF) **and** VIN is below **11.5 V** (R12 1 M / R13 121 k from the sense wire against the 1.242 V reference, filtered ~1.1 s by C12), Q8 + Q9 pull `HOLD_G` low. The latch goes off: the CM4 is forced off and the HAT's loads cut. This is what protects the battery if Linux ignores the key. It latches, because `CM4_3V3` has gone. |
 
 **Sequence:**
 
 | State | What happens |
 |---|---|
-| Key on | Q3 → Q2 on → IO board powered → CM4 boots → `CM4_3V3` → Q4 also on |
-| Crank | if the keyed feed drops, Q4 holds power. **The IO board itself needs ≥ 7.5 V**, though: see the issues list |
-| Key off | Q4 keeps power. Linux sees `KEY_SENSE` low for 3 s and runs `poweroff` |
-| Halt | `CM4_3V3` → 0 V. `HOLD_G` decays for 1.2–2.6 s, then Q4 turns off → Q2 off → the IO board is unpowered |
-| Key on during shutdown, or UI shutdown with the key on | Q2 stays on through Q3. After the halt, block E pulses `GLOBAL_EN` → the CM4 restarts |
+| Battery connected, key off | the IO board's 5 V comes up; `ON_N` is high, so Q1 holds `GLOBAL_EN` low: **the CM4 stays off**, and `5V_MAIN` stays off |
+| Key on | Q3 → `ON_N` low → Q2 on (`5V_MAIN`) and Q1 releases `GLOBAL_EN` → the CM4 boots → `CM4_3V3` → Q4 also on |
+| Crank | the IO board is on the battery directly and **needs ≥ 7.5 V**: see the issues list (B4). If the keyed feed drops, Q4 holds the latch on. |
+| Key off | Q4 keeps it on. Linux sees `KEY_SENSE` low for 3 s and runs `poweroff` |
+| Halt | `CM4_3V3` → 0 V. `HOLD_G` decays for 1.2–2.6 s, then Q4 turns off → `ON_N` high → Q2 off and **Q1 holds `GLOBAL_EN` low**. The IO board sits at ~150 µA |
+| Key on during shutdown, or UI shutdown with the key on | the latch stays on through Q3. After the halt, block E pulses `GLOBAL_EN` → the CM4 restarts |
 | Key off, Linux doesn't shut down | U10 (watchdog) catches a hung kernel: it reboots, sees the key off and shuts down again. A running but key-ignoring Linux is caught by block D once the battery drops below 11.5 V |
 
-### 4.5 Standby draw (key off, board off)
+### 4.5 Standby draw (key off, CM4 held off)
 
-| Path | At 12.6 V |
+| Path | Current |
 |---|---|
-| `VIN_SENSE` divider R16/R17 | 116 µA |
-| U1 LDO | ~15 µA |
-| Q1 gate divider R1/R2 | 11 µA |
-| LV divider R12/R13 | 11 µA |
-| U3 + R14 | ~6 µA |
-| U2, FET leakage, TV1/TV2 leakage | ~5 µA |
-| **Total** | **≈ 165 µA ≈ 4 mAh/day ≈ 1.4 Ah/year** |
+| IO board, CM4 off (**measured 2026-09-25**) | ~150 µA at 12 V |
+| `VIN_SENSE` divider R16/R17 (sense wire) | 116 µA at 12 V |
+| LV divider R12/R13 (sense wire) | 11 µA at 12 V |
+| HAT on `5V_IO`: U1 ~15 µA, U3 + R14 ~6 µA, Q1 holding `GLOBAL_EN` against the CM4's 100 k pull-up ~50 µA, leakage ~5 µA | ~76 µA at 5 V ≈ 35 µA at 12 V |
+| **Total** | **≈ 0.31 mA ≈ 7.5 mAh/day ≈ 2.7 Ah/year** |
 
-That's negligible against a tractor battery. Measure it on the built board anyway.
+Negligible against a tractor battery. **Check (issues H6):** whether an NVMe in the PCIe slot adds to
+the IO board's 150 µA. The slot's 3.3 V converter runs from 12 V.
 
-### 4.6 The lead to the IO board (J5 → IO board J20)
+### 4.6 The 12 V lead (panel connector → IO board J20)
 
 - **IO board J20 pinout** (from the IO board KiCad design): **pin 1 = +12 V, pins 2 and 3 = GND,
   pin 4 = +5 V.** ⚠ **That's the reverse of the usual floppy-cable colours** (red +5 V on pin 1,
@@ -333,10 +335,10 @@ That's negligible against a tractor battery. Measure it on the built board anywa
   the 5 V pin.
 - **Build the lead to the IO board's labels, and meter J20 first:** power the IO board from its
   barrel jack, and the pin reading 12 V is pin 1.
-- J5 is a JST-VH 2-pin: pin 1 `12V_SW`, pin 2 GND. At the IO board end, a Berg housing (TE 171822-4)
-  on J20 pin 1 and **both** GND pins 2 and 3. J20's +5 V pin stays unconnected.
-- **Never power the IO board's barrel jack while the HAT is connected.** J19 and J20 share the 12 V
-  bus, so a bench supply would back-feed the HAT through Q2's body diode.
+- A Berg housing (TE 171822-4) on J20 pin 1 and **both** GND pins 2 and 3; J20's +5 V pin stays
+  unconnected. The other end goes to the panel connector's power pair. **18 AWG, ≥ 2 A.** Fuse:
+  **5 A** at the battery.
+- **Don't connect the barrel jack and J20 at the same time.** They share the IO board's 12 V bus.
 
 ### 4.7 Current budget
 
@@ -355,10 +357,10 @@ That's negligible against a tractor battery. Measure it on the built board anywa
 
 - **Cap the LED brightness in software (≤ 25%).** That saves ~180 mA: they're status lights.
 - **No power-hungry USB devices** on the IO board. A keyboard or flash drive for service is fine.
+- **Q2 carries the HAT's share**, ≤ ~0.9 A: about 45 mV across the AO3401A.
 
 **12 V:** the 5 V side draws ≈ 1.3 A worst case (≈ 88% converter efficiency), plus NVMe up to
-≈ 0.75 A, giving **≈ 2 A peak, ≈ 0.8 A typical**. This sizes Q2, J4, J5 and their wiring. Harness
-fuse: **5 A**.
+≈ 0.75 A, giving **≈ 2 A peak, ≈ 0.8 A typical** in the 12 V lead to J20. Harness fuse: **5 A**.
 
 ---
 
@@ -369,8 +371,9 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
 
 - **IO board:** solder a 1 × 3 male header into J1.
 - **HAT:** J2, a 1 × 3 female socket at the §2.1 coordinates (footprint on the top layer, body fitted underneath).
-- **J2 pin 1 `GLOBAL_EN`** ← Q5 (the block E restart pulse). Pulling it low for > 1 ms restarts a
-  halted CM4.
+- **J2 pin 1 `GLOBAL_EN`** ← Q1 (held low while the latch is off, keeping the CM4 off) and Q5 (the
+  block E restart pulse). Releasing it, or pulling it low for > 1 ms and then releasing it, starts a
+  halted or held-off CM4.
 - **J2 pin 3 `RUN_PG`** ← R38 330 Ω ← `RUN_PG_G`, the node shared by U10's WDO and SW1. Resetting
   through 330 Ω follows the CM4 datasheet's advice not to pull `RUN_PG` hard to ground.
 - **Watchdog U10** STWD100NYWY3F: 1.6 s timeout (range 1.12–2.24 s), open-drain.
@@ -476,7 +479,7 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
-| 1 | NC (vehicle power is on J4) | | 2 | GND |
+| 1 | `VIN`: 12 V sense wire (constant, fused 1 A) | | 2 | GND |
 | 3 | `5V_MAIN` (WAS supply) | | 4 | `WAS_IN` |
 | 5 | GND | | 6 | `ISENSE_IN` |
 | 7 | `SW_WORK_IN` | | 8 | `SW_ENGAGE_IN` |
@@ -505,19 +508,21 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
     tails).
   - The ribbon can leave past the IO board's left edge.
 
-### 8.2 J4: vehicle power (decided 2026-09-24)
+### 8.2 Power wiring
 
-A JST-VH 2-pin: pin 1 `VIN` (constant 12 V), pin 2 GND. It's separate from the ribbon because one
-28 AWG ribbon conductor is ~1 A and the HAT passes ~2 A peak. Discrete wires run from the panel
-connector.
+- **12 V power pair:** panel connector → **IO board J20** (§4.6), 18 AWG, 5 A fuse at the battery.
+  It doesn't go through the HAT or the ribbon.
+- **12 V sense wire:** constant 12 V → **J3 pin 1**, fused 1 A. It can branch off the power feed after
+  the 5 A fuse. It carries ~0.1 mA, so a ribbon conductor is fine.
+- **Keyed 12 V:** IGN/RUN → **J3 pin 21**, fused 1 A.
 
 ### 8.3 Install
 
 - **Two-wire (normal):**
-  - J4 → **constant** 12 V, fused at the battery (5 A).
+  - Constant 12 V → IO board J20 (5 A fuse), and the same feed → J3.1 (sense, 1 A fuse).
   - J3.21 → **IGN/RUN**, not ACC (ACC drops out for the whole crank), fused (1 A is plenty; the load
     is ~0.2 mA).
-- **Single-wire fallback:** link J3.21 to J4's `VIN` in the harness. The board then powers with the
+- **Single-wire fallback:** feed J20, J3.1 and J3.21 all from the one switched feed. The board then powers with the
   key and cuts abruptly at key-off: the read-only root survives, in-flight data doesn't.
 - **With J3.21 left open, the board never turns on.** Put that on the silkscreen by J3 and in the
   harness doc.
@@ -531,7 +536,8 @@ connector.
 | Prototype form | HAT on the CM4 IO Board | simpler to lay out and build; sealing is at the panel connector anyway |
 | Key-off shutdown | always-on + keyed 12 V latch, all discrete | no firmware; the key is the only on/off control |
 | Watchdog | discrete STWD100 (1.6 s) | independent of everything else |
-| Input protection | reverse-polarity FET + SMBJ24A, no surge stopper | field-proven on AgOpenGPS boards |
+| Power path | **12 V straight to the IO board's J20** (2026-09-25); the HAT switches only its own 5 V and holds the CM4 off via `GLOBAL_EN` | the IO board draws ~150 µA with the CM4 off, so switching its 12 V gained nothing |
+| Input protection | the IO board's own reverse-polarity FET; SMBJ24A on the HAT's sense inputs; optional inline TVS at J20 | field-proven on AgOpenGPS boards |
 | Restart / watchdog path | J2 socket onto the IO board's J1 pads | keeps both circuits simple; both tested through these pads |
 | GNSS | EMAX UM981 or UM982EB only | the boards on hand; remix for others |
 | Board size | standard HAT + ~16 mm upward | fits the GNSS footprint; the right-hand extension is held in reserve |
