@@ -44,7 +44,7 @@ IO board header pin 1 (CM4 3.3 V) ─ hold ───┘
 IO board header pins 2/4 (5 V) ─► CAN, ADC, GNSS, LEDs, WAS supply, U4 → +3V3
 IO board header GPIO ─► SPI (3 × CAN + ADC), 4 UARTs, switches, steering, watchdog, LEDs, piezo
 IO board J1 pads ◄── J2 socket: GLOBAL_EN (restart), RUN_PG (watchdog reset)
-field harness ◄──► J3 (26-pin latched IDC) ─ ribbon ─ panel Deutsch connector
+field harness ◄──► J3 (26-pin shrouded IDC) ─ ribbon ─ panel Deutsch connector
 ```
 
 **Why a HAT on the IO board.** Everything high-speed and risky is already done and tested on
@@ -89,6 +89,7 @@ so the board lies at negative Y. **X_editor = x, Y_editor = −(y + 16).** The b
 | **J2 origin** (pin 2), **180°** | 15.50 | −48.00 | |
 | **J6** (EMAX): pin 1 / pin 8, pins run +X | 31.12 / 48.90 | −41.20 | |
 | **J7** (UM982EB): pins 1, 2 / 27, 28, pins run −X | 52.00 / 26.00 | −69.80 odd, −67.80 even | |
+| **J3** (field header) centre, pins run along Y | 5.90 | −43.32 | pin 1 (4.63, −28.08), pin 2 (7.17, −28.08) |
 
 ### 2.1 Outline, holes and host connectors
 
@@ -471,7 +472,7 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
 
 ## 8. Field wiring
 
-### 8.1 J3: 26-pin latched IDC header → ribbon → panel Deutsch connector
+### 8.1 J3: 26-pin shrouded IDC header → ribbon → panel Deutsch connector
 
 | Pin | Net | | Pin | Net |
 |---|---|---|---|---|
@@ -492,7 +493,17 @@ three unpopulated pads under the HAT: 1 = `GLOBAL_EN`, 2 = GND, 3 = `RUN_PG`.
 - Odd pins on one row, even on the other, like any 2 × 13 header. IDC pin n = ribbon conductor n, so each CAN H/L pair (14/15, 16/17, 18/19) sits on neighbouring conductors. Keep the
   ribbon short.
 - All protection sits on the HAT where the ribbon lands.
-- Use a latched header and strain relief at both ends against vibration.
+- **J3 is a shrouded, keyed header without latches** (C75755, 40.64 × 9.12 mm). The latched versions
+  are 52.5 mm long and don't fit anywhere outside the GNSS boards. Against vibration, clamp the ribbon
+  with a strain-relief clip or tie it to the enclosure close to J3, and use strain relief at the
+  panel end too.
+- **Placement: the left strip** (X 0–16, outside both GNSS boards).
+  - Centre at **X 5.90, Y −43.32**, pins running along Y.
+  - Pin 1 at (4.63, −28.08), pin 2 at (7.17, −28.08); pins 25/26 at Y −58.56.
+  - The body spans X 1.3–10.4 and Y −23.0 to −63.6. That clears J1's pins, the H1/H3 standoff nuts
+    (~2 mm), J2's pads (1.6 mm) and the IO board's coin-cell holder underneath (~3 mm to the pin
+    tails).
+  - The ribbon can leave past the IO board's left edge.
 
 ### 8.2 J4: vehicle power (decided 2026-09-24)
 
