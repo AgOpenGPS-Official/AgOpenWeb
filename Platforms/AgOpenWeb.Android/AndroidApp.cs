@@ -32,6 +32,17 @@ public class AndroidApp : AvaloniaAndroidApplication<App>
     {
     }
 
+    public override void OnCreate()
+    {
+        base.OnCreate();
+
+        // The one point Android guarantees runs before any Activity or Service in this
+        // process — cold start via the launcher icon and a sticky BackendService restart
+        // (which can happen without MainActivity ever running) both go through here first.
+        // Must happen before anything reads AppDataRoot.Documents.
+        AgOpenWeb.Android.Services.AndroidDataRoot.Initialize(this);
+    }
+
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
     {
         // Skia's default GPU resource cache is ~28 MB. Our coverage bitmap
