@@ -16,7 +16,6 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using AgOpenWeb.Services;
 
 namespace AgOpenWeb.Android.Services;
@@ -25,15 +24,17 @@ namespace AgOpenWeb.Android.Services;
 /// Single entry point for pointing AGOPENWEB_DATA at a location Android will let us use
 /// without root or any user-granted permission, on every supported version (API 23+).
 ///
-/// MUST be called from both <c>MainActivity.OnCreate</c> and <c>BackendService.OnCreate</c>,
-/// before anything touches <see cref="AppDataRoot.Documents"/> — a sticky service restart can
-/// bring BackendService back up without MainActivity ever running, and it still needs to
-/// resolve the same folder. The env var is set once per process and never changed afterward,
-/// so a mid-life move that would strand already-loaded data can't happen.
+/// Called from <c>AndroidApp.OnCreate</c>, which Android runs before any Activity or Service in
+/// the process (including a sticky <c>BackendService</c> restart without <c>MainActivity</c>),
+/// so it happens before anything touches <see cref="AppDataRoot.Documents"/>. The env var is set
+/// once per process and never changed afterward, so a mid-life move that would strand
+/// already-loaded data can't happen.
 ///
 /// On first run after upgrading from the old MyDocuments-based layout, an existing
 /// MyDocuments/AgOpenWeb folder is copied (never moved — a failure part-way through can't
-/// lose the source) into the new root, then a marker file stops it running again.
+/// lose the source) into the new root, then a marker file stops it running again. The copy
+/// skips files that already exist, so a retry after an interrupted copy fills in only what's
+/// missing and never overwrites anything.
 /// </summary>
 internal static class AndroidDataRoot
 {
@@ -73,11 +74,10 @@ internal static class AndroidDataRoot
         {
             if (File.Exists(marker)) return; // already handled (migrated, or nothing was there)
 
-            var newHasData = Directory.Exists(newAgOpenWeb) && Directory.EnumerateFileSystemEntries(newAgOpenWeb).Any();
-            if (!newHasData && Directory.Exists(legacyAgOpenWeb))
-            {
+            // No "is the new folder empty?" check: after an interrupted copy the folder is
+            // partly filled, and skipping the copy would leave the rest behind for good.
+            if (Directory.Exists(legacyAgOpenWeb))
                 CopyDirectory(legacyAgOpenWeb, newAgOpenWeb);
-            }
 
             // Written whether or not there was anything to copy, so we don't keep re-checking
             // the (now-empty-of-relevance) legacy folder on every cold start.
@@ -95,7 +95,11 @@ internal static class AndroidDataRoot
     {
         Directory.CreateDirectory(destDir);
         foreach (var file in Directory.GetFiles(sourceDir))
-            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite: false);
+        {
+            var dest = Path.Combine(destDir, Path.GetFileName(file));
+            if (!File.Exists(dest)) // already copied (or newer data already here): leave it
+                File.Copy(file, dest);
+        }
         foreach (var dir in Directory.GetDirectories(sourceDir))
             CopyDirectory(dir, Path.Combine(destDir, Path.GetFileName(dir)));
     }
