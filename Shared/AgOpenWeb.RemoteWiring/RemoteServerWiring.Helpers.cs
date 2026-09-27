@@ -203,6 +203,7 @@ public static partial class RemoteServerWiring
             case "display.sectionsSound": disp.SectionsSound = B(); cfg.SaveAppSettings(); return;
             case "display.keyboardEnabled": disp.KeyboardEnabled = B(); cfg.SaveAppSettings(); return;
             case "display.startFullscreen": disp.StartFullscreen = B(); cfg.SaveAppSettings(); return;
+            case "display.keepScreenOn": disp.KeepScreenOn = B(); cfg.SaveAppSettings(); return;
             case "display.elevationLogEnabled": disp.ElevationLogEnabled = B(); cfg.SaveAppSettings(); return;
             // --- AutoSteer config (Phase 9). Live effect on ConfigStore.AutoSteer (the
             // SoT the VM binds to); MarkChanged re-fingerprints so the Config frame

@@ -149,6 +149,7 @@ public partial class App : Avalonia.Application
             {
                 loaded = true;
                 splash.IsVisible = false;
+                FollowKeepScreenOn();
             }
             pending?.TrySetResult(e.IsSuccess);
         };
@@ -218,6 +219,24 @@ public partial class App : Avalonia.Application
 
         _ = DriveAsync();
         return new Grid { Children = { web, splash } };
+    }
+
+    // App Settings › Keep Screen On: apply once the UI is up, then follow the setting live (the
+    // store is written on the backend's host loop; SetKeepScreenOn hops to the Activity's thread).
+    // Static and once per process — the store outlives any Activity, and SetKeepScreenOn always
+    // targets the current one.
+    private static bool _followingKeepScreenOn;
+    private static void FollowKeepScreenOn()
+    {
+        var display = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Display;
+        MainActivity.SetKeepScreenOn(display.KeepScreenOn);
+        if (_followingKeepScreenOn) return;
+        _followingKeepScreenOn = true;
+        display.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(display.KeepScreenOn))
+                MainActivity.SetKeepScreenOn(display.KeepScreenOn);
+        };
     }
 
     // Replace the splash text with a real message. Without this a startup failure leaves either a

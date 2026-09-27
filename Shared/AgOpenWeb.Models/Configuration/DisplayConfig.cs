@@ -137,6 +137,14 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _startFullscreen, value);
     }
 
+    // Device preference: the platform shells keep the display awake while the web UI shows.
+    private bool _keepScreenOn = true;
+    public bool KeepScreenOn
+    {
+        get => _keepScreenOn;
+        set => SetProperty(ref _keepScreenOn, value);
+    }
+
     private bool _elevationLogEnabled;
     public bool ElevationLogEnabled
     {

@@ -67,7 +67,11 @@ internal sealed class WebViewLauncherWindow : Window
             Console.WriteLine($"[webview] completed IsSuccess={e.IsSuccess}");
             // Reveal the loaded UI. The WebKitGTK backend can raise this off the UI thread, so
             // marshal the property change — setting IsVisible off-thread silently no-ops on X11.
-            if (e.IsSuccess) Dispatcher.UIThread.Post(() => _splash.IsVisible = false);
+            if (e.IsSuccess) Dispatcher.UIThread.Post(() =>
+            {
+                _splash.IsVisible = false;
+                FollowKeepScreenOn();
+            });
         };
 
         // WebView underneath, splash on top until the page loads.
@@ -97,6 +101,23 @@ internal sealed class WebViewLauncherWindow : Window
         Dispatcher.UIThread.Post(Rearrange, DispatcherPriority.Background);
         DispatcherTimer.RunOnce(Rearrange, TimeSpan.FromMilliseconds(300));
         DispatcherTimer.RunOnce(Rearrange, TimeSpan.FromMilliseconds(1000));
+    }
+
+    // App Settings › Keep Screen On: apply once the UI is up, then follow the setting live. The
+    // store is written on the backend's host loop, so hop to the UI thread (SetThreadExecutionState
+    // is per-thread and must be held by the long-lived UI thread).
+    private bool _followingKeepScreenOn;
+    private void FollowKeepScreenOn()
+    {
+        if (_followingKeepScreenOn) return;
+        _followingKeepScreenOn = true;
+        var display = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Display;
+        ScreenAwake.Set(this, display.KeepScreenOn);
+        display.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(display.KeepScreenOn))
+                Dispatcher.UIThread.Post(() => ScreenAwake.Set(this, display.KeepScreenOn));
+        };
     }
 
     private async Task StartAsync()

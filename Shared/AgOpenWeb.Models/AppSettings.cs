@@ -28,6 +28,8 @@ namespace AgOpenWeb.Models
         // application STATE, not config — it now lives in PersistentAppState
         // (appstate.json), not here.
         public bool StartFullscreen { get; set; } = false;
+        /// <summary>Keep the display from sleeping/locking while the app shows the web UI.</summary>
+        public bool KeepScreenOn { get; set; } = true;
         public bool SvennArrowVisible { get; set; } = false;
         public bool KeyboardEnabled { get; set; } = false;
         public bool HeadlandDistanceVisible { get; set; } = true;
@@ -44,10 +46,10 @@ namespace AgOpenWeb.Models
         /// <summary>
         /// Device-/user-scoped metric vs imperial preference. The source of
         /// truth lives here (in AppSettings); vehicle profiles must not
-        /// dictate units. Default false (imperial) matches the legacy
-        /// per-vehicle default before the migration.
+        /// dictate units. Default true (metric) for fresh installs; an
+        /// existing settings file keeps whatever value it already saved.
         /// </summary>
-        public bool IsMetric { get; set; } = false;
+        public bool IsMetric { get; set; } = true;
 
         /// <summary>
         /// One-shot migration latch: if false, the next vehicle-profile

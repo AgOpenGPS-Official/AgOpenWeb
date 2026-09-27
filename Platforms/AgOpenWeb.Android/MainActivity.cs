@@ -75,6 +75,18 @@ public class MainActivity : AvaloniaMainActivity
         });
     }
 
+    /// <summary>App Settings › Keep Screen On. FLAG_KEEP_SCREEN_ON only holds while this
+    /// Activity's window is visible, so backgrounding the app releases it.</summary>
+    public static void SetKeepScreenOn(bool on)
+    {
+        var act = Instance;
+        act?.RunOnUiThread(() =>
+        {
+            if (on) act.Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
+            else act.Window?.ClearFlags(WindowManagerFlags.KeepScreenOn);
+        });
+    }
+
     // Android 13+ (API 33) gates notification display behind a runtime permission; without it
     // the foreground-service notification is suppressed (the service still runs). Best-effort.
     private void RequestNotificationPermissionIfNeeded()
