@@ -285,6 +285,44 @@ public sealed class YouTurnStateMachine
         //   (2) Legacy closest-approach as a backstop for the case
         //       where (1) misses (e.g., a very short path where the
         //       arc-length never exceeds the lookahead).
+        CheckCompletion(in ctx, guidance, turn, effects);
+
+        return effects;
+    }
+
+    /// <summary>
+    /// Run only the turn-completion checks for a turn that is already executing. The
+    /// caller uses this when the full <see cref="Tick"/> is gated off (no headland line)
+    /// but a manual turn is in progress — without it a manual turn in a field with no
+    /// headland never completes (#163).
+    /// </summary>
+    public YouTurnEffects TickExecutingTurn(in TickContext ctx, GuidanceWorkingState guidance, YouTurnWorkingState turn)
+    {
+        var effects = new YouTurnEffects();
+        if (ctx.SelectedTrack == null || ctx.SelectedTrack.Points.Count < 2) return effects;
+        CheckCompletion(in ctx, guidance, turn, effects);
+        return effects;
+    }
+
+    /// <summary>
+    /// Complete the executing turn because U-turn guidance reached the end of the path
+    /// (AgOpenGPS CYouTurn calls CompleteYouTurn from its guidance the same way). Backstop
+    /// for the arc-length / closest-approach checks: guidance stops steering once it
+    /// reports the path finished, so an uncompleted turn would leave the tractor with no
+    /// steering at all. No-op when no turn is executing.
+    /// </summary>
+    public YouTurnEffects CompleteFromGuidance(in TickContext ctx, GuidanceWorkingState guidance, YouTurnWorkingState turn)
+    {
+        var effects = new YouTurnEffects();
+        if (!turn.IsExecuting) return effects;
+        _logger.LogDebug("[YouTurn] Guidance reached end of turn path — completing turn");
+        CompleteTurn(in ctx, guidance, turn, effects);
+        return effects;
+    }
+
+    private void CheckCompletion(in TickContext ctx, GuidanceWorkingState guidance, YouTurnWorkingState turn, YouTurnEffects effects)
+    {
+        var currentPosition = ctx.CurrentPosition;
         if (turn.IsExecuting && turn.TurnPath != null && turn.TurnPath.Count > 2)
         {
             var startPoint = turn.TurnPath[0];
@@ -343,7 +381,7 @@ public sealed class YouTurnStateMachine
                     remainingArc, EarlyCompletionLookahead, traveledArc,
                     distToTurnStart, distToTurnEnd);
                 CompleteTurn(in ctx, guidance, turn, effects);
-                return effects;
+                return;
             }
 
             // Closest-approach backstop: complete when the tractor was
@@ -365,8 +403,6 @@ public sealed class YouTurnStateMachine
 
             turn.PreviousDistToTurnEnd = distToTurnEnd;
         }
-
-        return effects;
     }
 
     /// <summary>

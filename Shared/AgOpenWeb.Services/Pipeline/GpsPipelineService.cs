@@ -824,6 +824,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // state-machine branches make the auto tick a no-op mid-turn anyway.
             youTurnTickEffects ??= autoEffects;
         }
+        else if (autoSteerEngaged && hasTickableTrack && _youTurn.IsExecuting)
+        {
+            // A manual turn is executing but the auto tick is gated off (no headland —
+            // manual turns don't need one). Still run the completion checks, or the turn
+            // never completes and the tractor is left without steering (#163).
+            youTurnTickEffects ??= _youTurnStateMachine.TickExecutingTurn(in tickCtx, _guidanceWorking, _youTurn);
+        }
 
         // U-turn sounds (#110); the audio service gates them on the U-turn sound setting.
         if (youTurnTickEffects?.TurnCreationFailedSound == true) _audioService.Play(SoundEffect.UTurnTooClose);
@@ -1047,6 +1054,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     goalN = ytResult.Value.goalN;
                     youTurnCompleted = ytResult.Value.turnComplete;
                     hasGuidance = !youTurnCompleted;
+                    if (youTurnCompleted && _youTurn.IsExecuting)
+                    {
+                        // Guidance ran off the end of the path before the state machine's
+                        // own checks fired. Complete the turn here (AgOpenGPS does the same
+                        // from its U-turn guidance) so the next cycle follows the new pass
+                        // instead of sitting in a turn with no steering (#163).
+                        var completion = _youTurnStateMachine.CompleteFromGuidance(in tickCtx, _guidanceWorking, _youTurn);
+                        if (youTurnTickEffects == null) youTurnTickEffects = completion;
+                        else youTurnTickEffects.TurnCompleted |= completion.TurnCompleted;
+                    }
                     diagPathAnchorA = ytResult.Value.pointA;
                     diagPathAnchorB = ytResult.Value.pointB;
                     diagTurnPathCount = ytResult.Value.pathPointCount;
