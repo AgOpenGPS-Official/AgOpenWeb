@@ -258,7 +258,7 @@ AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits cod
 | `Shared/AgOpenWeb.Services/GpsService.cs` | GPS data processing |
 | `Shared/AgOpenWeb.Services/ConfigurationService.cs` | AppSettings ↔ ConfigurationStore sync |
 | `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml` | Desktop main window |
-| `Platforms/AgOpenWeb.iOS/Views/MainView.axaml` | iOS main view |
+| `Platforms/AgOpenWeb.iOS/App.axaml.cs` | iOS head: WebBackend + full-screen WebView |
 | `Tests/AgOpenWeb.UI.Tests/MainViewModelBuilder.cs` | Test helper: builds fully-mocked MainViewModel |
 
 ## Service Interfaces
@@ -291,10 +291,11 @@ Platform projects contain only what **must** differ per platform. All UI, dialog
 - `DependencyInjection/ServiceCollectionExtensions.cs` - DI setup
 
 ### iOS
-- `App.axaml/cs` - Application entry point
-- `AppDelegate.cs` - iOS app delegate
-- `MainView.axaml/cs` - Main view with drag handlers
-- `Services/MapService.cs` - Map control registration
+- `App.axaml/cs` - Entry point: boots `WebBackend` and shows a full-screen `NativeWebView` (WKWebView) at `http://localhost:<port>/`
+- `AppDelegate.cs` - iOS app delegate (landscape lock, saves config/state/coverage on background/terminate)
+- `IosImageryCapture.cs` - Imagery capture via the shared compositor
+- `Services/IOSBatteryService.cs` - Battery status
+- `DependencyInjection/ServiceCollectionExtensions.cs` - DI setup (`NullMapService`; the web client renders the map)
 - `Info.plist` - iOS app configuration
 
 ### Android
