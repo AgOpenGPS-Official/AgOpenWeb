@@ -14,7 +14,7 @@
     <!-- CFBundleShortVersionString (marketing) / CFBundleVersion (build). Bump
          ApplicationVersion on every TestFlight upload; it must strictly increase. -->
     <ApplicationDisplayVersion>26.7.0</ApplicationDisplayVersion>
-    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationVersion>3</ApplicationVersion>
   </PropertyGroup>
 
   <!-- iOS Device Signing Configuration -->
