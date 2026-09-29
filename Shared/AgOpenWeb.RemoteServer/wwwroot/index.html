@@ -698,6 +698,13 @@
     .wz-live .lbl { color: var(--text-dim); font: 500 12px system-ui, sans-serif; }
     .wz-testbtn { padding: 12px 28px; border: 0; border-radius: 8px; background: #2f6fb0; color: #fff;
       font: 700 15px system-ui, sans-serif; cursor: pointer; }
+    .wz-testbtn.disabled { opacity: 0.4; pointer-events: none; }
+    .wz-testbtn.wz-secondary { background: transparent; border: 1px solid #2f6fb0; color: #4A90D9; }
+    .wz-circle { min-height: 0; margin: 4px 0 16px; gap: 10px; }
+    .wz-btnrow { display: flex; gap: 12px; }
+    .wz-hint { color: #f59e0b; font: 600 13px system-ui, sans-serif; text-align: center; min-height: 18px; }
+    .wz-phase { margin: 0; text-align: center; }
+    .wz-result { color: var(--text); font: 600 14px system-ui, sans-serif; text-align: center; max-width: 560px; }
     .wz-prereq { border: 1px solid var(--border); border-radius: 10px; background: rgba(var(--ov),0.03); padding: 12px 16px; margin-bottom: 16px; }
     .wz-prereq .ttl { color: var(--text); font: 700 13px system-ui, sans-serif; margin-bottom: 6px; }
     .wz-prereq .it { color: var(--text-2); font: 500 12px system-ui, sans-serif; padding: 2px 0; }

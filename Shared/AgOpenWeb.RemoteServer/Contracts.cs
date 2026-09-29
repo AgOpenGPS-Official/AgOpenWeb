@@ -384,7 +384,10 @@ public record WizardDto(
     int HardwareLevel,
     double LiveAngle, double LiveRoll, double LiveError,
     string TestPhase, string TestResult, double TestProgress, bool TestActive,
-    bool RtkFixed, string FixLabel, double Diameter);
+    bool RtkFixed, string FixLabel, double Diameter,
+    // Circle-test feedback (#154): why Record can't start / a fix warning, whether it can,
+    // and whether the Ackermann step needs its one-tap "Set to 100".
+    string RecordHint, bool CanRecord, bool NeedsNeutralAckermann);
 
 /// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
 public record VehicleConfigDto(

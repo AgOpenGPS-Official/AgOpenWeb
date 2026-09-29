@@ -420,6 +420,9 @@ public static class WireCodec
         B(w.RtkFixed);
         WriteStr(bw, w.FixLabel);
         bw.Write((float)w.Diameter);
+        WriteStr(bw, w.RecordHint);
+        B(w.CanRecord);
+        B(w.NeedsNeutralAckermann);
         return ms.ToArray();
     }
 

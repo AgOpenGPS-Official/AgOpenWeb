@@ -38,14 +38,16 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     private double _startEasting;
     private double _startNorthing;
     private int _stableCounter;
+    private bool _sawNonRtkWhileRecording;
+    private double _startAngle;
 
     public override string Title => "CPD Circle Test";
 
     public override string Description =>
         "Turn the steering wheel to the RIGHT about 20 degrees and drive in a steady circle " +
         "at roughly 5 km/h. Press Record and keep the turn consistent — the system will measure " +
-        "the turning diameter and calculate CPD automatically. RTK Fixed quality is required; " +
-        "RTK Float is not accurate enough for this measurement.";
+        "the turning diameter and calculate CPD automatically. Use RTK Fixed if you can — " +
+        "with a lower fix quality the measured circle, and so the CPD, may be off.";
 
     public override bool CanSkip => true;
 
@@ -178,8 +180,30 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         set => SetProperty(ref _liveSteerAngle, value);
     }
 
-    /// <summary>True when recording can start: RTK fixed, moving, and not already recording.</summary>
-    public bool CanRecord => IsRtkFixed && Speed > 0.5 && !IsRecording;
+    /// <summary>
+    /// True when recording can start: moving and not already recording. RTK Fixed is
+    /// recommended but not required (AgOpenGPS has no fix gate) — <see cref="RecordHint"/>
+    /// warns when it's missing (#154).
+    /// </summary>
+    public bool CanRecord => Speed > 0.5 && !IsRecording;
+
+    /// <summary>The WAS angle captured when recording started.</summary>
+    public double CapturedStartAngle => _startAngle;
+
+    /// <summary>
+    /// Why Record can't start, or a warning about the measurement, for the wizard to show
+    /// next to the button. Empty when ready with RTK Fixed (#154: Record used to do nothing
+    /// with no explanation).
+    /// </summary>
+    public string RecordHint =>
+        IsRecording ? ""
+        : Speed <= 0.5 ? "Start driving in a steady circle to enable Record."
+        : !IsRtkFixed ? $"{FixQualityLabel}, not RTK Fixed — the result may be inaccurate."
+        : "";
+
+    /// <summary>Live progress line while recording.</summary>
+    public string PhaseDescription =>
+        IsRecording ? $"Drive steady — measuring the circle… {Diameter:F1} m (started at {_startAngle:F1}°)" : "";
 
     public ICommand StartRecordingCommand { get; }
     public ICommand StopRecordingCommand { get; }
@@ -202,6 +226,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         var snapshot = _autoSteerService?.LatestSnapshot;
         if (snapshot == null) return;
 
+        _startAngle = _autoSteerService!.LastSteerData.ActualSteerAngle;
         StartRecordingAt(snapshot.Value.Easting, snapshot.Value.Northing);
     }
 
@@ -214,6 +239,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         _startNorthing = northing;
         Diameter = 0;
         _stableCounter = 0;
+        _sawNonRtkWhileRecording = !IsRtkFixed;
         CalculatedSteerAngle = 0;
         TestResult = "";
         IsRecording = true;
@@ -225,7 +251,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     private void StopRecording()
     {
         IsRecording = false;
-        TestResult = "Recording stopped manually.";
+        TestResult = "Recording stopped — CPD not changed.";
     }
 
     /// <summary>
@@ -253,19 +279,36 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         if (_stableCounter > 9)
         {
             // Diameter stabilized - calculate CPD
+            IsRecording = false;
             double wheelbase = _configService.Store.Vehicle.Wheelbase;
             double trackWidth = _configService.Store.Vehicle.TrackWidth;
             double actualAngle = Math.Abs(_autoSteerService?.LastSteerData.ActualSteerAngle ?? 0);
-            double currentCpd = CountsPerDegree;
 
+            if (MeasurementError(Diameter, trackWidth, actualAngle) is { } error)
+            {
+                TestResult = error + " CPD not changed.";
+                return;
+            }
+
+            // Scale from the CPD the module is using now (the store — the web edits it
+            // directly, so the step's entry-time copy can be stale).
+            double currentCpd = _configService.Store.AutoSteer.CountsPerDegree;
             double newCpd = CalculateCpdFromCircle(wheelbase, trackWidth, Diameter, actualAngle, currentCpd);
 
             double calcAngle = Math.Atan(wheelbase / ((Diameter - trackWidth * 0.5) / 2)) * 180.0 / Math.PI;
             CalculatedSteerAngle = Math.Round(calcAngle, 1);
-            CountsPerDegree = newCpd;
 
-            IsRecording = false;
-            TestResult = $"Diameter: {Diameter:F1}m, Calc angle: {calcAngle:F1} deg, CPD: {CountsPerDegree}";
+            // Apply straight to the store, like AgOpenGPS sets the slider: the wizard shows
+            // the store value and AutoSteerService sends it to the module. Mirror it into the
+            // step without marking it touched so OnLeaving can't later overwrite a value the
+            // operator edits after the test.
+            _configService.Store.AutoSteer.CountsPerDegree = newCpd;
+            SetUntouched(() => CountsPerDegree = newCpd);
+
+            TestResult = $"CPD set to {newCpd:F0} — circle {Diameter:F1} m, calculated angle {calcAngle:F1}°, "
+                + $"sensor {actualAngle:F1}°."
+                + (newCpd is <= 1 or >= 255 ? " That's the limit (1–255), so the real value is off the scale — check the steer angle sensor and the circle, then test again." : "")
+                + (_sawNonRtkWhileRecording ? " Measured without RTK Fixed — check the result." : "");
         }
     }
 
@@ -279,6 +322,20 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     /// <param name="actualAngle">Actual steer angle from WAS sensor (degrees, absolute)</param>
     /// <param name="currentCpd">Current counts per degree setting</param>
     /// <returns>New CPD value, clamped to 1-255</returns>
+    /// <summary>
+    /// Why a finished circle can't give a CPD, or null when it can: the circle must be
+    /// larger than half the track width (the formula divides by their difference) and the
+    /// WAS must read a real angle (a ~0° reading would drive CPD to its minimum).
+    /// </summary>
+    public static string? MeasurementError(double diameter, double trackWidth, double sensorAngle)
+    {
+        if (diameter <= trackWidth * 0.5 + 1.0)
+            return $"Couldn't calculate: the measured circle ({diameter:F1} m) is too small — drive a full, steady circle.";
+        if (sensorAngle < 2.0)
+            return $"Couldn't calculate: the steer angle sensor reads {sensorAngle:F1}°. Hold the wheel at about 20° while circling, and check the WAS.";
+        return null;
+    }
+
     public static double CalculateCpdFromCircle(double wheelbase, double trackWidth,
         double diameter, double actualAngle, double currentCpd)
     {
@@ -342,6 +399,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     private void ApplySnapshot(VehicleStateSnapshot snapshot)
     {
         FixQuality = snapshot.FixQuality;
+        if (IsRecording && snapshot.FixQuality != 4) _sawNonRtkWhileRecording = true;
         // Only RTK Fixed (4) is accurate enough for the circle test; RTK
         // Float (5) still drifts at the centimeter scale and would
         // skew the measured diameter. See FixQualityLabel comment.
