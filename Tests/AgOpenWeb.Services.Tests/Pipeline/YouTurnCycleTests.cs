@@ -3,6 +3,7 @@
 //
 // Licensed under GNU GPL v3. See LICENSE.md.
 
+using System;
 using System.Linq;
 using System.Reflection;
 using AgOpenWeb.Models;
@@ -161,6 +162,84 @@ public class YouTurnCycleTests
 
         Assert.That(snapshot.JustCompleted, Is.True,
             "JustCompleted is the cycle's one-shot completion signal consumed by the VM");
+    }
+
+    /// <summary>
+    /// #163 backstop: when U-turn guidance reports the path finished, the pipeline
+    /// completes the executing turn through <c>CompleteFromGuidance</c> — advancing to
+    /// the next pass — instead of leaving it executing with no steering.
+    /// </summary>
+    [Test]
+    public void CompleteFromGuidance_completes_executing_turn_and_advances_pass()
+    {
+        var stateMachine = BuildStateMachine();
+        var ctx = BuildTickContext();
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0 };
+        var youTurn = new YouTurnWorkingState
+        {
+            IsTriggered = true,
+            IsExecuting = true,
+            IsTurnLeft = true,
+            WasHeadingSameWayAtTurnStart = true,
+            TurnPath = new List<Vec3> { new(0, 0, 0), new(-3, 3, 0), new(-6, 0, 0) },
+        };
+
+        var effects = stateMachine.CompleteFromGuidance(in ctx, guidance, youTurn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(effects.TurnCompleted, Is.True);
+            Assert.That(youTurn.IsExecuting, Is.False);
+            Assert.That(youTurn.IsTriggered, Is.False);
+            Assert.That(youTurn.TurnPath, Is.Null);
+            Assert.That(guidance.HowManyPathsAway, Is.EqualTo(-1),
+                "Left turn heading the same way as AB moves one pass negative");
+        });
+    }
+
+    [Test]
+    public void CompleteFromGuidance_is_noop_when_no_turn_is_executing()
+    {
+        var stateMachine = BuildStateMachine();
+        var ctx = BuildTickContext();
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 3 };
+        var youTurn = new YouTurnWorkingState();
+
+        var effects = stateMachine.CompleteFromGuidance(in ctx, guidance, youTurn);
+
+        Assert.That(effects.TurnCompleted, Is.False);
+        Assert.That(guidance.HowManyPathsAway, Is.EqualTo(3));
+    }
+
+    /// <summary>
+    /// #163: <c>TickExecutingTurn</c> runs the completion checks without a headland line —
+    /// driving the pivot along a manual turn's path must complete it.
+    /// </summary>
+    [Test]
+    public void TickExecutingTurn_completes_manual_turn_without_headland()
+    {
+        var stateMachine = BuildStateMachine();
+        var baseCtx = BuildTickContext() with { Boundary = null, HeadlandLine = null };
+        var guidance = new GuidanceWorkingState();
+        var youTurn = new YouTurnWorkingState();
+
+        stateMachine.TriggerManual(true, isAutoSteerEngaged: true, in baseCtx, guidance, youTurn);
+        Assume.That(youTurn.IsExecuting, Is.True, "Manual trigger must start a turn");
+        var path = youTurn.TurnPath!.ToList();
+
+        bool completed = false;
+        foreach (var p in path)
+        {
+            var ctx = baseCtx with
+            {
+                CurrentPosition = new Position { Easting = p.Easting, Northing = p.Northing, Heading = p.Heading * 180 / Math.PI },
+            };
+            completed |= stateMachine.TickExecutingTurn(in ctx, guidance, youTurn).TurnCompleted;
+            if (completed) break;
+        }
+
+        Assert.That(completed, Is.True, "Driving the manual arc should complete the turn");
+        Assert.That(youTurn.IsExecuting, Is.False);
     }
 
     // ── Test helpers ─────────────────────────────────────────────────────

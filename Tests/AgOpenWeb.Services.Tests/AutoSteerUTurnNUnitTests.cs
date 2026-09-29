@@ -815,4 +815,66 @@ public class AutoSteerUTurnNUnitTests
                 $"Tractor left field: N={r.Northing:F1} (field: 0-{FIELD_H})");
         }
     }
+
+    /// <summary>
+    /// #163: a manual U-turn in a field with no boundary or headland must complete and
+    /// hand guidance back to the next pass. The auto YouTurn tick (which holds the
+    /// completion checks) is gated on a headland line, so before the fix the turn stayed
+    /// executing forever: U-turn guidance reported the path finished and stopped steering,
+    /// and the tractor drove off in a straight line at its exit heading.
+    /// </summary>
+    [Test]
+    public void ManualUTurn_NoBoundaryNoHeadland_CompletesAndFollowsNextPass()
+    {
+        // 3 x 4 m sections = 12 m pass width → 6 m turn radius, inside what the
+        // 2.5 m wheelbase / 35° max steer can drive.
+        for (int i = 0; i < 3; i++)
+            ConfigurationStore.Instance.Tool.SetSectionWidth(i, 400.0);
+        CreateFreshPipeline();
+
+        var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
+        _appState.Field.LocalPlane = new LocalPlane(origin, new SharedFieldProperties());
+
+        // No SetBoundary / SetHeadlandLine — the reporter's field had neither.
+        const double abEasting = 100.0;
+        var track = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "AB_Manual",
+            Points = new List<Vec3> { new Vec3(abEasting, 0, 0), new Vec3(abEasting, 100, 0) },
+            Type = AgOpenWeb.Models.Track.TrackType.ABLine
+        };
+        SendGpsAt(abEasting, 45, heading: 0, count: 20);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetAutoSteerEngaged(true);
+        _pipeline.SetYouTurnEnabled(true);
+        lock (_results) _results.Clear();
+
+        var allResults = new List<(string phase, GpsCycleResult r)>();
+        double lat = ORIGIN_LAT + 50 / MetersPerDegLat;
+        double lon = ORIGIN_LON + abEasting / MetersPerDegLon;
+        double hdg = 0;
+
+        // Settle on the line heading north, then trigger a manual LEFT turn.
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 60, "approach", allResults);
+        _intents.RequestManualYouTurn(turnLeft: true);
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 400, "turn", allResults);
+
+        var turn = allResults.Where(x => x.phase == "turn").Select(x => x.r).ToList();
+        Assert.That(turn.Any(r => r.YouTurn is { IsExecuting: true }), Is.True,
+            "Manual turn should have started");
+        Assert.That(turn.Any(r => r.YouTurn is { JustCompleted: true }), Is.True,
+            "Manual turn never completed");
+
+        var last = turn[^1];
+        double nextPassE = abEasting - ConfigurationStore.Instance.ActualToolWidth; // left of north
+        Assert.Multiple(() =>
+        {
+            Assert.That(last.YouTurn?.IsExecuting ?? false, Is.False, "Turn still executing at the end");
+            Assert.That(last.Guidance?.HasGuidance ?? false, Is.True, "No guidance after the turn");
+            Assert.That(last.Easting, Is.EqualTo(nextPassE).Within(0.5),
+                $"Should be following the next pass at E={nextPassE:F1}");
+            double hdgErr = Math.Abs(((hdg - 180.0) % 360 + 540) % 360 - 180);
+            Assert.That(hdgErr, Is.LessThan(3.0), $"Heading {hdg:F1}° should be parallel to the AB line (180°)");
+        });
+    }
 }
