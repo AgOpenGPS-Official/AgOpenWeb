@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading.Tasks;
@@ -129,6 +130,18 @@ public abstract class WizardStepViewModel : ObservableObject
 
     /// <summary>Whether this step changed <paramref name="propertyName"/> since it was entered.</summary>
     protected bool Touched(string propertyName) => _touched.Contains(propertyName);
+
+    /// <summary>
+    /// Set properties that mirror a value the step already wrote to the store, without
+    /// marking them touched — so OnLeaving won't write the mirror back over a later edit.
+    /// </summary>
+    protected void SetUntouched(Action set)
+    {
+        bool was = _loading;
+        _loading = true;
+        try { set(); }
+        finally { _loading = was; }
+    }
 
     /// <summary>
     /// Called when this step becomes active (visible).

@@ -3306,6 +3306,13 @@ function wzSeg(label, sub, key, opts) { // opts: [[text,val],...]
 function wzTgl(label, sub, key) {
   return '<div class="wz-row"><div class="lbl">' + esc(label) + (sub ? '<div class="sub">' + esc(sub) + '</div>' : '') + '</div><button class="wz-tgl" data-tgl="' + key + '" data-tglkey="' + key + '">Off</button></div>';
 }
+// CPD / Ackermann circle test (#154): Record plus the feedback a wizard owes the operator —
+// why Record can't start (or a low-fix warning), live progress, and the outcome.
+function wzCircleTest(ackermann) {
+  return '<div class="wz-center wz-circle"><div class="wz-btnrow"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button>' +
+    (ackermann ? '<button class="wz-testbtn wz-secondary" data-act="SetNeutralAckermann" id="wz-neutral">Set to 100</button>' : '') + '</div>' +
+    '<div class="wz-hint" data-live="hint"></div><div class="wz-desc wz-phase" data-live="phase"></div><div class="wz-result" data-live="result"></div></div>';
+}
 function wzLive(lbl, key) { return '<div class="wz-live"><div class="big" data-live="' + key + '">—</div><div class="lbl">' + esc(lbl) + '</div></div>'; }
 function buildWizardContent(w) {
   const cfg = config || {}, veh = cfg.vehicle || {}, ast = cfg.autosteer || {}, roll = cfg.roll || {};
@@ -3361,12 +3368,12 @@ function buildWizardContent(w) {
       return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
         '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'cpd':
-      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~5 km/h)</div></div>' +
-        wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
+      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~' + fmtUnit(5, 'kmh', 0) + ')</div></div>' +
+        wzLive('Live Steer Angle', 'angle') + wzCircleTest(false) +
         '<div class="wz-rows">' + wzNum('Counts Per Degree', null, 'autosteer.countsPerDegree', '1', '') + '</div>';
     case 'ackermann':
-      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b></div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
-        wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
+      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">Ackermann at 100 (neutral)</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
+        wzLive('Live Steer Angle', 'angle') + wzCircleTest(true) +
         '<div class="wz-rows">' + wzNum('Ackermann', '100 = neutral', 'autosteer.ackermann', '1', '') + '</div>';
     case 'gains':
       return head + '<div class="wz-rows">' + wzTgl('Guidance Algorithm (Stanley)', 'Pure Pursuit default; Stanley more responsive at low speed', 'autosteer.isStanleyMode') +
@@ -3421,8 +3428,24 @@ function renderWizard() {
   // Roll gauge (roll-calibration step): rotate the bar by the live roll, like the map.
   const rb = document.getElementById('wz-roll-bar');
   if (rb) { const rv = w.liveRoll || w.statusRoll || 0; rb.setAttribute('transform', 'rotate(' + rv.toFixed(2) + ' 100 40)'); const rd = document.getElementById('wz-roll-deg'); if (rd) rd.textContent = rv.toFixed(1); }
+  live('hint', w.recordHint || '');
   const rec = document.getElementById('wz-recbtn');
-  if (rec) { rec.textContent = w.testActive ? 'Stop' : 'Record'; rec.dataset.act = w.testActive ? 'StopRecording' : 'StartRecording'; }
+  if (rec) {
+    rec.textContent = w.testActive ? 'Stop' : 'Record'; rec.dataset.act = w.testActive ? 'StopRecording' : 'StartRecording';
+    // CPD / Ackermann report whether Record can start; the hint says why not.
+    if (w.stepKind === 'cpd' || w.stepKind === 'ackermann')
+      rec.classList.toggle('disabled', !iHoldControl || (!w.testActive && !w.canRecord));
+  }
+  const neutral = document.getElementById('wz-neutral');
+  if (neutral) neutral.style.display = w.needsNeutralAckermann && !w.testActive ? '' : 'none';
+  // Keep number fields in step with the store (a test result or another client can change
+  // it) — except the one being typed in.
+  for (const el of wzContent.querySelectorAll('input[data-cfgnum]')) {
+    if (el === document.activeElement) continue;
+    const u = el.dataset.unit, known = u && UNIT_DEFS[u];
+    const v = String(known ? roundDisplay(toDisplayUnit(wzVal(el.dataset.cfgnum), u), u) : wzVal(el.dataset.cfgnum));
+    if (el.value !== v) el.value = v;
+  }
 }
 
 function renderSettings() {

@@ -311,12 +311,14 @@ window.RemoteTransport = {
           const liveAngle = f32(), liveRoll = f32(), liveError = f32();
           const testPhase = str(), testResult = str(), testProgress = f32(), testActive = !!u8();
           const rtkFixed = !!u8(), fixLabel = str(), diameter = f32();
+          const recordHint = str(), canRecord = !!u8(), needsNeutralAckermann = !!u8();
           handlers.onWizard && handlers.onWizard({
             stepIndex, totalSteps, stepKind, title, description,
             canBack, canNext, canSkip, isLast, validation,
             statusWas, statusRoll, statusGps, statusSpeed, statusPwm, statusConnected,
             hardwareLevel, liveAngle, liveRoll, liveError,
             testPhase, testResult, testProgress, testActive, rtkFixed, fixLabel, diameter,
+            recordHint, canRecord, needsNeutralAckermann,
           });
           break;
         }

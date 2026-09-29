@@ -40,13 +40,15 @@ public class AckermannTestStepViewModel : WizardStepViewModel
     private double _startNorthing;
     private double _startAngle;
     private int _stableCounter;
+    private bool _sawNonRtkWhileRecording;
 
     public override string Title => "Ackermann Calibration";
 
     public override string Description =>
-        "Turn steering wheel to the LEFT about 20 degrees. " +
-        "While driving in a steady circle, press Record and wait. " +
-        "The system will measure the turning diameter and calculate Ackermann automatically.";
+        "Ackermann must be at 100 (neutral) for this test. Turn the steering wheel to the LEFT " +
+        "about 20 degrees. While driving in a steady circle, press Record and wait. " +
+        "The system will measure the turning diameter and calculate Ackermann automatically. " +
+        "Use RTK Fixed if you can — with a lower fix quality the result may be off.";
 
     public override bool CanSkip => true;
 
@@ -99,7 +101,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
     }
 
     private bool _isRtkFixed;
-    /// <summary>True when GPS fix is RTK quality (FixQuality >= 4).</summary>
+    /// <summary>True when the GPS fix is RTK Fixed (FixQuality == 4).</summary>
     public bool IsRtkFixed
     {
         get => _isRtkFixed;
@@ -109,6 +111,31 @@ public class AckermannTestStepViewModel : WizardStepViewModel
                 OnPropertyChanged(nameof(CanRecord));
         }
     }
+
+    private int _fixQuality;
+    public int FixQuality
+    {
+        get => _fixQuality;
+        set
+        {
+            if (SetProperty(ref _fixQuality, value))
+                OnPropertyChanged(nameof(FixQualityLabel));
+        }
+    }
+
+    public string FixQualityLabel => FixQuality switch
+    {
+        0 => "No Fix",
+        1 => "GPS Fix",
+        2 => "DGPS",
+        3 => "PPS",
+        4 => "RTK Fixed",
+        5 => "RTK Float",
+        6 => "Dead Reckoning",
+        7 => "Manual",
+        8 => "Simulator",
+        _ => $"Unknown ({FixQuality})"
+    };
 
     private double _speed;
     /// <summary>Current vehicle speed in km/h.</summary>
@@ -133,11 +160,41 @@ public class AckermannTestStepViewModel : WizardStepViewModel
     /// <summary>The WAS angle captured at the start of recording.</summary>
     public double CapturedStartAngle => _startAngle;
 
-    /// <summary>True when recording can start: RTK fixed, moving, and not already recording.</summary>
-    public bool CanRecord => IsRtkFixed && Speed > 0.5 && !IsRecording;
+    /// <summary>
+    /// The module's Ackermann must be neutral (100) while measuring: the WAS reading it
+    /// reports for a left turn already has Ackermann applied, so any other value skews the
+    /// ratio. AgOpenGPS disables its Ackermann test the same way.
+    /// </summary>
+    public bool NeedsNeutralAckermann => _configService.Store.AutoSteer.Ackermann != 100;
+
+    /// <summary>
+    /// True when recording can start: moving, Ackermann neutral, and not already recording.
+    /// RTK Fixed is recommended but not required (AgOpenGPS parity) — <see cref="RecordHint"/>
+    /// warns when it's missing (#154).
+    /// </summary>
+    public bool CanRecord => Speed > 0.5 && !IsRecording && !NeedsNeutralAckermann;
+
+    /// <summary>
+    /// Why Record can't start, or a warning about the measurement, for the wizard to show
+    /// next to the button. Empty when ready with RTK Fixed.
+    /// </summary>
+    public string RecordHint =>
+        IsRecording ? ""
+        : NeedsNeutralAckermann ? (TestResult.StartsWith("Ackermann set to")
+            ? "To measure again, set Ackermann back to 100 (neutral) first."
+            : $"Ackermann is {_configService.Store.AutoSteer.Ackermann} — set it to 100 (neutral) before measuring.")
+        : Speed <= 0.5 ? "Start driving in a steady circle to enable Record."
+        : !IsRtkFixed ? $"{FixQualityLabel}, not RTK Fixed — the result may be inaccurate."
+        : "";
+
+    /// <summary>Live progress line while recording.</summary>
+    public string PhaseDescription =>
+        IsRecording ? $"Drive steady — measuring the circle… {Diameter:F1} m (started at {_startAngle:F1}°)" : "";
 
     public ICommand StartRecordingCommand { get; }
     public ICommand StopRecordingCommand { get; }
+    /// <summary>One tap to put Ackermann at neutral so the test can run.</summary>
+    public ICommand SetNeutralAckermannCommand { get; }
 
     public AckermannTestStepViewModel(IConfigurationService configService,
         IAutoSteerService? autoSteerService = null)
@@ -147,6 +204,15 @@ public class AckermannTestStepViewModel : WizardStepViewModel
 
         StartRecordingCommand = new RelayCommand(StartRecording, () => CanRecord);
         StopRecordingCommand = new RelayCommand(StopRecording, () => IsRecording);
+        SetNeutralAckermannCommand = new RelayCommand(SetNeutralAckermann, () => !IsRecording);
+    }
+
+    private void SetNeutralAckermann()
+    {
+        // Straight to the store: AutoSteerService sends it to the module (PGN 252).
+        _configService.Store.AutoSteer.Ackermann = 100;
+        SetUntouched(() => Ackermann = 100);
+        TestResult = "";
     }
 
     /// <summary>
@@ -171,6 +237,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         _startAngle = startAngle;
         Diameter = 0;
         _stableCounter = 0;
+        _sawNonRtkWhileRecording = !IsRtkFixed;
         CalculatedSteerAngle = 0;
         TestResult = "";
         IsRecording = true;
@@ -182,7 +249,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
     private void StopRecording()
     {
         IsRecording = false;
-        TestResult = "Recording stopped manually.";
+        TestResult = "Recording stopped — Ackermann not changed.";
     }
 
     /// <summary>
@@ -210,17 +277,30 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         if (_stableCounter > 9)
         {
             // Diameter stabilized - calculate Ackermann
+            IsRecording = false;
             double wheelbase = _configService.Store.Vehicle.Wheelbase;
             double trackWidth = _configService.Store.Vehicle.TrackWidth;
+
+            if (CpdCircleTestStepViewModel.MeasurementError(Diameter, trackWidth, Math.Abs(_startAngle)) is { } error)
+            {
+                TestResult = error + " Ackermann not changed.";
+                return;
+            }
 
             int newAckermann = CalculateAckermann(wheelbase, trackWidth, Diameter, _startAngle);
 
             double calcAngle = Math.Atan(wheelbase / ((Diameter - trackWidth * 0.5) / 2)) * 180.0 / Math.PI;
             CalculatedSteerAngle = Math.Round(calcAngle, 1);
-            Ackermann = newAckermann;
 
-            IsRecording = false;
-            TestResult = $"Diameter: {Diameter:F1}m, Calc angle: {calcAngle:F1} deg, Ackermann: {Ackermann}";
+            // Apply straight to the store (see CpdCircleTestStepViewModel): the wizard shows
+            // it at once and a later edit isn't overwritten on leaving the step.
+            _configService.Store.AutoSteer.Ackermann = newAckermann;
+            SetUntouched(() => Ackermann = newAckermann);
+
+            TestResult = $"Ackermann set to {newAckermann} — circle {Diameter:F1} m, calculated angle {calcAngle:F1}°, "
+                + $"sensor {Math.Abs(_startAngle):F1}°."
+                + (newAckermann is <= 0 or >= 200 ? " That's the limit (0–200), so the real value is off the scale — check the steer angle sensor and the circle, then test again." : "")
+                + (_sawNonRtkWhileRecording ? " Measured without RTK Fixed — check the result." : "");
         }
     }
 
@@ -248,7 +328,13 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         Ackermann = _configService.Store.AutoSteer.Ackermann;
 
         if (_autoSteerService != null)
+        {
             _autoSteerService.StateUpdated += OnStateUpdated;
+            // Seed from the cached snapshot so the hint/button reflect the GPS state on
+            // entry (as the CPD step does).
+            if (_autoSteerService.LatestSnapshot is { } cached)
+                ApplySnapshot(cached);
+        }
     }
 
     protected override void OnLeaving()
@@ -267,14 +353,22 @@ public class AckermannTestStepViewModel : WizardStepViewModel
 
     private void OnStateUpdated(object? sender, VehicleStateSnapshot snapshot)
     {
-        IsRtkFixed = snapshot.FixQuality >= 4;
-        Speed = Math.Round(snapshot.SpeedKmh, 1);
-        LiveSteerAngle = Math.Round(_autoSteerService!.LastSteerData.ActualSteerAngle, 1);
+        ApplySnapshot(snapshot);
 
         if (IsRecording)
         {
             ProcessGpsUpdate(snapshot.Easting, snapshot.Northing);
         }
+    }
+
+    private void ApplySnapshot(VehicleStateSnapshot snapshot)
+    {
+        FixQuality = snapshot.FixQuality;
+        // RTK Fixed only, as in the CPD step (was >= 4, which also passed Float/DR/manual).
+        IsRtkFixed = snapshot.FixQuality == 4;
+        if (IsRecording && !IsRtkFixed) _sawNonRtkWhileRecording = true;
+        Speed = Math.Round(snapshot.SpeedKmh, 1);
+        LiveSteerAngle = Math.Round(_autoSteerService!.LastSteerData.ActualSteerAngle, 1);
     }
 
     public override Task<bool> ValidateAsync()
