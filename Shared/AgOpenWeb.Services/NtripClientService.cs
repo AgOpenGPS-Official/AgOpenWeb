@@ -668,17 +668,20 @@ public class NtripClientService : INtripClientService, IDisposable
 
     private string GenerateGgaSentence(double lat, double lon, double alt, int fixQuality, int sats)
     {
+        // NMEA is invariant: in a ','-decimal locale (de, el, nl, fr…) "5230,0000" split the
+        // latitude field and VRS casters got a broken position.
+        var inv = CultureInfo.InvariantCulture;
         // Convert decimal degrees to NMEA format (DDMM.MMMM)
         double latDeg = Math.Abs(lat);
         int latDegrees = (int)latDeg;
         double latMinutes = (latDeg - latDegrees) * 60.0;
-        string latStr = $"{latDegrees:00}{latMinutes:00.0000}";
+        string latStr = string.Create(inv, $"{latDegrees:00}{latMinutes:00.0000}");
         string latDir = lat >= 0 ? "N" : "S";
 
         double lonDeg = Math.Abs(lon);
         int lonDegrees = (int)lonDeg;
         double lonMinutes = (lonDeg - lonDegrees) * 60.0;
-        string lonStr = $"{lonDegrees:000}{lonMinutes:00.0000}";
+        string lonStr = string.Create(inv, $"{lonDegrees:000}{lonMinutes:00.0000}");
         string lonDir = lon >= 0 ? "E" : "W";
 
         // Get UTC time
@@ -686,7 +689,7 @@ public class NtripClientService : INtripClientService, IDisposable
         string timeStr = utc.ToString("HHmmss.ff", CultureInfo.InvariantCulture);
 
         // Build GGA sentence (without checksum yet)
-        string gga = $"GPGGA,{timeStr},{latStr},{latDir},{lonStr},{lonDir},{fixQuality},{sats:00},1.0,{alt:F1},M,0.0,M,,";
+        string gga = string.Create(inv, $"GPGGA,{timeStr},{latStr},{latDir},{lonStr},{lonDir},{fixQuality},{sats:00},1.0,{alt:F1},M,0.0,M,,");
 
         // Calculate checksum (XOR of all characters between $ and *)
         byte checksum = 0;
