@@ -107,16 +107,30 @@ public static partial class RemoteServerWiring
                                     if (double.TryParse(arg, num, inv, out var capMult)) // (2.5 = Medium)
                                         vm.CapDisplayResolution(capMult); // only coarsens; idempotent
                                     return;
-                                case "view.save": // web camera tilt+zoom persisted host-side (issue #35).
-                                {                 // arg = "pitch|zoom" (pitch radians, zoom px/m). Tier-1.
+                                case "view.save": // web camera tilt+zoom (+ follow mode, #176) persisted host-side (issue #35).
+                                {                 // arg = "pitch|zoom[|mode]" (pitch radians, zoom px/m, client mode). Tier-1.
                                     var vparts = arg.Split('|');
-                                    if (vparts.Length == 2
+                                    if (vparts.Length is 2 or 3
                                         && double.TryParse(vparts[0], num, inv, out var vpitch)
                                         && double.TryParse(vparts[1], num, inv, out var vzoom))
                                     {
                                         var ps = services.GetRequiredService<IPersistentStateService>();
                                         ps.State.WebCameraPitch = vpitch;
                                         ps.State.WebCameraZoom = vzoom;
+                                        // Client numbering (0 N, 1 H, 2 Free, 3 Map) differs from the
+                                        // enum's (Map=2, Free=3): map explicitly. Free (a temporary
+                                        // "I panned" state) is never saved.
+                                        if (vparts.Length == 3 && int.TryParse(vparts[2], out var vmode))
+                                        {
+                                            AgOpenWeb.Models.CameraMode? cm = vmode switch
+                                            {
+                                                0 => AgOpenWeb.Models.CameraMode.NorthUp,
+                                                1 => AgOpenWeb.Models.CameraMode.HeadingUp,
+                                                3 => AgOpenWeb.Models.CameraMode.Map,
+                                                _ => null,
+                                            };
+                                            if (cm is { } m) ps.State.CameraMode = m;
+                                        }
                                         ps.Save();
                                     }
                                     return;
@@ -800,7 +814,13 @@ public static partial class RemoteServerWiring
                     server.ViewPrefsProvider = () =>
                     {
                         var st = services.GetRequiredService<IPersistentStateService>().State;
-                        return (st.WebCameraPitch, st.WebCameraZoom);
+                        int webMode = st.CameraMode switch
+                        {
+                            AgOpenWeb.Models.CameraMode.NorthUp => 0,
+                            AgOpenWeb.Models.CameraMode.HeadingUp => 1,
+                            _ => 3, // Map; Free is never restored (#176)
+                        };
+                        return (st.WebCameraPitch, st.WebCameraZoom, webMode);
                     };
 
                     // Field Builder Headland-tab list: the segments live on the VM

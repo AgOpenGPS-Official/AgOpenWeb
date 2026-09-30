@@ -115,12 +115,12 @@ public sealed class RemoteServerHost
     /// <summary>Host-supplied persisted web-camera view (pitch radians, zoom px/m).
     /// Read once per connection and sent in the seed so the client restores its last
     /// tilt+zoom (issue #35). Set after <see cref="StartAsync"/>.</summary>
-    public Func<(double Pitch, double Zoom)?>? ViewPrefsProvider
+    public Func<(double Pitch, double Zoom, int CameraMode)?>? ViewPrefsProvider
     {
         get => _broadcaster?.ViewPrefsProvider;
         set { _viewPrefsProvider = value; if (_broadcaster is not null) _broadcaster.ViewPrefsProvider = value; }
     }
-    private Func<(double Pitch, double Zoom)?>? _viewPrefsProvider;
+    private Func<(double Pitch, double Zoom, int CameraMode)?>? _viewPrefsProvider;
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list
     /// (VM-owned, rides the Scene frame). Set after <see cref="StartAsync"/>.</summary>

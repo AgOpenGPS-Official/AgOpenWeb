@@ -52,7 +52,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastBoundaryFp = long.MinValue;
     // Host-supplied persisted web-camera view (pitch radians, zoom px/m). Read once
     // per connection and sent in the seed so the client restores its last tilt+zoom.
-    public Func<(double Pitch, double Zoom)?>? ViewPrefsProvider { get; set; }
+    public Func<(double Pitch, double Zoom, int CameraMode)?>? ViewPrefsProvider { get; set; }
     private volatile bool _coverageInitSent;
     private double _lastCellSize;
     // Last coverage grid announced to clients (origin + dims). A change here with the SAME cell
@@ -100,7 +100,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodePrompt(PromptProvider?.Invoke() ?? PromptDto.None),
         };
         if (ViewPrefsProvider?.Invoke() is { } vp)
-            frames.Add(WireCodec.EncodeViewPrefs(vp.Pitch, vp.Zoom));
+            frames.Add(WireCodec.EncodeViewPrefs(vp.Pitch, vp.Zoom, vp.CameraMode));
         if (_coverageProjector.BuildInit() is { } init)
         {
             frames.Add(WireCodec.EncodeCoverageInit(init, reset: true)); // fresh client → rebuild from the seed snapshot

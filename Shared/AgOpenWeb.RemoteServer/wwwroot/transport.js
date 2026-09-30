@@ -396,8 +396,8 @@ window.RemoteTransport = {
         case TYPE.VIEW_PREFS: {
           // Persisted web-camera view (issue #35): pitch radians + zoom px/m, sent
           // once in the seed. The client restores its last tilt+zoom from this.
-          const pitch = f64(); const zoom = f64();
-          handlers.onViewPrefs && handlers.onViewPrefs(pitch, zoom);
+          const pitch = f64(); const zoom = f64(); const mode = u8(); // + follow mode (#176)
+          handlers.onViewPrefs && handlers.onViewPrefs(pitch, zoom, mode);
           break;
         }
       }

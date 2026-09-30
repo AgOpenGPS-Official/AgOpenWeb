@@ -286,18 +286,22 @@ const PITCH_STEP = 5 * Math.PI / 180;
 // HOST-side (appstate.json, via the view.save command) and replayed to every client
 // in the connection seed (onViewPrefs). This restores identically on any client —
 // browser or WebView — independent of browser localStorage behaviour.
-let _savedPitch = pitch, _savedZoom = pxPerM, _viewSaveT = 0;
-function applyViewPrefs(p, z) {
+// The follow mode (N/H/M) rides the same path (#176); Free (2) is a temporary "I panned"
+// state and is never saved — the last followed mode stays saved.
+let _savedPitch = pitch, _savedZoom = pxPerM, _savedMode = cameraMode, _viewSaveT = 0;
+function applyViewPrefs(p, z, m) {
   if (typeof p === 'number' && isFinite(p)) pitch = Math.max(0, Math.min(MAX_PITCH, p));
   if (typeof z === 'number' && isFinite(z)) pxPerM = Math.min(200, Math.max(0.2, z));
-  _savedPitch = pitch; _savedZoom = pxPerM; // hydrated value == saved, so no echo-back save
+  if (m === 0 || m === 1 || m === 3) cameraMode = m;
+  _savedPitch = pitch; _savedZoom = pxPerM; _savedMode = cameraMode; // hydrated == saved: no echo-back
 }
 function maybeSaveView() {
-  if (pitch === _savedPitch && pxPerM === _savedZoom) return;
+  const mode = cameraMode === 2 ? _savedMode : cameraMode;
+  if (pitch === _savedPitch && pxPerM === _savedZoom && mode === _savedMode) return;
   const now = performance.now();
   if (now - _viewSaveT < 800) return;        // debounce: at most ~1.25 writes/s while adjusting
-  _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM;
-  transport.send('view.save|' + pitch + '|' + pxPerM); // host writes it to appstate.json
+  _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM; _savedMode = mode;
+  transport.send('view.save|' + pitch + '|' + pxPerM + '|' + mode); // host writes it to appstate.json
 }
 const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 
@@ -433,7 +437,7 @@ const transport = RemoteTransport.create({
   },
   onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
   // Persisted web-camera view (issue #35): restore last tilt+zoom from the host seed.
-  onViewPrefs(pitch, zoom) { applyViewPrefs(pitch, zoom); },
+  onViewPrefs(pitch, zoom, mode) { applyViewPrefs(pitch, zoom, mode); },
 });
 
 // ---- Host prompt + failure notifications (#109) ----------------------------
