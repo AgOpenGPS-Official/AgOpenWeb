@@ -822,9 +822,12 @@ public class AutoSteerUTurnNUnitTests
     /// completion checks) is gated on a headland line, so before the fix the turn stayed
     /// executing forever: U-turn guidance reported the path finished and stopped steering,
     /// and the tractor drove off in a straight line at its exit heading.
+    /// With the YouTurn toggle off the manual turn must work too (AgOpenGPS offers the
+    /// manual buttons whenever autosteer is on); it used to be cleared the cycle it began.
     /// </summary>
-    [Test]
-    public void ManualUTurn_NoBoundaryNoHeadland_CompletesAndFollowsNextPass()
+    [TestCase(true, TestName = "ManualUTurn_NoBoundaryNoHeadland_CompletesAndFollowsNextPass")]
+    [TestCase(false, TestName = "ManualUTurn_YouTurnToggleOff_CompletesAndFollowsNextPass")]
+    public void ManualUTurn_CompletesAndFollowsNextPass(bool youTurnEnabled)
     {
         // 3 x 4 m sections = 12 m pass width → 6 m turn radius, inside what the
         // 2.5 m wheelbase / 35° max steer can drive.
@@ -846,7 +849,7 @@ public class AutoSteerUTurnNUnitTests
         SendGpsAt(abEasting, 45, heading: 0, count: 20);
         _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
         _pipeline.SetAutoSteerEngaged(true);
-        _pipeline.SetYouTurnEnabled(true);
+        _pipeline.SetYouTurnEnabled(youTurnEnabled);
         lock (_results) _results.Clear();
 
         var allResults = new List<(string phase, GpsCycleResult r)>();
@@ -876,5 +879,55 @@ public class AutoSteerUTurnNUnitTests
             double hdgErr = Math.Abs(((hdg - 180.0) % 360 + 540) % 360 - 180);
             Assert.That(hdgErr, Is.LessThan(3.0), $"Heading {hdg:F1}° should be parallel to the AB line (180°)");
         });
+    }
+
+    /// <summary>
+    /// Switching the YouTurn toggle off mid-turn still drops the turn (AgOpenGPS
+    /// ResetYouTurn on btnAutoYouTurn off) — but only on that edge: a manual turn
+    /// requested afterwards, with the toggle still off, runs.
+    /// </summary>
+    [Test]
+    public void YouTurnToggleOff_ClearsTurnOnce_ThenManualTurnsStillRun()
+    {
+        for (int i = 0; i < 3; i++)
+            ConfigurationStore.Instance.Tool.SetSectionWidth(i, 400.0);
+        CreateFreshPipeline();
+        _appState.Field.LocalPlane = new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+
+        const double abEasting = 100.0;
+        var track = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "AB_Toggle",
+            Points = new List<Vec3> { new Vec3(abEasting, 0, 0), new Vec3(abEasting, 100, 0) },
+            Type = AgOpenWeb.Models.Track.TrackType.ABLine
+        };
+        SendGpsAt(abEasting, 45, heading: 0, count: 20);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetAutoSteerEngaged(true);
+        _pipeline.SetYouTurnEnabled(true);
+        lock (_results) _results.Clear();
+
+        var all = new List<(string phase, GpsCycleResult r)>();
+        double lat = ORIGIN_LAT + 50 / MetersPerDegLat, lon = ORIGIN_LON + abEasting / MetersPerDegLon, hdg = 0;
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 60, "approach", all);
+
+        // Start a manual turn, drive into it, then switch the toggle off mid-turn.
+        _intents.RequestManualYouTurn(turnLeft: false);
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 20, "turn1", all);
+        Assume.That(all[^1].r.YouTurn?.IsExecuting ?? false, Is.True, "turn should be executing before the toggle");
+        _pipeline.SetYouTurnEnabled(false);
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 12, "off", all);
+        var afterOff = all[^1].r;
+        Assert.That(afterOff.YouTurn?.IsExecuting ?? true, Is.False, "Toggling off mid-turn must drop the turn");
+        Assert.That(afterOff.YouTurn?.TurnPath, Is.Null, "…and clear its path from the map");
+
+        // Settle back on a line, then request another manual turn with the toggle still off.
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 150, "settle", all);
+        _intents.RequestManualYouTurn(turnLeft: true);
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 400, "turn2", all);
+        var turn2 = all.Where(x => x.phase == "turn2").Select(x => x.r).ToList();
+        Assert.That(turn2.Any(r => r.YouTurn is { IsExecuting: true }), Is.True,
+            "A manual turn with the toggle off must run, not be cleared at once");
+        Assert.That(turn2.Any(r => r.YouTurn is { JustCompleted: true }), Is.True, "…and complete");
     }
 }
