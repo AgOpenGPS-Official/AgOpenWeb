@@ -722,6 +722,31 @@
     .wz-btn { padding: 12px 26px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 700 14px system-ui, sans-serif; }
     .wz-red { background: #b54430; } .wz-grey { background: rgba(var(--ov),0.14); color: var(--text); } .wz-blue { background: #2f6fb0; }
     .wz-btn.disabled { opacity: 0.4; pointer-events: none; }
+    /* Fit the wizard without vertical scrolling on smaller / high-DPI-scaled screens
+       (#154: a 2736x1716 laptop at 225% gives ~1216x735 CSS px). Fields and toggle rows
+       go two-up when there's width; spacing tightens when height is short. */
+    @media (min-width: 860px) {
+      .wz-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; align-items: start; }
+      .wz-rows > .wz-fld { margin-top: 0; }
+      /* Circle tests: prerequisites and the live steer angle share a row. */
+      .wz-testtop { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+      .wz-testtop > .wz-prereq { margin-bottom: 0; }
+      .wz-testtop > .wz-live { margin: 0 24px 0 0; }
+    }
+    @media (max-height: 820px) {
+      .wz-header { padding: 10px 22px; } .wz-step { top: 12px; }
+      .wz-body { padding: 12px 22px; }
+      .wz-h1 { font-size: 20px; margin-bottom: 4px; }
+      .wz-desc { margin-bottom: 10px; line-height: 1.4; }
+      .wz-center { min-height: 140px; gap: 10px; }
+      .wz-cards { margin: 12px auto; }
+      .wz-panel { padding: 12px; } .wz-panel img.dia { height: 150px; }
+      .wz-live { margin: 6px 0; } .wz-live .big { font-size: 34px; }
+      .wz-prereq { padding: 8px 14px; margin-bottom: 10px; }
+      .wz-fld { margin-top: 8px; } .wz-num { height: 36px; }
+      .wz-statusbar { padding: 6px; }
+      .wz-footer { padding: 8px 22px; } .wz-btn { padding: 9px 22px; }
+    }
     /* Vehicle config diagrams (type cards + per-field measurement diagrams). */
     .vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
     .vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;

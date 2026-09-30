@@ -3368,12 +3368,12 @@ function buildWizardContent(w) {
       return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
         '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'cpd':
-      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~' + fmtUnit(5, 'kmh', 0) + ')</div></div>' +
-        wzLive('Live Steer Angle', 'angle') + wzCircleTest(false) +
+      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~' + fmtUnit(5, 'kmh', 0) + ')</div></div>' +
+        wzLive('Live Steer Angle', 'angle') + '</div>' + wzCircleTest(false) +
         '<div class="wz-rows">' + wzNum('Counts Per Degree', null, 'autosteer.countsPerDegree', '1', '') + '</div>';
     case 'ackermann':
-      return head + '<div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">Ackermann at 100 (neutral)</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
-        wzLive('Live Steer Angle', 'angle') + wzCircleTest(true) +
+      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">Ackermann at 100 (neutral)</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
+        wzLive('Live Steer Angle', 'angle') + '</div>' + wzCircleTest(true) +
         '<div class="wz-rows">' + wzNum('Ackermann', '100 = neutral', 'autosteer.ackermann', '1', '') + '</div>';
     case 'gains':
       return head + '<div class="wz-rows">' + wzTgl('Guidance Algorithm (Stanley)', 'Pure Pursuit default; Stanley more responsive at low speed', 'autosteer.isStanleyMode') +
