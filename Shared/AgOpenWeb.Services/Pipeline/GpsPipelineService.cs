@@ -747,6 +747,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _isReverse = _headingFusion.IsReverse;
         _guidanceWorking.IsReverse = _isReverse;
         _autoSteerService.SetReverse(_isReverse); // deadzone is off in reverse (#110)
+        _sectionControlService.IsReversing = _isReverse; // Auto sections off in reverse (#173)
 
         // Roll filter (AgOpenGPS ahrs.rollFilter: roll = roll × f + new × (1 − f)). AgOpenGPS
         // smooths the steer module's IMU roll; AgOpenWeb's roll comes with the GPS

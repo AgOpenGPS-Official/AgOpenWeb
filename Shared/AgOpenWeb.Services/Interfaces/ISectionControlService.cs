@@ -57,6 +57,12 @@ public interface ISectionControlService
     void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed);
 
     /// <summary>
+    /// True while the vehicle is reversing (set each GPS cycle by the pipeline). Auto
+    /// sections turn off in reverse, like AgOpenGPS; Manual-On sections stay on (#173).
+    /// </summary>
+    bool IsReversing { get; set; }
+
+    /// <summary>
     /// Get section edge positions in world coordinates
     /// </summary>
     /// <param name="sectionIndex">Section index (0-based)</param>
