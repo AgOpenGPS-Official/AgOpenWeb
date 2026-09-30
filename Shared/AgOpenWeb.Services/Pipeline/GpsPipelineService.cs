@@ -1524,6 +1524,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
         while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
         bool isHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
+        // Keep the cycle's direction flag current for the lateral snap, which reads it at
+        // the start of the next cycle. It was only refreshed by the YouTurn tick (auto U-turn
+        // on + a headland), so otherwise it went stale and swapped the snap left/right
+        // when driving against the track's direction (#172).
+        _guidanceWorking.IsHeadingSameWay = isHeadingSameWay;
 
         // Build guidance input
         var input = new Models.Track.TrackGuidanceInput
@@ -1777,6 +1782,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             double headingDiff = Math.Abs(vehicleHeading - trackHeading);
             if (headingDiff > Math.PI) headingDiff = 2 * Math.PI - headingDiff;
             if (headingDiff > Math.PI / 2) xte = -xte;
+            _guidanceWorking.IsHeadingSameWay = headingDiff <= Math.PI / 2; // #172, as above
         }
 
         _autoSteerService.UpdateGuidanceResults(0, xte);
