@@ -694,8 +694,8 @@ public partial class MainViewModel
             {
                 await CloseFieldAsync();
 
-                // Disconnect NTRIP if connected
-                if (_ntripService.IsConnected)
+                // Disconnect NTRIP if connected (or connecting / retrying)
+                if (_ntripService.IsActive)
                 {
                     await _ntripService.DisconnectAsync();
                 }
