@@ -37,6 +37,17 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
     private readonly int _threadId;
     private volatile bool _running = true;
 
+    /// <summary>
+    /// Optional; set once the host's logging is up (WebBackend.StartAsync). Used to report
+    /// work items that hold the loop longer than <see cref="SlowWorkThreshold"/> — the loop
+    /// also carries web commands and GPS-result application, so a long item freezes the UI
+    /// (#169).
+    /// </summary>
+    public Microsoft.Extensions.Logging.ILogger? Logger { get; set; }
+
+    /// <summary>Host-loop work longer than this is logged as a warning.</summary>
+    public static readonly TimeSpan SlowWorkThreshold = TimeSpan.FromMilliseconds(500);
+
     public HostLoopDispatcher()
     {
         _thread = new Thread(Pump)
@@ -55,6 +66,7 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
     {
         foreach (var work in _queue.GetConsumingEnumerable())
         {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             try { work(); }
             catch (Exception ex)
             {
@@ -63,6 +75,11 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
                 // unhandled handler exception in a debugger-less run).
                 System.Diagnostics.Debug.WriteLine($"[HostLoop] callback threw: {ex}");
             }
+            var took = System.Diagnostics.Stopwatch.GetElapsedTime(t0);
+            if (took > SlowWorkThreshold && Logger is { } log)
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(log,
+                    "[HostLoop] Work item held the loop for {Ms:F0} ms ({Method}); {Queued} queued behind it",
+                    took.TotalMilliseconds, work.Method.DeclaringType?.Name + "." + work.Method.Name, _queue.Count);
         }
     }
 

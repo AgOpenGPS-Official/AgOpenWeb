@@ -44,6 +44,9 @@ public sealed class WebBackend
     public static async Task<WebBackend> StartAsync(IServiceProvider sp, IBoundaryImageryCapture imageryCapture)
     {
         // Persisted settings → ConfigurationStore, then app config + persistent state.
+        // Slow-work reporting on the host loop (#169) once logging is available.
+        if (sp.GetService<IUiDispatcher>() is AgOpenWeb.Services.Threading.HostLoopDispatcher hostLoop)
+            hostLoop.Logger = sp.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("HostLoop");
         sp.GetRequiredService<ISettingsService>().Load();
         var configService = sp.GetRequiredService<IConfigurationService>();
         configService.LoadAppSettings();

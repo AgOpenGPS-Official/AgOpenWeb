@@ -377,9 +377,44 @@ public class AutoSteerService : IAutoSteerService
     {
         if (_isEnabled)
         {
+            // Start the freshness clock now so the first cycle after engaging has the
+            // full limit to deliver guidance.
+            Volatile.Write(ref _lastGuidanceTicks, Stopwatch.GetTimestamp());
             _isEngaged = true;
             _state.IsAutoSteerEngaged = true;
         }
+    }
+
+    /// <summary>
+    /// How long AutoSteer may stay engaged without a guidance update before steering is
+    /// stopped (#169). PGN 254 goes out at 100 Hz from the control loop whether or not
+    /// guidance is fresh, so the firmware's own lost-connection watchdog (AIO v4: 100 × 25 ms
+    /// without an engaged PGN 254) never trips — AgOpenGPS avoids that by sending PGN 254
+    /// once per GPS fix. 1 s ≈ 10 missed fixes at 10 Hz.
+    /// </summary>
+    public static readonly TimeSpan GuidanceStaleLimit = TimeSpan.FromSeconds(1);
+
+    public event EventHandler? GuidanceLost;
+
+    private long _lastGuidanceTicks;
+
+    /// <summary>
+    /// Control-tick check: engaged but no guidance update within <see cref="GuidanceStaleLimit"/>
+    /// → disengage here (so the very next PGN 254 carries status 0 and the motor stops, even
+    /// if the UI thread is the thing that's stuck) and raise <see cref="GuidanceLost"/> once.
+    /// Steering stays off until the operator re-engages. Free Drive has no guidance and is
+    /// exempt. Exposed for tests with an explicit clock.
+    /// </summary>
+    internal bool CheckGuidanceFreshness(long nowTicks)
+    {
+        if (!_isEngaged || _state.IsInFreeDriveMode) return false;
+        long last = Volatile.Read(ref _lastGuidanceTicks);
+        if (Stopwatch.GetElapsedTime(last, nowTicks) <= GuidanceStaleLimit) return false;
+
+        _isEngaged = false;
+        _state.IsAutoSteerEngaged = false;
+        GuidanceLost?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public void Disengage()
@@ -455,6 +490,7 @@ public class AutoSteerService : IAutoSteerService
 
     public void UpdateGuidanceResults(double steerAngle, double crossTrackError)
     {
+        Volatile.Write(ref _lastGuidanceTicks, Stopwatch.GetTimestamp());
         _state.CrossTrackError = crossTrackError;
 
         // Deadzone (AgOpenGPS Position.designer.cs): while steering forward and the wheel
@@ -716,7 +752,11 @@ public class AutoSteerService : IAutoSteerService
         bool perf = AgOpenWeb.Models.Diagnostics.DiagFlags.PerfAutoSteer;
         long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        try { SendPgns(); }
+        try
+        {
+            CheckGuidanceFreshness(Stopwatch.GetTimestamp());
+            SendPgns();
+        }
         finally
         {
             if (perf)
