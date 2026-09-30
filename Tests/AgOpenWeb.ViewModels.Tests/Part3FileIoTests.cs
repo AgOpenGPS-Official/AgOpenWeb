@@ -34,7 +34,7 @@ public class Part3FileIoTests
     {
         var b = new MainViewModelBuilder();
         var vm = b.Build();
-        b.NtripService.IsConnected.Returns(true);
+        b.NtripService.IsActive.Returns(true);
         vm.NtripCasterAddress = "old.caster"; vm.NtripCasterPort = 2101; vm.NtripMountPoint = "M";
 
         await vm.ReconnectNtripIfConnectedAsync(P("old.caster"), P("new.caster"));
@@ -49,7 +49,7 @@ public class Part3FileIoTests
     {
         var b = new MainViewModelBuilder();
         var vm = b.Build();
-        b.NtripService.IsConnected.Returns(true);
+        b.NtripService.IsActive.Returns(true);
         vm.NtripCasterAddress = "old.caster"; vm.NtripCasterPort = 2101; vm.NtripMountPoint = "M";
 
         await vm.ReconnectNtripIfConnectedAsync(P("other.caster"), P("changed.caster"));

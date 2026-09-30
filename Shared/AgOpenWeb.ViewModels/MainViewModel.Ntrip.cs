@@ -164,7 +164,7 @@ public partial class MainViewModel
             return;
         }
 
-        if (_ntripService.IsConnected)
+        if (_ntripService.IsActive)
             return;
 
         // Mirror the field-load path: reflect the profile in the display props.
@@ -186,7 +186,7 @@ public partial class MainViewModel
     {
         try
         {
-            if (!_ntripService.IsConnected) return;
+            if (!_ntripService.IsActive) return;
             bool wasThisOne = before.CasterHost == NtripCasterAddress
                 && before.CasterPort == NtripCasterPort && before.MountPoint == NtripMountPoint;
             if (!wasThisOne) return;
@@ -245,7 +245,7 @@ public partial class MainViewModel
             }
 
             // Disconnect from current caster if connected
-            if (_ntripService.IsConnected)
+            if (_ntripService.IsActive)
             {
                 _logger.LogDebug("Disconnecting from current NTRIP caster");
                 await _ntripService.DisconnectAsync();

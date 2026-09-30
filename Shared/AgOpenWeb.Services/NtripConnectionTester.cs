@@ -62,17 +62,18 @@ public static class NtripConnectionTester
             await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
             var buffer = new byte[1024];
-            stream.ReadTimeout = 3000;
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-            var response = System.Text.Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
+            if (await Task.WhenAny(readTask, Task.Delay(3000)) != readTask)
+                return "Error: No reply from the caster";
+            var bytesRead = await readTask;
+            if (bytesRead == 0)
+                return "Error: Caster closed the connection without answering";
 
-            if (response.Contains("200 OK") || response.Contains("ICY 200"))
-                return "Success: Connected to caster and mount point";
-            if (response.Contains("401"))
-                return "Error: Authentication failed (check username/password)";
-            if (response.Contains("404"))
-                return "Error: Mount point not found";
-            return "Connected to caster (mount point status unknown)";
+            var response = System.Text.Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            var (reply, reason) = NtripResponse.Classify(response);
+            return reply == NtripReply.Accepted
+                ? "Success: Connected to caster and mount point"
+                : "Error: " + reason;
         }
         catch (Exception ex)
         {
