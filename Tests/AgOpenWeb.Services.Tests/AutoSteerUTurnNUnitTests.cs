@@ -930,4 +930,47 @@ public class AutoSteerUTurnNUnitTests
             "A manual turn with the toggle off must run, not be cleared at once");
         Assert.That(turn2.Any(r => r.YouTurn is { JustCompleted: true }), Is.True, "…and complete");
     }
+
+    /// <summary>
+    /// #172: the lateral snap buttons must move to the line on the DRIVER's left/right in
+    /// both driving directions. The direction flag they use was only refreshed by the YouTurn
+    /// tick (auto U-turn on + a headland), so with U-turn off it went stale and the buttons
+    /// swapped when driving against the AB line's direction.
+    /// </summary>
+    [TestCase(0.0, false, +1, TestName = "SnapRight_DrivingWithTheLine_GoesRight")]
+    [TestCase(180.0, false, -1, TestName = "SnapRight_DrivingAgainstTheLine_GoesRight")]
+    [TestCase(180.0, true, +1, TestName = "SnapLeft_DrivingAgainstTheLine_GoesLeft")]
+    public void Snap_moves_to_the_drivers_side(double heading, bool left, int expectedEastSign)
+    {
+        for (int i = 0; i < 3; i++)
+            ConfigurationStore.Instance.Tool.SetSectionWidth(i, 400.0); // 12 m passes
+        CreateFreshPipeline();
+        _appState.Field.LocalPlane = new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+
+        const double abEasting = 100.0;
+        var track = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "AB_Snap",
+            Points = new List<Vec3> { new Vec3(abEasting, 0, 0), new Vec3(abEasting, 100, 0) },
+            Type = AgOpenWeb.Models.Track.TrackType.ABLine
+        };
+        double startN = heading < 90 ? 40 : 160;
+        SendGpsAt(abEasting, startN, heading: heading, count: 20);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetAutoSteerEngaged(true);
+        _pipeline.SetYouTurnEnabled(false);
+        lock (_results) _results.Clear();
+
+        var all = new List<(string phase, GpsCycleResult r)>();
+        double lat = ORIGIN_LAT + startN / MetersPerDegLat, lon = ORIGIN_LON + abEasting / MetersPerDegLon, hdg = heading;
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 40, "settle", all);
+        _intents.RequestGuidanceSnap(left: left);
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 250, "snap", all);
+
+        double endE = all[^1].r.Easting;
+        double expectedE = abEasting + expectedEastSign * ConfigurationStore.Instance.ActualToolWidth;
+        Assert.That(endE, Is.EqualTo(expectedE).Within(0.5),
+            $"heading {heading}°, snap {(left ? "left" : "right")}: expected the line at E={expectedE:F0}, ended at E={endE:F1}");
+    }
 }
+
