@@ -1148,35 +1148,44 @@ public class CoverageMapService : ICoverageMapService
         return Array.Empty<CoveragePatch>();
     }
 
+    /// <summary>
+    /// Clear all painted coverage. Zones that are mapping stay mapping: the section service
+    /// only calls <see cref="StartMapping"/> on a section's off→on edge, so dropping them here
+    /// would make every later point of a section that stays on be discarded (deleting the
+    /// applied area while painting stopped the painting until each section cycled off/on).
+    /// Their next point re-seeds the strip and the edge ribbon.
+    /// </summary>
     public void ClearAll()
     {
-        // Clear display pixel buffer and detection bits in lockstep
-        if (_displayPixels != null)
-            Array.Clear(_displayPixels, 0, _displayPixels.Length);
-        ExpandDirtyAll();
-        _newCells.Clear();
-        _newCellsServer.Clear();
-        if (_detectionBits != null)
-            Array.Clear(_detectionBits, 0, _detectionBits.Length);
-        _cellCountPerZone.Clear();
+        lock (_coverageLock) // the cycle thread paints concurrently
+        {
+            // Clear display pixel buffer and detection bits in lockstep
+            if (_displayPixels != null)
+                Array.Clear(_displayPixels, 0, _displayPixels.Length);
+            ExpandDirtyAll();
+            _newCells.Clear();
+            _newCellsServer.Clear();
+            if (_detectionBits != null)
+                Array.Clear(_detectionBits, 0, _detectionBits.Length);
+            _cellCountPerZone.Clear();
 
-        // Reset bounds
-        _minCellE = int.MaxValue;
-        _maxCellE = int.MinValue;
-        _minCellN = int.MaxValue;
-        _maxCellN = int.MinValue;
-        _boundsValid = false;
+            // Reset bounds
+            _minCellE = int.MaxValue;
+            _maxCellE = int.MinValue;
+            _minCellN = int.MaxValue;
+            _maxCellN = int.MinValue;
+            _boundsValid = false;
 
-        // Clear tracking state
-        _activeSections.Clear();
-        _lastEdgesPerSection.Clear();
-        ClearEdges();
+            // Clear tracking state (not _activeSections, see above)
+            _lastEdgesPerSection.Clear();
+            ClearEdges();
 
-        // Reset totals
-        _totalWorkedArea = 0;
-        _totalWorkedAreaUser = 0;
-        _coverageDirty = false;
-        _pendingAreaAdded = 0;
+            // Reset totals
+            _totalWorkedArea = 0;
+            _totalWorkedAreaUser = 0;
+            _coverageDirty = false;
+            _pendingAreaAdded = 0;
+        }
 
         // IsFullReload tells the 2D map control to drop its SKBitmap and
         // repaint from the (now empty) service. Without this, ClearAll wipes
