@@ -4,6 +4,7 @@
 // Licensed under GNU GPL v3. See LICENSE.md.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using AgOpenWeb.Models;
@@ -240,6 +241,50 @@ public class YouTurnCycleTests
 
         Assert.That(completed, Is.True, "Driving the manual arc should complete the turn");
         Assert.That(youTurn.IsExecuting, Is.False);
+    }
+
+    /// <summary>
+    /// A snake / alternate turn was planned (target pass 5) but discarded before it ran.
+    /// A manual turn must then complete by its own direction, not jump to the stale pass.
+    /// </summary>
+    [Test]
+    public void ManualTurn_after_discarded_planned_turn_ignores_stale_target_pass()
+    {
+        var stateMachine = BuildStateMachine();
+        var baseCtx = BuildTickContext() with { Boundary = null, HeadlandLine = null };
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0 };
+        var youTurn = new YouTurnWorkingState
+        {
+            TurnPath = new List<Vec3> { new(0, 40, 0), new(3, 43, 0), new(6, 40, 0) },
+            ReturnPassTargetPath = 5,
+        };
+
+        stateMachine.TriggerManual(true, isAutoSteerEngaged: true, in baseCtx, guidance, youTurn);
+        Assume.That(youTurn.IsExecuting, Is.True, "Manual trigger must start a turn");
+        Assert.That(youTurn.ReturnPassTargetPath, Is.Null);
+
+        var effects = stateMachine.CompleteFromGuidance(in baseCtx, guidance, youTurn);
+        Assert.That(effects.TurnCompleted, Is.True);
+        Assert.That(guidance.HowManyPathsAway, Is.EqualTo(-1),
+            "Left manual turn heading with the AB moves one pass negative, not to pass 5");
+    }
+
+    [Test]
+    public void ClearState_drops_the_target_pass()
+    {
+        var youTurn = new YouTurnWorkingState
+        {
+            TurnPath = new List<Vec3> { new(0, 0, 0), new(1, 1, 0), new(2, 2, 0) },
+            NextTrack = Models.Track.Track.FromABLine("n", new Vec3(6, -100, 0), new Vec3(6, 100, 0)),
+            ReturnPassTargetPath = 3,
+        };
+        YouTurnStateMachine.ClearState(youTurn);
+        Assert.Multiple(() =>
+        {
+            Assert.That(youTurn.TurnPath, Is.Null);
+            Assert.That(youTurn.NextTrack, Is.Null);
+            Assert.That(youTurn.ReturnPassTargetPath, Is.Null);
+        });
     }
 
     // ── Test helpers ─────────────────────────────────────────────────────

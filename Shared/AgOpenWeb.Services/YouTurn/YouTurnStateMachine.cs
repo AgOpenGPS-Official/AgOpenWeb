@@ -211,9 +211,7 @@ public sealed class YouTurnStateMachine
         {
             _logger.LogDebug("[YouTurn] Direction override set with rendered path — re-arming with {Dir}",
                 turn.NextUTurnDirectionLeftOverride.Value ? "LEFT" : "RIGHT");
-            turn.TurnPath = null;
-            turn.NextTrack = null;
-            turn.IsTriggered = false;
+            DiscardPlannedTurn(turn);
             effects.SyncTurnPathToMap = true;
             effects.SyncNextTrackToMap = true;
         }
@@ -270,8 +268,7 @@ public sealed class YouTurnStateMachine
         else if (turn.TurnPath != null && !turn.IsTriggered && isInHeadlandZone)
         {
             _logger.LogDebug("[YouTurn] Entered headland without triggering - resetting turn");
-            turn.TurnPath = null;
-            turn.NextTrack = null;
+            DiscardPlannedTurn(turn);
             effects.SyncTurnPathToMap = true;
             effects.SyncNextTrackToMap = true;
         }
@@ -521,13 +518,10 @@ public sealed class YouTurnStateMachine
         }
 
         // If an auto-trigger plotted a path but it hasn't engaged yet, discard it so
-        // the manual trigger's immediate arc takes over.
-        if (turn.TurnPath != null)
-        {
-            turn.TurnPath = null;
-            turn.IsTriggered = false;
-            effects.SyncTurnPathToMap = true;
-        }
+        // the manual trigger's immediate arc takes over. Also drops a snake / alternate
+        // target pass, so the manual turn completes by its own direction.
+        if (turn.TurnPath != null) effects.SyncTurnPathToMap = true;
+        DiscardPlannedTurn(turn);
 
         var track = ctx.SelectedTrack;
         if (track.Points.Count < 2)
@@ -592,12 +586,23 @@ public sealed class YouTurnStateMachine
     /// </summary>
     public static void ClearState(YouTurnWorkingState turn)
     {
-        turn.TurnPath = null;
-        turn.NextTrack = null;
-        turn.IsTriggered = false;
+        DiscardPlannedTurn(turn);
         turn.IsExecuting = false;
         turn.YouTurnCounter = 0;
         turn.CurrentZone = TractorZone.OutsideBoundary;
+    }
+
+    /// <summary>
+    /// Drop a planned turn that isn't being driven yet: the path, the next track and the
+    /// snake / alternate target pass (#1203). The next tick plans a fresh one. Without the
+    /// target reset, a later Normal or manual turn would complete onto the stale pass.
+    /// </summary>
+    public static void DiscardPlannedTurn(YouTurnWorkingState turn)
+    {
+        turn.TurnPath = null;
+        turn.NextTrack = null;
+        turn.IsTriggered = false;
+        turn.ReturnPassTargetPath = null;
     }
 
     // ── Private helpers ─────────────────────────────────────────────────
