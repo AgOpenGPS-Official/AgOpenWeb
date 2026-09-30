@@ -17,6 +17,7 @@
 using AgOpenWeb.Models.Track;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace AgOpenWeb.ViewModels;
 
@@ -35,6 +36,19 @@ public partial class MainViewModel
     #endregion
 
     #region AutoSteer Event Handlers
+
+    /// <summary>
+    /// The service stopped steering because guidance went stale (#169). Steering is already
+    /// off at the module; take AutoSteer off in the app too so the operator re-engages
+    /// deliberately instead of the tractor lunging at a line that moved during the stall.
+    /// </summary>
+    private void OnGuidanceLost(object? sender, EventArgs e) => _dispatcher.Post(() =>
+    {
+        _logger.LogWarning("[AutoSteer] No guidance update for {Limit:F1} s while engaged — AutoSteer turned off (#169)",
+            AutoSteerService.GuidanceStaleLimit.TotalSeconds);
+        if (IsAutoSteerEngaged) ToggleAutoSteerCommand?.Execute(null);
+        ReportFailure("AutoSteer off: no GPS/guidance update for over 1 s");
+    });
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot state)
     {

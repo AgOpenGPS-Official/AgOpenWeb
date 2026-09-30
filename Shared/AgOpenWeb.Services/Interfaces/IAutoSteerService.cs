@@ -37,6 +37,14 @@ public interface IAutoSteerService
     event Action<string, int, bool>? HardwareMessageReceived;
 
     /// <summary>
+    /// AutoSteer was engaged but guidance stopped updating for longer than
+    /// <c>AutoSteerService.GuidanceStaleLimit</c> (GPS input or the pipeline stalled), so the
+    /// service stopped steering on its own (#169). Raised once per stall, on the control-loop
+    /// thread; the handler should marshal to the UI and take AutoSteer off.
+    /// </summary>
+    event EventHandler? GuidanceLost;
+
+    /// <summary>
     /// Whether auto-steer is enabled and processing GPS data.
     /// </summary>
     bool IsEnabled { get; }

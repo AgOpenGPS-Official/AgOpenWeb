@@ -403,6 +403,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// </summary>
     public bool SynchronousMode { get; set; }
 
+    // #169 stall diagnostics (see OnGpsDataUpdated).
+    private static readonly TimeSpan StallLogThreshold = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan SlowCycleLogThreshold = TimeSpan.FromMilliseconds(500);
+    private long _lastGpsInputTicks;
+    private int _droppedWhileBusy;
+
     private void OnGpsDataUpdated(object? sender, GpsData data)
     {
         if (SynchronousMode)
@@ -413,15 +419,31 @@ public sealed class GpsPipelineService : IGpsPipelineService
             return;
         }
 
+        // #169 stall diagnostics: a gap in GPS input (receiver, network or the UDP
+        // thread) vs. a slow cycle (the pipeline itself) look the same on screen.
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        long prev = Interlocked.Exchange(ref _lastGpsInputTicks, now);
+        if (prev != 0 && System.Diagnostics.Stopwatch.GetElapsedTime(prev, now) > StallLogThreshold)
+            _logger.LogWarning("[Pipeline] No GPS input for {Ms:F0} ms", System.Diagnostics.Stopwatch.GetElapsedTime(prev, now).TotalMilliseconds);
+
         // Production mode: Task.Run with single-cycle-in-flight back-pressure
         if (Interlocked.CompareExchange(ref _processing, 1, 0) != 0)
+        {
+            Interlocked.Increment(ref _droppedWhileBusy);
             return;
+        }
 
         Task.Run(() =>
         {
+            long c0 = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 ProcessCycle(data);
+                var took = System.Diagnostics.Stopwatch.GetElapsedTime(c0);
+                int dropped = Interlocked.Exchange(ref _droppedWhileBusy, 0);
+                if (took > SlowCycleLogThreshold)
+                    _logger.LogWarning("[Pipeline] Cycle took {Ms:F0} ms ({Dropped} fixes dropped while busy)",
+                        took.TotalMilliseconds, dropped);
             }
             catch (Exception ex)
             {
