@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -60,7 +61,7 @@ public class DebugDumpService
         // 2. App settings
         try
         {
-            var settingsJson = JsonSerializer.Serialize(settingsService.Settings, JsonOptions);
+            var settingsJson = RedactSecrets(JsonSerializer.Serialize(settingsService.Settings, JsonOptions));
             AddTextEntry(archive, "appsettings.json", settingsJson);
         }
         catch (Exception ex)
@@ -351,11 +352,60 @@ public class DebugDumpService
                 store.Guidance.StanleyDistanceErrorGain,
                 store.Guidance.UTurnRadius
             },
+            // GPS / dual-antenna / heading settings (#157: a heading bug report had none of
+            // these). ConnectionConfig also holds NTRIP and AgShare credentials — listed
+            // field by field so those can never ride along.
+            Gps = new
+            {
+                store.Connections.IsDualGps,
+                store.Connections.DualHeadingOffset,
+                store.Connections.DualReverseDistance,
+                store.Connections.AutoDualFix,
+                store.Connections.DualSwitchSpeed,
+                store.Connections.GpsUpdateRate,
+                store.Connections.UseRtk,
+                store.Connections.MinGpsStep,
+                store.Connections.FixToFixDistance,
+                store.Connections.HeadingFusionWeight,
+                store.Connections.ReverseDetection,
+                store.Connections.HeadingSource,
+                store.Connections.MinFixQuality,
+                store.Connections.RtkLostAlarm,
+                store.Connections.RtkLostAction,
+                store.Connections.MaxDifferentialAge,
+                store.Connections.MaxHdop
+            },
+            Ahrs = store.Ahrs,
+            AutoSteer = store.AutoSteer,
             NumSections = store.NumSections,
             IsMetric = store.IsMetric,
-            ActiveProfile = store.ActiveVehicleProfileName
+            ActiveProfile = store.ActiveVehicleProfileName,
+            ActiveToolProfile = store.ActiveToolProfileName
         };
         return JsonSerializer.Serialize(snapshot, JsonOptions);
+    }
+
+    /// <summary>
+    /// Bug reports get attached to public issues: blank out anything credential-shaped
+    /// (NTRIP user/password, AgShare API key, …) that's set. Empty values stay empty so
+    /// the report still shows whether one was configured.
+    /// </summary>
+    internal static string RedactSecrets(string json)
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json);
+        if (node is not System.Text.Json.Nodes.JsonObject obj) return json;
+        foreach (var key in new List<string>(obj.Select(kv => kv.Key)))
+        {
+            bool secret = key.Contains("Password", StringComparison.OrdinalIgnoreCase)
+                || key.Contains("ApiKey", StringComparison.OrdinalIgnoreCase)
+                || key.Contains("Token", StringComparison.OrdinalIgnoreCase)
+                || key.Contains("Secret", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("NtripUsername", StringComparison.OrdinalIgnoreCase);
+            if (secret && obj[key] is System.Text.Json.Nodes.JsonValue v
+                && v.TryGetValue<string>(out var str) && !string.IsNullOrEmpty(str))
+                obj[key] = "REDACTED";
+        }
+        return obj.ToJsonString(JsonOptions);
     }
 
     private static string BuildStateSnapshot(ApplicationState state)
