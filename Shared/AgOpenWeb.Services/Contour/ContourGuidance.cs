@@ -49,6 +49,7 @@ public sealed class ContourGuidance
     private double _lastXte; // modeActualXTE: last contour XTE, for the look-ahead
     private double _inty, _pivotDistanceError, _pivotDistanceErrorLast;
     private int _counter2;
+    private bool _wasAutoSteerOn;
 
     public double LastCrossTrackError => _lastXte;
     /// <summary>Bumped whenever <see cref="Line"/> is rebuilt or cleared, so callers can cache.</summary>
@@ -62,6 +63,26 @@ public sealed class ContourGuidance
     }
 
     public void Unlock() { IsLocked = false; }
+
+    /// <summary>
+    /// AgOpenGPS btnAutoSteer_Click "handle contour lock" (#1170): engaging AutoSteer locks
+    /// to the current line, disengaging unlocks. Call every cycle with the engaged state
+    /// after all kickouts, so every engage/disengage path is followed, not only the button.
+    /// </summary>
+    public void FollowAutoSteer(bool isAutoSteerOn)
+    {
+        if (isAutoSteerOn && !_wasAutoSteerOn && !IsLocked) SetLockToLine();
+        else if (!isAutoSteerOn && _wasAutoSteerOn) IsLocked = false;
+        _wasAutoSteerOn = isAutoSteerOn;
+    }
+
+    /// <summary>Contour button toggled: drop the line and the reference strip.</summary>
+    public void ClearReference()
+    {
+        ClearLine();
+        StripNum = -1;
+        _lastLockPt = int.MaxValue;
+    }
 
     // ── Recording ────────────────────────────────────────────────────────
 
@@ -126,8 +147,11 @@ public sealed class ContourGuidance
     // ── Guidance line ────────────────────────────────────────────────────
 
     /// <summary>AgOpenGPS BuildContourGuidanceLine. Rebuilds at most every 0.3 s while there's
-    /// no line, every 2 s once there is.</summary>
-    public void BuildContourGuidanceLine(Vec3 pivot, double fixHeading, in ContourParams p, double nowSeconds)
+    /// no line, every 2 s once there is. While AutoSteer is on the reference strip is kept
+    /// even when unlocked (#1171), so steering never jumps to another strip; a new one is
+    /// only searched for when there's none yet.</summary>
+    public void BuildContourGuidanceLine(Vec3 pivot, double fixHeading, in ContourParams p, double nowSeconds,
+        bool isAutoSteerOn = false)
     {
         if (nowSeconds - _lastSecond < (Line.Count == 0 ? 0.3 : 2)) return;
         _lastSecond = nowSeconds;
@@ -145,7 +169,8 @@ public sealed class ContourGuidance
 
         double minDistance = double.MaxValue;
         int ptCount;
-        if (!IsLocked)
+        bool keepStrip = (IsLocked || isAutoSteerOn) && StripNum >= 0 && StripNum < stripCount;
+        if (!keepStrip)
         {
             StripNum = -1;
             for (int s = 0; s < stripCount; s++)
@@ -171,6 +196,7 @@ public sealed class ContourGuidance
 
             if (StripNum < 0 || minDistance > toolContourDistance || Strips[StripNum].Count < 4)
             {
+                StripNum = -1; // not a reference: AutoSteer mustn't hold on to it
                 ClearLine();
                 return;
             }
@@ -180,8 +206,11 @@ public sealed class ContourGuidance
             ptCount = Strips[StripNum].Count;
             if (ptCount < 2) { ClearLine(); return; }
 
-            int from = Math.Max(_lastLockPt - 20, 0);
-            int to = Math.Min(_lastLockPt + 20, ptCount);
+            // Near the last point; the whole strip after an unlock at the line's end
+            // (_lastLockPt is int.MaxValue then, and + 20 would overflow).
+            bool anyPt = _lastLockPt == int.MaxValue;
+            int from = anyPt ? 0 : Math.Max(_lastLockPt - 20, 0);
+            int to = anyPt ? ptCount : Math.Min(_lastLockPt + 20, ptCount);
             for (int i = from; i < to; i += 3)
             {
                 var sp = Strips[StripNum][i];
