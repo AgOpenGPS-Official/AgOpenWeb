@@ -343,7 +343,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_contourLock)
         {
             _contourOn = on;
-            _contour.ClearLine(); // also unlocks
+            _contour.ClearReference(); // also unlocks
         }
     }
 
@@ -1590,6 +1590,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         ContourSteer? steer = null;
         lock (_contourLock)
         {
+            _contour.FollowAutoSteer(autoSteerEngaged); // before the rebuild: lock the current line
             if (hasActiveField)
             {
                 double contourWidth = (config.ActualToolWidth - config.Tool.Overlap) / 3.0;
@@ -1606,7 +1607,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     var p = ContourParamsFor(speedKmh);
                     if (contourOn)
                         _contour.BuildContourGuidanceLine(pivot, headingRad, p,
-                            Clock.Current.GetTimestamp() / (double)Clock.Current.Frequency);
+                            Clock.Current.GetTimestamp() / (double)Clock.Current.Frequency, autoSteerEngaged);
                     _lastContourPos = new Vec2(pivotE, pivotN);
                 }
             }
