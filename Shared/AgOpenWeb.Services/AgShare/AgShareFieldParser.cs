@@ -40,58 +40,72 @@ namespace AgOpenWeb.Services.AgShare
                 AbLines = new List<AbLineLocal>()
             };
 
-            var converter = new GeoConversion(dto.Latitude, dto.Longitude);
-
-            // Convert boundary rings from WGS84 to local NE
-            foreach (var ring in dto.Boundaries)
+            // LocalPlane, like live GPS and the uploader: longitude is scaled at each point's
+            // own latitude. GeoConversion scaled it at the origin's, which sheared the field
+            // east-west on every upload→download round trip (AgOpenGPS #1214/#1215).
+            var plane = new LocalPlane(result.Origin, new SharedFieldProperties());
+            LocalPoint ToLocal(CoordinateDto c)
             {
-                var ringList = new List<LocalPoint>();
-                foreach (var point in ring)
-                {
-                    var local = converter.ToLocal(point.Latitude, point.Longitude);
-                    ringList.Add(new LocalPoint(local.Easting, local.Northing));
-                }
-                result.Boundaries.Add(ringList);
+                var g = plane.ConvertWgs84ToGeoCoord(new Wgs84(c.Latitude, c.Longitude));
+                return new LocalPoint(g.Easting, g.Northing);
             }
 
-            // Convert AB-lines and curves
-            foreach (var ab in dto.AbLines)
+            // Boundary rings: the first is the outer boundary, the rest are holes. A ring of
+            // fewer than 3 valid points would make Boundary.txt unreadable, so it's dropped;
+            // without a usable outer ring there's no boundary at all (a hole mustn't become it).
+            var rings = dto.Boundaries ?? new List<List<CoordinateDto>>();
+            for (int r = 0; r < rings.Count; r++)
             {
-                if (ab.Coords == null || ab.Coords.Count < 2) continue;
+                var ringList = new List<LocalPoint>();
+                foreach (var point in rings[r] ?? new List<CoordinateDto>())
+                    if (IsValid(point)) ringList.Add(ToLocal(point));
+                // The uploader closes each ring by repeating its first point; Boundary.txt rings
+                // are implicitly closed, so drop the duplicate (a zero-length last edge).
+                if (ringList.Count > 1
+                    && Math.Abs(ringList[0].Easting - ringList[^1].Easting) < 1e-3
+                    && Math.Abs(ringList[0].Northing - ringList[^1].Northing) < 1e-3)
+                    ringList.RemoveAt(ringList.Count - 1);
 
-                var vA = converter.ToLocal(ab.Coords[0].Latitude, ab.Coords[0].Longitude);
-                var vB = converter.ToLocal(ab.Coords[1].Latitude, ab.Coords[1].Longitude);
-                double heading = GeoConversion.HeadingFromPoints(vA, vB);
+                if (ringList.Count >= 3) result.Boundaries.Add(ringList);
+                else if (r == 0) break;
+            }
+
+            // AB-lines and curves
+            foreach (var ab in dto.AbLines ?? new List<AbLineUploadDto>())
+            {
+                if (ab?.Coords == null || ab.Coords.Count < 2) continue;
+                if (!IsValid(ab.Coords[0]) || !IsValid(ab.Coords[1])) continue;
+
+                var ptA = ToLocal(ab.Coords[0]);
+                var ptB = ToLocal(ab.Coords[1]);
 
                 var abLine = new AbLineLocal
                 {
                     Name = ab.Name ?? "Unnamed",
-                    Heading = heading,
-                    PtA = new LocalPoint(vA.Easting, vA.Northing),
-                    PtB = new LocalPoint(vB.Easting, vB.Northing),
+                    Heading = GeoConversion.HeadingFromPoints(
+                        new Vec2(ptA.Easting, ptA.Northing), new Vec2(ptB.Easting, ptB.Northing)),
+                    PtA = ptA,
+                    PtB = ptB,
                     CurvePoints = new List<LocalPoint>()
                 };
 
                 if (ab.Coords.Count > 2)
                 {
-                    for (int i = 0; i < ab.Coords.Count; i++)
+                    var pts = new List<LocalPoint>();
+                    foreach (var c in ab.Coords)
+                        if (IsValid(c)) pts.Add(ToLocal(c));
+
+                    // Each point heads to the next; the last keeps the final segment's heading
+                    // (it used to be 0, i.e. north).
+                    for (int i = 0; i < pts.Count; i++)
                     {
-                        var p = ab.Coords[i];
-                        var local = converter.ToLocal(p.Latitude, p.Longitude);
-                        double localHeading = 0;
-
-                        if (i < ab.Coords.Count - 1)
-                        {
-                            var next = ab.Coords[i + 1];
-                            var nextLocal = converter.ToLocal(next.Latitude, next.Longitude);
-
-                            // Correct volgorde: Northing, Easting
-                            var localCoord = new GeoCoord(local.Northing, local.Easting);
-                            var nextCoord = new GeoCoord(nextLocal.Northing, nextLocal.Easting);
-                            localHeading = new GeoDir(new GeoDelta(localCoord, nextCoord)).AngleInRadians;
-                        }
-
-                        abLine.CurvePoints.Add(new LocalPoint(local.Easting, local.Northing, localHeading));
+                        var (from, to) = i < pts.Count - 1 ? (pts[i], pts[i + 1])
+                            : pts.Count > 1 ? (pts[i - 1], pts[i]) : (pts[i], pts[i]);
+                        double heading = from.Easting == to.Easting && from.Northing == to.Northing ? 0
+                            : new GeoDir(new GeoDelta(
+                                new GeoCoord(from.Northing, from.Easting),
+                                new GeoCoord(to.Northing, to.Easting))).AngleInRadians;
+                        abLine.CurvePoints.Add(new LocalPoint(pts[i].Easting, pts[i].Northing, heading));
                     }
                 }
 
@@ -100,5 +114,9 @@ namespace AgOpenWeb.Services.AgShare
 
             return result;
         }
+
+        private static bool IsValid(CoordinateDto? c) =>
+            c != null && double.IsFinite(c.Latitude) && double.IsFinite(c.Longitude)
+            && Math.Abs(c.Latitude) <= 90 && Math.Abs(c.Longitude) <= 180;
     }
 }
