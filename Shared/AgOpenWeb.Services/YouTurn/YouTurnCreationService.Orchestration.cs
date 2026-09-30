@@ -190,7 +190,7 @@ public partial class YouTurnCreationService
                     _logger.LogWarning("[YouTurn] Service path rejected: net={Net:F0}° cumulative={Cum:F0}° - using simple fallback",
                         netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
                     var fallback = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
-                        guidance, turn, uTurnSkipRows, headlandDistance);
+                        guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
                     return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
                 }
 
@@ -239,7 +239,7 @@ public partial class YouTurnCreationService
             _logger.LogWarning("[YouTurn] Service failed: {Reason} - using simple fallback",
                 output.FailureReason ?? "unknown");
             var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
-                guidance, turn, uTurnSkipRows, headlandDistance);
+                guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
             return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
         }
     }
@@ -705,10 +705,30 @@ public partial class YouTurnCreationService
     // ── Simple geometric fallback ───────────────────────────────────────
 
     /// <summary>
+    /// The fallback builds the whole turn from one anchor point. Using the tractor's raw
+    /// position carried its cross-track error into the path — a turn created right after
+    /// engaging, before the tractor had converged, came out shifted by that error (#174:
+    /// 2 m). Move the anchor sideways onto the pass being followed (the offset
+    /// <c>HowManyPathsAway × width + NudgeOffset</c>, positive right of the AB heading, as
+    /// guidance uses). AB lines only: the fallback's geometry is straight along abHeading.
+    /// </summary>
+    internal Position OntoPassLine(Position pos, Models.Track.Track? track, double abHeading, GuidanceWorkingState guidance)
+    {
+        if (track == null || track.Points.Count != 2) return pos;
+        var a = track.Points[0];
+        double width = _configStore.ActualToolWidth - _configStore.Tool.Overlap;
+        double passOffset = guidance.HowManyPathsAway * width + guidance.NudgeOffset;
+        double rightE = Math.Cos(abHeading), rightN = -Math.Sin(abHeading);
+        double perp = (pos.Easting - a.Easting) * rightE + (pos.Northing - a.Northing) * rightN;
+        double shift = passOffset - perp;
+        return pos with { Easting = pos.Easting + shift * rightE, Northing = pos.Northing + shift * rightN };
+    }
+
+    /// <summary>
     /// Straight-in, semicircle, straight-out U-turn. Used when the primary Dubins-based creation
     /// returns a spiral or fails entirely.
     /// </summary>
-    private List<Vec3> SimpleFallback(
+    internal List<Vec3> SimpleFallback(
         Position currentPosition,
         double abHeading,
         bool turnLeft,
@@ -716,10 +736,13 @@ public partial class YouTurnCreationService
         GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         int uTurnSkipRows,
-        double headlandDistance)
+        double headlandDistance,
+        Models.Track.Track? selectedTrack = null)
     {
         var path = new List<Vec3>();
         var config = _configStore;
+
+        currentPosition = OntoPassLine(currentPosition, selectedTrack, abHeading, guidance);
 
         const double pointSpacing = 0.5;
         double turnOffset = turn.NextTrackTurnOffset;
