@@ -125,6 +125,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // when snap / nudge / set-active-track all become intents).
 
     private bool _youTurnEnabled;
+    // Cycle-thread copy of the toggle from the previous cycle, to clear a turn
+    // only on the on→off edge.
+    private bool _youTurnWasEnabled;
     // One-shot direction override for the next armed automatic turn. The UI
     // toggle pre-flips this while idle; the cycle mirrors it into
     // _youTurn.NextUTurnDirectionLeftOverride and the state machine consumes
@@ -827,8 +830,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         else if (autoSteerEngaged && hasTickableTrack && _youTurn.IsExecuting)
         {
             // A manual turn is executing but the auto tick is gated off (no headland —
-            // manual turns don't need one). Still run the completion checks, or the turn
-            // never completes and the tractor is left without steering (#163).
+            // manual turns don't need one — or the YouTurn toggle off). Still run the
+            // completion checks, or the turn never completes and the tractor is left
+            // without steering (#163).
             youTurnTickEffects ??= _youTurnStateMachine.TickExecutingTurn(in tickCtx, _guidanceWorking, _youTurn);
         }
 
@@ -852,16 +856,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         passNumber = _guidanceWorking.HowManyPathsAway;
         nudgeOffset = _guidanceWorking.NudgeOffset;
 
-        // U-turn lifecycle is bound to the YouTurn-enabled toggle: when the
-        // operator disables YouTurn the rendered turn path must clear so a
-        // stale arc doesn't linger on the map. The auto tick above is gated
-        // on youTurnEnabled, so without this clear the working state would
-        // freeze with IsTriggered/IsExecuting=true and the snapshot would
-        // keep emitting the old TurnPath every cycle — ApplyGpsCycleResult
-        // would then keep pushing it back to the map. Mirrors the
-        // autosteer-disengage clear; re-enabling rebuilds the turn from
-        // scratch via the auto tick or a manual trigger.
-        if (!youTurnEnabled
+        // Switching the YouTurn toggle OFF drops any turn in progress so a stale
+        // arc doesn't linger on the map (the auto tick that would otherwise
+        // advance or reset it is gated on youTurnEnabled). Only on the on→off
+        // edge, like AgOpenGPS btnAutoYouTurn (ResetYouTurn when switched off):
+        // manual turns stay available with the toggle off while autosteer is
+        // engaged (AgOpenGPS draws/accepts them on isBtnAutoSteerOn ||
+        // isYouTurnBtnOn), and a manual turn started then completes through
+        // TickExecutingTurn above. Clearing every cycle while off used to kill
+        // manual turns the moment they were created.
+        if (!youTurnEnabled && _youTurnWasEnabled
             && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
         {
             YouTurnStateMachine.ClearState(_youTurn);
@@ -869,6 +873,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             isInYouTurn = false;
             youTurnPath = null;
         }
+        _youTurnWasEnabled = youTurnEnabled;
 
         // ── (3) Tool position ───────────────────────────────────────────
         // ToolPositionService is updated by ControlLoopService at 100 Hz
