@@ -126,4 +126,56 @@ public class MaxSteeringAngleStepTests
         Assert.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.Complete));
         Assert.That(step.CalibrationCompleted, Is.True);
     }
+
+    // ── #170: the wheels must actually move ───────────────────────────────
+
+    [Test]
+    public async Task Wheels_that_do_not_move_fail_and_nothing_is_saved()
+    {
+        // Reporter's case: free drive didn't move the wheels (module not steering), the WAS
+        // sat at 7.2° and the old code saved it as both the right and left lock.
+        _store.Vehicle.MaxSteerAngle = 34;
+        var step = new MaxSteeringAngleStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
+        step.DelayFunc = (_, _) => Task.CompletedTask;
+        step.ReadWasAngle = () => 7.2;
+        SetActive(step, true);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(step.CalibrationCompleted, Is.False);
+            Assert.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.WaitingToStart));
+            Assert.That(step.PhaseResult, Does.Contain("didn't move").And.Contain("not changed"));
+        });
+        SetActive(step, false);
+        Assert.That(_store.Vehicle.MaxSteerAngle, Is.EqualTo(34), "a failed test must not overwrite the max steer angle");
+    }
+
+    [TestCase(0, 35, -30, null)]
+    [TestCase(7.2, 7.2, 7.2, "didn't move")]
+    [TestCase(0, 3, -3, "didn't move")]
+    [TestCase(0, -30, 30, "opposite way")]
+    public void LockMovementError_cases(double start, double right, double left, string? expected)
+    {
+        var err = MaxSteeringAngleStepViewModel.LockMovementError(start, right, left);
+        if (expected == null) Assert.That(err, Is.Null);
+        else Assert.That(err, Does.Contain(expected));
+    }
+
+    [Test]
+    public void Hint_warns_when_the_module_is_not_steering()
+    {
+        _autoSteer.LastSteerData.Returns(SteerModuleData.Empty with { SteerSwitchActive = true });
+        var step = new MaxSteeringAngleStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
+        SetActive(step, true);
+        Assert.That(step.RecordHint, Does.Contain("isn't steering"));
+
+        _autoSteer.LastSteerData.Returns(SteerModuleData.Empty with { SteerSwitchActive = false });
+        Assert.That(step.RecordHint, Is.Empty);
+    }
+
+    private static void SetActive(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel step, bool active) =>
+        typeof(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel)
+            .GetProperty(nameof(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel.IsActive))!.SetValue(step, active);
 }

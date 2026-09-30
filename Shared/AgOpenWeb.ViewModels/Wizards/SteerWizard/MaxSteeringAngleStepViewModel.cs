@@ -54,6 +54,12 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
     private const int PollIntervalMs = 100;
     private const int PlateauTimeoutMs = 6000;
     private const int CenterReturnSettleMs = 800;
+    /// <summary>
+    /// Each side must move at least this far from the start angle to count as a real lock
+    /// reading (AgOpenGPS rejects max steer angles under 5°). Stationary wheels "plateau"
+    /// immediately, so without this the current angle was saved for both sides (#170).
+    /// </summary>
+    internal const double MinLockMovementDeg = 5.0;
 
     private HardwareInstalledStepViewModel? _hardwareStep;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -85,7 +91,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         IUiDispatcher dispatcher, IAutoSteerService? autoSteerService = null)
         : base(configService, autoSteerService, dispatcher)
     {
-        StartTestCommand = new AsyncRelayCommand(RunMaxAngleMeasurementAsync);
+        StartTestCommand = new AsyncRelayCommand(RunMaxAngleMeasurementAsync, () => CanStartTest);
         RedoCommand = new AsyncRelayCommand(Redo);
     }
 
@@ -191,13 +197,15 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         _cancellationTokenSource = new CancellationTokenSource();
         var token = _cancellationTokenSource.Token;
 
+        double startAngle = GetCurrentWasAngle();
         AutoSteerService?.EnableFreeDrive();
         Progress = 0;
+        PhaseResult = "";
 
         try
         {
             Phase = MaxSteeringAnglePhase.MeasuringRight;
-            DetectedMaxAngleRight = Math.Abs(await DriveToPlateauAsync(+CommandedFullLockDeg, token));
+            double right = await DriveToPlateauAsync(+CommandedFullLockDeg, token);
             Progress = 0.5;
 
             // Return through center with a short settle so the next
@@ -206,11 +214,22 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
             await DelayFunc(CenterReturnSettleMs, token);
 
             Phase = MaxSteeringAnglePhase.MeasuringLeft;
-            DetectedMaxAngleLeft = Math.Abs(await DriveToPlateauAsync(-CommandedFullLockDeg, token));
+            double left = await DriveToPlateauAsync(-CommandedFullLockDeg, token);
             Progress = 1.0;
 
             AutoSteerService?.SetFreeDriveAngle(0);
             await DelayFunc(CenterReturnSettleMs, token);
+
+            if (LockMovementError(startAngle, right, left) is { } error)
+            {
+                // Nothing measured — don't complete and don't save (#170).
+                Phase = MaxSteeringAnglePhase.WaitingToStart;
+                Progress = 0;
+                PhaseResult = error + " Max steer angle not changed.";
+                return;
+            }
+            DetectedMaxAngleRight = Math.Abs(right);
+            DetectedMaxAngleLeft = Math.Abs(left);
 
             // Conservative: 90 % of the smaller side. Treating asymmetric
             // mechanical limits as if they were symmetric would push past
@@ -275,6 +294,31 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
 
         return previous;
     }
+
+    /// <summary>
+    /// Why the readings don't show the wheels reaching a lock each way, or null when they do.
+    /// </summary>
+    internal static string? LockMovementError(double start, double right, double left)
+    {
+        double movedRight = right - start, movedLeft = start - left;
+        if (movedRight >= MinLockMovementDeg && movedLeft >= MinLockMovementDeg)
+            return null;
+        if (movedRight <= -MinLockMovementDeg && movedLeft <= -MinLockMovementDeg)
+            return $"The wheels moved the opposite way (right {right:F1}°, left {left:F1}°) — check the WAS and motor direction.";
+        return $"The wheels didn't move (start {start:F1}°, right {right:F1}°, left {left:F1}°). " +
+               "The steer module isn't steering — turn on the steer switch or press AutoSteer, then try again.";
+    }
+
+    /// <summary>
+    /// Live warning shown under Start: the module reports it isn't steering, so free drive
+    /// may not move the wheels (#170). Rendered in the wizard's hint line.
+    /// </summary>
+    public string RecordHint =>
+        IsMeasuring ? ""
+        : WaitingForPhysicalSwitch ? PhysicalSwitchPromptText
+        : AutoSteerService?.LastSteerData.SteerSwitchActive == true
+            ? "The steer module isn't steering yet — turn on the steer switch or press AutoSteer, or the wheels won't move."
+            : "";
 
     private Task Redo()
     {
