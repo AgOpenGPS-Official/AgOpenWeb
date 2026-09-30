@@ -133,7 +133,7 @@ namespace AgOpenWeb.Services.AgShare
             await WriteFieldTxtAsync(fieldDir, field.Origin);
             await WriteBoundaryTxtAsync(fieldDir, field.Boundaries);
             await WriteTrackLinesTxtAsync(fieldDir, field.AbLines);
-            await WriteStaticFilesAsync(fieldDir); // Flags, Headland
+            await WriteStaticFilesAsync(fieldDir); // Flags, Headland, Contour (only if missing)
         }
 
         /// <summary>
@@ -256,14 +256,21 @@ namespace AgOpenWeb.Services.AgShare
         }
 
         /// <summary>
-        /// Writes default placeholder files like Flags.txt and Headland.txt
+        /// Empty Flags.txt, Headland.txt and Contour.txt for a new field. These are local work,
+        /// not part of what AgShare stores, so a re-download never overwrites them; Sections.txt
+        /// (the applied area) isn't touched at all (AgOpenGPS #1203).
         /// </summary>
         private static async Task WriteStaticFilesAsync(string fieldDir)
         {
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Flags.txt"), ["$Flags", "0"]);
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Headland.txt"), ["$Headland", "0"]);
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Contour.txt"), ["$Contour", "0"]);
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Sections.txt"), ["Sections", "0"]);
+            await WriteIfMissingAsync(fieldDir, "Flags.txt", ["$Flags", "0"]);
+            await WriteIfMissingAsync(fieldDir, "Headland.txt", ["$Headland", "0"]);
+            await WriteIfMissingAsync(fieldDir, "Contour.txt", ["$Contour", "0"]);
+        }
+
+        private static async Task WriteIfMissingAsync(string fieldDir, string name, string[] lines)
+        {
+            string path = Path.Combine(fieldDir, name);
+            if (!File.Exists(path)) await File.WriteAllLinesAsync(path, lines);
         }
 
         /// <summary>
