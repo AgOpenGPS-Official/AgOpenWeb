@@ -105,6 +105,64 @@ public class SectionControlServiceTests
 
     #endregion
 
+    #region Reverse (#173)
+
+    private void SquareBoundary()
+    {
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint(0, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 0, 0));
+        outerPoly.Points.Add(new BoundaryPoint(200, 200, 0));
+        outerPoly.Points.Add(new BoundaryPoint(0, 200, 0));
+        outerPoly.UpdateBounds();
+        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = outerPoly };
+    }
+
+    [Test]
+    public void Update_Reversing_AutoSectionsOff_ManualStaysOn()
+    {
+        // Like the slow-speed cutoff, at working speed: AgOpenGPS forces Auto sections off
+        // when they move backwards; Manual-On sections stay on.
+        _service.SetAllAuto();
+        _service.SetSectionState(0, SectionButtonState.On);
+        _service.IsReversing = true;
+
+        _service.Update(new Vec3(50, 50, 0), 0, 0, 2.0);
+
+        Assert.That(_service.SectionStates[0].IsOn, Is.True, "Manual-On stays on in reverse");
+        Assert.That(_service.SectionStates[1].IsOn, Is.False);
+        Assert.That(_service.SectionStates[2].IsOn, Is.False);
+    }
+
+    [Test]
+    public void Reversing_turns_on_Auto_sections_off_and_keeps_them_off_then_forward_resumes()
+    {
+        SquareBoundary();
+        _service.SetAllAuto();
+        _service.MasterState = SectionMasterState.Auto;
+
+        // Forward over bare ground inside the boundary: Auto sections come on.
+        for (int f = 0; f < 40; f++) _service.Update(new Vec3(100, 50 + f * 0.2, 0), 0, 0, 2.0);
+        Assume.That(_service.SectionStates.Take(3).All(x => x.IsOn), Is.True, "sections on while driving forward");
+
+        // Reverse: every tick must leave Auto sections off — no off/on/off flicker (#173).
+        _service.IsReversing = true;
+        int onFrames = 0;
+        for (int f = 0; f < 60; f++)
+        {
+            _service.Update(new Vec3(100, 58 - f * 0.1, 0), 0, 0, 1.0);
+            onFrames += _service.SectionStates.Take(3).Count(x => x.IsOn || x.SectionOnRequest);
+        }
+        Assert.That(onFrames, Is.EqualTo(0), "Auto sections must stay off while reversing");
+
+        // Forward again: not latched off.
+        _service.IsReversing = false;
+        for (int f = 0; f < 40; f++) _service.Update(new Vec3(100, 52 + f * 0.2, 0), 0, 0, 2.0);
+        Assert.That(_service.SectionStates.Take(3).All(x => x.IsOn), Is.True, "sections resume when driving forward");
+    }
+
+    #endregion
+
     #region Tick rate (#313 commit 5a)
 
     [Test]

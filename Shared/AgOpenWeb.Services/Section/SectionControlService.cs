@@ -205,6 +205,10 @@ public class SectionControlService : ISectionControlService
         };
     }
 
+    // Written by the GPS pipeline thread, read by the control loop.
+    private volatile bool _isReversing;
+    public bool IsReversing { get => _isReversing; set => _isReversing = value; }
+
     public void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed)
     {
         var tool = _configStore.Tool;
@@ -256,7 +260,11 @@ public class SectionControlService : ISectionControlService
         // MANUAL ON sections active so coverage doesn't gap on stop/restart.
         // SlowSpeedCutoff is stored in km/h (matching the UI); speed is m/s.
         double slowSpeedCutoffMps = tool.SlowSpeedCutoff / 3.6;
-        bool isSlowSpeedCutoff = speed < slowSpeedCutoffMps;
+        // Reversing cuts Auto sections the same way (#173). Speed is always positive and the
+        // heading is already flipped in reverse, so the look-ahead would point at the strip
+        // the tool just painted and the sections would flicker off/on/off while backing up.
+        // AgOpenGPS forces Auto sections off when they move backwards (speedPixels < 0).
+        bool isSlowSpeedCutoff = speed < slowSpeedCutoffMps || _isReversing;
         if (isSlowSpeedCutoff)
         {
             for (int i = 0; i < numSections; i++)
