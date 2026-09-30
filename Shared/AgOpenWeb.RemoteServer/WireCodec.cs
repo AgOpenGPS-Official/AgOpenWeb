@@ -680,13 +680,15 @@ public static class WireCodec
     // Persisted web-camera view, sent once per connection in the seed so the client
     // restores its last tilt+zoom (issue #35). Pitch is RADIANS, zoom is client
     // pixels-per-metre — the client's own camera space, stored verbatim host-side.
-    public static byte[] EncodeViewPrefs(double pitch, double zoom)
+    // Camera follow mode (#176) uses the client's numbering: 0 NorthUp, 1 HeadingUp, 3 Map.
+    public static byte[] EncodeViewPrefs(double pitch, double zoom, int cameraMode)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
         w.Write(ViewPrefs);
         w.Write(pitch); // f64
         w.Write(zoom);  // f64
+        w.Write((byte)cameraMode);
         return ms.ToArray();
     }
 
