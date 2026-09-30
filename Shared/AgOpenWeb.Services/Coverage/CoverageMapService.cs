@@ -1349,7 +1349,12 @@ public class CoverageMapService : ICoverageMapService
                     {
                         if ((bits & (1 << bit)) == 0) continue;
                         long bitIdx = baseBitIdx + bit;
-                        PaintDisplayPixel((int)(bitIdx % _bitmapWidth), (int)(bitIdx / _bitmapWidth), 0);
+                        // PaintDisplayPixel takes ABSOLUTE detection cells (as MarkCellCovered
+                        // passes them); bitIdx is local to the bitmap. Without the origin every
+                        // repainted pixel was shifted by the field's min corner, so the fill
+                        // vanished and only the edge strokes were left after a quality change (#175).
+                        PaintDisplayPixel(_bitmapOriginE + (int)(bitIdx % _bitmapWidth),
+                                          _bitmapOriginN + (int)(bitIdx / _bitmapWidth), 0);
                     }
                 }
             }
