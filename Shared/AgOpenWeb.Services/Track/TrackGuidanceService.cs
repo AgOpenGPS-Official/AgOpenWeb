@@ -320,8 +320,13 @@ public class TrackGuidanceService : ITrackGuidanceService
         double dx, double dz,
         bool isHeadingSameWay)
     {
-        // Apply integral offset to create virtual offset line
-        double integral = input.PreviousState?.Integral ?? 0;
+        // Apply integral offset to create virtual offset line. The integral is accumulated
+        // from the pivot distance, which is flipped when driving against the track — it is
+        // vehicle-relative — but ptA.Heading + 90° is line-relative. Flip the offset to match,
+        // or driving against the track shifts the line toward the tractor and the integral
+        // cancels the correction instead of adding to it (XTE holds one way, drifts the other).
+        // Inherited from AgOpenGPS StanleyGuidanceABLine; here the same routine serves curves.
+        double integral = (input.PreviousState?.Integral ?? 0) * (isHeadingSameWay ? 1.0 : -1.0);
         Vec3 steerA = new Vec3(
             ptA.Easting + Math.Sin(ptA.Heading + PIBy2) * integral,
             ptA.Northing + Math.Cos(ptA.Heading + PIBy2) * integral,
