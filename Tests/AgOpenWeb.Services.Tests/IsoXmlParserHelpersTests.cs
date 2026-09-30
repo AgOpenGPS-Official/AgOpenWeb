@@ -90,4 +90,32 @@ public class IsoXmlParserHelpersTests
         // Adding latitude must move Northing, not Easting.
         Assert.That(fence[2].Northing, Is.GreaterThan(50), "adding north should increase Northing");
     }
+
+    [Test]
+    public void ParseBoundaries_ObstacleListedFirst_FieldIsStillTheOuter()
+    {
+        // #1165: an obstacle before the field boundary used to become the outer boundary.
+        const string big = "<PNT C='0.0' D='0.0'/><PNT C='0.01' D='0.0'/><PNT C='0.01' D='0.01'/><PNT C='0.0' D='0.01'/>";
+        var xml = $@"
+            <PLN A='6'><LSG A='1'>{SamplePointsThree}</LSG></PLN>
+            <PLN A='1'><LSG A='1'>{big}</LSG></PLN>";
+
+        var boundaries = IsoXmlParserHelpers.ParseBoundaries(MakeFieldParts(xml), MakePlane());
+
+        Assert.That(boundaries, Has.Count.EqualTo(2));
+        Assert.That(boundaries[0].FenceLine, Has.Count.EqualTo(4), "the field (largest) comes first");
+        Assert.That(boundaries[0].Area, Is.GreaterThan(boundaries[1].Area));
+    }
+
+    [Test]
+    public void ParseBoundaries_RingsUnder3Points_AreDropped()
+    {
+        var xml = $@"
+            <PLN A='1'><LSG A='1'>{SamplePointsFour}</LSG></PLN>
+            <PLN A='3'><LSG A='1'><PNT C='0.0005' D='0.0005'/><PNT C='0.0006' D='0.0005'/></LSG></PLN>";
+
+        var boundaries = IsoXmlParserHelpers.ParseBoundaries(MakeFieldParts(xml), MakePlane());
+
+        Assert.That(boundaries, Has.Count.EqualTo(1));
+    }
 }

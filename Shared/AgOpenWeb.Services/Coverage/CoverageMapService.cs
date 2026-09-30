@@ -1590,12 +1590,19 @@ public class CoverageMapService : ICoverageMapService
                 if (string.IsNullOrEmpty(countLine)) continue;
                 if (!int.TryParse(countLine, out int n) || n < 3) continue;
 
-                int nPairs = (n - 1) / 2;
+                // n = colour line + vertex lines. An even n means the colour line is missing
+                // (some AgOpenGPS versions wrote it that way): reading the first vertex as the
+                // colour then paired every left edge with the next strip's right (AgOpenGPS
+                // #1206 SectionFiles).
+                bool hasColor = n % 2 == 1;
+                int nPairs = hasColor ? (n - 1) / 2 : n / 2;
 
-                // Read RGB color line (R,G,B format)
-                if (lineIdx >= lines.Length) break;
-                var colorParts = lines[lineIdx++].Split(',');
-                // We ignore the color and use default coverage color
+                // Read RGB color line (R,G,B format) — ignored, we use the default colour
+                if (hasColor)
+                {
+                    if (lineIdx >= lines.Length) break;
+                    lineIdx++;
+                }
 
                 // Read vertex pairs and rasterize each quad
                 double prevLeftE = 0, prevLeftN = 0, prevRightE = 0, prevRightN = 0;
