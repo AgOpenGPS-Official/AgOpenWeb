@@ -45,11 +45,15 @@ public class MotorCalAndMaxSteerGateTests
         _autoSteer.LastSteerData.Returns(SteerModuleData.Empty);
     }
 
+    /// <summary>
+    /// <paramref name="active"/> = the operator's steer switch is ON (module steering). PGN 253
+    /// bit 1 (SteerSwitchActive, AgOpenGPS steerSwitchHigh) is set when it is NOT (#126, #170).
+    /// </summary>
     private void GivenSwitch(bool active)
     {
         _autoSteer.LastSteerData.Returns(new SteerModuleData(
             ActualSteerAngle: 0, ImuHeading: 0, ImuRoll: 0,
-            WorkSwitchActive: false, SteerSwitchActive: active,
+            WorkSwitchActive: false, SteerSwitchActive: !active,
             RemoteButtonPressed: false, VwasFusionActive: false,
             PwmDisplay: 0));
     }

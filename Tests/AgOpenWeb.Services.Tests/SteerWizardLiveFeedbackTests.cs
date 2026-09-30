@@ -139,13 +139,13 @@ public class SteerWizardLiveFeedbackTests
     {
         _configService.Store.Tool.IsSteerSwitchEnabled = true;
         var autoSteer = Substitute.For<IAutoSteerService>();
-        // Module reports SteerSwitchActive=false → physical switch is OFF.
+        // Module sets PGN 253 bit 1 (SteerSwitchActive, steerSwitchHigh) → NOT steering: switch OFF.
         autoSteer.LastSteerData.Returns(new SteerModuleData(
             ActualSteerAngle: 0,
             ImuHeading: 0,
             ImuRoll: 0,
             WorkSwitchActive: false,
-            SteerSwitchActive: false,
+            SteerSwitchActive: true,
             RemoteButtonPressed: false,
             VwasFusionActive: false,
             PwmDisplay: 0));
@@ -172,7 +172,7 @@ public class SteerWizardLiveFeedbackTests
             ImuHeading: 0,
             ImuRoll: 0,
             WorkSwitchActive: false,
-            SteerSwitchActive: false,
+            SteerSwitchActive: true,
             RemoteButtonPressed: false,
             VwasFusionActive: false,
             PwmDisplay: 0));
@@ -182,13 +182,13 @@ public class SteerWizardLiveFeedbackTests
         Assume.That(step.WaitingForPhysicalSwitch, Is.True);
 
         // Operator flips the physical switch — module's next PGN 253
-        // reports SteerSwitchActive=true.
+        // clears bit 1 (SteerSwitchActive=false: steering).
         autoSteer.LastSteerData.Returns(new SteerModuleData(
             ActualSteerAngle: 0,
             ImuHeading: 0,
             ImuRoll: 0,
             WorkSwitchActive: false,
-            SteerSwitchActive: true,
+            SteerSwitchActive: false,
             RemoteButtonPressed: false,
             VwasFusionActive: false,
             PwmDisplay: 0));
@@ -199,7 +199,7 @@ public class SteerWizardLiveFeedbackTests
             autoSteer, BuildSnapshot(isAutoSteerEngaged: true));
 
         Assert.That(step.WaitingForPhysicalSwitch, Is.False,
-            "After the module's PGN 253 reports SteerSwitchActive=true, "
+            "After the module's PGN 253 clears SteerSwitchActive (steering), "
             + "the gate clears and calibration can start.");
         Assert.That(step.CanStartTest, Is.True);
     }

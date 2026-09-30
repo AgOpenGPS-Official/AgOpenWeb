@@ -159,8 +159,11 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
     protected void UpdatePhysicalSwitchGate()
     {
         bool requireSwitch = ConfigService.Store.Tool.IsSteerSwitchEnabled;
-        bool switchActive = AutoSteerService?.LastSteerData.SteerSwitchActive ?? false;
-        WaitingForPhysicalSwitch = requireSwitch && !switchActive;
+        // PGN 253 bit 1 (SteerSwitchActive, AgOpenGPS steerSwitchHigh) is SET when the module
+        // is NOT steering — switch off / not armed (#126). This read it the other way round,
+        // so it waited while the module was ready and let the test start when it wasn't (#170).
+        bool moduleNotSteering = AutoSteerService?.LastSteerData.SteerSwitchActive ?? false;
+        WaitingForPhysicalSwitch = requireSwitch && moduleNotSteering;
     }
 
     private void DispatchToUI(Action action)
