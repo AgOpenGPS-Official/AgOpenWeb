@@ -67,7 +67,11 @@ internal sealed class WebViewLauncherWindow : Window
             Console.WriteLine($"[webview] completed IsSuccess={e.IsSuccess}");
             // Reveal the loaded UI. The WebKitGTK backend can raise this off the UI thread, so
             // marshal the property change — setting IsVisible off-thread silently no-ops on X11.
-            if (e.IsSuccess) Dispatcher.UIThread.Post(() => _splash.IsVisible = false);
+            if (e.IsSuccess) Dispatcher.UIThread.Post(() =>
+            {
+                _splash.IsVisible = false;
+                ScreenAwake.Hold(this);
+            });
         };
 
         // WebView underneath, splash on top until the page loads.

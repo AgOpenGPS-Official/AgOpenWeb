@@ -63,12 +63,28 @@ public partial class App : Avalonia.Application
                 VerticalAlignment = VerticalAlignment.Stretch,
             };
             singleView.MainView = _web;
+            _web.NavigationCompleted += (_, e) =>
+            {
+                if (e.IsSuccess) Dispatcher.UIThread.Post(KeepScreenOn);
+            };
 
             // Start the backend off the UI thread; point the WebView at it once it's bound.
             _ = StartBackendThenNavigateAsync();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private Foundation.NSObject? _becameActiveObserver;
+
+    // A guidance screen must never sleep mid-pass, so hold it awake once the web UI is up. iOS
+    // only honours this in the foreground and can drop it across a background/foreground cycle,
+    // so re-assert it each time the app becomes active.
+    private void KeepScreenOn()
+    {
+        UIKit.UIApplication.SharedApplication.IdleTimerDisabled = true;
+        _becameActiveObserver ??= UIKit.UIApplication.Notifications.ObserveDidBecomeActive(
+            (_, _) => UIKit.UIApplication.SharedApplication.IdleTimerDisabled = true);
     }
 
     private async Task StartBackendThenNavigateAsync()
