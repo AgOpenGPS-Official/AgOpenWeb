@@ -235,6 +235,7 @@ namespace AgOpenWeb.Services.IsoXml
         private static void AddTracks(ISOXML isoxml, ISOPartfield partfield, List<IsoXmlTrack> tracks, LocalPlane localPlane, IsoXmlVersion version)
         {
             if (tracks == null) return;
+            int gpnId = 0; // the library's IdTable doesn't number GPNs
 
             foreach (IsoXmlTrack track in tracks)
             {
@@ -260,7 +261,8 @@ namespace AgOpenWeb.Services.IsoXml
 
                             var guidancePattern = new ISOGuidancePattern
                             {
-                                GuidancePatternId = guidanceGroup.GuidanceGroupId,
+                                // Its own GPN id: reusing the group's GGP id is invalid ISO 11783-10.
+                                GuidancePatternId = "GPN" + (++gpnId).ToString(System.Globalization.CultureInfo.InvariantCulture),
                                 GuidancePatternPropagationDirection = ISOGuidancePatternPropagationDirection.Bothdirections,
                                 GuidancePatternExtension = ISOGuidancePatternExtension.Frombothfirstandlastpoint,
                                 GuidancePatternGNSSMethod = ISOGuidancePatternGNSSMethod.Desktopgenerateddata

@@ -89,6 +89,10 @@ namespace AgOpenWeb.Services
                 if (header == null || !header.TrimStart().StartsWith("$", StringComparison.Ordinal))
                     throw new InvalidDataException("TrackLines.txt missing $ header.");
 
+                // Twol writes the same layout plus two lines per track (inner/outer flag and
+                // half tool width) under a $TwolTracks header (AgOpenGPS a7bf2cbeb, c34526efc).
+                bool isTwolTrackFile = header.Trim() == "$TwolTracks";
+
                 while (!reader.EndOfStream)
                 {
                     // --- Name ---
@@ -148,6 +152,12 @@ namespace AgOpenWeb.Services
                         var northing = double.Parse(parts[1], CultureInfo.InvariantCulture);
                         var pointHeading = double.Parse(parts[2], CultureInfo.InvariantCulture);
                         curvePoints.Add(new Vec3(easting, northing, pointHeading));
+                    }
+
+                    if (isTwolTrackFile)
+                    {
+                        reader.ReadLine(); // inner/outer flag
+                        reader.ReadLine(); // half tool width
                     }
 
                     // Build Track directly from file fields
