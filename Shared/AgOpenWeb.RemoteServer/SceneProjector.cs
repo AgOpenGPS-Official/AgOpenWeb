@@ -542,7 +542,7 @@ public sealed class SceneProjector
             foreach (var name in _fields.GetAvailableFields(root))
             {
                 if (name == active) continue;
-                if (AgOpenWeb.Services.TrackFilesService.Exists(System.IO.Path.Combine(root, name)))
+                if (_fields.PeekTracks(System.IO.Path.Combine(root, name)).Count > 0)
                     importFields.Add(name);
             }
         return new FieldToolsDto(importFields);
@@ -557,8 +557,12 @@ public sealed class SceneProjector
             foreach (var name in _fields.GetAvailableFields(root))
             {
                 if (name == active) continue;
-                if (AgOpenWeb.Services.TrackFilesService.Exists(System.IO.Path.Combine(root, name)))
-                    h = h * 31 + name.GetHashCode();
+                // Cheap (runs every broadcast tick): file times, not contents. BuildFieldTools
+                // reads the tracks when this changes.
+                var dir = System.IO.Path.Combine(root, name);
+                h = h * 31 + name.GetHashCode();
+                h = h * 31 + System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(dir, "field.geojson")).Ticks;
+                h = h * 31 + System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(dir, AgOpenWeb.Services.TrackFilesService.FileName)).Ticks;
             }
         h = h * 31 + (active?.GetHashCode() ?? 0);
         return h;

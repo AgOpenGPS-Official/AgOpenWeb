@@ -52,6 +52,15 @@ public interface IFieldService
     /// </summary>
     Field PeekField(string fieldDirectory);
 
+    /// <summary>A field's tracks, read like <see cref="PeekField"/> (either format, no changes).</summary>
+    List<Models.Track.Track> PeekTracks(string fieldDirectory);
+
+    /// <summary>A field's flags, read like <see cref="PeekField"/>.</summary>
+    List<Flag> PeekFlags(string fieldDirectory);
+
+    /// <summary>A field's headland lines, read like <see cref="PeekField"/>.</summary>
+    Models.Guidance.HeadlandLine PeekHeadlandLine(string fieldDirectory);
+
     /// <summary>
     /// Save a complete field (metadata, boundary, background image)
     /// </summary>

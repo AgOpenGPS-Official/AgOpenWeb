@@ -2107,7 +2107,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var headlandLine = HeadlandLineSerializer.Load(field.DirectoryPath);
+            var headlandLine = Services.GeoJson.GeoJsonFieldService.LoadHeadlandLine(field.DirectoryPath);
 
             if (headlandLine.Tracks.Count > 0 && headlandLine.Tracks[0].TrackPoints.Count > 0)
             {
@@ -2566,11 +2566,11 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(dir)) return;
         try
         {
-            Services.FlagFilesService.Save(dir, Flags, State.Field.OriginLatitude, State.Field.OriginLongitude);
+            Services.GeoJson.GeoJsonFieldService.SaveFlags(dir, Flags.ToList());
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Flags] Failed to save Flags.txt");
+            _logger.LogWarning(ex, "[Flags] Failed to save flags");
         }
     }
 
@@ -2722,11 +2722,11 @@ public partial class MainViewModel : ObservableObject
             {
                 try
                 {
-                    foreach (var f in Services.FlagFilesService.Load(fieldPath)) Flags.Add(f);
+                    foreach (var f in Services.GeoJson.GeoJsonFieldService.LoadFlags(fieldPath)) Flags.Add(f);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[Flags] Failed to load Flags.txt");
+                    _logger.LogWarning(ex, "[Flags] Failed to load flags");
                 }
             }
             _nextFlagId = Flags.Count == 0 ? 1 : Flags.Max(f => f.UniqueNumber) + 1;
@@ -6120,7 +6120,7 @@ public partial class MainViewModel : ObservableObject
                 headlandLine.Tracks.Add(headlandPath);
             }
 
-            HeadlandLineSerializer.Save(activeField.DirectoryPath, headlandLine);
+            Services.GeoJson.GeoJsonFieldService.SaveHeadlandLine(activeField.DirectoryPath, headlandLine);
             _logger.LogDebug($"[Headland] Saved headland to {activeField.DirectoryPath} ({headlandPoints?.Count ?? 0} points)");
         }
         catch (System.Exception ex)
@@ -6160,7 +6160,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            Services.TrackFilesService.Save(activeField.DirectoryPath, SavedTracks.ToList());
+            Services.GeoJson.GeoJsonFieldService.SaveTracks(activeField.DirectoryPath, SavedTracks.ToList());
             _logger.LogDebug("[NUDGE] SaveTracksToFile: Saved {TrackCount} tracks", SavedTracks.Count);
         }
         catch (System.Exception ex)
@@ -6239,102 +6239,29 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // Try TrackLines.txt first (WinForms format)
-            if (Services.TrackFilesService.Exists(field.DirectoryPath))
+            // field.geojson (opening the field imported any AgOpenGPS track files).
+            var tracks = Services.GeoJson.GeoJsonFieldService.LoadTracks(field.DirectoryPath);
+            int loadedCount = 0;
+
+            foreach (var track in tracks)
             {
-                var tracks = Services.TrackFilesService.Load(field.DirectoryPath);
-                int loadedCount = 0;
-                Track? firstTrack = null;
+                // Ensure all tracks start inactive (SelectedTrack setter will activate)
+                track.IsActive = false;
+                MigrateCurveTrack(track);
+                SavedTracks.Add(track); // mirrors into State.Field.Tracks
 
-                foreach (var track in tracks)
-                {
-                    // Ensure all tracks start inactive (SelectedTrack setter will activate)
-                    track.IsActive = false;
-                    MigrateCurveTrack(track);
-                    SavedTracks.Add(track); // mirrors into State.Field.Tracks
-
-                    // Debug: log track details
-                    _logger.LogDebug("[TrackFiles] Track: '{TrackName}', Points: {PointCount}, Type: {TrackType}, IsCurve: {IsCurve}", track.Name, track.Points.Count, track.Type, track.IsCurve);
-
-                    if (loadedCount == 0)
-                    {
-                        firstTrack = track;
-                    }
-                    loadedCount++;
-                }
-
-                _logger.LogDebug($"[TrackFiles] Loaded {loadedCount} tracks from TrackLines.txt");
-
-                // Rebuild recorded paths and contour strips from loaded tracks
-                RebuildRecordedPathsAndContours();
-
-                // Re-activate the track this field was last worked with (#148).
-                RestoreLastUsedTrack(field.DirectoryPath);
-                return;
+                // Debug: log track details
+                _logger.LogDebug("[TrackFiles] Track: '{TrackName}', Points: {PointCount}, Type: {TrackType}, IsCurve: {IsCurve}", track.Name, track.Points.Count, track.Type, track.IsCurve);
+                loadedCount++;
             }
 
-            // Fallback to legacy ABLines.txt format
-            var legacyFilePath = System.IO.Path.Combine(field.DirectoryPath, "ABLines.txt");
-            if (System.IO.File.Exists(legacyFilePath))
-            {
-                _logger.LogDebug($"[TrackFiles] TrackLines.txt not found, trying legacy ABLines.txt");
-                var lines = System.IO.File.ReadAllLines(legacyFilePath);
-                int loadedCount = 0;
+            _logger.LogDebug($"[TrackFiles] Loaded {loadedCount} tracks");
 
-                foreach (var line in lines)
-                {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
+            // Rebuild recorded paths and contour strips from loaded tracks
+            RebuildRecordedPathsAndContours();
 
-                    var parts = line.Split(',');
-                    if (parts.Length >= 4)
-                    {
-                        // Parse legacy: Name,Heading,PointA_Easting,PointA_Northing[,PointB_Easting,PointB_Northing]
-                        var name = parts[0];
-                        if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var heading) &&
-                            double.TryParse(parts[2], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var eastingA) &&
-                            double.TryParse(parts[3], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var northingA))
-                        {
-                            double eastingB, northingB;
-
-                            if (parts.Length >= 6 &&
-                                double.TryParse(parts[4], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out eastingB) &&
-                                double.TryParse(parts[5], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out northingB))
-                            {
-                                // Use stored Point B
-                            }
-                            else
-                            {
-                                // Calculate Point B from Point A and heading
-                                var headingRad = heading * Math.PI / 180.0;
-                                var lineLength = 100.0;
-                                eastingB = eastingA + Math.Sin(headingRad) * lineLength;
-                                northingB = northingA + Math.Cos(headingRad) * lineLength;
-                            }
-
-                            var headingRadians = heading * Math.PI / 180.0;
-                            var track = Track.FromABLine(
-                                name,
-                                new Vec3(eastingA, northingA, headingRadians),
-                                new Vec3(eastingB, northingB, headingRadians));
-                            // Don't auto-activate - user must explicitly select
-                            track.IsActive = false;
-
-                            SavedTracks.Add(track); // mirrors into State.Field.Tracks
-                            loadedCount++;
-                        }
-                    }
-                }
-
-                _logger.LogDebug($"[TrackFiles] Loaded {loadedCount} tracks from legacy ABLines.txt");
-
-                // Don't auto-activate any track - user must explicitly select one
-                // HasActiveTrack and IsAutoSteerAvailable stay false until user selects
-            }
-            else
-            {
-                _logger.LogDebug($"[TrackFiles] No track files found in {field.DirectoryPath}");
-            }
+            // Re-activate the track this field was last worked with (#148).
+            RestoreLastUsedTrack(field.DirectoryPath);
         }
         catch (System.Exception ex)
         {

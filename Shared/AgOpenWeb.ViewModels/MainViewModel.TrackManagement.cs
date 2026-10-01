@@ -160,7 +160,7 @@ public partial class MainViewModel
                 if (dir == activeField.DirectoryPath)
                     continue;
                 // Only include fields that have tracks
-                if (Services.TrackFilesService.Exists(dir))
+                if (_fieldService.PeekTracks(dir).Count > 0)
                     ImportFieldsList.Add(fieldName);
             }
 
@@ -183,7 +183,7 @@ public partial class MainViewModel
 
             try
             {
-                var importedTracks = Services.TrackFilesService.Load(sourceDir);
+                var importedTracks = _fieldService.PeekTracks(sourceDir);
                 if (importedTracks.Count == 0)
                 {
                     ReportFailure("No tracks found in selected field");

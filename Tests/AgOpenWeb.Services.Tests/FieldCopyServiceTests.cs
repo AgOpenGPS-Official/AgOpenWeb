@@ -5,7 +5,9 @@
 
 using System.IO;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
 using AgOpenWeb.Services;
+using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services.Tests;
 
@@ -41,9 +43,9 @@ public class FieldCopyServiceTests
         _src = field.DirectoryPath;
 
         File.WriteAllText(Path.Combine(_src, "field.origin"), "43.50000000,-74.25000000");
-        File.WriteAllText(Path.Combine(_src, "TrackLines.txt"), "$TrackLines\n");
         File.WriteAllText(Path.Combine(_src, "RecPath.txt"), "rec");
-        File.WriteAllText(Path.Combine(_src, "Flags.txt"), "$Flags\n0\n");
+        GeoJsonFieldService.SaveTracks(_src, new[] { AgOpenWeb.Models.Track.Track.FromABLine("AB", new Vec3(0, 0, 0), new Vec3(0, 50, 0)) });
+        GeoJsonFieldService.SaveFlags(_src, new[] { new Flag(5, 5, FlagColor.Red, 1, "Flag 1") });
         File.WriteAllText(Path.Combine(_src, "HeadlandSegments.json"), "[]");
         Directory.CreateDirectory(Path.Combine(_src, "jobs", "job1"));
         File.WriteAllText(Path.Combine(_src, "jobs", "job1", "coverage.bin"), "cov");
@@ -75,8 +77,10 @@ public class FieldCopyServiceTests
     {
         FieldCopyService.CreateFromExisting(_fields, _src, NewDir, "Copy", false, false, false, false);
 
-        foreach (var f in new[] { "TrackLines.txt", "RecPath.txt", "Flags.txt", "HeadlandSegments.json" })
+        foreach (var f in new[] { "RecPath.txt", "HeadlandSegments.json" })
             Assert.That(File.Exists(Path.Combine(NewDir, f)), Is.False, f);
+        Assert.That(GeoJsonFieldService.LoadFlags(NewDir), Is.Empty, "no flags");
+        Assert.That(GeoJsonFieldService.LoadTracks(NewDir), Is.Empty, "no lines");
         Assert.That(Directory.Exists(Path.Combine(NewDir, "jobs")), Is.False);
         Assert.That(_fields.LoadField(NewDir).Boundary?.HeadlandPolygon, Is.Null, "no headland");
     }
@@ -88,8 +92,8 @@ public class FieldCopyServiceTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(File.Exists(Path.Combine(NewDir, "Flags.txt")), "flags");
-            Assert.That(File.Exists(Path.Combine(NewDir, "TrackLines.txt")), "lines");
+            Assert.That(GeoJsonFieldService.LoadFlags(NewDir), Has.Count.EqualTo(1), "flags");
+            Assert.That(GeoJsonFieldService.LoadTracks(NewDir), Has.Count.EqualTo(1), "lines");
             Assert.That(File.Exists(Path.Combine(NewDir, "RecPath.txt")), "recorded path");
             Assert.That(_fields.LoadField(NewDir).Boundary?.HeadlandPolygon, Is.Not.Null, "headland");
             Assert.That(File.Exists(Path.Combine(NewDir, "HeadlandSegments.json")), "headland segments");

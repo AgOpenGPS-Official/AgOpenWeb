@@ -11,8 +11,8 @@ is no compatibility code for files written by older AgOpenWeb builds.
 | Phase | AgOpenGPS files | New home | State |
 |---|---|---|---|
 | 1 | `Field.txt`, `Boundary.txt`, `Headland.Txt` | `field.geojson` (origin, convergence, boundaries, headland polygon) | done (#205) |
-| 2 | `TrackLines.txt`, `Flags.txt`, `Headlines.txt` | `field.geojson` features | next |
-| 3 | `Contour.txt`, `RecPath*.txt`, `TramLines.txt`, `Elevation.txt`, `BackPic.txt`/`.png` | JSON per kind; background image bounds in `field.geojson` | later |
+| 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (this PR) |
+| 3 | `Contour.txt`, `RecPath*.txt`, `TramLines.txt`, `Elevation.txt`, `BackPic.txt`/`.png` | JSON per kind; background image bounds in `field.geojson` | next |
 | 4 | `Sections.txt` | coverage tiles (already imported) | delete after the job's first tiled save, as the `.bin` files are |
 
 Phase 1, as built:
@@ -27,6 +27,18 @@ Phase 1, as built:
   tests can build AgOpenGPS fixtures.
 - **Conversion:** `field.geojson` converts with `LocalPlane` (longitude scaled per point), the
   same as live GPS and the AgOpenGPS import, so its WGS84 is right for GIS tools.
+
+Phase 2, as built:
+- **Each part saved on its own.** `GeoJsonFieldService.SaveTracks`/`SaveFlags`/`SaveHeadlandLine`
+  replace only their own features. `Save(field)` replaces only the field's own (metadata,
+  boundaries, headland polygon, background) and keeps the rest. Each is a read-modify-write
+  under one lock, through a temp file.
+- **Import on open.** `FieldService.LoadField` imports `TrackLines.txt`, `ABLines.txt`,
+  `Flags.txt` and `Headlines.txt` once `field.geojson` exists, then deletes them.
+  `PeekTracks`/`PeekFlags`/`PeekHeadlandLine` read either format without changing the folder.
+- **Writers.** The view model saves tracks, flags and the headland line to `field.geojson`, as
+  do the AgShare download, From Existing, the track copier and ISOXML import. The track copier
+  imports its target first. The AgOpenGPS writers are `internal` (test fixtures only).
 
 Other parts of the original plan:
 - **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,

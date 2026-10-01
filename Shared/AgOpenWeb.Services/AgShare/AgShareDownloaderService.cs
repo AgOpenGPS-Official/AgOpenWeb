@@ -19,6 +19,9 @@ using Newtonsoft.Json;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.AgShare;
 using AgOpenWeb.Models.Base;
+using TrackModel = AgOpenWeb.Models.Track.Track;
+using AgOpenWeb.Models.Track;
+using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services.AgShare
 {
@@ -132,8 +135,8 @@ namespace AgOpenWeb.Services.AgShare
 
             await WriteAgShareIdAsync(fieldDir, field.FieldId);
             WriteFieldGeoJson(fieldDir, field.Origin, field.Boundaries);
-            await WriteTrackLinesTxtAsync(fieldDir, field.AbLines);
-            await WriteStaticFilesAsync(fieldDir); // Flags, Contour (only if missing)
+            GeoJsonFieldService.SaveTracks(fieldDir, ToTracks(field.AbLines));
+            await WriteStaticFilesAsync(fieldDir); // Contour (only if missing)
         }
 
         /// <summary>
@@ -193,71 +196,41 @@ namespace AgOpenWeb.Services.AgShare
         }
 
         /// <summary>
-        /// Writes AB-lines and optional curve points to TrackLines.txt
+        /// The downloaded AB lines and curves as tracks. They replace the field's tracks, as the
+        /// download always replaced its track file.
         /// </summary>
-        private static async Task WriteTrackLinesTxtAsync(string fieldDir, List<AbLineLocal> abLines)
+        private static List<TrackModel> ToTracks(List<AbLineLocal> abLines)
         {
-            var lines = new List<string> { "$TrackLines" };
-
+            var tracks = new List<TrackModel>();
             foreach (var ab in abLines)
             {
-                lines.Add(ab.Name ?? "Unnamed");
-
-                bool isCurve = ab.CurvePoints is { Count: > 1 };
-
-                LocalPoint ptA = ab.PtA;
-                LocalPoint ptB = ab.PtB;
-                double heading = ab.Heading;
-
-                if (isCurve)
+                var track = new TrackModel { Name = ab.Name ?? "Unnamed", IsVisible = true };
+                if (ab.CurvePoints is { Count: > 1 })
                 {
-                    ptA = ab.CurvePoints![0];
-                    ptB = ab.CurvePoints[ab.CurvePoints!.Count - 1];
-                    heading = GeoConversion.HeadingFromPoints(
-                        new Vec2(ptA.Easting, ptA.Northing),
-                        new Vec2(ptB.Easting, ptB.Northing)
-                    );
-                }
-
-                lines.Add(heading.ToString("0.###", CultureInfo.InvariantCulture));
-                lines.Add(ptA.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," + ptA.Northing.ToString("0.###", CultureInfo.InvariantCulture));
-                lines.Add(ptB.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," + ptB.Northing.ToString("0.###", CultureInfo.InvariantCulture));
-                lines.Add("0"); // Nudge
-
-                if (isCurve)
-                {
-                    lines.Add("4"); // Curve mode
-                    lines.Add("True");
-                    lines.Add(ab.CurvePoints!.Count.ToString(CultureInfo.InvariantCulture));
-
-                    foreach (var pt in ab.CurvePoints)
-                    {
-                        lines.Add(
-                            pt.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                            pt.Northing.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                            pt.Heading.ToString("0.#####", CultureInfo.InvariantCulture)
-                        );
-                    }
+                    track.Type = TrackType.Curve;
+                    track.Points = ab.CurvePoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
                 }
                 else
                 {
-                    lines.Add("2"); // AB mode
-                    lines.Add("True");
-                    lines.Add("0");
+                    track.Type = TrackType.ABLine;
+                    track.Points = new List<Vec3>
+                    {
+                        new(ab.PtA.Easting, ab.PtA.Northing, ab.Heading),
+                        new(ab.PtB.Easting, ab.PtB.Northing, ab.Heading),
+                    };
                 }
+                tracks.Add(track);
             }
-
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "TrackLines.txt"), lines);
+            return tracks;
         }
 
         /// <summary>
-        /// Empty Flags.txt and Contour.txt for a new field. These are local work,
-        /// not part of what AgShare stores, so a re-download never overwrites them; Sections.txt
-        /// (the applied area) isn't touched at all (AgOpenGPS #1203).
+        /// Empty Contour.txt for a new field. It's local work, not part of what AgShare stores, so
+        /// a re-download never overwrites it; nor the flags and headland lines in field.geojson.
+        /// Sections.txt (the applied area) isn't touched at all (AgOpenGPS #1203).
         /// </summary>
         private static async Task WriteStaticFilesAsync(string fieldDir)
         {
-            await WriteIfMissingAsync(fieldDir, "Flags.txt", ["$Flags", "0"]);
             await WriteIfMissingAsync(fieldDir, "Contour.txt", ["$Contour", "0"]);
         }
 

@@ -154,13 +154,16 @@ public class LegacyAutoImportTests
         WriteLegacyBoundary();
         File.WriteAllLines(Path.Combine(_fieldDir, "Headland.Txt"), new[] { "$Headland", "False", "0" });
         File.WriteAllText(Path.Combine(_fieldDir, "TrackLines.txt"), "$TrackLines");
+        File.WriteAllText(Path.Combine(_fieldDir, "Flags.txt"), "$Flags\n0\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "Headlines.txt"), "$HeadLines\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "Contour.txt"), "$Contour\n0\n");
 
         _service.LoadField(_fieldDir);
 
-        foreach (var name in new[] { "Field.txt", "Boundary.txt", "Headland.Txt" })
+        foreach (var name in new[] { "Field.txt", "Boundary.txt", "Headland.Txt", "TrackLines.txt", "Flags.txt", "Headlines.txt" })
             Assert.That(File.Exists(Path.Combine(_fieldDir, name)), Is.False, name);
-        Assert.That(File.Exists(Path.Combine(_fieldDir, "TrackLines.txt")), Is.True,
-            "tracks aren't part of this import yet");
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "Contour.txt")), Is.True,
+            "contours aren't part of this import yet");
     }
 
     [Test]

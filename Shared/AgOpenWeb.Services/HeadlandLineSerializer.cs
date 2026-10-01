@@ -28,13 +28,15 @@ namespace AgOpenWeb.Services
     /// </summary>
     public static class HeadlandLineSerializer
     {
+        public const string FileName = "Headlines.txt";
+
         /// <summary>
         /// Load headland paths from Headlines.txt file
         /// </summary>
         public static HeadlandLine Load(string fieldDirectory)
         {
             var result = new HeadlandLine();
-            var path = Path.Combine(fieldDirectory, "Headlines.txt");
+            var path = Path.Combine(fieldDirectory, FileName);
 
             if (!File.Exists(path))
                 return result;
@@ -59,9 +61,11 @@ namespace AgOpenWeb.Services
         /// <summary>
         /// Save headland line to Headlines.txt file
         /// </summary>
-        public static void Save(string fieldDirectory, HeadlandLine headlandLine)
+        // AgOpenWeb never writes AgOpenGPS files: they are imported into field.geojson once and
+        // deleted (FieldService.LoadField). Internal so tests can build AgOpenGPS fixtures.
+        internal static void Save(string fieldDirectory, HeadlandLine headlandLine)
         {
-            var filename = Path.Combine(fieldDirectory, "Headlines.txt");
+            var filename = Path.Combine(fieldDirectory, FileName);
 
             using (var writer = new StreamWriter(filename, false))
             {

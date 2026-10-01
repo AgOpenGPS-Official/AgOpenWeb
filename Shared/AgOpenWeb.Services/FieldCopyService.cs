@@ -5,6 +5,7 @@
 
 using System;
 using System.IO;
+using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services
 {
@@ -36,23 +37,27 @@ namespace AgOpenWeb.Services
                 field.Boundary.HeadlandPolygon = null;
             fieldService.SaveField(field);
 
+            // Tracks, flags and headland lines live in field.geojson; read from the source in
+            // either format (it isn't imported), written to the copy's field.geojson.
+            GeoJsonFieldService.SaveHeadlandLine(newDirectory, fieldService.PeekHeadlandLine(sourceDirectory));
+            if (copyFlags)
+                GeoJsonFieldService.SaveFlags(newDirectory, fieldService.PeekFlags(sourceDirectory));
+            if (copyLines)
+                GeoJsonFieldService.SaveTracks(newDirectory, fieldService.PeekTracks(sourceDirectory));
+
             // Always (AgOpenGPS copies these regardless of the options).
             Copy(sourceDirectory, newDirectory, "field.origin");
             Copy(sourceDirectory, newDirectory, "Elevation.txt");
-            Copy(sourceDirectory, newDirectory, "Headlines.txt");
             Copy(sourceDirectory, newDirectory, "BackPic.png");
             Copy(sourceDirectory, newDirectory, "BackPic.txt");
             Copy(sourceDirectory, newDirectory, "BackPic.Txt");
 
-            if (copyFlags)
-                Copy(sourceDirectory, newDirectory, "Flags.txt");
 
             if (copyHeadland)
                 Copy(sourceDirectory, newDirectory, "HeadlandSegments.json");
 
             if (copyLines)
             {
-                Copy(sourceDirectory, newDirectory, "TrackLines.txt");
                 foreach (var rec in Directory.EnumerateFiles(sourceDirectory, "RecPath*.txt"))
                     Copy(sourceDirectory, newDirectory, Path.GetFileName(rec));
                 Copy(sourceDirectory, newDirectory, "TramConfig.json");

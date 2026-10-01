@@ -14,6 +14,9 @@ public class FlagPersistenceTests
     {
         _dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "aow-vmflags-" + Guid.NewGuid().ToString("N"));
         System.IO.Directory.CreateDirectory(_dir);
+        // An open field has its field.geojson; flags are saved into it.
+        AgOpenWeb.Services.GeoJson.GeoJsonFieldService.Save(
+            new Field { Name = "F", DirectoryPath = _dir, Origin = new Position { Latitude = 52, Longitude = 5 } }, tracks: null);
     }
 
     [TearDown]
@@ -29,7 +32,7 @@ public class FlagPersistenceTests
     }
 
     [Test]
-    public void PlacingAndEditingFlags_SavesFlagsTxt()
+    public void PlacingAndEditingFlags_SavesThemWithTheField()
     {
         var vm = OpenFieldVm();
 
@@ -38,7 +41,7 @@ public class FlagPersistenceTests
         vm.RenameFlagAt(0, "Stone");
         vm.DeleteFlagAt(1);
 
-        var saved = AgOpenWeb.Services.FlagFilesService.Load(_dir);
+        var saved = AgOpenWeb.Services.GeoJson.GeoJsonFieldService.LoadFlags(_dir);
         Assert.That(saved, Has.Count.EqualTo(1));
         Assert.That(saved[0].Name, Is.EqualTo("Stone"));
         Assert.That(saved[0].FlagColor, Is.EqualTo(FlagColor.Blue));
@@ -53,7 +56,7 @@ public class FlagPersistenceTests
         await vm.CloseFieldAsync();
 
         Assert.That(vm.Flags, Is.Empty, "flags must not carry over into the next field");
-        Assert.That(AgOpenWeb.Services.FlagFilesService.Load(_dir), Has.Count.EqualTo(1),
+        Assert.That(AgOpenWeb.Services.GeoJson.GeoJsonFieldService.LoadFlags(_dir), Has.Count.EqualTo(1),
             "closing must not overwrite the saved flags with an empty list");
     }
 }
