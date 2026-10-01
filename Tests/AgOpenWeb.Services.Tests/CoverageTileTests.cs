@@ -267,6 +267,23 @@ public class CoverageTileTests
     }
 
     [Test]
+    public void AgOpenGPS_SectionsTxt_is_imported_then_removed_after_the_first_tiled_save()
+    {
+        // One quad strip: a 6 m x 40 m block at E 10..16, N 10..50 (count, colour, then left/right pairs).
+        File.WriteAllText(Path.Combine(_jobDir, "Sections.txt"),
+            "5\n0,128,0\n10,10,0\n16,10,0\n10,50,0\n16,50,0\n");
+
+        var svc = Reopen();
+        Assert.That(svc.IsPointCovered(13, 30), Is.True, "imported from Sections.txt");
+
+        svc.SaveToFile(_jobDir);
+        Assert.That(File.Exists(Path.Combine(_jobDir, "Sections.txt")), Is.False, "removed once tiles exist");
+
+        var again = Reopen();
+        Assert.That(again.IsPointCovered(13, 30), Is.True, "now read from the tiles");
+    }
+
+    [Test]
     public void Random_tile_is_stored_raw_and_uniform_tile_as_runs()
     {
         var store = new CoverageTileStore(_jobDir);

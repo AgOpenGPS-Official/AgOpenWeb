@@ -1597,7 +1597,7 @@ public class CoverageMapService : ICoverageMapService
     private bool _displayFullSave = true;
 
     private string? _savedDirectory;        // job folder the tiles on disk match (null: unknown)
-    private string? _legacyFilesDirectory;  // job imported from coverage_*.bin: delete them after its first tiled save
+    private string? _legacyFilesDirectory;  // job imported from coverage_*.bin or Sections.txt: delete them after its first tiled save
 
     // Serialises saves: the autosave can still be running when the field-close save starts,
     // and both write the same files. The scratch buffers below are only used under it.
@@ -1685,13 +1685,13 @@ public class CoverageMapService : ICoverageMapService
             if (_legacyFilesDirectory == dir)
             {
                 // One-way import: the job's coverage now lives in its tiles.
-                foreach (var name in new[] { "coverage_detect.bin", "coverage_disp.bin" })
+                foreach (var name in new[] { "coverage_detect.bin", "coverage_disp.bin", "Sections.txt" })
                 {
                     var path = Path.Combine(dir, name);
                     if (File.Exists(path)) File.Delete(path);
                 }
                 _legacyFilesDirectory = null;
-                Console.WriteLine($"[Coverage] Imported coverage_*.bin into tiles and removed them: {dir}");
+                Console.WriteLine($"[Coverage] Imported the old coverage files into tiles and removed them: {dir}");
             }
         }
     }
@@ -1835,7 +1835,7 @@ public class CoverageMapService : ICoverageMapService
     {
         string dir = Path.GetFullPath(fieldDirectory);
         var store = new CoverageTileStore(dir);
-        bool hasDetectionBits, hasSectionDisplay, fromTiles = false, fromLegacyBins = false;
+        bool hasDetectionBits, hasSectionDisplay, fromTiles = false, fromOldFiles = false;
 
         var manifest = store.ManifestExists || Directory.Exists(store.DetectionDir)
             ? store.ReadManifest() ?? RecoverManifest(store)
@@ -1854,11 +1854,14 @@ public class CoverageMapService : ICoverageMapService
             EnsureBoundsHoldLegacyFiles(fieldDirectory);
             hasDetectionBits = LoadDetectionBits(fieldDirectory);
             hasSectionDisplay = LoadSectionDisplay(fieldDirectory);
-            fromLegacyBins = hasDetectionBits || hasSectionDisplay;
+            fromOldFiles = hasDetectionBits || hasSectionDisplay;
 
             // Fallback: try legacy AgOpenGPS Sections.txt format
             if (!hasDetectionBits && !hasSectionDisplay)
+            {
                 hasDetectionBits = LoadLegacySections(fieldDirectory);
+                fromOldFiles = hasDetectionBits;
+            }
         }
 
         lock (_coverageLock)
@@ -1879,7 +1882,7 @@ public class CoverageMapService : ICoverageMapService
             _detectFullSave = !fromTiles;
             _displayFullSave = !fromTiles || regridded || !hasSectionDisplay;
             _savedDirectory = fromTiles ? dir : null;
-            _legacyFilesDirectory = fromLegacyBins ? dir : null;
+            _legacyFilesDirectory = fromOldFiles ? dir : null;
         }
 
         // A tiled job with no coverage yet still replaces whatever the map showed before.

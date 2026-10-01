@@ -14,7 +14,7 @@ is no compatibility code for files written by older AgOpenWeb builds.
 | 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (this PR) |
 | 3a | `BackPic.txt` + `BackPic.png` (AgOpenGPS); `TramLines.txt` (AgOpenWeb's, write-only) | `field.geojson` `background-image` part + `background.png`; tram lines aren't saved (generated on demand) | done (this PR) |
 | 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | `contours.geojson`, `recorded-paths.geojson`, `elevation.csv` (beside `field.geojson`, so appending never rewrites the field) | done (this PR) |
-| 4 | `Sections.txt` | coverage tiles (already imported) | delete after the job's first tiled save, as the `.bin` files are |
+| 4 | `Sections.txt` | coverage tiles | done (this PR): imported, then deleted after the job's first tiled save, as the `.bin` files are |
 
 Phase 1, as built:
 - **`FieldService.LoadField`** imports an AgOpenGPS field (keyed on `Field.txt`), deletes its
@@ -68,7 +68,8 @@ Phase 3b, as built:
   `Latitude,…` header) are imported on open and deleted. The AgOpenGPS writers are `internal`
   (test fixtures only). The AgShare download no longer writes empty placeholder files.
 
-Phase 4 (`Sections.txt`) remains.
+With phase 4, every AgOpenGPS file AgOpenWeb reads is imported once and deleted, and AgOpenWeb
+writes none. Still not started: the items in the last bullet list below (questions 2–5).
 
 Other parts of the original plan:
 - **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,
