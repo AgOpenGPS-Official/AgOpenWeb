@@ -38,6 +38,11 @@ Each replacement must provide these (checked in `wwwroot/app.js`):
 - **`window.open(url, '_blank')`** for external links (`app.js:3240`). These open in the system browser, not inside the app.
 - **Fullscreen API** (`requestFullscreen`), harmless if the host is already full screen.
 - **`window.agnative.hideKeyboard()`** on Android (the soft keyboard can only be lowered natively).
+- **Keep the screen on while the app is in front, always, with no setting** (decided on #198: a guidance screen must not dim mid-pass, and a toggle would show on LAN browser clients it can't affect).
+  - **Android:** `FLAG_KEEP_SCREEN_ON` on the Activity window.
+  - **iOS:** `IdleTimerDisabled`, re-asserted on `DidBecomeActive`.
+  - **Desktop:** `SetThreadExecutionState` on Windows, `caffeinate -d -i -w <pid>` on macOS, `xdg-screensaver suspend <xid>` on Linux X11.
+  - **Browser clients:** follow their device's settings.
 - **Cleartext HTTP to localhost:** Android `UsesCleartextTraffic` (already set), iOS `NSAllowsLocalNetworking` (already set).
 - There are no file inputs, downloads or clipboard use, so no file-chooser or download plumbing is needed.
 
