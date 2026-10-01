@@ -694,6 +694,8 @@ public class CoverageMapService : ICoverageMapService
         // Check if already covered using bit array (O(1), no bitmap lock)
         bool wasAlreadyCovered = (_detectionBits[byteIndex] & mask) != 0;
 
+        _changeGeneration++;
+
         // Always paint the display pixel — even if the detection bit was set
         // by an earlier section pass, we want the most recent section color to
         // win. (The 2D control behaved the same way.)
@@ -1159,6 +1161,7 @@ public class CoverageMapService : ICoverageMapService
     {
         lock (_coverageLock) // the cycle thread paints concurrently
         {
+            _changeGeneration++;
             // Clear display pixel buffer and detection bits in lockstep
             if (_displayPixels != null)
                 Array.Clear(_displayPixels, 0, _displayPixels.Length);
@@ -1241,6 +1244,7 @@ public class CoverageMapService : ICoverageMapService
         _fieldMinN = minN;
         _fieldMaxN = maxN;
         _fieldBoundsSet = true;
+        _changeGeneration++;
 
         // Calculate bitmap dimensions: (int)Math.Ceiling((max - min) / cellSize)
         _bitmapOriginE = (int)Math.Floor(minE / BITMAP_CELL_SIZE);
@@ -1342,6 +1346,7 @@ public class CoverageMapService : ICoverageMapService
             if (newW <= 0 || newH <= 0) return;
             if (newW == _displayWidth && newH == _displayHeight) return; // same pixel grid → nothing to do
 
+            _changeGeneration++;
             _displayCellSize = newCell;
             _displayWidth = newW;
             _displayHeight = newH;
@@ -1517,6 +1522,7 @@ public class CoverageMapService : ICoverageMapService
     private void ClearFieldBoundsCore()
     {
         _fieldBoundsSet = false;
+        _changeGeneration++;
         _bitmapWidth = 0;
         _bitmapHeight = 0;
         _displayWidth = 0;
@@ -1549,15 +1555,33 @@ public class CoverageMapService : ICoverageMapService
     // and both write the same files.
     private readonly object _saveLock = new();
 
+    // Bumped (under _coverageLock) by every change a save would write: painting, clearing,
+    // regridding, loading. A save that finds it unchanged since the last save to the same
+    // job skips the write — standing still, turning on the headland, or driving with the
+    // sections off then costs nothing.
+    private long _changeGeneration;
+    private long _savedGeneration = -1;
+    private string? _savedDirectory;
+
+    // Run buffer reused by both files' encoders; only touched under _saveLock.
+    private readonly RleBuffer _rle = new();
+
     public void SaveToFile(string fieldDirectory)
     {
         lock (_saveLock)
         {
+            string fullDir = Path.GetFullPath(fieldDirectory);
             SaveSnapshot snap;
+            long generation;
             lock (_coverageLock)
             {
                 if (!_fieldBoundsSet)
                     return;
+                generation = _changeGeneration;
+                if (generation == _savedGeneration && fullDir == _savedDirectory &&
+                    File.Exists(Path.Combine(fullDir, "coverage_detect.bin")) &&
+                    File.Exists(Path.Combine(fullDir, "coverage_disp.bin")))
+                    return; // nothing changed since the last save here
                 snap = new SaveSnapshot(
                     _detectionBits, _bitmapWidth, _bitmapHeight,
                     _displayPixels, _displayWidth, _displayHeight, _displayCellSize,
@@ -1576,6 +1600,70 @@ public class CoverageMapService : ICoverageMapService
             Console.WriteLine(
                 $"[Coverage] Saved: detection {snap.BitmapWidth}x{snap.BitmapHeight} -> {detectBytes / 1024}KB in {ms(t0, t1):F0}ms, " +
                 $"display {snap.DisplayWidth}x{snap.DisplayHeight} @ {snap.DisplayCellSize:F2}m -> {dispBytes / 1024}KB in {ms(t1, t2):F0}ms");
+
+            // Only after both files landed: a failed save leaves the next one to retry.
+            _savedGeneration = generation;
+            _savedDirectory = fullDir;
+        }
+    }
+
+    /// <summary>
+    /// Length of the run of <paramref name="value"/> at the start of <paramref name="span"/>
+    /// (vectorised). At least 1: the cycle thread may change the first element after the
+    /// caller read it, and a zero-length run would never advance.
+    /// </summary>
+    private static int RunLength<T>(ReadOnlySpan<T> span, T value) where T : unmanaged, IEquatable<T>
+    {
+        int next = span.IndexOfAnyExcept(value);
+        return next < 0 ? span.Length : Math.Max(next, 1);
+    }
+
+    /// <summary>
+    /// Builds the [runLength:ushort][value:byte] stream both coverage files use. Adjacent
+    /// runs of the same value merge; runs longer than 65535 split, as the decoders expect.
+    /// </summary>
+    private sealed class RleBuffer
+    {
+        private byte[] _buf = new byte[64 * 1024];
+        private byte _value;
+        private long _pending;
+
+        public int Length { get; private set; }
+        public ReadOnlySpan<byte> Span => _buf.AsSpan(0, Length);
+
+        public void Reset()
+        {
+            Length = 0;
+            _pending = 0;
+        }
+
+        public void Add(byte value, long count)
+        {
+            if (_pending > 0 && value != _value)
+                Flush();
+            _value = value;
+            _pending += count;
+        }
+
+        public void Finish()
+        {
+            if (_pending > 0)
+                Flush();
+        }
+
+        private void Flush()
+        {
+            for (long left = _pending; left > 0; left -= 65535)
+            {
+                int run = (int)Math.Min(left, 65535);
+                if (Length + 3 > _buf.Length)
+                    Array.Resize(ref _buf, _buf.Length * 2);
+                _buf[Length] = (byte)run;           // ushort, little-endian (BinaryWriter order)
+                _buf[Length + 1] = (byte)(run >> 8);
+                _buf[Length + 2] = _value;
+                Length += 3;
+            }
+            _pending = 0;
         }
     }
 
@@ -1610,6 +1698,8 @@ public class CoverageMapService : ICoverageMapService
 
         // Load section display (colors with palette, resolution-independent)
         bool hasSectionDisplay = LoadSectionDisplay(fieldDirectory);
+        lock (_coverageLock)
+            _changeGeneration++; // a load (or a Sections.txt import) is saved once on the next save
 
         // Fallback: try legacy AgOpenGPS Sections.txt format
         if (!hasDetectionBits && !hasSectionDisplay)
@@ -1872,11 +1962,27 @@ public class CoverageMapService : ICoverageMapService
     /// This is the authoritative source for coverage detection at 0.1m resolution.
     /// Format: Header + RLE-compressed bit array
     /// </summary>
-    private static long SaveDetectionBits(string fieldDirectory, SaveSnapshot snap)
+    private long SaveDetectionBits(string fieldDirectory, SaveSnapshot snap)
     {
         var bits = snap.DetectionBits;
         if (bits == null)
             return 0;
+
+        // RLE compress the bit array
+        // Format: [runLength:ushort][value:byte] pairs
+        // value is 0x00 (8 zero bits) or 0xFF (8 one bits) or actual mixed byte
+        var rle = _rle;
+        rle.Reset();
+        ReadOnlySpan<byte> span = bits;
+        int i = 0;
+        while (i < span.Length)
+        {
+            byte value = span[i];
+            int len = RunLength(span.Slice(i), value);
+            rle.Add(value, len);
+            i += len;
+        }
+        rle.Finish();
 
         var filename = Path.Combine(fieldDirectory, "coverage_detect.bin");
         return WriteFileAtomic(filename, writer =>
@@ -1891,27 +1997,7 @@ public class CoverageMapService : ICoverageMapService
             writer.Write((uint)snap.BitmapHeight); // Height in cells
             writer.Write(snap.TotalWorkedArea);  // Total area for quick restore
 
-            // RLE compress the bit array
-            // Format: [runLength:ushort][value:byte] pairs
-            // value is 0x00 (8 zero bits) or 0xFF (8 one bits) or actual mixed byte
-            int i = 0;
-            while (i < bits.Length)
-            {
-                byte value = bits[i];
-                int runLength = 1;
-
-                // Only RLE consecutive identical bytes
-                while (i + runLength < bits.Length &&
-                       bits[i + runLength] == value &&
-                       runLength < 65535)
-                {
-                    runLength++;
-                }
-
-                writer.Write((ushort)runLength);
-                writer.Write(value);
-                i += runLength;
-            }
+            writer.Write(rle.Span);
         });
     }
 
@@ -2036,7 +2122,6 @@ public class CoverageMapService : ICoverageMapService
     /// Save section display data to coverage_disp.bin (COVS format).
     /// Stores section indices with color palette for resolution-independent display.
     /// Format: Header + Palette + RLE-compressed section indices
-    /// Uses detection bits to filter out background image pixels.
     /// </summary>
     private long SaveSectionDisplay(string fieldDirectory, SaveSnapshot snap)
     {
@@ -2048,8 +2133,6 @@ public class CoverageMapService : ICoverageMapService
         int dispWidth = snap.DisplayWidth;
         int dispHeight = snap.DisplayHeight;
         double dispCellSize = snap.DisplayCellSize;
-        var detectionBits = snap.DetectionBits;
-        int bitmapWidth = snap.BitmapWidth;
 
         var filename = Path.Combine(fieldDirectory, "coverage_disp.bin");
 
@@ -2082,77 +2165,35 @@ public class CoverageMapService : ICoverageMapService
             palette.Add(singleColor);
         }
 
-        // Calculate scale factor from detection to display resolution
-        double scaleRatio = BITMAP_CELL_SIZE / dispCellSize; // e.g., 0.1/0.2 = 0.5
-
-        // Scan COVERED pixels only - map detection coordinates to display coordinates
-        // This is O(covered cells) not O(total pixels)
-        var indices = new byte[pixels.Length];
-        if (detectionBits != null)
+        byte IndexFor(ushort color)
         {
-            for (int byteIdx = 0; byteIdx < detectionBits.Length; byteIdx++)
+            if (colorToIndex.TryGetValue(color, out byte idx))
+                return idx;
+            if (palette.Count < 255)
             {
-                byte bits = detectionBits[byteIdx];
-                if (bits == 0) continue; // Skip 8 uncovered cells at once
-
-                // Calculate detection cell coordinates for this byte
-                long baseBitIdx = (long)byteIdx * 8;
-                for (int bit = 0; bit < 8; bit++)
-                {
-                    if ((bits & (1 << bit)) == 0) continue;
-
-                    long bitIdx = baseBitIdx + bit;
-                    int detY = (int)(bitIdx / bitmapWidth);
-                    int detX = (int)(bitIdx % bitmapWidth);
-
-                    // Map detection cell to display pixel
-                    int dispX = (int)(detX * scaleRatio);
-                    int dispY = (int)(detY * scaleRatio);
-
-                    // Bounds check for display
-                    if (dispX >= dispWidth || dispY >= dispHeight) continue;
-
-                    long dispIdx = (long)dispY * dispWidth + dispX;
-                    if (dispIdx >= pixels.Length) continue;
-
-                    ushort color = pixels[dispIdx];
-                    if (color == 0) continue;
-
-                    // Add to palette if not seen
-                    if (!colorToIndex.ContainsKey(color) && palette.Count < 255)
-                    {
-                        colorToIndex[color] = (byte)palette.Count;
-                        palette.Add(color);
-                    }
-
-                    // Set index (may overwrite same pixel multiple times when downscaling, that's fine)
-                    if (colorToIndex.TryGetValue(color, out byte idx))
-                        indices[dispIdx] = idx;
-                    else if (palette.Count > 1)
-                        indices[dispIdx] = FindClosestColorIndex(color, palette);
-                }
+                idx = (byte)palette.Count;
+                colorToIndex[color] = idx;
+                palette.Add(color);
+                return idx;
             }
+            return FindClosestColorIndex(color, palette);
         }
-        else
+
+        // One pass over the display pixels, run by run: every non-zero pixel is coverage
+        // (nothing else is composited into this buffer), so the index of a run is the palette
+        // index of its colour. Colours are looked up once per run, not per pixel.
+        var rle = _rle;
+        rle.Reset();
+        ReadOnlySpan<ushort> span = pixels;
+        int p = 0;
+        while (p < span.Length)
         {
-            // Fallback: iterate all pixels (slow but works without detection bits)
-            for (long i = 0; i < pixels.Length; i++)
-            {
-                ushort color = pixels[i];
-                if (color != 0)
-                {
-                    if (!colorToIndex.ContainsKey(color) && palette.Count < 255)
-                    {
-                        colorToIndex[color] = (byte)palette.Count;
-                        palette.Add(color);
-                    }
-                    if (colorToIndex.TryGetValue(color, out byte idx))
-                        indices[i] = idx;
-                    else
-                        indices[i] = FindClosestColorIndex(color, palette);
-                }
-            }
+            ushort color = span[p];
+            int len = RunLength(span.Slice(p), color);
+            rle.Add(color == 0 ? (byte)0 : IndexFor(color), len);
+            p += len;
         }
+        rle.Finish();
 
         return WriteFileAtomic(filename, writer =>
         {
@@ -2172,22 +2213,7 @@ public class CoverageMapService : ICoverageMapService
             writer.Write((uint)dispWidth);        // Width at display resolution
             writer.Write((uint)dispHeight);       // Height at display resolution
 
-            // RLE compress section indices
-            int idx2 = 0;
-            while (idx2 < indices.Length)
-            {
-                byte value = indices[idx2];
-                int runLength = 1;
-                while (idx2 + runLength < indices.Length &&
-                       indices[idx2 + runLength] == value &&
-                       runLength < 65535)
-                {
-                    runLength++;
-                }
-                writer.Write((ushort)runLength);
-                writer.Write(value);
-                idx2 += runLength;
-            }
+            writer.Write(rle.Span);
         });
     }
 
