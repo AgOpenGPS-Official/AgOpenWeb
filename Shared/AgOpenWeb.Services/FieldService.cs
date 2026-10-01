@@ -63,13 +63,17 @@ public class FieldService : IFieldService
     }
 
     /// <summary>
-    /// Load a complete field. Prefers field.geojson when present, falls back to legacy text files.
-    /// If the GeoJSON file is corrupt (truncated write, power loss), the corrupt file is renamed
-    /// and loading falls back to legacy format.
+    /// Load a complete field. The legacy text files (Field.txt, Boundary.txt, Headland.Txt,
+    /// BackPic.txt) are the source of truth whenever Field.txt exists. Every save writes them,
+    /// and so does everything else that changes a field: the AgShare download, the in-app
+    /// boundary edits (before the field is closed) and AgOpenGPS itself on a copied folder.
+    /// field.geojson is only refreshed by <see cref="SaveField"/>, so it can lag. It is rewritten
+    /// from the loaded field on every open, as an up-to-date GIS export, and read only for a
+    /// folder without Field.txt. A corrupt one there is renamed aside.
     /// </summary>
     public Field LoadField(string fieldDirectory)
     {
-        if (GeoJsonFieldService.Exists(fieldDirectory))
+        if (!File.Exists(Path.Combine(fieldDirectory, "Field.txt")) && GeoJsonFieldService.Exists(fieldDirectory))
         {
             try
             {
@@ -102,24 +106,23 @@ public class FieldService : IFieldService
         legacyField.Boundary = _boundaryService.LoadBoundary(fieldDirectory);
         legacyField.BackgroundImage = _backgroundImageService.LoadBackgroundImage(fieldDirectory);
 
-        // Auto-convert: save as GeoJSON so future loads use the modern format
+        // Refresh the GeoJSON export from what was just loaded.
         try
         {
             GeoJsonFieldService.Save(legacyField, tracks: null);
-            System.Diagnostics.Debug.WriteLine(
-                $"[FieldService] Auto-converted legacy field to GeoJSON: '{fieldDirectory}'");
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine(
-                $"[FieldService] Auto-conversion to GeoJSON failed: {ex.Message}");
+                $"[FieldService] GeoJSON export failed: {ex.Message}");
         }
 
         return legacyField;
     }
 
     /// <summary>
-    /// Save a complete field. Writes both GeoJSON and legacy formats for backwards compatibility.
+    /// Save a complete field: the legacy text files (what <see cref="LoadField"/> reads, and what
+    /// AgOpenGPS reads) and the field.geojson export.
     /// </summary>
     public void SaveField(Field field)
     {
@@ -141,7 +144,7 @@ public class FieldService : IFieldService
             _backgroundImageService.SaveBackgroundImage(field.BackgroundImage, field.DirectoryPath);
         }
 
-        // GeoJSON (new canonical format -- tracks saved separately by caller)
+        // GeoJSON export (tracks are saved separately by the caller)
         try
         {
             GeoJsonFieldService.Save(field, tracks: null);

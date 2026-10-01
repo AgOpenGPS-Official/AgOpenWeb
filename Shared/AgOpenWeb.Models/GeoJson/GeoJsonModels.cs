@@ -100,6 +100,7 @@ public static class FieldPropertyKeys
     public const string AreaHectares = "areaHectares";
     public const string CreatedDate = "createdDate";
     public const string LastModifiedDate = "lastModifiedDate";
+    public const string Projection = "projection";
 }
 
 /// <summary>

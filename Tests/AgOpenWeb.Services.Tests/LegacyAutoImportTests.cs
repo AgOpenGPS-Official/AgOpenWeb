@@ -114,41 +114,44 @@ public class LegacyAutoImportTests
     }
 
     [Test]
-    public void LoadField_SecondLoad_UsesGeoJson()
+    public void LoadField_SecondLoad_ReadsTheLegacyFilesAgain()
     {
         WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
 
-        // First load: reads legacy, creates GeoJSON
+        // First load: reads legacy, writes the GeoJSON export
         _service.LoadField(_fieldDir);
         Assert.That(GeoJsonFieldService.Exists(_fieldDir), Is.True);
 
-        // Modify the legacy file to have different coordinates
-        WriteLegacyFieldTxt(lat: 99.0, lon: -99.0);
+        // Something else rewrites the legacy files (AgShare re-download, AgOpenGPS, an
+        // in-app boundary edit before the field was closed)
+        WriteLegacyFieldTxt(lat: 48.0, lon: -94.0);
 
-        // Second load: should use GeoJSON (not the modified legacy)
         var field = _service.LoadField(_fieldDir);
-        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001),
-            "Second load should use GeoJSON, not the modified legacy file");
+        Assert.That(field.Origin.Latitude, Is.EqualTo(48.0).Within(0.001),
+            "The legacy files win over a field.geojson they've moved past");
     }
 
     [Test]
-    public void LoadField_GeoJsonAlreadyExists_DoesNotReConvert()
+    public void LoadField_StaleGeoJson_IsRewrittenFromTheLegacyFiles()
     {
         WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
+        WriteLegacyBoundary(centerE: 100, centerN: 200);
 
-        // Create GeoJSON with different origin
-        var geoField = new Field
+        // A field.geojson from before the legacy files changed
+        var stale = new Field
         {
             Name = "TestField",
             DirectoryPath = _fieldDir,
             Origin = new Position { Latitude = 48.0, Longitude = -94.0 },
         };
-        GeoJsonFieldService.Save(geoField, new List<AgOpenWeb.Models.Track.Track>());
+        GeoJsonFieldService.Save(stale, new List<AgOpenWeb.Models.Track.Track>());
 
-        // Load should use existing GeoJSON, not re-convert from legacy
         var field = _service.LoadField(_fieldDir);
-        Assert.That(field.Origin.Latitude, Is.EqualTo(48.0).Within(0.001),
-            "Should load from existing GeoJSON, not re-convert from legacy");
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+
+        var (export, _) = GeoJsonFieldService.Load(_fieldDir);
+        Assert.That(export.Origin.Latitude, Is.EqualTo(47.0).Within(0.001), "export refreshed");
+        Assert.That(export.Boundary?.OuterBoundary?.Points, Has.Count.EqualTo(4));
     }
 
     [Test]
