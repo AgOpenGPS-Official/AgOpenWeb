@@ -30,8 +30,8 @@ namespace AgOpenWeb.Services.GeoJson;
 /// <summary>
 /// A field's one file, field.geojson: a FeatureCollection where every part of the field is a
 /// Feature with a "role" property. <see cref="Save"/> writes the field itself (metadata,
-/// boundaries, headland polygon, background image); tracks, flags and headland lines are saved
-/// on their own, when they change, and each save replaces only its own features.
+/// boundaries, headland polygon); the background image, tracks, flags and headland lines are
+/// saved on their own, when they change, and each save replaces only its own features.
 /// </summary>
 public class GeoJsonFieldService
 {
@@ -59,12 +59,12 @@ public class GeoJsonFieldService
     private static readonly HashSet<string> FieldRoles = new()
     {
         FeatureRoles.Metadata, FeatureRoles.OuterBoundary, FeatureRoles.InnerBoundary,
-        FeatureRoles.Headland, FeatureRoles.BackgroundImage,
+        FeatureRoles.Headland,
     };
 
     /// <summary>
-    /// Save the field itself (metadata, boundaries, headland polygon, background image),
-    /// keeping its tracks, flags and headland lines. Passing <paramref name="tracks"/> also
+    /// Save the field itself (metadata, boundaries, headland polygon), keeping its background
+    /// image, tracks, flags and headland lines. Passing <paramref name="tracks"/> also
     /// replaces the tracks.
     /// </summary>
     public static void Save(Models.Field field, IReadOnlyList<Models.Track.Track>? tracks)
@@ -97,10 +97,6 @@ public class GeoJsonFieldService
             if (field.Boundary.HeadlandPolygon is { IsValid: true })
                 features.Add(BuildBoundaryFeature(geo, field.Boundary.HeadlandPolygon, FeatureRoles.Headland));
         }
-
-        // Background image bounds
-        if (field.BackgroundImage is { IsValid: true })
-            features.Add(BuildBackgroundImageFeature(geo, field.BackgroundImage));
 
         if (tracks != null)
             features.AddRange(TrackFeatures(geo, tracks));
@@ -139,6 +135,15 @@ public class GeoJsonFieldService
         ReplaceRole(fieldDirectory, FeatureRoles.HeadlandLine, geo => headlandLine.Tracks
             .Where(p => p.TrackPoints.Count > 0)
             .Select(p => BuildHeadlandPathFeature(geo, p)));
+
+    /// <summary>Set or (with null) remove the field's background image placement.</summary>
+    public static void SaveBackground(string fieldDirectory, FieldBackground? background) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.BackgroundImage, _ => background == null
+            ? Array.Empty<GeoJsonFeature>()
+            : new[] { BuildBackgroundFeature(background) });
+
+    public static FieldBackground? LoadBackground(string fieldDirectory) =>
+        ReadRole(fieldDirectory, FeatureRoles.BackgroundImage, ReadBackground).FirstOrDefault();
 
     public static List<Models.Track.Track> LoadTracks(string fieldDirectory) =>
         ReadRole(fieldDirectory, FeatureRoles.Track, ReadTrack);
@@ -276,9 +281,6 @@ public class GeoJsonFieldService
                         tracks.Add(track);
                     break;
 
-                case FeatureRoles.BackgroundImage:
-                    field.BackgroundImage = ReadBackgroundImage(geo, feature);
-                    break;
             }
         }
 
@@ -398,31 +400,30 @@ public class GeoJsonFieldService
         };
     }
 
-    private static GeoJsonFeature BuildBackgroundImageFeature(Projection geo, BackgroundImage img)
+    // The image's corners as a WGS84 polygon (NW, NE, SE, SW, closed), so GIS tools place it.
+    private static GeoJsonFeature BuildBackgroundFeature(FieldBackground bg)
     {
-        // Store image bounds as a polygon (4 corners + closing point)
-        var corners = new List<Vec2>
+        double n = bg.NwLatitude, w = bg.NwLongitude, s = bg.SeLatitude, e = bg.SeLongitude;
+        var props = new Dictionary<string, object?>
         {
-            new(img.MinEasting, img.MinNorthing),
-            new(img.MaxEasting, img.MinNorthing),
-            new(img.MaxEasting, img.MaxNorthing),
-            new(img.MinEasting, img.MaxNorthing),
+            [FieldPropertyKeys.Role] = FeatureRoles.BackgroundImage,
+            [FieldPropertyKeys.Image] = bg.ImageFile,
         };
-        var ring = geo.ToGeoJsonCoordinates(corners);
-        // Close the ring per GeoJSON spec
-        ring.Add(ring[0]);
-
+        if (bg.Mercator is { } m)
+        {
+            props[FieldPropertyKeys.MercatorMinX] = m.MinX;
+            props[FieldPropertyKeys.MercatorMaxX] = m.MaxX;
+            props[FieldPropertyKeys.MercatorMinY] = m.MinY;
+            props[FieldPropertyKeys.MercatorMaxY] = m.MaxY;
+        }
         return new GeoJsonFeature
         {
             Geometry = new GeoJsonGeometry
             {
                 Type = GeoJsonTypes.Polygon,
-                Coordinates = new[] { ring.Select(c => (object)c).ToArray() }
+                Coordinates = new[] { new object[] { new[] { w, n }, new[] { e, n }, new[] { e, s }, new[] { w, s }, new[] { w, n } } },
             },
-            Properties = new Dictionary<string, object?>
-            {
-                [FieldPropertyKeys.Role] = FeatureRoles.BackgroundImage,
-            }
+            Properties = props,
         };
     }
 
@@ -578,32 +579,20 @@ public class GeoJsonFieldService
         };
     }
 
-    private static BackgroundImage? ReadBackgroundImage(Projection geo, GeoJsonFeature feature)
+    private static FieldBackground? ReadBackground(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadPolygonRing(feature.Geometry, 0);
-        if (coords == null || coords.Count < 4)
+        var image = GetStringProp(feature, FieldPropertyKeys.Image);
+        if (coords == null || coords.Count < 4 || string.IsNullOrEmpty(image))
             return null;
-
-        double minE = double.MaxValue, maxE = double.MinValue;
-        double minN = double.MaxValue, maxN = double.MinValue;
-
-        foreach (var c in coords)
-        {
-            var local = geo.ToLocal(c[1], c[0]);
-            if (local.Easting < minE) minE = local.Easting;
-            if (local.Easting > maxE) maxE = local.Easting;
-            if (local.Northing < minN) minN = local.Northing;
-            if (local.Northing > maxN) maxN = local.Northing;
-        }
-
-        return new BackgroundImage
-        {
-            MinEasting = minE,
-            MaxEasting = maxE,
-            MinNorthing = minN,
-            MaxNorthing = maxN,
-            IsEnabled = true,
-        };
+        MercatorBounds? mercator = HasProp(feature, FieldPropertyKeys.MercatorMinX)
+            ? new MercatorBounds(GetDoubleProp(feature, FieldPropertyKeys.MercatorMinX), GetDoubleProp(feature, FieldPropertyKeys.MercatorMaxX),
+                                 GetDoubleProp(feature, FieldPropertyKeys.MercatorMinY), GetDoubleProp(feature, FieldPropertyKeys.MercatorMaxY))
+            : null;
+        return new FieldBackground(image,
+            coords.Max(c => c[1]), coords.Min(c => c[0]),
+            coords.Min(c => c[1]), coords.Max(c => c[0]),
+            mercator);
     }
 
     // ---------------------------------------------------------------
@@ -677,6 +666,10 @@ public class GeoJsonFieldService
         }
         return null;
     }
+
+    private static bool HasProp(GeoJsonFeature f, string key) =>
+        f.Properties.TryGetValue(key, out var val) && val is not null &&
+        !(val is JsonElement je && je.ValueKind == JsonValueKind.Null);
 
     private static double GetDoubleProp(GeoJsonFeature f, string key)
     {

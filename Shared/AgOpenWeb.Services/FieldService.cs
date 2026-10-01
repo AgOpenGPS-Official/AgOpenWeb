@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Services.GeoJson;
 
@@ -106,7 +107,78 @@ public class FieldService : IFieldService
             GeoJsonFieldService.SaveHeadlandLine(fieldDirectory, HeadlandLineSerializer.Load(fieldDirectory));
             DeleteIfPresent(fieldDirectory, HeadlandLineSerializer.FileName);
         }
+        ImportBackPic(fieldDirectory, field.Origin);
+
+        // Written at field close by older builds and never read: tram lines are generated on
+        // demand from the field's tram settings.
+        DeleteIfPresent(fieldDirectory, "TramLines.txt");
         return field;
+    }
+
+    // AgOpenGPS's background image: BackPic.png, placed by BackPic.txt (older builds: BackPic.Txt)
+    // as "$BackPic", "True", then max E, min E, max N, min N in field-local metres.
+    private static readonly string[] BackPicTextFiles = { "BackPic.txt", "BackPic.Txt" };
+    private const string BackPicImageFile = "BackPic.png";
+
+    private static FieldBackground? ReadBackPic(string fieldDirectory, Position origin)
+    {
+        foreach (var name in BackPicTextFiles)
+        {
+            var path = Path.Combine(fieldDirectory, name);
+            if (!File.Exists(path) || !File.Exists(Path.Combine(fieldDirectory, BackPicImageFile)))
+                continue;
+            var lines = File.ReadAllLines(path);
+            // Exactly AgOpenGPS's six lines; anything else isn't its layout.
+            if (lines.Length < 6 || lines.Skip(6).Any(l => l.Trim().Length > 0) ||
+                lines[0].Trim() != "$BackPic" ||
+                !bool.TryParse(lines[1].Trim(), out bool geoMap) || !geoMap)
+                return null;
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var style = System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowThousands; // written "N3"
+            if (!double.TryParse(lines[2], style, inv, out double maxE) || !double.TryParse(lines[3], style, inv, out double minE) ||
+                !double.TryParse(lines[4], style, inv, out double maxN) || !double.TryParse(lines[5], style, inv, out double minN))
+                return null;
+            var plane = new LocalPlane(new Wgs84(origin.Latitude, origin.Longitude), new SharedFieldProperties());
+            var nw = plane.ConvertGeoCoordToWgs84(new GeoCoord(maxN, minE));
+            var se = plane.ConvertGeoCoordToWgs84(new GeoCoord(minN, maxE));
+            return new FieldBackground(BackPicImageFile, nw.Latitude, nw.Longitude, se.Latitude, se.Longitude, null);
+        }
+        return null;
+    }
+
+    private static void ImportBackPic(string fieldDirectory, Position origin)
+    {
+        if (!BackPicTextFiles.Any(n => File.Exists(Path.Combine(fieldDirectory, n))))
+            return;
+        var background = ReadBackPic(fieldDirectory, origin);
+        if (background != null)
+        {
+            File.Move(Path.Combine(fieldDirectory, BackPicImageFile),
+                      Path.Combine(fieldDirectory, FieldBackground.DefaultImageFile), overwrite: true);
+            GeoJsonFieldService.SaveBackground(fieldDirectory, background with { ImageFile = FieldBackground.DefaultImageFile });
+        }
+        // Not AgOpenGPS's layout (or switched off): nothing to place the image with.
+        foreach (var name in BackPicTextFiles)
+            DeleteIfPresent(fieldDirectory, name);
+        DeleteIfPresent(fieldDirectory, BackPicImageFile);
+    }
+
+    /// <summary>
+    /// A field's background image placement, read like <see cref="PeekField"/> (either format,
+    /// no changes). <see cref="FieldBackground.ImageFile"/> names the image in that folder.
+    /// </summary>
+    public FieldBackground? PeekBackground(string fieldDirectory)
+    {
+        try
+        {
+            if (BackPicTextFiles.Any(n => File.Exists(Path.Combine(fieldDirectory, n))))
+                return ReadBackPic(fieldDirectory, PeekField(fieldDirectory).Origin);
+            return GeoJsonFieldService.Exists(fieldDirectory) ? GeoJsonFieldService.LoadBackground(fieldDirectory) : null;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            return null;
+        }
     }
 
     private static void DeleteIfPresent(string fieldDirectory, string name)

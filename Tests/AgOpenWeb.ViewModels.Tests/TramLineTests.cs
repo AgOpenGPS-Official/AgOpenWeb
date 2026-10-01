@@ -287,45 +287,6 @@ public class TramLineTests
     // File I/O tests
     // ---------------------------------------------------------------
 
-    [Test]
-    public void SaveAndLoad_PreservesData()
-    {
-        var tempDir = Path.Combine(Path.GetTempPath(), "tram_test_" + Guid.NewGuid().ToString("N")[..8]);
-        Directory.CreateDirectory(tempDir);
-        try
-        {
-            // Add some tram lines. Save/load decimates (Douglas-Peucker) to drop
-            // redundant collinear points, so use a line with a real bend at the
-            // middle vertex — all three points are meaningful and must round-trip.
-            _service.AddTramLine(new List<Vec2>
-            {
-                new Vec2(10, 0), new Vec2(15, 100), new Vec2(10, 200)
-            });
-            _service.AddTramLine(new List<Vec2>
-            {
-                new Vec2(20, 0), new Vec2(20, 100)
-            });
-
-            _service.SaveToFile(tempDir);
-
-            // Create new service and load
-            var offsetService2 = new TramLineOffsetService();
-            var logger2 = NullLogger<TramLineService>.Instance;
-            var service2 = new TramLineService(offsetService2, logger2, ConfigurationStore.Instance);
-
-            service2.LoadFromFile(tempDir);
-
-            Assert.That(service2.ParallelTramLines.Count, Is.EqualTo(2),
-                "Should load 2 tram lines");
-            Assert.That(service2.ParallelTramLines[0].Count, Is.EqualTo(3),
-                "First line should have 3 points");
-        }
-        finally
-        {
-            Directory.Delete(tempDir, true);
-        }
-    }
-
     // ---------------------------------------------------------------
     // Integration with ViewModel
     // ---------------------------------------------------------------

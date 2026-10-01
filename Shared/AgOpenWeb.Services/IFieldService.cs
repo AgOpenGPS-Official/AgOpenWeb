@@ -61,6 +61,9 @@ public interface IFieldService
     /// <summary>A field's headland lines, read like <see cref="PeekField"/>.</summary>
     Models.Guidance.HeadlandLine PeekHeadlandLine(string fieldDirectory);
 
+    /// <summary>A field's background image placement, read like <see cref="PeekField"/>.</summary>
+    FieldBackground? PeekBackground(string fieldDirectory);
+
     /// <summary>
     /// Save a complete field (metadata, boundary, background image)
     /// </summary>

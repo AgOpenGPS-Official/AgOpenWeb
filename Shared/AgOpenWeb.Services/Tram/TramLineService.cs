@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using AgOpenWeb.Models.Base;
@@ -36,12 +35,6 @@ public class TramLineService(
     ILogger<TramLineService> logger,
     ConfigurationStore configStore) : ITramLineService
 {
-    // Decimation tolerance for tram lines on save/load. Tram lines built from a dense
-    // boundary inherit ~1 m point spacing; simplifying to this deviation collapses the
-    // file (and per-frame render cost) with no visible change. See
-    // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
-    private const double TramSimplifyToleranceMeters = 0.1;
-
     private readonly List<Vec2> _outerBoundaryTrack = new();
     private readonly List<Vec2> _innerBoundaryTrack = new();
     private readonly List<List<Vec2>> _parallelTramLines = new();
@@ -688,146 +681,4 @@ public class TramLineService(
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Save tram lines to field directory
-    /// </summary>
-    public void SaveToFile(string fieldDirectory)
-    {
-        if (string.IsNullOrEmpty(fieldDirectory))
-            return;
-
-        string filePath = Path.Combine(fieldDirectory, "TramLines.txt");
-
-        try
-        {
-            using var writer = new StreamWriter(filePath);
-
-            // Write outer boundary track (decimated)
-            var outer = GeometryMath.SimplifyPolyline(_outerBoundaryTrack, TramSimplifyToleranceMeters);
-            writer.WriteLine($"$OuterTrack,{outer.Count}");
-            foreach (var point in outer)
-            {
-                writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0:F4},{1:F4}", point.Easting, point.Northing));
-            }
-
-            // Write inner boundary track (decimated)
-            var inner = GeometryMath.SimplifyPolyline(_innerBoundaryTrack, TramSimplifyToleranceMeters);
-            writer.WriteLine($"$InnerTrack,{inner.Count}");
-            foreach (var point in inner)
-            {
-                writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0:F4},{1:F4}", point.Easting, point.Northing));
-            }
-
-            // Write parallel tram lines (each decimated)
-            writer.WriteLine($"$TramLines,{_parallelTramLines.Count}");
-            foreach (var tramLine in _parallelTramLines)
-            {
-                var line = GeometryMath.SimplifyPolyline(tramLine, TramSimplifyToleranceMeters);
-                writer.WriteLine($"$Line,{line.Count}");
-                foreach (var point in line)
-                {
-                    writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                        "{0:F4},{1:F4}", point.Easting, point.Northing));
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to save tram lines");
-        }
-    }
-
-    /// <summary>
-    /// Load tram lines from field directory
-    /// </summary>
-    public void LoadFromFile(string fieldDirectory)
-    {
-        if (string.IsNullOrEmpty(fieldDirectory))
-            return;
-
-        string filePath = Path.Combine(fieldDirectory, "TramLines.txt");
-
-        if (!File.Exists(filePath))
-            return;
-
-        try
-        {
-            Clear();
-
-            using var reader = new StreamReader(filePath);
-            string? line;
-
-            while ((line = reader.ReadLine()) != null)
-            {
-                if (line.StartsWith("$OuterTrack,"))
-                {
-                    int count = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    var pts = new List<Vec2>(count);
-                    ReadPoints(reader, pts, count);
-                    _outerBoundaryTrack.AddRange(GeometryMath.SimplifyPolyline(pts, TramSimplifyToleranceMeters));
-                }
-                else if (line.StartsWith("$InnerTrack,"))
-                {
-                    int count = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    var pts = new List<Vec2>(count);
-                    ReadPoints(reader, pts, count);
-                    _innerBoundaryTrack.AddRange(GeometryMath.SimplifyPolyline(pts, TramSimplifyToleranceMeters));
-                }
-                else if (line.StartsWith("$TramLines,"))
-                {
-                    int lineCount = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    for (int i = 0; i < lineCount; i++)
-                    {
-                        line = reader.ReadLine();
-                        if (line != null && line.StartsWith("$Line,"))
-                        {
-                            int pointCount = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                            var tramLine = new List<Vec2>(pointCount);
-                            ReadPoints(reader, tramLine, pointCount);
-                            // Decimate on load so legacy dense files (the 14 MB case)
-                            // render fast without regeneration.
-                            var simplified = GeometryMath.SimplifyPolyline(tramLine, TramSimplifyToleranceMeters);
-                            if (simplified.Count > 0)
-                            {
-                                _parallelTramLines.Add(simplified);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (HasTramLines)
-            {
-                TramLinesUpdated?.Invoke(this, EventArgs.Empty);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to load tram lines");
-        }
-    }
-
-    /// <summary>
-    /// Read points from file into a list
-    /// </summary>
-    private void ReadPoints(StreamReader reader, List<Vec2> points, int count)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            string? line = reader.ReadLine();
-            if (line == null) break;
-
-            var parts = line.Split(',');
-            if (parts.Length >= 2)
-            {
-                if (double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double easting) &&
-                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double northing))
-                {
-                    points.Add(new Vec2(easting, northing));
-                }
-            }
-        }
-    }
 }

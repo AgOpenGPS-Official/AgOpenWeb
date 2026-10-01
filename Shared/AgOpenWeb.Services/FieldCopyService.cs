@@ -45,12 +45,19 @@ namespace AgOpenWeb.Services
             if (copyLines)
                 GeoJsonFieldService.SaveTracks(newDirectory, fieldService.PeekTracks(sourceDirectory));
 
+            // The background image: its placement in field.geojson, the image file alongside.
+            if (fieldService.PeekBackground(sourceDirectory) is { } background &&
+                File.Exists(Path.Combine(sourceDirectory, background.ImageFile)))
+            {
+                File.Copy(Path.Combine(sourceDirectory, background.ImageFile),
+                    Path.Combine(newDirectory, Models.FieldBackground.DefaultImageFile), overwrite: true);
+                GeoJsonFieldService.SaveBackground(newDirectory,
+                    background with { ImageFile = Models.FieldBackground.DefaultImageFile });
+            }
+
             // Always (AgOpenGPS copies these regardless of the options).
             Copy(sourceDirectory, newDirectory, "field.origin");
             Copy(sourceDirectory, newDirectory, "Elevation.txt");
-            Copy(sourceDirectory, newDirectory, "BackPic.png");
-            Copy(sourceDirectory, newDirectory, "BackPic.txt");
-            Copy(sourceDirectory, newDirectory, "BackPic.Txt");
 
 
             if (copyHeadland)
@@ -61,7 +68,6 @@ namespace AgOpenWeb.Services
                 foreach (var rec in Directory.EnumerateFiles(sourceDirectory, "RecPath*.txt"))
                     Copy(sourceDirectory, newDirectory, Path.GetFileName(rec));
                 Copy(sourceDirectory, newDirectory, "TramConfig.json");
-                Copy(sourceDirectory, newDirectory, "TramLines.txt");
                 Copy(sourceDirectory, newDirectory, "TramSystems.json");
             }
 

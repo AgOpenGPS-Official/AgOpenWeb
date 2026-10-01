@@ -187,26 +187,20 @@ public class GeoJsonFieldServiceTests
     }
 
     [Test]
-    public void SaveAndLoad_WithBackgroundImage_RoundTrip()
+    public void Background_RoundTrips_AndSurvivesSavingTheField()
     {
         var field = CreateTestField();
-        field.BackgroundImage = new BackgroundImage
-        {
-            MinEasting = -200,
-            MaxEasting = 200,
-            MinNorthing = -150,
-            MaxNorthing = 150,
-            IsEnabled = true,
-        };
-
         GeoJsonFieldService.Save(field, tracks: null);
-        var (loaded, _) = GeoJsonFieldService.Load(_tempDir);
+        var background = new FieldBackground(FieldBackground.DefaultImageFile, 52.01, 4.99, 52.0, 5.01,
+            new MercatorBounds(555_000, 557_000, 6_800_000, 6_802_000));
 
-        Assert.That(loaded.BackgroundImage, Is.Not.Null);
-        Assert.That(loaded.BackgroundImage!.MinEasting, Is.EqualTo(-200).Within(0.01));
-        Assert.That(loaded.BackgroundImage.MaxEasting, Is.EqualTo(200).Within(0.01));
-        Assert.That(loaded.BackgroundImage.MinNorthing, Is.EqualTo(-150).Within(0.01));
-        Assert.That(loaded.BackgroundImage.MaxNorthing, Is.EqualTo(150).Within(0.01));
+        GeoJsonFieldService.SaveBackground(_tempDir, background);
+        GeoJsonFieldService.Save(field, tracks: null); // a boundary edit, say
+
+        Assert.That(GeoJsonFieldService.LoadBackground(_tempDir), Is.EqualTo(background));
+
+        GeoJsonFieldService.SaveBackground(_tempDir, null);
+        Assert.That(GeoJsonFieldService.LoadBackground(_tempDir), Is.Null);
     }
 
     [Test]
