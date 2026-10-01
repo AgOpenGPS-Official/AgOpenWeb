@@ -10,7 +10,7 @@ using AgOpenWeb.Services.Coverage;
 namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
-/// Save → reopen round trips of a job's coverage files (coverage_detect.bin / coverage_disp.bin).
+/// Save → reopen round trips of a job's coverage (tiles under coverage/).
 /// </summary>
 [TestFixture, NonParallelizable]
 public class CoverageSaveLoadTests
@@ -161,8 +161,7 @@ public class CoverageSaveLoadTests
         PaintStrip(svc, 20, 26, -20, 20);
         svc.SaveToFile(_jobDir);
 
-        Assert.That(Directory.GetFiles(_jobDir).Select(Path.GetFileName),
-            Is.EquivalentTo(new[] { "coverage_detect.bin", "coverage_disp.bin" }));
+        Assert.That(Directory.GetFiles(_jobDir, "*.tmp", SearchOption.AllDirectories), Is.Empty);
 
         var reopened = new CoverageMapService(_store);
         reopened.SetFieldBounds(-100, 100, -100, 100);
@@ -227,17 +226,17 @@ public class CoverageSaveLoadTests
         Assert.That(reopened.DisplayBoundsWorld, Is.EqualTo(svc.DisplayBoundsWorld));
     }
 
-    // Back-date both files so a rewrite is visible in their timestamps.
+    // Back-date every coverage file so a rewrite is visible in its timestamp.
     private DateTime BackdateFiles()
     {
         var old = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        foreach (var f in Directory.GetFiles(_jobDir, "*.bin"))
+        foreach (var f in Directory.GetFiles(_jobDir, "*", SearchOption.AllDirectories))
             File.SetLastWriteTimeUtc(f, old);
         return old;
     }
 
-    private DateTime DetectWriteTime() =>
-        File.GetLastWriteTimeUtc(Path.Combine(_jobDir, "coverage_detect.bin"));
+    private string ManifestPath => Path.Combine(_jobDir, "coverage", "manifest.json");
+    private DateTime ManifestWriteTime() => File.GetLastWriteTimeUtc(ManifestPath);
 
     [Test]
     public void Save_skips_the_write_when_nothing_changed()
@@ -249,11 +248,11 @@ public class CoverageSaveLoadTests
         var old = BackdateFiles();
 
         svc.SaveToFile(_jobDir);
-        Assert.That(DetectWriteTime(), Is.EqualTo(old), "unchanged: not rewritten");
+        Assert.That(ManifestWriteTime(), Is.EqualTo(old), "unchanged: not rewritten");
 
         PaintStrip(svc, 20, 26, -20, 20);
         svc.SaveToFile(_jobDir);
-        Assert.That(DetectWriteTime(), Is.Not.EqualTo(old), "painted: rewritten");
+        Assert.That(ManifestWriteTime(), Is.Not.EqualTo(old), "painted: rewritten");
     }
 
     [Test]
@@ -268,9 +267,9 @@ public class CoverageSaveLoadTests
         var old = BackdateFiles();
         svc.ClearAll();
         svc.SaveToFile(_jobDir);
-        Assert.That(DetectWriteTime(), Is.Not.EqualTo(old), "cleared: rewritten");
+        Assert.That(ManifestWriteTime(), Is.Not.EqualTo(old), "cleared: rewritten");
 
-        // A load (e.g. a one-time Sections.txt import) is saved once
+        // A reopened job is already on disk: nothing to write until something changes
         PaintStrip(svc, -10, -4, -20, 20);
         svc.SaveToFile(_jobDir);
         var reopened = new CoverageMapService(_store);
@@ -278,18 +277,18 @@ public class CoverageSaveLoadTests
         reopened.LoadFromFile(_jobDir);
         old = BackdateFiles();
         reopened.SaveToFile(_jobDir);
-        Assert.That(DetectWriteTime(), Is.Not.EqualTo(old), "first save after a load writes");
+        Assert.That(ManifestWriteTime(), Is.EqualTo(old), "reopened, unchanged: not rewritten");
 
         // Same coverage, different job folder
         var otherJob = Path.Combine(_jobDir, "other");
         Directory.CreateDirectory(otherJob);
         reopened.SaveToFile(otherJob);
-        Assert.That(File.Exists(Path.Combine(otherJob, "coverage_detect.bin")), Is.True, "other job: written");
+        Assert.That(File.Exists(Path.Combine(otherJob, "coverage", "manifest.json")), Is.True, "other job: written");
 
-        // A file removed behind our back is written again
-        File.Delete(Path.Combine(_jobDir, "coverage_disp.bin"));
+        // A manifest removed behind our back is written again
+        File.Delete(ManifestPath);
         reopened.SaveToFile(_jobDir);
-        Assert.That(File.Exists(Path.Combine(_jobDir, "coverage_disp.bin")), Is.True, "missing file: rewritten");
+        Assert.That(File.Exists(ManifestPath), Is.True, "missing manifest: rewritten");
     }
 
     [Test]
