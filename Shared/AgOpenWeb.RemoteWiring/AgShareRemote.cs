@@ -129,10 +129,10 @@ internal static class AgShareRemote
     // The field's AB lines and curves, as AgOpenGPS's uploader sends its whole track list
     // (AgShareUploader.cs). This used to send an empty list, so tracks never reached AgShare
     // (#111). The uploader converts AB and Curve; other kinds are skipped there.
-    private static List<TrackLineInput> LoadTracksForUpload(string dir)
+    private static List<TrackLineInput> LoadTracksForUpload(IFieldService fields, string dir)
     {
         var result = new List<TrackLineInput>();
-        foreach (var t in TrackFilesService.Load(dir))
+        foreach (var t in fields.PeekTracks(dir))
         {
             if (t.Points.Count < 2) continue;
             bool ab = t.Points.Count == 2;
@@ -171,7 +171,7 @@ internal static class AgShareRemote
         var input = new FieldSnapshotInput
         {
             FieldId = existing, FieldName = name, Origin = origin, Boundaries = boundaries,
-            Tracks = LoadTracksForUpload(dir), IsPublic = isPublic, Convergence = 0,
+            Tracks = LoadTracksForUpload(fields, dir), IsPublic = isPublic, Convergence = 0,
         };
         var (resOk, msg, _) = await uploader.UploadFieldAsync(input, client, dir);
         return (resOk, msg);

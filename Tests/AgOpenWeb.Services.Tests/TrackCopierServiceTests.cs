@@ -190,7 +190,8 @@ public class TrackCopierServiceTests
 
             Assert.That(count, Is.EqualTo(1));
 
-            var afterTracks = TrackFilesService.Load(targetDir);
+            var afterTracks = GeoJson.GeoJsonFieldService.LoadTracks(targetDir);
+            Assert.That(File.Exists(Path.Combine(targetDir, "TrackLines.txt")), Is.False, "target imported first");
             Assert.That(afterTracks, Has.Count.EqualTo(2));
             Assert.That(afterTracks[0].Name, Is.EqualTo("ExistingAB"));
             Assert.That(afterTracks[1].Name, Is.EqualTo("FromSource"));

@@ -124,7 +124,7 @@ public class AgShareDownloadTests
             Assert.That(field.Boundary.OuterBoundary.Points[2].Northing, Is.EqualTo(400).Within(0.001));
             Assert.That(field.Boundary.InnerBoundaries, Has.Count.EqualTo(1));
 
-            var tracks = TrackFilesService.Load(dir);
+            var tracks = GeoJson.GeoJsonFieldService.LoadTracks(dir);
             Assert.That(tracks.Select(t => t.Name), Is.EqualTo(new[] { "AB", "C" }));
             Assert.That(tracks[0].Points, Has.Count.EqualTo(2));
             Assert.That(tracks[1].Points, Has.Count.EqualTo(3));
@@ -140,7 +140,8 @@ public class AgShareDownloadTests
         try
         {
             await FieldFileWriter.WriteAllFilesAsync(AgShareFieldParser.Parse(Dto()), dir);
-            Assert.That(File.ReadAllLines(Path.Combine(dir, "Flags.txt"))[0], Is.EqualTo("$Flags"));
+            Assert.That(File.Exists(Path.Combine(dir, "Flags.txt")), Is.False, "flags live in field.geojson");
+            Assert.That(File.Exists(Path.Combine(dir, "TrackLines.txt")), Is.False, "tracks live in field.geojson");
             Assert.That(File.Exists(Path.Combine(dir, "Headland.txt")), Is.False, "the headland lives in field.geojson");
             Assert.That(File.Exists(Path.Combine(dir, "field.geojson")), Is.True);
             Assert.That(File.ReadAllLines(Path.Combine(dir, "Contour.txt"))[0], Is.EqualTo("$Contour"));

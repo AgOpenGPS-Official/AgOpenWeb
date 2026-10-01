@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services;
@@ -61,12 +62,13 @@ public class FieldService : IFieldService
 
     // AgOpenGPS's field-definition files. A folder that has them is imported into field.geojson
     // once and they are deleted: one-way, AgOpenWeb never writes them back. Headland.Txt is
-    // AgOpenGPS's headland polygon (AgOpenWeb keeps its own headland in Headlines.txt).
+    // AgOpenGPS's headland polygon; Headlines.txt (the headland line) is imported with the
+    // tracks and flags below.
     private static readonly string[] AgOpenGpsFieldFiles = { "Field.txt", "Boundary.txt", "Headland.Txt", "Headland.txt" };
 
     /// <summary>
-    /// Load a complete field from field.geojson, first importing any AgOpenGPS field files in
-    /// the folder (and deleting them). Throws <see cref="FileNotFoundException"/> when the
+    /// Load a complete field from field.geojson, first importing any AgOpenGPS files in the
+    /// folder (field, boundary, headland, tracks, flags, headland lines) and deleting them. Throws <see cref="FileNotFoundException"/> when the
     /// folder holds neither.
     /// </summary>
     public Field LoadField(string fieldDirectory)
@@ -76,14 +78,65 @@ public class FieldService : IFieldService
             var imported = ReadAgOpenGpsField(fieldDirectory);
             GeoJsonFieldService.Save(imported, tracks: null);
             foreach (var name in AgOpenGpsFieldFiles)
-            {
-                var path = Path.Combine(fieldDirectory, name);
-                if (File.Exists(path))
-                    File.Delete(path);
-            }
+                DeleteIfPresent(fieldDirectory, name);
         }
-        return ReadGeoJsonField(fieldDirectory);
+        var field = ReadGeoJsonField(fieldDirectory);
+
+        // The field's other AgOpenGPS files, now that field.geojson exists to take them.
+        if (File.Exists(Path.Combine(fieldDirectory, TrackFilesService.FileName)))
+        {
+            GeoJsonFieldService.SaveTracks(fieldDirectory, TrackFilesService.Load(fieldDirectory));
+            DeleteIfPresent(fieldDirectory, TrackFilesService.FileName);
+        }
+        if (File.Exists(Path.Combine(fieldDirectory, TrackFilesService.AbLinesFileName)))
+        {
+            // AgOpenGPS's older AB-line file: added to whatever tracks the field has.
+            var tracks = GeoJsonFieldService.LoadTracks(fieldDirectory);
+            tracks.AddRange(TrackFilesService.LoadAbLines(fieldDirectory));
+            GeoJsonFieldService.SaveTracks(fieldDirectory, tracks);
+            DeleteIfPresent(fieldDirectory, TrackFilesService.AbLinesFileName);
+        }
+        if (File.Exists(Path.Combine(fieldDirectory, FlagFilesService.FileName)))
+        {
+            GeoJsonFieldService.SaveFlags(fieldDirectory, FlagFilesService.Load(fieldDirectory));
+            DeleteIfPresent(fieldDirectory, FlagFilesService.FileName);
+        }
+        if (File.Exists(Path.Combine(fieldDirectory, HeadlandLineSerializer.FileName)))
+        {
+            GeoJsonFieldService.SaveHeadlandLine(fieldDirectory, HeadlandLineSerializer.Load(fieldDirectory));
+            DeleteIfPresent(fieldDirectory, HeadlandLineSerializer.FileName);
+        }
+        return field;
     }
+
+    private static void DeleteIfPresent(string fieldDirectory, string name)
+    {
+        var path = Path.Combine(fieldDirectory, name);
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+
+    // Read-only views of a field's tracks, flags and headland lines in either format, like
+    // PeekField: from its AgOpenGPS file while that hasn't been imported, else field.geojson.
+    // Empty when the field has none (or isn't a field).
+    public List<Models.Track.Track> PeekTracks(string fieldDirectory)
+    {
+        var tracks = File.Exists(Path.Combine(fieldDirectory, TrackFilesService.FileName))
+            ? TrackFilesService.Load(fieldDirectory)
+            : GeoJsonFieldService.Exists(fieldDirectory) ? GeoJsonFieldService.LoadTracks(fieldDirectory) : new();
+        tracks.AddRange(TrackFilesService.LoadAbLines(fieldDirectory));
+        return tracks;
+    }
+
+    public List<Flag> PeekFlags(string fieldDirectory) =>
+        File.Exists(Path.Combine(fieldDirectory, FlagFilesService.FileName))
+            ? FlagFilesService.Load(fieldDirectory)
+            : GeoJsonFieldService.Exists(fieldDirectory) ? GeoJsonFieldService.LoadFlags(fieldDirectory) : new();
+
+    public HeadlandLine PeekHeadlandLine(string fieldDirectory) =>
+        File.Exists(Path.Combine(fieldDirectory, HeadlandLineSerializer.FileName))
+            ? HeadlandLineSerializer.Load(fieldDirectory)
+            : GeoJsonFieldService.Exists(fieldDirectory) ? GeoJsonFieldService.LoadHeadlandLine(fieldDirectory) : new();
 
     /// <summary>
     /// Read a field without changing its folder: field.geojson, or the AgOpenGPS files when

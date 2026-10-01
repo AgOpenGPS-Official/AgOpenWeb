@@ -641,7 +641,7 @@ public partial class MainViewModel
                 // (and saves) the current field first and loads the new one (#107).
                 SaveFieldBoundary(boundary, newFieldPath);
                 if (tracks.Count > 0)
-                    TrackFilesService.Save(newFieldPath, tracks);
+                    GeoJsonFieldService.SaveTracks(newFieldPath, tracks);
                 await OpenCreatedFieldAsync(newFieldPath, newFieldName);
 
                 // The headland save writes to the ACTIVE field, so it runs once the new field is
