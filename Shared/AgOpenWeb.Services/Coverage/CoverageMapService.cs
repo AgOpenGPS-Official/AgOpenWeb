@@ -1217,6 +1217,14 @@ public class CoverageMapService : ICoverageMapService
 
     public void SetFieldBounds(double minE, double maxE, double minN, double maxN)
     {
+        // Under the lock so a coverage save never snapshots half-updated geometry.
+        // Re-entrant from CheckAndExpandBounds, which already holds it.
+        lock (_coverageLock)
+            SetFieldBoundsCore(minE, maxE, minN, maxN);
+    }
+
+    private void SetFieldBoundsCore(double minE, double maxE, double minN, double maxN)
+    {
         // Skip if bounds unchanged
         if (_fieldBoundsSet &&
             Math.Abs(_fieldMinE - minE) < 0.01 &&
@@ -1417,29 +1425,8 @@ public class CoverageMapService : ICoverageMapService
         finally { _inExpansion = false; }
 
         // Copy old detection bits to new array
-        if (oldBits != null && _detectionBits != null)
-        {
-            int offsetE = oldOriginE - _bitmapOriginE;
-            int offsetN = oldOriginN - _bitmapOriginN;
-
-            for (int y = 0; y < oldHeight; y++)
-            {
-                for (int x = 0; x < oldWidth; x++)
-                {
-                    long oldIdx = (long)y * oldWidth + x;
-                    if ((oldBits[oldIdx / 8] & (1 << (int)(oldIdx % 8))) != 0)
-                    {
-                        int newX = x + offsetE;
-                        int newY = y + offsetN;
-                        if (newX >= 0 && newX < _bitmapWidth && newY >= 0 && newY < _bitmapHeight)
-                        {
-                            long newIdx = (long)newY * _bitmapWidth + newX;
-                            _detectionBits[newIdx / 8] |= (byte)(1 << (int)(newIdx % 8));
-                        }
-                    }
-                }
-            }
-        }
+        if (oldBits != null)
+            CopyDetectionBitsIn(oldBits, oldWidth, oldHeight, oldOriginE, oldOriginN);
 
         // Copy old display pixels to new buffer. If the display cell size
         // changed (rare — only when the new bounds cross a policy threshold),
@@ -1488,9 +1475,46 @@ public class CoverageMapService : ICoverageMapService
     }
 
     /// <summary>
+    /// OR a detection grid with its own origin and size (in absolute 0.1 m cells) into
+    /// _detectionBits. Cells outside the current grid are dropped.
+    /// </summary>
+    private void CopyDetectionBitsIn(byte[] srcBits, int srcWidth, int srcHeight, int srcOriginE, int srcOriginN)
+    {
+        if (_detectionBits == null) return;
+        int offsetE = srcOriginE - _bitmapOriginE;
+        int offsetN = srcOriginN - _bitmapOriginN;
+        long srcCells = (long)srcWidth * srcHeight;
+
+        for (long byteIdx = 0; byteIdx < srcBits.LongLength; byteIdx++)
+        {
+            byte bits = srcBits[byteIdx];
+            if (bits == 0) continue; // 8 uncovered cells at once
+            for (int bit = 0; bit < 8; bit++)
+            {
+                if ((bits & (1 << bit)) == 0) continue;
+                long srcIdx = byteIdx * 8 + bit;
+                if (srcIdx >= srcCells) break;
+                int newX = (int)(srcIdx % srcWidth) + offsetE;
+                int newY = (int)(srcIdx / srcWidth) + offsetN;
+                if (newX >= 0 && newX < _bitmapWidth && newY >= 0 && newY < _bitmapHeight)
+                {
+                    long newIdx = (long)newY * _bitmapWidth + newX;
+                    _detectionBits[newIdx / 8] |= (byte)(1 << (int)(newIdx % 8));
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Clear field bounds (when field is closed).
     /// </summary>
     public void ClearFieldBounds()
+    {
+        lock (_coverageLock)
+            ClearFieldBoundsCore();
+    }
+
+    private void ClearFieldBoundsCore()
     {
         _fieldBoundsSet = false;
         _bitmapWidth = 0;
@@ -1512,17 +1536,75 @@ public class CoverageMapService : ICoverageMapService
         _totalWorkedAreaUser = 0;
     }
 
+    // The coverage arrays and their geometry, captured together under _coverageLock.
+    // Expansion always allocates new, larger arrays, so the references stay consistent
+    // with these dimensions while the save encodes outside the lock; cells
+    // painted meanwhile may or may not make it in, and the next save picks them up.
+    private readonly record struct SaveSnapshot(
+        byte[]? DetectionBits, int BitmapWidth, int BitmapHeight,
+        ushort[]? DisplayPixels, int DisplayWidth, int DisplayHeight, double DisplayCellSize,
+        double FieldMinE, double FieldMinN, double TotalWorkedArea);
+
+    // Serialises saves: the autosave can still be running when the field-close save starts,
+    // and both write the same files.
+    private readonly object _saveLock = new();
+
     public void SaveToFile(string fieldDirectory)
     {
-        // Save detection bits (authoritative coverage data at 0.1m resolution)
-        SaveDetectionBits(fieldDirectory);
+        lock (_saveLock)
+        {
+            SaveSnapshot snap;
+            lock (_coverageLock)
+            {
+                if (!_fieldBoundsSet)
+                    return;
+                snap = new SaveSnapshot(
+                    _detectionBits, _bitmapWidth, _bitmapHeight,
+                    _displayPixels, _displayWidth, _displayHeight, _displayCellSize,
+                    _fieldMinE, _fieldMinN, _totalWorkedArea);
+            }
 
-        // Save section display data (colors with palette, resolution-independent)
-        SaveSectionDisplay(fieldDirectory);
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            // Detection bits: authoritative coverage at 0.1 m
+            long detectBytes = SaveDetectionBits(fieldDirectory, snap);
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            // Section display: colours with palette, resolution-independent
+            long dispBytes = SaveSectionDisplay(fieldDirectory, snap);
+            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
+
+            double ms(long a, long b) => (b - a) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Console.WriteLine(
+                $"[Coverage] Saved: detection {snap.BitmapWidth}x{snap.BitmapHeight} -> {detectBytes / 1024}KB in {ms(t0, t1):F0}ms, " +
+                $"display {snap.DisplayWidth}x{snap.DisplayHeight} @ {snap.DisplayCellSize:F2}m -> {dispBytes / 1024}KB in {ms(t1, t2):F0}ms");
+        }
+    }
+
+    /// <summary>
+    /// Write a file through a temp file renamed over the target, so a power cut mid-save
+    /// leaves the previous file rather than a truncated one. Returns the bytes written.
+    /// </summary>
+    private static long WriteFileAtomic(string path, Action<BinaryWriter> write)
+    {
+        var tmp = path + ".tmp";
+        long length;
+        using (var stream = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+                write(writer);
+            stream.Flush(flushToDisk: true);
+            length = stream.Length;
+        }
+        File.Move(tmp, path, overwrite: true);
+        return length;
     }
 
     public void LoadFromFile(string fieldDirectory)
     {
+        // The files carry their own grid. It can be wider than the bounds the field opened
+        // with (the bounds grew while painting), or there may be no bounds yet (no boundary:
+        // they normally come from the first GPS fix). Grow the bounds to hold it first.
+        EnsureBoundsHoldSavedCoverage(fieldDirectory);
+
         // Load detection bits (authoritative coverage data at 0.1m resolution)
         bool hasDetectionBits = LoadDetectionBits(fieldDirectory);
 
@@ -1697,56 +1779,140 @@ public class CoverageMapService : ICoverageMapService
         return count;
     }
 
+    // A corrupt header must not make SetFieldBounds allocate gigabytes. ~4 000 ha of
+    // detection grid (500 MB of bits) is far beyond any real job.
+    private const double MAX_LOAD_GRID_CELLS = 4e9;
+
+    private void EnsureBoundsHoldSavedCoverage(string fieldDirectory)
+    {
+        // The detection grid is the exact field extent. The display grid is rounded up to whole
+        // display cells, so it only stands in when there is no detection file; including it
+        // would grow the bounds by up to a display cell on every reopen.
+        var saved = ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_detect.bin"), "COVD")
+                    ?? ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_disp.bin"), "COVS");
+        if (saved is not { } sv)
+            return;
+
+        double minE = sv.MinE, maxE = sv.MaxE, minN = sv.MinN, maxN = sv.MaxN;
+        void Include(double e0, double e1, double n0, double n1)
+        {
+            minE = Math.Min(minE, e0); maxE = Math.Max(maxE, e1);
+            minN = Math.Min(minN, n0); maxN = Math.Max(maxN, n1);
+        }
+
+        lock (_coverageLock)
+        {
+            if (_fieldBoundsSet)
+            {
+                const double tol = 1e-6;
+                if (minE >= _fieldMinE - tol && maxE <= _fieldMaxE + tol &&
+                    minN >= _fieldMinN - tol && maxN <= _fieldMaxN + tol)
+                    return; // already holds it — the usual case
+                Include(_fieldMinE, _fieldMaxE, _fieldMinN, _fieldMaxN);
+            }
+
+            double cells = Math.Ceiling((maxE - minE) / BITMAP_CELL_SIZE) * Math.Ceiling((maxN - minN) / BITMAP_CELL_SIZE);
+            if (cells > MAX_LOAD_GRID_CELLS)
+            {
+                Console.WriteLine($"[Coverage] Saved coverage extent too large to load ({cells:E1} cells); keeping current bounds");
+                return;
+            }
+
+            Console.WriteLine($"[Coverage] Growing bounds to hold saved coverage: E[{minE:F1}, {maxE:F1}] N[{minN:F1}, {maxN:F1}]");
+            SetFieldBoundsCore(minE, maxE, minN, maxN);
+        }
+    }
+
+    /// <summary>
+    /// World extent of a saved coverage file, from its header. Null when the file is
+    /// missing, not that format, or the header is implausible.
+    /// </summary>
+    private static (double MinE, double MaxE, double MinN, double MaxN)? ReadSavedExtent(string path, string magic)
+    {
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
+            using var reader = new BinaryReader(stream);
+            if (new string(reader.ReadChars(4)) != magic)
+                return null;
+            reader.ReadByte(); // version
+            if (magic == "COVS")
+            {
+                byte paletteSize = reader.ReadByte();
+                stream.Seek(paletteSize * 2, SeekOrigin.Current);
+            }
+            // Stored as float: 0.1f is 0.10000000149, enough to push width x cell past the edge.
+            double cell = Math.Round(reader.ReadSingle(), 6);
+            double originE = reader.ReadDouble();
+            double originN = reader.ReadDouble();
+            uint width = reader.ReadUInt32();
+            uint height = reader.ReadUInt32();
+
+            if (!(cell > 0) || !double.IsFinite(originE) || !double.IsFinite(originN) || width == 0 || height == 0)
+                return null;
+            // Pull the far edges in a hair so SetFieldBounds' Ceiling gives back exactly
+            // width x height; otherwise rounding adds a cell, and a no-boundary job would
+            // grow by one cell every time it is reopened.
+            const double edge = 1e-6;
+            double maxE = originE + width * cell - edge, maxN = originN + height * cell - edge;
+            if ((double)width * height > MAX_LOAD_GRID_CELLS)
+                return null;
+            return (originE, maxE, originN, maxN);
+        }
+        catch (Exception ex) when (ex is IOException or EndOfStreamException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Save detection bits to coverage_detect.bin (COVD format).
     /// This is the authoritative source for coverage detection at 0.1m resolution.
     /// Format: Header + RLE-compressed bit array
     /// </summary>
-    private void SaveDetectionBits(string fieldDirectory)
+    private static long SaveDetectionBits(string fieldDirectory, SaveSnapshot snap)
     {
-        if (!_fieldBoundsSet || _detectionBits == null)
-            return;
+        var bits = snap.DetectionBits;
+        if (bits == null)
+            return 0;
 
         var filename = Path.Combine(fieldDirectory, "coverage_detect.bin");
-
-        using var stream = new FileStream(filename, FileMode.Create);
-        using var writer = new BinaryWriter(stream);
-
-        // Write header - COVD format
-        writer.Write("COVD".ToCharArray()); // Magic (4 bytes)
-        writer.Write((byte)1);               // Version
-        writer.Write((float)BITMAP_CELL_SIZE); // Resolution (always 0.1m)
-        writer.Write(_fieldMinE);            // Origin E
-        writer.Write(_fieldMinN);            // Origin N
-        writer.Write((uint)_bitmapWidth);    // Width in cells
-        writer.Write((uint)_bitmapHeight);   // Height in cells
-        writer.Write(_totalWorkedArea);      // Total area for quick restore
-
-        // RLE compress the bit array
-        // Format: [runLength:ushort][value:byte] pairs
-        // value is 0x00 (8 zero bits) or 0xFF (8 one bits) or actual mixed byte
-        long compressedSize = 0;
-        int i = 0;
-        while (i < _detectionBits.Length)
+        return WriteFileAtomic(filename, writer =>
         {
-            byte value = _detectionBits[i];
-            int runLength = 1;
+            // Write header - COVD format
+            writer.Write("COVD".ToCharArray()); // Magic (4 bytes)
+            writer.Write((byte)1);               // Version
+            writer.Write((float)BITMAP_CELL_SIZE); // Resolution (always 0.1m)
+            writer.Write(snap.FieldMinE);        // Origin E
+            writer.Write(snap.FieldMinN);        // Origin N
+            writer.Write((uint)snap.BitmapWidth);  // Width in cells
+            writer.Write((uint)snap.BitmapHeight); // Height in cells
+            writer.Write(snap.TotalWorkedArea);  // Total area for quick restore
 
-            // Only RLE consecutive identical bytes
-            while (i + runLength < _detectionBits.Length &&
-                   _detectionBits[i + runLength] == value &&
-                   runLength < 65535)
+            // RLE compress the bit array
+            // Format: [runLength:ushort][value:byte] pairs
+            // value is 0x00 (8 zero bits) or 0xFF (8 one bits) or actual mixed byte
+            int i = 0;
+            while (i < bits.Length)
             {
-                runLength++;
+                byte value = bits[i];
+                int runLength = 1;
+
+                // Only RLE consecutive identical bytes
+                while (i + runLength < bits.Length &&
+                       bits[i + runLength] == value &&
+                       runLength < 65535)
+                {
+                    runLength++;
+                }
+
+                writer.Write((ushort)runLength);
+                writer.Write(value);
+                i += runLength;
             }
-
-            writer.Write((ushort)runLength);
-            writer.Write(value);
-            compressedSize += 3;
-            i += runLength;
-        }
-
-        Console.WriteLine($"[Coverage] Saved detection bits: {_detectionBits.Length / 1024}KB -> {compressedSize / 1024}KB compressed to {filename}");
+        });
     }
 
     /// <summary>
@@ -1789,36 +1955,43 @@ public class CoverageMapService : ICoverageMapService
                 return false;
             }
 
-            // Calculate expected bit array size
-            long totalCells = (long)width * height;
-            int expectedBytes = (int)((totalCells + 7) / 8);
-
-            // Allocate detection bits if needed
-            if (_detectionBits == null || _detectionBits.Length != expectedBytes)
+            if (!_fieldBoundsSet || _detectionBits == null)
             {
-                _detectionBits = new byte[expectedBytes];
+                Console.WriteLine("[Coverage] LoadDetectionBits: no field bounds");
+                return false;
             }
+
+            // The file's grid: the same absolute 0.1 m cells, with its own origin and size
+            // (LoadFromFile has grown the bounds to hold it). Decode straight into the live
+            // array when the grids match, else into a scratch array copied in at its offset.
+            int savedOriginE = (int)Math.Floor(originE / BITMAP_CELL_SIZE);
+            int savedOriginN = (int)Math.Floor(originN / BITMAP_CELL_SIZE);
+            bool sameGrid = savedOriginE == _bitmapOriginE && savedOriginN == _bitmapOriginN &&
+                            width == _bitmapWidth && height == _bitmapHeight;
+            long savedBytes = ((long)width * height + 7) / 8;
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
+            var decoded = sameGrid ? _detectionBits : new byte[savedBytes];
 
             // RLE decompress
-            int destIndex = 0;
+            long destIndex = 0;
             long setBits = 0;
-            while (destIndex < _detectionBits.Length && stream.Position < stream.Length)
+            while (destIndex < decoded.LongLength && stream.Position < stream.Length)
             {
                 ushort runLength = reader.ReadUInt16();
                 byte value = reader.ReadByte();
 
-                for (int j = 0; j < runLength && destIndex < _detectionBits.Length; j++, destIndex++)
+                for (int j = 0; j < runLength && destIndex < decoded.LongLength; j++, destIndex++)
                 {
-                    _detectionBits[destIndex] = value;
+                    decoded[destIndex] = value;
                     // Count set bits for statistics
                     setBits += CountBits(value);
                 }
             }
 
+            if (!sameGrid)
+                CopyDetectionBitsIn(decoded, (int)width, (int)height, savedOriginE, savedOriginN);
+
             // Update service state
-            _bitmapWidth = (int)width;
-            _bitmapHeight = (int)height;
             // A job migrated from Sections.txt before the legacy loader totalled its area was
             // saved with area 0: recover it from the covered cells.
             if (area <= 0 && setBits > 0) area = setBits * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
@@ -1865,23 +2038,18 @@ public class CoverageMapService : ICoverageMapService
     /// Format: Header + Palette + RLE-compressed section indices
     /// Uses detection bits to filter out background image pixels.
     /// </summary>
-    private void SaveSectionDisplay(string fieldDirectory)
+    private long SaveSectionDisplay(string fieldDirectory, SaveSnapshot snap)
     {
-        if (!_fieldBoundsSet || _displayPixels == null || _displayPixels.Length == 0)
-            return;
+        var pixels = snap.DisplayPixels;
+        if (pixels == null || pixels.Length == 0)
+            return 0;
 
-        var pixels = _displayPixels;
-        int dispWidth = _displayWidth;
-        int dispHeight = _displayHeight;
-        double dispCellSize = _displayCellSize;
-
-        // Verify pixel count matches expected display dimensions
-        long expectedPixels = (long)dispWidth * dispHeight;
-        if (pixels.Length != expectedPixels)
-        {
-            Console.WriteLine($"[Coverage] SaveSectionDisplay: Pixel count mismatch: {pixels.Length} vs expected {expectedPixels}");
-            return;
-        }
+        // Dimensions come from the same snapshot as the buffer, so they always agree.
+        int dispWidth = snap.DisplayWidth;
+        int dispHeight = snap.DisplayHeight;
+        double dispCellSize = snap.DisplayCellSize;
+        var detectionBits = snap.DetectionBits;
+        int bitmapWidth = snap.BitmapWidth;
 
         var filename = Path.Combine(fieldDirectory, "coverage_disp.bin");
 
@@ -1920,11 +2088,11 @@ public class CoverageMapService : ICoverageMapService
         // Scan COVERED pixels only - map detection coordinates to display coordinates
         // This is O(covered cells) not O(total pixels)
         var indices = new byte[pixels.Length];
-        if (_detectionBits != null)
+        if (detectionBits != null)
         {
-            for (int byteIdx = 0; byteIdx < _detectionBits.Length; byteIdx++)
+            for (int byteIdx = 0; byteIdx < detectionBits.Length; byteIdx++)
             {
-                byte bits = _detectionBits[byteIdx];
+                byte bits = detectionBits[byteIdx];
                 if (bits == 0) continue; // Skip 8 uncovered cells at once
 
                 // Calculate detection cell coordinates for this byte
@@ -1934,8 +2102,8 @@ public class CoverageMapService : ICoverageMapService
                     if ((bits & (1 << bit)) == 0) continue;
 
                     long bitIdx = baseBitIdx + bit;
-                    int detY = (int)(bitIdx / _bitmapWidth);
-                    int detX = (int)(bitIdx % _bitmapWidth);
+                    int detY = (int)(bitIdx / bitmapWidth);
+                    int detX = (int)(bitIdx % bitmapWidth);
 
                     // Map detection cell to display pixel
                     int dispX = (int)(detX * scaleRatio);
@@ -1986,45 +2154,41 @@ public class CoverageMapService : ICoverageMapService
             }
         }
 
-        using var stream = new FileStream(filename, FileMode.Create);
-        using var writer = new BinaryWriter(stream);
-
-        // Write header - COVS format
-        writer.Write("COVS".ToCharArray());  // Magic (4 bytes)
-        writer.Write((byte)1);                // Version
-        writer.Write((byte)palette.Count);    // Palette size (1-255)
-
-        // Write palette (RGB565 colors)
-        foreach (var color in palette)
-            writer.Write(color);
-
-        // Write bitmap info - use ACTUAL display resolution and dimensions
-        writer.Write((float)dispCellSize);    // Resolution when saved
-        writer.Write(_fieldMinE);              // Origin E
-        writer.Write(_fieldMinN);              // Origin N
-        writer.Write((uint)dispWidth);         // Width at display resolution
-        writer.Write((uint)dispHeight);        // Height at display resolution
-
-        // RLE compress section indices
-        long compressedSize = 0;
-        int idx2 = 0;
-        while (idx2 < indices.Length)
+        return WriteFileAtomic(filename, writer =>
         {
-            byte value = indices[idx2];
-            int runLength = 1;
-            while (idx2 + runLength < indices.Length &&
-                   indices[idx2 + runLength] == value &&
-                   runLength < 65535)
-            {
-                runLength++;
-            }
-            writer.Write((ushort)runLength);
-            writer.Write(value);
-            compressedSize += 3;
-            idx2 += runLength;
-        }
+            // Write header - COVS format
+            writer.Write("COVS".ToCharArray());  // Magic (4 bytes)
+            writer.Write((byte)1);                // Version
+            writer.Write((byte)palette.Count);    // Palette size (1-255)
 
-        Console.WriteLine($"[Coverage] Saved section display: {palette.Count} colors, {dispWidth}x{dispHeight} @ {dispCellSize}m -> {compressedSize / 1024}KB to {filename}");
+            // Write palette (RGB565 colors)
+            foreach (var color in palette)
+                writer.Write(color);
+
+            // Write bitmap info - use ACTUAL display resolution and dimensions
+            writer.Write((float)dispCellSize);    // Resolution when saved
+            writer.Write(snap.FieldMinE);         // Origin E
+            writer.Write(snap.FieldMinN);         // Origin N
+            writer.Write((uint)dispWidth);        // Width at display resolution
+            writer.Write((uint)dispHeight);       // Height at display resolution
+
+            // RLE compress section indices
+            int idx2 = 0;
+            while (idx2 < indices.Length)
+            {
+                byte value = indices[idx2];
+                int runLength = 1;
+                while (idx2 + runLength < indices.Length &&
+                       indices[idx2 + runLength] == value &&
+                       runLength < 65535)
+                {
+                    runLength++;
+                }
+                writer.Write((ushort)runLength);
+                writer.Write(value);
+                idx2 += runLength;
+            }
+        });
     }
 
     /// <summary>
@@ -2076,13 +2240,15 @@ public class CoverageMapService : ICoverageMapService
             uint savedWidth = reader.ReadUInt32();
             uint savedHeight = reader.ReadUInt32();
 
-            // Check if resolution scaling is needed (compare to actual display resolution, not detection)
+            // Resample unless the saved grid is the current one. The saved grid can differ in
+            // cell size (display quality) and in origin and size (bounds that grew while painting).
+            double targetMinE = _fieldMinE, targetMinN = _fieldMinN;
             bool needsScaling = Math.Abs(savedResolution - targetCellSize) > 0.001 ||
-                                savedWidth != targetWidth || savedHeight != targetHeight;
-            double scaleRatio = savedResolution / targetCellSize;
+                                savedWidth != targetWidth || savedHeight != targetHeight ||
+                                Math.Abs(originE - targetMinE) > 1e-6 || Math.Abs(originN - targetMinN) > 1e-6;
 
             if (needsScaling)
-                Console.WriteLine($"[Coverage] Section display v{version}: {savedWidth}x{savedHeight} @ {savedResolution}m -> scaling to {targetWidth}x{targetHeight} @ {targetCellSize}m (ratio {scaleRatio:F2})");
+                Console.WriteLine($"[Coverage] Section display v{version}: {savedWidth}x{savedHeight} @ {savedResolution}m origin ({originE:F1}, {originN:F1}) -> resampling to {targetWidth}x{targetHeight} @ {targetCellSize}m origin ({targetMinE:F1}, {targetMinN:F1})");
             else
                 Console.WriteLine($"[Coverage] Section display v{version}: {savedWidth}x{savedHeight} @ {savedResolution}m, {paletteSize} colors");
 
@@ -2134,19 +2300,19 @@ public class CoverageMapService : ICoverageMapService
             }
             else
             {
-                // Scale using nearest-neighbor interpolation
-                // For each pixel in target (display bitmap), find corresponding pixel in source (saved)
+                // Nearest-neighbour through world coordinates: for each target pixel,
+                // take the saved pixel under its centre.
                 for (int y = 0; y < targetHeight; y++)
                 {
-                    // Map target Y to source Y
-                    int srcY = (int)(y * scaleRatio);
-                    if (srcY >= savedHeight) srcY = (int)savedHeight - 1;
+                    double worldN = targetMinN + (y + 0.5) * targetCellSize;
+                    long srcY = (long)Math.Floor((worldN - originN) / savedResolution);
+                    if (srcY < 0 || srcY >= savedHeight) continue;
 
                     for (int x = 0; x < targetWidth; x++)
                     {
-                        // Map target X to source X
-                        int srcX = (int)(x * scaleRatio);
-                        if (srcX >= savedWidth) srcX = (int)savedWidth - 1;
+                        double worldE = targetMinE + (x + 0.5) * targetCellSize;
+                        long srcX = (long)Math.Floor((worldE - originE) / savedResolution);
+                        if (srcX < 0 || srcX >= savedWidth) continue;
 
                         long srcIdx = (long)srcY * savedWidth + srcX;
                         long dstIdx = (long)y * targetWidth + x;
