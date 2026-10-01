@@ -898,7 +898,7 @@ public partial class MainViewModel
 
     /// <summary>
     /// Apply a host-assembled aerial PNG as the field background (remote/web Draw-on-map).
-    /// Reuses the native SaveBackgroundImage path (copies to BackPic.png + geo-ref + reload).
+    /// Reuses SaveBackgroundImage (copies the image into the field, places it in field.geojson, reloads).
     /// </summary>
     public void ApplyCapturedBackground(string pngPath, double nwLat, double nwLon, double seLat, double seLon,
         double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)

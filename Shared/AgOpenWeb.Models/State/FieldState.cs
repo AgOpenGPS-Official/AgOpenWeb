@@ -185,7 +185,7 @@ public class FieldState : ObservableObject
         set => SetProperty(ref _localPlane, value);
     }
 
-    // Background imagery (BackPic.png) placement in field-local meters, mirrored
+    // Background imagery (the field's background image) placement in field-local meters, mirrored
     // from the VM's LoadBackgroundImage (which also pushes it to the map control).
     // View-independent consumers (remote/web map) read this; null when none.
     private FieldImagery? _imagery;

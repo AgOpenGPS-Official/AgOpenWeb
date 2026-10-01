@@ -170,4 +170,77 @@ public class FieldGeoJsonPartsTests
         Assert.Throws<FileNotFoundException>(() => GeoJsonFieldService.SaveTracks(_dir, new[] { Ab("A") }));
         Assert.That(new FieldService().PeekTracks(_dir), Is.Empty);
     }
+
+    [Test]
+    public void AgOpenGPS_BackPic_becomes_the_background_part()
+    {
+        GeoJsonFieldService.Save(NewField(), tracks: null);
+        File.WriteAllBytes(Path.Combine(_dir, "BackPic.png"), new byte[] { 1, 2, 3 });
+        // AgOpenGPS: max E, min E, max N, min N in field metres, written "N3" (thousands separators).
+        File.WriteAllLines(Path.Combine(_dir, "BackPic.txt"), new[] { "$BackPic", "True", "1,200.000", "-300.000", "800.000", "-50.000" });
+
+        new FieldService().LoadField(_dir);
+
+        var bg = GeoJsonFieldService.LoadBackground(_dir)!;
+        var plane = new LocalPlane(new Wgs84(52.0, 5.0), new SharedFieldProperties());
+        var nw = plane.ConvertGeoCoordToWgs84(new GeoCoord(800, -300));
+        var se = plane.ConvertGeoCoordToWgs84(new GeoCoord(-50, 1200));
+        Assert.Multiple(() =>
+        {
+            Assert.That(bg.ImageFile, Is.EqualTo(FieldBackground.DefaultImageFile));
+            Assert.That(bg.NwLatitude, Is.EqualTo(nw.Latitude).Within(1e-9));
+            Assert.That(bg.NwLongitude, Is.EqualTo(nw.Longitude).Within(1e-9));
+            Assert.That(bg.SeLatitude, Is.EqualTo(se.Latitude).Within(1e-9));
+            Assert.That(bg.SeLongitude, Is.EqualTo(se.Longitude).Within(1e-9));
+            Assert.That(bg.Mercator, Is.Null);
+            Assert.That(File.ReadAllBytes(Path.Combine(_dir, FieldBackground.DefaultImageFile)), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(File.Exists(Path.Combine(_dir, "BackPic.png")), Is.False);
+            Assert.That(File.Exists(Path.Combine(_dir, "BackPic.txt")), Is.False);
+        });
+    }
+
+    [Test]
+    public void A_BackPic_in_another_layout_is_dropped()
+    {
+        // Not AgOpenGPS's six lines (e.g. a ten-line WGS84 + Mercator variant).
+        GeoJsonFieldService.Save(NewField(), tracks: null);
+        File.WriteAllBytes(Path.Combine(_dir, "BackPic.png"), new byte[] { 1 });
+        File.WriteAllLines(Path.Combine(_dir, "BackPic.txt"),
+            new[] { "$BackPic", "true", "52.01", "4.99", "52.0", "5.01", "1", "2", "3", "4" });
+
+        new FieldService().LoadField(_dir);
+
+        Assert.That(GeoJsonFieldService.LoadBackground(_dir), Is.Null);
+        Assert.That(Directory.GetFiles(_dir).Select(Path.GetFileName), Is.EquivalentTo(new[] { "field.geojson" }));
+    }
+
+    [Test]
+    public void The_old_tram_line_file_is_removed()
+    {
+        GeoJsonFieldService.Save(NewField(), tracks: null);
+        File.WriteAllText(Path.Combine(_dir, "TramLines.txt"), "$OuterTrack,0\n");
+
+        new FieldService().LoadField(_dir);
+
+        Assert.That(File.Exists(Path.Combine(_dir, "TramLines.txt")), Is.False);
+    }
+
+    [Test]
+    public void From_Existing_copies_the_background()
+    {
+        var fields = new FieldService();
+        fields.SaveField(NewField());
+        File.WriteAllBytes(Path.Combine(_dir, FieldBackground.DefaultImageFile), new byte[] { 9 });
+        var background = new FieldBackground(FieldBackground.DefaultImageFile, 52.01, 4.99, 52.0, 5.01, null);
+        GeoJsonFieldService.SaveBackground(_dir, background);
+
+        var copy = _dir + "_copy";
+        try
+        {
+            FieldCopyService.CreateFromExisting(fields, _dir, copy, "Copy", false, false, false, false);
+            Assert.That(GeoJsonFieldService.LoadBackground(copy), Is.EqualTo(background));
+            Assert.That(File.ReadAllBytes(Path.Combine(copy, FieldBackground.DefaultImageFile)), Is.EqualTo(new byte[] { 9 }));
+        }
+        finally { if (Directory.Exists(copy)) Directory.Delete(copy, true); }
+    }
 }

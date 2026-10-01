@@ -12,7 +12,8 @@ is no compatibility code for files written by older AgOpenWeb builds.
 |---|---|---|---|
 | 1 | `Field.txt`, `Boundary.txt`, `Headland.Txt` | `field.geojson` (origin, convergence, boundaries, headland polygon) | done (#205) |
 | 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (this PR) |
-| 3 | `Contour.txt`, `RecPath*.txt`, `TramLines.txt`, `Elevation.txt`, `BackPic.txt`/`.png` | JSON per kind; background image bounds in `field.geojson` | next |
+| 3a | `BackPic.txt` + `BackPic.png` (AgOpenGPS); `TramLines.txt` (AgOpenWeb's, write-only) | `field.geojson` `background-image` part + `background.png`; tram lines aren't saved (generated on demand) | done (this PR) |
+| 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | to be decided per kind (append-heavy, so kept out of `field.geojson`) | next |
 | 4 | `Sections.txt` | coverage tiles (already imported) | delete after the job's first tiled save, as the `.bin` files are |
 
 Phase 1, as built:
@@ -39,6 +40,18 @@ Phase 2, as built:
 - **Writers.** The view model saves tracks, flags and the headland line to `field.geojson`, as
   do the AgShare download, From Existing, the track copier and ISOXML import. The track copier
   imports its target first. The AgOpenGPS writers are `internal` (test fixtures only).
+
+Phase 3a, as built:
+- **Background image:** stored as its own `field.geojson` part (role `background-image`), not
+  rewritten by field saves. The polygon holds the image's WGS84 corners, so GIS tools place it.
+  Properties carry the image file (`background.png`) and, for imagery captured from a
+  Web-Mercator tile service, its Mercator bounds.
+- **`BackPic` import:** AgOpenGPS's `BackPic.txt` (6 lines: max E, min E, max N, min N in field
+  metres, `N3`-formatted) is converted to corners with the field's `LocalPlane`, and
+  `BackPic.png` is renamed. AgOpenWeb's own former 10-line variant isn't imported (no installed
+  base); it and its image are deleted.
+- **Tram lines:** no longer saved. `TramLines.txt` was written at close but never read, since
+  tram lines are generated on demand. Existing copies are deleted on open.
 
 Other parts of the original plan:
 - **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,

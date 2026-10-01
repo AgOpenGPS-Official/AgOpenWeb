@@ -106,6 +106,11 @@ public static class FieldPropertyKeys
     public const string MoveDistance = "moveDistance";
     public const string Mode = "mode";
     public const string APointIndex = "aPointIndex";
+    public const string Image = "image";
+    public const string MercatorMinX = "mercatorMinX";
+    public const string MercatorMaxX = "mercatorMaxX";
+    public const string MercatorMinY = "mercatorMinY";
+    public const string MercatorMaxY = "mercatorMaxY";
 }
 
 /// <summary>

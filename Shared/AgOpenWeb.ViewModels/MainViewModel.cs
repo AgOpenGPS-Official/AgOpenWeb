@@ -1853,11 +1853,10 @@ public partial class MainViewModel : ObservableObject
             StartCoverageAutosave();
 
             // Tram lines are computed on demand (when the user presses Build/Toggle
-            // tram), not eagerly on field open: they are rarely used and parsing a
-            // large saved TramLines.txt was costing seconds on the open critical path.
-            // The tram buttons regenerate via UpdateTramLines from the current track/
-            // systems, so the on-disk file is only a persistence cache. Start clean so
-            // a prior field's lines don't linger. See
+            // tram), not eagerly on field open: they are rarely used, and parsing a
+            // large saved file was costing seconds on the open critical path, so they
+            // aren't saved at all. The tram buttons regenerate via UpdateTramLines from
+            // the current track/systems. Start clean so a prior field's lines don't linger. See
             // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
             _tramLineService.Clear();
             _mapService.SetTramLines(
@@ -1968,13 +1967,6 @@ public partial class MainViewModel : ObservableObject
             else
             {
                 _logger.LogDebug("[Coverage] No active job; skipping coverage save (field-only open)");
-            }
-
-            // Save tram lines
-            if (_tramLineService.HasTramLines)
-            {
-                _tramLineService.SaveToFile(ActiveField.DirectoryPath);
-                _logger.LogDebug($"[Tram] Saved tram lines to {ActiveField.DirectoryPath}");
             }
 
             // Save tram systems
@@ -4406,15 +4398,11 @@ public partial class MainViewModel : ObservableObject
     private void SaveBackgroundImage(string sourcePath, string fieldPath, double nwLat, double nwLon, double seLat, double seLon,
         double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)
     {
-        // Copy image to field directory
-        var destPath = Path.Combine(fieldPath, "BackPic.png");
-        File.Copy(sourcePath, destPath, overwrite: true);
-
-        // Save geo-reference file (WGS84 format + Mercator bounds)
-        var inv = System.Globalization.CultureInfo.InvariantCulture;
-        var geoContent = $"$BackPic\ntrue\n{nwLat.ToString(inv)}\n{nwLon.ToString(inv)}\n{seLat.ToString(inv)}\n{seLon.ToString(inv)}\n{mercMinX.ToString(inv)}\n{mercMaxX.ToString(inv)}\n{mercMinY.ToString(inv)}\n{mercMaxY.ToString(inv)}";
-        var geoPath = Path.Combine(fieldPath, "BackPic.txt");
-        File.WriteAllText(geoPath, geoContent);
+        // Copy the image into the field folder; its placement goes in field.geojson.
+        File.Copy(sourcePath, Path.Combine(fieldPath, FieldBackground.DefaultImageFile), overwrite: true);
+        Services.GeoJson.GeoJsonFieldService.SaveBackground(fieldPath, new FieldBackground(
+            FieldBackground.DefaultImageFile, nwLat, nwLon, seLat, seLon,
+            new MercatorBounds(mercMinX, mercMaxX, mercMinY, mercMaxY)));
 
         // Load through single method (applies Mapsui offset correction)
         LoadBackgroundImage(fieldPath, null);
@@ -4426,39 +4414,17 @@ public partial class MainViewModel : ObservableObject
         State.Field.Imagery = null;
         try
         {
-            var backPicPath = Path.Combine(fieldPath, "BackPic.png");
-            var backPicGeoPath = Path.Combine(fieldPath, "BackPic.txt");
-
-            if (!File.Exists(backPicPath) || !File.Exists(backPicGeoPath))
+            // Placement from field.geojson (opening the field imported an AgOpenGPS BackPic).
+            if (Services.GeoJson.GeoJsonFieldService.LoadBackground(fieldPath) is not { } background)
                 return;
-
-            // Read the geo-reference file
-            // Format: $BackPic, true, nwLat, nwLon, seLat, seLon[, mercMinX, mercMaxX, mercMinY, mercMaxY]
-            var lines = File.ReadAllLines(backPicGeoPath);
-            if (lines.Length < 6 || lines[0] != "$BackPic")
+            var backPicPath = Path.Combine(fieldPath, background.ImageFile);
+            if (!File.Exists(backPicPath))
                 return;
-
-            // Check if enabled
-            if (!bool.TryParse(lines[1], out bool enabled) || !enabled)
-                return;
-
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            var style = System.Globalization.NumberStyles.Float;
-
-            // Parse WGS84 bounds
-            if (!double.TryParse(lines[2], style, inv, out double nwLat) ||
-                !double.TryParse(lines[3], style, inv, out double nwLon) ||
-                !double.TryParse(lines[4], style, inv, out double seLat) ||
-                !double.TryParse(lines[5], style, inv, out double seLon))
-                return;
-
-            // Parse Mercator bounds (optional for backwards compatibility)
-            double mercMinX = 0, mercMaxX = 0, mercMinY = 0, mercMaxY = 0;
-            bool hasMercator = lines.Length >= 10 &&
-                double.TryParse(lines[6], style, inv, out mercMinX) &&
-                double.TryParse(lines[7], style, inv, out mercMaxX) &&
-                double.TryParse(lines[8], style, inv, out mercMinY) &&
-                double.TryParse(lines[9], style, inv, out mercMaxY);
+            double nwLat = background.NwLatitude, nwLon = background.NwLongitude;
+            double seLat = background.SeLatitude, seLon = background.SeLongitude;
+            bool hasMercator = background.Mercator is not null;
+            var (mercMinX, mercMaxX, mercMinY, mercMaxY) = background.Mercator is { } m
+                ? (m.MinX, m.MaxX, m.MinY, m.MaxY) : (0.0, 0.0, 0.0, 0.0);
 
             // Use field origin for LocalPlane (same origin used for boundary coordinates)
             // This ensures the background image aligns with the boundary
@@ -4620,7 +4586,7 @@ public partial class MainViewModel : ObservableObject
             SetCurrentBoundary(boundary);
 
             // If that was the last boundary, drop the field-background image
-            // too — BackPic is georeferenced against the boundary, so leaving
+            // too — it's georeferenced against the boundary, so leaving
             // it on disk would float in space the next time the field opens.
             bool hasOuter = boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid;
             bool hasInner = boundary.InnerBoundaries.Any(b => b.IsValid);
@@ -4640,10 +4606,12 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var backPicPath = Path.Combine(fieldPath, "BackPic.png");
-            var backPicGeoPath = Path.Combine(fieldPath, "BackPic.txt");
-            if (File.Exists(backPicPath)) File.Delete(backPicPath);
-            if (File.Exists(backPicGeoPath)) File.Delete(backPicGeoPath);
+            if (Services.GeoJson.GeoJsonFieldService.LoadBackground(fieldPath) is { } background)
+            {
+                var imagePath = Path.Combine(fieldPath, background.ImageFile);
+                if (File.Exists(imagePath)) File.Delete(imagePath);
+                Services.GeoJson.GeoJsonFieldService.SaveBackground(fieldPath, null);
+            }
             _mapService.ClearBackground();
             State.Field.Imagery = null;
         }
