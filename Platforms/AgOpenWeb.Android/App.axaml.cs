@@ -15,9 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Android;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
@@ -103,9 +105,30 @@ public partial class App : Avalonia.Application
         }
     }
 
+    /// <summary>
+    /// A <see cref="NativeWebView"/> that is a leaf in Avalonia's automation tree. Avalonia 12's
+    /// Android accessibility bridge (AvaloniaAccessHelper) walks the peer tree whenever ANY
+    /// accessibility service reads window content, and the WebView's inner NativeControlHost
+    /// reports an InteropAutomationPeer child whose every member throws NotImplementedException
+    /// (it's meant to be special-cased per platform; Android's backend doesn't). That crashed the
+    /// app on launch on Lenovo tablets, which ship the "Lenovo Pen" accessibility service enabled
+    /// by default — the process died, the sticky BackendService restarted, and :5174 kept serving
+    /// Chrome. With no Avalonia children the walk never reaches that peer. Nothing is lost: the
+    /// dropped peer could only throw, so the bridge never exposed the page's content anyway.
+    /// </summary>
+    private sealed class LauncherWebView : NativeWebView
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() => new LeafPeer(this);
+
+        private sealed class LeafPeer(Control owner) : ControlAutomationPeer(owner)
+        {
+            protected override IReadOnlyList<AutomationPeer>? GetChildrenCore() => null;
+        }
+    }
+
     private static Control BuildWebViewLauncherView()
     {
-        var web = new Avalonia.Controls.NativeWebView
+        var web = new LauncherWebView
         {
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
