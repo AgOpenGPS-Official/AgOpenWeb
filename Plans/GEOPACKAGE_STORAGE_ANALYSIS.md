@@ -3,10 +3,10 @@
 **Status:** Decided — **GeoPackage rejected.** Options B, C and D below were all
 declined: marginal value against their implementation cost. §8.1 (fix coverage
 writes, no new dependency) was accepted and is planned in
-[COVERAGE_TILED_PERSISTENCE_PLAN.md](COVERAGE_TILED_PERSISTENCE_PLAN.md).
+[COVERAGE_TILED_PERSISTENCE_PLAN.md](Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
 The rest of this document is retained as the reasoning behind that call.
 
-**Related:** [FILE_FORMAT_MODERNIZATION_PLAN.md](FILE_FORMAT_MODERNIZATION_PLAN.md),
+**Related:** [FILE_FORMAT_MODERNIZATION_PLAN.md](Completed/FILE_FORMAT_MODERNIZATION_PLAN.md),
 [Completed/FIELDS_AND_JOBS_PLAN.md](Completed/FIELDS_AND_JOBS_PLAN.md),
 [../Docs/COVERAGE_PERFORMANCE_TESTS.md](../Docs/COVERAGE_PERFORMANCE_TESTS.md)
 
@@ -273,7 +273,7 @@ problem; the GeoPackage question is a nice-to-have and is not urgent.**
    stop expanding 3x. This removes the "seconds on a large field" autosave
    stall and the power-cut corruption window **with no new dependency**.
    → **Accepted.** Planned in
-   [COVERAGE_TILED_PERSISTENCE_PLAN.md](COVERAGE_TILED_PERSISTENCE_PLAN.md).
+   [COVERAGE_TILED_PERSISTENCE_PLAN.md](Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
 
 2. ~~Take Option B for GeoPackage: export/import only.~~
    → **Declined.** The benefit is a QGIS/single-file convenience that no

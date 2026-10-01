@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Xml;
@@ -98,7 +99,22 @@ namespace AgOpenWeb.Services.IsoXml
                 }
             }
 
-            return boundaries;
+            // First = outer, rest = holes (the importer relies on it). An obstacle listed before
+            // the field boundary used to become the outer boundary: sort by area, largest
+            // first, as the field encloses its obstacles; drop rings that can't form an area
+            // (AgOpenGPS b1e931ef2, #1165).
+            boundaries.RemoveAll(b => b.FenceLine.Count < 3);
+            foreach (var b in boundaries) b.Area = PolygonArea(b.FenceLine);
+            return boundaries.OrderByDescending(b => b.Area).ToList(); // stable: ties keep file order
+        }
+
+        // Shoelace area (m², unsigned).
+        private static double PolygonArea(List<Vec3> pts)
+        {
+            double sum = 0;
+            for (int i = 0, j = pts.Count - 1; i < pts.Count; j = i++)
+                sum += (pts[j].Easting + pts[i].Easting) * (pts[j].Northing - pts[i].Northing);
+            return Math.Abs(sum / 2);
         }
 
         // Parse Headland if available

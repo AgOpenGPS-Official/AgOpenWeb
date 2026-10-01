@@ -31,7 +31,7 @@ namespace AgOpenWeb.Services
     /// </summary>
     public static class TrackFilesService
     {
-        private const string FileName = "TrackLines.txt";
+        public const string FileName = "TrackLines.txt";
         private const string Header = "$TrackLines";
 
         /// <summary>
@@ -88,6 +88,10 @@ namespace AgOpenWeb.Services
                 var header = reader.ReadLine();
                 if (header == null || !header.TrimStart().StartsWith("$", StringComparison.Ordinal))
                     throw new InvalidDataException("TrackLines.txt missing $ header.");
+
+                // Twol writes the same layout plus two lines per track (inner/outer flag and
+                // half tool width) under a $TwolTracks header (AgOpenGPS a7bf2cbeb, c34526efc).
+                bool isTwolTrackFile = header.Trim() == "$TwolTracks";
 
                 while (!reader.EndOfStream)
                 {
@@ -150,6 +154,12 @@ namespace AgOpenWeb.Services
                         curvePoints.Add(new Vec3(easting, northing, pointHeading));
                     }
 
+                    if (isTwolTrackFile)
+                    {
+                        reader.ReadLine(); // inner/outer flag
+                        reader.ReadLine(); // half tool width
+                    }
+
                     // Build Track directly from file fields
                     var track = new TrackModel
                     {
@@ -186,7 +196,9 @@ namespace AgOpenWeb.Services
         /// </summary>
         /// <param name="fieldDirectory">Path to the field directory</param>
         /// <param name="tracks">List of Track objects to save</param>
-        public static void Save(string fieldDirectory, IReadOnlyList<TrackModel> tracks)
+        // AgOpenWeb never writes AgOpenGPS files: they are imported into field.geojson once and
+        // deleted (FieldService.LoadField). Internal so tests can build AgOpenGPS fixtures.
+        internal static void Save(string fieldDirectory, IReadOnlyList<TrackModel> tracks)
         {
             if (string.IsNullOrWhiteSpace(fieldDirectory))
                 throw new ArgumentNullException(nameof(fieldDirectory));
@@ -249,13 +261,43 @@ namespace AgOpenWeb.Services
         /// <summary>
         /// Check if a TrackLines.txt file exists in the field directory
         /// </summary>
-        public static bool Exists(string fieldDirectory)
-        {
-            if (string.IsNullOrWhiteSpace(fieldDirectory))
-                return false;
+        /// <summary>File name of AgOpenGPS's older AB-line file (one line per AB line).</summary>
+        public const string AbLinesFileName = "ABLines.txt";
 
-            return File.Exists(Path.Combine(fieldDirectory, FileName));
+        /// <summary>
+        /// Read AgOpenGPS's older ABLines.txt: <c>name,headingDeg,eastingA,northingA[,eastingB,northingB]</c>
+        /// per line. Without a point B, B is 100 m from A along the heading.
+        /// </summary>
+        public static List<TrackModel> LoadAbLines(string fieldDirectory)
+        {
+            var result = new List<TrackModel>();
+            var path = Path.Combine(fieldDirectory, AbLinesFileName);
+            if (!File.Exists(path))
+                return result;
+            var inv = CultureInfo.InvariantCulture;
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var parts = line.Split(',');
+                if (parts.Length < 4 ||
+                    !double.TryParse(parts[1], NumberStyles.Any, inv, out var heading) ||
+                    !double.TryParse(parts[2], NumberStyles.Any, inv, out var eastingA) ||
+                    !double.TryParse(parts[3], NumberStyles.Any, inv, out var northingA))
+                    continue;
+                double headingRad = heading * Math.PI / 180.0;
+                if (parts.Length < 6 ||
+                    !double.TryParse(parts[4], NumberStyles.Any, inv, out var eastingB) ||
+                    !double.TryParse(parts[5], NumberStyles.Any, inv, out var northingB))
+                {
+                    eastingB = eastingA + Math.Sin(headingRad) * 100.0;
+                    northingB = northingA + Math.Cos(headingRad) * 100.0;
+                }
+                result.Add(TrackModel.FromABLine(parts[0],
+                    new Vec3(eastingA, northingA, headingRad),
+                    new Vec3(eastingB, northingB, headingRad)));
+            }
+            return result;
         }
+
 
         private static string FormatDouble(double value, int decimalPlaces)
         {

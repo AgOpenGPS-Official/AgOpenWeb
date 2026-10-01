@@ -122,8 +122,10 @@ public class FieldPlaneFileService
 
     /// <summary>
     /// Save field metadata to Field.txt
+    /// AgOpenWeb never writes AgOpenGPS files (they are imported once and deleted, see
+    /// FieldService.LoadField); internal so tests can build AgOpenGPS fixtures.
     /// </summary>
-    public void SaveField(Field field, string fieldDirectory)
+    internal void SaveField(Field field, string fieldDirectory)
     {
         if (string.IsNullOrWhiteSpace(fieldDirectory))
         {

@@ -96,7 +96,6 @@ public static class ServiceCollectionExtensions
 
         // Field file I/O services
         services.AddSingleton<FieldPlaneFileService>();
-        services.AddSingleton<BoundaryFileService>();
 
         // Boundary recording service
         services.AddSingleton<IBoundaryRecordingService, BoundaryRecordingService>();

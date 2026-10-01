@@ -100,6 +100,20 @@ public static class FieldPropertyKeys
     public const string AreaHectares = "areaHectares";
     public const string CreatedDate = "createdDate";
     public const string LastModifiedDate = "lastModifiedDate";
+    public const string Color = "color";
+    public const string Id = "id";
+    public const string Notes = "notes";
+    public const string MoveDistance = "moveDistance";
+    public const string Mode = "mode";
+    public const string APointIndex = "aPointIndex";
+    public const string Image = "image";
+    public const string MercatorMinX = "mercatorMinX";
+    public const string MercatorMaxX = "mercatorMaxX";
+    public const string MercatorMinY = "mercatorMinY";
+    public const string MercatorMaxY = "mercatorMaxY";
+    public const string Current = "current";
+    public const string Speeds = "speeds";
+    public const string AutoSteer = "autoSteer";
 }
 
 /// <summary>
@@ -113,4 +127,8 @@ public static class FeatureRoles
     public const string Headland = "headland";
     public const string Track = "track";
     public const string BackgroundImage = "background-image";
+    public const string Flag = "flag";
+    public const string HeadlandLine = "headland-line";
+    public const string Contour = "contour";
+    public const string RecordedPath = "recorded-path";
 }

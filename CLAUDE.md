@@ -226,9 +226,8 @@ public class Track
 ### File Format Philosophy
 AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits code simplicity or features. Provide **one-way import** from AgOpenGPS formats rather than maintaining full backwards compatibility.
 
-- **Current**: Legacy text formats (Field.txt, Boundary.txt, etc.) and XML profiles
-- **Future**: Unified JSON formats (see `Plans/FILE_FORMAT_MODERNIZATION_PLAN.md`)
-- **Migration**: Auto-detect legacy files, import once, save in new format only
+- **Formats**: a field is `field.geojson` (origin, boundaries, headland, tracks, flags, headland lines, background image placement) beside `background.png`, `contours.geojson`, `recorded-paths.geojson` and `elevation.csv`; a job's coverage is world-anchored tiles under `jobs/<task>/coverage/`. Profiles are JSON.
+- **Migration**: AgOpenGPS files found in a field folder are imported once (on open) and **deleted**; AgOpenWeb never writes AgOpenGPS formats. No compatibility code for files from older AgOpenWeb builds (no installed base yet). See `Plans/Completed/FILE_FORMAT_MODERNIZATION_PLAN.md`.
 
 ## Technology Stack
 

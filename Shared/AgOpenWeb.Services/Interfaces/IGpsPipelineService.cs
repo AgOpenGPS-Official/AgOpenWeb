@@ -83,13 +83,13 @@ public interface IGpsPipelineService
     /// <summary>Contour lock button. Returns whether the line is now locked.</summary>
     bool ToggleContourLock();
 
-    /// <summary>Replace the contour strips (field opened: Contour.txt; field closed: none).</summary>
+    /// <summary>Replace the contour strips (field opened: its saved strips; field closed: none).</summary>
     void LoadContours(IEnumerable<List<Vec3>> strips);
 
     /// <summary>Delete contour paths: forget every strip, like AgOpenGPS.</summary>
     void ResetContours();
 
-    /// <summary>Finished strips to append to Contour.txt; each is returned once.</summary>
+    /// <summary>Finished strips to save with the field; each is returned once.</summary>
     List<List<Vec3>> TakeContoursToSave();
 
     /// <summary>

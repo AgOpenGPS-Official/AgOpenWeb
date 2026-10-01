@@ -19,6 +19,9 @@ using Newtonsoft.Json;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.AgShare;
 using AgOpenWeb.Models.Base;
+using TrackModel = AgOpenWeb.Models.Track.Track;
+using AgOpenWeb.Models.Track;
+using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services.AgShare
 {
@@ -117,7 +120,8 @@ namespace AgOpenWeb.Services.AgShare
     }
 
     /// <summary>
-    /// Utility class that writes a LocalFieldModel to standard AgOpenGPS-compatible files.
+    /// Writes a downloaded LocalFieldModel into a field folder: field.geojson for the field
+    /// itself, plus the per-feature files AgOpenWeb still keeps in AgOpenGPS formats.
     /// </summary>
     public static class FieldFileWriter
     {
@@ -130,10 +134,10 @@ namespace AgOpenWeb.Services.AgShare
                 Directory.CreateDirectory(fieldDir);
 
             await WriteAgShareIdAsync(fieldDir, field.FieldId);
-            await WriteFieldTxtAsync(fieldDir, field.Origin);
-            await WriteBoundaryTxtAsync(fieldDir, field.Boundaries);
-            await WriteTrackLinesTxtAsync(fieldDir, field.AbLines);
-            await WriteStaticFilesAsync(fieldDir); // Flags, Headland
+            WriteFieldGeoJson(fieldDir, field.Origin, field.Boundaries);
+            GeoJsonFieldService.SaveTracks(fieldDir, ToTracks(field.AbLines));
+            // Flags, headland lines, contours and the applied area are local work, not part of
+            // what AgShare stores, so a re-download leaves them alone (AgOpenGPS #1203).
         }
 
         /// <summary>
@@ -145,125 +149,80 @@ namespace AgOpenWeb.Services.AgShare
         }
 
         /// <summary>
-        /// Writes origin and metadata to Field.txt
+        /// Writes the origin and boundary rings to field.geojson. A re-download over an existing
+        /// field replaces those and keeps the rest (headland, background image); with no rings
+        /// in the download the existing boundary stays. An earlier download still in AgOpenGPS
+        /// files is imported first, so it can't win over this one on the next open.
         /// </summary>
-        private static async Task WriteFieldTxtAsync(string fieldDir, Wgs84 origin)
+        private static void WriteFieldGeoJson(string fieldDir, Wgs84 origin, List<List<LocalPoint>>? boundaries)
         {
-            var fieldTxt = new List<string>
+            var fields = new FieldService();
+            Field field;
+            try
             {
-                DateTime.Now.ToString("yyyy-MMM-dd hh:mm:ss tt", CultureInfo.InvariantCulture),
-                "$FieldDir",
-                "AgShare Downloaded",
-                "$Offsets",
-                "0,0",
-                "Convergence",
-                "0", // Always 0
-                "StartFix",
-                origin.Latitude.ToString(CultureInfo.InvariantCulture) + "," + origin.Longitude.ToString(CultureInfo.InvariantCulture)
-            };
-
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Field.txt"), fieldTxt);
-        }
-
-        /// <summary>
-        /// Writes outer and inner boundary rings to Boundary.txt
-        /// </summary>
-        private static async Task WriteBoundaryTxtAsync(string fieldDir, List<List<LocalPoint>>? boundaries)
-        {
-            if (boundaries == null || boundaries.Count == 0) return;
-
-            var lines = new List<string> { "$Boundary" };
-
-            for (int i = 0; i < boundaries.Count; i++)
+                field = fields.LoadField(fieldDir);
+            }
+            catch (FileNotFoundException)
             {
-                var ring = boundaries[i];
-                bool isHole = i != 0;
+                field = new Field { Name = Path.GetFileName(fieldDir), CreatedDate = DateTime.Now };
+            }
+            field.DirectoryPath = fieldDir;
+            field.Origin = new Position { Latitude = origin.Latitude, Longitude = origin.Longitude };
+            field.LastModifiedDate = DateTime.Now;
 
-                lines.Add(isHole ? "True" : "False");
-                lines.Add(ring.Count.ToString(CultureInfo.InvariantCulture));
-
-                var enriched = BoundaryUtils.WithHeadings(ConvertToVec3List(ring));
-
-                foreach (var pt in enriched)
+            if (boundaries is { Count: > 0 })
+            {
+                var boundary = field.Boundary ?? new Boundary();
+                boundary.OuterBoundary = null;
+                boundary.InnerBoundaries.Clear();
+                for (int i = 0; i < boundaries.Count; i++)
                 {
-                    lines.Add(
-                        pt.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                        pt.Northing.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                        pt.Heading.ToString("0.#####", CultureInfo.InvariantCulture)
-                    );
+                    var polygon = new BoundaryPolygon();
+                    foreach (var pt in BoundaryUtils.WithHeadings(ConvertToVec3List(boundaries[i])))
+                        polygon.Points.Add(new BoundaryPoint(pt.Easting, pt.Northing, pt.Heading));
+                    polygon.UpdateBounds();
+                    if (i == 0)
+                        boundary.OuterBoundary = polygon;
+                    else
+                    {
+                        // Holes were written drive-through, as before.
+                        polygon.IsDriveThrough = true;
+                        boundary.InnerBoundaries.Add(polygon);
+                    }
                 }
+                field.Boundary = boundary;
             }
 
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Boundary.txt"), lines);
+            fields.SaveField(field);
         }
 
         /// <summary>
-        /// Writes AB-lines and optional curve points to TrackLines.txt
+        /// The downloaded AB lines and curves as tracks. They replace the field's tracks, as the
+        /// download always replaced its track file.
         /// </summary>
-        private static async Task WriteTrackLinesTxtAsync(string fieldDir, List<AbLineLocal> abLines)
+        private static List<TrackModel> ToTracks(List<AbLineLocal> abLines)
         {
-            var lines = new List<string> { "$TrackLines" };
-
+            var tracks = new List<TrackModel>();
             foreach (var ab in abLines)
             {
-                lines.Add(ab.Name ?? "Unnamed");
-
-                bool isCurve = ab.CurvePoints is { Count: > 1 };
-
-                LocalPoint ptA = ab.PtA;
-                LocalPoint ptB = ab.PtB;
-                double heading = ab.Heading;
-
-                if (isCurve)
+                var track = new TrackModel { Name = ab.Name ?? "Unnamed", IsVisible = true };
+                if (ab.CurvePoints is { Count: > 1 })
                 {
-                    ptA = ab.CurvePoints![0];
-                    ptB = ab.CurvePoints[ab.CurvePoints!.Count - 1];
-                    heading = GeoConversion.HeadingFromPoints(
-                        new Vec2(ptA.Easting, ptA.Northing),
-                        new Vec2(ptB.Easting, ptB.Northing)
-                    );
-                }
-
-                lines.Add(heading.ToString("0.###", CultureInfo.InvariantCulture));
-                lines.Add(ptA.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," + ptA.Northing.ToString("0.###", CultureInfo.InvariantCulture));
-                lines.Add(ptB.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," + ptB.Northing.ToString("0.###", CultureInfo.InvariantCulture));
-                lines.Add("0"); // Nudge
-
-                if (isCurve)
-                {
-                    lines.Add("4"); // Curve mode
-                    lines.Add("True");
-                    lines.Add(ab.CurvePoints!.Count.ToString(CultureInfo.InvariantCulture));
-
-                    foreach (var pt in ab.CurvePoints)
-                    {
-                        lines.Add(
-                            pt.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                            pt.Northing.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                            pt.Heading.ToString("0.#####", CultureInfo.InvariantCulture)
-                        );
-                    }
+                    track.Type = TrackType.Curve;
+                    track.Points = ab.CurvePoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
                 }
                 else
                 {
-                    lines.Add("2"); // AB mode
-                    lines.Add("True");
-                    lines.Add("0");
+                    track.Type = TrackType.ABLine;
+                    track.Points = new List<Vec3>
+                    {
+                        new(ab.PtA.Easting, ab.PtA.Northing, ab.Heading),
+                        new(ab.PtB.Easting, ab.PtB.Northing, ab.Heading),
+                    };
                 }
+                tracks.Add(track);
             }
-
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "TrackLines.txt"), lines);
-        }
-
-        /// <summary>
-        /// Writes default placeholder files like Flags.txt and Headland.txt
-        /// </summary>
-        private static async Task WriteStaticFilesAsync(string fieldDir)
-        {
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Flags.txt"), ["$Flags", "0"]);
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Headland.txt"), ["$Headland", "0"]);
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Contour.txt"), ["$Contour", "0"]);
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Sections.txt"), ["Sections", "0"]);
+            return tracks;
         }
 
         /// <summary>

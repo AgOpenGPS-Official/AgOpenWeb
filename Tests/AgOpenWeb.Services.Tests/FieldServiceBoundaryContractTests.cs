@@ -204,11 +204,11 @@ public class FieldServiceBoundaryContractTests
             Longitude = -98.7654321,
         });
 
-        var fieldTxt = File.ReadAllText(Path.Combine(field.DirectoryPath, "Field.txt"));
-        Assert.That(fieldTxt, Does.Contain("12.34567890"),
-            "Field.txt latitude must be invariant-formatted (period decimal)");
-        Assert.That(fieldTxt, Does.Contain("-98.76543210"),
-            "Field.txt longitude must be invariant-formatted (period decimal)");
+        var json = File.ReadAllText(Path.Combine(field.DirectoryPath, "field.geojson"));
+        Assert.That(json, Does.Contain("12.3456789"),
+            "field.geojson latitude must be invariant-formatted (period decimal)");
+        Assert.That(json, Does.Contain("-98.7654321"),
+            "field.geojson longitude must be invariant-formatted (period decimal)");
     }
 
     [Test]

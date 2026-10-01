@@ -542,7 +542,7 @@ public sealed class SceneProjector
             foreach (var name in _fields.GetAvailableFields(root))
             {
                 if (name == active) continue;
-                if (AgOpenWeb.Services.TrackFilesService.Exists(System.IO.Path.Combine(root, name)))
+                if (_fields.PeekTracks(System.IO.Path.Combine(root, name)).Count > 0)
                     importFields.Add(name);
             }
         return new FieldToolsDto(importFields);
@@ -557,8 +557,12 @@ public sealed class SceneProjector
             foreach (var name in _fields.GetAvailableFields(root))
             {
                 if (name == active) continue;
-                if (AgOpenWeb.Services.TrackFilesService.Exists(System.IO.Path.Combine(root, name)))
-                    h = h * 31 + name.GetHashCode();
+                // Cheap (runs every broadcast tick): file times, not contents. BuildFieldTools
+                // reads the tracks when this changes.
+                var dir = System.IO.Path.Combine(root, name);
+                h = h * 31 + name.GetHashCode();
+                h = h * 31 + System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(dir, "field.geojson")).Ticks;
+                h = h * 31 + System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(dir, AgOpenWeb.Services.TrackFilesService.FileName)).Ticks;
             }
         h = h * 31 + (active?.GetHashCode() ?? 0);
         return h;
@@ -566,7 +570,7 @@ public sealed class SceneProjector
 
     // AgShare read-frame. Settings from ConfigStore.Connections; live action status +
     // fetched cloud fields from ApplicationState.AgShare; upload candidates = every field
-    // on disk (with whether it has a Boundary.txt). Mirrors the native dialogs' scans.
+    // on disk (with whether it has an outer boundary), read without importing.
     public AgShareDto BuildAgShare()
     {
         var c = _config.Connections;
@@ -577,9 +581,14 @@ public sealed class SceneProjector
         {
             if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root))
                 foreach (var dir in System.IO.Directory.GetDirectories(root))
-                    if (System.IO.File.Exists(System.IO.Path.Combine(dir, "Field.txt")))
-                        local.Add(new AgShareLocalFieldDto(System.IO.Path.GetFileName(dir),
-                            System.IO.File.Exists(System.IO.Path.Combine(dir, "Boundary.txt"))));
+                {
+                    // field.geojson, or an AgOpenGPS field not yet imported
+                    Field field;
+                    try { field = _fields.PeekField(dir); }
+                    catch { continue; }
+                    local.Add(new AgShareLocalFieldDto(System.IO.Path.GetFileName(dir),
+                        field.Boundary?.OuterBoundary is { IsValid: true }));
+                }
         }
         catch { /* fields dir optional */ }
         local.Sort((a, b) => string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase));

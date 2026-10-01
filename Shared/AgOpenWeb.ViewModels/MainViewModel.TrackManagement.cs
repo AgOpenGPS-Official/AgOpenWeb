@@ -109,15 +109,15 @@ public partial class MainViewModel
             SavedTracks.Add(track);
             UpdateRecordedPathsOnMap();
 
-            // Save as RecPath.txt (current/default)
+            // Save as the field's recorded path in use
             var activeField = _fieldService.ActiveField;
             if (activeField != null && !string.IsNullOrEmpty(activeField.DirectoryPath))
             {
                 try
                 {
                     var pointsCopy = new List<RecPathPoint>(_recPathRecordingPoints);
-                    Services.RecPathFileService.SaveRecPath(activeField.DirectoryPath, pointsCopy);
-                    _logger.LogDebug($"[RecPath] Saved {pointsCopy.Count} points to RecPath.txt");
+                    Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(activeField.DirectoryPath, pointsCopy);
+                    _logger.LogDebug($"[RecPath] Saved {pointsCopy.Count} points");
                 }
                 catch (Exception ex) { _logger.LogDebug($"[RecPath] Save failed: {ex.Message}"); }
             }
@@ -160,7 +160,7 @@ public partial class MainViewModel
                 if (dir == activeField.DirectoryPath)
                     continue;
                 // Only include fields that have tracks
-                if (Services.TrackFilesService.Exists(dir))
+                if (_fieldService.PeekTracks(dir).Count > 0)
                     ImportFieldsList.Add(fieldName);
             }
 
@@ -183,7 +183,7 @@ public partial class MainViewModel
 
             try
             {
-                var importedTracks = Services.TrackFilesService.Load(sourceDir);
+                var importedTracks = _fieldService.PeekTracks(sourceDir);
                 if (importedTracks.Count == 0)
                 {
                     ReportFailure("No tracks found in selected field");
@@ -432,7 +432,7 @@ public partial class MainViewModel
     /// <summary>
 /// Transform tracks from a source field's local plane into the active
 /// field's local plane. If the active field's origin can't be determined
-/// or the source has no Field.txt, falls back to returning the input
+/// or the source isn't a readable field, falls back to returning the input
 /// unchanged so the legacy "untransformed" import path still works
 /// (better than failing entirely on partial field data).
 /// </summary>
@@ -444,12 +444,12 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
     Wgs84 sourceOrigin;
     try
     {
-        var sourceField = new FieldPlaneFileService().LoadField(sourceDir);
+        var sourceField = _fieldService.PeekField(sourceDir);
         sourceOrigin = new Wgs84(sourceField.Origin.Latitude, sourceField.Origin.Longitude);
     }
     catch
     {
-        // No Field.txt in the source directory or the file is malformed.
+        // No field in the source directory, or it can't be read.
         // Treat tracks as already in the active field's plane (legacy behavior).
         _logger.LogWarning("[TrackImport] Could not read source field origin; importing tracks without coordinate transform");
         return sourceTracks.ToList();
@@ -475,11 +475,11 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
         SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
         RebuildRecordedPathsAndContours();
         SaveTracksToFile();
-        // A recorded path is re-loaded from RecPath.txt on every field open
-        // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
-        // the file must go too, else it reappears after restart.
+        // The recorded path in use is re-loaded on every field open (LoadRecPathFromField), so
+        // removing it from SavedTracks alone isn't enough: it must go from the field too, else
+        // it reappears after restart.
         if (wasRecPath && _fieldService.ActiveField is { } f)
-            RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+            Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
         StatusMessage = $"Deleted track '{trackName}'";
     }
 

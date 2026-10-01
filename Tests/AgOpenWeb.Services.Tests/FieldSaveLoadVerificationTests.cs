@@ -58,15 +58,15 @@ public class FieldSaveLoadVerificationTests
             HeadlandPolygon = CreateSquarePolygon(10, 10, 80), // headland inset
         };
 
-        // 3. Save (writes legacy + GeoJSON)
+        // 3. Save (field.geojson only)
         fieldService.SaveField(field);
 
         // 4. Verify files exist
-        Assert.That(File.Exists(Path.Combine(fieldDir, "Field.txt")), Is.True, "Legacy Field.txt");
-        Assert.That(File.Exists(Path.Combine(fieldDir, "Boundary.txt")), Is.True, "Legacy Boundary.txt");
         Assert.That(File.Exists(Path.Combine(fieldDir, "field.geojson")), Is.True, "GeoJSON");
+        Assert.That(File.Exists(Path.Combine(fieldDir, "Field.txt")), Is.False, "no AgOpenGPS Field.txt");
+        Assert.That(File.Exists(Path.Combine(fieldDir, "Boundary.txt")), Is.False, "no AgOpenGPS Boundary.txt");
 
-        // 5. Reopen via FieldService (should prefer GeoJSON)
+        // 5. Reopen via FieldService
         var loaded = fieldService.LoadField(fieldDir);
 
         Assert.That(loaded.Name, Is.EqualTo("TestField"));

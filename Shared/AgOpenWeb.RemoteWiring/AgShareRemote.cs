@@ -115,11 +115,11 @@ internal static class AgShareRemote
         Set(s, "Uploading…", true);
         var client = new AgShareClient(url, key);
         var uploader = new AgShareUploaderService();
-        var boundarySvc = new BoundaryFileService();
+        var fields = new FieldService();
         int ok = 0, fail = 0;
         foreach (var name in names)
         {
-            try { var (success, _) = await UploadOne(client, uploader, boundarySvc, Path.Combine(root, name), name, isPublic); if (success) ok++; else fail++; }
+            try { var (success, _) = await UploadOne(client, uploader, fields, Path.Combine(root, name), name, isPublic); if (success) ok++; else fail++; }
             catch { fail++; }
             Set(s, $"Uploaded {ok}, failed {fail} of {names.Count}…", true);
         }
@@ -129,10 +129,10 @@ internal static class AgShareRemote
     // The field's AB lines and curves, as AgOpenGPS's uploader sends its whole track list
     // (AgShareUploader.cs). This used to send an empty list, so tracks never reached AgShare
     // (#111). The uploader converts AB and Curve; other kinds are skipped there.
-    private static List<TrackLineInput> LoadTracksForUpload(string dir)
+    private static List<TrackLineInput> LoadTracksForUpload(IFieldService fields, string dir)
     {
         var result = new List<TrackLineInput>();
-        foreach (var t in TrackFilesService.Load(dir))
+        foreach (var t in fields.PeekTracks(dir))
         {
             if (t.Points.Count < 2) continue;
             bool ab = t.Points.Count == 2;
@@ -148,30 +148,15 @@ internal static class AgShareRemote
         return result;
     }
 
-    // Mirrors AgShareUploadDialogPanel.UploadSingleFieldAsync: origin from Field.txt StartFix,
-    // boundary via BoundaryFileService, existing cloud id from agshare.txt.
+    // Origin and boundary from the field (read only: an AgOpenGPS-format field uploads without
+    // being imported), existing cloud id from agshare.txt.
     private static async Task<(bool, string)> UploadOne(AgShareClient client, AgShareUploaderService uploader,
-        BoundaryFileService boundarySvc, string dir, string name, bool isPublic)
+        IFieldService fields, string dir, string name, bool isPublic)
     {
-        var origin = new Wgs84(0, 0);
-        var fieldTxt = Path.Combine(dir, "Field.txt");
-        if (File.Exists(fieldTxt))
-        {
-            var lines = await File.ReadAllLinesAsync(fieldTxt);
-            for (int i = 0; i < lines.Length - 1; i++)
-                if (lines[i].Contains("StartFix"))
-                {
-                    var coords = lines[i + 1].Split(',');
-                    var inv = System.Globalization.CultureInfo.InvariantCulture; // Field.txt is always '.'-decimal (#112)
-                    if (coords.Length >= 2
-                        && double.TryParse(coords[0], System.Globalization.NumberStyles.Float, inv, out var lat)
-                        && double.TryParse(coords[1], System.Globalization.NumberStyles.Float, inv, out var lon))
-                        origin = new Wgs84(lat, lon);
-                    break;
-                }
-        }
+        var field = fields.PeekField(dir);
+        var origin = new Wgs84(field.Origin.Latitude, field.Origin.Longitude);
         var boundaries = new List<List<Vec3>>();
-        var b = boundarySvc.LoadBoundary(dir);
+        var b = field.Boundary;
         if (b?.OuterBoundary != null && b.OuterBoundary.Points.Count > 0)
         {
             boundaries.Add(b.OuterBoundary.Points.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList());
@@ -186,7 +171,7 @@ internal static class AgShareRemote
         var input = new FieldSnapshotInput
         {
             FieldId = existing, FieldName = name, Origin = origin, Boundaries = boundaries,
-            Tracks = LoadTracksForUpload(dir), IsPublic = isPublic, Convergence = 0,
+            Tracks = LoadTracksForUpload(fields, dir), IsPublic = isPublic, Convergence = 0,
         };
         var (resOk, msg, _) = await uploader.UploadFieldAsync(input, client, dir);
         return (resOk, msg);

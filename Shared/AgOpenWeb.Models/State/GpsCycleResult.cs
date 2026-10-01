@@ -50,7 +50,7 @@ public record GpsCycleResult
     public IReadOnlyList<Models.Base.Vec3>? ContourRef { get; init; }
     /// <summary>Contour lock state (lock button image).</summary>
     public bool IsContourLocked { get; init; }
-    /// <summary>A contour strip finished this cycle: the VM appends it to Contour.txt.</summary>
+    /// <summary>A contour strip finished this cycle: the VM saves it with the field.</summary>
     public bool HasContoursToSave { get; init; }
     public string? DisengageReason { get; init; }
 

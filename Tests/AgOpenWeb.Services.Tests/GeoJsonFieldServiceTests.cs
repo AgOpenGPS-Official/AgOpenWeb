@@ -187,26 +187,20 @@ public class GeoJsonFieldServiceTests
     }
 
     [Test]
-    public void SaveAndLoad_WithBackgroundImage_RoundTrip()
+    public void Background_RoundTrips_AndSurvivesSavingTheField()
     {
         var field = CreateTestField();
-        field.BackgroundImage = new BackgroundImage
-        {
-            MinEasting = -200,
-            MaxEasting = 200,
-            MinNorthing = -150,
-            MaxNorthing = 150,
-            IsEnabled = true,
-        };
-
         GeoJsonFieldService.Save(field, tracks: null);
-        var (loaded, _) = GeoJsonFieldService.Load(_tempDir);
+        var background = new FieldBackground(FieldBackground.DefaultImageFile, 52.01, 4.99, 52.0, 5.01,
+            new MercatorBounds(555_000, 557_000, 6_800_000, 6_802_000));
 
-        Assert.That(loaded.BackgroundImage, Is.Not.Null);
-        Assert.That(loaded.BackgroundImage!.MinEasting, Is.EqualTo(-200).Within(0.01));
-        Assert.That(loaded.BackgroundImage.MaxEasting, Is.EqualTo(200).Within(0.01));
-        Assert.That(loaded.BackgroundImage.MinNorthing, Is.EqualTo(-150).Within(0.01));
-        Assert.That(loaded.BackgroundImage.MaxNorthing, Is.EqualTo(150).Within(0.01));
+        GeoJsonFieldService.SaveBackground(_tempDir, background);
+        GeoJsonFieldService.Save(field, tracks: null); // a boundary edit, say
+
+        Assert.That(GeoJsonFieldService.LoadBackground(_tempDir), Is.EqualTo(background));
+
+        GeoJsonFieldService.SaveBackground(_tempDir, null);
+        Assert.That(GeoJsonFieldService.LoadBackground(_tempDir), Is.Null);
     }
 
     [Test]
@@ -272,9 +266,8 @@ public class GeoJsonFieldServiceTests
     // ---------------------------------------------------------------
 
     [Test]
-    public void FieldService_SaveCreatesGeoJson_LoadPrefersIt()
+    public void FieldService_SaveWritesOnlyGeoJson_AndLoadReadsIt()
     {
-        // Save via FieldService (writes legacy + GeoJSON)
         var fieldService = new FieldService();
         var field = CreateTestField();
         field.Boundary = new Boundary
@@ -282,14 +275,12 @@ public class GeoJsonFieldServiceTests
             OuterBoundary = CreateSquarePolygon(0, 0, 100)
         };
 
-        // Create Field.txt so legacy path is valid
         fieldService.SaveField(field);
 
-        // Verify both formats exist
-        Assert.That(File.Exists(Path.Combine(_tempDir, "Field.txt")), Is.True, "Legacy Field.txt");
         Assert.That(File.Exists(Path.Combine(_tempDir, "field.geojson")), Is.True, "GeoJSON file");
+        Assert.That(File.Exists(Path.Combine(_tempDir, "Field.txt")), Is.False, "no AgOpenGPS Field.txt");
+        Assert.That(File.Exists(Path.Combine(_tempDir, "Boundary.txt")), Is.False, "no AgOpenGPS Boundary.txt");
 
-        // Load via FieldService -- should prefer GeoJSON
         var loaded = fieldService.LoadField(_tempDir);
         Assert.That(loaded.Origin.Latitude, Is.EqualTo(OriginLat).Within(1e-6));
         Assert.That(loaded.Boundary, Is.Not.Null);
@@ -298,20 +289,9 @@ public class GeoJsonFieldServiceTests
     }
 
     [Test]
-    public void FieldService_LoadsFallbackToLegacy_WhenNoGeoJson()
+    public void FieldService_WithoutGeoJsonOrAgOpenGpsFiles_Throws()
     {
-        // Create legacy field only (no GeoJSON)
-        var fieldService = new FieldService();
-        var field = CreateTestField();
-        fieldService.SaveField(field);
-
-        // Delete the GeoJSON file to force legacy path
-        var geoJsonPath = Path.Combine(_tempDir, "field.geojson");
-        if (File.Exists(geoJsonPath))
-            File.Delete(geoJsonPath);
-
-        var loaded = fieldService.LoadField(_tempDir);
-        Assert.That(loaded.Origin.Latitude, Is.EqualTo(OriginLat).Within(1e-6));
+        Assert.Throws<FileNotFoundException>(() => new FieldService().LoadField(_tempDir));
     }
 
     [Test]

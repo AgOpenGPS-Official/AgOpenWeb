@@ -1,5 +1,96 @@
 # File Format Modernization Plan
 
+## Status: completed 2026-10-01
+
+The one-way migration is done: #205 (field), #206 (tracks, flags, headland lines), #207
+(background image, tram lines), #208 (contours, recorded paths, elevation log), #209
+(`Sections.txt`). **Future ideas, never started:** a zipped `.agfield` sharing package
+(question 2), JSON Schema validation (3), profile inheritance (4), track history (5), and
+removing the unused `field.json` (`FieldJsonService`).
+
+**Rule:** import is one-way. AgOpenGPS-format files found in an AgOpenWeb field folder are
+imported into AgOpenWeb's formats once and then **deleted**. AgOpenWeb never writes them, and
+never reads them again. AgOpenWeb keeps its fields in its own data folder, so AgOpenGPS's
+folders are untouched; users keep their own backups. There is no installed base yet, so there
+is no compatibility code for files written by older AgOpenWeb builds.
+
+| Phase | AgOpenGPS files | New home | State |
+|---|---|---|---|
+| 1 | `Field.txt`, `Boundary.txt`, `Headland.Txt` | `field.geojson` (origin, convergence, boundaries, headland polygon) | done (#205) |
+| 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (#206) |
+| 3a | `BackPic.txt` + `BackPic.png` (AgOpenGPS); `TramLines.txt` (AgOpenWeb's, write-only) | `field.geojson` `background-image` part + `background.png`; tram lines aren't saved (generated on demand) | done (#207) |
+| 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | `contours.geojson`, `recorded-paths.geojson`, `elevation.csv` (beside `field.geojson`, so appending never rewrites the field) | done (#208) |
+| 4 | `Sections.txt` | coverage tiles | done (#209): imported, then deleted after the job's first tiled save, as the `.bin` files are |
+
+Phase 1, as built:
+- **`FieldService.LoadField`** imports an AgOpenGPS field (keyed on `Field.txt`), deletes its
+  files, and reads `field.geojson`. It's used for opening a field, boundary edits and AgShare
+  re-downloads.
+- **`FieldService.PeekField`** reads either format without changing the folder. It's used for
+  field lists, "near me", AgShare listing and upload, the track copier's source origin, and
+  From Existing's source. Browsing fields never converts them.
+- **Writers:** `SaveField`, every boundary edit, new fields, KML/ISOXML import and the AgShare
+  download all write `field.geojson` only. The AgOpenGPS writers are `internal`, kept only so
+  tests can build AgOpenGPS fixtures.
+- **Conversion:** `field.geojson` converts with `LocalPlane` (longitude scaled per point), the
+  same as live GPS and the AgOpenGPS import, so its WGS84 is right for GIS tools.
+
+Phase 2, as built:
+- **Each part saved on its own.** `GeoJsonFieldService.SaveTracks`/`SaveFlags`/`SaveHeadlandLine`
+  replace only their own features. `Save(field)` replaces only the field's own (metadata,
+  boundaries, headland polygon, background) and keeps the rest. Each is a read-modify-write
+  under one lock, through a temp file.
+- **Import on open.** `FieldService.LoadField` imports `TrackLines.txt`, `ABLines.txt`,
+  `Flags.txt` and `Headlines.txt` once `field.geojson` exists, then deletes them.
+  `PeekTracks`/`PeekFlags`/`PeekHeadlandLine` read either format without changing the folder.
+- **Writers.** The view model saves tracks, flags and the headland line to `field.geojson`, as
+  do the AgShare download, From Existing, the track copier and ISOXML import. The track copier
+  imports its target first. The AgOpenGPS writers are `internal` (test fixtures only).
+
+Phase 3a, as built:
+- **Background image:** stored as its own `field.geojson` part (role `background-image`), not
+  rewritten by field saves. The polygon holds the image's WGS84 corners, so GIS tools place it.
+  Properties carry the image file (`background.png`) and, for imagery captured from a
+  Web-Mercator tile service, its Mercator bounds.
+- **`BackPic` import:** AgOpenGPS's `BackPic.txt` (6 lines: max E, min E, max N, min N in field
+  metres, `N3`-formatted) is converted to corners with the field's `LocalPlane`, and
+  `BackPic.png` is renamed. AgOpenWeb's own former 10-line variant isn't imported (no installed
+  base); it and its image are deleted.
+- **Tram lines:** no longer saved. `TramLines.txt` was written at close but never read, since
+  tram lines are generated on demand. Existing copies are deleted on open.
+
+Phase 3b, as built:
+- **`contours.geojson`:** one LineString per contour strip, `[lon, lat, heading]`. Strips are
+  appended as they finish; Delete Applied Area / contour reset deletes the file.
+- **`recorded-paths.geojson`:** one feature per recorded path. The path in use (what playback
+  follows) is `"current": true`; saved ones carry a `name`. Per-point speed and section-master
+  auto state are arrays in properties (`speeds`, `autoSteer`). Selecting a saved path copies it
+  to the path in use, as copying a `.rec` over `RecPath.txt` did. The names list, read every
+  broadcast tick, is cached until the file changes.
+- **`elevation.csv`:** a header row (`latitude,longitude,elevation,fixQuality,easting,northing,heading,roll`),
+  then a row per sample. It's an append log at GPS rate, so CSV rather than JSON, written without
+  a byte-order mark.
+- **Import:** `Contour.txt`, `RecPath.txt`, every `*.rec` and `Elevation.txt` (rows after its
+  `Latitude,…` header) are imported on open and deleted. The AgOpenGPS writers are `internal`
+  (test fixtures only). The AgShare download no longer writes empty placeholder files.
+
+With phase 4, every AgOpenGPS file AgOpenWeb reads is imported once and deleted, and AgOpenWeb
+writes none. Still not started: the items in the last bullet list below (questions 2–5).
+
+Other parts of the original plan:
+- **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,
+  `Tools/*.json`), with one-way import from the XML.
+- **Coverage (phase 3 below): superseded.** Coverage is saved as world-anchored tiles:
+  [COVERAGE_TILED_PERSISTENCE_PLAN.md](COVERAGE_TILED_PERSISTENCE_PLAN.md).
+  Open questions 6–8 are moot. Viewing coverage in QGIS would be an export feature.
+- **Model consolidation: done.** The `ABLine` class is gone.
+- **Not started:** the `.agfield` sharing package (question 2), JSON Schema (3), profile
+  inheritance (4), track history (5).
+- `field.json` (`FieldJsonService`) is never written by the app; remove it.
+
+The implementation phases and success criteria further down are the original plan, kept for
+history.
+
 ## Overview
 
 Modernize AgOpenWeb file formats from legacy AgOpenGPS text/XML formats to **GeoJSON (WGS84)** for geospatial data and **JSON** for configuration, improving maintainability, GIS interoperability, and developer experience while providing one-way import from legacy formats.
@@ -727,6 +818,16 @@ GeoJSON field data is slightly larger than custom formats due to verbose coordin
    - Full merge: Simpler, always optimized file
    - Incremental: Faster saves, periodic full merge
    - Recommendation: Full merge on field close, consider incremental for auto-save
+
+9. **Re-importing a field over an existing one (AgShare re-download)**: resolved 2026-10-01
+   by the one-way rule (see Status).
+   - **The original note was wrong** about re-downloads never taking effect on open: the open
+     path read the legacy files directly. The real stale-file bug was in From Existing, which
+     copied a `field.geojson` that lagged the legacy files. In the headless app, a field whose
+     `Boundary.txt` was newer copied with no boundary at all.
+   - **Now:** `field.geojson` is the only field file, so nothing can lag it. The AgShare
+     download writes it directly. An earlier download still in AgOpenGPS files is imported
+     first, then replaced.
 
 ---
 

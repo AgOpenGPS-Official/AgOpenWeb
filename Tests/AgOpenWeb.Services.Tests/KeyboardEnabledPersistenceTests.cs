@@ -33,6 +33,20 @@ public class DisplayTogglePersistenceTests
     }
 
     [Test]
+    public void AppSettings_IsMetric_DefaultIsTrue()
+    {
+        var settings = new AppSettings();
+        Assert.That(settings.IsMetric, Is.True);
+    }
+
+    [Test]
+    public void ConfigurationStore_IsMetric_DefaultIsTrue()
+    {
+        var store = new ConfigurationStore();
+        Assert.That(store.IsMetric, Is.True);
+    }
+
+    [Test]
     public void AppSettings_KeyboardEnabled_SurvivesJsonRoundTrip()
     {
         var original = new AppSettings { KeyboardEnabled = true };
@@ -77,6 +91,7 @@ public class DisplayTogglePersistenceTests
         Assert.That(deserialized, Is.Not.Null);
         Assert.That(deserialized!.KeyboardEnabled, Is.False);
         Assert.That(deserialized!.SvennArrowVisible, Is.False);
+        Assert.That(deserialized!.IsMetric, Is.True);
     }
 
     [Test]

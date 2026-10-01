@@ -89,7 +89,7 @@ public partial class MainViewModel
         // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
         // deletes them, but this method no longer reads them.
 
-        // Contour (#110): lock image, the reference strip, and newly finished strips → Contour.txt.
+        // Contour (#110): lock image, the reference strip, and newly finished strips → the field's contours.
         State.Operation.IsContourLocked = result.IsContourLocked;
         State.Operation.ContourRef = result.ContourRef;
         if (result.HasContoursToSave) SaveContoursToField();

@@ -130,17 +130,6 @@ public interface ITramLineService
     /// </summary>
     void Clear();
 
-    /// <summary>
-    /// Save tram lines to field directory
-    /// </summary>
-    /// <param name="fieldDirectory">Path to field directory</param>
-    void SaveToFile(string fieldDirectory);
-
-    /// <summary>
-    /// Load tram lines from field directory
-    /// </summary>
-    /// <param name="fieldDirectory">Path to field directory</param>
-    void LoadFromFile(string fieldDirectory);
 
     /// <summary>
     /// Event fired when tram lines are updated

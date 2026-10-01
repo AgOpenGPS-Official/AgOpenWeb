@@ -35,8 +35,8 @@ namespace AgOpenWeb.ViewModels;
 public partial class MainViewModel
 {
     /// <summary>
-    /// Clear all applied-area coverage. Deletes the painted coverage + persisted
-    /// Sections.txt and refreshes the worked-area stats — and ONLY that. Guidance,
+    /// Clear all applied-area coverage. Deletes the painted coverage (its tiles go on the
+    /// next save) and refreshes the worked-area stats — and ONLY that. Guidance,
     /// nudge/pathsAway and any active U-turn are deliberately left untouched: coverage
     /// is just painted area and is independent of the guidance line, so clearing it must
     /// not snap the magenta line back to the reference pass or orphan an in-progress turn.
@@ -46,35 +46,18 @@ public partial class MainViewModel
     private void DeleteContourFile()
     {
         if (State.Field.ActiveField == null) return;
-        try { System.IO.File.Delete(System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, Services.Contour.ContourFilesService.FileName)); }
-        catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting Contour.txt: {ex.Message}"); }
+        try { Services.GeoJson.GeoJsonFieldService.DeleteContours(State.Field.ActiveField.DirectoryPath); }
+        catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting contours: {ex.Message}"); }
     }
 
     public void DeleteAppliedAreaConfirmed()
     {
         _coverageMapService.ClearAll();
 
-        // AgOpenGPS "delete all contours and sections": the contour strips go too, and
-        // Contour.txt is emptied (FileCreateContour) (#110).
+        // AgOpenGPS "delete all contours and sections": the contour strips go too, and the
+        // field's saved contours are deleted (AgOpenGPS FileCreateContour) (#110).
         _gpsPipelineService.ResetContours();
         DeleteContourFile();
-
-        if (State.Field.ActiveField != null)
-        {
-            var sectionsFile = System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, "Sections.txt");
-            if (System.IO.File.Exists(sectionsFile))
-            {
-                try
-                {
-                    System.IO.File.Delete(sectionsFile);
-                    _logger.LogDebug($"[Coverage] Deleted {sectionsFile}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug($"[Coverage] Error deleting Sections.txt: {ex.Message}");
-                }
-            }
-        }
 
         RefreshCoverageStatistics();
         StatusMessage = "Applied area deleted";
@@ -1064,7 +1047,7 @@ public partial class MainViewModel
         // Delete Applied Area's job, which asks first. The web asks before sending this.
         DeleteContoursCommand = new RelayCommand(() =>
         {
-            // The recorded strips (#110), and Contour.txt with them. AgOpenGPS only clears
+            // The recorded strips (#110), and the saved contours with them. AgOpenGPS only clears
             // them from memory, so they came back when the field reopened.
             _gpsPipelineService.ResetContours();
             DeleteContourFile();

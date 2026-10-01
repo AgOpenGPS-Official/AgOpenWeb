@@ -62,7 +62,6 @@ public partial class MainViewModel : ObservableObject
     private readonly IMapService _mapService;
     private readonly IBoundaryRecordingService _boundaryRecordingService;
     private readonly IBoundaryBuilderService _boundaryBuilderService;
-    private readonly BoundaryFileService _boundaryFileService;
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly YouTurnCreationService _youTurnCreationService;
@@ -70,7 +69,6 @@ public partial class MainViewModel : ObservableObject
     private readonly Services.Geometry.IPolygonOffsetService _polygonOffsetService;
     private readonly Services.Interfaces.ITurnAreaService _turnAreaService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
-    private readonly FieldPlaneFileService _fieldPlaneFileService;
     private readonly IVehicleProfileService _vehicleProfileService;
     private readonly IConfigurationService _configurationService;
     private readonly IAutoSteerService _autoSteerService;
@@ -190,7 +188,6 @@ public partial class MainViewModel : ObservableObject
         IMapService mapService,
         IBoundaryRecordingService boundaryRecordingService,
         IBoundaryBuilderService boundaryBuilderService,
-        BoundaryFileService boundaryFileService,
         Services.Headland.IHeadlandBuilderService headlandBuilderService,
         ITrackGuidanceService trackGuidanceService,
         YouTurnCreationService youTurnCreationService,
@@ -333,7 +330,6 @@ public partial class MainViewModel : ObservableObject
         _mapService = mapService;
         _boundaryRecordingService = boundaryRecordingService;
         _boundaryBuilderService = boundaryBuilderService;
-        _boundaryFileService = boundaryFileService;
         _headlandBuilderService = headlandBuilderService;
         _trackGuidanceService = trackGuidanceService;
         _youTurnCreationService = youTurnCreationService;
@@ -374,7 +370,6 @@ public partial class MainViewModel : ObservableObject
         _positionEstimator = positionEstimator;
         _intents = intents;
         _appState = appState;
-        _fieldPlaneFileService = new FieldPlaneFileService();
 
         // State.Field.Tracks is the SoT (projected to the web + read by guidance); it
         // mirrors SavedTracks, the working collection EVERY creation/management path
@@ -1679,17 +1674,19 @@ public partial class MainViewModel : ObservableObject
             FieldsRootDirectory = Path.GetDirectoryName(fieldPath) ?? string.Empty;
             _gpsPipelineService.SetHasActiveField(true);
 
-            // Load field origin from Field.txt
+            // Load the field from field.geojson, importing (and deleting) an AgOpenGPS
+            // field's files first.
+            Field? loadedField = null;
             try
             {
-                var fieldInfo = _fieldPlaneFileService.LoadField(fieldPath);
+                var fieldInfo = loadedField = _fieldService.LoadField(fieldPath);
 
-                // Recovery: if Field.txt has no origin or a zero origin, fall
+                // Recovery: if the field has no origin or a zero origin, fall
                 // back to field.origin — a separate file written at field-
                 // create time and never touched by close-save. Fields
                 // corrupted by the pre-#270 save-with-zero bug can be healed
-                // this way; next close writes the real origin back to both
-                // Field.txt and field.geojson.
+                // this way; next close writes the real origin back to
+                // field.geojson.
                 if (fieldInfo.Origin == null
                     || (fieldInfo.Origin.Latitude == 0 && fieldInfo.Origin.Longitude == 0))
                 {
@@ -1731,11 +1728,10 @@ public partial class MainViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                _logger.LogDebug($"[Field] Could not load Field.txt origin: {ex.Message}");
+                _logger.LogWarning(ex, "[Field] Could not load field {FieldName}", fieldName);
             }
 
-            // Load boundary
-            var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+            var boundary = loadedField?.Boundary;
             if (boundary != null)
             {
                 // Migrate legacy/imported dense boundaries to normalized resolution
@@ -1754,20 +1750,18 @@ public partial class MainViewModel : ObservableObject
             // Load background image
             LoadBackgroundImage(fieldPath, boundary);
 
-            // Create field object and set as active. Origin must be copied from
-            // the loaded Field.txt — otherwise Field.Origin defaults to (0, 0)
-            // and CloseFieldAsync silently overwrites the on-disk Field.txt with
-            // a zero origin, corrupting the field for every future session.
-            var field = new Field
+            // The loaded field becomes the active one, so the close-save writes back what was
+            // read (convergence, dates). Origin must be the one in effect (possibly recovered
+            // from field.origin): a (0, 0) default here would be written back on close and
+            // corrupt the field for every future session.
+            var field = loadedField ?? new Field();
+            field.Name = fieldName;
+            field.DirectoryPath = fieldPath;
+            field.Boundary = boundary;
+            field.Origin = new Position
             {
-                Name = fieldName,
-                DirectoryPath = fieldPath,
-                Boundary = boundary,
-                Origin = new Position
-                {
-                    Latitude = State.Field.OriginLatitude,
-                    Longitude = State.Field.OriginLongitude,
-                }
+                Latitude = State.Field.OriginLatitude,
+                Longitude = State.Field.OriginLongitude,
             };
 
             // Update field service (triggers OnActiveFieldChanged for state sync only)
@@ -1779,13 +1773,13 @@ public partial class MainViewModel : ObservableObject
             // Load tracks
             LoadTracksFromField(field);
 
-            // Load recorded path from RecPath.txt
+            // Load the recorded path in use
             LoadRecPathFromField(fieldPath);
 
             // Load flags from Flags.txt (#107 — they used to carry over from the previous field)
             LoadFlagsFromField(fieldPath);
 
-            // Contour strips from Contour.txt (#110)
+            // Contour strips (#110)
             LoadContoursFromField(fieldPath);
 
             // Establish (or resume) the active job before any coverage paint
@@ -1859,11 +1853,10 @@ public partial class MainViewModel : ObservableObject
             StartCoverageAutosave();
 
             // Tram lines are computed on demand (when the user presses Build/Toggle
-            // tram), not eagerly on field open: they are rarely used and parsing a
-            // large saved TramLines.txt was costing seconds on the open critical path.
-            // The tram buttons regenerate via UpdateTramLines from the current track/
-            // systems, so the on-disk file is only a persistence cache. Start clean so
-            // a prior field's lines don't linger. See
+            // tram), not eagerly on field open: they are rarely used, and parsing a
+            // large saved file was costing seconds on the open critical path, so they
+            // aren't saved at all. The tram buttons regenerate via UpdateTramLines from
+            // the current track/systems. Start clean so a prior field's lines don't linger. See
             // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
             _tramLineService.Clear();
             _mapService.SetTramLines(
@@ -1974,13 +1967,6 @@ public partial class MainViewModel : ObservableObject
             else
             {
                 _logger.LogDebug("[Coverage] No active job; skipping coverage save (field-only open)");
-            }
-
-            // Save tram lines
-            if (_tramLineService.HasTramLines)
-            {
-                _tramLineService.SaveToFile(ActiveField.DirectoryPath);
-                _logger.LogDebug($"[Tram] Saved tram lines to {ActiveField.DirectoryPath}");
             }
 
             // Save tram systems
@@ -2113,7 +2099,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var headlandLine = HeadlandLineSerializer.Load(field.DirectoryPath);
+            var headlandLine = Services.GeoJson.GeoJsonFieldService.LoadHeadlandLine(field.DirectoryPath);
 
             if (headlandLine.Tracks.Count > 0 && headlandLine.Tracks[0].TrackPoints.Count > 0)
             {
@@ -2572,11 +2558,11 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(dir)) return;
         try
         {
-            Services.FlagFilesService.Save(dir, Flags, State.Field.OriginLatitude, State.Field.OriginLongitude);
+            Services.GeoJson.GeoJsonFieldService.SaveFlags(dir, Flags.ToList());
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Flags] Failed to save Flags.txt");
+            _logger.LogWarning(ex, "[Flags] Failed to save flags");
         }
     }
 
@@ -2695,29 +2681,29 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Active track: {track.Name}";
     }
 
-    /// <summary>Replace the contour strips with the field's Contour.txt (none when null) (#110).</summary>
+    /// <summary>Replace the contour strips with the field's (none when null) (#110).</summary>
     private void LoadContoursFromField(string? fieldPath)
     {
         var strips = new List<List<Vec3>>();
         if (!string.IsNullOrEmpty(fieldPath))
         {
-            try { strips = Services.Contour.ContourFilesService.Load(fieldPath); }
-            catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to load Contour.txt"); }
+            try { strips = Services.GeoJson.GeoJsonFieldService.LoadContours(fieldPath); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to load contours"); }
         }
         _gpsPipelineService.LoadContours(strips);
     }
 
-    /// <summary>Append contour strips finished since the last save to Contour.txt (#110).</summary>
+    /// <summary>Append contour strips finished since the last save to the field's contours (#110).</summary>
     private void SaveContoursToField()
     {
         var strips = _gpsPipelineService.TakeContoursToSave();
         var dir = _fieldService.ActiveField?.DirectoryPath;
         if (strips is not { Count: > 0 } || !IsFieldOpen || string.IsNullOrEmpty(dir)) return;
-        try { Services.Contour.ContourFilesService.Append(dir, strips); }
-        catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save Contour.txt"); }
+        try { Services.GeoJson.GeoJsonFieldService.AppendContours(dir, strips); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save contours"); }
     }
 
-    /// <summary>Replace the flags with the field's Flags.txt (empty when <paramref name="fieldPath"/> is null).</summary>
+    /// <summary>Replace the flags with the field's (empty when <paramref name="fieldPath"/> is null).</summary>
     private void LoadFlagsFromField(string? fieldPath)
     {
         _suppressFlagSave = true;
@@ -2728,11 +2714,11 @@ public partial class MainViewModel : ObservableObject
             {
                 try
                 {
-                    foreach (var f in Services.FlagFilesService.Load(fieldPath)) Flags.Add(f);
+                    foreach (var f in Services.GeoJson.GeoJsonFieldService.LoadFlags(fieldPath)) Flags.Add(f);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[Flags] Failed to load Flags.txt");
+                    _logger.LogWarning(ex, "[Flags] Failed to load flags");
                 }
             }
             _nextFlagId = Flags.Count == 0 ? 1 : Flags.Max(f => f.UniqueNumber) + 1;
@@ -2787,9 +2773,9 @@ public partial class MainViewModel : ObservableObject
         SelectedTrack = null;
         RebuildRecordedPathsAndContours(); // clear rec-path/contour display
         SaveTracksToFile();
-        // Also remove RecPath.txt, else the recorded path reloads on next open.
+        // Also remove the recorded path in use, else it reloads on next open.
         if (_fieldService.ActiveField is { } f)
-            Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+            Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
         StatusMessage = "All tracks deleted";
     }
 
@@ -4412,15 +4398,11 @@ public partial class MainViewModel : ObservableObject
     private void SaveBackgroundImage(string sourcePath, string fieldPath, double nwLat, double nwLon, double seLat, double seLon,
         double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)
     {
-        // Copy image to field directory
-        var destPath = Path.Combine(fieldPath, "BackPic.png");
-        File.Copy(sourcePath, destPath, overwrite: true);
-
-        // Save geo-reference file (WGS84 format + Mercator bounds)
-        var inv = System.Globalization.CultureInfo.InvariantCulture;
-        var geoContent = $"$BackPic\ntrue\n{nwLat.ToString(inv)}\n{nwLon.ToString(inv)}\n{seLat.ToString(inv)}\n{seLon.ToString(inv)}\n{mercMinX.ToString(inv)}\n{mercMaxX.ToString(inv)}\n{mercMinY.ToString(inv)}\n{mercMaxY.ToString(inv)}";
-        var geoPath = Path.Combine(fieldPath, "BackPic.txt");
-        File.WriteAllText(geoPath, geoContent);
+        // Copy the image into the field folder; its placement goes in field.geojson.
+        File.Copy(sourcePath, Path.Combine(fieldPath, FieldBackground.DefaultImageFile), overwrite: true);
+        Services.GeoJson.GeoJsonFieldService.SaveBackground(fieldPath, new FieldBackground(
+            FieldBackground.DefaultImageFile, nwLat, nwLon, seLat, seLon,
+            new MercatorBounds(mercMinX, mercMaxX, mercMinY, mercMaxY)));
 
         // Load through single method (applies Mapsui offset correction)
         LoadBackgroundImage(fieldPath, null);
@@ -4432,39 +4414,17 @@ public partial class MainViewModel : ObservableObject
         State.Field.Imagery = null;
         try
         {
-            var backPicPath = Path.Combine(fieldPath, "BackPic.png");
-            var backPicGeoPath = Path.Combine(fieldPath, "BackPic.txt");
-
-            if (!File.Exists(backPicPath) || !File.Exists(backPicGeoPath))
+            // Placement from field.geojson (opening the field imported an AgOpenGPS BackPic).
+            if (Services.GeoJson.GeoJsonFieldService.LoadBackground(fieldPath) is not { } background)
                 return;
-
-            // Read the geo-reference file
-            // Format: $BackPic, true, nwLat, nwLon, seLat, seLon[, mercMinX, mercMaxX, mercMinY, mercMaxY]
-            var lines = File.ReadAllLines(backPicGeoPath);
-            if (lines.Length < 6 || lines[0] != "$BackPic")
+            var backPicPath = Path.Combine(fieldPath, background.ImageFile);
+            if (!File.Exists(backPicPath))
                 return;
-
-            // Check if enabled
-            if (!bool.TryParse(lines[1], out bool enabled) || !enabled)
-                return;
-
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            var style = System.Globalization.NumberStyles.Float;
-
-            // Parse WGS84 bounds
-            if (!double.TryParse(lines[2], style, inv, out double nwLat) ||
-                !double.TryParse(lines[3], style, inv, out double nwLon) ||
-                !double.TryParse(lines[4], style, inv, out double seLat) ||
-                !double.TryParse(lines[5], style, inv, out double seLon))
-                return;
-
-            // Parse Mercator bounds (optional for backwards compatibility)
-            double mercMinX = 0, mercMaxX = 0, mercMinY = 0, mercMaxY = 0;
-            bool hasMercator = lines.Length >= 10 &&
-                double.TryParse(lines[6], style, inv, out mercMinX) &&
-                double.TryParse(lines[7], style, inv, out mercMaxX) &&
-                double.TryParse(lines[8], style, inv, out mercMinY) &&
-                double.TryParse(lines[9], style, inv, out mercMaxY);
+            double nwLat = background.NwLatitude, nwLon = background.NwLongitude;
+            double seLat = background.SeLatitude, seLon = background.SeLongitude;
+            bool hasMercator = background.Mercator is not null;
+            var (mercMinX, mercMaxX, mercMinY, mercMaxY) = background.Mercator is { } m
+                ? (m.MinX, m.MaxX, m.MinY, m.MaxY) : (0.0, 0.0, 0.0, 0.0);
 
             // Use field origin for LocalPlane (same origin used for boundary coordinates)
             // This ensures the background image aligns with the boundary
@@ -4528,7 +4488,7 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrEmpty(CurrentFieldName)) return;
 
         var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-        var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+        var boundary = LoadFieldBoundary(fieldPath);
 
         if (boundary == null) return;
 
@@ -4583,7 +4543,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-        var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+        var boundary = LoadFieldBoundary(fieldPath);
 
         if (boundary == null) return;
 
@@ -4621,12 +4581,12 @@ public partial class MainViewModel : ObservableObject
 
         if (deleted)
         {
-            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SaveFieldBoundary(boundary, fieldPath);
             RefreshBoundaryList();
             SetCurrentBoundary(boundary);
 
             // If that was the last boundary, drop the field-background image
-            // too — BackPic is georeferenced against the boundary, so leaving
+            // too — it's georeferenced against the boundary, so leaving
             // it on disk would float in space the next time the field opens.
             bool hasOuter = boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid;
             bool hasInner = boundary.InnerBoundaries.Any(b => b.IsValid);
@@ -4646,10 +4606,12 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var backPicPath = Path.Combine(fieldPath, "BackPic.png");
-            var backPicGeoPath = Path.Combine(fieldPath, "BackPic.txt");
-            if (File.Exists(backPicPath)) File.Delete(backPicPath);
-            if (File.Exists(backPicGeoPath)) File.Delete(backPicGeoPath);
+            if (Services.GeoJson.GeoJsonFieldService.LoadBackground(fieldPath) is { } background)
+            {
+                var imagePath = Path.Combine(fieldPath, background.ImageFile);
+                if (File.Exists(imagePath)) File.Delete(imagePath);
+                Services.GeoJson.GeoJsonFieldService.SaveBackground(fieldPath, null);
+            }
             _mapService.ClearBackground();
             State.Field.Imagery = null;
         }
@@ -4689,6 +4651,27 @@ public partial class MainViewModel : ObservableObject
     /// Sets the boundary on both the map service and the ViewModel's CurrentBoundary property.
     /// Also populates HeadlandLine from HeadlandPolygon for section control.
     /// </summary>
+    // A field's boundary lives in its field.geojson, written through FieldService with the rest
+    // of the field, never as a file of its own.
+    private Boundary? LoadFieldBoundary(string fieldPath)
+    {
+        try
+        {
+            return _fieldService.LoadField(fieldPath).Boundary;
+        }
+        catch (FileNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    private void SaveFieldBoundary(Boundary boundary, string fieldPath)
+    {
+        var field = _fieldService.LoadField(fieldPath);
+        field.Boundary = boundary;
+        _fieldService.SaveField(field);
+    }
+
     private void SetCurrentBoundary(Boundary? boundary)
     {
         _mapService.SetBoundary(boundary);
@@ -4799,7 +4782,9 @@ public partial class MainViewModel : ObservableObject
 
             // Calculate area from boundary if available
             double area = 0;
-            var boundary = _boundaryFileService.LoadBoundary(dirPath);
+            Boundary? boundary = null;
+            try { boundary = _fieldService.PeekField(dirPath).Boundary; }
+            catch (Exception) { /* not a field */ }
             if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
             {
                 area = boundary.OuterBoundary.AreaHectares;
@@ -5057,7 +5042,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-            var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+            var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
             var origin = new Wgs84(State.Field.OriginLatitude, State.Field.OriginLongitude);
             var sharedProps = new SharedFieldProperties();
@@ -5081,7 +5066,7 @@ public partial class MainViewModel : ObservableObject
                     boundary.InnerBoundaries.Add(polygon);
             }
 
-            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);
             CenterMapOnBoundary(boundary);
             RefreshBoundaryList();
@@ -5183,7 +5168,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         var fieldPath = Path.Combine(fieldsDir, CurrentFieldName);
-        var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+        var boundary = LoadFieldBoundary(fieldPath);
 
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
@@ -5254,7 +5239,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         var fieldPath = Path.Combine(fieldsDir, CurrentFieldName);
-        var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+        var boundary = LoadFieldBoundary(fieldPath);
 
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
@@ -6103,7 +6088,7 @@ public partial class MainViewModel : ObservableObject
                 headlandLine.Tracks.Add(headlandPath);
             }
 
-            HeadlandLineSerializer.Save(activeField.DirectoryPath, headlandLine);
+            Services.GeoJson.GeoJsonFieldService.SaveHeadlandLine(activeField.DirectoryPath, headlandLine);
             _logger.LogDebug($"[Headland] Saved headland to {activeField.DirectoryPath} ({headlandPoints?.Count ?? 0} points)");
         }
         catch (System.Exception ex)
@@ -6143,7 +6128,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            Services.TrackFilesService.Save(activeField.DirectoryPath, SavedTracks.ToList());
+            Services.GeoJson.GeoJsonFieldService.SaveTracks(activeField.DirectoryPath, SavedTracks.ToList());
             _logger.LogDebug("[NUDGE] SaveTracksToFile: Saved {TrackCount} tracks", SavedTracks.Count);
         }
         catch (System.Exception ex)
@@ -6222,102 +6207,29 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // Try TrackLines.txt first (WinForms format)
-            if (Services.TrackFilesService.Exists(field.DirectoryPath))
+            // field.geojson (opening the field imported any AgOpenGPS track files).
+            var tracks = Services.GeoJson.GeoJsonFieldService.LoadTracks(field.DirectoryPath);
+            int loadedCount = 0;
+
+            foreach (var track in tracks)
             {
-                var tracks = Services.TrackFilesService.Load(field.DirectoryPath);
-                int loadedCount = 0;
-                Track? firstTrack = null;
+                // Ensure all tracks start inactive (SelectedTrack setter will activate)
+                track.IsActive = false;
+                MigrateCurveTrack(track);
+                SavedTracks.Add(track); // mirrors into State.Field.Tracks
 
-                foreach (var track in tracks)
-                {
-                    // Ensure all tracks start inactive (SelectedTrack setter will activate)
-                    track.IsActive = false;
-                    MigrateCurveTrack(track);
-                    SavedTracks.Add(track); // mirrors into State.Field.Tracks
-
-                    // Debug: log track details
-                    _logger.LogDebug("[TrackFiles] Track: '{TrackName}', Points: {PointCount}, Type: {TrackType}, IsCurve: {IsCurve}", track.Name, track.Points.Count, track.Type, track.IsCurve);
-
-                    if (loadedCount == 0)
-                    {
-                        firstTrack = track;
-                    }
-                    loadedCount++;
-                }
-
-                _logger.LogDebug($"[TrackFiles] Loaded {loadedCount} tracks from TrackLines.txt");
-
-                // Rebuild recorded paths and contour strips from loaded tracks
-                RebuildRecordedPathsAndContours();
-
-                // Re-activate the track this field was last worked with (#148).
-                RestoreLastUsedTrack(field.DirectoryPath);
-                return;
+                // Debug: log track details
+                _logger.LogDebug("[TrackFiles] Track: '{TrackName}', Points: {PointCount}, Type: {TrackType}, IsCurve: {IsCurve}", track.Name, track.Points.Count, track.Type, track.IsCurve);
+                loadedCount++;
             }
 
-            // Fallback to legacy ABLines.txt format
-            var legacyFilePath = System.IO.Path.Combine(field.DirectoryPath, "ABLines.txt");
-            if (System.IO.File.Exists(legacyFilePath))
-            {
-                _logger.LogDebug($"[TrackFiles] TrackLines.txt not found, trying legacy ABLines.txt");
-                var lines = System.IO.File.ReadAllLines(legacyFilePath);
-                int loadedCount = 0;
+            _logger.LogDebug($"[TrackFiles] Loaded {loadedCount} tracks");
 
-                foreach (var line in lines)
-                {
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
+            // Rebuild recorded paths and contour strips from loaded tracks
+            RebuildRecordedPathsAndContours();
 
-                    var parts = line.Split(',');
-                    if (parts.Length >= 4)
-                    {
-                        // Parse legacy: Name,Heading,PointA_Easting,PointA_Northing[,PointB_Easting,PointB_Northing]
-                        var name = parts[0];
-                        if (double.TryParse(parts[1], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var heading) &&
-                            double.TryParse(parts[2], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var eastingA) &&
-                            double.TryParse(parts[3], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var northingA))
-                        {
-                            double eastingB, northingB;
-
-                            if (parts.Length >= 6 &&
-                                double.TryParse(parts[4], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out eastingB) &&
-                                double.TryParse(parts[5], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out northingB))
-                            {
-                                // Use stored Point B
-                            }
-                            else
-                            {
-                                // Calculate Point B from Point A and heading
-                                var headingRad = heading * Math.PI / 180.0;
-                                var lineLength = 100.0;
-                                eastingB = eastingA + Math.Sin(headingRad) * lineLength;
-                                northingB = northingA + Math.Cos(headingRad) * lineLength;
-                            }
-
-                            var headingRadians = heading * Math.PI / 180.0;
-                            var track = Track.FromABLine(
-                                name,
-                                new Vec3(eastingA, northingA, headingRadians),
-                                new Vec3(eastingB, northingB, headingRadians));
-                            // Don't auto-activate - user must explicitly select
-                            track.IsActive = false;
-
-                            SavedTracks.Add(track); // mirrors into State.Field.Tracks
-                            loadedCount++;
-                        }
-                    }
-                }
-
-                _logger.LogDebug($"[TrackFiles] Loaded {loadedCount} tracks from legacy ABLines.txt");
-
-                // Don't auto-activate any track - user must explicitly select one
-                // HasActiveTrack and IsAutoSteerAvailable stay false until user selects
-            }
-            else
-            {
-                _logger.LogDebug($"[TrackFiles] No track files found in {field.DirectoryPath}");
-            }
+            // Re-activate the track this field was last worked with (#148).
+            RestoreLastUsedTrack(field.DirectoryPath);
         }
         catch (System.Exception ex)
         {
@@ -6329,7 +6241,10 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var recPath = Services.RecPathFileService.LoadRecPath(fieldPath);
+            var recPoints = Services.GeoJson.GeoJsonFieldService.LoadCurrentRecordedPath(fieldPath);
+            var recPath = recPoints is { Count: >= 2 }
+                ? Track.FromRecordedPath("Recorded Path", recPoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList())
+                : null;
             if (recPath != null)
             {
                 SavedTracks.Add(recPath);
@@ -6340,7 +6255,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _logger.LogDebug($"[RecPath] Failed to load RecPath.txt: {ex.Message}");
+            _logger.LogDebug($"[RecPath] Failed to load the recorded path: {ex.Message}");
         }
     }
 }

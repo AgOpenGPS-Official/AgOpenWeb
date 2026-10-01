@@ -37,9 +37,9 @@ public class CoverageMapServicePerJobTests
 
         var jobDir = Path.Combine(_fieldDir, "jobs", "2026-05-05_spraying");
         Assert.That(Directory.Exists(jobDir), Is.True);
-        Assert.That(File.Exists(Path.Combine(jobDir, "coverage_detect.bin")), Is.True);
-        // Field root must remain free of legacy filenames.
-        Assert.That(File.Exists(Path.Combine(_fieldDir, "coverage_detect.bin")), Is.False);
+        Assert.That(File.Exists(Path.Combine(jobDir, "coverage", "manifest.json")), Is.True);
+        // Field root must remain free of coverage.
+        Assert.That(Directory.Exists(Path.Combine(_fieldDir, "coverage")), Is.False);
     }
 
     [Test]
@@ -50,8 +50,8 @@ public class CoverageMapServicePerJobTests
         svc.SaveToFile(_fieldDir, "jobA");
         svc.SaveToFile(_fieldDir, "jobB");
 
-        var aFile = Path.Combine(_fieldDir, "jobs", "jobA", "coverage_detect.bin");
-        var bFile = Path.Combine(_fieldDir, "jobs", "jobB", "coverage_detect.bin");
+        var aFile = Path.Combine(_fieldDir, "jobs", "jobA", "coverage", "manifest.json");
+        var bFile = Path.Combine(_fieldDir, "jobs", "jobB", "coverage", "manifest.json");
 
         Assert.That(File.Exists(aFile), Is.True);
         Assert.That(File.Exists(bFile), Is.True);
@@ -77,12 +77,12 @@ public class CoverageMapServicePerJobTests
     [Test]
     public void LoadFromFile_PerJob_DoesNotPickUpFieldRootCoverage()
     {
-        // Write legacy-shaped coverage at the field root (the pre-#349 path),
+        // Write coverage at the field root (the pre-#349 path),
         // then load with a per-job taskName: the field-root file must be
         // ignored — coverage is now keyed by job.
         var legacy = NewService();
         legacy.SaveToFile(_fieldDir);
-        Assert.That(File.Exists(Path.Combine(_fieldDir, "coverage_detect.bin")), Is.True);
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "coverage", "manifest.json")), Is.True);
 
         var fresh = NewService();
         bool fired = false;

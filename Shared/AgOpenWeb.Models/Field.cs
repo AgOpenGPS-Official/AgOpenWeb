@@ -61,11 +61,6 @@ public class Field
     public Boundary? Boundary { get; set; }
 
     /// <summary>
-    /// Background image (satellite photo)
-    /// </summary>
-    public BackgroundImage? BackgroundImage { get; set; }
-
-    /// <summary>
     /// Total area in hectares (calculated from boundary)
     /// </summary>
     public double TotalArea => Boundary?.AreaHectares ?? 0;

@@ -31,11 +31,11 @@ public sealed class ContourGuidance
     private const double PIBy2 = Math.PI / 2.0;
     private const double TwoPI = Math.PI * 2.0;
 
-    /// <summary>All strips: loaded from Contour.txt plus the ones recorded this session.</summary>
+    /// <summary>All strips: the field's saved ones plus the ones recorded this session.</summary>
     public List<List<Vec3>> Strips { get; } = new();
     /// <summary>The guidance line (AgOpenGPS ctList).</summary>
     public List<Vec3> Line { get; } = new(128);
-    /// <summary>Finished strips not yet appended to Contour.txt (AgOpenGPS contourSaveList).</summary>
+    /// <summary>Finished strips not yet saved with the field (AgOpenGPS contourSaveList).</summary>
     public List<List<Vec3>> PendingSave { get; } = new();
 
     public bool IsRecording { get; private set; }  // isContourOn
@@ -122,7 +122,7 @@ public sealed class ContourGuidance
         IsRecording = false;
     }
 
-    /// <summary>Replace the strips with ones loaded from Contour.txt.</summary>
+    /// <summary>Replace the strips with the field's saved ones.</summary>
     public void Load(IEnumerable<List<Vec3>> strips)
     {
         Reset();

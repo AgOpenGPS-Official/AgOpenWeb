@@ -69,7 +69,7 @@ public partial class MainViewModel
                 try
                 {
                     var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-                    var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+                    var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
                     // Use the EXISTING field origin for LocalPlane conversion - do NOT change it!
                     // The field origin is set when the field is created and should remain constant.
@@ -98,7 +98,7 @@ public partial class MainViewModel
                     else
                         boundary.OuterBoundary = outerPolygon;
 
-                    _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                    SaveFieldBoundary(boundary, fieldPath);
 
                     // NOTE: Do NOT overwrite the field origin - it should stay constant!
                     // The simulator coordinates and field origin should not change when
@@ -456,14 +456,14 @@ public partial class MainViewModel
                 if (!string.IsNullOrEmpty(CurrentFieldName))
                 {
                     var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-                    var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+                    var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
                     if (_boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner)
                         boundary.InnerBoundaries.Add(polygon);
                     else
                         boundary.OuterBoundary = polygon;
 
-                    _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                    SaveFieldBoundary(boundary, fieldPath);
                     SetCurrentBoundary(boundary);
                     RefreshBoundaryList();
                     var typeLabel = _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner ? "Inner boundary" : "Boundary";
@@ -656,14 +656,14 @@ public partial class MainViewModel
             }
 
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-            var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+            var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
             if (PendingBoundaryType == BoundaryType.Inner)
                 boundary.InnerBoundaries.Add(polygon);
             else
                 boundary.OuterBoundary = polygon;
 
-            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);
             RefreshBoundaryList();
 
@@ -740,7 +740,7 @@ public partial class MainViewModel
             if (string.IsNullOrEmpty(CurrentFieldName)) return;
 
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-            var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+            var boundary = LoadFieldBoundary(fieldPath);
             if (boundary == null) return;
 
             // Map selected index to the correct boundary polygon
@@ -751,7 +751,7 @@ public partial class MainViewModel
                 if (currentIndex == SelectedBoundaryIndex)
                 {
                     boundary.OuterBoundary.IsDriveThrough = !boundary.OuterBoundary.IsDriveThrough;
-                    _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                    SaveFieldBoundary(boundary, fieldPath);
                     SetCurrentBoundary(boundary);
                     RefreshBoundaryList();
                     StatusMessage = $"Outer boundary drive-through: {(boundary.OuterBoundary.IsDriveThrough ? "On" : "Off")}";
@@ -767,7 +767,7 @@ public partial class MainViewModel
                     if (currentIndex == SelectedBoundaryIndex)
                     {
                         boundary.InnerBoundaries[i].IsDriveThrough = !boundary.InnerBoundaries[i].IsDriveThrough;
-                        _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                        SaveFieldBoundary(boundary, fieldPath);
                         SetCurrentBoundary(boundary);
                         RefreshBoundaryList();
                         StatusMessage = $"Inner {i + 1} drive-through: {(boundary.InnerBoundaries[i].IsDriveThrough ? "On" : "Off")}";
@@ -789,7 +789,7 @@ public partial class MainViewModel
             if (string.IsNullOrEmpty(CurrentFieldName)) return;
 
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-            var boundary = _boundaryFileService.LoadBoundary(fieldPath);
+            var boundary = LoadFieldBoundary(fieldPath);
             if (boundary == null) return;
 
             int currentIndex = 0;
@@ -799,7 +799,7 @@ public partial class MainViewModel
                 if (currentIndex == SelectedBoundaryIndex)
                 {
                     boundary.OuterBoundary.IsHard = !boundary.OuterBoundary.IsHard;
-                    _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                    SaveFieldBoundary(boundary, fieldPath);
                     SetCurrentBoundary(boundary);
                     RefreshBoundaryList();
                     StatusMessage = $"Outer boundary hard: {(boundary.OuterBoundary.IsHard ? "On" : "Off")}";
@@ -815,7 +815,7 @@ public partial class MainViewModel
                     if (currentIndex == SelectedBoundaryIndex)
                     {
                         boundary.InnerBoundaries[i].IsHard = !boundary.InnerBoundaries[i].IsHard;
-                        _boundaryFileService.SaveBoundary(boundary, fieldPath);
+                        SaveFieldBoundary(boundary, fieldPath);
                         SetCurrentBoundary(boundary);
                         RefreshBoundaryList();
                         StatusMessage = $"Inner {i + 1} hard: {(boundary.InnerBoundaries[i].IsHard ? "On" : "Off")}";
@@ -840,14 +840,14 @@ public partial class MainViewModel
         try
         {
             var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
-            var boundary = _boundaryFileService.LoadBoundary(fieldPath) ?? new Boundary();
+            var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
             var outer = new BoundaryPolygon();
             foreach (var (e, n) in points)
                 outer.Points.Add(new BoundaryPoint(e, n, 0));
             boundary.OuterBoundary = outer;
 
-            _boundaryFileService.SaveBoundary(boundary, fieldPath);
+            SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);
             RefreshBoundaryList();
             StatusMessage = $"Boundary created with {points.Count} points";
@@ -898,7 +898,7 @@ public partial class MainViewModel
 
     /// <summary>
     /// Apply a host-assembled aerial PNG as the field background (remote/web Draw-on-map).
-    /// Reuses the native SaveBackgroundImage path (copies to BackPic.png + geo-ref + reload).
+    /// Reuses SaveBackgroundImage (copies the image into the field, places it in field.geojson, reloads).
     /// </summary>
     public void ApplyCapturedBackground(string pngPath, double nwLat, double nwLon, double seLat, double seLon,
         double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)

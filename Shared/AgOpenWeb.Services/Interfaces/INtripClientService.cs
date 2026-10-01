@@ -36,9 +36,16 @@ public interface INtripClientService
     event EventHandler<RtcmDataReceivedEventArgs>? RtcmDataReceived;
 
     /// <summary>
-    /// Whether NTRIP client is connected to caster
+    /// Whether the caster accepted the request (answered 200) and the session is open
     /// </summary>
     bool IsConnected { get; }
+
+    /// <summary>
+    /// Whether a connection was requested and not disconnected: connected, connecting,
+    /// retrying, or stopped after the caster rejected it. Use this to decide whether to
+    /// disconnect or reconnect; <see cref="IsConnected"/> is only the live state.
+    /// </summary>
+    bool IsActive { get; }
 
     /// <summary>
     /// Total bytes received from caster
