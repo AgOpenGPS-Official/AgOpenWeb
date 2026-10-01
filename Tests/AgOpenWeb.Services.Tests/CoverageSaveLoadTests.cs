@@ -142,6 +142,8 @@ public class CoverageSaveLoadTests
 
         Assert.Multiple(() =>
         {
+            Assert.That(reopened.DisplayDimensions, Is.EqualTo(svc.DisplayDimensions), "same grid as when saved");
+            Assert.That(reopened.BitmapDimensions, Is.EqualTo(svc.BitmapDimensions), "same grid as when saved");
             Assert.That(reopened.IsPointCovered(1003, 2000), Is.True, "painted strip");
             Assert.That(reopened.IsPointCovered(1030, 2000), Is.False, "unpainted ground");
             Assert.That(reopened.TotalWorkedArea, Is.EqualTo(svc.TotalWorkedArea).Within(0.01));

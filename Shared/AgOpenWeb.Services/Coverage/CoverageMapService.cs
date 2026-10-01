@@ -1842,7 +1842,8 @@ public class CoverageMapService : ICoverageMapService
                 byte paletteSize = reader.ReadByte();
                 stream.Seek(paletteSize * 2, SeekOrigin.Current);
             }
-            double cell = reader.ReadSingle();
+            // Stored as float: 0.1f is 0.10000000149, enough to push width x cell past the edge.
+            double cell = Math.Round(reader.ReadSingle(), 6);
             double originE = reader.ReadDouble();
             double originN = reader.ReadDouble();
             uint width = reader.ReadUInt32();
@@ -1850,7 +1851,11 @@ public class CoverageMapService : ICoverageMapService
 
             if (!(cell > 0) || !double.IsFinite(originE) || !double.IsFinite(originN) || width == 0 || height == 0)
                 return null;
-            double maxE = originE + width * cell, maxN = originN + height * cell;
+            // Pull the far edges in a hair so SetFieldBounds' Ceiling gives back exactly
+            // width x height; otherwise rounding adds a cell, and a no-boundary job would
+            // grow by one cell every time it is reopened.
+            const double edge = 1e-6;
+            double maxE = originE + width * cell - edge, maxN = originN + height * cell - edge;
             if ((double)width * height > MAX_LOAD_GRID_CELLS)
                 return null;
             return (originE, maxE, originN, maxN);
