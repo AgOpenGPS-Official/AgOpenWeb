@@ -18,18 +18,22 @@ namespace AgOpenWeb.Services
     {
         /// <summary>
         /// Create <paramref name="newDirectory"/> from <paramref name="sourceDirectory"/>. The
-        /// field itself (Field.txt, boundary, background, field.geojson) is re-saved under the
-        /// new name via <paramref name="fieldService"/> — a raw copy of field.geojson would
-        /// carry the source's name, which wins over the directory name on load.
+        /// field itself (boundary, background, field.geojson) is re-saved under the new name via
+        /// <paramref name="fieldService"/>: a raw copy of field.geojson would carry the source's
+        /// name, which wins over the directory name on load. The source is only read, so an
+        /// AgOpenGPS source keeps its files until it is opened itself.
         /// </summary>
         public static void CreateFromExisting(IFieldService fieldService, string sourceDirectory,
             string newDirectory, string newName,
             bool copyFlags, bool copyMapping, bool copyHeadland, bool copyLines)
         {
-            var field = fieldService.LoadField(sourceDirectory);
+            var field = fieldService.PeekField(sourceDirectory);
             Directory.CreateDirectory(newDirectory);
             field.Name = newName;
             field.DirectoryPath = newDirectory;
+            // The headland polygon travels in field.geojson with the boundary.
+            if (!copyHeadland && field.Boundary != null)
+                field.Boundary.HeadlandPolygon = null;
             fieldService.SaveField(field);
 
             // Always (AgOpenGPS copies these regardless of the options).
@@ -44,11 +48,7 @@ namespace AgOpenWeb.Services
                 Copy(sourceDirectory, newDirectory, "Flags.txt");
 
             if (copyHeadland)
-            {
-                Copy(sourceDirectory, newDirectory, "Headland.Txt");
-                Copy(sourceDirectory, newDirectory, "Headland.txt");
                 Copy(sourceDirectory, newDirectory, "HeadlandSegments.json");
-            }
 
             if (copyLines)
             {

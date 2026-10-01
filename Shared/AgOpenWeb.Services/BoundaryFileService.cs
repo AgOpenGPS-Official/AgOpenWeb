@@ -188,8 +188,10 @@ public class BoundaryFileService
 
     /// <summary>
     /// Save boundary to Boundary.txt
+    /// AgOpenWeb never writes AgOpenGPS files (they are imported once and deleted, see
+    /// FieldService.LoadField); internal so tests can build AgOpenGPS fixtures.
     /// </summary>
-    public void SaveBoundary(Boundary boundary, string fieldDirectory)
+    internal void SaveBoundary(Boundary boundary, string fieldDirectory)
     {
         if (string.IsNullOrWhiteSpace(fieldDirectory))
         {
@@ -249,8 +251,10 @@ public class BoundaryFileService
 
     /// <summary>
     /// Create an empty Boundary.txt
+    /// AgOpenWeb never writes AgOpenGPS files (they are imported once and deleted, see
+    /// FieldService.LoadField); internal so tests can build AgOpenGPS fixtures.
     /// </summary>
-    public void CreateEmptyBoundary(string fieldDirectory)
+    internal void CreateEmptyBoundary(string fieldDirectory)
     {
         if (string.IsNullOrWhiteSpace(fieldDirectory))
         {

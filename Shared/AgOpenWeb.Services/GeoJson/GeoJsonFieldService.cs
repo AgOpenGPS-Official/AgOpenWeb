@@ -23,7 +23,6 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.GeoJson;
 using AgOpenWeb.Models.Track;
-using AgOpenWeb.Services.Geometry;
 
 namespace AgOpenWeb.Services.GeoJson;
 
@@ -62,7 +61,7 @@ public class GeoJsonFieldService
         if (!Directory.Exists(field.DirectoryPath))
             Directory.CreateDirectory(field.DirectoryPath);
 
-        var geo = new GeoConversion(field.Origin.Latitude, field.Origin.Longitude);
+        var geo = new Projection(field.Origin.Latitude, field.Origin.Longitude);
         var fc = new GeoJsonFeatureCollection();
 
         // Metadata feature -- a Point at the field origin
@@ -99,7 +98,9 @@ public class GeoJsonFieldService
             fc.Features.Add(BuildBackgroundImageFeature(geo, field.BackgroundImage));
 
         var json = JsonSerializer.Serialize(fc, SerializerOptions);
-        File.WriteAllText(Path.Combine(field.DirectoryPath, FileName), json);
+        var path = Path.Combine(field.DirectoryPath, FileName);
+        File.WriteAllText(path + ".tmp", json);
+        File.Move(path + ".tmp", path, overwrite: true);
     }
 
     /// <summary>
@@ -144,7 +145,7 @@ public class GeoJsonFieldService
         if (DateTime.TryParse(modifiedStr, out var modified))
             field.LastModifiedDate = modified;
 
-        var geo = new GeoConversion(originLat, originLon);
+        var geo = new Projection(originLat, originLon);
         var boundary = new Boundary();
         var tracks = new List<Models.Track.Track>();
 
@@ -185,10 +186,50 @@ public class GeoJsonFieldService
             }
         }
 
-        if (boundary.OuterBoundary != null)
+        if (boundary.OuterBoundary != null || boundary.InnerBoundaries.Count > 0 || boundary.HeadlandPolygon != null)
             field.Boundary = boundary;
 
         return (field, tracks);
+    }
+
+    // ---------------------------------------------------------------
+    // Plane <-> WGS84
+    // ---------------------------------------------------------------
+
+    // The field plane <-> WGS84, with LocalPlane: longitude scaled at each point's own
+    // latitude, the same conversion as live GPS and the AgOpenGPS import, so the coordinates
+    // are right for GIS tools too.
+    private sealed class Projection
+    {
+        private readonly LocalPlane _plane;
+
+        public Projection(double originLat, double originLon) =>
+            _plane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
+
+        public (double lat, double lon) ToWgs84(Vec2 local)
+        {
+            var w = _plane.ConvertGeoCoordToWgs84(new GeoCoord(local.Northing, local.Easting));
+            return (w.Latitude, w.Longitude);
+        }
+
+        public Vec2 ToLocal(double lat, double lon)
+        {
+            var c = _plane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
+            return new Vec2(c.Easting, c.Northing);
+        }
+
+        /// <summary>Local points to GeoJSON [lon, lat] (Vec2) or [lon, lat, heading] (Vec3).</summary>
+        public List<double[]> ToGeoJsonCoordinates(IReadOnlyList<Vec2> points) =>
+            points.Select(p => { var (lat, lon) = ToWgs84(p); return new[] { lon, lat }; }).ToList();
+
+        public List<double[]> ToGeoJsonCoordinates(IReadOnlyList<Vec3> points) =>
+            points.Select(p => { var (lat, lon) = ToWgs84(new Vec2(p.Easting, p.Northing)); return new[] { lon, lat, p.Heading }; }).ToList();
+
+        /// <summary>GeoJSON [lon, lat(, heading)] back to local points; heading defaults to 0.</summary>
+        public List<Vec3> FromGeoJsonCoordinatesVec3(IReadOnlyList<double[]> coords) =>
+            coords.Where(c => c.Length >= 2)
+                  .Select(c => { var l = ToLocal(c[1], c[0]); return new Vec3(l.Easting, l.Northing, c.Length >= 3 ? c[2] : 0); })
+                  .ToList();
     }
 
     // ---------------------------------------------------------------
@@ -218,7 +259,7 @@ public class GeoJsonFieldService
         };
     }
 
-    private static GeoJsonFeature BuildBoundaryFeature(GeoConversion geo, BoundaryPolygon polygon, string role)
+    private static GeoJsonFeature BuildBoundaryFeature(Projection geo, BoundaryPolygon polygon, string role)
     {
         var ring = BoundaryToGeoJsonRing(geo, polygon);
         return new GeoJsonFeature
@@ -238,7 +279,7 @@ public class GeoJsonFieldService
         };
     }
 
-    private static GeoJsonFeature BuildTrackFeature(GeoConversion geo, Models.Track.Track track)
+    private static GeoJsonFeature BuildTrackFeature(Projection geo, Models.Track.Track track)
     {
         var coords = geo.ToGeoJsonCoordinates(track.Points);
         return new GeoJsonFeature
@@ -261,7 +302,7 @@ public class GeoJsonFieldService
         };
     }
 
-    private static GeoJsonFeature BuildBackgroundImageFeature(GeoConversion geo, BackgroundImage img)
+    private static GeoJsonFeature BuildBackgroundImageFeature(Projection geo, BackgroundImage img)
     {
         // Store image bounds as a polygon (4 corners + closing point)
         var corners = new List<Vec2>
@@ -292,7 +333,7 @@ public class GeoJsonFieldService
     /// <summary>
     /// Convert a BoundaryPolygon to a GeoJSON ring (closed array of [lon, lat, heading]).
     /// </summary>
-    private static object[] BoundaryToGeoJsonRing(GeoConversion geo, BoundaryPolygon polygon)
+    private static object[] BoundaryToGeoJsonRing(Projection geo, BoundaryPolygon polygon)
     {
         var ring = new List<object>(polygon.Points.Count + 1);
         foreach (var pt in polygon.Points)
@@ -314,7 +355,7 @@ public class GeoJsonFieldService
     // Feature readers (GeoJSON -> local)
     // ---------------------------------------------------------------
 
-    private static BoundaryPolygon? ReadBoundaryPolygon(GeoConversion geo, GeoJsonFeature feature)
+    private static BoundaryPolygon? ReadBoundaryPolygon(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadPolygonRing(feature.Geometry, 0);
         if (coords == null || coords.Count < 3)
@@ -344,7 +385,7 @@ public class GeoJsonFieldService
         return polygon;
     }
 
-    private static Models.Track.Track? ReadTrack(GeoConversion geo, GeoJsonFeature feature)
+    private static Models.Track.Track? ReadTrack(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadLineStringCoords(feature.Geometry);
         if (coords == null || coords.Count < 2)
@@ -369,7 +410,7 @@ public class GeoJsonFieldService
         };
     }
 
-    private static BackgroundImage? ReadBackgroundImage(GeoConversion geo, GeoJsonFeature feature)
+    private static BackgroundImage? ReadBackgroundImage(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadPolygonRing(feature.Geometry, 0);
         if (coords == null || coords.Count < 4)

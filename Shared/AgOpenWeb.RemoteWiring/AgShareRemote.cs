@@ -115,11 +115,11 @@ internal static class AgShareRemote
         Set(s, "Uploading…", true);
         var client = new AgShareClient(url, key);
         var uploader = new AgShareUploaderService();
-        var boundarySvc = new BoundaryFileService();
+        var fields = new FieldService();
         int ok = 0, fail = 0;
         foreach (var name in names)
         {
-            try { var (success, _) = await UploadOne(client, uploader, boundarySvc, Path.Combine(root, name), name, isPublic); if (success) ok++; else fail++; }
+            try { var (success, _) = await UploadOne(client, uploader, fields, Path.Combine(root, name), name, isPublic); if (success) ok++; else fail++; }
             catch { fail++; }
             Set(s, $"Uploaded {ok}, failed {fail} of {names.Count}…", true);
         }
@@ -148,30 +148,15 @@ internal static class AgShareRemote
         return result;
     }
 
-    // Mirrors AgShareUploadDialogPanel.UploadSingleFieldAsync: origin from Field.txt StartFix,
-    // boundary via BoundaryFileService, existing cloud id from agshare.txt.
+    // Origin and boundary from the field (read only: an AgOpenGPS-format field uploads without
+    // being imported), existing cloud id from agshare.txt.
     private static async Task<(bool, string)> UploadOne(AgShareClient client, AgShareUploaderService uploader,
-        BoundaryFileService boundarySvc, string dir, string name, bool isPublic)
+        IFieldService fields, string dir, string name, bool isPublic)
     {
-        var origin = new Wgs84(0, 0);
-        var fieldTxt = Path.Combine(dir, "Field.txt");
-        if (File.Exists(fieldTxt))
-        {
-            var lines = await File.ReadAllLinesAsync(fieldTxt);
-            for (int i = 0; i < lines.Length - 1; i++)
-                if (lines[i].Contains("StartFix"))
-                {
-                    var coords = lines[i + 1].Split(',');
-                    var inv = System.Globalization.CultureInfo.InvariantCulture; // Field.txt is always '.'-decimal (#112)
-                    if (coords.Length >= 2
-                        && double.TryParse(coords[0], System.Globalization.NumberStyles.Float, inv, out var lat)
-                        && double.TryParse(coords[1], System.Globalization.NumberStyles.Float, inv, out var lon))
-                        origin = new Wgs84(lat, lon);
-                    break;
-                }
-        }
+        var field = fields.PeekField(dir);
+        var origin = new Wgs84(field.Origin.Latitude, field.Origin.Longitude);
         var boundaries = new List<List<Vec3>>();
-        var b = boundarySvc.LoadBoundary(dir);
+        var b = field.Boundary;
         if (b?.OuterBoundary != null && b.OuterBoundary.Points.Count > 0)
         {
             boundaries.Add(b.OuterBoundary.Points.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList());

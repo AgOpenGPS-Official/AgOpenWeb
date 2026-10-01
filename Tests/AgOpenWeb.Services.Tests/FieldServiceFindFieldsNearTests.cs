@@ -1,5 +1,5 @@
 using AgOpenWeb.Models;
-using AgOpenWeb.Services.Fields;
+using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services.Tests;
 
@@ -42,7 +42,7 @@ public class FieldServiceFindFieldsNearTests
             DirectoryPath = dir,
             Origin = new Position { Latitude = lat, Longitude = lon }
         };
-        FieldJsonService.Save(field, dir);
+        GeoJsonFieldService.Save(field, tracks: null);
         return dir;
     }
 

@@ -155,13 +155,12 @@ public sealed class TrackCopierService : ITrackCopierService
     }
 
     /// <summary>
-    /// Read the WGS84 origin from a field directory's Field.txt.
-    /// Wraps <see cref="FieldPlaneFileService"/> so the call site doesn't
-    /// have to manage the round-trip through <see cref="Field"/>.
+    /// Read the WGS84 origin of a field directory (field.geojson, or its AgOpenGPS files if
+    /// not yet imported), without changing it.
     /// </summary>
     private static Wgs84 LoadOrigin(string fieldDirectory)
     {
-        var field = new FieldPlaneFileService().LoadField(fieldDirectory);
+        var field = new FieldService().PeekField(fieldDirectory);
         return new Wgs84(field.Origin.Latitude, field.Origin.Longitude);
     }
 }

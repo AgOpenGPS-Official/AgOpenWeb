@@ -114,54 +114,67 @@ public class LegacyAutoImportTests
     }
 
     [Test]
-    public void LoadField_SecondLoad_UsesGeoJson()
+    public void LoadField_SecondLoad_ReadsTheImportedGeoJson()
     {
         WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
+        WriteLegacyBoundary(centerE: 100, centerN: 200);
 
-        // First load: reads legacy, creates GeoJSON
         _service.LoadField(_fieldDir);
-        Assert.That(GeoJsonFieldService.Exists(_fieldDir), Is.True);
-
-        // Modify the legacy file to have different coordinates
-        WriteLegacyFieldTxt(lat: 99.0, lon: -99.0);
-
-        // Second load: should use GeoJSON (not the modified legacy)
         var field = _service.LoadField(_fieldDir);
-        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001),
-            "Second load should use GeoJSON, not the modified legacy file");
+
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+        Assert.That(field.Boundary?.OuterBoundary?.Points, Has.Count.EqualTo(4));
     }
 
     [Test]
-    public void LoadField_GeoJsonAlreadyExists_DoesNotReConvert()
+    public void LoadField_AgOpenGpsFilesNextToAGeoJson_AreImportedOverIt()
     {
-        WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
-
-        // Create GeoJSON with different origin
-        var geoField = new Field
+        // AgOpenGPS files dropped into an AgOpenWeb field folder replace what it had.
+        var existing = new Field
         {
             Name = "TestField",
             DirectoryPath = _fieldDir,
             Origin = new Position { Latitude = 48.0, Longitude = -94.0 },
         };
-        GeoJsonFieldService.Save(geoField, new List<AgOpenWeb.Models.Track.Track>());
+        GeoJsonFieldService.Save(existing, new List<AgOpenWeb.Models.Track.Track>());
+        WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
+        WriteLegacyBoundary(centerE: 100, centerN: 200);
 
-        // Load should use existing GeoJSON, not re-convert from legacy
         var field = _service.LoadField(_fieldDir);
-        Assert.That(field.Origin.Latitude, Is.EqualTo(48.0).Within(0.001),
-            "Should load from existing GeoJSON, not re-convert from legacy");
+
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+        Assert.That(field.Boundary?.OuterBoundary?.Points, Has.Count.EqualTo(4));
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "Field.txt")), Is.False);
     }
 
     [Test]
-    public void LoadField_LegacyOnly_OriginalFilesUntouched()
+    public void LoadField_AgOpenGpsFieldFiles_AreDeletedOnceImported()
     {
         WriteLegacyFieldTxt();
-        var originalContent = File.ReadAllText(Path.Combine(_fieldDir, "Field.txt"));
+        WriteLegacyBoundary();
+        File.WriteAllLines(Path.Combine(_fieldDir, "Headland.Txt"), new[] { "$Headland", "False", "0" });
+        File.WriteAllText(Path.Combine(_fieldDir, "TrackLines.txt"), "$TrackLines");
 
         _service.LoadField(_fieldDir);
 
-        var afterContent = File.ReadAllText(Path.Combine(_fieldDir, "Field.txt"));
-        Assert.That(afterContent, Is.EqualTo(originalContent),
-            "Legacy files should not be modified during auto-conversion");
+        foreach (var name in new[] { "Field.txt", "Boundary.txt", "Headland.Txt" })
+            Assert.That(File.Exists(Path.Combine(_fieldDir, name)), Is.False, name);
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "TrackLines.txt")), Is.True,
+            "tracks aren't part of this import yet");
+    }
+
+    [Test]
+    public void PeekField_ReadsAnAgOpenGpsFieldWithoutImportingIt()
+    {
+        WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
+        WriteLegacyBoundary();
+
+        var field = _service.PeekField(_fieldDir);
+
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+        Assert.That(field.Boundary?.OuterBoundary, Is.Not.Null);
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "Field.txt")), Is.True, "left as it was");
+        Assert.That(GeoJsonFieldService.Exists(_fieldDir), Is.False, "nothing written");
     }
 
     [Test]

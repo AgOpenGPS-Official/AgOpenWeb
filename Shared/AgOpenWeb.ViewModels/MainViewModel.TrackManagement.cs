@@ -432,7 +432,7 @@ public partial class MainViewModel
     /// <summary>
 /// Transform tracks from a source field's local plane into the active
 /// field's local plane. If the active field's origin can't be determined
-/// or the source has no Field.txt, falls back to returning the input
+/// or the source isn't a readable field, falls back to returning the input
 /// unchanged so the legacy "untransformed" import path still works
 /// (better than failing entirely on partial field data).
 /// </summary>
@@ -444,12 +444,12 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
     Wgs84 sourceOrigin;
     try
     {
-        var sourceField = new FieldPlaneFileService().LoadField(sourceDir);
+        var sourceField = _fieldService.PeekField(sourceDir);
         sourceOrigin = new Wgs84(sourceField.Origin.Latitude, sourceField.Origin.Longitude);
     }
     catch
     {
-        // No Field.txt in the source directory or the file is malformed.
+        // No field in the source directory, or it can't be read.
         // Treat tracks as already in the active field's plane (legacy behavior).
         _logger.LogWarning("[TrackImport] Could not read source field origin; importing tracks without coordinate transform");
         return sourceTracks.ToList();

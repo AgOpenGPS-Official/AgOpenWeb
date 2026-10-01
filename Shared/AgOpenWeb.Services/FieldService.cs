@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using AgOpenWeb.Models;
-using AgOpenWeb.Services.Fields;
 using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services;
@@ -32,7 +31,6 @@ public class FieldService : IFieldService
 {
     private readonly FieldPlaneFileService _fieldPlaneService;
     private readonly BoundaryFileService _boundaryService;
-    private readonly BackgroundImageFileService _backgroundImageService;
 
     public event EventHandler<Field?>? ActiveFieldChanged;
     public Field? ActiveField { get; private set; }
@@ -41,7 +39,6 @@ public class FieldService : IFieldService
     {
         _fieldPlaneService = new FieldPlaneFileService();
         _boundaryService = new BoundaryFileService();
-        _backgroundImageService = new BackgroundImageFileService();
     }
 
     /// <summary>
@@ -62,64 +59,82 @@ public class FieldService : IFieldService
             .ToList();
     }
 
+    // AgOpenGPS's field-definition files. A folder that has them is imported into field.geojson
+    // once and they are deleted: one-way, AgOpenWeb never writes them back. Headland.Txt is
+    // AgOpenGPS's headland polygon (AgOpenWeb keeps its own headland in Headlines.txt).
+    private static readonly string[] AgOpenGpsFieldFiles = { "Field.txt", "Boundary.txt", "Headland.Txt", "Headland.txt" };
+
     /// <summary>
-    /// Load a complete field. Prefers field.geojson when present, falls back to legacy text files.
-    /// If the GeoJSON file is corrupt (truncated write, power loss), the corrupt file is renamed
-    /// and loading falls back to legacy format.
+    /// Load a complete field from field.geojson, first importing any AgOpenGPS field files in
+    /// the folder (and deleting them). Throws <see cref="FileNotFoundException"/> when the
+    /// folder holds neither.
     /// </summary>
     public Field LoadField(string fieldDirectory)
     {
-        if (GeoJsonFieldService.Exists(fieldDirectory))
+        if (HasAgOpenGpsFieldFiles(fieldDirectory))
         {
-            try
+            var imported = ReadAgOpenGpsField(fieldDirectory);
+            GeoJsonFieldService.Save(imported, tracks: null);
+            foreach (var name in AgOpenGpsFieldFiles)
             {
-                var (field, _) = GeoJsonFieldService.Load(fieldDirectory);
-                // Background image file (BackPic.png) is still loaded from the legacy service
-                // because the image itself is not stored in GeoJSON.
-                field.BackgroundImage ??= _backgroundImageService.LoadBackgroundImage(fieldDirectory);
-                return field;
-            }
-            catch (Exception ex)
-            {
-                // GeoJSON is corrupt - rename it so the next save writes a fresh file
-                var corruptPath = Path.Combine(fieldDirectory, "field.geojson");
-                var backupPath = Path.Combine(fieldDirectory, $"field.geojson.corrupt.{DateTime.UtcNow:yyyyMMdd_HHmmss}");
-                try
-                {
-                    File.Move(corruptPath, backupPath);
-                }
-                catch
-                {
-                    // If rename fails, continue with fallback anyway
-                }
-
-                System.Diagnostics.Debug.WriteLine(
-                    $"[FieldService] GeoJSON load failed for '{fieldDirectory}', falling back to legacy: {ex.Message}");
+                var path = Path.Combine(fieldDirectory, name);
+                if (File.Exists(path))
+                    File.Delete(path);
             }
         }
-
-        var legacyField = _fieldPlaneService.LoadField(fieldDirectory);
-        legacyField.Boundary = _boundaryService.LoadBoundary(fieldDirectory);
-        legacyField.BackgroundImage = _backgroundImageService.LoadBackgroundImage(fieldDirectory);
-
-        // Auto-convert: save as GeoJSON so future loads use the modern format
-        try
-        {
-            GeoJsonFieldService.Save(legacyField, tracks: null);
-            System.Diagnostics.Debug.WriteLine(
-                $"[FieldService] Auto-converted legacy field to GeoJSON: '{fieldDirectory}'");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[FieldService] Auto-conversion to GeoJSON failed: {ex.Message}");
-        }
-
-        return legacyField;
+        return ReadGeoJsonField(fieldDirectory);
     }
 
     /// <summary>
-    /// Save a complete field. Writes both GeoJSON and legacy formats for backwards compatibility.
+    /// Read a field without changing its folder: field.geojson, or the AgOpenGPS files when
+    /// they haven't been imported yet. For callers that only look at a field (lists, origins,
+    /// copying from it), so browsing fields never converts them.
+    /// </summary>
+    public Field PeekField(string fieldDirectory) =>
+        HasAgOpenGpsFieldFiles(fieldDirectory)
+            ? ReadAgOpenGpsField(fieldDirectory)
+            : ReadGeoJsonField(fieldDirectory);
+
+    private static bool HasAgOpenGpsFieldFiles(string fieldDirectory) =>
+        File.Exists(Path.Combine(fieldDirectory, "Field.txt"));
+
+    private Field ReadAgOpenGpsField(string fieldDirectory)
+    {
+        var field = _fieldPlaneService.LoadField(fieldDirectory);
+        field.Boundary = _boundaryService.LoadBoundary(fieldDirectory);
+        return field;
+    }
+
+    private Field ReadGeoJsonField(string fieldDirectory)
+    {
+        if (!GeoJsonFieldService.Exists(fieldDirectory))
+            throw new FileNotFoundException("No field.geojson (and no AgOpenGPS field to import)",
+                Path.Combine(fieldDirectory, "field.geojson"));
+        Field field;
+        try
+        {
+            (field, _) = GeoJsonFieldService.Load(fieldDirectory);
+        }
+        catch (Exception ex)
+        {
+            // Unreadable (truncated write, power loss): set it aside for inspection so the next
+            // save starts a fresh one, and report it.
+            var path = Path.Combine(fieldDirectory, "field.geojson");
+            try
+            {
+                File.Move(path, Path.Combine(fieldDirectory, $"field.geojson.corrupt.{DateTime.UtcNow:yyyyMMdd_HHmmss}"));
+            }
+            catch
+            {
+                // Couldn't rename it; still report the failure.
+            }
+            throw new InvalidDataException($"field.geojson in '{fieldDirectory}' is unreadable: {ex.Message}", ex);
+        }
+        return field;
+    }
+
+    /// <summary>
+    /// Save a complete field to field.geojson. Tracks are saved separately by the caller.
     /// </summary>
     public void SaveField(Field field)
     {
@@ -128,28 +143,24 @@ public class FieldService : IFieldService
             throw new ArgumentException("Field.DirectoryPath must be set", nameof(field));
         }
 
-        // Legacy files (keep for AgOpenGPS interop)
-        _fieldPlaneService.SaveField(field, field.DirectoryPath);
-
-        if (field.Boundary != null)
+        // A null Boundary means "not loaded", not "no boundary" (that's an empty Boundary):
+        // keep the one on disk rather than wiping it, which a close-save from a field object
+        // that never had its boundary set once did.
+        if (field.Boundary == null && GeoJsonFieldService.Exists(field.DirectoryPath))
         {
-            _boundaryService.SaveBoundary(field.Boundary, field.DirectoryPath);
+            try
+            {
+                field.Boundary = GeoJsonFieldService.Load(field.DirectoryPath).field.Boundary;
+            }
+            catch
+            {
+                // Unreadable: nothing to keep.
+            }
         }
 
-        if (field.BackgroundImage != null)
-        {
-            _backgroundImageService.SaveBackgroundImage(field.BackgroundImage, field.DirectoryPath);
-        }
-
-        // GeoJSON (new canonical format -- tracks saved separately by caller)
-        try
-        {
-            GeoJsonFieldService.Save(field, tracks: null);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"GeoJSON save failed: {ex.Message}");
-        }
+        // Only field.geojson. The background image's files (BackPic.png / BackPic.txt) are
+        // written by whoever sets the image, not on every save of the field.
+        GeoJsonFieldService.Save(field, tracks: null);
     }
 
     /// <summary>
@@ -175,11 +186,7 @@ public class FieldService : IFieldService
             LastModifiedDate = DateTime.Now
         };
 
-        // Create empty boundary file
-        _boundaryService.CreateEmptyBoundary(fieldDirectory);
-
-        // Save field metadata
-        _fieldPlaneService.SaveField(field, fieldDirectory);
+        SaveField(field);
 
         return field;
     }
@@ -255,18 +262,7 @@ public class FieldService : IFieldService
     {
         try
         {
-            var fromJson = FieldJsonService.Load(fieldDirectory);
-            if (fromJson != null) return fromJson.Origin;
-        }
-        catch
-        {
-            // Fall through to legacy reader.
-        }
-
-        try
-        {
-            var legacy = _fieldPlaneService.LoadField(fieldDirectory);
-            return legacy.Origin;
+            return PeekField(fieldDirectory).Origin;
         }
         catch
         {
@@ -278,8 +274,7 @@ public class FieldService : IFieldService
     {
         try
         {
-            var boundary = _boundaryService.LoadBoundary(fieldDirectory);
-            return boundary?.AreaHectares ?? 0;
+            return PeekField(fieldDirectory).Boundary?.AreaHectares ?? 0;
         }
         catch
         {

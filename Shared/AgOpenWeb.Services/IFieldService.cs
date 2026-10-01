@@ -41,9 +41,16 @@ public interface IFieldService
     List<string> GetAvailableFields(string fieldsRootDirectory);
 
     /// <summary>
-    /// Load a complete field (metadata, boundary, background image)
+    /// Load a complete field (metadata, boundary, background image) from field.geojson,
+    /// first importing (and deleting) any AgOpenGPS field files in the folder.
     /// </summary>
     Field LoadField(string fieldDirectory);
+
+    /// <summary>
+    /// Read a field without changing its folder: field.geojson, or the AgOpenGPS files if it
+    /// hasn't been imported yet. For callers that only look at a field (lists, origins).
+    /// </summary>
+    Field PeekField(string fieldDirectory);
 
     /// <summary>
     /// Save a complete field (metadata, boundary, background image)
@@ -77,8 +84,8 @@ public interface IFieldService
     /// StartWorkSession dialog and the InField shortcut.
     /// </summary>
     /// <remarks>
-    /// Reads each field's origin from <c>field.json</c> if present,
-    /// otherwise falls back to the legacy <c>Field.txt</c> writer.
+    /// Reads each field's origin with <see cref="PeekField"/> (field.geojson, or the AgOpenGPS
+    /// files of a field not yet imported), without changing the folder.
     /// Fields with a (0,0) origin or unreadable metadata are skipped.
     /// </remarks>
     IReadOnlyList<NearbyField> FindFieldsNear(
