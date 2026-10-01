@@ -232,10 +232,6 @@ public partial class MainViewModel
                 Directory.CreateDirectory(fieldPath);
                 WriteNewFieldSkeleton(fieldPath, NewFieldName, NewFieldLatitude, NewFieldLongitude);
 
-                // Create elevation log header if enabled (#120)
-                if (_configStore.Display.ElevationLogEnabled)
-                    _elevationLogService.CreateHeader(fieldPath, NewFieldLatitude, NewFieldLongitude);
-
                 var name = NewFieldName;
                 await OpenCreatedFieldAsync(fieldPath, name);
                 StatusMessage = $"Created field: {name}";

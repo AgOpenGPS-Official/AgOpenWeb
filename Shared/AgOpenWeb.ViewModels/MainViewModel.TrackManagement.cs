@@ -109,15 +109,15 @@ public partial class MainViewModel
             SavedTracks.Add(track);
             UpdateRecordedPathsOnMap();
 
-            // Save as RecPath.txt (current/default)
+            // Save as the field's recorded path in use
             var activeField = _fieldService.ActiveField;
             if (activeField != null && !string.IsNullOrEmpty(activeField.DirectoryPath))
             {
                 try
                 {
                     var pointsCopy = new List<RecPathPoint>(_recPathRecordingPoints);
-                    Services.RecPathFileService.SaveRecPath(activeField.DirectoryPath, pointsCopy);
-                    _logger.LogDebug($"[RecPath] Saved {pointsCopy.Count} points to RecPath.txt");
+                    Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(activeField.DirectoryPath, pointsCopy);
+                    _logger.LogDebug($"[RecPath] Saved {pointsCopy.Count} points");
                 }
                 catch (Exception ex) { _logger.LogDebug($"[RecPath] Save failed: {ex.Message}"); }
             }
@@ -475,11 +475,11 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
         SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
         RebuildRecordedPathsAndContours();
         SaveTracksToFile();
-        // A recorded path is re-loaded from RecPath.txt on every field open
-        // (LoadRecPathFromField), so removing it from SavedTracks alone isn't enough —
-        // the file must go too, else it reappears after restart.
+        // The recorded path in use is re-loaded on every field open (LoadRecPathFromField), so
+        // removing it from SavedTracks alone isn't enough: it must go from the field too, else
+        // it reappears after restart.
         if (wasRecPath && _fieldService.ActiveField is { } f)
-            RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+            Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
         StatusMessage = $"Deleted track '{trackName}'";
     }
 

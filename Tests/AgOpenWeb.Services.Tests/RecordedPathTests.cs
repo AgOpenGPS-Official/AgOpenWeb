@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Track;
@@ -94,59 +95,52 @@ public class RecordedPathFileTests
         Assert.That(loaded, Is.Null);
     }
 
-    [Test]
-    public void LoadRecPath_AsTrack_ReturnsRecordedPath()
-    {
-        var points = new List<RecPathPoint>
-        {
-            new(100.0, 200.0, 1.571, 12.0, true),
-            new(102.0, 200.0, 1.571, 12.0, true),
-            new(104.0, 200.0, 1.571, 12.0, true)
-        };
-        RecPathFileService.SaveRecPath(_tempDir, points);
+    // recorded-paths.geojson converts with the field's origin from field.geojson.
+    private void MakeField() => AgOpenWeb.Services.GeoJson.GeoJsonFieldService.Save(
+        new Field { Name = "F", DirectoryPath = _tempDir, Origin = new Position { Latitude = 52, Longitude = 5 } }, tracks: null);
 
-        var track = RecPathFileService.LoadRecPath(_tempDir);
-        Assert.That(track, Is.Not.Null);
-        Assert.That(track!.IsRecordedPath, Is.True);
-        Assert.That(track.Points.Count, Is.EqualTo(3));
+    private static readonly List<RecPathPoint> Two = new()
+    {
+        new(100.0, 200.0, 1.571, 12.0, true),
+        new(102.0, 200.0, 1.571, 11.5, false),
+    };
+
+    [Test]
+    public void CurrentPath_RoundTrips_AllFields()
+    {
+        MakeField();
+        AgOpenWeb.Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(_tempDir, Two);
+
+        var loaded = AgOpenWeb.Services.GeoJson.GeoJsonFieldService.LoadCurrentRecordedPath(_tempDir)!;
+        Assert.That(loaded, Has.Count.EqualTo(2));
+        Assert.That(loaded[1].Easting, Is.EqualTo(102).Within(0.001));
+        Assert.That(loaded[1].Northing, Is.EqualTo(200).Within(0.001));
+        Assert.That(loaded[1].Heading, Is.EqualTo(1.571).Within(1e-9));
+        Assert.That(loaded[1].Speed, Is.EqualTo(11.5));
+        Assert.That((loaded[0].AutoBtnState, loaded[1].AutoBtnState), Is.EqualTo((true, false)));
     }
 
     [Test]
-    public void SaveRecFile_And_ListRecFiles()
+    public void SavedPaths_AreListed_AndDontReplaceTheCurrentOne()
     {
-        var points = new List<RecPathPoint>
-        {
-            new(100.0, 200.0, 1.571, 12.0, true),
-            new(102.0, 200.0, 1.571, 12.0, true)
-        };
+        MakeField();
+        AgOpenWeb.Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(_tempDir, Two);
+        AgOpenWeb.Services.GeoJson.GeoJsonFieldService.SaveRecordedPath(_tempDir, "path2", Two);
+        AgOpenWeb.Services.GeoJson.GeoJsonFieldService.SaveRecordedPath(_tempDir, "path1", Two);
 
-        RecPathFileService.SaveRecPathToFile(Path.Combine(_tempDir, "path1.rec"), points);
-        RecPathFileService.SaveRecPathToFile(Path.Combine(_tempDir, "path2.rec"), points);
-
-        var files = RecPathFileService.ListRecFiles(_tempDir);
-        Assert.That(files, Has.Count.EqualTo(2));
-        Assert.That(files, Does.Contain("path1.rec"));
-        Assert.That(files, Does.Contain("path2.rec"));
+        Assert.That(AgOpenWeb.Services.GeoJson.GeoJsonFieldService.ListRecordedPaths(_tempDir), Is.EqualTo(new[] { "path1", "path2" }));
+        Assert.That(AgOpenWeb.Services.GeoJson.GeoJsonFieldService.LoadCurrentRecordedPath(_tempDir), Has.Count.EqualTo(2));
     }
 
     [Test]
-    public void DeleteRecFile_RemovesFile()
+    public void DeleteRecordedPath_RemovesIt()
     {
-        var points = new List<RecPathPoint>
-        {
-            new(100.0, 200.0, 1.571, 12.0, true),
-            new(102.0, 200.0, 1.571, 12.0, true)
-        };
-        RecPathFileService.SaveRecPathToFile(Path.Combine(_tempDir, "deleteme.rec"), points);
+        MakeField();
+        AgOpenWeb.Services.GeoJson.GeoJsonFieldService.SaveRecordedPath(_tempDir, "deleteme", Two);
 
-        Assert.That(RecPathFileService.DeleteRecFile(_tempDir, "deleteme.rec"), Is.True);
-        Assert.That(RecPathFileService.ListRecFiles(_tempDir), Has.Count.EqualTo(0));
-    }
-
-    [Test]
-    public void DeleteRecFile_NonExistent_ReturnsFalse()
-    {
-        Assert.That(RecPathFileService.DeleteRecFile(_tempDir, "nope.rec"), Is.False);
+        Assert.That(AgOpenWeb.Services.GeoJson.GeoJsonFieldService.DeleteRecordedPath(_tempDir, "deleteme"), Is.True);
+        Assert.That(AgOpenWeb.Services.GeoJson.GeoJsonFieldService.ListRecordedPaths(_tempDir), Is.Empty);
+        Assert.That(AgOpenWeb.Services.GeoJson.GeoJsonFieldService.DeleteRecordedPath(_tempDir, "nope"), Is.False);
     }
 }
 

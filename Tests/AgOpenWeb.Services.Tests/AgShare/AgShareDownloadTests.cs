@@ -134,7 +134,7 @@ public class AgShareDownloadTests
     }
 
     [Test]
-    public async Task Download_NewField_CreatesEmptyFiles_ButNoSections()
+    public async Task Download_NewField_WritesOnlyTheFieldFile()
     {
         var dir = Path.Combine(Path.GetTempPath(), "agshare-" + Guid.NewGuid().ToString("N"));
         try
@@ -144,8 +144,8 @@ public class AgShareDownloadTests
             Assert.That(File.Exists(Path.Combine(dir, "TrackLines.txt")), Is.False, "tracks live in field.geojson");
             Assert.That(File.Exists(Path.Combine(dir, "Headland.txt")), Is.False, "the headland lives in field.geojson");
             Assert.That(File.Exists(Path.Combine(dir, "field.geojson")), Is.True);
-            Assert.That(File.ReadAllLines(Path.Combine(dir, "Contour.txt"))[0], Is.EqualTo("$Contour"));
-            Assert.That(File.Exists(Path.Combine(dir, "Sections.txt")), Is.False);
+            Assert.That(Directory.GetFiles(dir).Select(Path.GetFileName),
+                Is.EquivalentTo(new[] { "agshare.txt", "field.geojson" }));
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

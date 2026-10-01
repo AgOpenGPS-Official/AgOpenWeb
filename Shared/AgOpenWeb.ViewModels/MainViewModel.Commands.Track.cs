@@ -46,8 +46,8 @@ public partial class MainViewModel
     private void DeleteContourFile()
     {
         if (State.Field.ActiveField == null) return;
-        try { System.IO.File.Delete(System.IO.Path.Combine(State.Field.ActiveField.DirectoryPath, Services.Contour.ContourFilesService.FileName)); }
-        catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting Contour.txt: {ex.Message}"); }
+        try { Services.GeoJson.GeoJsonFieldService.DeleteContours(State.Field.ActiveField.DirectoryPath); }
+        catch (Exception ex) { _logger.LogDebug($"[Contour] Error deleting contours: {ex.Message}"); }
     }
 
     public void DeleteAppliedAreaConfirmed()
@@ -55,7 +55,7 @@ public partial class MainViewModel
         _coverageMapService.ClearAll();
 
         // AgOpenGPS "delete all contours and sections": the contour strips go too, and
-        // Contour.txt is emptied (FileCreateContour) (#110).
+        // The field's saved contours are deleted (AgOpenGPS FileCreateContour) (#110).
         _gpsPipelineService.ResetContours();
         DeleteContourFile();
 
@@ -1064,7 +1064,7 @@ public partial class MainViewModel
         // Delete Applied Area's job, which asks first. The web asks before sending this.
         DeleteContoursCommand = new RelayCommand(() =>
         {
-            // The recorded strips (#110), and Contour.txt with them. AgOpenGPS only clears
+            // The recorded strips (#110), and the saved contours with them. AgOpenGPS only clears
             // them from memory, so they came back when the field reopened.
             _gpsPipelineService.ResetContours();
             DeleteContourFile();

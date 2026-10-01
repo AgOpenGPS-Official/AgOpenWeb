@@ -506,7 +506,7 @@ public record FieldToolsDto(
     IReadOnlyList<string> ImportFields);
 
 /// <summary>Recorded Path read-frame (host-driven, like the Wizard — the panel's UI
-/// state lives in the VM, not ApplicationState). RecFiles = saved .rec files in the
+/// state lives in the VM, not ApplicationState). RecFiles = names of the saved recorded paths in the
 /// active field; the booleans + info/label mirror the live VM. RecordedPathName is the
 /// client's own text input, so it isn't projected. Re-sent on a fingerprint change.</summary>
 public record RecordedPathDto(
