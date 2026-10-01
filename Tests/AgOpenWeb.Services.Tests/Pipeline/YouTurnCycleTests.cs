@@ -26,8 +26,21 @@ namespace AgOpenWeb.Services.Tests.Pipeline;
 /// <see cref="IPipelineIntents"/>.
 /// </summary>
 [TestFixture]
+[NonParallelizable] // ConfigurationStore is a singleton.
 public class YouTurnCycleTests
 {
+    // Own config, not whatever an earlier fixture left in the singleton: with the default
+    // 1 m tool the manual arc is a 1 m semicircle, too short for the state machine's own
+    // completion checks (the pipeline's guidance backstop completes those in the app).
+    [SetUp]
+    public void SetUp()
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var config = ConfigurationStore.Instance;
+        config.NumSections = 1;
+        config.Tool.SetSectionWidth(0, 600); // 6 m tool
+    }
+
     /// <summary>
     /// Posting <c>RequestManualYouTurn</c> and then draining + calling the
     /// state machine (mirroring <c>GpsPipelineService.ProcessCycle</c>) must
