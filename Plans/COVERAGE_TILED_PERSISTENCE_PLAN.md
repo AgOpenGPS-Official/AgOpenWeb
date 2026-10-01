@@ -444,8 +444,11 @@ CM4 + SD, same fixtures as §5a/§5b, each save after one 12 × 84 m strip:
 | 200 ha | 20–24 ms | ~47 KB | 0.8–1.8 s | 1.4 s |
 | 520 ha | 17–20 ms | ~42 KB | 1.8–2.2 s | 2.2 s (old files: 9 s) |
 
-Small fields at Ultra quality write more files per save: at 0.1 m a display tile is
-25.6 m square. If the file count matters, raise `DisplayTileShift` to 9.
+Small fields at Ultra quality have more display tiles: at 0.1 m one is 25.6 m square,
+so a 20 ha field has ~150 files. Kept on purpose (decided 2026-10-01): Ultra is mainly
+for desktop-class hardware, which handles the file count easily. On a CM4, where SD
+writes are what matter, small tiles keep each save small. Don't raise
+`DisplayTileShift` for this.
 
 ---
 
