@@ -1,9 +1,8 @@
 # Coverage Persistence: Tiled, Incremental, Atomic
 
-**Status:** Done. Steps 1–3a in #200, the CPU fixes in #202 (§5b), and steps 4–8
-on `feature/coverage-tiled-saves` (§5c, which lists where the build differs from
-§3). Re-checked against `develop` @ `e8c8f444` on 2026-10-01 — see §0.
-**Decision context:** [GEOPACKAGE_STORAGE_ANALYSIS.md](GEOPACKAGE_STORAGE_ANALYSIS.md) §8.1 —
+**Status:** Completed 2026-10-01. Steps 1–3a in #200, the CPU fixes in #202 (§5b),
+steps 4–8 in #203 (§5c, which lists where the build differs from §3). Re-checked against `develop` @ `e8c8f444` on 2026-10-01 — see §0.
+**Decision context:** [GEOPACKAGE_STORAGE_ANALYSIS.md](../GEOPACKAGE_STORAGE_ANALYSIS.md) §8.1 —
 GeoPackage adoption was rejected; this is the incremental fix to the existing
 file handling that the analysis recommended doing regardless.
 **Owner file:** `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs`
