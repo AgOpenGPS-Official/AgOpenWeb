@@ -1638,7 +1638,10 @@ public class CoverageMapService : ICoverageMapService
 
             if (totalCells > 0)
             {
-                Console.WriteLine($"[Coverage] Loaded legacy Sections.txt: {totalCells} cells rasterized");
+                // Worked area = covered cells (each counted once, so overlapping strips aren't
+                // double-counted). It was left at 0, and the job then saved 0 with its coverage.
+                _totalWorkedArea = _totalWorkedAreaUser = totalCells * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
+                Console.WriteLine($"[Coverage] Loaded legacy Sections.txt: {totalCells} cells rasterized, {_totalWorkedArea:F0} m²");
                 return true;
             }
         }
@@ -1816,6 +1819,9 @@ public class CoverageMapService : ICoverageMapService
             // Update service state
             _bitmapWidth = (int)width;
             _bitmapHeight = (int)height;
+            // A job migrated from Sections.txt before the legacy loader totalled its area was
+            // saved with area 0: recover it from the covered cells.
+            if (area <= 0 && setBits > 0) area = setBits * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
             _totalWorkedArea = area;
             _totalWorkedAreaUser = area;
             _cellCountPerZone[0] = setBits;
