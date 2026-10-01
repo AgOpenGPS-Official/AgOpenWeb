@@ -132,6 +132,38 @@ public class VehicleProfileSplitFormatImportTests
     }
 
     [Test]
+    public void Load_SplitFormat_EnvFile_ImperialMetric()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "Imperial.XML"),
+            SettingFile(("setVehicle_wheelbase", "1.5")));
+
+        File.WriteAllText(Path.Combine(_tempDir, "Imperial.env.xml"),
+            SettingFile(("setMenu_isMetric", "False")));
+
+        var store = new ConfigurationStore();
+        var ok = _service.Load("Imperial", store);
+
+        Assert.That(ok, Is.True);
+        Assert.That(store.IsMetric, Is.False);
+    }
+
+    [Test]
+    public void Load_SplitFormat_EnvFile_InvalidMetric_DefaultsToTrue()
+    {
+        File.WriteAllText(Path.Combine(_tempDir, "InvalidMetric.XML"),
+            SettingFile(("setVehicle_wheelbase", "1.5")));
+
+        File.WriteAllText(Path.Combine(_tempDir, "InvalidMetric.env.xml"),
+            SettingFile(("setMenu_isMetric", "invalid_value")));
+
+        var store = new ConfigurationStore();
+        var ok = _service.Load("InvalidMetric", store);
+
+        Assert.That(ok, Is.True);
+        Assert.That(store.IsMetric, Is.True);
+    }
+
+    [Test]
     public void Load_SplitFormat_VehicleOnly_PartialImport()
     {
         // User dropped only the vehicle file from a 6.8.2 export. Tool keys
