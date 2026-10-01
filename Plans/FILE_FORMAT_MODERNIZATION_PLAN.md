@@ -13,7 +13,7 @@ is no compatibility code for files written by older AgOpenWeb builds.
 | 1 | `Field.txt`, `Boundary.txt`, `Headland.Txt` | `field.geojson` (origin, convergence, boundaries, headland polygon) | done (#205) |
 | 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (this PR) |
 | 3a | `BackPic.txt` + `BackPic.png` (AgOpenGPS); `TramLines.txt` (AgOpenWeb's, write-only) | `field.geojson` `background-image` part + `background.png`; tram lines aren't saved (generated on demand) | done (this PR) |
-| 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | to be decided per kind (append-heavy, so kept out of `field.geojson`) | next |
+| 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | `contours.geojson`, `recorded-paths.geojson`, `elevation.csv` (beside `field.geojson`, so appending never rewrites the field) | done (this PR) |
 | 4 | `Sections.txt` | coverage tiles (already imported) | delete after the job's first tiled save, as the `.bin` files are |
 
 Phase 1, as built:
@@ -52,6 +52,23 @@ Phase 3a, as built:
   base); it and its image are deleted.
 - **Tram lines:** no longer saved. `TramLines.txt` was written at close but never read, since
   tram lines are generated on demand. Existing copies are deleted on open.
+
+Phase 3b, as built:
+- **`contours.geojson`:** one LineString per contour strip, `[lon, lat, heading]`. Strips are
+  appended as they finish; Delete Applied Area / contour reset deletes the file.
+- **`recorded-paths.geojson`:** one feature per recorded path. The path in use (what playback
+  follows) is `"current": true`; saved ones carry a `name`. Per-point speed and section-master
+  auto state are arrays in properties (`speeds`, `autoSteer`). Selecting a saved path copies it
+  to the path in use, as copying a `.rec` over `RecPath.txt` did. The names list, read every
+  broadcast tick, is cached until the file changes.
+- **`elevation.csv`:** a header row (`latitude,longitude,elevation,fixQuality,easting,northing,heading,roll`),
+  then a row per sample. It's an append log at GPS rate, so CSV rather than JSON, written without
+  a byte-order mark.
+- **Import:** `Contour.txt`, `RecPath.txt`, every `*.rec` and `Elevation.txt` (rows after its
+  `Latitude,…` header) are imported on open and deleted. The AgOpenGPS writers are `internal`
+  (test fixtures only). The AgShare download no longer writes empty placeholder files.
+
+Phase 4 (`Sections.txt`) remains.
 
 Other parts of the original plan:
 - **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,

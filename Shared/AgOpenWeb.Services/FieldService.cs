@@ -108,11 +108,33 @@ public class FieldService : IFieldService
             DeleteIfPresent(fieldDirectory, HeadlandLineSerializer.FileName);
         }
         ImportBackPic(fieldDirectory, field.Origin);
+        ImportRecordedData(fieldDirectory);
 
         // Written at field close by older builds and never read: tram lines are generated on
         // demand from the field's tram settings.
         DeleteIfPresent(fieldDirectory, "TramLines.txt");
         return field;
+    }
+
+    // AgOpenGPS's contour strips, recorded paths (RecPath.txt in use, named *.rec) and elevation
+    // log, into contours.geojson, recorded-paths.geojson and elevation.csv.
+    private static void ImportRecordedData(string fieldDirectory)
+    {
+        if (File.Exists(Path.Combine(fieldDirectory, Contour.ContourFilesService.FileName)))
+        {
+            GeoJsonFieldService.AppendContours(fieldDirectory, Contour.ContourFilesService.Load(fieldDirectory));
+            DeleteIfPresent(fieldDirectory, Contour.ContourFilesService.FileName);
+        }
+        if (RecPathFileService.LoadRecPathPoints(fieldDirectory) is { Count: > 0 } current)
+            GeoJsonFieldService.SaveCurrentRecordedPath(fieldDirectory, current);
+        DeleteIfPresent(fieldDirectory, RecPathFileService.FileName);
+        foreach (var rec in Directory.EnumerateFiles(fieldDirectory, "*.rec").ToList())
+        {
+            if (RecPathFileService.LoadRecPathPointsFromFile(rec) is { Count: > 0 } points)
+                GeoJsonFieldService.SaveRecordedPath(fieldDirectory, Path.GetFileNameWithoutExtension(rec), points);
+            File.Delete(rec);
+        }
+        ElevationLogService.ImportAgOpenGpsFile(fieldDirectory);
     }
 
     // AgOpenGPS's background image: BackPic.png, placed by BackPic.txt (older builds: BackPic.Txt)

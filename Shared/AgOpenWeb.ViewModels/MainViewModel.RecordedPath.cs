@@ -95,7 +95,7 @@ public partial class MainViewModel
         set => SetProperty(ref _recordedPathInfo, value);
     }
 
-    // List of available .rec files for the picker
+    // Names of the field's saved recorded paths, for the picker
     public ObservableCollection<string> AvailableRecFiles { get; } = new();
 
     private string? _selectedRecFile;
@@ -117,12 +117,12 @@ public partial class MainViewModel
         var activeField = _fieldService.ActiveField;
         if (activeField == null) return;
 
-        var srcPath = Path.Combine(activeField.DirectoryPath, fileName);
-        var dstPath = Path.Combine(activeField.DirectoryPath, "RecPath.txt");
         try
         {
-            File.Copy(srcPath, dstPath, true);
-            var points = Services.RecPathFileService.LoadRecPathPoints(activeField.DirectoryPath);
+            // The selected saved path becomes the one in use.
+            var points = Services.GeoJson.GeoJsonFieldService.LoadRecordedPath(activeField.DirectoryPath, fileName);
+            if (points != null && points.Count >= 2)
+                Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(activeField.DirectoryPath, points);
             if (points != null && points.Count >= 2)
             {
                 State.RecordedPath.RecordedPoints = points;
@@ -181,13 +181,10 @@ public partial class MainViewModel
                 ? $"RecPath_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}"
                 : RecordedPathName.Trim();
 
-            if (!name.EndsWith(".rec")) name += ".rec";
-
             try
             {
-                Services.RecPathFileService.SaveRecPathToFile(
-                    System.IO.Path.Combine(activeField.DirectoryPath, name),
-                    State.RecordedPath.RecordedPoints);
+                Services.GeoJson.GeoJsonFieldService.SaveRecordedPath(
+                    activeField.DirectoryPath, name, State.RecordedPath.RecordedPoints);
                 HasUnsavedRecordedPath = false;
                 RecordedPathName = "";
                 LoadRecPathForPlayback(); // Refresh file list
@@ -253,12 +250,16 @@ public partial class MainViewModel
             var activeField = _fieldService.ActiveField;
             if (activeField == null) return;
 
-            // Copy selected .rec to RecPath.txt and load
-            var srcPath = Path.Combine(activeField.DirectoryPath, fileName);
-            var dstPath = Path.Combine(activeField.DirectoryPath, "RecPath.txt");
+            // The selected saved path becomes the one in use, then load it
             try
             {
-                File.Copy(srcPath, dstPath, true);
+                var points = Services.GeoJson.GeoJsonFieldService.LoadRecordedPath(activeField.DirectoryPath, fileName);
+                if (points == null || points.Count < 2)
+                {
+                    ReportFailure($"Failed to load: {fileName}");
+                    return;
+                }
+                Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(activeField.DirectoryPath, points);
                 LoadRecPathForPlayback();
                 SetProperty(ref _selectedRecFile, fileName, nameof(SelectedRecFile)); // already loaded
                 RecordedPathInfo = $"Selected: {fileName} ({State.RecordedPath.RecordedPoints.Count} points)";
@@ -275,7 +276,7 @@ public partial class MainViewModel
             var activeField = _fieldService.ActiveField;
             if (activeField == null) return;
 
-            if (Services.RecPathFileService.DeleteRecFile(activeField.DirectoryPath, fileName))
+            if (Services.GeoJson.GeoJsonFieldService.DeleteRecordedPath(activeField.DirectoryPath, fileName))
             {
                 AvailableRecFiles.Remove(fileName);
                 StatusMessage = $"Deleted: {fileName}";
@@ -560,7 +561,7 @@ public partial class MainViewModel
         var activeField = _fieldService.ActiveField;
         if (activeField == null) return;
 
-        var points = Services.RecPathFileService.LoadRecPathPoints(activeField.DirectoryPath);
+        var points = Services.GeoJson.GeoJsonFieldService.LoadCurrentRecordedPath(activeField.DirectoryPath);
         if (points != null && points.Count >= 2)
         {
             State.RecordedPath.RecordedPoints = points;
@@ -574,9 +575,9 @@ public partial class MainViewModel
             RecordedPathInfo = "No path loaded";
         }
 
-        // Also refresh the .rec file list
+        // Also refresh the saved-path list
         AvailableRecFiles.Clear();
-        foreach (var f in Services.RecPathFileService.ListRecFiles(activeField.DirectoryPath))
+        foreach (var f in Services.GeoJson.GeoJsonFieldService.ListRecordedPaths(activeField.DirectoryPath))
             AvailableRecFiles.Add(f);
     }
 

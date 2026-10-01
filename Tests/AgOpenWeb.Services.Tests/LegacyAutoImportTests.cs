@@ -156,14 +156,22 @@ public class LegacyAutoImportTests
         File.WriteAllText(Path.Combine(_fieldDir, "TrackLines.txt"), "$TrackLines");
         File.WriteAllText(Path.Combine(_fieldDir, "Flags.txt"), "$Flags\n0\n");
         File.WriteAllText(Path.Combine(_fieldDir, "Headlines.txt"), "$HeadLines\n");
-        File.WriteAllText(Path.Combine(_fieldDir, "Contour.txt"), "$Contour\n0\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "Contour.txt"), "$Contour\n2\n1,1,0\n1,9,0\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "RecPath.txt"), "$RecPath\n2\n0,0,0,5,True\n0,9,0,5,True\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "Old pass.rec"), "$RecPath\n2\n3,0,0,5,False\n3,9,0,5,False\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "Elevation.txt"),
+            "$FieldDir\nLatitude,Longitude,Elevation,Quality,Easting,Northing,Heading,Roll\n47.1,-93.9,250.000,4,0.000,0.000,0.000,0.000\n");
+        File.WriteAllText(Path.Combine(_fieldDir, "TramLines.txt"), "$OuterTrack,0\n");
 
         _service.LoadField(_fieldDir);
 
-        foreach (var name in new[] { "Field.txt", "Boundary.txt", "Headland.Txt", "TrackLines.txt", "Flags.txt", "Headlines.txt" })
-            Assert.That(File.Exists(Path.Combine(_fieldDir, name)), Is.False, name);
-        Assert.That(File.Exists(Path.Combine(_fieldDir, "Contour.txt")), Is.True,
-            "contours aren't part of this import yet");
+        Assert.That(Directory.GetFiles(_fieldDir).Select(Path.GetFileName), Is.EquivalentTo(new[]
+            { "field.geojson", "contours.geojson", "recorded-paths.geojson", "elevation.csv" }),
+            "every AgOpenGPS file imported and deleted");
+        Assert.That(GeoJsonFieldService.LoadContours(_fieldDir), Has.Count.EqualTo(1));
+        Assert.That(GeoJsonFieldService.LoadCurrentRecordedPath(_fieldDir), Has.Count.EqualTo(2));
+        Assert.That(GeoJsonFieldService.ListRecordedPaths(_fieldDir), Is.EqualTo(new[] { "Old pass" }));
+        Assert.That(File.ReadAllLines(Path.Combine(_fieldDir, "elevation.csv")), Has.Length.EqualTo(2));
     }
 
     [Test]

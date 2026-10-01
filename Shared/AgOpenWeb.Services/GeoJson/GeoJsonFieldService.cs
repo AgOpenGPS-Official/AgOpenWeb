@@ -33,7 +33,7 @@ namespace AgOpenWeb.Services.GeoJson;
 /// boundaries, headland polygon); the background image, tracks, flags and headland lines are
 /// saved on their own, when they change, and each save replaces only its own features.
 /// </summary>
-public class GeoJsonFieldService
+public partial class GeoJsonFieldService
 {
     private const string FileName = "field.geojson";
 

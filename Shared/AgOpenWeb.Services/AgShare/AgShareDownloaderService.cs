@@ -136,7 +136,8 @@ namespace AgOpenWeb.Services.AgShare
             await WriteAgShareIdAsync(fieldDir, field.FieldId);
             WriteFieldGeoJson(fieldDir, field.Origin, field.Boundaries);
             GeoJsonFieldService.SaveTracks(fieldDir, ToTracks(field.AbLines));
-            await WriteStaticFilesAsync(fieldDir); // Contour (only if missing)
+            // Flags, headland lines, contours and the applied area are local work, not part of
+            // what AgShare stores, so a re-download leaves them alone (AgOpenGPS #1203).
         }
 
         /// <summary>
@@ -222,22 +223,6 @@ namespace AgOpenWeb.Services.AgShare
                 tracks.Add(track);
             }
             return tracks;
-        }
-
-        /// <summary>
-        /// Empty Contour.txt for a new field. It's local work, not part of what AgShare stores, so
-        /// a re-download never overwrites it; nor the flags and headland lines in field.geojson.
-        /// Sections.txt (the applied area) isn't touched at all (AgOpenGPS #1203).
-        /// </summary>
-        private static async Task WriteStaticFilesAsync(string fieldDir)
-        {
-            await WriteIfMissingAsync(fieldDir, "Contour.txt", ["$Contour", "0"]);
-        }
-
-        private static async Task WriteIfMissingAsync(string fieldDir, string name, string[] lines)
-        {
-            string path = Path.Combine(fieldDir, name);
-            if (!File.Exists(path)) await File.WriteAllLinesAsync(path, lines);
         }
 
         /// <summary>

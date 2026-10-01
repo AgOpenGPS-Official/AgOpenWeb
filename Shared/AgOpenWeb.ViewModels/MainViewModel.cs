@@ -1773,13 +1773,13 @@ public partial class MainViewModel : ObservableObject
             // Load tracks
             LoadTracksFromField(field);
 
-            // Load recorded path from RecPath.txt
+            // Load the recorded path in use
             LoadRecPathFromField(fieldPath);
 
             // Load flags from Flags.txt (#107 — they used to carry over from the previous field)
             LoadFlagsFromField(fieldPath);
 
-            // Contour strips from Contour.txt (#110)
+            // Contour strips (#110)
             LoadContoursFromField(fieldPath);
 
             // Establish (or resume) the active job before any coverage paint
@@ -2681,29 +2681,29 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Active track: {track.Name}";
     }
 
-    /// <summary>Replace the contour strips with the field's Contour.txt (none when null) (#110).</summary>
+    /// <summary>Replace the contour strips with the field's (none when null) (#110).</summary>
     private void LoadContoursFromField(string? fieldPath)
     {
         var strips = new List<List<Vec3>>();
         if (!string.IsNullOrEmpty(fieldPath))
         {
-            try { strips = Services.Contour.ContourFilesService.Load(fieldPath); }
-            catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to load Contour.txt"); }
+            try { strips = Services.GeoJson.GeoJsonFieldService.LoadContours(fieldPath); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to load contours"); }
         }
         _gpsPipelineService.LoadContours(strips);
     }
 
-    /// <summary>Append contour strips finished since the last save to Contour.txt (#110).</summary>
+    /// <summary>Append contour strips finished since the last save to the field's contours (#110).</summary>
     private void SaveContoursToField()
     {
         var strips = _gpsPipelineService.TakeContoursToSave();
         var dir = _fieldService.ActiveField?.DirectoryPath;
         if (strips is not { Count: > 0 } || !IsFieldOpen || string.IsNullOrEmpty(dir)) return;
-        try { Services.Contour.ContourFilesService.Append(dir, strips); }
-        catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save Contour.txt"); }
+        try { Services.GeoJson.GeoJsonFieldService.AppendContours(dir, strips); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save contours"); }
     }
 
-    /// <summary>Replace the flags with the field's Flags.txt (empty when <paramref name="fieldPath"/> is null).</summary>
+    /// <summary>Replace the flags with the field's (empty when <paramref name="fieldPath"/> is null).</summary>
     private void LoadFlagsFromField(string? fieldPath)
     {
         _suppressFlagSave = true;
@@ -2773,9 +2773,9 @@ public partial class MainViewModel : ObservableObject
         SelectedTrack = null;
         RebuildRecordedPathsAndContours(); // clear rec-path/contour display
         SaveTracksToFile();
-        // Also remove RecPath.txt, else the recorded path reloads on next open.
+        // Also remove the recorded path in use, else it reloads on next open.
         if (_fieldService.ActiveField is { } f)
-            Services.RecPathFileService.DeleteRecFile(f.DirectoryPath, "RecPath.txt");
+            Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
         StatusMessage = "All tracks deleted";
     }
 
@@ -6241,7 +6241,10 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            var recPath = Services.RecPathFileService.LoadRecPath(fieldPath);
+            var recPoints = Services.GeoJson.GeoJsonFieldService.LoadCurrentRecordedPath(fieldPath);
+            var recPath = recPoints is { Count: >= 2 }
+                ? Track.FromRecordedPath("Recorded Path", recPoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList())
+                : null;
             if (recPath != null)
             {
                 SavedTracks.Add(recPath);
@@ -6252,7 +6255,7 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _logger.LogDebug($"[RecPath] Failed to load RecPath.txt: {ex.Message}");
+            _logger.LogDebug($"[RecPath] Failed to load the recorded path: {ex.Message}");
         }
     }
 }

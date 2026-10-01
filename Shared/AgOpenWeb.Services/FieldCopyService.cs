@@ -56,16 +56,20 @@ namespace AgOpenWeb.Services
             }
 
             // Always (AgOpenGPS copies these regardless of the options).
+            // The recorded-data files go across as they are; an AgOpenGPS source's own
+            // (Elevation.txt, RecPath.txt, *.rec, Contour.txt) are imported when the copy opens.
             Copy(sourceDirectory, newDirectory, "field.origin");
+            Copy(sourceDirectory, newDirectory, ElevationLogService.FileName);
             Copy(sourceDirectory, newDirectory, "Elevation.txt");
-
 
             if (copyHeadland)
                 Copy(sourceDirectory, newDirectory, "HeadlandSegments.json");
 
             if (copyLines)
             {
-                foreach (var rec in Directory.EnumerateFiles(sourceDirectory, "RecPath*.txt"))
+                Copy(sourceDirectory, newDirectory, GeoJsonFieldService.RecordedPathsFileName);
+                Copy(sourceDirectory, newDirectory, RecPathFileService.FileName);
+                foreach (var rec in Directory.EnumerateFiles(sourceDirectory, "*.rec"))
                     Copy(sourceDirectory, newDirectory, Path.GetFileName(rec));
                 Copy(sourceDirectory, newDirectory, "TramConfig.json");
                 Copy(sourceDirectory, newDirectory, "TramSystems.json");
@@ -79,6 +83,7 @@ namespace AgOpenWeb.Services
                 if (Directory.Exists(jobs))
                     CopyDirectory(jobs, Path.Combine(newDirectory, "jobs"));
                 Copy(sourceDirectory, newDirectory, "Sections.txt");
+                Copy(sourceDirectory, newDirectory, GeoJsonFieldService.ContoursFileName);
                 Copy(sourceDirectory, newDirectory, "Contour.txt");
             }
         }

@@ -15,23 +15,15 @@ using TrackModel = AgOpenWeb.Models.Track.Track;
 namespace AgOpenWeb.Services;
 
 /// <summary>
-/// Loads and saves RecPath.txt files (legacy AgOpenGPS format).
+/// Reads AgOpenGPS's recorded paths (RecPath.txt, named *.rec), for the one-way import into
+/// recorded-paths.geojson (FieldService.LoadField). The writers are internal: AgOpenWeb never
+/// writes AgOpenGPS files, but tests build fixtures with them.
 /// Format: header "$RecPath", point count, then CSV lines:
 ///   easting,northing,heading,speed,autoBtnState
 /// </summary>
 public static class RecPathFileService
 {
-    /// <summary>
-    /// Load RecPath.txt from a field directory as a Track (for map display).
-    /// </summary>
-    public static TrackModel? LoadRecPath(string fieldDirectory)
-    {
-        var points = LoadRecPathPoints(fieldDirectory, "RecPath.txt");
-        if (points == null || points.Count < 2) return null;
-
-        var vec3List = points.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
-        return TrackModel.FromRecordedPath("Recorded Path", vec3List);
-    }
+    public const string FileName = "RecPath.txt";
 
     /// <summary>
     /// Load RecPath points with full data (speed, autoBtnState).
@@ -96,24 +88,15 @@ public static class RecPathFileService
     /// <summary>
     /// Save recorded path points to RecPath.txt in the field directory.
     /// </summary>
-    public static void SaveRecPath(string fieldDirectory, List<RecPathPoint> points)
+    internal static void SaveRecPath(string fieldDirectory, List<RecPathPoint> points)
     {
         SaveRecPathToFile(Path.Combine(fieldDirectory, "RecPath.txt"), points);
     }
 
     /// <summary>
-    /// Save recorded path points from a Track (legacy compat, no speed/autoBtnState).
-    /// </summary>
-    public static void SaveRecPath(string fieldDirectory, TrackModel track)
-    {
-        var points = track.Points.Select(p => new RecPathPoint(p.Easting, p.Northing, p.Heading, 0.0, false)).ToList();
-        SaveRecPath(fieldDirectory, points);
-    }
-
-    /// <summary>
     /// Save recorded path points to an arbitrary file path.
     /// </summary>
-    public static void SaveRecPathToFile(string filePath, List<RecPathPoint> points)
+    internal static void SaveRecPathToFile(string filePath, List<RecPathPoint> points)
     {
         using var writer = new StreamWriter(filePath, false);
         writer.WriteLine("$RecPath");
@@ -125,30 +108,5 @@ public static class RecPathFileService
                 "{0:F3},{1:F3},{2:F3},{3:F1},{4}",
                 pt.Easting, pt.Northing, pt.Heading, pt.Speed, pt.AutoBtnState));
         }
-    }
-
-    /// <summary>
-    /// List all .rec files in a field directory.
-    /// </summary>
-    public static List<string> ListRecFiles(string fieldDirectory)
-    {
-        if (!Directory.Exists(fieldDirectory)) return new List<string>();
-        return Directory.GetFiles(fieldDirectory, "*.rec")
-            .Select(Path.GetFileName)
-            .Where(f => f != null)
-            .Select(f => f!)
-            .OrderBy(f => f)
-            .ToList();
-    }
-
-    /// <summary>
-    /// Delete a .rec file from a field directory.
-    /// </summary>
-    public static bool DeleteRecFile(string fieldDirectory, string fileName)
-    {
-        var path = Path.Combine(fieldDirectory, fileName);
-        if (!File.Exists(path)) return false;
-        File.Delete(path);
-        return true;
     }
 }

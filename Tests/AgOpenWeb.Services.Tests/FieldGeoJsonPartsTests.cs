@@ -243,4 +243,22 @@ public class FieldGeoJsonPartsTests
         }
         finally { if (Directory.Exists(copy)) Directory.Delete(copy, true); }
     }
+
+    [Test]
+    public void Contours_append_round_trip_and_delete()
+    {
+        GeoJsonFieldService.Save(NewField(), tracks: null);
+        GeoJsonFieldService.AppendContours(_dir, new[] { new[] { new Vec3(1, 1, 0.5), new Vec3(1, 50, 0.5) } });
+        GeoJsonFieldService.AppendContours(_dir, new[] { new[] { new Vec3(7, 1, 0.1), new Vec3(7, 50, 0.1), new Vec3(8, 60, 0.2) } });
+
+        var strips = GeoJsonFieldService.LoadContours(_dir);
+        Assert.That(strips.Select(s => s.Count), Is.EqualTo(new[] { 2, 3 }));
+        Assert.That(strips[1][2].Easting, Is.EqualTo(8).Within(0.001));
+        Assert.That(strips[1][2].Northing, Is.EqualTo(60).Within(0.001));
+        Assert.That(strips[1][2].Heading, Is.EqualTo(0.2).Within(1e-9));
+        Assert.That(GeoJsonFieldService.LoadTracks(_dir), Is.Empty, "field.geojson untouched");
+
+        GeoJsonFieldService.DeleteContours(_dir);
+        Assert.That(GeoJsonFieldService.LoadContours(_dir), Is.Empty);
+    }
 }

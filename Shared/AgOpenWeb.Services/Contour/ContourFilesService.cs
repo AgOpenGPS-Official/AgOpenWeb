@@ -59,7 +59,9 @@ public static class ContourFilesService
     }
 
     /// <summary>Append finished strips, creating the file with its header if needed.</summary>
-    public static void Append(string fieldDirectory, IEnumerable<IReadOnlyList<Vec3>> strips)
+    // AgOpenWeb never writes AgOpenGPS files (Contour.txt is imported into contours.geojson
+    // and deleted, see FieldService.LoadField). Internal so tests can build fixtures.
+    internal static void Append(string fieldDirectory, IEnumerable<IReadOnlyList<Vec3>> strips)
     {
         var path = Path.Combine(fieldDirectory, FileName);
         bool isNew = !File.Exists(path);

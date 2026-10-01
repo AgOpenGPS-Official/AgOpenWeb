@@ -157,10 +157,10 @@ public static partial class RemoteServerWiring
                                     vm.RecordedPathName = arg;
                                     vm.SaveNamedRecordedPathCommand?.Execute(null);
                                     return;
-                                case "recpath.selectFile": // arg = .rec file name → load for playback (Tier-1)
+                                case "recpath.selectFile": // arg = saved path name → load for playback (Tier-1)
                                     vm.SelectedRecFile = arg;
                                     return;
-                                case "recpath.delete": // arg = .rec file name (Tier-1; browser confirmed)
+                                case "recpath.delete": // arg = saved path name (Tier-1; browser confirmed)
                                     if (vm.DeleteRecordedPathCommand?.CanExecute(arg) == true)
                                         vm.DeleteRecordedPathCommand.Execute(arg);
                                     return;
@@ -755,14 +755,14 @@ public static partial class RemoteServerWiring
 
                     // Recorded Path projector: the panel's UI state (IsRecordingPath,
                     // HasUnsaved, info/label) is VM-owned, so project it from the live VM
-                    // each tick; the .rec file list comes off disk. Read-only on the
+                    // each tick; the saved-path names come off disk (cached until it changes). Read-only on the
                     // broadcaster thread, same race tolerance as the other projectors.
                     server.RecordedPathProvider = () =>
                     {
                         var dir = services.GetRequiredService<AgOpenWeb.Services.IFieldService>()
                             .ActiveField?.DirectoryPath;
                         var recFiles = !string.IsNullOrEmpty(dir)
-                            ? AgOpenWeb.Services.RecPathFileService.ListRecFiles(dir)
+                            ? AgOpenWeb.Services.GeoJson.GeoJsonFieldService.ListRecordedPaths(dir)
                             : new System.Collections.Generic.List<string>();
                         var st = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                         var live = vm.LiveRecordingPoints;
