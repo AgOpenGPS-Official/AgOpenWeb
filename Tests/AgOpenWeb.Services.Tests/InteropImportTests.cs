@@ -90,6 +90,7 @@ public class InteropImportTests
 
         Assert.That(cov.IsPointCovered(0, 5), Is.True);
         Assert.That(cov.IsPointCovered(0, 20), Is.False);
+        Assert.That(cov.TotalWorkedArea, Is.EqualTo(20).Within(0.5), "2 m × 10 m");
     }
 
     [Test]
@@ -104,9 +105,39 @@ public class InteropImportTests
             "5", "27,151,160",
             "-1,0,0", "1,0,0",
             "-1,10,0", "1,10,0",
+            "5", "27,151,160", // a second strip over half of the first: counted once
+            "-1,5,0", "1,5,0",
+            "-1,15,0", "1,15,0",
         });
         cov.LoadFromFile(_dir);
 
         Assert.That(cov.IsPointCovered(0, 5), Is.True);
+        Assert.That(cov.TotalWorkedArea, Is.EqualTo(30).Within(0.5), "2 m × 15 m, overlap counted once");
+    }
+
+    [Test]
+    public void SavedCoverage_WithAZeroArea_RecoversItFromTheCells()
+    {
+        // Jobs migrated from Sections.txt before the fix were saved with area 0.
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var cov = new CoverageMapService(ConfigurationStore.Instance);
+        cov.SetFieldBounds(-50, 50, -50, 50);
+        File.WriteAllLines(Path.Combine(_dir, "Sections.txt"), new[]
+        {
+            "5", "27,151,160", "-1,0,0", "1,0,0", "-1,10,0", "1,10,0",
+        });
+        cov.LoadFromFile(_dir);
+        foreach (var name in new[] { "_totalWorkedArea", "_totalWorkedAreaUser" })
+            typeof(CoverageMapService).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .SetValue(cov, 0.0);
+        File.Delete(Path.Combine(_dir, "Sections.txt"));
+        cov.SaveToFile(_dir);
+
+        var reloaded = new CoverageMapService(ConfigurationStore.Instance);
+        reloaded.SetFieldBounds(-50, 50, -50, 50);
+        reloaded.LoadFromFile(_dir);
+
+        Assert.That(reloaded.IsPointCovered(0, 5), Is.True);
+        Assert.That(reloaded.TotalWorkedArea, Is.EqualTo(20).Within(0.5));
     }
 }
