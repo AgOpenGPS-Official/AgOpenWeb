@@ -1,8 +1,8 @@
 # Coverage Persistence: Tiled, Incremental, Atomic
 
-**Status:** Steps 1, 2, 3 and 3a done (`fix/coverage-save-durability`, #200).
-§3.4's CPU win landed early as §5b (`perf/coverage-save-speed`). Steps 4–8 not
-started; what is left for them is write volume (§5b). Re-checked against `develop` @ `e8c8f444` on 2026-10-01 — see §0.
+**Status:** Done. Steps 1–3a in #200, the CPU fixes in #202 (§5b), and steps 4–8
+on `feature/coverage-tiled-saves` (§5c, which lists where the build differs from
+§3). Re-checked against `develop` @ `e8c8f444` on 2026-10-01 — see §0.
 **Decision context:** [GEOPACKAGE_STORAGE_ANALYSIS.md](GEOPACKAGE_STORAGE_ANALYSIS.md) §8.1 —
 GeoPackage adoption was rejected; this is the incremental fix to the existing
 file handling that the analysis recommended doing regardless.
@@ -404,6 +404,48 @@ Peak RSS at 520 ha: 322 → 231 MB. What remains on SD is writing and `fsync`ing
 whole files, so the reason left for steps 4–8 is write volume and SD wear, not
 CPU. These fixtures are a worst case for the detection file: a 1 m gap between
 every pass makes it speckled. Real overlapping passes compress much better.
+
+## 5c. Tiles as built (2026-10-01)
+
+Where the build differs from §3:
+
+- **Detection grid byte-aligned.** `SetFieldBounds` rounds the detection origin and
+  width out to multiples of 8 cells. Every tile row is then a plain byte copy, with
+  no bit shifting.
+- **Display origin snapped (§3.1a).** `_displayOriginX/Y` are absolute display-pixel
+  indices; `DisplayBoundsWorld` reports the snapped extent, so `CoverageProjector`
+  needed no change.
+- **Display tiles store RGB565, not palette indices.** RLE is `[run:u16][value:u16]`.
+  This drops the palette, its discovery and `FindClosestColorIndex`, at about 4/3 the
+  size per run. Display tiles are ~15 % of the bytes.
+- **The folder is the index, not a manifest tile list.** A tile with no coverage has
+  no file. `manifest.json` (via `AtomicJsonFile`) holds the display cell size, worked
+  area and field bounds. If it's unreadable, it is rebuilt from the tiles.
+- **One display folder per cell size** (`s<µm>/`). A quality change writes a new
+  folder; the manifest switches to it, and then the old folder is removed. So a crash
+  mid-regrid never mixes cell sizes. This answers open question 3: no generation
+  counter needed.
+- **Batched flush.** All tiles are written to `.tmp`, then flushed, then renamed, then
+  the manifest is written. On ext4 the first flush commits the journal for all of them,
+  which cut a full save at 520 ha from ~8 s to ~2 s on the CM4.
+- **Legacy files deleted after migration** (open question 4, decided 2026-10-01): a
+  job's `coverage_*.bin` are imported once and removed after its first tiled save. The
+  old loaders stay, for import only. The old writers are gone.
+- **Third dirty stream** as §3.3: `_dirtyDetectTiles`/`_dirtyDisplayTiles`, marked in
+  `MarkCellCovered`/`PaintDisplayPixel` with a last-key cache. Swapped out under the lock
+  at save time and put back if the save fails. Full saves (new field or job, Delete
+  Applied Area, regrid, import) write every non-empty tile and delete the rest.
+
+CM4 + SD, same fixtures as §5a/§5b, each save after one 12 × 84 m strip:
+
+| Field | Incremental save | Bytes per save | Full save | Load (cold cache) |
+|---|---|---|---|---|
+| 20 ha | 53–69 ms | 44–58 KB | 0.5–0.6 s | — |
+| 200 ha | 20–24 ms | ~47 KB | 0.8–1.8 s | 1.4 s |
+| 520 ha | 17–20 ms | ~42 KB | 1.8–2.2 s | 2.2 s (old files: 9 s) |
+
+Small fields at Ultra quality write more files per save: at 0.1 m a display tile is
+25.6 m square. If the file count matters, raise `DisplayTileShift` to 9.
 
 ---
 
