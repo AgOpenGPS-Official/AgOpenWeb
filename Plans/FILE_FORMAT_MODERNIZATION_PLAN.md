@@ -2,29 +2,45 @@
 
 ## Status (2026-10-01)
 
-The plan below predates most of the build. Where things stand:
+**Rule:** import is one-way. AgOpenGPS-format files found in an AgOpenWeb field folder are
+imported into AgOpenWeb's formats once and then **deleted**. AgOpenWeb never writes them, and
+never reads them again. AgOpenWeb keeps its fields in its own data folder, so AgOpenGPS's
+folders are untouched; users keep their own backups. There is no installed base yet, so there
+is no compatibility code for files written by older AgOpenWeb builds.
 
-- **Fields: done, with one change of direction.** `field.geojson` exists and is written on
-  every save. It is an **export**, not the load source: the legacy text files (`Field.txt`,
-  `Boundary.txt`, …) are what a field opens from. Every save writes them, AgOpenGPS reads
-  them, and other writers change only them (AgShare download, in-app boundary edits before
-  the field is closed, AgOpenGPS on a copied folder). `field.geojson` is read only for a folder
-  with no `Field.txt`. It converts with `LocalPlane` and is marked `"projection": "localPlane"`;
-  unmarked files from older builds are read with the old conversion. See question 9.
-- **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`, `Tools/*.json`)
-  with one-way import from the XML.
-- **Coverage (phase 3): superseded.** Coverage is saved as world-anchored tiles, not GeoJSON
-  polygons: [Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md](Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
-  Open questions 6–8 are moot. Viewing coverage in QGIS/ArcGIS would now be an export
-  feature, not a storage format.
-- **Model consolidation (phase 4): done.** The `ABLine` class is gone (only `TrackType.ABLine`
-  remains). Profiles go through a DTO rather than serialising `ConfigurationStore` directly.
-- **Cleanup (phase 5): not planned.** The legacy file services stay; they are the load path
-  and AgOpenGPS interop.
-- **Not started:** `.agfield` sharing package (question 2), JSON Schema validation (3), profile
-  inheritance (4), timestamped track history (5).
+| Phase | AgOpenGPS files | New home | State |
+|---|---|---|---|
+| 1 | `Field.txt`, `Boundary.txt`, `Headland.Txt` | `field.geojson` (origin, convergence, boundaries, headland polygon) | done (#205) |
+| 2 | `TrackLines.txt`, `Flags.txt`, `Headlines.txt` | `field.geojson` features | next |
+| 3 | `Contour.txt`, `RecPath*.txt`, `TramLines.txt`, `Elevation.txt`, `BackPic.txt`/`.png` | JSON per kind; background image bounds in `field.geojson` | later |
+| 4 | `Sections.txt` | coverage tiles (already imported) | delete after the job's first tiled save, as the `.bin` files are |
 
-The success criteria near the end are the original targets and aren't maintained.
+Phase 1, as built:
+- **`FieldService.LoadField`** imports an AgOpenGPS field (keyed on `Field.txt`), deletes its
+  files, and reads `field.geojson`. It's used for opening a field, boundary edits and AgShare
+  re-downloads.
+- **`FieldService.PeekField`** reads either format without changing the folder. It's used for
+  field lists, "near me", AgShare listing and upload, the track copier's source origin, and
+  From Existing's source. Browsing fields never converts them.
+- **Writers:** `SaveField`, every boundary edit, new fields, KML/ISOXML import and the AgShare
+  download all write `field.geojson` only. The AgOpenGPS writers are `internal`, kept only so
+  tests can build AgOpenGPS fixtures.
+- **Conversion:** `field.geojson` converts with `LocalPlane` (longitude scaled per point), the
+  same as live GPS and the AgOpenGPS import, so its WGS84 is right for GIS tools.
+
+Other parts of the original plan:
+- **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,
+  `Tools/*.json`), with one-way import from the XML.
+- **Coverage (phase 3 below): superseded.** Coverage is saved as world-anchored tiles:
+  [Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md](Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
+  Open questions 6–8 are moot. Viewing coverage in QGIS would be an export feature.
+- **Model consolidation: done.** The `ABLine` class is gone.
+- **Not started:** the `.agfield` sharing package (question 2), JSON Schema (3), profile
+  inheritance (4), track history (5).
+- `field.json` (`FieldJsonService`) is never written by the app; remove it.
+
+The implementation phases and success criteria further down are the original plan, kept for
+history.
 
 ## Overview
 
@@ -754,23 +770,15 @@ GeoJSON field data is slightly larger than custom formats due to verbose coordin
    - Incremental: Faster saves, periodic full merge
    - Recommendation: Full merge on field close, consider incremental for auto-save
 
-9. **Re-importing a field over an existing one (AgShare re-download)**: resolved 2026-10-01.
-   - **What was actually wrong:** the original note said a re-download never takes effect
-     because `FieldService.LoadField` prefers `field.geojson`. That was wrong for opening a field:
-     `OpenFieldAsync` reads `Field.txt` and `Boundary.txt` directly, so a re-download does take
-     effect. `FieldService.LoadField`'s only caller is **From Existing**. That did copy a stale
-     `field.geojson` (after a re-download, after boundary edits made before a crash or kill,
-     or after AgOpenGPS edits) into the new field.
-   - **Decision:** the legacy files win. `FieldService.LoadField` reads them whenever `Field.txt`
-     exists, as `OpenFieldAsync` does, and rewrites `field.geojson` from them. `field.geojson`
-     is read only when there is no `Field.txt`. Rejected: routing every legacy writer through
-     `FieldService` (many call sites, and AgOpenGPS edits would still be missed), and comparing
-     file times (unreliable after copies).
-   - **Conversion:** `GeoJsonFieldService` now uses `LocalPlane` (longitude scaled per point), as
-     live GPS, AgShare and the legacy files do. `GeoConversion` scaled at the origin's latitude,
-     about 0.8 m east–west off at 2 km from the origin at 52°N. New files carry
-     `"projection": "localPlane"`. Unmarked files are read with `GeoConversion`, and any save
-     rewrites them.
+9. **Re-importing a field over an existing one (AgShare re-download)**: resolved 2026-10-01
+   by the one-way rule (see Status).
+   - **The original note was wrong** about re-downloads never taking effect on open: the open
+     path read the legacy files directly. The real stale-file bug was in From Existing, which
+     copied a `field.geojson` that lagged the legacy files. In the headless app, a field whose
+     `Boundary.txt` was newer copied with no boundary at all.
+   - **Now:** `field.geojson` is the only field file, so nothing can lag it. The AgShare
+     download writes it directly. An earlier download still in AgOpenGPS files is imported
+     first, then replaced.
 
 ---
 

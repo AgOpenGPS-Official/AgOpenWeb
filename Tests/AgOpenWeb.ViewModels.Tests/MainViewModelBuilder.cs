@@ -62,7 +62,6 @@ public class MainViewModelBuilder
             mapService: MapService,
             boundaryRecordingService: Substitute.For<IBoundaryRecordingService>(),
             boundaryBuilderService: Substitute.For<IBoundaryBuilderService>(),
-            boundaryFileService: new BoundaryFileService(),
             headlandBuilderService: Substitute.For<AgOpenWeb.Services.Headland.IHeadlandBuilderService>(),
             trackGuidanceService: TrackGuidanceService,
             youTurnCreationService: new YouTurnCreationService(

@@ -12,9 +12,8 @@ using AgOpenWeb.Services.GeoJson;
 namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
-/// field.geojson is an export of the legacy field files: it converts with LocalPlane (as live
-/// GPS, AgShare and the legacy files do), still reads files from builds that used GeoConversion,
-/// and never overrides newer legacy files (FILE_FORMAT_MODERNIZATION_PLAN.md, question 9).
+/// field.geojson converts with LocalPlane, as live GPS and the AgOpenGPS import do, so its
+/// WGS84 is right for GIS tools; From Existing reads an AgOpenGPS source without importing it.
 /// </summary>
 [TestFixture]
 public class FieldGeoJsonExportTests
@@ -65,7 +64,7 @@ public class FieldGeoJsonExportTests
     }
 
     [Test]
-    public void Export_converts_with_LocalPlane_and_says_so()
+    public void Converts_with_LocalPlane()
     {
         var field = NewField("F", FarSquare());
         GeoJsonFieldService.Save(field, tracks: null);
@@ -80,13 +79,10 @@ public class FieldGeoJsonExportTests
         var (_, oldLon) = new GeoConversion(OriginLat, OriginLon).ToWgs84(new Vec2(2100, 2000));
         double metresPerDegLon = 111412.84 * Math.Cos(corner.Latitude * Math.PI / 180);
         Assert.That(Math.Abs(oldLon - corner.Longitude) * metresPerDegLon, Is.GreaterThan(0.1));
-
-        var json = File.ReadAllText(Path.Combine(field.DirectoryPath, "field.geojson"));
-        Assert.That(json, Does.Contain("\"projection\": \"localPlane\""));
     }
 
     [Test]
-    public void Export_round_trips()
+    public void Round_trips()
     {
         var field = NewField("F", FarSquare());
         GeoJsonFieldService.Save(field, tracks: null);
@@ -98,63 +94,27 @@ public class FieldGeoJsonExportTests
     }
 
     [Test]
-    public void File_from_an_older_build_still_reads_back_exactly()
+    public void From_Existing_reads_an_AgOpenGPS_source_without_importing_it()
     {
-        // Older builds wrote GeoConversion coordinates and no "projection" property.
-        var geo = new GeoConversion(OriginLat, OriginLon);
-        var ring = FarSquare().Points.Append(FarSquare().Points[0])
-            .Select(p => { var (lat, lon) = geo.ToWgs84(new Vec2(p.Easting, p.Northing)); return new[] { lon, lat, 0.0 }; })
-            .ToArray();
-        var dir = Path.Combine(_root, "Old");
-        Directory.CreateDirectory(dir);
-        var fc = new
+        // An AgOpenGPS field that hasn't been opened yet.
+        var source = Path.Combine(_root, "Source");
+        Directory.CreateDirectory(source);
+        var inv = CultureInfo.InvariantCulture;
+        File.WriteAllLines(Path.Combine(source, "Field.txt"), new[]
         {
-            type = "FeatureCollection",
-            features = new object[]
-            {
-                new
-                {
-                    type = "Feature",
-                    geometry = new { type = "Point", coordinates = new[] { OriginLon, OriginLat } },
-                    properties = new Dictionary<string, object> { ["role"] = "metadata", ["originLatitude"] = OriginLat, ["originLongitude"] = OriginLon, ["name"] = "Old" },
-                },
-                new
-                {
-                    type = "Feature",
-                    geometry = new { type = "Polygon", coordinates = new[] { ring } },
-                    properties = new Dictionary<string, object> { ["role"] = "outer-boundary" },
-                },
-            },
-        };
-        File.WriteAllText(Path.Combine(dir, "field.geojson"), JsonSerializer.Serialize(fc));
+            "2025-06-15 10:30:00", "$FieldDir", "Source", "$Offsets", "0,0", "Convergence", "0", "StartFix",
+            $"{OriginLat.ToString(inv)},{OriginLon.ToString(inv)}",
+        });
+        new BoundaryFileService().SaveBoundary(new Boundary { OuterBoundary = FarSquare() }, source);
 
-        var (loaded, _) = GeoJsonFieldService.Load(dir);
-        var pts = loaded.Boundary!.OuterBoundary!.Points;
-        Assert.That(pts[2].Easting, Is.EqualTo(2100).Within(0.001));
-        Assert.That(pts[2].Northing, Is.EqualTo(2000).Within(0.001));
-    }
-
-    [Test]
-    public void From_Existing_copies_the_legacy_boundary_not_a_stale_geojson()
-    {
         var fields = new FieldService();
-        var source = NewField("Source", FarSquare());
-        fields.SaveField(source);
-
-        // The boundary is edited (or re-downloaded, or changed in AgOpenGPS) and only the
-        // legacy files are rewritten: field.geojson still has the old square.
-        var moved = new BoundaryPolygon();
-        foreach (var (e, n) in new[] { (0.0, 0.0), (50.0, 0.0), (50.0, 50.0), (0.0, 50.0) })
-            moved.Points.Add(new BoundaryPoint(e, n, 0));
-        moved.UpdateBounds();
-        new BoundaryFileService().SaveBoundary(new Boundary { OuterBoundary = moved }, source.DirectoryPath);
-
         var copyDir = Path.Combine(_root, "Copy");
-        FieldCopyService.CreateFromExisting(fields, source.DirectoryPath, copyDir, "Copy",
+        FieldCopyService.CreateFromExisting(fields, source, copyDir, "Copy",
             copyFlags: false, copyMapping: false, copyHeadland: false, copyLines: false);
 
-        var copied = new BoundaryFileService().LoadBoundary(copyDir)!.OuterBoundary!;
-        Assert.That(copied.Points.Max(p => p.Easting), Is.EqualTo(50).Within(0.001),
-            "the copy has the edited boundary");
+        Assert.That(File.Exists(Path.Combine(source, "Field.txt")), Is.True, "source left as it was");
+        Assert.That(File.Exists(Path.Combine(copyDir, "Field.txt")), Is.False, "copy is field.geojson only");
+        var copied = fields.LoadField(copyDir).Boundary!.OuterBoundary!;
+        Assert.That(copied.Points.Max(p => p.Easting), Is.EqualTo(2100).Within(0.001));
     }
 }

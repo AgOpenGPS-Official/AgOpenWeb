@@ -566,7 +566,7 @@ public sealed class SceneProjector
 
     // AgShare read-frame. Settings from ConfigStore.Connections; live action status +
     // fetched cloud fields from ApplicationState.AgShare; upload candidates = every field
-    // on disk (with whether it has a Boundary.txt). Mirrors the native dialogs' scans.
+    // on disk (with whether it has an outer boundary), read without importing.
     public AgShareDto BuildAgShare()
     {
         var c = _config.Connections;
@@ -577,9 +577,14 @@ public sealed class SceneProjector
         {
             if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root))
                 foreach (var dir in System.IO.Directory.GetDirectories(root))
-                    if (System.IO.File.Exists(System.IO.Path.Combine(dir, "Field.txt")))
-                        local.Add(new AgShareLocalFieldDto(System.IO.Path.GetFileName(dir),
-                            System.IO.File.Exists(System.IO.Path.Combine(dir, "Boundary.txt"))));
+                {
+                    // field.geojson, or an AgOpenGPS field not yet imported
+                    Field field;
+                    try { field = _fields.PeekField(dir); }
+                    catch { continue; }
+                    local.Add(new AgShareLocalFieldDto(System.IO.Path.GetFileName(dir),
+                        field.Boundary?.OuterBoundary is { IsValid: true }));
+                }
         }
         catch { /* fields dir optional */ }
         local.Sort((a, b) => string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase));

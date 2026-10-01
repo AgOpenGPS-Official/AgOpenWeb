@@ -58,15 +58,15 @@ public class FieldSaveLoadVerificationTests
             HeadlandPolygon = CreateSquarePolygon(10, 10, 80), // headland inset
         };
 
-        // 3. Save (writes legacy + GeoJSON)
+        // 3. Save (field.geojson only)
         fieldService.SaveField(field);
 
         // 4. Verify files exist
-        Assert.That(File.Exists(Path.Combine(fieldDir, "Field.txt")), Is.True, "Legacy Field.txt");
-        Assert.That(File.Exists(Path.Combine(fieldDir, "Boundary.txt")), Is.True, "Legacy Boundary.txt");
         Assert.That(File.Exists(Path.Combine(fieldDir, "field.geojson")), Is.True, "GeoJSON");
+        Assert.That(File.Exists(Path.Combine(fieldDir, "Field.txt")), Is.False, "no AgOpenGPS Field.txt");
+        Assert.That(File.Exists(Path.Combine(fieldDir, "Boundary.txt")), Is.False, "no AgOpenGPS Boundary.txt");
 
-        // 5. Reopen via FieldService (reads the legacy files)
+        // 5. Reopen via FieldService
         var loaded = fieldService.LoadField(fieldDir);
 
         Assert.That(loaded.Name, Is.EqualTo("TestField"));
@@ -88,9 +88,10 @@ public class FieldSaveLoadVerificationTests
         Assert.That(loaded.Boundary.InnerBoundaries, Has.Count.EqualTo(1));
         Assert.That(loaded.Boundary.InnerBoundaries[0].Points, Has.Count.EqualTo(4));
 
-        // The headland isn't part of SaveField: the app keeps it in Headlines.txt
-        // (HeadlandLineSerializer), and Headland.Txt is AgOpenGPS's, read but not written.
-        Assert.That(loaded.Boundary.HeadlandPolygon, Is.Null);
+        // Headland
+        Assert.That(loaded.Boundary.HeadlandPolygon, Is.Not.Null);
+        Assert.That(loaded.Boundary.HeadlandPolygon!.Points, Has.Count.EqualTo(4));
+        Assert.That(loaded.Boundary.HeadlandPolygon.Points[0].Easting, Is.EqualTo(10).Within(0.001));
 
         // 7. Verify boundary is functional (point-in-polygon works after load)
         Assert.That(loaded.Boundary.OuterBoundary.IsValid, Is.True);

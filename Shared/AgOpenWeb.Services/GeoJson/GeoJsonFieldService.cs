@@ -61,7 +61,7 @@ public class GeoJsonFieldService
         if (!Directory.Exists(field.DirectoryPath))
             Directory.CreateDirectory(field.DirectoryPath);
 
-        var geo = Projection.LocalPlaneAt(field.Origin.Latitude, field.Origin.Longitude);
+        var geo = new Projection(field.Origin.Latitude, field.Origin.Longitude);
         var fc = new GeoJsonFeatureCollection();
 
         // Metadata feature -- a Point at the field origin
@@ -145,9 +145,7 @@ public class GeoJsonFieldService
         if (DateTime.TryParse(modifiedStr, out var modified))
             field.LastModifiedDate = modified;
 
-        var geo = GetStringProp(metaFeature, FieldPropertyKeys.Projection) == ProjectionLocalPlane
-            ? Projection.LocalPlaneAt(originLat, originLon)
-            : Projection.OriginScaled(originLat, originLon);
+        var geo = new Projection(originLat, originLon);
         var boundary = new Boundary();
         var tracks = new List<Models.Track.Track>();
 
@@ -188,7 +186,7 @@ public class GeoJsonFieldService
             }
         }
 
-        if (boundary.OuterBoundary != null)
+        if (boundary.OuterBoundary != null || boundary.InnerBoundaries.Count > 0 || boundary.HeadlandPolygon != null)
             field.Boundary = boundary;
 
         return (field, tracks);
@@ -198,43 +196,25 @@ public class GeoJsonFieldService
     // Plane <-> WGS84
     // ---------------------------------------------------------------
 
-    // Written in the metadata feature. "localPlane" is the conversion live GPS, AgShare and the
-    // legacy field files use: longitude scaled at each point's own latitude. Files without it
-    // came from builds that scaled longitude at the origin's latitude (GeoConversion), about
-    // 0.8 m east-west off at 2 km from the origin at 52°N. They still read back exactly with
-    // that conversion, and the next save rewrites them as localPlane.
-    private const string ProjectionLocalPlane = "localPlane";
-
+    // The field plane <-> WGS84, with LocalPlane: longitude scaled at each point's own
+    // latitude, the same conversion as live GPS and the AgOpenGPS import, so the coordinates
+    // are right for GIS tools too.
     private sealed class Projection
     {
-        private readonly LocalPlane? _plane;
-        private readonly GeoConversion? _originScaled;
+        private readonly LocalPlane _plane;
 
-        private Projection(LocalPlane? plane, GeoConversion? originScaled)
-        {
-            _plane = plane;
-            _originScaled = originScaled;
-        }
-
-        public static Projection LocalPlaneAt(double originLat, double originLon) =>
-            new(new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties()), null);
-
-        public static Projection OriginScaled(double originLat, double originLon) =>
-            new(null, new GeoConversion(originLat, originLon));
+        public Projection(double originLat, double originLon) =>
+            _plane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
 
         public (double lat, double lon) ToWgs84(Vec2 local)
         {
-            if (_originScaled != null)
-                return _originScaled.ToWgs84(local);
-            var w = _plane!.ConvertGeoCoordToWgs84(new GeoCoord(local.Northing, local.Easting));
+            var w = _plane.ConvertGeoCoordToWgs84(new GeoCoord(local.Northing, local.Easting));
             return (w.Latitude, w.Longitude);
         }
 
         public Vec2 ToLocal(double lat, double lon)
         {
-            if (_originScaled != null)
-                return _originScaled.ToLocal(lat, lon);
-            var c = _plane!.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
+            var c = _plane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
             return new Vec2(c.Easting, c.Northing);
         }
 
@@ -268,7 +248,6 @@ public class GeoJsonFieldService
             Properties = new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = FeatureRoles.Metadata,
-                [FieldPropertyKeys.Projection] = ProjectionLocalPlane,
                 [FieldPropertyKeys.Name] = field.Name,
                 [FieldPropertyKeys.OriginLatitude] = field.Origin.Latitude,
                 [FieldPropertyKeys.OriginLongitude] = field.Origin.Longitude,

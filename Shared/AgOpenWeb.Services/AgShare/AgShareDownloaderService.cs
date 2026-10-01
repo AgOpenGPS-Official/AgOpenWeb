@@ -117,7 +117,8 @@ namespace AgOpenWeb.Services.AgShare
     }
 
     /// <summary>
-    /// Utility class that writes a LocalFieldModel to standard AgOpenGPS-compatible files.
+    /// Writes a downloaded LocalFieldModel into a field folder: field.geojson for the field
+    /// itself, plus the per-feature files AgOpenWeb still keeps in AgOpenGPS formats.
     /// </summary>
     public static class FieldFileWriter
     {
@@ -130,10 +131,9 @@ namespace AgOpenWeb.Services.AgShare
                 Directory.CreateDirectory(fieldDir);
 
             await WriteAgShareIdAsync(fieldDir, field.FieldId);
-            await WriteFieldTxtAsync(fieldDir, field.Origin);
-            await WriteBoundaryTxtAsync(fieldDir, field.Boundaries);
+            WriteFieldGeoJson(fieldDir, field.Origin, field.Boundaries);
             await WriteTrackLinesTxtAsync(fieldDir, field.AbLines);
-            await WriteStaticFilesAsync(fieldDir); // Flags, Headland, Contour (only if missing)
+            await WriteStaticFilesAsync(fieldDir); // Flags, Contour (only if missing)
         }
 
         /// <summary>
@@ -145,56 +145,51 @@ namespace AgOpenWeb.Services.AgShare
         }
 
         /// <summary>
-        /// Writes origin and metadata to Field.txt
+        /// Writes the origin and boundary rings to field.geojson. A re-download over an existing
+        /// field replaces those and keeps the rest (headland, background image); with no rings
+        /// in the download the existing boundary stays. An earlier download still in AgOpenGPS
+        /// files is imported first, so it can't win over this one on the next open.
         /// </summary>
-        private static async Task WriteFieldTxtAsync(string fieldDir, Wgs84 origin)
+        private static void WriteFieldGeoJson(string fieldDir, Wgs84 origin, List<List<LocalPoint>>? boundaries)
         {
-            var fieldTxt = new List<string>
+            var fields = new FieldService();
+            Field field;
+            try
             {
-                DateTime.Now.ToString("yyyy-MMM-dd hh:mm:ss tt", CultureInfo.InvariantCulture),
-                "$FieldDir",
-                "AgShare Downloaded",
-                "$Offsets",
-                "0,0",
-                "Convergence",
-                "0", // Always 0
-                "StartFix",
-                origin.Latitude.ToString(CultureInfo.InvariantCulture) + "," + origin.Longitude.ToString(CultureInfo.InvariantCulture)
-            };
-
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Field.txt"), fieldTxt);
-        }
-
-        /// <summary>
-        /// Writes outer and inner boundary rings to Boundary.txt
-        /// </summary>
-        private static async Task WriteBoundaryTxtAsync(string fieldDir, List<List<LocalPoint>>? boundaries)
-        {
-            if (boundaries == null || boundaries.Count == 0) return;
-
-            var lines = new List<string> { "$Boundary" };
-
-            for (int i = 0; i < boundaries.Count; i++)
+                field = fields.LoadField(fieldDir);
+            }
+            catch (FileNotFoundException)
             {
-                var ring = boundaries[i];
-                bool isHole = i != 0;
+                field = new Field { Name = Path.GetFileName(fieldDir), CreatedDate = DateTime.Now };
+            }
+            field.DirectoryPath = fieldDir;
+            field.Origin = new Position { Latitude = origin.Latitude, Longitude = origin.Longitude };
+            field.LastModifiedDate = DateTime.Now;
 
-                lines.Add(isHole ? "True" : "False");
-                lines.Add(ring.Count.ToString(CultureInfo.InvariantCulture));
-
-                var enriched = BoundaryUtils.WithHeadings(ConvertToVec3List(ring));
-
-                foreach (var pt in enriched)
+            if (boundaries is { Count: > 0 })
+            {
+                var boundary = field.Boundary ?? new Boundary();
+                boundary.OuterBoundary = null;
+                boundary.InnerBoundaries.Clear();
+                for (int i = 0; i < boundaries.Count; i++)
                 {
-                    lines.Add(
-                        pt.Easting.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                        pt.Northing.ToString("0.###", CultureInfo.InvariantCulture) + "," +
-                        pt.Heading.ToString("0.#####", CultureInfo.InvariantCulture)
-                    );
+                    var polygon = new BoundaryPolygon();
+                    foreach (var pt in BoundaryUtils.WithHeadings(ConvertToVec3List(boundaries[i])))
+                        polygon.Points.Add(new BoundaryPoint(pt.Easting, pt.Northing, pt.Heading));
+                    polygon.UpdateBounds();
+                    if (i == 0)
+                        boundary.OuterBoundary = polygon;
+                    else
+                    {
+                        // Holes were written drive-through, as before.
+                        polygon.IsDriveThrough = true;
+                        boundary.InnerBoundaries.Add(polygon);
+                    }
                 }
+                field.Boundary = boundary;
             }
 
-            await File.WriteAllLinesAsync(Path.Combine(fieldDir, "Boundary.txt"), lines);
+            fields.SaveField(field);
         }
 
         /// <summary>
@@ -256,14 +251,13 @@ namespace AgOpenWeb.Services.AgShare
         }
 
         /// <summary>
-        /// Empty Flags.txt, Headland.txt and Contour.txt for a new field. These are local work,
+        /// Empty Flags.txt and Contour.txt for a new field. These are local work,
         /// not part of what AgShare stores, so a re-download never overwrites them; Sections.txt
         /// (the applied area) isn't touched at all (AgOpenGPS #1203).
         /// </summary>
         private static async Task WriteStaticFilesAsync(string fieldDir)
         {
             await WriteIfMissingAsync(fieldDir, "Flags.txt", ["$Flags", "0"]);
-            await WriteIfMissingAsync(fieldDir, "Headland.txt", ["$Headland", "0"]);
             await WriteIfMissingAsync(fieldDir, "Contour.txt", ["$Contour", "0"]);
         }
 

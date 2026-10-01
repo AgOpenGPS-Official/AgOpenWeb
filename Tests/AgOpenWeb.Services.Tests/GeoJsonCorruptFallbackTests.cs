@@ -74,7 +74,7 @@ public class GeoJsonCorruptFallbackTests
 
         var field = _service.LoadField(_fieldDir);
 
-        // The legacy files are the source of truth; field.geojson can lag them.
+        // AgOpenGPS files in the folder are imported over field.geojson.
         Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
     }
 
@@ -118,7 +118,7 @@ public class GeoJsonCorruptFallbackTests
 
         _service.LoadField(_fieldDir);
 
-        // Not read (the legacy files win), so nothing to set aside: the export is rewritten.
+        // The AgOpenGPS files are imported over it, so there's nothing to set aside.
         Assert.That(Directory.GetFiles(_fieldDir, "field.geojson.corrupt.*"), Is.Empty);
         var (fromGeoJson, _) = GeoJsonFieldService.Load(_fieldDir);
         Assert.That(fromGeoJson.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
@@ -129,7 +129,7 @@ public class GeoJsonCorruptFallbackTests
     {
         WriteCorruptGeoJson("{bad json}");
 
-        Assert.Throws<FileNotFoundException>(() => _service.LoadField(_fieldDir));
+        Assert.Throws<InvalidDataException>(() => _service.LoadField(_fieldDir));
 
         Assert.That(Directory.GetFiles(_fieldDir, "field.geojson.corrupt.*"), Has.Length.EqualTo(1),
             "Should set the corrupt file aside");
@@ -141,8 +141,8 @@ public class GeoJsonCorruptFallbackTests
         WriteCorruptGeoJson("{bad}");
         // No legacy files written
 
-        // Should throw from legacy loader (no Field.txt), not from JSON parser
-        Assert.Throws<FileNotFoundException>(() => _service.LoadField(_fieldDir));
+        // No AgOpenGPS files to import, so an unreadable field.geojson is reported as such
+        Assert.Throws<InvalidDataException>(() => _service.LoadField(_fieldDir));
     }
 
     [Test]

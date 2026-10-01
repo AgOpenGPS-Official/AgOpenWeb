@@ -29,6 +29,7 @@ using AgOpenWeb.Models.IsoXml;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Track;
 using AgOpenWeb.Services;
+using AgOpenWeb.Services.GeoJson;
 using AgOpenWeb.Services.IsoXml;
 using CommunityToolkit.Mvvm.Input;
 
@@ -128,8 +129,7 @@ public partial class MainViewModel
             var fieldName = SelectedFieldInfo.Name;
 
             // Check if this is a legacy field that will be auto-converted
-            bool isLegacy = !File.Exists(Path.Combine(fieldPath, "field.geojson")) &&
-                            File.Exists(Path.Combine(fieldPath, "Field.txt"));
+            bool isLegacy = File.Exists(Path.Combine(fieldPath, "Field.txt"));
 
             if (isLegacy)
             {
@@ -138,7 +138,7 @@ public partial class MainViewModel
                     "Import Legacy Field",
                     $"'{fieldName}' uses the legacy AgOpenGPS format. " +
                     "It will be imported and converted to the new format. " +
-                    "The original files will be kept. Continue?",
+                    "Its AgOpenGPS files in this folder are deleted once imported. Continue?",
                     () =>
                     {
                         SelectedFieldInfo = null;
@@ -436,8 +436,7 @@ public partial class MainViewModel
             try
             {
                 Directory.CreateDirectory(newFieldPath);
-                // Invariant culture (the old {x:F8} wrote "42,03" in comma-decimal locales, #112)
-                // and a Field.txt, which the open path needs.
+                // field.origin + field.geojson, which the open path needs.
                 WriteNewFieldSkeleton(newFieldPath, newFieldName, KmlCenterLatitude, KmlCenterLongitude);
 
                 var origin = new Wgs84(KmlCenterLatitude, KmlCenterLongitude);
@@ -463,7 +462,7 @@ public partial class MainViewModel
                         boundary.InnerBoundaries.Add(polygon);
                 }
 
-                _boundaryFileService.SaveBoundary(boundary, newFieldPath);
+                SaveFieldBoundary(boundary, newFieldPath);
 
                 // Open through the normal path: closes (and saves) the current field first
                 // and loads the new one, boundary included (#107).
@@ -640,7 +639,7 @@ public partial class MainViewModel
 
                 // Persist the boundary + tracks, then open through the normal path, which closes
                 // (and saves) the current field first and loads the new one (#107).
-                _boundaryFileService.SaveBoundary(boundary, newFieldPath);
+                SaveFieldBoundary(boundary, newFieldPath);
                 if (tracks.Count > 0)
                     TrackFilesService.Save(newFieldPath, tracks);
                 await OpenCreatedFieldAsync(newFieldPath, newFieldName);
@@ -773,8 +772,7 @@ public partial class MainViewModel
             }
 
             // Check if this is a legacy field that will be auto-converted
-            bool isLegacy = !File.Exists(Path.Combine(fieldPath, "field.geojson")) &&
-                            File.Exists(Path.Combine(fieldPath, "Field.txt"));
+            bool isLegacy = File.Exists(Path.Combine(fieldPath, "Field.txt"));
 
             if (isLegacy)
             {
@@ -782,7 +780,7 @@ public partial class MainViewModel
                     "Import Legacy Field",
                     $"'{lastField}' uses the legacy AgOpenGPS format. " +
                     "It will be imported and converted to the new format. " +
-                    "The original files will be kept. Continue?",
+                    "Its AgOpenGPS files in this folder are deleted once imported. Continue?",
                     () =>
                     {
                         _ = OpenFieldAsync(fieldPath, lastField).ContinueWith(_ =>
@@ -861,25 +859,21 @@ public partial class MainViewModel
 
     /// <summary>
     /// Write the files a brand-new field needs before it can be opened: field.origin and
-    /// Field.txt, both InvariantCulture (FieldPlaneFileService parses with it; a comma-decimal
-    /// culture wrote "42,03", the origin fell back to 0,0 and "near me" dropped the field).
+    /// field.geojson (origin, no boundary yet). field.origin is InvariantCulture: a comma-decimal
+    /// culture once wrote "42,03", the origin fell back to 0,0 and "near me" dropped the field.
     /// </summary>
     private static void WriteNewFieldSkeleton(string fieldPath, string name, double lat, double lon)
     {
         var inv = CultureInfo.InvariantCulture;
-        var latStr = lat.ToString("F8", inv);
-        var lonStr = lon.ToString("F8", inv);
-        File.WriteAllText(Path.Combine(fieldPath, "field.origin"), $"{latStr},{lonStr}");
-        File.WriteAllText(Path.Combine(fieldPath, "Field.txt"),
-            $"{DateTime.Now.ToString("yyyy-MMM-dd hh:mm:ss tt", inv)}\n" +
-            "$FieldDir\n" +
-            $"{name}\n" +
-            "$Offsets\n" +
-            "0,0\n" +
-            "Convergence\n" +
-            "0\n" +
-            "StartFix\n" +
-            $"{latStr},{lonStr}\n");
+        File.WriteAllText(Path.Combine(fieldPath, "field.origin"), $"{lat.ToString("F8", inv)},{lon.ToString("F8", inv)}");
+        GeoJsonFieldService.Save(new Field
+        {
+            Name = name,
+            DirectoryPath = fieldPath,
+            Origin = new Position { Latitude = lat, Longitude = lon },
+            CreatedDate = DateTime.Now,
+            LastModifiedDate = DateTime.Now,
+        }, tracks: null);
     }
 
     /// <summary>

@@ -114,57 +114,67 @@ public class LegacyAutoImportTests
     }
 
     [Test]
-    public void LoadField_SecondLoad_ReadsTheLegacyFilesAgain()
-    {
-        WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
-
-        // First load: reads legacy, writes the GeoJSON export
-        _service.LoadField(_fieldDir);
-        Assert.That(GeoJsonFieldService.Exists(_fieldDir), Is.True);
-
-        // Something else rewrites the legacy files (AgShare re-download, AgOpenGPS, an
-        // in-app boundary edit before the field was closed)
-        WriteLegacyFieldTxt(lat: 48.0, lon: -94.0);
-
-        var field = _service.LoadField(_fieldDir);
-        Assert.That(field.Origin.Latitude, Is.EqualTo(48.0).Within(0.001),
-            "The legacy files win over a field.geojson they've moved past");
-    }
-
-    [Test]
-    public void LoadField_StaleGeoJson_IsRewrittenFromTheLegacyFiles()
+    public void LoadField_SecondLoad_ReadsTheImportedGeoJson()
     {
         WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
         WriteLegacyBoundary(centerE: 100, centerN: 200);
 
-        // A field.geojson from before the legacy files changed
-        var stale = new Field
+        _service.LoadField(_fieldDir);
+        var field = _service.LoadField(_fieldDir);
+
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+        Assert.That(field.Boundary?.OuterBoundary?.Points, Has.Count.EqualTo(4));
+    }
+
+    [Test]
+    public void LoadField_AgOpenGpsFilesNextToAGeoJson_AreImportedOverIt()
+    {
+        // AgOpenGPS files dropped into an AgOpenWeb field folder replace what it had.
+        var existing = new Field
         {
             Name = "TestField",
             DirectoryPath = _fieldDir,
             Origin = new Position { Latitude = 48.0, Longitude = -94.0 },
         };
-        GeoJsonFieldService.Save(stale, new List<AgOpenWeb.Models.Track.Track>());
+        GeoJsonFieldService.Save(existing, new List<AgOpenWeb.Models.Track.Track>());
+        WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
+        WriteLegacyBoundary(centerE: 100, centerN: 200);
 
         var field = _service.LoadField(_fieldDir);
-        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
 
-        var (export, _) = GeoJsonFieldService.Load(_fieldDir);
-        Assert.That(export.Origin.Latitude, Is.EqualTo(47.0).Within(0.001), "export refreshed");
-        Assert.That(export.Boundary?.OuterBoundary?.Points, Has.Count.EqualTo(4));
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+        Assert.That(field.Boundary?.OuterBoundary?.Points, Has.Count.EqualTo(4));
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "Field.txt")), Is.False);
     }
 
     [Test]
-    public void LoadField_LegacyOnly_OriginalFilesUntouched()
+    public void LoadField_AgOpenGpsFieldFiles_AreDeletedOnceImported()
     {
         WriteLegacyFieldTxt();
-        var originalContent = File.ReadAllText(Path.Combine(_fieldDir, "Field.txt"));
+        WriteLegacyBoundary();
+        File.WriteAllLines(Path.Combine(_fieldDir, "Headland.Txt"), new[] { "$Headland", "False", "0" });
+        File.WriteAllText(Path.Combine(_fieldDir, "TrackLines.txt"), "$TrackLines");
 
         _service.LoadField(_fieldDir);
 
-        var afterContent = File.ReadAllText(Path.Combine(_fieldDir, "Field.txt"));
-        Assert.That(afterContent, Is.EqualTo(originalContent),
-            "Legacy files should not be modified during auto-conversion");
+        foreach (var name in new[] { "Field.txt", "Boundary.txt", "Headland.Txt" })
+            Assert.That(File.Exists(Path.Combine(_fieldDir, name)), Is.False, name);
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "TrackLines.txt")), Is.True,
+            "tracks aren't part of this import yet");
+    }
+
+    [Test]
+    public void PeekField_ReadsAnAgOpenGpsFieldWithoutImportingIt()
+    {
+        WriteLegacyFieldTxt(lat: 47.0, lon: -93.0);
+        WriteLegacyBoundary();
+
+        var field = _service.PeekField(_fieldDir);
+
+        Assert.That(field.Origin.Latitude, Is.EqualTo(47.0).Within(0.001));
+        Assert.That(field.Boundary?.OuterBoundary, Is.Not.Null);
+        Assert.That(File.Exists(Path.Combine(_fieldDir, "Field.txt")), Is.True, "left as it was");
+        Assert.That(GeoJsonFieldService.Exists(_fieldDir), Is.False, "nothing written");
     }
 
     [Test]

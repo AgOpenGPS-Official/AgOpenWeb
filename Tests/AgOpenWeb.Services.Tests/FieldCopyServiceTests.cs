@@ -32,7 +32,11 @@ public class FieldCopyServiceTests
         foreach (var (e, n) in new[] { (0.0, 0.0), (100.0, 0.0), (100.0, 80.0), (0.0, 80.0) })
             outer.Points.Add(new BoundaryPoint(e, n, 0));
         outer.UpdateBounds();
-        field.Boundary = new Boundary { OuterBoundary = outer };
+        var headland = new BoundaryPolygon();
+        foreach (var (e, n) in new[] { (10.0, 10.0), (90.0, 10.0), (90.0, 70.0), (10.0, 70.0) })
+            headland.Points.Add(new BoundaryPoint(e, n, 0));
+        headland.UpdateBounds();
+        field.Boundary = new Boundary { OuterBoundary = outer, HeadlandPolygon = headland };
         _fields.SaveField(field);
         _src = field.DirectoryPath;
 
@@ -40,7 +44,6 @@ public class FieldCopyServiceTests
         File.WriteAllText(Path.Combine(_src, "TrackLines.txt"), "$TrackLines\n");
         File.WriteAllText(Path.Combine(_src, "RecPath.txt"), "rec");
         File.WriteAllText(Path.Combine(_src, "Flags.txt"), "$Flags\n0\n");
-        File.WriteAllText(Path.Combine(_src, "Headland.Txt"), "$Headland\n");
         File.WriteAllText(Path.Combine(_src, "HeadlandSegments.json"), "[]");
         Directory.CreateDirectory(Path.Combine(_src, "jobs", "job1"));
         File.WriteAllText(Path.Combine(_src, "jobs", "job1", "coverage.bin"), "cov");
@@ -72,9 +75,10 @@ public class FieldCopyServiceTests
     {
         FieldCopyService.CreateFromExisting(_fields, _src, NewDir, "Copy", false, false, false, false);
 
-        foreach (var f in new[] { "TrackLines.txt", "RecPath.txt", "Flags.txt", "Headland.Txt", "HeadlandSegments.json" })
+        foreach (var f in new[] { "TrackLines.txt", "RecPath.txt", "Flags.txt", "HeadlandSegments.json" })
             Assert.That(File.Exists(Path.Combine(NewDir, f)), Is.False, f);
         Assert.That(Directory.Exists(Path.Combine(NewDir, "jobs")), Is.False);
+        Assert.That(_fields.LoadField(NewDir).Boundary?.HeadlandPolygon, Is.Null, "no headland");
     }
 
     [Test]
@@ -87,7 +91,7 @@ public class FieldCopyServiceTests
             Assert.That(File.Exists(Path.Combine(NewDir, "Flags.txt")), "flags");
             Assert.That(File.Exists(Path.Combine(NewDir, "TrackLines.txt")), "lines");
             Assert.That(File.Exists(Path.Combine(NewDir, "RecPath.txt")), "recorded path");
-            Assert.That(File.Exists(Path.Combine(NewDir, "Headland.Txt")), "headland");
+            Assert.That(_fields.LoadField(NewDir).Boundary?.HeadlandPolygon, Is.Not.Null, "headland");
             Assert.That(File.Exists(Path.Combine(NewDir, "HeadlandSegments.json")), "headland segments");
             Assert.That(File.Exists(Path.Combine(NewDir, "jobs", "job1", "coverage.bin")), "applied area");
         });
