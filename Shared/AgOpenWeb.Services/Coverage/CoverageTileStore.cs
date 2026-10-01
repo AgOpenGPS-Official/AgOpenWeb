@@ -27,7 +27,7 @@ namespace AgOpenWeb.Services.Coverage;
 
 /// <summary>
 /// On-disk layout of a job's coverage as world-anchored tiles, so a save rewrites only the
-/// tiles painted since the last one (Plans/COVERAGE_TILED_PERSISTENCE_PLAN.md).
+/// tiles painted since the last one (Plans/Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
 ///
 /// <code>
 /// jobs/&lt;task&gt;/coverage/
