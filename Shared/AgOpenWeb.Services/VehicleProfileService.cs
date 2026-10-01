@@ -356,7 +356,7 @@ public class VehicleProfileService : IVehicleProfileService
         // services use). Once migration has completed, AppSettings
         // overrides the XML value on subsequent loads.
         if (settings.ContainsKey("setMenu_isMetric"))
-            store.IsMetric = GetBool(settings, "setMenu_isMetric", false);
+            store.IsMetric = GetBool(settings, "setMenu_isMetric", true);
 
         // Profile metadata
         store.ActiveVehicleProfileName = profileName;
@@ -394,9 +394,9 @@ public class VehicleProfileService : IVehicleProfileService
 
     private bool GetBool(Dictionary<string, string> settings, string key, bool defaultValue)
     {
-        if (settings.TryGetValue(key, out var value))
+        if (settings.TryGetValue(key, out var value) && bool.TryParse(value, out var result))
         {
-            return value.Equals("True", StringComparison.OrdinalIgnoreCase);
+            return result;
         }
         return defaultValue;
     }

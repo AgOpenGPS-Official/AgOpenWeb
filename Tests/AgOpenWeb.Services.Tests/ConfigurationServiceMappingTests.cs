@@ -278,6 +278,23 @@ public class ConfigurationServiceMappingTests
     }
 
     [Test]
+    public void ReconcileIsMetricAfterProfileLoad_FirstCall_MigratesProfileImperialToAppSettings()
+    {
+        _settings.IsMetric = true;
+        _settings.HasMigratedIsMetric = false;
+        _service.Store.IsMetric = false;
+
+        _service.ReconcileIsMetricAfterProfileLoad();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_settings.IsMetric, Is.False);
+            Assert.That(_settings.HasMigratedIsMetric, Is.True);
+            Assert.That(_service.Store.IsMetric, Is.False);
+        });
+    }
+
+    [Test]
     public void ReconcileIsMetricAfterProfileLoad_SubsequentCall_AppSettingsOverridesProfile()
     {
         _settings.IsMetric = true;

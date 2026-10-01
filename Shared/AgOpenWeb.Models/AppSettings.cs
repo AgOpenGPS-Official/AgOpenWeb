@@ -44,10 +44,9 @@ namespace AgOpenWeb.Models
         /// <summary>
         /// Device-/user-scoped metric vs imperial preference. The source of
         /// truth lives here (in AppSettings); vehicle profiles must not
-        /// dictate units. Default false (imperial) matches the legacy
-        /// per-vehicle default before the migration.
+        /// dictate units. Default true (metric).
         /// </summary>
-        public bool IsMetric { get; set; } = false;
+        public bool IsMetric { get; set; } = true;
 
         /// <summary>
         /// One-shot migration latch: if false, the next vehicle-profile
