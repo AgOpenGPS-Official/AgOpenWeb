@@ -64,6 +64,7 @@ public class CoverageSaveLoadTests
         reopened.SetFieldBounds(-100, 100, -100, 100);
         reopened.LoadFromFile(_jobDir);
 
+        Assert.That(reopened.DisplayBoundsWorld, Is.EqualTo(svc.DisplayBoundsWorld), "bounds unchanged by the load");
         Assert.That(reopened.IsPointCovered(-7, 0), Is.True);
         Assert.That(reopened.IsPointCovered(30, 0), Is.False);
         Assert.That(reopened.TotalWorkedArea, Is.EqualTo(svc.TotalWorkedArea).Within(0.01));
@@ -205,5 +206,24 @@ public class CoverageSaveLoadTests
             Assert.That(reopened.IsPointCovered(-850, 0), Is.True);
             Assert.That(reopened.IsPointCovered(-500, 50), Is.False);
         });
+    }
+
+    [Test]
+    public void Reopen_does_not_grow_bounds_when_display_cells_overhang()
+    {
+        // 1420 m isn't a whole number of 0.35 m display cells: the display grid overhangs
+        // the field by part of a cell, which must not count as saved coverage outside it.
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(0, 1420, 0, 1420);
+        Assume.That(svc.DisplayDimensions!.Value.CellSize, Is.GreaterThan(0.1), "coarse display grid");
+        svc.MarkRectangleCovered(100, 112, 100, 200);
+        svc.SaveToFile(_jobDir);
+
+        var reopened = new CoverageMapService(_store);
+        reopened.SetFieldBounds(0, 1420, 0, 1420);
+        reopened.LoadFromFile(_jobDir);
+
+        Assert.That(reopened.BitmapDimensions, Is.EqualTo(svc.BitmapDimensions));
+        Assert.That(reopened.DisplayBoundsWorld, Is.EqualTo(svc.DisplayBoundsWorld));
     }
 }

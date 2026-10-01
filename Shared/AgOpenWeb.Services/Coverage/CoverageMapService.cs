@@ -1785,19 +1785,20 @@ public class CoverageMapService : ICoverageMapService
 
     private void EnsureBoundsHoldSavedCoverage(string fieldDirectory)
     {
-        var detect = ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_detect.bin"), "COVD");
-        var disp = ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_disp.bin"), "COVS");
-        if (detect == null && disp == null)
+        // The detection grid is the exact field extent. The display grid is rounded up to whole
+        // display cells, so it only stands in when there is no detection file; including it
+        // would grow the bounds by up to a display cell on every reopen.
+        var saved = ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_detect.bin"), "COVD")
+                    ?? ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_disp.bin"), "COVS");
+        if (saved is not { } sv)
             return;
 
-        double minE = double.MaxValue, maxE = double.MinValue, minN = double.MaxValue, maxN = double.MinValue;
+        double minE = sv.MinE, maxE = sv.MaxE, minN = sv.MinN, maxN = sv.MaxN;
         void Include(double e0, double e1, double n0, double n1)
         {
             minE = Math.Min(minE, e0); maxE = Math.Max(maxE, e1);
             minN = Math.Min(minN, n0); maxN = Math.Max(maxN, n1);
         }
-        if (detect is { } d) Include(d.MinE, d.MaxE, d.MinN, d.MaxN);
-        if (disp is { } s) Include(s.MinE, s.MaxE, s.MinN, s.MaxN);
 
         lock (_coverageLock)
         {
