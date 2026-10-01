@@ -6,7 +6,7 @@ writes, no new dependency) was accepted and is planned in
 [COVERAGE_TILED_PERSISTENCE_PLAN.md](Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
 The rest of this document is retained as the reasoning behind that call.
 
-**Related:** [FILE_FORMAT_MODERNIZATION_PLAN.md](FILE_FORMAT_MODERNIZATION_PLAN.md),
+**Related:** [FILE_FORMAT_MODERNIZATION_PLAN.md](Completed/FILE_FORMAT_MODERNIZATION_PLAN.md),
 [Completed/FIELDS_AND_JOBS_PLAN.md](Completed/FIELDS_AND_JOBS_PLAN.md),
 [../Docs/COVERAGE_PERFORMANCE_TESTS.md](../Docs/COVERAGE_PERFORMANCE_TESTS.md)
 

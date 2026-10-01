@@ -1,6 +1,12 @@
 # File Format Modernization Plan
 
-## Status (2026-10-01)
+## Status: completed 2026-10-01
+
+The one-way migration is done: #205 (field), #206 (tracks, flags, headland lines), #207
+(background image, tram lines), #208 (contours, recorded paths, elevation log), #209
+(`Sections.txt`). **Future ideas, never started:** a zipped `.agfield` sharing package
+(question 2), JSON Schema validation (3), profile inheritance (4), track history (5), and
+removing the unused `field.json` (`FieldJsonService`).
 
 **Rule:** import is one-way. AgOpenGPS-format files found in an AgOpenWeb field folder are
 imported into AgOpenWeb's formats once and then **deleted**. AgOpenWeb never writes them, and
@@ -11,10 +17,10 @@ is no compatibility code for files written by older AgOpenWeb builds.
 | Phase | AgOpenGPS files | New home | State |
 |---|---|---|---|
 | 1 | `Field.txt`, `Boundary.txt`, `Headland.Txt` | `field.geojson` (origin, convergence, boundaries, headland polygon) | done (#205) |
-| 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (this PR) |
-| 3a | `BackPic.txt` + `BackPic.png` (AgOpenGPS); `TramLines.txt` (AgOpenWeb's, write-only) | `field.geojson` `background-image` part + `background.png`; tram lines aren't saved (generated on demand) | done (this PR) |
-| 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | `contours.geojson`, `recorded-paths.geojson`, `elevation.csv` (beside `field.geojson`, so appending never rewrites the field) | done (this PR) |
-| 4 | `Sections.txt` | coverage tiles | done (this PR): imported, then deleted after the job's first tiled save, as the `.bin` files are |
+| 2 | `TrackLines.txt` (+ the older `ABLines.txt`), `Flags.txt`, `Headlines.txt` | `field.geojson` features (`track`, `flag`, `headland-line`) | done (#206) |
+| 3a | `BackPic.txt` + `BackPic.png` (AgOpenGPS); `TramLines.txt` (AgOpenWeb's, write-only) | `field.geojson` `background-image` part + `background.png`; tram lines aren't saved (generated on demand) | done (#207) |
+| 3b | `Contour.txt`, `RecPath.txt` / `*.rec`, `Elevation.txt` | `contours.geojson`, `recorded-paths.geojson`, `elevation.csv` (beside `field.geojson`, so appending never rewrites the field) | done (#208) |
+| 4 | `Sections.txt` | coverage tiles | done (#209): imported, then deleted after the job's first tiled save, as the `.bin` files are |
 
 Phase 1, as built:
 - **`FieldService.LoadField`** imports an AgOpenGPS field (keyed on `Field.txt`), deletes its
@@ -75,7 +81,7 @@ Other parts of the original plan:
 - **Profiles: done.** Vehicle and tool profiles are JSON (`ProfileJsonServiceV1`,
   `Tools/*.json`), with one-way import from the XML.
 - **Coverage (phase 3 below): superseded.** Coverage is saved as world-anchored tiles:
-  [Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md](Completed/COVERAGE_TILED_PERSISTENCE_PLAN.md).
+  [COVERAGE_TILED_PERSISTENCE_PLAN.md](COVERAGE_TILED_PERSISTENCE_PLAN.md).
   Open questions 6–8 are moot. Viewing coverage in QGIS would be an export feature.
 - **Model consolidation: done.** The `ABLine` class is gone.
 - **Not started:** the `.agfield` sharing package (question 2), JSON Schema (3), profile
