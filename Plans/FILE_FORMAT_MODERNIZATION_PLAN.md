@@ -728,6 +728,15 @@ GeoJSON field data is slightly larger than custom formats due to verbose coordin
    - Incremental: Faster saves, periodic full merge
    - Recommendation: Full merge on field close, consider incremental for auto-save
 
+9. **Re-importing a field over an existing one (AgShare re-download)**: `FieldService.LoadField` prefers `field.geojson`, so files that a re-import writes next to it are ignored.
+   - Today a forced AgShare re-download (`DownloadAllAsync(force: true)`, or downloading a field that already exists locally) rewrites `Field.txt`, `Boundary.txt` and `TrackLines.txt`. The `field.geojson` written on the field's first open still wins on the next open, so the downloaded boundary and origin never take effect.
+   - **Also:** `GeoJsonFieldService` converts with `GeoConversion`, which scales longitude at the origin's latitude, while live GPS, AgShare and the legacy files use `LocalPlane` (scaled per point). It round-trips with itself, but the WGS84 in `field.geojson` is slightly off for GIS tools, about 0.8 m east–west 2 km from the origin at 52°N. AgShare download was moved to `LocalPlane` in #190.
+   - **Options:**
+     - (a) Importers write `field.geojson` directly (through `FieldService.SaveField`) instead of the legacy text files.
+     - (b) Importers delete or rename a stale `field.geojson` so the next open re-imports from the legacy files. This loses anything held only in the GeoJSON.
+     - (c) Load the newer of the two formats by timestamp.
+   - **Recommendation:** (a), done together with moving `GeoJsonFieldService` to `LocalPlane`. Existing `field.geojson` files then need a one-time migration (re-project with `GeoConversion`'s inverse, then save with `LocalPlane`), flagged by a version field in the metadata feature.
+
 ---
 
 ## References
