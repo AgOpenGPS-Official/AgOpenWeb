@@ -479,7 +479,6 @@ public class ConfigurationService(
         // Display config (preferences only — window/camera/day-night/panel
         // STATE moved to PersistentAppState).
         store.Display.StartFullscreen = settings.StartFullscreen;
-        store.Display.KeepScreenOn = settings.KeepScreenOn;
         store.Display.SvennArrowVisible = settings.SvennArrowVisible;
         store.Display.KeyboardEnabled = settings.KeyboardEnabled;
         store.Display.HeadlandDistanceVisible = settings.HeadlandDistanceVisible;
@@ -555,7 +554,6 @@ public class ConfigurationService(
         // Display config (preferences only — window/camera/day-night/panel
         // STATE is persisted by PersistentStateService).
         settings.StartFullscreen = store.Display.StartFullscreen;
-        settings.KeepScreenOn = store.Display.KeepScreenOn;
         settings.SvennArrowVisible = store.Display.SvennArrowVisible;
         settings.KeyboardEnabled = store.Display.KeyboardEnabled;
         settings.HeadlandDistanceVisible = store.Display.HeadlandDistanceVisible;

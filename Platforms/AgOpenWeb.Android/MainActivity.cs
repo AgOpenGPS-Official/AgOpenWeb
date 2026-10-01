@@ -50,6 +50,10 @@ public class MainActivity : AvaloniaMainActivity
 
         // Enable immersive full-screen mode
         EnableImmersiveMode();
+
+        // A guidance screen must never sleep mid-pass. FLAG_KEEP_SCREEN_ON only holds while this
+        // Activity's window is visible, so backgrounding the app releases it.
+        Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
     }
 
     /// <summary>Lower the soft keyboard via the IME. A WebView input's JS blur() does NOT
@@ -72,18 +76,6 @@ public class MainActivity : AvaloniaMainActivity
             {
                 System.Diagnostics.Debug.WriteLine($"[MainActivity] HideSoftKeyboard failed: {ex.Message}");
             }
-        });
-    }
-
-    /// <summary>App Settings › Keep Screen On. FLAG_KEEP_SCREEN_ON only holds while this
-    /// Activity's window is visible, so backgrounding the app releases it.</summary>
-    public static void SetKeepScreenOn(bool on)
-    {
-        var act = Instance;
-        act?.RunOnUiThread(() =>
-        {
-            if (on) act.Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
-            else act.Window?.ClearFlags(WindowManagerFlags.KeepScreenOn);
         });
     }
 

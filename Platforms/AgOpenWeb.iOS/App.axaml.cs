@@ -65,7 +65,7 @@ public partial class App : Avalonia.Application
             singleView.MainView = _web;
             _web.NavigationCompleted += (_, e) =>
             {
-                if (e.IsSuccess) Dispatcher.UIThread.Post(FollowKeepScreenOn);
+                if (e.IsSuccess) Dispatcher.UIThread.Post(KeepScreenOn);
             };
 
             // Start the backend off the UI thread; point the WebView at it once it's bound.
@@ -77,21 +77,14 @@ public partial class App : Avalonia.Application
 
     private Foundation.NSObject? _becameActiveObserver;
 
-    // App Settings › Keep Screen On: apply once the web UI is up, then follow the setting live
-    // (the store is written on the backend's host loop; UIKit needs the main thread). iOS only
-    // honours this in the foreground and can drop it across a background/foreground cycle, so
-    // re-assert it each time the app becomes active.
-    private void FollowKeepScreenOn()
+    // A guidance screen must never sleep mid-pass, so hold it awake once the web UI is up. iOS
+    // only honours this in the foreground and can drop it across a background/foreground cycle,
+    // so re-assert it each time the app becomes active.
+    private void KeepScreenOn()
     {
-        var display = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Display;
-        void Apply() => UIKit.UIApplication.SharedApplication.IdleTimerDisabled = display.KeepScreenOn;
-        Apply();
-        if (_becameActiveObserver is not null) return;
-        _becameActiveObserver = UIKit.UIApplication.Notifications.ObserveDidBecomeActive((_, _) => Apply());
-        display.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(display.KeepScreenOn)) Dispatcher.UIThread.Post(Apply);
-        };
+        UIKit.UIApplication.SharedApplication.IdleTimerDisabled = true;
+        _becameActiveObserver ??= UIKit.UIApplication.Notifications.ObserveDidBecomeActive(
+            (_, _) => UIKit.UIApplication.SharedApplication.IdleTimerDisabled = true);
     }
 
     private async Task StartBackendThenNavigateAsync()

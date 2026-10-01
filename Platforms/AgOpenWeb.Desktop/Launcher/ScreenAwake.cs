@@ -11,13 +11,13 @@ using Avalonia.Controls;
 namespace AgOpenWeb.Desktop.Launcher;
 
 /// <summary>
-/// Keeps the display from sleeping/blanking while the launcher shows the web UI (App Settings ›
-/// Keep Screen On) — a guidance screen that dims mid-pass is unusable. Best effort; each hold also
-/// ends on its own when the process (or window) goes away.
+/// Keeps the display from sleeping/blanking while the launcher shows the web UI — a guidance screen
+/// that dims mid-pass is unusable. Always on, no setting. Best effort; each hold ends on its own
+/// when the process (or window) goes away.
 /// <list type="bullet">
 ///   <item>Windows: <c>SetThreadExecutionState</c> on the UI thread (held until that thread exits).</item>
 ///   <item>macOS: <c>caffeinate -d -i -w &lt;pid&gt;</c> (exits with this process).</item>
-///   <item>Linux (X11): <c>xdg-screensaver suspend|resume &lt;xid&gt;</c> (lifts when the window is destroyed).</item>
+///   <item>Linux (X11): <c>xdg-screensaver suspend &lt;xid&gt;</c> (lifts when the window is destroyed).</item>
 /// </list>
 /// </summary>
 internal static class ScreenAwake
@@ -29,32 +29,30 @@ internal static class ScreenAwake
     [DllImport("kernel32.dll")]
     private static extern uint SetThreadExecutionState(uint esFlags);
 
-    private static bool _on;
-    private static Process? _caffeinate;
+    private static bool _held;
 
-    /// <summary>Call on the UI thread. Idempotent, so a page reload or a repeated setting
-    /// write never spawns a second caffeinate / xdg-screensaver.</summary>
-    public static void Set(Window window, bool on)
+    /// <summary>Call on the UI thread. Idempotent, so a page reload never spawns a second
+    /// caffeinate / xdg-screensaver.</summary>
+    public static void Hold(Window window)
     {
-        if (on == _on) return;
-        _on = on;
+        if (_held) return;
+        _held = true;
         try
         {
             if (OperatingSystem.IsWindows())
             {
-                SetThreadExecutionState(on ? ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED : ES_CONTINUOUS);
+                SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
             }
             else if (OperatingSystem.IsMacOS())
             {
-                if (on) _caffeinate = Spawn("/usr/bin/caffeinate", $"-d -i -w {Environment.ProcessId}");
-                else { _caffeinate?.Kill(); _caffeinate?.Dispose(); _caffeinate = null; }
+                Spawn("/usr/bin/caffeinate", $"-d -i -w {Environment.ProcessId}")?.Dispose();
             }
             else if (OperatingSystem.IsLinux() && window.TryGetPlatformHandle() is { HandleDescriptor: "XID" } h)
             {
-                Spawn("xdg-screensaver", $"{(on ? "suspend" : "resume")} 0x{h.Handle.ToInt64():x}")?.Dispose();
+                Spawn("xdg-screensaver", $"suspend 0x{h.Handle.ToInt64():x}")?.Dispose();
             }
             else return;
-            Console.WriteLine($"[screen] keep-awake {(on ? "on" : "off")}");
+            Console.WriteLine("[screen] keep-awake on");
         }
         catch (Exception ex)
         {
