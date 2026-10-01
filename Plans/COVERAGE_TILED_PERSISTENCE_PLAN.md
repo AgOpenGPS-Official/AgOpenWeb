@@ -1,7 +1,8 @@
 # Coverage Persistence: Tiled, Incremental, Atomic
 
-**Status:** Steps 1, 2, 3 and 3a done (`fix/coverage-save-durability`). Steps 4–8
-not started. Re-checked against `develop` @ `e8c8f444` on 2026-10-01 — see §0.
+**Status:** Steps 1, 2, 3 and 3a done (`fix/coverage-save-durability`, #200).
+§3.4's CPU win landed early as §5b (`perf/coverage-save-speed`). Steps 4–8 not
+started; what is left for them is write volume (§5b). Re-checked against `develop` @ `e8c8f444` on 2026-10-01 — see §0.
 **Decision context:** [GEOPACKAGE_STORAGE_ANALYSIS.md](GEOPACKAGE_STORAGE_ANALYSIS.md) §8.1 —
 GeoPackage adoption was rejected; this is the incremental fix to the existing
 file handling that the analysis recommended doing regardless.
@@ -373,6 +374,36 @@ or Tab S7 numbers the plan asks for; expect those to be several times slower.
 The display path (the §1.1 rescan) is ~90 % of the time, so open question 1 is
 answered: steps 4–8 are worth doing. §3.4 on its own, maintaining palette
 indices instead of rescanning, would remove most of the cost before any tiling.
+
+## 5b. CPU fixes ahead of tiling, measured on a CM4 (2026-10-01)
+
+The §1.1 rescan through the detection bits existed to filter background-image
+pixels out of the display buffer. The native map control that composited them is
+gone, and the only writers of `_displayPixels` now are `PaintDisplayPixel`, the
+expansion copy and the loader, so every non-zero pixel is coverage. Three changes,
+with output byte-identical to the old encoder (detection) and pixel-identical
+(display) on the fixtures below:
+
+1. One pass over the display pixels, with one palette lookup per run instead of
+   per pixel, and no 25 MB index buffer.
+2. Both RLE encoders find runs with `Span.IndexOfAnyExcept` (vectorised) into a
+   reused buffer.
+3. A change counter. A save with nothing new since the last save to the same job
+   (stationary, headland turns, sections off) does no work.
+
+Benchmarked on a CM4 (4 × A72, 2 GB, SD card, PREEMPT_RT kernel) with the same
+fixtures (12 m passes, 1 m gaps, half the field):
+
+| Field | Before | After, SD | After, tmpfs (CPU only) | Written per save |
+|---|---|---|---|---|
+| 20 ha | ~0.55 s | 0.06–0.11 s | — | 0.7 MB |
+| 200 ha | ~5.9 s | 0.36–0.79 s | ~0.12 s | 7 MB |
+| 520 ha | ~16 s | 0.87–2.6 s | ~0.30 s | 18 MB |
+
+Peak RSS at 520 ha: 322 → 231 MB. What remains on SD is writing and `fsync`ing the
+whole files, so the reason left for steps 4–8 is write volume and SD wear, not
+CPU. These fixtures are a worst case for the detection file: a 1 m gap between
+every pass makes it speckled. Real overlapping passes compress much better.
 
 ---
 

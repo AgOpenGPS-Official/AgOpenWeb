@@ -226,4 +226,97 @@ public class CoverageSaveLoadTests
         Assert.That(reopened.BitmapDimensions, Is.EqualTo(svc.BitmapDimensions));
         Assert.That(reopened.DisplayBoundsWorld, Is.EqualTo(svc.DisplayBoundsWorld));
     }
+
+    // Back-date both files so a rewrite is visible in their timestamps.
+    private DateTime BackdateFiles()
+    {
+        var old = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        foreach (var f in Directory.GetFiles(_jobDir, "*.bin"))
+            File.SetLastWriteTimeUtc(f, old);
+        return old;
+    }
+
+    private DateTime DetectWriteTime() =>
+        File.GetLastWriteTimeUtc(Path.Combine(_jobDir, "coverage_detect.bin"));
+
+    [Test]
+    public void Save_skips_the_write_when_nothing_changed()
+    {
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(-100, 100, -100, 100);
+        PaintStrip(svc, -10, -4, -20, 20);
+        svc.SaveToFile(_jobDir);
+        var old = BackdateFiles();
+
+        svc.SaveToFile(_jobDir);
+        Assert.That(DetectWriteTime(), Is.EqualTo(old), "unchanged: not rewritten");
+
+        PaintStrip(svc, 20, 26, -20, 20);
+        svc.SaveToFile(_jobDir);
+        Assert.That(DetectWriteTime(), Is.Not.EqualTo(old), "painted: rewritten");
+    }
+
+    [Test]
+    public void Save_writes_after_clear_after_a_load_and_to_another_job()
+    {
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(-100, 100, -100, 100);
+        PaintStrip(svc, -10, -4, -20, 20);
+        svc.SaveToFile(_jobDir);
+
+        // Delete Applied Area
+        var old = BackdateFiles();
+        svc.ClearAll();
+        svc.SaveToFile(_jobDir);
+        Assert.That(DetectWriteTime(), Is.Not.EqualTo(old), "cleared: rewritten");
+
+        // A load (e.g. a one-time Sections.txt import) is saved once
+        PaintStrip(svc, -10, -4, -20, 20);
+        svc.SaveToFile(_jobDir);
+        var reopened = new CoverageMapService(_store);
+        reopened.SetFieldBounds(-100, 100, -100, 100);
+        reopened.LoadFromFile(_jobDir);
+        old = BackdateFiles();
+        reopened.SaveToFile(_jobDir);
+        Assert.That(DetectWriteTime(), Is.Not.EqualTo(old), "first save after a load writes");
+
+        // Same coverage, different job folder
+        var otherJob = Path.Combine(_jobDir, "other");
+        Directory.CreateDirectory(otherJob);
+        reopened.SaveToFile(otherJob);
+        Assert.That(File.Exists(Path.Combine(otherJob, "coverage_detect.bin")), Is.True, "other job: written");
+
+        // A file removed behind our back is written again
+        File.Delete(Path.Combine(_jobDir, "coverage_disp.bin"));
+        reopened.SaveToFile(_jobDir);
+        Assert.That(File.Exists(Path.Combine(_jobDir, "coverage_disp.bin")), Is.True, "missing file: rewritten");
+    }
+
+    [Test]
+    public void Display_round_trip_keeps_each_section_colour()
+    {
+        _store.Tool.IsMultiColoredSections = true; // each section paints its own colour
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(-100, 100, -100, 100);
+        svc.StartMapping(0, new Vec2(-10, -20), new Vec2(-4, -20));
+        svc.StartMapping(1, new Vec2(20, -20), new Vec2(26, -20));
+        for (double n = -19; n <= 20; n += 1)
+        {
+            svc.AddCoveragePoint(0, new Vec2(-10, n), new Vec2(-4, n));
+            svc.AddCoveragePoint(1, new Vec2(20, n), new Vec2(26, n));
+        }
+        svc.StopMapping(0);
+        svc.StopMapping(1);
+        ushort a = DisplayPixelAt(svc, -7, 0), b = DisplayPixelAt(svc, 23, 0);
+        Assume.That(a, Is.Not.Zero.And.Not.EqualTo(b), "two distinct colours painted");
+        svc.SaveToFile(_jobDir);
+
+        var reopened = new CoverageMapService(_store);
+        reopened.SetFieldBounds(-100, 100, -100, 100);
+        reopened.LoadFromFile(_jobDir);
+
+        Assert.That(DisplayPixelAt(reopened, -7, 0), Is.EqualTo(a));
+        Assert.That(DisplayPixelAt(reopened, 23, 0), Is.EqualTo(b));
+        Assert.That(DisplayPixelAt(reopened, 60, 0), Is.Zero);
+    }
 }
