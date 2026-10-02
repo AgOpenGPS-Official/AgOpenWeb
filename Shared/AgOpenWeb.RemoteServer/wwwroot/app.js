@@ -3982,9 +3982,11 @@ function xteText(xte) {
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
-// Arrow + text as two spans, so the arrow can take the colour of the lit cells.
+// Arrow + text as two spans, so the arrow can take the colour of the lit cells; the
+// pass number goes on its own line below.
 const lbArrow = lbEl.appendChild(document.createElement('span'));
 const lbText = lbEl.appendChild(document.createElement('span'));
+const lbPass = lbEl.appendChild(document.createElement('div'));
 const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
@@ -4000,6 +4002,7 @@ function updateLightbarText() {
     lbArrow.textContent = err === 0 ? '' : err > 0 ? '◀ ' : '▶ ';
     lbArrow.style.color = err > 0 ? LB_LEFT : LB_RIGHT;
     lbText.textContent = err === 0 ? '> 0 <' : `${Math.abs(err).toFixed(1)}°`;
+    lbPass.textContent = '';
   } else {
     // Light bar: cross-track distance.
     const xte = tick.crossTrackError || 0;
@@ -4009,8 +4012,8 @@ function updateLightbarText() {
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    const passTxt = tick.op && tick.op.contour ? '' : `   Pass ${Math.abs(pass) + 1}`; // no passes on a contour (#110)
-    lbText.textContent = `${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}${passTxt}`;
+    lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
+    lbPass.textContent = tick.op && tick.op.contour ? '' : `Pass ${Math.abs(pass) + 1}`; // no passes on a contour (#110)
   }
   lbEl.style.display = 'block';
 }
