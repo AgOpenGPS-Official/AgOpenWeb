@@ -132,6 +132,15 @@ public sealed class RemoteServerHost
     }
     private Func<(double Gps, double Imu)>? _headingChartProvider;
 
+    /// <summary>GPS source for the status frame: sentence type and whether Dual GPS is
+    /// on without a dual-antenna heading (#157).</summary>
+    public Func<(string Sentence, bool DualHeadingMissing)>? GpsSourceProvider
+    {
+        get => _broadcaster?.Projector.GpsSourceProvider;
+        set { _gpsSourceProvider = value; if (_broadcaster is not null) _broadcaster.Projector.GpsSourceProvider = value; }
+    }
+    private Func<(string Sentence, bool DualHeadingMissing)>? _gpsSourceProvider;
+
     public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
     {
         get => _broadcaster?.Projector.HeadlandSegsProvider;
@@ -212,6 +221,7 @@ public sealed class RemoteServerHost
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
         _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
+        _broadcaster.Projector.GpsSourceProvider = _gpsSourceProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;

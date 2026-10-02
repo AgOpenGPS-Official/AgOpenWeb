@@ -658,6 +658,9 @@ public static class WireCodec
         // Dev diagnostics row (append-only): overlay gate + host control-loop latency.
         w.Write((byte)(s.DevOverlay ? 1 : 0));
         w.Write((float)s.GpsToPgnLatencyMs);
+        // GPS source (append-only, #157): sentence type + Dual-without-dual-heading flag.
+        WriteStr(w, s.GpsSentence);
+        w.Write((byte)(s.DualHeadingMissing ? 1 : 0));
         return ms.ToArray();
     }
 

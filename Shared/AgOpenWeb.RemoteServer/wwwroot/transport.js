@@ -149,6 +149,8 @@ window.RemoteTransport = {
           const unsavedCoveragePrompt = !!u8();
           // Dev diagnostics row (append-only): overlay gate + host control-loop latency (ms).
           const devOverlay = !!u8(), gpsToPgnLatencyMs = f32();
+          // GPS source (append-only, #157): incoming sentence + Dual-on-without-dual-heading.
+          const gpsSentence = str(), dualHeadingMissing = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -159,7 +161,7 @@ window.RemoteTransport = {
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
-            devOverlay, gpsToPgnLatencyMs,
+            devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing,
           });
           break;
         }

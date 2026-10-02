@@ -832,6 +832,22 @@ public static partial class RemoteServerWiring
                     var headingFusion = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>();
                     server.HeadingChartProvider = () => (headingFusion.GpsHeadingDeg, headingFusion.ImuCorrectedDeg);
 
+                    // GPS source (#157): the incoming sentence for the GPS detail card, and
+                    // "Dual GPS on but no dual heading" while real GPS is live ($PANDA with
+                    // Dual on: the heading stage falls back to the single-antenna heading).
+                    var gpsSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsService>();
+                    server.GpsSourceProvider = () =>
+                    {
+                        var sentence = gpsSvc.CurrentData?.SentenceType switch
+                        {
+                            AgOpenWeb.Models.GpsSentenceType.Panda => "PANDA",
+                            AgOpenWeb.Models.GpsSentenceType.Paogi => "PAOGI",
+                            AgOpenWeb.Models.GpsSentenceType.Simulator => "SIM",
+                            _ => "",
+                        };
+                        return (sentence, headingFusion.IsDualHeadingMissing && gpsSvc.IsGpsLive);
+                    };
+
                     server.HeadlandSegsProvider = () =>
                     {
                         var segs = vm.HeadlandSegments;

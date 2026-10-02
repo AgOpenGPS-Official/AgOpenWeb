@@ -407,7 +407,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
-  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); },
+  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -497,11 +497,25 @@ function showHardwareMessage(text, seconds, warning) {
   clearTimeout(hwMsgTimer);
   if (seconds > 0) hwMsgTimer = setTimeout(() => el.classList.remove('show'), seconds * 1000);
 }
-function showToast(msg) {
+// Dual GPS on, but the receiver sends $PANDA (single antenna + IMU) — no antenna heading,
+// so the host uses the single-antenna heading (#157). Toast once each time it starts;
+// take it down if a $PAOGI fix clears it while still showing.
+const DUAL_HEADING_MISSING_MSG =
+  "Dual GPS is on, but the receiver isn't sending a dual-antenna heading ($PANDA). Using single-antenna heading.";
+let dualHeadingMissingShown = false;
+function syncDualHeadingWarning(s) {
+  const missing = !!s.dualHeadingMissing;
+  if (missing === dualHeadingMissingShown) return;
+  dualHeadingMissingShown = missing;
+  if (missing) { showToast(DUAL_HEADING_MISSING_MSG, 10000); return; }
+  const t = document.getElementById('toast');
+  if (t.textContent === DUAL_HEADING_MISSING_MSG) { clearTimeout(toastTimer); t.classList.remove('show'); }
+}
+function showToast(msg, ms = 4000) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 // ---- Alert sounds ----------------------------------------------------------
@@ -3367,7 +3381,7 @@ function buildWizardContent(w) {
         '<div class="wz-row"><div class="lbl">WAS Offset</div><div class="lbl"><span data-live="wasoffset">—</span> counts</div></div></div>';
     case 'motor':
       return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Motor Test</button>' +
-        '<div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
+        '<div class="wz-hint" data-live="hint"></div><div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'maxangle':
       return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
         '<div class="wz-hint" data-live="hint"></div><div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
@@ -4037,6 +4051,7 @@ const SB = {
   gcHdop: document.getElementById('gc-hdop'), gcFix: document.getElementById('gc-fix'),
   gcAge: document.getElementById('gc-age'), gcHdg: document.getElementById('gc-hdg'),
   gcRoll: document.getElementById('gc-roll'), gcFps: document.getElementById('gc-fps'),
+  gcSentence: document.getElementById('gc-sentence'),
   // Dev diagnostics line (marker-gated by .show_dev_overlay).
   diagRow: document.getElementById('sb-diag'),
   sbdFps: document.getElementById('sbd-fps'), sbdLink: document.getElementById('sbd-link'),
@@ -4204,6 +4219,10 @@ function renderStatusBar() {
     SB.gcHdop.textContent = s.hdop != null ? s.hdop.toFixed(2) : '—';
     SB.gcFix.textContent = s.fixText || '—';
     SB.gcAge.textContent = s.age != null ? s.age.toFixed(1) : '—';
+    // Incoming sentence (#157); flagged when Dual GPS is on but there's no dual heading.
+    SB.gcSentence.textContent = (s.gpsSentence ? '$' + s.gpsSentence : '—')
+      + (s.dualHeadingMissing ? ' (no dual heading)' : '');
+    SB.gcSentence.style.color = s.dualHeadingMissing ? 'salmon' : '';
     SB.gcHdg.textContent = hdgDeg != null ? (((hdgDeg % 360) + 360) % 360).toFixed(1) + '°' : '—';
     SB.gcRoll.textContent = (tick && typeof tick.roll === 'number') ? tick.roll.toFixed(1) + '°' : '—';
     SB.gcFps.textContent = fps.toFixed(0);

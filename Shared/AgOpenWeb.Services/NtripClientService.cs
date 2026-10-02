@@ -51,11 +51,20 @@ public class NtripClientService : INtripClientService, IDisposable
     private string? _rtcmSubnet; // the /24 _rtcmUdpEndpoint was built for
     private Timer? _ggaTimer;
     private Timer? _watchdogTimer;
-    // UDP MTU-safe chunk size for forwarding RTCM to the AiO. RTCM is forwarded
-    // directly from the receive callback (no queue, no drain timer) — caching
-    // would only deliver stale corrections after a caster pause, and stale RTCM
-    // is worse than useless for re-establishing RTK fix. (#334)
-    private const int RTCM_PACKET_SIZE = 1024;
+    // RTCM goes to the AiO through a pacer: 256-byte datagrams spaced 25 ms apart, AgIO-style.
+    // Unpaced back-to-back 1 KB broadcasts of a post-pause TCP backlog stalled the board's
+    // NMEA output for ~14 s (#169). Staleness stays bounded (#334): the pacer drops a backlog
+    // over 10 KB and anything that has waited over 1 s. See RtcmPacer.
+    private readonly RtcmPacer _pacer = new();
+    private readonly SemaphoreSlim _sendSignal = new(0);
+
+    // #169 diagnostics: a read this large means TCP coalesced a backlog (a 1 Hz epoch is
+    // usually smaller). Logged with the gap before it; repeats throttled unless after a pause.
+    private const int LARGE_READ_BYTES = 512;
+    private const double LARGE_READ_PAUSE_SECONDS = 2.0;
+    private const double LARGE_READ_LOG_THROTTLE_SECONDS = 10.0;
+    private long _lastLargeReadLogTimestamp;
+    private int _largeReadsSuppressed;
 
     // ── Stall watchdog ────────────────────────────────────────────────────
     // Logs a 5 s health line so operators can distinguish caster pauses from
@@ -167,6 +176,7 @@ public class NtripClientService : INtripClientService, IDisposable
 
             // The loop gets its own socket, so a stale loop can never read a newer session's.
             _ = Task.Run(() => ReceiveLoop(sock, gen, token));
+            _ = Task.Run(() => SendLoop(token));
 
             // GGA only goes out once the caster has accepted (the callback checks IsConnected).
             if (config.GgaIntervalSeconds > 0)
@@ -241,6 +251,7 @@ public class NtripClientService : INtripClientService, IDisposable
             _watchdogTimer = null;
 
             _cancellationTokenSource?.Cancel();
+            _pacer.Clear(); // a new session must not inherit the old one's corrections
 
             _tcpSocket?.Close();
             _tcpSocket?.Dispose();
@@ -481,42 +492,23 @@ public class NtripClientService : INtripClientService, IDisposable
         if (rtcmData.Length == 0)
             return;
 
-        // Forward each TCP read directly to the AiO in MTU-sized UDP chunks.
-        // No queue, no timer — RTCM is real-time data; any buffering would
-        // only deliver stale corrections to the AiO after a caster pause and
-        // delay the fresh ones that re-establish RTK fix. (#334)
-        var udpSocket = _udpSocket;
-        var endpoint = CurrentRtcmEndpoint();
-        if (udpSocket != null && endpoint != null)
+        long now = Clock.Current.GetTimestamp();
+        double secondsSincePrevious =
+            Clock.Current.ElapsedMs(Volatile.Read(ref _lastRtcmReceivedTimestamp), now) / 1000.0;
+        if (rtcmData.Length > LARGE_READ_BYTES)
+            LogLargeRead(rtcmData.Length, secondsSincePrevious, now);
+
+        // Queue for the paced sender (SendLoop) rather than sending inline. (#169)
+        int dropped = _pacer.Enqueue(rtcmData);
+        if (dropped > 0)
         {
-            int offset = 0;
-            while (offset < rtcmData.Length)
-            {
-                int chunkSize = Math.Min(rtcmData.Length - offset, RTCM_PACKET_SIZE);
-                byte[] chunk;
-                if (offset == 0 && chunkSize == rtcmData.Length)
-                {
-                    chunk = rtcmData;
-                }
-                else
-                {
-                    chunk = new byte[chunkSize];
-                    Array.Copy(rtcmData, offset, chunk, 0, chunkSize);
-                }
-                try
-                {
-                    udpSocket.SendTo(chunk, endpoint);
-                    RtcmDataReceived?.Invoke(this, new RtcmDataReceivedEventArgs
-                    {
-                        BytesReceived = chunkSize
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to forward RTCM data");
-                }
-                offset += chunkSize;
-            }
+            _logger.LogWarning(
+                "[NTRIP] RTCM backlog of {Bytes} bytes over the {Max}-byte limit dropped (stale corrections, {Gap:F1}s since previous RTCM)",
+                dropped, RtcmPacer.MaxBacklogBytes, secondsSincePrevious);
+        }
+        else
+        {
+            _sendSignal.Release();
         }
 
         if (!_rtcmSeen && Array.IndexOf(rtcmData, (byte)0xD3) >= 0)
@@ -525,7 +517,78 @@ public class NtripClientService : INtripClientService, IDisposable
             Interlocked.Exchange(ref _failureStreak, 0); // corrections flow: next outage starts at 1 s
         }
         TotalBytesReceived += (ulong)rtcmData.Length;
-        Volatile.Write(ref _lastRtcmReceivedTimestamp, Clock.Current.GetTimestamp());
+        Volatile.Write(ref _lastRtcmReceivedTimestamp, now);
+        RtcmDataReceived?.Invoke(this, new RtcmDataReceivedEventArgs { BytesReceived = rtcmData.Length });
+    }
+
+    /// <summary>Log a read over LARGE_READ_BYTES. One that follows a pause is always logged
+    /// (it is the #169 resume burst); others at most once per throttle window, since a
+    /// heavy MSM7 stream can exceed the threshold every epoch.</summary>
+    private void LogLargeRead(int bytes, double secondsSincePrevious, long now)
+    {
+        bool afterPause = secondsSincePrevious >= LARGE_READ_PAUSE_SECONDS;
+        long lastLog = _lastLargeReadLogTimestamp;
+        if (!afterPause && lastLog != 0 &&
+            Clock.Current.ElapsedMs(lastLog, now) / 1000.0 < LARGE_READ_LOG_THROTTLE_SECONDS)
+        {
+            _largeReadsSuppressed++;
+            return;
+        }
+        _lastLargeReadLogTimestamp = now;
+        int suppressed = _largeReadsSuppressed;
+        _largeReadsSuppressed = 0;
+        _logger.LogInformation(
+            "[NTRIP] large RTCM read: {Bytes} bytes, {Gap:F1}s since previous RTCM, {Queued} bytes queued ({Suppressed} similar reads not logged)",
+            bytes, secondsSincePrevious, _pacer.Count, suppressed);
+    }
+
+    /// <summary>
+    /// Sends queued RTCM to the AiO, one datagram of at most RtcmPacer.ChunkSize bytes per
+    /// RtcmPacer.IntervalMs. Sleeps on _sendSignal while the queue is empty, so the first
+    /// datagram of an epoch goes out as soon as it arrives. Runs per session (its token).
+    /// </summary>
+    private async Task SendLoop(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await _sendSignal.WaitAsync(token);
+                while (_pacer.Count > 0 && !token.IsCancellationRequested)
+                {
+                    if (_pacer.TryDequeue(out byte[] chunk, out int stale))
+                        SendRtcmDatagram(chunk);
+                    if (stale > 0)
+                        _logger.LogWarning(
+                            "[NTRIP] dropped {Bytes} bytes of RTCM queued over {Max:F0} ms (stale)",
+                            stale, RtcmPacer.MaxAgeMs);
+
+                    double wait = _pacer.MsUntilDue();
+                    if (_pacer.Count > 0 && wait > 0)
+                        await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling(wait)), token);
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void SendRtcmDatagram(byte[] chunk)
+    {
+        var udpSocket = _udpSocket;
+        var endpoint = CurrentRtcmEndpoint();
+        if (udpSocket == null || endpoint == null) return;
+        try
+        {
+            udpSocket.SendTo(chunk, endpoint);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Session torn down mid-send.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to forward RTCM data");
+        }
     }
 
     private void GgaTimerCallback(object? state)
