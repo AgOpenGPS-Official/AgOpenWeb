@@ -403,7 +403,9 @@ Two GitHub Actions workflows, split by purpose:
     artifact: Linux daemon (x64/arm64) + desktop launcher (x64/arm64) tarballs, Windows zip
     (launcher + service installer), macOS `.dmg`, and the Android APK;
   - on a **daily schedule** → refreshes a rolling `nightly` prerelease with the same artifacts;
-  - on a plain dispatch with no tag → builds + uploads artifacts only (dry run, no Release).
+  - on a manual dispatch, by its `publish` input: `nightly` (default) refreshes the rolling
+    nightly from `develop` right away (title carries build time + commit); `release` publishes
+    the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
 To cut a release: bump `sys/version.h`, then push a tag — `git tag v26.6.x && git push origin v26.6.x`.
 

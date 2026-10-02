@@ -19,16 +19,24 @@ name: Build Deployment Bundles
 #
 # Triggers:
 #   - push of a v* tag: build + publish the tagged Release for that tag.
-#   - schedule (daily): build + refresh the rolling "nightly" prerelease.
-#   - workflow_dispatch: build on demand. Supply a release_tag to also publish that Release;
-#     leave it empty to just upload build artifacts (a dry run — no Release).
+#   - schedule (daily): build + refresh the rolling "nightly" prerelease from the default branch.
+#   - workflow_dispatch: build on demand, then by the `publish` input:
+#       nightly (default) — refresh the rolling "nightly" prerelease now, so beta testers get
+#                           current code without waiting for the schedule (default branch only);
+#       release           — publish the Release named by `release_tag`;
+#       none              — just upload build artifacts (a dry run — no Release).
 # (Per-commit CI — tests + compile checks — lives in build-and-release.yml.)
 
 on:
   workflow_dispatch:
     inputs:
+      publish:
+        description: 'What to publish after building'
+        type: choice
+        options: [nightly, release, none]
+        default: nightly
       release_tag:
-        description: 'Release tag (e.g. v26.6.7). Leave empty to only upload build artifacts.'
+        description: 'Release tag (e.g. v26.6.7) — only for publish = release'
         required: false
         default: ''
   push:
@@ -38,9 +46,11 @@ on:
     # Daily rolling nightly prerelease at 06:00 UTC.
     - cron: '0 6 * * *'
 
+# Nightly runs (scheduled or manual) share one group and the newest wins; a release run is
+# never cancelled by a later run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ (github.event_name == 'schedule' || inputs.publish == 'nightly') && 'nightly' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'schedule' || inputs.publish == 'nightly' }}
 
 permissions:
   contents: read    # build jobs only read; the release job grants itself write
@@ -247,10 +257,9 @@ jobs:
 
   release:
     needs: [linux, linux-launcher, windows, macos, android]
-    # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
-    # Publish for a v* tag, a dispatch that supplied a release_tag, or the scheduled nightly.
-    # A plain dispatch with no tag still builds the artifacts (above) but skips publishing.
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != '' || github.event_name == 'schedule'
+    # Publish for a v* tag push, the scheduled nightly, or a dispatch with publish = nightly /
+    # release. A dispatch with publish = none still builds the artifacts (above) but skips this.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish != 'none')
     runs-on: ubuntu-latest
     permissions:
       contents: write   # publish/refresh the Release
@@ -264,23 +273,44 @@ jobs:
 
       - name: Resolve release metadata
         id: meta
+        env:
+          EVENT: ${{ github.event_name }}
+          PUBLISH: ${{ inputs.publish }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            # Rolling nightly: a single reused "nightly" tag/release, refreshed each run.
+          SHORT_SHA="${GITHUB_SHA::8}"
+          if [ "$EVENT" = "schedule" ] || [ "$PUBLISH" = "nightly" ]; then
+            # Rolling nightly: one reused "nightly" tag/release, refreshed each run. Only from
+            # the default branch, so a dispatch from a feature branch can't replace it.
+            if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+              echo "::error::The nightly is built from '$DEFAULT_BRANCH'; this run is on '$GITHUB_REF_NAME'. Use publish = none for a branch build."
+              exit 1
+            fi
+            if [ "$EVENT" = "schedule" ]; then TRIGGER="scheduled"; else TRIGGER="manual"; fi
             echo "tag=nightly" >> "$GITHUB_OUTPUT"
-            echo "name=Nightly Build ($(date +'%Y-%m-%d'))" >> "$GITHUB_OUTPUT"
+            echo "name=Nightly Build ($(date -u +'%Y-%m-%d %H:%M') UTC · ${SHORT_SHA})" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
             echo "nightly=true" >> "$GITHUB_OUTPUT"
-            echo "banner=> ⚠️ Automated nightly prerelease of the latest \`main\` — unversioned, may be unstable." >> "$GITHUB_OUTPUT"
+            echo "banner=> ⚠️ Unversioned prerelease of the latest \`${DEFAULT_BRANCH}\` (${TRIGGER} build of [\`${SHORT_SHA}\`](${REPO_URL}/commit/${GITHUB_SHA})) — may be unstable." >> "$GITHUB_OUTPUT"
           else
-            if [ -n "${{ github.event.inputs.release_tag }}" ]; then TAG="${{ github.event.inputs.release_tag }}"; else TAG="${GITHUB_REF#refs/tags/}"; fi
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              if [ -z "$RELEASE_TAG" ]; then
+                echo "::error::publish = release needs a release_tag (e.g. v26.6.7)."
+                exit 1
+              fi
+              TAG="$RELEASE_TAG"
+            else
+              TAG="${GITHUB_REF#refs/tags/}"
+            fi
             echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
             echo "name=AgOpenWeb ${TAG}" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
             echo "nightly=false" >> "$GITHUB_OUTPUT"
-            echo "banner=" >> "$GITHUB_OUTPUT"
+            echo "banner=> Testing the newest fixes? The [Nightly](${REPO_URL}/releases/tag/nightly) is rebuilt from \`${DEFAULT_BRANCH}\` daily and on demand." >> "$GITHUB_OUTPUT"
           fi
 
       - name: List bundles
@@ -298,6 +328,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.meta.outputs.name }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
           body: |
