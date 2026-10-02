@@ -121,6 +121,12 @@ public partial class MainViewModel
             // The sim heading is the true heading, so "Dual GPS" may use it as the
             // antenna heading (AgOpenGPS CSim sets headingTrueDual too, #157).
             HasDualHeading = true,
+            // With Dual GPS off, heading comes from fix-to-fix travel, and reverse is told
+            // apart by an IMU. Without one, Flip (a 180° turn on the spot) reads as backing
+            // up: the tractor kept facing the old way and drove in reverse. Give the sim an
+            // IMU that reports its true heading, so Flip turns it and reverse speed reverses it.
+            ImuHeading = simulatedData.HeadingDegrees,
+            ImuValid = true,
             SentenceType = AgOpenWeb.Models.GpsSentenceType.Simulator,
             Timestamp = Models.Timing.Clock.Current.Now
         };
