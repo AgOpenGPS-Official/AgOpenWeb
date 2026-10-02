@@ -293,6 +293,27 @@ public class GpsHeadingFusionServiceTests
     }
 
     [Test]
+    public void Dual_PandaAfterDualFixes_RestartsFix_NotStuckInReverse()
+    {
+        // The simulator (a dual source, on by default) ran first, so the heading was
+        // already "started" with no IMU offset learned. Then the real $PANDA receiver
+        // takes over: travel north while the IMU says 95°. Seen headless: reverse
+        // latched and the heading crept toward 180°.
+        DualOnWithAutoSwitch();
+        for (int i = 0; i < 5; i++) _service.FuseHeading(0, 0, false, 0, 0, 0, true);
+
+        bool sawReverse = false;
+        double h = double.NaN;
+        for (int i = 0; i < 12; i++)
+        {
+            h = _service.FuseHeading(95, 95, true, Fast, 0, 10 + i * 0.3, false);
+            sawReverse |= _service.IsReverse;
+        }
+        Assert.That(sawReverse, Is.False);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6), "fix-to-fix heading north, IMU offset snapped onto it");
+    }
+
+    [Test]
     public void DualHeadingMissing_RaisedByPanda_ClearedByPaogi_NeverWithDualOff()
     {
         var c = ConfigurationStore.Instance.Connections;

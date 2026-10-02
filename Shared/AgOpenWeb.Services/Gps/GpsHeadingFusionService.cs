@@ -100,8 +100,17 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
 
         // Dual GPS on, but this fix has no antenna heading ($PANDA: the heading field
         // is the IMU's). Don't treat it as one: fall through to Fix, as with Dual off.
+        bool wasMissing = IsDualHeadingMissing;
         IsDualHeadingMissing = con.IsDualGps && !hasDualHeading;
-        if (IsDualHeadingMissing) _hasReverseFix = false; // dual reverse restarts cleanly
+        if (IsDualHeadingMissing && !wasMissing)
+        {
+            // The dual path marked the heading as started without learning the IMU
+            // offset; restart Fix so the offset snaps onto the first fix-to-fix heading.
+            // Otherwise the raw IMU heading meets the travel heading and reads as reverse.
+            _hasReverseFix = false;
+            _isFirstHeadingSet = false;
+            Reset();
+        }
 
         // The IMU heading this fix, if any (radians).
         double? imu = imuValid ? ToRad(imuHeading) : null;
