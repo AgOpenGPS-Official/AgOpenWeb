@@ -3982,6 +3982,10 @@ function xteText(xte) {
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
+// Arrow + text as two spans, so the arrow can take the colour of the lit cells.
+const lbArrow = lbEl.appendChild(document.createElement('span'));
+const lbText = lbEl.appendChild(document.createElement('span'));
+const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) { lbEl.style.display = 'none'; return; }
@@ -3993,18 +3997,20 @@ function updateLightbarText() {
     let err = tick.steerAngleError || 0;
     const dz = (tick.op && tick.op.autoSteer) ? 0.5 : 0.2;
     if (Math.abs(err) < dz) err = 0;
-    const arrow = err === 0 ? '> 0 <' : err > 0 ? '◀' : '▶';
-    lbEl.textContent = err === 0 ? '> 0 <' : `${arrow} ${Math.abs(err).toFixed(1)}°`;
+    lbArrow.textContent = err === 0 ? '' : err > 0 ? '◀ ' : '▶ ';
+    lbArrow.style.color = err > 0 ? LB_LEFT : LB_RIGHT;
+    lbText.textContent = err === 0 ? '> 0 <' : `${Math.abs(err).toFixed(1)}°`;
   } else {
     // Light bar: cross-track distance.
     const xte = tick.crossTrackError || 0;
     const onLine = Math.abs(xte) < 0.05;
-    const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
+    lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
+    lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
     const passTxt = tick.op && tick.op.contour ? '' : `   Pass ${Math.abs(pass) + 1}`; // no passes on a contour (#110)
-    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}${passTxt}`;
+    lbText.textContent = `${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}${passTxt}`;
   }
   lbEl.style.display = 'block';
 }
@@ -5781,8 +5787,8 @@ function toolFootprintSk(canvas) {
   }
 }
 // Lightbar — screen-space LED strip, identical logic/geometry to the 2D
-// lightbar(). The cm/label text lives in the HUD div (no CanvasKit font bundled),
-// so here we draw the LEDs plus a directional arrow triangle. Drawn in CSS px
+// lightbar(). The arrow + cm/label text lives in the HUD div (no CanvasKit font
+// bundled), so here we draw only the LEDs. Drawn in CSS px
 // (under renderSkia's scale(dpr)), so it must run before canvas.restore().
 function lightbarSk(canvas) {
   // GuidanceBarOn is the master; SteerBarEnabled picks the mode (steer-angle error vs
@@ -5820,21 +5826,8 @@ function lightbarSk(canvas) {
     p.setColor(ckColor(on ? col : '#1c2230'));
     canvas.drawRect(CK.XYWHRect(x, top, W, H), p);
   }
-  // Directional arrow under the strip: ◀ steer-left / ▶ steer-right / ● on-line.
-  const cx = vw / 2, ay = top + H + 11;
-  p.setColor(ckColor(onLine ? '#39FF6A' : litCol));
-  if (onLine) {
-    canvas.drawCircle(cx, ay, 5, p);
-  } else {
-    const d = steerLeft ? -1 : 1; // tip points the steer direction
-    const tri = CK.Path.MakeFromCmds([
-      CK.MOVE_VERB, cx + d * 8, ay,
-      CK.LINE_VERB, cx - d * 6, ay - 6,
-      CK.LINE_VERB, cx - d * 6, ay + 6,
-      CK.CLOSE_VERB,
-    ]);
-    if (tri) { canvas.drawPath(tri, p); tri.delete(); }
-  }
+  // No arrow here: the readout under the strip (updateLightbarText) carries it, and one
+  // drawn here sat on top of that text (#219).
 }
 function renderSkia(canvas, rp) {
   canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));
