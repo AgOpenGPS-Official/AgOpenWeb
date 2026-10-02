@@ -819,15 +819,18 @@ public class CoverageMapService : ICoverageMapService
     public int GetDisplayCellAlpha255(int displayX, int displayY)
     {
         if (_detectionBits == null || !_fieldBoundsSet) return 255;
-        int span = (int)Math.Round(_displayCellSize / BITMAP_CELL_SIZE);
-        if (span < 1) span = 1;
-        // Display cell's world origin → its first underlying detection cell.
-        int ce0 = (int)Math.Floor((_displayOriginX + displayX) * _displayCellSize / BITMAP_CELL_SIZE);
-        int cn0 = (int)Math.Floor((_displayOriginY + displayY) * _displayCellSize / BITMAP_CELL_SIZE);
-        int covered = 0, total = span * span;
-        for (int j = 0; j < span; j++)
-            for (int i = 0; i < span; i++)
-                if (IsCellCovered(ce0 + i, cn0 + j)) covered++;
+        // Count exactly the detection cells that paint this display cell (the mapping in
+        // PaintDisplayPixel). At a cell size that isn't a whole number of detection cells
+        // (0.625 m = 6.25) some display cells own 7 rows, not 6: a fixed 6x6 window counted
+        // a neighbour's row instead, so the last cell to fill a display cell could belong
+        // to a different one and the live stream never sent the final value.
+        var (ce0, ce1) = DetectionRange(_displayOriginX + displayX);
+        var (cn0, cn1) = DetectionRange(_displayOriginY + displayY);
+        int covered = 0, total = (ce1 - ce0) * (cn1 - cn0);
+        if (total <= 0) return 255;
+        for (int cn = cn0; cn < cn1; cn++)
+            for (int ce = ce0; ce < ce1; ce++)
+                if (IsCellCovered(ce, cn)) covered++;
         // Near-full cells snap to opaque: the rasterizer center-samples, so interior cells
         // occasionally miss a stray detection cell at quad seams. A literal fraction would
         // let the (often dark) map fleck through those — the old binary "any → opaque" rule
@@ -835,6 +838,17 @@ public class CoverageMapService : ICoverageMapService
         const double FULL = 0.75;
         double frac = (double)covered / total;
         return frac >= FULL ? 255 : (int)(frac / FULL * 255.0);
+    }
+
+    /// <summary>Detection cells [first, end) whose centre falls in absolute display cell <paramref name="displayAbs"/>.</summary>
+    private (int First, int End) DetectionRange(int displayAbs)
+    {
+        int DisplayOf(int c) => (int)Math.Floor((c + 0.5) * BITMAP_CELL_SIZE / _displayCellSize);
+        int first = (int)Math.Floor(displayAbs * _displayCellSize / BITMAP_CELL_SIZE) - 1;
+        while (DisplayOf(first) < displayAbs) first++;
+        int end = first;
+        while (DisplayOf(end) == displayAbs) end++;
+        return (first, end);
     }
 
     /// <summary>
@@ -1053,11 +1067,15 @@ public class CoverageMapService : ICoverageMapService
             if (_newCellsServer.Count == 0)
                 return Array.Empty<(int, int, CoverageColor)>();
 
-            double minE, minN;
+            // Cell indices in the DISPLAY grid, whose origin is the field corner snapped to
+            // the world grid (SetDisplayGrid) — the grid the client was told about, and the
+            // one the snapshot and GetDisplayCellAlpha255 use. Indexing from the raw corner
+            // put each cell up to one cell off, so its alpha was read for a neighbour.
+            int originX, originY;
             if (_fieldBoundsSet)
             {
-                minE = _fieldMinE;
-                minN = _fieldMinN;
+                originX = (int)Math.Floor(_fieldMinE / cellSize);
+                originY = (int)Math.Floor(_fieldMinN / cellSize);
             }
             else
             {
@@ -1066,8 +1084,8 @@ public class CoverageMapService : ICoverageMapService
                     _newCellsServer.Clear();
                     return Array.Empty<(int, int, CoverageColor)>();
                 }
-                minE = _minCellE * BITMAP_CELL_SIZE;
-                minN = _minCellN * BITMAP_CELL_SIZE;
+                originX = (int)Math.Floor(_minCellE * BITMAP_CELL_SIZE / cellSize);
+                originY = (int)Math.Floor(_minCellN * BITMAP_CELL_SIZE / cellSize);
             }
 
             _newCellsServerDedup.Clear();
@@ -1077,8 +1095,8 @@ public class CoverageMapService : ICoverageMapService
             {
                 double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
                 double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
-                int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
-                int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
+                int outCellX = (int)Math.Floor(worldE / cellSize) - originX;
+                int outCellY = (int)Math.Floor(worldN / cellSize) - originY;
                 if (_newCellsServerDedup.Add((outCellX, outCellY)))
                     _newCellsServerResult.Add((outCellX, outCellY, GetZoneColor(zone)));
             }
