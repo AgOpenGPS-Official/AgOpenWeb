@@ -132,6 +132,23 @@ public class GpsPipelinePositionEstimatorTests
     }
 
     [Test]
+    public void OnGpsCycle_DualHeading_PublishesYawRateAndRoll()
+    {
+        // $PAOGI: ImuValid is false (no heading fusion), but the yaw rate and dual
+        // roll in the sentence are real and must reach the estimator (#157).
+        _gpsService.UpdateGpsData(BuildGpsData(
+            latitude: 43.7128, longitude: -74.006,
+            heading: 0, speed: 3.0,
+            imuValid: false, imuYawRateDegPerSec: 12, imuRollDeg: 1.5,
+            hasDualHeading: true));
+
+        var snap = _estimator.GetLatestSnapshot();
+        Assert.That(snap, Is.Not.Null);
+        Assert.That(snap!.YawRateRadPerSec, Is.EqualTo(12 * Math.PI / 180).Within(1e-6));
+        Assert.That(snap.Roll, Is.EqualTo(1.5 * Math.PI / 180).Within(1e-6));
+    }
+
+    [Test]
     public void OnSecondGpsCycle_SnapshotIsReplaced()
     {
         _gpsService.UpdateGpsData(BuildGpsData(43.7128, -74.006, heading: 0, speed: 1.0));
@@ -148,7 +165,8 @@ public class GpsPipelinePositionEstimatorTests
         double latitude, double longitude,
         double heading = 0, double speed = 0,
         bool imuValid = false,
-        double imuYawRateDegPerSec = 0, double imuRollDeg = 0)
+        double imuYawRateDegPerSec = 0, double imuRollDeg = 0,
+        bool hasDualHeading = false)
     {
         return new GpsData
         {
@@ -161,6 +179,7 @@ public class GpsPipelinePositionEstimatorTests
             },
             FixQuality = 4,
             ImuValid = imuValid,
+            HasDualHeading = hasDualHeading,
             ImuYawRate = imuYawRateDegPerSec,
             ImuRoll = imuRollDeg,
             IsValid = true,
