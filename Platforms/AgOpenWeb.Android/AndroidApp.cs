@@ -16,17 +16,16 @@
 
 using System;
 using Android.Runtime;
-using Avalonia;
-using Avalonia.Android;
 
 namespace AgOpenWeb.Android;
 
-// UsesCleartextTraffic: the embedded host serves plain HTTP (the web UI + LAN feed on :5174).
-// Android 9+ blocks cleartext by default, which would fail the launcher's WebView load of
-// http://localhost:5174 (and any LAN client) with ERR_CLEARTEXT_NOT_PERMITTED.
 [global::Android.App.Application(UsesCleartextTraffic = true)]
-public class AndroidApp : AvaloniaAndroidApplication<App>
+public class AndroidApp : global::Android.App.Application
 {
+    // internal set: the foreground BackendService's AndroidBackendHost owns the DI provider and
+    // publishes it here so lookups from the Activity (save-on-background) resolve.
+    public static IServiceProvider? Services { get; internal set; }
+
     protected AndroidApp(IntPtr javaReference, JniHandleOwnership transfer)
         : base(javaReference, transfer)
     {
@@ -41,20 +40,5 @@ public class AndroidApp : AvaloniaAndroidApplication<App>
         // (which can happen without MainActivity ever running) both go through here first.
         // Must happen before anything reads AppDataRoot.Documents.
         AgOpenWeb.Android.Services.AndroidDataRoot.Initialize(this);
-    }
-
-    protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
-    {
-        // Skia's default GPU resource cache is ~28 MB. Our coverage bitmap
-        // alone is ~50 MB (5000x5000 Rgb565). At the default, the texture is
-        // re-uploaded every frame, burning 20+ FPS on mobile. 192 MB fits the
-        // coverage bitmap + its mipmap chain (~33% extra) + other textures
-        // with comfortable headroom on 4 GB tablets.
-        return base.CustomizeAppBuilder(builder)
-            .LogToTrace()
-            .With(new SkiaOptions
-            {
-                MaxGpuResourceSizeBytes = 192L * 1024 * 1024
-            });
     }
 }

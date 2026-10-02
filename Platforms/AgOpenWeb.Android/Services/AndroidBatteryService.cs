@@ -7,7 +7,6 @@ using System;
 using AgOpenWeb.Services.Interfaces;
 using Android.Content;
 using Android.OS;
-using Avalonia.Threading;
 
 // Android.OS.BatteryStatus collides with our AgOpenWeb.Models.BatteryStatus
 // record. Alias both so each call site can pick the right type explicitly.
@@ -25,13 +24,15 @@ namespace AgOpenWeb.Android.Services;
 public sealed class AndroidBatteryService : IBatteryService, IDisposable
 {
     private readonly Context _context;
+    private readonly IUiDispatcher _dispatcher;
     private BatteryReceiver? _receiver;
     private AppBatteryStatus _current = AppBatteryStatus.Unavailable;
     private readonly object _gate = new();
 
-    public AndroidBatteryService(Context context)
+    public AndroidBatteryService(Context context, IUiDispatcher dispatcher)
     {
         _context = context;
+        _dispatcher = dispatcher;
     }
 
     public AppBatteryStatus CurrentStatus
@@ -97,7 +98,7 @@ public sealed class AndroidBatteryService : IBatteryService, IDisposable
         }
         if (changed)
         {
-            Dispatcher.UIThread.Post(() => StatusChanged?.Invoke(this, next));
+            _dispatcher.Post(() => StatusChanged?.Invoke(this, next));
         }
     }
 

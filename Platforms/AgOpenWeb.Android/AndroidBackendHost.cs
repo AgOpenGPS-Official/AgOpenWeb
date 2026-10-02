@@ -25,7 +25,7 @@ namespace AgOpenWeb.Android;
 ///
 /// Like the headless daemon — and UNLIKE the iOS all-in-one — the VM's "UI-thread" work
 /// (render-pull + status timers + the RemoteServer command handler) runs on a dedicated
-/// <see cref="HostLoopDispatcher"/> thread, NOT the Avalonia UI thread. Android pauses the
+/// <see cref="HostLoopDispatcher"/> thread, NOT the Activity's UI thread. Android pauses the
 /// Activity's UI thread when backgrounded; routing this work to the host loop means guidance,
 /// the 100 Hz control loop (already its own thread), UDP, and the LAN feed all stay live as
 /// long as the foreground-service process is alive. There is exactly one of these at a time.
@@ -49,21 +49,20 @@ internal sealed class AndroidBackendHost
     {
         if (IsRunning) return;
 
-        // The single host-loop thread that stands in for the Avalonia UI thread.
+        // The single host-loop thread the VM and services run on.
         var hostLoop = new HostLoopDispatcher();
 
         var services = new ServiceCollection();
         services.AddAgOpenWebServices();
 
-        // Headless overrides (last registration wins): the Avalonia-backed dispatcher/timer and
-        // the SkiaMapControl-backed MapService from AddAgOpenWebServices are never resolved here.
+        // Headless overrides (last registration wins) for what AddAgOpenWebServices registers.
         services.AddSingleton(hostLoop);
         services.AddSingleton<IUiDispatcher>(hostLoop);
         services.AddSingleton<IUiTimerFactory>(hostLoop);
         services.AddSingleton<IMapService, NullMapService>();
 
         var provider = services.BuildServiceProvider();
-        App.Services = provider;
+        AndroidApp.Services = provider;
 
         // Load state, build the VM, start + wire the embedded server — the shared,
         // platform-agnostic sequence (identical on the daemon, the WebView launcher, and iOS).

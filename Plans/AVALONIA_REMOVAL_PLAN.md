@@ -52,7 +52,7 @@ One PR per phase, each verified on hardware before the next. The web UI and back
 
 ### Phase 0: Shared cleanup (no behaviour change)
 
-**Status:** done (2026-10-02). SkiaSharp is pinned to 3.119.4. Desktop keeps `SkiaSharp.NativeAssets.Linux` (not `.NoDependencies`) while Avalonia is still there, since both ship the same `libSkiaSharp.so`; switch in Phase 3. The imagery check ran on Desktop only: do Android and iOS on hardware with Phases 1 and 2.
+**Status:** done (2026-10-02). SkiaSharp is pinned to 3.119.4. Desktop keeps `SkiaSharp.NativeAssets.Linux` (not `.NoDependencies`) while Avalonia is still there, since both ship the same `libSkiaSharp.so`; switch in Phase 3. The imagery check passed on Desktop, a Galaxy Tab S7 FE and the test iPad.
 
 1. Delete `MainViewModel.ApplyThemeVariant` and its callers (the web client does its own day/night theme from `IsDayMode`), and the stale `using Avalonia*` lines. Remove `PackageReference Avalonia` from `AgOpenWeb.ViewModels.csproj`.
 2. Pin SkiaSharp explicitly. `RemoteServer` asks for 3.119.1, but the build actually resolves Avalonia's 3.119.4-preview. Choose one stable version and add the matching `SkiaSharp.NativeAssets.{Android,iOS,macOS,Win32,Linux}` to each head (Linux: the `.NoDependencies` variant is enough for the daemon's imagery child process, if it renders no text; it doesn't today). HarfBuzz isn't needed: the server code draws no text.
@@ -62,6 +62,14 @@ One PR per phase, each verified on hardware before the next. The web UI and back
 Verify: all four test projects pass, and every head builds and runs. Check the imagery capture (`/backpic.png`) still works on Desktop, Android and iOS, since the native Skia now comes from our own reference.
 
 ### Phase 1: Android (first, because it fixes #196 properly)
+
+**Status:** implemented and checked on an Android 14 emulator and a Galaxy Tab S7 FE (Android 14) on 2026-10-02: cold start, Back/Exit, keyboard bridge, soft keyboard over a bottom input, ungated audio, external links, rotation, imagery. Still to do: the Lenovo tablet with Lenovo Pen on (the #196 repro) and a cold boot of a slow device.
+
+Decisions made while implementing:
+- **Exit stops the host.** Back asks "Exit AgOpenWeb?"; Exit saves, stops `BackendService` (so guidance and the LAN feed stop) and removes the task. Dismissing the app from Recents still leaves the host running, as before.
+- **More `ConfigChanges`** (screen layout, smallest screen size, keyboard, navigation), so attaching a keyboard or resizing a window doesn't restart the Activity and reload the page.
+- **The theme's parent** is now the platform's `Theme.Material.NoActionBar` (AppCompat came with Avalonia).
+- **Debug builds** enable WebView debugging (`chrome://inspect`).
 
 - `AndroidApp`: a plain `Android.App.Application`. Keep `AndroidDataRoot.Initialize(this)` in `OnCreate`, and drop the Skia GPU cache override (Avalonia-only).
 - `MainActivity`: a plain `Activity` whose content is a `FrameLayout` containing:

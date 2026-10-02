@@ -51,6 +51,9 @@ internal sealed class BackendService : Service
             context.StartService(intent);
     }
 
+    /// <summary>Stop the host (the user chose Exit). <see cref="OnDestroy"/> saves state.</summary>
+    public static void Stop(Context context) => context.StopService(new Intent(context, typeof(BackendService)));
+
     public override IBinder? OnBind(Intent? intent) => null;
 
     public override void OnCreate()
@@ -102,7 +105,8 @@ internal sealed class BackendService : Service
     // when the local WebView Activity is dismissed — like a navigation or music app. Tying
     // shutdown to task-removal also raced badly: the Activity/WebView can outlive the removed
     // task and then retry forever against a host that was stopped but not restarted. The host
-    // now runs until the user force-stops the app (state is saved on every Activity OnPause).
+    // runs until the user answers Exit to the Back prompt (MainActivity), or force-stops the app
+    // (state is saved on every Activity OnPause).
 
     public override void OnDestroy()
     {
