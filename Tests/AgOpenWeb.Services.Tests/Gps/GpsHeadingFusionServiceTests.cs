@@ -178,6 +178,18 @@ public class GpsHeadingFusionServiceTests
     }
 
     [Test]
+    public void Imu_TurnedAround_IsNotReverse_AndHeadingFlips()
+    {
+        // The simulator's Flip: heading and travel both turn 180° at once. With an IMU
+        // reporting the new heading this is a turn, not backing up.
+        DriveNorth(6, imu: 0, imuValid: true);
+        double h = 0;
+        for (int i = 1; i <= 6; i++) h = _service.FuseHeading(180, 180, true, Fast, 0, 1.5 - i * 0.3, false);
+        Assert.That(_service.IsReverse, Is.False);
+        Assert.That(h, Is.EqualTo(180).Within(0.5));
+    }
+
+    [Test]
     public void NoImu_BackingUp_HoldsWhileUnsure_ThenIsReverse()
     {
         DriveNorth(6);
