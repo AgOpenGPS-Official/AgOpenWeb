@@ -25,7 +25,11 @@ namespace AgOpenWeb.Services.Gps;
 /// <see cref="ConnectionConfig.DualHeadingOffset"/>. With
 /// <see cref="ConnectionConfig.AutoDualFix"/> on and the speed above
 /// <see cref="ConnectionConfig.DualSwitchSpeed"/> (km/h), it switches to Fix
-/// with the dual heading standing in for the IMU.</item>
+/// with the dual heading standing in for the IMU. Only a fix that carries a
+/// dual-antenna heading ($PAOGI) is used this way: a $PANDA fix's heading is the
+/// IMU heading, so with Dual on it takes the Fix path, exactly as with Dual off,
+/// and <see cref="IsDualHeadingMissing"/> is raised (#157). AgIO never puts
+/// PANDA's heading in headingTrueDual.</item>
 /// </list>
 ///
 /// Reverse detection (#125), when <see cref="ConnectionConfig.ReverseDetection"/> is
@@ -83,18 +87,37 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     /// vehicle changed direction; AgOpenGPS stops steering meanwhile.</summary>
     public bool IsChangingDirection { get; private set; }
 
+    /// <summary>True while Dual GPS is on but the fixes carry no dual-antenna
+    /// heading ($PANDA), so the single-antenna heading is used instead (#157).</summary>
+    public bool IsDualHeadingMissing { get; private set; }
+
     public double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
-                              double speedMs, double easting, double northing)
+                              double speedMs, double easting, double northing,
+                              bool hasDualHeading)
     {
         var con = Connections;
         double speedKmh = Math.Abs(speedMs) * 3.6;
+
+        // Dual GPS on, but this fix has no antenna heading ($PANDA: the heading field
+        // is the IMU's). Don't treat it as one: fall through to Fix, as with Dual off.
+        bool wasMissing = IsDualHeadingMissing;
+        IsDualHeadingMissing = con.IsDualGps && !hasDualHeading;
+        if (IsDualHeadingMissing && !wasMissing)
+        {
+            // The dual path marked the heading as started without learning the IMU
+            // offset; restart Fix so the offset snaps onto the first fix-to-fix heading.
+            // Otherwise the raw IMU heading meets the travel heading and reads as reverse.
+            _hasReverseFix = false;
+            _isFirstHeadingSet = false;
+            Reset();
+        }
 
         // The IMU heading this fix, if any (radians).
         double? imu = imuValid ? ToRad(imuHeading) : null;
         ImuCorrectedDeg = imu is double ir ? Wrap(ir + _imuGpsOffset) * 180.0 / Math.PI : double.NaN;
 
         bool useFix = true;
-        if (con.IsDualGps)
+        if (con.IsDualGps && hasDualHeading)
         {
             double dual = Wrap(ToRad(gpsHeading + con.DualHeadingOffset));
             if (con.AutoDualFix && speedKmh > con.DualSwitchSpeed)

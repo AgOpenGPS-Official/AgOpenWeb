@@ -276,7 +276,12 @@ public record StatusDto(
     // bar's taller diagnostics line; GpsToPgnLatencyMs is the host control-loop latency
     // (GPS receive → PGN send, ms) shown there beside the client FPS + transport age.
     bool DevOverlay,
-    double GpsToPgnLatencyMs);
+    double GpsToPgnLatencyMs,
+    // GPS source (#157): the incoming sentence ("PANDA", "PAOGI", "SIM"; "" before any
+    // fix) for the GPS detail card, and DualHeadingMissing — Dual GPS is on but the
+    // receiver sends $PANDA (no antenna heading), so the single-antenna heading is used.
+    string GpsSentence,
+    bool DualHeadingMissing);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and

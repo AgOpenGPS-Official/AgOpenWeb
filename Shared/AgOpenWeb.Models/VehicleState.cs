@@ -83,6 +83,15 @@ public struct VehicleState
     /// </summary>
     public double ImuHeading;
 
+    /// <summary>
+    /// True when <see cref="Heading"/> is a dual-antenna heading ($PAOGI). False for
+    /// $PANDA, where <see cref="Heading"/> is only seeded from the IMU (#157).
+    /// </summary>
+    public bool HasDualHeading;
+
+    /// <summary>Sentence the latest fix was parsed from (#157).</summary>
+    public GpsSentenceType SentenceType;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Local Coordinates (updated after GPS parse, using LocalPlane)
     // ═══════════════════════════════════════════════════════════════════════

@@ -656,6 +656,8 @@ public class AutoSteerService : IAutoSteerService
             ImuYawRate = _state.YawRate,
             ImuHeading = _state.ImuHeading,
             ImuValid = _state.ImuValid,
+            HasDualHeading = _state.HasDualHeading,
+            SentenceType = _state.SentenceType,
             Timestamp = DateTime.UtcNow,
         };
         _gpsService.UpdateGpsData(gpsData);
