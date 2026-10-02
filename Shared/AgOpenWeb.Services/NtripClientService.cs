@@ -48,6 +48,7 @@ public class NtripClientService : INtripClientService, IDisposable
     private bool _isDisposed;
 
     private IPEndPoint? _rtcmUdpEndpoint;
+    private string? _rtcmSubnet; // the /24 _rtcmUdpEndpoint was built for
     private Timer? _ggaTimer;
     private Timer? _watchdogTimer;
     // RTCM goes to the AiO through a pacer: 256-byte datagrams spaced 25 ms apart, AgIO-style.
@@ -160,6 +161,7 @@ public class NtripClientService : INtripClientService, IDisposable
                 _tcpSocket = tcp;
                 _udpSocket = udp;
                 _rtcmUdpEndpoint = rtcmEndpoint;
+                _rtcmSubnet = config.SubnetAddress;
                 tcp = udp = null; // owned by the session now; Teardown closes them
                 _headerBuffer.Clear();
                 _headerDumped = false;
@@ -455,6 +457,36 @@ public class NtripClientService : INtripClientService, IDisposable
         }
     }
 
+    /// <summary>The /24 to forward RTCM to: the provider's live subnet, else the configured one.</summary>
+    internal static string ResolveRtcmSubnet(NtripConfiguration config)
+    {
+        string? live = null;
+        try { live = config.SubnetProvider?.Invoke(); } catch { /* fall back to the setting */ }
+        return string.IsNullOrEmpty(live) ? config.SubnetAddress : live;
+    }
+
+    /// <summary>
+    /// subnet.255:port for the modules' current /24 (<see cref="NtripConfiguration.SubnetProvider"/>,
+    /// else <see cref="NtripConfiguration.SubnetAddress"/>), as AgIO sends to its subnet
+    /// setting. Rebuilt only when the subnet changes.
+    /// </summary>
+    private IPEndPoint? CurrentRtcmEndpoint()
+    {
+        var config = _config;
+        var endpoint = _rtcmUdpEndpoint;
+        if (config == null || endpoint == null) return endpoint;
+
+        string subnet = ResolveRtcmSubnet(config);
+        if (subnet == _rtcmSubnet) return endpoint;
+
+        if (!IPAddress.TryParse($"{subnet}.255", out var broadcast)) return endpoint;
+        endpoint = new IPEndPoint(broadcast, config.UdpForwardPort);
+        _logger.LogInformation("[NTRIP] forwarding RTCM to {Endpoint}", endpoint);
+        _rtcmSubnet = subnet;
+        _rtcmUdpEndpoint = endpoint;
+        return endpoint;
+    }
+
     private void ForwardRtcmData(byte[] rtcmData)
     {
         if (rtcmData.Length == 0)
@@ -543,7 +575,7 @@ public class NtripClientService : INtripClientService, IDisposable
     private void SendRtcmDatagram(byte[] chunk)
     {
         var udpSocket = _udpSocket;
-        var endpoint = _rtcmUdpEndpoint;
+        var endpoint = CurrentRtcmEndpoint();
         if (udpSocket == null || endpoint == null) return;
         try
         {

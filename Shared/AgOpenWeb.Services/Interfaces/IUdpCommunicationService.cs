@@ -98,6 +98,12 @@ public interface IUdpCommunicationService
     string? GetModuleSubnet();
 
     /// <summary>
+    /// The /24 the modules are on right now: the subnet outgoing PGNs are locked to
+    /// (from module hellos), else the last scan reply's, else null (nothing heard yet).
+    /// </summary>
+    string? GetActiveModuleSubnet();
+
+    /// <summary>
     /// Broadcast a scan request (PGN 202) asking every module to reply with its
     /// IP + subnet (PGN 203). Matches AgIO's FormUDP "Scan" button.
     /// </summary>
