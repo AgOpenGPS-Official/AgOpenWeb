@@ -17,15 +17,9 @@
     <RuntimeIdentifiers>android-arm;android-arm64;android-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
-  <!-- Avalonia packages -->
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Android" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
-    <!-- NativeWebView (Android System WebView) for the all-in-one launcher mode. -->
-    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
     <!-- Native libSkiaSharp for the server's imagery work (same version as RemoteServer's
-         SkiaSharp). Referenced here so it no longer depends on what Avalonia pulls in. -->
+         SkiaSharp). -->
     <PackageReference Include="SkiaSharp.NativeAssets.Android" Version="3.119.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />

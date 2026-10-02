@@ -129,9 +129,10 @@ public static class ServiceCollectionExtensions
 
         // Battery service — subscribes to the sticky ACTION_BATTERY_CHANGED
         // broadcast via Application.Context (no polling needed).
-        services.AddSingleton<IBatteryService>(_ =>
+        services.AddSingleton<IBatteryService>(sp =>
             new AgOpenWeb.Android.Services.AndroidBatteryService(
-                global::Android.App.Application.Context!));
+                global::Android.App.Application.Context!,
+                sp.GetRequiredService<IUiDispatcher>()));
 
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
