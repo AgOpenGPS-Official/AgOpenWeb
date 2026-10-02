@@ -41,7 +41,6 @@ using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Communication;
 using AgOpenWeb.Models.Ntrip;
 using AgOpenWeb.Models.Diagnostics;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 
 namespace AgOpenWeb.ViewModels;
@@ -590,9 +589,6 @@ public partial class MainViewModel : ObservableObject
         // user-driven and should persist (see the ConfigStore.Connections
         // subscription above).
         _configReady = true;
-
-        // Apply theme variant based on saved day/night mode
-        ApplyThemeVariant(IsDayMode);
 
         // Initialize clock and auto day/night timer
         InitializeClock();

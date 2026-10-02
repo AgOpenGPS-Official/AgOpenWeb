@@ -17,12 +17,10 @@ namespace AgOpenWeb.RemoteWiring;
 public static partial class RemoteServerWiring
 {
     // Wire the RemoteServer's command handler, Tier-2 gating, authority/failsafe
-    // hooks, and every state projector to a live MainViewModel. Shared by the
-    // windowed host (App.OnFrameworkInitializationCompleted) and the headless host
-    // (HeadlessHost). The ONLY behavioural difference is the injected IUiDispatcher
-    // resolved below: the Avalonia UI thread when windowed, the single-thread
-    // HostLoopDispatcher when headless. Commands + projectors are otherwise
-    // identical. See Plans/WEBUI_MIGRATION_PLAN.md Phase 10.
+    // hooks, and every state projector to a live MainViewModel. Shared by every
+    // head (WebBackend) and the headless host (HeadlessHost). All of them inject the
+    // single-thread HostLoopDispatcher as IUiDispatcher, resolved below.
+    // See Plans/WEBUI_MIGRATION_PLAN.md Phase 10.
     public static void Wire(
         AgOpenWeb.RemoteServer.RemoteServerHost server,
         AgOpenWeb.ViewModels.MainViewModel vm,
@@ -30,9 +28,7 @@ public static partial class RemoteServerWiring
         IConfigurationService configService,
         IBoundaryImageryCapture imageryCapture)
     {
-        // UI-thread marshaller. Windowed => AvaloniaUiDispatcher (Dispatcher.UIThread);
-        // headless => HostLoopDispatcher (the dedicated host-loop thread). Replaces the
-        // old hardcoded Avalonia.Threading.Dispatcher.UIThread.Post in this block.
+        // "UI thread" marshaller: the HostLoopDispatcher (the dedicated host-loop thread).
         var dispatcher = services.GetRequiredService<IUiDispatcher>();
 
         // AgShareRemote marshals its async cloud-op results back to the UI thread via

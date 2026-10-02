@@ -52,6 +52,8 @@ One PR per phase, each verified on hardware before the next. The web UI and back
 
 ### Phase 0: Shared cleanup (no behaviour change)
 
+**Status:** done (2026-10-02). SkiaSharp is pinned to 3.119.4. Desktop keeps `SkiaSharp.NativeAssets.Linux` (not `.NoDependencies`) while Avalonia is still there, since both ship the same `libSkiaSharp.so`; switch in Phase 3. The imagery check ran on Desktop only: do Android and iOS on hardware with Phases 1 and 2.
+
 1. Delete `MainViewModel.ApplyThemeVariant` and its callers (the web client does its own day/night theme from `IsDayMode`), and the stale `using Avalonia*` lines. Remove `PackageReference Avalonia` from `AgOpenWeb.ViewModels.csproj`.
 2. Pin SkiaSharp explicitly. `RemoteServer` asks for 3.119.1, but the build actually resolves Avalonia's 3.119.4-preview. Choose one stable version and add the matching `SkiaSharp.NativeAssets.{Android,iOS,macOS,Win32,Linux}` to each head (Linux: the `.NoDependencies` variant is enough for the daemon's imagery child process, if it renders no text; it doesn't today). HarfBuzz isn't needed: the server code draws no text.
 3. Remove the unused `Avalonia.Controls.DataGrid` and `AvaloniaUI.DiagnosticsSupport` packages from the Desktop csproj.
@@ -70,7 +72,7 @@ Verify: all four test projects pass, and every head builds and runs. Check the i
   - A native splash `TextView` over the web view (same colours and text).
 - Port the startup driver from `App.axaml.cs` unchanged in substance: probe `:5174` until it accepts (120 s), navigate, confirm the load, re-probe and retry (10 attempts), and show the error text on the splash. The #73 rule still holds: a load counts only once the probe has seen the host.
 - Keep as-is: `BackendService` (the foreground service owning `AndroidBackendHost`), immersive mode, save on `OnPause`/`OnStop`, the notification-permission request, and `ConfigChanges` (no Activity restart on rotate/resize).
-- Back button: check what it does in today's build first. Then either swallow it (there's no web history to go back through) or ask "Exit AgOpenWeb?".
+- Back button: ask "Exit AgOpenWeb?" (decided 2026-10-02; don't swallow it).
 - Remove `App.axaml`/`App.axaml.cs` and the Avalonia packages. Remove the `LauncherWebView` workaround from #196.
 
 Verify on a Lenovo tablet with Lenovo Pen on (the #196 repro) and on one other Android device:
@@ -145,5 +147,5 @@ Verify:
 
 1. Desktop host: Photino.NET (recommended), per-OS native hosts, or browser app mode.
 2. The `--console` supervisor window: drop, rebuild in HTML, or keep on Avalonia for now.
-3. Android back button: swallow, or confirm-to-exit.
+3. ~~Android back button~~: decided, confirm-to-exit.
 4. Whether the VehicleSimulator follows (it's a dev tool, not shipped to users).
