@@ -88,19 +88,10 @@ public class CoverageMapService : ICoverageMapService
     // 582ha @ 0.1m = 582M cells / 8 = 72MB (much better than HashSet at high coverage)
     private byte[]? _detectionBits;
 
-    // Track newly added cells since last GetNewCoverageBitmapCells call
-    // Still use HashSet for new cells (small, cleared frequently)
-    private readonly HashSet<(int CellE, int CellN, int Zone)> _newCells = new();
-
-    // Reusable buffers for GetNewCoverageBitmapCells to avoid allocations
-    private readonly List<(int CellX, int CellY, CoverageColor Color)> _newCellsResult = new();
-    private readonly HashSet<(int, int)> _newCellsDedup = new();
-
-    // Parallel new-cell stream for a SECOND independent consumer (the remote/web
-    // server's CoverageProjector). GetNewCoverageBitmapCells drains _newCells for the
-    // native map control; the server needs its own drain so the two don't steal cells
-    // from each other. Without this the server fell back to an O(whole-grid) scan that,
-    // run on the 100 Hz control-loop thread, stalled real-time control in ~500 ms bursts.
+    // Newly covered cells since the web server's CoverageProjector last drained them
+    // (GetNewCoverageBitmapCellsServer). Small as long as it IS drained: a queue nobody
+    // drains grows by every painted cell for the whole job. (The native map had one; it was
+    // left behind when that UI went, and its resizes stalled the control loop on slow devices.)
     private readonly HashSet<(int CellE, int CellN, int Zone)> _newCellsServer = new();
     private readonly List<(int CellX, int CellY, CoverageColor Color)> _newCellsServerResult = new();
     private readonly HashSet<(int, int)> _newCellsServerDedup = new();
@@ -492,11 +483,7 @@ public class CoverageMapService : ICoverageMapService
                     || IsPointInTriangle(cellCenterE, cellCenterN, p0, p2, p3))
                 {
                     if (MarkCellCovered(ce, cn, zoneIndex))
-                    {
-                        // New cell - track it for incremental display update
-                        _newCells.Add((ce, cn, zoneIndex));
                         UpdateBounds(ce, cn);
-                    }
                 }
             }
         }
@@ -719,9 +706,7 @@ public class CoverageMapService : ICoverageMapService
             _dirtyDetectTiles.Add(tileKey);
         }
 
-        // Track for batched write by map control (via GetNewCoverageBitmapCells)
-        _newCells.Add((cellE, cellN, zone));
-        _newCellsServer.Add((cellE, cellN, zone)); // parallel drain for the web server
+        _newCellsServer.Add((cellE, cellN, zone)); // drained by the web server at 10 Hz
 
         // Update per-zone counter
         if (!_cellCountPerZone.TryGetValue(zone, out long count))
@@ -1057,65 +1042,9 @@ public class CoverageMapService : ICoverageMapService
     private static int ClampIndex(int v, int size) => v < 0 ? 0 : (v >= size ? size - 1 : v);
 
     /// <summary>
-    /// Get newly added coverage cells since last call.
-    /// Clears the pending list after returning.
-    /// Uses fixed field bounds if set, otherwise coverage bounds.
-    /// </summary>
-    public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCells(double cellSize)
-    {
-        lock (_coverageLock)
-        {
-            if (_newCells.Count == 0)
-                return Array.Empty<(int, int, CoverageColor)>();
-
-            // Determine origin for coordinate calculations
-            double minE, minN;
-            if (_fieldBoundsSet)
-            {
-                minE = _fieldMinE;
-                minN = _fieldMinN;
-            }
-            else
-            {
-                if (!_boundsValid)
-                {
-                    _newCells.Clear();
-                    return Array.Empty<(int, int, CoverageColor)>();
-                }
-                minE = _minCellE * BITMAP_CELL_SIZE;
-                minN = _minCellN * BITMAP_CELL_SIZE;
-            }
-
-            _newCellsDedup.Clear();
-            _newCellsResult.Clear();
-
-            foreach (var (cellE, cellN, zone) in _newCells)
-            {
-                double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
-                double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
-
-                int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
-                int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
-
-                if (_newCellsDedup.Add((outCellX, outCellY)))
-                {
-                    var color = GetZoneColor(zone);
-                    _newCellsResult.Add((outCellX, outCellY, color));
-                }
-            }
-
-            _newCells.Clear();
-
-            // Return a copy since _newCellsResult is reused
-            return _newCellsResult.ToArray();
-        }
-    }
-
-    /// <summary>
-    /// Second, independent incremental drain — newly-covered cells since the LAST
-    /// call to THIS method (parallel to GetNewCoverageBitmapCells, which serves the
-    /// native map). For the remote/web server's CoverageProjector so it gets O(new
-    /// cells) deltas instead of an O(whole-grid) scan. Same downsample logic.
+    /// Incremental drain — newly-covered cells since the LAST call to this method. For
+    /// the remote/web server's CoverageProjector so it gets O(new cells) deltas instead
+    /// of an O(whole-grid) scan.
     /// </summary>
     public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize)
     {
@@ -1187,7 +1116,6 @@ public class CoverageMapService : ICoverageMapService
             if (_displayPixels != null)
                 Array.Clear(_displayPixels, 0, _displayPixels.Length);
             ExpandDirtyAll();
-            _newCells.Clear();
             _newCellsServer.Clear();
             if (_detectionBits != null)
                 Array.Clear(_detectionBits, 0, _detectionBits.Length);

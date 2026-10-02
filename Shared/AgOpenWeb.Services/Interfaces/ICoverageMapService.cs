@@ -162,18 +162,9 @@ public interface ICoverageMapService
     IReadOnlyList<(int X, int Y, CoverageColor Color, int Alpha)> GetPaintedDisplayCells();
 
     /// <summary>
-    /// Get newly added coverage cells since last call (for incremental bitmap updates).
-    /// Clears the pending list after returning.
-    /// </summary>
-    /// <param name="cellSize">Size of each cell in meters</param>
-    /// <returns>Enumerable of (cellX, cellY, color) for newly added cells</returns>
-    IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCells(double cellSize);
-
-    /// <summary>
-    /// Second, independent incremental drain (parallel to GetNewCoverageBitmapCells) for a
-    /// separate consumer — the remote/web server's coverage projector. Returns newly-covered
-    /// cells since the last call to THIS method and clears its own pending list, so the two
-    /// consumers don't steal cells from each other.
+    /// Incremental drain for the remote/web server's coverage projector: newly-covered cells
+    /// since the last call, at <paramref name="cellSize"/>. Clears its pending list. It has
+    /// exactly one consumer; a second one needs its own queue AND its own drain.
     /// </summary>
     IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize);
 

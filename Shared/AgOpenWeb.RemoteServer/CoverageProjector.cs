@@ -1,12 +1,7 @@
 // Projects the coverage display layer (RGB cells) into the wire contract.
 //
-// IMPORTANT (alongside mode): the app's own map control consumes the service's
-// single-consumer delta drain (GetNewCoverageBitmapCells). The server must NOT
-// touch it, or it steals the app's coverage. So here the delta is derived from
-// the NON-draining GetCoverageBitmapCells diffed against a server-side "sent"
-// bitset. In the END-STATE headless host there is no app renderer, so a real
-// host can use the efficient drain directly — this diff is an alongside-only
-// workaround. Detection layer never leaves the host (§6).
+// Deltas come from the service's incremental drain (GetNewCoverageBitmapCellsServer),
+// which this projector is the only consumer of. Detection layer never leaves the host (§6).
 
 using AgOpenWeb.Models.Coverage;
 using AgOpenWeb.Services.Interfaces;
