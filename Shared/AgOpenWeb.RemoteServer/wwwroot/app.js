@@ -413,7 +413,7 @@ const transport = RemoteTransport.create({
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
   onAgShare(a) { agShare = a; agShareDirty = true; },
-  onAppInfo(a) { appInfo = a; appInfoDirty = true; },
+  onAppInfo(a) { appInfo = a; appInfoDirty = true; I18n.setLanguage(a.currentLanguage); },
   onFieldTools(f) { fieldTools = f; fieldToolsDirty = true; if (document.getElementById('importtracks').classList.contains('open')) renderImportTracks(); },
   onRecordedPath(r) { recPath = r; if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); },
   onBoundary(b) {
@@ -459,19 +459,19 @@ function renderHostPrompt() {
   const p = hostPrompt;
   if (!p || !p.kind) { HP.root.classList.remove('open'); hpShownSeq = -1; return; }
   const isError = p.kind === 2;
-  HP.title.textContent = p.title || (isError ? 'Error' : 'Confirm');
+  HP.title.textContent = p.title || (isError ? tr('Error') : tr('Confirm'));
   HP.msg.textContent = p.message || '';
   HP.check.hidden = isError || !p.checkboxLabel;
   HP.checkLabel.textContent = p.checkboxLabel || '';
   if (hpShownSeq !== p.seq) HP.checkbox.checked = !!p.checkboxChecked; // keep the operator's tick on re-render
   HP.cancel.hidden = isError;
-  HP.ok.textContent = p.confirmLabel || (isError ? 'OK' : 'Yes');
-  HP.cancel.textContent = p.cancelLabel || 'No';
+  HP.ok.textContent = p.confirmLabel || (isError ? tr('OK') : tr('Yes'));
+  HP.cancel.textContent = p.cancelLabel || tr('No');
   HP.ok.disabled = HP.cancel.disabled = !iHoldControl;
   HP.wait.hidden = iHoldControl;
   HP.wait.textContent = lastControl.held
-    ? 'Waiting for ' + (lastControl.holderName || 'the operator') + ' to answer'
-    : 'Take control to answer';
+    ? tr('Waiting for {name} to answer', { name: lastControl.holderName || tr('the operator', {}) })
+    : tr('Take control to answer');
   hpShownSeq = p.seq;
   HP.root.classList.add('open');
 }
@@ -501,7 +501,7 @@ function showHardwareMessage(text, seconds, warning) {
 // so the host uses the single-antenna heading (#157). Toast once each time it starts;
 // take it down if a $PAOGI fix clears it while still showing.
 const DUAL_HEADING_MISSING_MSG =
-  "Dual GPS is on, but the receiver isn't sending a dual-antenna heading ($PANDA). Using single-antenna heading.";
+  tr("Dual GPS is on, but the receiver isn't sending a dual-antenna heading ($PANDA). Using single-antenna heading.");
 let dualHeadingMissingShown = false;
 function syncDualHeadingWarning(s) {
   const missing = !!s.dualHeadingMissing;
@@ -509,10 +509,12 @@ function syncDualHeadingWarning(s) {
   dualHeadingMissingShown = missing;
   if (missing) { showToast(DUAL_HEADING_MISSING_MSG, 10000); return; }
   const t = document.getElementById('toast');
-  if (t.textContent === DUAL_HEADING_MISSING_MSG) { clearTimeout(toastTimer); t.classList.remove('show'); }
+  if (toastMsg === DUAL_HEADING_MISSING_MSG) { clearTimeout(toastTimer); t.classList.remove('show'); }
 }
+let toastMsg = '';
 function showToast(msg, ms = 4000) {
   const t = document.getElementById('toast');
+  toastMsg = msg; // what was asked for; the element's text may be a translation
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), ms);
@@ -856,7 +858,7 @@ function startMapTap(cfg) {
   mapTap = cfg;
   document.body.classList.add('maptap'); // crosshair cursor (CSS)
   const h = document.getElementById('maptap-hint');
-  h.textContent = cfg.hint || 'Tap the map'; h.classList.add('show');
+  h.textContent = cfg.hint || tr('Tap the map'); h.classList.add('show');
   // Touch cancel: only for bare flows (no draw toolbar) — flag placement. The AB/sat/headland
   // flows show the toolbar whose own Cancel handles them, so don't double it up.
   const tbUp = document.getElementById('draw-toolbar').classList.contains('show');
@@ -946,7 +948,7 @@ addEventListener('keydown', e => {
   const sec = /^Section([1-8])$/.exec(action);
   const cmd = sec ? 'section.toggle|' + (sec[1] - 1) : HOTKEY_CMD[action];
   if (!cmd) return;
-  if (!iHoldControl) { flashHint('Observing — take control to use hotkeys'); return; }
+  if (!iHoldControl) { flashHint(tr('Observing — take control to use hotkeys')); return; }
   transport.send(cmd);
 });
 // ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
@@ -1040,7 +1042,7 @@ document.addEventListener('focusout', e => {
 // action); Confirm runs the callback. Hosted in the dialog host (now a transparent leaf).
 function showConfirm(title, message, onConfirm) {
   _confirmCb = onConfirm || null;
-  document.getElementById('dlgc-title').textContent = title || 'Confirm';
+  document.getElementById('dlgc-title').textContent = title || tr('Confirm');
   document.getElementById('dlgc-msg').textContent = message || '';
   openDialog('dlg-confirm');
 }
@@ -1265,7 +1267,7 @@ bottomNav.addEventListener('pointerdown', e => {
 document.getElementById('bn-delcontours').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (!iHoldControl) return;
-  showConfirm('Delete Contour Paths', 'Delete all recorded contour paths in this field? Coverage and AB lines are kept.',
+  showConfirm(tr('Delete Contour Paths'), tr('Delete all recorded contour paths in this field? Coverage and AB lines are kept.'),
     () => transport.send('track.deleteContours'));
 });
 // ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
@@ -1280,7 +1282,7 @@ onScreenBtns.addEventListener('pointerdown', e => {
   // #50: mid-turn snaps/u-turns are ignored by the pipeline (they'd shift the
   // displayed track while the tractor stays committed to the executing arc, then
   // seek across after). Block them here with a hint instead of silently no-op'ing.
-  if (tick && tick.op && tick.op.executing) { flashHint('Finish the U-turn first'); return; }
+  if (tick && tick.op && tick.op.executing) { flashHint(tr('Finish the U-turn first')); return; }
   transport.send(btn.dataset.cmd);
 });
 function applyOnScreenButtons() {
@@ -1307,7 +1309,7 @@ document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.sto
 // bottomNav delegate ignores it. Closes the flyout, then captures one tap.
 function armPlaceFlagOnMap() {
   startMapTap({
-    hint: 'Tap the map to place a flag',
+    hint: tr('Tap the map to place a flag'),
     onTap: (e2, n2) => { transport.send('flag.placeAt|' + e2.toFixed(3) + ',' + n2.toFixed(3)); endMapTap(); },
   });
 }
@@ -1324,7 +1326,7 @@ document.getElementById('bn-flag-onmap').addEventListener('pointerdown', e => {
 // delete. Footer: Place Here / Place on Map / Delete All / Close. Reads scene.flags
 // (index = the projected order, which matches the host's Flags list).
 const FLAG_HEX = ['#FF0000', '#00CC00', '#FFCC00', '#2080E0', '#FF8800', '#9933CC', '#00BBCC', '#FF66AA', '#FFFFFF', '#333333'];
-const FLAG_NAMES = ['Red', 'Green', 'Yellow', 'Blue', 'Orange', 'Purple', 'Cyan', 'Pink', 'White', 'Black'];
+const FLAG_NAMES = [tr('Red'), tr('Green'), tr('Yellow'), tr('Blue'), tr('Orange'), tr('Purple'), tr('Cyan'), tr('Pink'), tr('White'), tr('Black')];
 const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 document.getElementById('bn-flag-list').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -1355,7 +1357,7 @@ function renderFlagList() {
       '<button class="flg-del" title="Delete flag">✕</button>';
     row.querySelector('.flg-sw').style.background = f.color;
     const nameEl = row.querySelector('.flg-name');
-    nameEl.textContent = f.name || ('Flag ' + (i + 1));
+    nameEl.textContent = f.name || tr('Flag {n}', { n: i + 1 });
     row.querySelector('.flg-dist').textContent = dist;
     // Colour swatch → toggle an inline 10-colour picker under the row.
     row.querySelector('.flg-sw').addEventListener('pointerdown', ev => { ev.stopPropagation(); toggleFlagColorPick(row, i); });
@@ -1396,7 +1398,7 @@ document.getElementById('flag-placehere').addEventListener('pointerdown', e => {
 document.getElementById('flag-placemap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); armPlaceFlagOnMap(); });
 document.getElementById('flag-deleteall').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
-  showConfirm('Delete All Flags', 'Delete all flags? This cannot be undone.', () => transport.send('flag.deleteAll'));
+  showConfirm(tr('Delete All Flags'), tr('Delete all flags? This cannot be undone.'), () => transport.send('flag.deleteAll'));
 });
 document.getElementById('flag-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
@@ -1419,10 +1421,10 @@ const drawBar = document.getElementById('draw-toolbar');
 const hintEl = document.getElementById('maptap-hint');
 function abHint() {
   switch (abFlow) {
-    case 'straight': return drawPts.length === 0 ? 'Tap Point A' : 'Tap Point B';
-    case 'curve': return `Tap points (${drawPts.length}) — Finish when done`;
-    case 'driveAB': return driveStep === 0 ? 'Drive to A, then Set Point' : 'Drive to B, then Set Point';
-    case 'recordCurve': return driveStep === 0 ? 'Drive to A, then Set Point A' : 'Drive the curve to B, then Set Point B';
+    case 'straight': return drawPts.length === 0 ? tr('Tap Point A') : tr('Tap Point B');
+    case 'curve': return tr('Tap points ({n}) — Finish when done', { n: drawPts.length });
+    case 'driveAB': return driveStep === 0 ? tr('Drive to A, then Set Point') : tr('Drive to B, then Set Point');
+    case 'recordCurve': return driveStep === 0 ? tr('Drive to A, then Set Point A') : tr('Drive the curve to B, then Set Point B');
   }
   return '';
 }
@@ -1483,7 +1485,7 @@ function startDriveAB() {                  // GPS: set A then B at the vehicle (
   abFlow = 'driveAB'; driveStep = 0; drawPts = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
-  document.getElementById('draw-setpoint').textContent = 'Set Point A';
+  document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
 function startRecordCurve() {              // GPS: record by driving — Set Start → Set End (ungated)
@@ -1491,7 +1493,7 @@ function startRecordCurve() {              // GPS: record by driving — Set Sta
   // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
   // can position at the curve's start first. The set-point button drives the two-step.
   showAbBar(true, false, false);
-  document.getElementById('draw-setpoint').textContent = 'Set Point A';
+  document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
 // "Bnd. Curve" — tap point A then point B on the boundary; the host walks the shorter arc
@@ -1509,11 +1511,11 @@ function nearestBoundaryPt(e, n) {
 function startBoundaryCurve() {
   abFlow = 'boundaryCurve'; drawPts = [];
   showAbBar(false, false, false);          // draw toolbar shows just Cancel
-  startMapTap({ hint: 'Tap point A on the boundary', onTap: boundaryCurveTap });
+  startMapTap({ hint: tr('Tap point A on the boundary'), onTap: boundaryCurveTap });
 }
 function boundaryCurveTap(e, n) {
   drawPts.push(nearestBoundaryPt(e, n));   // snap A/B to the nearest boundary vertex (dot shown)
-  if (drawPts.length < 2) { hintEl.textContent = 'Tap point B on the boundary'; return; }
+  if (drawPts.length < 2) { hintEl.textContent = tr('Tap point B on the boundary'); return; }
   const a = drawPts[0], b = drawPts[1];
   transport.send('track.boundaryCurveSeg|' + a.e.toFixed(3) + ',' + a.n.toFixed(3) + ',' + b.e.toFixed(3) + ',' + b.n.toFixed(3));
   endAbFlow();
@@ -1532,7 +1534,7 @@ function abSetPoint() {                     // Set-point button — drives Drive
     transport.send('track.setABGps');      // SetABPoint uses live GPS in DriveAB mode
     // Drop an A/B marker at the vehicle so the operator sees where each point landed.
     if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n });
-    if (driveStep === 0) { driveStep = 1; btn.textContent = 'Set Point B'; setAbHint(); }
+    if (driveStep === 0) { driveStep = 1; btn.textContent = tr('Set Point B'); setAbHint(); }
     else {                                  // B set → host created the line; show B a beat, then clear
       driveStep = 2;
       setTimeout(() => { if (abFlow === 'driveAB') endAbFlow(); }, 700);
@@ -1541,7 +1543,7 @@ function abSetPoint() {                     // Set-point button — drives Drive
     if (driveStep > 1) return;              // guard a double-B while B lingers
     if (driveStep === 0) {                  // Set Point A → drop the A endpoint + begin recording
       transport.send('track.recordCurve');
-      driveStep = 1; btn.textContent = 'Set Point B';
+      driveStep = 1; btn.textContent = tr('Set Point B');
       if (tick && tick.pose) {
         drawPts.push({ e: tick.pose.e, n: tick.pose.n });   // labeled "A" endpoint dot (orange)
         _lastCurveMark = { e: tick.pose.e, n: tick.pose.n }; // seed green-dot spacing; no dot at A itself
@@ -1610,10 +1612,10 @@ function startSatBoundary() {
   satEnabled = true; satBnd = true; satPts = [];
   lnCloseAll();                           // close the boundary menu
   showAbBar(false, true, true);           // Undo + Finish + Cancel
-  startMapTap({ hint: 'Tap the field corners on the imagery — Finish when done', onTap: satTap });
+  startMapTap({ hint: tr('Tap the field corners on the imagery — Finish when done'), onTap: satTap });
 }
 function satTap(e, n) { satPts.push({ e, n }); setSatHint(); }
-function setSatHint() { hintEl.textContent = `Boundary: ${satPts.length} point${satPts.length === 1 ? '' : 's'} — Finish when done`; }
+function setSatHint() { hintEl.textContent = satPts.length === 1 ? tr('Boundary: 1 point — Finish when done') : tr('Boundary: {n} points — Finish when done', { n: satPts.length }); }
 function satUndo() { if (satPts.length) { satPts.pop(); setSatHint(); } }
 function satFinish() {
   if (satPts.length >= 3)
@@ -1639,12 +1641,12 @@ function hlSnap(e, n) {
   for (const p of ring) { const d = (p.e - e) ** 2 + (p.n - n) ** 2; if (d < bd) { bd = d; best = p; } }
   return { e: best.e, n: best.n };
 }
-function setHlHint() { hintEl.textContent = hlPts.length === 0 ? 'Tap the start of an edge (add a line per edge to enclose the headland)' : 'Tap the end of the edge'; }
+function setHlHint() { hintEl.textContent = hlPts.length === 0 ? tr('Tap the start of an edge (add a line per edge to enclose the headland)') : tr('Tap the end of the edge'); }
 function startHeadlandDraw(mode, offset) {
   const ring = scene && scene.boundaries && scene.boundaries[0];
   if (!ring || ring.length < 3) {
     const h = document.getElementById('maptap-hint');
-    h.textContent = 'No boundary to offset'; h.classList.add('show');
+    h.textContent = tr('No boundary to offset'); h.classList.add('show');
     setTimeout(() => h.classList.remove('show'), 1800);
     return;
   }
@@ -1661,7 +1663,7 @@ function hlTap(e, n) {
       hlPts[0].e.toFixed(3) + ',' + hlPts[0].n.toFixed(3) + ',' +
       hlPts[1].e.toFixed(3) + ',' + hlPts[1].n.toFixed(3));
     hlPts = [];
-    hintEl.textContent = 'Edge added — draw the next edge, or tap Finish';
+    hintEl.textContent = tr('Edge added — draw the next edge, or tap Finish');
     return;
   }
   setHlHint();
@@ -1683,20 +1685,20 @@ function flashHint(t) { const h = document.getElementById('maptap-hint'); h.text
 function startTrackEdit() {
   const active = (scene && scene.trackList || []).find(t => t.active);
   const at = scene && scene.tracks && scene.tracks[0];
-  if (!active || !at || !at.points || at.points.length < 2) { flashHint('Select/activate a track to edit'); return; }
+  if (!active || !at || !at.points || at.points.length < 2) { flashHint(tr('Select/activate a track to edit')); return; }
   editSession = { kind: 'track', index: active.index, points: at.points.map(p => ({ e: p.e, n: p.n })) };
-  beginEdit('Drag the track points, then Save');
+  beginEdit(tr('Drag the track points, then Save'));
 }
 function startHeadlandEdit() {
   const hs = scene && scene.headlandSegs; if (fbHlSel < 0 || !hs || !hs[fbHlSel]) return;
   const s = hs[fbHlSel];
-  if (s.type === 'Boundary') { flashHint('Whole-boundary headland is not point-edited'); return; }
+  if (s.type === 'Boundary') { flashHint(tr('Whole-boundary headland is not point-edited')); return; }
   editSession = { kind: 'headland', index: s.index, points: [{ e: s.endA.e, n: s.endA.n }, { e: s.endB.e, n: s.endB.n }] };
-  beginEdit('Drag the two endpoints (snap to boundary), then Save');
+  beginEdit(tr('Drag the two endpoints (snap to boundary), then Save'));
 }
 function beginEdit(hint) {
   showAbBar(false, false, true);  // Save (Finish) + Cancel
-  document.getElementById('draw-finish').textContent = 'Save';
+  document.getElementById('draw-finish').textContent = tr('Save');
   hintEl.textContent = hint; hintEl.classList.add('show'); document.body.classList.add('maptap');
 }
 function editHitTest(px, py) {
@@ -1721,7 +1723,7 @@ function saveEdit() {
 }
 function endEdit() {
   editSession = null; editDragIdx = -1;
-  drawBar.classList.remove('show'); document.getElementById('draw-finish').textContent = 'Finish';
+  drawBar.classList.remove('show'); document.getElementById('draw-finish').textContent = tr('Finish');
   hintEl.classList.remove('show'); document.body.classList.remove('maptap');
 }
 function drawEditHandlesSk(canvas) {
@@ -1762,7 +1764,7 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
     // fix; the host bails silently without one, so give feedback here (StatusMessage isn't
     // on the wire). flashHint after a tick so it isn't cleared by the dialog close.
     const p = tick && tick.pose;
-    if (!p || (!p.e && !p.n)) setTimeout(() => flashHint('A+ needs a GPS position — start the simulator or GPS'), 0);
+    if (!p || (!p.e && !p.n)) setTimeout(() => flashHint(tr('A+ needs a GPS position — start the simulator or GPS')), 0);
     else transport.send('track.aPlus');
   }
   else if (m === 'driveAB') startDriveAB();
@@ -1823,15 +1825,15 @@ document.getElementById('trk-delete').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
   if (!iHoldControl) return;
   const t = (scene && scene.trackList || [])[trkSel];
-  if (!t) { showToast('Select a track first'); return; }
-  showConfirm('Delete Track', "Delete '" + t.name + "'? This cannot be undone.",
+  if (!t) { showToast(tr('Select a track first')); return; }
+  showConfirm(tr('Delete Track'), tr("Delete '{name}'? This cannot be undone.", { name: t.name }),
     () => { transport.send('track.delete|' + t.index); trkSel = -1; });
 });
 document.getElementById('trk-swap').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
   if (!iHoldControl) return;
   const t = (scene && scene.trackList || [])[trkSel];
-  if (!t) { showToast('Select a track first'); return; }
+  if (!t) { showToast(tr('Select a track first')); return; }
   transport.send('track.swapAB|' + t.index);
 });
 // Activate = AgOpenGPS "Use": the highlighted track (or the first visible one) becomes
@@ -1899,7 +1901,7 @@ document.getElementById('ln-autosteer').addEventListener('pointerdown', e => {
   else lnOpen('autosteercfg', 'ln-autosteer', () => {
     // Always open collapsed (left pane only), like the native panel.
     asPanel.classList.remove('expanded');
-    document.getElementById('as-expand').textContent = '▶ Full';
+    document.getElementById('as-expand').textContent = tr('▶ Full');
     populateAutoSteer(true);
   });
 });
@@ -1961,8 +1963,8 @@ document.getElementById('ln-fieldtools').addEventListener('pointerdown', e => {
 });
 document.getElementById('ft-deleteapplied').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  showConfirm('Delete Applied Area',
-    'Delete all applied area coverage? This cannot be undone.',
+  showConfirm(tr('Delete Applied Area'),
+    tr('Delete all applied area coverage? This cannot be undone.'),
     () => transport.send('field.deleteApplied'));
 });
 document.getElementById('ft-offsetfix').addEventListener('pointerdown', e => {
@@ -2071,7 +2073,7 @@ document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
 });
 document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  showConfirm('Delete All Tracks', 'Delete all tracks? This cannot be undone.',
+  showConfirm(tr('Delete All Tracks'), tr('Delete all tracks? This cannot be undone.'),
     () => { if (iHoldControl) transport.send('track.deleteAll'); fbSel = -1; });
 });
 document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
@@ -2157,7 +2159,7 @@ document.getElementById('fb-hl-delete').addEventListener('pointerdown', e => {
 });
 document.getElementById('fb-hl-deleteall').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  showConfirm('Delete All Headland', 'Delete all headland segments? The headland reverts to the boundary.',
+  showConfirm(tr('Delete All Headland'), tr('Delete all headland segments? The headland reverts to the boundary.'),
     () => { transport.send('headland.deleteAll'); fbHlSel = -1; });
 });
 document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
@@ -2195,7 +2197,7 @@ function renderFbTram() {
     row.className = 'fb-hlrow' + (s.enabled ? '' : ' noeffect') + (i === fbTramSel ? ' sel' : '');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-hlname"></span><span class="fb-hlmeta"></span>';
     row.querySelector('.fb-hlname').textContent = s.name;
-    row.querySelector('.fb-hlmeta').textContent = fmtUnit(s.width, 'm', 1) + ' · ' + (s.passCount ? s.passCount + ' pass' : 'all');
+    row.querySelector('.fb-hlmeta').textContent = fmtUnit(s.width, 'm', 1) + ' · ' + (s.passCount ? tr('{n} pass', { n: s.passCount }) : tr('all', {}));
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fbTramSel = i; renderFbTram(); });
     list.appendChild(row);
   });
@@ -2206,7 +2208,7 @@ document.getElementById('fb-tram-add').addEventListener('pointerdown', e => { e.
 document.getElementById('fb-tram-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const s = curTram(); if (!s) return;
-  showConfirm('Delete Tram System', 'Delete "' + s.name + '"?', () => { transport.send('tram.delete|' + s.index); fbTramSel = -1; });
+  showConfirm(tr('Delete Tram System'), tr('Delete "{name}"?', { name: s.name }), () => { transport.send('tram.delete|' + s.index); fbTramSel = -1; });
 });
 document.getElementById('fb-tram-edit').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -2216,10 +2218,10 @@ document.getElementById('fb-tram-back').addEventListener('pointerdown', e => { e
 document.getElementById('fb-tram-done').addEventListener('pointerdown', e => { e.stopPropagation(); showFbTab('tram'); });
 function populateTramEdit() {
   const s = curTram(); if (!s) { showFbTab('tram'); return; }
-  document.getElementById('fb-tram-title').textContent = 'Edit: ' + s.name;
-  const en = document.getElementById('fb-tram-en'); en.classList.toggle('active', s.enabled); en.textContent = s.enabled ? 'On' : 'Off';
+  document.getElementById('fb-tram-title').textContent = tr('Edit: {name}', { name: s.name });
+  const en = document.getElementById('fb-tram-en'); en.classList.toggle('active', s.enabled); en.textContent = s.enabled ? tr('On') : tr('Off');
   const ref = document.getElementById('fb-tram-ref');
-  const opts = ['(Boundary)'];
+  const opts = [tr('(Boundary)')];
   for (const t of (scene.trackList || [])) if (t.type !== 'Path' && t.type !== 'Contour') opts.push(t.name);
   ref.innerHTML = opts.map(o => { const e = document.createElement('option'); e.textContent = o; return e.outerHTML; }).join('');
   ref.value = s.refLabel;
@@ -2228,7 +2230,7 @@ function populateTramEdit() {
   // A boundary system is rings around the boundary: there's no "all", 0 means 1 (#112).
   const pEl = document.getElementById('fb-tram-passes');
   pEl.min = s.isBoundary ? 1 : 0;
-  document.getElementById('fb-tram-passes-lbl').textContent = s.isBoundary ? 'Passes' : 'Passes (0 = all)';
+  document.getElementById('fb-tram-passes-lbl').textContent = s.isBoundary ? tr('Passes') : tr('Passes (0 = all)');
   if (document.activeElement !== pEl) pEl.value = s.isBoundary ? Math.max(1, s.passCount) : s.passCount;
   for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.classList.toggle('sel', +b.dataset.tmode === s.mode);
   for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.classList.toggle('sel', +b.dataset.tdir === s.direction);
@@ -2247,7 +2249,7 @@ document.getElementById('bm-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (!boundary || boundary.selectedIndex < 0) return;
   const it = boundary.items.find(i => i.index === boundary.selectedIndex);
-  showConfirm('Delete Boundary', 'Delete the ' + (it ? it.boundaryType : 'selected') + ' boundary? This cannot be undone.',
+  showConfirm(tr('Delete Boundary'), tr('Delete the {type} boundary? This cannot be undone.', { type: it ? it.boundaryType : tr('selected', {}) }),
     () => transport.send('boundary.delete'));
 });
 document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.buildFromTracks'); });
@@ -2266,7 +2268,7 @@ function renderKmlBoundary() {
     row.querySelector('.fb-tname').textContent = f;
     row.addEventListener('pointerdown', ev => {
       ev.stopPropagation();
-      showConfirm('Import KML Boundary', 'Import "' + f + '" as the field boundary? This replaces the current outer boundary.',
+      showConfirm(tr('Import KML Boundary'), tr('Import "{file}" as the field boundary? This replaces the current outer boundary.', { file: f }),
         () => { transport.send('boundary.importKmlFile|' + f); lnCloseAll(); });
     });
     list.appendChild(row);
@@ -2330,11 +2332,11 @@ function populateScreenAlerts() {
 const vcPanel = document.getElementById('vehiclecfg'), vcName = document.getElementById('vc-name');
 // Hitch-type labels (mirrors ConfigurationViewModel.HitchTypeOptions); value = code =
 // index − 1 (code −1 → "Not available").
-const HITCH_OPTS = ['Not available', 'Unknown', 'ISO 6489-3 Tractor drawbar',
-  'ISO 730 Three-point-hitch semi-mounted', 'ISO 730 Three-point-hitch mounted',
-  'ISO 6489-1 Hitch-hook', 'ISO 6489-2 Clevis coupling 40', 'ISO 6489-4 Piton type coupling',
-  'ISO 6489-5 CUNA hitch', 'ISO 24347 Ball type hitch', 'Chassis Mounted - Self-Propelled',
-  'ISO 5692-2 Pivot wagon hitch'];
+const HITCH_OPTS = [tr('Not available'), tr('Unknown'), tr('ISO 6489-3 Tractor drawbar'),
+  tr('ISO 730 Three-point-hitch semi-mounted'), tr('ISO 730 Three-point-hitch mounted'),
+  tr('ISO 6489-1 Hitch-hook'), tr('ISO 6489-2 Clevis coupling 40'), tr('ISO 6489-4 Piton type coupling'),
+  tr('ISO 6489-5 CUNA hitch'), tr('ISO 24347 Ball type hitch'), tr('Chassis Mounted - Self-Propelled'),
+  tr('ISO 5692-2 Pivot wagon hitch')];
 const vcHitchSel = vcPanel.querySelector('.cfg-sel[data-key="vehicle.hitchType"]');
 HITCH_OPTS.forEach((label, i) => { const o = document.createElement('option'); o.value = i - 1; o.textContent = label; vcHitchSel.appendChild(o); });
 const vcFw = vcPanel.querySelector('.cfg-slider[data-key="gps.headingFusionWeight"]');
@@ -2399,7 +2401,7 @@ function populateCfgControls(panel, force) {
   for (const b of panel.querySelectorAll('.cfg-tgl')) {
     const on = !!cfgGet(b.dataset.key);
     b.classList.toggle('active', on);
-    if (!b.dataset.keepLabel) b.textContent = on ? 'On' : 'Off';
+    if (!b.dataset.keepLabel) b.textContent = on ? tr('On') : tr('Off');
   }
   for (const b of panel.querySelectorAll('.cfg-typebtn'))
     b.classList.toggle('active', String(cfgGet(b.dataset.key)) === (b.dataset.active != null ? b.dataset.active : b.dataset.val));
@@ -2431,7 +2433,7 @@ function wireTabStrip(panel, stripId) {
 wireCfgControls(vcPanel);
 vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitchSel.value));
 // Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
-const fusionLabel = w => 'GPS ' + Math.round(w * 100) + '% · IMU ' + (100 - Math.round(w * 100)) + '%';
+const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
 // Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
@@ -2505,7 +2507,7 @@ function populateToolCfg(force) {
     b.hidden = harvester && b.dataset.val !== 'front';
   if (!config || !config.tool) return;
   const t = config.tool;
-  tcName.textContent = 'Tool: ' + (profiles ? profiles.activeTool : '—');
+  tcName.textContent = tr('Tool: {name}', { name: profiles ? profiles.activeTool : '—' });
   populateCfgControls(tcPanel, force);
   if (document.activeElement !== tcHitchSel) tcHitchSel.value = t.hitchType;
   const hi = document.getElementById('tc-img-hitch');
@@ -2531,7 +2533,7 @@ function populateToolCfg(force) {
   const nZone = Math.max(1, Math.min(8, t.zones));
   if (_tcBuilt.ze !== nZone) {
     const g = document.getElementById('tc-zoneends'); g.innerHTML = '';
-    for (let i = 1; i <= nZone; i++) tcDynInput(g, i, 'Zone ' + i, 'number', inp => { const v = parseInt(inp.value); if (Number.isFinite(v)) cfgSend('tool.zoneEnd', i + ',' + v); });
+    for (let i = 1; i <= nZone; i++) tcDynInput(g, i, tr('Zone {n}', { n: i }), 'number', inp => { const v = parseInt(inp.value); if (Number.isFinite(v)) cfgSend('tool.zoneEnd', i + ',' + v); });
     _tcBuilt.ze = nZone;
   }
   for (const inp of document.querySelectorAll('#tc-zoneends input')) if (force || document.activeElement !== inp) inp.value = t.zoneRanges[+inp.dataset.idx];
@@ -2544,11 +2546,11 @@ function populateToolCfg(force) {
   if (document.activeElement !== tcSingleColor) tcSingleColor.value = hex6(t.singleCoverageColor);
   if (!_tcBuilt.pins) {
     const g = document.getElementById('tc-pins'); g.innerHTML = '';
-    for (let i = 0; i < 24; i++) tcDynInput(g, i, 'Pin ' + (i + 1), 'pin', sel => cfgSend('machine.pin', i + ',' + sel.value));
+    for (let i = 0; i < 24; i++) tcDynInput(g, i, tr('Pin {n}', { n: i + 1 }), 'pin', sel => cfgSend('machine.pin', i + ',' + sel.value));
     _tcBuilt.pins = true;
   }
   for (const sel of document.querySelectorAll('#tc-pins select')) if (document.activeElement !== sel) sel.value = config.machine.pinAssignments[+sel.dataset.idx];
-  document.getElementById('tc-totalwidth').textContent = 'Total width: ' + fmtUnit(t.totalWidth || 0, 'm');
+  document.getElementById('tc-totalwidth').textContent = tr('Total width: {width}', { width: fmtUnit(t.totalWidth || 0, 'm') });
 }
 
 // ---- AutoSteer config panel (Phase 9) — full native 9-tab surface + live Test Mode ----
@@ -2572,7 +2574,7 @@ document.getElementById('as-close').addEventListener('pointerdown', e => { e.sto
 document.getElementById('as-expand').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const exp = asPanel.classList.toggle('expanded');
-  e.currentTarget.textContent = exp ? '◀ Less' : '▶ Full';
+  e.currentTarget.textContent = exp ? tr('◀ Less') : tr('▶ Full');
 });
 // Reset → inline confirm bar (mirrors native ResetToDefaults confirmation).
 document.getElementById('as-reset').addEventListener('pointerdown', e => { e.stopPropagation(); asResetConfirm.hidden = false; });
@@ -2598,11 +2600,11 @@ function populateAutoSteer(force) {
   const a = config.autosteer;
   populateCfgControls(asPanel, force);
   // Mode title + tab icon track Pure Pursuit / Stanley.
-  asSetText('as-modetitle', a.isStanleyMode ? 'Stanley' : 'Pure Pursuit');
+  asSetText('as-modetitle', a.isStanleyMode ? tr('Stanley') : tr('Pure Pursuit'));
   const modeIc = document.getElementById('as-modetab-ic');
   if (modeIc) modeIc.src = a.isStanleyMode ? '/icons/ModeStanley.png' : '/icons/ModePurePursuit.png';
   const msw = document.getElementById('as-modeswitch');
-  if (msw) { msw.textContent = a.isStanleyMode ? 'Stanley' : 'Pure Pursuit'; msw.classList.toggle('stanley', a.isStanleyMode); }
+  if (msw) { msw.textContent = a.isStanleyMode ? tr('Stanley') : tr('Pure Pursuit'); msw.classList.toggle('stanley', a.isStanleyMode); }
   asSetText('as-wasoffset', a.wasOffset);
   // Conditional sections (data-show) mirror native enable/visibility gating.
   const show = (name, on) => { for (const el of asPanel.querySelectorAll('[data-show="' + name + '"]')) el.style.display = on ? '' : 'none'; };
@@ -2645,8 +2647,8 @@ for (const b of swPanel.querySelectorAll('.rn-gated[data-cmd]'))
 function populateSmartWas() {
   if (!statusBar) return;
   const collecting = !!statusBar.swCollecting;
-  asSetText('sw-status', collecting ? 'Collecting' : 'Stopped');
-  asSetText('sw-samples', (statusBar.swSamples || 0) + ' / 200 min');
+  asSetText('sw-status', collecting ? tr('Collecting') : tr('Stopped'));
+  asSetText('sw-samples', tr('{n} / 200 min', { n: statusBar.swSamples || 0 }));
   asSetText('sw-mean', (statusBar.swMean || 0).toFixed(2) + '°');
   asSetText('sw-median', (statusBar.swMedian || 0).toFixed(2) + '°');
   asSetText('sw-stddev', (statusBar.swStdDev || 0).toFixed(2) + '°');
@@ -2678,8 +2680,8 @@ nioSubnetBtn.addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (!iHoldControl) return; // gated; host re-checks
   const o1 = clampOct(nioO1.value), o2 = clampOct(nioO2.value), o3 = clampOct(nioO3.value);
-  showConfirm('Change Module Subnet',
-    'Set ALL connected modules to subnet ' + o1 + '.' + o2 + '.' + o3 + '.x and restart them?',
+  showConfirm(tr('Change Module Subnet'),
+    tr('Set ALL connected modules to subnet {subnet}.x and restart them?', { subnet: o1 + '.' + o2 + '.' + o3 }),
     () => transport.send('net.subnet|' + o1 + '.' + o2 + '.' + o3));
 });
 document.getElementById('nio-ntprofiles').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripProfiles(); });
@@ -2714,7 +2716,7 @@ function renderNetworkIo() {
   if (!nioO3.value && document.activeElement !== nioO3) nioO3.value = 5;
   document.getElementById('nio-hostips').textContent = s.hostIps || '—';
   document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
-  document.getElementById('nio-ntrip-status').textContent = s.ntripStatus || 'Not Connected';
+  document.getElementById('nio-ntrip-status').textContent = s.ntripStatus || tr('Not Connected');
   document.getElementById('nio-ntrip-bytes').textContent = Math.floor((s.ntripBytes || 0) / 1024).toLocaleString() + ' KB';
   nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
 }
@@ -2730,7 +2732,7 @@ document.getElementById('nt-add').addEventListener('pointerdown', e => { e.stopP
 document.getElementById('nt-edit').addEventListener('pointerdown', e => { e.stopPropagation(); const p = selectedNtProfile(); if (p) openNtripEditor(p); });
 document.getElementById('nt-del').addEventListener('pointerdown', e => {
   e.stopPropagation(); const p = selectedNtProfile();
-  if (p) showConfirm('Delete NTRIP Profile', "Delete NTRIP profile '" + p.name + "'?",
+  if (p) showConfirm(tr('Delete NTRIP Profile'), tr("Delete NTRIP profile '{name}'?", { name: p.name }),
     () => { transport.send('ntrip.delete|' + p.id); ntSelId = null; });
 });
 document.getElementById('nt-default').addEventListener('pointerdown', e => {
@@ -2763,7 +2765,7 @@ function openNtripEditor(p) {
   nteBuf = p
     ? { id: p.id, associatedFields: (p.associatedFields || []).slice() }
     : { id: '', associatedFields: [] };
-  document.getElementById('nte-title').textContent = p ? 'Edit NTRIP Profile' : 'New NTRIP Profile';
+  document.getElementById('nte-title').textContent = p ? tr('Edit NTRIP Profile') : tr('New NTRIP Profile');
   document.getElementById('nte-name').value = p ? p.name : 'New Profile';
   document.getElementById('nte-host').value = p ? p.casterHost : '';
   document.getElementById('nte-port').value = p ? p.casterPort : 2101;
@@ -2802,10 +2804,10 @@ document.getElementById('nte-test').addEventListener('pointerdown', e => {
   const mount = document.getElementById('nte-mount').value.trim();
   const user = document.getElementById('nte-user').value, pass = document.getElementById('nte-pass').value;
   const st = document.getElementById('nte-teststatus');
-  if (!host) { st.textContent = 'Error: Caster host is required'; return; }
-  if (!mount) { st.textContent = 'Error: Mount point is required'; return; }
+  if (!host) { st.textContent = tr('Error: Caster host is required'); return; }
+  if (!mount) { st.textContent = tr('Error: Mount point is required'); return; }
   _nteTestActive = true;
-  st.textContent = 'Testing connection...';
+  st.textContent = tr('Testing connection...');
   transport.send('ntrip.test|' + [host, port, mount, user, pass].join('\t'));
 });
 document.getElementById('nte-save').addEventListener('pointerdown', e => {
@@ -2831,7 +2833,7 @@ document.getElementById('nte-save').addEventListener('pointerdown', e => {
 // Fields-and-Jobs chain panel (fields table + jobs + new-job form) and New Field.
 // Reads ride the FieldOps frame; writes are field.* commands (host-driven via the real
 // StartWorkSessionDialogViewModel). Tier-1 (data management); deletes confirm client-side.
-const JOB_STATUS = ['In progress', 'Done', 'Abandoned'];
+const JOB_STATUS = [tr('In progress'), tr('Done'), tr('Abandoned')];
 let fjSelField = null, fjSelJob = null;
 
 // Field Operations fly-out: status pill + Close gating from the live scene/status.
@@ -2841,7 +2843,7 @@ function renderFieldOps() {
   if (has) {
     const fld = (scene && scene.fieldName) || '—';
     const job = statusBar && statusBar.jobName;
-    pill.textContent = 'Current: ' + fld + (job ? ' / ' + job : '');
+    pill.textContent = tr('Current: {name}', { name: fld + (job ? ' / ' + job : '') });
     pill.style.display = 'block';
   } else pill.style.display = 'none';
   document.getElementById('fo-close').classList.toggle('disabled', !has);
@@ -2912,7 +2914,7 @@ function renderFieldsAndJobs() {
       row.querySelector('.fj-jname').textContent = j.taskName;
       row.querySelector('.fj-jwt').textContent = j.workType;
       row.querySelector('.fj-jst').textContent = JOB_STATUS[j.status] || '';
-      row.querySelector('.fj-jsub').textContent = 'Last opened: ' + j.lastOpened;
+      row.querySelector('.fj-jsub').textContent = tr('Last opened: {date}', { date: j.lastOpened });
       row.addEventListener('pointerdown', ev => { ev.stopPropagation(); fjSelJob = j.taskName; renderFieldsAndJobs(); });
       jl.appendChild(row);
     }
@@ -2932,7 +2934,7 @@ document.getElementById('fj-time').addEventListener('pointerdown', e => { e.stop
 document.getElementById('fj-openonly').addEventListener('pointerdown', e => { e.stopPropagation(); if (fjSelField) { transport.send('field.openOnly|' + fjSelField); lnCloseAll(); } });
 document.getElementById('fj-deletefield').addEventListener('pointerdown', e => {
   e.stopPropagation(); if (!fjSelField) return;
-  showConfirm('Delete Field', "Delete field '" + fjSelField + "' and all its jobs?", () => { transport.send('field.deleteField|' + fjSelField); fjSelField = null; fjSelJob = null; });
+  showConfirm(tr('Delete Field'), tr("Delete field '{name}' and all its jobs?", { name: fjSelField }), () => { transport.send('field.deleteField|' + fjSelField); fjSelField = null; fjSelJob = null; });
 });
 document.getElementById('fj-resumejob').addEventListener('pointerdown', e => { e.stopPropagation(); if (fjSelField && fjSelJob) { transport.send('field.resumeJob|' + fjSelField + '\t' + fjSelJob); lnCloseAll(); } });
 document.getElementById('fj-startjob').addEventListener('pointerdown', e => {
@@ -2946,7 +2948,7 @@ document.getElementById('fj-startjob').addEventListener('pointerdown', e => {
 document.getElementById('fj-deletejob').addEventListener('pointerdown', e => {
   e.stopPropagation(); if (!fjSelField || !fjSelJob) return;
   const job = fjSelJob;
-  showConfirm('Delete Job', "Delete job '" + job + "' from field '" + fjSelField + "'?", () => { transport.send('field.deleteJob|' + fjSelField + '\t' + job); fjSelJob = null; });
+  showConfirm(tr('Delete Job'), tr("Delete job '{job}' from field '{field}'?", { job, field: fjSelField }), () => { transport.send('field.deleteJob|' + fjSelField + '\t' + job); fjSelJob = null; });
 });
 // New Field chain panel (Creation column)
 document.getElementById('fj-newfield').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('newfield', 'ln-fieldops', () => { document.getElementById('nf-name').value = ''; renderNewField(); }); });
@@ -2960,8 +2962,8 @@ function renderNewField() {
   const lat = hasFix ? statusBar.lat : 40.7128, lon = hasFix ? statusBar.lon : -74.0060;
   document.getElementById('nf-pos').textContent = lat.toFixed(8) + ', ' + lon.toFixed(8);
   document.getElementById('nf-poshint').textContent = hasFix
-    ? 'The field is created at this position.'
-    : 'No GPS fix — a default origin will be used.';
+    ? tr('The field is created at this position.')
+    : tr('No GPS fix — a default origin will be used.');
 }
 document.getElementById('nf-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
 document.getElementById('nf-create').addEventListener('pointerdown', e => {
@@ -3038,7 +3040,7 @@ function renderResumeJob() {
     row.querySelector('.fj-jname').textContent = j.taskName;
     row.querySelector('.fj-jwt').textContent = j.fieldName;
     row.querySelector('.fj-jst').textContent = JOB_STATUS[j.status] || '';
-    row.querySelector('.fj-jsub').textContent = 'Last opened: ' + j.lastOpened;
+    row.querySelector('.fj-jsub').textContent = tr('Last opened: {date}', { date: j.lastOpened });
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('field.resumeJob|' + j.fieldName + '\t' + j.taskName); lnCloseAll(); });
     list.appendChild(row);
   }
@@ -3083,7 +3085,7 @@ function renderAgUpload() {
     const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = aguSel.has(f.name);
     cb.addEventListener('change', () => { if (cb.checked) aguSel.add(f.name); else aguSel.delete(f.name); });
     const nm = document.createElement('span'); nm.className = 'agu-name'; nm.textContent = f.name;
-    const bd = document.createElement('span'); bd.className = 'agu-bd ' + (f.hasBoundary ? 'ok' : 'no'); bd.textContent = f.hasBoundary ? 'Has boundary' : 'No boundary';
+    const bd = document.createElement('span'); bd.className = 'agu-bd ' + (f.hasBoundary ? 'ok' : 'no'); bd.textContent = f.hasBoundary ? tr('Has boundary') : tr('No boundary');
     row.appendChild(cb); row.appendChild(nm); row.appendChild(bd); list.appendChild(row);
   }
   document.getElementById('agu-status').textContent = agShare ? (agShare.status || '') : '';
@@ -3132,7 +3134,7 @@ document.getElementById('ln-filemenu').addEventListener('pointerdown', e => {
 for (const b of document.querySelectorAll('.fm-back'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('filemenu', 'ln-filemenu'); });
 document.getElementById('fm-language').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('language', 'ln-filemenu', renderLanguage); });
-document.getElementById('fm-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm('Reset All Settings', 'Reset all settings to their defaults? This cannot be undone.', () => transport.send('app.resetSettings')); });
+document.getElementById('fm-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm(tr('Reset All Settings'), tr('Reset all settings to their defaults? This cannot be undone.'), () => transport.send('app.resetSettings')); });
 document.getElementById('fm-appsettings').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('appsettings', 'ln-filemenu', renderAppSettings); });
 document.getElementById('fm-viewsettings').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('viewsettings', 'ln-filemenu', renderViewSettings); });
 document.getElementById('fm-logviewer').addEventListener('pointerdown', e => { e.stopPropagation(); logViewerParent = 'filemenu'; lnOpen('logviewer', 'ln-filemenu', renderLogViewer); });
@@ -3153,7 +3155,7 @@ function renderAppSettings() {
   for (const dir of (appInfo ? appInfo.directories : [])) {
     const row = document.createElement('div'); row.className = 'as-dir';
     row.innerHTML = '<div class="as-dirname"></div><div class="as-dirpath"></div>';
-    row.querySelector('.as-dirname').textContent = dir.name + (dir.exists ? '' : ' (missing)');
+    row.querySelector('.as-dirname').textContent = dir.exists ? dir.name : tr('{name} (missing)', { name: dir.name });
     row.querySelector('.as-dirpath').textContent = dir.path;
     dl.appendChild(row);
   }
@@ -3177,7 +3179,7 @@ function renderLanguage() {
 // View All Settings — read-only tree rendered from the config frame the client already has.
 function renderViewSettings() {
   const box = document.getElementById('vs-tree'); box.innerHTML = '';
-  if (!config) { box.textContent = 'Loading…'; return; }
+  if (!config) { box.textContent = tr('Loading…'); return; }
   const groups = { Vehicle: config.vehicle, GPS: config.gps, Roll: config.roll, Tool: config.tool, 'U-Turn': config.uturn, Tram: config.tram, Machine: config.machine, Display: config.display, AutoSteer: config.autosteer };
   for (const name in groups) {
     const obj = groups[name]; if (!obj) continue;
@@ -3233,7 +3235,7 @@ function renderHotkeys() {
     r.innerHTML = '<span class="hk-label"></span><button class="hk-key"></button>';
     r.querySelector('.hk-label').textContent = hk.label;
     const kb = r.querySelector('.hk-key');
-    kb.textContent = hkCapture === hk.action ? 'Press a key…' : (hk.key || '—');
+    kb.textContent = hkCapture === hk.action ? tr('Press a key…') : (hk.key || '—');
     if (hkCapture === hk.action) kb.classList.add('capturing');
     kb.addEventListener('pointerdown', ev => { ev.stopPropagation(); hkCapture = hk.action; renderHotkeys(); });
     list.appendChild(r);
@@ -3247,7 +3249,7 @@ window.addEventListener('keydown', e => {
   transport.send('app.setHotkey|' + hkCapture + ':' + key);
   hkCapture = null;
 });
-document.getElementById('hk-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm('Reset Hotkeys', 'Reset all hotkeys to their defaults?', () => transport.send('app.resetHotkeys')); });
+document.getElementById('hk-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm(tr('Reset Hotkeys'), tr('Reset all hotkeys to their defaults?'), () => transport.send('app.resetHotkeys')); });
 
 // Help — external links open in a new tab.
 for (const b of document.querySelectorAll('#help .help-link'))
@@ -3255,7 +3257,7 @@ for (const b of document.querySelectorAll('#help .help-link'))
 
 // About
 function renderAbout() {
-  document.getElementById('ab-version').textContent = appInfo ? ('Version ' + appInfo.version) : '';
+  document.getElementById('ab-version').textContent = appInfo ? tr('Version {version}', { version: appInfo.version }) : '';
   document.getElementById('ab-git').textContent = appInfo ? appInfo.gitHash : '';
 }
 
@@ -3340,27 +3342,27 @@ function buildWizardContent(w) {
     case 'welcome': return head + '<div class="wz-center"><div class="wz-okcard"><div class="t">AutoSteer</div><div class="s">Configuration Wizard</div></div></div>';
     case 'vehicleType': {
       const c = (i, ic, t) => '<div class="wz-card" data-cfg="vehicle.type:' + i + '" data-activekey="vehicle.type" data-activeval="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + t + '</div></div>';
-      return head + '<div class="wz-cards">' + c(0, 'WheelbaseTractor', 'Tractor') + c(1, 'WheelbaseHarvester', 'Harvester') + c(2, 'WheelbaseArticulated', '4WD / Articulated') + '</div>';
+      return head + '<div class="wz-cards">' + c(0, 'WheelbaseTractor', tr('Tractor')) + c(1, 'WheelbaseHarvester', tr('Harvester')) + c(2, 'WheelbaseArticulated', tr('4WD / Articulated')) + '</div>';
     }
     case 'hardware': {
       const c = (i, ic, t, s) => '<div class="wz-card" data-hw="' + i + '" data-activehw="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + t + '</div><div class="s">' + s + '</div></div>';
-      return head + '<div class="wz-cards">' + c(0, 'NavigationSettings', 'GPS Only', 'Light bar guidance only') + c(1, 'AutoSteerConf', 'AutoSteer', 'Motor/valve, WAS, IMU') + c(2, 'Settings48', 'Full Setup', 'Steering + section control') + '</div>';
+      return head + '<div class="wz-cards">' + c(0, 'NavigationSettings', tr('GPS Only'), tr('Light bar guidance only')) + c(1, 'AutoSteerConf', tr('AutoSteer'), tr('Motor/valve, WAS, IMU')) + c(2, 'Settings48', tr('Full Setup'), tr('Steering + section control')) + '</div>';
     }
     case 'dimensions':
-      return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['WheelbaseTractor', 'WheelbaseHarvester', 'WheelbaseArticulated'][ty] + '.png">' + wzNum('Wheelbase', 'Front to rear axle distance', 'vehicle.wheelbase', '0.01', 'm') + '</div>' +
-        '<div class="wz-panel"><img class="dia" src="/icons/' + ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated'][ty] + '.png">' + wzNum('Track Width', 'Left to right wheel center', 'vehicle.trackWidth', '0.01', 'm') + '</div></div>';
+      return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['WheelbaseTractor', 'WheelbaseHarvester', 'WheelbaseArticulated'][ty] + '.png">' + wzNum(tr('Wheelbase'), tr('Front to rear axle distance'), 'vehicle.wheelbase', '0.01', 'm') + '</div>' +
+        '<div class="wz-panel"><img class="dia" src="/icons/' + ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated'][ty] + '.png">' + wzNum(tr('Track Width'), tr('Left to right wheel center'), 'vehicle.trackWidth', '0.01', 'm') + '</div></div>';
     case 'antenna':
       return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop'][ty] + '.png">' +
-        wzNum('Pivot Distance', 'Antenna to rear axle (+ = ahead)', 'vehicle.antennaPivot', '0.01', 'm') + wzNum('Antenna Height', 'Above ground level', 'vehicle.antennaHeight', '0.01', 'm') + '</div>' +
+        wzNum(tr('Pivot Distance'), tr('Antenna to rear axle (+ = ahead)'), 'vehicle.antennaPivot', '0.01', 'm') + wzNum(tr('Antenna Height'), tr('Above ground level'), 'vehicle.antennaHeight', '0.01', 'm') + '</div>' +
         '<div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset'][ty] + '.png"><div class="wz-fld"><label>Lateral Offset</label><div class="sub">From centerline (+ = right)</div><div class="wz-seg">' +
         '<button data-cfg="vehicle.antennaSide:left">Left</button><button data-cfg="vehicle.antennaSide:center">Center</button><button data-cfg="vehicle.antennaSide:right">Right</button></div></div></div></div>';
     case 'hwconfig':
       return head + '<div class="wz-rows">' +
-        wzSeg('Steer Enable Method', null, 'autosteer.externalEnable', [['None', 0], ['Switch', 1], ['Button', 2]]) +
-        wzSeg('Motor Driver', null, 'autosteer.motorDriver', [['IBT2', 0], ['Cytron', 1]]) +
-        wzSeg('A/D Converter', null, 'autosteer.adConverter', [['Differential', 0], ['Single', 1]]) +
-        wzTgl('Invert Steer Enable Relay', 'Inverts the relay that enables the motor', 'autosteer.invertRelays') +
-        wzTgl('Danfoss Valve', 'Enable for Danfoss hydraulic steering', 'autosteer.danfossEnabled') + '</div>';
+        wzSeg(tr('Steer Enable Method'), null, 'autosteer.externalEnable', [[tr('None'), 0], [tr('Switch'), 1], [tr('Button'), 2]]) +
+        wzSeg(tr('Motor Driver'), null, 'autosteer.motorDriver', [[tr('IBT2'), 0], [tr('Cytron'), 1]]) +
+        wzSeg(tr('A/D Converter'), null, 'autosteer.adConverter', [[tr('Differential'), 0], [tr('Single'), 1]]) +
+        wzTgl(tr('Invert Steer Enable Relay'), tr('Inverts the relay that enables the motor'), 'autosteer.invertRelays') +
+        wzTgl(tr('Danfoss Valve'), tr('Enable for Danfoss hydraulic steering'), 'autosteer.danfossEnabled') + '</div>';
     case 'roll':
       // Reuse the map's roll gauge: a green bar that rotates around (100,40) by the
       // live roll, with pink scale marks and the degree readout.
@@ -3371,43 +3373,43 @@ function buildWizardContent(w) {
         '<circle cx="100" cy="40" r="3" fill="#fff"/>' +
         '<text id="wz-roll-deg" x="100" y="32" text-anchor="middle" fill="#fff" font-size="24" font-weight="bold" font-family="system-ui,sans-serif">0.0</text>' +
         '</svg></div>' +
-        '<div class="wz-rows">' + wzTgl('Invert Roll', null, 'roll.isRollInvert') +
+        '<div class="wz-rows">' + wzTgl(tr('Invert Roll'), null, 'roll.isRollInvert') +
         '<div class="wz-row"><div class="lbl">Zero Roll</div><button class="wz-testbtn" data-act="ZeroRoll">Zero Roll</button></div>' +
         '<div class="wz-row"><div class="lbl">Roll Zero Offset</div><div class="lbl"><span data-live="rollzero">—</span></div></div></div>';
     case 'was':
-      return head + wzLive('Live Steer Angle', 'angle') +
+      return head + wzLive(tr('Live Steer Angle'), 'angle') +
         '<div class="wz-rows"><div class="wz-row"><div class="lbl">Zero WAS</div><button class="wz-testbtn" data-act="ZeroWas">Zero WAS</button></div>' +
-        wzTgl('Invert WAS', 'Enable if steering reads backwards', 'autosteer.invertWas') +
+        wzTgl(tr('Invert WAS'), tr('Enable if steering reads backwards'), 'autosteer.invertWas') +
         '<div class="wz-row"><div class="lbl">WAS Offset</div><div class="lbl"><span data-live="wasoffset">—</span> counts</div></div></div>';
     case 'motor':
-      return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Motor Test</button>' +
+      return head + wzLive(tr('Live Steer Angle'), 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Motor Test</button>' +
         '<div class="wz-hint" data-live="hint"></div><div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'maxangle':
-      return head + wzLive('Live Steer Angle', 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
+      return head + wzLive(tr('Live Steer Angle'), 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Max Angle Test</button>' +
         '<div class="wz-hint" data-live="hint"></div><div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'cpd':
-      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> (aim for ~' + fmtUnit(5, 'kmh', 0) + ')</div></div>' +
-        wzLive('Live Steer Angle', 'angle') + '</div>' + wzCircleTest(false) +
-        '<div class="wz-rows">' + wzNum('Counts Per Degree', null, 'autosteer.countsPerDegree', '1', '') + '</div>';
+      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> ' + esc(tr('(aim for ~{speed})', { speed: fmtUnit(5, 'kmh', 0) })) + '</div></div>' +
+        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest(false) +
+        '<div class="wz-rows">' + wzNum(tr('Counts Per Degree'), null, 'autosteer.countsPerDegree', '1', '') + '</div>';
     case 'ackermann':
       return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">Ackermann at 100 (neutral)</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
-        wzLive('Live Steer Angle', 'angle') + '</div>' + wzCircleTest(true) +
-        '<div class="wz-rows">' + wzNum('Ackermann', '100 = neutral', 'autosteer.ackermann', '1', '') + '</div>';
+        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest(true) +
+        '<div class="wz-rows">' + wzNum(tr('Ackermann'), tr('100 = neutral'), 'autosteer.ackermann', '1', '') + '</div>';
     case 'gains':
-      return head + '<div class="wz-rows">' + wzTgl('Guidance Algorithm (Stanley)', 'Pure Pursuit default; Stanley more responsive at low speed', 'autosteer.isStanleyMode') +
-        wzNum('Proportional Gain (Kp)', 'Start at 10, increase for faster correction', 'autosteer.proportionalGain', '1', '') +
-        wzNum('Integral Gain (Ki)', 'Start at 0, only increase for drift', 'autosteer.integralGain', '0.01', '') +
-        wzNum('Steer Response Hold', 'Look-ahead (higher = smoother)', 'autosteer.steerResponseHold', '0.1', '') +
-        wzNum('Side Hill Compensation', 'Degrees per degree of roll (0-1.0)', 'autosteer.sideHillCompensation', '0.01', '') + '</div>';
+      return head + '<div class="wz-rows">' + wzTgl(tr('Guidance Algorithm (Stanley)'), tr('Pure Pursuit default; Stanley more responsive at low speed'), 'autosteer.isStanleyMode') +
+        wzNum(tr('Proportional Gain (Kp)'), tr('Start at 10, increase for faster correction'), 'autosteer.proportionalGain', '1', '') +
+        wzNum(tr('Integral Gain (Ki)'), tr('Start at 0, only increase for drift'), 'autosteer.integralGain', '0.01', '') +
+        wzNum(tr('Steer Response Hold'), tr('Look-ahead (higher = smoother)'), 'autosteer.steerResponseHold', '0.1', '') +
+        wzNum(tr('Side Hill Compensation'), tr('Degrees per degree of roll (0-1.0)'), 'autosteer.sideHillCompensation', '0.01', '') + '</div>';
     case 'speed':
       return head + '<div class="wz-rows">' +
-        wzNum('Min Steer Speed', 'Engage above this speed', 'autosteer.minSteerSpeed', '0.1', 'kmh') +
-        wzNum('Max Steer Speed', 'Safety cutoff speed', 'autosteer.maxSteerSpeed', '0.1', 'kmh') +
-        wzTgl('Turn Sensor', 'Steering wheel encoder', 'autosteer.turnSensorEnabled') +
-        wzTgl('Pressure Sensor', 'Hydraulic stall detection', 'autosteer.pressureSensorEnabled') +
-        wzTgl('Current Sensor', 'Motor current obstruction detection', 'autosteer.currentSensorEnabled') +
-        wzTgl('Steer In Reverse', 'Allow steering while reversing', 'autosteer.steerInReverse') +
-        wzNum('Deadzone Heading', 'Heading error tolerance', 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
+        wzNum(tr('Min Steer Speed'), tr('Engage above this speed'), 'autosteer.minSteerSpeed', '0.1', 'kmh') +
+        wzNum(tr('Max Steer Speed'), tr('Safety cutoff speed'), 'autosteer.maxSteerSpeed', '0.1', 'kmh') +
+        wzTgl(tr('Turn Sensor'), tr('Steering wheel encoder'), 'autosteer.turnSensorEnabled') +
+        wzTgl(tr('Pressure Sensor'), tr('Hydraulic stall detection'), 'autosteer.pressureSensorEnabled') +
+        wzTgl(tr('Current Sensor'), tr('Motor current obstruction detection'), 'autosteer.currentSensorEnabled') +
+        wzTgl(tr('Steer In Reverse'), tr('Allow steering while reversing'), 'autosteer.steerInReverse') +
+        wzNum(tr('Deadzone Heading'), tr('Heading error tolerance'), 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
     case 'finish':
       return head + '<div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Configuration saved!</div><div class="s">Click Finish to close the wizard</div></div></div>';
     default: return head;
@@ -3417,12 +3419,12 @@ function renderWizard() {
   const w = wizard;
   if (!w) return;
   // Chrome (every frame).
-  asSetText('wz-step', 'Step ' + (w.stepIndex + 1) + ' of ' + w.totalSteps);
+  asSetText('wz-step', tr('Step {n} of {total}', { n: w.stepIndex + 1, total: w.totalSteps }));
   document.getElementById('wz-progressbar').style.width = (w.totalSteps ? (w.stepIndex + 1) / w.totalSteps * 100 : 0) + '%';
   asSetText('wz-was', (w.statusWas || 0).toFixed(1) + '°'); asSetText('wz-roll', (w.statusRoll || 0).toFixed(1) + '°');
   asSetText('wz-gps', w.statusGps || '—'); asSetText('wz-speed', fmtUnit(w.statusSpeed || 0, 'kmh', 1)); asSetText('wz-pwm', w.statusPwm | 0);
   const next = document.getElementById('wz-next');
-  next.textContent = w.isLast ? 'Finish' : 'Next';
+  next.textContent = w.isLast ? tr('Finish') : tr('Next');
   next.classList.toggle('disabled', !(w.isLast || w.canNext));
   document.getElementById('wz-back').classList.toggle('disabled', !w.canBack);
   document.getElementById('wz-skip').style.display = w.canSkip ? '' : 'none';
@@ -3435,7 +3437,7 @@ function renderWizard() {
   for (const el of wzContent.querySelectorAll('[data-activehw]'))
     el.classList.toggle('active', w.hardwareLevel === +el.dataset.activehw);
   for (const el of wzContent.querySelectorAll('[data-tglkey]')) {
-    const on = !!cfgGet(el.dataset.tglkey); el.classList.toggle('on', on); el.textContent = on ? 'On' : 'Off';
+    const on = !!cfgGet(el.dataset.tglkey); el.classList.toggle('on', on); el.textContent = on ? tr('On') : tr('Off');
   }
   for (const el of wzContent.querySelectorAll('[data-act]')) el.classList.toggle('disabled', !iHoldControl);
   const live = (k, v) => { for (const el of wzContent.querySelectorAll('[data-live="' + k + '"]')) el.textContent = v; };
@@ -3449,7 +3451,7 @@ function renderWizard() {
   live('hint', w.recordHint || '');
   const rec = document.getElementById('wz-recbtn');
   if (rec) {
-    rec.textContent = w.testActive ? 'Stop' : 'Record'; rec.dataset.act = w.testActive ? 'StopRecording' : 'StartRecording';
+    rec.textContent = w.testActive ? tr('Stop') : tr('Record'); rec.dataset.act = w.testActive ? 'StopRecording' : 'StartRecording';
     // CPD / Ackermann report whether Record can start; the hint says why not.
     if (w.stepKind === 'cpd' || w.stepKind === 'ackermann')
       rec.classList.toggle('disabled', !iHoldControl || (!w.testActive && !w.canRecord));
@@ -3548,8 +3550,8 @@ function hubUpdatePreviews() {
   if (!profiles) return;
   HUB.vehPrev.textContent = hubPreview(profiles.vehicles, HUB.vehList.value);
   HUB.toolPrev.textContent = hubPreview(profiles.tools, HUB.toolList.value);
-  HUB.summary.textContent = 'Selected: ' + (HUB.vehList.value || profiles.activeVehicle) +
-    ' / ' + (HUB.toolList.value || profiles.activeTool);
+  HUB.summary.textContent = tr('Selected: {name}', { name: (HUB.vehList.value || profiles.activeVehicle) +
+    ' / ' + (HUB.toolList.value || profiles.activeTool) });
   HUB.load.disabled = (HUB.vehList.value === profiles.activeVehicle && HUB.toolList.value === profiles.activeTool);
 }
 function refreshHub() {
@@ -3570,18 +3572,18 @@ for (const b of document.querySelectorAll('#vehtoolhub .hub-cbtn'))
     const nameInput = kind === 'vehicle' ? HUB.vehName : HUB.toolName;
     if (act === 'new') {
       const nm = (nameInput.value || '').trim();
-      if (!nm) { HUB.status.textContent = 'Type a name, then New'; return; }
-      hubSend('profile.new', kind + '\t' + nm); HUB.status.textContent = 'Creating ' + nm + '…';
+      if (!nm) { HUB.status.textContent = tr('Type a name, then New'); return; }
+      hubSend('profile.new', kind + '\t' + nm); HUB.status.textContent = tr('Creating {name}…', { name: nm });
     } else if (act === 'delete') {
       const nm = list.value;
-      if (nm) showConfirm('Delete Profile', 'Delete ' + kind + " profile '" + nm + "'?",
+      if (nm) showConfirm(tr('Delete Profile'), tr("Delete {kind} profile '{name}'?", { kind, name: nm }),
         () => hubSend('profile.delete', kind + '\t' + nm));
     } else if (act === 'rename') {
       const old = list.value, nw = (nameInput.value || '').trim();
-      if (!old || !nw) { HUB.status.textContent = 'Select a profile, type a new name, then Rename'; return; }
+      if (!old || !nw) { HUB.status.textContent = tr('Select a profile, type a new name, then Rename'); return; }
       hubSend('profile.rename', kind + '\t' + old + '\t' + nw);
     } else if (act === 'reset') {
-      showConfirm('Reset Profile', 'Reset Default ' + kind + ' profile?', () => hubSend('profile.reset', kind));
+      showConfirm(tr('Reset Profile'), tr('Reset Default {kind} profile?', { kind }), () => hubSend('profile.reset', kind));
     }
   });
 HUB.load.addEventListener('pointerdown', e => {
@@ -3613,10 +3615,10 @@ function renderRole() {
   const t = document.getElementById('sb-roletext'), d = document.getElementById('sb-roledot');
   if (!t) return;
   let label, color;
-  if (connState !== 'connected') { label = 'Disconnected'; color = '#ff5a5a'; }
-  else if (iHoldControl)         { label = 'Operator';     color = '#39FF6A'; }
-  else if (lastControl.held)     { label = 'Observer';     color = '#ff7a3d'; }
-  else                           { label = 'No operator';  color = '#9fb3cc'; }
+  if (connState !== 'connected') { label = tr('Disconnected'); color = '#ff5a5a'; }
+  else if (iHoldControl)         { label = tr('Operator');     color = '#39FF6A'; }
+  else if (lastControl.held)     { label = tr('Observer');     color = '#ff7a3d'; }
+  else                           { label = tr('No operator');  color = '#9fb3cc'; }
   t.textContent = label; t.style.color = color; d.style.background = color;
 }
 function updateControlUi() {
@@ -3982,6 +3984,12 @@ function xteText(xte) {
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
+// Arrow + text as two spans, so the arrow can take the colour of the lit cells; the
+// pass number goes on its own line below.
+const lbArrow = lbEl.appendChild(document.createElement('span'));
+const lbText = lbEl.appendChild(document.createElement('span'));
+const lbPass = lbEl.appendChild(document.createElement('div'));
+const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) { lbEl.style.display = 'none'; return; }
@@ -3993,18 +4001,21 @@ function updateLightbarText() {
     let err = tick.steerAngleError || 0;
     const dz = (tick.op && tick.op.autoSteer) ? 0.5 : 0.2;
     if (Math.abs(err) < dz) err = 0;
-    const arrow = err === 0 ? '> 0 <' : err > 0 ? '◀' : '▶';
-    lbEl.textContent = err === 0 ? '> 0 <' : `${arrow} ${Math.abs(err).toFixed(1)}°`;
+    lbArrow.textContent = err === 0 ? '' : err > 0 ? '◀ ' : '▶ ';
+    lbArrow.style.color = err > 0 ? LB_LEFT : LB_RIGHT;
+    lbText.textContent = err === 0 ? '> 0 <' : `${Math.abs(err).toFixed(1)}°`;
+    lbPass.textContent = '';
   } else {
     // Light bar: cross-track distance.
     const xte = tick.crossTrackError || 0;
     const onLine = Math.abs(xte) < 0.05;
-    const arrow = onLine ? '●' : xte > 0 ? '◀' : '▶'; // arrow = steer direction
+    lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
+    lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
     // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
     // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
-    const passTxt = tick.op && tick.op.contour ? '' : `   Pass ${Math.abs(pass) + 1}`; // no passes on a contour (#110)
-    lbEl.textContent = `${arrow} ${fmtUnit(Math.abs(xte) * 100, 'cm', 0)}${passTxt}`;
+    lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
+    lbPass.textContent = tick.op && tick.op.contour ? '' : tr('Pass {n}', { n: Math.abs(pass) + 1 }); // no passes on a contour (#110)
   }
   lbEl.style.display = 'block';
 }
@@ -4106,22 +4117,22 @@ let sbPage = 0, sbPaused = false;
 function rotatingLineText() {
   const s = statusBar; if (!s) return '';
   if (sbPage === 0) { // Field
-    if (!scene || !scene.hasField) return 'No field';
-    return 'Field: ' + (scene.fieldName || '—') + (s.jobName ? '  Job: ' + s.jobName : '');
+    if (!scene || !scene.hasField) return tr('No field');
+    return tr('Field: {name}', { name: scene.fieldName || '—' }) + (s.jobName ? '  ' + tr('Job: {name}', { name: s.jobName }) : '');
   }
   if (sbPage === 1) { // Stats
     if (!scene || !scene.hasField) return '—';
     const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
     const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
     const haPerHr = (lastTick ? lastTick.speed : 0) * 3600 * toolWidthM() / 10000;
-    return 'Done ' + fmtArea(worked) + '  Left ' + leftPct.toFixed(0) + '%  Rate ' + fmtRate(haPerHr);
+    return tr('Done {area}  Left {pct}%  Rate {rate}', { area: fmtArea(worked), pct: leftPct.toFixed(0), rate: fmtRate(haPerHr) });
   }
   const name = tick && tick.activeTrackName; // AB-line page
-  if (!name) return 'No AB Line';
+  if (!name) return tr('No AB Line');
   const h = activeTrackHeadingDeg();
-  if (h == null) return 'AB Line: ' + name;
+  if (h == null) return tr('AB Line: {name}', { name });
   const primary = ((h % 360) + 360) % 360, recip = (primary + 180) % 360;
-  return 'AB Line: ' + name + '  ' + primary.toFixed(1) + '°, ' + recip.toFixed(1) + '°';
+  return tr('AB Line: {name}', { name }) + '  ' + primary.toFixed(1) + '°, ' + recip.toFixed(1) + '°';
 }
 setInterval(() => { if (!sbPaused) sbPage = (sbPage + 1) % 3; }, 5000); // native 5 s cycle
 SB.pause.addEventListener('click', () => { sbPaused = !sbPaused; SB.pause.textContent = sbPaused ? '▶' : '❚❚'; });
@@ -4193,7 +4204,7 @@ function renderStatusBar() {
   SB.bar.style.display = 'flex';
   SB.fixDot.style.background = fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
-  SB.age.textContent = 'Age ' + (s.age != null ? s.age.toFixed(1) : '—');
+  SB.age.textContent = tr('Age {age}', { age: s.age != null ? s.age.toFixed(1) : '—' });
   SB.rot.textContent = rotatingLineText();
   // Speed from the live tick (m/s), formatted per the host's unit preference.
   const mps = lastTick ? lastTick.speed : 0;
@@ -4203,10 +4214,10 @@ function renderStatusBar() {
   SB.modAgg.style.background = moduleAggColor(s);
   const dot = (el, ok) => { el.style.background = ok ? '#22c55e' : '#6b7280'; };
   dot(SB.mGps, s.gpsOk); dot(SB.mImu, s.imuOk); dot(SB.mAs, s.autoSteerOk); dot(SB.mMa, s.machineOk);
-  SB.dGps.textContent = (s.fixText || '—') + (s.sats ? ' (' + s.sats + ' sats)' : '');
-  SB.dImu.textContent = s.imuIp || 'Not detected';
-  SB.dAs.textContent = s.autoSteerIp || 'Not detected';
-  SB.dMa.textContent = s.machineIp || 'Not detected';
+  SB.dGps.textContent = (s.fixText || '—') + (s.sats ? ' ' + tr('({n} sats)', { n: s.sats }) : '');
+  SB.dImu.textContent = s.imuIp || tr('Not detected');
+  SB.dAs.textContent = s.autoSteerIp || tr('Not detected');
+  SB.dMa.textContent = s.machineIp || tr('Not detected');
   // Heading readout (right of speed) — Tick heading is radians (0 = N, CW).
   const hdgDeg = lastTick ? (lastTick.heading * 180 / Math.PI) : null;
   SB.hdg.textContent = hdgDeg != null ? fmtHdg(hdgDeg) : '—';
@@ -4221,7 +4232,7 @@ function renderStatusBar() {
     SB.gcAge.textContent = s.age != null ? s.age.toFixed(1) : '—';
     // Incoming sentence (#157); flagged when Dual GPS is on but there's no dual heading.
     SB.gcSentence.textContent = (s.gpsSentence ? '$' + s.gpsSentence : '—')
-      + (s.dualHeadingMissing ? ' (no dual heading)' : '');
+      + (s.dualHeadingMissing ? ' ' + tr('(no dual heading)', {}) : '');
     SB.gcSentence.style.color = s.dualHeadingMissing ? 'salmon' : '';
     SB.gcHdg.textContent = hdgDeg != null ? (((hdgDeg % 360) + 360) % 360).toFixed(1) + '°' : '—';
     SB.gcRoll.textContent = (tick && typeof tick.roll === 'number') ? tick.roll.toFixed(1) + '°' : '—';
@@ -4379,7 +4390,7 @@ function renderRightNav() {
   RN.root.style.display = 'flex';
   // Dim + hint when we don't hold control (buttons are no-ops then; the host also gates).
   RN.root.classList.toggle('locked', !iHoldControl);
-  if (RN.readonly) RN.readonly.textContent = iHoldControl ? '' : 'observing';
+  if (RN.readonly) RN.readonly.textContent = iHoldControl ? '' : tr('observing');
   // State carried by the icon image (native uses the same On/Off/Gray PNGs).
   rnIcon(RN.contourI, op.contour ? 'ContourOn.png' : 'ContourOff.png');
   // Contour lock shows only in contour mode, and U-turn hides then (AgOpenGPS) (#110).
@@ -4466,25 +4477,25 @@ function renderCampad() {
 const CHART_WINDOW = 20; // seconds (IChartDataService.TimeWindowSeconds default)
 const CHARTS = {
   steer: {
-    title: 'Steer', yLabel: 'deg', minY: -40, maxY: 40, step: 10, auto: false,
+    title: tr('Steer'), yLabel: 'deg', minY: -40, maxY: 40, step: 10, auto: false,
     series: [
       // AgOpenGPS FormGraphSteer: set vs actual angle. PWM (0–255) doesn't belong on a
       // ±40° scale (#111).
-      { name: 'Set Angle', color: '#E05020', pts: [] },
-      { name: 'Actual Angle', color: '#2080E0', pts: [] },
+      { name: tr('Set Angle'), color: '#E05020', pts: [] },
+      { name: tr('Actual Angle'), color: '#2080E0', pts: [] },
     ],
   },
   heading: {
-    title: 'Heading', yLabel: 'deg', minY: 0, maxY: 360, step: 45, auto: true,
+    title: tr('Heading'), yLabel: 'deg', minY: 0, maxY: 360, step: 45, auto: true,
     series: [
       // AgOpenGPS FormGraphHeading: GPS fix-to-fix vs IMU-corrected heading (#111).
-      { name: 'GPS Heading', color: '#0088AA', pts: [] },
-      { name: 'IMU Heading', color: '#D07020', pts: [] },
+      { name: tr('GPS Heading'), color: '#0088AA', pts: [] },
+      { name: tr('IMU Heading'), color: '#D07020', pts: [] },
     ],
   },
   xte: {
-    title: 'XTE', yLabel: 'm', minY: -2, maxY: 2, step: 0.5, auto: true,
-    series: [{ name: 'XTE', color: '#C020C0', pts: [] }],
+    title: tr('XTE'), yLabel: 'm', minY: -2, maxY: 2, step: 0.5, auto: true,
+    series: [{ name: tr('XTE'), color: '#C020C0', pts: [] }],
   },
 };
 const chartOpen = { steer: false, heading: false, xte: false };
@@ -4614,18 +4625,19 @@ function drawChart(cv, c) {
   // Title (top-left of chart area).
   ctx.fillStyle = '#aeb8c8'; ctx.textAlign = 'left';
   ctx.font = '11px system-ui,sans-serif';
-  ctx.fillText(c.title, cl + 4, ctop + 11);
+  ctx.fillText(I18n.text(c.title), cl + 4, ctop + 11);
 
   // Legend (top-right, right-to-left).
   ctx.font = '9px system-ui,sans-serif';
   let lx = cr - 8;
   for (let i = c.series.length - 1; i >= 0; i--) {
     const s = c.series[i];
-    const tw = ctx.measureText(s.name).width;
+    const name = I18n.text(s.name); // drawn on the canvas, so translated here
+    const tw = ctx.measureText(name).width;
     lx -= tw;
     ctx.fillStyle = s.color;
     ctx.textAlign = 'left';
-    ctx.fillText(s.name, lx, ctop + 9);
+    ctx.fillText(name, lx, ctop + 9);
     ctx.strokeStyle = s.color; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(lx - 14, ctop + 6); ctx.lineTo(lx - 4, ctop + 6); ctx.stroke();
     lx -= 22;
@@ -4667,7 +4679,7 @@ function renderRollCorr() {
   const off = document.getElementById('rc-offset');
   if (off) off.textContent = (typeof roll.rollZero === 'number' ? roll.rollZero : 0).toFixed(2) + '°';
   const inv = document.getElementById('rc-invert');
-  if (inv) { const on = !!roll.isRollInvert; inv.classList.toggle('on', on); inv.textContent = on ? 'On' : 'Off'; }
+  if (inv) { const on = !!roll.isRollInvert; inv.classList.toggle('on', on); inv.textContent = on ? tr('On') : tr('Off'); }
 }
 
 // Offset Fix: reflect the live drift offset into the manual inputs (unless the user is
@@ -4722,9 +4734,9 @@ function renderRecPath() {
   if (document.activeElement !== nameIn && r.recordedPathName) nameIn.value = r.recordedPathName;
   // Playback tab.
   document.getElementById('rp-playimg').src = r.isPlaying ? '/icons/RecPathStop.png' : '/icons/RecPathPlay.png';
-  document.getElementById('rp-playlbl').textContent = r.isPlaying ? 'Stop' : 'Play';
+  document.getElementById('rp-playlbl').textContent = r.isPlaying ? tr('Stop') : tr('Play');
   document.getElementById('rp-playbtn').classList.toggle('disabled', !iHoldControl);
-  document.getElementById('rp-resumelbl').textContent = r.resumeModeLabel || 'Start';
+  document.getElementById('rp-resumelbl').textContent = r.resumeModeLabel || tr('Start');
   const list = document.getElementById('rp-list'); list.innerHTML = '';
   if (!r.recFiles || !r.recFiles.length) {
     list.innerHTML = '<div class="fj-empty">No saved paths.</div>';
@@ -4739,7 +4751,7 @@ function renderRecPath() {
       });
       row.querySelector('.rp-del').addEventListener('pointerdown', ev => {
         ev.stopPropagation();
-        showConfirm('Delete Recorded Path', 'Delete "' + name + '"? This cannot be undone.', () => {
+        showConfirm(tr('Delete Recorded Path'), tr('Delete "{name}"? This cannot be undone.', { name }), () => {
           if (recSelFile === name) recSelFile = null;
           transport.send('recpath.delete|' + name);
         });
@@ -4765,8 +4777,8 @@ function renderBoundaryMenu() {
       + '<span class="bm-flag ' + (it.hard ? 'on' : 'off') + '" data-flag="hard"></span>';
     row.querySelector('.bm-name').textContent = it.boundaryType;
     row.querySelector('.bm-area').textContent = fmtUnit(it.areaHa, 'ha');
-    row.querySelector('[data-flag="driveThru"]').textContent = it.driveThru ? 'Yes' : '--';
-    row.querySelector('[data-flag="hard"]').textContent = it.hard ? 'Hard' : 'Soft';
+    row.querySelector('[data-flag="driveThru"]').textContent = it.driveThru ? tr('Yes') : '--';
+    row.querySelector('[data-flag="hard"]').textContent = it.hard ? tr('Hard') : tr('Soft');
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); transport.send('boundary.select|' + it.index); });
     row.querySelector('[data-flag="driveThru"]').addEventListener('pointerdown', ev => {
       ev.stopPropagation(); transport.send('boundary.select|' + it.index); transport.send('boundary.driveThru');
@@ -5781,8 +5793,8 @@ function toolFootprintSk(canvas) {
   }
 }
 // Lightbar — screen-space LED strip, identical logic/geometry to the 2D
-// lightbar(). The cm/label text lives in the HUD div (no CanvasKit font bundled),
-// so here we draw the LEDs plus a directional arrow triangle. Drawn in CSS px
+// lightbar(). The arrow + cm/label text lives in the HUD div (no CanvasKit font
+// bundled), so here we draw only the LEDs. Drawn in CSS px
 // (under renderSkia's scale(dpr)), so it must run before canvas.restore().
 function lightbarSk(canvas) {
   // GuidanceBarOn is the master; SteerBarEnabled picks the mode (steer-angle error vs
@@ -5820,21 +5832,8 @@ function lightbarSk(canvas) {
     p.setColor(ckColor(on ? col : '#1c2230'));
     canvas.drawRect(CK.XYWHRect(x, top, W, H), p);
   }
-  // Directional arrow under the strip: ◀ steer-left / ▶ steer-right / ● on-line.
-  const cx = vw / 2, ay = top + H + 11;
-  p.setColor(ckColor(onLine ? '#39FF6A' : litCol));
-  if (onLine) {
-    canvas.drawCircle(cx, ay, 5, p);
-  } else {
-    const d = steerLeft ? -1 : 1; // tip points the steer direction
-    const tri = CK.Path.MakeFromCmds([
-      CK.MOVE_VERB, cx + d * 8, ay,
-      CK.LINE_VERB, cx - d * 6, ay - 6,
-      CK.LINE_VERB, cx - d * 6, ay + 6,
-      CK.CLOSE_VERB,
-    ]);
-    if (tri) { canvas.drawPath(tri, p); tri.delete(); }
-  }
+  // No arrow here: the readout under the strip (updateLightbarText) carries it, and one
+  // drawn here sat on top of that text (#219).
 }
 function renderSkia(canvas, rp) {
   canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));

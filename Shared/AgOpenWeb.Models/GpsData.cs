@@ -51,7 +51,7 @@ public class GpsData
     /// <summary>IMU pitch angle in degrees (from $PANDA field 14)</summary>
     public double ImuPitch { get; set; }
 
-    /// <summary>IMU yaw rate in degrees/second (from $PANDA field 15)</summary>
+    /// <summary>IMU yaw rate in degrees/second (field 15 of $PANDA and $PAOGI)</summary>
     public double ImuYawRate { get; set; }
 
     /// <summary>

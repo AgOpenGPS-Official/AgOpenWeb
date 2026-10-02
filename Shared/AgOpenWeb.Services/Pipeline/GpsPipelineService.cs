@@ -780,10 +780,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // renderer — pull dead-reckoned pose between GPS samples.
         if (_positionEstimator is not null)
         {
-            double yawRateRadPerSec = data.ImuValid
+            // ImuValid only says the IMU *heading* is usable; a $PAOGI fix leaves it
+            // false (the antenna heading needs no fusion) but still carries the dual
+            // roll and, with an IMU fitted, the yaw rate (#157). A zero yaw rate makes
+            // the estimator derive one from the heading change.
+            bool hasAttitude = data.ImuValid || data.HasDualHeading;
+            double yawRateRadPerSec = hasAttitude
                 ? data.ImuYawRate * Math.PI / 180.0
                 : 0.0;
-            double rollRad = data.ImuValid
+            double rollRad = hasAttitude
                 ? _roll * Math.PI / 180.0
                 : 0.0;
             long ts = Clock.Current.GetTimestamp();

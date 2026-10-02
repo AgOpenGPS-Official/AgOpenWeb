@@ -263,10 +263,11 @@ public static partial class RemoteServerWiring
             case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; store.MarkChanged(); } return;
             case "autosteer.nextGuidanceTime": if (D(out var a30)) { ast.NextGuidanceTime = a30; store.MarkChanged(); } return;
             case "autosteer.cmPerPixel": if (I(out var a31)) { ast.CmPerPixel = a31; store.MarkChanged(); } return;
-            // Light/Steer are a radio MODE pair (mutually exclusive); GuidanceBarOn is
-            // the master. Selecting one mode deselects the other (AgOpen parity).
-            case "autosteer.lightbarEnabled": ast.LightbarEnabled = B(); if (ast.LightbarEnabled) ast.SteerBarEnabled = false; store.MarkChanged(); return;
-            case "autosteer.steerBarEnabled": ast.SteerBarEnabled = B(); if (ast.SteerBarEnabled) ast.LightbarEnabled = false; store.MarkChanged(); return;
+            // AgOpenGPS: "Light bar" turns the bar on/off (isLightbarOn), "Steer bar" picks
+            // its style (isLightBarNotSteerBar). Choosing the steer bar also turns the bar
+            // on, or nothing would show (#219).
+            case "autosteer.lightbarEnabled": ast.LightbarEnabled = B(); store.MarkChanged(); return;
+            case "autosteer.steerBarEnabled": ast.SteerBarEnabled = B(); if (ast.SteerBarEnabled) ast.LightbarEnabled = true; store.MarkChanged(); return;
             case "autosteer.guidanceBarOn": ast.GuidanceBarOn = B(); store.MarkChanged(); return;
             // unknown key → ignored
         }

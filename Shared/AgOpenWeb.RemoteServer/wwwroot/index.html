@@ -134,21 +134,21 @@
     #sb-gpscard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
     #sb-gpscard .gc-k { color: var(--text-muted); font-size: 12px; }
     #sb-gpscard .gc-v { color: var(--text-2); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    /* Lightbar readout (arrow + cm + line label) — DOM overlay so it renders
-       identically under both the 2D and Skia map renderers (CanvasKit has no
+    /* Lightbar readout (arrow + cm, pass number on a second line) — DOM overlay so it
+       renders identically under both the 2D and Skia map renderers (CanvasKit has no
        bundled font). Sits just below the LED strip. */
     #lb {
       position: fixed; top: calc(74px + var(--sat)); left: 0; right: 0; text-align: center; display: none;
       color: var(--text-2); font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
-    /* Headland-distance HUD — screen-space box at top-centre (below the light bar),
+    /* Headland-distance HUD — screen-space box at top-centre (below the light bar's two lines),
        mirroring the native SkiaMapControl HUD. Green when clear, red on warning.
        Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0, AND hidden while a
        map-tap creation flow is active (updateHeadlandHud) so it doesn't clutter the top-centre
        instruction pill / draw toolbar. */
     #headland-hud {
-      position: fixed; top: calc(102px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
+      position: fixed; top: calc(120px + var(--sat)); left: 50%; transform: translateX(-50%); display: none;
       padding: 6px 18px; border-radius: 8px; border: 1px solid rgba(var(--ov),0.25);
       background: rgba(20,46,28,0.85); color: #fff; font: 700 19px ui-monospace, monospace;
       pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
@@ -167,7 +167,7 @@
     #rn-steer.not-steering { background: rgba(220,30,30,0.85); box-shadow: 0 0 0 3px #ff4040; animation: rn-ns 1s ease-in-out infinite alternate; }
     @keyframes rn-ns { from { box-shadow: 0 0 0 3px #ff4040; } to { box-shadow: 0 0 0 6px rgba(255,64,64,0.35); } }
     /* Reverse indicator (#125, AgOpenGPS DrawReverse). */
-    #reverse-badge { position: fixed; top: calc(104px + var(--sat)); left: 50%; transform: translateX(-50%);
+    #reverse-badge { position: fixed; top: calc(122px + var(--sat)); left: 50%; transform: translateX(-50%);
       display: none; padding: 6px 18px; border-radius: 999px; border: 1px solid rgba(255,90,90,0.8);
       background: rgba(70,10,10,0.9); color: #ffd0d0; font: 700 15px system-ui, sans-serif;
       letter-spacing: 0.05em; pointer-events: none; z-index: 40; }
@@ -2731,6 +2731,7 @@
   <script src="/vendor/canvaskit.js"></script>
   <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
