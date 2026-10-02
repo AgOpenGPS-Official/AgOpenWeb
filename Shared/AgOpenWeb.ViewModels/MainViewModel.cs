@@ -1277,6 +1277,11 @@ public partial class MainViewModel : ObservableObject
     {
         _dispatcher.Post(() =>
         {
+            // The module arming for a steer-wizard Free Drive test isn't a request to steer:
+            // ignore it quietly (ToggleAutoSteerCommand would refuse it anyway, #154).
+            if (IsSteerWizardOpen && !IsAutoSteerEngaged)
+                return;
+
             // Toggle autosteer when requested by module communication service
             // (e.g., from work switch or steer switch)
             ToggleAutoSteerCommand?.Execute(null);

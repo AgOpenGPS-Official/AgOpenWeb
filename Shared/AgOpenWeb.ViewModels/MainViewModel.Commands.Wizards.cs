@@ -45,17 +45,22 @@ public partial class MainViewModel
         ShowSteerWizardCommand = new RelayCommand(ShowSteerWizard);
     }
 
+    /// <summary>
+    /// True while the Steer Wizard is open. Its motor tests steer through Free Drive, so
+    /// AgOpenWeb's AutoSteer is kept off until it closes (#154): when a test ends, PGN 254
+    /// goes back to normal mode, and an engaged AutoSteer would send its guidance angle —
+    /// full lock in the field report.
+    /// </summary>
+    public bool IsSteerWizardOpen => SteerWizardViewModel != null;
+
     private void ShowSteerWizard()
     {
         // Create a new instance of the wizard
         SteerWizardViewModel = new SteerWizardViewModel(_configurationService, _dispatcher, _autoSteerService);
+        DisengageForSteerWizard();
 
         // Handle wizard close
-        SteerWizardViewModel.CloseRequested += (s, e) =>
-        {
-            if (SteerWizardViewModel != null)
-                SteerWizardViewModel.IsDialogVisible = false;
-        };
+        SteerWizardViewModel.CloseRequested += (s, e) => EndRemoteSteerWizard();
 
         // Show the wizard
         SteerWizardViewModel.IsDialogVisible = true;
@@ -68,12 +73,24 @@ public partial class MainViewModel
     /// </summary>
     public void StartRemoteSteerWizard()
     {
+        EndRemoteSteerWizard(); // a reopen replaces the wizard; stop its test first
         SteerWizardViewModel = new SteerWizardViewModel(_configurationService, _dispatcher, _autoSteerService);
+        DisengageForSteerWizard();
     }
 
     /// <summary>Tear down the remote wizard (Finish / Cancel from the browser).</summary>
     public void EndRemoteSteerWizard()
     {
+        // Cancel cannot leave a motor test running with the AutoSteer lockout lifted.
+        (SteerWizardViewModel?.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
         SteerWizardViewModel = null;
+    }
+
+    private void DisengageForSteerWizard()
+    {
+        if (!IsAutoSteerEngaged)
+            return;
+        ToggleAutoSteerCommand?.Execute(null);
+        StatusMessage = "AutoSteer disengaged for the steer wizard";
     }
 }

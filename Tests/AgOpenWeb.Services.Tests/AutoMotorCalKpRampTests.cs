@@ -56,7 +56,7 @@ public class AutoMotorCalKpRampTests
     private static SteerModuleData ModuleAt(double angleDeg, byte pwm) =>
         new SteerModuleData(
             ActualSteerAngle: angleDeg, ImuHeading: 0, ImuRoll: 0,
-            WorkSwitchActive: false, SteerSwitchActive: true,
+            WorkSwitchActive: false, SteerSwitchActive: false, // bit 1 clear: module steering
             RemoteButtonPressed: false, VwasFusionActive: false,
             PwmDisplay: pwm);
 

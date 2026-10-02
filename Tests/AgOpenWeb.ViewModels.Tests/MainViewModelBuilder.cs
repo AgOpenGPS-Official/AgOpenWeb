@@ -32,6 +32,7 @@ public class MainViewModelBuilder
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
     public IModuleCommunicationService ModuleCommunicationService { get; set; } = Substitute.For<IModuleCommunicationService>();
+    public IConfigurationService ConfigurationService { get; set; } = Substitute.For<IConfigurationService>();
     public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
 
@@ -73,7 +74,7 @@ public class MainViewModelBuilder
             polygonOffsetService: Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>(),
             turnAreaService: Substitute.For<ITurnAreaService>(),
             vehicleProfileService: VehicleProfileService,
-            configurationService: Substitute.For<IConfigurationService>(),
+            configurationService: ConfigurationService,
             autoSteerService: AutoSteerService,
             smartWasService: Substitute.For<ISmartWasCalibrationService>(),
             trackCopierService: Substitute.For<ITrackCopierService>(),

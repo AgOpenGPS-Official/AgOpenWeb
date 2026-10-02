@@ -991,6 +991,14 @@ public partial class MainViewModel
                 return;
             }
 
+            // The steer wizard drives the steering itself (#154). Every engage — screen button,
+            // web command, hotkey, the module's steer switch / button — comes through here.
+            if (!IsAutoSteerEngaged && IsSteerWizardOpen)
+            {
+                ReportFailure("AutoSteer is off while the steer wizard is open");
+                return;
+            }
+
             // Engagement has no boundary/headland preconditions.
             //  - No boundary: AB-lines-only workflow with manual sections.
             //  - Boundary but no headland: auto-uturn still works against a

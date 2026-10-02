@@ -73,12 +73,6 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     private readonly IConfigurationService _configService;
     private readonly IAutoSteerService? _autoSteerService;
     private HardwareInstalledStepViewModel? _hardwareStep;
-    private CancellationTokenSource? _cancellationTokenSource;
-
-    /// <summary>
-    /// Injectable delay function for testing. Production uses Task.Delay.
-    /// </summary>
-    internal Func<int, CancellationToken, Task> DelayFunc { get; set; } = Task.Delay;
 
     /// <summary>
     /// Injectable accessor for the live module feedback so tests can
@@ -303,7 +297,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     /// is the observed MinPWM. If the wheel turns the wrong direction
     /// (negative delta), flip <see cref="AutoSteerConfig.InvertMotor"/>
     /// and re-run the ramp once. Restore the operator's original Kp on
-    /// every exit path.
+    /// every exit path, and return to centre with AutoSteer off (#154).
     /// </summary>
     internal async Task RunKpRampAsync()
     {
@@ -313,16 +307,20 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         Progress = 0;
         CurrentKp = 0;
 
-        _cancellationTokenSource = new CancellationTokenSource();
-        var token = _cancellationTokenSource.Token;
+        var token = NewTestToken();
 
         var autoSteerConfig = _configService.Store.AutoSteer;
         int originalKp = autoSteerConfig.ProportionalGain;
 
-        _autoSteerService?.EnableFreeDrive();
-
         try
         {
+            if (!await BeginFreeDriveAsync(token))
+            {
+                Phase = CalibrationPhase.WaitingToStart;
+                PhaseResult = NotArmedText;
+                return;
+            }
+
             // Two-pass: first try the configured direction; if the wheel
             // turns the wrong way at first motion, flip InvertMotor and
             // restart the ramp from the bottom with the freshly settled
@@ -449,9 +447,9 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         }
         finally
         {
-            _autoSteerService?.SetFreeDriveAngle(0);
-            _autoSteerService?.DisableFreeDrive();
+            // Operator's Kp back first, so the return to centre isn't at the ramped gain.
             autoSteerConfig.ProportionalGain = originalKp;
+            await EndFreeDriveAsync();
         }
     }
 
@@ -462,13 +460,17 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     internal async Task RunMaxAngleMeasurementAsync()
     {
         Phase = CalibrationPhase.MeasuringMaxAngle;
-        _cancellationTokenSource = new CancellationTokenSource();
-        var token = _cancellationTokenSource.Token;
-
-        _autoSteerService?.EnableFreeDrive();
+        var token = NewTestToken();
 
         try
         {
+            if (!await BeginFreeDriveAsync(token))
+            {
+                Phase = CalibrationPhase.WaitingForMaxAngle;
+                PhaseResult = NotArmedText;
+                return;
+            }
+
             // Full right - brief hold, read angle
             _autoSteerService?.SetFreeDriveAngle(45);
             await DelayFunc(1500, token);
@@ -486,10 +488,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
             DetectedMaxAngleLeft = Math.Abs(GetCurrentSteerAngle());
             Progress = 0.83;
 
-            // Return to center
-            _autoSteerService?.SetFreeDriveAngle(0);
-            await DelayFunc(500, token);
-            _autoSteerService?.DisableFreeDrive();
+            // Return to center, then hand back with AutoSteer off
+            await EndFreeDriveAsync();
             Progress = 1.0;
 
             // Calculate max angle (conservative) - raw WAS value
@@ -503,8 +503,11 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         }
         catch (OperationCanceledException)
         {
-            _autoSteerService?.SetFreeDriveAngle(0);
-            _autoSteerService?.DisableFreeDrive();
+            // finally restores free-drive state.
+        }
+        finally
+        {
+            await EndFreeDriveAsync();
         }
     }
 
@@ -549,6 +552,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
 
     private double GetCurrentSteerAngle() => GetCurrentModuleData().ActualSteerAngle;
 
+    protected override SteerModuleData CurrentModuleData => GetCurrentModuleData();
+
     // =========================================================================
     // Lifecycle
     // =========================================================================
@@ -572,21 +577,12 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
 
     protected override void OnLeaving()
     {
-        // Cancel any running calibration
-        _cancellationTokenSource?.Cancel();
+        // Cancel any running calibration and make sure free drive is off
+        StopFreeDriveTest();
 
         UnsubscribeFromSwitchGate();
         if (_autoSteerService != null)
-        {
             _autoSteerService.StateUpdated -= OnStateUpdated;
-
-            // Ensure free drive is off
-            if (_autoSteerService.IsInFreeDriveMode)
-            {
-                _autoSteerService.SetFreeDriveAngle(0);
-                _autoSteerService.DisableFreeDrive();
-            }
-        }
 
         // Save results if calibration was completed
         if (CalibrationCompleted)
