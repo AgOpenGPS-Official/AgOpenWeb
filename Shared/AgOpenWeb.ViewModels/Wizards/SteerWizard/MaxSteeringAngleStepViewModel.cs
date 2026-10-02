@@ -303,8 +303,9 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
             return null;
         if (movedRight <= -MinLockMovementDeg && movedLeft <= -MinLockMovementDeg)
             return $"The wheels moved the opposite way (right {right:F1}°, left {left:F1}°) — check the WAS and motor direction.";
+        // Arming was checked before the test started, so the switch isn't the cause here.
         return $"The wheels didn't move (start {start:F1}°, right {right:F1}°, left {left:F1}°). " +
-               NotArmedText;
+               "The module was steering: check the valve or motor, its power, and the WAS.";
     }
 
     private Task Redo()
