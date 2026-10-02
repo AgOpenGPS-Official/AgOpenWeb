@@ -71,6 +71,17 @@ public class GpsData
     public bool ImuValid { get; set; }
 
     /// <summary>
+    /// True when <see cref="Position.Heading"/> is a dual-antenna heading ($PAOGI, or
+    /// the simulator). False for $PANDA, whose heading field is the IMU heading, so
+    /// "Dual GPS" must not use it as the antenna heading (#157; AgIO routes PANDA's
+    /// heading to imuHeading only).
+    /// </summary>
+    public bool HasDualHeading { get; set; }
+
+    /// <summary>Sentence this fix came from (#157), shown in the GPS detail card.</summary>
+    public GpsSentenceType SentenceType { get; set; }
+
+    /// <summary>
     /// Timestamp when data was received
     /// </summary>
     public DateTime Timestamp { get; set; } = DateTime.Now;

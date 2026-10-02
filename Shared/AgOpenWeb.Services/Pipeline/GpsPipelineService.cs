@@ -739,7 +739,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Receives real local easting/northing — see TMP-009 in the parking lot.
         double fusedHeading = _headingFusion.FuseHeading(
             pos.Heading, data.ImuHeading, data.ImuValid,
-            pos.Speed, posEasting, posNorthing);
+            pos.Speed, posEasting, posNorthing, data.HasDualHeading);
         pos = pos with { Heading = fusedHeading };
         // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
         // heading above already faces the way the vehicle points.

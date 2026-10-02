@@ -118,6 +118,10 @@ public partial class MainViewModel
             SatellitesInUse = simulatedData.SatellitesTracked,
             Hdop = simulatedData.Hdop,
             DifferentialAge = 0.0,
+            // The sim heading is the true heading, so "Dual GPS" may use it as the
+            // antenna heading (AgOpenGPS CSim sets headingTrueDual too, #157).
+            HasDualHeading = true,
+            SentenceType = AgOpenWeb.Models.GpsSentenceType.Simulator,
             Timestamp = Models.Timing.Clock.Current.Now
         };
 

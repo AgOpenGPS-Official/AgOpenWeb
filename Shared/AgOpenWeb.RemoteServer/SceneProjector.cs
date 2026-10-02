@@ -40,6 +40,9 @@ public sealed class SceneProjector
     // Heading chart (AgOpenGPS FormGraphHeading): GPS fix-to-fix and IMU-corrected
     // heading, degrees (IMU NaN when there's none). Host-supplied (#111).
     public System.Func<(double Gps, double Imu)>? HeadingChartProvider { get; set; }
+    // GPS source (#157): the incoming sentence ("PANDA"/"PAOGI"/"SIM", "" before any fix)
+    // and whether Dual GPS is on without a dual-antenna heading. Host-supplied.
+    public System.Func<(string Sentence, bool DualHeadingMissing)>? GpsSourceProvider { get; set; }
 
     /// <summary>Host-supplied projector for the generated tram lines (ITramLineService's
     /// ParallelTramLines — pipeline state, but the service isn't injected here). Set by the
@@ -353,6 +356,7 @@ public sealed class SceneProjector
         var c = _state.Connections;
         var cfg = _config.Connections;
         var sw = _smartWas.GetSnapshot();
+        var gpsSource = GpsSourceProvider?.Invoke() ?? ("", false);
         return new StatusDto(
             v.FixQuality,
             v.FixQualityText,
@@ -407,7 +411,9 @@ public sealed class SceneProjector
             // Dev diagnostics row: overlay gate (marker) + host control-loop latency (same
             // VehicleStateSnapshot.TotalLatencyMs the VM's GpsToPgnLatencyMs mirrors).
             _devOverlay,
-            _autoSteer.LatestSnapshot?.TotalLatencyMs ?? 0.0);
+            _autoSteer.LatestSnapshot?.TotalLatencyMs ?? 0.0,
+            gpsSource.Sentence ?? "",
+            gpsSource.DualHeadingMissing);
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved

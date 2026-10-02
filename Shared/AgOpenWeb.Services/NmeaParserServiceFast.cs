@@ -274,6 +274,8 @@ public class NmeaParserServiceFast
             SatellitesInUse = satellites,
             Hdop = hdop,
             DifferentialAge = age,
+            HasDualHeading = !isPanda,
+            SentenceType = isPanda ? GpsSentenceType.Panda : GpsSentenceType.Paogi,
             Timestamp = DateTime.UtcNow
         };
 
@@ -441,6 +443,10 @@ public class NmeaParserServiceFast
         }
 
         // Heading (field 12) and roll (field 13) — sentence-type dependent.
+        // Only PAOGI's heading is a dual-antenna heading (#157): AgIO puts PAOGI field
+        // 12 in headingTrueDual and PANDA field 12 in imuHeading.
+        state.HasDualHeading = !isPanda;
+        state.SentenceType = isPanda ? GpsSentenceType.Panda : GpsSentenceType.Paogi;
         var headingField = GetField(data, commas, FIELD_HEADING);
         var rollField = GetField(data, commas, FIELD_ROLL);
 
@@ -466,6 +472,7 @@ public class NmeaParserServiceFast
             state.ImuValid = imuValid;
             // Seed primary heading from IMU so first-cycle / standstill has a
             // sensible default. Pipeline's fix-to-fix overrides at any real speed.
+            // Not a dual heading: HasDualHeading is false, so "Dual GPS" ignores it.
             state.Heading = imuValid ? state.ImuHeading : 0;
 
             if (imuValid && rollField.Length > 0

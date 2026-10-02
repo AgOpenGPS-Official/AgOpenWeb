@@ -358,6 +358,36 @@ public class NmeaParserServiceFastTests
         Assert.That(state.ImuHeading, Is.EqualTo(0));
     }
 
+    // #157: only PAOGI's heading is a dual-antenna heading (AgIO: PAOGI field 12 →
+    // headingTrueDual, PANDA field 12 → imuHeading).
+    [Test]
+    public void ParseIntoState_DualHeadingFlag_OnlyForPaogi()
+    {
+        var state = new VehicleState();
+        NmeaParserServiceFast.ParseIntoState(BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 95.0, roll: 0, pitch: 0, yawRate: 0), ref state, ConfigurationStore.Instance);
+        Assert.That(state.HasDualHeading, Is.False, "PANDA's heading is the IMU's");
+        Assert.That(state.SentenceType, Is.EqualTo(GpsSentenceType.Panda));
+
+        NmeaParserServiceFast.ParseIntoState(BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 95.0, roll: 0, pitch: 0, yawRate: 0), ref state, ConfigurationStore.Instance);
+        Assert.That(state.HasDualHeading, Is.True);
+        Assert.That(state.SentenceType, Is.EqualTo(GpsSentenceType.Paogi));
+    }
+
+    [Test]
+    public void ParseSpan_DualHeadingFlag_OnlyForPaogi()
+    {
+        _parser.ParseSpan(BuildPandaBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 95.0, roll: 0, pitch: 0, yawRate: 0));
+        Assert.That(_lastGpsData!.HasDualHeading, Is.False);
+        Assert.That(_lastGpsData.SentenceType, Is.EqualTo(GpsSentenceType.Panda));
+
+        _parser.ParseSpan(BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5, 90.0, 0, 0, 0));
+        Assert.That(_lastGpsData!.HasDualHeading, Is.True);
+        Assert.That(_lastGpsData.SentenceType, Is.EqualTo(GpsSentenceType.Paogi));
+    }
+
     // Upstream AgValoniaGPS issue #486: variable-width (no leading-zero) $PAOGI
     // heading/roll fields like "3.7" / "-0.65" displayed as 0 — only 3-integer-digit
     // values (>= 100) parsed. Our parser splits on commas (GetField) and uses

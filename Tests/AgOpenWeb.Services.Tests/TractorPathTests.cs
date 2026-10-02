@@ -187,7 +187,7 @@ public class TractorPathTests
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                                  Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                                  Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0)); // Pass through GPS heading
 
         return new GpsPipelineService(
