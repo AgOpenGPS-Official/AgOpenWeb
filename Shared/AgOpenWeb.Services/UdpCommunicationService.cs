@@ -21,6 +21,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using AgOpenWeb.Models;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
@@ -83,13 +85,23 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private const int DATA_TIMEOUT_STEER_MACHINE_MS = 100; // 50Hz data = 20ms cycle, allow 100ms
     private const int DATA_TIMEOUT_IMU_MS = 300; // 10Hz data = 100ms cycle, allow 300ms
 
+    // #169 diagnostics: log once when GPS NMEA or steer PGN 253 stops for over 2 s and once
+    // when it resumes (with the gap), so a bug-report log shows what the board stopped sending.
+    private const string SourceGpsNmea = "GPS NMEA";
+    private const string SourceSteerPgn253 = "steer PGN 253";
+    private readonly SourceSilenceMonitor _silence = new();
+    private readonly ILogger<UdpCommunicationService> _logger;
+
     public bool IsConnected { get; private set; }
     public string? LocalIPAddress { get; private set; }
 
-    public UdpCommunicationService(ILocalNetworkInfoProvider localNetworkInfoProvider)
+    public UdpCommunicationService(
+        ILocalNetworkInfoProvider localNetworkInfoProvider,
+        ILogger<UdpCommunicationService>? logger = null)
     {
         _localNetworkInfoProvider = localNetworkInfoProvider
             ?? throw new ArgumentNullException(nameof(localNetworkInfoProvider));
+        _logger = logger ?? NullLogger<UdpCommunicationService>.Instance;
     }
 
     /// <summary>
@@ -160,6 +172,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         _udpSocket?.Dispose();
         _udpSocket = null;
         IsConnected = false;
+        _silence.Reset();
 
         await Task.CompletedTask;
     }
@@ -273,10 +286,15 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             catch { }
         }
 
-        // Keep the task alive until cancellation
+        // Keep the task alive until cancellation; also the 100 ms tick for silence checks.
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(100, cancellationToken);
+            foreach (var (name, silentMs, from) in _silence.CheckSilences())
+            {
+                _logger.LogWarning("[UDP] no {Source} for {Sec:F1}s (last from {From})",
+                    name, silentMs / 1000.0, from ?? "?");
+            }
         }
     }
 
@@ -367,6 +385,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             }
             else if (data.Length > 0 && data[0] == (byte)'$')
             {
+                MarkSourceSeen(SourceGpsNmea, remoteEndPoint);
+
                 // Text NMEA sentence (starts with $)
                 // Fire event with PGN 0 to indicate NMEA text
                 DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
@@ -488,6 +508,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.AUTOSTEER_DATA2:      // 254
             case PgnNumbers.STEER_SETTINGS:       // 252
             case PgnNumbers.STEER_CONFIG:         // 251
+                if (pgn == PgnNumbers.AUTOSTEER_DATA)
+                    MarkSourceSeen(SourceSteerPgn253, remoteEndPoint);
                 _lastDataFromAutoSteer = now;
                 _autoSteerIp = remoteIp;
                 _lastModuleResponse = DateTime.UtcNow;
@@ -513,6 +535,15 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 // Log unknown PGNs to help debug
                 System.Diagnostics.Debug.WriteLine($"Unknown PGN {pgn} (0x{pgn:X2}) received");
                 break;
+        }
+    }
+
+    private void MarkSourceSeen(string source, IPEndPoint remoteEndPoint)
+    {
+        if (_silence.MarkSeen(source, remoteEndPoint.Address.ToString()) is { } gapMs)
+        {
+            _logger.LogWarning("[UDP] {Source} resumed after {Sec:F1}s silence (from {From})",
+                source, gapMs / 1000.0, remoteEndPoint.Address);
         }
     }
 
