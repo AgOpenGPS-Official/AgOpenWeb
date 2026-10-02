@@ -4,8 +4,9 @@ Cross-platform agricultural GPS guidance — a rewrite of [AgOpenGPS](https://gi
 
 ## Download & run
 
-Grab the latest build from the [**Releases**](../../releases) page. Everything is a
-self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
+Grab a versioned build from the [**Releases**](../../releases) page, or the
+[**Nightly**](../../releases/tag/nightly) for the newest fixes (rebuilt from `develop` daily and
+on demand; beta testers should use this one). Everything is a self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
 every mode the host also serves `http://<host>:5174` on the LAN, so cab phones/tablets connect
 in a browser.
 
