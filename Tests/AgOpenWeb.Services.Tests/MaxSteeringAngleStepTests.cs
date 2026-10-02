@@ -164,15 +164,15 @@ public class MaxSteeringAngleStepTests
     }
 
     [Test]
-    public void Hint_warns_when_the_module_is_not_steering()
+    public void Hint_is_quiet_before_Start_even_though_the_module_reports_not_steering()
     {
+        // AIO v4 reports "not steering" whenever the app sends status 0, so before Free Drive
+        // the bit says nothing about the steer switch (#154).
         _autoSteer.LastSteerData.Returns(SteerModuleData.Empty with { SteerSwitchActive = true });
         var step = new MaxSteeringAngleStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
         SetActive(step, true);
-        Assert.That(step.RecordHint, Does.Contain("isn't steering"));
-
-        _autoSteer.LastSteerData.Returns(SteerModuleData.Empty with { SteerSwitchActive = false });
         Assert.That(step.RecordHint, Is.Empty);
+        Assert.That(step.CanStartTest, Is.True);
     }
 
     private static void SetActive(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel step, bool active) =>

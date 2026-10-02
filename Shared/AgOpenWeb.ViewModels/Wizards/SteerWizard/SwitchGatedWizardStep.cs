@@ -4,48 +4,56 @@
 // Licensed under GNU GPL v3. See LICENSE.md.
 
 using System;
-using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 
+using AgOpenWeb.Models;
 using AgOpenWeb.Services.Interfaces;
-
-using Avalonia.Threading;
 
 namespace AgOpenWeb.ViewModels.Wizards.SteerWizard;
 
 /// <summary>
-/// Base for steer-wizard calibration steps that must respect the
-/// physical Steer-Switch safety gate. When the operator has
-/// <c>Tool.IsSteerSwitchEnabled = true</c>, the step is held off until
-/// the live PGN 253 reports the switch active; when that flag is
-/// false, the gate is bypassed entirely so operators without a wired
-/// switch can still calibrate.
-///
-/// Subclasses get <see cref="WaitingForPhysicalSwitch"/>,
-/// <see cref="PhysicalSwitchPromptText"/>, <see cref="HasHardware"/>
-/// and <see cref="CanStartTest"/> for free. They must:
-///   1. Call <see cref="SubscribeToSwitchGate"/> in their
-///      <c>OnEntering</c> override and
-///      <see cref="UnsubscribeFromSwitchGate"/> in <c>OnLeaving</c>.
-///   2. Bind the Start button's <c>IsEnabled</c> to
-///      <see cref="CanStartTest"/> in AXAML.
-///   3. Display <see cref="PhysicalSwitchPromptText"/> when
-///      <see cref="WaitingForPhysicalSwitch"/> is true.
-///
-/// The gate recomputes on PGN 253 transitions
-/// (<see cref="IAutoSteerService.StateUpdated"/>) and on
-/// <c>Tool.IsSteerSwitchEnabled</c> changes via
-/// <c>INotifyPropertyChanged</c>. All updates are marshalled to the
-/// UI thread (<see cref="Dispatcher.UIThread"/>) so Avalonia bindings
-/// refresh correctly even when the events fire on the UDP receive
-/// thread.
+/// Base for steer-wizard steps that drive the steering themselves through Free Drive
+/// (motor calibration, maximum steering angle). It owns the Free Drive lifecycle so every
+/// test starts and ends the same way (#154):
+/// <list type="bullet">
+/// <item><see cref="BeginFreeDriveAsync"/> turns Free Drive on at 0°, waits
+/// <see cref="ArmSettleMs"/>, then checks the module is armed — the steer switch is on. PGN 253
+/// byte 11 bit 1 (SteerSwitchActive, AgOpenGPS steerSwitchHigh) is set when the module is NOT
+/// steering. AIO v4 also reports "not steering" whenever the app sends status 0, so the bit
+/// only means "switch off" once Free Drive (status 1) has been going for a moment; it is never
+/// judged before Start. AgOpenGPS only jogs when its steer circle is yellow (module armed,
+/// AutoSteer off) — FormSteerWiz CheckSteerSwitch.</item>
+/// <item><see cref="EndFreeDriveAsync"/> holds 0° until the WAS is back near centre (or
+/// <see cref="CenterHoldTimeoutMs"/> passes), then <see cref="ReleaseFreeDrive"/> hands PGN 254
+/// back with AgOpenWeb's AutoSteer off — never to an engaged AutoSteer, whose guidance angle
+/// could be full lock.</item>
+/// </list>
+/// AgOpenWeb's own AutoSteer is never needed (or allowed) here: MainViewModel keeps it off
+/// while the wizard is open.
 /// </summary>
 public abstract class SwitchGatedWizardStep : WizardStepViewModel
 {
+    /// <summary>How long Free Drive runs before the module's arming is judged.</summary>
+    internal const int ArmSettleMs = 500;
+    /// <summary>End of a test: give up waiting for the wheels to centre after this long.</summary>
+    internal const int CenterHoldTimeoutMs = 3000;
+    /// <summary>End of a test: the wheels count as centred within this many degrees.</summary>
+    internal const double CenterToleranceDeg = 1.0;
+    private const int CenterPollMs = 100;
+
+    internal const string NotArmedText =
+        "The steer module isn't steering — turn on the steer switch, then try again.";
+
     protected IConfigurationService ConfigService { get; }
     protected IAutoSteerService? AutoSteerService { get; }
 
-    private bool _gateSubscribed;
     private readonly IUiDispatcher _dispatcher;
+    private bool _gateSubscribed;
+    private CancellationTokenSource? _testCts;
+    private bool _freeDriveOn;
+    private bool _armSettled;
+    private string _lastHint = "";
 
     protected SwitchGatedWizardStep(IConfigurationService configService,
         IAutoSteerService? autoSteerService, IUiDispatcher dispatcher)
@@ -55,49 +63,113 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
         _dispatcher = dispatcher;
     }
 
+    /// <summary>Injectable delay function for testing. Production uses Task.Delay.</summary>
+    internal Func<int, CancellationToken, Task> DelayFunc { get; set; } = Task.Delay;
+
     /// <summary>True when hardware is connected and sending data.</summary>
     public bool HasHardware => AutoSteerService != null;
 
-    private bool _waitingForPhysicalSwitch;
     /// <summary>
-    /// True when <c>Tool.IsSteerSwitchEnabled</c> is set but the live
-    /// PGN 253 reports the physical switch is OFF. While true, the
-    /// Start button must stay disabled and the prompt visible.
+    /// Gate for the Start button. It no longer waits on the steer switch: the module's arming
+    /// can only be read once Free Drive is on, so Start checks it and says why it stopped.
     /// </summary>
-    public bool WaitingForPhysicalSwitch
+    public bool CanStartTest => HasHardware;
+
+    /// <summary>Live module feedback; steps with an injectable reader override this.</summary>
+    protected virtual SteerModuleData CurrentModuleData =>
+        AutoSteerService?.LastSteerData ?? SteerModuleData.Empty;
+
+    /// <summary>Live WAS angle; steps with an injectable reader override this.</summary>
+    protected virtual double CurrentWasAngle => CurrentModuleData.ActualSteerAngle;
+
+    /// <summary>PGN 253 says the module isn't steering (steer switch off / not armed).</summary>
+    private bool ModuleNotSteering => CurrentModuleData.SteerSwitchActive;
+
+    /// <summary>
+    /// Live warning under Start: during a test the module reports it isn't steering, so the
+    /// wheels won't follow (switch turned off, or a kickout).
+    /// </summary>
+    public string RecordHint =>
+        _freeDriveOn && _armSettled && ModuleNotSteering ? NotArmedText : "";
+
+    /// <summary>Fresh cancellation for a test run; <see cref="StopFreeDriveTest"/> cancels it.</summary>
+    protected CancellationToken NewTestToken()
     {
-        get => _waitingForPhysicalSwitch;
-        private set
-        {
-            if (SetProperty(ref _waitingForPhysicalSwitch, value))
-            {
-                OnPropertyChanged(nameof(PhysicalSwitchPromptText));
-                OnPropertyChanged(nameof(CanStartTest));
-            }
-        }
+        _testCts = new CancellationTokenSource();
+        return _testCts.Token;
     }
 
     /// <summary>
-    /// Operator-facing prompt explaining why <see cref="CanStartTest"/>
-    /// is false. Empty when the gate is open so AXAML can drive
-    /// visibility off <c>StringConverters.IsNotNullOrEmpty</c>.
+    /// Free Drive on at 0°, wait <see cref="ArmSettleMs"/>, then check the module is armed.
+    /// Returns false (Free Drive already released) when it isn't — the caller reports
+    /// <see cref="NotArmedText"/>. Callers must run this inside the try whose finally calls
+    /// <see cref="EndFreeDriveAsync"/>.
     /// </summary>
-    public virtual string PhysicalSwitchPromptText => WaitingForPhysicalSwitch
-        ? "Turn the physical AutoSteer switch (Steer Switch) ON to start. The host is configured to require it."
-        : string.Empty;
+    protected async Task<bool> BeginFreeDriveAsync(CancellationToken token)
+    {
+        _armSettled = false;
+        _freeDriveOn = true;
+        AutoSteerService?.EnableFreeDrive(); // status 1, 0°
+        await DelayFunc(ArmSettleMs, token);
+        _armSettled = true;
+        if (!ModuleNotSteering)
+            return true;
+        ReleaseFreeDrive();
+        return false;
+    }
 
     /// <summary>
-    /// Composite gate for the Start button. Subclasses should bind the
-    /// button's <c>IsEnabled</c> to this so the button is greyed when
-    /// either hardware is missing or the switch is currently off.
+    /// End of a test: command 0° and hold it until the WAS is within
+    /// <see cref="CenterToleranceDeg"/> of centre or <see cref="CenterHoldTimeoutMs"/> passes,
+    /// then release. Not cancellable — it is the cleanup path — but returns at once if
+    /// Free Drive was already released (step left, wizard closed).
     /// </summary>
-    public bool CanStartTest => HasHardware && !WaitingForPhysicalSwitch;
+    protected async Task EndFreeDriveAsync()
+    {
+        if (!_freeDriveOn)
+            return;
+        AutoSteerService?.SetFreeDriveAngle(0);
+        for (int elapsed = 0; _freeDriveOn && elapsed < CenterHoldTimeoutMs; elapsed += CenterPollMs)
+        {
+            if (Math.Abs(CurrentWasAngle) <= CenterToleranceDeg)
+                break;
+            await DelayFunc(CenterPollMs, CancellationToken.None);
+        }
+        ReleaseFreeDrive();
+    }
 
     /// <summary>
-    /// Hook into AutoSteerService + ConfigStore.Tool so the gate keeps
-    /// pace with both the live module feedback and the operator's
-    /// config-dialog edits. Idempotent — safe to call from OnEntering
-    /// without a "first time" guard.
+    /// Hand PGN 254 back to normal mode now. AgOpenWeb's AutoSteer goes off first: normal mode
+    /// sends status + guidance angle, and an engaged AutoSteer off its line asks for full lock —
+    /// the jerk to the right in #154. MainViewModel blocks engaging it while the wizard is
+    /// open; this is the backstop.
+    /// </summary>
+    protected void ReleaseFreeDrive()
+    {
+        _freeDriveOn = false;
+        _armSettled = false;
+        if (AutoSteerService == null)
+            return;
+        if (AutoSteerService.IsEngaged)
+            AutoSteerService.Disengage();
+        AutoSteerService.SetFreeDriveAngle(0);
+        AutoSteerService.DisableFreeDrive();
+    }
+
+    /// <summary>
+    /// Stop a running test and release Free Drive at once (the step is being left or the
+    /// wizard closed). The test's own cleanup then finds Free Drive already off.
+    /// </summary>
+    public void StopFreeDriveTest()
+    {
+        _testCts?.Cancel();
+        if (_freeDriveOn || AutoSteerService?.IsInFreeDriveMode == true)
+            ReleaseFreeDrive();
+    }
+
+    /// <summary>
+    /// Follow PGN 253 so <see cref="RecordHint"/> refreshes for bindings. Idempotent — safe
+    /// to call from OnEntering without a "first time" guard.
     /// </summary>
     protected void SubscribeToSwitchGate()
     {
@@ -107,15 +179,11 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
 
         if (AutoSteerService != null)
             AutoSteerService.StateUpdated += OnSwitchGateStateUpdated;
-        ConfigService.Store.Tool.PropertyChanged += OnSwitchGateToolPropertyChanged;
-
-        UpdatePhysicalSwitchGate();
     }
 
     /// <summary>
-    /// Mirror of <see cref="SubscribeToSwitchGate"/>. Subclasses must
-    /// call this from <c>OnLeaving</c> so the wizard step doesn't leak
-    /// handlers onto the singletons it observes.
+    /// Mirror of <see cref="SubscribeToSwitchGate"/>. Subclasses must call this from
+    /// <c>OnLeaving</c> so the step doesn't leak handlers onto the singletons it observes.
     /// </summary>
     protected void UnsubscribeFromSwitchGate()
     {
@@ -125,52 +193,24 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
 
         if (AutoSteerService != null)
             AutoSteerService.StateUpdated -= OnSwitchGateStateUpdated;
-        ConfigService.Store.Tool.PropertyChanged -= OnSwitchGateToolPropertyChanged;
     }
 
     private void OnSwitchGateStateUpdated(object? sender, VehicleStateSnapshot snapshot)
     {
-        // StateUpdated may fire from the UDP receive thread (PGN 253
-        // path). Avalonia bindings — including the Start button's
-        // IsEnabled gate — won't refresh on off-thread PropertyChanged,
-        // so marshal to the UI thread. CheckAccess keeps test code
-        // (which fires StateUpdated synchronously via NSubstitute
-        // Raise.Event) running inline.
-        DispatchToUI(UpdatePhysicalSwitchGate);
-    }
-
-    private void OnSwitchGateToolPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(ConfigService.Store.Tool.IsSteerSwitchEnabled))
-            return;
-
-        // Operator-driven changes typically come in on the UI thread,
-        // but defensive marshalling future-proofs against a config
-        // writer that fires PropertyChanged from a worker.
-        DispatchToUI(UpdatePhysicalSwitchGate);
-    }
-
-    /// <summary>
-    /// Recompute <see cref="WaitingForPhysicalSwitch"/> from the
-    /// current config + live module feedback. Public so subclasses
-    /// can re-seed after manual state changes (e.g. snapshot priming
-    /// in OnEntering).
-    /// </summary>
-    protected void UpdatePhysicalSwitchGate()
-    {
-        bool requireSwitch = ConfigService.Store.Tool.IsSteerSwitchEnabled;
-        // PGN 253 bit 1 (SteerSwitchActive, AgOpenGPS steerSwitchHigh) is SET when the module
-        // is NOT steering — switch off / not armed (#126). This read it the other way round,
-        // so it waited while the module was ready and let the test start when it wasn't (#170).
-        bool moduleNotSteering = AutoSteerService?.LastSteerData.SteerSwitchActive ?? false;
-        WaitingForPhysicalSwitch = requireSwitch && moduleNotSteering;
-    }
-
-    private void DispatchToUI(Action action)
-    {
+        // StateUpdated fires on the control-loop / UDP thread at 100 Hz; raise on the UI
+        // thread, and only when the hint actually changes.
         if (_dispatcher.CheckAccess())
-            action();
+            RefreshRecordHint();
         else
-            _dispatcher.Post(action);
+            _dispatcher.Post(RefreshRecordHint);
+    }
+
+    private void RefreshRecordHint()
+    {
+        string hint = RecordHint;
+        if (hint == _lastHint)
+            return;
+        _lastHint = hint;
+        OnPropertyChanged(nameof(RecordHint));
     }
 }
