@@ -951,10 +951,14 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
+            int helloCounter = 0;
             while (_udpService.IsConnected)
             {
-                // Send hello packet every second
-                _udpService.SendHelloPacket();
+                // Send hello packet every second (every 10 ticks * 100ms)
+                if (helloCounter++ % 10 == 0)
+                {
+                    _udpService.SendHelloPacket();
+                }
 
                 // Check module status using appropriate method for each:
                 // - AutoSteer: Data flow (sends PGN 250/253 regularly)
