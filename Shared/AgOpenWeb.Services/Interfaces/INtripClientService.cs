@@ -114,6 +114,13 @@ public class NtripConfiguration
     public string SubnetAddress { get; set; } = "192.168.5";
 
     /// <summary>
+    /// The modules' live /24 (e.g. from auto-discovery), read for every RTCM send so a
+    /// subnet change is followed without reconnecting. Null, or a null/empty result,
+    /// falls back to <see cref="SubnetAddress"/>.
+    /// </summary>
+    public Func<string?>? SubnetProvider { get; set; }
+
+    /// <summary>
     /// GGA send interval in seconds (0 = disabled)
     /// </summary>
     public int GgaIntervalSeconds { get; set; } = 10;

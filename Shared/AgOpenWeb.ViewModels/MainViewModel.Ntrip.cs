@@ -107,7 +107,10 @@ public partial class MainViewModel
                 MountPoint = NtripMountPoint,
                 Username = NtripUsername,
                 Password = NtripPassword,
-                SubnetAddress = "192.168.5",
+                // The modules' /24 as discovered (followed live), else the Network IO
+                // subnet (default 192.168.5) — AgIO sends to its subnet setting.
+                SubnetAddress = $"{SubnetOctet1}.{SubnetOctet2}.{SubnetOctet3}",
+                SubnetProvider = _udpService.GetActiveModuleSubnet,
                 UdpForwardPort = 2233,
                 GgaIntervalSeconds = 10,
                 UseManualPosition = false

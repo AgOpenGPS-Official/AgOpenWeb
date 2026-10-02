@@ -535,6 +535,17 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     /// </summary>
     public string? GetModuleSubnet() => _moduleSubnet;
 
+    public string? GetActiveModuleSubnet()
+    {
+        var locked = _lockedEndpoint;
+        if (locked != null)
+        {
+            var b = locked.Address.GetAddressBytes();
+            return $"{b[0]}.{b[1]}.{b[2]}";
+        }
+        return _moduleSubnet;
+    }
+
     /// <summary>
     /// Broadcast a scan request (PGN 202). Modules reply with PGN 203 (parsed in
     /// <see cref="UpdateModuleConnection"/> into per-module IP + subnet).
