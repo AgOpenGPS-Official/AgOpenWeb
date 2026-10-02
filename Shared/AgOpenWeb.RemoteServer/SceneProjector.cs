@@ -605,11 +605,21 @@ public sealed class SceneProjector
 
     // File / Application Menu read-frame. Version+git (assembly), languages, app directories,
     // hotkey bindings, recent in-memory logs, bug-report status.
-    private static readonly string[] _langCodes =
+    private static readonly string[] _langCodes = FindLanguages();
+
+    // English plus every wwwroot/i18n/<code>.json in the assembly (#143): a language
+    // appears in the picker once its translation file exists.
+    private static string[] FindLanguages()
     {
-        "en", "da", "de", "es", "et", "fi", "fr", "hu", "it", "ko",
-        "lt", "lv", "nl", "no", "pl", "pt", "ru", "sk", "sr", "tr", "uk", "zh-Hans"
-    };
+        const string marker = ".wwwroot.i18n.";
+        var codes = typeof(SceneProjector).Assembly.GetManifestResourceNames()
+            .Select(n => (Name: n, At: n.IndexOf(marker, System.StringComparison.OrdinalIgnoreCase)))
+            .Where(x => x.At >= 0 && x.Name.EndsWith(".json", System.StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Name[(x.At + marker.Length)..^".json".Length])
+            .Where(c => !string.Equals(c, "en", System.StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c, System.StringComparer.OrdinalIgnoreCase);
+        return new[] { "en" }.Concat(codes).ToArray();
+    }
 
     public AppInfoDto BuildAppInfo()
     {
