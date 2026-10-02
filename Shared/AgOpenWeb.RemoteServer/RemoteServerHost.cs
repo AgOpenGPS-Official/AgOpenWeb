@@ -247,6 +247,17 @@ public sealed class RemoteServerHost
         server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html", noStore));
         server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript", noStore));
         server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript", noStore));
+        // Translations (#143): the loader, and one JSON file per language (en.json is the
+        // source Weblate reads). Filename-only (no path traversal); unknown names 404.
+        server.MapGet("/i18n.js", () => SimpleWebServer.Response.Text(ReadAsset("i18n.js"), "text/javascript", noStore));
+        server.MapGetPrefix("/i18n/", file =>
+        {
+            if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+                || !file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                return SimpleWebServer.Response.NotFound;
+            try { return SimpleWebServer.Response.Text(ReadAsset("i18n." + file), "application/json", noStore); }
+            catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
+        });
         // PWA manifest — lets "Add to home screen" launch fullscreen (no browser chrome).
         server.MapGet("/manifest.webmanifest", () => SimpleWebServer.Response.Text(ReadAsset("manifest.webmanifest"), "application/manifest+json"));
 
