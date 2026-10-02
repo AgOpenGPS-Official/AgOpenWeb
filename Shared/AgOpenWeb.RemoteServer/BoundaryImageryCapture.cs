@@ -2,7 +2,7 @@
 // covering a drawn boundary's Web-Mercator bounds and composite them into a single PNG
 // that becomes the field background. Mirrors the native BoundaryMapDialog's
 // CaptureBackgroundImageAsync, but driven by bounds the web client supplies (it captures
-// nothing itself — the host stays the brain). SkiaSharp is available via Avalonia.
+// nothing itself — the host stays the brain). Each head supplies the native SkiaSharp.
 
 using System;
 using System.Collections.Generic;

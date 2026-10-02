@@ -25,7 +25,6 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Interfaces;
 using AgOpenWeb.Services.Logging;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using CommunityToolkit.Mvvm.Input;
 

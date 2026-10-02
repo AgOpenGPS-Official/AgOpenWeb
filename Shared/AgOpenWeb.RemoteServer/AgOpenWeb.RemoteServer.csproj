@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Embedded web host that runs ALONGSIDE the Avalonia app (or as a headless
+    Embedded web host that runs inside each head's process (or as a headless
     cab-PC daemon) and streams a Scene + Tick feed to a browser map client over a
     raw binary WebSocket. Reads ApplicationState (Models) directly — the live
     instances are passed in by the host.
@@ -17,9 +17,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Server-side imagery downscale for the web (/backpic.png). Managed-only; the
-         native libSkiaSharp is already loaded by each head via Avalonia.Skia. -->
-    <PackageReference Include="SkiaSharp" Version="3.119.1" />
+    <!-- Server-side imagery downscale for the web (/backpic.png). Managed-only: each
+         head references the matching SkiaSharp.NativeAssets.* for its own platform.
+         Keep the versions in step. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
   </ItemGroup>
 
   <ItemGroup>

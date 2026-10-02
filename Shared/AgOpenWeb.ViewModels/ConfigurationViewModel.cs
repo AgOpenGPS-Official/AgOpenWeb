@@ -1764,7 +1764,6 @@ public partial class ConfigurationViewModel : ObservableObject
         {
             // Day/night current value is persistent STATE, not config.
             PersistentState.IsDayMode = !PersistentState.IsDayMode;
-            MainViewModel.ApplyThemeVariant(PersistentState.IsDayMode);
         });
 
         SetMetricUnitsCommand = new RelayCommand(() =>
