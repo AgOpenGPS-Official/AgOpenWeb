@@ -908,15 +908,17 @@ public partial class YouTurnCreationService
     }
 
     /// <summary>
-    /// Build an immediate U-turn path anchored at the tractor's current position — no
-    /// entry/exit straight legs, no headland traversal. Just a semicircle from the
-    /// tractor to the next parallel pass, executed the moment it's rendered (#260).
+    /// Build an immediate U-turn path from the tractor's current position to the target
+    /// pass — no headland traversal, no boundary-anchored entry/exit legs (#260). Like
+    /// AgOpenGPS <c>BuildManualYouTurn</c>: a Dubins path at the configured
+    /// <c>Guidance.UTurnRadius</c> from a start 4 m ahead of the tractor along the track to
+    /// the point abreast of it on the target pass, heading reversed. With a radius larger
+    /// than half the pass offset that is an omega (bulb) turn; smaller, an arc-straight-arc.
     ///
-    /// The arc radius is fixed at <c>offset / 2</c> so the endpoint lands exactly on
-    /// the next parallel pass with reversed heading. The configured
-    /// <c>Guidance.UTurnRadius</c> is ignored because any larger radius would overshoot
-    /// the target pass and would need a connector leg to bridge the gap — which would
-    /// defeat the "no legs, immediate" requirement.
+    /// The radius used to be fixed at offset / 2 so a plain semicircle landed on the next
+    /// pass, ignoring the configured radius. With a 6 m tool that is a 3 m radius, which no
+    /// tractor can drive: it fell more than 4 m outside the arc and the turn was abandoned
+    /// halfway, heading square to the next pass (#156).
     /// </summary>
     public List<Vec3> CreateManualArcPath(
         Position currentPosition,
@@ -929,7 +931,6 @@ public partial class YouTurnCreationService
         var path = new List<Vec3>();
         var config = _configStore;
 
-        const double pointSpacing = 0.5;
         double trackWidth = config.ActualToolWidth - config.Tool.Overlap;
         double turnOffset = trackWidth * (uTurnSkipRows + 1);
         if (turnOffset < 0.1)
@@ -938,68 +939,64 @@ public partial class YouTurnCreationService
             return path;
         }
 
-        double turnRadius = turnOffset / 2.0;
+        double turnRadius = Math.Max(config.Guidance.UTurnRadius, MinManualTurnRadius);
 
-        // Travel direction as the tractor is currently heading along the AB line.
-        double travelHeading = abHeading;
-        if (!guidance.IsHeadingSameWay)
+        // Travel direction as the tractor is currently heading along the track, rotated
+        // by 0.01 rad like AgOpenGPS so start and goal are never exactly abreast: Dubins
+        // degenerates into loops when the two turning circles coincide (offset = 2R).
+        double travelHeading = abHeading - ManualTurnHeadingTweak;
+        if (!guidance.IsHeadingSameWay) travelHeading += Math.PI;
+        travelHeading = NormalizeHeading(travelHeading);
+
+        // The curve starts ahead of the tractor: the steering needs the lead to reach lock,
+        // and the arc must not begin behind the pivot by the time it renders (AgOpenGPS: 4 m).
+        var start = new Vec3
         {
-            travelHeading += Math.PI;
-            if (travelHeading >= Math.PI * 2) travelHeading -= Math.PI * 2;
-        }
-
-        double arcStartE = currentPosition.Easting;
-        double arcStartN = currentPosition.Northing;
+            Easting = currentPosition.Easting + Math.Sin(travelHeading) * ManualTurnStartLead,
+            Northing = currentPosition.Northing + Math.Cos(travelHeading) * ManualTurnStartLead,
+            Heading = travelHeading,
+        };
 
         double perpAngle = turnLeft ? (travelHeading - Math.PI / 2) : (travelHeading + Math.PI / 2);
-
-        double arcCenterE = arcStartE + Math.Sin(perpAngle) * turnRadius;
-        double arcCenterN = arcStartN + Math.Cos(perpAngle) * turnRadius;
-
-        double arcEndE = arcStartE + Math.Sin(perpAngle) * (2 * turnRadius);
-        double arcEndN = arcStartN + Math.Cos(perpAngle) * (2 * turnRadius);
+        var goal = new Vec3
+        {
+            Easting = start.Easting + Math.Sin(perpAngle) * turnOffset,
+            Northing = start.Northing + Math.Cos(perpAngle) * turnOffset,
+            Heading = NormalizeHeading(travelHeading + Math.PI),
+        };
 
         // Refuse to plot a turn whose endpoint lands outside the field.
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid
-            && !boundary.OuterBoundary.IsPointInside(arcEndE, arcEndN))
+            && !boundary.OuterBoundary.IsPointInside(goal.Easting, goal.Northing))
         {
-            _logger.LogDebug("[ManualYouTurn] Arc end ({E:F1},{N:F1}) outside boundary — refusing",
-                arcEndE, arcEndN);
+            _logger.LogDebug("[ManualYouTurn] Turn end ({E:F1},{N:F1}) outside boundary — refusing",
+                goal.Easting, goal.Northing);
             return path;
         }
 
-        double startAngle = Math.Atan2(arcStartE - arcCenterE, arcStartN - arcCenterN);
-        int arcPoints = Math.Max((int)(Math.PI * turnRadius / pointSpacing), 20);
-
-        // Include the start point so guidance has a valid t=0 sample at the tractor.
-        path.Add(new Vec3
+        _dubinsService.TurningRadius = turnRadius;
+        path = _dubinsService.GeneratePath(start, goal);
+        if (path.Count < 3)
         {
-            Easting = arcStartE,
-            Northing = arcStartN,
+            _logger.LogWarning("[ManualYouTurn] Dubins found no path: radius={Rad:F1}m, offset={Off:F1}m",
+                turnRadius, turnOffset);
+            path.Clear();
+            return path;
+        }
+
+        // The path begins at the tractor with a straight lead into the Dubins start, so
+        // guidance has its t=0 sample at the pivot: it abandons a turn whose nearest path
+        // point is over 4 m away, which the lead alone would be the moment it renders.
+        path.Insert(0, new Vec3
+        {
+            Easting = currentPosition.Easting,
+            Northing = currentPosition.Northing,
             Heading = travelHeading,
         });
 
-        for (int i = 1; i <= arcPoints; i++)
-        {
-            double t = (double)i / arcPoints;
-            double sweepAngle = turnLeft ? (-Math.PI * t) : (Math.PI * t);
-            double currentAngle = startAngle + sweepAngle;
-
-            double tangentHeading = currentAngle + (turnLeft ? -Math.PI / 2 : Math.PI / 2);
-            if (tangentHeading < 0) tangentHeading += Math.PI * 2;
-            if (tangentHeading >= Math.PI * 2) tangentHeading -= Math.PI * 2;
-
-            path.Add(new Vec3
-            {
-                Easting = arcCenterE + Math.Sin(currentAngle) * turnRadius,
-                Northing = arcCenterN + Math.Cos(currentAngle) * turnRadius,
-                Heading = tangentHeading,
-            });
-        }
-
         TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
 
-        // Hard boundary: a manual arc is anchored at the tractor, so it can't be
+        // Hard boundary: a manual turn is anchored at the tractor, so it can't be
         // shifted inward — if the implement would swing into the fence, refuse it.
         if (!ImplementClearsHardBoundary(path, boundary, config, out double intrusion))
         {
@@ -1009,10 +1006,26 @@ public partial class YouTurnCreationService
             return path;
         }
 
-        _logger.LogDebug("[ManualYouTurn] Arc path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
+        _logger.LogDebug("[ManualYouTurn] Dubins path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
             path.Count, turnRadius, turnOffset, turnLeft);
 
         return path;
+    }
+
+    /// <summary>Manual turn starts this far ahead of the tractor (AgOpenGPS: 4 m).</summary>
+    private const double ManualTurnStartLead = 4.0;
+
+    /// <summary>Heading rotation that keeps a manual turn's start and goal from being
+    /// exactly abreast (AgOpenGPS: 0.01 rad).</summary>
+    private const double ManualTurnHeadingTweak = 0.01;
+
+    /// <summary>Floor for a nonsense configured U-turn radius (0 or negative).</summary>
+    private const double MinManualTurnRadius = 1.0;
+
+    private static double NormalizeHeading(double heading)
+    {
+        heading %= Math.PI * 2;
+        return heading < 0 ? heading + Math.PI * 2 : heading;
     }
 
     /// <summary>
