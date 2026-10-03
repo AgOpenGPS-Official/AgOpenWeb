@@ -81,9 +81,9 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private string? _gpsIp;
     private string? _moduleSubnet;
 
-    private const int HELLO_TIMEOUT_MS = 2000; // 2 seconds for hello response
-    private const int DATA_TIMEOUT_STEER_MACHINE_MS = 100; // 50Hz data = 20ms cycle, allow 100ms
-    private const int DATA_TIMEOUT_IMU_MS = 300; // 10Hz data = 100ms cycle, allow 300ms
+    private const int HELLO_TIMEOUT_MS = 3000; // 3 seconds for hello response (tolerates Wi-Fi jitter)
+    private const int DATA_TIMEOUT_STEER_MACHINE_MS = 1500; // 50Hz data, allow 1500ms for Wi-Fi latency jitter
+    private const int DATA_TIMEOUT_IMU_MS = 1500; // 10Hz data, allow 1500ms for Wi-Fi latency jitter
 
     // #169 diagnostics: log once when GPS NMEA or steer PGN 253 stops for over 2 s and once
     // when it resumes (with the gap), so a bug-report log shows what the board stopped sending.
@@ -128,8 +128,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
             _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 
-            // Reduce receive buffer to minimize packet buffering/delay
-            _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 8192);
+            // 64 KB receive buffer to absorb Wi-Fi bursts without kernel packet drops
+            _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 65536);
 
             // Windows: an ICMP Port Unreachable from a peer on a prior Send would
             // otherwise surface as a SocketException (ConnectionReset) on the next

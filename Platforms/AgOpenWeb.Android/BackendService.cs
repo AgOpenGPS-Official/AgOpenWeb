@@ -7,6 +7,7 @@ using System;
 using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
+using Android.Net.Wifi;
 using Android.OS;
 
 namespace AgOpenWeb.Android;
@@ -35,6 +36,8 @@ internal sealed class BackendService : Service
 
     private static AndroidBackendHost? _host;
     private static readonly object Gate = new();
+    private static WifiManager.WifiLock? _wifiLock;
+    private static WifiManager.MulticastLock? _multicastLock;
 
     /// <summary>Completes with the bound server port once the backend is serving, so the WebView
     /// Activity can wait for the host before it navigates to localhost (avoids a blank "connection
@@ -70,6 +73,8 @@ internal sealed class BackendService : Service
             StartForeground(NotificationId, notification, global::Android.Content.PM.ForegroundService.TypeSpecialUse);
         else
             StartForeground(NotificationId, notification);
+
+        AcquireNetworkLocks();
 
         // Build + start the backend once, off the main thread (DI graph + VM + server bind).
         lock (Gate)
@@ -118,7 +123,62 @@ internal sealed class BackendService : Service
             try { host.StopAsync().GetAwaiter().GetResult(); }
             catch (Exception ex) { Console.WriteLine($"[BackendService] host stop failed: {ex.Message}"); }
         }
+        ReleaseNetworkLocks();
         base.OnDestroy();
+    }
+
+    private void AcquireNetworkLocks()
+    {
+        try
+        {
+            var wifiManager = (WifiManager?)GetSystemService(WifiService);
+            if (wifiManager != null)
+            {
+                if (_wifiLock == null)
+                {
+                    // The one-argument overload is WIFI_MODE_FULL, which Android documents as
+                    // non-functional. FullLowLatency (API 29+) keeps the radio out of power save
+                    // while the app is in the foreground with the screen on, which the launcher
+                    // guarantees; FullHighPerf is the pre-29 equivalent (and maps to it since 34).
+                    var mode = OperatingSystem.IsAndroidVersionAtLeast(29) ? global::Android.Net.WifiMode.FullLowLatency : global::Android.Net.WifiMode.FullHighPerf;
+                    _wifiLock = wifiManager.CreateWifiLock(mode, "AgOpenWeb:WifiLock");
+                    _wifiLock?.SetReferenceCounted(false);
+                    _wifiLock?.Acquire();
+                }
+
+                if (_multicastLock == null)
+                {
+                    _multicastLock = wifiManager.CreateMulticastLock("AgOpenWeb:MulticastLock");
+                    _multicastLock?.SetReferenceCounted(false);
+                    _multicastLock?.Acquire();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BackendService] failed to acquire Wi-Fi/multicast locks: {ex.Message}");
+        }
+    }
+
+    private static void ReleaseNetworkLocks()
+    {
+        try
+        {
+            if (_wifiLock != null && _wifiLock.IsHeld)
+            {
+                _wifiLock.Release();
+                _wifiLock = null;
+            }
+            if (_multicastLock != null && _multicastLock.IsHeld)
+            {
+                _multicastLock.Release();
+                _multicastLock = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BackendService] failed to release Wi-Fi/multicast locks: {ex.Message}");
+        }
     }
 
     private Notification BuildNotification()
