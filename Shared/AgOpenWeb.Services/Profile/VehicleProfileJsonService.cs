@@ -161,6 +161,12 @@ public static class VehicleProfileJsonService
             RtkLostAlarm = store.Connections.RtkLostAlarm,
             RtkLostAction = store.Connections.RtkLostAction,
         },
+        Ahrs = new AhrsDto
+        {
+            RollZero = store.Ahrs.RollZero,
+            RollFilter = store.Ahrs.RollFilter,
+            IsRollInvert = store.Ahrs.IsRollInvert,
+        },
         General = new GeneralDto
         {
             // IsMetric intentionally omitted: device-/user-scoped, lives
@@ -238,6 +244,13 @@ public static class VehicleProfileJsonService
         store.Connections.RtkLostAlarm = gps?.RtkLostAlarm ?? dc.RtkLostAlarm;
         store.Connections.RtkLostAction = gps?.RtkLostAction ?? dc.RtkLostAction;
 
+        // AHRS / Roll calibration (persisted with vehicle profile)
+        var ahrs = dto.Ahrs;
+        var da = new AhrsConfig();
+        store.Ahrs.RollZero = ahrs?.RollZero ?? da.RollZero;
+        store.Ahrs.RollFilter = ahrs?.RollFilter ?? da.RollFilter;
+        store.Ahrs.IsRollInvert = ahrs?.IsRollInvert ?? da.IsRollInvert;
+
         // General — IsMetric used to live here; it now lives in AppSettings.
         // Apply only if the legacy field is present in the file;
         // ReconcileIsMetricAfterProfileLoad post-load decides whether the
@@ -260,6 +273,7 @@ public static class VehicleProfileJsonService
         public GuidanceDto? Guidance { get; set; }
         public YouTurnDto? YouTurn { get; set; }
         public GpsDto? Gps { get; set; }
+        public AhrsDto? Ahrs { get; set; }
         public GeneralDto? General { get; set; }
     }
 
@@ -324,6 +338,13 @@ public static class VehicleProfileJsonService
         public bool? ReverseDetection { get; set; }
         public bool? RtkLostAlarm { get; set; }
         public int? RtkLostAction { get; set; }
+    }
+
+    internal class AhrsDto
+    {
+        public double? RollZero { get; set; }
+        public double? RollFilter { get; set; }
+        public bool? IsRollInvert { get; set; }
     }
 
     internal class GeneralDto

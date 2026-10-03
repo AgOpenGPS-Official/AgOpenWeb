@@ -259,6 +259,10 @@ public class VehicleProfileService : IVehicleProfileService
         sectionPositions[1] = 3.0;   // Right edge
         store.SectionPositions = sectionPositions;
 
+        store.Ahrs.RollZero = 0.0;
+        store.Ahrs.RollFilter = 0.0;
+        store.Ahrs.IsRollInvert = false;
+
         // IsMetric used to be reset here; it now lives in AppSettings and
         // is unaffected by creating a new default vehicle profile.
 

@@ -140,6 +140,8 @@ public static partial class RemoteServerWiring
                                     var rollStore = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
                                     var rollState = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                                     rollStore.Ahrs.RollZero += rollState.Vehicle.Roll;
+                                    var cfg = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IConfigurationService>();
+                                    cfg.SaveProfiles(rollStore.ActiveVehicleProfileName, rollStore.ActiveToolProfileName);
                                     return;
                                 }
                                 case "field.deleteApplied": // Tier-1; browser already confirmed
