@@ -71,7 +71,7 @@ Add a component to the AgOpenGPS project:
 | Monolingual base language file | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` |
 | Edit base file | off (it is generated) |
 | Language code style | BCP style (`pt-BR`, `zh-Hans`) |
-| Licence | GPL-3.0 |
+| Licence | Apache-2.0 |
 
 Have Weblate send its changes as pull requests, and add the Weblate webhook to this
 repository so new English strings reach translators on every push.
