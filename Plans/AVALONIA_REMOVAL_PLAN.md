@@ -52,7 +52,7 @@ One PR per phase, each verified on hardware before the next. The web UI and back
 
 ### Phase 0: Shared cleanup (no behaviour change)
 
-**Status:** done (2026-10-02). SkiaSharp is pinned to 3.119.4. Desktop keeps `SkiaSharp.NativeAssets.Linux` (not `.NoDependencies`) while Avalonia is still there, since both ship the same `libSkiaSharp.so`; switch in Phase 3. The imagery check passed on Desktop, a Galaxy Tab S7 FE and the test iPad.
+**Status:** done (2026-10-02). SkiaSharp is pinned to 3.119.4. Desktop kept `SkiaSharp.NativeAssets.Linux` while Avalonia was still there (both ship the same `libSkiaSharp.so`); Phase 3 switched it to `.NoDependencies`. The imagery check passed on Desktop, a Galaxy Tab S7 FE and the test iPad.
 
 1. Delete `MainViewModel.ApplyThemeVariant` and its callers (the web client does its own day/night theme from `IsDayMode`), and the stale `using Avalonia*` lines. Remove `PackageReference Avalonia` from `AgOpenWeb.ViewModels.csproj`.
 2. Pin SkiaSharp explicitly. `RemoteServer` asks for 3.119.1, but the build actually resolves Avalonia's 3.119.4-preview. Choose one stable version and add the matching `SkiaSharp.NativeAssets.{Android,iOS,macOS,Win32,Linux}` to each head (Linux: the `.NoDependencies` variant is enough for the daemon's imagery child process, if it renders no text; it doesn't today). HarfBuzz isn't needed: the server code draws no text.
@@ -110,6 +110,8 @@ Verify on the test iPad (`ios-local-build-env` memory: Xcode 27 needs `ValidateX
 
 ### Phase 3: Desktop launcher
 
+**Status:** implemented on 2026-10-02 with Photino.NET 4.0.16. The `--console` supervisor is rebuilt as an embedded HTML page in a Photino window (decided: rebuild in HTML). Checked on macOS: the all-in-one window loads the UI, closing it stops the backend and saves; the console page starts/stops the host, copies the URL and opens the browser. Not yet checked: Windows, Linux (real hardware and a VM), screen readers. The VM black-window hint was dropped with the Avalonia launcher; whether a VM now works is unknown.
+
 **Recommendation: Photino.NET** (`Photino.NET` 4.0.16 / `Photino.Native` 4.0.22). One small API over WebView2 (Windows), WKWebView (macOS) and WebKitGTK (Linux), with native binaries for win-x64/arm64, osx-x64/arm64 and linux-x64/arm64. The Linux binary links `libwebkit2gtk-4.1`, the same library the Linux launcher already requires (`deploy/linux/launcher/README.md`), so packaging dependencies don't change.
 
 Caveat: its last release was January 2025 (the repo is active, but releases are slow). If that becomes a problem, the fallbacks are per-OS hosts (WebView2 WinForms on Windows; a `net10.0-macos` head with WKWebView) or browser app mode (below).
@@ -153,7 +155,7 @@ Verify:
 
 ## Decisions needed
 
-1. Desktop host: Photino.NET (recommended), per-OS native hosts, or browser app mode.
-2. The `--console` supervisor window: drop, rebuild in HTML, or keep on Avalonia for now.
+1. ~~Desktop host~~: Photino.NET.
+2. ~~The `--console` supervisor window~~: rebuilt in HTML (decided 2026-10-02).
 3. ~~Android back button~~: decided, confirm-to-exit.
 4. Whether the VehicleSimulator follows (it's a dev tool, not shipped to users).

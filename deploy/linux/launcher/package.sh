@@ -3,7 +3,7 @@
 #
 # The desktop twin of the Windows/macOS launcher: a single maximized window that starts
 # the in-process guidance host and fills itself with the web UI in an embedded WebView
-# (Avalonia's WebKitGTK/WPE backend). This is the Linux *desktop* app — distinct from the
+# (Photino.NET over WebKitGTK). This is the Linux *desktop* app — distinct from the
 # headless appliance daemon in deploy/linux (systemd). The host still binds 0.0.0.0, so cab
 # tablets/phones can connect over the LAN too.
 #

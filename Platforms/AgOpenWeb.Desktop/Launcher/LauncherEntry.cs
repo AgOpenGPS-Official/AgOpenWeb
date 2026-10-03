@@ -1,60 +1,98 @@
 // AgOpenWeb
-// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// Copyright (C) 2024-2025 AgOpenWeb Contributors
 //
-// Licensed under GNU GPL v3. See LICENSE.md.
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
-using Avalonia;
+using System.Diagnostics;
+using System.Threading.Tasks;
+using Photino.NET;
 
 namespace AgOpenWeb.Desktop.Launcher;
 
 /// <summary>
-/// Entry for the in-process launcher mode (Windows default; <c>--launcher</c> on any OS).
-/// Boots a minimal Avalonia desktop app (<see cref="LauncherApplication"/>) whose only window
-/// supervises the headless <see cref="BackendHost"/>. Distinct from <see cref="HeadlessHost"/>
-/// (display-less daemon) and the full windowed <see cref="App"/> (legacy native UI).
+/// Entry for the in-process launcher mode (Windows and macOS default; <c>--launcher</c> on any
+/// OS). The window is a Photino.NET <see cref="PhotinoWindow"/>: WebView2 on Windows, WKWebView on
+/// macOS, WebKitGTK on Linux. The default window is the all-in-one app — the guidance backend
+/// (<see cref="BackendHost"/>) in this process and the web UI filling the window. <c>--console</c>
+/// instead shows the small supervisor page (<see cref="ConsolePage"/>) for a box that only serves
+/// other devices. Distinct from <see cref="HeadlessHost"/> (display-less daemon).
 /// </summary>
 internal static class LauncherEntry
 {
-    /// <summary>The process args, exposed to <see cref="LauncherApplication"/> so the window
-    /// passes them through to <see cref="BackendHost.StartAsync"/> (host config binding).</summary>
-    public static string[] Args { get; private set; } = Array.Empty<string>();
-
     public static void Run(string[] args)
     {
-        Args = args;
-        WarnIfVirtualMachine();
-        AppBuilder.Configure<LauncherApplication>()
-            .UsePlatformDetect()
-            .WithInterFont()
-            .LogToTrace()
-            .StartWithClassicDesktopLifetime(args);
+        bool console = Array.IndexOf(args, "--console") >= 0;
+        var window = new PhotinoWindow()
+            .SetTitle("AgOpenWeb")
+            .SetUseOsDefaultLocation(false)
+            .SetUseOsDefaultSize(false)
+            .SetLogVerbosity(0);
+        var icon = IconPath();
+        if (icon != null) window.SetIconFile(icon);
+
+        if (console) new ConsolePage(window, args).Show();
+        else new WebViewLauncher(window, args).Show();
+        window.WaitForClose();
     }
 
-    /// <summary>
-    /// The Linux launcher embeds WebKitGTK as a reparented X11 child (NativeControlHost). Its
-    /// hardware-GL surface presents correctly on real GPUs (Intel/AMD/NVIDIA, ARM SBCs, industrial
-    /// x86) but comes up black on a virtualized GPU — the virtio-gpu used by VMs can't present the
-    /// reparented child's GL buffer. The launcher is hardware-accelerated and supported on real
-    /// hardware only; we don't force software rendering (it would make the map sluggish). If we
-    /// detect a VM, log a clear hint so a black window is never a silent mystery.
-    /// </summary>
-    private static void WarnIfVirtualMachine()
+    /// <summary>The window icon file, next to the executable (Windows and Linux; the macOS
+    /// bundle carries its own).</summary>
+    private static string? IconPath()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (OperatingSystem.IsMacOS()) return null;
+        var p = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "agopenweb.ico");
+        return System.IO.File.Exists(p) ? p : null;
+    }
+
+    public static void OpenUrl(string url)
+    {
         try
         {
-            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                "systemd-detect-virt", "--vm --quiet") { UseShellExecute = false });
-            if (p == null) return;
-            p.WaitForExit(1500);
-            if (p.HasExited && p.ExitCode == 0) // exit 0 == running in a VM
-            {
-                Console.WriteLine("[launcher] Warning: virtual machine detected. The embedded AgOpenWeb " +
-                    "interface needs a real GPU — on a VM's virtio-gpu the WebView renders black. The " +
-                    "Linux launcher is supported on real hardware only.");
-            }
+            if (OperatingSystem.IsWindows()) Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            else if (OperatingSystem.IsMacOS()) Process.Start("open", url);
+            else Process.Start("xdg-open", url);
         }
-        catch { /* detection is a best-effort hint */ }
+        catch { /* no browser available */ }
     }
+
+    /// <summary>A start failure is written to a temp log (a WinExe has no console) and returned
+    /// as a one-line message for the window.</summary>
+    public static string LogStartFailure(Exception ex)
+    {
+        var log = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "agopenweb-launcher-error.log");
+        try { System.IO.File.WriteAllText(log, ex.ToString()); } catch { }
+        return $"{ex.Message} (details: {log})";
+    }
+
+    /// <summary>Closing the window must stop the backend first so its save runs. Photino asks
+    /// before closing: cancel, stop off the UI thread, then close for real.</summary>
+    public static bool StopThenClose(PhotinoWindow window, BackendHost? backend, ref bool closing)
+    {
+        if (backend is not { IsRunning: true } || closing) return false; // let it close
+        closing = true;
+        _ = Task.Run(async () =>
+        {
+            try { await backend.StopAsync(); } catch { /* close regardless */ }
+            window.Invoke(window.Close);
+        });
+        return true; // cancel this close
+    }
+
+    private const string SplashCss = "html,body{margin:0;height:100%;background:#0b1020;color:#fff;font:16px system-ui,sans-serif}" +
+        "body{display:flex;align-items:center;justify-content:center;text-align:center}p{max-width:560px;white-space:pre-line;line-height:1.5}";
+
+    public static string SplashHtml(string text) =>
+        $"<!doctype html><html><head><meta charset=\"utf-8\"><style>{SplashCss}</style></head><body><p>{System.Net.WebUtility.HtmlEncode(text)}</p></body></html>";
 }

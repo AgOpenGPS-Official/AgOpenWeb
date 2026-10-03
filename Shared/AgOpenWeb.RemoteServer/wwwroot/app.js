@@ -3252,8 +3252,14 @@ window.addEventListener('keydown', e => {
 document.getElementById('hk-reset').addEventListener('pointerdown', e => { e.stopPropagation(); showConfirm(tr('Reset Hotkeys'), tr('Reset all hotkeys to their defaults?'), () => transport.send('app.resetHotkeys')); });
 
 // Help — external links open in a new tab.
+// External links. Inside the desktop launcher (Photino) window.open can't leave the web view,
+// so the page asks its host to open the system browser over Photino's message channel.
+function openExternal(url) {
+  if (window.external && typeof window.external.sendMessage === 'function') window.external.sendMessage('open|' + url);
+  else window.open(url, '_blank');
+}
 for (const b of document.querySelectorAll('#help .help-link'))
-  b.addEventListener('pointerdown', e => { e.stopPropagation(); window.open(b.dataset.url, '_blank'); });
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); openExternal(b.dataset.url); });
 
 // About
 function renderAbout() {

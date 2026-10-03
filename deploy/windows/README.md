@@ -19,7 +19,7 @@ It's self-contained — no .NET install needed.
 - **WebView2 Evergreen Runtime** — the embedded UI renders through WebView2. It's pre-installed
   on Windows 11 and current Windows 10; if the window stays blank, install the Evergreen Runtime
   from Microsoft (<https://developer.microsoft.com/microsoft-edge/webview2/>). The bundle already
-  ships the native `WebView2Loader.dll`; only the Runtime itself must be present on the PC.
+  ships the native `WebView2Loader.dll` (from Photino.Native); only the Runtime itself must be present on the PC.
 
 ## Run as a background service (headless)
 

@@ -22,7 +22,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using AgOpenWeb.Models;
 using AgOpenWeb.Services.Interfaces;
-using Avalonia.Threading;
 
 namespace AgOpenWeb.Desktop.Services;
 
@@ -46,6 +45,9 @@ public sealed class DesktopBatteryService : IBatteryService, IDisposable
     private Timer? _timer;
     private BatteryStatus _current = BatteryStatus.Unavailable;
     private readonly object _gate = new();
+    private readonly IUiDispatcher _dispatcher;
+
+    public DesktopBatteryService(IUiDispatcher dispatcher) => _dispatcher = dispatcher;
 
     public BatteryStatus CurrentStatus
     {
@@ -94,7 +96,7 @@ public sealed class DesktopBatteryService : IBatteryService, IDisposable
         }
         if (changed)
         {
-            Dispatcher.UIThread.Post(() => StatusChanged?.Invoke(this, next));
+            _dispatcher.Post(() => StatusChanged?.Invoke(this, next));
         }
     }
 
