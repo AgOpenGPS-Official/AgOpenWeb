@@ -136,7 +136,12 @@ internal sealed class BackendService : Service
             {
                 if (_wifiLock == null)
                 {
-                    _wifiLock = wifiManager.CreateWifiLock("AgOpenWeb:WifiLock");
+                    // The one-argument overload is WIFI_MODE_FULL, which Android documents as
+                    // non-functional. FullLowLatency (API 29+) keeps the radio out of power save
+                    // while the app is in the foreground with the screen on, which the launcher
+                    // guarantees; FullHighPerf is the pre-29 equivalent (and maps to it since 34).
+                    var mode = OperatingSystem.IsAndroidVersionAtLeast(29) ? global::Android.Net.WifiMode.FullLowLatency : global::Android.Net.WifiMode.FullHighPerf;
+                    _wifiLock = wifiManager.CreateWifiLock(mode, "AgOpenWeb:WifiLock");
                     _wifiLock?.SetReferenceCounted(false);
                     _wifiLock?.Acquire();
                 }
