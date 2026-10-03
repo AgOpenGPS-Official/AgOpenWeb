@@ -34,8 +34,13 @@ namespace AgOpenWeb.ViewModels.Wizards.SteerWizard;
 /// </summary>
 public abstract class SwitchGatedWizardStep : WizardStepViewModel
 {
-    /// <summary>How long Free Drive runs before the module's arming is judged.</summary>
+    /// <summary>How long Free Drive runs before the module's arming is first judged.</summary>
     internal const int ArmSettleMs = 500;
+    /// <summary>How long one Free Drive attempt waits for the module to arm.</summary>
+    internal const int ArmTimeoutMs = 1500;
+    internal const int ArmPollMs = 100;
+    /// <summary>Pause with Free Drive off between the first attempt and the retry.</summary>
+    internal const int ArmRetryGapMs = 300;
     /// <summary>End of a test: give up waiting for the wheels to centre after this long.</summary>
     internal const int CenterHoldTimeoutMs = 3000;
     /// <summary>End of a test: the wheels count as centred within this many degrees.</summary>
@@ -100,20 +105,39 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
     }
 
     /// <summary>
-    /// Free Drive on at 0°, wait <see cref="ArmSettleMs"/>, then check the module is armed.
-    /// Returns false (Free Drive already released) when it isn't — the caller reports
-    /// <see cref="NotArmedText"/>. Callers must run this inside the try whose finally calls
-    /// <see cref="EndFreeDriveAsync"/>.
+    /// Free Drive on at 0°, then wait for the module to arm: first judged after
+    /// <see cref="ArmSettleMs"/>, polled until <see cref="ArmTimeoutMs"/>. If it has not armed,
+    /// Free Drive is dropped for <see cref="ArmRetryGapMs"/> and raised once more: a module
+    /// that armed only on the second press of Start made the first press fail with "turn on
+    /// the steer switch" although nothing needed turning on (#240). Returns false (Free Drive
+    /// already released) when it never arms — the caller reports <see cref="NotArmedText"/>.
+    /// Callers must run this inside the try whose finally calls <see cref="EndFreeDriveAsync"/>.
     /// </summary>
     protected async Task<bool> BeginFreeDriveAsync(CancellationToken token)
     {
-        _armSettled = false;
-        _freeDriveOn = true;
-        AutoSteerService?.EnableFreeDrive(); // status 1, 0°
-        await DelayFunc(ArmSettleMs, token);
-        _armSettled = true;
-        if (!ModuleNotSteering)
-            return true;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            _armSettled = false;
+            _freeDriveOn = true;
+            AutoSteerService?.EnableFreeDrive(); // status 1, 0°
+            await DelayFunc(ArmSettleMs, token);
+            for (int elapsed = ArmSettleMs; ; elapsed += ArmPollMs)
+            {
+                if (!ModuleNotSteering)
+                {
+                    _armSettled = true;
+                    return true;
+                }
+                if (elapsed >= ArmTimeoutMs)
+                    break;
+                await DelayFunc(ArmPollMs, token);
+            }
+            if (attempt == 0)
+            {
+                AutoSteerService?.DisableFreeDrive(); // status 0: a second rising edge follows
+                await DelayFunc(ArmRetryGapMs, token);
+            }
+        }
         ReleaseFreeDrive();
         return false;
     }

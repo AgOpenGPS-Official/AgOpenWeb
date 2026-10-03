@@ -200,6 +200,9 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         {
             if (!await BeginFreeDriveAsync(token))
             {
+                // Back to the start text: a "captured" line left from an earlier run
+                // sat above this error (#240).
+                Phase = MaxSteeringAnglePhase.WaitingToStart;
                 PhaseResult = NotArmedText;
                 return;
             }
