@@ -186,6 +186,80 @@ public class SteerWizardSafetyTests
     }
 
     [Test]
+    public async Task Module_that_arms_slowly_still_starts_on_the_first_press()
+    {
+        // #240: armed 900 ms after Free Drive came on; the single check at 500 ms failed
+        // the first press with "turn on the steer switch".
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        int waited = 0; bool freeDrive = false;
+        autoSteer.When(a => a.EnableFreeDrive()).Do(_ => { freeDrive = true; waited = 0; });
+        autoSteer.LastSteerData.Returns(_ => Module(steering: freeDrive && waited >= 900));
+        var step = new MaxSteeringAngleStepViewModel(Config(), new InlineUiDispatcher(), autoSteer);
+        step.DelayFunc = (ms, _) => { waited += ms; return Task.CompletedTask; };
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        autoSteer.Received(1).EnableFreeDrive();
+        autoSteer.Received().SetFreeDriveAngle(60);
+        Assert.That(step.PhaseResult, Does.Not.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Module_that_arms_only_on_the_second_edge_starts_without_a_second_press()
+    {
+        // #240: nothing changed between the reporter's two presses; the second one worked.
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        int edges = 0; bool freeDrive = false;
+        autoSteer.When(a => a.EnableFreeDrive()).Do(_ => { freeDrive = true; edges++; });
+        autoSteer.When(a => a.DisableFreeDrive()).Do(_ => freeDrive = false);
+        autoSteer.LastSteerData.Returns(_ => Module(steering: freeDrive && edges >= 2));
+        var delays = new List<int>();
+        var step = MaxStep(autoSteer, delays);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        Assert.That(edges, Is.EqualTo(2));
+        Assert.That(delays, Does.Contain(SwitchGatedWizardStep.ArmRetryGapMs));
+        autoSteer.Received().SetFreeDriveAngle(60);
+        Assert.That(step.PhaseResult, Does.Not.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Module_never_armed_gives_up_after_one_retry_within_about_three_seconds()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: false));
+        var delays = new List<int>();
+        var step = MaxStep(autoSteer, delays);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        autoSteer.Received(2).EnableFreeDrive();
+        autoSteer.DidNotReceive().SetFreeDriveAngle(60);
+        Assert.That(delays.Sum(), Is.InRange(3000, 3500));
+        Assert.That(step.PhaseResult, Does.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Not_armed_after_an_earlier_capture_does_not_leave_the_captured_line()
+    {
+        // #240 first screenshot: "Maximum steering angle captured." above the error.
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        bool armed = true;
+        autoSteer.LastSteerData.Returns(_ => Module(steering: armed));
+        var step = MaxStep(autoSteer);
+        await step.RunMaxAngleMeasurementAsync();
+        Assume.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.Complete));
+
+        armed = false;
+        await step.RunMaxAngleMeasurementAsync();
+
+        Assert.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.WaitingToStart));
+        Assert.That(step.PhaseDescription, Does.Not.Contain("captured"));
+        Assert.That(step.PhaseResult, Does.Contain("turn on the steer switch"));
+    }
+
+    [Test]
     public async Task Motor_test_not_armed_stops_and_says_why()
     {
         var autoSteer = Substitute.For<IAutoSteerService>();
