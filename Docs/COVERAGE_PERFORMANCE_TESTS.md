@@ -2,6 +2,8 @@
 
 This document tracks performance testing of different coverage rendering approaches.
 
+> Historical: these measurements were taken on the native Avalonia/Skia map control, which was replaced by the web client (CanvasKit) in 2026. The device targets and the field still apply.
+
 **Naming Convention**: Each test has an ID (PERF-001, PERF-002, etc.) that appears in both this document and the git commit message for traceability.
 
 ## Test Environment
