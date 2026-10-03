@@ -142,6 +142,12 @@ public static partial class RemoteServerWiring
                                     rollStore.Ahrs.RollZero += rollState.Vehicle.Roll;
                                     return;
                                 }
+                                case "heading.resetDirection": // AgOpenGPS vehicle-tap "Reset Direction":
+                                {                              // forces heading to re-orient from next travel movement.
+                                    var hf = services.GetService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>();
+                                    hf?.ResetDirection();
+                                    return;
+                                }
                                 case "field.deleteApplied": // Tier-1; browser already confirmed
                                     vm.DeleteAppliedAreaConfirmed();
                                     return;

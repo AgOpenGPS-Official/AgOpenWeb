@@ -60,4 +60,10 @@ public interface IGpsHeadingFusionService
     /// Discard fix-to-fix history. Call on field close or GPS reconnect.
     /// </summary>
     void Reset();
+
+    /// <summary>
+    /// Resets initial heading and reverse latching, forcing the heading to be re-initialized
+    /// from the next travel movement (AgOpenGPS "Reset Direction" parity).
+    /// </summary>
+    void ResetDirection();
 }
