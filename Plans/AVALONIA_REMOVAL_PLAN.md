@@ -92,6 +92,8 @@ Verify on a Lenovo tablet with Lenovo Pen on (the #196 repro) and on one other A
 
 ### Phase 2: iOS
 
+**Status:** implemented and checked on the test iPad (iPad Pro 12.9" 2nd gen, iPadOS 17.7) on 2026-10-02: launch, imagery, keyboard, alarms, external links, background/foreground, landscape, screen stays awake. Still to do: a TestFlight build, and the ProMotion frame-rate check (this iPad isn't ProMotion).
+
 - `Main.cs`: `UIApplication.Main(args, null, typeof(AppDelegate))`.
 - `AppDelegate : UIResponder, IUIApplicationDelegate`: in `FinishedLaunching`, create the `UIWindow`, build DI and start `WebBackend` (the code in `App.axaml.cs` today), and show a `UIViewController` with a `WKWebView`. Keep the landscape lock, the save on background/terminate, and the imagery capture as they are.
 - **`WKWebViewConfiguration`:**
