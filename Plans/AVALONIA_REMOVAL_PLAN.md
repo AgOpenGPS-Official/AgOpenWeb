@@ -1,6 +1,6 @@
 # Avalonia Removal Plan
 
-**Status:** proposed (2026-10-01). **Stop gap:** PR #196 (Android accessibility crash) is merged as-is. This plan replaces the code it touches.
+**Status:** done (2026-10-02). Phases 0–3 are #224, #229, #230, #231; Phase 4 (docs, About page) follows #231. The VehicleSimulator stays on Avalonia (decided 2026-10-02). PR #196's workaround was replaced by Phase 1.
 
 ## Why
 
@@ -142,6 +142,8 @@ Verify:
 - **Headless mode:** unchanged.
 
 ### Phase 4: Finish
+
+**Status:** done with the docs PR after #231: CLAUDE.md rewritten for the web-client architecture, CONTRIBUTING.md, README, BUILD.md, Docs/TESTING.md, Docs/LINUX_SETUP.md, deploy READMEs and the About page updated; AGENTS.md now points at CLAUDE.md. CI had no Avalonia-specific steps. The VehicleSimulator is kept.
 
 - Remove all remaining Avalonia packages and `*.axaml` files, and check `dotnet list package --include-transitive | grep -i avalonia` is empty for every head.
 - Update `CLAUDE.md` (Technology Stack, platform sections, Key Files), `CONTRIBUTING.md`, and the About page (`index.html:2427` still says "Avalonia UI").

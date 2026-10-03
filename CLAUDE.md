@@ -1,21 +1,3 @@
-<!--
-AgOpenWeb
-Copyright (C) 2024-2026 AgOpenWeb Contributors
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
--->
-
 # CLAUDE.md - AgOpenWeb3
 
 This file provides guidance to Claude Code when working with this repository.
@@ -24,10 +6,13 @@ This file provides guidance to Claude Code when working with this repository.
 - **[Plans/ARCHITECTURE.md](Plans/ARCHITECTURE.md)** - Full architecture: services, state management, data flow
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor guide with cross-platform parity rules
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
+- **[Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md)** - UI strings and Weblate
 
 ## Project Overview
 
-AgOpenWeb3 is a cross-platform agricultural GPS guidance application built with Avalonia UI. It's a clean rewrite achieving **91.7% shared code** across platforms.
+AgOpenWeb3 is a cross-platform agricultural GPS guidance application: a .NET guidance host
+with a web UI. It's a clean rewrite of AgOpenGPS with the backend shared across every
+platform and the UI a single web client.
 
 **What it does:**
 - Real-time GPS guidance for agricultural equipment
@@ -41,37 +26,40 @@ AgOpenWeb3 is a cross-platform agricultural GPS guidance application built with 
 
 ## Architecture
 
-> **⚠️ Web UI is the only UI (as of v26.6.41).** The native Avalonia UI was removed:
-> `AgOpenWeb.Views` (SkiaMapControl, panels, dialogs), the platform `MainWindow`/`MainView`
-> shells, the `--windowed` Desktop mode, the `.use_webview_launcher` marker, and
-> `AgOpenWeb.UI.Tests` are all gone. The UI is now the **web client** (`AgOpenWeb.RemoteServer`
-> + its `wwwroot` CanvasKit PWA) on every platform. Each head boots the shared guidance backend
-> (`AgOpenWeb.RemoteWiring.WebBackend` — VM brain on a `HostLoopDispatcher`, embedded
-> `RemoteServerHost`) and shows a full-screen `NativeWebView` (or you browse to `:5174`).
-> `MainViewModel` is retained as the headless control brain the web client drives via
-> `RemoteServerWiring`. Sections of this doc below that describe native dialogs/panels/SkiaMapControl
-> are **historical** and pending a fuller rewrite.
+**The web client is the only UI.** `AgOpenWeb.RemoteServer` embeds a web server and serves
+the `wwwroot` CanvasKit PWA (`index.html`, `app.js`, `transport.js`, `i18n.js`). Every head
+boots the same guidance backend (`AgOpenWeb.RemoteWiring.WebBackend`: the `MainViewModel`
+"brain" on a `HostLoopDispatcher`, plus the embedded `RemoteServerHost`) and shows that page
+in the platform's own web view; any browser on the LAN can open `http://<host>:5174` too.
+There is no native UI framework in the heads (Avalonia was removed in October 2026; the
+`VehicleSimulator` dev tool is the one Avalonia app left).
 
 ```
 AgOpenWeb3/
 ├── Shared/                              # Platform-agnostic code
 │   ├── AgOpenWeb.Models/            # Data models, geometry, configuration, DTOs
 │   ├── AgOpenWeb.Services/          # Business logic, GPS, NTRIP, UDP, audio (.wav embedded)
-│   ├── AgOpenWeb.ViewModels/        # MVVM control brain (MainViewModel); no native UI
-│   ├── AgOpenWeb.RemoteServer/      # Embedded web server + wwwroot CanvasKit PWA (the UI)
+│   ├── AgOpenWeb.ViewModels/        # MainViewModel: the headless control brain; no native UI
+│   ├── AgOpenWeb.RemoteServer/      # Embedded web server + wwwroot web client (the UI)
 │   └── AgOpenWeb.RemoteWiring/      # WebBackend host core + RemoteServer↔VM command/projector wiring
 │
-├── Platforms/                           # Thin WebView shells + platform services
-│   ├── AgOpenWeb.Desktop/           # Windows/macOS/Linux (launcher window / headless daemon)
-│   ├── AgOpenWeb.iOS/              # iOS/iPadOS (NativeWebView over WebBackend)
-│   └── AgOpenWeb.Android/          # Android (foreground BackendService + WebView)
+├── Platforms/                           # Thin web-view shells + platform services
+│   ├── AgOpenWeb.Desktop/           # Windows/macOS/Linux: Photino.NET launcher window, or headless daemon
+│   ├── AgOpenWeb.iOS/              # iOS/iPadOS: UIApplicationDelegate + WKWebView
+│   └── AgOpenWeb.Android/          # Android: Activity + android.webkit.WebView, foreground BackendService
+│
+├── Simulators/
+│   ├── AgOpenWeb.VirtualModules/    # Virtual GPS/steer/machine UDP modules (tests + bench)
+│   └── AgOpenWeb.VehicleSimulator/  # Standalone Avalonia dev tool (not shipped)
 │
 ├── Tests/                              # NUnit test projects
 │   ├── AgOpenWeb.Models.Tests/     # Geometry, coordinate conversion
-│   ├── AgOpenWeb.Services.Tests/   # NMEA parsing, guidance
+│   ├── AgOpenWeb.Services.Tests/   # NMEA parsing, guidance, coverage, pipeline
 │   ├── AgOpenWeb.ViewModels.Tests/ # ViewModel/control-brain logic
-│   └── AgOpenWeb.IntegrationTests/ # Test-support lib: virtual UDP modules (used by Services.Tests)
+│   └── AgOpenWeb.IntegrationTests/ # Test-support lib: fake settings etc. (used by Services.Tests)
 │
+├── Tools/                              # Dev scripts (i18n-extract.py, unpack-dump.sh, ...)
+├── deploy/                             # Packaging per OS (package.sh, installers, READMEs)
 ├── TestRunner/                         # Legacy test harness for guidance algorithms
 └── AgOpenWeb.sln                    # Solution file
 ```
@@ -80,28 +68,36 @@ AgOpenWeb3/
 
 | Platform | Project | Notes |
 |----------|---------|-------|
-| Windows | AgOpenWeb.Desktop | Same codebase as macOS/Linux |
-| macOS | AgOpenWeb.Desktop | Same codebase as Windows/Linux |
-| Linux | AgOpenWeb.Desktop | Same codebase as Windows/macOS |
-| iOS/iPadOS | AgOpenWeb.iOS | Requires Xcode 26.3+, runs on ARM64 simulator |
+| Windows | AgOpenWeb.Desktop | Launcher window (WebView2) by default, or Windows Service (headless) |
+| macOS | AgOpenWeb.Desktop | Launcher window (WKWebView) by default |
+| Linux | AgOpenWeb.Desktop | Headless systemd daemon by default; `--launcher` window (WebKitGTK) on real hardware |
+| iOS/iPadOS | AgOpenWeb.iOS | Requires Xcode 26.3+; TestFlight |
 | Android | AgOpenWeb.Android | APK build, sideload install |
+
+### Desktop modes
+
+`Program.cs` picks the mode: `--headless` (display-less daemon: `HeadlessHost`), `--launcher`
+(the Photino.NET window: `Launcher/LauncherEntry`), no flag = launcher on Windows and macOS,
+headless on Linux. `--launcher --console` shows the supervisor page (start/stop, LAN URL)
+instead of the UI, for a box that only serves other devices. The backend is identical in
+every mode (`BackendHost`).
 
 ## Build Commands
 
 ```bash
 # Build and run Desktop (works on Windows, macOS, Linux)
 dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
-dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj            # launcher window
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -- --headless   # daemon; UI at http://localhost:5174
 
 # Build iOS (requires macOS with Xcode 26.3+)
 dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
 
-# Deploy and run iOS on simulator
-dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64 -t:Run
-
-# Alternative iOS deployment (if -t:Run doesn't work)
-xcrun simctl install booted Platforms/AgOpenWeb.iOS/bin/Debug/net10.0-ios/iossimulator-arm64/AgOpenWeb.iOS.app
-xcrun simctl launch booted com.agopenweb.ios
+# iOS on a device: Release signs for the App Store, so for a directly installable optimized build use
+dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Release -f net10.0-ios -r ios-arm64 \
+  -p:MtouchUseLlvm=false "-p:CodesignKey=Apple Development" -p:CodesignProvision=Automatic
+# (LLVM off builds in ~3 min instead of ~15; delete bin/obj for ios-arm64 after switching branches)
+xcrun devicectl device install app --device <udid> Platforms/AgOpenWeb.iOS/bin/Release/net10.0-ios/ios-arm64/AgOpenWeb.iOS.app
 
 # Build Android APK
 dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
@@ -110,64 +106,47 @@ dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
 dotnet build AgOpenWeb.sln
 
 # Run tests
-dotnet test Tests/
+dotnet test Tests/AgOpenWeb.Models.Tests/ ; dotnet test Tests/AgOpenWeb.Services.Tests/ ; dotnet test Tests/AgOpenWeb.ViewModels.Tests/
 ```
 
 ## Key Design Decisions
 
-### Rendering: SkiaMapControl via CompositionCustomVisualHandler
-All platforms render the map through `SkiaMapControl`, which leases the Skia
-GPU surface inside a `CompositionCustomVisualHandler` and re-arms via
-`RegisterForNextAnimationFrameUpdate`. This bucket sits outside the Av12
-commit throttle that capped `OpenGlControlBase` at ~32 FPS on iPad
-([issue #21409](https://github.com/AvaloniaUI/Avalonia/issues/21409)).
-True perspective comes from `SKMatrix44`; top-down mode is just
-`pitch = 90°` on the same control — no second renderer behind a toggle.
+### Rendering: the web client
+The map is drawn by the web client with CanvasKit (Skia compiled to WebAssembly, bundled in
+`wwwroot/vendor` for offline cab use). The host sends state over a WebSocket as compact binary
+frames (`WireCodec` on the host, `transport.js` on the client): a 10 Hz `Tick` (pose, cross-track,
+sections), the `Scene` (tracks, boundary, imagery extent), `Config`, `Status`, coverage as an
+init + incremental cell deltas, and smaller frames for dialogs, prompts, sounds and toasts.
+Position between ticks is extrapolated client-side (`RENDER_DELAY`); the pose estimator on the
+host does the same for the 100 Hz control loop.
 
-### Shared UI Components
-All panels, dialogs, and controls live in `AgOpenWeb.Views`:
-- `Controls/SkiaMapControl.cs` - Main map rendering
-- `Controls/DialogOverlayHost.axaml` - Hosts all modal dialog overlays (shared across platforms)
-- `Controls/Panels/` - LeftNavigationPanel, SimulatorPanel, SectionControlPanel, etc.
-- `Controls/Dialogs/` - All modal dialogs (FieldSelection, DataIO, AgShare, etc.)
-- `Converters/` - Shared value converters (BoolToColor, FixQualityToColor, etc.)
+### Control authority
+Several browsers may be connected; only one holds control (`ControlAuthority`, deadman model).
+Commands that actuate (autosteer, sections, U-turn, simulator) are Tier-2 and dropped unless
+the sender holds fresh control; everything else is Tier-1. A client can't take control from a
+live operator, only fill an empty seat.
 
-### Dialog System
-Dialogs use a centralized state machine in `UIState`. Only one dialog can be open at a time.
+### Host ↔ client commands
+The client sends `id|arg` strings (`transport.send('track.select|0')`). `RemoteServerWiring`
+(in `RemoteWiring`) switches on the id and calls the VM; `RemoteServerWiring.Helpers.cs` holds
+the `config.set|key:value` table. Projectors (`SceneProjector`, `CoverageProjector`) build the
+DTOs in `Contracts.cs`, `WireCodec` encodes them, `MapBroadcaster` schedules the sends.
 
-**To show a dialog from a ViewModel:**
-```csharp
-State.UI.ShowDialog(DialogType.YourDialog);  // Opens dialog
-State.UI.CloseDialog();                       // Closes any open dialog
-```
-
-**Dialog visibility in AXAML** binds to computed properties on `UIState`:
-```xml
-<dialogs:YourDialogPanel
-    IsVisible="{Binding State.UI.IsYourDialogVisible}"
-    IsHitTestVisible="{Binding State.UI.IsYourDialogVisible}"/>
-```
-
-All dialog panels are registered in `DialogOverlayHost.axaml` (shared, not per-platform).
-
-**Confirmation dialogs** use a callback pattern:
-```csharp
-ShowConfirmationDialog("Title", "Message", () => { /* on confirm */ });
-```
-
-### MainViewModel Structure
-`MainViewModel` is a large partial class split across ~19 files by domain:
+### MainViewModel is the control brain
+`MainViewModel` has no view. It runs on the single `HostLoopDispatcher` thread (the "UI
+thread" stand-in, `IUiDispatcher`), coordinates services, and is driven only through
+`RemoteServerWiring`. It is a large partial class split by domain:
 
 | File | Domain |
 |------|--------|
 | `MainViewModel.cs` | Core state, constructor, DI, properties |
 | `MainViewModel.Commands.Track.cs` | Track/AB line commands |
 | `MainViewModel.Commands.Boundary.cs` | Boundary, headland, AgShare commands |
-| `MainViewModel.Commands.Fields.cs` | Field open/close/create commands |
+| `MainViewModel.Commands.Fields.cs` | Field open/close/create, jobs |
 | `MainViewModel.Commands.Ntrip.cs` | NTRIP profile management |
-| `MainViewModel.Commands.Navigation.cs` | View settings, camera, zoom |
+| `MainViewModel.Commands.Navigation.cs` | View settings, camera, day/night |
 | `MainViewModel.Commands.Hotkeys.cs` | Hotkey configuration and dispatch |
-| `MainViewModel.Commands.Settings.cs` | App directories, reset settings |
+| `MainViewModel.Commands.Settings.cs` | App directories, language, reset settings |
 | `MainViewModel.Commands.Simulator.cs` | Simulator controls |
 | `MainViewModel.Commands.Configuration.cs` | Vehicle/tool configuration |
 | `MainViewModel.Commands.Wizards.cs` | Setup wizards |
@@ -179,6 +158,7 @@ ShowConfirmationDialog("Title", "Message", () => { /* on confirm */ });
 | `MainViewModel.Ntrip.cs` | NTRIP connection management |
 | `MainViewModel.Simulator.cs` | GPS simulator state |
 | `MainViewModel.ViewSettings.cs` | Display/view settings |
+| `MainViewModel.*.Remote.cs` | Web-client-only flows (field builder edits, headland, KML, tram) |
 
 ### ConfigurationStore
 `ConfigurationStore` is a reactive singleton holding all runtime configuration (vehicle, tool, guidance, hotkeys, etc.). It syncs to/from `AppSettings` JSON via `ConfigurationService`.
@@ -188,12 +168,6 @@ ConfigStore.Vehicle.AntennaHeight    // Vehicle config
 ConfigStore.Tool.ToolWidth           // Tool/implement config
 ConfigStore.Hotkeys.GetActionForKey("A")  // Hotkey lookup
 ```
-
-### Draggable Panels
-Panels use Canvas positioning with pointer event handlers for dragging:
-- Desktop: Handlers in `MainWindow.axaml.cs`
-- iOS: Handlers in `MainView.axaml.cs`
-- LeftNavigationPanel has built-in drag support for sub-panels
 
 ### Unified Track Architecture
 **Key insight from AgOpenGPS creator Brian:** "An AB line is just a curve with 2 points."
@@ -232,33 +206,38 @@ AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits cod
 ## Technology Stack
 
 - **.NET 10.0** - Target framework
-- **Avalonia 11.3.9** - Cross-platform UI framework
-- **ReactiveUI 20.1.1** - MVVM framework with reactive extensions
-- **Microsoft.Extensions.DependencyInjection** - Dependency injection
-- **NUnit 4.3 + Avalonia.Headless.NUnit** - Testing framework
-- **NSubstitute** - Mocking for UI tests
+- **Web client** - HTML/JS, CanvasKit (Skia WASM); no framework
+- **Photino.NET 4** - Desktop launcher window (WebView2 / WKWebView / WebKitGTK)
+- **WKWebView / android.webkit.WebView** - the iOS and Android shells
+- **CommunityToolkit.Mvvm** - ObservableObject/RelayCommand in the control brain
+- **Microsoft.Extensions.DependencyInjection / Hosting** - DI, daemon lifetime (systemd, Windows Service)
+- **SkiaSharp 3.119.4** - server-side imagery work (`BoundaryImageryCapture`, `/backpic.png`); each head references its native package
+- **NUnit 4 + NSubstitute** - Testing
 
 ## Key Files Reference
 
 | File | Purpose |
 |------|---------|
-| `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` | Main application state, constructor, DI |
-| `Shared/AgOpenWeb.Views/Controls/SkiaMapControl.cs` | Map rendering (Skia via CompositionCustomVisualHandler) |
-| `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml` | All dialog overlay registrations |
-| `Shared/AgOpenWeb.Views/Controls/Panels/LeftNavigationPanel.axaml` | Main navigation sidebar |
+| `Shared/AgOpenWeb.ViewModels/MainViewModel.cs` | Control brain, constructor, DI |
+| `Shared/AgOpenWeb.RemoteWiring/WebBackend.cs` | Boots the backend every head uses |
+| `Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.cs` | Web command → VM routing |
+| `Shared/AgOpenWeb.RemoteServer/RemoteServerHost.cs` | Embedded web server, routes, static assets |
+| `Shared/AgOpenWeb.RemoteServer/SceneProjector.cs` | Host state → DTOs |
+| `Shared/AgOpenWeb.RemoteServer/WireCodec.cs` | Binary wire encoding (pair with `wwwroot/transport.js`) |
+| `Shared/AgOpenWeb.RemoteServer/wwwroot/app.js` | The web client |
+| `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n.js` | Client-side translation |
 | `Shared/AgOpenWeb.Models/Track/Track.cs` | Unified track model (AB lines + curves) |
 | `Shared/AgOpenWeb.Models/Base/GeometryMath.cs` | Shared geometry utilities |
-| `Shared/AgOpenWeb.Models/State/UIState.cs` | Dialog state machine, panel visibility |
 | `Shared/AgOpenWeb.Models/Configuration/ConfigurationStore.cs` | Reactive config singleton |
-| `Shared/AgOpenWeb.Models/Configuration/HotkeyConfig.cs` | Hotkey bindings model |
 | `Shared/AgOpenWeb.Services/Track/TrackGuidanceService.cs` | Pure Pursuit + Stanley guidance |
-| `Shared/AgOpenWeb.Services/YouTurn/YouTurnGuidanceService.cs` | U-turn path following |
+| `Shared/AgOpenWeb.Services/YouTurn/YouTurnStateMachine.cs` | U-turn planning and following |
+| `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` | Coverage detection + display grids, tiles |
 | `Shared/AgOpenWeb.Services/NtripClientService.cs` | NTRIP RTK corrections |
-| `Shared/AgOpenWeb.Services/GpsService.cs` | GPS data processing |
 | `Shared/AgOpenWeb.Services/ConfigurationService.cs` | AppSettings ↔ ConfigurationStore sync |
-| `Platforms/AgOpenWeb.Desktop/Views/MainWindow.axaml` | Desktop main window |
-| `Platforms/AgOpenWeb.iOS/App.axaml.cs` | iOS head: WebBackend + full-screen WebView |
-| `Tests/AgOpenWeb.UI.Tests/MainViewModelBuilder.cs` | Test helper: builds fully-mocked MainViewModel |
+| `Platforms/AgOpenWeb.Desktop/Program.cs` | Desktop mode selection |
+| `Platforms/AgOpenWeb.Desktop/Launcher/LauncherEntry.cs` | Photino window: all-in-one app or `--console` supervisor |
+| `Platforms/AgOpenWeb.iOS/LauncherViewController.cs` | iOS head: WKWebView over WebBackend |
+| `Platforms/AgOpenWeb.Android/MainActivity.cs` | Android head: WebView, Back/Exit, startup probe |
 
 ## Service Interfaces
 
@@ -269,68 +248,68 @@ Services use interface-based design in `Shared/AgOpenWeb.Services/Interfaces/`:
 - `INtripClientService` - NTRIP caster connections for RTK
 - `IFieldService` - Field loading/saving/management
 - `IBoundaryRecordingService` - Recording field boundaries
-- `IMapService` - Map control registration and track/boundary rendering
+- `IMapService` - Historical map hook; every head registers `NullMapService` (the web client renders)
 - `IConfigurationService` - AppSettings ↔ ConfigurationStore sync, vehicle profiles
 - `IVehicleProfileService` - Vehicle profile CRUD
 - `INtripProfileService` - NTRIP profile CRUD
 - `IAutoSteerService` - Zero-copy GPS→steering pipeline
 - `ISettingsService` - AppSettings JSON persistence
-- `ICoverageMapService` - Worked area tracking (triangle strips)
+- `ICoverageMapService` - Worked area tracking
 - `ISectionControlService` - Automatic section on/off based on coverage/boundaries
+- `IUiDispatcher` / `IUiTimerFactory` - the host-loop thread the VM runs on (`HostLoopDispatcher`)
 
 ## Platform-Specific Code
 
-Platform projects contain only what **must** differ per platform. All UI, dialogs, and business logic live in Shared.
+Platform projects contain only what **must** differ per platform: the process entry, the web
+view shell, DI setup, and platform services (battery, data root, imagery capture process).
+Everything else lives in `Shared/`.
 
 ### Desktop
-- `App.axaml/cs` - Application entry point, DI container setup
-- `Program.cs` - Main entry point
-- `MainWindow.axaml/cs` - Window with drag handlers, hotkey dispatch, styles
-- `Services/MapService.cs` - Map control registration
+- `Program.cs` - mode selection (see above); the imagery-capture child process entry
+- `HeadlessHost.cs` / `BackendHost.cs` - daemon lifetime; the backend used by both modes
+- `Launcher/` - `LauncherEntry` (Photino window), `WebViewLauncher` (all-in-one), `ConsolePage` (`--console` HTML supervisor), `ScreenAwake`
+- `ImageryCaptureProcess.cs` - Skia imagery compositing in a throwaway child process (crash isolation)
 - `DependencyInjection/ServiceCollectionExtensions.cs` - DI setup
 
 ### iOS
-- `App.axaml/cs` - Entry point: boots `WebBackend` and shows a full-screen `NativeWebView` (WKWebView) at `http://localhost:<port>/`
-- `AppDelegate.cs` - iOS app delegate (landscape lock, saves config/state/coverage on background/terminate)
-- `IosImageryCapture.cs` - Imagery capture via the shared compositor
-- `Services/IOSBatteryService.cs` - Battery status
-- `DependencyInjection/ServiceCollectionExtensions.cs` - DI setup (`NullMapService`; the web client renders the map)
-- `Info.plist` - iOS app configuration
+- `AppDelegate.cs` - window, landscape lock, saves on background/terminate
+- `LauncherViewController.cs` - WKWebView, startup + retry, external links to Safari, keep screen on
+- `IosImageryCapture.cs` - imagery capture in-process
+- `Services/IOSBatteryService.cs`, `DependencyInjection/`, `Info.plist`
 
 ### Android
-- `App.axaml/cs` - Application entry point
-- `MainActivity.cs` - Android activity with immersive mode
-- `MainView.axaml/cs` - Main view with drag handlers
-- `Services/MapService.cs` - Map control registration
+- `AndroidApp.cs` - `Application`; `AndroidDataRoot` init; holds `Services`
+- `MainActivity.cs` - WebView, probe-and-retry startup (#73), Back → "Exit AgOpenWeb?", immersive mode, keep screen on
+- `LauncherWebClients.cs` - navigation policy, external links, console → logcat
+- `BackendService.cs` - foreground service owning the backend (survives backgrounding)
+- `WebKeyboardBridge.cs` - `window.agnative.hideKeyboard()`
+
+What each shell must provide to the web UI (JS + WASM, audio without a gesture, `window.open`
+to the system browser, keep the screen awake, localhost HTTP) is listed in
+`Plans/AVALONIA_REMOVAL_PLAN.md`.
 
 ## Common Tasks
 
-### Adding a New Dialog
-1. Add a new `DialogType` enum value in `Shared/AgOpenWeb.Models/State/UIState.cs`
-2. Add `IsYourDialogVisible` computed property and `RaisePropertyChanged` call in `UIState`
-3. Create `YourDialogPanel.axaml/cs` in `Shared/AgOpenWeb.Views/Controls/Dialogs/`
-   - Bind `IsVisible` and `IsHitTestVisible` to `State.UI.IsYourDialogVisible`
-   - Include semi-transparent backdrop with `PointerPressed` handler to close
-4. Register in `Shared/AgOpenWeb.Views/Controls/DialogOverlayHost.axaml`
-5. Add show/close commands in a `MainViewModel.Commands.*.cs` partial class file:
-   ```csharp
-   ShowYourDialogCommand = ReactiveCommand.Create(() =>
-       State.UI.ShowDialog(DialogType.YourDialog));
-   CloseYourDialogCommand = ReactiveCommand.Create(() =>
-       State.UI.CloseDialog());
-   ```
+### Adding a web command
+1. In `app.js`, send it: `transport.send('mything.do|' + arg)`.
+2. Route it in `RemoteServerWiring.cs` (or a `config.set` key in `RemoteServerWiring.Helpers.cs`) to a VM method or command.
+3. If it actuates (steering, sections, turns), add it to the Tier-2 list so it needs control.
 
-### Adding a New Panel
-1. Create `YourPanel.axaml/cs` in `Shared/AgOpenWeb.Views/Controls/Panels/`
-2. Add to `LeftNavigationPanel.axaml` if it's a sub-panel
-3. Or add directly to platform views if standalone
+### Showing new state in the client
+1. Add it to the DTO in `Contracts.cs`, fill it in `SceneProjector` (or the relevant projector).
+2. Encode it in `WireCodec.cs` and decode it in the same order in `transport.js`.
+3. Render it in `app.js`. Frames are versioned by content hash where that matters (`SceneProjector`).
 
-### Frame Rate
-`SkiaMapControl` drives frames via `RegisterForNextAnimationFrameUpdate`,
-which runs at the platform's display refresh rate (60 Hz on most devices,
-120 Hz on ProMotion iPad). There is no fixed-rate `DispatcherTimer`. To
-gate redraws on state changes (instead of every animation tick), see
-`SendStateToHandler` and the `_pendingComposite` coalescing logic.
+### Adding UI text
+Write it in English; `index.html` needs nothing more, and `app.js` strings use `tr('…')`
+(`tr('Pass {n}', { n })` for values). Then run `Tools/i18n-extract.py` and commit `en.json`.
+See `Docs/TRANSLATIONS.md`.
+
+### Verifying a change in the running app
+Run the Desktop head `--headless` with `AGOPENWEB_DATA=<dir>` and drive it from a browser or
+Playwright: wait for `iHoldControl === true`, then `transport.send(...)`; read `tick`,
+`lastTick`, `scene`, `statusBar`, `config`. Kill any older instance first, or you test the
+old build on `:5174`.
 
 ## NTRIP Connection Format
 The NTRIP client uses HTTP/1.1 format:
@@ -345,24 +324,23 @@ User-Agent: NTRIP AgOpenWeb
 ## Debugging Tips
 
 1. **iOS simulator issues**: Use `xcrun simctl` commands directly if `dotnet build -t:Run` fails
-2. **Frame rate**: ARM64 Macs handle 60 FPS fine; Intel Macs may need 10-15 FPS due to emulation
-3. **Dialog not showing**: Check `DialogType` enum, `UIState` visibility property, and `DialogOverlayHost.axaml` registration
-4. **Panel not dragging**: Verify Canvas positioning and pointer event handlers
-5. **iOS Release builds hang in CI**: Use Debug configuration (Release triggers AOT compilation that hangs on runners)
+2. **iOS device**: `xcrun devicectl device process launch --console --terminate-existing com.agopenweb.ios` streams the app's console; its web server is reachable from the Mac over the USB link
+3. **Android**: Debug builds enable WebView debugging (`chrome://inspect`); `adb forward tcp:5599 tcp:5174` reaches the host
+4. **A client shows something a fresh connection doesn't**: compare the incremental stream with the full snapshot (coverage deltas vs `Snapshot()`)
+5. **Bug Report Dump** (main menu) zips settings, state, the field and the last 20 s of the GPS log
+6. **iOS Release builds hang in CI**: Use Debug configuration (Release triggers AOT compilation that hangs on runners)
 
 ## Code Style
 
-- **Cross-platform parity is mandatory.** All code MUST go in `Shared/` unless it requires platform-specific APIs. Platforms only contain: app entry point, DI setup, MainWindow/MainView shell with drag handlers, MapService registration. See `CONTRIBUTING.md` for examples of violations fixed in #187-192.
-- Use `Classes.Active` binding for state-based styling instead of converters where possible
-- Dialogs are overlay panels via `DialogOverlayHost`, not separate windows
+- **Cross-platform parity is mandatory.** All code MUST go in `Shared/` unless it requires platform-specific APIs. Platform projects contain only the shell, DI setup and platform services. See `CONTRIBUTING.md`.
+- The web client is plain HTML/JS: no framework, no build step. Keep `app.js` idioms (DOM overlays for text, CanvasKit for the map).
 - Use dependency injection for services
 - Use shared `GeometryMath` utilities instead of duplicating distance/angle calculations
-- New dialog state goes through `UIState.ShowDialog(DialogType.X)`, not ad-hoc boolean properties
+- Anything written to disk or a wire uses `CultureInfo.InvariantCulture` (see `CONTRIBUTING.md`)
 
 ## Testing
 
 ```bash
-# Run specific test project
 dotnet test Tests/AgOpenWeb.Models.Tests/
 dotnet test Tests/AgOpenWeb.Services.Tests/
 dotnet test Tests/AgOpenWeb.ViewModels.Tests/
@@ -373,16 +351,19 @@ dotnet run --project TestRunner/TestRunner.csproj
 
 **Test projects:**
 - `AgOpenWeb.Models.Tests` - GeometryMath, GeoConversion, boundary/curve utilities
-- `AgOpenWeb.Services.Tests` - NMEA parsing, TrackGuidanceService (uses the virtual UDP modules in `AgOpenWeb.IntegrationTests`)
+- `AgOpenWeb.Services.Tests` - NMEA parsing, TrackGuidanceService, coverage, pipeline, U-turn (uses the virtual UDP modules in `Simulators/AgOpenWeb.VirtualModules`)
 - `AgOpenWeb.ViewModels.Tests` - ViewModel / control-brain logic
-- `AgOpenWeb.IntegrationTests` - test-support library (virtual GPS/steer/machine UDP modules, fake settings); not a standalone test run
+- `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
+
+CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current.
 
 ## U-Turn System
 
-U-turns are generated in `MainViewModel.CreateSimpleUTurnPath()`:
-- Entry leg: straight line from cultivated area into headland
-- Arc: semicircle positioned so it fits within headland zone
-- Exit leg: straight line back to next track
+U-turns are planned by `YouTurnStateMachine` (automatic turns at the headland, and manual
+turns from the on-screen buttons) with paths built by `YouTurnCreationService`:
+- Automatic: entry leg into the headland, arc, exit leg back to the next track; triggered when the tractor reaches the turn start, with an approach alarm 20 m out.
+- Manual: a half-circle from the tractor's position, laid out along the track's local heading (the curve's heading at the nearest point).
+- The turn hands back to line guidance with 4 m of arc remaining (`EarlyCompletionLookahead`).
 
 Key parameters:
 - `HeadlandDistance` - width of headland zone (green to yellow line)
@@ -414,3 +395,4 @@ To cut a release: bump `sys/version.h`, then push a tag — `git tag v26.6.x && 
 - `ABLine.cs` - Marked `[Obsolete]`, retained only for AgOpenGPS file I/O compatibility
 - Use `Track` model for all new guidance code
 - `TestRunner/` - Legacy console test harness, superseded by NUnit test projects in `Tests/`
+- `Simulators/AgOpenWeb.VehicleSimulator` - Avalonia desktop dev tool, kept as is

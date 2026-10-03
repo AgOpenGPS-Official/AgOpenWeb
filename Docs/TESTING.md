@@ -9,7 +9,7 @@ Comprehensive guide to the AgOpenWeb test suite: what exists, how to run it, how
 ## Quick Reference
 
 ```bash
-# Run all tests (317 total)
+# Run all tests
 dotnet test Tests/AgOpenWeb.Models.Tests/
 dotnet test Tests/AgOpenWeb.Services.Tests/
 dotnet test Tests/AgOpenWeb.UI.Tests/
@@ -31,7 +31,7 @@ dotnet test Tests/AgOpenWeb.Services.Tests/ --filter "PurePursuit_VehicleLeftOfL
 
 ## Test Projects
 
-### AgOpenWeb.Models.Tests (72 tests)
+### AgOpenWeb.Models.Tests
 
 Pure unit tests for geometry, coordinate conversion, and math utilities. No mocking needed - these test pure functions.
 
@@ -45,7 +45,7 @@ Pure unit tests for geometry, coordinate conversion, and math utilities. No mock
 
 **When to add tests here:** Any new method in `GeometryMath`, coordinate conversion, or pure data model logic.
 
-### AgOpenWeb.Services.Tests (150 tests)
+### AgOpenWeb.Services.Tests
 
 Service-level tests that verify business logic. Some use mocks (NSubstitute), some are integration tests with real service instances.
 
@@ -67,26 +67,12 @@ Service-level tests that verify business logic. Some use mocks (NSubstitute), so
 
 **When to add tests here:** Any new service, algorithm, file format, or configuration persistence change.
 
-### AgOpenWeb.UI.Tests (95 tests)
+### AgOpenWeb.ViewModels.Tests
 
-Headless Avalonia UI tests. Uses `[AvaloniaTest]` attribute for tests that need a rendering context, plain `[Test]` for ViewModel-only tests.
+ViewModel / control-brain logic: commands, settings persistence, dialog-less flows. Uses
+`MainViewModelBuilder` for a fully mocked `MainViewModel`.
 
-| File | Tests | What it covers |
-|------|-------|---------------|
-| `BottomPanelHeadlessTests.cs` | 12 | Bottom nav panel buttons, snap/nudge commands with headless rendering |
-| `P1CommandTests.cs` | 12 | U-turn, cycle AB lines, flag placement, headland extend/shrink |
-| `TrackNudgeAndSnapTests.cs` | 11 | Nudge left/right, fine nudge, snap to pivot, accumulating nudges |
-| `TrackManagementScreenshotTests.cs` | 11 | Track dialog, recorded paths, import, delete confirmation |
-| `QuickWinScreenshotTests.cs` | 10 | Theme switching, log viewer, flag dialog, about dialog screenshots |
-| `UIStateDialogTests.cs` | 8 | Dialog state machine: show/close, visibility, mutual exclusivity |
-| `ScreenshotCaptureTests.cs` | 4 | Display toggle screenshots (grid, day/night, north-up) |
-| `DisplayWiringScreenshots.cs` | 4 | Before/after screenshots for display feature toggles |
-| `AppDirectoriesDialogTests.cs` | 4 | App directories dialog visibility and path population |
-| `ResetAllSettingsTests.cs` | 4 | Reset settings: confirmation, service calls, cancellation |
-| `ChartScreenshotTests.cs` | 3 | Steer/heading/XTE chart rendering with empty and populated data |
-| `ResetToolHeadingTests.cs` | 3 | Tool heading sync with vehicle heading |
-
-**When to add tests here:** Any new dialog, panel, command, or UI state change.
+**When to add tests here:** Any new command or ViewModel flow.
 
 ---
 
@@ -106,22 +92,6 @@ builder.SettingsService.Received(1).Save();
 ```
 
 All services are mocked via NSubstitute with sensible defaults (temp paths, empty collections).
-
-### TestApp (Avalonia Headless)
-
-Provides a headless Avalonia application context for UI tests:
-
-```csharp
-[AvaloniaTest]  // Runs in headless Avalonia context
-public void MyUiTest()
-{
-    var window = new Window { Content = new MyPanel() };
-    window.Show();
-    // Assert visual state...
-}
-```
-
-Configured with Fluent theme (dark mode) and shared resources matching the production app.
 
 ### TestSettingsService (Integration Tests)
 
@@ -177,10 +147,8 @@ var settings = new TestSettingsService();
 
 ### Optional (nice to have)
 
-- **Screenshot tests** - Visual verification of UI changes
-  - Use `[AvaloniaTest]` with headless window
-  - Capture before/after for toggle features
-  - See `DisplayWiringScreenshots.cs` as template
+- **Web client checks** - Run the Desktop head `--headless` and drive the page with Playwright
+  (`transport.send(...)`, read `tick` / `scene` / `statusBar`); see `CLAUDE.md`
 
 - **Integration scenarios** - Multi-step workflows
   - Add to `IntegrationTests/Program.cs`
@@ -271,29 +239,6 @@ public void AppSettings_MyProperty_SurvivesJsonRoundTrip()
 }
 ```
 
-### Headless UI Test
-
-```csharp
-[AvaloniaTest]
-public void MyPanel_WhenToggled_ChangesVisibility()
-{
-    var vm = new MainViewModelBuilder().Build();
-    var window = new Window
-    {
-        Width = 800, Height = 600,
-        Content = new MyPanel { DataContext = vm }
-    };
-    window.Show();
-
-    vm.ToggleMyPanelCommand!.Execute(null);
-
-    // Assert visual state via DataContext or find controls
-    Assert.That(vm.State.UI.IsMyPanelVisible, Is.True);
-}
-```
-
----
-
 ## Coverage
 
 Coverage collection is set up via `coverlet.collector` in all test projects.
@@ -331,8 +276,6 @@ Coverage is low overall but focused on critical paths:
 
 - **Framework:** NUnit 4.3 with `Assert.That()` syntax
 - **Mocking:** NSubstitute
-- **Headless UI:** Avalonia.Headless.NUnit with `[AvaloniaTest]`
 - **Naming:** `MethodName_Condition_ExpectedResult` or descriptive sentence
 - **Parallelism:** Tests run in parallel by default. Use `[NonParallelizable]` for tests that modify `ConfigurationStore.Instance` or other static state
-- **Screenshots:** Saved to `TestResults/` directory, useful for visual verification in CI
 - **Tolerances:** Use `Is.EqualTo(x).Within(tolerance)` for floating-point comparisons
