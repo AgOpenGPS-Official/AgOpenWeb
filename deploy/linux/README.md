@@ -73,7 +73,7 @@ point `AGOPENWEB_DATA` at it.
   manually (or `libicu-dev` / `icu-devtools` both pull it in).
 - The build is **not trimmed** — the steer wizard projects step ViewModels by
   reflection, which trimming would break. Self-contained-untrimmed is ~160 MB
-  (bundles the .NET runtime; the unused Avalonia desktop natives ride along but are
+  (bundles the .NET runtime; the launcher's Photino native library rides along but is
   never loaded on the headless path).
 - A local kiosk display is a separate concern: install a minimal X/Wayland +
   `chromium --kiosk http://localhost:5174` as its own unit. The AgOpenWeb host

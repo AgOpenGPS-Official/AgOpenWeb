@@ -257,6 +257,57 @@ public class YouTurnCycleTests
     }
 
     /// <summary>
+    /// A manual turn on a curve is laid out along the curve where the tractor is (AgOpenGPS
+    /// manualUturnHeading), not along the straight line from the curve's first point to its
+    /// last. With the chord heading, the arc started 35° off the tractor and ended short of
+    /// the next pass, so the tractor jumped onto it.
+    /// </summary>
+    [Test]
+    public void ManualTurn_on_a_curve_follows_the_local_heading()
+    {
+        // Quarter circle, radius 100 m: north at the start, east at the end. Chord heading 45°.
+        var points = new List<Vec3>();
+        for (int deg = 0; deg <= 90; deg += 2)
+        {
+            double t = deg * Math.PI / 180;
+            points.Add(new Vec3(100 - 100 * Math.Cos(t), 100 * Math.Sin(t), t));
+        }
+        const double localDeg = 80;
+        double local = localDeg * Math.PI / 180;
+        var stateMachine = BuildStateMachine();
+        var ctx = BuildTickContext() with
+        {
+            Boundary = null,
+            HeadlandLine = null,
+            SelectedTrack = Models.Track.Track.FromCurve("curve-test", points),
+            CurrentPosition = new Position
+            {
+                Easting = 100 - 100 * Math.Cos(local), Northing = 100 * Math.Sin(local), Heading = localDeg,
+            },
+        };
+        var guidance = new GuidanceWorkingState();
+        var youTurn = new YouTurnWorkingState();
+
+        stateMachine.TriggerManual(turnLeft: false, isAutoSteerEngaged: true, in ctx, guidance, youTurn);
+        Assume.That(youTurn.IsExecuting, Is.True, "Manual trigger must start a turn");
+        var first = youTurn.TurnPath![0];
+        var last = youTurn.TurnPath![^1];
+
+        double Deg(double rad) => ((rad * 180 / Math.PI) % 360 + 360) % 360;
+        Assert.Multiple(() =>
+        {
+            Assert.That(guidance.IsHeadingSameWay, Is.True);
+            Assert.That(Deg(first.Heading), Is.EqualTo(localDeg).Within(3), "the arc starts along the tractor's heading");
+            Assert.That(Deg(last.Heading), Is.EqualTo(localDeg + 180).Within(3), "and ends heading back along the curve");
+            // Curve start → end runs square to the local heading (onto the next pass), not
+            // along it. Point 0 is the tractor; the curve starts 4 m ahead of it (#156).
+            var curveStart = youTurn.TurnPath![1];
+            double along = (last.Easting - curveStart.Easting) * Math.Sin(local) + (last.Northing - curveStart.Northing) * Math.Cos(local);
+            Assert.That(along, Is.EqualTo(0).Within(0.5));
+        });
+    }
+
+    /// <summary>
     /// A snake / alternate turn was planned (target pass 5) but discarded before it ran.
     /// A manual turn must then complete by its own direction, not jump to the stale pass.
     /// </summary>

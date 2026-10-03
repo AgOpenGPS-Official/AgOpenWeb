@@ -25,7 +25,6 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Interfaces;
 using AgOpenWeb.Services.Logging;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using CommunityToolkit.Mvvm.Input;
 
@@ -212,7 +211,8 @@ public partial class MainViewModel
                 catch { /* screenshot is optional */ }
 
                 var zipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, _configStore, screenshotPng: screenshot);
+                    _settingsService, _appState, _configStore, screenshotPng: screenshot,
+                    activeJobTaskName: SaveCoverageForDump());
                 StatusMessage = $"Debug dump saved: {zipPath}";
                 _logger.LogInformation($"Debug dump created: {zipPath}");
             }
@@ -243,7 +243,8 @@ public partial class MainViewModel
             try
             {
                 _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot);
+                    _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot,
+                    activeJobTaskName: SaveCoverageForDump());
             }
             catch (Exception ex)
             {
@@ -350,6 +351,7 @@ public partial class MainViewModel
                         _configStore,
                         additionalNotes: notes,
                         screenshotPng: _bugReportScreenshot,
+                        activeJobTaskName: SaveCoverageForDump(),
                         outputDirectory: bugReportsDir,
                         filePrefix: $"bugreport_{titleSlug}",
                         userAttachments: attachmentPaths);
@@ -487,6 +489,21 @@ public partial class MainViewModel
 
         AppDirectories = dirs;
     }
+
+    /// <summary>
+    /// Save the active job's coverage so a dump's tiles are current, and return the job's
+    /// task name for <see cref="Services.DebugDumpService.CreateDump"/>; null with no job.
+    /// </summary>
+    private string? SaveCoverageForDump()
+    {
+        var task = _jobService.ActiveJob?.TaskName;
+        var fieldDir = ActiveField?.DirectoryPath;
+        if (string.IsNullOrWhiteSpace(task) || string.IsNullOrEmpty(fieldDir)) return null;
+        try { _coverageMapService.SaveToFile(fieldDir, task); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Coverage] Save before dump failed"); }
+        return task;
+    }
+
 }
 
 // --- Log Viewer (#22) ---
@@ -689,6 +706,7 @@ public class SettingsValueItem
         Name = name;
         Value = value;
     }
+
 }
 
 public class AppDirectoryInfo

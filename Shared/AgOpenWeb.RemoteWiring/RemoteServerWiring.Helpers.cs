@@ -584,13 +584,29 @@ public static partial class RemoteServerWiring
                     var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
                     var zip = AgOpenWeb.Services.DebugDumpService.CreateDump(
                         services.GetRequiredService<ISettingsService>(), state, store,
-                        additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug);
+                        additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
+                        activeJobTaskName: SaveCoverageForDump(services, state));
                     state.BugReportStatus = "Saved: " + zip;
                 }
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
                 return;
             }
         }
+    }
+
+    /// <summary>
+    /// Save the active job's coverage so the dump's tiles are current, and return the
+    /// job's task name for <see cref="AgOpenWeb.Services.DebugDumpService.CreateDump"/>.
+    /// Null when no job is open; a failed save still returns the name (stale tiles beat none).
+    /// </summary>
+    private static string? SaveCoverageForDump(IServiceProvider services, AgOpenWeb.Models.State.ApplicationState state)
+    {
+        var task = services.GetRequiredService<IJobService>().ActiveJob?.TaskName;
+        var fieldDir = state.Field.ActiveField?.DirectoryPath;
+        if (string.IsNullOrWhiteSpace(task) || string.IsNullOrEmpty(fieldDir)) return null;
+        try { services.GetRequiredService<ICoverageMapService>().SaveToFile(fieldDir, task); }
+        catch { /* the dump still carries the last autosave */ }
+        return task;
     }
 
     private static async Task TestNtripAndReportAsync(

@@ -6,7 +6,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Avalonia.Controls;
 
 namespace AgOpenWeb.Desktop.Launcher;
 
@@ -17,7 +16,7 @@ namespace AgOpenWeb.Desktop.Launcher;
 /// <list type="bullet">
 ///   <item>Windows: <c>SetThreadExecutionState</c> on the UI thread (held until that thread exits).</item>
 ///   <item>macOS: <c>caffeinate -d -i -w &lt;pid&gt;</c> (exits with this process).</item>
-///   <item>Linux (X11): <c>xdg-screensaver suspend &lt;xid&gt;</c> (lifts when the window is destroyed).</item>
+///   <item>Linux: <c>systemd-inhibit --what=idle</c> holding a child that lives as long as this process.</item>
 /// </list>
 /// </summary>
 internal static class ScreenAwake
@@ -31,9 +30,8 @@ internal static class ScreenAwake
 
     private static bool _held;
 
-    /// <summary>Call on the UI thread. Idempotent, so a page reload never spawns a second
-    /// caffeinate / xdg-screensaver.</summary>
-    public static void Hold(Window window)
+    /// <summary>Idempotent, so a page reload never spawns a second caffeinate / inhibitor.</summary>
+    public static void Hold()
     {
         if (_held) return;
         _held = true;
@@ -47,9 +45,11 @@ internal static class ScreenAwake
             {
                 Spawn("/usr/bin/caffeinate", $"-d -i -w {Environment.ProcessId}")?.Dispose();
             }
-            else if (OperatingSystem.IsLinux() && window.TryGetPlatformHandle() is { HandleDescriptor: "XID" } h)
+            else if (OperatingSystem.IsLinux())
             {
-                Spawn("xdg-screensaver", $"suspend 0x{h.Handle.ToInt64():x}")?.Dispose();
+                // logind idle inhibitor; the sleeping child keeps it until this process exits.
+                var p = Spawn("systemd-inhibit", "--what=idle:sleep --who=AgOpenWeb --why=\"Guidance screen\" --mode=block sleep infinity");
+                if (p != null) AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { p.Kill(); } catch { } };
             }
             else return;
             Console.WriteLine("[screen] keep-awake on");

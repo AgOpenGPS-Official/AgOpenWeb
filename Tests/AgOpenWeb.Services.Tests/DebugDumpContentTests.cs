@@ -91,3 +91,87 @@ public class DebugDumpContentTests
         Assert.That(json, Does.Contain("2101"));
     }
 }
+
+/// <summary>
+/// #175: coverage display bugs could not be reproduced from a dump because it carried only
+/// the field folder's files, not the job's coverage tiles under <c>jobs/</c>, and not the
+/// section widths that set the pass spacing and painted width.
+/// </summary>
+[TestFixture, NonParallelizable]
+public class DebugDumpJobContentTests
+{
+    private string _dir = null!;
+
+    [SetUp] public void SetUp() => _dir = Path.Combine(Path.GetTempPath(), "dumptest_" + Guid.NewGuid().ToString("N"));
+    [TearDown] public void TearDown() { try { Directory.Delete(_dir, true); } catch { } }
+
+    private static ISettingsService Settings()
+    {
+        var svc = Substitute.For<ISettingsService>();
+        svc.Settings.Returns(new AppSettings());
+        return svc;
+    }
+
+    [Test]
+    public void Dump_includes_the_active_jobs_coverage_tiles_and_nothing_from_other_jobs()
+    {
+        var fieldDir = Path.Combine(_dir, "Fields", "monte");
+        Directory.CreateDirectory(Path.Combine(fieldDir, "jobs", "2026-09-23", "coverage"));
+        Directory.CreateDirectory(Path.Combine(fieldDir, "jobs", "other-job", "coverage"));
+        File.WriteAllText(Path.Combine(fieldDir, "field.geojson"), "{}");
+        File.WriteAllText(Path.Combine(fieldDir, "jobs", "2026-09-23", "job.json"), "{}");
+        File.WriteAllBytes(Path.Combine(fieldDir, "jobs", "2026-09-23", "coverage", "tile_0_0.bin"), new byte[] { 1, 2, 3 });
+        File.WriteAllBytes(Path.Combine(fieldDir, "jobs", "other-job", "coverage", "tile_0_0.bin"), new byte[] { 9 });
+
+        var state = new ApplicationState();
+        state.Field.ActiveField = new Field { Name = "monte", DirectoryPath = fieldDir };
+
+        var zip = DebugDumpService.CreateDump(Settings(), state, new ConfigurationStore(),
+            outputDirectory: _dir, activeJobTaskName: "2026-09-23");
+        using var a = ZipFile.OpenRead(zip);
+        var names = a.Entries.Select(e => e.FullName).ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(names, Does.Contain("field/field.geojson"));
+            Assert.That(names, Does.Contain("field/jobs/2026-09-23/job.json"));
+            Assert.That(names, Does.Contain("field/jobs/2026-09-23/coverage/tile_0_0.bin"));
+            Assert.That(names.Where(n => n.Contains("other-job")), Is.Empty, "only the active job");
+        });
+    }
+
+    [Test]
+    public void Dump_without_a_job_has_no_job_entries()
+    {
+        var fieldDir = Path.Combine(_dir, "Fields", "monte");
+        Directory.CreateDirectory(Path.Combine(fieldDir, "jobs", "x", "coverage"));
+        File.WriteAllBytes(Path.Combine(fieldDir, "jobs", "x", "coverage", "t.bin"), new byte[] { 1 });
+        var state = new ApplicationState();
+        state.Field.ActiveField = new Field { Name = "monte", DirectoryPath = fieldDir };
+
+        var zip = DebugDumpService.CreateDump(Settings(), state, new ConfigurationStore(), outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        Assert.That(a.Entries.Select(e => e.FullName).Where(n => n.StartsWith("field/jobs/")), Is.Empty);
+    }
+
+    [Test]
+    public void Dump_configuration_carries_section_widths_and_the_actual_tool_width()
+    {
+        var store = new ConfigurationStore();
+        store.Tool.Width = 6;
+        store.NumSections = 2;
+        store.Tool.SetSectionWidth(0, 600);
+        store.Tool.SetSectionWidth(1, 600);
+
+        var zip = DebugDumpService.CreateDump(Settings(), new ApplicationState(), store, outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        var cfgText = new StreamReader(a.GetEntry("configuration.json")!.Open()).ReadToEnd();
+        using var cfg = JsonDocument.Parse(cfgText);
+        var widths = cfg.RootElement.GetProperty("SectionWidthsCm").EnumerateArray().Select(x => x.GetDouble()).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(widths, Is.EqualTo(new[] { 600.0, 600.0 }));
+            Assert.That(cfg.RootElement.GetProperty("ActualToolWidth").GetDouble(), Is.EqualTo(12));
+        });
+    }
+}

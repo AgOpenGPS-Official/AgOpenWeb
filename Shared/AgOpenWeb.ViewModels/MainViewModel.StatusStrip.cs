@@ -16,7 +16,6 @@
 
 using System;
 using System.Globalization;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 
 namespace AgOpenWeb.ViewModels;

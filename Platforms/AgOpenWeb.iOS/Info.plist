@@ -42,10 +42,10 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
-    <!-- Privacy purpose strings. Avalonia and its media stack reference these
-         system frameworks, so Apple's static scanner (ITMS-90683) requires the
-         keys even though AgOpenWeb does not use the underlying features. GPS
-         comes from external hardware over UDP, not CoreLocation/CoreBluetooth. -->
+    <!-- Privacy purpose strings. Apple's static scanner (ITMS-90683) requires the
+         keys for frameworks the binary references even though AgOpenWeb does not
+         use the underlying features. GPS comes from external hardware over UDP,
+         not CoreLocation/CoreBluetooth. Kept from the Avalonia build; harmless. -->
     <key>NSCalendarsUsageDescription</key>
     <string>AgOpenWeb does not access your calendar.</string>
     <key>NSContactsUsageDescription</key>

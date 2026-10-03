@@ -43,30 +43,27 @@ Thank you for your interest in contributing to AgOpenWeb! This document lists fe
 
 ## Architecture Overview
 
-- **Shared code** (~92%): Located in `Shared/` folder
+- **Shared code**: Located in `Shared/` folder
   - `AgOpenWeb.Models/` - Data models
   - `AgOpenWeb.Services/` - Business logic
-  - `AgOpenWeb.ViewModels/` - MVVM ViewModels (ReactiveUI)
-  - `AgOpenWeb.Views/` - Shared UI controls, panels, dialogs
+  - `AgOpenWeb.ViewModels/` - `MainViewModel`, the headless control brain
+  - `AgOpenWeb.RemoteServer/` - Embedded web server + the web client (`wwwroot`): the only UI
+  - `AgOpenWeb.RemoteWiring/` - Boots the backend; routes web commands to the ViewModel
 
-- **Platform code** (~8%): Located in `Platforms/`
-  - `AgOpenWeb.Desktop/` - Windows/macOS/Linux
-  - `AgOpenWeb.iOS/` - iOS/iPadOS
-  - `AgOpenWeb.Android/` - Android
+- **Platform code**: Located in `Platforms/`, a thin web-view shell each
+  - `AgOpenWeb.Desktop/` - Windows/macOS/Linux (Photino.NET window, or headless daemon)
+  - `AgOpenWeb.iOS/` - iOS/iPadOS (WKWebView)
+  - `AgOpenWeb.Android/` - Android (WebView + foreground service)
 
 ### Cross-Platform Parity Rule
 
 **All code MUST go in `Shared/` unless it requires platform-specific APIs.** This is a hard architectural requirement, not a preference. Putting code in a single platform folder means the other platforms lose that feature.
 
-**What goes in `Shared/`:** UI controls, panels, dialogs, view models, services, models, converters, styles, icons, localization strings.
+**What goes in `Shared/`:** the web client (`wwwroot`), the view model, services, models, the web command wiring, UI strings.
 
-**What goes in `Platforms/`:** Application entry point (`App.axaml.cs`), DI container setup, `MainWindow`/`MainView` (layout shell + drag handlers), `MapService` (map control registration), platform-specific APIs (file pickers, notifications).
+**What goes in `Platforms/`:** the process entry point, the web-view shell (startup, keep-screen-on, external links), DI container setup, and platform services (battery, data root, imagery capture process).
 
-**Example violations fixed in #187-192:**
-- Status bar indicators were in Desktop `MainWindow.axaml` instead of a shared `StatusBarPanel`
-- Localization init was Desktop-only in `App.axaml.cs` instead of all three platforms
-- Flag placement banner existed only in Desktop
-- Screenshot capture code was duplicated across all three platforms instead of a shared helper
+**Example violations fixed in #187-192** (in the native-UI days, but the rule is the same): status bar indicators that existed only on Desktop, localization init that ran only on Desktop, a flag placement banner only on Desktop, screenshot capture duplicated across all three platforms.
 
 ## MVVM Discipline
 
@@ -79,13 +76,13 @@ AgOpenWeb follows strict MVVM layering. An earlier refactor cleaned up significa
 - **Services / pipeline** (`AgOpenWeb.Services/`): all domain computation. Geometry, guidance math, coordinate conversion, coverage painting, section logic, pathing, state machines. These are the units under test.
 - **Models** (`AgOpenWeb.Models/`): data shapes. `*WorkingState` POCOs, `*State : ObservableObject` mirrors, records, DTOs, geometry primitives. Behavior is limited to pure helpers (e.g., `GeometryMath`).
 - **ViewModels** (`AgOpenWeb.ViewModels/`): orchestration only. Expose bindable properties, wire commands to services, translate user intent into intents/service calls. ViewModels are thin.
-- **Views** (`AgOpenWeb.Views/`): AXAML bindings and presentation. Code-behind is limited to view concerns (pointer handlers for dragging, focus, keyboard routing).
+- **Web client** (`AgOpenWeb.RemoteServer/wwwroot/`): presentation. It receives state frames and sends `id|arg` commands; it never computes guidance.
 
 ### Rules
 
 1. **No domain computation in the ViewModel.** If you find yourself writing geometry, distance math, pathing, or multi-step business logic inside a `*ViewModel.cs`, stop — move it to a service and call the service from the VM. The VM's job is to coordinate, not to compute.
-2. **No service calls from code-behind.** Views bind to ViewModel properties and commands. Don't inject services into a `View.axaml.cs`.
-3. **Commands stay thin.** A `ReactiveCommand` delegate should read as *"ask service X to do Y, optionally push an intent, optionally show a dialog."* If it's longer than that, the body belongs in a service method.
+2. **No domain logic in the web client.** `app.js` renders what the host sends and sends commands back. Don't recompute guidance, coverage or geometry in the browser.
+3. **Commands stay thin.** A command delegate should read as *"ask service X to do Y, optionally push an intent, optionally show a prompt."* If it's longer than that, the body belongs in a service method.
 4. **No direct `State.*` mutation from commands for pipeline-owned state.** Push an intent through `IPipelineIntents` — see the Threading Model section. UI-only state (dialog visibility, panel position) is fine to mutate directly.
 5. **No ViewModel references from services.** Services expose interfaces, raise events, or return results. The ViewModel subscribes/consumes. Dependency flows one direction.
 
@@ -161,36 +158,24 @@ Open work is tracked on the [AgOpenWeb project board](https://github.com/orgs/Ag
 
 ## Translations
 
-Translation contributions are **on hold** until we decide how AgOpenWeb will connect to the shared [AgOpenGPS Weblate project](https://hosted.weblate.org/engage/agopengps/). AgOpen has used Weblate for over a year; our goal is to let one Weblate contribution benefit both projects rather than maintain parallel hand-edited `.resx` files.
-
-Until that workflow is decided, please do not open PRs that add or edit files under `Shared/AgOpenWeb.Views/Localization/`. If you'd like to translate, watch this section — we'll link to the Weblate project here once it's set up.
+UI strings live in `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` (generated) and one JSON file per language, translated on the shared [AgOpenGPS Weblate project](https://hosted.weblate.org/engage/agopengps/) once the component is set up. Please don't hand-edit language files in PRs. How to add strings, and the Weblate settings, are in [Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md).
 
 ## How to Implement a Button Feature
 
-1. **Find the button** in the relevant AXAML file under `Shared/AgOpenWeb.Views/Controls/`
+1. **Add the button** in `Shared/AgOpenWeb.RemoteServer/wwwroot/index.html` (or build it in `app.js`), written in English.
 
-2. **Add a Command binding** to the button:
-   ```xml
-   <Button Content="My Feature" Command="{Binding MyFeatureCommand}" />
+2. **Send a command** from `app.js`:
+   ```js
+   document.getElementById('my-feature').addEventListener('pointerdown', e => {
+     e.stopPropagation(); transport.send('mything.do');
+   });
    ```
 
-3. **Create the command** in `MainViewModel.cs` or appropriate ViewModel:
-   ```csharp
-   public ReactiveCommand<Unit, Unit> MyFeatureCommand { get; }
+3. **Route it** in `Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.cs` to a ViewModel command or method (a `config.set` key goes in `RemoteServerWiring.Helpers.cs`). If it actuates anything (steering, sections, turns), it is Tier-2 and must require control.
 
-   // In constructor:
-   MyFeatureCommand = ReactiveCommand.Create(ExecuteMyFeature);
+4. **Show new state** by adding it to the DTO in `RemoteServer/Contracts.cs`, filling it in `SceneProjector`, encoding it in `WireCodec.cs` and decoding it in the same order in `wwwroot/transport.js`, then rendering it in `app.js`.
 
-   private void ExecuteMyFeature()
-   {
-       // Implementation here
-   }
-   ```
-
-4. **For dialogs**, follow the existing pattern:
-   - Add `IsMyDialogVisible` property to ViewModel
-   - Create dialog panel in `Shared/AgOpenWeb.Views/Controls/Dialogs/`
-   - Add dialog to `MainWindow.axaml` (Desktop) and `MainView.axaml` (iOS/Android)
+5. **Strings:** run `Tools/i18n-extract.py` so `en.json` includes any new text (CI checks this).
 
 ## Questions?
 

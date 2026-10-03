@@ -35,11 +35,9 @@ sudo apt-get install \
   libfontconfig1 libgl1                 # SkiaSharp (boundary-imagery compositing)
 ```
 
-- **WebView backend.** Avalonia's Linux WebView uses **WebKitGTK** (`libwebkit2gtk-4.1`) or
-  **WPE** (`libwpewebkit-2.0` + `libwpe-1.0` + `libwpebackend-fdo-1.0`); both pull
-  `libsoup-3.0`. WebKitGTK is the more widely packaged of the two — install it first. If the
-  window opens but stays blank, the WebKit runtime is missing or the wrong flavor; install the
-  other backend.
+- **WebView backend.** The launcher window is Photino.NET over **WebKitGTK**
+  (`libwebkit2gtk-4.1`, which pulls `libsoup-3.0`). If the window opens but stays blank, the
+  WebKit runtime is missing.
 - **ICU** is a hard `.NET` dependency: without `libicu` the host won't start at all. The
   versioned package name differs by release (`libicu76`, `libicu72`, …); `libicu-dev` pulls
   the current one.

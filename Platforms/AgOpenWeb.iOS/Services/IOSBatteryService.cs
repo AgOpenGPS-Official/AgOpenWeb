@@ -6,7 +6,6 @@
 using System;
 using AgOpenWeb.Models;
 using AgOpenWeb.Services.Interfaces;
-using Avalonia.Threading;
 using Foundation;
 using UIKit;
 
@@ -24,7 +23,10 @@ public sealed class IOSBatteryService : IBatteryService, IDisposable
     private NSObject? _stateObserver;
     private BatteryStatus _current = BatteryStatus.Unavailable;
     private readonly object _gate = new();
+    private readonly IUiDispatcher _dispatcher;
     private bool _started;
+
+    public IOSBatteryService(IUiDispatcher dispatcher) => _dispatcher = dispatcher;
 
     public BatteryStatus CurrentStatus
     {
@@ -109,7 +111,7 @@ public sealed class IOSBatteryService : IBatteryService, IDisposable
         }
         if (changed)
         {
-            Dispatcher.UIThread.Post(() => StatusChanged?.Invoke(this, next));
+            _dispatcher.Post(() => StatusChanged?.Invoke(this, next));
         }
     }
 }

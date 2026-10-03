@@ -58,9 +58,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
         services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
 
-        // UI-thread dispatcher + timer abstraction. With the native UI gone the VM/pipeline
-        // run on a single HostLoopDispatcher (the WebView is the only Avalonia surface and the
-        // brain stays off its thread), exactly as on the desktop daemon/launcher.
+        // "UI-thread" dispatcher + timer abstraction: the VM/pipeline run on a single
+        // HostLoopDispatcher, off the WKWebView's main thread, exactly as on the desktop
+        // daemon/launcher.
         // See Plans/CONFIG_STATE_AUDIT.md §11.
         services.AddSingleton<HostLoopDispatcher>();
         services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());

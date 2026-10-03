@@ -1,6 +1,6 @@
 # Avalonia Removal Plan
 
-**Status:** proposed (2026-10-01). **Stop gap:** PR #196 (Android accessibility crash) is merged as-is. This plan replaces the code it touches.
+**Status:** done (2026-10-02). Phases 0–3 are #224, #229, #230, #231; Phase 4 (docs, About page) follows #231. The VehicleSimulator stays on Avalonia (decided 2026-10-02). PR #196's workaround was replaced by Phase 1.
 
 ## Why
 
@@ -52,6 +52,8 @@ One PR per phase, each verified on hardware before the next. The web UI and back
 
 ### Phase 0: Shared cleanup (no behaviour change)
 
+**Status:** done (2026-10-02). SkiaSharp is pinned to 3.119.4. Desktop kept `SkiaSharp.NativeAssets.Linux` while Avalonia was still there (both ship the same `libSkiaSharp.so`); Phase 3 switched it to `.NoDependencies`. The imagery check passed on Desktop, a Galaxy Tab S7 FE and the test iPad.
+
 1. Delete `MainViewModel.ApplyThemeVariant` and its callers (the web client does its own day/night theme from `IsDayMode`), and the stale `using Avalonia*` lines. Remove `PackageReference Avalonia` from `AgOpenWeb.ViewModels.csproj`.
 2. Pin SkiaSharp explicitly. `RemoteServer` asks for 3.119.1, but the build actually resolves Avalonia's 3.119.4-preview. Choose one stable version and add the matching `SkiaSharp.NativeAssets.{Android,iOS,macOS,Win32,Linux}` to each head (Linux: the `.NoDependencies` variant is enough for the daemon's imagery child process, if it renders no text; it doesn't today). HarfBuzz isn't needed: the server code draws no text.
 3. Remove the unused `Avalonia.Controls.DataGrid` and `AvaloniaUI.DiagnosticsSupport` packages from the Desktop csproj.
@@ -60,6 +62,14 @@ One PR per phase, each verified on hardware before the next. The web UI and back
 Verify: all four test projects pass, and every head builds and runs. Check the imagery capture (`/backpic.png`) still works on Desktop, Android and iOS, since the native Skia now comes from our own reference.
 
 ### Phase 1: Android (first, because it fixes #196 properly)
+
+**Status:** implemented and checked on an Android 14 emulator and a Galaxy Tab S7 FE (Android 14) on 2026-10-02: cold start, Back/Exit, keyboard bridge, soft keyboard over a bottom input, ungated audio, external links, rotation, imagery. Still to do: the Lenovo tablet with Lenovo Pen on (the #196 repro) and a cold boot of a slow device.
+
+Decisions made while implementing:
+- **Exit stops the host.** Back asks "Exit AgOpenWeb?"; Exit saves, stops `BackendService` (so guidance and the LAN feed stop) and removes the task. Dismissing the app from Recents still leaves the host running, as before.
+- **More `ConfigChanges`** (screen layout, smallest screen size, keyboard, navigation), so attaching a keyboard or resizing a window doesn't restart the Activity and reload the page.
+- **The theme's parent** is now the platform's `Theme.Material.NoActionBar` (AppCompat came with Avalonia).
+- **Debug builds** enable WebView debugging (`chrome://inspect`).
 
 - `AndroidApp`: a plain `Android.App.Application`. Keep `AndroidDataRoot.Initialize(this)` in `OnCreate`, and drop the Skia GPU cache override (Avalonia-only).
 - `MainActivity`: a plain `Activity` whose content is a `FrameLayout` containing:
@@ -70,7 +80,7 @@ Verify: all four test projects pass, and every head builds and runs. Check the i
   - A native splash `TextView` over the web view (same colours and text).
 - Port the startup driver from `App.axaml.cs` unchanged in substance: probe `:5174` until it accepts (120 s), navigate, confirm the load, re-probe and retry (10 attempts), and show the error text on the splash. The #73 rule still holds: a load counts only once the probe has seen the host.
 - Keep as-is: `BackendService` (the foreground service owning `AndroidBackendHost`), immersive mode, save on `OnPause`/`OnStop`, the notification-permission request, and `ConfigChanges` (no Activity restart on rotate/resize).
-- Back button: check what it does in today's build first. Then either swallow it (there's no web history to go back through) or ask "Exit AgOpenWeb?".
+- Back button: ask "Exit AgOpenWeb?" (decided 2026-10-02; don't swallow it).
 - Remove `App.axaml`/`App.axaml.cs` and the Avalonia packages. Remove the `LauncherWebView` workaround from #196.
 
 Verify on a Lenovo tablet with Lenovo Pen on (the #196 repro) and on one other Android device:
@@ -81,6 +91,8 @@ Verify on a Lenovo tablet with Lenovo Pen on (the #196 repro) and on one other A
 - with TalkBack on: no crash
 
 ### Phase 2: iOS
+
+**Status:** implemented and checked on the test iPad (iPad Pro 12.9" 2nd gen, iPadOS 17.7) on 2026-10-02: launch, imagery, keyboard, alarms, external links, background/foreground, landscape, screen stays awake. Still to do: a TestFlight build, and the ProMotion frame-rate check (this iPad isn't ProMotion).
 
 - `Main.cs`: `UIApplication.Main(args, null, typeof(AppDelegate))`.
 - `AppDelegate : UIResponder, IUIApplicationDelegate`: in `FinishedLaunching`, create the `UIWindow`, build DI and start `WebBackend` (the code in `App.axaml.cs` today), and show a `UIViewController` with a `WKWebView`. Keep the landscape lock, the save on background/terminate, and the imagery capture as they are.
@@ -99,6 +111,8 @@ Verify on the test iPad (`ios-local-build-env` memory: Xcode 27 needs `ValidateX
 - a TestFlight build
 
 ### Phase 3: Desktop launcher
+
+**Status:** implemented on 2026-10-02 with Photino.NET 4.0.16. The `--console` supervisor is rebuilt as an embedded HTML page in a Photino window (decided: rebuild in HTML). Checked on macOS: the all-in-one window loads the UI, closing it stops the backend and saves; the console page starts/stops the host, copies the URL and opens the browser. Not yet checked: Windows, Linux (real hardware and a VM), screen readers. The VM black-window hint was dropped with the Avalonia launcher; whether a VM now works is unknown.
 
 **Recommendation: Photino.NET** (`Photino.NET` 4.0.16 / `Photino.Native` 4.0.22). One small API over WebView2 (Windows), WKWebView (macOS) and WebKitGTK (Linux), with native binaries for win-x64/arm64, osx-x64/arm64 and linux-x64/arm64. The Linux binary links `libwebkit2gtk-4.1`, the same library the Linux launcher already requires (`deploy/linux/launcher/README.md`), so packaging dependencies don't change.
 
@@ -129,6 +143,8 @@ Verify:
 
 ### Phase 4: Finish
 
+**Status:** done with the docs PR after #231: CLAUDE.md rewritten for the web-client architecture, CONTRIBUTING.md, README, BUILD.md, Docs/TESTING.md, Docs/LINUX_SETUP.md, deploy READMEs and the About page updated; AGENTS.md now points at CLAUDE.md. CI had no Avalonia-specific steps. The VehicleSimulator is kept.
+
 - Remove all remaining Avalonia packages and `*.axaml` files, and check `dotnet list package --include-transitive | grep -i avalonia` is empty for every head.
 - Update `CLAUDE.md` (Technology Stack, platform sections, Key Files), `CONTRIBUTING.md`, and the About page (`index.html:2427` still says "Avalonia UI").
 - CI (`build-and-release.yml`, `build-deploy-bundles.yml`): any Avalonia-specific steps.
@@ -143,7 +159,7 @@ Verify:
 
 ## Decisions needed
 
-1. Desktop host: Photino.NET (recommended), per-OS native hosts, or browser app mode.
-2. The `--console` supervisor window: drop, rebuild in HTML, or keep on Avalonia for now.
-3. Android back button: swallow, or confirm-to-exit.
+1. ~~Desktop host~~: Photino.NET.
+2. ~~The `--console` supervisor window~~: rebuilt in HTML (decided 2026-10-02).
+3. ~~Android back button~~: decided, confirm-to-exit.
 4. Whether the VehicleSimulator follows (it's a dev tool, not shipped to users).

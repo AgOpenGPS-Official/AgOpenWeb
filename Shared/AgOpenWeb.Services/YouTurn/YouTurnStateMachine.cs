@@ -122,18 +122,7 @@ public sealed class YouTurnStateMachine
         double abHeading;
         if (isCurve)
         {
-            double minDistSq = double.MaxValue;
-            int nearestIdx = 0;
-            for (int i = 0; i < track.Points.Count; i++)
-            {
-                double dx = track.Points[i].Easting - currentPosition.Easting;
-                double dy = track.Points[i].Northing - currentPosition.Northing;
-                double distSq = dx * dx + dy * dy;
-                if (distSq < minDistSq) { minDistSq = distSq; nearestIdx = i; }
-            }
-            abHeading = track.Points[nearestIdx].Heading;
-            _logger.LogDebug("[YouTurn] Curve mode: nearest index={Idx}, localHeading={Deg:F1}°",
-                nearestIdx, abHeading * 180 / Math.PI);
+            abHeading = LocalCurveHeading(track, currentPosition);
         }
         else
         {
@@ -490,6 +479,21 @@ public sealed class YouTurnStateMachine
         return total;
     }
 
+    /// <summary>Heading of a curve track at its point nearest <paramref name="position"/>, radians.</summary>
+    private static double LocalCurveHeading(Models.Track.Track track, Position position)
+    {
+        double minDistSq = double.MaxValue;
+        int nearestIdx = 0;
+        for (int i = 0; i < track.Points.Count; i++)
+        {
+            double dx = track.Points[i].Easting - position.Easting;
+            double dy = track.Points[i].Northing - position.Northing;
+            double distSq = dx * dx + dy * dy;
+            if (distSq < minDistSq) { minDistSq = distSq; nearestIdx = i; }
+        }
+        return track.Points[nearestIdx].Heading;
+    }
+
     /// <summary>
     /// Manually trigger a U-turn in the specified direction. Used for tracks along boundaries
     /// where automatic headland detection doesn't fire.
@@ -533,12 +537,21 @@ public sealed class YouTurnStateMachine
         var currentPosition = ctx.CurrentPosition;
         double headingRadians = currentPosition.Heading * Math.PI / 180.0;
 
-        // For manual turns, always use the straight-line AB heading even for curves (matches legacy behavior).
-        var trackPointA = track.Points[0];
-        var trackPointB = track.Points[track.Points.Count - 1];
-        double abDx = trackPointB.Easting - trackPointA.Easting;
-        double abDy = trackPointB.Northing - trackPointA.Northing;
-        double abHeading = Math.Atan2(abDx, abDy);
+        // The line's heading where the tractor is: the curve's local heading (AgOpenGPS
+        // curve.manualUturnHeading), or A→B for an AB line. A curve's first-to-last-point
+        // heading can be far off its local one, which turned the arc away from the tractor
+        // and ended it short of the next pass.
+        double abHeading;
+        if (track.Points.Count > 2)
+        {
+            abHeading = LocalCurveHeading(track, currentPosition);
+        }
+        else
+        {
+            var trackPointA = track.Points[0];
+            var trackPointB = track.Points[1];
+            abHeading = Math.Atan2(trackPointB.Easting - trackPointA.Easting, trackPointB.Northing - trackPointA.Northing);
+        }
 
         double headingDiff = headingRadians - abHeading;
         while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;

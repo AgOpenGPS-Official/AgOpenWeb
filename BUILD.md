@@ -436,7 +436,6 @@ sudo apt install libfontconfig1
 
 ### Getting Help
 
-- Avalonia Documentation: https://docs.avaloniaui.net/
 - .NET Documentation: https://docs.microsoft.com/dotnet/
 - Report issues: https://github.com/your-repo/AgOpenWeb/issues
 
@@ -446,9 +445,9 @@ sudo apt install libfontconfig1
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| Avalonia | 11.3.9 | Cross-platform UI framework |
-| ReactiveUI | 20.1.1 | MVVM framework |
+| Photino.NET | 4.0.16 | Desktop launcher window (WebView2 / WKWebView / WebKitGTK) |
+| CommunityToolkit.Mvvm | 8.4.0 | ObservableObject / RelayCommand |
 | Microsoft.Extensions.DependencyInjection | 9.0.0 | Dependency injection |
 | Newtonsoft.Json | 13.0.3 | JSON serialization |
 | System.IO.Ports | 9.0.0 | Serial port communication |
-| SkiaSharp | 3.119.1 | Graphics rendering (iOS) |
+| SkiaSharp | 3.119.4 | Server-side imagery work (native package per head) |

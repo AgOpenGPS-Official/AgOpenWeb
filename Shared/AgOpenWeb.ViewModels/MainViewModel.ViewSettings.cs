@@ -19,7 +19,6 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
-using Avalonia.Threading;
 
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -270,7 +269,6 @@ public partial class MainViewModel
             _displaySettings.IsDayMode = value;
             OnPropertyChanged();
             _mapService.SetDayMode(value);
-            ApplyThemeVariant(value);
         }
     }
 

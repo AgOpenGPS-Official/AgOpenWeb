@@ -15,8 +15,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using AgOpenWeb.Models.Configuration;
-using Avalonia;
-using Avalonia.Styling;
 using CommunityToolkit.Mvvm.Input;
 
 namespace AgOpenWeb.ViewModels;
@@ -135,7 +133,6 @@ public partial class MainViewModel
         {
             IsDayMode = !IsDayMode;
             _mapService.SetDayMode(IsDayMode);
-            ApplyThemeVariant(IsDayMode);
             // Disable auto day/night when user manually toggles theme, and save it, or
             // auto comes back on after a restart (#111).
             if (_configStore.Display.AutoDayNight)
@@ -278,25 +275,5 @@ public partial class MainViewModel
             _coverageMapService.RebuildDisplayForResolutionChange();
             _mapService.RebuildCoverageBitmapForResolutionChange();
         }
-    }
-
-    /// <summary>
-    /// Applies the Avalonia theme variant based on day/night mode.
-    /// Day mode = Light theme, Night mode = Dark theme.
-    /// </summary>
-    internal static void ApplyThemeVariant(bool isDayMode)
-    {
-        var app = Application.Current;
-        if (app == null) return; // headless daemon — no Avalonia Application to theme
-
-        var variant = isDayMode ? ThemeVariant.Light : ThemeVariant.Dark;
-        // RequestedThemeVariant is UI-thread-affine. The windowed App calls this on the UI
-        // thread (direct set); the in-process launcher constructs the VM on a worker thread
-        // while an Avalonia Application IS live, so marshal to the UI thread there instead of
-        // throwing "calling thread cannot access this object".
-        if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
-            app.RequestedThemeVariant = variant;
-        else
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => app.RequestedThemeVariant = variant);
     }
 }

@@ -7,7 +7,6 @@
     <LangVersion>14</LangVersion>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
@@ -30,7 +29,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
+    <!-- Window icon for the launcher (Windows + Linux); the macOS bundle carries its own. -->
+    <None Include="Assets\agopenweb.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,18 +38,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.0.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.0.3" />
-    <!-- NativeWebView (WebView2 on Windows / WKWebView mac / WPE Linux) for the
-         all-in-one WebView launcher. -->
-    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
-    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.0">
-      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-    </PackageReference>
+    <!-- The launcher window: one API over WebView2 (Windows), WKWebView (macOS) and WebKitGTK
+         (Linux; needs libwebkit2gtk-4.1). Photino.Native carries the native library for
+         win/osx/linux on x64 and arm64, and WebView2Loader.dll on Windows. -->
+    <PackageReference Include="Photino.NET" Version="4.0.16" />
+    <!-- Native libSkiaSharp for the server's imagery work (same version as RemoteServer's
+         SkiaSharp). The Linux build is the NoDependencies one: the imagery capture draws no
+         text, so it needs no fontconfig on the daemon's box. -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <!-- Phase 10 headless daemon: Type=notify readiness + journald formatting +
@@ -65,19 +63,6 @@
     <PackageReference Include="System.IO.Ports" Version="9.0.0" />
   </ItemGroup>
 
-  <!-- The all-in-one launcher's NativeWebView uses Avalonia.Controls.WebView's WebView2 backend,
-       which carries its own COM interop (Avalonia.Controls.Win.WebView2.Interop) and P/Invokes
-       the native WebView2Loader.dll — but that package ships no native asset (its net10.0 dep
-       group pulls only Avalonia), so the loader is absent from a win-x64/arm64 self-contained
-       publish and the WebView renders blank. Reference Microsoft.Web.WebView2 on Windows RIDs to
-       supply WebView2Loader.dll. IncludeAssets="native;runtime" takes ONLY the loader: the
-       package's build targets otherwise hardcode WPF + WinForms managed flavor references (no
-       opt-out) that are dead weight on our non-"-windows" net10.0 TFM and drag in a WindowsBase
-       conflict (MSB3277). Windows-only — absent from the macOS/iOS/Linux/Android publishes. -->
-  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('win'))">
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49"
-                      IncludeAssets="native;runtime" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\AgOpenWeb.Models\AgOpenWeb.Models.csproj" />
