@@ -44,7 +44,8 @@ public class DebugDumpService
         byte[]? screenshotPng = null,
         string? outputDirectory = null,
         string filePrefix = "debug_dump",
-        IReadOnlyList<string>? userAttachments = null)
+        IReadOnlyList<string>? userAttachments = null,
+        string? activeJobTaskName = null)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         var dumpDir = outputDirectory
@@ -163,6 +164,34 @@ public class DebugDumpService
         catch (Exception ex)
         {
             AddTextEntry(archive, "field_error.txt", ex.ToString());
+        }
+
+        // 6b. The active job's folder: its coverage tiles (worked area) and job file,
+        // so coverage display bugs can be reproduced from the dump (#175). The caller
+        // saves coverage first; the tiles on disk are otherwise up to an autosave old.
+        try
+        {
+            var fieldDir = appState.Field.ActiveField?.DirectoryPath;
+            if (!string.IsNullOrEmpty(fieldDir) && !string.IsNullOrWhiteSpace(activeJobTaskName))
+            {
+                var jobDir = Path.Combine(fieldDir, "jobs", activeJobTaskName);
+                if (Directory.Exists(jobDir))
+                {
+                    foreach (var file in Directory.GetFiles(jobDir, "*", SearchOption.AllDirectories))
+                    {
+                        if (new FileInfo(file).Length > 20_000_000) continue;
+                        var relative = Path.GetRelativePath(fieldDir, file).Replace('\\', '/');
+                        var entry = archive.CreateEntry($"field/{relative}");
+                        using var entryStream = entry.Open();
+                        using var fileStream = File.OpenRead(file);
+                        fileStream.CopyTo(entryStream);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddTextEntry(archive, "job_error.txt", ex.ToString());
         }
 
         // 7. Current vehicle profile
@@ -378,6 +407,9 @@ public class DebugDumpService
             Ahrs = store.Ahrs,
             AutoSteer = store.AutoSteer,
             NumSections = store.NumSections,
+            // Pass spacing and coverage width come from these, not Tool.Width.
+            SectionWidthsCm = store.Tool.SectionWidths.Take(Math.Max(0, store.NumSections)).ToArray(),
+            ActualToolWidth = store.ActualToolWidth,
             IsMetric = store.IsMetric,
             ActiveProfile = store.ActiveVehicleProfileName,
             ActiveToolProfile = store.ActiveToolProfileName

@@ -1860,7 +1860,9 @@ const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'field
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
-const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder']);
+// The bug report panel too: leave it open while driving and press the button the
+// moment a problem shows, since the dump holds only the last 60 s of GPS data.
+const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
@@ -3271,8 +3273,9 @@ function renderAbout() {
 function renderBugReport() { document.getElementById('br-status').textContent = appInfo ? (appInfo.bugReportStatus || '') : ''; }
 document.getElementById('br-submit').addEventListener('pointerdown', e => {
   e.stopPropagation();
+  // No title needed: the point is to capture the moment. The host names it "untitled".
   const t = document.getElementById('br-title').value.trim();
-  if (!t) return;
+  document.getElementById('br-status').textContent = tr('Creating bug report…');
   transport.send('app.bugReport|' + t + '\t' + document.getElementById('br-desc').value);
 });
 
