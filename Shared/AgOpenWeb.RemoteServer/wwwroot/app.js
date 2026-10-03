@@ -2342,7 +2342,15 @@ const HITCH_OPTS = [tr('Not available'), tr('Unknown'), tr('ISO 6489-3 Tractor d
 const vcHitchSel = vcPanel.querySelector('.cfg-sel[data-key="vehicle.hitchType"]');
 HITCH_OPTS.forEach((label, i) => { const o = document.createElement('option'); o.value = i - 1; o.textContent = label; vcHitchSel.appendChild(o); });
 const vcFw = vcPanel.querySelector('.cfg-slider[data-key="gps.headingFusionWeight"]');
-function cfgGet(key) { if (!config) return undefined; const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]]; }
+function cfgGet(key) {
+  if (!config) return undefined;
+  // Write-only preset derived from the offset's sign, so its buttons can show which is active (#238).
+  if (key === 'vehicle.antennaSide') {
+    const off = config.vehicle && config.vehicle.antennaOffset;
+    return typeof off !== 'number' ? undefined : off < -0.005 ? 'left' : off > 0.005 ? 'right' : 'center';
+  }
+  const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]];
+}
 function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
 // Tabs.
 for (const t of vcPanel.querySelectorAll('.cfg-tab'))
@@ -2407,6 +2415,9 @@ function populateCfgControls(panel, force) {
   }
   for (const b of panel.querySelectorAll('.cfg-typebtn'))
     b.classList.toggle('active', String(cfgGet(b.dataset.key)) === (b.dataset.active != null ? b.dataset.active : b.dataset.val));
+  // Segmented preset buttons (antenna Left / Center / Right) mark the current choice.
+  for (const b of panel.querySelectorAll('.ln-seg .cfg-act[data-key][data-val]'))
+    b.classList.toggle('active', String(cfgGet(b.dataset.key)) === b.dataset.val);
   for (const s of panel.querySelectorAll('.cfg-slider[data-fmt]')) {
     if (!force && document.activeElement === s) continue;
     const val = cfgGet(s.dataset.key);
@@ -3364,7 +3375,7 @@ function buildWizardContent(w) {
       return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop'][ty] + '.png">' +
         wzNum(tr('Pivot Distance'), tr('Antenna to rear axle (+ = ahead)'), 'vehicle.antennaPivot', '0.01', 'm') + wzNum(tr('Antenna Height'), tr('Above ground level'), 'vehicle.antennaHeight', '0.01', 'm') + '</div>' +
         '<div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset'][ty] + '.png"><div class="wz-fld"><label>Lateral Offset</label><div class="sub">From centerline (+ = right)</div><div class="wz-seg">' +
-        '<button data-cfg="vehicle.antennaSide:left">Left</button><button data-cfg="vehicle.antennaSide:center">Center</button><button data-cfg="vehicle.antennaSide:right">Right</button></div></div></div></div>';
+        ['left', 'center', 'right'].map(v => '<button data-cfg="vehicle.antennaSide:' + v + '" data-activekey="vehicle.antennaSide" data-activeval="' + v + '">' + v[0].toUpperCase() + v.slice(1) + '</button>').join('') + '</div></div></div></div>';
     case 'hwconfig':
       return head + '<div class="wz-rows">' +
         wzSeg(tr('Steer Enable Method'), null, 'autosteer.externalEnable', [[tr('None'), 0], [tr('Switch'), 1], [tr('Button'), 2]]) +
