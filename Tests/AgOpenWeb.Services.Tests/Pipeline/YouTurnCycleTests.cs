@@ -299,8 +299,10 @@ public class YouTurnCycleTests
             Assert.That(guidance.IsHeadingSameWay, Is.True);
             Assert.That(Deg(first.Heading), Is.EqualTo(localDeg).Within(3), "the arc starts along the tractor's heading");
             Assert.That(Deg(last.Heading), Is.EqualTo(localDeg + 180).Within(3), "and ends heading back along the curve");
-            // Start → end runs square to the local heading (onto the next pass), not along it.
-            double along = (last.Easting - first.Easting) * Math.Sin(local) + (last.Northing - first.Northing) * Math.Cos(local);
+            // Curve start → end runs square to the local heading (onto the next pass), not
+            // along it. Point 0 is the tractor; the curve starts 4 m ahead of it (#156).
+            var curveStart = youTurn.TurnPath![1];
+            double along = (last.Easting - curveStart.Easting) * Math.Sin(local) + (last.Northing - curveStart.Northing) * Math.Cos(local);
             Assert.That(along, Is.EqualTo(0).Within(0.5));
         });
     }

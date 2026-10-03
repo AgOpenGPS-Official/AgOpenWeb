@@ -362,7 +362,7 @@ CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current.
 U-turns are planned by `YouTurnStateMachine` (automatic turns at the headland, and manual
 turns from the on-screen buttons) with paths built by `YouTurnCreationService`:
 - Automatic: entry leg into the headland, arc, exit leg back to the next track; triggered when the tractor reaches the turn start, with an approach alarm 20 m out.
-- Manual: a half-circle from the tractor's position, laid out along the track's local heading (the curve's heading at the nearest point).
+- Manual: a Dubins path at the configured `UTurnRadius` from 4 m ahead of the tractor to the point abreast on the target pass (an omega when the radius exceeds half the pass offset), laid out along the track's local heading (the curve's heading at the nearest point); the path's first point is the tractor itself. Like AgOpenGPS `BuildManualYouTurn`.
 - The turn hands back to line guidance with 4 m of arc remaining (`EarlyCompletionLookahead`).
 
 Key parameters:

@@ -825,14 +825,20 @@ public class AutoSteerUTurnNUnitTests
     /// With the YouTurn toggle off the manual turn must work too (AgOpenGPS offers the
     /// manual buttons whenever autosteer is on); it used to be cleared the cycle it began.
     /// </summary>
-    [TestCase(true, TestName = "ManualUTurn_NoBoundaryNoHeadland_CompletesAndFollowsNextPass")]
-    [TestCase(false, TestName = "ManualUTurn_YouTurnToggleOff_CompletesAndFollowsNextPass")]
-    public void ManualUTurn_CompletesAndFollowsNextPass(bool youTurnEnabled)
+    [TestCase(true, 400.0, 2.5, 35.0, TestName = "ManualUTurn_NoBoundaryNoHeadland_CompletesAndFollowsNextPass")]
+    [TestCase(false, 400.0, 2.5, 35.0, TestName = "ManualUTurn_YouTurnToggleOff_CompletesAndFollowsNextPass")]
+    // #156: the reporter's Case Maxxum (2.7 m, 24° → 6.1 m minimum radius) on a 6 m pass.
+    // The old semicircle asked for a 3 m radius; the tractor fell outside it and the turn
+    // was abandoned halfway. At the configured 8 m radius the turn is an omega it can drive.
+    [TestCase(true, 200.0, 2.7, 24.0, TestName = "ManualUTurn_6mPass_24degSteer_CompletesAndFollowsNextPass")]
+    public void ManualUTurn_CompletesAndFollowsNextPass(bool youTurnEnabled, double sectionCm, double wheelbase, double maxSteer)
     {
-        // 3 x 4 m sections = 12 m pass width → 6 m turn radius, inside what the
-        // 2.5 m wheelbase / 35° max steer can drive.
+        // 3 sections of sectionCm = the pass width; the turn runs at the configured
+        // 8 m U-turn radius whatever the pass width (#156).
         for (int i = 0; i < 3; i++)
-            ConfigurationStore.Instance.Tool.SetSectionWidth(i, 400.0);
+            ConfigurationStore.Instance.Tool.SetSectionWidth(i, sectionCm);
+        ConfigurationStore.Instance.Vehicle.Wheelbase = wheelbase;
+        ConfigurationStore.Instance.Vehicle.MaxSteerAngle = maxSteer;
         CreateFreshPipeline();
 
         var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
@@ -860,7 +866,7 @@ public class AutoSteerUTurnNUnitTests
         // Settle on the line heading north, then trigger a manual LEFT turn.
         DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 60, "approach", allResults);
         _intents.RequestManualYouTurn(turnLeft: true);
-        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 400, "turn", allResults);
+        DriveWithFeedback(ref lat, ref lon, ref hdg, 8.0, 600, "turn", allResults);
 
         var turn = allResults.Where(x => x.phase == "turn").Select(x => x.r).ToList();
         Assert.That(turn.Any(r => r.YouTurn is { IsExecuting: true }), Is.True,
