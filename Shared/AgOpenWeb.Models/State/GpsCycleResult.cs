@@ -28,6 +28,16 @@ public record GpsCycleResult
     public double Hdop { get; init; }
     public double DifferentialAge { get; init; }
     public int FixQuality { get; init; }
+
+    // Heading inputs, for the bug-report GPS log (#157): which sentence the fix came from,
+    // the heading it carried before fusion, and what the fusion made of it.
+    public GpsSentenceType SentenceType { get; init; }
+    /// <summary>Heading field of the sentence, degrees: the dual-antenna heading on
+    /// $PAOGI, the IMU heading (0 when invalid) on $PANDA.</summary>
+    public double SentenceHeading { get; init; }
+    public bool ImuValid { get; init; }
+    public bool IsReverse { get; init; }
+    public bool IsDualHeadingMissing { get; init; }
     public bool GpsValid { get; init; }
 
     // Tool position

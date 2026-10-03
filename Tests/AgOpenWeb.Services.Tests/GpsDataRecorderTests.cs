@@ -92,10 +92,10 @@ public class GpsDataRecorderTests
         // Column tail: ... headland_dist, goal_e, goal_n, goal_dist, forward_dot,
         //              A, B, ptCount, is_turn_left, anti_tangent_guard_fired
         // The goal-trajectory block is the last-9 .. last-6 columns.
-        double goalE = double.Parse(fields[^9], CultureInfo.InvariantCulture);
-        double goalN = double.Parse(fields[^8], CultureInfo.InvariantCulture);
-        double dist = double.Parse(fields[^7], CultureInfo.InvariantCulture);
-        double dot = double.Parse(fields[^6], CultureInfo.InvariantCulture);
+        double goalE = double.Parse(fields[18], CultureInfo.InvariantCulture);
+        double goalN = double.Parse(fields[19], CultureInfo.InvariantCulture);
+        double dist = double.Parse(fields[20], CultureInfo.InvariantCulture);
+        double dot = double.Parse(fields[21], CultureInfo.InvariantCulture);
 
         Assert.Multiple(() =>
         {
@@ -117,7 +117,7 @@ public class GpsDataRecorderTests
         rec.Record(MakeResult(0, 0, 0, new Vec2 { Easting = 0, Northing = -2 }));
 
         var fields = LastDataLineFields(rec);
-        double dot = double.Parse(fields[^6], CultureInfo.InvariantCulture);
+        double dot = double.Parse(fields[21], CultureInfo.InvariantCulture);
         Assert.That(dot, Is.EqualTo(-2.0).Within(1e-3),
             "Anti-tangent goal (the drive-over signature) must record a "
             + "negative forward_dot so forensic filters can grep for it.");
@@ -136,10 +136,10 @@ public class GpsDataRecorderTests
         var fields = LastDataLineFields(rec);
         Assert.Multiple(() =>
         {
-            Assert.That(fields[^9], Is.Empty);
-            Assert.That(fields[^8], Is.Empty);
-            Assert.That(fields[^7], Is.Empty);
-            Assert.That(fields[^6], Is.Empty);
+            Assert.That(fields[18], Is.Empty);
+            Assert.That(fields[19], Is.Empty);
+            Assert.That(fields[20], Is.Empty);
+            Assert.That(fields[21], Is.Empty);
         });
     }
 
@@ -152,7 +152,7 @@ public class GpsDataRecorderTests
         rec.Record(MakeResult(0, 0, 90, new Vec2 { Easting = 5, Northing = 0 }));
 
         var fields = LastDataLineFields(rec);
-        double dot = double.Parse(fields[^6], CultureInfo.InvariantCulture);
+        double dot = double.Parse(fields[21], CultureInfo.InvariantCulture);
         Assert.That(dot, Is.EqualTo(5.0).Within(1e-3),
             "Heading column is degrees; forward_dot computation must convert "
             + "to radians before sin/cos.");
@@ -166,7 +166,7 @@ public class GpsDataRecorderTests
         rec.Record(MakeResult(10, 10, 0, new Vec2 { Easting = 13, Northing = 14 }));
 
         var fields = LastDataLineFields(rec);
-        double dist = double.Parse(fields[^7], CultureInfo.InvariantCulture);
+        double dist = double.Parse(fields[20], CultureInfo.InvariantCulture);
         Assert.That(dist, Is.EqualTo(5.0).Within(1e-3));
     }
 
@@ -187,7 +187,50 @@ public class GpsDataRecorderTests
         };
         Assert.DoesNotThrow(() => rec.Record(result));
         var fields = LastDataLineFields(rec);
-        Assert.That(fields[^9], Is.Empty);
-        Assert.That(fields[^6], Is.Empty);
+        Assert.That(fields[18], Is.Empty);
+        Assert.That(fields[21], Is.Empty);
+    }
+
+    /// <summary>
+    /// #157 / #156: heading reports could not be settled from a dump because the log held
+    /// only the fused heading. The sentence type, its heading field before fusion and the
+    /// fusion's verdicts are appended after the existing columns (their order is unchanged).
+    /// </summary>
+    [Test]
+    public void Heading_input_columns_are_appended_and_filled()
+    {
+        var rec = new GpsDataRecorder();
+        var result = MakeResult(0, 0, 230.0, null) with
+        {
+            SentenceType = AgOpenWeb.Models.GpsSentenceType.Paogi,
+            SentenceHeading = 50.25,
+            ImuValid = false,
+            IsReverse = true,
+            IsDualHeadingMissing = false,
+        };
+        rec.Record(result);
+
+        var header = rec.ExportCsv().Split('\n')[0].TrimEnd('\r').Split(',');
+        var row = LastDataLineFields(rec);
+        Assert.Multiple(() =>
+        {
+            Assert.That(header[^5..], Is.EqualTo(new[] { "sentence", "sentence_heading", "imu_valid", "reverse", "dual_missing" }));
+            Assert.That(header[26], Is.EqualTo("anti_tangent_guard_fired"), "existing columns keep their positions");
+            Assert.That(row.Length, Is.EqualTo(header.Length));
+            Assert.That(row[^5..], Is.EqualTo(new[] { "PAOGI", "50.25", "0", "1", "0" }));
+        });
+    }
+
+    [Test]
+    public void Keeps_five_minutes_at_10_Hz()
+    {
+        var rec = new GpsDataRecorder();
+        for (int i = 0; i < GpsDataRecorder.BufferSize + 50; i++) rec.Record(MakeResult(i, 0, 0, null));
+        Assert.Multiple(() =>
+        {
+            Assert.That(GpsDataRecorder.BufferSize, Is.EqualTo(3000));
+            Assert.That(rec.Count, Is.EqualTo(3000));
+            Assert.That(LastDataLineFields(rec)[1], Is.EqualTo("3049.000"), "newest record is last");
+        });
     }
 }
