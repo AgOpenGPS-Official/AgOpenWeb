@@ -326,6 +326,29 @@ public class GpsHeadingFusionServiceTests
     }
 
     [Test]
+    public void Dual_PandaInterludeWithoutImu_HoldsTheHeading_InsteadOfNorth()
+    {
+        // A dual receiver whose firmware falls back to $PANDA with no IMU heading at
+        // every stop (#157). The heading field is 0 then; the tractor must not swing to
+        // north while stopped, it holds the last dual heading.
+        DualOnWithAutoSwitch();
+        double h = double.NaN;
+        for (int i = 0; i < 5; i++)
+            h = _service.FuseHeading(90, 0, false, 0.3, i * 0.03, 0, true);   // slow: dual direct
+        Assume.That(h, Is.EqualTo(90).Within(1e-6));
+
+        for (int i = 0; i < 10; i++)
+            h = _service.FuseHeading(0, 0, false, 0.1, 0.15, i * 0.005, false); // $PANDA, no IMU
+        Assert.That(h, Is.EqualTo(90).Within(1e-6), "stopped on $PANDA without an IMU: hold the heading");
+        Assert.That(_service.IsDualHeadingMissing, Is.True);
+
+        // Moving off on $PANDA: the fix-to-fix heading takes over as before.
+        for (int i = 0; i < 12; i++)
+            h = _service.FuseHeading(0, 0, false, Fast, 0.15, 1 + i * 0.3, false);
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
+    }
+
+    [Test]
     public void DualHeadingMissing_RaisedByPanda_ClearedByPaogi_NeverWithDualOff()
     {
         var c = ConfigurationStore.Instance.Connections;

@@ -66,6 +66,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private readonly StepFix[] _steps = new StepFix[TotalFixSteps];
 
     private bool _isFirstHeadingSet;
+    private bool _hasHeading;        // a Fix or Dual heading has been output at least once
     private double _gpsHeading;      // radians, last fix-to-fix heading
     private double _fixHeading;      // radians, the output
     private double _imuGpsOffset;    // radians, IMU → GPS alignment
@@ -131,7 +132,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
                 // current so a switch to Fix picks up smoothly (AgOpenGPS does too).
                 IsChangingDirection = false;
                 DetectDualReverse(dual, easting, northing, con.DualReverseDistance);
-                _isFirstHeadingSet = true;
+                _isFirstHeadingSet = _hasHeading = true;
                 _fixHeading = _gpsHeading = dual;
                 PushStep(easting, northing);
                 return Output(_fixHeading);
@@ -215,6 +216,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         }
 
         PushStep(easting, northing);
+        _hasHeading = true;
         return Output(_fixHeading);
     }
 
@@ -262,18 +264,20 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
             _imuGpsOffset = Wrap(AngleDelta(imuRad, _gpsHeading));
             _fixHeading = Wrap(imuRad + _imuGpsOffset);
         }
-        _isFirstHeadingSet = true;
+        _isFirstHeadingSet = _hasHeading = true;
         return true;
     }
 
     // No new fix-to-fix heading this time. With an IMU, heading follows it (plus the
     // offset); otherwise hold the last heading, or pass the sentence heading through
-    // until there is one.
+    // until there has ever been one. A restart (Dual → $PANDA, #157) forgets the stored
+    // fixes but not the heading: with no IMU, $PANDA's heading field is 0, and showing
+    // it would swing the tractor to north at every stop until the next fix-to-fix heading.
     private double ByPass(double sentenceHeadingDeg, double? imu)
     {
         if (imu is double imuRad)
             _fixHeading = Wrap(imuRad + _imuGpsOffset);
-        else if (!_isFirstHeadingSet)
+        else if (!_hasHeading)
             return Output(ToRad(sentenceHeadingDeg));
         return Output(_fixHeading);
     }
