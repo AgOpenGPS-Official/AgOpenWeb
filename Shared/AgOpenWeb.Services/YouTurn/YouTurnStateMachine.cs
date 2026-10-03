@@ -574,7 +574,7 @@ public sealed class YouTurnStateMachine
         // the path renders — no headland traversal, no entry/exit legs (#260).
         var path = _creation.CreateManualArcPath(
             ctx.CurrentPosition, abHeading, turnLeft,
-            ctx.Boundary, guidance, ctx.UTurnSkipRows);
+            ctx.Boundary, guidance, ctx.UTurnSkipRows, turn.NextTrack);
 
         if (path.Count > 2)
         {

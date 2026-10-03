@@ -84,6 +84,7 @@ public class ManualTurnRadiusTests
     [TestCase(6.0, true, TestName = "ManualTurn_6m_tool_left_keeps_the_8m_radius")]
     [TestCase(6.0, false, TestName = "ManualTurn_6m_tool_right_keeps_the_8m_radius")]
     [TestCase(12.0, true, TestName = "ManualTurn_12m_pass_left_keeps_the_8m_radius")]
+    [TestCase(16.0, true, TestName = "ManualTurn_16m_pass_left_keeps_the_8m_radius")] // offset = 2R
     [TestCase(20.0, true, TestName = "ManualTurn_20m_pass_left_keeps_the_8m_radius")]
     public void ManualTurn_keeps_the_configured_radius_and_lands_on_the_next_pass(double toolWidth, bool turnLeft)
     {
@@ -104,6 +105,60 @@ public class ManualTurnRadiusTests
             Assert.That(last.Northing, Is.LessThan(toolWidth + 8),
                 "the exit lands near the entry row, not far down the field");
         });
+    }
+
+    private static double Length(List<Vec3> path)
+    {
+        double len = 0;
+        for (int i = 0; i < path.Count - 1; i++) len += GeometryMath.Distance(path[i], path[i + 1]);
+        return len;
+    }
+
+    [Test]
+    public void ManualTurn_at_exactly_twice_the_radius_is_one_semicircle_not_loops()
+    {
+        // Offset 16 m = 2 × 8 m: the two Dubins circles coincide if start and goal are
+        // exactly antiparallel and abreast. 4 m lead + π × 8 m ≈ 29 m; a loop adds 50 m.
+        var path = Turn(16.0, turnLeft: true);
+        Assert.That(Length(path), Is.LessThan(35.0));
+    }
+
+    private List<Vec3> TurnFrom(double tractorE, double passE, bool turnLeft = true)
+    {
+        _config.Tool.Width = 12; _config.Tool.SetSectionWidth(0, 1200);
+        var pos = new Position { Easting = tractorE, Northing = 0 };
+        var target = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "next", Type = AgOpenWeb.Models.Track.TrackType.ABLine,
+            Points = new List<Vec3> { new Vec3(passE, -100, 0), new Vec3(passE, 100, 0) },
+        };
+        return _creation.CreateManualArcPath(pos, 0, turnLeft, boundary: null,
+            new GuidanceWorkingState { IsHeadingSameWay = true }, uTurnSkipRows: 0, target);
+    }
+
+    [Test]
+    public void ManualTurn_from_off_the_line_still_ends_on_the_target_pass()
+    {
+        // #156: the tractor was 0.9 m off its pass (E = 0) at the press, heading north; the
+        // next pass to the left is at E = -12. The turn must end on it, not 12 m from the tractor.
+        var path = TurnFrom(tractorE: 0.9, passE: -12);
+        Assume.That(path.Count, Is.GreaterThan(10));
+        Assert.Multiple(() =>
+        {
+            Assert.That(path[^1].Easting, Is.EqualTo(-12.0).Within(0.05), "ends on the pass");
+            Assert.That(HeadingError(path[^1].Heading, 180), Is.LessThan(0.1), "tangent to it");
+            Assert.That(path[0].Easting, Is.EqualTo(0.9).Within(1e-9), "still starts at the tractor");
+            Assert.That(MinRadius(path), Is.GreaterThanOrEqualTo(7.5));
+        });
+    }
+
+    [Test]
+    public void ManualTurn_ignores_a_target_pass_that_is_not_one_offset_away()
+    {
+        // A stale next-track (here 30 m away) must not drag the turn there.
+        var path = TurnFrom(tractorE: 0.9, passE: -30);
+        Assume.That(path.Count, Is.GreaterThan(10));
+        Assert.That(path[^1].Easting, Is.EqualTo(0.9 - 12.0).Within(0.05));
     }
 
     [Test]

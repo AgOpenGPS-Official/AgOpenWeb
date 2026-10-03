@@ -926,7 +926,8 @@ public partial class YouTurnCreationService
         bool turnLeft,
         Boundary? boundary,
         GuidanceWorkingState guidance,
-        int uTurnSkipRows)
+        int uTurnSkipRows,
+        Models.Track.Track? targetPass = null)
     {
         var path = new List<Vec3>();
         var config = _configStore;
@@ -941,29 +942,47 @@ public partial class YouTurnCreationService
 
         double turnRadius = Math.Max(config.Guidance.UTurnRadius, MinManualTurnRadius);
 
-        // Travel direction as the tractor is currently heading along the track, rotated
-        // by 0.01 rad like AgOpenGPS so start and goal are never exactly abreast: Dubins
-        // degenerates into loops when the two turning circles coincide (offset = 2R).
-        double travelHeading = abHeading - ManualTurnHeadingTweak;
-        if (!guidance.IsHeadingSameWay) travelHeading += Math.PI;
-        travelHeading = NormalizeHeading(travelHeading);
+        // Travel direction as the tractor is currently heading along the track.
+        double lineHeading = abHeading;
+        if (!guidance.IsHeadingSameWay) lineHeading += Math.PI;
+        lineHeading = NormalizeHeading(lineHeading);
+
+        // The start heading is rotated by 0.01 rad like AgOpenGPS, so start and goal are
+        // never exactly antiparallel: Dubins degenerates into loops when the two turning
+        // circles coincide (offset = 2R).
+        double travelHeading = NormalizeHeading(lineHeading - ManualTurnHeadingTweak);
 
         // The curve starts ahead of the tractor: the steering needs the lead to reach lock,
         // and the arc must not begin behind the pivot by the time it renders (AgOpenGPS: 4 m).
         var start = new Vec3
         {
-            Easting = currentPosition.Easting + Math.Sin(travelHeading) * ManualTurnStartLead,
-            Northing = currentPosition.Northing + Math.Cos(travelHeading) * ManualTurnStartLead,
+            Easting = currentPosition.Easting + Math.Sin(lineHeading) * ManualTurnStartLead,
+            Northing = currentPosition.Northing + Math.Cos(lineHeading) * ManualTurnStartLead,
             Heading = travelHeading,
         };
 
-        double perpAngle = turnLeft ? (travelHeading - Math.PI / 2) : (travelHeading + Math.PI / 2);
+        // The goal is on the target pass abreast of the start, so the turn ends on the pass
+        // even when the tractor is off its own line at the press (AgOpenGPS anchors on the
+        // line, not the tractor). Seen on #156: 0.9 m off at the press, the turn ended 0.9 m
+        // beside the next pass. Without a usable target pass, go one offset over from the start.
+        double perpAngle = turnLeft ? (lineHeading - Math.PI / 2) : (lineHeading + Math.PI / 2);
         var goal = new Vec3
         {
             Easting = start.Easting + Math.Sin(perpAngle) * turnOffset,
             Northing = start.Northing + Math.Cos(perpAngle) * turnOffset,
-            Heading = NormalizeHeading(travelHeading + Math.PI),
+            Heading = NormalizeHeading(lineHeading + Math.PI),
         };
+        if (TryProjectOntoPass(targetPass, start, out double passE, out double passN))
+        {
+            double across = (passE - start.Easting) * Math.Sin(perpAngle) + (passN - start.Northing) * Math.Cos(perpAngle);
+            // Only a pass on the turn side, within half a pass of where it should be: a
+            // stale or mismatched target must not drag the turn somewhere else.
+            if (Math.Abs(across - turnOffset) <= trackWidth / 2)
+            {
+                goal.Easting = passE;
+                goal.Northing = passN;
+            }
+        }
 
         // Refuse to plot a turn whose endpoint lands outside the field.
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid
@@ -991,7 +1010,7 @@ public partial class YouTurnCreationService
         {
             Easting = currentPosition.Easting,
             Northing = currentPosition.Northing,
-            Heading = travelHeading,
+            Heading = lineHeading,
         });
 
         TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
@@ -1021,6 +1040,32 @@ public partial class YouTurnCreationService
 
     /// <summary>Floor for a nonsense configured U-turn radius (0 or negative).</summary>
     private const double MinManualTurnRadius = 1.0;
+
+    /// <summary>
+    /// Closest point on <paramref name="pass"/> to <paramref name="point"/>: on the infinite
+    /// line for an AB pass (two points), on the polyline for a curve.
+    /// </summary>
+    private static bool TryProjectOntoPass(Models.Track.Track? pass, Vec3 point, out double e, out double n)
+    {
+        e = n = 0;
+        if (pass == null || pass.Points.Count < 2) return false;
+        bool infinite = pass.Points.Count == 2;
+        double best = double.MaxValue;
+        for (int i = 0; i < pass.Points.Count - 1; i++)
+        {
+            var a = pass.Points[i];
+            var b = pass.Points[i + 1];
+            double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 1e-9) continue;
+            double t = ((point.Easting - a.Easting) * dx + (point.Northing - a.Northing) * dy) / len2;
+            if (!infinite) t = Math.Clamp(t, 0, 1);
+            double pe = a.Easting + t * dx, pn = a.Northing + t * dy;
+            double d2 = (pe - point.Easting) * (pe - point.Easting) + (pn - point.Northing) * (pn - point.Northing);
+            if (d2 < best) { best = d2; e = pe; n = pn; }
+        }
+        return best < double.MaxValue;
+    }
 
     private static double NormalizeHeading(double heading)
     {
