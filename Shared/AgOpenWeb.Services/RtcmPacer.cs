@@ -40,9 +40,10 @@ internal sealed class RtcmPacer
     /// re-establish RTK fix (#334).</summary>
     public const int MaxBacklogBytes = 10_000;
 
-    /// <summary>Bytes that have waited longer than this are dropped instead of sent (#334:
-    /// never deliver stale corrections).</summary>
-    public const double MaxAgeMs = 1000.0;
+    /// <summary>Unstarted reads that have waited longer than this are dropped instead of sent.
+    /// RTCM 3.x correction validity is typically 10–30 s; 10 s avoids holding stale corrections
+    /// while preventing mid-epoch starvation during normal multi-constellation delivery.</summary>
+    public const double MaxAgeMs = 10_000.0;
 
     private readonly IClock? _clock;
     private readonly object _lock = new();
@@ -87,7 +88,8 @@ internal sealed class RtcmPacer
 
     /// <summary>Take the next datagram if one is due: the queue holds data and
     /// <see cref="IntervalMs"/> has passed since the last one. Bytes older than
-    /// <see cref="MaxAgeMs"/> are discarded first and counted in <paramref name="staleDropped"/>.</summary>
+    /// <see cref="MaxAgeMs"/> are discarded first and counted in <paramref name="staleDropped"/>.
+    /// In-progress segments are never chopped mid-stream to avoid RTCM frame CRC corruption.</summary>
     public bool TryDequeue(out byte[] chunk, out int staleDropped)
     {
         chunk = Array.Empty<byte>();
@@ -97,6 +99,11 @@ internal sealed class RtcmPacer
             long now = Time.GetTimestamp();
             while (_queue.Count > 0 && Time.ElapsedMs(_queue.Peek().Timestamp, now) > MaxAgeMs)
             {
+                // Never chop a segment that has already started sending (Offset > 0);
+                // chopping mid-segment corrupts the RTCM frame and causes CRC failure on the receiver.
+                if (_queue.Peek().Offset > 0)
+                    break;
+
                 var old = _queue.Dequeue();
                 int left = old.Data.Length - old.Offset;
                 staleDropped += left;

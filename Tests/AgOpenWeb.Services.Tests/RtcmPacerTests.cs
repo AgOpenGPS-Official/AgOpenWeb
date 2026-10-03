@@ -142,17 +142,36 @@ public class RtcmPacerTests
     }
 
     [Test]
-    public void Data_QueuedLongerThanMaxAge_IsDroppedAsStale()
+    public void UnstartedRead_QueuedLongerThanMaxAge_IsDroppedAsStale()
     {
-        _pacer.Enqueue(Sequence(600));                 // old read
-        Assert.That(_pacer.TryDequeue(out _, out _), Is.True); // 256 of it sent
+        _pacer.Enqueue(Sequence(600)); // old unstarted read
         _clock.AdvanceMs(RtcmPacer.MaxAgeMs + 1);
         byte[] fresh = Sequence(50, 200);
         _pacer.Enqueue(fresh);
 
         Assert.That(_pacer.TryDequeue(out var chunk, out int stale), Is.True);
-        Assert.That(stale, Is.EqualTo(344), "rest of the old read discarded");
+        Assert.That(stale, Is.EqualTo(600), "unstarted stale read discarded");
         Assert.That(chunk, Is.EqualTo(fresh));
+    }
+
+    [Test]
+    public void InProgressSegment_IsNotChoppedMidStream_EvenIfMaxAgeExceeded()
+    {
+        _pacer.Enqueue(Sequence(600));
+        Assert.That(_pacer.TryDequeue(out var first, out _), Is.True);
+        Assert.That(first.Length, Is.EqualTo(256));
+
+        // Age exceeds MaxAgeMs, but segment is already partially sent
+        _clock.AdvanceMs(RtcmPacer.MaxAgeMs + 1);
+        Assert.That(_pacer.TryDequeue(out var second, out int stale), Is.True);
+        Assert.That(stale, Is.Zero, "in-progress segment must not be chopped mid-stream");
+        Assert.That(second.Length, Is.EqualTo(256));
+
+        _clock.AdvanceMs(RtcmPacer.IntervalMs);
+        Assert.That(_pacer.TryDequeue(out var third, out stale), Is.True);
+        Assert.That(stale, Is.Zero);
+        Assert.That(third.Length, Is.EqualTo(88));
+        Assert.That(first.Concat(second).Concat(third).ToArray(), Is.EqualTo(Sequence(600)));
     }
 
     [Test]
