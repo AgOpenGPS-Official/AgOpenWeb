@@ -363,4 +363,63 @@ public class GpsHeadingFusionServiceTests
         Assert.That(_service.IsDualHeadingMissing, Is.False, "a PAOGI fix clears it");
         Assert.That(h, Is.EqualTo(30).Within(1e-9));
     }
+
+    [Test]
+    public void SmallJitter_DoesNotTriggerInitialHeading_UntilMinDistanceTravelled()
+    {
+        // 5 small jitter fixes of 0.05m: total distance is only 0.25m < 0.35m (0.5 * FixToFixDistance)
+        for (int i = 0; i < 5; i++)
+        {
+            double h = _service.FuseHeading(45, 0, false, Fast, 0, i * 0.05, false);
+            Assert.That(h, Is.EqualTo(45).Within(1e-9), "must pass through sentence heading until minimum distance");
+        }
+
+        // Once distance reaches 0.40m (> 0.35m), initial heading locks onto travel (0°)
+        double finalHeading = _service.FuseHeading(45, 0, false, Fast, 0, 0.40, false);
+        Assert.That(finalHeading, Is.EqualTo(0).Within(1e-6));
+    }
+
+    [Test]
+    public void SustainedTravelInReverse_UnlatchesReverse_AndAlignsForward()
+    {
+        // Vehicle starts by backing up South: (0, 0) -> (0, -0.3) -> (0, -0.6) with IMU saying 0° (facing North)
+        _service.FuseHeading(180, 0, true, Fast, 0, 0, false);
+        _service.FuseHeading(180, 0, true, Fast, 0, -0.3, false);
+        _service.FuseHeading(180, 0, true, Fast, 0, -0.6, false); // initial offset = 180°
+
+        // Now vehicle drives North (travel heading 0°). Because IMU offset was 180°, reverse is flagged
+        double h = _service.FuseHeading(0, 0, true, Fast, 0, 0, false);
+        Assert.That(_service.IsReverse, Is.True);
+
+        // Keep driving North forward for 50 steps * 0.3 m = 15.0 meters (> MaxReverseTravelMeters 12m)
+        for (int i = 1; i <= 50; i++)
+        {
+            h = _service.FuseHeading(0, 0, true, Fast, 0, i * 0.3, false);
+        }
+
+        Assert.That(_service.IsReverse, Is.False, "sustained travel must unlatch reverse");
+        Assert.That(h, Is.EqualTo(0).Within(1e-6), "heading must align with forward travel");
+    }
+
+    [Test]
+    public void ResetDirection_ForcesRelearningOfHeadingAndOffset()
+    {
+        DriveNorth(6, imu: 0, imuValid: true); // heading north set
+        Assert.That(_service.IsReverse, Is.False);
+
+        // Reverse for 3 steps
+        for (int i = 1; i <= 3; i++) _service.FuseHeading(0, 0, true, Fast, 0, 1.5 - i * 0.3, false);
+        Assert.That(_service.IsReverse, Is.True);
+
+        // Reset direction
+        _service.ResetDirection();
+        Assert.That(_service.IsReverse, Is.False);
+
+        // Moving east: heading re-learns east (90°)
+        for (int i = 0; i < 3; i++)
+            _service.FuseHeading(90, 90, true, Fast, i * 0.3, 0, false);
+
+        double h = _service.FuseHeading(90, 90, true, Fast, 1.2, 0, false);
+        Assert.That(h, Is.EqualTo(90).Within(1e-6));
+    }
 }

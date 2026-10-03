@@ -52,6 +52,9 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     /// <summary>The web slider stores the GPS share, 0–1. AgOpenGPS's slider is GPS %
     /// 0–100 with weight = % × 0.002, so weight = share × 0.2 (default 0.3 → 0.06).</summary>
     public const double FusionShareToWeight = 0.2;
+    /// <summary>Maximum continuous reverse travel distance (meters) before assuming direction
+    /// latch inversion and unlatching to true travel heading.</summary>
+    public const double MaxReverseTravelMeters = 12.0;
 
     private readonly ConfigurationStore _configStore;
 
@@ -67,6 +70,9 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
 
     private bool _isFirstHeadingSet;
     private bool _hasHeading;        // a Fix or Dual heading has been output at least once
+    private StepFix _startFix;
+    private bool _hasStartFix;
+    private double _reverseTravelDistance;
     private double _gpsHeading;      // radians, last fix-to-fix heading
     private double _fixHeading;      // radians, the output
     private double _imuGpsOffset;    // radians, IMU → GPS alignment
@@ -169,6 +175,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
             return ByPass(gpsHeading, imu);   // not stored, like AgOpenGPS
 
         double newHeading = Wrap(Math.Atan2(easting - _steps[stepIdx].E, northing - _steps[stepIdx].N));
+        double stepDist = _steps[0].IsSet ? Math.Sqrt(Dist2(_steps[0], easting, northing)) : 0;
 
         if (imu is double imuRad)
         {
@@ -178,19 +185,39 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
                 && Math.Abs(AngleDelta(Wrap(imuRad + _imuGpsOffset), newHeading)) > HalfPi)
             {
                 IsReverse = _isReverseWithImu = true;
-                newHeading = Wrap(newHeading + Math.PI);
+                _reverseTravelDistance += stepDist;
+
+                // A vehicle cannot continuously reverse for 12+ meters in field operations.
+                // If it does, the heading or IMU offset was inverted (e.g. started backwards or noise).
+                // Automatically unlatch reverse and align with true forward travel direction.
+                if (_reverseTravelDistance >= MaxReverseTravelMeters)
+                {
+                    IsReverse = _isReverseWithImu = false;
+                    _reverseTravelDistance = 0;
+                    _imuGpsOffset = Wrap(AngleDelta(imuRad, newHeading));
+                    _gpsHeading = newHeading;
+                    _fixHeading = Wrap(imuRad + _imuGpsOffset);
+                }
+                else
+                {
+                    newHeading = Wrap(newHeading + Math.PI);
+                    _gpsHeading = newHeading;
+
+                    // Nudge the IMU offset toward GPS by the fusion weight (a slow 0.02
+                    // while reversing, as AgOpenGPS does).
+                    _imuGpsOffset = Wrap(_imuGpsOffset + AngleDelta(imuRad + _imuGpsOffset, _gpsHeading) * 0.02);
+                    _fixHeading = Wrap(imuRad + _imuGpsOffset);
+                }
             }
             else
             {
                 IsReverse = _isReverseWithImu = false;
-            }
-            _gpsHeading = newHeading;
+                _reverseTravelDistance = 0;
+                _gpsHeading = newHeading;
 
-            // Nudge the IMU offset toward GPS by the fusion weight (a slow 0.02
-            // while reversing, as AgOpenGPS does).
-            double w = _isReverseWithImu ? 0.02 : FusionWeight;
-            _imuGpsOffset = Wrap(_imuGpsOffset + AngleDelta(imuRad + _imuGpsOffset, _gpsHeading) * w);
-            _fixHeading = Wrap(imuRad + _imuGpsOffset);
+                _imuGpsOffset = Wrap(_imuGpsOffset + AngleDelta(imuRad + _imuGpsOffset, _gpsHeading) * FusionWeight);
+                _fixHeading = Wrap(imuRad + _imuGpsOffset);
+            }
         }
         else
         {
@@ -206,11 +233,29 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
                     return ByPass(gpsHeading, imu);   // not stored, like AgOpenGPS
 
                 IsReverse = _filteredDelta > HalfPi;
-                if (IsReverse) newHeading = Wrap(newHeading + Math.PI);
+                if (IsReverse)
+                {
+                    _reverseTravelDistance += stepDist;
+                    if (_reverseTravelDistance >= MaxReverseTravelMeters)
+                    {
+                        IsReverse = false;
+                        _reverseTravelDistance = 0;
+                        _filteredDelta = 0;
+                    }
+                    else
+                    {
+                        newHeading = Wrap(newHeading + Math.PI);
+                    }
+                }
+                else
+                {
+                    _reverseTravelDistance = 0;
+                }
             }
             else
             {
                 IsReverse = IsChangingDirection = false;
+                _reverseTravelDistance = 0;
             }
             _fixHeading = _gpsHeading = newHeading;
         }
@@ -248,16 +293,49 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     {
         for (int i = 0; i < TotalFixSteps; i++) _steps[i] = default;
         _hasReverseFix = false;
+        _hasStartFix = false;
+        _startFix = default;
+        _reverseTravelDistance = 0;
     }
 
-    // First heading: three stored fixes, heading from the oldest to the newest; the
-    // IMU offset is snapped straight onto it (AgOpenGPS "Start").
+    /// <summary>
+    /// Resets initial heading and reverse latching, forcing the heading to be re-initialized
+    /// from the next travel movement (AgOpenGPS "Reset Direction" parity).
+    /// </summary>
+    public void ResetDirection()
+    {
+        _isFirstHeadingSet = false;
+        _hasHeading = false;
+        _isReverseWithImu = false;
+        IsReverse = false;
+        _reverseTravelDistance = 0;
+        _filteredDelta = 0;
+        Reset();
+    }
+
+    // First heading: stored fixes must span at least FixToFixDistance to prevent noisy
+    // sub-centimeter GPS fixes (e.g. in Float/DGPS) from computing a 180° reverse heading.
     private bool TryStartHeading(double easting, double northing, double? imu)
     {
-        PushStep(easting, northing);
-        if (!_steps[2].IsSet) return false;
+        if (!_hasStartFix)
+        {
+            _startFix = new StepFix { E = easting, N = northing, IsSet = true };
+            _hasStartFix = true;
+            PushStep(easting, northing);
+            return false;
+        }
 
-        _gpsHeading = Wrap(Math.Atan2(easting - _steps[2].E, northing - _steps[2].N));
+        double d2 = Dist2(_startFix, easting, northing);
+        double minHeadingDist2 = Sq(Connections.FixToFixDistance);
+        if (d2 < minHeadingDist2 * 0.5)
+        {
+            if (Dist2(_steps[0], easting, northing) >= Sq(Connections.MinGpsStep))
+                PushStep(easting, northing);
+            return false;
+        }
+
+        PushStep(easting, northing);
+        _gpsHeading = Wrap(Math.Atan2(easting - _startFix.E, northing - _startFix.N));
         _fixHeading = _gpsHeading;
         if (imu is double imuRad)
         {
