@@ -11,7 +11,7 @@
 #
 # Requires the WebView2 Evergreen Runtime on the target PC for the embedded UI to render.
 # It's pre-installed on Windows 11 and current Windows 10; the publish bundles the native
-# WebView2Loader.dll (via Microsoft.Web.WebView2) but not the runtime itself.
+# WebView2Loader.dll (via Photino.Native) but not the runtime itself.
 #
 # Usage:
 #   ./package.sh                  # win-x64 bundle (default)
