@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.State;
 
@@ -27,8 +28,9 @@ public sealed class GpsDataRecorder
     private int _count;
     private readonly object _lock = new();
 
-    /// <summary>Number of records to keep (at 10Hz = 60 seconds).</summary>
-    public const int BufferSize = 600;
+    /// <summary>Number of records to keep (at 10 Hz = 5 minutes). It was 60 s, and dumps
+    /// taken a minute or two after a problem held only the aftermath (#156).</summary>
+    public const int BufferSize = 3000;
 
     /// <summary>
     /// Last captured TurnPath, retained for the debug-dump sidecar. Cleared
@@ -91,6 +93,11 @@ public sealed class GpsDataRecorder
             PathAnchorB = result.Guidance?.PathAnchorB ?? 0,
             TurnPathPointCount = result.Guidance?.TurnPathPointCount ?? 0,
             AntiTangentGuardFired = result.Guidance?.AntiTangentGuardFired ?? false,
+            SentenceType = result.SentenceType,
+            SentenceHeading = result.SentenceHeading,
+            ImuValid = result.ImuValid,
+            IsReverse = result.IsReverse,
+            IsDualHeadingMissing = result.IsDualHeadingMissing,
         };
 
         lock (_lock)
@@ -123,7 +130,10 @@ public sealed class GpsDataRecorder
             "tool_e,tool_n,tool_h_rad,steer_angle,xte,has_guidance,paths_away," +
             "autosteer,yt_triggered,yt_executing,headland_dist," +
             "goal_e,goal_n,goal_dist,forward_dot," +
-            "A,B,ptCount,is_turn_left,anti_tangent_guard_fired");
+            "A,B,ptCount,is_turn_left,anti_tangent_guard_fired," +
+            // Heading inputs (#157): sentence type, its heading field before fusion (dual
+            // heading on PAOGI, IMU heading on PANDA), and the fusion's verdicts.
+            "sentence,sentence_heading,imu_valid,reverse,dual_missing");
 
         var ci = CultureInfo.InvariantCulture;
         foreach (var r in snapshot)
@@ -173,7 +183,18 @@ public sealed class GpsDataRecorder
             sb.Append(r.PathAnchorB); sb.Append(',');
             sb.Append(r.TurnPathPointCount); sb.Append(',');
             sb.Append(r.IsTurnLeft ? "1" : "0"); sb.Append(',');
-            sb.AppendLine(r.AntiTangentGuardFired ? "1" : "0");
+            sb.Append(r.AntiTangentGuardFired ? "1" : "0"); sb.Append(',');
+            sb.Append(r.SentenceType switch
+            {
+                GpsSentenceType.Panda => "PANDA",
+                GpsSentenceType.Paogi => "PAOGI",
+                GpsSentenceType.Simulator => "SIM",
+                _ => "",
+            }); sb.Append(',');
+            sb.Append(r.SentenceHeading.ToString("F2", ci)); sb.Append(',');
+            sb.Append(r.ImuValid ? "1" : "0"); sb.Append(',');
+            sb.Append(r.IsReverse ? "1" : "0"); sb.Append(',');
+            sb.AppendLine(r.IsDualHeadingMissing ? "1" : "0");
         }
 
         return sb.ToString();
@@ -218,5 +239,8 @@ public sealed class GpsDataRecorder
         public double? GoalEasting, GoalNorthing;
         public int PathAnchorA, PathAnchorB, TurnPathPointCount;
         public bool AntiTangentGuardFired;
+        public GpsSentenceType SentenceType;
+        public double SentenceHeading;
+        public bool ImuValid, IsReverse, IsDualHeadingMissing;
     }
 }

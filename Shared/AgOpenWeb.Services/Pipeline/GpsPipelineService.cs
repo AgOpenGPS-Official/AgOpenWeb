@@ -62,6 +62,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly IGpsHeadingFusionService _headingFusion;
     private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
     private bool _isReverse;           // this cycle's reverse detection (#125)
+    private double _sentenceHeading;   // heading field of this cycle's sentence, before fusion
     private double _roll;              // filtered roll, degrees (#110)
     private double _lastCrossTrackError; // last cycle's XTE, for the look-ahead (#110)
     // Contour (#110): owned by the cycle, guarded by _contourLock (the UI thread
@@ -737,6 +738,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
         // with the dual-antenna-aware / fix-to-fix / IMU-blended value.
         // Receives real local easting/northing — see TMP-009 in the parking lot.
+        _sentenceHeading = pos.Heading;
         double fusedHeading = _headingFusion.FuseHeading(
             pos.Heading, data.ImuHeading, data.ImuValid,
             pos.Speed, posEasting, posNorthing, data.HasDualHeading);
@@ -1271,6 +1273,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
             DifferentialAge = data.DifferentialAge,
             FixQuality = data.FixQuality,
             GpsValid = data.IsValid,
+            SentenceType = data.SentenceType,
+            SentenceHeading = _sentenceHeading,
+            ImuValid = data.ImuValid,
+            IsReverse = _isReverse,
+            IsDualHeadingMissing = _headingFusion.IsDualHeadingMissing,
 
             // Tool position
             ToolEasting = toolPos.Easting,

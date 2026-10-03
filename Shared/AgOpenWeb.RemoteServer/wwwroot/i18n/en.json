@@ -116,7 +116,7 @@
   "By Driving": "By Driving",
   "Camera mode: Heading-Up / North-Up / Map / Center": "Camera mode: Heading-Up / North-Up / Map / Center",
   "Cancel": "Cancel",
-  "Captures settings, state, the field, the job's coverage and the last 60 s of GPS data to a zip in Documents/AgOpenWeb/BugReports. The map stays live with this panel open: keep it open while driving and press the button the moment a problem shows.": "Captures settings, state, the field, the job's coverage and the last 60 s of GPS data to a zip in Documents/AgOpenWeb/BugReports. The map stays live with this panel open: keep it open while driving and press the button the moment a problem shows.",
+  "Captures settings, state, the field, the job's coverage and the last 5 minutes of GPS data to a zip in Documents/AgOpenWeb/BugReports. The map stays live with this panel open: keep it open while driving and press the button the moment a problem shows.": "Captures settings, state, the field, the job's coverage and the last 5 minutes of GPS data to a zip in Documents/AgOpenWeb/BugReports. The map stays live with this panel open: keep it open while driving and press the button the moment a problem shows.",
   "Caster": "Caster",
   "Center": "Center",
   "Change Module Subnet": "Change Module Subnet",

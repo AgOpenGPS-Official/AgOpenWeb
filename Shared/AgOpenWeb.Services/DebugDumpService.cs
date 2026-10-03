@@ -103,7 +103,7 @@ public class DebugDumpService
             AddTextEntry(archive, "logs_error.txt", ex.ToString());
         }
 
-        // 5b. GPS data recorder (last 60 seconds of position/guidance/YouTurn)
+        // 5b. GPS data recorder (last 5 minutes of position/guidance/YouTurn/heading inputs)
         try
         {
             var gpsCsv = Logging.GpsDataRecorder.Instance.ExportCsv();
