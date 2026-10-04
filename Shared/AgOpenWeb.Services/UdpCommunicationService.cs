@@ -556,7 +556,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         ModuleType.AutoSteer => _autoSteerIp,
         ModuleType.Machine   => _machineIp,
         ModuleType.IMU       => _imuIp,
-        ModuleType.GPS       => _gpsIp,
+        // Where the position sentences are coming from; a scan reply's address otherwise.
+        ModuleType.GPS       => GetGpsSourceAddress()?.ToString() ?? _gpsIp,
         _                    => null,
     };
 

@@ -321,6 +321,17 @@ Authorization: Basic base64(username:password)
 User-Agent: NTRIP AgOpenWeb
 ```
 
+### RTCM forwarding
+`NtripClientService` frames the caster's stream into RTCM 3 messages (`RtcmFramer`, after
+`ChunkedDecoder` if the reply is chunked) and queues whole messages (`RtcmQueue`): 256-byte
+datagrams about 25 ms apart, never closer than 10 ms; on a backlog the newest observation
+epoch and newest station data win, and nothing is cut mid-message. Datagrams go to the GPS
+module's own address when its position sentences have been heard in the last 10 s, else to
+the subnet broadcast (or always, with Network IO → "Broadcast corrections"). Network IO shows
+the receiver's correction age, warnings and a message table; bug report dumps carry
+`ntrip_rtcm.txt`. Design, bench results and open checks: `Plans/RTCM_FORWARDING_PLAN.md`;
+bench scripts: `Tools/rtcm-bench`.
+
 ## Debugging Tips
 
 1. **iOS simulator issues**: Use `xcrun simctl` commands directly if `dotnet build -t:Run` fails

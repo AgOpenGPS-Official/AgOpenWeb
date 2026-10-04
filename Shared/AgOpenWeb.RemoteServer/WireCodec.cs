@@ -664,6 +664,27 @@ public static class WireCodec
         // GPS source (append-only, #157): sentence type + Dual-without-dual-heading flag.
         WriteStr(w, s.GpsSentence);
         w.Write((byte)(s.DualHeadingMissing ? 1 : 0));
+        // NTRIP RTCM stream (append-only, RTCM plan Phase 5): [u8 present] then totals and
+        // [i32 n][ per type: i32 type, i32 count, f32 every s (NaN = once), f32 last s ].
+        var rtcm = s.NtripRtcm;
+        w.Write((byte)(rtcm != null ? 1 : 0));
+        if (rtcm != null)
+        {
+            w.Write((float)rtcm.SessionSeconds);
+            w.Write((int)Math.Min(rtcm.Messages, int.MaxValue));
+            w.Write((int)Math.Min(rtcm.ChecksumFailures, int.MaxValue));
+            w.Write((int)Math.Min(rtcm.BytesSkipped, int.MaxValue));
+            w.Write((int)Math.Min(rtcm.NotSent, int.MaxValue));
+            w.Write((byte)(rtcm.Unframed ? 1 : 0));
+            w.Write(rtcm.Types.Count);
+            foreach (var t in rtcm.Types)
+            {
+                w.Write(t.Type);
+                w.Write((int)Math.Min(t.Count, int.MaxValue));
+                w.Write((float)t.EverySeconds);
+                w.Write((float)t.LastSeconds);
+            }
+        }
         return ms.ToArray();
     }
 

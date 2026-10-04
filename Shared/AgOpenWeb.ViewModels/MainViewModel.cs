@@ -976,7 +976,8 @@ public partial class MainViewModel : ObservableObject
                 State.Connections.AutoSteerIpAddress = _udpService.GetModuleIpAddress(ModuleType.AutoSteer);
                 State.Connections.MachineIpAddress = _udpService.GetModuleIpAddress(ModuleType.Machine);
                 State.Connections.ImuIpAddress = _udpService.GetModuleIpAddress(ModuleType.IMU);
-                // GPS IP + subnet are only known after a PGN 203 scan reply.
+                // GPS IP: the sender of the position sentences (else a PGN 203 scan reply).
+                // The subnet is only known after a scan reply.
                 State.Connections.GpsIpAddress = _udpService.GetModuleIpAddress(ModuleType.GPS);
                 State.Connections.ModuleSubnet = _udpService.GetModuleSubnet();
 

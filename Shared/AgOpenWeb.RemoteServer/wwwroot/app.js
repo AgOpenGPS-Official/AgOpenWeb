@@ -2737,8 +2737,72 @@ function renderNetworkIo() {
     : tr('Corrections are broadcast to {ip}', { ip: s.ntripDestination });
   const bc = document.getElementById('nio-rtcm-bc');
   if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
+  renderNtripRtcm(s);
   nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
 }
+
+// What the caster is sending (RTCM plan, Phase 5): the receiver's fix and correction age,
+// a plain warning when the base position or the observations are missing, and the message
+// types with how often each comes. The receiver can keep reporting RTK Fixed for minutes
+// with no corrections arriving, so the age and these warnings are what show a problem.
+const RTCM_SYSTEMS = ['GPS', 'GLONASS', 'Galileo', 'SBAS', 'QZSS', 'BeiDou', 'NavIC'];
+const rtcmIsMsm = t => t >= 1071 && t <= 1137 && t % 10 >= 1 && t % 10 <= 7;
+const rtcmIsObs = t => (t >= 1001 && t <= 1004) || (t >= 1009 && t <= 1012) || rtcmIsMsm(t);
+function rtcmDescribe(t) {
+  if (rtcmIsMsm(t)) return tr('{system} observations (MSM{n})', { system: RTCM_SYSTEMS[Math.floor((t - 1070) / 10)] || '?', n: t % 10 });
+  if (t >= 1001 && t <= 1004) return tr('GPS observations (legacy)');
+  if (t >= 1009 && t <= 1012) return tr('GLONASS observations (legacy)');
+  if (t >= 4001 && t <= 4095) return tr('Proprietary');
+  switch (t) {
+    case 1005: return tr('Base position');
+    case 1006: return tr('Base position and antenna height');
+    case 1007: case 1008: return tr('Antenna descriptor');
+    case 1013: return tr('System parameters');
+    case 1019: return tr('GPS ephemeris');
+    case 1020: return tr('GLONASS ephemeris');
+    case 1033: return tr('Receiver and antenna descriptor');
+    case 1042: return tr('BeiDou ephemeris');
+    case 1044: return tr('QZSS ephemeris');
+    case 1045: case 1046: return tr('Galileo ephemeris');
+    case 1230: return tr('GLONASS code-phase biases');
+    default: return '';
+  }
+}
+// The one thing wrong with the stream that the operator should know about, or ''.
+function ntripRtcmWarning(r) {
+  if (r.unframed) return tr('This mount point does not send RTCM 3. Its data is forwarded as it comes.');
+  const newest = pred => r.types.filter(x => pred(x.type)).reduce((m, x) => Math.min(m, x.last), Infinity);
+  const base = newest(t => t === 1005 || t === 1006), obs = newest(rtcmIsObs);
+  if (obs === Infinity) return r.sessionSeconds > 10 ? tr('No satellite observations from the caster.') : '';
+  if (obs > 10) return tr('No satellite observations for {n} s.', { n: Math.round(obs) });
+  if (base === Infinity) return r.sessionSeconds > 30 ? tr('No base position from the caster. The receiver cannot get RTK without it.') : '';
+  if (base > 60) return tr('No base position received for {n} s.', { n: Math.round(base) });
+  return '';
+}
+function renderNtripRtcm(s) {
+  const r = s.ntripConnected ? s.ntripRtcm : null;
+  const rx = document.getElementById('nio-ntrip-rx'), warn = document.getElementById('nio-ntrip-warn');
+  const box = document.getElementById('nio-rtcm');
+  box.hidden = !r;
+  rx.textContent = r ? tr('Receiver: {fix}, correction age {age} s', { fix: s.fixText || '—', age: (s.age || 0).toFixed(0) }) : '';
+  rx.classList.toggle('nio-aged', !!r && s.age > 5);
+  const w = r ? ntripRtcmWarning(r) : '';
+  warn.hidden = !w;
+  warn.textContent = w;
+  if (!r) return;
+  document.getElementById('nio-rtcm-sum').textContent =
+    tr('{n} messages, {bad} bad checksums, {r} replaced by newer', { n: r.messages.toLocaleString(), bad: r.checksumFailures, r: r.notSent });
+  if (!box.open) return;   // the rows are only built while the table is showing
+  const secs = v => Number.isFinite(v) ? (v < 10 ? v.toFixed(1) : Math.round(v)) + ' s' : '—';
+  // Ephemerides come in bursts, so a mean spacing says nothing about them. A row is marked
+  // late only where lateness matters: observations and the base position.
+  const bursty = t => t === 1019 || t === 1020 || (t >= 1041 && t <= 1046);
+  const late = x => rtcmIsObs(x.type) ? x.last > 5 : (x.type === 1005 || x.type === 1006) && x.last > 60;
+  document.getElementById('nio-rtcm-rows').innerHTML = r.types.map(x =>
+    '<tr' + (late(x) ? ' class="stale"' : '') + '><td class="num" translate="no">' + x.type + '</td><td>' + esc(rtcmDescribe(x.type)) +
+    '</td><td class="num" translate="no">' + (bursty(x.type) ? '—' : secs(x.every)) + '</td><td class="num" translate="no">' + secs(x.last) + '</td></tr>').join('');
+}
+document.getElementById('nio-rtcm').addEventListener('toggle', () => { if (statusBar) renderNtripRtcm(statusBar); });
 
 // NTRIP Profiles — chain sub-panel of Network IO (mirrors NtripProfilesDialogPanel).
 // Native chain model: opening REPLACES the parent (lnOpen closes everything else);

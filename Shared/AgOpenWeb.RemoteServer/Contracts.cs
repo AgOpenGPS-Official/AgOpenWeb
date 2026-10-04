@@ -286,7 +286,25 @@ public record StatusDto(
     // fix) for the GPS detail card, and DualHeadingMissing — Dual GPS is on but the
     // receiver sends $PANDA (no antenna heading), so the single-antenna heading is used.
     string GpsSentence,
-    bool DualHeadingMissing);
+    bool DualHeadingMissing,
+    // What the NTRIP caster is sending, for the Network IO panel (RTCM plan, Phase 5);
+    // null with no NTRIP session.
+    NtripRtcmDto? NtripRtcm = null);
+
+/// <summary>The caster's RTCM stream this session: totals, and each message type with how
+/// often it comes and how long ago the last one came. The client turns this into the
+/// message table and the "no base position" / "no observations" warnings.</summary>
+public record NtripRtcmDto(
+    double SessionSeconds,
+    long Messages,
+    long ChecksumFailures,
+    long BytesSkipped,
+    long NotSent,        // replaced by a newer message before sending, or dropped by the memory guard
+    bool Unframed,       // the stream is not RTCM 3 and is forwarded as it comes
+    IReadOnlyList<NtripRtcmTypeDto> Types);
+
+/// <param name="EverySeconds">Mean spacing; NaN after a single message.</param>
+public record NtripRtcmTypeDto(int Type, long Count, double EverySeconds, double LastSeconds);
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and

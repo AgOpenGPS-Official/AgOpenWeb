@@ -195,7 +195,8 @@ public sealed class RemoteServerHost
         IJobService jobs, IConfigurationService configService, IAutoSteerService autoSteer,
         ISmartWasCalibrationService smartWas, IUdpCommunicationService udp,
         INtripProfileService ntripProfiles, IFieldService fields, ISettingsService settings,
-        IVehicleProfileService vehicleProfiles, IPersistentStateService persist, int port = 5174)
+        IVehicleProfileService vehicleProfiles, IPersistentStateService persist,
+        INtripClientService? ntrip = null, int port = 5174)
     {
         Port = port;
 
@@ -205,7 +206,7 @@ public sealed class RemoteServerHost
         var authority = new ControlAuthority();
         var sceneProjector = new SceneProjector(state, sections, tool, config, coverage, jobs,
             configService, autoSteer, smartWas, udp, ntripProfiles, fields, settings,
-            vehicleProfiles, persist);
+            vehicleProfiles, persist, ntrip);
         var coverageProjector = new CoverageProjector(coverage);
         _ws = new WebSocketHub(authority);
         _broadcaster = new MapBroadcaster(_ws, sceneProjector, coverage, coverageProjector, authority);
