@@ -212,7 +212,8 @@ public partial class MainViewModel
 
                 var zipPath = Services.DebugDumpService.CreateDump(
                     _settingsService, _appState, _configStore, screenshotPng: screenshot,
-                    activeJobTaskName: SaveCoverageForDump());
+                    activeJobTaskName: SaveCoverageForDump(),
+                    ntripRtcmReport: NtripRtcmReport());
                 StatusMessage = $"Debug dump saved: {zipPath}";
                 _logger.LogInformation($"Debug dump created: {zipPath}");
             }
@@ -244,7 +245,8 @@ public partial class MainViewModel
             {
                 _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
                     _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot,
-                    activeJobTaskName: SaveCoverageForDump());
+                    activeJobTaskName: SaveCoverageForDump(),
+                    ntripRtcmReport: NtripRtcmReport());
             }
             catch (Exception ex)
             {
@@ -352,6 +354,7 @@ public partial class MainViewModel
                         additionalNotes: notes,
                         screenshotPng: _bugReportScreenshot,
                         activeJobTaskName: SaveCoverageForDump(),
+                    ntripRtcmReport: NtripRtcmReport(),
                         outputDirectory: bugReportsDir,
                         filePrefix: $"bugreport_{titleSlug}",
                         userAttachments: attachmentPaths);
@@ -489,6 +492,8 @@ public partial class MainViewModel
 
         AppDirectories = dirs;
     }
+
+    private string? NtripRtcmReport() => Services.NtripRtcmReport.Build(_ntripService, _gpsService);
 
     /// <summary>
     /// Save the active job's coverage so a dump's tiles are current, and return the job's

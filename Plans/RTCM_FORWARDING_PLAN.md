@@ -1,6 +1,6 @@
 # RTCM forwarding: forward messages, not bytes
 
-**Status:** proposed 2026-10-03.
+**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`).
 **Prompted by:** PR #247 (stale-drop tuning in `RtcmPacer`) and reports of receivers stuck in
 RTK Float / DGPS while NTRIP is connected. Reviewing that PR showed the drop rule is being tuned
 at the wrong layer: the forwarder does not know where an RTCM message starts or ends.
@@ -104,6 +104,36 @@ caster TCP ──► (de-chunk) ──► RtcmFramer ──► RtcmQueue ──�
   (superseded epoch, duplicate station message, memory guard), checksum failures, bytes skipped,
   queue delay of the last datagram, destination in use, differential age.
 
+## Baseline with today's forwarder (2026-10-04)
+
+Measured with the Phase 1 build on the bench: RTKBase caster on the LAN, AiO v26 board with an
+F9P, wired Ethernet. A relay between the app and the caster held the stream back and released
+it in one burst ("stall"), or let it through at half its rate ("trickle"). The app's datagrams
+were recorded off the wire and re-framed, and the receiver's fix and differential age were
+read from the dump's GPS log.
+
+| Episode | Pacer | Forwarded stream | Receiver |
+|---|---|---|---|
+| Steady stream, 1.26 KB/s | no drops | every message whole | RTK Fixed, age 1 s |
+| Stall 2 s, 5 s | no drops; the backlog is sent, oldest first | whole | age follows the stall, fix held |
+| Stall 15 s, 25 s | backlog clear drops ~12 KB per burst | one message cut per clear | Fixed throughout, age back to 1 s on resume |
+| Stall 45 s | watchdog reconnects at 30 s; backlog clear on resume | one message cut | Fixed throughout, age peaked at 45 s |
+| Trickle at 600 B/s for 30 s | nothing dropped until the release burst | corrections arrive late | Fixed, age rose to 16 s |
+
+What this says:
+
+- **The one-second age rule never fired**, in any episode. PR #247 changes that rule, so it
+  would have changed nothing here.
+- **The 10,000-byte backlog clear is the rule that fires**, on every stall of about 10 s or
+  more, and each time it cuts a message in half. Decision 2 replaces it.
+- **An F9P rides through a 45 s gap in corrections** and takes the first fresh epoch after a
+  burst. Caster-side stalls of this size do not produce RTK Float on this hardware.
+- So the Float reports are not explained by the caster-to-app leg alone. Still to measure:
+  datagram loss between the app and the module, gaps longer than the receiver's hold time, and
+  the reporters' own streams (Phase 1 dumps).
+- The differential age works as the end-to-end measure. The v26 firmware reports it in whole
+  seconds, and 0 both for "under a second" and for "no corrections".
+
 ## Phases (one PR each)
 
 ### Phase 1: measure, change nothing
@@ -114,8 +144,14 @@ caster TCP ──► (de-chunk) ──► RtcmFramer ──► RtcmQueue ──�
   their rates, checksum failures, bytes skipped, differential age.
 - Detect a chunked reply and log it. If any caster in use answers chunked, de-chunking moves
   into this phase; otherwise it is done in Phase 2.
+- Add the receiver's differential age to `gps_data_log.csv` (last column), so it can be read
+  against the fix quality over the five minutes before a report.
 - **Outcome:** a dump from a reporter stuck in Float shows whether the stream is complete at
   the app (types, rates, 1005/1006 present) and how old the receiver says the corrections are.
+- **Checked against a real caster (2026-10-04):** an RTKBase / ZED-F9P base on the LAN
+  (RTKLIB caster, NTRIP 1 reply). 186 s, 1,664 messages, no checksum failures, no skipped
+  bytes, no pacer drops. About 1.26 KB/s: MSM7 for five constellations plus legacy 1004/1012
+  every second, base position 1005 every 10 s, 1006 and 1230 every 30 s.
 
 ### Phase 2: whole messages, epoch-aware backlog
 - `RtcmQueue` replaces the byte queue; the age rule and the backlog clear go.

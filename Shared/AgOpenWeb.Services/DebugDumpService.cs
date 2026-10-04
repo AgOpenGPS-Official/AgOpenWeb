@@ -45,7 +45,8 @@ public class DebugDumpService
         string? outputDirectory = null,
         string filePrefix = "debug_dump",
         IReadOnlyList<string>? userAttachments = null,
-        string? activeJobTaskName = null)
+        string? activeJobTaskName = null,
+        string? ntripRtcmReport = null)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         var dumpDir = outputDirectory
@@ -102,6 +103,10 @@ public class DebugDumpService
         {
             AddTextEntry(archive, "logs_error.txt", ex.ToString());
         }
+
+        // 5a. What the NTRIP caster sent, by RTCM message, and the receiver's differential age.
+        if (!string.IsNullOrEmpty(ntripRtcmReport))
+            AddTextEntry(archive, "ntrip_rtcm.txt", ntripRtcmReport);
 
         // 5b. GPS data recorder (last 5 minutes of position/guidance/YouTurn/heading inputs)
         try

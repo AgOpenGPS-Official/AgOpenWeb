@@ -56,6 +56,10 @@ public class NtripClientService : INtripClientService, IDisposable
     // NMEA output for ~14 s (#169). Staleness stays bounded (#334): the pacer drops a backlog
     // over 10 KB and anything that has waited over 1 s. See RtcmPacer.
     private readonly RtcmPacer _pacer = new();
+    // Frames the caster's stream and counts messages by type, beside the forwarder: it
+    // changes nothing that is sent (Plans/RTCM_FORWARDING_PLAN.md, Phase 1).
+    private readonly RtcmStreamStats _rtcmStats = new();
+    private Dictionary<int, long> _healthLineCounts = new(); // per-type counts at the last health line
     private readonly SemaphoreSlim _sendSignal = new(0);
 
     // #169 diagnostics: a read this large means TCP coalesced a backlog (a 1 Hz epoch is
@@ -166,6 +170,8 @@ public class NtripClientService : INtripClientService, IDisposable
                 _headerBuffer.Clear();
                 _headerDumped = false;
                 _rtcmSeen = false;
+                _rtcmStats.Reset();
+                _healthLineCounts = new();
                 TotalBytesReceived = 0;
                 _sessionOpen = true;
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -388,6 +394,13 @@ public class NtripClientService : INtripClientService, IDisposable
                                 headerReceived = true;
                                 IsConnected = true;
                                 _logger.LogInformation("Connected and authorized, receiving RTCM data");
+                                // Chunked transfer encoding is not decoded: its chunk-size lines
+                                // travel inside the forwarded stream and break the message they
+                                // land in. Detected and reported for now (RTCM plan, Phase 1).
+                                bool chunked = NtripResponse.IsChunked(response);
+                                _rtcmStats.Reset(chunked);
+                                if (chunked)
+                                    _logger.LogWarning("[NTRIP] the caster replied with Transfer-Encoding: chunked; chunk markers are forwarded inside the RTCM stream");
                                 var c = _config;
                                 RaiseStatus(true, c == null ? "Connected"
                                     : $"Connected to {c.CasterAddress}:{c.CasterPort}/{c.MountPoint}");
@@ -497,6 +510,8 @@ public class NtripClientService : INtripClientService, IDisposable
             Clock.Current.ElapsedMs(Volatile.Read(ref _lastRtcmReceivedTimestamp), now) / 1000.0;
         if (rtcmData.Length > LARGE_READ_BYTES)
             LogLargeRead(rtcmData.Length, secondsSincePrevious, now);
+
+        _rtcmStats.Feed(rtcmData); // counts only; what is forwarded is unchanged
 
         // Queue for the paced sender (SendLoop) rather than sending inline. (#169)
         int dropped = _pacer.Enqueue(rtcmData);
@@ -654,9 +669,12 @@ public class NtripClientService : INtripClientService, IDisposable
         // Periodic health line — once per WATCHDOG_TIMER_INTERVAL_MS regardless
         // of state. Operators read this to tell "caster paused" from
         // "AgOpenWeb broke" without needing the debug log.
+        var gps = _gpsService.CurrentData;
+        var snap = _rtcmStats.Snapshot();
         _logger.LogInformation(
-            "[NTRIP] last RTCM {Sec:F1}s ago, total {Bytes} bytes",
-            secondsSinceData, TotalBytesReceived);
+            "[NTRIP] last RTCM {Sec:F1}s ago, total {Bytes} bytes; messages since last line: {Messages}; session checksum failures {Crc}, skipped {Skipped} bytes; receiver fix {Fix}, differential age {Age:F1}s",
+            secondsSinceData, TotalBytesReceived, DescribeNewMessages(snap),
+            snap.ChecksumFailures, snap.BytesSkipped, gps?.FixQuality ?? 0, gps?.DifferentialAge ?? 0);
 
         if (secondsSinceData >= WATCHDOG_RECONNECT_SECONDS)
         {
@@ -665,6 +683,27 @@ public class NtripClientService : INtripClientService, IDisposable
                 : $"no reply from the caster for {secondsSinceData:F0}s");
         }
     }
+
+    /// <summary>"1005x1 1077x5 …": the messages that arrived since the previous health line.</summary>
+    private string DescribeNewMessages(RtcmStreamSnapshot snap)
+    {
+        var previous = _healthLineCounts;
+        var current = new Dictionary<int, long>(snap.Types.Count);
+        var sb = new StringBuilder();
+        foreach (var t in snap.Types)
+        {
+            current[t.Type] = t.Count;
+            long added = t.Count - (previous.TryGetValue(t.Type, out long before) ? before : 0);
+            if (added <= 0) continue;
+            if (sb.Length > 0) sb.Append(' ');
+            sb.Append(CultureInfo.InvariantCulture, $"{t.Type}x{added}");
+        }
+        _healthLineCounts = current;
+        return sb.Length == 0 ? "none" : sb.ToString();
+    }
+
+    /// <inheritdoc />
+    public RtcmStreamSnapshot GetRtcmStreamSnapshot() => _rtcmStats.Snapshot();
 
     /// <summary>
     /// Kick off the backoff reconnect loop. Idempotent — overlapping
