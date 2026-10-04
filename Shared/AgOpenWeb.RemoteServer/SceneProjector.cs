@@ -402,6 +402,9 @@ public sealed class SceneProjector
             c.IsNtripConnected,
             c.NtripStatus ?? "",
             c.NtripBytesReceived,
+            c.NtripRtcmDestination ?? "",
+            c.NtripRtcmUnicast,
+            cfg.RtcmBroadcast,
             c.NtripTestStatus ?? "",
             _persist.State.SimulatorPanelVisible,
             // Field Tools — Offset Fix drift offset (meters).

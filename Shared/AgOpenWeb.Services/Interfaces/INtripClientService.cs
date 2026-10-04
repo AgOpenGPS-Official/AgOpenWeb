@@ -53,6 +53,12 @@ public interface INtripClientService
     ulong TotalBytesReceived { get; }
 
     /// <summary>
+    /// Where RTCM is being sent ("192.168.5.126" or "192.168.5.255"), empty with no session,
+    /// and whether that is the GPS module's own address (unicast) or the subnet broadcast.
+    /// </summary>
+    (string Address, bool Unicast) RtcmDestination { get; }
+
+    /// <summary>
     /// The RTCM messages the caster has sent this session, by type, with checksum failures
     /// and skipped bytes. Diagnostics only: counted beside the forwarder.
     /// </summary>
@@ -125,6 +131,18 @@ public class NtripConfiguration
     /// falls back to <see cref="SubnetAddress"/>.
     /// </summary>
     public Func<string?>? SubnetProvider { get; set; }
+
+    /// <summary>
+    /// The GPS module's address, when known (where its position sentences come from).
+    /// RTCM is sent there; with none it is broadcast to the subnet.
+    /// </summary>
+    public Func<System.Net.IPAddress?>? GpsModuleAddressProvider { get; set; }
+
+    /// <summary>
+    /// True to broadcast RTCM to the subnet even when the GPS module's address is known.
+    /// Read for every datagram, so the setting takes effect without reconnecting.
+    /// </summary>
+    public Func<bool>? BroadcastOnly { get; set; }
 
     /// <summary>
     /// GGA send interval in seconds (0 = disabled)

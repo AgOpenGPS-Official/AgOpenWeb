@@ -514,6 +514,7 @@
     .nio-hostips { color: var(--text-2); font: 600 12px ui-monospace, monospace; white-space: pre-line; line-height: 1.5; }
     .nio-rule { border: 0; border-top: 1px solid var(--border); margin: 14px 0 10px; }
     .nio-ntriprow { display: flex; align-items: center; gap: 8px; }
+    .nio-bcrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
     .nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
     /* NTRIP chain sub-panels (ln-panels that replace their parent). */
     .nio-ntmodal { width: 520px; }
@@ -1874,6 +1875,11 @@
       <span class="nio-ntstatus" id="nio-ntrip-status">Not Connected</span>
     </div>
     <div class="sa-hint" id="nio-ntrip-bytes" translate="no">0 KB</div>
+    <div class="sa-hint" id="nio-ntrip-dest"></div>
+    <label class="nio-bcrow" title="Send corrections to every device on the module subnet, not only to the GPS module">
+      <input type="checkbox" class="nio-chk" id="nio-rtcm-bc" data-key="conn.rtcmBroadcast">
+      <span>Broadcast corrections</span>
+    </label>
     <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
   </div>
   <!-- NTRIP Profiles — chain sub-panel of Network IO. Per the native chain model

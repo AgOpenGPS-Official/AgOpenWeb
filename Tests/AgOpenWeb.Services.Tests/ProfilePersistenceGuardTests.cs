@@ -47,6 +47,7 @@ public class ProfilePersistenceGuardTests
         ["Connections.AgShareServer"] = "AppSettings",
         ["Connections.AgShareApiKey"] = "AppSettings",
         ["Connections.AgShareEnabled"] = "AppSettings",
+        ["Connections.RtcmBroadcast"] = "AppSettings",
         ["Connections.GpsUpdateRate"] = "AppSettings",
         ["Connections.UseRtk"] = "AppSettings",
         ["Connections.IsGpsConfigured"] = "AppSettings",

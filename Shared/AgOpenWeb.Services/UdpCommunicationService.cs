@@ -566,6 +566,13 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     /// </summary>
     public string? GetModuleSubnet() => _moduleSubnet;
 
+    public IPAddress? GetGpsSourceAddress(double maxAgeSeconds = 10)
+    {
+        if (_silence.LastSeen(SourceGpsNmea) is not { } seen || seen.AgeMs > maxAgeSeconds * 1000.0)
+            return null;
+        return IPAddress.TryParse(seen.From, out var address) ? address : null;
+    }
+
     public string? GetActiveModuleSubnet()
     {
         var locked = _lockedEndpoint;

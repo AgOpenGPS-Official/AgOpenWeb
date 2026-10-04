@@ -1,6 +1,6 @@
 # RTCM forwarding: forward messages, not bytes
 
-**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`); Phase 3 implemented 2026-10-04 (lateness credit in `RtcmQueue`).
+**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`); Phase 3 implemented 2026-10-04 (lateness credit in `RtcmQueue`); Phase 4 implemented 2026-10-04 (unicast to the GPS module).
 **Prompted by:** PR #247 (stale-drop tuning in `RtcmPacer`) and reports of receivers stuck in
 RTK Float / DGPS while NTRIP is connected. Reviewing that PR showed the drop rule is being tuned
 at the wrong layer: the forwarder does not know where an RTCM message starts or ends.
@@ -75,9 +75,9 @@ between them (v26 keeps only the newest one between polls). The serial link carr
    late may send the datagrams it owes with a shorter gap (not under 10 ms, about 25 KB/s) until
    it has caught up. A normal epoch's first datagram still goes out at once.
 5. **Unicast to the GPS module when its address is known**, broadcast otherwise. The address
-   comes from what the app already sees (the scan reply from module 120, the source of the NMEA
-   datagrams). A setting keeps "always broadcast" for setups where another device also needs
-   the corrections. *Default to be confirmed by Chris: this changes where packets go.*
+   is where the position sentences come from, if one arrived in the last ten seconds. A
+   setting (Network IO, "Broadcast corrections") forces the broadcast for setups where another
+   device also needs the corrections. *Unicast is the default (Chris, 2026-10-04).*
 6. **The receiver's differential age is the measure of success.** It is already parsed from GGA
    field 13. It goes to the NTRIP panel and the bug report dump beside the forwarder's counters.
 7. **No AgIO parity goal here.** AgIO is byte-blind too. Its datagram size and its pacing idea
@@ -247,11 +247,26 @@ The send loop sleeps on the timer for all but the last 6 ms of a shortened wait 
 those. Its CPU cost on the tablet was not measurable against the app's own load. Windows,
 with its 15 ms timer steps, is still to be checked on a device.
 
-### Phase 4: unicast
-- GPS module address from `UdpCommunicationService`; fall back to broadcast when unknown or
-  stale; setting for "always broadcast".
-- Verify on a bench board that corrections arrive by unicast on all three firmwares before the
-  default changes.
+### Phase 4: unicast (done)
+- `IUdpCommunicationService.GetGpsSourceAddress()`: the sender of the GPS position sentences,
+  if heard in the last ten seconds.
+- `NtripClientService.ResolveRtcmDestination`: that address, else the subnet broadcast; the
+  choice is made for every datagram, so it follows a module that appears, disappears or
+  changes address, and the setting takes effect without reconnecting.
+- `Connections.RtcmBroadcast` (AppSettings, `config.set|conn.rtcmBroadcast`), a checkbox in
+  Network IO, and a line there saying where the corrections go.
+
+Bench:
+
+| | Result |
+|---|---|
+| App with the AiO v26 board | sends to the board's address; the board counted 570 datagrams, the app's log 551 plus its last few seconds; nothing was broadcast |
+| "Broadcast corrections" switched on and off while running | destination changes within a second each way, no reconnect |
+| Tablet on Wi-Fi, broadcast (Phase 3 run) | 1 of 676 datagrams lost, one message broken |
+| Tablet on Wi-Fi, unicast | 872 datagrams, every message whole |
+
+Not checked on a board: the v4 RVC and v4 I2C firmwares. Their code binds the port the same
+way (see the firmware table), but only the v26 board was on the bench.
 
 ### Phase 5: show it
 - NTRIP panel: differential age, message table, a plain warning when the station position or
@@ -271,9 +286,9 @@ with its 15 ms timer steps, is still to be checked on a device.
 
 ## Open questions
 
-1. Unicast by default, or opt-in for the first release (Decision 5)?
-2. Is there a setup where RTCM must reach a device other than the GPS module (a second
-   receiver, a radio bridge)? If so the "always broadcast" setting is required, not optional.
+1. ~~Unicast by default, or opt-in~~ Default (Decision 5).
+2. ~~A device other than the GPS module that needs the corrections~~ Covered by the
+   "Broadcast corrections" setting.
 3. ~~Minimum gap for catch-up~~ Settled on the bench: the v26 board loses nothing at 10 ms
    (Phase 3).
 4. Should messages the receiver cannot use (for example ephemeris 1019/1020 on a caster that

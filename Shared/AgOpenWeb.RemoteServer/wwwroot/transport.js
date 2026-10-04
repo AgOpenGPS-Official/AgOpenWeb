@@ -143,7 +143,9 @@ window.RemoteTransport = {
                 swStdDev = f32(), swOffsetDeg = f32(), swConfidence = f32(), swValid = !!u8();
           // Network IO panel (append-only).
           const gpsIp = str(), moduleSubnet = str(), hostIps = str();
-          const ntripConnected = !!u8(), ntripStatus = str(), ntripBytes = f64(), ntripTestStatus = str();
+          const ntripConnected = !!u8(), ntripStatus = str(), ntripBytes = f64();
+          const ntripDestination = str(), ntripUnicast = !!u8(), rtcmBroadcast = !!u8();
+          const ntripTestStatus = str();
           const simPanelVisible = !!u8();
           const driftEasting = f32(), driftNorthing = f32();
           const unsavedCoveragePrompt = !!u8();
@@ -159,7 +161,7 @@ window.RemoteTransport = {
             simEnabled, simSpeedKph, simSteerAngle, sim10x,
             actualSteerAngle, sensorPercent, setSteerAngle, freeDriveAngle, steerFreeDrive,
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
-            gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripTestStatus,
+            gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing,
           });

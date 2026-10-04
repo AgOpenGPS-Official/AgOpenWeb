@@ -89,6 +89,16 @@ public class ConnectionConfig : ObservableObject
         set => SetProperty(ref _agShareEnabled, value);
     }
 
+    // RTCM corrections go to the GPS module's own address when it is known. On: always
+    // broadcast them to the modules' subnet, as AgIO does, for a setup where something
+    // other than the module sending positions needs them too.
+    private bool _rtcmBroadcast;
+    public bool RtcmBroadcast
+    {
+        get => _rtcmBroadcast;
+        set => SetProperty(ref _rtcmBroadcast, value);
+    }
+
     // GPS Mode
     private bool _isDualGps;
     public bool IsDualGps

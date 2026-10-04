@@ -259,6 +259,11 @@ public record StatusDto(
     bool NtripConnected,
     string NtripStatus,
     double NtripBytes,
+    // Where RTCM goes ("" with no session), whether that is the GPS module's own address,
+    // and the "always broadcast" setting (Network IO).
+    string NtripDestination,
+    bool NtripUnicast,
+    bool RtcmBroadcast,
     string NtripTestStatus,
     // Simulator panel visibility (persisted in PersistentAppState.SimulatorPanelVisible) —
     // the web sim bar shows/hides from this so the choice survives app restarts.

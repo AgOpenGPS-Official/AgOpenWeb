@@ -75,6 +75,16 @@ internal sealed class SourceSilenceMonitor
         return result;
     }
 
+    /// <summary>The address <paramref name="name"/> was last heard from and how long ago,
+    /// or null if it has never been heard.</summary>
+    public (string? From, double AgeMs)? LastSeen(string name)
+    {
+        lock (_lock)
+            return _sources.TryGetValue(name, out var src)
+                ? (src.From, Time.ElapsedMs(src.LastSeen, Time.GetTimestamp()))
+                : null;
+    }
+
     /// <summary>Forget all sources (UDP stopped).</summary>
     public void Reset()
     {

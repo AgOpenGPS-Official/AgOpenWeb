@@ -145,6 +145,10 @@ namespace AgOpenWeb.Models
         public string AgShareApiKey { get; set; } = string.Empty;
         public bool AgShareEnabled { get; set; } = false;
 
+        /// <summary>Always broadcast RTCM to the modules' subnet (default: unicast to the
+        /// GPS module when its address is known).</summary>
+        public bool RtcmBroadcast { get; set; } = false;
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;

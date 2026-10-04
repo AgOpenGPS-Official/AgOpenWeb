@@ -104,6 +104,13 @@ public interface IUdpCommunicationService
     string? GetActiveModuleSubnet();
 
     /// <summary>
+    /// The address the GPS position sentences are coming from, if one arrived within
+    /// <paramref name="maxAgeSeconds"/>; else null. This is the module the receiver hangs
+    /// on, so it is where RTCM corrections are sent.
+    /// </summary>
+    System.Net.IPAddress? GetGpsSourceAddress(double maxAgeSeconds = 10);
+
+    /// <summary>
     /// Broadcast a scan request (PGN 202) asking every module to reply with its
     /// IP + subnet (PGN 203). Matches AgIO's FormUDP "Scan" button.
     /// </summary>

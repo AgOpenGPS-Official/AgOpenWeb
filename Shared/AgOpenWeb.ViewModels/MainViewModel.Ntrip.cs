@@ -111,6 +111,10 @@ public partial class MainViewModel
                 // subnet (default 192.168.5) — AgIO sends to its subnet setting.
                 SubnetAddress = $"{SubnetOctet1}.{SubnetOctet2}.{SubnetOctet3}",
                 SubnetProvider = _udpService.GetActiveModuleSubnet,
+                // Unicast to the module the position sentences come from, unless the
+                // operator asked for the broadcast (Network IO).
+                GpsModuleAddressProvider = () => _udpService.GetGpsSourceAddress(),
+                BroadcastOnly = () => ConfigStore.Connections.RtcmBroadcast,
                 UdpForwardPort = 2233,
                 GgaIntervalSeconds = 10,
                 UseManualPosition = false
@@ -315,6 +319,9 @@ public partial class MainViewModel
     {
         // Update centralized state
         State.Connections.NtripBytesReceived = _ntripService.TotalBytesReceived;
+        var (destination, unicast) = _ntripService.RtcmDestination;
+        State.Connections.NtripRtcmDestination = destination ?? "";
+        State.Connections.NtripRtcmUnicast = unicast;
 
         // Legacy property updates
         _ntripBytesReceived = _ntripService.TotalBytesReceived;
