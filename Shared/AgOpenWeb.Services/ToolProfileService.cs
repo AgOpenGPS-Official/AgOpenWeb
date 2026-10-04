@@ -132,6 +132,19 @@ public class ToolProfileService : IToolProfileService
         sectionPositions[1] = 3.0;
         store.SectionPositions = sectionPositions;
 
+        // Machine tab: a new tool starts from the module defaults.
+        var dm = new MachineConfig();
+        store.Machine.HydraulicLiftEnabled = dm.HydraulicLiftEnabled;
+        store.Machine.RaiseTime = dm.RaiseTime;
+        store.Machine.LowerTime = dm.LowerTime;
+        store.Machine.LookAhead = dm.LookAhead;
+        store.Machine.InvertRelay = dm.InvertRelay;
+        store.Machine.User1Value = dm.User1Value;
+        store.Machine.User2Value = dm.User2Value;
+        store.Machine.User3Value = dm.User3Value;
+        store.Machine.User4Value = dm.User4Value;
+        store.Machine.ResetPinAssignments();
+
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = Path.Combine(ToolsDirectory, $"{profileName}.json");
 

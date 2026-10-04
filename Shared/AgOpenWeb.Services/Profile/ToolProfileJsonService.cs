@@ -5,6 +5,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgOpenWeb.Models.Configuration;
@@ -158,6 +159,19 @@ public static class ToolProfileJsonService
                 Positions = sectionPositions,
                 Widths = sectionWidths,
             },
+            Machine = new MachineDto
+            {
+                HydraulicLiftEnabled = store.Machine.HydraulicLiftEnabled,
+                RaiseTime = store.Machine.RaiseTime,
+                LowerTime = store.Machine.LowerTime,
+                LookAhead = store.Machine.LookAhead,
+                InvertRelay = store.Machine.InvertRelay,
+                User1Value = store.Machine.User1Value,
+                User2Value = store.Machine.User2Value,
+                User3Value = store.Machine.User3Value,
+                User4Value = store.Machine.User4Value,
+                PinAssignments = store.Machine.PinAssignments.Select(f => (int)f).ToArray(),
+            },
         };
     }
 
@@ -239,6 +253,27 @@ public static class ToolProfileJsonService
             }
         }
 
+        // Machine module (the Machine tab of the tool configuration): hydraulic lift,
+        // user values and relay pin functions. A file without the section gets the
+        // MachineConfig defaults, not whatever the previous tool left in the store.
+        var mach = dto.Machine;
+        var dm = new MachineConfig();
+        store.Machine.HydraulicLiftEnabled = mach?.HydraulicLiftEnabled ?? dm.HydraulicLiftEnabled;
+        store.Machine.RaiseTime = mach?.RaiseTime ?? dm.RaiseTime;
+        store.Machine.LowerTime = mach?.LowerTime ?? dm.LowerTime;
+        store.Machine.LookAhead = mach?.LookAhead ?? dm.LookAhead;
+        store.Machine.InvertRelay = mach?.InvertRelay ?? dm.InvertRelay;
+        store.Machine.User1Value = mach?.User1Value ?? dm.User1Value;
+        store.Machine.User2Value = mach?.User2Value ?? dm.User2Value;
+        store.Machine.User3Value = mach?.User3Value ?? dm.User3Value;
+        store.Machine.User4Value = mach?.User4Value ?? dm.User4Value;
+        var pins = dm.PinAssignments;   // defaults; saved values overlay them
+        if (mach?.PinAssignments != null)
+            for (int i = 0; i < Math.Min(mach.PinAssignments.Length, pins.Length); i++)
+                pins[i] = Enum.IsDefined(typeof(PinFunction), mach.PinAssignments[i])
+                    ? (PinFunction)mach.PinAssignments[i] : PinFunction.None;
+        store.Machine.PinAssignments = pins;
+
         // Profile metadata
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = filePath;
@@ -251,6 +286,7 @@ public static class ToolProfileJsonService
         public int FormatVersion { get; set; }
         public ToolDto? Tool { get; set; }
         public SectionsDto? Sections { get; set; }
+        public MachineDto? Machine { get; set; }
     }
 
     internal class ToolDto
@@ -295,5 +331,20 @@ public static class ToolProfileJsonService
         public int Count { get; set; }
         public double[] Positions { get; set; } = Array.Empty<double>();
         public double[]? Widths { get; set; }
+    }
+
+    internal class MachineDto
+    {
+        public bool? HydraulicLiftEnabled { get; set; }
+        public int? RaiseTime { get; set; }
+        public int? LowerTime { get; set; }
+        public double? LookAhead { get; set; }
+        public bool? InvertRelay { get; set; }
+        public int? User1Value { get; set; }
+        public int? User2Value { get; set; }
+        public int? User3Value { get; set; }
+        public int? User4Value { get; set; }
+        /// <summary>One <see cref="PinFunction"/> value per relay pin.</summary>
+        public int[]? PinAssignments { get; set; }
     }
 }
