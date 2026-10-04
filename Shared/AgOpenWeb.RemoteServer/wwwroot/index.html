@@ -501,7 +501,7 @@
     .sw-grey { background: rgba(var(--ov),0.12); color: var(--text); }
     .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
     /* ===== Network IO panel + NTRIP modals ===== */
-    .nio-panel { width: 360px; }
+    .nio-panel { width: 360px; max-height: calc(100vh - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
     .nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }
     .nio-chk { width: 18px; height: 18px; accent-color: #4A90D9; margin: 0; }
     .nio-dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; }
@@ -515,6 +515,16 @@
     .nio-rule { border: 0; border-top: 1px solid var(--border); margin: 14px 0 10px; }
     .nio-ntriprow { display: flex; align-items: center; gap: 8px; }
     .nio-bcrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .nio-warn { color: #ef4444; font: 600 12px system-ui, sans-serif; margin-top: 4px; }
+    .nio-aged { color: #ef4444; }
+    .nio-rtcm { margin-top: 6px; }
+    .nio-rtcm summary { color: var(--text-2); font: 500 12px system-ui, sans-serif; cursor: pointer; }
+    .nio-rtcmscroll { max-height: 30vh; overflow-y: auto; }
+    .nio-rtcmtbl { width: 100%; border-collapse: collapse; margin-top: 4px; font: 400 11px system-ui, sans-serif; color: var(--text); }
+    .nio-rtcmtbl th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 1px 6px 1px 0; }
+    .nio-rtcmtbl td { padding: 1px 6px 1px 0; vertical-align: top; }
+    .nio-rtcmtbl td.num, .nio-rtcmtbl th.num { text-align: right; font-family: ui-monospace, monospace; white-space: nowrap; }
+    .nio-rtcmtbl tr.stale td { color: #ef4444; }
     .nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
     /* NTRIP chain sub-panels (ln-panels that replace their parent). */
     .nio-ntmodal { width: 520px; }
@@ -1876,6 +1886,17 @@
     </div>
     <div class="sa-hint" id="nio-ntrip-bytes" translate="no">0 KB</div>
     <div class="sa-hint" id="nio-ntrip-dest"></div>
+    <div class="sa-hint" id="nio-ntrip-rx"></div>
+    <div class="nio-warn" id="nio-ntrip-warn" hidden></div>
+    <details class="nio-rtcm" id="nio-rtcm" hidden>
+      <summary id="nio-rtcm-sum"></summary>
+      <div class="nio-rtcmscroll">
+        <table class="nio-rtcmtbl">
+          <thead><tr><th>Type</th><th>Message</th><th class="num">Every</th><th class="num">Last</th></tr></thead>
+          <tbody id="nio-rtcm-rows"></tbody>
+        </table>
+      </div>
+    </details>
     <label class="nio-bcrow" title="Send corrections to every device on the module subnet, not only to the GPS module">
       <input type="checkbox" class="nio-chk" id="nio-rtcm-bc" data-key="conn.rtcmBroadcast">
       <span class="nio-mod">Broadcast corrections</span>

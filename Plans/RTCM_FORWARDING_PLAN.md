@@ -1,6 +1,6 @@
 # RTCM forwarding: forward messages, not bytes
 
-**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`); Phase 3 implemented 2026-10-04 (lateness credit in `RtcmQueue`); Phase 4 implemented 2026-10-04 (unicast to the GPS module).
+**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`); Phase 3 implemented 2026-10-04 (lateness credit in `RtcmQueue`); Phase 4 implemented 2026-10-04 (unicast to the GPS module); Phase 5 implemented 2026-10-04 (Network IO panel). All five phases are in; what is left is listed under "Still to check".
 **Prompted by:** PR #247 (stale-drop tuning in `RtcmPacer`) and reports of receivers stuck in
 RTK Float / DGPS while NTRIP is connected. Reviewing that PR showed the drop rule is being tuned
 at the wrong layer: the forwarder does not know where an RTCM message starts or ends.
@@ -268,10 +268,32 @@ Bench:
 Not checked on a board: the v4 RVC and v4 I2C firmwares. Their code binds the port the same
 way (see the firmware table), but only the v26 board was on the bench.
 
-### Phase 5: show it
-- NTRIP panel: differential age, message table, a plain warning when the station position or
-  observations are missing ("No base position received in the last 60 s").
-- New strings through `tr()` and `Tools/i18n-extract.py`.
+### Phase 5: show it (done)
+Network IO, under the NTRIP row, while a session is open:
+- **Receiver line**: the fix and the correction age, red past 5 s (the age at which the app
+  stops trusting the fix).
+- **One warning**, the most serious that applies: no observations (none yet after 10 s, or
+  none for 10 s), no base position (none yet after 30 s, or none for 60 s), or a mount point
+  that does not send RTCM 3.
+- **Message table** (collapsed by default): each type with what it is, how often it comes and
+  how long ago the last one came; totals for bad checksums and messages replaced by newer.
+  Observation rows turn red after 5 s without one, the base position after 60 s.
+- The status frame carries the stream summary (`NtripRtcmDto`), read live so the "last"
+  column keeps counting while the caster is silent.
+- **GPS address**: the GPS row shows where the position sentences come from; before, it was
+  blank until a module scan.
+
+Bench (real caster and board, a 25 s stall through the relay): steady flow shows no warning;
+17 s into the stall the panel reads "No satellite observations for 17 s." with the receiver
+line in red at age 17 s, while the receiver still reports RTK Float; both clear when the
+stream resumes.
+
+## Still to check
+- Phase 3 on Windows, where timers step in 15 ms units.
+- Phase 4 on a board running the v4 RVC or v4 I2C firmware.
+- The unframed fallback (Phase 2) end to end, with a mount point that is not RTCM 3.
+- The one-second drops to DGPS about every 31 s seen in Float with the app forwarding
+  (baseline section): not explained.
 
 ## Verification
 

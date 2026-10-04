@@ -75,7 +75,8 @@ public sealed class WebBackend
             sp.GetRequiredService<IFieldService>(),
             sp.GetRequiredService<ISettingsService>(),
             sp.GetRequiredService<IVehicleProfileService>(),
-            sp.GetRequiredService<IPersistentStateService>()).ConfigureAwait(false);
+            sp.GetRequiredService<IPersistentStateService>(),
+            sp.GetService<INtripClientService>()).ConfigureAwait(false);
 
         // Wire on the host loop so the command handler runs serialized with the render-pull /
         // status timers, exactly as the Avalonia UI thread did in the old windowed build.

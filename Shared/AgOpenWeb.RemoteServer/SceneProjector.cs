@@ -24,6 +24,7 @@ public sealed class SceneProjector
     private readonly ISmartWasCalibrationService _smartWas;
     private readonly IUdpCommunicationService _udp;
     private readonly INtripProfileService _ntripProfiles;
+    private readonly INtripClientService? _ntrip;
     private readonly IFieldService _fields;
     private readonly ISettingsService _settings;
     private readonly IVehicleProfileService _vehicleProfiles;
@@ -55,8 +56,9 @@ public sealed class SceneProjector
         IAutoSteerService autoSteer, ISmartWasCalibrationService smartWas,
         IUdpCommunicationService udp, INtripProfileService ntripProfiles,
         IFieldService fields, ISettingsService settings, IVehicleProfileService vehicleProfiles,
-        IPersistentStateService persist)
+        IPersistentStateService persist, INtripClientService? ntrip = null)
     {
+        _ntrip = ntrip;
         _fields = fields;
         _settings = settings;
         _vehicleProfiles = vehicleProfiles;
@@ -416,7 +418,20 @@ public sealed class SceneProjector
             _devOverlay,
             _autoSteer.LatestSnapshot?.TotalLatencyMs ?? 0.0,
             gpsSource.Sentence ?? "",
-            gpsSource.DualHeadingMissing);
+            gpsSource.DualHeadingMissing,
+            BuildNtripRtcm());
+    }
+
+    // Read live for every status frame, so "seconds since the last one" keeps counting
+    // while the caster is silent: that is when the panel's warnings matter.
+    private NtripRtcmDto? BuildNtripRtcm()
+    {
+        if (_ntrip is not { IsActive: true }) return null;
+        var snap = _ntrip.GetRtcmStreamSnapshot();
+        if (snap == null) return null;
+        return new NtripRtcmDto(snap.SessionSeconds, snap.Messages, snap.ChecksumFailures, snap.BytesSkipped,
+            snap.SupersededObservations + snap.SupersededOther + snap.MemoryGuardDrops, snap.Unframed,
+            snap.Types.Select(t => new NtripRtcmTypeDto(t.Type, t.Count, t.MeanIntervalSeconds, t.SecondsSinceLast)).ToList());
     }
 
     // NTRIP profiles read-frame (Network IO). Projects INtripProfileService's saved
