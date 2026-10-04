@@ -54,6 +54,17 @@ if os.path.exists(path("rtcm.bin")):
         print("  %-16s %6d %6d %8d %7d %d" % (label, len(m), sum(is_observation(x[1]) for x in m),
               sum(a <= x - t0 < b for x in bad), sum(a <= x - t0 < b for x in skipped),
               sum(x[1] in (1005, 1006) for x in m)))
+    whole = [x for x in msgs if x[0] - t0 >= 0]
+    by_type = {}
+    for _, mtype, _ in whole:
+        by_type[mtype] = by_type.get(mtype, 0) + 1
+    print("  types: " + " ".join("%dx%d" % kv for kv in sorted(by_type.items())))
+    # The burst after each episode: how much stale data went out before the fresh epoch.
+    first_obs = min((x[1] for x in whole if is_observation(x[1])), default=None)
+    for label, a, b in episodes:
+        sent = sum(x[2] for x in msgs if b <= x[0] - t0 < b + 3)
+        epochs = sum(1 for x in msgs if x[1] == first_obs and b <= x[0] - t0 < b + 3)
+        print("  3 s after %-14s: %6d bytes forwarded, %d epochs of %s" % (label, sent, epochs, first_obs))
 
 if os.path.exists(path("nmea.bin")):
     rows = []  # (t, fix, age)

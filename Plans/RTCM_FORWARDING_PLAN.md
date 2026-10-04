@@ -1,6 +1,6 @@
 # RTCM forwarding: forward messages, not bytes
 
-**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`).
+**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`).
 **Prompted by:** PR #247 (stale-drop tuning in `RtcmPacer`) and reports of receivers stuck in
 RTK Float / DGPS while NTRIP is connected. Reviewing that PR showed the drop rule is being tuned
 at the wrong layer: the forwarder does not know where an RTCM message starts or ends.
@@ -60,11 +60,15 @@ between them (v26 keeps only the newest one between polls). The serial link carr
 1. **The forwarder works on RTCM messages.** The TCP stream is framed in the app (preamble
    `0xD3`, 10-bit length, CRC-24Q). Only messages with a valid checksum are queued. Nothing is
    ever dropped except as a whole message.
-2. **Backlog rule: newest observations, all station data.** Observation messages (legacy
-   1001–1004 / 1009–1012 and MSM 1071–1137) belong to an epoch. When a newer epoch has arrived,
-   older epochs that have not started sending are dropped. Every other message is kept and sent
-   in order; of several queued copies of one such type, only the newest is kept. This replaces
-   both the one-second age rule and the 10,000-byte clear. A hard cap stays as a memory guard.
+2. **Backlog rule: newest observations, newest station data.** An observation message (legacy
+   1001–1004 / 1009–1012 and MSM 1071–1137) replaces the unsent ones of its own type from an
+   earlier epoch, matched on the epoch time in its header. A station message (1005–1008, 1013,
+   1033, 1230) replaces the unsent one of its type. An ephemeris replaces an unsent
+   byte-for-byte copy of itself. Everything else is kept and sent in order. This replaces both
+   the one-second age rule and the 10,000-byte clear. A 64 KB cap stays as a memory guard.
+   *As built: epochs are matched per message type on the header's epoch time, not on the MSM
+   "multiple message" bit. That needs no trust in how a caster sets the bit, and keeps both
+   halves of an MSM split in two.*
 3. **Datagrams stay at 256 bytes** (AgIO's size, safe on all three firmwares). Datagram
    boundaries need not match message boundaries: the module concatenates them.
 4. **Pacing is a byte budget, not a tick.** Nominal rate stays 10 KB/s. A sender that wakes
@@ -78,7 +82,10 @@ between them (v26 keeps only the newest one between polls). The serial link carr
    field 13. It goes to the NTRIP panel and the bug report dump beside the forwarder's counters.
 7. **No AgIO parity goal here.** AgIO is byte-blind too. Its datagram size and its pacing idea
    are kept because the firmwares were written against them.
-8. **PR #247 is not merged.** Phase 2 removes the rule it tunes. Its author's observation (a
+8. **A stream that is not RTCM 3 is still forwarded.** If no RTCM 3 message is found in the
+   first 4 KB of a session (RTCM 2, CMR or a raw receiver format on the mount point), the app
+   logs it and forwards the bytes as they come, as it always did.
+9. **PR #247 is not merged.** Phase 2 removes the rule it tunes. Its author's observation (a
    message cut mid-stream is lost) is the starting point of this plan and is credited in it.
 
 ## Design
@@ -179,13 +186,29 @@ What this says:
   bytes, no pacer drops. About 1.26 KB/s: MSM7 for five constellations plus legacy 1004/1012
   every second, base position 1005 every 10 s, 1006 and 1230 every 30 s.
 
-### Phase 2: whole messages, epoch-aware backlog
-- `RtcmQueue` replaces the byte queue; the age rule and the backlog clear go.
-- De-chunk before framing.
-- Tests: a backlog of several epochs sends only the newest plus every station message; a
-  message in flight is completed; nothing invalid is forwarded; the #169 resume burst (one huge
-  read after a pause) ends with one epoch on the wire, not ten.
-- **Behaviour change:** bytes that are not valid RTCM are no longer forwarded.
+### Phase 2: whole messages, epoch-aware backlog (done)
+- `RtcmQueue` replaces `RtcmPacer`'s byte queue; the age rule and the backlog clear are gone.
+- `ChunkedDecoder` removes chunked transfer encoding before framing.
+- Tests: a backlog of several epochs sends only the newest plus the newest station data; a
+  message in flight is completed; repeated ephemerides collapse; an MSM split in two keeps both
+  halves; the memory guard; a chunked stream split at every byte.
+- **Behaviour change:** bytes that are not valid RTCM are no longer forwarded, unless the
+  whole stream is not RTCM 3 (Decision 8).
+
+Bench, same caster, board and episodes as the baseline:
+
+| | Baseline | Phase 2 |
+|---|---|---|
+| Messages cut on the wire, 5 minutes with stalls of 2 to 25 s and a slow link | one per backlog clear | none |
+| Bytes sent in the 3 s after a 15 s stall | 10,089 | 6,162 |
+| Bytes sent in the 3 s after a 25 s stall | 11,013 | 6,926 |
+| Stale epochs sent ahead of the fresh one | up to the 10 KB backlog | none (one message already in flight finishes) |
+| Base position after a stall | whatever survived the clear | always, as its newest copy |
+| Chunked reply (relay wrapping the real stream) | one message lost per chunk boundary | every message whole |
+
+Seen on the way: this caster sends each GLONASS ephemeris twice back to back, byte for byte.
+The queue sends one, so the health line shows a handful of "not sent" messages every 30 s in
+steady flow. Harmless.
 
 ### Phase 3: byte-budget pacing
 - Catch-up sending within the minimum gap; tests drive a clock that wakes the sender late.

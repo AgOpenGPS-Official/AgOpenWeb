@@ -21,11 +21,21 @@ namespace AgOpenWeb.Services;
 public sealed record RtcmTypeStat(int Type, long Count, long Bytes, double SecondsSinceLast, double MeanIntervalSeconds);
 
 /// <summary>What the caster has sent this session, by message. Counted beside the forwarder:
-/// it says whether the stream reaching the app is complete, not what was forwarded.</summary>
+/// it says whether the stream reaching the app is complete; the "not sent" counts say what the
+/// forwarder left out of it.</summary>
 public sealed record RtcmStreamSnapshot(
     long Messages, long ChecksumFailures, long BytesSkipped, bool ChunkedReply,
     double SessionSeconds, IReadOnlyList<RtcmTypeStat> Types)
 {
+    /// <summary>Observation messages a newer epoch replaced before they were sent (a backlog).</summary>
+    public long SupersededObservations { get; init; }
+    /// <summary>Station messages a newer one replaced, and repeated ephemerides, before they were sent.</summary>
+    public long SupersededOther { get; init; }
+    /// <summary>Messages dropped by the queue's memory guard.</summary>
+    public long MemoryGuardDrops { get; init; }
+    /// <summary>No RTCM 3 was found in the stream, so its bytes are forwarded as they come.</summary>
+    public bool Unframed { get; init; }
+
     public static readonly RtcmStreamSnapshot Empty = new(0, 0, 0, false, 0, Array.Empty<RtcmTypeStat>());
 
     /// <summary>The base position (1005 or 1006) has arrived. Without it there is no RTK solution.</summary>
@@ -42,7 +52,9 @@ public sealed record RtcmStreamSnapshot(
         sb.AppendLine("RTCM stream from the NTRIP caster (this session, as received by the app)");
         sb.AppendLine(ci, $"session: {SessionSeconds:F0} s");
         sb.AppendLine(ci, $"messages: {Messages}, checksum failures: {ChecksumFailures}, bytes skipped: {BytesSkipped}");
-        sb.AppendLine(ci, $"chunked reply: {(ChunkedReply ? "YES (chunk markers are in the forwarded stream)" : "no")}");
+        sb.AppendLine(ci, $"chunked reply: {(ChunkedReply ? "yes (decoded)" : "no")}");
+        if (Unframed) sb.AppendLine("stream: NOT RTCM 3; forwarded unframed, byte for byte");
+        sb.AppendLine(ci, $"not sent: {SupersededObservations} observation messages replaced by a newer epoch, {SupersededOther} station messages and repeated ephemerides replaced by a newer copy, {MemoryGuardDrops} dropped by the memory guard");
         sb.AppendLine(ci, $"base position (1005/1006): {(HasStationPosition ? "received" : "NOT received")}");
         sb.AppendLine(ci, $"observations: {(HasObservations ? "received" : "NOT received")}");
         sb.AppendLine(ci, $"receiver: fix quality {fixQuality}, differential age {differentialAgeSeconds:F1} s");
@@ -123,9 +135,8 @@ public static class RtcmMessages
 }
 
 /// <summary>
-/// Frames the caster's stream and counts messages by type. Runs beside the forwarder and
-/// changes nothing it sends. Thread-safe: the receive loop feeds it; the health log and the
-/// bug report read it.
+/// Frames the caster's stream, counts messages by type and hands each whole message to the
+/// forwarder. Thread-safe: the receive loop feeds it; the health log and the bug report read it.
 /// </summary>
 internal sealed class RtcmStreamStats
 {
@@ -157,7 +168,14 @@ internal sealed class RtcmStreamStats
         }
     }
 
-    public void Feed(ReadOnlySpan<byte> data)
+    /// <summary>Messages with a valid checksum so far this session.</summary>
+    public long Messages { get { lock (_lock) return _framer.Messages; } }
+
+    /// <summary>Bytes so far this session that were not part of a valid message.</summary>
+    public long BytesSkipped { get { lock (_lock) return _framer.BytesSkipped; } }
+
+    /// <param name="onMessage">Called for each whole message, in stream order.</param>
+    public void Feed(ReadOnlySpan<byte> data, RtcmFramer.MessageHandler? onMessage = null)
     {
         lock (_lock)
         {
@@ -170,6 +188,7 @@ internal sealed class RtcmStreamStats
                 e.Count++;
                 e.Bytes += message.Length;
                 e.Last = now;
+                onMessage?.Invoke(type, message);
             });
         }
     }

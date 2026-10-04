@@ -9,6 +9,10 @@ connection: kind "stall" holds everything from the caster and releases it in one
 127.0.0.1:LISTEN_PORT. What TCP hides from the app (loss, retransmits) reaches it exactly
 like this: a pause, then a burst.
 
+With CHUNKED=1 the relay answers "HTTP/1.1 200 OK" with Transfer-Encoding: chunked and
+sends the caster's stream as chunks whose boundaries fall inside RTCM messages, to check
+that the app decodes a chunked reply.
+
 With FIXED_FOR=30 in the environment the schedule is timed from the moment the receiver has
 been RTK Fixed for that many seconds, not from the first connection.
 """
@@ -18,6 +22,7 @@ from rtcm import FixWatch
 host, port, schedule, log = sys.argv[1], int(sys.argv[2]), json.loads(sys.argv[3]), open(sys.argv[4], "w")
 listen = int(sys.argv[5]) if len(sys.argv) > 5 else 2102
 start = [None]
+chunked = os.environ.get("CHUNKED") == "1"
 gate = float(os.environ.get("FIXED_FOR", "0"))
 watch = FixWatch() if gate > 0 else None
 began = [None]
@@ -67,11 +72,23 @@ def serve(client):
     held, lock, done = bytearray(), threading.Lock(), [False]
 
     def downstream():
+        header = b"" if chunked else None
         try:
             while True:
                 d = caster.recv(4096)
                 if not d:
                     break
+                if header is not None:   # swap the caster's reply header for a chunked one
+                    header += d
+                    end = header.find(b"\r\n\r\n")
+                    cut = end + 4 if end >= 0 else (header.find(b"\r\n") + 2 if header.startswith(b"ICY 200") and b"\r\n" in header else -1)
+                    if cut < 0:
+                        continue
+                    d, header = header[cut:], None
+                    with lock:
+                        held.extend(b"HTTP/1.1 200 OK\r\nNtrip-Version: Ntrip/2.0\r\nTransfer-Encoding: chunked\r\nContent-Type: gnss/data\r\n\r\n")
+                if chunked:
+                    d = b"".join(b"%x\r\n%s\r\n" % (len(d[i:i + 500]), d[i:i + 500]) for i in range(0, len(d), 500))
                 with lock:
                     held.extend(d)
         except OSError:
