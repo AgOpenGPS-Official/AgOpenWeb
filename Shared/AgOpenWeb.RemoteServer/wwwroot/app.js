@@ -820,8 +820,10 @@ function vehicleTap(px, py) {
 // that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
 // so window-level pointerdown only fires for gestures that began on the map — gestureOnMap
 // guards the pointerup tap against panel taps that bubble their pointerup.
-const TAP_SLOP = 5; // px — below this, a press-release is a tap, not a pan
-let dragging = false, moved = false, gestureOnMap = false, lastX = 0, lastY = 0, downX = 0, downY = 0;
+// A finger (or pen) in a moving cab drifts further between press and release than a mouse does,
+// so it gets a wider slop: at 5 px a touch tap on the vehicle was read as a pan and did nothing (#266).
+const TAP_SLOP = 5, TAP_SLOP_TOUCH = 15; // px — below this, a press-release is a tap, not a pan
+let dragging = false, moved = false, gestureOnMap = false, lastX = 0, lastY = 0, downX = 0, downY = 0, tapSlop = TAP_SLOP;
 addEventListener('pointerdown', e => {
   // Stage-4 edit: grab a handle if the press starts on one (else fall through to pan).
   if (editSession) {
@@ -829,8 +831,11 @@ addEventListener('pointerdown', e => {
     if (hi >= 0) { editDragIdx = hi; gestureOnMap = false; dragging = false; return; }
   }
   gestureOnMap = true; dragging = true; moved = false;
+  tapSlop = e.pointerType === 'mouse' ? TAP_SLOP : TAP_SLOP_TOUCH;
   downX = lastX = e.clientX; downY = lastY = e.clientY;
 });
+// A gesture the browser takes over (system gesture, palm rejection) ends without a pointerup.
+addEventListener('pointercancel', () => { editDragIdx = -1; dragging = false; gestureOnMap = false; });
 addEventListener('pointerup', e => {
   if (editDragIdx >= 0) { editDragIdx = -1; return; } // finished dragging an edit handle
   dragging = false;
@@ -855,9 +860,12 @@ addEventListener('pointermove', e => {
     return;
   }
   if (!dragging) return;
+  // Some tablets report a finger or pen just above the glass as a hover: moves with nothing
+  // pressed. Those are not part of a drag, and must not use up the tap slop or pan the map.
+  if (e.buttons === 0) return;
   if (!moved) {
     // Stay still until the slop is exceeded so a tap doesn't pan or drop follow mode.
-    if (Math.hypot(e.clientX - downX, e.clientY - downY) <= TAP_SLOP) return;
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) <= tapSlop) return;
     moved = true; cameraMode = 2; lastX = e.clientX; lastY = e.clientY; // reset origin, no jump
     return;
   }
