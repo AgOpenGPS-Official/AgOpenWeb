@@ -159,22 +159,77 @@ public class CircleTestFeedbackTests
     // ── Ackermann ────────────────────────────────────────────────────────
 
     [Test]
-    public void Ackermann_needs_neutral_and_one_tap_sets_it()
+    public void Ackermann_record_sets_neutral_then_measures_with_the_settled_angle()
     {
         _store.AutoSteer.Ackermann = 120;
+        _autoSteer.LatestSnapshot.Returns(new VehicleStateSnapshot { FixQuality = 4, Speed = 1.5 });
+        SetSensorAngle(-21.6); // the module's reading with Ackermann 120 applied
+        var step = new AckermannTestStepViewModel(_configService, _autoSteer) { NeutralSettleMs = 60_000 };
+        SetActive(step, true);
+        Publish(fixQuality: 4, speedMs: 1.5);
+
+        Assert.That(step.CanRecord, Is.True, "Record no longer waits for a separate Set to 100 (#154)");
+        Assert.That(step.RecordHint, Is.Empty);
+
+        step.StartRecordingCommand.Execute(null);
+
+        Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(100), "Record puts Ackermann at neutral");
+        Assert.That(step.IsRecording, Is.True);
+        Assert.That(step.PhaseDescription, Does.Contain("100"));
+
+        // Still settling: the module hasn't applied 100 yet, so nothing is captured or measured.
+        Publish(fixQuality: 4, speedMs: 1.5);
+        step.ProcessGpsUpdate(130, 200);
+        Assert.That(step.CapturedStartAngle, Is.EqualTo(0));
+        Assert.That(step.Diameter, Is.EqualTo(0));
+
+        // Settled: the start angle is the one the module reports with neutral Ackermann.
+        SetSensorAngle(-18.0);
+        step.NeutralSettleMs = 0;
+        Publish(fixQuality: 4, speedMs: 1.5);
+        Assert.That(step.CapturedStartAngle, Is.EqualTo(-18.0));
+
+        // The snapshot's position was (0, 0): drive a 20 m circle from there.
+        for (double d = 2; d <= 20; d += 2) step.ProcessGpsUpdate(d, 0);
+        for (int i = 0; i < 12; i++) step.ProcessGpsUpdate(10, 0);
+
+        Assert.That(step.TestResult, Does.StartWith("Ackermann set to"));
+        Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(step.Ackermann));
+        Assert.That(_store.AutoSteer.Ackermann, Is.Not.EqualTo(100).And.Not.EqualTo(120));
+    }
+
+    [Test]
+    public void Ackermann_stopping_puts_the_old_value_back()
+    {
+        _store.AutoSteer.Ackermann = 120;
+        _autoSteer.LatestSnapshot.Returns(new VehicleStateSnapshot { FixQuality = 4, Speed = 1.5 });
+        var step = new AckermannTestStepViewModel(_configService, _autoSteer) { NeutralSettleMs = 0 };
+        SetActive(step, true);
+        Publish(fixQuality: 4, speedMs: 1.5);
+
+        step.StartRecordingCommand.Execute(null);
+        Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(100));
+
+        step.StopRecordingCommand.Execute(null);
+
+        Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(120), "Nothing was measured, so nothing changes");
+        Assert.That(step.Ackermann, Is.EqualTo(120));
+        Assert.That(step.TestResult, Does.Contain("Ackermann not changed"));
+    }
+
+    [Test]
+    public void Ackermann_leaving_the_step_mid_measurement_puts_the_old_value_back()
+    {
+        _store.AutoSteer.Ackermann = 120;
+        _autoSteer.LatestSnapshot.Returns(new VehicleStateSnapshot { FixQuality = 4, Speed = 1.5 });
         var step = new AckermannTestStepViewModel(_configService, _autoSteer);
         SetActive(step, true);
         Publish(fixQuality: 4, speedMs: 1.5);
 
-        Assert.That(step.NeedsNeutralAckermann, Is.True);
-        Assert.That(step.CanRecord, Is.False, "AgOpenGPS disables the test unless Ackermann is 100");
-        Assert.That(step.RecordHint, Does.Contain("120").And.Contain("100"));
+        step.StartRecordingCommand.Execute(null);
+        SetActive(step, false);
 
-        step.SetNeutralAckermannCommand.Execute(null);
-
-        Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(100));
-        Assert.That(step.CanRecord, Is.True);
-        Assert.That(step.RecordHint, Is.Empty);
+        Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(120));
     }
 
     [Test]
@@ -203,8 +258,8 @@ public class CircleTestFeedbackTests
         Assert.That(step.TestResult, Does.StartWith("Ackermann set to"));
         Assert.That(_store.AutoSteer.Ackermann, Is.EqualTo(step.Ackermann));
         Assert.That(_store.AutoSteer.Ackermann, Is.Not.EqualTo(100));
-        Assert.That(step.RecordHint, Does.StartWith("To measure again"),
-            "Right after a result, the neutral requirement reads as a next step, not an error");
+        Assert.That(step.CanRecord, Is.True, "Record can measure again without a separate step");
+        Assert.That(step.RecordHint, Is.Empty);
     }
 
     [Test]

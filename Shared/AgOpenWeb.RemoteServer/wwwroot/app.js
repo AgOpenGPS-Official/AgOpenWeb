@@ -3437,9 +3437,8 @@ function wzTgl(label, sub, key) {
 }
 // CPD / Ackermann circle test (#154): Record plus the feedback a wizard owes the operator —
 // why Record can't start (or a low-fix warning), live progress, and the outcome.
-function wzCircleTest(ackermann) {
-  return '<div class="wz-center wz-circle"><div class="wz-btnrow"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button>' +
-    (ackermann ? '<button class="wz-testbtn wz-secondary" data-act="SetNeutralAckermann" id="wz-neutral">Set to 100</button>' : '') + '</div>' +
+function wzCircleTest() {
+  return '<div class="wz-center wz-circle"><div class="wz-btnrow"><button class="wz-testbtn" data-act="StartRecording" id="wz-recbtn">Record</button></div>' +
     '<div class="wz-hint" data-live="hint"></div><div class="wz-desc wz-phase" data-live="phase"></div><div class="wz-result" data-live="result"></div></div>';
 }
 function wzLive(lbl, key) { return '<div class="wz-live"><div class="big" data-live="' + key + '">—</div><div class="lbl">' + esc(lbl) + '</div></div>'; }
@@ -3498,11 +3497,11 @@ function buildWizardContent(w) {
         '<div class="wz-hint" data-live="hint"></div><div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
     case 'cpd':
       return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> ' + esc(tr('(aim for ~{speed})', { speed: fmtUnit(5, 'kmh', 0) })) + '</div></div>' +
-        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest(false) +
+        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest() +
         '<div class="wz-rows">' + wzNum(tr('Counts Per Degree'), null, 'autosteer.countsPerDegree', '1', '') + '</div>';
     case 'ackermann':
-      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">Ackermann at 100 (neutral)</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b></div></div>' +
-        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest(true) +
+      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> ' + esc(tr('(aim for ~{speed})', { speed: fmtUnit(5, 'kmh', 0) })) + '</div></div>' +
+        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest() +
         '<div class="wz-rows">' + wzNum(tr('Ackermann'), tr('100 = neutral'), 'autosteer.ackermann', '1', '') + '</div>';
     case 'gains':
       return head + '<div class="wz-rows">' + wzTgl(tr('Guidance algorithm (Stanley)'), tr('Pure Pursuit default; Stanley more responsive at low speed'), 'autosteer.isStanleyMode') +
@@ -3565,8 +3564,6 @@ function renderWizard() {
     if (w.stepKind === 'cpd' || w.stepKind === 'ackermann')
       rec.classList.toggle('disabled', !iHoldControl || (!w.testActive && !w.canRecord));
   }
-  const neutral = document.getElementById('wz-neutral');
-  if (neutral) neutral.style.display = w.needsNeutralAckermann && !w.testActive ? '' : 'none';
   // Keep number fields in step with the store (a test result or another client can change
   // it) — except the one being typed in.
   for (const el of wzContent.querySelectorAll('input[data-cfgnum]')) {
