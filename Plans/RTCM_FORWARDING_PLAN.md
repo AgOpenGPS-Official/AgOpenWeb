@@ -230,9 +230,22 @@ count sent by `Tools/rtcm-bench/forward.py`):
 | 2 ms, a 15 s backlog released at once | 690 | 653 |
 
 So 10 ms is safe on the v26 firmware as it is, and the loss at 2 ms is firmware issue #32
-seen on the bench. On the Mac the app's own gaps stay at 21–27 ms: its timers are punctual,
-so the catch-up path is exercised there only by the unit tests. Windows and Android, where
-the timers are late, are still to be checked on a device.
+seen on the bench. On the Mac the app's own gaps stay at 21–27 ms: its timers are punctual.
+
+On a Galaxy Tab S7 FE (Android 14, on Wi-Fi, app in front), from the health line's pacing
+statistics and the tablet's datagrams as heard on the Mac:
+
+- the sender came 3–7 ms late for a datagram, never the 20–25 ms assumed when this phase was
+  planned;
+- about four datagrams in ten went at a shortened gap, and the average gap within an epoch
+  held at 25.0 ms (it would drift to about 29 ms without the catching up);
+- a 15-datagram burst after a stall took 348 ms, 24.9 ms each;
+- one of 676 datagrams was lost between the tablet and the Mac: a broadcast relayed by the
+  access point, which is not acknowledged. Phase 4 (unicast) is the remedy.
+
+The send loop sleeps on the timer for all but the last 6 ms of a shortened wait and spins
+those. Its CPU cost on the tablet was not measurable against the app's own load. Windows,
+with its 15 ms timer steps, is still to be checked on a device.
 
 ### Phase 4: unicast
 - GPS module address from `UdpCommunicationService`; fall back to broadcast when unknown or

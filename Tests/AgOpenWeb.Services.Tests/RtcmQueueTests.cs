@@ -172,6 +172,10 @@ public class RtcmQueueTests
 
         double average = at[^1] / (at.Count - 1);
         Assert.That(average, Is.EqualTo(RtcmQueue.IntervalMs).Within(1.0), "lateness is made up, not lost");
+        var (datagrams, catchUp, maxLate) = _queue.TakePacingStats();
+        Assert.That((datagrams, maxLate), Is.EqualTo((40L, 20.0)));
+        Assert.That(catchUp, Is.GreaterThan(10), "the pacing statistics show the catching up");
+        Assert.That(_queue.TakePacingStats().Datagrams, Is.Zero, "taken, so the next reading starts from zero");
         Assert.That(at.Zip(at.Skip(1), (a, b) => b - a).Min(), Is.GreaterThanOrEqualTo(RtcmQueue.MinGapMs),
             "datagrams never go closer than the minimum gap");
     }

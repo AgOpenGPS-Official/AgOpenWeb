@@ -83,6 +83,8 @@ internal sealed class RtcmQueue
     // shortening the following gaps down to MinGapMs.
     private double _creditMs;
     private long _nonEmptySince;
+    private long _datagrams, _catchUpDatagrams;
+    private double _maxLateMs;
 
     /// <param name="clock">Time source; null follows <see cref="Clock.Current"/>.</param>
     public RtcmQueue(IClock? clock = null) => _clock = clock;
@@ -98,6 +100,20 @@ internal sealed class RtcmQueue
     public long SupersededOther { get; private set; }
     /// <summary>Messages dropped by the <see cref="MaxQueuedBytes"/> guard.</summary>
     public long MemoryGuardDrops { get; private set; }
+
+    /// <summary>Datagrams sent, how many of them went at a catch-up gap, and the longest the
+    /// sender came late for one, since the previous call. For the NTRIP health line: it shows
+    /// whether this device's timers are late and whether the lateness is being made up.</summary>
+    public (long Datagrams, long CatchUp, double MaxLateMs) TakePacingStats()
+    {
+        lock (_lock)
+        {
+            var stats = (_datagrams, _catchUpDatagrams, _maxLateMs);
+            _datagrams = _catchUpDatagrams = 0;
+            _maxLateMs = 0;
+            return stats;
+        }
+    }
 
     /// <summary>Queue one whole message (or, with <see cref="Opaque"/>, one read of an
     /// unframed stream). The bytes are copied.</summary>
@@ -164,9 +180,12 @@ internal sealed class RtcmQueue
                 // it arrived if the queue was empty then. An idle queue earns no credit.
                 double gap = Gap;
                 double sinceLast = Time.ElapsedMs(_lastSendTimestamp, now);
-                double late = Math.Min(sinceLast - gap, Time.ElapsedMs(_nonEmptySince, now));
-                _creditMs = Math.Clamp(_creditMs - (IntervalMs - gap) + Math.Max(late, 0), 0, MaxCreditMs);
+                double late = Math.Max(0, Math.Min(sinceLast - gap, Time.ElapsedMs(_nonEmptySince, now)));
+                _creditMs = Math.Clamp(_creditMs - (IntervalMs - gap) + late, 0, MaxCreditMs);
+                if (gap < IntervalMs - 0.5) _catchUpDatagrams++;
+                if (late > _maxLateMs) _maxLateMs = late;
             }
+            _datagrams++;
 
             int size = Math.Min(_count, ChunkSize);
             chunk = new byte[size];
