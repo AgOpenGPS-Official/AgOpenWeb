@@ -7,6 +7,8 @@
     <LangVersion>14</LangVersion>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The .exe's own icon (Explorer, taskbar); the window icon is set from the same file at run time. -->
+    <ApplicationIcon>Assets\agopenweb.ico</ApplicationIcon>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
