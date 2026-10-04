@@ -356,7 +356,7 @@ public static partial class RemoteServerWiring
             GPs("PhaseDescription"), phaseResult.Length > 0 ? phaseResult : GPs("TestResult"),
             GP("Progress"), testActive,
             GPb("IsRtkFixed"), GPs("FixQualityLabel"), GP("Diameter"),
-            GPs("RecordHint"), GPb("CanRecord"), GPb("NeedsNeutralAckermann"));
+            GPs("RecordHint"), GPb("CanRecord"));
     }
 
     // Vehicle & Tool picker hub (Phase 9). Mirrors LoadVehicleToolDialogViewModel's
