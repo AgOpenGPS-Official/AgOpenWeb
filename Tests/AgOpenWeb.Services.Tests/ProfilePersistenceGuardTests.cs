@@ -53,11 +53,14 @@ public class ProfilePersistenceGuardTests
         ["Connections.IsImuConfigured"] = "AppSettings",
         ["Connections.IsAutoSteerConfigured"] = "AppSettings",
         ["Connections.IsMachineConfigured"] = "AppSettings",
+        // Read by GpsFixQualityValidator on every fix, but with no control in the web client:
+        // they stay at their ConnectionConfig defaults (RTK Fixed, 5 s, HDOP 2), so there is
+        // nothing to save. Give them a profile section if they ever become settable.
+        ["Connections.MinFixQuality"] = "fixed at its default; not settable",
+        ["Connections.MaxDifferentialAge"] = "fixed at its default; not settable",
+        ["Connections.MaxHdop"] = "fixed at its default; not settable",
         // Unused: no control in the web client and nothing reads them at runtime.
         ["Connections.HeadingSource"] = "unused",
-        ["Connections.MinFixQuality"] = "unused",
-        ["Connections.MaxDifferentialAge"] = "unused",
-        ["Connections.MaxHdop"] = "unused",
         ["Ahrs.FusionWeight"] = "unused (the live one is Connections.HeadingFusionWeight)",
         ["Ahrs.ForwardCompensation"] = "unused",
         ["Ahrs.ReverseCompensation"] = "unused",
