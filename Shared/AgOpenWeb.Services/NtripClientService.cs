@@ -684,7 +684,7 @@ public class NtripClientService : INtripClientService, IDisposable
         }
     }
 
-    /// <summary>"1005×1 1077×5 …": the messages that arrived since the previous health line.</summary>
+    /// <summary>"1005x1 1077x5 …": the messages that arrived since the previous health line.</summary>
     private string DescribeNewMessages(RtcmStreamSnapshot snap)
     {
         var previous = _healthLineCounts;
@@ -696,7 +696,7 @@ public class NtripClientService : INtripClientService, IDisposable
             long added = t.Count - (previous.TryGetValue(t.Type, out long before) ? before : 0);
             if (added <= 0) continue;
             if (sb.Length > 0) sb.Append(' ');
-            sb.Append(CultureInfo.InvariantCulture, $"{t.Type}×{added}");
+            sb.Append(CultureInfo.InvariantCulture, $"{t.Type}x{added}");
         }
         _healthLineCounts = current;
         return sb.Length == 0 ? "none" : sb.ToString();

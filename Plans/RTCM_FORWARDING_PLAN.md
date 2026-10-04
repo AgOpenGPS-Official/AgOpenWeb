@@ -118,6 +118,10 @@ caster TCP ──► (de-chunk) ──► RtcmFramer ──► RtcmQueue ──�
   against the fix quality over the five minutes before a report.
 - **Outcome:** a dump from a reporter stuck in Float shows whether the stream is complete at
   the app (types, rates, 1005/1006 present) and how old the receiver says the corrections are.
+- **Checked against a real caster (2026-10-04):** an RTKBase / ZED-F9P base on the LAN
+  (RTKLIB caster, NTRIP 1 reply). 186 s, 1,664 messages, no checksum failures, no skipped
+  bytes, no pacer drops. About 1.26 KB/s: MSM7 for five constellations plus legacy 1004/1012
+  every second, base position 1005 every 10 s, 1006 and 1230 every 30 s.
 
 ### Phase 2: whole messages, epoch-aware backlog
 - `RtcmQueue` replaces the byte queue; the age rule and the backlog clear go.
