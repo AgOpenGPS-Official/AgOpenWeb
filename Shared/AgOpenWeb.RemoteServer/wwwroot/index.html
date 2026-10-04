@@ -254,7 +254,7 @@
       font: 700 13px system-ui, sans-serif; cursor: pointer; }
     .sim-btn:hover { background: rgba(var(--ov),0.18); }
     .sim-btn:active { background: rgba(70,160,255,0.5); }
-    .sim-stopbtn { background: rgba(231,76,60,0.32); }
+    .sim-stopbtn { background: rgba(231,76,60,0.32); text-transform: uppercase; }
     .sim-closebtn { background: transparent; color: var(--text-muted); min-width: 32px; }
     .sim-toggle { min-width: 42px; height: 40px; border-radius: 6px; border: 1px solid var(--border);
       background: rgba(var(--ov),0.06); color: var(--text-muted); font: 700 12px system-ui, sans-serif;
@@ -1770,7 +1770,7 @@
           <div class="as-card as-togcard"><img src="/icons/ConSt_InvertDirection.png" alt=""><label>Invert motor</label><button class="cfg-tgl" data-key="autosteer.invertMotor">Off</button></div>
           <div class="as-card as-togcard"><img src="/icons/ConSt_InvertRelay.png" alt=""><label>Invert relays</label><button class="cfg-tgl" data-key="autosteer.invertRelays">Off</button></div>
           <div class="as-card"><div class="cfg-grid">
-            <label>Motor driver</label><select class="cfg-isel" data-key="autosteer.motorDriver"><option value="0">IBT2</option><option value="1">Cytron</option></select>
+            <label>Motor driver</label><select class="cfg-isel" data-key="autosteer.motorDriver"><option value="0" translate="no">IBT2</option><option value="1" translate="no">Cytron</option></select>
             <label>A/D converter</label><select class="cfg-isel" data-key="autosteer.adConverter"><option value="0">Differential</option><option value="1">Single</option></select>
             <label>IMU axis</label><select class="cfg-isel" data-key="autosteer.imuAxisSwap"><option value="0">X</option><option value="1">Y</option></select>
             <label title="A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).">Steer switch / button (engages AutoSteer)</label><select class="cfg-isel" data-key="autosteer.externalEnable"><option value="0">None</option><option value="1">Switch</option><option value="2">Button</option></select>
@@ -1873,7 +1873,7 @@
       <span class="nio-mod" style="font-weight:700">NTRIP</span>
       <span class="nio-ntstatus" id="nio-ntrip-status">Not Connected</span>
     </div>
-    <div class="sa-hint" id="nio-ntrip-bytes">0 KB</div>
+    <div class="sa-hint" id="nio-ntrip-bytes" translate="no">0 KB</div>
     <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
   </div>
   <!-- NTRIP Profiles — chain sub-panel of Network IO. Per the native chain model
@@ -1900,7 +1900,7 @@
       <div class="nio-fld"><label>Host</label><input class="cfg-num nio-tx" id="nte-host" placeholder="e.g., rtk2go.com"></div>
       <div class="nio-row2">
         <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-port" type="number" placeholder="2101"></div>
-        <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-mount" placeholder="NEAR-RTCM3"></div>
+        <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-mount" placeholder="NEAR-RTCM3" translate="no"></div>
       </div>
       <div class="nio-row2">
         <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-user" placeholder="(optional)"></div>
@@ -2015,7 +2015,7 @@
     <div class="cfg-label">ISO-XML source (Documents/AgOpenWeb/Import)</div>
     <select class="cfg-sel fj-tx" id="iso-file"></select>
     <div class="cfg-label" style="margin-top:8px">New field name</div>
-    <input class="cfg-num fj-tx" id="iso-name" placeholder="field name">
+    <input class="cfg-num fj-tx" id="iso-name" placeholder="Field name">
     <button class="cfg-act cfg-actwide fj-primary" id="iso-create" style="margin-top:14px">Create Field</button>
   </div>
   <!-- From KML — import a .kml/.kmz from Documents/AgOpenWeb/Import. -->
@@ -2024,7 +2024,7 @@
     <div class="cfg-label">KML file (Documents/AgOpenWeb/Import)</div>
     <select class="cfg-sel fj-tx" id="kml-file"></select>
     <div class="cfg-label" style="margin-top:8px">New field name</div>
-    <input class="cfg-num fj-tx" id="kml-name" placeholder="field name">
+    <input class="cfg-num fj-tx" id="kml-name" placeholder="Field name">
     <button class="cfg-act cfg-actwide fj-primary" id="kml-create" style="margin-top:14px">Create Field</button>
   </div>
   <!-- Resume Job — cross-field recent-job picker. -->
@@ -2131,7 +2131,7 @@
       </svg>
     </div>
     <div class="rc-rows">
-      <div class="rc-row"><span>Invert Roll</span><button class="rc-tgl" id="rc-invert">Off</button></div>
+      <div class="rc-row"><span>Invert roll</span><button class="rc-tgl" id="rc-invert">Off</button></div>
       <div class="rc-row"><span>Zero Roll</span><button class="fo-btn rc-zerobtn" id="rc-zero">Zero Roll</button></div>
       <div class="rc-row"><span>Roll Zero Offset</span><span id="rc-offset" class="rc-ro">—</span></div>
     </div>
@@ -2355,7 +2355,7 @@
       <button id="bp-leftright" class="bp-btn" title="Record on left / right side"><img id="bp-lrimg" src="/icons/BoundaryLeft.png" alt=""></button>
       <button id="bp-antennatool" class="bp-btn" title="Record at antenna / tool"><img id="bp-atimg" src="/icons/BoundaryRecordTool.png" alt=""></button>
       <div class="bp-stat"><span class="bp-statlbl">Points:</span><span id="bp-points" class="bp-statval">0</span></div>
-      <div class="bp-stat"><span class="bp-statlbl">Area:</span><span id="bp-area" class="bp-statval">0.00 Ha</span></div>
+      <div class="bp-stat"><span class="bp-statlbl">Area:</span><span id="bp-area" class="bp-statval" translate="no">0.00 Ha</span></div>
       <button id="bp-stop" class="bp-btn bp-okbtn" title="Stop and save"><img src="/icons/OK64.png" alt=""></button>
       <button id="bp-record" class="bp-btn bp-recbtn" title="Record / Pause"><img id="bp-recimg" src="/icons/BoundaryRecord.png" alt=""></button>
     </div>
@@ -2426,7 +2426,7 @@
     <div class="ab-git" id="ab-git"></div>
     <div class="ab-desc">Cross-Platform Agricultural GPS Guidance</div>
     <div class="ab-desc">Based on AgOpenGPS by Brian Tee</div>
-    <div class="ab-desc">HTML/JS · .NET 10 · GNU GPL v3.0</div>
+    <div class="ab-desc" translate="no">HTML/JS · .NET 10 · Apache License 2.0</div>
   </div>
   <!-- Bug Report. -->
   <div id="bugreport" class="ln-panel fm-panel">
@@ -2447,14 +2447,14 @@
     <div class="sw-status">Status: <b id="sw-status">Stopped</b></div>
     <div class="sw-card">
       <div class="sw-cardtitle">Statistics</div>
-      <div class="sw-row"><span class="k">Samples</span><span class="v" id="sw-samples">0 / 200 min</span></div>
+      <div class="sw-row"><span class="k">Samples</span><span class="v" id="sw-samples"></span></div>
       <div class="sw-row"><span class="k">Mean</span><span class="v" id="sw-mean">0.00°</span></div>
       <div class="sw-row"><span class="k">Median</span><span class="v" id="sw-median">0.00°</span></div>
       <div class="sw-row"><span class="k">Std Dev</span><span class="v" id="sw-stddev">0.00°</span></div>
     </div>
     <div class="sw-card">
       <div class="sw-cardtitle">Recommendation</div>
-      <div class="sw-row"><span class="k">Offset</span><span class="v" id="sw-offset">0.00° (0 counts)</span></div>
+      <div class="sw-row"><span class="k">Offset</span><span class="v" id="sw-offset"></span></div>
       <div class="sw-row"><span class="k">Confidence</span><span class="v" id="sw-confidence">0%</span></div>
     </div>
     <div class="sw-info">Drive at &gt;2 km/h with autosteer engaged. Keep the cross-track error within ±0.5 m. Click Apply once confidence reaches 40%+.</div>
@@ -2471,7 +2471,7 @@
   <div id="wizard-overlay" class="wz-overlay">
     <div class="wz-header">
       <span class="wz-title">AutoSteer Configuration Wizard</span>
-      <span class="wz-step" id="wz-step">Step 1 of 15</span>
+      <span class="wz-step" id="wz-step"></span>
       <div class="wz-progress"><div class="wz-progressbar" id="wz-progressbar"></div></div>
     </div>
     <div class="wz-body"><div id="wz-content"></div></div>
@@ -2540,9 +2540,9 @@
       <button id="sim-steerreset" class="sim-btn" data-cmd="sim.steerReset" title="Reset steering to 0">&gt;0&lt;</button>
       <span class="sim-sep"></span>
       <button id="sim-speeddown" class="sim-btn" data-cmd="sim.speedDown" title="Slower (−0.5 kph)">▼</button>
-      <span id="sim-speedval" class="sim-speed">0.0 kph</span>
+      <span id="sim-speedval" class="sim-speed" translate="no">0.0 kph</span>
       <button id="sim-speedup" class="sim-btn" data-cmd="sim.speedUp" title="Faster (+0.5 kph)">▲</button>
-      <button id="sim-stop" class="sim-btn sim-stopbtn" data-cmd="sim.stop" title="Stop">STOP</button>
+      <button id="sim-stop" class="sim-btn sim-stopbtn" data-cmd="sim.stop" title="Stop">Stop</button>
       <button id="sim-10x" class="sim-toggle" data-cmd="sim.toggle10x" title="10× speed multiplier">10x</button>
       <span class="sim-sep"></span>
       <button id="sim-reverse" class="sim-btn" data-cmd="sim.reverseDir" title="Reverse direction (flip 180°)">⇅</button>
