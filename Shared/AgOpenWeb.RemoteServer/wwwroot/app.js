@@ -2667,7 +2667,7 @@ function populateSmartWas() {
   asSetText('sw-stddev', (statusBar.swStdDev || 0).toFixed(2) + '°');
   const cpd = (config && config.autosteer && config.autosteer.countsPerDegree) || 0;
   const counts = Math.round((statusBar.swOffsetDeg || 0) * cpd);
-  asSetText('sw-offset', (statusBar.swOffsetDeg || 0).toFixed(2) + '° (' + counts + ' counts)');
+  asSetText('sw-offset', tr('{deg}° ({n} counts)', { deg: (statusBar.swOffsetDeg || 0).toFixed(2), n: counts }));
   asSetText('sw-confidence', Math.round(statusBar.swConfidence || 0) + '%');
   // Button enable: gated by control + per-button state (start when stopped, stop when
   // collecting, apply when a valid calibration exists).
@@ -3370,19 +3370,19 @@ function buildWizardContent(w) {
     }
     case 'dimensions':
       return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['WheelbaseTractor', 'WheelbaseHarvester', 'WheelbaseArticulated'][ty] + '.png">' + wzNum(tr('Wheelbase'), tr('Front to rear axle distance'), 'vehicle.wheelbase', '0.01', 'm') + '</div>' +
-        '<div class="wz-panel"><img class="dia" src="/icons/' + ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated'][ty] + '.png">' + wzNum(tr('Track Width'), tr('Left to right wheel center'), 'vehicle.trackWidth', '0.01', 'm') + '</div></div>';
+        '<div class="wz-panel"><img class="dia" src="/icons/' + ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated'][ty] + '.png">' + wzNum(tr('Track width'), tr('Left to right wheel center'), 'vehicle.trackWidth', '0.01', 'm') + '</div></div>';
     case 'antenna':
       return head + '<div class="wz-panels"><div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop'][ty] + '.png">' +
-        wzNum(tr('Pivot Distance'), tr('Antenna to rear axle (+ = ahead)'), 'vehicle.antennaPivot', '0.01', 'm') + wzNum(tr('Antenna Height'), tr('Above ground level'), 'vehicle.antennaHeight', '0.01', 'm') + '</div>' +
+        wzNum(tr('Pivot distance'), tr('Antenna to rear axle (+ = ahead)'), 'vehicle.antennaPivot', '0.01', 'm') + wzNum(tr('Antenna height'), tr('Above ground level'), 'vehicle.antennaHeight', '0.01', 'm') + '</div>' +
         '<div class="wz-panel"><img class="dia" src="/icons/' + ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset'][ty] + '.png"><div class="wz-fld"><label>Lateral Offset</label><div class="sub">From centerline (+ = right)</div><div class="wz-seg">' +
         ['left', 'center', 'right'].map(v => '<button data-cfg="vehicle.antennaSide:' + v + '" data-activekey="vehicle.antennaSide" data-activeval="' + v + '">' + v[0].toUpperCase() + v.slice(1) + '</button>').join('') + '</div></div></div></div>';
     case 'hwconfig':
       return head + '<div class="wz-rows">' +
-        wzSeg(tr('Steer Enable Method'), null, 'autosteer.externalEnable', [[tr('None'), 0], [tr('Switch'), 1], [tr('Button'), 2]]) +
-        wzSeg(tr('Motor Driver'), null, 'autosteer.motorDriver', [[tr('IBT2'), 0], [tr('Cytron'), 1]]) +
-        wzSeg(tr('A/D Converter'), null, 'autosteer.adConverter', [[tr('Differential'), 0], [tr('Single'), 1]]) +
-        wzTgl(tr('Invert Steer Enable Relay'), tr('Inverts the relay that enables the motor'), 'autosteer.invertRelays') +
-        wzTgl(tr('Danfoss Valve'), tr('Enable for Danfoss hydraulic steering'), 'autosteer.danfossEnabled') + '</div>';
+        wzSeg(tr('Steer enable method'), null, 'autosteer.externalEnable', [[tr('None'), 0], [tr('Switch'), 1], [tr('Button'), 2]]) +
+        wzSeg(tr('Motor driver'), null, 'autosteer.motorDriver', [['IBT2', 0], ['Cytron', 1]]) +
+        wzSeg(tr('A/D converter'), null, 'autosteer.adConverter', [[tr('Differential'), 0], [tr('Single'), 1]]) +
+        wzTgl(tr('Invert steer enable relay'), tr('Inverts the relay that enables the motor'), 'autosteer.invertRelays') +
+        wzTgl(tr('Danfoss valve'), tr('Enable for Danfoss hydraulic steering'), 'autosteer.danfossEnabled') + '</div>';
     case 'roll':
       // Reuse the map's roll gauge: a green bar that rotates around (100,40) by the
       // live roll, with pink scale marks and the degree readout.
@@ -3393,7 +3393,7 @@ function buildWizardContent(w) {
         '<circle cx="100" cy="40" r="3" fill="#fff"/>' +
         '<text id="wz-roll-deg" x="100" y="32" text-anchor="middle" fill="#fff" font-size="24" font-weight="bold" font-family="system-ui,sans-serif">0.0</text>' +
         '</svg></div>' +
-        '<div class="wz-rows">' + wzTgl(tr('Invert Roll'), null, 'roll.isRollInvert') +
+        '<div class="wz-rows">' + wzTgl(tr('Invert roll'), null, 'roll.isRollInvert') +
         '<div class="wz-row"><div class="lbl">Zero Roll</div><button class="wz-testbtn" data-act="ZeroRoll">Zero Roll</button></div>' +
         '<div class="wz-row"><div class="lbl">Roll Zero Offset</div><div class="lbl"><span data-live="rollzero">—</span></div></div></div>';
     case 'was':
@@ -3416,20 +3416,20 @@ function buildWizardContent(w) {
         wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest(true) +
         '<div class="wz-rows">' + wzNum(tr('Ackermann'), tr('100 = neutral'), 'autosteer.ackermann', '1', '') + '</div>';
     case 'gains':
-      return head + '<div class="wz-rows">' + wzTgl(tr('Guidance Algorithm (Stanley)'), tr('Pure Pursuit default; Stanley more responsive at low speed'), 'autosteer.isStanleyMode') +
-        wzNum(tr('Proportional Gain (Kp)'), tr('Start at 10, increase for faster correction'), 'autosteer.proportionalGain', '1', '') +
-        wzNum(tr('Integral Gain (Ki)'), tr('Start at 0, only increase for drift'), 'autosteer.integralGain', '0.01', '') +
-        wzNum(tr('Steer Response Hold'), tr('Look-ahead (higher = smoother)'), 'autosteer.steerResponseHold', '0.1', '') +
-        wzNum(tr('Side Hill Compensation'), tr('Degrees per degree of roll (0-1.0)'), 'autosteer.sideHillCompensation', '0.01', '') + '</div>';
+      return head + '<div class="wz-rows">' + wzTgl(tr('Guidance algorithm (Stanley)'), tr('Pure Pursuit default; Stanley more responsive at low speed'), 'autosteer.isStanleyMode') +
+        wzNum(tr('Proportional gain (Kp)'), tr('Start at 10, increase for faster correction'), 'autosteer.proportionalGain', '1', '') +
+        wzNum(tr('Integral gain (Ki)'), tr('Start at 0, only increase for drift'), 'autosteer.integralGain', '0.01', '') +
+        wzNum(tr('Steer response hold'), tr('Look-ahead (higher = smoother)'), 'autosteer.steerResponseHold', '0.1', '') +
+        wzNum(tr('Side hill compensation'), tr('Degrees per degree of roll (0-1.0)'), 'autosteer.sideHillCompensation', '0.01', '') + '</div>';
     case 'speed':
       return head + '<div class="wz-rows">' +
-        wzNum(tr('Min Steer Speed'), tr('Engage above this speed'), 'autosteer.minSteerSpeed', '0.1', 'kmh') +
-        wzNum(tr('Max Steer Speed'), tr('Safety cutoff speed'), 'autosteer.maxSteerSpeed', '0.1', 'kmh') +
+        wzNum(tr('Min steer speed'), tr('Engage above this speed'), 'autosteer.minSteerSpeed', '0.1', 'kmh') +
+        wzNum(tr('Max steer speed'), tr('Safety cutoff speed'), 'autosteer.maxSteerSpeed', '0.1', 'kmh') +
         wzTgl(tr('Turn Sensor'), tr('Steering wheel encoder'), 'autosteer.turnSensorEnabled') +
-        wzTgl(tr('Pressure Sensor'), tr('Hydraulic stall detection'), 'autosteer.pressureSensorEnabled') +
-        wzTgl(tr('Current Sensor'), tr('Motor current obstruction detection'), 'autosteer.currentSensorEnabled') +
-        wzTgl(tr('Steer In Reverse'), tr('Allow steering while reversing'), 'autosteer.steerInReverse') +
-        wzNum(tr('Deadzone Heading'), tr('Heading error tolerance'), 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
+        wzTgl(tr('Pressure sensor'), tr('Hydraulic stall detection'), 'autosteer.pressureSensorEnabled') +
+        wzTgl(tr('Current sensor'), tr('Motor current obstruction detection'), 'autosteer.currentSensorEnabled') +
+        wzTgl(tr('Steer in reverse'), tr('Allow steering while reversing'), 'autosteer.steerInReverse') +
+        wzNum(tr('Deadzone heading'), tr('Heading error tolerance'), 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
     case 'finish':
       return head + '<div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Configuration saved!</div><div class="s">Click Finish to close the wizard</div></div></div>';
     default: return head;
