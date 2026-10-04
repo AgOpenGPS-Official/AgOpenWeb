@@ -502,7 +502,22 @@
     .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
     /* ===== Network IO panel + NTRIP modals ===== */
     .nio-panel { width: 360px; max-height: calc(100vh - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
-    .nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }
+    .nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }
+    .nio-more { width: 30px; height: 26px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10); color: var(--text-2);
+      font: 700 18px/1 system-ui, sans-serif; cursor: pointer; padding: 0; }
+    .nio-more:hover { background: rgba(var(--ov),0.18); }
+    /* System Data — chain sub-panel of Network IO (GPS line → arrow). */
+    .nio-sysdata { width: 440px; max-height: calc(100vh - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
+    .sd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 20px; margin-bottom: 12px; }
+    .sd-row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+    .sd-k { color: var(--text-muted); font: 400 12px system-ui, sans-serif; }
+    .sd-v { color: var(--text-2); font: 700 13px system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .sd-v.sd-bad { color: #ef4444; }
+    .sd-sent { margin-bottom: 8px; }
+    .sd-senthead { display: flex; justify-content: space-between; color: var(--text-muted); font: 600 11px system-ui, sans-serif; }
+    .sd-senttext { color: var(--text); font: 400 11px ui-monospace, monospace; word-break: break-all; -webkit-user-select: text; user-select: text;
+      background: rgba(var(--ov),0.05); border-radius: 6px; padding: 4px 6px; margin-top: 2px; }
+    .sd-sent.stale .sd-senttext, .sd-sent.stale .sd-senthead { color: var(--text-dim); }
     .nio-chk { width: 18px; height: 18px; accent-color: #4A90D9; margin: 0; }
     .nio-dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; }
     .nio-mod { color: var(--text); font: 500 13px system-ui, sans-serif; }
@@ -1856,12 +1871,13 @@
     <div class="nio-modgrid">
       <input type="checkbox" class="nio-chk" id="nio-gps-cfg" data-key="conn.gpsConfigured" title="GPS module should be present">
       <span class="nio-dot" id="nio-gps-dot"></span><span class="nio-mod">GPS</span><span class="nio-ip" id="nio-gps-ip">—</span>
+      <button class="nio-more" id="nio-gps-more" title="System Data">›</button>
       <input type="checkbox" class="nio-chk" id="nio-as-cfg" data-key="conn.autoSteerConfigured" title="AutoSteer module should be present">
-      <span class="nio-dot" id="nio-as-dot"></span><span class="nio-mod">AutoSteer</span><span class="nio-ip" id="nio-as-ip">—</span>
+      <span class="nio-dot" id="nio-as-dot"></span><span class="nio-mod">AutoSteer</span><span class="nio-ip" id="nio-as-ip">—</span><span></span>
       <input type="checkbox" class="nio-chk" id="nio-ma-cfg" data-key="conn.machineConfigured" title="Machine module should be present">
-      <span class="nio-dot" id="nio-ma-dot"></span><span class="nio-mod">Machine</span><span class="nio-ip" id="nio-ma-ip">—</span>
+      <span class="nio-dot" id="nio-ma-dot"></span><span class="nio-mod">Machine</span><span class="nio-ip" id="nio-ma-ip">—</span><span></span>
       <input type="checkbox" class="nio-chk" id="nio-imu-cfg" data-key="conn.imuConfigured" title="IMU module should be present">
-      <span class="nio-dot" id="nio-imu-dot"></span><span class="nio-mod">IMU</span><span class="nio-ip" id="nio-imu-ip">—</span>
+      <span class="nio-dot" id="nio-imu-dot"></span><span class="nio-mod">IMU</span><span class="nio-ip" id="nio-imu-ip">—</span><span></span>
     </div>
     <button id="nio-scan" class="cfg-act cfg-actwide">Scan for Modules</button>
     <div class="cfg-label" style="margin-top:14px">Subnet</div>
@@ -1901,6 +1917,46 @@
       <span class="nio-mod">Broadcast corrections</span>
     </label>
     <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
+  </div>
+  <!-- System Data — chain sub-panel of Network IO, opened from the GPS line's arrow. The
+       AgIO / AgOpenGPS "System Data" forms in one card: parsed values, each heading source
+       before fusion, and the module's latest raw sentences. Back reopens Network IO. -->
+  <div id="systemdata" class="ln-panel nio-sysdata">
+    <div class="ln-hdr"><button class="ln-x" id="sd-back" title="Back">←</button><span class="ln-hdr-title">System Data</span><button class="ln-x" id="sd-x" title="Close">✕</button></div>
+    <div class="cfg-label">Position</div>
+    <div class="sd-grid">
+      <div class="sd-row"><span class="sd-k">Latitude</span><span class="sd-v" id="sd-lat" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Longitude</span><span class="sd-v" id="sd-lon" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Easting</span><span class="sd-v" id="sd-e" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Northing</span><span class="sd-v" id="sd-n" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Altitude</span><span class="sd-v" id="sd-alt" translate="no">—</span></div>
+    </div>
+    <div class="cfg-label">Quality</div>
+    <div class="sd-grid">
+      <div class="sd-row"><span class="sd-k">Fix</span><span class="sd-v" id="sd-fix">—</span></div>
+      <div class="sd-row"><span class="sd-k">Satellites</span><span class="sd-v" id="sd-sats" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">HDOP</span><span class="sd-v" id="sd-hdop" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Correction age</span><span class="sd-v" id="sd-age" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">GPS rate</span><span class="sd-v" id="sd-hz" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Missed sentences</span><span class="sd-v" id="sd-missed" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Not accepted</span><span class="sd-v" id="sd-rej" translate="no">—</span></div>
+    </div>
+    <div class="cfg-label">Motion</div>
+    <div class="sd-grid">
+      <div class="sd-row"><span class="sd-k">Speed</span><span class="sd-v" id="sd-speed" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Roll</span><span class="sd-v" id="sd-roll" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Pitch</span><span class="sd-v" id="sd-pitch" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Yaw rate</span><span class="sd-v" id="sd-yaw" translate="no">—</span></div>
+    </div>
+    <div class="cfg-label">Heading</div>
+    <div class="sd-grid">
+      <div class="sd-row"><span class="sd-k">Dual antenna</span><span class="sd-v" id="sd-hdual" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">IMU</span><span class="sd-v" id="sd-himu" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">Fix to fix</span><span class="sd-v" id="sd-hf2f" translate="no">—</span></div>
+      <div class="sd-row"><span class="sd-k">In use</span><span class="sd-v" id="sd-hused" translate="no">—</span></div>
+    </div>
+    <div class="cfg-label">Sentences from the GPS module</div>
+    <div id="sd-sentences"></div>
   </div>
   <!-- NTRIP Profiles — chain sub-panel of Network IO. Per the native chain model
        (MainViewModel.Navigation.Chain): opening REPLACES the parent (single panel

@@ -289,7 +289,27 @@ public record StatusDto(
     bool DualHeadingMissing,
     // What the NTRIP caster is sending, for the Network IO panel (RTCM plan, Phase 5);
     // null with no NTRIP session.
-    NtripRtcmDto? NtripRtcm = null);
+    NtripRtcmDto? NtripRtcm = null,
+    // System Data card (Network IO → GPS): what the status frame doesn't already carry.
+    SystemDataDto? SystemData = null);
+
+/// <summary>GPS values for the System Data card that ride no other frame: attitude, the
+/// heading sources before fusion, the sentence rate and counters, and the latest raw
+/// sentences. Headings are degrees; NaN where the source isn't there (no IMU, no dual
+/// antenna).</summary>
+public record SystemDataDto(
+    double Pitch,
+    double YawRate,
+    double ImuHeading,
+    double DualHeading,
+    double FixToFixHeading,
+    double RateHz,
+    long Missed,
+    long Rejected,
+    IReadOnlyList<GpsSentenceDto> Sentences);
+
+/// <param name="Type">"PANDA", "PAOGI", or "REJECTED" for the last datagram the parser refused.</param>
+public record GpsSentenceDto(string Type, string Text, double AgeSeconds);
 
 /// <summary>The caster's RTCM stream this session: totals, and each message type with how
 /// often it comes and how long ago the last one came. The client turns this into the

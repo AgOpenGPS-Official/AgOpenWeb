@@ -67,6 +67,9 @@ public class AutoSteerService : IAutoSteerService
     private long _cycleCount;
     private long _parseFailures;
 
+    /// <inheritdoc />
+    public AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; } = new();
+
     // Service state
     private bool _isEnabled;
     private bool _isEngaged;
@@ -549,7 +552,9 @@ public class AutoSteerService : IAutoSteerService
             // its own parse-timing fields; no BeginNewCycle here because the
             // cycle owns timing now.
             ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
-            if (!NmeaParserServiceFast.ParseIntoState(data, ref _state, _configStore))
+            bool parsed = NmeaParserServiceFast.ParseIntoState(data, ref _state, _configStore);
+            GpsSentences.Record(data, parsed);
+            if (!parsed)
             {
                 _parseFailures++;
                 return;

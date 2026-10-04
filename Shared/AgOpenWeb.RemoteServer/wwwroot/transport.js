@@ -161,6 +161,15 @@ window.RemoteTransport = {
             for (let k = i32(); k > 0; k--)
               ntripRtcm.types.push({ type: i32(), count: i32(), every: f32(), last: f32() });
           }
+          // System Data card (append-only): attitude, heading sources (NaN = none), sentence
+          // rate + counters, and the latest raw sentences; null before any GPS data.
+          let systemData = null;
+          if (u8()) {
+            systemData = { pitch: f32(), yawRate: f32(), imuHeading: f32(), dualHeading: f32(), fixToFixHeading: f32(),
+                           rateHz: f32(), missed: i32(), rejected: i32(), sentences: [] };
+            for (let k = u8(); k > 0; k--)
+              systemData.sentences.push({ type: str(), text: str(), age: f32() });
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -171,7 +180,7 @@ window.RemoteTransport = {
             swCollecting, swSamples, swMean, swMedian, swStdDev, swOffsetDeg, swConfidence, swValid,
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
-            devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm,
+            devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
           });
           break;
         }

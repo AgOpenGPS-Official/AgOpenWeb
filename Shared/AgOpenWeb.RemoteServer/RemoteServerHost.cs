@@ -141,6 +141,14 @@ public sealed class RemoteServerHost
     }
     private Func<(string Sentence, bool DualHeadingMissing)>? _gpsSourceProvider;
 
+    /// <summary>GPS values for the System Data card (Network IO → GPS).</summary>
+    public Func<SystemDataDto?>? SystemDataProvider
+    {
+        get => _broadcaster?.Projector.SystemDataProvider;
+        set { _systemDataProvider = value; if (_broadcaster is not null) _broadcaster.Projector.SystemDataProvider = value; }
+    }
+    private Func<SystemDataDto?>? _systemDataProvider;
+
     public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
     {
         get => _broadcaster?.Projector.HeadlandSegsProvider;
@@ -223,6 +231,7 @@ public sealed class RemoteServerHost
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
         _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
         _broadcaster.Projector.GpsSourceProvider = _gpsSourceProvider;
+        _broadcaster.Projector.SystemDataProvider = _systemDataProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
