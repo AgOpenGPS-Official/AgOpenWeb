@@ -589,7 +589,9 @@ public static partial class RemoteServerWiring
                         activeJobTaskName: SaveCoverageForDump(services, state),
                         ntripRtcmReport: AgOpenWeb.Services.NtripRtcmReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()));
-                    state.BugReportStatus = "Saved: " + zip;
+                    var publicPath = services.GetService<AgOpenWeb.Services.Interfaces.IPublicFileExporter>()
+                        ?.ExportToPublicDocuments(zip, "BugReports", System.IO.Path.GetFileName(zip));
+                    state.BugReportStatus = "Saved: " + (publicPath ?? zip);
                 }
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
                 return;

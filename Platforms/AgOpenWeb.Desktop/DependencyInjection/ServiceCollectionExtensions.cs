@@ -130,6 +130,9 @@ public static class ServiceCollectionExtensions
         // no battery so the strip icon hides itself.
         services.AddSingleton<IBatteryService, AgOpenWeb.Desktop.Services.DesktopBatteryService>();
 
+        // Public file exporter (no-op on desktop where files are already accessible)
+        services.AddSingleton<IPublicFileExporter, NullPublicFileExporter>();
+
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
 

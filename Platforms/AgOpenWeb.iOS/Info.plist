@@ -42,6 +42,11 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <!-- Expose Documents folder in the iOS Files app (On My iPad/iPhone -> AgOpenWeb) -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <!-- Privacy purpose strings. Apple's static scanner (ITMS-90683) requires the
          keys for frameworks the binary references even though AgOpenWeb does not
          use the underlying features. GPS comes from external hardware over UDP,

@@ -128,6 +128,9 @@ public static class ServiceCollectionExtensions
         // NSNotificationCenter (no polling needed).
         services.AddSingleton<IBatteryService, AgOpenWeb.iOS.Services.IOSBatteryService>();
 
+        // Public file exporter for bug report dumps (visible in iOS Files app)
+        services.AddSingleton<IPublicFileExporter, IosPublicFileExporter>();
+
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
 

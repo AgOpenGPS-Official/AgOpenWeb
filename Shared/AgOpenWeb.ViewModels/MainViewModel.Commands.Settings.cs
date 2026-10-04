@@ -214,8 +214,10 @@ public partial class MainViewModel
                     _settingsService, _appState, _configStore, screenshotPng: screenshot,
                     activeJobTaskName: SaveCoverageForDump(),
                     ntripRtcmReport: NtripRtcmReport());
-                StatusMessage = $"Debug dump saved: {zipPath}";
-                _logger.LogInformation($"Debug dump created: {zipPath}");
+                var publicPath = _publicFileExporter.ExportToPublicDocuments(zipPath, "BugReports", Path.GetFileName(zipPath));
+                var displayPath = publicPath ?? zipPath;
+                StatusMessage = $"Debug dump saved: {displayPath}";
+                _logger.LogInformation($"Debug dump created: {displayPath}");
             }
             catch (Exception ex)
             {
@@ -279,8 +281,10 @@ public partial class MainViewModel
                         notes: null,
                         userAttachments: null);
 
-                    ReportFailure($"Bug report saved (no details): {savedPath}");
-                    _logger.LogInformation("Bug report saved on cancel: {ZipPath}", savedPath);
+                    var publicPath = _publicFileExporter.ExportToPublicDocuments(savedPath, "BugReports", Path.GetFileName(savedPath));
+                    var displayPath = publicPath ?? savedPath;
+                    ReportFailure($"Bug report saved (no details): {displayPath}");
+                    _logger.LogInformation("Bug report saved on cancel: {ZipPath}", displayPath);
                 }
                 catch (Exception ex)
                 {
@@ -363,10 +367,13 @@ public partial class MainViewModel
                 _bugReportScreenshot = null;
                 BugReportAttachments.Clear();
 
-                _logger.LogInformation("Bug report created: {ZipPath}", zipPath);
+                var publicPath = _publicFileExporter.ExportToPublicDocuments(zipPath, "BugReports", Path.GetFileName(zipPath));
+                var displayPath = publicPath ?? zipPath;
+
+                _logger.LogInformation("Bug report created: {ZipPath}", displayPath);
                 ShowConfirmationDialog(
                     "Bug Report Saved",
-                    $"Your bug report has been saved to:\n\n{zipPath}\n\nAttach this file to a GitHub issue.",
+                    $"Your bug report has been saved to:\n\n{displayPath}\n\nAttach this file to a GitHub issue.",
                     () => { });
             }
             catch (Exception ex)

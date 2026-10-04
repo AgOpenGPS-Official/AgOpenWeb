@@ -134,6 +134,9 @@ public static class ServiceCollectionExtensions
                 global::Android.App.Application.Context!,
                 sp.GetRequiredService<IUiDispatcher>()));
 
+        // Public file exporter for bug report dumps (saves to public Documents via MediaStore)
+        services.AddSingleton<IPublicFileExporter, AndroidPublicFileExporter>();
+
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
 

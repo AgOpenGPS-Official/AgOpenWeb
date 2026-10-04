@@ -92,6 +92,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
+    private readonly IPublicFileExporter _publicFileExporter;
     private readonly IUiTimerFactory _timerFactory;
     private readonly IUiTimer _simulatorTimer;
     private IUiTimer? _renderPullTimer;
@@ -219,10 +220,12 @@ public partial class MainViewModel : ObservableObject
         IUiDispatcher uiDispatcher,
         IUiTimerFactory uiTimerFactory,
         ISteerMachineLoopService? controlLoop = null,
-        IPositionEstimator? positionEstimator = null)
+        IPositionEstimator? positionEstimator = null,
+        IPublicFileExporter? publicFileExporter = null)
     {
         _logger = logger;
         _configStore = configStore;
+        _publicFileExporter = publicFileExporter ?? new NullPublicFileExporter();
         _persistentStateService = persistentStateService;
         _batteryService = batteryService;
         _dispatcher = uiDispatcher;
