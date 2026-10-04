@@ -110,7 +110,7 @@ Measured with the Phase 1 build on the bench: RTKBase caster on the LAN, AiO v26
 F9P, wired Ethernet. A relay between the app and the caster held the stream back and released
 it in one burst ("stall"), or let it through at half its rate ("trickle"). The app's datagrams
 were recorded off the wire and re-framed, and the receiver's fix and differential age were
-read from the dump's GPS log.
+read from its position sentences. The scripts are in `Tools/rtcm-bench`.
 
 | Episode | Pacer | Forwarded stream | Receiver |
 |---|---|---|---|
@@ -120,6 +120,17 @@ read from the dump's GPS log.
 | Stall 45 s | watchdog reconnects at 30 s; backlog clear on resume | one message cut | Fixed throughout, age peaked at 45 s |
 | Trickle at 600 B/s for 30 s | nothing dropped until the release burst | corrections arrive late | Fixed, age rose to 16 s |
 
+The module leg and long outages were measured with a stand-in forwarder
+(`Tools/rtcm-bench/forward.py`: the app's pacing, unicast to the board, datagrams dropped on a
+schedule), starting from RTK Fixed:
+
+| Episode | Receiver |
+|---|---|
+| 2 %, 5 %, 10 % of datagrams lost, 60 s each | Fixed, age 1–2 s |
+| 20 %, 40 % lost, 60 s each | Fixed, age up to 3 s |
+| No corrections for 90 s | still reports Fixed, age 90 s |
+| No corrections for 180 s | still reports Fixed, age 180 s; age back to 1 s on resume |
+
 What this says:
 
 - **The one-second age rule never fired**, in any episode. PR #247 changes that rule, so it
@@ -128,11 +139,26 @@ What this says:
   more, and each time it cuts a message in half. Decision 2 replaces it.
 - **An F9P rides through a 45 s gap in corrections** and takes the first fresh epoch after a
   burst. Caster-side stalls of this size do not produce RTK Float on this hardware.
-- So the Float reports are not explained by the caster-to-app leg alone. Still to measure:
-  datagram loss between the app and the module, gaps longer than the receiver's hold time, and
-  the reporters' own streams (Phase 1 dumps).
+- So the Float reports are not explained by forwarding faults on either leg, on this
+  hardware. Still to see: the reporters' own streams and receivers (Phase 1 dumps).
 - The differential age works as the end-to-end measure. The v26 firmware reports it in whole
   seconds, and 0 both for "under a second" and for "no corrections".
+- **Fix quality does not show a loss of corrections.** A stationary F9P kept reporting RTK
+  Fixed for three minutes with nothing arriving. Only the differential age moved. Phase 5 (show
+  the age, warn on it) matters more than its position in the list suggests.
+- **The app already acts on the age.** `GpsFixQualityValidator` marks a fix invalid when the
+  age passes `MaxDifferentialAge` (5 s, not settable in the web client). So a caster stall of
+  more than five seconds reaches guidance through that check, while the receiver itself is
+  still Fixed.
+- **Datagram loss on the module leg is tolerated** far beyond anything a working network
+  produces: 40 % loss cost two seconds of age.
+- **Unicast works on the v26 board**: every stand-in run sent to the board's own address.
+- **Time to RTK Fixed on this bench ran from 25 s to never (14 minutes)** on the same clean
+  stream, whichever forwarder was used. The bench scripts therefore wait for Fixed before an
+  episode. "Stuck in Float" can be the receiver's convergence, with forwarding intact.
+- **Not explained:** while in Float with the app forwarding (broadcast), the fix dropped to
+  DGPS for one second about every 31 s. No message was cut on the wire at those moments, and it
+  did not happen in ten minutes of Float with the stand-in forwarder (unicast).
 
 ## Phases (one PR each)
 
