@@ -60,13 +60,16 @@ public sealed class LauncherViewController : UIViewController
             // Alarms must sound before the first tap.
             MediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypes.None,
         };
+        // The page opens links and downloads on pointerdown, which WebKit does not count as a
+        // user gesture for touch: without this, window.open never reaches the UI delegate.
+        config.Preferences.JavaScriptCanOpenWindowsAutomatically = true;
         var web = new WKWebView(view.Bounds, config)
         {
             AutoresizingMask = UIViewAutoresizing.FlexibleWidth | UIViewAutoresizing.FlexibleHeight,
             Opaque = false,
             BackgroundColor = Splash,
             NavigationDelegate = new NavigationDelegate(this),
-            UIDelegate = new UiDelegate(),
+            UIDelegate = new UiDelegate(this),
         };
         // The page is an app, not a document: no rubber-banding, no safe-area insets added
         // (the page reads env(safe-area-inset-*) itself).
@@ -212,13 +215,41 @@ public sealed class LauncherViewController : UIViewController
         }
     }
 
-    /// <summary><c>window.open(url, '_blank')</c> goes to the system browser.</summary>
+    // A bug report download (/bugreports/<file>.zip on the local app). Safari can't be handed
+    // this: iOS suspends the app, and its web server, once Safari comes to the front. The zip
+    // is on this device already, so offer it in the share sheet (Save to Files, AirDrop, Mail).
+    private bool TryShareBugReport(NSUrl url)
+    {
+        const string prefix = "/bugreports/";
+        var path = url.Path;
+        if (!IsLocalApp(url, _port) || path == null || !path.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        var name = System.IO.Path.GetFileName(path[prefix.Length..]);
+        var file = System.IO.Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", name);
+        if (name.Length == 0 || !System.IO.File.Exists(file)) return true; // ours, but nothing to share
+
+        var sheet = new UIActivityViewController(new NSObject[] { NSUrl.FromFilename(file) }, null);
+        // An iPad shows the sheet as a popover, which must be anchored.
+        if (sheet.PopoverPresentationController is { } pop && View is { } view)
+        {
+            pop.SourceView = view;
+            pop.SourceRect = new CGRect(view.Bounds.GetMidX(), view.Bounds.GetMidY(), 0, 0);
+            pop.PermittedArrowDirections = 0;
+        }
+        PresentViewController(sheet, true, null);
+        return true;
+    }
+
+    /// <summary><c>window.open(url, '_blank')</c> goes to the system browser; a bug report
+    /// download goes to the share sheet.</summary>
     private sealed class UiDelegate : WKUIDelegate
     {
+        private readonly LauncherViewController _owner;
+        public UiDelegate(LauncherViewController owner) => _owner = owner;
+
         public override WKWebView? CreateWebView(WKWebView webView, WKWebViewConfiguration configuration, WKNavigationAction navigationAction, WKWindowFeatures windowFeatures)
         {
             var url = navigationAction.Request.Url;
-            if (url != null) OpenExternally(url);
+            if (url != null && !_owner.TryShareBugReport(url)) OpenExternally(url);
             return null;
         }
     }

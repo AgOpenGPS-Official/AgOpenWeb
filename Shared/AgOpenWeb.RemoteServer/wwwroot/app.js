@@ -3431,7 +3431,20 @@ function renderAbout() {
 }
 
 // Bug Report
-function renderBugReport() { document.getElementById('br-status').textContent = appInfo ? (appInfo.bugReportStatus || '') : ''; }
+// The report is a zip on the host. Download fetches it through the system browser, which saves
+// it to this device's Downloads: inside an app shell the web view itself can't save a file.
+let brFile = null;
+function renderBugReport() {
+  const s = appInfo ? (appInfo.bugReportStatus || '') : '';
+  document.getElementById('br-status').textContent = s;
+  const m = /(bugreport_[^\/\\]+\.zip)$/.exec(s);
+  brFile = m ? m[1] : null;
+  document.getElementById('br-download').style.display = brFile ? '' : 'none';
+}
+document.getElementById('br-download').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (brFile) openExternal(location.origin + '/bugreports/' + encodeURIComponent(brFile));
+});
 document.getElementById('br-submit').addEventListener('pointerdown', e => {
   e.stopPropagation();
   // No title needed: the point is to capture the moment. The host names it "untitled".
