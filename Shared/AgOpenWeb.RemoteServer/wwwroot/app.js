@@ -799,6 +799,23 @@ addEventListener('touchend', e => {
   _lastTapEnd = now;
 }, { passive: false });
 
+// A tap on the vehicle resets its direction, as in AgOpenGPS: the heading is learned again
+// from the next forward travel. It is the way out when the first heading was taken while
+// backing, after which (with an IMU) forward travel reads as reverse.
+const VEHICLE_TAP_RADIUS = 44; // px
+function vehicleTap(px, py) {
+  const rp = renderPose();
+  if (!rp) return;
+  const p = w2s(rp.e, rp.n);
+  if (!p || Math.hypot(p[0] - px, p[1] - py) > VEHICLE_TAP_RADIUS) return;
+  const gps = config && config.gps;
+  // With dual GPS the antennas give the heading: there is no direction to learn.
+  if (gps && gps.isDualGps && !gps.autoDualFix && statusBar && !statusBar.dualHeadingMissing) return;
+  if (!iHoldControl) { showToast(tr('Take control to reset the direction')); return; }
+  transport.send('heading.resetDirection');
+  showToast(tr('Direction reset. Drive forward above 1.5 km/h.'));
+}
+
 // Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one
 // that stays put is a TAP. Overlays (panels/toolbars) stopPropagation their pointerdown,
 // so window-level pointerdown only fires for gestures that began on the map — gestureOnMap
@@ -821,6 +838,8 @@ addEventListener('pointerup', e => {
   if (gestureOnMap && !moved && mapTap) {
     const w = s2w(e.clientX, e.clientY);
     if (w) mapTap.onTap(w.e, w.n);
+  } else if (gestureOnMap && !moved && !editSession) {
+    vehicleTap(e.clientX, e.clientY);
   }
   gestureOnMap = false;
 });

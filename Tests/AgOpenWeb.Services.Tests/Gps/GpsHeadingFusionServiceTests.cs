@@ -363,4 +363,115 @@ public class GpsHeadingFusionServiceTests
         Assert.That(_service.IsDualHeadingMissing, Is.False, "a PAOGI fix clears it");
         Assert.That(h, Is.EqualTo(30).Within(1e-9));
     }
+
+    // ── First heading needs real travel; Reset Direction (from PR #249) ─────────────
+
+    private static double OffNorth(double headingDeg) => Math.Abs((headingDeg + 180) % 360 - 180);
+
+    [Test]
+    public void SmallSteps_DoNotSetTheFirstHeading_UntilEnoughDistanceIsCovered()
+    {
+        // Five fixes 5 cm apart: 0.25 m in all, short of the 0.35 m a heading needs
+        // (FixToFixDistance 0.5 m). Three such fixes used to be enough, and GPS noise over
+        // 10 cm can point anywhere.
+        for (int i = 0; i < 5; i++)
+        {
+            double h = _service.FuseHeading(45, 0, false, Fast, 0, i * 0.05, false);
+            Assert.That(h, Is.EqualTo(45).Within(1e-9), "the sentence heading passes through meanwhile");
+        }
+
+        double first = _service.FuseHeading(45, 0, false, Fast, 0, 0.40, false);
+        Assert.That(first, Is.EqualTo(0).Within(1e-6), "set from the travel, once it is long enough");
+    }
+
+    [Test]
+    public void ANoisyFixBehindTheStart_DoesNotSetABackwardsHeading()
+    {
+        // Driving north with an IMU that says north. The second fix lands 8 cm behind the
+        // first (noise). Taken as a heading that would be south, and the IMU offset would
+        // lock 180° out.
+        _service.FuseHeading(0, 0, true, Fast, 0, 0.00, false);
+        _service.FuseHeading(0, 0, true, Fast, 0, -0.08, false);
+        _service.FuseHeading(0, 0, true, Fast, 0, 0.10, false);
+        double h = DriveNorth(10, imu: 0, imuValid: true, startN: 0.3);
+
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
+        Assert.That(_service.IsReverse, Is.False);
+    }
+
+    [Test]
+    public void TheRunTowardsAFirstHeading_StartsAgain_AfterDroppingBelowTheStartSpeed()
+    {
+        // One fix at speed far to the west, then a stop; the vehicle is moved and sets off
+        // north. The heading must come from the new run, not from the old fix.
+        _service.FuseHeading(45, 0, false, Fast, -50, 0, false);
+        _service.FuseHeading(45, 0, false, 0.1, 0, 0, false);     // below 1.5 km/h
+
+        double h = DriveNorth(4, gpsHeading: 45);
+
+        Assert.That(h, Is.EqualTo(0).Within(1e-6));
+    }
+
+    [Test]
+    public void ALongRealReverse_StaysAReverse()
+    {
+        // Backing 20 m while facing north. No distance turns a reverse into "forward the
+        // other way": the tractor and the IMU still face north.
+        DriveNorth(20, imu: 0, imuValid: true);
+        double n = 19 * 0.3, h = 0;
+        for (int i = 0; i < 67; i++)
+        {
+            n -= 0.3;
+            h = _service.FuseHeading(0, 0, true, Fast, 0, n, false);
+        }
+
+        Assert.That(_service.IsReverse, Is.True);
+        Assert.That(OffNorth(h), Is.LessThan(1.0), "still facing north");
+    }
+
+    [Test]
+    public void StartedWhileBacking_ForwardTravelReadsAsReverse_UntilTheDirectionIsReset()
+    {
+        // First heading taken while backing south; the IMU says the tractor faces north.
+        for (int i = 0; i < 3; i++) _service.FuseHeading(180, 0, true, Fast, 0, -i * 0.3, false);
+
+        // Driving forward north now reads as reverse, for as long as it lasts.
+        double n = -0.6;
+        for (int i = 0; i < 100; i++) { n += 0.3; _service.FuseHeading(0, 0, true, Fast, 0, n, false); }
+        Assert.That(_service.IsReverse, Is.True, "the trap");
+
+        _service.ResetDirection();
+        double h = 0;
+        for (int i = 0; i < 6; i++) { n += 0.3; h = _service.FuseHeading(0, 0, true, Fast, 0, n, false); }
+
+        Assert.That(_service.IsReverse, Is.False);
+        Assert.That(OffNorth(h), Is.LessThan(1e-6), "learned again from forward travel");
+    }
+
+    [Test]
+    public void ResetDirection_HoldsTheHeading_UntilTheNewOneIsLearned()
+    {
+        DriveNorth(6);   // no IMU: heading north from the fixes
+
+        _service.ResetDirection();
+        double held = _service.FuseHeading(90, 0, false, Fast, 0, 1.5, false);   // same place: nothing to learn from yet
+        Assert.That(held, Is.EqualTo(0).Within(1e-6), "not the sentence heading, which would swing the tractor");
+
+        double h = 0;
+        for (int i = 1; i <= 4; i++) h = _service.FuseHeading(90, 0, false, Fast, i * 0.3, 1.5, false);
+        Assert.That(h, Is.EqualTo(90).Within(1e-6), "east, from the new travel");
+    }
+
+    [Test]
+    public void ResetDirection_IsIgnored_WhileTheHeadingComesFromTheDualAntenna()
+    {
+        ConfigurationStore.Instance.Connections.IsDualGps = true;
+        _service.FuseHeading(30, 0, false, Fast, 0, 0, true);
+
+        _service.ResetDirection();
+        double h = _service.FuseHeading(30, 0, false, Fast, 0, 0.3, true);
+
+        Assert.That(h, Is.EqualTo(30).Within(1e-9));
+        Assert.That(_service.IsReverse, Is.False);
+    }
 }
