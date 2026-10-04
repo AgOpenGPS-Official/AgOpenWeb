@@ -126,7 +126,7 @@ def serve(client):
 
 srv = socket.socket()
 srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-srv.bind(("127.0.0.1", listen)); srv.listen(4)
+srv.bind((os.environ.get("LISTEN_HOST", "127.0.0.1"), listen)); srv.listen(4)   # 0.0.0.0 for an app on another device
 while True:
     conn, _ = srv.accept()
     threading.Thread(target=serve, args=(conn,), daemon=True).start()

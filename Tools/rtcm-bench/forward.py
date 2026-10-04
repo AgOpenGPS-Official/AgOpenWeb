@@ -9,6 +9,10 @@ schedule, to measure what datagram loss between the app and the module does to t
 SCHEDULE_JSON is a list of [start_s, duration_s, loss] with loss 0..1; outside it nothing is
 dropped. CREDS_FILE holds "user:password".
 
+GAP_MS (default 25) is the gap between datagrams; HOLD_S holds the stream back for that
+many seconds first and then sends the backlog at that gap, to see whether a module keeps up
+with closely spaced datagrams.
+
 With FIXED_FOR=30 in the environment the schedule starts once the receiver has been RTK
 Fixed for that many seconds (it gives up after FIXED_TIMEOUT, default 900 s). The process
 exits 20 s after the last episode.
@@ -38,6 +42,8 @@ tcp.setblocking(False)
 udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 udp.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
+gap = float(os.environ.get("GAP_MS", "25")) / 1000.0
+hold = float(os.environ.get("HOLD_S", "0"))
 gate = float(os.environ.get("FIXED_FOR", "0"))
 timeout = float(os.environ.get("FIXED_TIMEOUT", "900"))
 watch = FixWatch() if gate > 0 else None
@@ -68,11 +74,11 @@ while True:
             loss = p
     if t0 is not None and loss != last:
         note("loss -> %.2f (sent %d dropped %d)" % (loss, sent, dropped)); last = loss
-    if queue and now >= next_send:
+    if queue and now >= next_send and now - began >= hold:
         chunk = bytes(queue[:256]); del queue[:256]
         if random.random() < loss:
             dropped += 1
         else:
             udp.sendto(chunk, (dest, 2233)); sent += 1
-        next_send = now + 0.025
+        next_send = now + gap
     time.sleep(0.002)

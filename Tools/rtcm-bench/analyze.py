@@ -43,6 +43,11 @@ if os.path.exists(path("rtcm.bin")):
     for t, d in records("rtcm.bin"):
         stream += d; times += [t] * len(d); count += 1
     msgs, bad, skipped = frame(stream, times)
+    arrivals = [t for t, _ in records("rtcm.bin")]
+    gaps = sorted(b - a for a, b in zip(arrivals, arrivals[1:]))
+    if gaps:
+        print("== datagram spacing: shortest %.1f ms, %d of %d under 20 ms, %d under 9 ms"
+              % (gaps[0] * 1000, sum(g < 0.020 for g in gaps), len(gaps), sum(g < 0.009 for g in gaps)))
     print("== forwarded stream: %d datagrams, %d bytes; %d whole messages, %d checksum failures, %d bytes outside a message"
           % (count, len(stream), len(msgs), len(bad), len(skipped)))
     print("  %-16s %6s %6s %8s %7s %s" % ("window", "msgs", "obs", "crcFail", "skipB", "1005/1006"))

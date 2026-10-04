@@ -40,11 +40,20 @@ internal sealed class RtcmQueue
     /// cannot take a 2233 datagram over 512 bytes.</summary>
     public const int ChunkSize = 256;
 
-    /// <summary>Gap between datagrams. 256 B / 25 ms ≈ 10 KB/s: several times a heavy
-    /// multi-constellation stream, so normal corrections never back up, and the first
-    /// datagram of an epoch goes out with no wait. The v26 AiO keeps only the newest datagram
-    /// between two polls of its socket, so datagrams must not go back to back.</summary>
+    /// <summary>Nominal gap between datagrams. 256 B / 25 ms ≈ 10 KB/s: several times a
+    /// heavy multi-constellation stream, so normal corrections never back up, and the first
+    /// datagram of an epoch goes out with no wait.</summary>
     public const double IntervalMs = 25.0;
+
+    /// <summary>Shortest gap, used only to catch up after the sender was woken late (a timer
+    /// that fires at 40–50 ms instead of 25 would otherwise halve the rate). The v26 AiO keeps
+    /// only the newest datagram between two polls of its socket, so datagrams never go back
+    /// to back. 256 B / 10 ms is 25 KB/s, under the receiver's 46 KB/s serial link.</summary>
+    public const double MinGapMs = 10.0;
+
+    /// <summary>Most lateness that is made up: ten datagrams' worth. Bounds the fast run
+    /// after a long stall of the sender.</summary>
+    public const double MaxCreditMs = 250.0;
 
     /// <summary>Memory guard: past this the oldest unsent messages are dropped.</summary>
     public const int MaxQueuedBytes = 64 * 1024;
@@ -69,6 +78,13 @@ internal sealed class RtcmQueue
     private int _count;
     private long _lastSendTimestamp;
     private bool _hasSent;
+    // Byte budget: the rate is IntervalMs per datagram on average. Time the sender spent
+    // late (data was waiting and due, and it had not come for it) is credit, spent by
+    // shortening the following gaps down to MinGapMs.
+    private double _creditMs;
+    private long _nonEmptySince;
+    private long _datagrams, _catchUpDatagrams;
+    private double _maxLateMs;
 
     /// <param name="clock">Time source; null follows <see cref="Clock.Current"/>.</param>
     public RtcmQueue(IClock? clock = null) => _clock = clock;
@@ -84,6 +100,20 @@ internal sealed class RtcmQueue
     public long SupersededOther { get; private set; }
     /// <summary>Messages dropped by the <see cref="MaxQueuedBytes"/> guard.</summary>
     public long MemoryGuardDrops { get; private set; }
+
+    /// <summary>Datagrams sent, how many of them went at a catch-up gap, and the longest the
+    /// sender came late for one, since the previous call. For the NTRIP health line: it shows
+    /// whether this device's timers are late and whether the lateness is being made up.</summary>
+    public (long Datagrams, long CatchUp, double MaxLateMs) TakePacingStats()
+    {
+        lock (_lock)
+        {
+            var stats = (_datagrams, _catchUpDatagrams, _maxLateMs);
+            _datagrams = _catchUpDatagrams = 0;
+            _maxLateMs = 0;
+            return stats;
+        }
+    }
 
     /// <summary>Queue one whole message (or, with <see cref="Opaque"/>, one read of an
     /// unframed stream). The bytes are copied.</summary>
@@ -115,6 +145,7 @@ internal sealed class RtcmQueue
                 }
             }
 
+            if (_count == 0) _nonEmptySince = Time.GetTimestamp();
             _items.AddLast(new Item { Data = message.ToArray(), Kind = kind, Key = key });
             _count += message.Length;
 
@@ -133,8 +164,8 @@ internal sealed class RtcmQueue
         }
     }
 
-    /// <summary>Take the next datagram if one is due: the queue holds data and
-    /// <see cref="IntervalMs"/> has passed since the last one.</summary>
+    /// <summary>Take the next datagram if one is due: the queue holds data and the gap since
+    /// the last one has passed (<see cref="IntervalMs"/>, or less while catching up).</summary>
     public bool TryDequeue(out byte[] chunk)
     {
         chunk = Array.Empty<byte>();
@@ -142,6 +173,19 @@ internal sealed class RtcmQueue
         {
             long now = Time.GetTimestamp();
             if (_count == 0 || !IsDue(now)) return false;
+
+            if (_hasSent)
+            {
+                // How long this datagram sat ready: from the end of its gap, or from when
+                // it arrived if the queue was empty then. An idle queue earns no credit.
+                double gap = Gap;
+                double sinceLast = Time.ElapsedMs(_lastSendTimestamp, now);
+                double late = Math.Max(0, Math.Min(sinceLast - gap, Time.ElapsedMs(_nonEmptySince, now)));
+                _creditMs = Math.Clamp(_creditMs - (IntervalMs - gap) + late, 0, MaxCreditMs);
+                if (gap < IntervalMs - 0.5) _catchUpDatagrams++;
+                if (late > _maxLateMs) _maxLateMs = late;
+            }
+            _datagrams++;
 
             int size = Math.Min(_count, ChunkSize);
             chunk = new byte[size];
@@ -168,7 +212,7 @@ internal sealed class RtcmQueue
         lock (_lock)
         {
             if (!_hasSent) return 0;
-            double wait = IntervalMs - Time.ElapsedMs(_lastSendTimestamp, Time.GetTimestamp());
+            double wait = Gap - Time.ElapsedMs(_lastSendTimestamp, Time.GetTimestamp());
             return wait > 0 ? wait : 0;
         }
     }
@@ -180,11 +224,15 @@ internal sealed class RtcmQueue
         {
             _items.Clear();
             _count = 0;
+            _creditMs = 0;
         }
     }
 
+    // The gap the next datagram must keep: shorter while there is lateness to make up.
+    private double Gap => Math.Max(MinGapMs, IntervalMs - _creditMs);
+
     private bool IsDue(long now) =>
-        !_hasSent || Time.ElapsedMs(_lastSendTimestamp, now) >= IntervalMs;
+        !_hasSent || Time.ElapsedMs(_lastSendTimestamp, now) >= Gap;
 
     // What a message may replace. Observations: (type, epoch time). Station data: its type.
     // Ephemerides: an identical message (the key only narrows the comparison).

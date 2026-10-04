@@ -588,8 +588,13 @@ public class NtripClientService : INtripClientService, IDisposable
 
     /// <summary>
     /// Sends queued RTCM to the AiO, one datagram of at most RtcmQueue.ChunkSize bytes per
-    /// RtcmQueue.IntervalMs. Sleeps on _sendSignal while the queue is empty, so the first
-    /// datagram of an epoch goes out as soon as it arrives. Runs per session (its token).
+    /// RtcmQueue.IntervalMs on average. Sleeps on _sendSignal while the queue is empty, so the
+    /// first datagram of an epoch goes out as soon as it arrives. Runs per session (its token).
+    ///
+    /// Task.Delay is often late (15 ms timer steps on Windows, 40–50 ms wake-ups on Android),
+    /// which used to cost throughput. The queue now turns that lateness into shorter gaps
+    /// (down to RtcmQueue.MinGapMs). A timer cannot keep those, so a shortened wait sleeps on
+    /// the timer for all but its last few milliseconds and spins those out (RTCM plan, Phase 3).
     /// </summary>
     private async Task SendLoop(CancellationToken token)
     {
@@ -604,12 +609,35 @@ public class NtripClientService : INtripClientService, IDisposable
                         SendRtcmDatagram(chunk);
 
                     double wait = _pacer.MsUntilDue();
-                    if (_pacer.Count > 0 && wait > 0)
+                    if (_pacer.Count == 0 || wait <= 0) continue;
+                    if (wait >= RtcmQueue.IntervalMs - 1)
+                    {
                         await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling(wait)), token);
+                        continue;
+                    }
+                    // A catch-up gap. Sleep the bulk of it; if the timer overshoots, the
+                    // queue counts that as lateness too.
+                    if (wait > SpinTailMs + 2)
+                        await Task.Delay(TimeSpan.FromMilliseconds(Math.Floor(wait - SpinTailMs)), token);
+                    SpinFor(_pacer.MsUntilDue(), token);
                 }
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>The end of a shortened wait that is spun, not slept: about the lateness of a
+    /// timer on a good day.</summary>
+    private const double SpinTailMs = 6.0;
+
+    /// <summary>Wait a few milliseconds precisely, without a timer.</summary>
+    private static void SpinFor(double milliseconds, CancellationToken token)
+    {
+        if (milliseconds <= 0) return;
+        long until = System.Diagnostics.Stopwatch.GetTimestamp()
+                     + (long)(milliseconds * System.Diagnostics.Stopwatch.Frequency / 1000.0);
+        while (System.Diagnostics.Stopwatch.GetTimestamp() < until && !token.IsCancellationRequested)
+            Thread.SpinWait(64);
     }
 
     private void SendRtcmDatagram(byte[] chunk)
@@ -699,9 +727,11 @@ public class NtripClientService : INtripClientService, IDisposable
         long superseded = _pacer.SupersededObservations + _pacer.SupersededOther + _pacer.MemoryGuardDrops;
         long newlySuperseded = superseded - _healthLineSuperseded;
         _healthLineSuperseded = superseded;
+        var (datagrams, catchUp, maxLateMs) = _pacer.TakePacingStats();
         _logger.LogInformation(
-            "[NTRIP] last RTCM {Sec:F1}s ago, total {Bytes} bytes; messages since last line: {Messages}; not sent (replaced by newer) {Superseded}; session checksum failures {Crc}, skipped {Skipped} bytes; receiver fix {Fix}, differential age {Age:F1}s",
+            "[NTRIP] last RTCM {Sec:F1}s ago, total {Bytes} bytes; messages since last line: {Messages}; not sent (replaced by newer) {Superseded}; sent {Datagrams} datagrams, {CatchUp} at a catch-up gap, sender late up to {Late:F0} ms; session checksum failures {Crc}, skipped {Skipped} bytes; receiver fix {Fix}, differential age {Age:F1}s",
             secondsSinceData, TotalBytesReceived, DescribeNewMessages(snap), newlySuperseded,
+            datagrams, catchUp, maxLateMs,
             snap.ChecksumFailures, snap.BytesSkipped, gps?.FixQuality ?? 0, gps?.DifferentialAge ?? 0);
 
         if (secondsSinceData >= WATCHDOG_RECONNECT_SECONDS)

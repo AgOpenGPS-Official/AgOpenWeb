@@ -49,7 +49,9 @@ python3 Tools/rtcm-bench/analyze.py /tmp/run2
 ```
 
 The destination is a module address (unicast) or the subnet's `.255` (broadcast). The schedule
-is a list of `[start_s, duration_s, loss]`.
+is a list of `[start_s, duration_s, loss]`. `GAP_MS` sets the gap between datagrams and
+`HOLD_S` holds the stream back first and then releases the backlog at that gap; with
+`board_log.py` running, the board's own count shows whether it kept up.
 
 ## What `analyze.py` prints
 
@@ -67,6 +69,7 @@ is a list of `[start_s, duration_s, loss]`.
 | `relay.py` | TCP relay with scheduled stalls and slow-downs |
 | `forward.py` | Stand-in forwarder with scheduled datagram loss |
 | `record_udp.py` | Timestamped capture of a UDP port |
+| `board_log.py` | Follows an AiO v26 board's log; sums the RTCM datagrams it counted |
 | `drive.py` | Points the app's NTRIP at the relay and opens a field (Playwright) |
 | `analyze.py` | Summary of a run directory |
 | `rtcm.py` | RTCM 3 framing and CRC-24Q, as `RtcmFramer` does it |

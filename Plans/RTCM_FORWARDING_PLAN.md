@@ -1,6 +1,6 @@
 # RTCM forwarding: forward messages, not bytes
 
-**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`).
+**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`); Phase 2 implemented 2026-10-04 (`RtcmQueue`, `ChunkedDecoder`); Phase 3 implemented 2026-10-04 (lateness credit in `RtcmQueue`).
 **Prompted by:** PR #247 (stale-drop tuning in `RtcmPacer`) and reports of receivers stuck in
 RTK Float / DGPS while NTRIP is connected. Reviewing that PR showed the drop rule is being tuned
 at the wrong layer: the forwarder does not know where an RTCM message starts or ends.
@@ -210,9 +210,42 @@ Seen on the way: this caster sends each GLONASS ephemeris twice back to back, by
 The queue sends one, so the health line shows a handful of "not sent" messages every 30 s in
 steady flow. Harmless.
 
-### Phase 3: byte-budget pacing
-- Catch-up sending within the minimum gap; tests drive a clock that wakes the sender late.
-- Depends on nothing in the firmware, but firmware #32 widens the margin on v26.
+### Phase 3: byte-budget pacing (done)
+- `RtcmQueue` keeps the nominal rate of one datagram per 25 ms as an average. Time the sender
+  spent late (a datagram was ready and due, and the sender had not come for it) is credit,
+  spent by shortening the next gaps down to 10 ms. At most 250 ms of lateness is made up. An
+  idle queue earns nothing, and the first datagram of an epoch still goes at once.
+- The send loop spins out the short catch-up waits, because a timer cannot keep them.
+- Tests: a sender whose 25 ms waits take 45 ms keeps the nominal average and never goes
+  under the minimum gap; a two-second stall of the sender is made up only in part; an idle
+  queue earns no credit.
+
+Bench, AiO v26 (the board's own count of datagrams received, from its log, against the
+count sent by `Tools/rtcm-bench/forward.py`):
+
+| Gap between datagrams | Sent | Counted by the board |
+|---|---|---|
+| 10 ms, steady stream | 680 | 680 |
+| 10 ms, a 15 s backlog released at once | 661 | 661 |
+| 2 ms, a 15 s backlog released at once | 690 | 653 |
+
+So 10 ms is safe on the v26 firmware as it is, and the loss at 2 ms is firmware issue #32
+seen on the bench. On the Mac the app's own gaps stay at 21–27 ms: its timers are punctual.
+
+On a Galaxy Tab S7 FE (Android 14, on Wi-Fi, app in front), from the health line's pacing
+statistics and the tablet's datagrams as heard on the Mac:
+
+- the sender came 3–7 ms late for a datagram, never the 20–25 ms assumed when this phase was
+  planned;
+- about four datagrams in ten went at a shortened gap, and the average gap within an epoch
+  held at 25.0 ms (it would drift to about 29 ms without the catching up);
+- a 15-datagram burst after a stall took 348 ms, 24.9 ms each;
+- one of 676 datagrams was lost between the tablet and the Mac: a broadcast relayed by the
+  access point, which is not acknowledged. Phase 4 (unicast) is the remedy.
+
+The send loop sleeps on the timer for all but the last 6 ms of a shortened wait and spins
+those. Its CPU cost on the tablet was not measurable against the app's own load. Windows,
+with its 15 ms timer steps, is still to be checked on a device.
 
 ### Phase 4: unicast
 - GPS module address from `UdpCommunicationService`; fall back to broadcast when unknown or
@@ -241,8 +274,8 @@ steady flow. Harmless.
 1. Unicast by default, or opt-in for the first release (Decision 5)?
 2. Is there a setup where RTCM must reach a device other than the GPS module (a second
    receiver, a radio bridge)? If so the "always broadcast" setting is required, not optional.
-3. Minimum gap for catch-up: 10 ms assumes the v26 loop polls well inside that. Confirm on the
-   bench, or wait for firmware #32.
+3. ~~Minimum gap for catch-up~~ Settled on the bench: the v26 board loses nothing at 10 ms
+   (Phase 3).
 4. Should messages the receiver cannot use (for example ephemeris 1019/1020 on a caster that
    sends them) be forwarded? Proposed: yes, forward everything valid; the app is not the place
    to second-guess the caster.

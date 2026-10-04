@@ -141,6 +141,72 @@ public class RtcmQueueTests
         Assert.That(_queue.SupersededObservations + _queue.SupersededOther + _queue.MemoryGuardDrops, Is.Zero);
     }
 
+    // ── Byte budget: a late sender catches up (Phase 3) ──────────────────────
+
+    /// <summary>Drain with a sender that oversleeps every wait by <paramref name="lateMs"/>.</summary>
+    private List<double> DrainLate(double lateMs)
+    {
+        var at = new List<double>();
+        double t = 0;
+        while (_queue.Count > 0)
+        {
+            double wait = _queue.MsUntilDue();
+            if (wait > 0)
+            {
+                // Short catch-up gaps are spun out precisely by the send loop; only timer waits are late.
+                double slept = wait + (wait >= RtcmQueue.IntervalMs - 1 ? lateMs : 0);
+                _clock.AdvanceMs(slept);
+                t += slept;
+            }
+            Assert.That(_queue.TryDequeue(out _), Is.True);
+            at.Add(t);
+        }
+        return at;
+    }
+
+    [Test]
+    public void ASenderThatWakesLate_CatchesUp_AndKeepsTheNominalRate()
+    {
+        Enqueue(Enumerable.Range(0, 40).Select(i => RtcmFramerTests.Message(4072, 250, i)).ToArray()); // 40 datagrams
+        var at = DrainLate(lateMs: 20);   // every 25 ms timer wait takes 45 ms
+
+        double average = at[^1] / (at.Count - 1);
+        Assert.That(average, Is.EqualTo(RtcmQueue.IntervalMs).Within(1.0), "lateness is made up, not lost");
+        var (datagrams, catchUp, maxLate) = _queue.TakePacingStats();
+        Assert.That((datagrams, maxLate), Is.EqualTo((40L, 20.0)));
+        Assert.That(catchUp, Is.GreaterThan(10), "the pacing statistics show the catching up");
+        Assert.That(_queue.TakePacingStats().Datagrams, Is.Zero, "taken, so the next reading starts from zero");
+        Assert.That(at.Zip(at.Skip(1), (a, b) => b - a).Min(), Is.GreaterThanOrEqualTo(RtcmQueue.MinGapMs),
+            "datagrams never go closer than the minimum gap");
+    }
+
+    [Test]
+    public void ALongStallOfTheSender_IsMadeUpOnlyInPart()
+    {
+        Enqueue(Enumerable.Range(0, 60).Select(i => RtcmFramerTests.Message(4072, 250, i)).ToArray());
+        Assert.That(_queue.TryDequeue(out _), Is.True);
+        _clock.AdvanceMs(2000);   // the sender did not run for two seconds
+
+        var at = DrainLate(lateMs: 0);
+
+        int fast = at.Zip(at.Skip(1), (a, b) => b - a).Count(gap => gap < RtcmQueue.IntervalMs - 0.001);
+        Assert.That(fast, Is.InRange(10, 18), "about MaxCreditMs of catching up, then the nominal gap again");
+    }
+
+    [Test]
+    public void AnIdleQueue_EarnsNoCredit()
+    {
+        Enqueue(Obs(1077, 1, 700));
+        Drain();
+        _clock.AdvanceMs(900);   // nothing to send until the next epoch
+
+        Enqueue(Obs(1077, 2, 700));
+        var sent = Drain();
+
+        Assert.That(sent.Select(s => s.AtMs), Is.EqualTo(new[] { 0, RtcmQueue.IntervalMs, 2 * RtcmQueue.IntervalMs }),
+            "the first datagram goes at once and the rest keep the nominal gap");
+    }
+
     // ── Backlog ──────────────────────────────────────────────────────────────
 
     [Test]
