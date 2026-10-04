@@ -80,6 +80,7 @@ public static partial class RemoteServerWiring
             case "conn.agShareServer": con.AgShareServer = val; cfg.SaveAppSettings(); return;
             case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
             case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
+            case "conn.rtcmBroadcast": con.RtcmBroadcast = B(); cfg.SaveAppSettings(); return;
             // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
             case "vehicle.type":
                 if (I(out var ty))

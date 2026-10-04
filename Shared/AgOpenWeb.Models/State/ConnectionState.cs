@@ -96,6 +96,22 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripBytesReceived, value);
     }
 
+    // Where RTCM is being sent (empty with no session), and whether that is the GPS
+    // module's own address rather than the subnet broadcast.
+    private string _ntripRtcmDestination = "";
+    public string NtripRtcmDestination
+    {
+        get => _ntripRtcmDestination;
+        set => SetProperty(ref _ntripRtcmDestination, value);
+    }
+
+    private bool _ntripRtcmUnicast;
+    public bool NtripRtcmUnicast
+    {
+        get => _ntripRtcmUnicast;
+        set => SetProperty(ref _ntripRtcmUnicast, value);
+    }
+
     // Result of the most recent NTRIP "Test Connection" probe (e.g. from the remote
     // Network IO editor). Set on the UI thread by the test runner; projected on the
     // Status frame so the browser editor can show it. Empty = no test run.
@@ -221,6 +237,8 @@ public class ConnectionState : ObservableObject
         IsNtripConnected = false;
         NtripStatus = "Not Connected";
         NtripBytesReceived = 0;
+        NtripRtcmDestination = "";
+        NtripRtcmUnicast = false;
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;

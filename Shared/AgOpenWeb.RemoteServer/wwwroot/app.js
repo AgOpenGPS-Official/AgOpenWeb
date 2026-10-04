@@ -2731,6 +2731,12 @@ function renderNetworkIo() {
   document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
   document.getElementById('nio-ntrip-status').textContent = s.ntripStatus || tr('Not Connected');
   document.getElementById('nio-ntrip-bytes').textContent = Math.floor((s.ntripBytes || 0) / 1024).toLocaleString() + ' KB';
+  // Where the corrections go: the GPS module's own address, or the subnet broadcast.
+  document.getElementById('nio-ntrip-dest').textContent = !s.ntripDestination ? ''
+    : s.ntripUnicast ? tr('Corrections go to the GPS module at {ip}', { ip: s.ntripDestination })
+    : tr('Corrections are broadcast to {ip}', { ip: s.ntripDestination });
+  const bc = document.getElementById('nio-rtcm-bc');
+  if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
   nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
 }
 

@@ -48,7 +48,7 @@ public class NtripClientService : INtripClientService, IDisposable
     private bool _isDisposed;
 
     private IPEndPoint? _rtcmUdpEndpoint;
-    private string? _rtcmSubnet; // the /24 _rtcmUdpEndpoint was built for
+    private bool _rtcmUnicast;   // _rtcmUdpEndpoint is the GPS module's own address
     private Timer? _ggaTimer;
     private Timer? _watchdogTimer;
     // The caster's stream is framed into RTCM messages (_rtcmStats counts them by type) and
@@ -172,7 +172,7 @@ public class NtripClientService : INtripClientService, IDisposable
                 _tcpSocket = tcp;
                 _udpSocket = udp;
                 _rtcmUdpEndpoint = rtcmEndpoint;
-                _rtcmSubnet = config.SubnetAddress;
+                _rtcmUnicast = false;
                 tcp = udp = null; // owned by the session now; Teardown closes them
                 _headerBuffer.Clear();
                 _headerDumped = false;
@@ -488,26 +488,55 @@ public class NtripClientService : INtripClientService, IDisposable
     }
 
     /// <summary>
-    /// subnet.255:port for the modules' current /24 (<see cref="NtripConfiguration.SubnetProvider"/>,
-    /// else <see cref="NtripConfiguration.SubnetAddress"/>), as AgIO sends to its subnet
-    /// setting. Rebuilt only when the subnet changes.
+    /// Where RTCM goes: the GPS module's own address when it is known and broadcasting is
+    /// not forced (<see cref="NtripConfiguration.GpsModuleAddressProvider"/>,
+    /// <see cref="NtripConfiguration.BroadcastOnly"/>), else subnet.255 for the modules'
+    /// current /24, as AgIO sends to its subnet setting. Null if neither can be formed.
+    ///
+    /// Unicast because a Wi-Fi access point repeats every broadcast to its wireless clients
+    /// unacknowledged and at its lowest rate: that costs airtime the steering traffic needs,
+    /// and a tablet's broadcast can be lost on the way (Plans/RTCM_FORWARDING_PLAN.md, Phase 4).
     /// </summary>
+    internal static IPEndPoint? ResolveRtcmDestination(NtripConfiguration config, out bool unicast)
+    {
+        unicast = false;
+        bool broadcastOnly = false;
+        try { broadcastOnly = config.BroadcastOnly?.Invoke() ?? false; } catch { /* default */ }
+        if (!broadcastOnly)
+        {
+            IPAddress? module = null;
+            try { module = config.GpsModuleAddressProvider?.Invoke(); } catch { /* broadcast */ }
+            if (module != null)
+            {
+                unicast = true;
+                return new IPEndPoint(module, config.UdpForwardPort);
+            }
+        }
+        return IPAddress.TryParse($"{ResolveRtcmSubnet(config)}.255", out var broadcast)
+            ? new IPEndPoint(broadcast, config.UdpForwardPort)
+            : null;
+    }
+
+    /// <summary>The destination for the next datagram; logs when it changes.</summary>
     private IPEndPoint? CurrentRtcmEndpoint()
     {
         var config = _config;
         var endpoint = _rtcmUdpEndpoint;
         if (config == null || endpoint == null) return endpoint;
 
-        string subnet = ResolveRtcmSubnet(config);
-        if (subnet == _rtcmSubnet) return endpoint;
+        var target = ResolveRtcmDestination(config, out bool unicast);
+        if (target == null || (target.Equals(endpoint) && unicast == _rtcmUnicast)) return endpoint;
 
-        if (!IPAddress.TryParse($"{subnet}.255", out var broadcast)) return endpoint;
-        endpoint = new IPEndPoint(broadcast, config.UdpForwardPort);
-        _logger.LogInformation("[NTRIP] forwarding RTCM to {Endpoint}", endpoint);
-        _rtcmSubnet = subnet;
-        _rtcmUdpEndpoint = endpoint;
-        return endpoint;
+        _logger.LogInformation("[NTRIP] forwarding RTCM to {Endpoint} ({How})", target,
+            unicast ? "the GPS module" : "broadcast");
+        _rtcmUnicast = unicast;
+        _rtcmUdpEndpoint = target;
+        return target;
     }
+
+    /// <inheritdoc />
+    public (string Address, bool Unicast) RtcmDestination =>
+        _sessionOpen && _rtcmUdpEndpoint is { } e ? (e.Address.ToString(), _rtcmUnicast) : ("", false);
 
     private void ForwardRtcmData(byte[] rtcmData)
     {

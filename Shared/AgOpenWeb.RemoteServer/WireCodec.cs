@@ -648,6 +648,9 @@ public static class WireCodec
         w.Write((byte)(s.NtripConnected ? 1 : 0));
         WriteStr(w, s.NtripStatus);
         w.Write(s.NtripBytes);          // f64 (raw bytes; client formats KB)
+        WriteStr(w, s.NtripDestination);
+        w.Write((byte)(s.NtripUnicast ? 1 : 0));
+        w.Write((byte)(s.RtcmBroadcast ? 1 : 0));
         WriteStr(w, s.NtripTestStatus);
         w.Write((byte)(s.SimPanelVisible ? 1 : 0));
         // Field Tools — Offset Fix drift (meters).
