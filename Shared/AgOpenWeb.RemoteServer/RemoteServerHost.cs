@@ -325,6 +325,23 @@ public sealed class RemoteServerHost
                 new[] { ("Cache-Control", "public, max-age=604800") }); // a week
         });
 
+        // Bug report zips, as a download: the report is made on the host, and this is how it
+        // reaches the device in the user's hand, where the browser saves it to Downloads.
+        // Filename-only (no path traversal), and only the reports the app wrote.
+        server.MapGetPrefix("/bugreports/", file =>
+        {
+            if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+                || !file.StartsWith("bugreport_", StringComparison.Ordinal)
+                || !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                return SimpleWebServer.Response.NotFound;
+            var path = Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", file);
+            if (!File.Exists(path)) return SimpleWebServer.Response.NotFound;
+            return SimpleWebServer.Response.Bytes(File.ReadAllBytes(path), "application/zip",
+                // No filename in the header: the browser takes it from the URL, which carries
+                // non-ASCII titles intact.
+                new[] { ("Content-Disposition", "attachment"), ("Cache-Control", "no-store") });
+        });
+
         await server.StartAsync().ConfigureAwait(false);
         _broadcaster.Start();
         _server = server;

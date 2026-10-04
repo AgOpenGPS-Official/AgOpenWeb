@@ -2513,13 +2513,14 @@
   <!-- Bug Report. -->
   <div id="bugreport" class="ln-panel fm-panel">
     <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Bug Report Dump</span><button class="ln-x ln-closex" title="Close">✕</button></div>
-    <div class="sa-hint">Captures settings, state, the field, the job's coverage and the last 5 minutes of GPS data to a zip in Documents/AgOpenWeb/BugReports. The map stays live with this panel open: keep it open while driving and press the button the moment a problem shows.</div>
+    <div class="sa-hint">Captures settings, state, the field, the job's coverage and the last 5 minutes of GPS data to a zip on the host, which Download then saves on this device. The map stays live with this panel open: keep it open while driving and press the button the moment a problem shows.</div>
     <div class="cfg-label" style="margin-top:8px">Title</div>
     <input class="cfg-num fj-tx" id="br-title" placeholder="Short summary">
     <div class="cfg-label" style="margin-top:8px">Description</div>
     <textarea class="fj-notes" id="br-desc" style="height:90px"></textarea>
     <button class="cfg-act cfg-actwide fj-primary" id="br-submit" style="margin-top:10px">Create Bug Report</button>
     <div class="sa-hint" id="br-status" style="margin-top:6px"></div>
+    <button class="cfg-act cfg-actwide" id="br-download" style="margin-top:6px;display:none">Download</button>
   </div>
   <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
        opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor
