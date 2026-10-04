@@ -53,6 +53,12 @@ public interface INtripClientService
     ulong TotalBytesReceived { get; }
 
     /// <summary>
+    /// The RTCM messages the caster has sent this session, by type, with checksum failures
+    /// and skipped bytes. Diagnostics only: counted beside the forwarder.
+    /// </summary>
+    RtcmStreamSnapshot GetRtcmStreamSnapshot();
+
+    /// <summary>
     /// Connect to NTRIP caster with specified configuration
     /// </summary>
     Task ConnectAsync(NtripConfiguration config);

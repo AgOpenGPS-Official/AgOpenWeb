@@ -1,6 +1,6 @@
 # RTCM forwarding: forward messages, not bytes
 
-**Status:** proposed 2026-10-03.
+**Status:** proposed 2026-10-03. Phase 1 implemented 2026-10-04 (`RtcmFramer`, `RtcmStreamStats`).
 **Prompted by:** PR #247 (stale-drop tuning in `RtcmPacer`) and reports of receivers stuck in
 RTK Float / DGPS while NTRIP is connected. Reviewing that PR showed the drop rule is being tuned
 at the wrong layer: the forwarder does not know where an RTCM message starts or ends.
@@ -114,6 +114,8 @@ caster TCP ──► (de-chunk) ──► RtcmFramer ──► RtcmQueue ──�
   their rates, checksum failures, bytes skipped, differential age.
 - Detect a chunked reply and log it. If any caster in use answers chunked, de-chunking moves
   into this phase; otherwise it is done in Phase 2.
+- Add the receiver's differential age to `gps_data_log.csv` (last column), so it can be read
+  against the fix quality over the five minutes before a report.
 - **Outcome:** a dump from a reporter stuck in Float shows whether the stream is complete at
   the app (types, rates, 1005/1006 present) and how old the receiver says the corrections are.
 

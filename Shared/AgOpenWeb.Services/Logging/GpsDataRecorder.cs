@@ -98,6 +98,7 @@ public sealed class GpsDataRecorder
             ImuValid = result.ImuValid,
             IsReverse = result.IsReverse,
             IsDualHeadingMissing = result.IsDualHeadingMissing,
+            DifferentialAge = result.DifferentialAge,
         };
 
         lock (_lock)
@@ -133,7 +134,9 @@ public sealed class GpsDataRecorder
             "A,B,ptCount,is_turn_left,anti_tangent_guard_fired," +
             // Heading inputs (#157): sentence type, its heading field before fusion (dual
             // heading on PAOGI, IMU heading on PANDA), and the fusion's verdicts.
-            "sentence,sentence_heading,imu_valid,reverse,dual_missing");
+            "sentence,sentence_heading,imu_valid,reverse,dual_missing," +
+            // Age of the RTK corrections as the receiver reports it (GGA field 13), seconds.
+            "diff_age");
 
         var ci = CultureInfo.InvariantCulture;
         foreach (var r in snapshot)
@@ -194,7 +197,8 @@ public sealed class GpsDataRecorder
             sb.Append(r.SentenceHeading.ToString("F2", ci)); sb.Append(',');
             sb.Append(r.ImuValid ? "1" : "0"); sb.Append(',');
             sb.Append(r.IsReverse ? "1" : "0"); sb.Append(',');
-            sb.AppendLine(r.IsDualHeadingMissing ? "1" : "0");
+            sb.Append(r.IsDualHeadingMissing ? "1" : "0"); sb.Append(',');
+            sb.AppendLine(r.DifferentialAge.ToString("F1", ci));
         }
 
         return sb.ToString();
@@ -242,5 +246,6 @@ public sealed class GpsDataRecorder
         public GpsSentenceType SentenceType;
         public double SentenceHeading;
         public bool ImuValid, IsReverse, IsDualHeadingMissing;
+        public double DifferentialAge;
     }
 }

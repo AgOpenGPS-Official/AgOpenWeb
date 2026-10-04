@@ -28,6 +28,20 @@ public static class NtripResponse
 {
     private static readonly Regex HttpStatus = new(@"^HTTP/\d\.\d\s+(\d{3})", RegexOptions.CultureInvariant);
 
+    /// <summary>The reply header announces chunked transfer encoding (an NTRIP 2 caster may).</summary>
+    public static bool IsChunked(string header)
+    {
+        foreach (string line in (header ?? "").Split('\n'))
+        {
+            int colon = line.IndexOf(':');
+            if (colon > 0
+                && line[..colon].Trim().Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase)
+                && line[(colon + 1)..].Contains("chunked", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     public static (NtripReply Reply, string Reason) Classify(string header)
     {
         string first = (header ?? "").Split('\n')[0].Trim();

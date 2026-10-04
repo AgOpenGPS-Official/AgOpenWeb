@@ -214,10 +214,27 @@ public class GpsDataRecorderTests
         var row = LastDataLineFields(rec);
         Assert.Multiple(() =>
         {
-            Assert.That(header[^5..], Is.EqualTo(new[] { "sentence", "sentence_heading", "imu_valid", "reverse", "dual_missing" }));
+            Assert.That(header[^6..^1], Is.EqualTo(new[] { "sentence", "sentence_heading", "imu_valid", "reverse", "dual_missing" }));
             Assert.That(header[26], Is.EqualTo("anti_tangent_guard_fired"), "existing columns keep their positions");
             Assert.That(row.Length, Is.EqualTo(header.Length));
-            Assert.That(row[^5..], Is.EqualTo(new[] { "PAOGI", "50.25", "0", "1", "0" }));
+            Assert.That(row[^6..^1], Is.EqualTo(new[] { "PAOGI", "50.25", "0", "1", "0" }));
+        });
+    }
+
+    /// <summary>The receiver's differential age is the last column: it shows, beside the fix
+    /// quality, whether corrections were reaching the receiver (RTCM forwarding plan).</summary>
+    [Test]
+    public void Differential_age_is_the_last_column()
+    {
+        var rec = new GpsDataRecorder();
+        rec.Record(MakeResult(0, 0, 0, null) with { DifferentialAge = 2.46 });
+
+        var header = rec.ExportCsv().Split('\n')[0].TrimEnd('\r').Split(',');
+        var row = LastDataLineFields(rec);
+        Assert.Multiple(() =>
+        {
+            Assert.That(header[^1], Is.EqualTo("diff_age"));
+            Assert.That(row[^1], Is.EqualTo("2.5"));
         });
     }
 
