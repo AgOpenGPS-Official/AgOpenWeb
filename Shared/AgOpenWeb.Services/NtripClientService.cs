@@ -51,14 +51,21 @@ public class NtripClientService : INtripClientService, IDisposable
     private string? _rtcmSubnet; // the /24 _rtcmUdpEndpoint was built for
     private Timer? _ggaTimer;
     private Timer? _watchdogTimer;
-    // RTCM goes to the AiO through a pacer: 256-byte datagrams spaced 25 ms apart, AgIO-style.
-    // Unpaced back-to-back 1 KB broadcasts of a post-pause TCP backlog stalled the board's
-    // NMEA output for ~14 s (#169). Staleness stays bounded (#334): the pacer drops a backlog
-    // over 10 KB and anything that has waited over 1 s. See RtcmPacer.
-    private readonly RtcmPacer _pacer = new();
-    // Frames the caster's stream and counts messages by type, beside the forwarder: it
-    // changes nothing that is sent (Plans/RTCM_FORWARDING_PLAN.md, Phase 1).
+    // The caster's stream is framed into RTCM messages (_rtcmStats counts them by type) and
+    // each whole message is queued for the paced sender: 256-byte datagrams 25 ms apart,
+    // AgIO-style, because unpaced back-to-back datagrams of a post-pause TCP backlog stalled
+    // the AiO board (#169). On a backlog the queue keeps the newest observation epoch and the
+    // newest station data, and only ever drops whole messages. See RtcmQueue and
+    // Plans/RTCM_FORWARDING_PLAN.md (Phase 2).
+    private readonly RtcmQueue _pacer = new();
     private readonly RtcmStreamStats _rtcmStats = new();
+    private ChunkedDecoder? _chunked;   // set when the caster's reply is chunked
+    // No RTCM 3 found in the first UnframedAfterBytes of the session: the mount point sends
+    // something else (RTCM 2, CMR, a raw receiver format). Forward it byte for byte, as
+    // before, rather than nothing.
+    private bool _unframed;
+    private const int UnframedAfterBytes = 4096;
+    private long _healthLineSuperseded;
     private Dictionary<int, long> _healthLineCounts = new(); // per-type counts at the last health line
     private readonly SemaphoreSlim _sendSignal = new(0);
 
@@ -171,6 +178,8 @@ public class NtripClientService : INtripClientService, IDisposable
                 _headerDumped = false;
                 _rtcmSeen = false;
                 _rtcmStats.Reset();
+                _chunked = null;
+                _unframed = false;
                 _healthLineCounts = new();
                 TotalBytesReceived = 0;
                 _sessionOpen = true;
@@ -394,13 +403,13 @@ public class NtripClientService : INtripClientService, IDisposable
                                 headerReceived = true;
                                 IsConnected = true;
                                 _logger.LogInformation("Connected and authorized, receiving RTCM data");
-                                // Chunked transfer encoding is not decoded: its chunk-size lines
-                                // travel inside the forwarded stream and break the message they
-                                // land in. Detected and reported for now (RTCM plan, Phase 1).
+                                // An NTRIP 2 caster may send the stream chunked: decode it, or the
+                                // chunk-size lines land inside RTCM messages and break them.
                                 bool chunked = NtripResponse.IsChunked(response);
                                 _rtcmStats.Reset(chunked);
+                                _chunked = chunked ? new ChunkedDecoder() : null;
                                 if (chunked)
-                                    _logger.LogWarning("[NTRIP] the caster replied with Transfer-Encoding: chunked; chunk markers are forwarded inside the RTCM stream");
+                                    _logger.LogInformation("[NTRIP] the caster replied with Transfer-Encoding: chunked; decoding it");
                                 var c = _config;
                                 RaiseStatus(true, c == null ? "Connected"
                                     : $"Connected to {c.CasterAddress}:{c.CasterPort}/{c.MountPoint}");
@@ -511,20 +520,20 @@ public class NtripClientService : INtripClientService, IDisposable
         if (rtcmData.Length > LARGE_READ_BYTES)
             LogLargeRead(rtcmData.Length, secondsSincePrevious, now);
 
-        _rtcmStats.Feed(rtcmData); // counts only; what is forwarded is unchanged
-
-        // Queue for the paced sender (SendLoop) rather than sending inline. (#169)
-        int dropped = _pacer.Enqueue(rtcmData);
-        if (dropped > 0)
+        // Frame the stream and queue each whole message for the paced sender (SendLoop).
+        var decoder = _chunked;
+        if (decoder != null)
         {
-            _logger.LogWarning(
-                "[NTRIP] RTCM backlog of {Bytes} bytes over the {Max}-byte limit dropped (stale corrections, {Gap:F1}s since previous RTCM)",
-                dropped, RtcmPacer.MaxBacklogBytes, secondsSincePrevious);
+            bool wasBroken = decoder.IsBroken;
+            decoder.Feed(rtcmData, QueueStreamBytes);
+            if (decoder.IsBroken && !wasBroken)
+                _logger.LogWarning("[NTRIP] the caster announced chunked transfer encoding but the stream is not chunked; forwarding it as it comes");
         }
         else
         {
-            _sendSignal.Release();
+            QueueStreamBytes(rtcmData);
         }
+        _sendSignal.Release();
 
         if (!_rtcmSeen && Array.IndexOf(rtcmData, (byte)0xD3) >= 0)
         {
@@ -534,6 +543,26 @@ public class NtripClientService : INtripClientService, IDisposable
         TotalBytesReceived += (ulong)rtcmData.Length;
         Volatile.Write(ref _lastRtcmReceivedTimestamp, now);
         RtcmDataReceived?.Invoke(this, new RtcmDataReceivedEventArgs { BytesReceived = rtcmData.Length });
+    }
+
+    /// <summary>Stream bytes (chunking removed) → whole RTCM messages → the send queue.</summary>
+    private void QueueStreamBytes(ReadOnlySpan<byte> data)
+    {
+        if (_unframed)
+        {
+            _pacer.Enqueue(RtcmQueue.Opaque, data);
+            return;
+        }
+
+        _rtcmStats.Feed(data, _pacer.Enqueue);
+
+        if (_rtcmStats.Messages == 0 && _rtcmStats.BytesSkipped >= UnframedAfterBytes)
+        {
+            _unframed = true;
+            _logger.LogWarning(
+                "[NTRIP] no RTCM 3 messages in the first {Bytes} bytes from the caster; forwarding the stream unframed, byte for byte",
+                _rtcmStats.BytesSkipped);
+        }
     }
 
     /// <summary>Log a read over LARGE_READ_BYTES. One that follows a pause is always logged
@@ -558,8 +587,8 @@ public class NtripClientService : INtripClientService, IDisposable
     }
 
     /// <summary>
-    /// Sends queued RTCM to the AiO, one datagram of at most RtcmPacer.ChunkSize bytes per
-    /// RtcmPacer.IntervalMs. Sleeps on _sendSignal while the queue is empty, so the first
+    /// Sends queued RTCM to the AiO, one datagram of at most RtcmQueue.ChunkSize bytes per
+    /// RtcmQueue.IntervalMs. Sleeps on _sendSignal while the queue is empty, so the first
     /// datagram of an epoch goes out as soon as it arrives. Runs per session (its token).
     /// </summary>
     private async Task SendLoop(CancellationToken token)
@@ -571,12 +600,8 @@ public class NtripClientService : INtripClientService, IDisposable
                 await _sendSignal.WaitAsync(token);
                 while (_pacer.Count > 0 && !token.IsCancellationRequested)
                 {
-                    if (_pacer.TryDequeue(out byte[] chunk, out int stale))
+                    if (_pacer.TryDequeue(out byte[] chunk))
                         SendRtcmDatagram(chunk);
-                    if (stale > 0)
-                        _logger.LogWarning(
-                            "[NTRIP] dropped {Bytes} bytes of RTCM queued over {Max:F0} ms (stale)",
-                            stale, RtcmPacer.MaxAgeMs);
 
                     double wait = _pacer.MsUntilDue();
                     if (_pacer.Count > 0 && wait > 0)
@@ -671,9 +696,12 @@ public class NtripClientService : INtripClientService, IDisposable
         // "AgOpenWeb broke" without needing the debug log.
         var gps = _gpsService.CurrentData;
         var snap = _rtcmStats.Snapshot();
+        long superseded = _pacer.SupersededObservations + _pacer.SupersededOther + _pacer.MemoryGuardDrops;
+        long newlySuperseded = superseded - _healthLineSuperseded;
+        _healthLineSuperseded = superseded;
         _logger.LogInformation(
-            "[NTRIP] last RTCM {Sec:F1}s ago, total {Bytes} bytes; messages since last line: {Messages}; session checksum failures {Crc}, skipped {Skipped} bytes; receiver fix {Fix}, differential age {Age:F1}s",
-            secondsSinceData, TotalBytesReceived, DescribeNewMessages(snap),
+            "[NTRIP] last RTCM {Sec:F1}s ago, total {Bytes} bytes; messages since last line: {Messages}; not sent (replaced by newer) {Superseded}; session checksum failures {Crc}, skipped {Skipped} bytes; receiver fix {Fix}, differential age {Age:F1}s",
+            secondsSinceData, TotalBytesReceived, DescribeNewMessages(snap), newlySuperseded,
             snap.ChecksumFailures, snap.BytesSkipped, gps?.FixQuality ?? 0, gps?.DifferentialAge ?? 0);
 
         if (secondsSinceData >= WATCHDOG_RECONNECT_SECONDS)
@@ -703,7 +731,13 @@ public class NtripClientService : INtripClientService, IDisposable
     }
 
     /// <inheritdoc />
-    public RtcmStreamSnapshot GetRtcmStreamSnapshot() => _rtcmStats.Snapshot();
+    public RtcmStreamSnapshot GetRtcmStreamSnapshot() => _rtcmStats.Snapshot() with
+    {
+        SupersededObservations = _pacer.SupersededObservations,
+        SupersededOther = _pacer.SupersededOther,
+        MemoryGuardDrops = _pacer.MemoryGuardDrops,
+        Unframed = _unframed,
+    };
 
     /// <summary>
     /// Kick off the backoff reconnect loop. Idempotent — overlapping
