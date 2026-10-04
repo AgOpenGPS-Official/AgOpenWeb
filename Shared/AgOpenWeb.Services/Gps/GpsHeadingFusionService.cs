@@ -67,6 +67,9 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
 
     private bool _isFirstHeadingSet;
     private bool _hasHeading;        // a Fix or Dual heading has been output at least once
+    private StepFix _startFix;       // where the run towards a first heading began
+    private bool _lastWasDual;       // the previous fix took its heading from the dual antenna
+    private volatile bool _resetDirectionRequested;
     private double _gpsHeading;      // radians, last fix-to-fix heading
     private double _fixHeading;      // radians, the output
     private double _imuGpsOffset;    // radians, IMU → GPS alignment
@@ -113,6 +116,20 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
             Reset();
         }
 
+        // Reset Direction (the operator tapped the vehicle): start over as if no heading
+        // had been learned. Applied here, on the thread that runs the fusion.
+        if (_resetDirectionRequested)
+        {
+            _resetDirectionRequested = false;
+            if (!_lastWasDual)
+            {
+                _isFirstHeadingSet = false;
+                IsReverse = _isReverseWithImu = IsChangingDirection = false;
+                _filteredDelta = 0;
+                Reset();
+            }
+        }
+
         // The IMU heading this fix, if any (radians).
         double? imu = imuValid ? ToRad(imuHeading) : null;
         ImuCorrectedDeg = imu is double ir ? Wrap(ir + _imuGpsOffset) * 180.0 / Math.PI : double.NaN;
@@ -133,6 +150,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
                 IsChangingDirection = false;
                 DetectDualReverse(dual, easting, northing, con.DualReverseDistance);
                 _isFirstHeadingSet = _hasHeading = true;
+                _lastWasDual = true;
                 _fixHeading = _gpsHeading = dual;
                 PushStep(easting, northing);
                 return Output(_fixHeading);
@@ -140,8 +158,12 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         }
 
         // ── Fix ──────────────────────────────────────────────────────────
+        _lastWasDual = false;
         if (!_isFirstHeadingSet)
         {
+            // Too slow to tell a direction: the run towards a first heading starts again
+            // from wherever the vehicle next gets going, not from where it last stood.
+            if (speedKmh < StartSpeedKmh) _startFix = default;
             if (speedKmh < StartSpeedKmh || !TryStartHeading(easting, northing, imu))
                 return ByPass(gpsHeading, imu);
             return Output(_fixHeading);
@@ -248,16 +270,47 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     {
         for (int i = 0; i < TotalFixSteps; i++) _steps[i] = default;
         _hasReverseFix = false;
+        _startFix = default;
     }
 
-    // First heading: three stored fixes, heading from the oldest to the newest; the
-    // IMU offset is snapped straight onto it (AgOpenGPS "Start").
+    /// <summary>
+    /// Learn the direction again from the next forward travel: forget the first heading,
+    /// the reverse state and the stored fixes, as AgOpenGPS does when the vehicle is tapped
+    /// ("Reset Direction, drive forward"). For when the first heading was taken while the
+    /// vehicle was backing: with an IMU every forward metre after that reads as reverse
+    /// until this is done. The heading on screen holds until the new one is learned.
+    /// Ignored while the heading comes from the dual antenna. Safe to call from any thread;
+    /// it takes effect on the next fix.
+    /// </summary>
+    public void ResetDirection() => _resetDirectionRequested = true;
+
+    // First heading: from where this run above the start speed began to the first fix far
+    // enough from it (the same reach a fix-to-fix heading needs); the IMU offset is snapped
+    // straight onto it (AgOpenGPS "Start").
+    //
+    // AgOpenGPS takes it from three consecutive fixes whatever their spacing. At 10 Hz and
+    // the 1.5 km/h start speed that is 8 cm of travel, which GPS noise can turn into a
+    // heading pointing backwards; with an IMU the offset then locks 180° out and forward
+    // travel reads as reverse from there on (PR #249).
     private bool TryStartHeading(double easting, double northing, double? imu)
     {
-        PushStep(easting, northing);
-        if (!_steps[2].IsSet) return false;
+        if (!_startFix.IsSet)
+        {
+            _startFix = new StepFix { E = easting, N = northing, IsSet = true };
+            PushStep(easting, northing);
+            return false;
+        }
 
-        _gpsHeading = Wrap(Math.Atan2(easting - _steps[2].E, northing - _steps[2].N));
+        if (Dist2(_startFix, easting, northing) < Sq(Connections.FixToFixDistance) * 0.5)
+        {
+            // Keep the step history filling, as it will be needed after the start.
+            if (Dist2(_steps[0], easting, northing) >= Sq(Connections.MinGpsStep))
+                PushStep(easting, northing);
+            return false;
+        }
+
+        PushStep(easting, northing);
+        _gpsHeading = Wrap(Math.Atan2(easting - _startFix.E, northing - _startFix.N));
         _fixHeading = _gpsHeading;
         if (imu is double imuRad)
         {

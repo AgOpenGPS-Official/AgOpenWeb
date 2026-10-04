@@ -144,6 +144,10 @@ public static partial class RemoteServerWiring
                                     cfg.SaveProfiles(rollStore.ActiveVehicleProfileName, rollStore.ActiveToolProfileName);
                                     return;
                                 }
+                                case "heading.resetDirection": // tap on the vehicle (AgOpenGPS "Reset Direction");
+                                    // Tier-2: it changes the heading the steering uses.
+                                    services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>().ResetDirection();
+                                    return;
                                 case "field.deleteApplied": // Tier-1; browser already confirmed
                                     vm.DeleteAppliedAreaConfirmed();
                                     return;
@@ -675,7 +679,8 @@ public static partial class RemoteServerWiring
                         || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
                         || id == "net.subnet" // restarts every module → gate it
                         || id == "prompt.answer" // a confirm can delete data or restart modules
-                        || id == "recpath.play"; // drives the vehicle along the path → actuation
+                        || id == "recpath.play" // drives the vehicle along the path → actuation
+                        || id == "heading.resetDirection"; // changes the heading the steering uses
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep

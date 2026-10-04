@@ -60,4 +60,11 @@ public interface IGpsHeadingFusionService
     /// Discard fix-to-fix history. Call on field close or GPS reconnect.
     /// </summary>
     void Reset();
+
+    /// <summary>
+    /// Learn the direction again from the next forward travel (AgOpenGPS "Reset
+    /// Direction"): forgets the first heading and the reverse state. Ignored while the
+    /// heading comes from the dual antenna. Takes effect on the next fix.
+    /// </summary>
+    void ResetDirection();
 }
