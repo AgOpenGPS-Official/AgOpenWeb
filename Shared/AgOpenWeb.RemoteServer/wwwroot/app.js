@@ -1875,7 +1875,7 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'systemdata', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
@@ -2823,6 +2823,59 @@ function renderNtripRtcm(s) {
 }
 document.getElementById('nio-rtcm').addEventListener('toggle', () => { if (statusBar) renderNtripRtcm(statusBar); });
 
+// System Data — chain sub-panel of Network IO, opened from the GPS line's arrow. The AgIO /
+// AgOpenGPS "System Data" forms in one card. Position, fix and speed are the values the
+// status bar already has; the rest rides Status as systemData. Refreshed per Status frame
+// (~2 Hz) while open.
+const sdPanel = document.getElementById('systemdata');
+const SD = {};
+for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', 'hz', 'missed', 'rej',
+  'speed', 'roll', 'pitch', 'yaw', 'hdual', 'himu', 'hf2f', 'hused', 'sentences'])
+  SD[id] = document.getElementById('sd-' + id);
+document.getElementById('nio-gps-more').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('systemdata', 'ln-network', renderSystemData); });
+document.getElementById('sd-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('networkio', 'ln-network', renderNetworkIo); });
+document.getElementById('sd-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+function renderSystemData() {
+  const s = statusBar; if (!s) return;
+  const d = s.systemData, t = lastTick;
+  const num = (v, dec, suffix) => Number.isFinite(v) ? v.toFixed(dec) + (suffix || '') : '—';
+  const deg = v => Number.isFinite(v) ? (((v % 360) + 360) % 360).toFixed(1) + '°' : '—';
+  const set = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+  set(SD.lat, num(s.lat, 7)); set(SD.lon, num(s.lon, 7));
+  set(SD.e, t ? fmtUnit(t.e, 'm', 2) : '—'); set(SD.n, t ? fmtUnit(t.n, 'm', 2) : '—');
+  set(SD.alt, Number.isFinite(s.altitude) ? fmtUnit(s.altitude, 'm', 1) : '—');
+  set(SD.fix, s.fixText || '—');
+  set(SD.sats, s.sats != null ? String(s.sats) : '—');
+  set(SD.hdop, num(s.hdop, 2));
+  set(SD.age, num(s.age, 1, ' s'));
+  SD.age.classList.toggle('sd-bad', s.age > 5);
+  set(SD.speed, t ? toDisplayUnit(t.speed * 3.6, 'kmh').toFixed(1) + ' ' + unitLabel('kmh') : '—');
+  set(SD.roll, tick && typeof tick.roll === 'number' ? tick.roll.toFixed(1) + '°' : '—');
+  set(SD.hused, t ? deg(t.heading * 180 / Math.PI) : '—');
+  // A real module is sending when a sentence came in the last few seconds; otherwise the
+  // rate and counters describe an old session and read as "—".
+  const live = !!d && d.sentences.some(x => x.type !== 'REJECTED' && x.age < 5);
+  set(SD.hz, live ? num(d.rateHz, 1, ' Hz') : '—');
+  set(SD.missed, d ? String(d.missed) : '—');
+  set(SD.rej, d ? String(d.rejected) : '—');
+  set(SD.pitch, d ? num(d.pitch, 1, '°') : '—');
+  set(SD.yaw, d ? num(d.yawRate, 1, ' °/s') : '—');
+  set(SD.hdual, d ? deg(d.dualHeading) : '—');
+  set(SD.himu, d ? deg(d.imuHeading) : '—');
+  set(SD.hf2f, d ? deg(d.fixToFixHeading) : '—');
+  SD.hdual.classList.toggle('sd-bad', !!s.dualHeadingMissing);
+  const ago = v => tr('{n} s ago', { n: v < 10 ? v.toFixed(1) : Math.round(v) });
+  const rows = (d ? d.sentences : []).map(x =>
+    '<div class="sd-sent' + (x.age > 2 ? ' stale' : '') + '"><div class="sd-senthead"><span' + (x.type === 'REJECTED' ? '>' + esc(tr('Not accepted', {})) : ' translate="no">$' + esc(x.type)) +
+    '</span><span>' + esc(ago(x.age)) + '</span></div><div class="sd-senttext" translate="no">' + esc(x.text) + '</div></div>');
+  const html = rows.length ? rows.join('')
+    : '<div class="sa-hint">' + esc(s.gpsSentence === 'SIM' ? tr('The simulator is supplying the position; no sentence is being received.', {})
+      : tr('No sentence has been received from the GPS module.', {})) + '</div>';
+  // Leave the block alone while text in it is selected, so a sentence can be copied.
+  const sel = window.getSelection && window.getSelection();
+  if (!(sel && !sel.isCollapsed && SD.sentences.contains(sel.anchorNode))) SD.sentences.innerHTML = html;
+}
+
 // NTRIP Profiles — chain sub-panel of Network IO (mirrors NtripProfilesDialogPanel).
 // Native chain model: opening REPLACES the parent (lnOpen closes everything else);
 // Back reopens the parent fly-out (Network IO); Close → map.
@@ -3595,6 +3648,7 @@ function renderSettings() {
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
   // Network IO panel: module/NTRIP readouts ride the Status frame → refresh each frame.
   if (nioPanel.classList.contains('open')) renderNetworkIo();
+  if (sdPanel.classList.contains('open')) renderSystemData();
   // NTRIP test result rides the Status frame while a test is in flight.
   if (_nteTestActive && document.getElementById('ntripeditor').classList.contains('open') && statusBar)
     document.getElementById('nte-teststatus').textContent = statusBar.ntripTestStatus || '';

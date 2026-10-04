@@ -851,6 +851,29 @@ public static partial class RemoteServerWiring
                         return (sentence, headingFusion.IsDualHeadingMissing && gpsSvc.IsGpsLive);
                     };
 
+                    // System Data card (Network IO → GPS): like AgIO's and AgOpenGPS's
+                    // "System Data" forms — attitude, each heading source before fusion,
+                    // the sentence rate and the module's latest raw sentences.
+                    var steerSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IAutoSteerService>();
+                    server.SystemDataProvider = () =>
+                    {
+                        var d = gpsSvc.CurrentData;
+                        if (d == null) return null;
+                        var raw = steerSvc.GpsSentences.GetSnapshot();
+                        var sentences = new System.Collections.Generic.List<AgOpenWeb.RemoteServer.GpsSentenceDto>(raw.Sentences.Count);
+                        foreach (var s in raw.Sentences)
+                            sentences.Add(new AgOpenWeb.RemoteServer.GpsSentenceDto(s.Type, s.Text, s.AgeSeconds));
+                        return new AgOpenWeb.RemoteServer.SystemDataDto(
+                            d.ImuPitch, d.ImuYawRate,
+                            d.ImuValid ? d.ImuHeading : double.NaN,
+                            // The simulator's heading is flagged dual so the fusion takes it as is;
+                            // it isn't an antenna reading.
+                            d.HasDualHeading && d.SentenceType != AgOpenWeb.Models.GpsSentenceType.Simulator
+                                ? d.CurrentPosition.Heading : double.NaN,
+                            headingFusion.GpsHeadingDeg,
+                            raw.RateHz, raw.Missed, raw.Rejected, sentences);
+                    };
+
                     server.HeadlandSegsProvider = () =>
                     {
                         var segs = vm.HeadlandSegments;

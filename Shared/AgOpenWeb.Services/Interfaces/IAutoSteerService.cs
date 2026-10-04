@@ -26,6 +26,10 @@ namespace AgOpenWeb.Services.Interfaces;
 /// </summary>
 public interface IAutoSteerService
 {
+    /// <summary>What the GPS module last sent (raw sentences, rate, missed), for the
+    /// System Data card.</summary>
+    AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; }
+
     /// <summary>
     /// Event fired when the control cycle completes (for UI updates).
     /// Note: UI should not rely on this for control - it's purely observational.

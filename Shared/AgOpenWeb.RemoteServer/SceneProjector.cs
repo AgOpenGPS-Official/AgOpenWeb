@@ -44,6 +44,9 @@ public sealed class SceneProjector
     // GPS source (#157): the incoming sentence ("PANDA"/"PAOGI"/"SIM", "" before any fix)
     // and whether Dual GPS is on without a dual-antenna heading. Host-supplied.
     public System.Func<(string Sentence, bool DualHeadingMissing)>? GpsSourceProvider { get; set; }
+    // System Data card (Network IO → GPS): attitude, heading sources, sentence rate and the
+    // latest raw sentences. Host-supplied; null before any GPS data.
+    public System.Func<SystemDataDto?>? SystemDataProvider { get; set; }
 
     /// <summary>Host-supplied projector for the generated tram lines (ITramLineService's
     /// ParallelTramLines — pipeline state, but the service isn't injected here). Set by the
@@ -419,7 +422,8 @@ public sealed class SceneProjector
             _autoSteer.LatestSnapshot?.TotalLatencyMs ?? 0.0,
             gpsSource.Sentence ?? "",
             gpsSource.DualHeadingMissing,
-            BuildNtripRtcm());
+            BuildNtripRtcm(),
+            SystemDataProvider?.Invoke());
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting

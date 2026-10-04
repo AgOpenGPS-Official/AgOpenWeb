@@ -684,6 +684,29 @@ public static class WireCodec
                 w.Write((float)t.LastSeconds);
             }
         }
+        // System Data card (append-only): [u8 present] then f32 pitch, yaw rate, IMU / dual /
+        // fix-to-fix heading (NaN = none), rate Hz; i32 missed, rejected;
+        // [u8 n][ per sentence: str type, str text, f32 age s ].
+        var sd = s.SystemData;
+        w.Write((byte)(sd != null ? 1 : 0));
+        if (sd != null)
+        {
+            w.Write((float)sd.Pitch);
+            w.Write((float)sd.YawRate);
+            w.Write((float)sd.ImuHeading);
+            w.Write((float)sd.DualHeading);
+            w.Write((float)sd.FixToFixHeading);
+            w.Write((float)sd.RateHz);
+            w.Write((int)Math.Min(sd.Missed, int.MaxValue));
+            w.Write((int)Math.Min(sd.Rejected, int.MaxValue));
+            w.Write((byte)Math.Min(sd.Sentences.Count, 255));
+            for (int i = 0; i < sd.Sentences.Count && i < 255; i++)
+            {
+                WriteStr(w, sd.Sentences[i].Type);
+                WriteStr(w, sd.Sentences[i].Text);
+                w.Write((float)sd.Sentences[i].AgeSeconds);
+            }
+        }
         return ms.ToArray();
     }
 
