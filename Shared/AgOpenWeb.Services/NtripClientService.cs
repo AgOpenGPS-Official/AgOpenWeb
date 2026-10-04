@@ -588,8 +588,13 @@ public class NtripClientService : INtripClientService, IDisposable
 
     /// <summary>
     /// Sends queued RTCM to the AiO, one datagram of at most RtcmQueue.ChunkSize bytes per
-    /// RtcmQueue.IntervalMs. Sleeps on _sendSignal while the queue is empty, so the first
-    /// datagram of an epoch goes out as soon as it arrives. Runs per session (its token).
+    /// RtcmQueue.IntervalMs on average. Sleeps on _sendSignal while the queue is empty, so the
+    /// first datagram of an epoch goes out as soon as it arrives. Runs per session (its token).
+    ///
+    /// Task.Delay is often late (15 ms timer steps on Windows, 40–50 ms wake-ups on Android),
+    /// which used to cost throughput. The queue now turns that lateness into shorter gaps
+    /// (down to RtcmQueue.MinGapMs); those short waits are spun out here, because a timer
+    /// cannot keep them (RTCM plan, Phase 3).
     /// </summary>
     private async Task SendLoop(CancellationToken token)
     {
@@ -604,12 +609,24 @@ public class NtripClientService : INtripClientService, IDisposable
                         SendRtcmDatagram(chunk);
 
                     double wait = _pacer.MsUntilDue();
-                    if (_pacer.Count > 0 && wait > 0)
+                    if (_pacer.Count == 0 || wait <= 0) continue;
+                    if (wait < RtcmQueue.IntervalMs - 1)
+                        SpinFor(wait, token);   // a catch-up gap: at most MaxCreditMs of these in a row
+                    else
                         await Task.Delay(TimeSpan.FromMilliseconds(Math.Ceiling(wait)), token);
                 }
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>Wait a few milliseconds precisely, without a timer.</summary>
+    private static void SpinFor(double milliseconds, CancellationToken token)
+    {
+        long until = System.Diagnostics.Stopwatch.GetTimestamp()
+                     + (long)(milliseconds * System.Diagnostics.Stopwatch.Frequency / 1000.0);
+        while (System.Diagnostics.Stopwatch.GetTimestamp() < until && !token.IsCancellationRequested)
+            Thread.SpinWait(64);
     }
 
     private void SendRtcmDatagram(byte[] chunk)
