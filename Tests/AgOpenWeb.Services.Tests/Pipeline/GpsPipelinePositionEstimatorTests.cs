@@ -111,8 +111,8 @@ public class GpsPipelinePositionEstimatorTests
         Assert.That(snap!.SpeedMps, Is.EqualTo(5.0).Within(1e-9));
         Assert.That(snap.Heading, Is.EqualTo(Math.PI / 2).Within(1e-6),
             "Heading should be in radians (90° → π/2)");
-        Assert.That(snap.YawRateRadPerSec, Is.EqualTo(12 * Math.PI / 180).Within(1e-6),
-            "YawRate should be in rad/s (12 deg/s converted)");
+        Assert.That(snap.YawRateRadPerSec, Is.EqualTo(0),
+            "the sentence's yaw rate is not used for prediction");
         Assert.That(snap.Roll, Is.EqualTo(1.5 * Math.PI / 180).Within(1e-6),
             "Roll should be in radians (1.5° converted)");
     }
@@ -132,10 +132,10 @@ public class GpsPipelinePositionEstimatorTests
     }
 
     [Test]
-    public void OnGpsCycle_DualHeading_PublishesYawRateAndRoll()
+    public void OnGpsCycle_DualHeading_PublishesRollButNotYawRate()
     {
-        // $PAOGI: ImuValid is false (no heading fusion), but the yaw rate and dual
-        // roll in the sentence are real and must reach the estimator (#157).
+        // $PAOGI: ImuValid is false (no heading fusion), but the dual roll in the
+        // sentence is real and must reach the estimator (#157). Its yaw rate is not used.
         _gpsService.UpdateGpsData(BuildGpsData(
             latitude: 43.7128, longitude: -74.006,
             heading: 0, speed: 3.0,
@@ -144,8 +144,27 @@ public class GpsPipelinePositionEstimatorTests
 
         var snap = _estimator.GetLatestSnapshot();
         Assert.That(snap, Is.Not.Null);
-        Assert.That(snap!.YawRateRadPerSec, Is.EqualTo(12 * Math.PI / 180).Within(1e-6));
+        Assert.That(snap!.YawRateRadPerSec, Is.EqualTo(0));
         Assert.That(snap.Roll, Is.EqualTo(1.5 * Math.PI / 180).Within(1e-6));
+    }
+
+    [Test]
+    public void ParkedDualFix_WithBogusYawRate_PredictedHeadingStaysOnTheAntennaHeading()
+    {
+        // Seen on a bench board: parked, dual heading steady at 200.1 degrees, and
+        // -103.8 deg/s in the $PAOGI yaw rate field. The predicted heading must not move.
+        for (int i = 0; i < 5; i++)
+            _gpsService.UpdateGpsData(BuildGpsData(
+                latitude: 43.7128, longitude: -74.006,
+                heading: 200.1, speed: 0,
+                imuValid: false, imuYawRateDegPerSec: -103.8, imuRollDeg: -1.1,
+                hasDualHeading: true));
+
+        var snap = _estimator.GetLatestSnapshot()!;
+        long later = snap.TimestampTicks + (long)(0.09 * System.Diagnostics.Stopwatch.Frequency);
+        double predictedDeg = _estimator.GetPose(later).Heading * 180 / Math.PI;
+        Assert.That(predictedDeg, Is.EqualTo(200.1).Within(0.1),
+            "90 ms after the fix the predicted heading left the antenna heading");
     }
 
     [Test]
