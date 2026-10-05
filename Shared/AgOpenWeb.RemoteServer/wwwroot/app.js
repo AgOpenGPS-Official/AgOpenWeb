@@ -5225,9 +5225,10 @@ function drawExtraGuidelinesSk(canvas) {
   if (!line || line.length < 2) return;
   const toolW = toolWidthM();
   if (toolW < 0.1 || toolW * pxPerM < 3) return; // zoom gate: skip when passes < ~3 px apart
+  const baseLine = extendAbLine(line);
   for (let i = 1; i <= count; i++) {
     for (const off of [toolW * i, -toolW * i]) {
-      const ol = offsetLine(line, off);
+      const ol = offsetLine(baseLine, off);
       strokePtsSk(canvas, ol, false, SKP.extraGuideShadow);
       strokePtsSk(canvas, ol, false, SKP.extraGuide);
     }
