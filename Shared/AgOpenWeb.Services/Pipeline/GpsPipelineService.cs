@@ -783,13 +783,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (_positionEstimator is not null)
         {
             // ImuValid only says the IMU *heading* is usable; a $PAOGI fix leaves it
-            // false (the antenna heading needs no fusion) but still carries the dual
-            // roll and, with an IMU fitted, the yaw rate (#157). A zero yaw rate makes
-            // the estimator derive one from the heading change.
+            // false (the antenna heading needs no fusion) but still carries the dual roll.
             bool hasAttitude = data.ImuValid || data.HasDualHeading;
-            double yawRateRadPerSec = hasAttitude
-                ? data.ImuYawRate * Math.PI / 180.0
-                : 0.0;
+            // The sentence's yaw rate field is not used: the estimator derives the rate
+            // from the heading change (a zero here asks for that). What the field holds
+            // depends on the firmware, a $PAOGI has no "no IMU" marker for it, and
+            // AgOpenGPS only displays it. A board sending -103.8 deg/s while parked swung
+            // the predicted heading 10 degrees and back at every fix.
+            const double yawRateRadPerSec = 0.0;
             double rollRad = hasAttitude
                 ? _roll * Math.PI / 180.0
                 : 0.0;
