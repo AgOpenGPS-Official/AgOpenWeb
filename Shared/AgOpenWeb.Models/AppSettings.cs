@@ -149,6 +149,9 @@ namespace AgOpenWeb.Models
         /// GPS module when its address is known).</summary>
         public bool RtcmBroadcast { get; set; } = false;
 
+        /// <summary>NTRIP on/off (Network IO). Off: the app does not connect to a caster.</summary>
+        public bool NtripEnabled { get; set; } = true;
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;

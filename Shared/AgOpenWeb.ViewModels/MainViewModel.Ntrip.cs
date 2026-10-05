@@ -134,6 +134,36 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// The NTRIP on/off box in Network IO (#278). Off drops the connection and ends the
+    /// retries; on connects as a start-up or a field open would, with the open field's
+    /// profile or the default one.
+    /// </summary>
+    private void OnNtripEnabledChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Models.Configuration.ConnectionConfig.NtripEnabled)) return;
+        _ = ApplyNtripEnabledAsync(ConfigStore.Connections.NtripEnabled);
+    }
+
+    private async Task ApplyNtripEnabledAsync(bool enabled)
+    {
+        try
+        {
+            if (!enabled)
+            {
+                if (_ntripService.IsActive) await _ntripService.DisconnectAsync();
+                return;
+            }
+            var field = State.Field.ActiveField?.Name;
+            if (!string.IsNullOrEmpty(field)) await HandleNtripProfileForFieldAsync(field);
+            if (!_ntripService.IsActive) await ConnectDefaultNtripProfileOnStartupAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching NTRIP {State}", enabled ? "on" : "off");
+        }
+    }
+
+    /// <summary>
     /// Loads NTRIP profiles then, if a default profile exists with auto-connect
     /// enabled, connects to it at startup. Keeps corrections flowing to the GPS
     /// from app launch so there is no wait when a field is opened.
@@ -158,6 +188,12 @@ public partial class MainViewModel
     /// </summary>
     private async Task ConnectDefaultNtripProfileOnStartupAsync()
     {
+        if (!ConfigStore.Connections.NtripEnabled)
+        {
+            _logger.LogDebug("NTRIP is switched off; skipping startup auto-connect");
+            return;
+        }
+
         var profile = _ntripProfileService.DefaultProfile;
         if (profile == null)
         {
@@ -225,6 +261,12 @@ public partial class MainViewModel
     {
         try
         {
+            if (!ConfigStore.Connections.NtripEnabled)
+            {
+                _logger.LogDebug("NTRIP is switched off; not connecting for field '{FieldName}'", fieldName);
+                return;
+            }
+
             var profile = _ntripProfileService.GetProfileForField(fieldName);
 
             if (profile == null)
