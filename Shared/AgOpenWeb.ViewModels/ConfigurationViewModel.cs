@@ -1294,7 +1294,7 @@ public partial class ConfigurationViewModel : ObservableObject
         EditCutoffSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Slow Speed Cutoff", Tool.SlowSpeedCutoff,
                 v => Tool.SlowSpeedCutoff = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 0, max: 10));
+                "kph", integerOnly: false, allowNegative: false, min: 0, max: 10));
 
         EditCoverageMarginCommand = new RelayCommand(() =>
             ShowNumericInput("Coverage Margin", Tool.CoverageMargin,
@@ -1515,7 +1515,7 @@ public partial class ConfigurationViewModel : ObservableObject
         EditDualSwitchSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Switch Speed", Connections.DualSwitchSpeed,
                 v => Connections.DualSwitchSpeed = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 0, max: 10));
+                "kph", integerOnly: false, allowNegative: false, min: 0, max: 10));
 
         // Single Antenna Settings
         EditMinGpsStepCommand = new RelayCommand(() =>

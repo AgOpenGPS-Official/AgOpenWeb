@@ -114,7 +114,7 @@ let iHoldControl = false;
 const UNIT_DEFS = {
   m:   { metric: 'm',    imp: 'ft',  toImp: v => v * 3.280839895, fromImp: v => v / 3.280839895, dec: 2, impStep: 0.01 },
   cm:  { metric: 'cm',   imp: 'in',  toImp: v => v / 2.54,        fromImp: v => v * 2.54,        dec: 1, impStep: 0.1 },
-  kmh: { metric: 'km/h', imp: 'mph', toImp: v => v * 0.621371192, fromImp: v => v / 0.621371192, dec: 1, impStep: 0.1 },
+  kmh: { metric: 'kph', imp: 'mph', toImp: v => v * 0.621371192, fromImp: v => v / 0.621371192, dec: 1, impStep: 0.1 },
   km:  { metric: 'km',   imp: 'mi',  toImp: v => v * 0.621371192, fromImp: v => v / 0.621371192, dec: 2, impStep: 0.01 },
   ha:  { metric: 'ha',   imp: 'ac',  toImp: v => v * 2.471053815, fromImp: v => v / 2.471053815, dec: 2, impStep: 0.01 },
 };
@@ -813,7 +813,7 @@ function vehicleTap(px, py) {
   if (gps && gps.isDualGps && !gps.autoDualFix && statusBar && !statusBar.dualHeadingMissing) return;
   if (!iHoldControl) { showToast(tr('Take control to reset the direction')); return; }
   transport.send('heading.resetDirection');
-  showToast(tr('Direction reset. Drive forward above 1.5 km/h.'));
+  showToast(tr('Direction reset. Drive forward above 1.5 kph.'));
 }
 
 // Pan + tap. A gesture that moves past TAP_SLOP px pans (and drops to Free mode); one

@@ -2105,7 +2105,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     }
 
     private string FormatSpeed(double kmh) =>
-        _configStore.IsMetric ? $"{kmh:0.#} km/h" : $"{kmh * 0.621371:0.#} mph";
+        _configStore.IsMetric ? $"{kmh:0.#} kph" : $"{kmh * 0.621371:0.#} mph";
 
     /// <summary>
     /// RTK fix alarm, as AgOpenGPS (isRTK_AlarmOn / isRTK_KillAutosteer): only when the

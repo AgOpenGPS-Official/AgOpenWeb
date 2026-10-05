@@ -97,7 +97,7 @@ public partial class MainViewModel
 
     /// <summary>Unit label that pairs with <see cref="SpeedLargeValue"/>.</summary>
     public string SpeedLargeUnit =>
-        _configStore.IsMetric ? "km/h" : "mph";
+        _configStore.IsMetric ? "kph" : "mph";
 
     public int SatelliteCount
     {
