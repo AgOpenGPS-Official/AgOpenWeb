@@ -264,6 +264,7 @@ public record StatusDto(
     string NtripDestination,
     bool NtripUnicast,
     bool RtcmBroadcast,
+    bool NtripEnabled,
     string NtripTestStatus,
     // Simulator panel visibility (persisted in PersistentAppState.SimulatorPanelVisible) —
     // the web sim bar shows/hides from this so the choice survives app restarts.

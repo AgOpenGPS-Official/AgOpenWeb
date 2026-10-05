@@ -2756,7 +2756,7 @@ function renderNetworkIo() {
   if (!nioO3.value && document.activeElement !== nioO3) nioO3.value = 5;
   document.getElementById('nio-hostips').textContent = s.hostIps || '—';
   document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
-  document.getElementById('nio-ntrip-status').textContent = s.ntripStatus || tr('Not Connected');
+  document.getElementById('nio-ntrip-status').textContent = !s.ntripEnabled ? tr('Off') : (s.ntripStatus || tr('Not Connected'));
   document.getElementById('nio-ntrip-bytes').textContent = Math.floor((s.ntripBytes || 0) / 1024).toLocaleString() + ' KB';
   // Where the corrections go: the GPS module's own address, or the subnet broadcast.
   document.getElementById('nio-ntrip-dest').textContent = !s.ntripDestination ? ''
@@ -2764,6 +2764,8 @@ function renderNetworkIo() {
     : tr('Corrections are broadcast to {ip}', { ip: s.ntripDestination });
   const bc = document.getElementById('nio-rtcm-bc');
   if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
+  const nen = document.getElementById('nio-ntrip-on');
+  if (document.activeElement !== nen) nen.checked = !!s.ntripEnabled;
   renderNtripRtcm(s);
   nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
 }

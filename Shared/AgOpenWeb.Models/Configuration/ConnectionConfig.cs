@@ -99,6 +99,15 @@ public class ConnectionConfig : ObservableObject
         set => SetProperty(ref _rtcmBroadcast, value);
     }
 
+    // NTRIP on/off (Network IO). Off: no connection to a caster at all, for work where
+    // there is no mobile coverage and the connection would only keep retrying.
+    private bool _ntripEnabled = true;
+    public bool NtripEnabled
+    {
+        get => _ntripEnabled;
+        set => SetProperty(ref _ntripEnabled, value);
+    }
+
     // GPS Mode
     private bool _isDualGps;
     public bool IsDualGps
