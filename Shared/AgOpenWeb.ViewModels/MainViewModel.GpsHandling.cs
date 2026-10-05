@@ -417,10 +417,18 @@ public partial class MainViewModel
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);
-        _gpsPipelineService.SetYouTurnConfig(
+        SyncYouTurnConfigToPipeline();
+    }
+
+    /// <summary>
+    /// The skip count and skip mode, pushed to the cycle as they change. They used to reach it
+    /// only with the next full sync (a turn completing, a track change), so the first turn
+    /// after changing the skip count still used the old one (#272).
+    /// </summary>
+    private void SyncYouTurnConfigToPipeline() =>
+        _gpsPipelineService?.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance,
             isAlternateSkipMode: UTurnSkipMode == 1);
-    }
 
     #endregion
 

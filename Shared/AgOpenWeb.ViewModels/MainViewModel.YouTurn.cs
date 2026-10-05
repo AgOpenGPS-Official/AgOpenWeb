@@ -62,7 +62,10 @@ public partial class MainViewModel
         set
         {
             if (SetProperty(ref _uTurnSkipRows, Math.Max(0, Math.Min(9, value))))
+            {
                 State.FieldTools.UTurnSkipRows = _uTurnSkipRows; // mirror (web-UI; post-clamp)
+                SyncYouTurnConfigToPipeline();
+            }
         }
     }
 
@@ -81,6 +84,7 @@ public partial class MainViewModel
             State.FieldTools.UTurnSkipMode = value;
             IsUTurnSkipRowsEnabled = value != 0;
             IsSkipWorkedMode = value == 2;
+            SyncYouTurnConfigToPipeline();
         }
     }
     private int _uTurnSkipMode;

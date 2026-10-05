@@ -378,8 +378,13 @@ public sealed class YouTurnStateMachine
             bool wasClose = turn.PreviousDistToTurnEnd < ClosestApproachThreshold;
             bool movingAway = distToTurnEnd > turn.PreviousDistToTurnEnd;
             bool traveledEnough = distToTurnStart > CompletionMinTraveledMeters;
+            // "Close to the end" must also hold along the path. A manual turn onto a pass
+            // less than 5 m away ends beside its own first metres: the tractor drives past
+            // the end point, a pass width away, on its way into the turn, and that read as
+            // reaching the end and leaving it, with the whole loop still to drive (#272).
+            bool onFinalStretch = remainingArc < ClosestApproachThreshold;
 
-            if (wasClose && movingAway && traveledEnough
+            if (wasClose && movingAway && traveledEnough && onFinalStretch
                 && distToTurnEnd < distToTurnStart)
             {
                 _logger.LogDebug("[YouTurn] Closest-approach completion: distEnd={DistEnd:F1}m prevDist={Prev:F1}m distStart={DistStart:F1}m",
