@@ -45,7 +45,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
 
     public override string Description =>
         "Turn the steering wheel to the RIGHT about 20 degrees and drive in a steady circle " +
-        "at roughly 5 km/h. Press Record and keep the turn consistent — the system will measure " +
+        "at roughly 5 kph. Press Record and keep the turn consistent — the system will measure " +
         "the turning diameter and calculate CPD automatically. Use RTK Fixed if you can — " +
         "with a lower fix quality the measured circle, and so the CPD, may be off.";
 

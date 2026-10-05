@@ -601,17 +601,17 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         EditManualTurnsSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Manual Turns Speed", AutoSteer.ManualTurnsSpeed,
                 v => AutoSteer.ManualTurnsSpeed = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 0, max: 30));
+                "kph", integerOnly: false, allowNegative: false, min: 0, max: 30));
 
         EditMinSteerSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Min Steer Speed", AutoSteer.MinSteerSpeed,
                 v => AutoSteer.MinSteerSpeed = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 0, max: 10));
+                "kph", integerOnly: false, allowNegative: false, min: 0, max: 10));
 
         EditMaxSteerSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Max Steer Speed", AutoSteer.MaxSteerSpeed,
                 v => AutoSteer.MaxSteerSpeed = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 5, max: 50));
+                "kph", integerOnly: false, allowNegative: false, min: 5, max: 50));
     }
 
     #endregion

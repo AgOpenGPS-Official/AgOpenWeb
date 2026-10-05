@@ -206,7 +206,7 @@ public partial class MainViewModel
         var a = ConfigStore.AutoSteer;
         if (!a.ManualTurnsEnabled || SpeedKmh < a.ManualTurnsSpeed) return false;
         ReportFailure(ConfigStore.IsMetric
-            ? $"Too fast: slow down below {a.ManualTurnsSpeed:F0} km/h"
+            ? $"Too fast: slow down below {a.ManualTurnsSpeed:F0} kph"
             : $"Too fast: slow down below {a.ManualTurnsSpeed * 0.621371:F1} mph");
         return true;
     }
