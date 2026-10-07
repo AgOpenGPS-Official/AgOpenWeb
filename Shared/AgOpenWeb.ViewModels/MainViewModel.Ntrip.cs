@@ -210,14 +210,56 @@ public partial class MainViewModel
         if (_ntripService.IsActive)
             return;
 
-        // Mirror the field-load path: reflect the profile in the display props.
+        _logger.LogInformation("Auto-connecting default NTRIP profile '{ProfileName}' at startup", profile.Name);
+        await SwitchToNtripProfileAsync(profile);
+    }
+
+    /// <summary>
+    /// After a field closes: corrections keep flowing, as they do at startup with no field
+    /// open (#285). Only when the field connected a profile other than the default does
+    /// this switch back to the default one; nothing starts if NTRIP is off or stopped.
+    /// </summary>
+    public async Task RestoreDefaultNtripProfileAsync()
+    {
+        try
+        {
+            if (!ConfigStore.Connections.NtripEnabled || !_ntripService.IsActive) return;
+
+            var profile = _ntripProfileService.DefaultProfile;
+            if (profile == null || !profile.AutoConnectOnFieldLoad || IsNtripConnectedTo(profile)) return;
+
+            _logger.LogInformation("Field closed; returning to the default NTRIP profile '{ProfileName}'", profile.Name);
+            await SwitchToNtripProfileAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error returning to the default NTRIP profile");
+        }
+    }
+
+    /// <summary>Connected to this profile's caster, port and mount point.</summary>
+    private bool IsNtripConnectedTo(Models.Ntrip.NtripProfile profile) =>
+        _ntripService.IsConnected &&
+        profile.CasterHost == NtripCasterAddress &&
+        profile.CasterPort == NtripCasterPort &&
+        profile.MountPoint == NtripMountPoint;
+
+    /// <summary>Drop the current session, if any, and connect with this profile.</summary>
+    private async Task SwitchToNtripProfileAsync(Models.Ntrip.NtripProfile profile)
+    {
+        if (_ntripService.IsActive)
+        {
+            _logger.LogDebug("Disconnecting from current NTRIP caster");
+            await _ntripService.DisconnectAsync();
+        }
+
+        // Reflect the profile in the display props.
         NtripCasterAddress = profile.CasterHost;
         NtripCasterPort = profile.CasterPort;
         NtripMountPoint = profile.MountPoint;
         NtripUsername = profile.Username;
         NtripPassword = profile.Password;
 
-        _logger.LogInformation("Auto-connecting default NTRIP profile '{ProfileName}' at startup", profile.Name);
         await ConnectToNtripAsync();
     }
 
@@ -284,32 +326,14 @@ public partial class MainViewModel
             // Already connected to this exact caster (e.g. the default connected at
             // startup, and this field uses the default) — leave it alone so
             // corrections keep flowing without a disconnect/reconnect blip.
-            if (_ntripService.IsConnected &&
-                profile.CasterHost == NtripCasterAddress &&
-                profile.CasterPort == NtripCasterPort &&
-                profile.MountPoint == NtripMountPoint)
+            if (IsNtripConnectedTo(profile))
             {
                 _logger.LogDebug("NTRIP already connected to '{ProfileName}' caster; keeping it", profile.Name);
                 return;
             }
 
-            // Disconnect from current caster if connected
-            if (_ntripService.IsActive)
-            {
-                _logger.LogDebug("Disconnecting from current NTRIP caster");
-                await _ntripService.DisconnectAsync();
-            }
-
-            // Update UI properties for display
-            NtripCasterAddress = profile.CasterHost;
-            NtripCasterPort = profile.CasterPort;
-            NtripMountPoint = profile.MountPoint;
-            NtripUsername = profile.Username;
-            NtripPassword = profile.Password;
-
-            // Connect to new caster
             _logger.LogInformation("Connecting to NTRIP profile '{ProfileName}' for field '{FieldName}'", profile.Name, fieldName);
-            await ConnectToNtripAsync();
+            await SwitchToNtripProfileAsync(profile);
         }
         catch (Exception ex)
         {
