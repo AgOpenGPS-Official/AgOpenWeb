@@ -689,11 +689,9 @@ public partial class MainViewModel
             {
                 await CloseFieldAsync();
 
-                // Disconnect NTRIP if connected (or connecting / retrying)
-                if (_ntripService.IsActive)
-                {
-                    await _ntripService.DisconnectAsync();
-                }
+                // Corrections keep flowing with no field open, as at startup (#285);
+                // only a field-specific profile gives way to the default one.
+                await RestoreDefaultNtripProfileAsync();
 
                 StatusMessage = "Field closed";
             }
