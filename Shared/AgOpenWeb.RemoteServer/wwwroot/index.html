@@ -896,6 +896,16 @@
       font: 600 15px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
     #toast.show { display: block; }
+    /* GPS data lost: a red panel over the map (the map stays; AgOpenGPS blanks it). Below
+       the nav and dialogs, no pointer events, so the operator can reach the Modules panel
+       or the simulator switch to clear it. */
+    #gpslost { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9;
+      width: min(420px, calc(100vw - 32px)); padding: 26px 24px; border-radius: 14px; display: none;
+      background: rgba(190,24,24,0.94); border: 2px solid #ff8a8a; color: #fff; text-align: center;
+      pointer-events: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+    #gpslost.show { display: block; }
+    #gpslost .gl-title { font: 800 28px system-ui, sans-serif; letter-spacing: 0.02em; margin-bottom: 10px; }
+    #gpslost .gl-body { font: 500 16px/1.4 system-ui, sans-serif; }
     #hwmsg { position: fixed; top: calc(96px + var(--sat, 0px)); left: 50%; transform: translateX(-50%);
       max-width: min(560px, calc(100vw - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
       color: #000; font: 700 16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
@@ -2719,6 +2729,7 @@
     </div>
   </div>
   <div id="toast"></div>
+  <div id="gpslost"><div class="gl-title">GPS data lost</div><div class="gl-body">Reconnect the GPS module, or start the simulator.<br>Autosteer and sections are off.</div></div>
   <div id="hwmsg"></div>
   <div id="osk" hidden></div>
   <div id="dialoghost">

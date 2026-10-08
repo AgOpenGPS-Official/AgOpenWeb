@@ -407,7 +407,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
-  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); },
+  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); syncGpsLost(s); },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -510,6 +510,11 @@ function syncDualHeadingWarning(s) {
   if (missing) { showToast(DUAL_HEADING_MISSING_MSG, 10000); return; }
   const t = document.getElementById('toast');
   if (toastMsg === DUAL_HEADING_MISSING_MSG) { clearTimeout(toastTimer); t.classList.remove('show'); }
+}
+// GPS data lost: the host's debounced flag (it has already switched autosteer and the
+// sections off); the panel clears as soon as data flows again, module or simulator.
+function syncGpsLost(s) {
+  document.getElementById('gpslost').classList.toggle('show', !!s.gpsLost);
 }
 let toastMsg = '';
 function showToast(msg, ms = 4000) {

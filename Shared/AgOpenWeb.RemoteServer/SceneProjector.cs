@@ -424,7 +424,8 @@ public sealed class SceneProjector
             gpsSource.Sentence ?? "",
             gpsSource.DualHeadingMissing,
             BuildNtripRtcm(),
-            SystemDataProvider?.Invoke());
+            SystemDataProvider?.Invoke(),
+            _state.Connections.IsGpsLost);
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting

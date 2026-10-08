@@ -170,6 +170,8 @@ window.RemoteTransport = {
             for (let k = u8(); k > 0; k--)
               systemData.sentences.push({ type: str(), text: str(), age: f32() });
           }
+          // GPS data lost (append-only): the host's debounced flag.
+          const gpsLost = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -181,6 +183,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
+            gpsLost,
           });
           break;
         }

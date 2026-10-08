@@ -988,6 +988,8 @@ public partial class MainViewModel : ObservableObject
                 IsImuDataOk = imuOk;
                 IsGpsDataOk = gpsOk;
 
+                UpdateGpsLost(gpsOk, Clock.Current.Now);
+
                 if (!gpsOk)
                 {
                     StatusMessage = "GPS Timeout";
