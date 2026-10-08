@@ -708,6 +708,8 @@ public static class WireCodec
                 w.Write((float)sd.Sentences[i].AgeSeconds);
             }
         }
+        // GPS data lost (append-only): the host's debounced flag, so client and host agree.
+        w.Write((byte)(s.GpsLost ? 1 : 0));
         return ms.ToArray();
     }
 

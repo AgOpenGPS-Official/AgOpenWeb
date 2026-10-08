@@ -407,7 +407,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
-  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); },
+  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); syncGpsLost(s); },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -510,6 +510,11 @@ function syncDualHeadingWarning(s) {
   if (missing) { showToast(DUAL_HEADING_MISSING_MSG, 10000); return; }
   const t = document.getElementById('toast');
   if (toastMsg === DUAL_HEADING_MISSING_MSG) { clearTimeout(toastTimer); t.classList.remove('show'); }
+}
+// GPS data lost: the host's debounced flag (it has already switched autosteer and the
+// sections off); the panel clears as soon as data flows again, module or simulator.
+function syncGpsLost(s) {
+  document.getElementById('gpslost').classList.toggle('show', !!s.gpsLost);
 }
 let toastMsg = '';
 function showToast(msg, ms = 4000) {
@@ -4385,7 +4390,9 @@ function renderStatusBar() {
   const s = statusBar;
   if (!s) { SB.bar.style.display = 'none'; if (SB.diagRow) SB.diagRow.style.display = 'none'; return; }
   SB.bar.style.display = 'flex';
-  SB.fixDot.style.background = fixColor(s.fixQuality);
+  // GPS data lost: the host already reports No Fix; grey the dot so it reads as "nothing",
+  // not as a live red "no fix" from a receiver that is still talking.
+  SB.fixDot.style.background = s.gpsLost ? '#6b7280' : fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
   SB.age.textContent = tr('Age {age}', { age: s.age != null ? s.age.toFixed(1) : '—' });
   SB.rot.textContent = rotatingLineText();
@@ -4394,7 +4401,11 @@ function renderStatusBar() {
   SB.speed.textContent = toDisplayUnit(mps * 3.6, 'kmh').toFixed(1);
   SB.unit.textContent = unitLabel('kmh');
   // Modules: aggregate dot + per-module popup rows.
-  SB.modAgg.style.background = moduleAggColor(s);
+  // All configured modules present = steady green; anything short of that flashes
+  // (amber: some missing, red: none), so trouble catches the eye from across the cab.
+  const aggColor = moduleAggColor(s);
+  SB.modAgg.style.background = aggColor;
+  SB.modAgg.classList.toggle('flash', aggColor !== '#22c55e');
   const dot = (el, ok) => { el.style.background = ok ? '#22c55e' : '#6b7280'; };
   dot(SB.mGps, s.gpsOk); dot(SB.mImu, s.imuOk); dot(SB.mAs, s.autoSteerOk); dot(SB.mMa, s.machineOk);
   SB.dGps.textContent = (s.fixText || '—') + (s.sats ? ' ' + tr('({n} sats)', { n: s.sats }) : '');

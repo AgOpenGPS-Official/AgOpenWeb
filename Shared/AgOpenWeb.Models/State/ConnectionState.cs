@@ -60,6 +60,16 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _isGpsConnected, value);
     }
 
+    /// <summary>No position sentences for a couple of seconds (module or simulator):
+    /// autosteer and the sections have been switched off, and the client shows the
+    /// warning until data flows again.</summary>
+    private bool _isGpsLost;
+    public bool IsGpsLost
+    {
+        get => _isGpsLost;
+        set => SetProperty(ref _isGpsLost, value);
+    }
+
     private bool _isGpsDataOk;
     public bool IsGpsDataOk
     {

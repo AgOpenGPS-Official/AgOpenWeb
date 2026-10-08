@@ -292,7 +292,10 @@ public record StatusDto(
     // null with no NTRIP session.
     NtripRtcmDto? NtripRtcm = null,
     // System Data card (Network IO → GPS): what the status frame doesn't already carry.
-    SystemDataDto? SystemData = null);
+    SystemDataDto? SystemData = null,
+    // No position sentences for a couple of seconds: the host has switched autosteer and
+    // the sections off, and the client shows the warning over the map until data is back.
+    bool GpsLost = false);
 
 /// <summary>GPS values for the System Data card that ride no other frame: attitude, the
 /// heading sources before fusion, the sentence rate and counters, and the latest raw
