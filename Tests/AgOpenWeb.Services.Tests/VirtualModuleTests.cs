@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgOpenWeb.VirtualModules;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.Communication;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
@@ -177,7 +178,7 @@ public class VirtualModuleTests
         mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
             .Do(ci => received = ci.Arg<GpsData>());
 
-        var parser = new NmeaParserServiceFast(mockGps);
+        var parser = new NmeaParserServiceFast(mockGps, new ConfigurationStore());
         parser.ParseBuffer(data, data.Length);
 
         Assert.That(received, Is.Not.Null, "NmeaParser should parse the $PANDA sentence");
@@ -458,7 +459,7 @@ public class VirtualModuleTests
         int parsedCount = 0;
         mockGps.When(x => x.UpdateGpsData(Arg.Any<GpsData>()))
             .Do(ci => { if (ci.Arg<GpsData>().FixQuality > 0) parsedCount++; });
-        var parser = new NmeaParserServiceFast(mockGps);
+        var parser = new NmeaParserServiceFast(mockGps, new ConfigurationStore());
 
         // Read all sent frames
         for (int i = 0; i < 10; i++)

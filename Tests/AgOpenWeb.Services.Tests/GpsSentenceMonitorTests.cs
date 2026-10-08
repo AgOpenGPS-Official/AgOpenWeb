@@ -12,6 +12,8 @@ public class GpsSentenceMonitorTests
     private const string Panda = "$PANDA,162255.50,3924.90,N,00731.80,W,4,12,0.7,341.9,1.2,4.8,2217,31,-12,0.5*5A\r\n";
     private const string Paogi = "$PAOGI,162255.50,3924.90,N,00731.80,W,4,12,0.7,341.9,1.2,4.8,221.7,3.1,-1.2,0.5*4B\r\n";
 
+    private const string Ksxt = "$KSXT,20190909084745.00,116.23662400,40.07897925,68.3837,2.5,-1.1,0.00,0.00,0.00,0.00,3,3,27,27,0.000,0.000,0.000,0.000,0.000,1.200,0.000*00\r\n";
+
     private static long At(double seconds) => (long)(seconds * Stopwatch.Frequency);
     private static byte[] B(string s) => Encoding.ASCII.GetBytes(s);
 
@@ -28,6 +30,19 @@ public class GpsSentenceMonitorTests
         Assert.That(snap.Sentences[0].Text, Is.EqualTo(Panda.TrimEnd()), "Line ends are dropped");
         Assert.That(snap.Sentences[0].AgeSeconds, Is.EqualTo(0.6).Within(0.001));
         Assert.That(snap.Sentences[1].AgeSeconds, Is.EqualTo(0.5).Within(0.001));
+    }
+
+    [Test]
+    public void A_KSXT_sentence_gets_its_own_slot()
+    {
+        var m = new GpsSentenceMonitor();
+        m.Record(B(Panda), accepted: true, At(10.0));
+        m.Record(B(Ksxt), accepted: true, At(10.1));
+
+        var snap = m.GetSnapshot(At(10.2));
+
+        Assert.That(snap.Sentences.Select(s => s.Type), Is.EqualTo(new[] { "PANDA", "KSXT" }));
+        Assert.That(snap.Sentences[1].Text, Is.EqualTo(Ksxt.TrimEnd()));
     }
 
     [Test]

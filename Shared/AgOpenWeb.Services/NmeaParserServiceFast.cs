@@ -18,18 +18,31 @@ using System;
 using System.Buffers.Text;
 using System.Runtime.CompilerServices;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services;
 
 /// <summary>
-/// Zero-copy NMEA parser for PANDA/PAOGI formats.
-/// Parses directly from byte buffer with no heap allocations.
-/// Target: sub-millisecond parsing (matching Teensy New Dawn firmware approach).
+/// Zero-copy NMEA parser: one datagram in, one complete <see cref="VehicleState"/> fix out.
+/// Parses directly from the byte buffer with no heap allocations (sub-millisecond, matching
+/// the Teensy firmware approach).
+///
+/// <para><b>One fix = one receiver epoch.</b> Every sentence this parser accepts carries a
+/// whole fix — position, speed, heading, roll, quality — measured together by the device
+/// that sent it: <c>$PANDA</c>/<c>$PAOGI</c> from an AiO board (the Teensy pairs the GPS
+/// epoch with its IMU sample), <c>$KSXT</c> from a Bynav/Unicore receiver (its own INS).
+/// The host only decides <i>when</i> a fix is used, never <i>what</i> is in it: nothing is
+/// paired across sentences or across devices here, because on a non-real-time host that
+/// pairing would depend on OS scheduling (that is AgIO's GGA + IMU-PGN problem). A receiver
+/// that spreads a fix over several sentences (GGA/VTG/HDT/AVR) needs an epoch assembler
+/// that emits when the receiver's burst is complete — a separate decoder, not a change to
+/// this dispatch.</para>
 /// </summary>
 public class NmeaParserServiceFast
 {
     private readonly IGpsService _gpsService;
+    private readonly ConfigurationStore _configStore;
 
     // Pre-allocated GpsData to avoid allocation per parse
     private GpsData _gpsData;
@@ -53,19 +66,47 @@ public class NmeaParserServiceFast
 
     private const int MIN_PANDA_FIELDS = 15;
 
+    // Field indices for KSXT (Unicore N4 reference manual, table 7-131; the manual's IDs
+    // are 1-based with $KSXT as ID 1), read the way AgIO's ParseKSXT does. Lat/lon are
+    // signed decimal degrees, velocity is km/h. Field 6 is the antenna baseline's pitch,
+    // which is the vehicle's roll with the two antennas mounted across the cab (the
+    // AgOpenGPS dual convention). Fields 10/11 are the receiver's own position/heading
+    // quality codes, not GGA values — see KsxtFixQuality. Field 13 is the master
+    // antenna's satellite count. Field 20 is reserved in the Unicore spec; AgIO reads it as
+    // the correction age and it's empty on Unicore (age 0), kept for parity.
+    private const int KSXT_LON = 2;
+    private const int KSXT_LAT = 3;
+    private const int KSXT_ALT = 4;
+    private const int KSXT_HEADING = 5;
+    private const int KSXT_ROLL = 6;
+    private const int KSXT_SPEED = 8;
+    private const int KSXT_POS_QUALITY = 10;
+    private const int KSXT_HEADING_QUALITY = 11;
+    private const int KSXT_SATS = 13;
+    private const int KSXT_AGE = 20;
+    private const int MIN_KSXT_FIELDS = 21;
+    private const int KSXT_QUALITY_RTK_FIXED = 3;
+
+    // Comma table size: the longest accepted sentence (KSXT, 22 fields) plus slack.
+    private const int MAX_FIELDS = 32;
+
     // Sentence type identifiers (after $)
     private static ReadOnlySpan<byte> PANDA => "PANDA"u8;
     private static ReadOnlySpan<byte> PAOGI => "PAOGI"u8;
+    private static ReadOnlySpan<byte> KSXT => "KSXT,"u8;
 
-    public NmeaParserServiceFast(IGpsService gpsService)
+    public NmeaParserServiceFast(IGpsService gpsService, ConfigurationStore configStore)
     {
         _gpsService = gpsService;
+        _configStore = configStore;
         _gpsData = new GpsData();
     }
 
     /// <summary>
-    /// Parse NMEA sentence directly from byte buffer.
-    /// Zero allocations in the hot path.
+    /// Parse NMEA sentence directly from byte buffer and hand the fix to the
+    /// <see cref="IGpsService"/> as a <see cref="GpsData"/>. Same decoders as
+    /// <see cref="ParseIntoState"/>, which is the pipeline's path; this one is for
+    /// tools and tests.
     /// </summary>
     /// <param name="buffer">Raw UDP receive buffer</param>
     /// <param name="length">Number of valid bytes in buffer</param>
@@ -76,13 +117,52 @@ public class NmeaParserServiceFast
         return ParseSpan(buffer.AsSpan(0, length));
     }
 
-    /// <summary>
-    /// Parse NMEA sentence from span.
-    /// Zero allocations.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    /// <summary>As <see cref="ParseBuffer"/>, from a span.</summary>
     public bool ParseSpan(ReadOnlySpan<byte> data)
     {
+        var state = new VehicleState();
+        if (!ParseIntoState(data, ref state, _configStore)) return false;
+
+        _gpsData = new GpsData
+        {
+            CurrentPosition = new Position
+            {
+                Latitude = state.Latitude,
+                Longitude = state.Longitude,
+                Altitude = state.Altitude,
+                Speed = state.Speed,
+                Heading = state.Heading
+            },
+            FixQuality = state.FixQuality,
+            SatellitesInUse = state.Satellites,
+            Hdop = state.Hdop,
+            DifferentialAge = state.DifferentialAge,
+            HasDualHeading = state.HasDualHeading,
+            SentenceType = state.SentenceType,
+            Timestamp = DateTime.UtcNow
+        };
+
+        _gpsService.UpdateGpsData(_gpsData);
+        return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Zero-Copy VehicleState Parsing (AutoSteer Pipeline)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Parse one NMEA sentence directly into a VehicleState struct: frame check
+    /// ($, checksum), then the decoder for the sentence type. Zero allocations.
+    /// </summary>
+    /// <param name="data">Raw NMEA data</param>
+    /// <param name="state">VehicleState struct to populate (passed by ref)</param>
+    /// <returns>True if parsed successfully</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static bool ParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
+        ConfigurationStore configStore)
+    {
+        state.MarkParseStart();
+
         // Minimum valid: $PANDA,... = at least 20 bytes
         if (data.Length < 20) return false;
 
@@ -96,17 +176,25 @@ public class NmeaParserServiceFast
         // Validate checksum (XOR of bytes between $ and *)
         if (!ValidateChecksum(data, asterisk)) return false;
 
-        // Get sentence type (bytes 1-5 after $)
+        // Comma table for the body (up to the asterisk)
+        var body = data.Slice(0, asterisk);
+        Span<int> commas = stackalloc int[MAX_FIELDS];
+        int fieldCount = SplitFields(body, commas);
+
+        // Dispatch on the sentence id (bytes 1-5 after $)
         var sentenceType = data.Slice(1, 5);
-
-        // Check for PANDA or PAOGI
-        bool isPanda;
-        if (sentenceType.SequenceEqual(PANDA)) isPanda = true;
-        else if (sentenceType.SequenceEqual(PAOGI)) isPanda = false;
+        bool ok;
+        if (sentenceType.SequenceEqual(PANDA)) ok = DecodePanda(body, commas, fieldCount, ref state, configStore);
+        else if (sentenceType.SequenceEqual(PAOGI)) ok = DecodePaogi(body, commas, fieldCount, ref state, configStore);
+        else if (sentenceType.SequenceEqual(KSXT)) ok = DecodeKsxt(body, commas, fieldCount, ref state, configStore);
         else return false;
+        if (!ok) return false;
 
-        // Parse the fields (data up to asterisk)
-        return ParsePandaFields(data.Slice(0, asterisk), isPanda);
+        // Pre-compute heading in radians for guidance calculations
+        state.HeadingRadians = state.Heading * (Math.PI / 180.0);
+
+        state.MarkParseEnd();
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -140,241 +228,129 @@ public class NmeaParserServiceFast
         return 0xFF; // Invalid
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private bool ParsePandaFields(ReadOnlySpan<byte> data, bool isPanda)
+    /// <summary>
+    /// Fill <paramref name="commas"/> with a virtual comma before the first field, every
+    /// comma position, and the end of the body; returns the number of fields.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int SplitFields(ReadOnlySpan<byte> body, Span<int> commas)
     {
-        // Find all comma positions (up to 16 fields)
-        Span<int> commas = stackalloc int[20];
         int commaCount = 0;
-
         commas[commaCount++] = -1; // Virtual comma before first field
 
-        for (int i = 0; i < data.Length && commaCount < 20; i++)
+        for (int i = 0; i < body.Length && commaCount < commas.Length - 1; i++)
         {
-            if (data[i] == ',')
+            if (body[i] == ',')
                 commas[commaCount++] = i;
         }
 
         // Add end position as final "comma"
-        commas[commaCount++] = data.Length;
+        commas[commaCount++] = body.Length;
+        return commaCount - 1;
+    }
 
-        // Need at least 15 fields for PANDA
-        if (commaCount < MIN_PANDA_FIELDS + 1) return false;
+    // ─── $PANDA / $PAOGI ──────────────────────────────────────────────────
 
-        // Reset GPS data
-        double latitude = 0, longitude = 0, altitude = 0, speed = 0, heading = 0;
-        double hdop = 0, age = 0;
-        int fixQuality = 0, satellites = 0;
-        bool latSouth = false, lonWest = false;
+    /// <summary>
+    /// $PANDA: single antenna + IMU from an AiO board. Field 12 is the IMU heading as
+    /// <c>(int)(degrees * 10)</c> with sentinel 65535 for "no IMU"; field 13 is the IMU
+    /// roll as <c>(int)(degrees * 10)</c> (the firmware's currentData.roll is
+    /// pre-multiplied by 10 at the IMU layer — see
+    /// Firmware_Teensy_AiO_26/lib/aio_navigation/IMUProcessor.cpp).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static bool DecodePanda(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount,
+        ref VehicleState state, ConfigurationStore configStore)
+    {
+        if (fieldCount < MIN_PANDA_FIELDS) return false;
+        DecodeAogPositionFields(data, commas, ref state);
 
-        // Parse each field using spans (zero-copy)
-
-        // Latitude (field 2): DDMM.MMMMM
-        var latField = GetField(data, commas, FIELD_LAT);
-        if (latField.Length > 0)
-        {
-            latitude = ParseLatLon(latField);
-        }
-
-        // Latitude direction (field 3): N or S
-        var latDirField = GetField(data, commas, FIELD_LAT_DIR);
-        if (latDirField.Length > 0 && latDirField[0] == 'S')
-            latSouth = true;
-
-        // Longitude (field 4): DDDMM.MMMMM
-        var lonField = GetField(data, commas, FIELD_LON);
-        if (lonField.Length > 0)
-        {
-            longitude = ParseLatLon(lonField);
-        }
-
-        // Longitude direction (field 5): E or W
-        var lonDirField = GetField(data, commas, FIELD_LON_DIR);
-        if (lonDirField.Length > 0 && lonDirField[0] == 'W')
-            lonWest = true;
-
-        // Fix quality (field 6)
-        var fixField = GetField(data, commas, FIELD_FIX);
-        if (fixField.Length > 0)
-        {
-            Utf8Parser.TryParse(fixField, out fixQuality, out _);
-        }
-
-        // Satellites (field 7)
-        var satsField = GetField(data, commas, FIELD_SATS);
-        if (satsField.Length > 0)
-        {
-            Utf8Parser.TryParse(satsField, out satellites, out _);
-        }
-
-        // HDOP (field 8)
-        var hdopField = GetField(data, commas, FIELD_HDOP);
-        if (hdopField.Length > 0)
-        {
-            Utf8Parser.TryParse(hdopField, out hdop, out _);
-        }
-
-        // Altitude (field 9)
-        var altField = GetField(data, commas, FIELD_ALT);
-        if (altField.Length > 0)
-        {
-            Utf8Parser.TryParse(altField, out altitude, out _);
-        }
-
-        // Age of differential (field 10)
-        var ageField = GetField(data, commas, FIELD_AGE);
-        if (ageField.Length > 0)
-        {
-            Utf8Parser.TryParse(ageField, out age, out _);
-        }
-
-        // Speed in knots (field 11)
-        var speedField = GetField(data, commas, FIELD_SPEED);
-        if (speedField.Length > 0)
-        {
-            Utf8Parser.TryParse(speedField, out speed, out _);
-            speed *= 0.514444; // knots to m/s
-        }
-
-        // Heading (field 12). PANDA: int scaled ×10 with 65535 sentinel.
-        // PAOGI: float decimal degrees.
+        // Not a dual heading: HasDualHeading is false, so "Dual GPS" ignores it (#157:
+        // AgIO puts PANDA field 12 in imuHeading, PAOGI field 12 in headingTrueDual).
+        state.HasDualHeading = false;
+        state.SentenceType = GpsSentenceType.Panda;
         var headingField = GetField(data, commas, FIELD_HEADING);
+        var rollField = GetField(data, commas, FIELD_ROLL);
+
+        int rawHeading = 0;
+        bool imuValid = false;
+        if (headingField.Length > 0
+            && Utf8Parser.TryParse(headingField, out rawHeading, out _)
+            && rawHeading != 65535)
+        {
+            state.ImuHeading = rawHeading * 0.1;
+            imuValid = true;
+        }
+        else
+        {
+            state.ImuHeading = 0;
+        }
+        state.ImuValid = imuValid;
+        // Seed primary heading from IMU so first-cycle / standstill has a
+        // sensible default. Pipeline's fix-to-fix overrides at any real speed.
+        state.Heading = imuValid ? state.ImuHeading : 0;
+
+        if (imuValid && rollField.Length > 0
+            && Utf8Parser.TryParse(rollField, out int rawRoll, out _))
+        {
+            state.Roll = rawRoll * 0.1;
+            ApplyAhrsRollCalibration(ref state.Roll, configStore);
+        }
+        else
+        {
+            state.Roll = 0;
+        }
+
+        DecodeAogAttitudeFields(data, commas, ref state);
+        return true;
+    }
+
+    /// <summary>
+    /// $PAOGI: dual antenna from an AiO board. Field 12 is the dual-antenna heading and
+    /// field 13 the dual roll, both float decimal degrees. Dual antenna is ground truth —
+    /// no IMU fusion needed, so ImuHeading stays 0 and ImuValid stays false.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static bool DecodePaogi(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount,
+        ref VehicleState state, ConfigurationStore configStore)
+    {
+        if (fieldCount < MIN_PANDA_FIELDS) return false;
+        DecodeAogPositionFields(data, commas, ref state);
+
+        state.HasDualHeading = true;
+        state.SentenceType = GpsSentenceType.Paogi;
+        var headingField = GetField(data, commas, FIELD_HEADING);
+        var rollField = GetField(data, commas, FIELD_ROLL);
+
         if (headingField.Length > 0)
         {
-            if (isPanda)
-            {
-                if (Utf8Parser.TryParse(headingField, out int rawHeading, out _)
-                    && rawHeading != 65535)
-                {
-                    heading = rawHeading * 0.1;
-                }
-            }
-            else
-            {
-                Utf8Parser.TryParse(headingField, out heading, out _);
-            }
+            Utf8Parser.TryParse(headingField, out state.Heading, out _);
+        }
+        else
+        {
+            state.Heading = 0;
+        }
+        state.ImuHeading = 0;
+        state.ImuValid = false;
+
+        if (rollField.Length > 0)
+        {
+            Utf8Parser.TryParse(rollField, out state.Roll, out _);
+            ApplyAhrsRollCalibration(ref state.Roll, configStore);
+        }
+        else
+        {
+            state.Roll = 0;
         }
 
-        // Apply hemisphere signs
-        if (latSouth) latitude = -latitude;
-        if (lonWest) longitude = -longitude;
-
-        // Update GPS data
-        _gpsData = new GpsData
-        {
-            CurrentPosition = new Position
-            {
-                Latitude = latitude,
-                Longitude = longitude,
-                Altitude = altitude,
-                Speed = speed,
-                Heading = heading
-            },
-            FixQuality = fixQuality,
-            SatellitesInUse = satellites,
-            Hdop = hdop,
-            DifferentialAge = age,
-            HasDualHeading = !isPanda,
-            SentenceType = isPanda ? GpsSentenceType.Panda : GpsSentenceType.Paogi,
-            Timestamp = DateTime.UtcNow
-        };
-
-        // Notify GPS service
-        _gpsService.UpdateGpsData(_gpsData);
-
+        DecodeAogAttitudeFields(data, commas, ref state);
         return true;
     }
 
+    /// <summary>Fields 1-11, identical between $PANDA and $PAOGI (the GGA part).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ReadOnlySpan<byte> GetField(ReadOnlySpan<byte> data, Span<int> commas, int fieldIndex)
+    private static void DecodeAogPositionFields(ReadOnlySpan<byte> data, Span<int> commas, ref VehicleState state)
     {
-        int start = commas[fieldIndex] + 1;
-        int end = commas[fieldIndex + 1];
-        int length = end - start;
-
-        if (length <= 0 || start >= data.Length) return ReadOnlySpan<byte>.Empty;
-
-        return data.Slice(start, length);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Zero-Copy VehicleState Parsing (AutoSteer Pipeline)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// Parse NMEA sentence directly into VehicleState struct.
-    /// Zero allocations - writes directly to struct fields.
-    /// </summary>
-    /// <param name="data">Raw NMEA data</param>
-    /// <param name="state">VehicleState struct to populate (passed by ref)</param>
-    /// <returns>True if parsed successfully</returns>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static bool ParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
-        Models.Configuration.ConfigurationStore configStore)
-    {
-        state.MarkParseStart();
-
-        // Minimum valid: $PANDA,... = at least 20 bytes
-        if (data.Length < 20) return false;
-
-        // Must start with $
-        if (data[0] != '$') return false;
-
-        // Find checksum marker
-        int asterisk = data.IndexOf((byte)'*');
-        if (asterisk < 10) return false;
-
-        // Validate checksum (XOR of bytes between $ and *)
-        if (!ValidateChecksum(data, asterisk)) return false;
-
-        // Get sentence type (bytes 1-5 after $)
-        var sentenceType = data.Slice(1, 5);
-
-        // PANDA = single GPS + IMU; field 12 is IMU heading scaled ×10 with
-        // sentinel "65535", field 13 is IMU roll scaled ×10. PAOGI = dual
-        // antenna; field 12 is dual-antenna heading as float, field 13 is
-        // dual roll as float — no IMU fusion needed.
-        bool isPanda;
-        if (sentenceType.SequenceEqual(PANDA)) isPanda = true;
-        else if (sentenceType.SequenceEqual(PAOGI)) isPanda = false;
-        else return false;
-
-        // Parse directly into state
-        if (!ParsePandaFieldsIntoState(data.Slice(0, asterisk), ref state, isPanda, configStore))
-            return false;
-
-        state.MarkParseEnd();
-        return true;
-    }
-
-    /// <summary>
-    /// Parse PANDA/PAOGI fields directly into VehicleState. Fields 1-11 are
-    /// identical between the two. Fields 12-13 (heading, roll) differ:
-    /// PANDA scales them ×10 as int with a 65535 IMU-invalid sentinel on
-    /// heading; PAOGI sends them as floats with no scaling.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private static bool ParsePandaFieldsIntoState(ReadOnlySpan<byte> data, ref VehicleState state, bool isPanda,
-        Models.Configuration.ConfigurationStore configStore)
-    {
-        // Find all comma positions (up to 20 fields)
-        Span<int> commas = stackalloc int[20];
-        int commaCount = 0;
-
-        commas[commaCount++] = -1; // Virtual comma before first field
-
-        for (int i = 0; i < data.Length && commaCount < 20; i++)
-        {
-            if (data[i] == ',')
-                commas[commaCount++] = i;
-        }
-
-        // Add end position as final "comma"
-        commas[commaCount++] = data.Length;
-
-        // Need at least 15 fields for PANDA
-        if (commaCount < MIN_PANDA_FIELDS + 1) return false;
-
         // Parse latitude (field 2): DDMM.MMMMM
         var latField = GetField(data, commas, FIELD_LAT);
         if (latField.Length > 0)
@@ -441,96 +417,138 @@ public class NmeaParserServiceFast
             Utf8Parser.TryParse(speedField, out state.Speed, out _);
             state.Speed *= 0.514444; // knots to m/s
         }
+    }
 
-        // Heading (field 12) and roll (field 13) — sentence-type dependent.
-        // Only PAOGI's heading is a dual-antenna heading (#157): AgIO puts PAOGI field
-        // 12 in headingTrueDual and PANDA field 12 in imuHeading.
-        state.HasDualHeading = !isPanda;
-        state.SentenceType = isPanda ? GpsSentenceType.Panda : GpsSentenceType.Paogi;
-        var headingField = GetField(data, commas, FIELD_HEADING);
-        var rollField = GetField(data, commas, FIELD_ROLL);
-
-        if (isPanda)
-        {
-            // PANDA: heading is `(int)(degrees * 10)` with sentinel 65535 for
-            // "no IMU"; roll is `(int)(degrees * 10)` (the firmware's
-            // currentData.roll is pre-multiplied by 10 at the IMU layer —
-            // see Firmware_Teensy_AiO_26/lib/aio_navigation/IMUProcessor.cpp).
-            int rawHeading = 0;
-            bool imuValid = false;
-            if (headingField.Length > 0
-                && Utf8Parser.TryParse(headingField, out rawHeading, out _)
-                && rawHeading != 65535)
-            {
-                state.ImuHeading = rawHeading * 0.1;
-                imuValid = true;
-            }
-            else
-            {
-                state.ImuHeading = 0;
-            }
-            state.ImuValid = imuValid;
-            // Seed primary heading from IMU so first-cycle / standstill has a
-            // sensible default. Pipeline's fix-to-fix overrides at any real speed.
-            // Not a dual heading: HasDualHeading is false, so "Dual GPS" ignores it.
-            state.Heading = imuValid ? state.ImuHeading : 0;
-
-            if (imuValid && rollField.Length > 0
-                && Utf8Parser.TryParse(rollField, out int rawRoll, out _))
-            {
-                state.Roll = rawRoll * 0.1;
-                ApplyAhrsRollCalibration(ref state.Roll, configStore);
-            }
-            else
-            {
-                state.Roll = 0;
-            }
-        }
-        else
-        {
-            // PAOGI: dual-antenna heading and dual roll, both float decimal
-            // degrees. Dual antenna is ground truth — no IMU fusion needed,
-            // so ImuHeading stays 0 and ImuValid stays false.
-            if (headingField.Length > 0)
-            {
-                Utf8Parser.TryParse(headingField, out state.Heading, out _);
-            }
-            else
-            {
-                state.Heading = 0;
-            }
-            state.ImuHeading = 0;
-            state.ImuValid = false;
-
-            if (rollField.Length > 0)
-            {
-                Utf8Parser.TryParse(rollField, out state.Roll, out _);
-                ApplyAhrsRollCalibration(ref state.Roll, configStore);
-            }
-            else
-            {
-                state.Roll = 0;
-            }
-        }
-
-        // Pitch angle in degrees (field 14) — same format both sentences.
+    /// <summary>Fields 14-15 (pitch, yaw rate), same format in $PANDA and $PAOGI.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void DecodeAogAttitudeFields(ReadOnlySpan<byte> data, Span<int> commas, ref VehicleState state)
+    {
+        // Pitch angle in degrees (field 14)
         var pitchField = GetField(data, commas, FIELD_PITCH);
         if (pitchField.Length > 0)
         {
             Utf8Parser.TryParse(pitchField, out state.Pitch, out _);
         }
 
-        // Yaw rate in degrees/second (field 15) — same format both sentences.
+        // Yaw rate in degrees/second (field 15)
         var yawField = GetField(data, commas, FIELD_YAW_RATE);
         if (yawField.Length > 0)
         {
             Utf8Parser.TryParse(yawField, out state.YawRate, out _);
         }
+    }
 
-        // Pre-compute heading in radians for guidance calculations
-        state.HeadingRadians = state.Heading * (Math.PI / 180.0);
+    // ─── $KSXT ────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// $KSXT: Bynav / Unicore dual-antenna receiver with its own INS, sent straight from
+    /// the receiver over UDP (no AiO board). One sentence carries the whole fix, so it is
+    /// decoded like $PAOGI: dual heading, roll from the antenna baseline, no IMU fusion.
+    /// Field map and quality rules follow AgIO's ParseKSXT so a receiver set up for AgIO
+    /// behaves the same here. No HDOP in the sentence (left 0, which passes the validator);
+    /// pitch and yaw rate are not read.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static bool DecodeKsxt(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount,
+        ref VehicleState state, ConfigurationStore configStore)
+    {
+        if (fieldCount < MIN_KSXT_FIELDS) return false;
+
+        // AgIO takes the sentence only when time, lon, lat, height and heading are present.
+        var lonField = GetField(data, commas, KSXT_LON);
+        var latField = GetField(data, commas, KSXT_LAT);
+        var altField = GetField(data, commas, KSXT_ALT);
+        var headingField = GetField(data, commas, KSXT_HEADING);
+        if (GetField(data, commas, FIELD_TIME).Length == 0 || lonField.Length == 0 || latField.Length == 0
+            || altField.Length == 0 || headingField.Length == 0)
+            return false;
+
+        // Signed decimal degrees, not DDMM.MMMM
+        if (!Utf8Parser.TryParse(lonField, out state.Longitude, out _)) return false;
+        if (!Utf8Parser.TryParse(latField, out state.Latitude, out _)) return false;
+        Utf8Parser.TryParse(altField, out state.Altitude, out _);
+
+        // Dual-antenna heading, float degrees
+        Utf8Parser.TryParse(headingField, out state.Heading, out _);
+        state.HasDualHeading = true;
+        state.SentenceType = GpsSentenceType.Ksxt;
+        state.ImuHeading = 0;
+        state.ImuValid = false;
+
+        // Speed in km/h - convert to m/s
+        var speedField = GetField(data, commas, KSXT_SPEED);
+        state.Speed = 0;
+        if (speedField.Length > 0 && Utf8Parser.TryParse(speedField, out state.Speed, out _))
+        {
+            state.Speed /= 3.6;
+        }
+
+        // Position quality: the receiver's own code, mapped to the GGA scale
+        int posQuality = 0;
+        var posQualityField = GetField(data, commas, KSXT_POS_QUALITY);
+        if (posQualityField.Length > 0) Utf8Parser.TryParse(posQualityField, out posQuality, out _);
+        state.FixQuality = KsxtFixQuality(posQuality);
+
+        // Roll only when the heading solution is RTK fixed; otherwise it's noise (AgIO
+        // sends float.MinValue, which AgOpenGPS reads as roll 0).
+        int headingQuality = 0;
+        var headingQualityField = GetField(data, commas, KSXT_HEADING_QUALITY);
+        if (headingQualityField.Length > 0) Utf8Parser.TryParse(headingQualityField, out headingQuality, out _);
+        var rollField = GetField(data, commas, KSXT_ROLL);
+        state.Roll = 0;
+        if (headingQuality == KSXT_QUALITY_RTK_FIXED && rollField.Length > 0
+            && Utf8Parser.TryParse(rollField, out state.Roll, out _))
+        {
+            ApplyAhrsRollCalibration(ref state.Roll, configStore);
+        }
+        else
+        {
+            state.Roll = 0;
+        }
+
+        // Satellites
+        state.Satellites = 0;
+        var satsField = GetField(data, commas, KSXT_SATS);
+        if (satsField.Length > 0) Utf8Parser.TryParse(satsField, out state.Satellites, out _);
+
+        // Age of differential, seconds
+        state.DifferentialAge = 0;
+        var ageField = GetField(data, commas, KSXT_AGE);
+        if (ageField.Length > 0) Utf8Parser.TryParse(ageField, out state.DifferentialAge, out _);
+
+        state.Hdop = 0;
+        state.Pitch = 0;
+        state.YawRate = 0;
         return true;
+    }
+
+    /// <summary>
+    /// KSXT position quality → GGA fix quality, as AgIO maps it: 0 invalid, 1 single,
+    /// 2 → 5 (RTK float), 3 → 4 (RTK fixed). Any other code is treated as no fix rather
+    /// than guessed at, so an unknown receiver state can't steer; extend this when a
+    /// capture shows one.
+    /// </summary>
+    internal static int KsxtFixQuality(int posQuality) => posQuality switch
+    {
+        0 => 0,
+        1 => 1,
+        2 => 5,
+        3 => 4,
+        _ => 0,
+    };
+
+    // ─── Shared helpers ───────────────────────────────────────────────────
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> GetField(ReadOnlySpan<byte> data, Span<int> commas, int fieldIndex)
+    {
+        int start = commas[fieldIndex] + 1;
+        int end = commas[fieldIndex + 1];
+        int length = end - start;
+
+        if (length <= 0 || start >= data.Length) return ReadOnlySpan<byte>.Empty;
+
+        return data.Slice(start, length);
     }
 
     /// <summary>
@@ -581,7 +599,7 @@ public class NmeaParserServiceFast
     /// raw uncalibrated IMU roll, and the operator's "Zero Roll" tap in
     /// the Roll-calibration wizard step has no effect on live readings.
     /// </summary>
-    private static void ApplyAhrsRollCalibration(ref double roll, Models.Configuration.ConfigurationStore configStore)
+    private static void ApplyAhrsRollCalibration(ref double roll, ConfigurationStore configStore)
     {
         var ahrs = configStore.Ahrs;
         if (ahrs.IsRollInvert) roll = -roll;

@@ -845,6 +845,7 @@ public static partial class RemoteServerWiring
                         {
                             AgOpenWeb.Models.GpsSentenceType.Panda => "PANDA",
                             AgOpenWeb.Models.GpsSentenceType.Paogi => "PAOGI",
+                            AgOpenWeb.Models.GpsSentenceType.Ksxt => "KSXT",
                             AgOpenWeb.Models.GpsSentenceType.Simulator => "SIM",
                             _ => "",
                         };

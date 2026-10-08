@@ -43,6 +43,7 @@ public sealed class GpsSentenceMonitor
     private readonly object _lock = new();
     private readonly Slot _panda = new("PANDA");
     private readonly Slot _paogi = new("PAOGI");
+    private readonly Slot _ksxt = new("KSXT");
     private readonly Slot _rejected = new(RejectedType);
     private readonly long[] _arrivals = new long[RateWindow];
     private int _arrivalCount;
@@ -62,6 +63,7 @@ public sealed class GpsSentenceMonitor
         {
             Slot slot = !accepted ? _rejected
                 : data.Length > 5 && data.Slice(1, 5).SequenceEqual("PAOGI"u8) ? _paogi
+                : data.Length > 5 && data.Slice(1, 5).SequenceEqual("KSXT,"u8) ? _ksxt
                 : _panda;
             int n = Math.Min(data.Length, MaxLength);
             data.Slice(0, n).CopyTo(slot.Bytes);
@@ -115,8 +117,8 @@ public sealed class GpsSentenceMonitor
                 if (span > 0) rate = (_arrivalCount - 1) / span;
             }
 
-            var sentences = new List<Sentence>(3);
-            foreach (var slot in new[] { _panda, _paogi, _rejected })
+            var sentences = new List<Sentence>(4);
+            foreach (var slot in new[] { _panda, _paogi, _ksxt, _rejected })
                 if (slot.Seen)
                     sentences.Add(new Sentence(slot.Type, Text(slot), Math.Max(0, Seconds(now - slot.Stamp))));
             return new Snapshot(rate, _missed, _rejectedCount, sentences);

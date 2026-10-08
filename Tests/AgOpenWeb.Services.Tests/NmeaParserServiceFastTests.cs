@@ -40,7 +40,7 @@ public class NmeaParserServiceFastTests
                    .Do(ci => _lastGpsData = ci.Arg<GpsData>());
         _lastGpsData = null;
 
-        _parser = new NmeaParserServiceFast(_gpsService);
+        _parser = new NmeaParserServiceFast(_gpsService, ConfigurationStore.Instance);
     }
 
     // ── Checksum validation ─────────────────────────────────────────────
@@ -410,6 +410,157 @@ public class NmeaParserServiceFastTests
         Assert.That(state.Roll, Is.EqualTo(System.Math.Round(roll, 2)).Within(1e-6));
     }
 
+    // ── $KSXT (Bynav / Unicore, straight from the receiver) ─────────────
+    // Unicore N4 manual table 7-131, 0-based: lon 2, lat 3, height 4, heading 5, pitch 6
+    // (= vehicle roll, antennas across), track 7, vel km/h 8, roll 9, pos qual 10, heading
+    // qual 11, slave sats 12, master sats 13, ENU 14-16, ENU vel 17-19, 20-21 reserved.
+
+    [Test]
+    public void ParseIntoState_KSXT_ParsesTheUnicoreManualExample()
+    {
+        // Verbatim from the manual (7.3.59), checksum as printed.
+        byte[] sentence = Encoding.ASCII.GetBytes(
+            "$KSXT,20190909084745.00,116.23662400,40.07897925,68.3830,299.22,-67.03,190.28,0.022,,1,3,46,28,,,,-0.004,-0.021,-0.020,,*27");
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        Assert.That(ok, Is.True);
+        Assert.That(state.Latitude, Is.EqualTo(40.07897925).Within(1e-9));
+        Assert.That(state.Longitude, Is.EqualTo(116.23662400).Within(1e-9));
+        Assert.That(state.Altitude, Is.EqualTo(68.3830).Within(1e-6));
+        Assert.That(state.Heading, Is.EqualTo(299.22).Within(1e-6));
+        Assert.That(state.Speed, Is.EqualTo(0.022 / 3.6).Within(1e-9));
+        Assert.That(state.FixQuality, Is.EqualTo(1), "position quality 1 = single");
+        Assert.That(state.Roll, Is.EqualTo(-67.03).Within(1e-6), "heading quality 3, so the baseline pitch is taken as roll");
+        Assert.That(state.Satellites, Is.EqualTo(28), "master antenna's count");
+        Assert.That(state.DifferentialAge, Is.EqualTo(0), "field 20 is reserved and empty");
+    }
+
+    [Test]
+    public void ParseIntoState_KSXT_DecodesTheWholeFix()
+    {
+        byte[] sentence = BuildKsxtBytes(lon: -74.006000, lat: 43.712800, alt: 68.38, heading: 271.5,
+            roll: -2.25, speedKmh: 18.0, posQuality: 3, headingQuality: 3, sats: 27, age: 1.2);
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        Assert.That(ok, Is.True);
+        Assert.That(state.SentenceType, Is.EqualTo(GpsSentenceType.Ksxt));
+        Assert.That(state.Latitude, Is.EqualTo(43.712800).Within(1e-7), "signed decimal degrees, no DDMM");
+        Assert.That(state.Longitude, Is.EqualTo(-74.006000).Within(1e-7));
+        Assert.That(state.Altitude, Is.EqualTo(68.38).Within(1e-6));
+        Assert.That(state.Heading, Is.EqualTo(271.5).Within(1e-6));
+        Assert.That(state.HeadingRadians, Is.EqualTo(271.5 * System.Math.PI / 180).Within(1e-9));
+        Assert.That(state.HasDualHeading, Is.True, "the receiver's heading is a dual-antenna heading");
+        Assert.That(state.ImuValid, Is.False);
+        Assert.That(state.Roll, Is.EqualTo(-2.25).Within(1e-6));
+        Assert.That(state.Speed, Is.EqualTo(5.0).Within(1e-6), "18 km/h is 5 m/s");
+        Assert.That(state.FixQuality, Is.EqualTo(4), "KSXT quality 3 is RTK fixed");
+        Assert.That(state.Satellites, Is.EqualTo(27));
+        Assert.That(state.DifferentialAge, Is.EqualTo(1.2).Within(1e-6));
+        Assert.That(state.Hdop, Is.EqualTo(0), "KSXT carries no HDOP");
+    }
+
+    [Test]
+    public void ParseIntoState_KSXT_SpeedIsKmhNotKnots()
+    {
+        byte[] sentence = BuildKsxtBytes(lon: 1, lat: 1, alt: 0, heading: 0, roll: 0, speedKmh: 36.0,
+            posQuality: 3, headingQuality: 3, sats: 20, age: 0);
+        var state = new VehicleState();
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        Assert.That(state.Speed, Is.EqualTo(10.0).Within(1e-6));
+    }
+
+    // Receiver codes: 0 none, 1 single, 2 float, 3 fixed. Anything else is not guessed at.
+    [TestCase(0, 0)]
+    [TestCase(1, 1)]
+    [TestCase(2, 5)]
+    [TestCase(3, 4)]
+    [TestCase(4, 0)]
+    [TestCase(9, 0)]
+    public void ParseIntoState_KSXT_MapsPositionQualityToGgaFixQuality(int posQuality, int expectedFix)
+    {
+        byte[] sentence = BuildKsxtBytes(lon: 1, lat: 1, alt: 0, heading: 0, roll: 0, speedKmh: 0,
+            posQuality: posQuality, headingQuality: 3, sats: 20, age: 0);
+        var state = new VehicleState();
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        Assert.That(state.FixQuality, Is.EqualTo(expectedFix));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void ParseIntoState_KSXT_RollIsZeroUnlessHeadingIsRtkFixed(int headingQuality)
+    {
+        byte[] sentence = BuildKsxtBytes(lon: 1, lat: 1, alt: 0, heading: 90, roll: 3.5, speedKmh: 0,
+            posQuality: 3, headingQuality: headingQuality, sats: 20, age: 0);
+        var state = new VehicleState { Roll = 7 };
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        Assert.That(state.Roll, Is.EqualTo(0), "AgIO sends 'no roll' when the heading solution isn't fixed");
+        Assert.That(state.Heading, Is.EqualTo(90).Within(1e-6), "the heading itself is still taken");
+    }
+
+    [Test]
+    public void ParseIntoState_KSXT_AppliesAhrsRollCalibration()
+    {
+        var cfg = new ConfigurationStore();
+        cfg.Ahrs.IsRollInvert = true;
+        cfg.Ahrs.RollZero = 0.5;
+        byte[] sentence = BuildKsxtBytes(lon: 1, lat: 1, alt: 0, heading: 0, roll: 2.0, speedKmh: 0,
+            posQuality: 3, headingQuality: 3, sats: 20, age: 0);
+        var state = new VehicleState();
+
+        NmeaParserServiceFast.ParseIntoState(sentence, ref state, cfg);
+
+        Assert.That(state.Roll, Is.EqualTo(-2.5).Within(1e-6), "invert, then subtract zero — same as PAOGI");
+    }
+
+    [Test]
+    public void ParseIntoState_KSXT_RejectsASentenceMissingPositionOrHeading()
+    {
+        // AgIO ignores the sentence unless time, lon, lat, height and heading are all present.
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(BuildSentence(
+            "KSXT,20190909084745.00,,40.07897925,68.3837,2.5,-1.1,0.00,0.00,0.00,0.00,3,3,0,20,0.000,0.000,0.000,0.000,0.000,0.000,0.000"),
+            ref state, ConfigurationStore.Instance);
+
+        Assert.That(ok, Is.False);
+    }
+
+    [Test]
+    public void ParseIntoState_KSXT_RejectsATruncatedSentence()
+    {
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(BuildSentence(
+            "KSXT,20190909084745.00,116.23662400,40.07897925,68.3837,2.5,-1.1,0.00,0.00,0.00,0.00,3,3"),
+            ref state, ConfigurationStore.Instance);
+
+        Assert.That(ok, Is.False);
+    }
+
+    [Test]
+    public void ParseSpan_KSXT_ReachesTheGpsServiceAsADualHeadingFix()
+    {
+        _parser.ParseSpan(BuildKsxtBytes(lon: 116.236624, lat: 40.078979, alt: 68.4, heading: 2.5, roll: 0,
+            speedKmh: 0, posQuality: 1, headingQuality: 0, sats: 12, age: 0));
+
+        Assert.That(_lastGpsData, Is.Not.Null);
+        Assert.That(_lastGpsData!.SentenceType, Is.EqualTo(GpsSentenceType.Ksxt));
+        Assert.That(_lastGpsData.HasDualHeading, Is.True);
+        Assert.That(_lastGpsData.CurrentPosition.Latitude, Is.EqualTo(40.078979).Within(1e-6));
+        Assert.That(_lastGpsData.FixQuality, Is.EqualTo(1));
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────
 
     private static byte[] BuildPandaBytes(
@@ -463,6 +614,21 @@ public class NmeaParserServiceFastTests
             "PAOGI,123456.00,{0:F3},{1},{2:F3},{3},{4},{5},{6:F1},{7:F1},{8:F1},{9:F1},{10:F1},{11:F2},{12},{13:F2}",
             lat, latDir, lon, lonDir, fixQuality, sats, hdop, alt, diffAge, speedKnots,
             heading, roll, pitchInt, yawRate);
+        return BuildSentence(body);
+    }
+
+    /// <summary>
+    /// Builds a $KSXT sentence in the Unicore table 7-131 layout. <paramref name="roll"/>
+    /// goes in the pitch field (6), which is what the decoder reads as roll; the
+    /// receiver's own roll field (9) and the ENU fields are left empty like the manual's
+    /// example. <paramref name="age"/> goes in reserved field 20, where AgIO reads it.
+    /// </summary>
+    private static byte[] BuildKsxtBytes(double lon, double lat, double alt, double heading, double roll,
+        double speedKmh, int posQuality, int headingQuality, int sats, double age)
+    {
+        string body = string.Format(CultureInfo.InvariantCulture,
+            "KSXT,20190909084745.00,{0:F8},{1:F8},{2:F4},{3:F2},{4:F2},0.00,{5:F3},,{6},{7},{8},{8},,,,,,,{9:F3},",
+            lon, lat, alt, heading, roll, speedKmh, posQuality, headingQuality, sats, age);
         return BuildSentence(body);
     }
 
