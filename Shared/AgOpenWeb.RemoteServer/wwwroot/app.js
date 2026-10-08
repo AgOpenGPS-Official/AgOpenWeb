@@ -4390,7 +4390,9 @@ function renderStatusBar() {
   const s = statusBar;
   if (!s) { SB.bar.style.display = 'none'; if (SB.diagRow) SB.diagRow.style.display = 'none'; return; }
   SB.bar.style.display = 'flex';
-  SB.fixDot.style.background = fixColor(s.fixQuality);
+  // GPS data lost: the host already reports No Fix; grey the dot so it reads as "nothing",
+  // not as a live red "no fix" from a receiver that is still talking.
+  SB.fixDot.style.background = s.gpsLost ? '#6b7280' : fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
   SB.age.textContent = tr('Age {age}', { age: s.age != null ? s.age.toFixed(1) : '—' });
   SB.rot.textContent = rotatingLineText();
@@ -4399,7 +4401,11 @@ function renderStatusBar() {
   SB.speed.textContent = toDisplayUnit(mps * 3.6, 'kmh').toFixed(1);
   SB.unit.textContent = unitLabel('kmh');
   // Modules: aggregate dot + per-module popup rows.
-  SB.modAgg.style.background = moduleAggColor(s);
+  // All configured modules present = steady green; anything short of that flashes
+  // (amber: some missing, red: none), so trouble catches the eye from across the cab.
+  const aggColor = moduleAggColor(s);
+  SB.modAgg.style.background = aggColor;
+  SB.modAgg.classList.toggle('flash', aggColor !== '#22c55e');
   const dot = (el, ok) => { el.style.background = ok ? '#22c55e' : '#6b7280'; };
   dot(SB.mGps, s.gpsOk); dot(SB.mImu, s.imuOk); dot(SB.mAs, s.autoSteerOk); dot(SB.mMa, s.machineOk);
   SB.dGps.textContent = (s.fixText || '—') + (s.sats ? ' ' + tr('({n} sats)', { n: s.sats }) : '');

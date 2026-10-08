@@ -362,11 +362,13 @@ public sealed class SceneProjector
         var cfg = _config.Connections;
         var sw = _smartWas.GetSnapshot();
         var gpsSource = GpsSourceProvider?.Invoke() ?? ("", false);
+        // With the data lost, the last fix is history: read "No Fix", not a stale "RTK Fixed".
+        bool gpsLost = c.IsGpsLost;
         return new StatusDto(
-            v.FixQuality,
-            v.FixQualityText,
-            v.Age,
-            v.SatelliteCount,
+            gpsLost ? 0 : v.FixQuality,
+            gpsLost ? "No Fix" : v.FixQualityText,
+            gpsLost ? 0 : v.Age,
+            gpsLost ? 0 : v.SatelliteCount,
             _config.IsMetric,
             c.IsGpsDataOk,
             c.IsImuDataOk,

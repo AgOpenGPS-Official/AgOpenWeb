@@ -94,6 +94,10 @@
     #statusbar button:hover { background: rgba(var(--ov),0.06); border-radius: 6px; }
     #statusbar .dot { width: 13px; height: 13px; border-radius: 50%; display: inline-block;
       background: #6b7280; vertical-align: middle; }
+    /* Modules dot: steady green only when every configured module is present; amber or
+       red flashes so a missing module is noticed without reading the strip. */
+    #statusbar .dot.flash { animation: sb-flash 1s steps(1, end) infinite; }
+    @keyframes sb-flash { 50% { opacity: 0.15; } }
     #sb-pause { font-size: 12px; color: var(--text-2); }
     .sb-left { position: relative; display: flex; flex-direction: column; justify-content: center; line-height: 1.25; min-width: 360px; }
     /* Fullscreen: the OS draws an exit "✕" pill at the top-left (e.g. iPad Safari). The
