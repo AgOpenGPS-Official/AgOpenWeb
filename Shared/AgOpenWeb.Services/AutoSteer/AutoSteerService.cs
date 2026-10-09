@@ -27,7 +27,6 @@ using AgOpenWeb.Services.Interfaces;
 // Aliases to disambiguate from colliding namespaces.
 using TrackModel = AgOpenWeb.Models.Track.Track;
 using TrackInput = AgOpenWeb.Models.Track.TrackGuidanceInput;
-using ApplicationState = AgOpenWeb.Models.State.ApplicationState;
 
 namespace AgOpenWeb.Services.AutoSteer;
 
@@ -45,15 +44,13 @@ public class AutoSteerService : IAutoSteerService
     private readonly ITrackGuidanceService _guidanceService;
     private readonly IUdpCommunicationService _udpService;
     private readonly IGpsService _gpsService;
-    private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
     private ITramLineService? _tramLineService;
     private ISmartWasCalibrationService? _smartWas;
 
-    // Drift compensation applied after LocalPlane → local coordinate conversion.
-    // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
-    // across AutoSteer and the cycle worker. Created by field-open (UI thread) or by the
-    // cycle worker on first valid fix; never written here (receive thread).
+    // Drift compensation applied to the local coordinates the cycle hands over
+    // (ProcessSimulatedPosition). The WGS84 → local conversion happens in the cycle
+    // worker against the field's LocalPlane; this service never converts or holds one.
     private double _driftEasting;
     private double _driftNorthing;
 
@@ -110,13 +107,11 @@ public class AutoSteerService : IAutoSteerService
         ITrackGuidanceService guidanceService,
         IUdpCommunicationService udpService,
         IGpsService gpsService,
-        ApplicationState appState,
         ConfigurationStore configStore)
     {
         _guidanceService = guidanceService;
         _udpService = udpService;
         _gpsService = gpsService;
-        _appState = appState;
         _configStore = configStore;
 
         // Initialize state
@@ -323,7 +318,9 @@ public class AutoSteerService : IAutoSteerService
         _state.SteerSwitchActive = steerData.SteerSwitchActive;
         _state.WorkSwitchActive = steerData.WorkSwitchActive;
 
-        _smartWas?.AddSample(steerData.ActualSteerAngle);
+        // Speed and cross-track error are this service's own receive-thread state (set by
+        // ProcessSimulatedPosition and the guidance step), so the gate reads no UI mirror.
+        _smartWas?.AddSample(steerData.ActualSteerAngle, _state.Speed, _state.CrossTrackError);
 
         if (switchChanged)
         {

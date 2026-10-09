@@ -13,7 +13,6 @@ namespace AgOpenWeb.Services.Tests;
 public class SmartWasCalibrationServiceTests
 {
     private IAutoSteerService _autoSteer = null!;
-    private ApplicationState _appState = null!;
     private SmartWasCalibrationService _service = null!;
 
     private const int MIN_SAMPLES = 200;
@@ -28,18 +27,21 @@ public class SmartWasCalibrationServiceTests
         _autoSteer = Substitute.For<IAutoSteerService>();
         _autoSteer.IsEngaged.Returns(true);
 
-        _appState = new ApplicationState();
-        _appState.Vehicle.Speed = IN_BOUND_SPEED_MPS;
-        _appState.Guidance.CrossTrackError = IN_BOUND_XTE_M;
+        _speedMps = IN_BOUND_SPEED_MPS;
+        _xteMeters = IN_BOUND_XTE_M;
 
-        _service = new SmartWasCalibrationService(_autoSteer, _appState, ConfigurationStore.Instance);
+        _service = new SmartWasCalibrationService(_autoSteer, ConfigurationStore.Instance);
         _service.Start();
     }
+
+    // The speed and cross-track error AutoSteerService would pass with each sample.
+    private double _speedMps;
+    private double _xteMeters;
 
     private void FeedSamples(int count, Func<int, double> sampleFn)
     {
         for (int i = 0; i < count; i++)
-            _service.AddSample(sampleFn(i));
+            _service.AddSample(sampleFn(i), _speedMps, _xteMeters);
     }
 
     private static double[] DeterministicNormal(int n, double mean, double stdDev, int seed)
@@ -136,11 +138,11 @@ public class SmartWasCalibrationServiceTests
     [Test]
     public void Gating_SpeedBelowCutoff_RejectsSamples()
     {
-        _appState.Vehicle.Speed = 0.5; // < 0.5556 m/s (2 km/h)
+        _speedMps = 0.5; // < 0.5556 m/s (2 km/h)
         FeedSamples(MIN_SAMPLES + 50, _ => 0.1);
         Assert.That(_service.GetSnapshot().SampleCount, Is.EqualTo(0));
 
-        _appState.Vehicle.Speed = 0.6; // > cutoff
+        _speedMps = 0.6; // > cutoff
         FeedSamples(50, _ => 0.1);
         Assert.That(_service.GetSnapshot().SampleCount, Is.EqualTo(50));
     }
@@ -149,11 +151,11 @@ public class SmartWasCalibrationServiceTests
     [Test]
     public void Gating_XteAboveCutoff_RejectsSamples()
     {
-        _appState.Guidance.CrossTrackError = 0.51; // > 0.5 m
+        _xteMeters = 0.51; // > 0.5 m
         FeedSamples(MIN_SAMPLES + 50, _ => 0.1);
         Assert.That(_service.GetSnapshot().SampleCount, Is.EqualTo(0));
 
-        _appState.Guidance.CrossTrackError = -0.49; // negative side, within bound
+        _xteMeters = -0.49; // negative side, within bound
         FeedSamples(50, _ => 0.1);
         Assert.That(_service.GetSnapshot().SampleCount, Is.EqualTo(50));
     }

@@ -61,7 +61,6 @@ public class TractorPathTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             _gpsService,
-            new ApplicationState(),
             config);
         _autoSteer.Start();
     }
@@ -178,12 +177,11 @@ public class TractorPathTests
     /// Uses a pass-through heading fusion (returns GPS heading as-is).
     /// </summary>
     private GpsPipelineService BuildFullPipeline(
-        AgOpenWeb.Services.Tool.ToolPositionService toolPosition,
-        ApplicationState appState)
+        AgOpenWeb.Services.Tool.ToolPositionService toolPosition)
     {
         var guidance = new TrackGuidanceService();
         var coverage = new CoverageMapService(ConfigurationStore.Instance);
-        var sectionControl = new SectionControlService(toolPosition, coverage, appState, ConfigurationStore.Instance);
+        var sectionControl = new SectionControlService(toolPosition, coverage, ConfigurationStore.Instance);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
@@ -203,7 +201,7 @@ public class TractorPathTests
             Substitute.For<IAudioService>(),
             new AgOpenWeb.Services.Pipeline.PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, appState, ConfigurationStore.Instance);
+            NullLogger<GpsPipelineService>.Instance, ConfigurationStore.Instance);
     }
 
     private static double LatDiffMeters(double lat1, double lat2) =>
@@ -425,10 +423,9 @@ public class TractorPathTests
         config.Tool.IsToolTBT = false;
         config.Tool.TrailingHitchLength = trailing ? 2.0 : 0;
 
-        var appState = new ApplicationState();
         var toolPosition = new AgOpenWeb.Services.Tool.ToolPositionService(config);
 
-        var pipeline = BuildFullPipeline(toolPosition, appState);
+        var pipeline = BuildFullPipeline(toolPosition);
         pipeline.Start();
 
         // Warmup: burn through startup frames with straight driving so

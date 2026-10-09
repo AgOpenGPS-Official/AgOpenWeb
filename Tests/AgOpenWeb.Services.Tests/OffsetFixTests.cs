@@ -109,7 +109,6 @@ public class OffsetFixTests
             Substitute.For<ITrackGuidanceService>(),
             Substitute.For<IUdpCommunicationService>(),
             Substitute.For<IGpsService>(),
-            new AgOpenWeb.Models.State.ApplicationState(),
             AgOpenWeb.Models.Configuration.ConfigurationStore.Instance);
 
         autoSteer.SetDriftCompensation(5.0, -10.0);

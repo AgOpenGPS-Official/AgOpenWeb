@@ -39,8 +39,7 @@ public class AutoSteerSteerSwitchChainTests
         _udp = Substitute.For<IUdpCommunicationService>();
         var guidance = Substitute.For<ITrackGuidanceService>();
         var gps = Substitute.For<IGpsService>();
-        var appState = new ApplicationState();
-        _service = new AutoSteerService(guidance, _udp, gps, appState, ConfigurationStore.Instance);
+        _service = new AutoSteerService(guidance, _udp, gps, ConfigurationStore.Instance);
         _service.Start();
     }
 

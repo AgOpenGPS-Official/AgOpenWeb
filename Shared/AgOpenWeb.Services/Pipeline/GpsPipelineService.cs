@@ -77,7 +77,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private IReadOnlyList<Vec3>? _contourRefShown;
     private bool _contourLockedShown, _contourHasPending;
     private readonly ILogger<GpsPipelineService> _logger;
-    private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
 
     // ── Events ──────────────────────────────────────────────────────────
@@ -144,6 +143,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private double _driftE;
     private double _driftN;
     private bool _hasActiveField;
+    // The UI's committed LocalPlane (State.Field.LocalPlane), pushed by SetLocalPlane whenever
+    // it changes: field open, the cycle's own first-fix / re-anchor commits, field close.
+    private LocalPlane? _committedLocalPlane;
+    private bool _simulatorEnabled;
+    private bool _headlandOn;
+    // Set by SetYouTurnConfig when the skip pattern changes, so the cycle drops the snake
+    // sequence and the next turn rebuilds it for the new pattern.
+    private bool _snakeResetPending;
 
     // Synthetic headland for the no-headland-but-has-boundary workflow.
     // Computed once per (boundary, UTurnRadius, UTurnDistanceFromBoundary)
@@ -171,9 +178,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Phase E: cycle-local cache of a LocalPlane auto-created from the first
     // GPS fix. The cycle uses this for coord conversion in the same tick it
     // emits it on GpsCycleResult.FirstFixLocalPlane; ApplyGpsCycleResult then
-    // commits it to _appState.Field.LocalPlane on the UI thread. Once the UI
-    // commit catches up (next cycle we see _appState.Field.LocalPlane match
-    // _cycleLocalPlane), we drop our reference.
+    // commits it to State.Field.LocalPlane on the UI thread, which pushes it back
+    // here through SetLocalPlane. Once the UI commit catches up (next cycle we see
+    // _committedLocalPlane match _cycleLocalPlane), we drop our reference.
     private LocalPlane? _cycleLocalPlane;
 
     // ── YouTurn + Guidance working state (Phase C) ──────────────────────
@@ -215,7 +222,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         IPipelineIntents intents,
         IGpsHeadingFusionService headingFusion,
         ILogger<GpsPipelineService> logger,
-        ApplicationState appState,
         ConfigurationStore configStore,
         IPositionEstimator? positionEstimator = null)
     {
@@ -231,7 +237,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _intents = intents;
         _headingFusion = headingFusion;
         _logger = logger;
-        _appState = appState;
         _configStore = configStore;
         _positionEstimator = positionEstimator;
     }
@@ -312,6 +317,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         lock (_stateLock)
         {
+            // A new skip pattern invalidates a snake sequence built for the old one.
+            if (uTurnSkipRows != _uTurnSkipRows || isSkipWorkedMode != _isSkipWorkedMode
+                || isAlternateSkipMode != _isAlternateSkipMode)
+                _snakeResetPending = true;
             _uTurnSkipRows = uTurnSkipRows;
             _isSkipWorkedMode = isSkipWorkedMode;
             _isAlternateSkipMode = isAlternateSkipMode;
@@ -384,6 +393,27 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _farFromFieldWarned = false;
             _hasActiveField = hasActiveField;
         }
+    }
+
+    /// <summary>
+    /// The UI's committed LocalPlane. The cycle converts WGS84 against it, drops its own
+    /// first-fix cache once this matches it, and runs the origin guard on it.
+    /// </summary>
+    public void SetLocalPlane(LocalPlane? localPlane)
+    {
+        lock (_stateLock) _committedLocalPlane = localPlane;
+    }
+
+    /// <summary>Whether the internal simulator is the GPS source (no steer speed limits then, #106).</summary>
+    public void SetSimulatorEnabled(bool enabled)
+    {
+        lock (_stateLock) _simulatorEnabled = enabled;
+    }
+
+    /// <summary>The headland toggle: the distance HUD and the hydraulic lift follow it (#106).</summary>
+    public void SetHeadlandOn(bool on)
+    {
+        lock (_stateLock) _headlandOn = on;
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -570,6 +600,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double driftE, driftN;
         bool hasActiveField;
         bool? nextUTurnDirectionOverride;
+        LocalPlane? committedLocalPlane;
+        bool simulatorEnabled;
+        bool headlandOn;
+        bool resetSnake;
 
         lock (_stateLock)
         {
@@ -596,11 +630,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
             driftE = _driftE;
             driftN = _driftN;
             hasActiveField = _hasActiveField;
+            committedLocalPlane = _committedLocalPlane;
+            simulatorEnabled = _simulatorEnabled;
+            headlandOn = _headlandOn;
+            resetSnake = _snakeResetPending;
+            _snakeResetPending = false;
             // Snapshot the pending direction override and clear it so the UI
             // can post a new one for the *next* turn even while this cycle
             // hasn't yet armed the current one — last-wins.
             nextUTurnDirectionOverride = _nextUTurnDirectionLeftOverride;
             _nextUTurnDirectionLeftOverride = null;
+        }
+
+        if (resetSnake)
+        {
+            // Rebuilt by the state machine on the next turn (HandleSnakeCreation).
+            _youTurn.SnakeSequence = null;
+            _youTurn.SnakeIndex = -1;
         }
 
         // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
@@ -661,9 +707,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         // Phase E: if a UI-committed LocalPlane already exists (user opened a
         // field, or we auto-created one on a previous cycle and ApplyGpsCycleResult
-        // has since committed it), drop our cycle-local cache — the observable
-        // instance is now the authoritative one.
-        var committedLocalPlane = _appState.Field.LocalPlane;
+        // has since committed it and pushed it back through SetLocalPlane), drop our
+        // cycle-local cache — the committed instance is now the authoritative one.
         if (_cycleLocalPlane != null && ReferenceEquals(committedLocalPlane, _cycleLocalPlane))
             _cycleLocalPlane = null;
 
@@ -940,7 +985,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
 
         // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
-        if (autoSteerEngaged && !_appState.Simulator.IsEnabled)
+        if (autoSteerEngaged && !simulatorEnabled)
         {
             var speedReason = CheckSteerSpeedLimits(pos.Speed * 3.6);
             if (speedReason != null)
@@ -1201,7 +1246,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // SetMachineState's three fields (section bits, U-turn state,
         // hyd-lift state) are all written by the cycle, before the PGN
         // build in (9) reads them.
-        byte hydLiftState = ComputeHydLiftState(toolPos, toolHeading, pos.Speed, headlandLine);
+        byte hydLiftState = ComputeHydLiftState(toolPos, toolHeading, pos.Speed, headlandLine, boundary, headlandOn);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
@@ -1217,7 +1262,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // ── (10) Headland proximity ─────────────────────────────────────
         double? headlandDist = null;
         bool headlandWarning = false;
-        ComputeHeadlandProximity(headlandLine, _toolPositionService.ToolPivotPosition,
+        ComputeHeadlandProximity(headlandLine, _toolPositionService.ToolPivotPosition, headlandOn,
             out headlandDist, out headlandWarning);
 
         // Hold last valid distance so the HUD doesn't disappear in gaps
@@ -2006,7 +2051,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     }
 
     private void ComputeHeadlandProximity(
-        List<Vec3>? headlandLine, Vec3 toolPivot,
+        List<Vec3>? headlandLine, Vec3 toolPivot, bool headlandOn,
         out double? distance, out bool warning)
     {
         distance = null;
@@ -2018,7 +2063,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var input = new Models.Headland.HeadlandDetectionInput
         {
             // The headland distance HUD follows the headland toggle (AgOpenGPS, #106).
-            IsHeadlandOn = _appState.FieldTools.IsHeadlandOn,
+            IsHeadlandOn = headlandOn,
             VehiclePosition = toolPivot,
             Boundaries = new List<Models.Headland.BoundaryData>
             {
@@ -2036,25 +2081,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     /// <summary>
     /// Compute PGN 239 hydraulic-lift state. Migrated from
-    /// MainViewModel.CalculateHydLiftState (Phase B completion). Reads
-    /// State.Field for the boundary/headland — read-only from cycle is
-    /// §0-clean.
+    /// MainViewModel.CalculateHydLiftState (Phase B completion). The boundary and
+    /// headland are the cycle's own copies (SetBoundary / SetHeadlandLine / SetHeadlandOn).
     ///
     /// Returns: 0 = off, 1 = lower (in cultivated area), 2 = raise (in headland zone).
     /// </summary>
-    private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine)
+    private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine,
+        Boundary? boundary, bool headlandOn)
     {
         var machine = _configStore.Machine;
         if (!machine.HydraulicLiftEnabled) return 0;
         // AgOpenGPS turns the hydraulic lift off with the headland (#106).
-        if (!_appState.FieldTools.IsHeadlandOn) return 0;
+        if (!headlandOn) return 0;
 
         // Don't operate at very low speed or in reverse (AgOpenGPS CHead: !isReverse, #125)
         if (speed < 0.2 || _isReverse) return 0;
 
         if (headlandLine == null || headlandLine.Count < 3) return 0;
-
-        var boundary = _appState.Field.CurrentBoundary;
         if (boundary == null || !boundary.IsValid) return 0;
 
         bool inBoundary = boundary.IsPointInside(toolPosition.Easting, toolPosition.Northing);

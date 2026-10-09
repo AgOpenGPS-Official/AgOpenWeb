@@ -822,9 +822,8 @@ public partial class MainViewModel
         {
             UTurnSkipMode = (UTurnSkipMode + 1) % 3;
             if (UTurnSkipMode != 0 && UTurnSkipRows < 1) UTurnSkipRows = 1;
-            // Reset snake sequence so it rebuilds on next turn
-            State.YouTurn.SnakeSequence = null;
-            State.YouTurn.SnakeIndex = -1;
+            // The setters above push the new pattern to the pipeline (SetYouTurnConfig),
+            // which drops the snake sequence so it rebuilds on the next turn.
             StatusMessage = UTurnSkipMode switch
             {
                 1 => $"U-Turn skip: alternative ({UTurnSkipRows} rows)",
@@ -1750,17 +1749,19 @@ public partial class MainViewModel
 
         // "Right of the line" flips with the direction, so negate the pass number and
         // nudge to keep the guidance line where it physically is (an engaged tractor on
-        // pass 3 right must not jump to pass 3 left). Written to the cycle's mirror too
-        // so the save below persists the swapped NudgeDistance.
+        // pass 3 right must not jump to pass 3 left). The negated pair goes to the pipeline
+        // with the re-pushed track (SetActiveTrack); the cycle's next snapshot mirrors it.
         bool isActive = track == SelectedTrack;
         if (isActive)
         {
-            State.Guidance.HowManyPathsAway = -State.Guidance.HowManyPathsAway;
-            State.Guidance.NudgeOffset = -State.Guidance.NudgeOffset;
+            _pendingInitialPathsAway = -State.Guidance.HowManyPathsAway;
+            _pendingInitialNudgeOffset = -State.Guidance.NudgeOffset;
         }
         track.NudgeDistance = -track.NudgeDistance;
 
-        if (isActive) OnSelectedTrackGeometryChanged();
+        // The mirror still holds the pre-swap pair until that snapshot lands, so the save
+        // keeps the NudgeDistance just set rather than recomputing it from the mirror.
+        if (isActive) OnSelectedTrackGeometryChanged(refreshNudgeFromGuidance: false);
         else SaveTracksToFile(); // not guiding on it → nothing live to keep in place
         StatusMessage = $"Swapped A/B points for {track.Name}";
     }
@@ -1777,11 +1778,11 @@ public partial class MainViewModel
         SwapTrackAB(SavedTracks[index]);
     }
 
-    private void OnSelectedTrackGeometryChanged()
+    private void OnSelectedTrackGeometryChanged(bool refreshNudgeFromGuidance = true)
     {
         SyncGuidanceStateToPipeline();
         _mapService.SetActiveTrack(SelectedTrack);
-        SaveTracksToFile();
+        SaveTracksToFile(refreshNudgeFromGuidance);
     }
 
     /// <summary>

@@ -182,12 +182,14 @@ public class TrackManagementTests
             Assert.That(track.Points[1].Northing, Is.EqualTo(0));
             Assert.That(track.Points[0].Heading, Is.EqualTo(south).Within(1e-9));
             Assert.That(track.Points[1].Heading, Is.EqualTo(south).Within(1e-9));
-            // "Right" flips with the direction → same physical pass / nudge.
-            Assert.That(vm.State.Guidance.HowManyPathsAway, Is.EqualTo(-3));
-            Assert.That(vm.State.Guidance.NudgeOffset, Is.EqualTo(-0.2).Within(1e-9));
+            // The mirror is the cycle's to write (rule 2): it still shows the pre-swap
+            // pair until the next snapshot lands.
+            Assert.That(vm.State.Guidance.HowManyPathsAway, Is.EqualTo(3));
+            Assert.That(vm.State.Guidance.NudgeOffset, Is.EqualTo(0.2).Within(1e-9));
         });
-        // The pipeline gets the swapped track + negated offsets (SetActiveTrack also
-        // drops its guidance state).
+        // "Right" flips with the direction → the pipeline gets the swapped track with the
+        // negated pass / nudge, so the line stays where it physically is (SetActiveTrack
+        // also drops its guidance state); the next cycle mirrors them.
         builder.GpsPipelineService.Received().SetActiveTrack(track, -3,
             Arg.Is<double>(d => Math.Abs(d + 0.2) < 1e-9), Arg.Any<bool>());
     }

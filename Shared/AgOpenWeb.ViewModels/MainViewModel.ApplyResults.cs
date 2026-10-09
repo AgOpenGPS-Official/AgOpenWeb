@@ -78,6 +78,7 @@ public partial class MainViewModel
             result.SatelliteCount,
             reportsHdopAndAge ? result.Hdop : double.NaN,
             reportsHdopAndAge ? result.DifferentialAge : double.NaN);
+        State.Vehicle.Roll = result.RollDegrees; // the web UI's roll readout and roll-zero read this
 
         // Tool position — set ToolEasting LAST to trigger map update
         ToolNorthing = result.ToolNorthing;

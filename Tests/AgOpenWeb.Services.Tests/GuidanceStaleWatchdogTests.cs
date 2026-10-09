@@ -35,7 +35,7 @@ public class GuidanceStaleWatchdogTests
         ConfigurationStore.SetInstance(config);
         _udp = Substitute.For<IUdpCommunicationService>();
         _gps = new GpsService();
-        _svc = new AutoSteerService(new TrackGuidanceService(), _udp, _gps, new ApplicationState(), config);
+        _svc = new AutoSteerService(new TrackGuidanceService(), _udp, _gps, config);
         _svc.Start();
         _lostEvents = 0;
         _svc.GuidanceLost += (_, _) => _lostEvents++;
