@@ -29,6 +29,8 @@ public sealed class GpsSentenceMonitor
     private const double SessionGapSeconds = 5.0;
     // No sentence for this long: the rate reads zero.
     private const double SilentSeconds = 2.0;
+    // This many consecutive, alike, over-long gaps mean the rate changed: relearn it.
+    private const int RateRelearnRun = 20;
 
     private sealed class Slot
     {
@@ -50,6 +52,8 @@ public sealed class GpsSentenceMonitor
     private int _arrivalNext;
     private long _lastArrival;
     private double _meanInterval; // seconds, of sentences that came on time
+    private int _slowInARow;      // consecutive gaps judged "missed" that all look alike
+    private double _slowInterval; // the first of those gaps
     private long _missed;
     private long _rejectedCount;
 
@@ -85,14 +89,33 @@ public sealed class GpsSentenceMonitor
                     _arrivalCount = 0;
                     _arrivalNext = 0;
                     _meanInterval = 0;
+                    _slowInARow = 0;
                 }
                 else if (_meanInterval > 0 && dt > 1.5 * _meanInterval)
                 {
                     _missed += (long)Math.Round(dt / _meanInterval) - 1;
+
+                    // A run of equal "long" gaps is a new rate, not missed sentences: the
+                    // mean was learned from a burst (a module flushing a buffer) or the
+                    // receiver's rate was lowered. Real losses come in uneven gaps.
+                    if (_slowInARow > 0 && Math.Abs(dt - _slowInterval) <= 0.2 * _slowInterval)
+                    {
+                        if (++_slowInARow >= RateRelearnRun)
+                        {
+                            _meanInterval = dt;
+                            _slowInARow = 0;
+                        }
+                    }
+                    else
+                    {
+                        _slowInARow = 1;
+                        _slowInterval = dt;
+                    }
                 }
                 else
                 {
                     _meanInterval = _meanInterval > 0 ? 0.9 * _meanInterval + 0.1 * dt : dt;
+                    _slowInARow = 0;
                 }
             }
             _lastArrival = timestamp;

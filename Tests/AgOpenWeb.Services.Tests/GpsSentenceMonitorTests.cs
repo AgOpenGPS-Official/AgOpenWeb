@@ -79,6 +79,49 @@ public class GpsSentenceMonitorTests
     }
 
     [Test]
+    public void A_burst_does_not_make_every_later_sentence_count_as_missed()
+    {
+        // Seen on the bench 2026-10-08: the AiO passthrough flushed a buffer while the
+        // receiver was being reconfigured, the learned interval collapsed, and "missed"
+        // climbed by ~3 per sentence for the rest of the session (28265 in 18 minutes).
+        var m = new GpsSentenceMonitor();
+        double t = 10;
+        for (int i = 0; i < 30; i++, t += 0.1) m.Record(B(Panda), true, At(t));
+        for (int i = 0; i < 8; i++, t += 0.005) m.Record(B(Panda), true, At(t));
+        long afterBurst = m.GetSnapshot(At(t)).Missed;
+        for (int i = 0; i < 200; i++, t += 0.1) m.Record(B(Panda), true, At(t));
+        t -= 0.1; // back to the last arrival
+
+        long missed = m.GetSnapshot(At(t)).Missed;
+        Assert.That(missed - afterBurst, Is.LessThan(100), "the rate is relearned, not 200 x 'missed'");
+        Assert.That(m.GetSnapshot(At(t)).RateHz, Is.EqualTo(10).Within(0.5));
+
+        // And a real gap after the relearn still counts.
+        t += 0.3; m.Record(B(Panda), true, At(t));
+        Assert.That(m.GetSnapshot(At(t)).Missed, Is.EqualTo(missed + 2));
+    }
+
+    [Test]
+    public void Uneven_gaps_are_losses_and_keep_counting()
+    {
+        var m = new GpsSentenceMonitor();
+        double t = 10;
+        for (int i = 0; i < 30; i++, t += 0.1) m.Record(B(Panda), true, At(t));
+        t -= 0.1; // back to the last arrival
+        // Lose a random-looking mix: 1, 2 and 3 sentences at a time, 40 times over.
+        long expected = 0;
+        int[] lost = { 1, 3, 2, 1, 2, 3, 1, 1, 2, 3 };
+        for (int i = 0; i < 40; i++)
+        {
+            int n = lost[i % lost.Length];
+            t += 0.1 * (n + 1); expected += n;
+            m.Record(B(Panda), true, At(t));
+        }
+
+        Assert.That(m.GetSnapshot(At(t)).Missed, Is.EqualTo(expected));
+    }
+
+    [Test]
     public void A_long_silence_is_a_new_session_not_missed_sentences()
     {
         var m = new GpsSentenceMonitor();
