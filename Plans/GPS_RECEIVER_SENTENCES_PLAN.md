@@ -166,6 +166,32 @@ Consequences:
   decision for the HAT firmware; the assembler only needs the talker ID. Decide with the
   first firmware that emits it (Phase 2b).
 
+## Target sentence set
+
+**AgIO's set, plus `$KSXT` (done) and `$GPHPR`.** AgIO's `NMEA.Designer.cs` is the
+field-tested map; `HPR` is the one sentence it predates (a UM982 printing standard
+sentences uses it for attitude; AgIO's `HPD` is marked "future firmware" by Unicore).
+
+| Sentence | Role | Phase |
+|---|---|---|
+| `$PANDA`, `$PAOGI` | whole fix from an AiO board | done, frozen |
+| `$KSXT` | whole fix, Unicore/Bynav | done (#288) |
+| `GGA` / `GNGGA` | position, fix quality, sats, HDOP, age — opens the epoch | 2 |
+| `VTG` | speed, track | 2 |
+| `$GPHPR` | heading, pitch (roll), quality — Unicore attitude | 2 |
+| `HDT` | dual heading — Septentrio, F9P pairs, others | 3 |
+| `$PTNL,AVR` | roll (+ heading) — Trimble format, printed by Septentrio; two layouts | 3 |
+| `$PSSN,HRP` | Septentrio's own attitude, if the captures show it in use | 3 |
+| `$GNTRA` | heading + roll — UB482 / ComNav | 4 |
+| `$GPHPD` | whole fix, Unicore (when a firmware prints it) | 4 |
+| `$PSTI,032/035/036` | SkyTraq baseline / attitude | 4 |
+| UBX `RELPOSNED` | F9P pair heading, binary (Ace GPS2) | 4 |
+| `#RTKSTATUSA`, `#RTCMSTATUSA`, `#UNIHEADINGA` | diagnostics only, for Network IO; never the fix | 4, optional |
+
+Not targeted: `RMC` (AgIO has it commented out; `GGA`+`VTG` cover it), `GNS` unless a
+receiver turns out to print it instead of `GGA`, Hemisphere `$PSAT,HPR` and NovAtel
+`#HEADINGA` until someone asks.
+
 ## What arrives, and how
 
 | Receiver | Sentences per epoch | Reaches the app via |
