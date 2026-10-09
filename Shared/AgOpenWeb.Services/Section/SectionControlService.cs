@@ -946,17 +946,13 @@ public class SectionControlService : ISectionControlService
         if (headlandLine == null || headlandLine.Count < 3)
             return false; // No headland = never in headland
 
-        // Point is in headland if it's inside boundary but outside headland line
-        var boundary = _state.Field.CurrentBoundary;
-        if (boundary == null || !boundary.IsValid)
-            return false;
-
-        bool inBoundary = boundary.IsPointInside(point.Easting, point.Northing);
-        bool insideHeadlandLine = GeometryMath.IsPointInPolygon(headlandLine, point);
-
-        // Headland zone is BETWEEN outer boundary and headland line
-        // If inside boundary but outside headland line = in headland zone
-        return inBoundary && !insideHeadlandLine;
+        // The headland is everything outside the headland line, like AgOpenGPS
+        // (CHead: !IsPointInPolygon(hdLine)). It used to be "inside the boundary but
+        // outside the line", which released the headland gate exactly where the tool
+        // swings past the outer boundary in a U-turn: with "Off outside boundary" off a
+        // section straddling the boundary still counts as in bounds, so the outer
+        // sections painted a half-disc over the boundary at the turn's apex.
+        return !GeometryMath.IsPointInPolygon(headlandLine, point);
     }
 
     public (Vec2 left, Vec2 right) GetSectionWorldPosition(int sectionIndex, Vec3 toolPosition, double toolHeading)
