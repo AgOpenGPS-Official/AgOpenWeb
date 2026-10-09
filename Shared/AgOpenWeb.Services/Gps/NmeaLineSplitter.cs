@@ -47,6 +47,20 @@ public sealed class NmeaLineSplitter
         for (int i = 0; i < SourceCount; i++) _tails[i] = new byte[MaxTail];
     }
 
+    /// <summary>
+    /// Whether a datagram can be GPS text at all: a line start, a line end, or printable
+    /// ASCII (the continuation of a line cut by a bridge). Binary datagrams from other
+    /// devices on the LAN that broadcast to the module port are not fed to the splitter,
+    /// so <see cref="DroppedBytes"/> speaks only of GPS text (seen on the bench: an
+    /// unrelated host sending 18-byte binary datagrams to 9999 every few seconds).
+    /// </summary>
+    public static bool IsTextDatagram(ReadOnlySpan<byte> datagram)
+    {
+        if (datagram.Length == 0) return false;
+        byte b = datagram[0];
+        return IsLineStart(b) || IsLineEnd(b) || (b >= 0x20 && b < 0x7F);
+    }
+
     /// <summary>The whole lines in <paramref name="datagram"/>, in order, after any line joined with the source's tail.</summary>
     public LineEnumerator Lines(ReadOnlySpan<byte> datagram, GpsSource source) => new(this, datagram, (int)source);
 

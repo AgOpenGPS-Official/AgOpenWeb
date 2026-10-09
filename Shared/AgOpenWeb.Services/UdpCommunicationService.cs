@@ -351,12 +351,14 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
             if (bytesReceived > 0)
             {
-                // ZERO-COPY PATH: anything that is not a binary PGN is GPS text for the
-                // line splitter + parser, processed straight from the receive buffer
+                // ZERO-COPY PATH: GPS text (a line, or the rest of a line a bridge cut)
+                // goes to the line splitter + parser straight from the receive buffer
                 // before any copying. GPS → Parse → Guidance → PGN all happen here.
-                bool isPgn = bytesReceived >= 2 && l.Buffer[0] == PgnMessage.HEADER1 && l.Buffer[1] == PgnMessage.HEADER2;
-                if (!isPgn && _autoSteerService != null)
-                    _autoSteerService.ProcessGpsDatagram(l.Buffer.AsSpan(0, bytesReceived), l.Source);
+                // Binary PGNs take the event path below; other binary datagrams (strangers
+                // broadcasting to 9999) are ignored as they always were.
+                var datagram = l.Buffer.AsSpan(0, bytesReceived);
+                if (_autoSteerService != null && Gps.NmeaLineSplitter.IsTextDatagram(datagram))
+                    _autoSteerService.ProcessGpsDatagram(datagram, l.Source);
 
                 // Now copy for other consumers (events, logging, etc.)
                 byte[] data = new byte[bytesReceived];

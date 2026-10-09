@@ -159,6 +159,21 @@ public class NmeaLineSplitterTests
     }
 
     [Test]
+    public void Only_text_datagrams_are_for_the_splitter()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(NmeaLineSplitter.IsTextDatagram(B(Panda)), Is.True);
+            Assert.That(NmeaLineSplitter.IsTextDatagram(B("#INSPVAXA,COM1;x*1a2b3c4d")), Is.True);
+            Assert.That(NmeaLineSplitter.IsTextDatagram(B("\r\n")), Is.True, "stray line ends are text");
+            Assert.That(NmeaLineSplitter.IsTextDatagram(B("3,25,-16.369*0A\r\n")), Is.True, "the rest of a cut line");
+            Assert.That(NmeaLineSplitter.IsTextDatagram(new byte[] { 0x80, 0x81, 0x7F, 0xFD }), Is.False, "a PGN");
+            Assert.That(NmeaLineSplitter.IsTextDatagram(new byte[] { 0xD0, 0xF2, 0x81, 0xF8 }), Is.False, "a stranger's binary broadcast");
+            Assert.That(NmeaLineSplitter.IsTextDatagram(ReadOnlySpan<byte>.Empty), Is.False);
+        });
+    }
+
+    [Test]
     public void An_empty_datagram_changes_nothing()
     {
         var splitter = new NmeaLineSplitter();

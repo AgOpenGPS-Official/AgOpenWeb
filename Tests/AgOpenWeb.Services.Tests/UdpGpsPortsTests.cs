@@ -44,6 +44,18 @@ public class UdpGpsPortsTests
     [TestCase(UdpCommunicationService.ModulePort, GpsSource.ModulePort)]
     public async Task A_sentence_on_a_GPS_port_reaches_the_parser_with_its_source(int port, GpsSource expected)
     {
+        // A running AgOpenWeb on this machine holds the port too (ReuseAddress lets both
+        // bind, but the loopback datagram lands in one of them): skip rather than guess.
+        try
+        {
+            using var probe = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            probe.Bind(new IPEndPoint(IPAddress.Any, port));
+        }
+        catch (SocketException)
+        {
+            Assert.Ignore($"port {port} is held by another process on this machine");
+        }
+
         var udp = new UdpCommunicationService(new Loopback());
         var gps = Substitute.For<IGpsService>();
         var steer = new AutoSteerService(Substitute.For<ITrackGuidanceService>(), udp, gps, new ConfigurationStore());

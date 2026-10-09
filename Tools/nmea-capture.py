@@ -8,7 +8,11 @@ looks like text (`$`, `#` or `%` first byte) to a capture file, one line per dat
 
 Datagram boundaries and arrival times are kept, which is what the parser tests need:
 they replay a capture one datagram at a time, and a text log would hide how a bridge
-chunked the stream. Binary PGNs (0x80 0x81 ...) are counted and skipped.
+chunked the stream. A datagram that starts with printable text but no `$` is the rest
+of a line a bridge cut, and is written too. Binary PGNs (0x80 0x81 ...) are counted and
+skipped; any other binary datagram (a stranger broadcasting to the port) is written as
+`other <hex of its first 16 bytes>` so a rising "Bytes dropped" on the System Data card
+can be traced to its sender.
 
 Usage:
     Tools/nmea-capture.py out.txt                 # until Ctrl-C
@@ -95,7 +99,7 @@ def main() -> int:
                     data, (ip, port) = s.recvfrom(2048)
                     if not data:
                         continue
-                    if data[0] in TEXT_LEADS:
+                    if data[0] in TEXT_LEADS or data[0] in (10, 13) or 0x20 <= data[0] < 0x7F:
                         counts['text'] += 1
                         sources.add(f'{ip}:{port}->{socks[s]}')
                         f.write(f'{now:.4f}\t{ip}:{port}\t{escape(data)}\n')
@@ -103,6 +107,7 @@ def main() -> int:
                         counts['pgn'] += 1
                     else:
                         counts['other'] += 1
+                        f.write(f'{now:.4f}\t{ip}:{port}\tother {len(data)} bytes {data[:16].hex(" ")}\n')
                 if counts['text'] and counts['text'] % 100 == 0:
                     f.flush()
     except KeyboardInterrupt:
