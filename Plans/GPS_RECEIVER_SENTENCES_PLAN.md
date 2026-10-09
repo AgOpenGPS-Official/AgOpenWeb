@@ -428,11 +428,19 @@ held: the `$PANDA`/`$PAOGI`/`$KSXT` decoders are untouched, the allocation test 
 splitter's one-line and joined paths at 0 bytes, and the same sentences give the same fixes
 however they are chunked (`GpsIngestTests`).
 
-**Phase 2 — epoch assembler, Unicore set; `#` framer + `INSPVAX`.** `GGA`/`GNS` + `VTG` +
-`HPR` (and `THS`) through the assembler; the CRC-32 framer with both header shapes and the
-`#INSPVAXA` one-shot decoder for the UM981 (fixture: a UM981 capture, or the manual's
-example line). Bench on the T1-FD/UM982. Includes the determinism test, the dropped-member test, the warm-up
-test, and the "receiver reconfigured" test. Network IO shows the family.
+**Phase 2 — epoch assembler, Unicore set; `#` framer + `INSPVAX`.** *Done (2026-10-09).*
+`NmeaEpochAssembler` (`Services/Gps`) takes `GGA`/`GNS`, `VTG`, `HPR`, `HDT` and `THS`
+(`HDT`/`THS` came in with it since they are the same shape as `HPR`): epochs by the
+receiver's UTC, the burst learned from three alike epochs, emission on the last learned
+member, an absent member marked absent and counted, relearning on a changed set, members
+from an IMU talker to the IMU slot. The CRC-32 framer takes both header shapes and the
+`#INSPVAXA` / `#INSPVAA` decoder is checked against the UM981 manual's example line (its
+printed CRC). Tests: warm-up, learning, dropped member, speed not carried over, reconfigured
+smaller and larger, roll rules, talker routing, GNS modes, chunking determinism through the
+service, zero allocation on both paths. `Docs/GPS_RECEIVERS.md` written. Not yet: the GPS
+log does not record which members were present per fix; bench on a UM982 / UM981 pending
+captures (the v26 firmware's INSPVAXA decoder reads the velocities one field early, past the
+undulation — worth fixing there).
 
 **Phase 2b — board IMU as a latest-reading source.** The attitude sentence from a HAT/AiO
 build, distinguished by talker ID: heading goes to `ImuHeading`/`ImuValid`, not to the dual

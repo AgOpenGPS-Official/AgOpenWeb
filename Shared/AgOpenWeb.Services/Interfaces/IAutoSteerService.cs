@@ -37,6 +37,10 @@ public interface IAutoSteerService
     /// <summary>The port the last GPS datagram came in on (Network IO names it).</summary>
     AgOpenWeb.Models.GPS.GpsSource LastGpsSource { get; }
 
+    /// <summary>The epoch assembler for receivers that spread a fix over standard sentences
+    /// (GGA/GNS + VTG + HPR/HDT/THS): the learned family and the incomplete-epoch count.</summary>
+    AgOpenWeb.Services.Gps.NmeaEpochAssembler GpsEpochs { get; }
+
     /// <summary>
     /// Event fired when the control cycle completes (for UI updates).
     /// Note: UI should not rely on this for control - it's purely observational.

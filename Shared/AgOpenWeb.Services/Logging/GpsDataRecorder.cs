@@ -192,6 +192,8 @@ public sealed class GpsDataRecorder
                 GpsSentenceType.Panda => "PANDA",
                 GpsSentenceType.Paogi => "PAOGI",
                 GpsSentenceType.Ksxt => "KSXT",
+                GpsSentenceType.NmeaEpoch => "EPOCH",
+                GpsSentenceType.Inspvax => "INSPVAX",
                 GpsSentenceType.Simulator => "SIM",
                 _ => "",
             }); sb.Append(',');

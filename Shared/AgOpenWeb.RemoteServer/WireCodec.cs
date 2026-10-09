@@ -714,6 +714,8 @@ public static class WireCodec
             w.Write((int)Math.Min(sd.JoinedLines, int.MaxValue));
             w.Write((int)Math.Min(sd.DroppedBytes, int.MaxValue));
             WriteStr(w, sd.Source);
+            // Epochs closed by the next epoch's start with a learned member missing.
+            w.Write((int)Math.Min(sd.IncompleteEpochs, int.MaxValue));
         }
         // GPS data lost (append-only): the host's debounced flag, so client and host agree.
         w.Write((byte)(s.GpsLost ? 1 : 0));

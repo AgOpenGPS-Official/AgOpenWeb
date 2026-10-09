@@ -45,8 +45,13 @@ public class NmeaParseResultTests
         Assert.That(Parse(Sentence("GNGGA,123519.00,4807.038,N,01131.000,E,4,12,0.9,545.4,M,46.9,M,1.0,0000")), Is.EqualTo(NmeaParseResult.UnknownSentence));
 
     [Test]
-    public void A_hash_log_is_UnknownSentence_not_garbage() =>
-        Assert.That(Parse(Encoding.ASCII.GetBytes("#INSPVAXA,COM1,0,55.0,FINESTEERING,2000,10.0;SOL_COMPUTED*1a2b3c4d")), Is.EqualTo(NmeaParseResult.UnknownSentence));
+    public void A_hash_log_this_build_does_not_decode_is_UnknownSentence_and_a_bad_CRC_is_BadChecksum()
+    {
+        const string bestnav = "#BESTNAVA,COM1,0,55.0,FINESTEERING,2000,10.0,00000040,4e77,43562;SOL_COMPUTED,NARROW_INT,51.1,-114.0";
+        uint crc = AgOpenWeb.Services.Gps.UnicoreCrc32.Compute(Encoding.ASCII.GetBytes(bestnav[1..]));
+        Assert.That(Parse(Encoding.ASCII.GetBytes(bestnav + "*" + crc.ToString("x8"))), Is.EqualTo(NmeaParseResult.UnknownSentence));
+        Assert.That(Parse(Encoding.ASCII.GetBytes(bestnav + "*1a2b3c4d")), Is.EqualTo(NmeaParseResult.BadChecksum));
+    }
 
     [Test]
     public void Too_short_or_no_checksum_marker_is_BadFrame()

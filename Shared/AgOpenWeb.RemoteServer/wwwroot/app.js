@@ -2844,7 +2844,7 @@ document.getElementById('nio-rtcm').addEventListener('toggle', () => { if (statu
 // (~2 Hz) while open.
 const sdPanel = document.getElementById('systemdata');
 const SD = {};
-for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', 'hz', 'missed', 'rej', 'joined', 'dropped', 'src',
+for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', 'hz', 'missed', 'rej', 'joined', 'dropped', 'src', 'incomplete',
   'speed', 'roll', 'pitch', 'yaw', 'hdual', 'himu', 'hf2f', 'hused', 'sentences'])
   SD[id] = document.getElementById('sd-' + id);
 document.getElementById('nio-gps-more').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('systemdata', 'ln-network', renderSystemData); });
@@ -2880,6 +2880,7 @@ function renderSystemData() {
   set(SD.rej, d ? String(d.rejected) + (rejParts.length ? ' (' + rejParts.join(', ') + ')' : '') : '—');
   set(SD.joined, d ? String(d.joinedLines) : '—');
   set(SD.dropped, d ? String(d.droppedBytes) : '—');
+  set(SD.incomplete, d ? String(d.incompleteEpochs) : '—');
   set(SD.src, d && d.source ? d.source : '—');
   set(SD.pitch, d ? num(d.pitch, 1, '°') : '—');
   set(SD.yaw, d ? num(d.yawRate, 1, ' °/s') : '—');

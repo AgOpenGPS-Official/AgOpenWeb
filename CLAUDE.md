@@ -7,6 +7,7 @@ This file provides guidance to Claude Code when working with this repository.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor guide with cross-platform parity rules
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
 - **[Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md)** - UI strings and Weblate
+- **[Docs/GPS_RECEIVERS.md](Docs/GPS_RECEIVERS.md)** - Receivers, sentence families, the bridge contract, per-receiver setup
 
 ## Project Overview
 
