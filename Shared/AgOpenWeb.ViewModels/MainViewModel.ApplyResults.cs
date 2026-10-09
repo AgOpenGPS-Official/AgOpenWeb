@@ -58,6 +58,11 @@ public partial class MainViewModel
         // Sole writer to State.Vehicle — Phase B completion. Was previously
         // also written from MainViewModel.HandleGpsUiUpdates on the
         // _gpsService.GpsDataUpdated callback path (Rule 2 violation).
+        // $KSXT carries neither HDOP nor the correction age (its age slot is reserved), so
+        // those read "—" rather than a reassuring 0.0. The pipeline's own fix validator saw
+        // the raw zeros, which pass; the receiver's RTK timeout is the only stale-corrections
+        // guard on that sentence.
+        bool reportsHdopAndAge = result.SentenceType != AgOpenWeb.Models.GpsSentenceType.Ksxt;
         State.Vehicle.UpdateFromGps(
             new AgOpenWeb.Models.Position
             {
@@ -71,8 +76,8 @@ public partial class MainViewModel
             },
             result.FixQuality,
             result.SatelliteCount,
-            result.Hdop,
-            result.DifferentialAge);
+            reportsHdopAndAge ? result.Hdop : double.NaN,
+            reportsHdopAndAge ? result.DifferentialAge : double.NaN);
 
         // Tool position — set ToolEasting LAST to trigger map update
         ToolNorthing = result.ToolNorthing;

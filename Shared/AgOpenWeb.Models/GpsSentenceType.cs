@@ -16,4 +16,7 @@ public enum GpsSentenceType : byte
     /// <summary>The built-in simulator (its heading stands in for a dual heading, as
     /// AgOpenGPS's CSim sets headingTrueDual).</summary>
     Simulator = 3,
+    /// <summary><c>$KSXT</c>: a Bynav/Unicore receiver's own fix; the heading field is the
+    /// dual-antenna heading.</summary>
+    Ksxt = 4,
 }

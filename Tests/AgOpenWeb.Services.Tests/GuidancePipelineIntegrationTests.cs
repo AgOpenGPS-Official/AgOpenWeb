@@ -261,7 +261,7 @@ public class GuidancePipelineIntegrationTests
     public void NmeaPipeline_RealSentence_ProducesValidPosition()
     {
         var gpsService = new GpsService();
-        var parser = new NmeaParserServiceFast(gpsService);
+        var parser = new NmeaParserServiceFast(gpsService, new ConfigurationStore());
         GpsData? received = null;
         gpsService.GpsDataUpdated += (s, d) => received = d;
 
@@ -278,7 +278,7 @@ public class GuidancePipelineIntegrationTests
     public void NmeaPipeline_MultipleUpdates_TracksPosition()
     {
         var gpsService = new GpsService();
-        var parser = new NmeaParserServiceFast(gpsService);
+        var parser = new NmeaParserServiceFast(gpsService, new ConfigurationStore());
         var lats = new List<double>();
         gpsService.GpsDataUpdated += (s, d) => { if (d.IsValid) lats.Add(d.CurrentPosition.Latitude); };
 

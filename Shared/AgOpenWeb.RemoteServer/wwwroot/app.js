@@ -2818,7 +2818,7 @@ function renderNtripRtcm(s) {
   const rx = document.getElementById('nio-ntrip-rx'), warn = document.getElementById('nio-ntrip-warn');
   const box = document.getElementById('nio-rtcm');
   box.hidden = !r;
-  rx.textContent = r ? tr('Receiver: {fix}, correction age {age} s', { fix: s.fixText || '—', age: (s.age || 0).toFixed(0) }) : '';
+  rx.textContent = r ? tr('Receiver: {fix}, correction age {age} s', { fix: s.fixText || '—', age: Number.isFinite(s.age) ? s.age.toFixed(0) : '—' }) : '';
   rx.classList.toggle('nio-aged', !!r && s.age > 5);
   const w = r ? ntripRtcmWarning(r) : '';
   warn.hidden = !w;
@@ -4394,7 +4394,7 @@ function renderStatusBar() {
   // not as a live red "no fix" from a receiver that is still talking.
   SB.fixDot.style.background = s.gpsLost ? '#6b7280' : fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
-  SB.age.textContent = tr('Age {age}', { age: s.age != null ? s.age.toFixed(1) : '—' });
+  SB.age.textContent = tr('Age {age}', { age: Number.isFinite(s.age) ? s.age.toFixed(1) : '—' }); // NaN: the sentence has no age ($KSXT)
   SB.rot.textContent = rotatingLineText();
   // Speed from the live tick (m/s), formatted per the host's unit preference.
   const mps = lastTick ? lastTick.speed : 0;
@@ -4421,9 +4421,9 @@ function renderStatusBar() {
     SB.gcLon.textContent = s.lon != null ? s.lon.toFixed(7) : '—';
     SB.gcElev.textContent = s.altitude != null ? fmtUnit(s.altitude, 'm', 1) : '—'; // m / ft (#112)
     SB.gcSats.textContent = s.sats != null ? s.sats : '—';
-    SB.gcHdop.textContent = s.hdop != null ? s.hdop.toFixed(2) : '—';
+    SB.gcHdop.textContent = Number.isFinite(s.hdop) ? s.hdop.toFixed(2) : '—';
     SB.gcFix.textContent = s.fixText || '—';
-    SB.gcAge.textContent = s.age != null ? s.age.toFixed(1) : '—';
+    SB.gcAge.textContent = Number.isFinite(s.age) ? s.age.toFixed(1) : '—';
     // Incoming sentence (#157); flagged when Dual GPS is on but there's no dual heading.
     SB.gcSentence.textContent = (s.gpsSentence ? '$' + s.gpsSentence : '—')
       + (s.dualHeadingMissing ? ' ' + tr('(no dual heading)', {}) : '');

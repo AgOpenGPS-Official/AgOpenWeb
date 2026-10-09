@@ -29,6 +29,8 @@ public sealed class GpsSentenceMonitor
     private const double SessionGapSeconds = 5.0;
     // No sentence for this long: the rate reads zero.
     private const double SilentSeconds = 2.0;
+    // This many consecutive, alike, over-long gaps mean the rate changed: relearn it.
+    private const int RateRelearnRun = 20;
 
     private sealed class Slot
     {
@@ -43,12 +45,15 @@ public sealed class GpsSentenceMonitor
     private readonly object _lock = new();
     private readonly Slot _panda = new("PANDA");
     private readonly Slot _paogi = new("PAOGI");
+    private readonly Slot _ksxt = new("KSXT");
     private readonly Slot _rejected = new(RejectedType);
     private readonly long[] _arrivals = new long[RateWindow];
     private int _arrivalCount;
     private int _arrivalNext;
     private long _lastArrival;
     private double _meanInterval; // seconds, of sentences that came on time
+    private int _slowInARow;      // consecutive gaps judged "missed" that all look alike
+    private double _slowInterval; // the first of those gaps
     private long _missed;
     private long _rejectedCount;
 
@@ -62,6 +67,7 @@ public sealed class GpsSentenceMonitor
         {
             Slot slot = !accepted ? _rejected
                 : data.Length > 5 && data.Slice(1, 5).SequenceEqual("PAOGI"u8) ? _paogi
+                : data.Length > 5 && data.Slice(1, 5).SequenceEqual("KSXT,"u8) ? _ksxt
                 : _panda;
             int n = Math.Min(data.Length, MaxLength);
             data.Slice(0, n).CopyTo(slot.Bytes);
@@ -83,14 +89,33 @@ public sealed class GpsSentenceMonitor
                     _arrivalCount = 0;
                     _arrivalNext = 0;
                     _meanInterval = 0;
+                    _slowInARow = 0;
                 }
                 else if (_meanInterval > 0 && dt > 1.5 * _meanInterval)
                 {
                     _missed += (long)Math.Round(dt / _meanInterval) - 1;
+
+                    // A run of equal "long" gaps is a new rate, not missed sentences: the
+                    // mean was learned from a burst (a module flushing a buffer) or the
+                    // receiver's rate was lowered. Real losses come in uneven gaps.
+                    if (_slowInARow > 0 && Math.Abs(dt - _slowInterval) <= 0.2 * _slowInterval)
+                    {
+                        if (++_slowInARow >= RateRelearnRun)
+                        {
+                            _meanInterval = dt;
+                            _slowInARow = 0;
+                        }
+                    }
+                    else
+                    {
+                        _slowInARow = 1;
+                        _slowInterval = dt;
+                    }
                 }
                 else
                 {
                     _meanInterval = _meanInterval > 0 ? 0.9 * _meanInterval + 0.1 * dt : dt;
+                    _slowInARow = 0;
                 }
             }
             _lastArrival = timestamp;
@@ -115,8 +140,8 @@ public sealed class GpsSentenceMonitor
                 if (span > 0) rate = (_arrivalCount - 1) / span;
             }
 
-            var sentences = new List<Sentence>(3);
-            foreach (var slot in new[] { _panda, _paogi, _rejected })
+            var sentences = new List<Sentence>(4);
+            foreach (var slot in new[] { _panda, _paogi, _ksxt, _rejected })
                 if (slot.Seen)
                     sentences.Add(new Sentence(slot.Type, Text(slot), Math.Max(0, Seconds(now - slot.Stamp))));
             return new Snapshot(rate, _missed, _rejectedCount, sentences);
