@@ -36,8 +36,8 @@ T1-FD on Ethernet), and it just works, because every source is an address on the
 
 | | AiO board | IP-direct (receiver port or bridge) |
 |---|---|---|
-| Fix arrives as | `$PANDA` / `$PAOGI` (current firmware, frozen); standard sentences + a time-tagged IMU sentence (future firmware) | the receiver's own sentences |
-| IMU | on the board, paired with the epoch there | none needed (dual antenna) — or on the HAT daemon |
+| Fix arrives as | `$PANDA` / `$PAOGI` (current firmware, frozen); standard sentences + an IMU sentence (future firmware) | the receiver's own sentences |
+| IMU | on the board; in `$PANDA` today, its own sentence tomorrow | none needed (dual antenna); a board IMU's sentence is paired here under the 50 ms bound |
 | Module identity | hello PGNs: steer / machine / IMU / GPS dots and addresses | none for the receiver; steer/machine still from their boards |
 | RTCM back to the receiver | unicast to the board's address, 2233 → serial | unicast to the sender's address, 2233 |
 | App-side code path | one-shot decoder (unchanged by this plan) | one-shot decoder or epoch assembler |
@@ -48,25 +48,28 @@ several standard ones per epoch (`GGA` + `VTG` + `HPR` on a Unicore, `GGA` + `VT
 about the second kind, and about the ingest path both kinds share once the sender is no
 longer an AiO.
 
-## The rule that stays
+## The rules
 
-**One fix = one receiver epoch. The host decides when a fix is used, never what is in it.**
+**1. One fix = one receiver epoch.** AgIO's `ParseNMEA` accumulates fields from whatever
+sentences have arrived and flushes on the next position sentence, so a `VTG` that lands
+after its `GGA` goes out with the *next* epoch and a fix can carry last epoch's speed on one
+host and not on another. The assembler below groups the receiver's sentences by the
+**receiver's epoch**, not by arrival, and emits when the burst is complete. Everything
+downstream — fusion, the 100 Hz pose estimator, section control — keeps seeing coherent
+fixes and does not change. This costs nothing: the sentences already belong together.
 
-AgIO's `ParseNMEA` accumulates fields from whatever sentences have arrived and flushes on
-the next position sentence. That works, but what ends up in a fix depends on how the
-datagrams were chunked and when the thread ran: a `VTG` that lands after the `GGA` goes out
-with the *next* epoch, so a fix can carry last epoch's speed and heading on one host and not
-on another. On a non-real-time OS that is the only place non-determinism can leak into the
-data, and it is the thing the AiO was invented to avoid.
+**2. IMU: latest reading, with a staleness bound.** Brian's field experience since Ace
+(with the TM171 and other 100 Hz IMUs): syncing a specific IMU sample to a specific GNSS
+epoch buys nothing a tractor can feel. At 100 Hz the latest reading is at most 10 ms old —
+0.2° of heading in a 20°/s turn, nothing of roll — and over UDP on a LAN the IMU and GPS
+datagrams land in the same socket in order, so the host adds no error the board wouldn't.
+So the app **may** pair a separate IMU stream with the GPS epoch: take the latest IMU
+reading if it is younger than **50 ms**, else mark the IMU invalid for that fix (the
+`$PANDA` 65535 semantics). The bound is what matters — a stalled IMU must not silently
+feed two-second-old roll — not the alignment. No time tags, no special firmware timing.
 
-So the assembler below groups sentences by the **receiver's epoch**, not by arrival, and
-emits when the receiver's burst is complete. Everything downstream — fusion, the 100 Hz
-pose estimator, section control — keeps seeing coherent fixes and does not change.
-
-What the app will still not do: pair a GPS stream with a separate IMU stream. A
-single-antenna receiver plus an IMU needs the pairing done where timing is controlled — the
-AiO today, the HAT daemon under PREEMPT_RT tomorrow — and the app receives the result as
-`$PANDA`. That is out of scope here and should stay out.
+What AgIO got wrong was serial (16 ms USB latency timers, Windows buffering) stacked on
+rule 1, not the IMU. Perfect is the enemy of good; rule 1 is the good.
 
 ## Everything is IP
 
@@ -118,14 +121,14 @@ remember." The Nav firmware refuses every other module PGN. AgIO stays the hub.
 
 What this plan takes from it:
 
-- **The same two principles**, independently arrived at: the receiver is an identity-less
-  UDP source, and GPS+IMU pairing happens on a device with controlled timing (his Nav, our
-  AiO / HAT daemon), never on the PC.
+- **The receiver is an identity-less UDP source** — the same principle, independently
+  arrived at. (Ace also paired the IMU on the Nav board, 40 ms after the GGA; Brian's later
+  experience is that this isn't needed — rule 2 above.)
 - **The 22xx ports.** The app listens on **2211 (GPS1) and 2222 (GPS2)** as well as 9999, so
   an Ace-style board or any bridge built to that convention works unchanged, and a second
   receiver has a name. RTCM is already 2233.
-- **An Ace Nav module is a supported source today** (it emits `$PANDA`) and is the template
-  for the HAT daemon's GPS half: NMEA over UDP in, `$PANDA` out, pairing done there.
+- **An Ace Nav module is a supported source today** (it emits `$PANDA`). The HAT daemon's
+  GPS half is simpler still: NMEA over UDP in, NMEA out, plus the IMU's own sentence.
 - **F9P-pair dual via UBX `RELPOSNED`** (his GPS2 / DualWithIMU board) moves from "out of
   scope until someone asks" to a named Phase 4 candidate: a binary member that joins the
   `GGA` epoch with heading and roll from the baseline.
@@ -140,21 +143,19 @@ u-center TCP passthrough (a bridge feature; nothing for the app).
 and one line per epoch was the cheap way to keep the fields together. Over UDP that reason
 is gone, and Brian's advice is that the app should just accept standard sentences.
 
-Taken — with one thing kept. What `$PANDA` carries besides packing is the board's decision
-of **which IMU sample belongs to which GPS epoch** (Ace samples the IMU 40 ms after the GGA
-and writes both into one sentence). That decision stays on the board. The way to keep it
-without a packed format is a **time tag**: the board's attitude sentence carries the UTC of
-the GGA it was sampled for, and the epoch assembler groups by that tag. The pairing is the
-board's; the host only matches tags, which is deterministic. "Latest IMU reading when the
-GGA arrives" on the host is the AgIO problem and is not an option.
+Taken. Ace still sampled the IMU 40 ms after the GGA and wrote both into `$PANDA`; by rule
+2 above that is no longer needed either. A board just prints what it has: the receiver's
+sentences as they come, and its IMU's attitude at the IMU's own rate (or at the GPS rate —
+either is fine under the 50 ms bound).
 
 Consequences:
 
 - **New firmware (HAT daemon, future AiO builds) emits standard sentences only:** the
-  receiver's `GGA` + `VTG` passed through, plus an attitude sentence from the board's IMU
-  stamped with the GGA's UTC, plus rate of turn. No new packed formats, no `$PANDA` v2. The
-  AiO becomes a bridge that also contributes an IMU sentence, and the app treats it like a
-  UM982 printing `HPR`: the two columns in the table above converge into one path.
+  receiver's `GGA` + `VTG` passed through, plus an attitude sentence from the board's IMU,
+  plus rate of turn. No new packed formats, no `$PANDA` v2, no timing rules for the IMU
+  sentence. The AiO becomes a bridge that also contributes an IMU sentence, and the app
+  treats it like a UM982 printing `HPR`: the two columns in the table above converge into
+  one path.
 - **`$PANDA`/`$PAOGI` are frozen.** Decoded for the installed base as they are; no fields
   added.
 - **The source must be in the sentence.** Fusion treats a dual-antenna heading as ground
@@ -162,8 +163,8 @@ Consequences:
   **talker ID**: `$GN…`/`$GP…` from a receiver, `$IN…` (integrated navigation) or `$HE…`
   (gyro) from a board's IMU. Which attitude sentence to use — an `HPR`-shaped one
   (`utc, heading, pitch, roll, quality`), or `THS` + `XDR` (pitch/roll) + `ROT` — is a
-  decision for the HAT firmware; the assembler only needs the UTC tag and the talker ID.
-  Decide with the first firmware that emits it (Phase 2b).
+  decision for the HAT firmware; the assembler only needs the talker ID. Decide with the
+  first firmware that emits it (Phase 2b).
 
 ## What arrives, and how
 
@@ -225,10 +226,13 @@ State: one open epoch (position, speed/track, heading, roll/pitch, quality field
 members have arrived) plus the **learned burst**: the set of sentence types the receiver
 prints per epoch.
 
-- **Epoch identity.** `GGA` opens an epoch with its UTC field. Sentences that carry UTC
-  (`HPR`, `AVR`, `HRP`) must match it within a tolerance (half the epoch period); a mismatch
-  means a dropped `GGA`, so the current epoch is closed as incomplete and a new one opened
-  on the newcomer. Sentences without UTC (`VTG`, `HDT`, `THS`) attach to the open epoch.
+- **Epoch identity.** `GGA` opens an epoch with its UTC field. Receiver sentences that
+  carry UTC (`HPR`, `AVR`, `HRP`) must match it within a tolerance (half the epoch period); a
+  mismatch means a dropped `GGA`, so the current epoch is closed as incomplete and a new one
+  opened on the newcomer. Receiver sentences without UTC (`VTG`, `HDT`, `THS`) attach to the
+  open epoch. **IMU sentences are not epoch members**: they update a "latest IMU" slot with
+  an arrival stamp, and the epoch takes that slot when it closes if the stamp is younger
+  than 50 ms (rule 2).
 - **Learning the burst.** During the first few epochs, record which sentence types occur
   between consecutive `GGA`s and in what order. After three identical epochs the set is
   "learned". Receiver output sets are configuration; they don't change at runtime, and if
@@ -252,10 +256,11 @@ prints per epoch.
     `$KSXT` decoder does), `AVR` roll, `HRP` roll — **only when that sentence's own quality
     says fixed**; otherwise 0. Through `ApplyAhrsRollCalibration` like every other source.
   - Everything else (pitch, yaw rate) 0 unless the sentence has it.
-- **Determinism check.** Given the same sequence of sentences, the assembler produces the
-  same sequence of fixes regardless of how they were split into datagrams or when the thread
-  ran. This is a unit test: feed a capture one sentence per call, then two per call, then
-  split mid-sentence, and compare the emitted fixes.
+- **Determinism check (receiver fields).** Given the same sequence of receiver sentences,
+  the assembler produces the same fixes regardless of how they were split into datagrams or
+  when the thread ran. A unit test: feed a capture one sentence per call, then two per
+  call, then split mid-sentence, and compare. IMU fields are exempt by design (rule 2) and
+  tested for the bound instead: a 60 ms-old reading is not used.
 
 ### 4. Downstream
 
@@ -305,10 +310,11 @@ exactly as before (existing tests are the proof). Ships on its own.
 on the T1-FD/UM982. Includes the determinism test, the dropped-member test, the warm-up
 test, and the "receiver reconfigured" test. Network IO shows the family.
 
-**Phase 2b — board IMU as an assembler member.** The time-tagged attitude sentence from a
-HAT/AiO build, distinguished by talker ID: heading goes to `ImuHeading`/`ImuValid`, not to
-the dual heading. Done together with the first firmware that emits it; the fixture comes
-from that board. This is what lets the HAT daemon skip `$PANDA` altogether.
+**Phase 2b — board IMU as a latest-reading source.** The attitude sentence from a HAT/AiO
+build, distinguished by talker ID: heading goes to `ImuHeading`/`ImuValid`, not to the dual
+heading; taken under the 50 ms staleness bound. Done together with the first firmware that
+emits it; the fixture comes from that board. This is what lets the HAT daemon skip `$PANDA`
+altogether — and it has no timing rules to get right.
 
 **Phase 3 — Septentrio set.** `HDT` + `$PTNL,AVR` (both layouts) and `$PSSN,HRP`, from the
 captures. Decide then whether to keep AgIO's Kalman smoothing on `AVR` roll (it is
