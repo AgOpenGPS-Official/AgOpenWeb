@@ -30,6 +30,13 @@ public interface IAutoSteerService
     /// System Data card.</summary>
     AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; }
 
+    /// <summary>The line splitter in front of the parser: how many lines a bridge cut
+    /// across datagrams, and bytes that belonged to no line (System Data card).</summary>
+    AgOpenWeb.Services.Gps.NmeaLineSplitter GpsLines { get; }
+
+    /// <summary>The port the last GPS datagram came in on (Network IO names it).</summary>
+    AgOpenWeb.Models.GPS.GpsSource LastGpsSource { get; }
+
     /// <summary>
     /// Event fired when the control cycle completes (for UI updates).
     /// Note: UI should not rely on this for control - it's purely observational.
@@ -76,6 +83,13 @@ public interface IAutoSteerService
     /// <param name="buffer">Raw UDP receive buffer (no copy)</param>
     /// <param name="length">Valid bytes in buffer</param>
     void ProcessGpsBuffer(byte[] buffer, int length);
+
+    /// <summary>
+    /// As <see cref="ProcessGpsBuffer"/>, for a datagram from any GPS port: every whole line
+    /// in it goes through the parser (one line per datagram is the normal case and stays
+    /// zero-copy; a bridge that batches or cuts lines is handled by the splitter).
+    /// </summary>
+    void ProcessGpsDatagram(ReadOnlySpan<byte> datagram, AgOpenWeb.Models.GPS.GpsSource source);
 
     /// <summary>
     /// Process simulated position data (bypass NMEA parsing).

@@ -289,11 +289,12 @@ requires the datagram to *be* one sentence. The AiO passthrough and the Bynav's 
 output happen to send one sentence per datagram; a serial bridge may batch an epoch's burst
 into one datagram or cut a sentence across two.
 
-- A `NmeaLineSplitter` per source address: splits a datagram on `\r`/`\n`/next `$` or
+- A `NmeaLineSplitter` per source port: splits a datagram on `\r`/`\n`/next `$` or
   `#`, feeds each complete sentence to the dispatcher, keeps a partial tail (bounded, 512
   bytes; a longer tail is garbage and is dropped) for the next datagram from the same
   source. `#`/`%` lines go to the CRC-32 framer (Phase 2, ported from v26): split at `;`,
-  body fields after it, either header shape.
+  body fields after it, either header shape; until then the parser reports them as unknown
+  sentences, so the System Data card shows what the receiver prints.
 - Zero-copy: the splitter hands out spans into the receive buffer; the tail is the only copy.
 - The bridge contract above says whole lines; the splitter defends against a bridge that
   doesn't, and counts the repairs so Network IO can point at the bridge.
@@ -413,11 +414,19 @@ the port) for a bench with a USB receiver and no board. Captures wanted: UM982/T
 config export, pcap with cold start / stationary / turns / RTK loss / heading loss, one
 `AVR` line pasted). Fixtures live under `Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/`.
 
-**Phase 1 — line splitter + monitor + ports.** `NmeaLineSplitter`, the monitor's per-type
-slots and per-fix rate, rejection reasons; `UdpCommunicationService` also binds 2211 and
-2222 and tags the source GPS1/GPS2 for Network IO. No new sentences yet; `$PANDA`/`$PAOGI`/
-`$KSXT` must behave exactly as before (non-regression 1 and 2 are the exit criteria). Ships
-on its own.
+**Phase 1 — line splitter + monitor + ports.** *Done (2026-10-09).* `NmeaLineSplitter`
+(`Services/Gps`) cuts every GPS datagram into whole lines in front of the parser: one line per
+datagram stays a span into the receive buffer; a batched burst gives each line in turn; a
+line cut across datagrams is joined from a bounded tail kept per source port and counted
+(`JoinedLines`), bytes that belong to no line are counted (`DroppedBytes`). `#` lines are
+handed out and the parser names them unknown until the framer exists. The parser reports why
+it refused a line (`NmeaParseResult`: bad frame, bad checksum, unknown sentence, bad fields)
+and the monitor counts checksum and unknown apart. `UdpCommunicationService` listens on 2211
+(GPS1) and 2222 (GPS2) besides 9999, and `AutoSteerService.ProcessGpsDatagram` carries the
+source; the System Data card shows the source, the counters and the breakdown. Non-regression
+held: the `$PANDA`/`$PAOGI`/`$KSXT` decoders are untouched, the allocation test covers the
+splitter's one-line and joined paths at 0 bytes, and the same sentences give the same fixes
+however they are chunked (`GpsIngestTests`).
 
 **Phase 2 — epoch assembler, Unicore set; `#` framer + `INSPVAX`.** `GGA`/`GNS` + `VTG` +
 `HPR` (and `THS`) through the assembler; the CRC-32 framer with both header shapes and the

@@ -67,6 +67,17 @@ public class AutoSteerService : IAutoSteerService
     /// <inheritdoc />
     public AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; } = new();
 
+    /// <inheritdoc />
+    public AgOpenWeb.Services.Gps.NmeaLineSplitter GpsLines { get; } = new();
+
+    /// <inheritdoc />
+    public AgOpenWeb.Models.GPS.GpsSource LastGpsSource { get; private set; }
+
+    // Three GPS ports mean up to three receive threads; the parse writes _state and the
+    // splitter's tails, so one datagram is processed at a time. Uncontended on a machine
+    // with one receiver, which is all of them today.
+    private readonly object _gpsIngestLock = new();
+
     // Service state
     private bool _isEnabled;
     private bool _isEngaged;
@@ -535,36 +546,48 @@ public class AutoSteerService : IAutoSteerService
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void ProcessGpsBuffer(byte[] buffer, int length)
+        => ProcessGpsDatagram(buffer.AsSpan(0, length), AgOpenWeb.Models.GPS.GpsSource.ModulePort);
+
+    /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void ProcessGpsDatagram(ReadOnlySpan<byte> datagram, AgOpenWeb.Models.GPS.GpsSource source)
     {
         if (!_isEnabled) return;
 
-        // PERF-05 #7 (autosteer-RX). Cycle = one GPS buffer parsed.
+        // PERF-05 #7 (autosteer-RX). Cycle = one GPS datagram parsed.
         // Marker .perf_autosteer shared with TX. Emits [AutoSteerRx-PERF].
         bool perf = AgOpenWeb.Models.Diagnostics.DiagFlags.PerfAutoSteer;
         long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
         try
         {
-            // Parse directly into VehicleState (zero-copy). ParseIntoState marks
-            // its own parse-timing fields; no BeginNewCycle here because the
-            // cycle owns timing now.
-            ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
-            bool parsed = NmeaParserServiceFast.ParseIntoState(data, ref _state, _configStore);
-            GpsSentences.Record(data, parsed);
-            if (!parsed)
+            lock (_gpsIngestLock)
             {
-                _parseFailures++;
-                return;
+                LastGpsSource = source;
+                // Each whole line parses directly into VehicleState (zero-copy: the line is a
+                // span into the receive buffer unless the splitter had to join it). The parser
+                // marks its own parse-timing fields; no BeginNewCycle here because the cycle
+                // owns timing now.
+                foreach (var line in GpsLines.Lines(datagram, source))
+                {
+                    bool parsed = NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, out var result);
+                    GpsSentences.Record(line, result);
+                    if (!parsed)
+                    {
+                        _parseFailures++;
+                        continue;
+                    }
+
+                    // Real GPS fix parsed from inbound NMEA — mark the live-GPS gate so the
+                    // internal simulator stays mutually exclusive with a live source. The
+                    // sim feeds via GpsService.UpdateGpsData and never reaches this path.
+                    _gpsService.MarkRealGpsParsed();
+
+                    // Publish the parsed fix to GpsService. This is the sole event the
+                    // cycle worker listens to; everything else runs there.
+                    PublishGpsData();
+                }
             }
-
-            // Real GPS fix parsed from inbound NMEA — mark the live-GPS gate so the
-            // internal simulator stays mutually exclusive with a live source. The
-            // sim feeds via GpsService.UpdateGpsData and never reaches this path.
-            _gpsService.MarkRealGpsParsed();
-
-            // Publish the parsed fix to GpsService. This is the sole event the
-            // cycle worker listens to; everything else runs there.
-            PublishGpsData();
         }
         finally
         {
