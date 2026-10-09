@@ -409,7 +409,7 @@ Decide when the first along-mounted user appears; until then baseline pitch.
 **Phase 0 — captures and fixtures.** Two small scripts: `Tools/nmea-capture.py` listens on
 :9999, keeps datagram boundaries and arrival times, and writes a text file the tests can
 replay; `Tools/serial-to-udp.py` is the reference bridge (whole lines to 9999, 2233 back to
-the port) for a bench with a USB receiver and no board. Captures wanted: UM982/T1-FD printing `GGA`+`VTG`+`HPR` through the AiO passthrough
+the port) for a bench with a USB receiver and no board — *written 2026-10-09*. Captures wanted: UM982/T1-FD printing `GGA`+`VTG`+`HPR` through the AiO passthrough
 (Chris's bench, switch the receiver's output set) — *captured 2026-10-09,
 `Fixtures/nmea/um982-gga-vtg-hpr.txt`, replayed by `CaptureReplayTests`*; Septentrio from
 the issue (wiring, config export, pcap with cold start / stationary / turns / RTK loss /
