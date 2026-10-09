@@ -17,6 +17,8 @@ public sealed class WebSocketHub
     {
         public required WebSocket Socket { get; init; }
         public SemaphoreSlim Gate { get; } = new(1, 1);
+        public CancellationTokenSource Lifetime { get; } = new();
+        public int ActiveRequests;
     }
 
     private readonly ConcurrentDictionary<Guid, Client> _clients = new();
@@ -43,6 +45,8 @@ public sealed class WebSocketHub
     /// the host wires it.
     /// </summary>
     public Action<string, string>? CommandHandler { get; set; }
+    public Func<Guid, Func<bool>, string, CancellationToken, Task<string>>? ModuleRequestHandler { get; set; }
+    public Action<Guid>? Disconnected { get; set; }
 
     public int ClientCount => _clients.Count;
 
@@ -63,16 +67,26 @@ public sealed class WebSocketHub
             foreach (var frame in SeedProvider?.Invoke() ?? Array.Empty<byte[]>())
                 await SendToAsync(client, frame, ct).ConfigureAwait(false);
 
-            var buf = new byte[1024];
+            var buf = new byte[8192];
+            using var message = new MemoryStream();
+            const int maximumMessageBytes = 128 * 1024;
             while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
                 var res = await socket.ReceiveAsync(buf, ct).ConfigureAwait(false);
                 if (res.MessageType == WebSocketMessageType.Close) break;
-                // Commands are short single-frame text messages: "id" or "id|arg".
-                if (res.MessageType == WebSocketMessageType.Text && res.Count > 0)
+                if (res.MessageType != WebSocketMessageType.Text) continue;
+                if (message.Length + res.Count > maximumMessageBytes)
                 {
-                    var msg = System.Text.Encoding.UTF8.GetString(buf, 0, res.Count);
-                    try { Dispatch(id, msg); } catch { /* a bad command must not drop the client */ }
+                    await socket.CloseAsync(WebSocketCloseStatus.MessageTooBig, "Message limit: 128 KiB", ct).ConfigureAwait(false);
+                    break;
+                }
+                message.Write(buf, 0, res.Count);
+                if (res.EndOfMessage)
+                {
+                    var msg = System.Text.Encoding.UTF8.GetString(message.GetBuffer(), 0, checked((int)message.Length));
+                    message.SetLength(0);
+                    if (msg.StartsWith("assistant.rpc|", StringComparison.Ordinal)) StartModuleRequest(id, client, msg[9..]);
+                    else try { Dispatch(id, msg); } catch { /* a bad command must not drop the client */ }
                 }
             }
         }
@@ -81,7 +95,8 @@ public sealed class WebSocketHub
         {
             _authority.Drop(id); // revoke + failsafe if this connection held control
             _clients.TryRemove(id, out _);
-            client.Gate.Dispose();
+            client.Lifetime.Cancel();
+            Disconnected?.Invoke(id);
             try
             {
                 if (socket.State == WebSocketState.Open)
@@ -90,6 +105,48 @@ public sealed class WebSocketHub
             }
             catch { /* ignore */ }
         }
+    }
+
+    // Keep receiving presence heartbeats while a catalog/import/network operation is pending.
+    // Replies go only to this socket and use the same send gate as telemetry frames.
+    private void StartModuleRequest(Guid id, Client client, string request)
+    {
+        if (ModuleRequestHandler is not { } handler) return;
+        if (Interlocked.Increment(ref client.ActiveRequests) > 4)
+        {
+            Interlocked.Decrement(ref client.ActiveRequests);
+            _ = ReplyOverloadAsync(client, request);
+            return;
+        }
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(client.Lifetime.Token);
+                timeout.CancelAfter(TimeSpan.FromMinutes(4));
+                var response = await handler(id, () => _authority.HoldsFresh(id), request, timeout.Token).ConfigureAwait(false);
+                await SendTextAsync(client, response, timeout.Token).ConfigureAwait(false);
+            }
+            catch { /* disconnected/cancelled; module registry reports domain errors */ }
+            finally { Interlocked.Decrement(ref client.ActiveRequests); }
+        });
+    }
+    private static async Task ReplyOverloadAsync(Client client, string request)
+    {
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(request);
+            var id = json.RootElement.GetProperty("id").GetString();
+            await SendTextAsync(client, System.Text.Json.JsonSerializer.Serialize(new {id,ok=false,error="Too many pending requests"}),client.Lifetime.Token).ConfigureAwait(false);
+        }
+        catch { /* invalid request or dropped client */ }
+    }
+    private static async Task SendTextAsync(Client c,string text,CancellationToken ct)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        await c.Gate.WaitAsync(ct).ConfigureAwait(false);
+        try { await c.Socket.SendAsync(bytes,WebSocketMessageType.Text,true,ct).ConfigureAwait(false); }
+        finally { c.Gate.Release(); }
     }
 
     // Route one inbound command from a connection. control.* manage actuation
