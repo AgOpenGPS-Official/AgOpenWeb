@@ -97,6 +97,9 @@ public class Track : INotifyPropertyChanged
     /// </summary>
     public bool NoPassOffset { get; set; }
 
+    /// <summary>Transient saved-row mode marker. Pin actual path; never offset, extend or turn it.</summary>
+    public bool IsIndividualRow { get; set; }
+
     /// <summary>
     /// Whether this track is currently active for guidance.
     /// </summary>

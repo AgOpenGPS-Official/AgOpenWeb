@@ -85,7 +85,7 @@ public sealed class WebSocketHub
                 {
                     var msg = System.Text.Encoding.UTF8.GetString(message.GetBuffer(), 0, checked((int)message.Length));
                     message.SetLength(0);
-                    if (msg.StartsWith("assistant.rpc|", StringComparison.Ordinal)) StartModuleRequest(id, client, msg[9..]);
+                    if (msg.StartsWith("assistant.rpc|", StringComparison.Ordinal)) StartModuleRequest(id, client, msg["assistant.rpc|".Length..]);
                     else try { Dispatch(id, msg); } catch { /* a bad command must not drop the client */ }
                 }
             }

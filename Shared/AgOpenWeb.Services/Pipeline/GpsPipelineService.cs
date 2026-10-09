@@ -59,6 +59,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly YouTurnStateMachine _youTurnStateMachine;
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
+    private readonly SavedRows.IndividualRowsGuidance _individualRows = new();
+    private Models.Track.Track? _lastIndividualRow;
     private readonly IGpsHeadingFusionService _headingFusion;
     private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
     private bool _isReverse;           // this cycle's reverse detection (#125)
@@ -483,6 +485,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // empty state). Snap applies to HowManyPathsAway before the display-
         // track computation so this cycle's visuals reflect the new pass.
         var intents = _intents.Drain();
+        if (intents.IndividualRows is {} rowsRequest) _individualRows.Configure(rowsRequest);
         if (intents.ClearYouTurn)
             YouTurnStateMachine.ClearState(_youTurn);
         // #50. A snap mid-turn is IGNORED entirely: applying it would shift the
@@ -603,6 +606,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _nextUTurnDirectionLeftOverride = null;
         }
 
+        bool individualRowsMode = track?.IsIndividualRow == true;
+        if (individualRowsMode) youTurnEnabled = false;
         // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
         // (below) so it stays where you put it — it starts on the boundary (pass 0, seeded from
         // NudgeDistance) instead of jumping to the pass nearest a parked tractor. Laterals,
@@ -776,6 +781,26 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double driftedNorthing = posNorthing + driftN;
         double headingRad = pos.Heading * Math.PI / 180.0;
 
+        // Selection and finite capture run on this cycle worker, using the same pivot as guidance.
+        if (individualRowsMode)
+        {
+            track = _individualRows.Update(driftedEasting, driftedNorthing, headingRad,
+                System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency,
+                hasActiveField && data.IsValid && !_isReverse && !contourOn);
+            hasTrack = track != null;
+            if (!ReferenceEquals(track, _lastIndividualRow)) _trackGuidanceState = null;
+            _lastIndividualRow = track;
+            _guidanceWorking.ActiveTrack = track;
+            _guidanceWorking.HowManyPathsAway = passNumber = 0;
+            _guidanceWorking.NudgeOffset = nudgeOffset = 0;
+            noPassOffset = true;
+            YouTurnStateMachine.ClearState(_youTurn);
+            isYouTurnTriggered = isInYouTurn = false;
+            youTurnPath = null;
+        }
+
+        else _lastIndividualRow = null;
+
         // ── (2b) Publish canonical pose to the position estimator ───────
         // The estimator is the bridge between GPS arrivals (10 Hz) and
         // the host control loop (100 Hz). Readers — control loop,
@@ -820,7 +845,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         YouTurnEffects? youTurnTickEffects = null;
         bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
         // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
-        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
+        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn && !individualRowsMode;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
         var tickCtx = new YouTurnStateMachine.TickContext(
@@ -837,7 +862,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
         // toggle off). TriggerManual enforces its own preconditions (autosteer +
         // track + no turn already in progress) and sets a status message otherwise.
-        if (intents.ManualYouTurn.HasValue && hasTickableTrack)
+        if (!individualRowsMode && intents.ManualYouTurn.HasValue && hasTickableTrack)
         {
             // IsHeadingSameWay is computed fresh by the state machine each tick;
             // HowManyPathsAway and NudgeOffset are already authoritative on
@@ -926,6 +951,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // ── (5) Boundary check — auto-disengage if outside ──────────────
         bool autoSteerDisengaged = false;
         string? disengageReason = null;
+        if (individualRowsMode && autoSteerEngaged && !hasTrack)
+        {
+            autoSteerEngaged = false;
+            autoSteerDisengaged = true;
+            disengageReason = "AutoSteer disengaged - no captured saved row";
+            lock (_stateLock) _autoSteerEngaged = false;
+        }
 
         // During U-turns the tractor may go slightly outside the headland but
         // must NEVER leave the outer field boundary. Only skip for on-boundary pass 0.
@@ -1012,7 +1044,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // there's no visible gap between the guidance line and the turn (the line the
             // tractor follows, CalculateTrackGuidance, is extended the same way). No-op for
             // closed loops.
-            bool extendDisp = track!.Points.Count > 2 && !track.IsClosed;
+            bool extendDisp = track!.Points.Count > 2 && !track.IsClosed && !individualRowsMode;
 
             if (Math.Abs(distAway) < 0.01)
             {
@@ -1479,7 +1511,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // extension — a heading step at the algorithm handoff (the entry "hunt"). Extending
         // the steering line lets the tractor commit to the extension direction during the
         // (smooth) approach instead. No-op for closed loops.
-        bool extendCurve = track.Points.Count > 2 && !track.IsClosed;
+        bool extendCurve = track.Points.Count > 2 && !track.IsClosed && !track.IsIndividualRow;
 
         if (Math.Abs(distAway) < 0.01)
         {

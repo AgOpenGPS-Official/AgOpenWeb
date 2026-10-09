@@ -268,7 +268,7 @@ public partial class MainViewModel
     /// </summary>
     internal void UpdateAutoTrackSelection(AgOpenWeb.Models.Position position)
     {
-        if (!IsAutoTrackEnabled || IsAutoSteerEngaged)
+        if (!IsAutoTrackEnabled || IsAutoSteerEngaged || SelectedTrack?.IsIndividualRow == true)
             return;
 
         if (SelectedTrack == null)

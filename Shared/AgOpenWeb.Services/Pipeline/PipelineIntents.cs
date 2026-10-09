@@ -20,6 +20,8 @@ public sealed class PipelineIntents : IPipelineIntents
 {
     // Sentinel-encoded last-wins slot: 0 = no request, 1 = left, 2 = right.
     private int _manualYouTurn;
+    private IndividualRowsRequest? _individualRows;
+    public void RequestIndividualRows(IndividualRowsRequest request) => Interlocked.Exchange(ref _individualRows, request);
 
     // 0 = no request, 1 = clear pending.
     private int _clearYouTurn;
@@ -94,6 +96,7 @@ public sealed class PipelineIntents : IPipelineIntents
 
         return new PipelineIntentBatch
         {
+            IndividualRows = Interlocked.Exchange(ref _individualRows, null),
             ManualYouTurn = manualYouTurn,
             ClearYouTurn = clear == 1,
             GuidanceSnap = guidanceSnap,

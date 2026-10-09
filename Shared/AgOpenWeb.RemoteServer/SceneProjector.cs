@@ -288,7 +288,7 @@ public sealed class SceneProjector
                 || g.IsContourMode
                 || _state.RecordedPath.IsDrivingRecordedPath,
             g.CurrentLineLabel,
-            _state.Field.ActiveTrack?.Name,
+            _state.Field.ActiveTrack?.IsIndividualRow == true ? g.ActiveTrack?.Name : _state.Field.ActiveTrack?.Name,
             // Dead-reckoned (render-pull) tool — smooth, matches the native map. The
             // control-loop ToolPositionService snapshot steps at the GPS rate.
             v.RenderToolEasting,
@@ -306,7 +306,7 @@ public sealed class SceneProjector
             _state.Operation.IsYouTurnEnabled,
             _state.YouTurn.IsTurnLeft,
             _state.YouTurn.DistanceToTrigger,
-            _state.Field.ActiveTrack?.IsClosed == true,
+            _state.Field.ActiveTrack?.IsClosed == true || _state.Field.ActiveTrack?.IsIndividualRow == true,
             _state.Vehicle.Roll,
             // Bottom-nav field-tools (Phase 8). Toggle states from the FieldTools
             // mirror; tram mode straight from config (no VM mirror needed).
