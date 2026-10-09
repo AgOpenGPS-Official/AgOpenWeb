@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.GPS;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
 
@@ -45,8 +46,23 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private Socket? _udpSocket;
     private readonly ILocalNetworkInfoProvider _localNetworkInfoProvider;
-    private readonly byte[] _receiveBuffer = new byte[1024];
-    private EndPoint _remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+
+    /// <summary>The module port, and Ace's GPS1 / GPS2 ports a bridge may use for a receiver.</summary>
+    public const int ModulePort = 9999;
+    public const int Gps1Port = 2211;
+    public const int Gps2Port = 2222;
+
+    // One receive buffer and endpoint per listening socket; each socket's callbacks are
+    // serial, so a listener is touched by one thread at a time.
+    private sealed class Listener
+    {
+        public readonly Socket Socket;
+        public readonly GpsSource Source;
+        public readonly byte[] Buffer = new byte[1024];
+        public EndPoint Remote = new IPEndPoint(IPAddress.Any, 0);
+        public Listener(Socket socket, GpsSource source) { Socket = socket; Source = source; }
+    }
+    private readonly List<Listener> _listeners = new();
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _isDisposed;
 
@@ -141,7 +157,27 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 _udpSocket.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
             }
 
-            _udpSocket.Bind(new IPEndPoint(IPAddress.Any, 9999));
+            _udpSocket.Bind(new IPEndPoint(IPAddress.Any, ModulePort));
+            _listeners.Clear();
+            _listeners.Add(new Listener(_udpSocket, GpsSource.ModulePort));
+
+            // Ace's GPS ports: a bridge that keeps two receivers apart sends GPS1 to 2211 and
+            // GPS2 to 2222. Text only; a port another program holds is logged and skipped.
+            foreach (var (port, source) in new[] { (Gps1Port, GpsSource.Gps1), (Gps2Port, GpsSource.Gps2) })
+            {
+                try
+                {
+                    var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 65536);
+                    s.Bind(new IPEndPoint(IPAddress.Any, port));
+                    _listeners.Add(new Listener(s, source));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("[UDP] not listening on {Port} ({Source}): {Message}", port, source, ex.Message);
+                }
+            }
 
             // Discover broadcast endpoints on all network interfaces
             _discoveryEndpoints = GetBroadcastEndpoints();
@@ -168,8 +204,11 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         if (!IsConnected) return;
 
         _cancellationTokenSource?.Cancel();
-        _udpSocket?.Close();
-        _udpSocket?.Dispose();
+        foreach (var l in _listeners)
+        {
+            try { l.Socket.Close(); l.Socket.Dispose(); } catch { /* closing */ }
+        }
+        _listeners.Clear();
         _udpSocket = null;
         IsConnected = false;
         _silence.Reset();
@@ -275,16 +314,9 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private async Task ReceiveLoop(CancellationToken cancellationToken)
     {
-        // Start the first receive operation
-        if (_udpSocket != null)
-        {
-            try
-            {
-                _udpSocket.BeginReceiveFrom(_receiveBuffer, 0, _receiveBuffer.Length, SocketFlags.None,
-                    ref _remoteEndPoint, ReceiveCallback, null);
-            }
-            catch { }
-        }
+        // Start the first receive operation on every listening port
+        foreach (var l in _listeners)
+            BeginReceive(l);
 
         // Keep the task alive until cancellation; also the 100 ms tick for silence checks.
         while (!cancellationToken.IsCancellationRequested)
@@ -298,30 +330,41 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         }
     }
 
+    private void BeginReceive(Listener l)
+    {
+        try
+        {
+            l.Socket.BeginReceiveFrom(l.Buffer, 0, l.Buffer.Length, SocketFlags.None,
+                ref l.Remote, ReceiveCallback, l);
+        }
+        catch { }
+    }
+
     private void ReceiveCallback(IAsyncResult ar)
     {
+        var l = (Listener)ar.AsyncState!;
         if (_udpSocket == null) return;
 
         try
         {
-            int bytesReceived = _udpSocket.EndReceiveFrom(ar, ref _remoteEndPoint);
+            int bytesReceived = l.Socket.EndReceiveFrom(ar, ref l.Remote);
 
             if (bytesReceived > 0)
             {
-                // ZERO-COPY PATH: Check if this is NMEA data for AutoSteer
-                // Process directly from receive buffer before any copying
-                if (_receiveBuffer[0] == (byte)'$' && _autoSteerService != null)
-                {
-                    // Direct zero-copy call - this is the critical low-latency path
-                    // GPS → Parse → Guidance → PGN all happen here before we continue
-                    _autoSteerService.ProcessGpsBuffer(_receiveBuffer, bytesReceived);
-                }
+                // ZERO-COPY PATH: GPS text (a line, or the rest of a line a bridge cut)
+                // goes to the line splitter + parser straight from the receive buffer
+                // before any copying. GPS → Parse → Guidance → PGN all happen here.
+                // Binary PGNs take the event path below; other binary datagrams (strangers
+                // broadcasting to 9999) are ignored as they always were.
+                var datagram = l.Buffer.AsSpan(0, bytesReceived);
+                if (_autoSteerService != null && Gps.NmeaLineSplitter.IsTextDatagram(datagram))
+                    _autoSteerService.ProcessGpsDatagram(datagram, l.Source);
 
                 // Now copy for other consumers (events, logging, etc.)
                 byte[] data = new byte[bytesReceived];
-                Array.Copy(_receiveBuffer, data, bytesReceived);
+                Array.Copy(l.Buffer, data, bytesReceived);
 
-                ProcessReceivedData(data, (IPEndPoint)_remoteEndPoint);
+                ProcessReceivedData(data, (IPEndPoint)l.Remote);
             }
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
@@ -343,14 +386,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
         // IMMEDIATELY start the next receive operation - this is the key fix!
         if (_udpSocket != null)
-        {
-            try
-            {
-                _udpSocket.BeginReceiveFrom(_receiveBuffer, 0, _receiveBuffer.Length, SocketFlags.None,
-                    ref _remoteEndPoint, ReceiveCallback, null);
-            }
-            catch { }
-        }
+            BeginReceive(l);
     }
 
     private void ProcessReceivedData(byte[] data, IPEndPoint remoteEndPoint)

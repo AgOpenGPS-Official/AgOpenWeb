@@ -310,9 +310,14 @@ public record SystemDataDto(
     double RateHz,
     long Missed,
     long Rejected,
-    IReadOnlyList<GpsSentenceDto> Sentences);
+    IReadOnlyList<GpsSentenceDto> Sentences,
+    long BadChecksum = 0,
+    long UnknownSentence = 0,
+    long JoinedLines = 0,
+    long DroppedBytes = 0,
+    string Source = "");
 
-/// <param name="Type">"PANDA", "PAOGI", or "REJECTED" for the last datagram the parser refused.</param>
+/// <param name="Type">"PANDA", "PAOGI", "KSXT", or "REJECTED" for the last line the parser refused.</param>
 public record GpsSentenceDto(string Type, string Text, double AgeSeconds);
 
 /// <summary>The caster's RTCM stream this session: totals, and each message type with how

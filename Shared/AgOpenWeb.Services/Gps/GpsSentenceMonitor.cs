@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using AgOpenWeb.Models.GPS;
 
 namespace AgOpenWeb.Services.Gps;
 
@@ -17,7 +18,10 @@ public sealed class GpsSentenceMonitor
 {
     public sealed record Sentence(string Type, string Text, double AgeSeconds);
 
-    public sealed record Snapshot(double RateHz, long Missed, long Rejected, IReadOnlyList<Sentence> Sentences);
+    /// <param name="Rejected">Lines the parser refused, of which <paramref name="BadChecksum"/> failed
+    /// the checksum and <paramref name="UnknownSentence"/> were well-formed sentences this build does not decode.</param>
+    public sealed record Snapshot(double RateHz, long Missed, long Rejected, long BadChecksum, long UnknownSentence,
+        IReadOnlyList<Sentence> Sentences);
 
     /// <summary>The <see cref="Sentence.Type"/> of the last datagram the parser refused.</summary>
     public const string RejectedType = "REJECTED";
@@ -56,13 +60,16 @@ public sealed class GpsSentenceMonitor
     private double _slowInterval; // the first of those gaps
     private long _missed;
     private long _rejectedCount;
+    private long _badChecksum;
+    private long _unknownSentence;
 
-    /// <summary>Record one datagram from the GPS module and whether the parser took it.</summary>
-    public void Record(ReadOnlySpan<byte> data, bool accepted) => Record(data, accepted, Stopwatch.GetTimestamp());
+    /// <summary>Record one line from the GPS module and what the parser made of it.</summary>
+    public void Record(ReadOnlySpan<byte> data, NmeaParseResult result) => Record(data, result, Stopwatch.GetTimestamp());
 
-    /// <summary>As <see cref="Record(ReadOnlySpan{byte}, bool)"/>, with the arrival time given (tests).</summary>
-    public void Record(ReadOnlySpan<byte> data, bool accepted, long timestamp)
+    /// <summary>As <see cref="Record(ReadOnlySpan{byte}, NmeaParseResult)"/>, with the arrival time given (tests).</summary>
+    public void Record(ReadOnlySpan<byte> data, NmeaParseResult result, long timestamp)
     {
+        bool accepted = result == NmeaParseResult.Accepted;
         lock (_lock)
         {
             Slot slot = !accepted ? _rejected
@@ -78,6 +85,8 @@ public sealed class GpsSentenceMonitor
             if (!accepted)
             {
                 _rejectedCount++;
+                if (result == NmeaParseResult.BadChecksum) _badChecksum++;
+                else if (result == NmeaParseResult.UnknownSentence) _unknownSentence++;
                 return;
             }
 
@@ -144,7 +153,7 @@ public sealed class GpsSentenceMonitor
             foreach (var slot in new[] { _panda, _paogi, _ksxt, _rejected })
                 if (slot.Seen)
                     sentences.Add(new Sentence(slot.Type, Text(slot), Math.Max(0, Seconds(now - slot.Stamp))));
-            return new Snapshot(rate, _missed, _rejectedCount, sentences);
+            return new Snapshot(rate, _missed, _rejectedCount, _badChecksum, _unknownSentence, sentences);
         }
     }
 

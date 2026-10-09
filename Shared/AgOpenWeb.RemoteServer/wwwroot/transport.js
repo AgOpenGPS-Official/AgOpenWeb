@@ -169,6 +169,8 @@ window.RemoteTransport = {
                            rateHz: f32(), missed: i32(), rejected: i32(), sentences: [] };
             for (let k = u8(); k > 0; k--)
               systemData.sentences.push({ type: str(), text: str(), age: f32() });
+            systemData.badChecksum = i32(); systemData.unknownSentence = i32();
+            systemData.joinedLines = i32(); systemData.droppedBytes = i32(); systemData.source = str();
           }
           // GPS data lost (append-only): the host's debounced flag.
           const gpsLost = !!u8();

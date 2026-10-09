@@ -864,6 +864,17 @@ public static partial class RemoteServerWiring
                         var sentences = new System.Collections.Generic.List<AgOpenWeb.RemoteServer.GpsSentenceDto>(raw.Sentences.Count);
                         foreach (var s in raw.Sentences)
                             sentences.Add(new AgOpenWeb.RemoteServer.GpsSentenceDto(s.Type, s.Text, s.AgeSeconds));
+                        // Where the sentences come in: the sender's address and the port
+                        // (the module port, or Ace's GPS1 / GPS2 ports a bridge may use).
+                        var gpsAddress = services.GetRequiredService<IUdpCommunicationService>()
+                            .GetModuleIpAddress(AgOpenWeb.Services.Interfaces.ModuleType.GPS) ?? "";
+                        var port = steerSvc.LastGpsSource switch
+                        {
+                            AgOpenWeb.Models.GPS.GpsSource.Gps1 => "GPS1 :2211",
+                            AgOpenWeb.Models.GPS.GpsSource.Gps2 => "GPS2 :2222",
+                            _ => ":9999",
+                        };
+                        var source = gpsAddress.Length > 0 ? gpsAddress + " · " + port : "";
                         return new AgOpenWeb.RemoteServer.SystemDataDto(
                             d.ImuPitch, d.ImuYawRate,
                             d.ImuValid ? d.ImuHeading : double.NaN,
@@ -872,7 +883,9 @@ public static partial class RemoteServerWiring
                             d.HasDualHeading && d.SentenceType != AgOpenWeb.Models.GpsSentenceType.Simulator
                                 ? d.CurrentPosition.Heading : double.NaN,
                             headingFusion.GpsHeadingDeg,
-                            raw.RateHz, raw.Missed, raw.Rejected, sentences);
+                            raw.RateHz, raw.Missed, raw.Rejected, sentences,
+                            raw.BadChecksum, raw.UnknownSentence,
+                            steerSvc.GpsLines.JoinedLines, steerSvc.GpsLines.DroppedBytes, source);
                     };
 
                     server.HeadlandSegsProvider = () =>

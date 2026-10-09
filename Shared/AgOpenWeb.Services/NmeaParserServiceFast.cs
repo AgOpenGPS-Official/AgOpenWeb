@@ -19,6 +19,7 @@ using System.Buffers.Text;
 using System.Runtime.CompilerServices;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.GPS;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services;
@@ -162,21 +163,48 @@ public class NmeaParserServiceFast
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool ParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
         ConfigurationStore configStore)
+        => TryParseIntoState(data, ref state, configStore, out _);
+
+    /// <summary>
+    /// As <see cref="ParseIntoState"/>, saying why a line was refused: the System Data card
+    /// counts bad checksums (a corrupted or mis-split line) apart from sentences this build
+    /// does not decode (a receiver printing <c>$GNGGA</c>, or a <c>#</c> log).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static bool TryParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
+        ConfigurationStore configStore, out NmeaParseResult result)
     {
         state.MarkParseStart();
 
-        // Minimum valid: $PANDA,... = at least 20 bytes
-        if (data.Length < 20) return false;
+        // A '#' line is a receiver's CRC-framed log (Unicore INSPVAXA…): a known shape,
+        // not decoded yet — the card should name it rather than call it garbage.
+        if (data.Length > 0 && data[0] == '#')
+        {
+            result = NmeaParseResult.UnknownSentence;
+            return false;
+        }
 
-        // Must start with $
-        if (data[0] != '$') return false;
+        // Minimum valid: $PANDA,... = at least 20 bytes, and it must start with $
+        if (data.Length < 20 || data[0] != '$')
+        {
+            result = NmeaParseResult.BadFrame;
+            return false;
+        }
 
         // Find checksum marker
         int asterisk = data.IndexOf((byte)'*');
-        if (asterisk < 10) return false;
+        if (asterisk < 10)
+        {
+            result = NmeaParseResult.BadFrame;
+            return false;
+        }
 
         // Validate checksum (XOR of bytes between $ and *)
-        if (!ValidateChecksum(data, asterisk)) return false;
+        if (!ValidateChecksum(data, asterisk))
+        {
+            result = NmeaParseResult.BadChecksum;
+            return false;
+        }
 
         // Comma table for the body (up to the asterisk)
         var body = data.Slice(0, asterisk);
@@ -189,13 +217,23 @@ public class NmeaParserServiceFast
         if (sentenceType.SequenceEqual(PANDA)) ok = DecodePanda(body, commas, fieldCount, ref state, configStore);
         else if (sentenceType.SequenceEqual(PAOGI)) ok = DecodePaogi(body, commas, fieldCount, ref state, configStore);
         else if (sentenceType.SequenceEqual(KSXT)) ok = DecodeKsxt(body, commas, fieldCount, ref state, configStore);
-        else return false;
-        if (!ok) return false;
+        else
+        {
+            result = NmeaParseResult.UnknownSentence;
+            return false;
+        }
+
+        if (!ok)
+        {
+            result = NmeaParseResult.BadFields;
+            return false;
+        }
 
         // Pre-compute heading in radians for guidance calculations
         state.HeadingRadians = state.Heading * (Math.PI / 180.0);
 
         state.MarkParseEnd();
+        result = NmeaParseResult.Accepted;
         return true;
     }
 

@@ -46,4 +46,51 @@ public class NmeaParserAllocationTests
 
         Assert.That(allocated, Is.EqualTo(0), $"{body[..5]}: {allocated} bytes allocated over 1000 parses");
     }
+
+    [Test]
+    public void Splitter_OneLineDatagram_AllocatesNothing()
+    {
+        var splitter = new AgOpenWeb.Services.Gps.NmeaLineSplitter();
+        var data = Encoding.ASCII.GetBytes(Encoding.ASCII.GetString(Sentence("PANDA,123456.00,4807.038,N,01131.000,E,4,12,0.9,100.0,0.0,5.5,900,12,0,0.00")) + "\r\n");
+        var config = new ConfigurationStore();
+        var state = new VehicleState();
+        int parsed = 0;
+
+        for (int i = 0; i < 100; i++)
+            foreach (var line in splitter.Lines(data, AgOpenWeb.Models.GPS.GpsSource.ModulePort))
+                if (NmeaParserServiceFast.TryParseIntoState(line, ref state, config, out _)) parsed++;
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+            foreach (var line in splitter.Lines(data, AgOpenWeb.Models.GPS.GpsSource.ModulePort))
+                if (NmeaParserServiceFast.TryParseIntoState(line, ref state, config, out _)) parsed++;
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(parsed, Is.EqualTo(1100), "the line was handed out and decoded every time");
+        Assert.That(allocated, Is.EqualTo(0), $"{allocated} bytes allocated over 1000 datagrams");
+    }
+
+    [Test]
+    public void Splitter_JoinedLine_AllocatesNothing()
+    {
+        var splitter = new AgOpenWeb.Services.Gps.NmeaLineSplitter();
+        var whole = Encoding.ASCII.GetString(Sentence("PANDA,123456.00,4807.038,N,01131.000,E,4,12,0.9,100.0,0.0,5.5,900,12,0,0.00")) + "\r\n";
+        var head = Encoding.ASCII.GetBytes(whole[..40]);
+        var tail = Encoding.ASCII.GetBytes(whole[40..]);
+        int parsed = 0;
+        void Feed(byte[] d)
+        {
+            var state = new VehicleState();
+            foreach (var line in splitter.Lines(d, AgOpenWeb.Models.GPS.GpsSource.Gps1))
+                if (NmeaParserServiceFast.ParseIntoState(line, ref state, ConfigurationStore.Instance)) parsed++;
+        }
+
+        for (int i = 0; i < 100; i++) { Feed(head); Feed(tail); }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++) { Feed(head); Feed(tail); }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(parsed, Is.EqualTo(1100));
+        Assert.That(allocated, Is.EqualTo(0), $"{allocated} bytes allocated over 1000 joined lines");
+    }
 }

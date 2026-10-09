@@ -2844,7 +2844,7 @@ document.getElementById('nio-rtcm').addEventListener('toggle', () => { if (statu
 // (~2 Hz) while open.
 const sdPanel = document.getElementById('systemdata');
 const SD = {};
-for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', 'hz', 'missed', 'rej',
+for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', 'hz', 'missed', 'rej', 'joined', 'dropped', 'src',
   'speed', 'roll', 'pitch', 'yaw', 'hdual', 'himu', 'hf2f', 'hused', 'sentences'])
   SD[id] = document.getElementById('sd-' + id);
 document.getElementById('nio-gps-more').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('systemdata', 'ln-network', renderSystemData); });
@@ -2872,7 +2872,15 @@ function renderSystemData() {
   const live = !!d && d.sentences.some(x => x.type !== 'REJECTED' && x.age < 5);
   set(SD.hz, live ? num(d.rateHz, 1, ' Hz') : '—');
   set(SD.missed, d ? String(d.missed) : '—');
-  set(SD.rej, d ? String(d.rejected) : '—');
+  // Why lines were refused: a bad checksum is a corrupted or mis-split line (look at the
+  // bridge); an unknown sentence is one this build does not decode (look at the receiver's
+  // output set).
+  const rejParts = d && d.rejected ? [d.badChecksum ? tr('{n} checksum', { n: d.badChecksum }) : '',
+    d.unknownSentence ? tr('{n} unknown', { n: d.unknownSentence }) : ''].filter(Boolean) : [];
+  set(SD.rej, d ? String(d.rejected) + (rejParts.length ? ' (' + rejParts.join(', ') + ')' : '') : '—');
+  set(SD.joined, d ? String(d.joinedLines) : '—');
+  set(SD.dropped, d ? String(d.droppedBytes) : '—');
+  set(SD.src, d && d.source ? d.source : '—');
   set(SD.pitch, d ? num(d.pitch, 1, '°') : '—');
   set(SD.yaw, d ? num(d.yawRate, 1, ' °/s') : '—');
   set(SD.hdual, d ? deg(d.dualHeading) : '—');

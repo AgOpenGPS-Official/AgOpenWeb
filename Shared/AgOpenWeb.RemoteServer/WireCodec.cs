@@ -707,6 +707,13 @@ public static class WireCodec
                 WriteStr(w, sd.Sentences[i].Text);
                 w.Write((float)sd.Sentences[i].AgeSeconds);
             }
+            // Ingest counters and the source: i32 bad checksum, unknown sentence, lines joined
+            // across datagrams, bytes dropped; str source ("192.168.5.11 · GPS1 :2211").
+            w.Write((int)Math.Min(sd.BadChecksum, int.MaxValue));
+            w.Write((int)Math.Min(sd.UnknownSentence, int.MaxValue));
+            w.Write((int)Math.Min(sd.JoinedLines, int.MaxValue));
+            w.Write((int)Math.Min(sd.DroppedBytes, int.MaxValue));
+            WriteStr(w, sd.Source);
         }
         // GPS data lost (append-only): the host's debounced flag, so client and host agree.
         w.Write((byte)(s.GpsLost ? 1 : 0));
