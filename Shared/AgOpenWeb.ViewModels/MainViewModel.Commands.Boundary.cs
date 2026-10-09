@@ -532,7 +532,7 @@ public partial class MainViewModel
         {
             NumericInputDialogTitle = "Boundary Offset (cm)";
             NumericInputDialogValue = (decimal)BoundaryOffset;
-            NumericInputDialogDisplayText = BoundaryOffset.ToString("F0");
+            NumericInputDialogDisplayText = BoundaryOffset.ToString("F0", System.Globalization.CultureInfo.InvariantCulture);
             NumericInputDialogIntegerOnly = true;
             NumericInputDialogAllowNegative = false;
             _numericInputDialogCallback = (value) =>

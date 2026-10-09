@@ -23,17 +23,18 @@ trim_trailing_whitespace = false
 # Globalization / culture-correctness rules.
 #
 # CA1305 fires anywhere a culture-sensitive ToString / Parse / interpolated
-# string is used without an explicit IFormatProvider. We don't want it as
-# an error globally — `DateTime.Now.ToString("HH-mm")` for a UI label is
-# fine — but anything that lands on disk or on the wire MUST use
-# InvariantCulture. So scope the error severity to those paths.
+# string is used without an explicit IFormatProvider. Anything that lands on
+# disk, on the wire or in the web client MUST use InvariantCulture (see the
+# Field.txt fi-FI regression that prompted this); display-only code may pass
+# CurrentCulture explicitly. Either way the provider is written down, so the
+# rule is an error for all production code - a new persistence sink needs no
+# .editorconfig entry to be covered.
 #
-# Default: CA1305 only. The other globalization rules
-# (CA1303 localization, CA1307/CA1310 string comparison, CA1308
-# upper/lower normalization) are stylistic for this project — silence
-# them so only the IFormatProvider rule shows up.
+# The other globalization rules (CA1303 localization, CA1307/CA1310 string
+# comparison, CA1308 upper/lower normalization) are stylistic for this
+# project - silenced so only the IFormatProvider rule shows up.
 [*.cs]
-dotnet_diagnostic.CA1305.severity = warning
+dotnet_diagnostic.CA1305.severity = error
 dotnet_diagnostic.CA1303.severity = none
 dotnet_diagnostic.CA1304.severity = none
 dotnet_diagnostic.CA1307.severity = none
@@ -41,36 +42,13 @@ dotnet_diagnostic.CA1308.severity = none
 dotnet_diagnostic.CA1310.severity = none
 dotnet_diagnostic.CA1311.severity = none
 
-# Persistence & wire-format paths: a culture miss here is a real,
-# user-visible bug (see Field.txt fi-FI regression that prompted this).
-# Promote to error so the build breaks before the bug ships.
-[Shared/AgOpenWeb.Services/Fields/**/*.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/AutoSteer/PgnBuilder.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/NmeaParser*.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/NtripClientService.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/FieldPlaneFileService.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/AgShare/**/*.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/IsoXml/**/*.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/Tram/**/*.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Shared/AgOpenWeb.Services/Pipeline/**/*.cs]
-dotnet_diagnostic.CA1305.severity = error
-[Simulators/**/Modules/*.cs]
-dotnet_diagnostic.CA1305.severity = error
+# Tests parse and format literals in the test culture; nothing reaches disk or wire.
+[Tests/**/*.cs]
+dotnet_diagnostic.CA1305.severity = none
 
-# UI views: bindings and codegen create lots of ToString calls; current
-# culture is correct for display. Silence the rule here.
-[Shared/AgOpenWeb.Views/**/*.cs]
-dotnet_diagnostic.CA1305.severity = none
-[*.{xaml,axaml}]
-dotnet_diagnostic.CA1305.severity = none
+# The iOS head only compiles in CI after merge; keep it a warning until that run is green.
+[Platforms/AgOpenWeb.iOS/**/*.cs]
+dotnet_diagnostic.CA1305.severity = warning
 
 # Generated files: skip culture rules entirely.
 [**/{obj,bin}/**]

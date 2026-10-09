@@ -277,8 +277,8 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         _isFirstDigitEntry = true;
 
         NumericInputDisplayText = integerOnly
-            ? ((int)currentValue).ToString()
-            : currentValue.ToString("F2");
+            ? ((int)currentValue).ToString(System.Globalization.CultureInfo.InvariantCulture)
+            : currentValue.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
         IsNumericInputVisible = true;
     }

@@ -253,7 +253,7 @@ public static class AtomicJsonFile
     {
         try
         {
-            var stamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+            var stamp = DateTime.Now.ToString("yyyyMMddHHmmss", System.Globalization.CultureInfo.InvariantCulture);
             var dest = $"{path}.corrupt.{stamp}";
             File.Move(path, dest, overwrite: true);
         }

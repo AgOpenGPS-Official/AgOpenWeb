@@ -103,7 +103,7 @@ public sealed class SceneProjector
         var tracks = f.Tracks.ToArray()
             .Where(t => t.IsActive && t.Points.Count >= 2)
             .Select((t, i) => new TrackDto(
-                i.ToString(),
+                i.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 t.Name,
                 (int)t.Type,
                 t.Points.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList()))

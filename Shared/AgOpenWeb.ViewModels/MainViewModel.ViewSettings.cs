@@ -149,10 +149,10 @@ public partial class MainViewModel
 
     private void InitializeClock()
     {
-        CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        CurrentTime = DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         var clockTimer = _timerFactory.Create();
         clockTimer.Interval = TimeSpan.FromSeconds(1);
-        clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         clockTimer.Start();
     }
 
