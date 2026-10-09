@@ -8,7 +8,7 @@ No feature adds a platform UI or an ASP.NET dependency.
 
 The existing authority-bearing WebSocket carries assistant.rpc requests and correlated
 JSON replies. Write operations recheck fresh control authority at dispatch, while
-GPS-cycle changes use IPipelineIntents. Each connection has at most eight outstanding
+GPS-cycle changes use IPipelineIntents. Each connection has at most four outstanding
 requests and disconnect cancels its work. Static assets stay embedded and filename-only.
 The runtime cancels and drains requests when the host stops.
 
