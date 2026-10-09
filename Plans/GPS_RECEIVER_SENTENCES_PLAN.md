@@ -410,9 +410,11 @@ Decide when the first along-mounted user appears; until then baseline pitch.
 :9999, keeps datagram boundaries and arrival times, and writes a text file the tests can
 replay; `Tools/serial-to-udp.py` is the reference bridge (whole lines to 9999, 2233 back to
 the port) for a bench with a USB receiver and no board. Captures wanted: UM982/T1-FD printing `GGA`+`VTG`+`HPR` through the AiO passthrough
-(Chris's bench, switch the receiver's output set); Septentrio from the issue (wiring,
-config export, pcap with cold start / stationary / turns / RTK loss / heading loss, one
-`AVR` line pasted). Fixtures live under `Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/`.
+(Chris's bench, switch the receiver's output set) — *captured 2026-10-09,
+`Fixtures/nmea/um982-gga-vtg-hpr.txt`, replayed by `CaptureReplayTests`*; Septentrio from
+the issue (wiring, config export, pcap with cold start / stationary / turns / RTK loss /
+heading loss, one `AVR` line pasted); a UM981 `INSPVAXA` run. Fixtures live under
+`Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/`, read by `NmeaCapture`.
 
 **Phase 1 — line splitter + monitor + ports.** *Done (2026-10-09).* `NmeaLineSplitter`
 (`Services/Gps`) cuts every GPS datagram into whole lines in front of the parser: one line per
@@ -437,9 +439,10 @@ from an IMU talker to the IMU slot. The CRC-32 framer takes both header shapes a
 `#INSPVAXA` / `#INSPVAA` decoder is checked against the UM981 manual's example line (its
 printed CRC). Tests: warm-up, learning, dropped member, speed not carried over, reconfigured
 smaller and larger, roll rules, talker routing, GNS modes, chunking determinism through the
-service, zero allocation on both paths. `Docs/GPS_RECEIVERS.md` written. Not yet: the GPS
-log does not record which members were present per fix; bench on a UM982 / UM981 pending
-captures (the v26 firmware's INSPVAXA decoder reads the velocities one field early, past the
+service, zero allocation on both paths, and the bench capture replayed. `Docs/GPS_RECEIVERS.md`
+written. Bench-confirmed on the T1-FD (GGA+VTG+HPR at 10 Hz, age populated, heading and
+roll from HPR). Not yet: the GPS log does not record which members were present per fix;
+UM981 pending a capture (the v26 firmware's INSPVAXA decoder reads the velocities one field early, past the
 undulation — worth fixing there).
 
 **Phase 2b — board IMU as a latest-reading source.** The attitude sentence from a HAT/AiO
