@@ -36,7 +36,7 @@ T1-FD on Ethernet), and it just works, because every source is an address on the
 
 | | AiO board | IP-direct (receiver port or bridge) |
 |---|---|---|
-| Fix arrives as | `$PANDA` / `$PAOGI`, one per epoch | the receiver's own sentences |
+| Fix arrives as | `$PANDA` / `$PAOGI` (current firmware, frozen); standard sentences + a time-tagged IMU sentence (future firmware) | the receiver's own sentences |
 | IMU | on the board, paired with the epoch there | none needed (dual antenna) — or on the HAT daemon |
 | Module identity | hello PGNs: steer / machine / IMU / GPS dots and addresses | none for the receiver; steer/machine still from their boards |
 | RTCM back to the receiver | unicast to the board's address, 2233 → serial | unicast to the sender's address, 2233 |
@@ -134,6 +134,37 @@ Not taken: the fixed-IP table (a convention to document, not enforce), the Nav�
 PGN 249 (only needed when the WAS ADC and the motor driver are on different boards), and
 u-center TCP passthrough (a bridge feature; nothing for the app).
 
+## Brian's second point: standard sentences, no packing
+
+`$PANDA`/`$PAOGI` pack a whole fix into one sentence because the link to the PC was serial
+and one line per epoch was the cheap way to keep the fields together. Over UDP that reason
+is gone, and Brian's advice is that the app should just accept standard sentences.
+
+Taken — with one thing kept. What `$PANDA` carries besides packing is the board's decision
+of **which IMU sample belongs to which GPS epoch** (Ace samples the IMU 40 ms after the GGA
+and writes both into one sentence). That decision stays on the board. The way to keep it
+without a packed format is a **time tag**: the board's attitude sentence carries the UTC of
+the GGA it was sampled for, and the epoch assembler groups by that tag. The pairing is the
+board's; the host only matches tags, which is deterministic. "Latest IMU reading when the
+GGA arrives" on the host is the AgIO problem and is not an option.
+
+Consequences:
+
+- **New firmware (HAT daemon, future AiO builds) emits standard sentences only:** the
+  receiver's `GGA` + `VTG` passed through, plus an attitude sentence from the board's IMU
+  stamped with the GGA's UTC, plus rate of turn. No new packed formats, no `$PANDA` v2. The
+  AiO becomes a bridge that also contributes an IMU sentence, and the app treats it like a
+  UM982 printing `HPR`: the two columns in the table above converge into one path.
+- **`$PANDA`/`$PAOGI` are frozen.** Decoded for the installed base as they are; no fields
+  added.
+- **The source must be in the sentence.** Fusion treats a dual-antenna heading as ground
+  truth and an IMU heading as something to fuse (#157). NMEA's way to say which is the
+  **talker ID**: `$GN…`/`$GP…` from a receiver, `$IN…` (integrated navigation) or `$HE…`
+  (gyro) from a board's IMU. Which attitude sentence to use — an `HPR`-shaped one
+  (`utc, heading, pitch, roll, quality`), or `THS` + `XDR` (pitch/roll) + `ROT` — is a
+  decision for the HAT firmware; the assembler only needs the UTC tag and the talker ID.
+  Decide with the first firmware that emits it (Phase 2b).
+
 ## What arrives, and how
 
 | Receiver | Sentences per epoch | Reaches the app via |
@@ -213,8 +244,10 @@ prints per epoch.
     satellites, HDOP, **differential age** — the field `$KSXT` lacks.
   - `VTG`: speed (km/h field 7, else knots field 5) → m/s; true track → `Heading` only when
     no heading sentence is in the burst (single antenna; `HasDualHeading = false`).
-  - `HPR` / `HDT` / `THS` / `AVR` yaw / `HRP` heading: `Heading`, `HasDualHeading = true`,
-    `ImuValid = false`.
+  - `HPR` / `HDT` / `THS` / `AVR` yaw / `HRP` heading from a receiver talker (`GN`, `GP`):
+    `Heading`, `HasDualHeading = true`, `ImuValid = false`. The same shape from an IMU talker
+    (`IN`, `HE`): `ImuHeading`, `ImuValid = true`, `HasDualHeading = false` — the `$PANDA`
+    semantics, by talker ID instead of by sentence name.
   - Roll: `HPR` pitch (antennas across the cab, the AgOpenGPS convention and what the
     `$KSXT` decoder does), `AVR` roll, `HRP` roll — **only when that sentence's own quality
     says fixed**; otherwise 0. Through `ApplyAhrsRollCalibration` like every other source.
@@ -271,6 +304,11 @@ exactly as before (existing tests are the proof). Ships on its own.
 **Phase 2 — epoch assembler, Unicore set.** `GGA`/`GNS` + `VTG` + `HPR` (and `THS`). Bench
 on the T1-FD/UM982. Includes the determinism test, the dropped-member test, the warm-up
 test, and the "receiver reconfigured" test. Network IO shows the family.
+
+**Phase 2b — board IMU as an assembler member.** The time-tagged attitude sentence from a
+HAT/AiO build, distinguished by talker ID: heading goes to `ImuHeading`/`ImuValid`, not to
+the dual heading. Done together with the first firmware that emits it; the fixture comes
+from that board. This is what lets the HAT daemon skip `$PANDA` altogether.
 
 **Phase 3 — Septentrio set.** `HDT` + `$PTNL,AVR` (both layouts) and `$PSSN,HRP`, from the
 captures. Decide then whether to keep AgIO's Kalman smoothing on `AVR` roll (it is
