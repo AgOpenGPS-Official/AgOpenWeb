@@ -27,6 +27,21 @@ Two things have moved since:
   the board just bridges serial to UDP). Without the AiO's sentence builder, the app has to
   read what the receiver prints.
 
+**Both stay supported, as equals, with no mode switch.** The AiO board with its `$PANDA`/
+`$PAOGI` is not the legacy path; it is the right answer for a single-antenna receiver with
+an IMU, and for anyone who already has one. The IP-direct path is the right answer for a
+dual-antenna receiver and a steer-only board. The dispatcher recognises whichever arrives;
+the user never picks. A machine can even have both (an AiO on the steer side and a
+T1-FD on Ethernet), and it just works, because every source is an address on the subnet.
+
+| | AiO board | IP-direct (receiver port or bridge) |
+|---|---|---|
+| Fix arrives as | `$PANDA` / `$PAOGI`, one per epoch | the receiver's own sentences |
+| IMU | on the board, paired with the epoch there | none needed (dual antenna) — or on the HAT daemon |
+| Module identity | hello PGNs: steer / machine / IMU / GPS dots and addresses | none for the receiver; steer/machine still from their boards |
+| RTCM back to the receiver | unicast to the board's address, 2233 → serial | unicast to the sender's address, 2233 |
+| App-side code path | one-shot decoder (unchanged by this plan) | one-shot decoder or epoch assembler |
+
 Receivers print their fix as either one proprietary sentence (`$KSXT`, `$GPHPD`) or as
 several standard ones per epoch (`GGA` + `VTG` + `HPR` on a Unicore, `GGA` + `VTG` + `HDT` +
 `AVR` on a Septentrio). The first kind is done (#288: one decoder per sentence). This plan is
@@ -58,9 +73,11 @@ AiO today, the HAT daemon under PREEMPT_RT tomorrow — and the app receives the
 The app has one transport: UDP on the module subnet. It does not open serial ports on any
 head, and this plan does not add that. Receivers either have an Ethernet/USB-network port
 of their own (Bynav T1-FD, Septentrio mosaic, UB9A0) or sit behind a **serial-to-Ethernet
-bridge** — the AiO's passthrough today, a Teensy or ESP32 doing nothing but
-serial↔UDP tomorrow, the HAT daemon on the Pi. The bridge is a few dozen lines of firmware;
-the app side is the same for all of them.
+bridge** — the AiO board itself (building `$PANDA`/`$PAOGI`, or in passthrough), a Teensy
+or ESP32 doing nothing but serial↔UDP, the HAT daemon on the Pi. The AiO is the first and
+most complete of these devices, not an exception to the model: it speaks the same two
+ports, and adds module identity and IMU pairing on top. The app side is the same for all
+of them.
 
 What the app already does for an address that only ever sends NMEA, with no hello PGN:
 the GPS status dot follows the sentence flow (`GpsService.IsGpsDataOk`), the GPS address on
