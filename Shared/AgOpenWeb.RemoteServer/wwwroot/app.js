@@ -2890,7 +2890,7 @@ function renderSystemData() {
   SD.hdual.classList.toggle('sd-bad', !!s.dualHeadingMissing);
   const ago = v => tr('{n} s ago', { n: v < 10 ? v.toFixed(1) : Math.round(v) });
   const rows = (d ? d.sentences : []).map(x =>
-    '<div class="sd-sent' + (x.age > 2 ? ' stale' : '') + '"><div class="sd-senthead"><span' + (x.type === 'REJECTED' ? '>' + esc(tr('Not accepted', {})) : ' translate="no">$' + esc(x.type)) +
+    '<div class="sd-sent' + (x.age > 2 ? ' stale' : '') + '"><div class="sd-senthead"><span' + (x.type === 'REJECTED' ? '>' + esc(tr('Not accepted', {})) : ' translate="no">' + (x.type === 'INSPVAX' ? '#' : '$') + esc(x.type)) +
     '</span><span>' + esc(ago(x.age)) + '</span></div><div class="sd-senttext" translate="no">' + esc(x.text) + '</div></div>');
   const html = rows.length ? rows.join('')
     : '<div class="sa-hint">' + esc(s.gpsSentence === 'SIM' ? tr('The simulator is supplying the position; no sentence is being received.', {})

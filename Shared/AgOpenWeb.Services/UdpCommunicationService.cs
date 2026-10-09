@@ -419,8 +419,11 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                     Timestamp = DateTime.Now
                 });
             }
-            else if (data.Length > 0 && data[0] == (byte)'$')
+            else if (data.Length > 0 && (data[0] == (byte)'$' || data[0] == (byte)'#' || data[0] == (byte)'%'))
             {
+                // A '$' sentence or a Unicore '#'/'%' log: this is where the position comes
+                // from, so the RTCM corrections go back to this address (unicast on 2233) and
+                // Network IO names it.
                 MarkSourceSeen(SourceGpsNmea, remoteEndPoint);
 
                 // Text NMEA sentence (starts with $)
