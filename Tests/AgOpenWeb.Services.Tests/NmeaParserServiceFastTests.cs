@@ -537,6 +537,41 @@ public class NmeaParserServiceFastTests
     }
 
     [Test]
+    public void ParseIntoState_KSXT_ParsesABynavT1FdSentence()
+    {
+        // Captured 2026-10-08 from a Bynav T1-FD through an AiO board's UDP passthrough:
+        // 21 fields (one reserved), heading float (2) with position fixed (3).
+        byte[] sentence = Encoding.ASCII.GetBytes(
+            "$KSXT,20261009001935.90,-87.18038977,32.59045030,57.6625,20.54,-1.00,140.70,0.006,0.00,3,2,27,31,-13.911,-11.418,-3.127,0.004,-0.005,0.005,,*24");
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(sentence, ref state, ConfigurationStore.Instance);
+
+        Assert.That(ok, Is.True);
+        Assert.That(state.Latitude, Is.EqualTo(32.59045030).Within(1e-9));
+        Assert.That(state.Longitude, Is.EqualTo(-87.18038977).Within(1e-9));
+        Assert.That(state.Heading, Is.EqualTo(20.54).Within(1e-6));
+        Assert.That(state.FixQuality, Is.EqualTo(4));
+        Assert.That(state.Satellites, Is.EqualTo(31));
+        Assert.That(state.Roll, Is.EqualTo(0), "heading solution is float, so the baseline pitch isn't trusted as roll");
+        Assert.That(state.DifferentialAge, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ParseIntoState_KSXT_TakesASentenceEndingAtTheSatelliteCounts()
+    {
+        var state = new VehicleState();
+
+        bool ok = NmeaParserServiceFast.ParseIntoState(BuildSentence(
+            "KSXT,20190909084745.00,116.23662400,40.07897925,68.3837,2.5,-1.1,0.00,0.00,0.00,3,3,20,24"),
+            ref state, ConfigurationStore.Instance);
+
+        Assert.That(ok, Is.True);
+        Assert.That(state.Satellites, Is.EqualTo(24));
+        Assert.That(state.DifferentialAge, Is.EqualTo(0));
+    }
+
+    [Test]
     public void ParseIntoState_KSXT_RejectsATruncatedSentence()
     {
         var state = new VehicleState();

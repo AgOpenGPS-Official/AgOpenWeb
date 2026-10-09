@@ -84,7 +84,9 @@ public class NmeaParserServiceFast
     private const int KSXT_HEADING_QUALITY = 11;
     private const int KSXT_SATS = 13;
     private const int KSXT_AGE = 20;
-    private const int MIN_KSXT_FIELDS = 21;
+    // Through the master satellite count. Unicore prints 22 fields, a Bynav T1-FD 21; the
+    // trailing ENU/reserved fields are optional here.
+    private const int MIN_KSXT_FIELDS = 14;
     private const int KSXT_QUALITY_RTK_FIXED = 3;
 
     // Comma table size: the longest accepted sentence (KSXT, 22 fields) plus slack.
@@ -511,10 +513,13 @@ public class NmeaParserServiceFast
         var satsField = GetField(data, commas, KSXT_SATS);
         if (satsField.Length > 0) Utf8Parser.TryParse(satsField, out state.Satellites, out _);
 
-        // Age of differential, seconds
+        // Age of differential, seconds (reserved field; present but empty on Unicore/Bynav)
         state.DifferentialAge = 0;
-        var ageField = GetField(data, commas, KSXT_AGE);
-        if (ageField.Length > 0) Utf8Parser.TryParse(ageField, out state.DifferentialAge, out _);
+        if (fieldCount > KSXT_AGE)
+        {
+            var ageField = GetField(data, commas, KSXT_AGE);
+            if (ageField.Length > 0) Utf8Parser.TryParse(ageField, out state.DifferentialAge, out _);
+        }
 
         state.Hdop = 0;
         state.Pitch = 0;
