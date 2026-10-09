@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.GPS;
+using AgOpenWeb.Services.Gps;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services;
@@ -97,6 +98,18 @@ public class NmeaParserServiceFast
     private static ReadOnlySpan<byte> PANDA => "PANDA"u8;
     private static ReadOnlySpan<byte> PAOGI => "PAOGI"u8;
     private static ReadOnlySpan<byte> KSXT => "KSXT,"u8;
+    // Standard sentence types (bytes 3-5 after a two-letter talker)
+    private static ReadOnlySpan<byte> GGA => "GGA"u8;
+    private static ReadOnlySpan<byte> GNS => "GNS"u8;
+    private static ReadOnlySpan<byte> VTG => "VTG"u8;
+    private static ReadOnlySpan<byte> HPR => "HPR"u8;
+    private static ReadOnlySpan<byte> HDT => "HDT"u8;
+    private static ReadOnlySpan<byte> THS => "THS"u8;
+    // Unicore logs (name between # or % and the first comma)
+    private static ReadOnlySpan<byte> INSPVAXA => "INSPVAXA"u8;
+    private static ReadOnlySpan<byte> INSPVAA => "INSPVAA"u8;
+    private static ReadOnlySpan<byte> INSPVAXSA => "INSPVAXSA"u8;
+    private static ReadOnlySpan<byte> INSPVASA => "INSPVASA"u8;
 
     public NmeaParserServiceFast(IGpsService gpsService, ConfigurationStore configStore)
     {
@@ -173,19 +186,29 @@ public class NmeaParserServiceFast
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
         ConfigurationStore configStore, out NmeaParseResult result)
+        => TryParseIntoState(data, ref state, configStore, null, out result);
+
+    /// <summary>
+    /// As <see cref="TryParseIntoState(ReadOnlySpan{byte}, ref VehicleState, ConfigurationStore, out NmeaParseResult)"/>,
+    /// with the epoch assembler that takes a receiver's standard sentences (GGA/GNS, VTG,
+    /// HPR, HDT, THS). A member returns false with <see cref="NmeaParseResult.EpochMember"/>
+    /// until the epoch closes, when the fix lands in <paramref name="state"/>. Without an
+    /// assembler those sentences are unknown.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public static bool TryParseIntoState(ReadOnlySpan<byte> data, ref VehicleState state,
+        ConfigurationStore configStore, NmeaEpochAssembler? epochs, out NmeaParseResult result)
     {
         state.MarkParseStart();
 
-        // A '#' line is a receiver's CRC-framed log (Unicore INSPVAXA…): a known shape,
-        // not decoded yet — the card should name it rather than call it garbage.
-        if (data.Length > 0 && data[0] == '#')
-        {
-            result = NmeaParseResult.UnknownSentence;
-            return false;
-        }
+        // A '#' or '%' line is a Unicore / NovAtel log with a CRC-32: the INSPVAX family is
+        // one fused fix per epoch (UM981); anything else is named, not called garbage.
+        if (data.Length > 0 && (data[0] == '#' || data[0] == '%'))
+            return TryParseUnicore(data, ref state, configStore, out result);
 
-        // Minimum valid: $PANDA,... = at least 20 bytes, and it must start with $
-        if (data.Length < 20 || data[0] != '$')
+        // The shortest sentence that means anything is $GPHDT,h,T*hh; each decoder checks
+        // its own field count. It must start with $ and carry a checksum.
+        if (data.Length < 9 || data[0] != '$')
         {
             result = NmeaParseResult.BadFrame;
             return false;
@@ -193,7 +216,7 @@ public class NmeaParserServiceFast
 
         // Find checksum marker
         int asterisk = data.IndexOf((byte)'*');
-        if (asterisk < 10)
+        if (asterisk < 7)
         {
             result = NmeaParseResult.BadFrame;
             return false;
@@ -217,6 +240,39 @@ public class NmeaParserServiceFast
         if (sentenceType.SequenceEqual(PANDA)) ok = DecodePanda(body, commas, fieldCount, ref state, configStore);
         else if (sentenceType.SequenceEqual(PAOGI)) ok = DecodePaogi(body, commas, fieldCount, ref state, configStore);
         else if (sentenceType.SequenceEqual(KSXT)) ok = DecodeKsxt(body, commas, fieldCount, ref state, configStore);
+        else if (IsStandardTalker(data))
+        {
+            // $GPGGA, $GNVTG, $GNHPR, $INHPR…: one member of a multi-sentence epoch.
+            var type = data.Slice(3, 3);
+            EpochMemberData member = default;
+            bool known = true, decoded;
+            if (type.SequenceEqual(GGA)) decoded = DecodeGga(body, commas, fieldCount, ref member);
+            else if (type.SequenceEqual(GNS)) decoded = DecodeGns(body, commas, fieldCount, ref member);
+            else if (type.SequenceEqual(VTG)) decoded = DecodeVtg(body, commas, fieldCount, ref member);
+            else if (type.SequenceEqual(HPR)) decoded = DecodeHpr(body, commas, fieldCount, ref member);
+            else if (type.SequenceEqual(HDT)) decoded = DecodeHdt(body, commas, fieldCount, ref member);
+            else if (type.SequenceEqual(THS)) decoded = DecodeThs(body, commas, fieldCount, ref member);
+            else { known = false; decoded = false; }
+
+            if (!known || epochs == null)
+            {
+                result = NmeaParseResult.UnknownSentence;
+                return false;
+            }
+            if (!decoded)
+            {
+                result = NmeaParseResult.BadFields;
+                return false;
+            }
+            // An IMU / heading sensor talker (IN, HE): its heading is the IMU's, as in $PANDA.
+            member.FromImuTalker = (data[1] == 'I' && data[2] == 'N') || (data[1] == 'H' && data[2] == 'E');
+            if (!epochs.Add(in member, ref state, configStore))
+            {
+                result = NmeaParseResult.EpochMember;
+                return false;
+            }
+            ok = true;
+        }
         else
         {
             result = NmeaParseResult.UnknownSentence;
@@ -580,6 +636,287 @@ public class NmeaParserServiceFast
         _ => 0,
     };
 
+    // ─── Standard sentences: members of a receiver epoch ──────────────────
+
+    /// <summary>$ + two talker letters + a three-letter type + a comma: $GNGGA, $INHPR…</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsStandardTalker(ReadOnlySpan<byte> data) =>
+        data.Length > 7 && data[6] == ','
+        && IsUpper(data[1]) && IsUpper(data[2]) && IsUpper(data[3]) && IsUpper(data[4]) && IsUpper(data[5]);
+
+    private static bool IsUpper(byte b) => b >= 'A' && b <= 'Z';
+
+    /// <summary>hhmmss.ss → centiseconds since midnight, or -1 when empty or malformed.</summary>
+    private static int ParseUtc(ReadOnlySpan<byte> field)
+    {
+        if (field.Length < 6) return -1;
+        if (!Utf8Parser.TryParse(field, out double hhmmss, out _)) return -1;
+        return (int)Math.Round(hhmmss * 100);
+    }
+
+    /// <summary>
+    /// GGA: utc, lat, N/S, lon, E/W, fix, sats, hdop, alt, M, sep, M, age, station. The
+    /// age is what $KSXT lacks. Empty position fields read as 0 with the fix as printed
+    /// (a receiver without a fix prints them empty with fix 0).
+    /// </summary>
+    private static bool DecodeGga(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount, ref EpochMemberData m)
+    {
+        if (fieldCount < 10) return false;
+        m.Kind = EpochMembers.Position;
+        m.UtcCentiseconds = ParseUtc(GetField(data, commas, 1));
+        DecodePositionFields(data, commas, 2, ref m);
+        var fix = GetField(data, commas, 6);
+        if (fix.Length > 0) Utf8Parser.TryParse(fix, out m.FixQuality, out _);
+        var sats = GetField(data, commas, 7);
+        if (sats.Length > 0) Utf8Parser.TryParse(sats, out m.Satellites, out _);
+        var hdop = GetField(data, commas, 8);
+        if (hdop.Length > 0) Utf8Parser.TryParse(hdop, out m.Hdop, out _);
+        var alt = GetField(data, commas, 9);
+        if (alt.Length > 0) Utf8Parser.TryParse(alt, out m.Altitude, out _);
+        if (fieldCount > 13)
+        {
+            var age = GetField(data, commas, 13);
+            if (age.Length > 0) Utf8Parser.TryParse(age, out m.DifferentialAge, out _);
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// GNS: utc, lat, N/S, lon, E/W, mode (one letter per constellation), sats, hdop, alt,
+    /// sep, age, station. The best mode letter sets the fix on the GGA scale: R fixed 4,
+    /// F float 5, D/P differential 2, A autonomous 1, E estimated 6, N none 0.
+    /// </summary>
+    private static bool DecodeGns(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount, ref EpochMemberData m)
+    {
+        if (fieldCount < 10) return false;
+        m.Kind = EpochMembers.Position;
+        m.IsGns = true;
+        m.UtcCentiseconds = ParseUtc(GetField(data, commas, 1));
+        DecodePositionFields(data, commas, 2, ref m);
+        m.FixQuality = 0;
+        foreach (byte mode in GetField(data, commas, 6))
+        {
+            int q = mode switch { (byte)'R' => 4, (byte)'F' => 5, (byte)'D' => 2, (byte)'P' => 2, (byte)'A' => 1, (byte)'E' => 6, _ => 0 };
+            if (Rank(q) > Rank(m.FixQuality)) m.FixQuality = q;
+        }
+        var sats = GetField(data, commas, 7);
+        if (sats.Length > 0) Utf8Parser.TryParse(sats, out m.Satellites, out _);
+        var hdop = GetField(data, commas, 8);
+        if (hdop.Length > 0) Utf8Parser.TryParse(hdop, out m.Hdop, out _);
+        var alt = GetField(data, commas, 9);
+        if (alt.Length > 0) Utf8Parser.TryParse(alt, out m.Altitude, out _);
+        if (fieldCount > 11)
+        {
+            var age = GetField(data, commas, 11);
+            if (age.Length > 0) Utf8Parser.TryParse(age, out m.DifferentialAge, out _);
+        }
+        return true;
+    }
+
+    /// <summary>Fix quality ordered by how good it is: fixed, float, differential/estimated, single, none.</summary>
+    private static int Rank(int fix) => fix switch { 4 => 5, 5 => 4, 2 => 3, 6 => 2, 1 => 1, _ => 0 };
+
+    /// <summary>lat, N/S, lon, E/W at <paramref name="first"/> (ddmm.mmmm → signed degrees).</summary>
+    private static void DecodePositionFields(ReadOnlySpan<byte> data, Span<int> commas, int first, ref EpochMemberData m)
+    {
+        var lat = GetField(data, commas, first);
+        var ns = GetField(data, commas, first + 1);
+        var lon = GetField(data, commas, first + 2);
+        var ew = GetField(data, commas, first + 3);
+        m.Latitude = lat.Length > 0 ? ParseLatLon(lat) : 0;
+        if (ns.Length > 0 && ns[0] == 'S') m.Latitude = -m.Latitude;
+        m.Longitude = lon.Length > 0 ? ParseLatLon(lon) : 0;
+        if (ew.Length > 0 && ew[0] == 'W') m.Longitude = -m.Longitude;
+    }
+
+    /// <summary>VTG: track true, T, track magnetic, M, speed knots, N, speed km/h, K[, mode]. Speed from km/h, else knots.</summary>
+    private static bool DecodeVtg(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount, ref EpochMemberData m)
+    {
+        if (fieldCount < 6) return false;
+        m.Kind = EpochMembers.Vtg;
+        m.UtcCentiseconds = -1;
+        var track = GetField(data, commas, 1);
+        if (track.Length > 0) Utf8Parser.TryParse(track, out m.TrackDeg, out _);
+        var kmh = fieldCount > 7 ? GetField(data, commas, 7) : ReadOnlySpan<byte>.Empty;
+        var knots = GetField(data, commas, 5);
+        m.SpeedMps = 0;
+        if (kmh.Length > 0 && Utf8Parser.TryParse(kmh, out double v, out _)) m.SpeedMps = v / 3.6;
+        else if (knots.Length > 0 && Utf8Parser.TryParse(knots, out v, out _)) m.SpeedMps = v * 0.514444;
+        return true;
+    }
+
+    /// <summary>
+    /// HPR (Unicore N4 manual table 7-42): utc, heading, pitch, roll, QF, sats, age,
+    /// station. QF is on the GGA scale: heading valid when 4 (fixed) or 5 (float), roll
+    /// only when 4. The baseline's pitch is the vehicle's roll with the antennas across the
+    /// cab (the AgOpenGPS convention, as the $KSXT decoder reads it).
+    /// </summary>
+    private static bool DecodeHpr(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount, ref EpochMemberData m)
+    {
+        if (fieldCount < 6) return false;
+        m.Kind = EpochMembers.Hpr;
+        m.UtcCentiseconds = ParseUtc(GetField(data, commas, 1));
+        int qf = 0;
+        var qfField = GetField(data, commas, 5);
+        if (qfField.Length > 0) Utf8Parser.TryParse(qfField, out qf, out _);
+        var heading = GetField(data, commas, 2);
+        m.HeadingValid = (qf == 4 || qf == 5) && heading.Length > 0 && Utf8Parser.TryParse(heading, out m.HeadingDeg, out _);
+        var pitch = GetField(data, commas, 3);
+        m.RollValid = qf == 4 && pitch.Length > 0 && Utf8Parser.TryParse(pitch, out m.RollDeg, out _);
+        return true;
+    }
+
+    /// <summary>HDT: heading, T.</summary>
+    private static bool DecodeHdt(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount, ref EpochMemberData m)
+    {
+        if (fieldCount < 2) return false;
+        m.Kind = EpochMembers.Hdt;
+        m.UtcCentiseconds = -1;
+        var heading = GetField(data, commas, 1);
+        m.HeadingValid = heading.Length > 0 && Utf8Parser.TryParse(heading, out m.HeadingDeg, out _);
+        return true;
+    }
+
+    /// <summary>THS: heading, mode. Valid unless the mode says invalid (V) or is missing.</summary>
+    private static bool DecodeThs(ReadOnlySpan<byte> data, Span<int> commas, int fieldCount, ref EpochMemberData m)
+    {
+        if (fieldCount < 2) return false;
+        m.Kind = EpochMembers.Ths;
+        m.UtcCentiseconds = -1;
+        var heading = GetField(data, commas, 1);
+        var mode = fieldCount > 2 ? GetField(data, commas, 2) : ReadOnlySpan<byte>.Empty;
+        bool modeOk = mode.Length > 0 && mode[0] != 'V';
+        m.HeadingValid = modeOk && heading.Length > 0 && Utf8Parser.TryParse(heading, out m.HeadingDeg, out _);
+        return true;
+    }
+
+    // ─── Unicore / NovAtel logs: #NAME,header;body*crc ─────────────────────
+
+    /// <summary>
+    /// A <c>#</c> (long header) or <c>%</c> (short header) ASCII log: the CRC-32 over
+    /// everything between the lead and the <c>*</c> must match the 8 hex digits after it;
+    /// the header ends at <c>;</c>. INSPVAXA / INSPVAA (UM981) are decoded as one fix.
+    /// </summary>
+    private static bool TryParseUnicore(ReadOnlySpan<byte> data, ref VehicleState state,
+        ConfigurationStore configStore, out NmeaParseResult result)
+    {
+        int asterisk = data.LastIndexOf((byte)'*');
+        if (data.Length < 20 || asterisk < 10 || asterisk + 8 >= data.Length + 1 || data.Length < asterisk + 9)
+        {
+            result = NmeaParseResult.BadFrame;
+            return false;
+        }
+        uint provided = 0;
+        for (int i = 1; i <= 8; i++)
+        {
+            byte nibble = HexCharToNibble(data[asterisk + i]);
+            if (nibble == 0xFF) { result = NmeaParseResult.BadFrame; return false; }
+            provided = (provided << 4) | nibble;
+        }
+        if (UnicoreCrc32.Compute(data.Slice(1, asterisk - 1)) != provided)
+        {
+            result = NmeaParseResult.BadChecksum;
+            return false;
+        }
+        int semicolon = data.IndexOf((byte)';');
+        int firstComma = data.IndexOf((byte)',');
+        if (semicolon < 0 || semicolon > asterisk || firstComma < 2 || firstComma > semicolon)
+        {
+            result = NmeaParseResult.BadFrame;
+            return false;
+        }
+        var name = data.Slice(1, firstComma - 1);
+        if (!(name.SequenceEqual(INSPVAXA) || name.SequenceEqual(INSPVAA)
+              || name.SequenceEqual(INSPVAXSA) || name.SequenceEqual(INSPVASA)))
+        {
+            result = NmeaParseResult.UnknownSentence;
+            return false;
+        }
+        var body = data.Slice(semicolon + 1, asterisk - semicolon - 1);
+        Span<int> commas = stackalloc int[MAX_FIELDS];
+        int fieldCount = SplitFields(body, commas);
+        if (!DecodeInspvax(body, commas, fieldCount, ref state, configStore))
+        {
+            result = NmeaParseResult.BadFields;
+            return false;
+        }
+        state.HeadingRadians = state.Heading * (Math.PI / 180.0);
+        state.MarkParseEnd();
+        result = NmeaParseResult.Accepted;
+        return true;
+    }
+
+    // INSPVAX body (UM981 manual table 2-11, after the ';'): ins status, position type,
+    // lat, lon, height, undulation, north / east / up velocity, roll, pitch, azimuth, then
+    // standard deviations, extended status and time since update (INSPVAA stops at azimuth).
+    private const int INS_STATUS = 0;
+    private const int INS_POS_TYPE = 1;
+    private const int INS_LAT = 2;
+    private const int INS_LON = 3;
+    private const int INS_HEIGHT = 4;
+    private const int INS_VEL_NORTH = 6;
+    private const int INS_VEL_EAST = 7;
+    private const int INS_ROLL = 9;
+    private const int INS_PITCH = 10;
+    private const int INS_AZIMUTH = 11;
+    private const int MIN_INSPVAX_FIELDS = 12;
+
+    /// <summary>
+    /// One fused INS fix: position, azimuth as the heading (the receiver's own, so no IMU
+    /// fusion), speed from the north/east velocities, the INS roll and pitch (the IMU is in
+    /// the receiver, mounted along the vehicle). No satellite count, HDOP or age in the log.
+    /// Fix quality from the position type, none while the INS is inactive, as the v26
+    /// firmware maps it.
+    /// </summary>
+    private static bool DecodeInspvax(ReadOnlySpan<byte> body, Span<int> commas, int fieldCount,
+        ref VehicleState state, ConfigurationStore configStore)
+    {
+        if (fieldCount < MIN_INSPVAX_FIELDS) return false;
+        var lat = GetField(body, commas, INS_LAT);
+        var lon = GetField(body, commas, INS_LON);
+        if (!Utf8Parser.TryParse(lat, out state.Latitude, out _)) return false;
+        if (!Utf8Parser.TryParse(lon, out state.Longitude, out _)) return false;
+        state.Altitude = 0;
+        Utf8Parser.TryParse(GetField(body, commas, INS_HEIGHT), out state.Altitude, out _);
+
+        var status = GetField(body, commas, INS_STATUS);
+        var posType = GetField(body, commas, INS_POS_TYPE);
+        state.FixQuality = status.SequenceEqual("INS_INACTIVE"u8) ? 0 : InsFixQuality(posType);
+
+        double vn = 0, ve = 0;
+        Utf8Parser.TryParse(GetField(body, commas, INS_VEL_NORTH), out vn, out _);
+        Utf8Parser.TryParse(GetField(body, commas, INS_VEL_EAST), out ve, out _);
+        state.Speed = Math.Sqrt(vn * vn + ve * ve);
+
+        state.Heading = 0;
+        Utf8Parser.TryParse(GetField(body, commas, INS_AZIMUTH), out state.Heading, out _);
+        state.HasDualHeading = true;
+        state.ImuHeading = 0;
+        state.ImuValid = false;
+
+        state.Roll = 0;
+        if (Utf8Parser.TryParse(GetField(body, commas, INS_ROLL), out state.Roll, out _))
+            ApplyAhrsRollCalibration(ref state.Roll, configStore);
+        state.Pitch = 0;
+        Utf8Parser.TryParse(GetField(body, commas, INS_PITCH), out state.Pitch, out _);
+        state.YawRate = 0;
+        state.Satellites = 0;
+        state.Hdop = 0;
+        state.DifferentialAge = 0;
+        state.SentenceType = GpsSentenceType.Inspvax;
+        return true;
+    }
+
+    /// <summary>INS position type → GGA fix quality: INS_RTKFIXED 4, INS_RTKFLOAT 5, INS_PSRDIFF 2, INS_PSRSP 1, any other INS_* 1, else 0.</summary>
+    internal static int InsFixQuality(ReadOnlySpan<byte> posType)
+    {
+        if (posType.SequenceEqual("INS_RTKFIXED"u8)) return 4;
+        if (posType.SequenceEqual("INS_RTKFLOAT"u8)) return 5;
+        if (posType.SequenceEqual("INS_PSRDIFF"u8)) return 2;
+        if (posType.SequenceEqual("INS_PSRSP"u8)) return 1;
+        return posType.StartsWith("INS"u8) ? 1 : 0;
+    }
+
     // ─── Shared helpers ───────────────────────────────────────────────────
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -642,7 +979,7 @@ public class NmeaParserServiceFast
     /// raw uncalibrated IMU roll, and the operator's "Zero Roll" tap in
     /// the Roll-calibration wizard step has no effect on live readings.
     /// </summary>
-    private static void ApplyAhrsRollCalibration(ref double roll, ConfigurationStore configStore)
+    internal static void ApplyAhrsRollCalibration(ref double roll, ConfigurationStore configStore)
     {
         var ahrs = configStore.Ahrs;
         if (ahrs.IsRollInvert) roll = -roll;

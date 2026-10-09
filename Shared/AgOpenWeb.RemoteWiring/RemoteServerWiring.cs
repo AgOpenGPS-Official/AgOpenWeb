@@ -839,6 +839,7 @@ public static partial class RemoteServerWiring
                     // "Dual GPS on but no dual heading" while real GPS is live ($PANDA with
                     // Dual on: the heading stage falls back to the single-antenna heading).
                     var gpsSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsService>();
+                    var steerForLabel = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IAutoSteerService>();
                     server.GpsSourceProvider = () =>
                     {
                         var sentence = gpsSvc.CurrentData?.SentenceType switch
@@ -846,6 +847,10 @@ public static partial class RemoteServerWiring
                             AgOpenWeb.Models.GpsSentenceType.Panda => "PANDA",
                             AgOpenWeb.Models.GpsSentenceType.Paogi => "PAOGI",
                             AgOpenWeb.Models.GpsSentenceType.Ksxt => "KSXT",
+                            // The family as the receiver prints it ("GGA+VTG+HPR"), once learned.
+                            AgOpenWeb.Models.GpsSentenceType.NmeaEpoch =>
+                                steerForLabel.GpsEpochs.IsLearned ? steerForLabel.GpsEpochs.FamilyText : "GGA…",
+                            AgOpenWeb.Models.GpsSentenceType.Inspvax => "INSPVAX",
                             AgOpenWeb.Models.GpsSentenceType.Simulator => "SIM",
                             _ => "",
                         };
@@ -885,7 +890,8 @@ public static partial class RemoteServerWiring
                             headingFusion.GpsHeadingDeg,
                             raw.RateHz, raw.Missed, raw.Rejected, sentences,
                             raw.BadChecksum, raw.UnknownSentence,
-                            steerSvc.GpsLines.JoinedLines, steerSvc.GpsLines.DroppedBytes, source);
+                            steerSvc.GpsLines.JoinedLines, steerSvc.GpsLines.DroppedBytes, source,
+                            steerSvc.GpsEpochs.IncompleteEpochs);
                     };
 
                     server.HeadlandSegsProvider = () =>

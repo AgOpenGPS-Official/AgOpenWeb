@@ -108,13 +108,24 @@ public class GpsIngestTests
     [Test]
     public void A_line_this_build_does_not_decode_is_counted_and_publishes_nothing()
     {
-        Feed(WithChecksum("GNGGA,123519.00,4807.038,N,01131.000,E,4,12,0.9,545.4,M,46.9,M,1.0,0000") + "\r\n");
-        Feed("#INSPVAXA,COM1,0,55.0,FINESTEERING,2000,10.0;SOL_COMPUTED*1a2b3c4d\r\n");
+        Feed(WithChecksum("GNZDA,123519.00,09,10,2026,00,00") + "\r\n");
+        string bestnav = "#BESTNAVA,COM1,0,55.0,FINESTEERING,2000,10.0,00000040,4e77,43562;SOL_COMPUTED,NARROW_INT,51.1,-114.0";
+        Feed(bestnav + "*" + AgOpenWeb.Services.Gps.UnicoreCrc32.Compute(Encoding.ASCII.GetBytes(bestnav[1..])).ToString("x8") + "\r\n");
         Assert.That(_published, Is.Empty);
         var snap = _steer.GpsSentences.GetSnapshot();
         Assert.That(snap.UnknownSentence, Is.EqualTo(2));
         Assert.That(snap.Rejected, Is.EqualTo(2));
         _gps.DidNotReceive().MarkRealGpsParsed();
+    }
+
+    [Test]
+    public void An_epoch_member_is_neither_a_fix_nor_a_refusal()
+    {
+        Feed(WithChecksum("GNGGA,123519.00,4807.038,N,01131.000,E,4,12,0.9,545.4,M,46.9,M,1.0,0000") + "\r\n");
+        Assert.That(_published, Is.Empty, "the epoch is open until the next one starts");
+        var snap = _steer.GpsSentences.GetSnapshot();
+        Assert.That(snap.Rejected, Is.Zero);
+        Assert.That(snap.Sentences.Any(s => s.Type == "GGA"), Is.True, "but the card shows it");
     }
 
     [Test]
@@ -133,5 +144,38 @@ public class GpsIngestTests
         _steer.ProcessGpsBuffer(bytes, bytes.Length);
         Assert.That(_published, Is.EqualTo(new[] { 48.1 }).Within(1e-6));
         Assert.That(_steer.LastGpsSource, Is.EqualTo(GpsSource.ModulePort));
+    }
+
+    [Test]
+    public void A_multi_sentence_receiver_gives_the_same_fixes_however_it_was_chunked()
+    {
+        // Learned family GGA+VTG+HPR, then four epochs with distinct latitudes.
+        var sentences = new List<string>();
+        for (int e = 0; e < 8; e++)
+        {
+            sentences.Add(Encoding.ASCII.GetString(NmeaEpochAssemblerTests.Line(NmeaEpochAssemblerTests.Gga(e, latDdmm: 4807.0 + e))));
+            sentences.Add(Encoding.ASCII.GetString(NmeaEpochAssemblerTests.Line(NmeaEpochAssemblerTests.Vtg())));
+            sentences.Add(Encoding.ASCII.GetString(NmeaEpochAssemblerTests.Line(NmeaEpochAssemblerTests.Hpr(e))));
+        }
+        string stream = string.Join("\r\n", sentences) + "\r\n";
+
+        double[] Run(Action feed)
+        {
+            _published.Clear();
+            _steer.Stop();
+            _steer = new AutoSteerService(Substitute.For<ITrackGuidanceService>(), Substitute.For<IUdpCommunicationService>(), _gps, new ConfigurationStore());
+            _steer.Start();
+            feed();
+            return _published.ToArray();
+        }
+
+        var onePer = Run(() => { foreach (var s in sentences) Feed(s + "\r\n"); });
+        var burst = Run(() => { for (int i = 0; i < sentences.Count; i += 3) Feed(sentences[i] + "\r\n" + sentences[i + 1] + "\r\n" + sentences[i + 2] + "\r\n"); });
+        var cut = Run(() => { for (int i = 0; i < stream.Length; i += 41) Feed(stream.Substring(i, Math.Min(41, stream.Length - i))); });
+
+        Assert.That(onePer.Length, Is.EqualTo(8), "three learned late, then each on its HPR");
+        Assert.That(burst, Is.EqualTo(onePer));
+        Assert.That(cut, Is.EqualTo(onePer));
+        Assert.That(_steer.GpsEpochs.FamilyText, Is.EqualTo("GGA+VTG+HPR"));
     }
 }

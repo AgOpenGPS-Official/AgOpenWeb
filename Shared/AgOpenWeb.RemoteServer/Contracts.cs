@@ -315,7 +315,8 @@ public record SystemDataDto(
     long UnknownSentence = 0,
     long JoinedLines = 0,
     long DroppedBytes = 0,
-    string Source = "");
+    string Source = "",
+    long IncompleteEpochs = 0);
 
 /// <param name="Type">"PANDA", "PAOGI", "KSXT", or "REJECTED" for the last line the parser refused.</param>
 public record GpsSentenceDto(string Type, string Text, double AgeSeconds);

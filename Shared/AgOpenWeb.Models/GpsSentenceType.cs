@@ -19,4 +19,8 @@ public enum GpsSentenceType : byte
     /// <summary><c>$KSXT</c>: a Bynav/Unicore receiver's own fix; the heading field is the
     /// dual-antenna heading.</summary>
     Ksxt = 4,
+    /// <summary>A fix assembled from a receiver's standard sentences (GGA/GNS + VTG + HPR/HDT/THS).</summary>
+    NmeaEpoch = 5,
+    /// <summary>Unicore <c>#INSPVAXA</c> / <c>#INSPVAA</c>: one fused INS fix per epoch (UM981).</summary>
+    Inspvax = 6,
 }

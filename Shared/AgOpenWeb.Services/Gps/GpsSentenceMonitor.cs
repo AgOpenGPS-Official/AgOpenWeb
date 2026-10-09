@@ -50,7 +50,15 @@ public sealed class GpsSentenceMonitor
     private readonly Slot _panda = new("PANDA");
     private readonly Slot _paogi = new("PAOGI");
     private readonly Slot _ksxt = new("KSXT");
+    private readonly Slot _gga = new("GGA");
+    private readonly Slot _gns = new("GNS");
+    private readonly Slot _vtg = new("VTG");
+    private readonly Slot _hpr = new("HPR");
+    private readonly Slot _hdt = new("HDT");
+    private readonly Slot _ths = new("THS");
+    private readonly Slot _inspvax = new("INSPVAX");
     private readonly Slot _rejected = new(RejectedType);
+    private readonly Slot[] _slots;
     private readonly long[] _arrivals = new long[RateWindow];
     private int _arrivalCount;
     private int _arrivalNext;
@@ -59,6 +67,11 @@ public sealed class GpsSentenceMonitor
     private int _slowInARow;      // consecutive gaps judged "missed" that all look alike
     private double _slowInterval; // the first of those gaps
     private long _missed;
+
+    public GpsSentenceMonitor()
+    {
+        _slots = new[] { _panda, _paogi, _ksxt, _gga, _gns, _vtg, _hpr, _hdt, _ths, _inspvax, _rejected };
+    }
     private long _rejectedCount;
     private long _badChecksum;
     private long _unknownSentence;
@@ -70,18 +83,19 @@ public sealed class GpsSentenceMonitor
     public void Record(ReadOnlySpan<byte> data, NmeaParseResult result, long timestamp)
     {
         bool accepted = result == NmeaParseResult.Accepted;
+        bool member = result == NmeaParseResult.EpochMember;
         lock (_lock)
         {
-            Slot slot = !accepted ? _rejected
-                : data.Length > 5 && data.Slice(1, 5).SequenceEqual("PAOGI"u8) ? _paogi
-                : data.Length > 5 && data.Slice(1, 5).SequenceEqual("KSXT,"u8) ? _ksxt
-                : _panda;
+            Slot slot = !accepted && !member ? _rejected : SlotFor(data);
             int n = Math.Min(data.Length, MaxLength);
             data.Slice(0, n).CopyTo(slot.Bytes);
             slot.Length = n;
             slot.Stamp = timestamp;
             slot.Seen = true;
 
+            // A member of an open epoch is kept for the card but is not a fix: the rate and
+            // the missed count follow emitted fixes.
+            if (member) return;
             if (!accepted)
             {
                 _rejectedCount++;
@@ -150,7 +164,7 @@ public sealed class GpsSentenceMonitor
             }
 
             var sentences = new List<Sentence>(4);
-            foreach (var slot in new[] { _panda, _paogi, _ksxt, _rejected })
+            foreach (var slot in _slots)
                 if (slot.Seen)
                     sentences.Add(new Sentence(slot.Type, Text(slot), Math.Max(0, Seconds(now - slot.Stamp))));
             return new Snapshot(rate, _missed, _rejectedCount, _badChecksum, _unknownSentence, sentences);
@@ -158,6 +172,27 @@ public sealed class GpsSentenceMonitor
     }
 
     private static double Seconds(long ticks) => ticks / (double)Stopwatch.Frequency;
+
+    /// <summary>The slot for an accepted line by its sentence id.</summary>
+    private Slot SlotFor(ReadOnlySpan<byte> data)
+    {
+        if (data.Length > 6 && (data[0] == '#' || data[0] == '%')) return _inspvax;
+        if (data.Length > 6 && data[0] == '$')
+        {
+            var id5 = data.Slice(1, 5);
+            if (id5.SequenceEqual("PAOGI"u8)) return _paogi;
+            if (id5.SequenceEqual("PANDA"u8)) return _panda;
+            if (id5.SequenceEqual("KSXT,"u8)) return _ksxt;
+            var type = data.Slice(3, 3);
+            if (type.SequenceEqual("GGA"u8)) return _gga;
+            if (type.SequenceEqual("GNS"u8)) return _gns;
+            if (type.SequenceEqual("VTG"u8)) return _vtg;
+            if (type.SequenceEqual("HPR"u8)) return _hpr;
+            if (type.SequenceEqual("HDT"u8)) return _hdt;
+            if (type.SequenceEqual("THS"u8)) return _ths;
+        }
+        return _panda;
+    }
 
     // Printable ASCII only: a refused datagram can hold anything, and this text goes to a
     // browser. Line ends are dropped.

@@ -73,6 +73,9 @@ public class AutoSteerService : IAutoSteerService
     /// <inheritdoc />
     public AgOpenWeb.Models.GPS.GpsSource LastGpsSource { get; private set; }
 
+    /// <inheritdoc />
+    public AgOpenWeb.Services.Gps.NmeaEpochAssembler GpsEpochs { get; } = new();
+
     // Three GPS ports mean up to three receive threads; the parse writes _state and the
     // splitter's tails, so one datagram is processed at a time. Uncontended on a machine
     // with one receiver, which is all of them today.
@@ -570,11 +573,11 @@ public class AutoSteerService : IAutoSteerService
                 // owns timing now.
                 foreach (var line in GpsLines.Lines(datagram, source))
                 {
-                    bool parsed = NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, out var result);
+                    bool parsed = NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, GpsEpochs, out var result);
                     GpsSentences.Record(line, result);
                     if (!parsed)
                     {
-                        _parseFailures++;
+                        if (result != AgOpenWeb.Models.GPS.NmeaParseResult.EpochMember) _parseFailures++;
                         continue;
                     }
 

@@ -34,4 +34,6 @@ public enum NmeaParseResult : byte
     UnknownSentence = 3,
     /// <summary>A known sentence whose fields did not decode (too few, non-numeric).</summary>
     BadFields = 4,
+    /// <summary>A member of a multi-sentence epoch, taken into the open epoch; the fix follows when the epoch closes.</summary>
+    EpochMember = 5,
 }
