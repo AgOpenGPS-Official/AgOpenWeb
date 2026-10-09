@@ -382,6 +382,27 @@ pitch and a roll (`HPR`, `HRP`): "antenna baseline (across the cab)" — the def
 AgOpenGPS convention — or "receiver roll" for INS-equipped units mounted along the vehicle.
 Decide when the first along-mounted user appears; until then baseline pitch.
 
+## Non-regression: what every phase must prove
+
+1. **The AiO path is unaffected.** `$PANDA`/`$PAOGI` decoders are frozen; nothing in this
+   plan changes them. Proof: the existing parser, fusion and pipeline tests pass unchanged,
+   and a `$PANDA`/`$PAOGI` capture (Phase 0) replayed through the splitter produces
+   `VehicleState`s identical to `ParseIntoState` on the raw datagrams. A one-line datagram
+   goes through the splitter as the same span, no copy.
+2. **Zero-copy, no allocation per datagram.** One-shot decoders and the assembler decode
+   field spans straight into `VehicleState` numbers; no sentence text is kept; the `#`
+   framer's CRC-32 runs over the span and the `;` split is an index. The only copy anywhere
+   is the splitter's partial-line tail (≤ 512 bytes, only when a bridge splits a line).
+   Proof: `[AutoSteerRx-PERF]`'s allocation counter (`ProcessGpsBuffer`) reads 0 bytes per
+   datagram for every fixture, and stays in the perf tests.
+3. **No added latency on the fix.** One-shot sentences are published on arrival as now.
+   The assembler publishes when the receiver's burst is complete — the sentences of one
+   epoch leave the receiver within a few ms of each other — never on a timer alone
+   (the safety timer only closes an epoch *incomplete*).
+4. **No mode switch, no new setting required.** A machine configured today keeps working
+   without visiting a settings page. The only new setting in the plan (roll source) is
+   deferred and defaults to today's behaviour.
+
 ## Phases
 
 **Phase 0 — captures and fixtures.** Two small scripts: `Tools/nmea-capture.py` listens on
@@ -394,8 +415,9 @@ config export, pcap with cold start / stationary / turns / RTK loss / heading lo
 
 **Phase 1 — line splitter + monitor + ports.** `NmeaLineSplitter`, the monitor's per-type
 slots and per-fix rate, rejection reasons; `UdpCommunicationService` also binds 2211 and
-2222 and tags the source GPS1/GPS2 for Network IO. No new sentences yet; `$PANDA`/`$PAOGI`/`$KSXT` must behave
-exactly as before (existing tests are the proof). Ships on its own.
+2222 and tags the source GPS1/GPS2 for Network IO. No new sentences yet; `$PANDA`/`$PAOGI`/
+`$KSXT` must behave exactly as before (non-regression 1 and 2 are the exit criteria). Ships
+on its own.
 
 **Phase 2 — epoch assembler, Unicore set; `#` framer + `INSPVAX`.** `GGA`/`GNS` + `VTG` +
 `HPR` (and `THS`) through the assembler; the CRC-32 framer with both header shapes and the
