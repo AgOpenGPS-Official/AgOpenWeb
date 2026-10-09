@@ -6078,6 +6078,7 @@ function renderSkia(canvas, rp) {
   drawTramLinesSk(canvas); // generated tram lines (orange) when tram display on / editing
   drawEditHandlesSk(canvas); // stage-4 on-map edit handles (drag points to reshape)
   drawHitchSk(canvas); // implement hitch line (under the tool footprint)
+  window.FieldAssistantMap?.draw(canvas,{CK,w2s,pw});
   toolFootprintSk(canvas);
   if (rp) { vehicleSk(canvas, rp); svennArrowSk(canvas, rp); }
   drawGoalSk(canvas); // #95 — Pure Pursuit target (over the vehicle)
@@ -6118,3 +6119,8 @@ function skFrame() {
   requestAnimationFrame(skFrame);
 }
 skFrame();
+
+let assistantFieldKey='';
+setInterval(()=>{const next=JSON.stringify([scene?.fieldName,scene?.originLat,scene?.originLon]);if(next!==assistantFieldKey){assistantFieldKey=next;window.dispatchEvent(new Event('assistant:fieldchanged'));}},250);
+window.FieldAssistantTransport={send:cmd=>transport.send(cmd),hasControl:()=>iHoldControl,ready:()=>connState==='connected',language:()=>I18n.language,translate:(key,params)=>I18n.t(key,params)};
+import('./assistants/index.js').then(m=>m.install()).catch(error=>console.error('Field assistants',error));

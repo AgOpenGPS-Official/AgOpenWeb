@@ -52,7 +52,7 @@ public partial class MainViewModel
     /// end to turn at, you just drive the loop continuously — so they're disabled
     /// and the U-turn button is hidden in that case (#421).
     /// </summary>
-    public bool IsActiveTrackClosed => SelectedTrack?.IsClosed == true;
+    public bool IsActiveTrackClosed => SelectedTrack?.IsClosed == true || SelectedTrack?.IsIndividualRow == true;
 
     private int _uTurnSkipRows;
     /// <summary>Number of rows to skip during U-turn (0–9).</summary>

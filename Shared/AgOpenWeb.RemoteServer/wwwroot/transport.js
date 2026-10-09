@@ -431,17 +431,22 @@ window.RemoteTransport = {
       status('connecting…');
       ws = new WebSocket(url);
       ws.binaryType = 'arraybuffer';
-      ws.onopen = () => status('connected');
-      ws.onmessage = e => { try { decode(e.data); } catch (err) { /* drop a malformed frame */ } };
+      ws.onopen = () => { status('connected'); window.dispatchEvent(new Event('assistant:connected')); };
+      ws.onmessage = e => {
+        try {
+          if (typeof e.data === 'string') window.dispatchEvent(new CustomEvent('assistant:rpc', { detail: JSON.parse(e.data) }));
+          else decode(e.data);
+        } catch (err) { /* drop a malformed frame */ }
+      };
       ws.onerror = () => status('error');
-      ws.onclose = () => { status('disconnected'); if (!stopped) setTimeout(connect, 1000); };
+      ws.onclose = () => { status('disconnected'); window.dispatchEvent(new Event('assistant:disconnected')); if (!stopped) setTimeout(connect, 1000); };
     }
 
     return {
       start() { stopped = false; connect(); },
       stop() { stopped = true; if (ws) ws.close(); },
       // Client→host command: a short text frame carrying a command id.
-      send(cmd) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(cmd); },
+      send(cmd) { if (ws && ws.readyState === WebSocket.OPEN) { ws.send(cmd); return true; } return false; },
     };
   },
 };

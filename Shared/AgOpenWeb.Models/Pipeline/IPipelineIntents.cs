@@ -61,5 +61,7 @@ public interface IPipelineIntents
     /// <summary>
     /// Atomically read and clear all pending intents. Called once per cycle tick.
     /// </summary>
+    void RequestIndividualRows(IndividualRowsRequest request);
+
     PipelineIntentBatch Drain();
 }

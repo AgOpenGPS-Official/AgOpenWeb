@@ -12,6 +12,7 @@ namespace AgOpenWeb.Models.Pipeline;
 /// </summary>
 public readonly record struct PipelineIntentBatch
 {
+    public IndividualRowsRequest? IndividualRows { get; init; }
     /// <summary>
     /// Manual U-turn request. <c>null</c> = none, <c>true</c> = left, <c>false</c> = right.
     /// Last-wins: only the most recent request since the previous drain is observed.

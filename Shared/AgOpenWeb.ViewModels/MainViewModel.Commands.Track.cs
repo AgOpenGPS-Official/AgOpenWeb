@@ -991,6 +991,13 @@ public partial class MainViewModel
                 return;
             }
 
+            if (!IsAutoSteerEngaged && SelectedTrack?.IsIndividualRow == true
+                && State.Guidance.ActiveTrack?.IsIndividualRow != true)
+            {
+                ReportFailure("Drive into a saved row before engaging AutoSteer");
+                return;
+            }
+
             // The steer wizard drives the steering itself (#154). Every engage — screen button,
             // web command, hotkey, the module's steer switch / button — comes through here.
             if (!IsAutoSteerEngaged && IsSteerWizardOpen)
