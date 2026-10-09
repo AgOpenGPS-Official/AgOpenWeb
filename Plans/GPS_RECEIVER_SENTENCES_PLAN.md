@@ -191,9 +191,45 @@ the closest existing implementation of this plan, running on the installed board
 - **Passthrough forwards every complete line, `#` ones included.** The app's UDP ingest
   drops anything not starting with `$`; it should take `#` lines once the framer exists.
 
+## The UM981: `#` messages are a target, not a long-tail item
+
+The UM981 is Unicore's single-antenna **RTK + INS** module (UM981-Auto reference manual
+R1.0): the receiver fuses its own IMU with the GNSS fix and prints one message per epoch
+with position, velocity and attitude — a receiver doing the Teensy's job, with no dual
+antenna and no board IMU. Its fused fix only exists as a `#` log:
+
+`#INSPVAXA,COM1,0,73.5,FINESTEERING,1695,309428.000,00000040,4e77,43562;INS_SOLUTION_GOOD,INS_PSRSP,51.11637873403,-114.03825114994,1063.6093,-16.9000,-0.0845,-0.0464,-0.0127,0.138023492,0.069459386,90.000923268,0.9428,…,3,0*e877c178`
+
+- Body (table 2-11): INS status, position type, lat, lon, height, undulation, N/E/U
+  velocity (m/s), **roll, pitch, azimuth**, their σ's, extended status, time since update.
+  CRC-32 over everything between `#` and `*`.
+- **Two header shapes.** The N4 modules use the short header (`#BESTNAVA,54,GPS,FINE,
+  week,ms,…;`); the UM981 uses the NovAtel-style long one (`#INSPVAXA,COM1,0,73.5,
+  FINESTEERING,week,secs,status,reserved,version;`). The framer splits at the `;` and does
+  not count header fields; decoders index from the body. There is also a `%…SA` short
+  variant (`%GYRATTSA,week,ms;…`) — accepted by the framer, not decoded.
+- **Mapping** (as v26 `parseINSPVAXA` does it): position type `INS_RTKFIXED` → 4,
+  `INS_RTKFLOAT` → 5, `INS_PSRDIFF` → 2, `INS_PSRSP` → 1, `INS` (dead reckoning only) → 6;
+  speed = √(vN² + vE²); azimuth → `Heading` with `HasDualHeading = true` (the fused heading
+  is ground truth for guidance, as v26 treats it); roll/pitch straight from the INS — this
+  receiver reports true vehicle roll, no baseline-pitch convention. Attitude only when
+  INS status is `INS_SOLUTION_GOOD` (3) or `INS_ALIGNMENT_COMPLETE` (7); `INS_ALIGNING`
+  (1) and `INS_HIGH_VARIANCE` (2) give position without attitude, `INS_INACTIVE` (0)
+  nothing. `INS_SOLUTION_FREE` (6, no GNSS) is a fix of quality 6 and the validator's
+  minimum decides.
+- Configuration that matters for users: `CONFIG INS ANGLE` (IMU mounting), `CONFIG
+  IMUTOANT OFFSET` (lever arm to the antenna), `CONFIG INS TIMEOUT` (how long DR carries
+  on without GNSS — the same stale-fix concern as `RTK TIMEOUT` on the T1-FD),
+  `CONFIG INSDIRECTION`. Goes in `Docs/GPS_RECEIVERS.md`.
+
+So the `#` framer (CRC-32, `;` split, both header shapes) and the `INSPVAX` one-shot decoder
+move to **Phase 2**, beside the Unicore NMEA set. The v26 firmware is the reference for
+both. The other `#` logs (`BESTNAV`, `UNIHEADING`, `RTKSTATUS`, `RTCMSTATUS`) stay
+diagnostics-only, Phase 4.
+
 ## Target sentence set
 
-**AgIO's set, plus `$KSXT` (done) and `$GPHPR`.** AgIO's `NMEA.Designer.cs` is the
+**AgIO's set, plus `$KSXT` (done), `$GPHPR`, and `#INSPVAXA` for the UM981.** AgIO's `NMEA.Designer.cs` is the
 field-tested map; `HPR` is the one sentence it predates (a UM982 printing standard
 sentences uses it for attitude; AgIO's `HPD` is marked "future firmware" by Unicore).
 
@@ -211,7 +247,7 @@ sentences uses it for attitude; AgIO's `HPD` is marked "future firmware" by Unic
 | `$GPHPD` | whole fix, Unicore (when a firmware prints it) | 4 |
 | `$PSTI,032/035/036` | SkyTraq baseline / attitude | 4 |
 | UBX `RELPOSNED` | F9P pair heading, binary (Ace GPS2; v26 GPS2) | 4 |
-| `#INSPVAA`, `#INSPVAXA` | whole fix from a Unicore INS unit (UM981/UM982-INS), CRC-32; v26 parses them | 4, with the `#` framer |
+| `#INSPVAXA` (`#INSPVAA`) | whole fix from a UM981 / Unicore INS unit, CRC-32; v26 parses them | 2, with the `#` framer |
 | `#RTKSTATUSA`, `#RTCMSTATUSA`, `#UNIHEADINGA` | diagnostics only, for Network IO; never the fix | 4, optional |
 
 Not targeted: `RMC` (AgIO has it commented out; `GGA`+`VTG` cover it), Hemisphere
@@ -224,6 +260,7 @@ Not targeted: `RMC` (AgIO has it commented out; `GGA`+`VTG` cover it), Hemispher
 | AiO board (any receiver) | `$PANDA` or `$PAOGI` | UDP 9999, one sentence per datagram |
 | Bynav T1-FD (Ethernet) | `$KSXT` | UDP, one per datagram |
 | Bynav / Unicore UM982 via AiO passthrough | `$KSXT`, or `GGA`+`VTG`+`HPR` | UDP, one per datagram (seen on the bench, #288) |
+| Unicore UM981 (RTK + INS, single antenna) via bridge | `#INSPVAXA` (one fused fix per epoch) | UDP; `#` framing, CRC-32 |
 | UM982 / F9P via HAT daemon, Teensy or ESP32 bridge | `GGA`+`VTG`+`HPR` (or `$KSXT`) | UDP; the bridge contract says whole lines |
 | Septentrio mosaic-H (Ethernet / USB-net) | `GGA`+`VTG`+`HDT`+`$PTNL,AVR` (or `$PSSN,HRP`) | UDP; one or several per datagram |
 | u-blox F9P pair via bridge (Ace GPS1/GPS2) | `GGA`+`VTG` + UBX `RELPOSNED` (binary) | UDP 2211 / 2222; Phase 4 |
@@ -255,7 +292,8 @@ into one datagram or cut a sentence across two.
 - A `NmeaLineSplitter` per source address: splits a datagram on `\r`/`\n`/next `$` or
   `#`, feeds each complete sentence to the dispatcher, keeps a partial tail (bounded, 512
   bytes; a longer tail is garbage and is dropped) for the next datagram from the same
-  source. `#` lines are dropped until Phase 4 adds the CRC-32 framer (ported from v26).
+  source. `#`/`%` lines go to the CRC-32 framer (Phase 2, ported from v26): split at `;`,
+  body fields after it, either header shape.
 - Zero-copy: the splitter hands out spans into the receive buffer; the tail is the only copy.
 - The bridge contract above says whole lines; the splitter defends against a bridge that
   doesn't, and counts the repairs so Network IO can point at the bridge.
@@ -269,6 +307,7 @@ difference is that it returns "fix complete" only when an epoch closes.
 | Sentence | Decoder | Emits |
 |---|---|---|
 | `$PANDA`, `$PAOGI`, `$KSXT` | one-shot (done) | immediately |
+| `#INSPVAXA` | one-shot, `#` framer (Phase 2) | immediately |
 | `$GPHPD` | one-shot (Phase 4, when a firmware prints it) | immediately |
 | `GGA`/`GNS`, `VTG`, `HPR`, `HDT`, `THS`, `$PTNL,AVR`, `$PSSN,HRP`, `GNTRA` | epoch assembler | when the epoch closes |
 
@@ -358,8 +397,10 @@ slots and per-fix rate, rejection reasons; `UdpCommunicationService` also binds 
 2222 and tags the source GPS1/GPS2 for Network IO. No new sentences yet; `$PANDA`/`$PAOGI`/`$KSXT` must behave
 exactly as before (existing tests are the proof). Ships on its own.
 
-**Phase 2 — epoch assembler, Unicore set.** `GGA`/`GNS` + `VTG` + `HPR` (and `THS`). Bench
-on the T1-FD/UM982. Includes the determinism test, the dropped-member test, the warm-up
+**Phase 2 — epoch assembler, Unicore set; `#` framer + `INSPVAX`.** `GGA`/`GNS` + `VTG` +
+`HPR` (and `THS`) through the assembler; the CRC-32 framer with both header shapes and the
+`#INSPVAXA` one-shot decoder for the UM981 (fixture: a UM981 capture, or the manual's
+example line). Bench on the T1-FD/UM982. Includes the determinism test, the dropped-member test, the warm-up
 test, and the "receiver reconfigured" test. Network IO shows the family.
 
 **Phase 2b — board IMU as a latest-reading source.** The attitude sentence from a HAT/AiO
