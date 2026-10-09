@@ -39,6 +39,42 @@ public class UdpGpsPortsTests
             new[] { new LocalNetworkAddress(IPAddress.Loopback, 8, "lo0") };
     }
 
+    /// <summary>A receiver that prints only Unicore '#' logs (a UM981) is a GPS source too.</summary>
+    [Test]
+    public async Task A_hash_log_marks_the_GPS_source_address()
+    {
+        try
+        {
+            using var probe = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            probe.Bind(new IPEndPoint(IPAddress.Any, UdpCommunicationService.ModulePort));
+        }
+        catch (SocketException)
+        {
+            Assert.Ignore("port 9999 is held by another process on this machine");
+        }
+
+        var udp = new UdpCommunicationService(new Loopback());
+        await udp.StartAsync();
+        try
+        {
+            const string body = "#INSPVAXA,COM3,0,80.0,FINE,2439,503918.400,0,424572,0;INS_ALIGNING,NONE,0.0,0.0,-17.0,17.0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0,0,0,0,0,0,0";
+            var line = Encoding.ASCII.GetBytes(body + "*" + AgOpenWeb.Services.Gps.UnicoreCrc32.Compute(Encoding.ASCII.GetBytes(body[1..])).ToString("x8") + "\r\n");
+            using var sender = new UdpClient();
+            IPAddress? source = null;
+            for (int attempt = 0; attempt < 20 && source == null; attempt++)
+            {
+                sender.Send(line, line.Length, new IPEndPoint(IPAddress.Loopback, UdpCommunicationService.ModulePort));
+                for (int wait = 0; wait < 20 && source == null; wait++) { await Task.Delay(25); source = udp.GetGpsSourceAddress(); }
+            }
+            Assert.That(source, Is.EqualTo(IPAddress.Loopback));
+        }
+        finally
+        {
+            await udp.StopAsync();
+            udp.Dispose();
+        }
+    }
+
     [TestCase(UdpCommunicationService.Gps1Port, GpsSource.Gps1)]
     [TestCase(UdpCommunicationService.Gps2Port, GpsSource.Gps2)]
     [TestCase(UdpCommunicationService.ModulePort, GpsSource.ModulePort)]
@@ -78,6 +114,7 @@ public class UdpGpsPortsTests
             }
             Assert.That(seen, Is.True, $"no fix parsed from port {port}");
             Assert.That(steer.LastGpsSource, Is.EqualTo(expected));
+            Assert.That(udp.GetGpsSourceAddress(), Is.EqualTo(IPAddress.Loopback), "where the corrections go back to");
         }
         finally
         {
