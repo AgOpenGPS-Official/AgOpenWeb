@@ -125,7 +125,7 @@ Only the cycle-worker failure mode is survivable: back-pressure drops the *next*
 
 - Adding a new domain state: create a `FooWorkingState` POCO, extend `GpsCycleResult` with a `Foo` snapshot record, mirror it in `ApplyGpsCycleResult`.
 - Adding a new UI command that changes pipeline behavior: define a method on `IPipelineIntents`, push from the command, drain at the start of the cycle.
-- Adding a new service that reads GPS/position: take `*WorkingState` as a parameter, don't inject `ApplicationState`.
+- Adding a new service that reads GPS/position: take `*WorkingState` as a parameter, don't inject `ApplicationState`. A service that needs field facts off the UI thread gets them pushed from the ViewModel as plain values (the pipeline's `SetLocalPlane` / `SetBoundary` / `SetHeadlandOn`, section control's `SetFieldContext`); a one-off read on the UI thread hands over a capture (`RuntimeStateCapture` for the bug-report dump).
 - Avoid writing to `State.YouTurn`, `State.Guidance`, `State.Vehicle`, `State.Section` from anywhere except `ApplyGpsCycleResult`.
 
 ## Persisted numeric / date strings

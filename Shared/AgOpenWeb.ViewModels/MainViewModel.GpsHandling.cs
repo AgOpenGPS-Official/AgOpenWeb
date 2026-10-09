@@ -132,7 +132,7 @@ public partial class MainViewModel
     public double RollDegrees
     {
         get => _rollDegrees;
-        set { if (SetProperty(ref _rollDegrees, value)) State.Vehicle.Roll = value; } // mirror for web-UI
+        set => SetProperty(ref _rollDegrees, value);
     }
 
     #endregion
@@ -414,11 +414,22 @@ public partial class MainViewModel
         _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset, isOnBoundary);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(State.Field.HeadlandLine);
+        SyncFieldContextToSectionControl();
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);
         SyncYouTurnConfigToPipeline();
     }
+
+    /// <summary>
+    /// Publish the field facts section control reads on the 100 Hz control loop (boundary,
+    /// headland line, field open, headland on) as one record, from the UI thread. Called with
+    /// the pipeline sync and whenever one of them changes, so the control loop never reads
+    /// the UI-bound State.Field mirror.
+    /// </summary>
+    private void SyncFieldContextToSectionControl() =>
+        _sectionControlService.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(
+            CurrentBoundary, State.Field.HeadlandLine, State.Field.HasActiveField, _isHeadlandOn));
 
     /// <summary>
     /// The skip count and skip mode, pushed to the cycle as they change. They used to reach it

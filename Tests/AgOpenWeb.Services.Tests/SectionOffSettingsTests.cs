@@ -14,7 +14,6 @@ namespace AgOpenWeb.Services.Tests;
 [NonParallelizable] // ConfigurationStore is a singleton
 public class SectionOffSettingsTests
 {
-    private ApplicationState _appState = null!;
     private SectionControlService _service = null!;
 
     [SetUp]
@@ -26,17 +25,16 @@ public class SectionOffSettingsTests
         for (int i = 0; i < 3; i++) config.Tool.SetSectionWidth(i, 200); // 2 m each, 6 m tool
         config.Tool.Offset = 0;
 
-        _appState = new ApplicationState();
         var poly = new BoundaryPolygon();
         poly.Points.Add(new BoundaryPoint(0, 0, 0));
         poly.Points.Add(new BoundaryPoint(200, 0, 0));
         poly.Points.Add(new BoundaryPoint(200, 200, 0));
         poly.Points.Add(new BoundaryPoint(0, 200, 0));
         poly.UpdateBounds();
-        _appState.Field.CurrentBoundary = new Boundary { OuterBoundary = poly };
 
         _service = new SectionControlService(Substitute.For<IToolPositionService>(),
-            Substitute.For<ICoverageMapService>(), _appState, ConfigurationStore.Instance);
+            Substitute.For<ICoverageMapService>(), ConfigurationStore.Instance);
+        _service.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(new Boundary { OuterBoundary = poly }, null, true, false));
         _service.SetAllAuto();
         _service.MasterState = SectionMasterState.Auto;
     }

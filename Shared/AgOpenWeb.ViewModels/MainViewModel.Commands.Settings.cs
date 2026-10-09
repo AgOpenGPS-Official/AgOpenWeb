@@ -211,7 +211,7 @@ public partial class MainViewModel
                 catch { /* screenshot is optional */ }
 
                 var zipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, _configStore, screenshotPng: screenshot,
+                    _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: screenshot,
                     activeJobTaskName: SaveCoverageForDump(),
                     ntripRtcmReport: NtripRtcmReport());
                 StatusMessage = $"Debug dump saved: {zipPath}";
@@ -244,7 +244,7 @@ public partial class MainViewModel
             try
             {
                 _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot,
+                    _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: _bugReportScreenshot,
                     activeJobTaskName: SaveCoverageForDump(),
                     ntripRtcmReport: NtripRtcmReport());
             }
@@ -349,7 +349,7 @@ public partial class MainViewModel
                     // everything in one shot now.
                     zipPath = Services.DebugDumpService.CreateDump(
                         _settingsService,
-                        _appState,
+                        AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState),
                         _configStore,
                         additionalNotes: notes,
                         screenshotPng: _bugReportScreenshot,

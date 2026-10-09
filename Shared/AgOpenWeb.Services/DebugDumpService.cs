@@ -38,7 +38,7 @@ public class DebugDumpService
     /// </summary>
     public static string CreateDump(
         ISettingsService settingsService,
-        ApplicationState appState,
+        RuntimeStateCapture runtime,
         ConfigurationStore configStore,
         string? additionalNotes = null,
         byte[]? screenshotPng = null,
@@ -85,7 +85,7 @@ public class DebugDumpService
         // 4. Runtime state snapshot
         try
         {
-            var stateSnapshot = BuildStateSnapshot(appState);
+            var stateSnapshot = runtime.Json;
             AddTextEntry(archive, "runtime_state.json", stateSnapshot);
         }
         catch (Exception ex)
@@ -148,7 +148,7 @@ public class DebugDumpService
         // 6. Current field files (if a field is open)
         try
         {
-            var fieldDir = appState.Field.ActiveField?.DirectoryPath;
+            var fieldDir = runtime.FieldDirectory;
             if (!string.IsNullOrEmpty(fieldDir) && Directory.Exists(fieldDir))
             {
                 foreach (var file in Directory.GetFiles(fieldDir))
@@ -176,7 +176,7 @@ public class DebugDumpService
         // saves coverage first; the tiles on disk are otherwise up to an autosave old.
         try
         {
-            var fieldDir = appState.Field.ActiveField?.DirectoryPath;
+            var fieldDir = runtime.FieldDirectory;
             if (!string.IsNullOrEmpty(fieldDir) && !string.IsNullOrWhiteSpace(activeJobTaskName))
             {
                 var jobDir = Path.Combine(fieldDir, "jobs", activeJobTaskName);
@@ -443,51 +443,6 @@ public class DebugDumpService
                 obj[key] = "REDACTED";
         }
         return obj.ToJsonString(JsonOptions);
-    }
-
-    private static string BuildStateSnapshot(ApplicationState state)
-    {
-        var snapshot = new
-        {
-            Vehicle = new
-            {
-                state.Vehicle.Latitude,
-                state.Vehicle.Longitude,
-                state.Vehicle.Easting,
-                state.Vehicle.Northing,
-                state.Vehicle.Heading,
-                Speed = state.Vehicle.Speed,
-                state.Vehicle.FixQuality,
-                state.Vehicle.SatelliteCount,
-                state.Vehicle.Hdop
-            },
-            Field = new
-            {
-                ActiveField = state.Field.ActiveField?.Name ?? "None",
-                HasBoundary = state.Field.CurrentBoundary?.IsValid ?? false,
-                HasHeadland = state.Field.HasHeadland,
-                HeadlandDistance = state.Field.HeadlandDistance,
-                TrackCount = state.Field.Tracks.Count,
-                ActiveTrack = state.Field.ActiveTrack?.Name,
-                OriginLat = state.Field.OriginLatitude,
-                OriginLon = state.Field.OriginLongitude,
-                DriftEasting = state.Field.DriftEasting,
-                DriftNorthing = state.Field.DriftNorthing
-            },
-            Guidance = new
-            {
-                state.Guidance.CrossTrackError,
-                state.Guidance.SteerAngle,
-                state.Guidance.HeadingError
-            },
-            UI = new
-            {
-                ActiveDialog = state.UI.ActiveDialog.ToString(),
-                state.UI.IsSimulatorPanelVisible,
-                state.UI.IsBoundaryPanelVisible
-            }
-        };
-        return JsonSerializer.Serialize(snapshot, JsonOptions);
     }
 
     private static string BuildLogDump()

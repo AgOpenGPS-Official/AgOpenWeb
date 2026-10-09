@@ -107,6 +107,19 @@ public interface IGpsPipelineService
     /// </summary>
     void SetHasActiveField(bool hasActiveField);
 
+    /// <summary>
+    /// The UI's committed LocalPlane (<c>State.Field.LocalPlane</c>). Push it whenever it
+    /// changes: field open, the cycle's own first-fix / re-anchor commit, field close.
+    /// The cycle converts positions against it and runs the origin guard on it.
+    /// </summary>
+    void SetLocalPlane(Models.LocalPlane? localPlane);
+
+    /// <summary>Whether the internal simulator is the GPS source (steer speed limits are off then).</summary>
+    void SetSimulatorEnabled(bool enabled);
+
+    /// <summary>The headland toggle: the headland distance HUD and the hydraulic lift follow it.</summary>
+    void SetHeadlandOn(bool on);
+
     // ── Read-back state the ViewModel needs for commands ─────────────────
 
     /// <summary>Whether autosteer is currently engaged.</summary>

@@ -585,7 +585,7 @@ public static partial class RemoteServerWiring
                     if (slug.Length > 60) slug = slug.Substring(0, 60);
                     var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
                     var zip = AgOpenWeb.Services.DebugDumpService.CreateDump(
-                        services.GetRequiredService<ISettingsService>(), state, store,
+                        services.GetRequiredService<ISettingsService>(), AgOpenWeb.Models.State.RuntimeStateCapture.From(state), store,
                         additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
                         activeJobTaskName: SaveCoverageForDump(services, state),
                         ntripRtcmReport: AgOpenWeb.Services.NtripRtcmReport.Build(

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
@@ -38,7 +39,10 @@ public class SectionControlService : ISectionControlService
 {
     private readonly IToolPositionService _toolPositionService;
     private readonly ICoverageMapService _coverageMapService;
-    private readonly ApplicationState _state;
+    // The field facts the 100 Hz control-loop tick reads (boundary, headland line, field
+    // open, headland on). Published whole by the UI thread through SetFieldContext; read
+    // once per helper call, never the UI-bound State.Field mirror.
+    private AgOpenWeb.Models.Sections.SectionFieldContext _field = AgOpenWeb.Models.Sections.SectionFieldContext.None;
     private readonly ConfigurationStore _configStore;
 
     private readonly SectionControlState[] _sectionStates;
@@ -165,12 +169,10 @@ public class SectionControlService : ISectionControlService
     public SectionControlService(
         IToolPositionService toolPositionService,
         ICoverageMapService coverageMapService,
-        ApplicationState state,
         ConfigurationStore configStore)
     {
         _toolPositionService = toolPositionService;
         _coverageMapService = coverageMapService;
-        _state = state;
         _configStore = configStore;
 
         // Initialize section states
@@ -208,6 +210,8 @@ public class SectionControlService : ISectionControlService
     // Written by the GPS pipeline thread, read by the control loop.
     private volatile bool _isReversing;
     public bool IsReversing { get => _isReversing; set => _isReversing = value; }
+
+    public void SetFieldContext(AgOpenWeb.Models.Sections.SectionFieldContext context) => Volatile.Write(ref _field, context);
 
     public void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed)
     {
@@ -897,7 +901,7 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     private bool IsPointInBoundary(Vec2 point)
     {
-        var boundary = _state.Field.CurrentBoundary;
+        var boundary = Volatile.Read(ref _field).Boundary;
         if (boundary == null || !boundary.IsValid)
             return true; // No boundary = always in
 
@@ -909,7 +913,8 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     private BoundaryResult GetSegmentBoundaryStatus(Vec2 sectionCenter, double heading, double halfWidth)
     {
-        var boundary = _state.Field.CurrentBoundary;
+        var field = Volatile.Read(ref _field);
+        var boundary = field.Boundary;
         if (boundary == null || !boundary.IsValid)
         {
             // No usable boundary. Two cases:
@@ -922,7 +927,7 @@ public class SectionControlService : ISectionControlService
             //    is never intended (AiO firmware enforces the same), so treat
             //    every section as fully outside, which gates Auto off and
             //    forces IsOn=false via the strict isInBoundary check.
-            return _state.Field.HasActiveField
+            return field.HasActiveField
                 ? BoundaryResult.FullyInside
                 : BoundaryResult.FullyOutside;
         }
@@ -936,18 +941,19 @@ public class SectionControlService : ISectionControlService
     private bool IsPointInHeadland(Vec2 point)
     {
         var tool = _configStore.Tool;
+        var field = Volatile.Read(ref _field);
 
         // Check if headland section control is enabled — and the headland itself is on
         // (AgOpenGPS: isHeadlandOn && isSectionControlledByHeadland, #106)
-        if (!tool.IsHeadlandSectionControl || !_state.FieldTools.IsHeadlandOn)
+        if (!tool.IsHeadlandSectionControl || !field.IsHeadlandOn)
             return false; // Headland control disabled
 
-        var headlandLine = _state.Field.HeadlandLine;
+        var headlandLine = field.HeadlandLine;
         if (headlandLine == null || headlandLine.Count < 3)
             return false; // No headland = never in headland
 
         // Point is in headland if it's inside boundary but outside headland line
-        var boundary = _state.Field.CurrentBoundary;
+        var boundary = field.Boundary;
         if (boundary == null || !boundary.IsValid)
             return false;
 

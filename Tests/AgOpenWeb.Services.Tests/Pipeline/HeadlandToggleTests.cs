@@ -34,7 +34,6 @@ public class HeadlandToggleTests
 {
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
 
     [SetUp]
@@ -49,18 +48,14 @@ public class HeadlandToggleTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
 
-        _appState = new ApplicationState();
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
-
         _gpsService = new GpsService();
         _gpsService.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
@@ -79,10 +74,11 @@ public class HeadlandToggleTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
 
@@ -123,7 +119,7 @@ public class HeadlandToggleTests
     [TestCase(false)]
     public void HeadlandDistanceHud_FollowsTheToggle(bool headlandOn)
     {
-        _appState.FieldTools.IsHeadlandOn = headlandOn;
+        _pipeline.SetHeadlandOn(headlandOn);
         _pipeline.SetBoundary(Boundary(200));
         _pipeline.SetHeadlandLine(Square(50));
 
@@ -137,13 +133,11 @@ public class HeadlandToggleTests
     public void HydraulicLift_IsOffWithTheHeadland(bool headlandOn, int expected)
     {
         ConfigurationStore.Instance.Machine.HydraulicLiftEnabled = true;
-        _appState.FieldTools.IsHeadlandOn = headlandOn;
-        _appState.Field.CurrentBoundary = Boundary(200);
 
         var m = typeof(GpsPipelineService).GetMethod("ComputeHydLiftState",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.That(m, Is.Not.Null, "Reflection target ComputeHydLiftState missing");
-        var state = (byte)m!.Invoke(_pipeline, new object?[] { new Vec3(0, 120, 0), 0.0, 3.0, Square(100) })!;
+        var state = (byte)m!.Invoke(_pipeline, new object?[] { new Vec3(0, 120, 0), 0.0, 3.0, Square(100), Boundary(200), headlandOn })!;
 
         Assert.That(state, Is.EqualTo(expected));
     }
@@ -154,13 +148,11 @@ public class HeadlandToggleTests
     {
         ConfigurationStore.Instance.Machine.HydraulicLiftEnabled = true;
         ConfigurationStore.Instance.Machine.LookAhead = lookAheadSec;
-        _appState.FieldTools.IsHeadlandOn = true;
-        _appState.Field.CurrentBoundary = Boundary(200);
 
         var m = typeof(GpsPipelineService).GetMethod("ComputeHydLiftState",
             BindingFlags.NonPublic | BindingFlags.Instance)!;
         // Tool 4 m short of the headland line (cultivated area = ±100), heading north at 3 m/s.
-        var state = (byte)m.Invoke(_pipeline, new object?[] { new Vec3(0, 96, 0), 0.0, 3.0, Square(100) })!;
+        var state = (byte)m.Invoke(_pipeline, new object?[] { new Vec3(0, 96, 0), 0.0, 3.0, Square(100), Boundary(200), true })!;
 
         Assert.That(state, Is.EqualTo(expected));
     }
@@ -171,11 +163,9 @@ public class HeadlandToggleTests
     {
         var config = ConfigurationStore.Instance;
         config.Tool.IsHeadlandSectionControl = true;
-        _appState.FieldTools.IsHeadlandOn = headlandOn;
-        _appState.Field.CurrentBoundary = Boundary(200);
-        _appState.Field.HeadlandLine = Square(100);
         var toolPosition = new ToolPositionService(config);
-        var sections = new SectionControlService(toolPosition, new CoverageMapService(config), _appState, config);
+        var sections = new SectionControlService(toolPosition, new CoverageMapService(config), config);
+        sections.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(Boundary(200), Square(100), true, headlandOn));
 
         var m = typeof(SectionControlService).GetMethod("IsPointInHeadland", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.That(m, Is.Not.Null, "Reflection target IsPointInHeadland missing");

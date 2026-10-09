@@ -59,7 +59,6 @@ public class AutoSteerUTurnNUnitTests
     private SectionControlService _sectionControl = null!;
     private CoverageMapService _coverage = null!;
     private PipelineIntents _intents = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
 
     [SetUp]
@@ -92,7 +91,6 @@ public class AutoSteerUTurnNUnitTests
         config.Guidance.MinLookAheadDistance = 2.0;
 
         SensorState.Instance.ImuRoll = 0;
-        _appState = new ApplicationState();
 
         _gpsService = new GpsService();
         _gpsService.Start();
@@ -100,7 +98,7 @@ public class AutoSteerUTurnNUnitTests
         _toolPosition = new ToolPositionService(config);
         var guidance = new TrackGuidanceService();
         _coverage = new CoverageMapService(config);
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, config);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, config);
 
         // Enable sections for coverage painting
         _sectionControl.MasterState = SectionMasterState.Auto;
@@ -116,7 +114,7 @@ public class AutoSteerUTurnNUnitTests
 
         _autoSteer = new AutoSteerService(guidance,
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState, config);
+            _gpsService, config);
 
         _results = new List<GpsCycleResult>();
         // Pipeline created per test via CreateFreshPipeline()
@@ -132,7 +130,6 @@ public class AutoSteerUTurnNUnitTests
         _autoSteer?.Stop();
 
         // Fresh ApplicationState to clear LocalPlane and other state from previous tests
-        _appState = new ApplicationState();
 
         // Fresh GpsService to clear stale CurrentData from previous tests
         _gpsService = new GpsService();
@@ -141,7 +138,7 @@ public class AutoSteerUTurnNUnitTests
         // Re-init coverage with fresh state
         _coverage = new CoverageMapService(ConfigurationStore.Instance);
         _toolPosition = new ToolPositionService(ConfigurationStore.Instance);
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, ConfigurationStore.Instance);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, ConfigurationStore.Instance);
         _sectionControl.MasterState = SectionMasterState.Auto;
         _sectionControl.SetAllAuto();
         _coverage.SetFieldBounds(-10, FIELD_W + 10, -10, FIELD_H + 10);
@@ -149,7 +146,7 @@ public class AutoSteerUTurnNUnitTests
         // Fresh AutoSteerService bound to the new GpsService
         _autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState, ConfigurationStore.Instance);
+            _gpsService, ConfigurationStore.Instance);
 
         _intents = new PipelineIntents();
 
@@ -211,7 +208,7 @@ public class AutoSteerUTurnNUnitTests
             Substitute.For<IAudioService>(),
             _intents,
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             ConfigurationStore.Instance,
             _estimator);
 
@@ -413,7 +410,7 @@ public class AutoSteerUTurnNUnitTests
         CreateFreshPipeline();
 
         var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
-        _appState.Field.LocalPlane = new LocalPlane(origin, new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane(origin, new SharedFieldProperties()));
 
         // Create boundary
         var outerPoly = new BoundaryPolygon();
@@ -424,9 +421,8 @@ public class AutoSteerUTurnNUnitTests
         outerPoly.UpdateBounds();
         var boundary = new Boundary { OuterBoundary = outerPoly };
         _pipeline.SetBoundary(boundary);
-        // Section control reads CurrentBoundary off the shared ApplicationState;
-        // pipeline.SetBoundary only updates the pipeline's private copy. (#347)
-        _appState.Field.CurrentBoundary = boundary;
+        // Section control has its own published copy of the field facts (#347).
+        _sectionControl.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(boundary, null, true, false));
 
         // Create headland line for YouTurn detection
         var headlandLine = new List<Vec3>
@@ -643,7 +639,7 @@ public class AutoSteerUTurnNUnitTests
         CreateFreshPipeline();
 
         var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
-        _appState.Field.LocalPlane = new LocalPlane(origin, new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane(origin, new SharedFieldProperties()));
 
         var outerPoly = new BoundaryPolygon();
         outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = 0 });
@@ -653,8 +649,8 @@ public class AutoSteerUTurnNUnitTests
         outerPoly.UpdateBounds();
         var boundary = new Boundary { OuterBoundary = outerPoly };
         _pipeline.SetBoundary(boundary);
-        // Section control reads CurrentBoundary off the shared ApplicationState (#347).
-        _appState.Field.CurrentBoundary = boundary;
+        // Section control has its own published copy of the field facts (#347).
+        _sectionControl.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(boundary, null, true, false));
 
         var headlandLine = new List<Vec3>
         {
@@ -842,7 +838,7 @@ public class AutoSteerUTurnNUnitTests
         CreateFreshPipeline();
 
         var origin = new Wgs84(ORIGIN_LAT, ORIGIN_LON);
-        _appState.Field.LocalPlane = new LocalPlane(origin, new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane(origin, new SharedFieldProperties()));
 
         // No SetBoundary / SetHeadlandLine — the reporter's field had neither.
         const double abEasting = 100.0;
@@ -898,7 +894,7 @@ public class AutoSteerUTurnNUnitTests
         for (int i = 0; i < 3; i++)
             ConfigurationStore.Instance.Tool.SetSectionWidth(i, 400.0);
         CreateFreshPipeline();
-        _appState.Field.LocalPlane = new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
 
         const double abEasting = 100.0;
         var track = new AgOpenWeb.Models.Track.Track
@@ -951,7 +947,7 @@ public class AutoSteerUTurnNUnitTests
         for (int i = 0; i < 3; i++)
             ConfigurationStore.Instance.Tool.SetSectionWidth(i, 400.0); // 12 m passes
         CreateFreshPipeline();
-        _appState.Field.LocalPlane = new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
 
         const double abEasting = 100.0;
         var track = new AgOpenWeb.Models.Track.Track

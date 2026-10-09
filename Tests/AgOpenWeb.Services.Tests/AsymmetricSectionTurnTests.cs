@@ -51,7 +51,6 @@ public class AsymmetricSectionTurnTests
     private GpsPipelineService _pipeline = null!;
     private SectionControlService _sectionControl = null!;
     private CoverageMapService _coverage = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
     private PositionEstimator _estimator = null!;
     private ToolPositionService _toolPosition = null!;
@@ -82,14 +81,13 @@ public class AsymmetricSectionTurnTests
         config.Guidance.MinLookAheadDistance = 2.0;
 
         SensorState.Instance.ImuRoll = 0;
-        _appState = new ApplicationState();
 
         _gpsService = new GpsService();
         _gpsService.Start();
 
         _toolPosition = new ToolPositionService(config);
         _coverage = new CoverageMapService(config);
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, config);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, config);
         _sectionControl.MasterState = SectionMasterState.Auto;
         _sectionControl.SetAllAuto();
         _coverage.SetFieldBounds(-10, FIELD_SIZE + 10, -10, FIELD_SIZE + 10);
@@ -101,7 +99,7 @@ public class AsymmetricSectionTurnTests
 
         _autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState, config);
+            _gpsService, config);
 
         _estimator = new PositionEstimator();
 
@@ -119,7 +117,7 @@ public class AsymmetricSectionTurnTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             _estimator);
 
@@ -179,8 +177,7 @@ public class AsymmetricSectionTurnTests
     public void InnerSection_SharpTurn_CoveragePaints()
     {
         // Set up field with boundary
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
 
         var outerPoly = new BoundaryPolygon();
         outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = 0 });

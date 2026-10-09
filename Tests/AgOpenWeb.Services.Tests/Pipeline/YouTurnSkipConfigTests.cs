@@ -6,11 +6,9 @@
 using System.Collections.Generic;
 using System.Reflection;
 using AgOpenWeb.Models;
-using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.State;
-using AgOpenWeb.Services;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Coverage;
 using AgOpenWeb.Services.Interfaces;
@@ -25,26 +23,24 @@ using NSubstitute;
 namespace AgOpenWeb.Services.Tests.Pipeline;
 
 /// <summary>
-/// #106: Min / Max steer speed were read by nothing. Like AgOpenGPS: above max disengages at
-/// once; below min for ~8 s disengages; neither applies on the simulator; 0 = off.
+/// A snake sequence (skip-worked mode) is built for one skip pattern. Changing the pattern
+/// drops it on the next cycle so the next turn rebuilds it; the ViewModel used to clear the
+/// UI mirror instead, which the next snapshot overwrote, so the stale sequence survived.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
-public class SteerSpeedLimitTests
+public class YouTurnSkipConfigTests
 {
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
-    private List<GpsCycleResult> _results = null!;
-    private long _now;
+    private YouTurnWorkingState _youTurn = null!;
+    private GpsCycleResult? _last;
 
     [SetUp]
     public void SetUp()
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var config = ConfigurationStore.Instance;
-        config.Vehicle.AntennaPivot = 0;
-        config.Vehicle.AntennaOffset = 0;
-        config.Vehicle.AntennaHeight = 0;
         config.Tool.Width = 6;
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
@@ -57,7 +53,6 @@ public class SteerSpeedLimitTests
         var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(), _gpsService, config);
-
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
                 Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
@@ -78,13 +73,22 @@ public class SteerSpeedLimitTests
             NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
-
-        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
+        _pipeline.SetLocalPlane(new LocalPlane(new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
+        _pipeline.CycleCompleted += r => _last = r;
 
-        _results = new List<GpsCycleResult>();
-        _pipeline.CycleCompleted += r => _results.Add(r);
+        // The pattern the sequence belongs to; the first push differs from the defaults, so
+        // one cycle consumes the reset it schedules before the sequence is planted.
+        _pipeline.SetYouTurnConfig(uTurnSkipRows: 1, isSkipWorkedMode: true, headlandCalculatedWidth: 0, headlandDistance: 0);
+        Cycle();
+
+        // The cycle-owned working state; a sequence is planted as if a turn had built it.
+        var field = typeof(GpsPipelineService).GetField("_youTurn", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.That(field, Is.Not.Null, "Reflection target _youTurn missing");
+        _youTurn = (YouTurnWorkingState)field!.GetValue(_pipeline)!;
+        _youTurn.SnakeSequence = new List<int> { 1, 3, 5 };
+        _youTurn.SnakeIndex = 1;
     }
 
     [TearDown]
@@ -94,85 +98,39 @@ public class SteerSpeedLimitTests
         _gpsService.Stop();
     }
 
-    private GpsCycleResult Last => _results[^1];
-
-    private void Drive(double kmh)
+    private void Cycle() => _gpsService.UpdateGpsData(new GpsData
     {
-        _gpsService.UpdateGpsData(new GpsData
-        {
-            CurrentPosition = new Position { Latitude = 43.7128, Longitude = -74.006, Speed = kmh / 3.6 },
-            FixQuality = 4,
-            IsValid = true,
-        });
-    }
+        CurrentPosition = new Position { Latitude = 43.7128, Longitude = -74.006 },
+        FixQuality = 4,
+        IsValid = true,
+    });
 
-    private void Engage(double min, double max)
+    [Test]
+    public void SameConfig_KeepsTheSequence()
     {
-        var a = ConfigurationStore.Instance.AutoSteer;
-        a.MinSteerSpeed = min;
-        a.MaxSteerSpeed = max;
-        _now = 0;
-        _pipeline.NowMs = () => _now;
-        _pipeline.SetAutoSteerEngaged(true);
+        _pipeline.SetYouTurnConfig(uTurnSkipRows: 1, isSkipWorkedMode: true, headlandCalculatedWidth: 0, headlandDistance: 0);
+        Cycle();
+
+        Assert.That(_last!.YouTurn!.SnakeSequence, Is.EqualTo(new[] { 1, 3, 5 }));
+        Assert.That(_last.YouTurn.SnakeIndex, Is.EqualTo(1));
     }
 
     [Test]
-    public void AboveMax_DisengagesImmediately()
+    public void NewSkipCount_DropsTheSequenceOnTheNextCycle()
     {
-        Engage(min: 0, max: 15);
+        _pipeline.SetYouTurnConfig(uTurnSkipRows: 2, isSkipWorkedMode: true, headlandCalculatedWidth: 0, headlandDistance: 0);
+        Cycle();
 
-        Drive(10);
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.False);
-        Drive(16);
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.True);
-        Assert.That(Last.DisengageReason, Does.Contain("maximum"));
+        Assert.That(_last!.YouTurn!.SnakeSequence, Is.Null, "rebuilt by the next turn for the new pattern");
+        Assert.That(_last.YouTurn.SnakeIndex, Is.EqualTo(-1));
     }
 
     [Test]
-    public void BelowMin_DisengagesOnlyAfterTheGracePeriod()
+    public void LeavingSkipWorkedMode_DropsTheSequence()
     {
-        Engage(min: 3, max: 0);
+        _pipeline.SetYouTurnConfig(uTurnSkipRows: 1, isSkipWorkedMode: false, headlandCalculatedWidth: 0, headlandDistance: 0);
+        Cycle();
 
-        Drive(1);
-        _now = 7000; Drive(1);
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.False, "engage at a standstill, then pull away");
-
-        _now = 8100; Drive(1);
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.True);
-        Assert.That(Last.DisengageReason, Does.Contain("minimum"));
-    }
-
-    [Test]
-    public void BelowMin_TimerResetsWhenSpeedRecovers()
-    {
-        Engage(min: 3, max: 0);
-
-        Drive(1);
-        _now = 6000; Drive(8);      // back above min
-        _now = 7000; Drive(1);      // dips again — new grace period starts here
-        _now = 12000; Drive(1);
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.False);
-    }
-
-    [Test]
-    public void Simulator_IsExempt_LikeAgOpenGps()
-    {
-        Engage(min: 0, max: 15);
-        _pipeline.SetSimulatorEnabled(true);
-
-        Drive(30);
-
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.False);
-    }
-
-    [Test]
-    public void ZeroLimits_AreOff()
-    {
-        Engage(min: 0, max: 0);
-
-        Drive(60);
-        _now = 60000; Drive(0.1);
-
-        Assert.That(Last.AutoSteerDisengagedThisCycle, Is.False);
+        Assert.That(_last!.YouTurn!.SnakeSequence, Is.Null);
     }
 }

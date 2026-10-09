@@ -40,12 +40,13 @@ public interface ISmartWasCalibrationService
     void Reset();
 
     /// <summary>
-    /// Add a steer-angle sample (degrees). Called from
-    /// AutoSteerService.ProcessSteerData on the UDP receive thread.
-    /// Internally gated: rejects unless IsCollecting and the vehicle
-    /// state passes speed/XTE/angle/engaged thresholds.
+    /// Add a steer-angle sample (degrees) with the vehicle speed (m/s) and cross-track
+    /// error (m) the caller holds for the same moment. Called from
+    /// AutoSteerService.ProcessSteerData on the UDP receive thread. Internally gated:
+    /// rejects unless IsCollecting and the sample passes the speed/XTE/angle/engaged
+    /// thresholds.
     /// </summary>
-    void AddSample(double steerAngleDegrees);
+    void AddSample(double steerAngleDegrees, double speedMps, double crossTrackErrorMeters);
 
     /// <summary>
     /// Shift the existing buffer by the given offset to prevent

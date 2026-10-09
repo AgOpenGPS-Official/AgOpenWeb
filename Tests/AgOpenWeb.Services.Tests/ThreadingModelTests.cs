@@ -12,22 +12,18 @@ using System.Text.RegularExpressions;
 namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
-/// Source-scanning guards for the CONTRIBUTING "Threading Model" rules. Both pin the
-/// state of the tree today with an allowlist, so the rule is "no new ones": the listed
-/// sites are known debt, to be paid down, not a licence.
+/// Source-scanning guards for the CONTRIBUTING "Threading Model" rules. Both carry an
+/// allowlist so that known debt, if any is ever taken on again, is listed by file and
+/// count rather than silently tolerated. Both lists are empty: the tree follows the rules.
 /// </summary>
 [TestFixture]
 public class ThreadingModelTests
 {
     // Rule 2: the only writer of State.YouTurn / Guidance / Vehicle / Section is
-    // ApplyGpsCycleResult. Existing writes elsewhere, by file and count (#294 debt list).
-    private static readonly Dictionary<string, int> KnownStateWrites = new(StringComparer.Ordinal)
-    {
-        ["MainViewModel.Simulator.cs"] = 2,       // sim sets lat/lon on the mirror
-        ["MainViewModel.GpsHandling.cs"] = 1,     // roll mirror for the web UI
-        ["MainViewModel.Commands.Track.cs"] = 4,  // snake sequence reset; A/B swap
-        ["MainViewModel.cs"] = 1,                 // clears DisplayLine on field close
-    };
+    // ApplyGpsCycleResult. Known writes elsewhere, by file and count: none (the #294
+    // debt list was paid down; the sim teleport, roll, snake reset, A/B swap and the
+    // DisplayLine clear all go through the pipeline now).
+    private static readonly Dictionary<string, int> KnownStateWrites = new(StringComparer.Ordinal);
 
     private static readonly Regex StateWrite =
         new(@"\bState\.(YouTurn|Guidance|Vehicle|Section)\.\w+\s*(=(?!=)|\+=|-=)", RegexOptions.Compiled);
@@ -67,12 +63,11 @@ public class ThreadingModelTests
     }
 
     // "Adding a new service that reads GPS/position: take *WorkingState as a parameter,
-    // don't inject ApplicationState." The services that already do, by file.
-    private static readonly HashSet<string> KnownApplicationStateConsumers = new(StringComparer.Ordinal)
-    {
-        "GpsPipelineService.cs", "AutoSteerService.cs", "SectionControlService.cs",
-        "SmartWasCalibrationService.cs", "DebugDumpService.cs",
-    };
+    // don't inject ApplicationState." Services that do, by file: none. The pipeline and
+    // section control take their field facts through setters (SetLocalPlane,
+    // SetSimulatorEnabled, SetHeadlandOn, SetFieldContext), Smart WAS gets speed and
+    // cross-track error with each sample, and the dump takes a RuntimeStateCapture.
+    private static readonly HashSet<string> KnownApplicationStateConsumers = new(StringComparer.Ordinal);
 
     [Test]
     public void Services_DoNotTakeApplicationState_BeyondTheKnownOnes()

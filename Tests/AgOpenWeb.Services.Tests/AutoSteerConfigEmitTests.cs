@@ -48,8 +48,7 @@ public class AutoSteerConfigEmitTests
         _udp = Substitute.For<IUdpCommunicationService>();
         var guidance = Substitute.For<ITrackGuidanceService>();
         var gps = Substitute.For<IGpsService>();
-        var appState = new ApplicationState();
-        _service = new AutoSteerService(guidance, _udp, gps, appState, ConfigurationStore.Instance);
+        _service = new AutoSteerService(guidance, _udp, gps, ConfigurationStore.Instance);
 
         // Shorten the debounce so tests don't have to sleep 150 ms
         // wall-clock per assertion. 20 ms is well over the timer's

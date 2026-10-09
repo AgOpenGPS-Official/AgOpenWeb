@@ -44,14 +44,10 @@ public class UnifiedPipelineTests
         var mockGuidance = Substitute.For<ITrackGuidanceService>();
         var mockUdp = Substitute.For<IUdpCommunicationService>();
         var mockGps = Substitute.For<IGpsService>();
-        var appState = new ApplicationState();
 
-        // Preseed a LocalPlane and an active track to make sure ProcessGpsBuffer
-        // has every dependency it *would* need for guidance/PGN work.
-        appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(48.117, 11.517), new SharedFieldProperties());
-
-        var autoSteer = new AutoSteerService(mockGuidance, mockUdp, mockGps, appState, ConfigurationStore.Instance);
+        // Preseed an active track to make sure ProcessGpsBuffer has every
+        // dependency it *would* need for guidance/PGN work.
+        var autoSteer = new AutoSteerService(mockGuidance, mockUdp, mockGps, ConfigurationStore.Instance);
         autoSteer.Start();
         // Start() now emits a baseline PGN 251 + PGN 252 pair; that
         // happens off the receive thread so it doesn't violate C4, but
@@ -73,54 +69,5 @@ public class UnifiedPipelineTests
             // Positive control: parse → publish did happen.
             mockGps.Received(1).UpdateGpsData(Arg.Any<GpsData>());
         });
-    }
-
-    /// <summary>
-    /// C1 invariant: AutoSteerService reads LocalPlane from ApplicationState.Field;
-    /// it never creates or replaces the shared instance. If this test fails,
-    /// someone reintroduced a private LocalPlane or an auto-create path.
-    /// </summary>
-    [Test]
-    public void AutoSteer_does_not_replace_ApplicationState_LocalPlane()
-    {
-        var appState = new ApplicationState();
-        var original = new LocalPlane(
-            new Wgs84(48.117, 11.517), new SharedFieldProperties());
-        appState.Field.LocalPlane = original;
-
-        var autoSteer = new AutoSteerService(
-            Substitute.For<ITrackGuidanceService>(),
-            Substitute.For<IUdpCommunicationService>(),
-            Substitute.For<IGpsService>(),
-            appState, ConfigurationStore.Instance);
-        autoSteer.Start();
-
-        autoSteer.ProcessGpsBuffer(Bytes, Bytes.Length);
-
-        Assert.That(appState.Field.LocalPlane, Is.SameAs(original),
-            "AutoSteerService must not replace the shared LocalPlane instance");
-    }
-
-    /// <summary>
-    /// C1 invariant companion: with no LocalPlane set, AutoSteerService
-    /// must leave it null — auto-create is owned by the cycle worker / field-open.
-    /// </summary>
-    [Test]
-    public void AutoSteer_does_not_auto_create_LocalPlane()
-    {
-        var appState = new ApplicationState();
-        Assert.That(appState.Field.LocalPlane, Is.Null, "precondition");
-
-        var autoSteer = new AutoSteerService(
-            Substitute.For<ITrackGuidanceService>(),
-            Substitute.For<IUdpCommunicationService>(),
-            Substitute.For<IGpsService>(),
-            appState, ConfigurationStore.Instance);
-        autoSteer.Start();
-
-        autoSteer.ProcessGpsBuffer(Bytes, Bytes.Length);
-
-        Assert.That(appState.Field.LocalPlane, Is.Null,
-            "AutoSteerService must not create its own LocalPlane on receive thread");
     }
 }

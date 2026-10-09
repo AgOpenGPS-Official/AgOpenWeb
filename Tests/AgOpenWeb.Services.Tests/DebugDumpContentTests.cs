@@ -30,7 +30,7 @@ public class DebugDumpContentTests
     {
         var svc = Substitute.For<ISettingsService>();
         svc.Settings.Returns(settings);
-        var zip = DebugDumpService.CreateDump(svc, new ApplicationState(), store, outputDirectory: _dir);
+        var zip = DebugDumpService.CreateDump(svc, RuntimeStateCapture.From(new ApplicationState()), store, outputDirectory: _dir);
         using var a = ZipFile.OpenRead(zip);
         return a.Entries.ToDictionary(e => e.FullName, e => new StreamReader(e.Open()).ReadToEnd());
     }
@@ -126,7 +126,7 @@ public class DebugDumpJobContentTests
         var state = new ApplicationState();
         state.Field.ActiveField = new Field { Name = "monte", DirectoryPath = fieldDir };
 
-        var zip = DebugDumpService.CreateDump(Settings(), state, new ConfigurationStore(),
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(state), new ConfigurationStore(),
             outputDirectory: _dir, activeJobTaskName: "2026-09-23");
         using var a = ZipFile.OpenRead(zip);
         var names = a.Entries.Select(e => e.FullName).ToList();
@@ -149,7 +149,7 @@ public class DebugDumpJobContentTests
         var state = new ApplicationState();
         state.Field.ActiveField = new Field { Name = "monte", DirectoryPath = fieldDir };
 
-        var zip = DebugDumpService.CreateDump(Settings(), state, new ConfigurationStore(), outputDirectory: _dir);
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(state), new ConfigurationStore(), outputDirectory: _dir);
         using var a = ZipFile.OpenRead(zip);
         Assert.That(a.Entries.Select(e => e.FullName).Where(n => n.StartsWith("field/jobs/")), Is.Empty);
     }
@@ -163,7 +163,7 @@ public class DebugDumpJobContentTests
         store.Tool.SetSectionWidth(0, 600);
         store.Tool.SetSectionWidth(1, 600);
 
-        var zip = DebugDumpService.CreateDump(Settings(), new ApplicationState(), store, outputDirectory: _dir);
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(new ApplicationState()), store, outputDirectory: _dir);
         using var a = ZipFile.OpenRead(zip);
         var cfgText = new StreamReader(a.GetEntry("configuration.json")!.Open()).ReadToEnd();
         using var cfg = JsonDocument.Parse(cfgText);

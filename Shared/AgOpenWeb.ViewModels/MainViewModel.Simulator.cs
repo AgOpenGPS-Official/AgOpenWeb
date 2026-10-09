@@ -171,6 +171,7 @@ public partial class MainViewModel
             if (SetProperty(ref _isSimulatorEnabled, value))
             {
                 State.Simulator.IsEnabled = value; // mirror for the web-UI projector
+                _gpsPipelineService.SetSimulatorEnabled(value); // no steer speed limits on the sim (#106)
                 // Persist the "simulator is the GPS source" preference through
                 // the store (config), not by writing the DTO directly.
                 ConfigStore.Simulator.Enabled = value;
@@ -310,12 +311,13 @@ public partial class MainViewModel
         Latitude = latitude;
         Longitude = longitude;
 
-        // Push into the live vehicle state too — this is the single source the web UI's status
-        // strip and SceneProjector read. Without it the displayed position (and the SimCoords
-        // dialog's prefill, which seeds from the status frame) stays at the old/zero live position
-        // until the simulator next ticks, so a just-set coordinate reads back as 0.0000.
-        State.Vehicle.Latitude = latitude;
-        State.Vehicle.Longitude = longitude;
+        // The live position (status strip, SceneProjector, the SimCoords dialog's prefill)
+        // is the cycle's mirror, written only by ApplyGpsCycleResult. Emit the new position
+        // through the normal path now instead of waiting up to a timer period: a tick at
+        // step 0 is a stationary fix at the new coordinates. With the simulator off there
+        // is no GPS source to move, and its first tick after enabling places the vehicle.
+        if (_isSimulatorEnabled)
+            _simulatorService.Tick(SimulatorSteerAngle);
 
         StatusMessage = saved
             ? $"Simulator reset to {latitude:F8}, {longitude:F8}"

@@ -57,6 +57,13 @@ public interface ISectionControlService
     void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed);
 
     /// <summary>
+    /// Publish the field facts <see cref="Update"/> reads (boundary, headland line, field
+    /// open, headland on). Called from the UI thread whenever one of them changes; the
+    /// control-loop tick reads the latest whole record.
+    /// </summary>
+    void SetFieldContext(AgOpenWeb.Models.Sections.SectionFieldContext context);
+
+    /// <summary>
     /// True while the vehicle is reversing (set each GPS cycle by the pipeline). Auto
     /// sections turn off in reverse, like AgOpenGPS; Manual-On sections stay on (#173).
     /// </summary>

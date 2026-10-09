@@ -36,7 +36,6 @@ public class YouTurnNudgeReplanTests
 {
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
-    private ApplicationState _appState = null!;
     private PipelineIntents _intents = null!;
 
     [SetUp]
@@ -52,18 +51,15 @@ public class YouTurnNudgeReplanTests
         config.Tool.SetSectionWidth(0, 600);
 
         _intents = new PipelineIntents();
-        _appState = new ApplicationState();
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
 
         _gpsService = new GpsService();
         _gpsService.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
@@ -82,10 +78,11 @@ public class YouTurnNudgeReplanTests
             Substitute.For<IAudioService>(),
             _intents,
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
 
@@ -112,7 +109,6 @@ public class YouTurnNudgeReplanTests
         FixQuality = 4,
         IsValid = true,
     };
-
 
     private YouTurnWorkingState SeedPlannedTurn(bool executing)
     {

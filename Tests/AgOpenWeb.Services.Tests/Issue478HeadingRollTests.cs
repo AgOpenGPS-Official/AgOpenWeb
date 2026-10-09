@@ -142,18 +142,14 @@ public class Issue478PipelineTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
 
-        var appState = new ApplicationState();
-        appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
-
         _gps = new GpsService();
         _gps.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gps, appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gps, config);
 
         // REAL heading fusion — this is what we're testing for the wrap.
         var headingFusion = new GpsHeadingFusionService(config);
@@ -170,10 +166,11 @@ public class Issue478PipelineTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.CycleCompleted += r => _lastResult = r;
         _pipeline.Start();
