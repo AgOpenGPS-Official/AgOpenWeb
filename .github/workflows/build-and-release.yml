@@ -116,7 +116,6 @@ jobs:
 
   build-ios:
     runs-on: macos-26
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
