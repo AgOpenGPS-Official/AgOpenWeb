@@ -38,6 +38,25 @@ jobs:
       - name: Check translation source is up to date
         run: python3 Tools/i18n-extract.py --check
 
+      # Language files are translated on Weblate; a PR edits only the English source.
+      - name: Check language files are untouched
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
+          changed=$(git diff --name-only ${{ github.event.pull_request.base.sha }} HEAD -- 'Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/*.json' | grep -v '/en\.json$' || true)
+          if [ -n "$changed" ]; then
+            echo "::error::Language files are maintained on Weblate (Docs/TRANSLATIONS.md); only en.json changes in a PR:"
+            echo "$changed"
+            exit 1
+          fi
+
+      # The client has no build step, so a syntax error would otherwise surface in the browser.
+      - name: Check client scripts parse
+        run: |
+          for f in app.js transport.js i18n.js; do
+            node --check "Shared/AgOpenWeb.RemoteServer/wwwroot/$f"
+          done
+
       - name: Run Model Tests
         run: dotnet test Tests/AgOpenWeb.Models.Tests/ --verbosity normal
 
@@ -51,9 +70,10 @@ jobs:
         run: dotnet run --project TestRunner/TestRunner.csproj
 
   # Compile-check each platform head (no packaging — build-deploy-bundles.yml does the publishes).
+  # The Desktop and Android heads compile on every PR so a broken head is caught before
+  # merge; iOS needs a macOS runner and compiles after merge.
   build-desktop:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +89,6 @@ jobs:
 
   build-android:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
