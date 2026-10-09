@@ -16,6 +16,13 @@
     <ApplicationVersion>3</ApplicationVersion>
   </PropertyGroup>
 
+  <!-- Simulator builds (the CI compile check and the local simulator loop) run on the
+       interpreter: no AOT step, which took 6 of the 7-9 minutes of the CI job on a 3-core
+       runner (63 s locally). Device builds (ios-arm64) keep AOT, which Apple requires. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('iossimulator'))">
+    <MtouchInterpreter>all</MtouchInterpreter>
+  </PropertyGroup>
+
   <!-- iOS Device Signing Configuration -->
   <!-- Debug → on-device development (Apple Development cert). -->
   <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('ios-')) and '$(Configuration)' == 'Debug'">
