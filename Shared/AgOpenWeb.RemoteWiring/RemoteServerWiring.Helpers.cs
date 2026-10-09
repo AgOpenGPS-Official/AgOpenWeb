@@ -341,10 +341,10 @@ public static partial class RemoteServerWiring
             "FinishStepViewModel" => "finish",
             _ => "unknown",
         };
-        double GP(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToDouble(v) : 0; }
+        double GP(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture) : 0; }
         bool GPb(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is bool b && b; }
         string GPs(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s)?.ToString() ?? ""; }
-        int GPi(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToInt32(v) : 0; }
+        int GPi(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture) : 0; }
         var sb = w.StatusBar;
         string phaseResult = GPs("PhaseResult");
         bool testActive = GPb("IsRecording") || GPb("IsMeasuring") || GPb("IsPhaseA1") || GPb("IsPhaseB1");

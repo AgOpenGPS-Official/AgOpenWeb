@@ -652,7 +652,7 @@ public partial class MainViewModel
         var global = new SettingsGroupItem("Global");
         global.Items.Add(new SettingsValueItem("Active Profile", store.ActiveVehicleProfileName));
         global.Items.Add(new SettingsValueItem("Is Metric", store.IsMetric.ToString()));
-        global.Items.Add(new SettingsValueItem("Num Sections", store.NumSections.ToString()));
+        global.Items.Add(new SettingsValueItem("Num Sections", store.NumSections.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         global.Items.Add(new SettingsValueItem("Actual Tool Width",
             store.IsMetric ? $"{store.ActualToolWidth:F2} m"
                            : $"{AgOpenWeb.Models.Base.UnitConversion.MetersToFeet(store.ActualToolWidth):F2} ft"));

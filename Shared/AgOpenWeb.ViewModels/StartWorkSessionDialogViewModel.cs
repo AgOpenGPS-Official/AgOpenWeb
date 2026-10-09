@@ -254,7 +254,7 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
 
     private void RecomputeDefaultTaskName()
     {
-        var date = DateTime.Now.ToString("yyyy-MM-dd");
+        var date = DateTime.Now.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes the job folder name
         var slug = NormalizeWorkType(NewJobWorkType);
         NewJobTaskName = string.IsNullOrEmpty(slug) ? date : $"{date}_{slug}";
     }

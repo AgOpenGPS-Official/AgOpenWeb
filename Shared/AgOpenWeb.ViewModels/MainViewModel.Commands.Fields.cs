@@ -335,13 +335,13 @@ public partial class MainViewModel
 
         AppendDateCommand = new RelayCommand(() =>
         {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd");
+            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
             FromExistingFieldName = (FromExistingFieldName + " " + dateStr).Trim();
         });
 
         AppendTimeCommand = new RelayCommand(() =>
         {
-            var timeStr = DateTime.Now.ToString("HH-mm");
+            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
             FromExistingFieldName = (FromExistingFieldName + " " + timeStr).Trim();
         });
 
@@ -475,13 +475,13 @@ public partial class MainViewModel
 
         KmlAppendDateCommand = new RelayCommand(() =>
         {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd");
+            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
             KmlImportFieldName = (KmlImportFieldName + " " + dateStr).Trim();
         });
 
         KmlAppendTimeCommand = new RelayCommand(() =>
         {
-            var timeStr = DateTime.Now.ToString("HH-mm");
+            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
             KmlImportFieldName = (KmlImportFieldName + " " + timeStr).Trim();
         });
 
@@ -664,13 +664,13 @@ public partial class MainViewModel
 
         IsoXmlAppendDateCommand = new RelayCommand(() =>
         {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd");
+            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
             IsoXmlImportFieldName = (IsoXmlImportFieldName + " " + dateStr).Trim();
         });
 
         IsoXmlAppendTimeCommand = new RelayCommand(() =>
         {
-            var timeStr = DateTime.Now.ToString("HH-mm");
+            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
             IsoXmlImportFieldName = (IsoXmlImportFieldName + " " + timeStr).Trim();
         });
 
