@@ -166,6 +166,31 @@ Consequences:
   decision for the HAT firmware; the assembler only needs the talker ID. Decide with the
   first firmware that emits it (Phase 2b).
 
+## Prior art: the AiO v26 firmware (ours)
+
+`Firmware_Teensy_AiO_26/lib/aio_navigation/GNSSProcessor.*` and `NAVProcessor.cpp` are
+the closest existing implementation of this plan, running on the installed boards:
+
+- **One byte-wise framer for both families:** `$…*hh` (8-bit XOR) and Unicore `#…*xxxxxxxx`
+  (CRC-32) in the same state machine. It parses `GGA`, `GNS`, `VTG`, `RMC`, `HPR`, `KSXT`,
+  `#INSPVAA`/`#INSPVAXA` (UM981/UM982 INS units), `BESTGNSSPOS`, and UBX `RELPOSNED` from a
+  second F9P. The `#` framer is therefore a port, not a research item.
+- **"Look at the data to decide":** each parsed type sets a bit in `messageTypeMask`;
+  `HPR`/`KSXT`/`RELPOSNED` set `hasDualHeading`, `INSPVA` sets `hasINS`; `selectMessageType()`
+  picks `$PAOGI` if either is set, else `$PANDA`. No single/dual setting. That is what the
+  learned burst below generalises. Its flags are sticky (nothing clears them), so a receiver
+  that stops printing `HPR` keeps producing `$PAOGI` with the last heading; the assembler's
+  "member absent → heading invalid" is the fix for that.
+- **Emission is flush-on-position-message** (`GGA`/`GNS`/`KSXT`/`INSPVA` fire the send). If
+  the receiver prints `HPR` after `GGA`, each `$PAOGI` carries the previous epoch's heading:
+  100 ms at 10 Hz, ~2° in a 20°/s turn — more than the IMU jitter rule 2 waves through.
+  The learned-burst emission avoids it at no latency cost. Whether it bites depends on the
+  UM982's output order; the Phase 0 capture shows it.
+- **IMU on `$PAOGI` is latest-reading** (pitch, yaw rate from `imuProcessor.getCurrentData()`),
+  roll from the dual's pitch field — the same conventions as rule 2 and the `$KSXT` decoder.
+- **Passthrough forwards every complete line, `#` ones included.** The app's UDP ingest
+  drops anything not starting with `$`; it should take `#` lines once the framer exists.
+
 ## Target sentence set
 
 **AgIO's set, plus `$KSXT` (done) and `$GPHPR`.** AgIO's `NMEA.Designer.cs` is the
@@ -176,7 +201,7 @@ sentences uses it for attitude; AgIO's `HPD` is marked "future firmware" by Unic
 |---|---|---|
 | `$PANDA`, `$PAOGI` | whole fix from an AiO board | done, frozen |
 | `$KSXT` | whole fix, Unicore/Bynav | done (#288) |
-| `GGA` / `GNGGA` | position, fix quality, sats, HDOP, age — opens the epoch | 2 |
+| `GGA` / `GNGGA`, `GNS` | position, fix quality, sats, HDOP, age — opens the epoch (v26 parses both) | 2 |
 | `VTG` | speed, track | 2 |
 | `$GPHPR` | heading, pitch (roll), quality — Unicore attitude | 2 |
 | `HDT` | dual heading — Septentrio, F9P pairs, others | 3 |
@@ -185,12 +210,12 @@ sentences uses it for attitude; AgIO's `HPD` is marked "future firmware" by Unic
 | `$GNTRA` | heading + roll — UB482 / ComNav | 4 |
 | `$GPHPD` | whole fix, Unicore (when a firmware prints it) | 4 |
 | `$PSTI,032/035/036` | SkyTraq baseline / attitude | 4 |
-| UBX `RELPOSNED` | F9P pair heading, binary (Ace GPS2) | 4 |
+| UBX `RELPOSNED` | F9P pair heading, binary (Ace GPS2; v26 GPS2) | 4 |
+| `#INSPVAA`, `#INSPVAXA` | whole fix from a Unicore INS unit (UM981/UM982-INS), CRC-32; v26 parses them | 4, with the `#` framer |
 | `#RTKSTATUSA`, `#RTCMSTATUSA`, `#UNIHEADINGA` | diagnostics only, for Network IO; never the fix | 4, optional |
 
-Not targeted: `RMC` (AgIO has it commented out; `GGA`+`VTG` cover it), `GNS` unless a
-receiver turns out to print it instead of `GGA`, Hemisphere `$PSAT,HPR` and NovAtel
-`#HEADINGA` until someone asks.
+Not targeted: `RMC` (AgIO has it commented out; `GGA`+`VTG` cover it), Hemisphere
+`$PSAT,HPR` and NovAtel `#HEADINGA` until someone asks.
 
 ## What arrives, and how
 
@@ -227,9 +252,10 @@ requires the datagram to *be* one sentence. The AiO passthrough and the Bynav's 
 output happen to send one sentence per datagram; a serial bridge may batch an epoch's burst
 into one datagram or cut a sentence across two.
 
-- A `NmeaLineSplitter` per source address: splits a datagram on `\r`/`\n`/next `$`, feeds
-  each complete sentence to the dispatcher, keeps a partial tail (bounded, 512 bytes; a
-  longer tail is garbage and is dropped) for the next datagram from the same source.
+- A `NmeaLineSplitter` per source address: splits a datagram on `\r`/`\n`/next `$` or
+  `#`, feeds each complete sentence to the dispatcher, keeps a partial tail (bounded, 512
+  bytes; a longer tail is garbage and is dropped) for the next datagram from the same
+  source. `#` lines are dropped until Phase 4 adds the CRC-32 framer (ported from v26).
 - Zero-copy: the splitter hands out spans into the receive buffer; the tail is the only copy.
 - The bridge contract above says whole lines; the splitter defends against a bridge that
   doesn't, and counts the repairs so Network IO can point at the bridge.
