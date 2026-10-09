@@ -53,6 +53,35 @@ single-antenna receiver plus an IMU needs the pairing done where timing is contr
 AiO today, the HAT daemon under PREEMPT_RT tomorrow — and the app receives the result as
 `$PANDA`. That is out of scope here and should stay out.
 
+## Everything is IP
+
+The app has one transport: UDP on the module subnet. It does not open serial ports on any
+head, and this plan does not add that. Receivers either have an Ethernet/USB-network port
+of their own (Bynav T1-FD, Septentrio mosaic, UB9A0) or sit behind a **serial-to-Ethernet
+bridge** — the AiO's passthrough today, a Teensy or ESP32 doing nothing but
+serial↔UDP tomorrow, the HAT daemon on the Pi. The bridge is a few dozen lines of firmware;
+the app side is the same for all of them.
+
+What the app already does for an address that only ever sends NMEA, with no hello PGN:
+the GPS status dot follows the sentence flow (`GpsService.IsGpsDataOk`), the GPS address on
+the Network IO page is "where the position sentences come from", and RTCM corrections are
+unicast back to that address on port 2233 (`NtripClientService.ResolveRtcmDestination`).
+So a bridge needs no module identity; it needs to do two things:
+
+**Bridge contract** (goes into the HAT/ESP32 firmware docs and `Docs/GPS_RECEIVERS.md`):
+
+1. *Receiver → app:* send to UDP 9999 on the app's subnet, broadcast or unicast. Each
+   datagram holds one or more **whole** NMEA lines, `$…*hh\r\n`, never a partial line.
+   Preferred: one line per datagram, sent as soon as the line is complete (the AiO
+   passthrough does this). Lines not starting with `$` (Unicore `#` logs, binary) may be
+   dropped or forwarded; the app ignores them.
+2. *App → receiver:* listen on UDP 2233 and write every datagram's bytes to the receiver's
+   serial port unchanged. Datagrams are ≤ 512 bytes with ≥ 10 ms between them
+   (`Plans/RTCM_FORWARDING_PLAN.md`), so a 1 KB buffer and a 460800 baud link are enough.
+
+A bridge that splits lines across datagrams is tolerated (the splitter below), but it is a
+bug in the bridge, not a feature of the app.
+
 ## What arrives, and how
 
 | Receiver | Sentences per epoch | Reaches the app via |
@@ -60,7 +89,7 @@ AiO today, the HAT daemon under PREEMPT_RT tomorrow — and the app receives the
 | AiO board (any receiver) | `$PANDA` or `$PAOGI` | UDP 9999, one sentence per datagram |
 | Bynav T1-FD (Ethernet) | `$KSXT` | UDP, one per datagram |
 | Bynav / Unicore UM982 via AiO passthrough | `$KSXT`, or `GGA`+`VTG`+`HPR` | UDP, one per datagram (seen on the bench, #288) |
-| UM982 via HAT daemon / ESP32 bridge | `GGA`+`VTG`+`HPR` (or `$KSXT`) | UDP; chunking is the bridge's choice |
+| UM982 / F9P via HAT daemon, Teensy or ESP32 bridge | `GGA`+`VTG`+`HPR` (or `$KSXT`) | UDP; the bridge contract says whole lines |
 | Septentrio mosaic-H (Ethernet / USB-net) | `GGA`+`VTG`+`HDT`+`$PTNL,AVR` (or `$PSSN,HRP`) | UDP; one or several per datagram |
 | u-blox F9P pair via bridge | `GGA`+`VTG`+`HDT` (+`RELPOSNED` binary) | out of scope until someone asks |
 
@@ -91,8 +120,8 @@ into one datagram or cut a sentence across two.
   each complete sentence to the dispatcher, keeps a partial tail (bounded, 512 bytes; a
   longer tail is garbage and is dropped) for the next datagram from the same source.
 - Zero-copy: the splitter hands out spans into the receive buffer; the tail is the only copy.
-- Bridge contract, written into the HAT/ESP32 docs: forward whole lines, one or more per
-  datagram, never split a line. The splitter defends against a bridge that doesn't.
+- The bridge contract above says whole lines; the splitter defends against a bridge that
+  doesn't, and counts the repairs so Network IO can point at the bridge.
 
 ### 2. Dispatch (exists since #288)
 
@@ -173,9 +202,10 @@ Decide when the first along-mounted user appears; until then baseline pitch.
 
 ## Phases
 
-**Phase 0 — captures and fixtures.** A small `Tools/nmea-capture.py` that listens on
+**Phase 0 — captures and fixtures.** Two small scripts: `Tools/nmea-capture.py` listens on
 :9999, keeps datagram boundaries and arrival times, and writes a text file the tests can
-replay. Captures wanted: UM982/T1-FD printing `GGA`+`VTG`+`HPR` through the AiO passthrough
+replay; `Tools/serial-to-udp.py` is the reference bridge (whole lines to 9999, 2233 back to
+the port) for a bench with a USB receiver and no board. Captures wanted: UM982/T1-FD printing `GGA`+`VTG`+`HPR` through the AiO passthrough
 (Chris's bench, switch the receiver's output set); Septentrio from the issue (wiring,
 config export, pcap with cold start / stationary / turns / RTK loss / heading loss, one
 `AVR` line pasted). Fixtures live under `Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/`.
@@ -196,18 +226,18 @@ smoothing, not a bug; default off, since Unicore's `SMOOTH` showed receivers do 
 F9P `HDT`-only pairs. Each is a decoder or an assembler member and a fixture; none changes
 the structure.
 
-**Docs, with Phase 2:** `Docs/GPS_RECEIVERS.md` — supported sentence sets, how each reaches
-the app, per-receiver configuration recipes (the reviewed Bynav config: `HEADING FIXLENGTH`,
+**Docs, with Phase 2:** `Docs/GPS_RECEIVERS.md` — the bridge contract, supported sentence
+sets, how each receiver reaches the app, per-receiver configuration recipes (the reviewed Bynav config: `HEADING FIXLENGTH`,
 `LENGTH` in cm with a tight tolerance, `OFFSET 90`, `RTK TIMEOUT` 30–60 s because `$KSXT`
 has no age field, `KSXT 0.1` or `GPGGA 0.1`+`GPVTG 0.1`+`GPHPR 0.1`), and the bridge
 contract for HAT/ESP32 firmware.
 
 ## Open decisions
 
-1. **Serial ports in the desktop head?** A USB-attached UM982 on a Windows laptop has no
-   way in without a bridge. Recommendation: out of scope here — the HAT daemon, the AiO
-   passthrough and a 40-line `Tools/serial-to-udp.py` cover every real setup, and the
-   app stays UDP-only on all five heads. Revisit if a user without any board asks.
+1. ~~Serial ports in the desktop head?~~ Decided 2026-10-09: no. Everything is IP; a
+   receiver without a network port sits behind a bridge (AiO passthrough, Teensy/ESP32,
+   HAT daemon). For a bench without any board, `Tools/serial-to-udp.py` (a few dozen
+   lines) is the bridge.
 2. **Roll source setting** (above) — defer until needed.
 3. **`GGA` without any heading sentence** (single antenna, no IMU): accept it — heading from
    fix-to-fix as the fusion already does for `$PANDA` with the 65535 sentinel — or refuse
